@@ -120,5 +120,23 @@ function server() {
     assert.ok(m.attachments[0].thumbUrl.endsWith('?thumb=1'));
     assert.strictEqual(r.normalizeMessage({ messageID: 'm2', conversationID: 'c1', messageStatus: { status: 'OUTGOING_DISPLAYED' }, timestamp: '1' }).dateRead, 1 / 1000 > 0 ? 1 : 1);
 
+    // the store: chats newest first, messages by chat, full-text search, delete
+    const os = require('os'); const fs = require('fs'); const pth = require('path');
+    const dir = fs.mkdtempSync(pth.join(os.tmpdir(), 'tmstore-'));
+    const store = require('../modules/textMessagingStore');
+    store.open(dir);
+    store.putChats('a', [{ guid: 'c1', raw: { guid: 'c1' }, lastDate: 10 }, { guid: 'c2', raw: { guid: 'c2' }, lastDate: 20 }]);
+    assert.deepStrictEqual(store.listChats('a').map((c) => c.guid), ['c2', 'c1']);
+    store.putMessages('a', [{ guid: 'm1', chatGuid: 'c1', date: 1, text: 'Pizza tonight?', raw: { guid: 'm1' } }, { guid: 'm2', chatGuid: 'c1', date: 2, text: 'sure', raw: { guid: 'm2' } }]);
+    assert.deepStrictEqual(store.listMessages('a', ['c1'], { limit: 1 }).map((m) => m.guid), ['m2']);
+    assert.deepStrictEqual(store.listMessages('a', ['c1'], { before: 2 }).map((m) => m.guid), ['m1']);
+    assert.deepStrictEqual(store.search('piz').map((r) => r.guid), ['m1'], 'prefix search');
+    store.putMessages('a', [{ guid: 'm1', chatGuid: 'c1', date: 1, text: 'edited text', raw: { guid: 'm1' } }]);
+    assert.strictEqual(store.search('pizza').length, 0, 'an edit replaces the indexed text');
+    store.deleteChat('a', 'c1');
+    assert.strictEqual(store.messageCount('a'), 0);
+    store._close();
+    fs.rmSync(dir, { recursive: true, force: true });
+
     console.log('test-textmessaging: ok');
 })().catch((error) => { console.error(error); process.exit(1); });

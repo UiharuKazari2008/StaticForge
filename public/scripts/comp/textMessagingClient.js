@@ -13,6 +13,10 @@
  *   sendFile(accountId, chatGuid, file, { replyTo, audio, onProgress(0..1) }) -> { tempGuid, message }
  *   react(accountId, { chatGuid, messageGuid, messageText, reaction, remove })
  *   edit(accountId, { messageGuid, text }) / unsend(accountId, { messageGuid })
+ *   syncStatus() -> { accounts: [{ id, name, sync, reconcile, drift, push, lastPush }], storage: { database, attachments } }
+ *   syncChats(accountId) -> [{ guid, title, service, lastDate, synced, messages, updated }]
+ *   resync(accountId, rebuild)      catch up + reconcile now, or rebuild the server's copy from the source
+ *   events also: 'reload' { accountId, chatGuid } (the source corrected that conversation), 'sync'
  *   search(q, { accountId?, limit }) -> [{ accountId, account, chatGuid, chatTitle, known, message }]
  *   markRead(accountId, chatGuid) / markUnread(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
  *   testAccount / saveAccount / deleteAccount / saveSettings({ notifyUnknown })
@@ -188,6 +192,9 @@
     const edit = (accountId, args) => call('tm_edit', Object.assign({ accountId }, args || {}));
     const unsend = (accountId, args) => call('tm_unsend', Object.assign({ accountId }, args || {}));
     const markRead = (accountId, chatGuid) => call('tm_read', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
+    const syncStatus = () => call('tm_sync_status');
+    const syncChats = (accountId) => call('tm_sync_chats', { accountId }).then((d) => d.chats || []);
+    const resync = (accountId, rebuild) => call('tm_resync', { accountId, rebuild: !!rebuild });
     const search = (q, opts) => call('tm_search', Object.assign({ q }, opts || {})).then((d) => d.results || []);
     const deleteChat = (accountId, chatGuid) => call('tm_delete_chat', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const markUnread = (accountId, chatGuid) => call('tm_unread', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
@@ -276,7 +283,7 @@
     root.textMessaging = {
         links, linkify, linkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        markRead, markUnread, deleteChat, search, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
+        markRead, markUnread, deleteChat, search, syncStatus, syncChats, resync, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
     // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in

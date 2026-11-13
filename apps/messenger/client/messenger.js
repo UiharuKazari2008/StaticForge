@@ -362,6 +362,13 @@
             const on = (ev, fn) => { t.on(ev, fn); this.app.signal.addEventListener('abort', () => { const now = tm(); if (now && now.off) now.off(ev, fn); if (t !== now && t.off) t.off(ev, fn); }); };
             on('message', (d) => this.onMessage(d));
             on('updated', (d) => this.onUpdated(d));
+            // the source corrected the server's copy of a conversation: the list, and the open one, again
+            on('reload', (d) => {
+                const a = this.account();
+                if (!d || !a || d.accountId !== a.id) return;
+                this.refreshChatsSoon();
+                if (d.chatGuid === this.chatGuid) void this.reloadThread();
+            });
             on('reaction', (d) => this.onReaction(d));
             on('typing', (d) => this.onTyping(d));
             on('read', (d) => this.onRead(d));
@@ -525,6 +532,23 @@
                 this.renderThread();
                 th.scrollTop = th.scrollHeight - h0;
             } catch (_) { /* the top stays */ } finally { this.loadingOlder = false; }
+        }
+
+        /** The open conversation read again (after the source corrected it), keeping its place. */
+        async reloadThread() {
+            const t = tm();
+            const a = this.account();
+            const guid = this.chatGuid;
+            if (!t || !a || !guid) return;
+            try {
+                const d = await t.messages(a.id, guid, { limit: Math.max(PAGE, this.messages.filter((m) => !m.pending).length) });
+                if (this.chatGuid !== guid) return;
+                const pending = this.messages.filter((m) => m.pending);
+                this.messages = ((d && d.messages) || []).concat(pending);
+                this.more = !!(d && d.more);
+                this.cursor = d && d.cursor != null ? d.cursor : null;
+                this.renderThread();
+            } catch (_) { /* the thread stays as it was */ }
         }
 
         /** Delete a conversation (asks first, as Windows Mail does; on the Mac / phone too). */

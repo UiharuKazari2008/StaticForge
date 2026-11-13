@@ -176,6 +176,11 @@ class BlueBubblesProvider {
             this.setStatus('connected', '');
             this.connectSocket();
             this.loadContacts().catch(() => {});
+            this.startSync();
+            // what the socket missed (edits, read dates) comes in with a catch-up every 30 minutes
+            clearInterval(this.syncTimer);
+            this.syncTimer = setInterval(() => this.startSync(), 30 * 60 * 1000);
+            if (this.syncTimer.unref) this.syncTimer.unref();
         } catch (error) {
             this.setStatus('error', error.message);
             this.scheduleRetry();
@@ -185,6 +190,8 @@ class BlueBubblesProvider {
     stop() {
         this.stopped = true;
         clearTimeout(this.retryTimer);
+        clearInterval(this.syncTimer);
+        if (this.syncChild) { try { this.syncChild.kill(); } catch (_) { /* gone */ } this.syncChild = null; }
         if (this.socket) { try { this.socket.removeAllListeners(); this.socket.disconnect(); } catch (_) { /* gone */ } }
         this.socket = null;
         this.setStatus('disabled', '');
@@ -221,7 +228,7 @@ class BlueBubblesProvider {
             reconnectionDelayMax: RECONNECT_MAX_MS
         });
         this.socket = socket;
-        socket.on('connect', () => { this.setStatus('connected', ''); this.hooks.emit && this.hooks.emit('resync', { accountId: this.id }); });
+        socket.on('connect', () => { this.setStatus('connected', ''); this.startSync(); this.hooks.emit && this.hooks.emit('resync', { accountId: this.id }); });
         socket.on('disconnect', (reason) => { if (!this.stopped) this.setStatus('connecting', `Disconnected (${reason})`); });
         socket.on('connect_error', (error) => { if (!this.stopped) this.setStatus('error', `Cannot reach the BlueBubbles server (${error.message}).`); });
         socket.on('new-message', (m) => this.onMessage(m, false));
@@ -254,6 +261,7 @@ class BlueBubblesProvider {
         const chatGuid = this.resolve(Array.isArray(raw.chats) && raw.chats[0] ? raw.chats[0].guid : '');
         const reaction = reactionOf(raw.associatedMessageType);
         if (reaction && raw.associatedMessageGuid) {
+            this.storeLive(raw);
             this.hooks.emit && this.hooks.emit('reaction', {
                 accountId: this.id, chatGuid,
                 targetGuid: targetGuid(raw.associatedMessageGuid),
@@ -261,10 +269,212 @@ class BlueBubblesProvider {
             });
             return;
         }
+        this.storeLive(raw);
         const message = this.normalizeMessage(raw, chatGuid);
         // the raw chat only when it is the conversation itself (a merged one is read again by guid)
         const rawChat = Array.isArray(raw.chats) && raw.chats[0] && raw.chats[0].guid === chatGuid ? raw.chats[0] : null;
         this.hooks.emit && this.hooks.emit(updated ? 'updated' : 'message', { accountId: this.id, chatGuid, message, chat: rawChat });
+    }
+
+    // ---- the store (modules/textMessagingStore.js): every chat and message, synced from the Mac ----
+
+    /** Every message is here (the first sync finished): reads come from the store. */
+    storeReady() {
+        return !!(this.store && this.store.getState(this.id, 'complete') === '1');
+    }
+
+    storeRows(rows) {
+        if (!this.store) return;
+        const out = [];
+        for (const r of rows || []) {
+            const chatGuid = Array.isArray(r.chats) && r.chats[0] ? r.chats[0].guid : (r.chatGuid || '');
+            if (!r || !r.guid || !chatGuid) continue;
+            out.push({ guid: r.guid, chatGuid, date: Number(r.dateCreated) || 0, text: r.text ? String(r.text).replace(/\uFFFC/g, '').trim() : '', raw: r });
+        }
+        try { if (out.length) this.store.putMessages(this.id, out); } catch (error) { this.log(`store write failed: ${error.message}`); }
+        return out;
+    }
+
+    /** A live message: into the store, and its chat's last message moves to it. */
+    storeLive(raw) {
+        if (!this.store || !raw) return;
+        const rows = this.storeRows([raw]);
+        const row = rows && rows[0];
+        if (!row) return;
+        try {
+            const chat = this.store.getChat(this.id, row.chatGuid);
+            const reaction = reactionOf(raw.associatedMessageType);
+            if (chat && !reaction && (Number(raw.dateCreated) || 0) >= ((chat.raw.lastMessage && Number(chat.raw.lastMessage.dateCreated)) || 0)) {
+                chat.raw.lastMessage = raw;
+                this.store.putChats(this.id, [{ guid: row.chatGuid, raw: chat.raw, lastDate: row.date }]);
+            } else if (!chat && Array.isArray(raw.chats) && raw.chats[0]) {
+                const c = Object.assign({}, raw.chats[0], { lastMessage: reaction ? null : raw });
+                this.store.putChats(this.id, [{ guid: row.chatGuid, raw: c, lastDate: row.date }]);
+            }
+        } catch (error) { this.log(`store chat update failed: ${error.message}`); }
+    }
+
+    /**
+     * Pull everything from the Mac into the store: every chat, then every message in date order
+     * (message/query, oldest first, 1000 at a time; the cursor is kept, so a restart goes on where it
+     * stopped). Afterwards only what is new, plus the last two days again for read / edit changes.
+     */
+    startSync() {
+        if (!this.store || this.syncing || this.stopped) return;
+        this.syncing = true;
+        // the work runs in its own low-priority process (textMessagingSyncWorker.js): the server's
+        // event loop never pages, parses or indexes a whole history (Yukimi, Nov 13)
+        let child;
+        try {
+            child = require('child_process').fork(require('path').join(__dirname, 'textMessagingSyncWorker.js'), [], { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+        } catch (error) {
+            this.log(`sync worker failed to start: ${error.message}`);
+            this.syncing = false;
+            return;
+        }
+        this.syncChild = child;
+        child.on('message', (m) => {
+            if (!m) return;
+            if (m.progress !== undefined) this.syncProgress = m.progress;
+            if (m.log) this.log(m.log);
+            if (m.error) this.log(`sync failed: ${m.error}`);
+        });
+        child.on('exit', () => {
+            if (this.syncChild === child) this.syncChild = null;
+            this.syncing = false;
+            this.syncProgress = null;
+            this.hooks.emit && this.hooks.emit('account', { accountId: this.id });
+        });
+        child.send({ cmd: 'sync', account: { id: this.id, url: this.url, password: this.password, settings: this.settings }, cacheDir: this.storeDir || null });
+    }
+
+    async syncAll() {
+        // chats (with their newest message and participants); the Mac's list is the truth
+        const seen = new Set();
+        let listed = false;
+        for (let offset = 0; offset < 100000; offset += 1000) {
+            const rows = await this.call('POST', 'chat/query', { body: { limit: 1000, offset, with: ['lastMessage', 'participants'], sort: 'lastmessage' }, timeoutMs: 120000 });
+            const list = Array.isArray(rows) ? rows : [];
+            list.forEach((c) => seen.add(c.guid));
+            this.store.putChats(this.id, list.map((c) => ({ guid: c.guid, raw: c, lastDate: (c.lastMessage && Number(c.lastMessage.dateCreated)) || 0 })));
+            if (list.length < 1000) { listed = true; break; }
+        }
+        // chats deleted on the Mac leave the store too (only after a complete listing)
+        if (listed && seen.size) {
+            const gone = this.store.chatGuids(this.id).filter((g) => !seen.has(g));
+            for (const g of gone) this.store.deleteChat(this.id, g);
+            if (gone.length) this.noteDrift({ chatsRemoved: gone.length });
+        }
+        const complete = this.store.getState(this.id, 'complete') === '1';
+        let after = Number(this.store.getState(this.id, 'cursor') || 0);
+        if (complete) after = Math.max(0, after - 2 * 86400000);
+        this.syncProgress = { phase: 'messages', done: 0 };
+        // the Mac drops heavy pages (attachments, rich links): halve on a failure, grow back slowly
+        // gentle: smaller pages and a pause after each, so a first sync never starves the live server
+        // (Nov 13: full-speed pages kept the server at 100% CPU and clients could not boot)
+        let size = this.syncFast ? 500 : 200;
+        let fails = 0;
+        let seenGuids = new Set();
+        for (;;) {
+            if (this.stopped) return;
+            let rows;
+            try {
+                rows = await this.call('POST', 'message/query', { body: {
+                    limit: size, offset: 0, sort: 'ASC', after: after || undefined, with: ['chats', 'handle', 'attachment', 'messageSummaryInfo']
+                }, timeoutMs: 180000 });
+                fails = 0;
+            } catch (error) {
+                fails += 1;
+                if (fails > 8) throw error;
+                size = Math.max(10, Math.floor(size / 2));
+                await new Promise((r) => setTimeout(r, 1000 * fails));
+                continue;
+            }
+            const list = Array.isArray(rows) ? rows : [];
+            this.storeRows(list);
+            this.syncProgress.done += list.length;
+            const last = list.reduce((m, r) => Math.max(m, Number(r.dateCreated) || 0), after);
+            if (last > after) this.store.setState(this.id, 'cursor', last);
+            // "after" is exclusive: messages sharing the last one's millisecond would be skipped, so
+            // the next page starts a millisecond earlier (the store takes the repeats in place); a
+            // page that brought nothing new steps past that millisecond
+            const fresh = list.some((r) => !seenGuids.has(r.guid));
+            seenGuids = new Set(list.map((r) => r.guid));
+            after = !fresh ? (last >= after ? last + 1 : after + 1) : Math.max(after, last - 1);
+            if (list.length < size) break;
+            size = Math.min(this.syncFast ? 500 : 200, size * 2);
+            await new Promise((r) => setTimeout(r, this.syncFast ? 50 : 750));
+        }
+        this.store.setState(this.id, 'complete', '1');
+        this.syncProgress = null;
+    }
+
+    /**
+     * Check one conversation against the Mac (the Mac wins): its newest page is read again; rows that
+     * differ are replaced, rows the Mac no longer has in that span are removed. -> true when it changed.
+     */
+    async verifyChat(chatGuid, limit = 60) {
+        if (!this.store) return false;
+        const guid = this.resolve(chatGuid);
+        const members = this.members(guid);
+        const pages = await Promise.all(members.map((g) => this.call('GET', `chat/${encodeURIComponent(g)}/message`, {
+            query: { limit, sort: 'DESC', with: 'attachment,handle,attributedBody,messageSummaryInfo' }
+        }).then((rows) => (Array.isArray(rows) ? rows.map((r) => (r.chats ? r : Object.assign({}, r, { chats: [{ guid: g }] }))) : []), () => null)));
+        if (pages.some((p) => p == null)) return false; // no answer: nothing is judged
+        const fresh = [].concat(...pages);
+        if (!fresh.length) return false;
+        const before = this.store.getMessages(this.id, fresh.map((r) => r.guid));
+        // what can change at the source (the two endpoints shape the rest differently)
+        const sig = (r) => JSON.stringify([r.text || '', r.dateRead || 0, r.dateDelivered || 0, r.dateEdited || 0, r.dateRetracted || 0, r.error || 0,
+            r.associatedMessageGuid || '', (r.attachments || []).map((x) => x.guid).join(',')]);
+        let changed = false;
+        for (const r of fresh) {
+            const old = before.get(r.guid);
+            let oldRow = null;
+            try { oldRow = old ? JSON.parse(old) : null; } catch (_) { oldRow = null; }
+            if (!oldRow || sig(oldRow) !== sig(r)) { changed = true; break; }
+        }
+        this.storeRows(fresh);
+        // the span the Mac answered for: everything stored in it that the Mac did not send is gone there
+        const from = Math.min(...fresh.map((r) => Number(r.dateCreated) || Infinity));
+        const have = new Set(fresh.map((r) => r.guid));
+        const stale = this.store.guidsBetween(this.id, members, from, Date.now() + 60000).filter((g) => !have.has(g));
+        if (stale.length) { this.store.deleteMessages(this.id, stale); changed = true; }
+        if (changed) this.noteDrift({ chatsRepaired: 1, lastChat: guid });
+        return changed;
+    }
+
+    /**
+     * Compare the whole copy with the Mac (counts of messages and chats). A difference runs the sync
+     * again from a week back; what still differs afterwards is recorded as drift for the status page.
+     */
+    async reconcile() {
+        if (!this.store || this.syncing || !this.storeReady()) return null;
+        const count = async () => {
+            const [m, c] = await Promise.all([this.call('GET', 'message/count'), this.call('GET', 'chat/count').catch(() => null)]);
+            return { messages: Number(m && m.total) || 0, chats: c && c.total != null ? Number(c.total) : null };
+        };
+        let src = await count();
+        let local = this.store.stats(this.id);
+        if (src.messages !== local.messages || (src.chats != null && src.chats !== local.chats)) {
+            const cur = Number(this.store.getState(this.id, 'cursor') || 0);
+            this.store.setState(this.id, 'cursor', Math.max(0, cur - 7 * 86400000));
+            await new Promise((resolve) => { this.startSync(); const t = setInterval(() => { if (!this.syncing) { clearInterval(t); resolve(); } }, 1000); });
+            src = await count();
+            local = this.store.stats(this.id);
+        }
+        const report = { at: Date.now(), source: src, local: { messages: local.messages, chats: local.chats }, inSync: src.messages === local.messages && (src.chats == null || src.chats === local.chats) };
+        this.store.setState(this.id, 'reconcile', JSON.stringify(report));
+        return report;
+    }
+
+    noteDrift(d) {
+        if (!this.store) return;
+        let cur = {};
+        try { cur = JSON.parse(this.store.getState(this.id, 'drift') || '{}'); } catch (_) { cur = {}; }
+        for (const [k, v] of Object.entries(d)) cur[k] = typeof v === 'number' ? (Number(cur[k]) || 0) + v : v;
+        cur.at = Date.now();
+        this.store.setState(this.id, 'drift', JSON.stringify(cur));
     }
 
     // ---- contacts ----
@@ -414,7 +624,12 @@ class BlueBubblesProvider {
     async listChats({ limit = 50, offset = 0, scan = 0 } = {}) {
         await this.loadContacts().catch(() => {});
         const want = Math.min(MAX_CHAT_SCAN, Math.max(scan, (offset + limit) * 2 + 20));
-        const rows = await this.call('POST', 'chat/query', { body: { limit: want, offset: 0, with: ['lastMessage', 'participants'], sort: 'lastmessage' } });
+        let rows;
+        if (this.storeReady()) rows = this.store.listChats(this.id, { limit: want }).map((r) => r.raw);
+        else {
+            rows = await this.call('POST', 'chat/query', { body: { limit: want, offset: 0, with: ['lastMessage', 'participants'], sort: 'lastmessage' } });
+            if (this.store && Array.isArray(rows)) this.store.putChats(this.id, rows.map((c) => ({ guid: c.guid, raw: c, lastDate: (c.lastMessage && Number(c.lastMessage.dateCreated)) || 0 })));
+        }
         let chats = (Array.isArray(rows) ? rows : []).map((c) => this.normalizeChat(c));
         if (this.settings.hideEmptyChats !== false) chats = chats.filter((c) => c.last);
         chats.sort((a, b) => ((b.last && b.last.date) || 0) - ((a.last && a.last.date) || 0));
@@ -449,6 +664,10 @@ class BlueBubblesProvider {
     async getChat(chatGuid) {
         await this.loadContacts().catch(() => {});
         const guid = this.resolve(chatGuid);
+        if (this.storeReady()) {
+            const row = this.store.getChat(this.id, guid);
+            if (row) { const chat = this.normalizeChat(row.raw); chat.guids = this.members(guid); return chat; }
+        }
         const c = await this.call('GET', `chat/${encodeURIComponent(guid)}`, { query: { with: 'participants,lastmessage' } });
         if (!c) return null;
         const chat = this.normalizeChat(c);
@@ -459,14 +678,23 @@ class BlueBubblesProvider {
     async listMessages(chatGuid, { limit = 50, before = null } = {}) {
         await this.loadContacts().catch(() => {});
         const guid = this.resolve(chatGuid);
+        // everything is in the store once the first sync finished: no round trip to the Mac
+        if (this.storeReady()) {
+            const rows = this.store.listMessages(this.id, this.members(guid), { limit: limit + 1, before: before && /^\d+$/.test(String(before)) ? Number(before) : null });
+            return this.fold(rows.slice(0, limit), guid, limit, rows.length > limit, rows.length > limit);
+        }
         const pages = await Promise.all(this.members(guid).map((g) => this.call('GET', `chat/${encodeURIComponent(g)}/message`, {
             query: { limit, sort: 'DESC', before: before || undefined, with: 'attachment,handle,attributedBody,messageSummaryInfo' }
         }).then((rows) => (Array.isArray(rows) ? rows : []), () => [])));
         const full = pages.some((p) => p.length >= limit);
         // a merged conversation: the newest `limit` across its chats
         const all = [].concat(...pages).sort((a, b) => (Number(b.dateCreated) || 0) - (Number(a.dateCreated) || 0));
-        const list = all.slice(0, limit);
-        chatGuid = guid;
+        if (this.store) this.storeRows(all);
+        return this.fold(all.slice(0, limit), guid, limit, full, all.length > limit);
+    }
+
+    /** A page of raw messages (newest first) as the client gets it: tapbacks folded onto their targets. */
+    fold(list, chatGuid, limit, full, cut) {
         const out = [];
         const byGuid = new Map();
         const reactions = [];
@@ -491,7 +719,7 @@ class BlueBubblesProvider {
         out.sort((a, b) => a.date - b.date);
         // the next page: messages before the oldest one here (clients pass page.cursor back as before)
         const oldest = list.length ? Math.min(...list.map((r) => Number(r.dateCreated) || Infinity)) : null;
-        return { messages: out, more: full || all.length > list.length, cursor: oldest && Number.isFinite(oldest) ? String(oldest) : null };
+        return { messages: out, more: !!(full || cut), cursor: oldest && Number.isFinite(oldest) ? String(oldest) : null };
     }
 
     async downloadAttachment(guid, { thumb } = {}) {
@@ -568,6 +796,12 @@ class BlueBubblesProvider {
     /** Messages whose text holds q, newest first, across every chat (the Mac's whole history). */
     async searchMessages(q, { limit = 40 } = {}) {
         await this.loadContacts().catch(() => {});
+        if (this.storeReady()) {
+            return this.store.search(q, { account: this.id, limit: limit * 2 }).map((r) => r.raw)
+                .filter((r) => !reactionOf(r.associatedMessageType))
+                .slice(0, limit)
+                .map((r) => this.normalizeMessage(r, this.resolve(Array.isArray(r.chats) && r.chats[0] ? r.chats[0].guid : '')));
+        }
         const rows = await this.call('POST', 'message/query', { body: {
             limit, offset: 0, sort: 'DESC', with: ['chat', 'handle', 'attachment'],
             where: [{ statement: 'message.text LIKE :term COLLATE NOCASE', args: { term: `%${q}%` } }]
@@ -582,7 +816,7 @@ class BlueBubblesProvider {
         this.requirePrivate('Deleting a conversation');
         const guids = this.members(chatGuid);
         await Promise.all(guids.map((g) => this.call('DELETE', `chat/${encodeURIComponent(g)}`)));
-        for (const g of guids) this.primaryOf.delete(g);
+        for (const g of guids) { this.primaryOf.delete(g); if (this.store) this.store.deleteChat(this.id, g); }
         this.membersOf.delete(this.resolve(chatGuid));
         return { ok: true };
     }

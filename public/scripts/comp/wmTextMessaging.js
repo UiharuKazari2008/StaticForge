@@ -183,6 +183,8 @@
         message: (d) => onMessage(d, false),
         updated: (d) => onMessage(d, true),
         reaction: (d) => onReaction(d),
+        // the source corrected the server's copy of a conversation: the open one reads it again
+        reload: (d) => { if (d && conv && d.accountId === conv.accountId && d.chatGuid === conv.guid) reloadConv(); },
         typing: (d) => onTyping(d),
         read: (d) => onRead(d),
         chat: (d) => onChat(d),

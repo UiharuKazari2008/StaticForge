@@ -862,6 +862,18 @@
         return bits.join(' \u00b7 ');
     }
 
+    /** The server's copy of an account (textMessagingStore.js): how far its sync is. */
+    function tmSyncText(row) {
+        const y = row && row.sync;
+        if (!y) return 'Not synced yet';
+        const n = (v) => Number(v || 0).toLocaleString();
+        if (y.running || !y.complete) {
+            const part = y.total ? ` (${n(y.done)} of ${n(y.total)} conversations)` : '';
+            return `Syncing: ${n(y.messages)} messages so far${part}`;
+        }
+        return `Up to date: ${n(y.messages)} messages in ${n(y.chats)} conversations`;
+    }
+
     function tmDetailsBlueBubbles(row, details, actions) {
         const ui = tmUiOf(row.id || '');
         const url = customInput(row.url, 'https://bluebubbles.example.com');
@@ -895,6 +907,7 @@
             customField('Signed in as', tmText(row.identity || 'Unknown until connected')),
             customField('Status', tmText(status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
             customField('Server', tmText(serverText)),
+            customField('Copy on this server', tmText(tmSyncText(row))),
             customField('Test result', testOut),
             customField('Options', optBox)
         );
@@ -932,6 +945,7 @@
             customField('Service', tmText('RCS through Google Messages')),
             customField('Phone number', tmText(row.identity || 'Unknown until paired')),
             customField('Status', tmText(ui.paired ? 'Paired' : status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
+            customField('Copy on this server', tmText(tmSyncText(row))),
             customField('Enabled', enabled.wrap)
         );
         if (ui.google && !paired) {

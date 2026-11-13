@@ -209,7 +209,7 @@ class RcsProvider {
                 this.loggedIn = !!(d && d.loggedIn);
                 if (d && d.fatal) this.setStatus('error', d.error || 'The pairing stopped working.');
                 else if (d && d.error) this.setStatus('connecting', d.error);
-                else if (this.loggedIn && d && d.connected) { this.restartMs = 2000; this.setStatus('connected', d.browserActiveElsewhere ? 'Messages for web is open somewhere else.' : (d.phoneResponding === false ? 'The phone is not answering.' : '')); this.loadContacts().catch(() => {}); }
+                else if (this.loggedIn && d && d.connected) { this.restartMs = 2000; this.setStatus('connected', d.browserActiveElsewhere ? 'Messages for web is open somewhere else.' : (d.phoneResponding === false ? 'The phone is not answering.' : '')); this.loadContacts().catch(() => {}); this.startSync(); }
                 else if (!this.loggedIn) this.setStatus('unpaired', 'Not paired with Google Messages.');
                 break;
             case 'qr':
@@ -265,6 +265,7 @@ class RcsProvider {
         if (!c || !c.conversationID) return;
         const prev = this.convs.get(c.conversationID);
         this.convs.set(c.conversationID, c);
+        this.storeConvs([c]);
         this.emit('chat', { chatGuid: c.conversationID });
         if (prev && prev.unread && !c.unread) this.emit('read', { chatGuid: c.conversationID, read: true });
     }
@@ -276,6 +277,7 @@ class RcsProvider {
         this.seen.delete(raw.messageID);
         this.seen.set(raw.messageID, status + '|' + JSON.stringify(raw.reactions || []));
         if (this.seen.size > SEEN_MAX) this.seen.delete(this.seen.keys().next().value);
+        this.storeMsgs([raw]);
         const message = this.normalizeMessage(raw);
         if (was == null && !isOld) {
             this.emit('message', { chatGuid: raw.conversationID, message, chat: this.convs.get(raw.conversationID) || null });
@@ -452,25 +454,198 @@ class RcsProvider {
 
     // ---- reads ----
 
+    // ---- the store (modules/textMessagingStore.js): every conversation and message, through the phone ----
+
+    storeConvs(list) {
+        if (!this.store || !list || !list.length) return;
+        try { this.store.putChats(this.id, list.filter((c) => c && c.conversationID).map((c) => ({ guid: c.conversationID, raw: c, lastDate: usToMs(c.lastMessageTimestamp) }))); } catch (error) { this.log(`store write failed: ${error.message}`); }
+    }
+
+    storeMsgs(list) {
+        if (!this.store || !list || !list.length) return;
+        const rows = list.filter((m) => m && m.messageID && m.conversationID).map((m) => ({
+            guid: m.messageID, chatGuid: m.conversationID, date: usToMs(m.timestamp),
+            text: (m.messageInfo || []).map((i) => (i.messageContent && i.messageContent.content) || '').filter(Boolean).join('\n'), raw: m
+        }));
+        try { if (rows.length) this.store.putMessages(this.id, rows); } catch (error) { this.log(`store write failed: ${error.message}`); }
+    }
+
+    chatsReady() { return !!(this.store && this.store.getState(this.id, 'chats') === '1'); }
+
+    convSynced(id) { const r = this.store && this.store.getChat(this.id, id); return !!(r && r.synced); }
+
+    /**
+     * Every conversation (Inbox, Archive, Spam) and every message of each, read through the phone into
+     * the store: two conversations at a time, a short pause between pages, each one's cursor kept so a
+     * restart goes on. New messages arrive as events and are stored as they come.
+     */
+    startSync() {
+        if (!this.store || this.syncing || this.stopped) return;
+        this.syncing = true;
+        this.syncAll().catch((error) => this.log(`sync failed: ${error.message}`)).finally(() => {
+            this.syncing = false;
+            this.emit('account', {});
+        });
+    }
+
+    async syncAll() {
+        const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+        for (const folder of ['inbox', 'archive', 'spam']) {
+            let cursor = '';
+            for (let i = 0; i < 50; i += 1) {
+                const res = await this.call('conversations', { count: 100, folder, cursor }, 120000);
+                const list = (res && res.conversations) || [];
+                list.forEach((c) => this.convs.set(c.conversationID, c));
+                this.storeConvs(list);
+                if (!res || !res.cursor || list.length < 100) break;
+                cursor = JSON.stringify(res.cursor);
+            }
+        }
+        this.store.setState(this.id, 'chats', '1');
+        const todo = this.store.listChats(this.id, { limit: 100000 }).filter((r) => !r.synced).map((r) => r.guid);
+        this.syncProgress = { phase: 'messages', total: todo.length, done: 0 };
+        const worker = async () => {
+            while (todo.length && !this.stopped && this.child) {
+                const id = todo.shift();
+                let cursor = this.store.getState(this.id, `cursor:${id}`) || '';
+                for (let page = 0; page < 2000; page += 1) {
+                    const args = { conversationId: id, count: 100 };
+                    if (cursor) args.cursor = cursor;
+                    let res;
+                    try { res = await this.call('messages', args, 120000); } catch (error) { this.log(`sync ${id}: ${error.message}`); break; }
+                    const msgs = (res && res.messages) || [];
+                    this.storeMsgs(msgs);
+                    if (!res || !res.cursor || !msgs.length) { this.store.markChatSynced(this.id, id, true); this.store.setState(this.id, `cursor:${id}`, null); break; }
+                    cursor = JSON.stringify(res.cursor);
+                    this.store.setState(this.id, `cursor:${id}`, cursor);
+                    await pause(900);
+                }
+                this.syncProgress.done += 1;
+                await pause(150);
+            }
+        };
+        await worker();
+        this.syncProgress = null;
+    }
+
+    /** Check one conversation against the phone (the phone wins): its newest page again. -> true when changed. */
+    async verifyChat(chatGuid, limit = 60) {
+        if (!this.store || !this.child) return false;
+        let res;
+        try { res = await this.call('messages', { conversationId: chatGuid, count: limit }); } catch (_) { return false; }
+        const fresh = (res && res.messages) || [];
+        if (!fresh.length) return false;
+        const before = this.store.getMessages(this.id, fresh.map((m) => m.messageID));
+        const sig = (m) => JSON.stringify([(m.messageStatus && m.messageStatus.status) || '', m.reactions || [], (m.messageInfo || []).length,
+            (m.messageInfo || []).map((i) => (i.messageContent && i.messageContent.content) || (i.mediaContent && i.mediaContent.mediaID) || '').join('|')]);
+        let changed = false;
+        for (const m of fresh) {
+            let old = null;
+            try { old = before.has(m.messageID) ? JSON.parse(before.get(m.messageID)) : null; } catch (_) { old = null; }
+            if (!old || sig(old) !== sig(m)) { changed = true; break; }
+        }
+        this.storeMsgs(fresh);
+        const from = Math.min(...fresh.map((m) => usToMs(m.timestamp) || Infinity));
+        const have = new Set(fresh.map((m) => m.messageID));
+        const stale = this.store.guidsBetween(this.id, [chatGuid], from, Date.now() + 60000).filter((g) => !have.has(g));
+        if (stale.length) { this.store.deleteMessages(this.id, stale); changed = true; }
+        if (changed) this.noteDrift({ chatsRepaired: 1, lastChat: chatGuid });
+        return changed;
+    }
+
+    /**
+     * Compare the copy with the phone: every conversation's newest message id from a fresh listing
+     * against the newest stored one; a difference re-reads that conversation (the phone wins), and
+     * conversations missing from a complete listing are removed. The result is kept for the status page.
+     */
+    async reconcile() {
+        if (!this.store || this.syncing || !this.chatsReady() || !this.child) return null;
+        const live = [];
+        let complete = true;
+        for (const folder of ['inbox', 'archive', 'spam']) {
+            let cursor = '';
+            for (let i = 0; i < 50; i += 1) {
+                let res;
+                try { res = await this.call('conversations', { count: 100, folder, cursor }, 120000); } catch (_) { complete = false; break; }
+                const list = (res && res.conversations) || [];
+                live.push(...list);
+                if (!res || !res.cursor || list.length < 100) break;
+                cursor = JSON.stringify(res.cursor);
+            }
+        }
+        this.storeConvs(live);
+        live.forEach((c) => this.convs.set(c.conversationID, c));
+        let behind = 0;
+        let repaired = 0;
+        for (const c of live) {
+            const newest = this.store.newestOf(this.id, c.conversationID);
+            const want = c.latestMessageID;
+            if (!want || (newest && newest.guid === want)) continue;
+            behind += 1;
+            if (await this.verifyChat(c.conversationID)) repaired += 1;
+            await new Promise((r) => setTimeout(r, 200));
+        }
+        let removed = 0;
+        if (complete && live.length) {
+            const ids = new Set(live.map((c) => c.conversationID));
+            for (const g of this.store.chatGuids(this.id)) if (!ids.has(g)) { this.store.deleteChat(this.id, g); removed += 1; }
+        }
+        const st = this.store.stats(this.id);
+        const report = { at: Date.now(), source: { chats: live.length }, local: { chats: st.chats, messages: st.messages }, behind, repaired, removed, inSync: complete && behind === repaired && st.chats === live.length };
+        this.store.setState(this.id, 'reconcile', JSON.stringify(report));
+        return report;
+    }
+
+    noteDrift(d) {
+        if (!this.store) return;
+        let cur = {};
+        try { cur = JSON.parse(this.store.getState(this.id, 'drift') || '{}'); } catch (_) { cur = {}; }
+        for (const [k, v] of Object.entries(d)) cur[k] = typeof v === 'number' ? (Number(cur[k]) || 0) + v : v;
+        cur.at = Date.now();
+        this.store.setState(this.id, 'drift', JSON.stringify(cur));
+    }
+
     async listChats({ limit = 50, offset = 0 } = {}) {
+        if (this.chatsReady()) {
+            const rows = this.store.listChats(this.id, { limit, offset }).map((r) => r.raw)
+                .filter((c) => c.status !== 'SPAM_FOLDER' && c.status !== 'BLOCKED_FOLDER' && c.status !== 'DELETED' && c.status !== 'TRASH_FOLDER');
+            rows.forEach((c) => { if (!this.convs.has(c.conversationID)) this.convs.set(c.conversationID, c); });
+            await this.loadThumbnails(rows);
+            return rows.map((c) => this.normalizeChat(c));
+        }
         // Google pages by cursor; offsets past the first page read the whole span again
         const res = await this.call('conversations', { count: Math.min(limit + offset, 200), folder: 'inbox' });
         const raw = (res && res.conversations) || [];
+        this.storeConvs(raw);
         await this.loadThumbnails(raw.slice(offset, offset + limit));
         const list = raw.map((c) => this.normalizeChat(c));
         return list.slice(offset, offset + limit);
     }
 
     async getChat(chatGuid) {
+        if (this.chatsReady()) {
+            const row = this.store.getChat(this.id, chatGuid);
+            if (row) return this.normalizeChat(this.convs.get(chatGuid) || row.raw);
+        }
         const c = await this.call('conversation', { conversationId: chatGuid });
+        this.storeConvs(c ? [c] : []);
         return this.normalizeChat(c);
     }
 
     async listMessages(chatGuid, { limit = 50, before = null } = {}) {
         if (!this.convs.has(chatGuid)) { try { await this.getChat(chatGuid); } catch (_) { /* names stay blank */ } }
+        // a conversation the sync finished: the store, no round trip through the phone
+        if (this.convSynced(chatGuid) && !(before && String(before).startsWith('{'))) {
+            const rows = this.store.listMessages(this.id, chatGuid, { limit: limit + 1, before: before && /^\d+$/.test(String(before)) ? Number(before) : null });
+            const page = rows.slice(0, limit);
+            const out = page.map((m) => this.normalizeMessage(m)).filter((m) => !m.groupEvent || m.text).sort((a, b) => a.date - b.date);
+            const oldest = page.length ? Math.min(...page.map((m) => usToMs(m.timestamp) || Infinity)) : null;
+            return { messages: out, more: rows.length > limit, cursor: oldest && Number.isFinite(oldest) ? String(oldest) : null };
+        }
         const args = { conversationId: chatGuid, count: limit };
         if (before && typeof before === 'string' && before.startsWith('{')) args.cursor = before;
         const res = await this.call('messages', args);
+        this.storeMsgs((res && res.messages) || []);
         const out = ((res && res.messages) || []).map((m) => this.normalizeMessage(m)).filter((m) => !m.groupEvent || m.text);
         for (const m of (res && res.messages) || []) this.seen.set(m.messageID, ((m.messageStatus && m.messageStatus.status) || '') + '|' + JSON.stringify(m.reactions || []));
         out.sort((a, b) => a.date - b.date);
@@ -537,6 +712,10 @@ class RcsProvider {
      * phone (100 messages each, 6 at a time) and kept until a new message arrives, then searched here.
      */
     async searchMessages(q, { limit = 40, conversations = 40 } = {}) {
+        // the store holds what the sync has read so far (all of it once it finished)
+        if (this.chatsReady()) {
+            return this.store.search(q, { account: this.id, limit }).map((r) => this.normalizeMessage(r.raw)).filter((m) => m.text);
+        }
         if (!this.searchCache) this.searchCache = new Map(); // conversationID -> { latest, messages }
         const res = await this.call('conversations', { count: conversations, folder: 'inbox' });
         const convs = (res && res.conversations) || [];
@@ -566,6 +745,7 @@ class RcsProvider {
         const other = conv ? (conv.participants || []).find((p) => !this.isSelf(conv, p)) : null;
         await this.call('deleteChat', { conversationId: chatGuid, phone: (other && other.ID && other.ID.number) || '' });
         this.convs.delete(chatGuid);
+        if (this.store) this.store.deleteChat(this.id, chatGuid);
         return { ok: true };
     }
 

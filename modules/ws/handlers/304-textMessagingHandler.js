@@ -19,6 +19,8 @@ const textMessaging = require('../../textMessaging');
  *   tm_edit     { accountId, messageGuid, text }
  *   tm_unsend   { accountId, messageGuid }
  *   tm_read     { accountId, chatGuid }
+ *   tm_sync_status                           { accounts: [{ sync, reconcile, drift, push, lastPush }], storage }
+ *   tm_resync   { accountId, rebuild }       catch up + reconcile, or drop the copy and pull it again
  *   tm_search   { q, accountId?, limit }     { results: [{ accountId, account, chatGuid, chatTitle, known, message }] }
  *   tm_delete_chat { accountId, chatGuid }  the conversation is deleted on the Mac / phone
  *   tm_unread   { accountId, chatGuid }      Mark as Unread (until it is read again)
@@ -72,6 +74,9 @@ function registerPackets(handlersCtx) {
     reg('tm_edit', async (d) => textMessaging.edit(d.accountId, d));
     reg('tm_unsend', async (d) => textMessaging.unsend(d.accountId, d), { destructive: true });
     reg('tm_read', async (d) => textMessaging.markRead(d.accountId, d));
+    reg('tm_sync_status', async () => textMessaging.syncStatus());
+    reg('tm_sync_chats', async (d) => textMessaging.syncChats(String(d.accountId || '')));
+    reg('tm_resync', async (d) => textMessaging.resync(String(d.accountId || ''), { rebuild: d.rebuild === true }), { destructive: true });
     reg('tm_search', async (d) => textMessaging.search(d.q, { accountId: d.accountId || null, limit: Math.min(Number(d.limit) || 40, 100) }));
     reg('tm_delete_chat', async (d) => textMessaging.deleteChat(d.accountId, d), { destructive: true });
     reg('tm_unread', async (d) => textMessaging.markUnread(d.accountId, d));

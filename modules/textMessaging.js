@@ -30,6 +30,7 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const { BlueBubblesProvider, handleKey, normalizeUrl, DEFAULT_SETTINGS: BB_DEFAULTS } = require('./textMessagingBlueBubbles');
 const { RcsProvider } = require('./textMessagingRcs');
+const store = require('./textMessagingStore');
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const KINDS = ['bluebubbles', 'rcs'];
@@ -280,11 +281,26 @@ function makeProvider(account) {
     return null;
 }
 
+function storeOpen() {
+    try {
+        let dir = null;
+        try { dir = resources().getPath('cache'); } catch (_) { dir = null; }
+        store.open(dir || undefined);
+        return store;
+    } catch (error) {
+        log(`store unavailable: ${error.message}`);
+        return null;
+    }
+}
+
 function startAccount(account) {
     stopAccount(account.id);
     if (account.enabled === false) return;
     const p = makeProvider(account);
     if (!p) return;
+    // the server's own copy of every conversation (textMessagingStore.js): the providers sync into it
+    p.store = storeOpen();
+    try { p.storeDir = resources().getPath('cache'); } catch (_) { p.storeDir = null; }
     providers.set(account.id, p);
     p.start().catch((error) => log(`${account.id} start failed: ${error.message}`));
 }
@@ -301,6 +317,7 @@ function init(globalResources) {
     started = true;
     for (const a of readConfig().accounts) startAccount(a);
     dreamscapeContacts().catch(() => {});
+    scheduleReconcile();
 }
 
 function provider(accountId) {
@@ -321,8 +338,11 @@ function broadcast(payload) {
     for (const fn of listeners) { try { fn(payload); } catch (error) { log(`listener failed: ${error.message}`); } }
 }
 
+const lastPush = new Map(); // accountId -> ms of the last message the source pushed
+
 async function onProviderEvent(accountId, event, payload) {
     const out = Object.assign({ event }, payload);
+    if (event === 'message' || event === 'updated' || event === 'reaction') lastPush.set(accountId, Date.now());
     try {
         if (event === 'message' || event === 'updated') {
             summaries.delete(accountId);
@@ -385,8 +405,20 @@ function accountOut(a) {
         unread: s ? s.value.unread : null,
         unknownUnread: s ? s.value.unknownUnread : null,
         settings: a.kind === 'bluebubbles' ? Object.assign({}, BB_DEFAULTS, a.settings || {}) : Object.assign({ notify: true }, a.settings || {}),
+        sync: syncInfo(a.id, p),
         server: p && p.info ? { version: p.info.server_version || '', macOs: p.info.os_version || '', privateApi: !!p.info.private_api, helper: !!p.info.helper_connected, computer: p.info.computer_id || '' } : null
     };
+}
+
+/** How far the server's copy of the account is: { chats, messages, complete, running, done, total }. */
+function syncInfo(id, p) {
+    try {
+        if (!storeOpen()) return null;
+        const st = store.stats(id);
+        const complete = p && p.kind === 'rcs' ? store.getState(id, 'chats') === '1' && st.syncedChats >= st.chats : store.getState(id, 'complete') === '1';
+        const prog = p && p.syncProgress;
+        return { chats: st.chats, messages: st.messages, complete, running: !!(p && p.syncing), done: prog ? prog.done : null, total: prog && prog.total != null ? prog.total : null };
+    } catch (_) { return null; }
 }
 
 function listAccounts() {
@@ -448,6 +480,7 @@ function deleteAccount(id) {
     writeConfig(cfg);
     writePassword(id, '');
     stopAccount(id);
+    try { if (storeOpen()) store.forgetAccount(id); } catch (error) { log(`store forget failed: ${error.message}`); }
     broadcast({ event: 'account', accountId: id, removed: true });
     return { ok: true };
 }
@@ -495,8 +528,90 @@ async function summary() {
     return out;
 }
 
+// ---- keeping the copy honest: the source wins ----
+const VERIFY_EVERY_MS = 60 * 1000;
+const RECONCILE_EVERY_MS = 15 * 60 * 1000;
+const verifiedAt = new Map(); // "<account>|<chat>" -> ms
+
+/** After a read from the copy: the conversation's newest page from the source, in the background. */
+function verifySoon(accountId, chatGuid) {
+    const p = providers.get(accountId);
+    if (!p || typeof p.verifyChat !== 'function' || p.status !== 'connected') return;
+    const key = `${accountId}|${chatGuid}`;
+    if (Date.now() - (verifiedAt.get(key) || 0) < VERIFY_EVERY_MS) return;
+    verifiedAt.set(key, Date.now());
+    p.verifyChat(chatGuid).then((changed) => {
+        if (changed) { summaries.delete(accountId); broadcast({ event: 'reload', accountId, chatGuid }); }
+    }, (error) => log(`verify ${accountId} failed: ${error.message}`));
+}
+
+let reconcileTimer = null;
+function scheduleReconcile() {
+    if (reconcileTimer) return;
+    const run = async () => {
+        for (const [id, p] of providers) {
+            if (p.status !== 'connected' || typeof p.reconcile !== 'function') continue;
+            try {
+                const r = await p.reconcile();
+                if (r && !r.inSync) log(`${id} out of sync: ${JSON.stringify(r)}`);
+                if (r) broadcast({ event: 'sync', accountId: id });
+            } catch (error) { log(`reconcile ${id} failed: ${error.message}`); }
+        }
+    };
+    reconcileTimer = setInterval(run, RECONCILE_EVERY_MS);
+    if (reconcileTimer.unref) reconcileTimer.unref();
+    const first = setTimeout(run, 3 * 60 * 1000);
+    if (first.unref) first.unref();
+}
+
+function dirSize(dir) {
+    let n = 0;
+    try { for (const f of fs.readdirSync(dir)) { try { n += fs.statSync(path.join(dir, f)).size; } catch (_) { /* gone */ } } } catch (_) { /* none */ }
+    return n;
+}
+
+/** Sync status and storage for the status page (CardSpace's cards, Melaton Messenger). */
+function syncStatus() {
+    const accounts = readConfig().accounts.map((a) => {
+        const p = providers.get(a.id);
+        let reconcile = null;
+        let drift = null;
+        try { reconcile = JSON.parse(store.getState(a.id, 'reconcile') || 'null'); } catch (_) { reconcile = null; }
+        try { drift = JSON.parse(store.getState(a.id, 'drift') || 'null'); } catch (_) { drift = null; }
+        const push = p ? (p.kind === 'bluebubbles' ? !!(p.socket && p.socket.connected) : !!(p.child && p.status === 'connected')) : false;
+        return { id: a.id, name: accountOut(a).name, kind: a.kind, status: p ? p.status : 'disabled', sync: syncInfo(a.id, p), reconcile, drift, push, lastPush: lastPush.get(a.id) || null };
+    });
+    let cacheDir = null;
+    try { cacheDir = resources().getPath('cache'); } catch (_) { cacheDir = path.join(__dirname, '..', '.cache'); }
+    return { accounts, storage: { database: storeOpen() ? store.sizeOnDisk() : 0, attachments: dirSize(path.join(cacheDir, 'textmessaging-attachments')) } };
+}
+
+/** Every conversation of an account in the server's copy: title, newest date, synced, messages held. */
+function syncChats(accountId) {
+    const p = provider(accountId);
+    if (!storeOpen()) return { chats: [] };
+    const complete = p.kind === 'bluebubbles' ? store.getState(accountId, 'complete') === '1' : false;
+    const chats = store.chatSyncRows(accountId).map((r) => {
+        let chat = null;
+        try { chat = p.normalizeChat(r.raw); } catch (_) { chat = null; }
+        return { guid: r.guid, title: chat ? chat.title : r.guid, service: chat ? chat.service : '', lastDate: r.lastDate, synced: r.synced || complete, messages: r.messages, updated: r.updated };
+    });
+    return { chats };
+}
+
+/** Resync now (catch up and reconcile), or rebuild from the source (the copy is dropped and pulled again). */
+async function resync(accountId, { rebuild = false } = {}) {
+    const p = provider(accountId);
+    if (rebuild && storeOpen()) store.forgetAccount(accountId);
+    if (typeof p.startSync === 'function') p.startSync();
+    if (!rebuild && typeof p.reconcile === 'function') p.reconcile().then(() => broadcast({ event: 'sync', accountId }), () => {});
+    broadcast({ event: 'account', accountId });
+    return { ok: true };
+}
+
 async function listMessages(accountId, chatGuid, opts) {
     const p = provider(accountId);
+    verifySoon(accountId, chatGuid);
     const [page, ds] = await Promise.all([p.listMessages(chatGuid, opts || {}), dreamscapeContacts()]);
     for (const m of page.messages) if (m.sender && !m.sender.me && !m.sender.name) { const n = ds.get(handleKey(m.sender.address)); if (n) m.sender.name = n; }
     return page;
@@ -669,6 +784,6 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing,
+    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
     downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };
