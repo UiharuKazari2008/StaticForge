@@ -275,14 +275,22 @@ class BlueBubblesProvider {
         this.contactsPromise = (async () => {
             const map = new Map();
             try {
-                const rows = await this.call('GET', 'contact', { timeoutMs: 60000 });
+                // with their pictures (JPEG, base64): the conversation lists show them
+                const rows = await this.call('GET', 'contact', { query: { extraProperties: 'avatar' }, timeoutMs: 60000 });
+                const avatars = new Map();
                 for (const c of Array.isArray(rows) ? rows : []) {
                     const name = String(c.displayName || [c.firstName, c.lastName].filter(Boolean).join(' ') || '').trim();
                     if (!name) continue;
                     const addrs = [].concat(c.phoneNumbers || [], c.emails || []).map((a) => (a && typeof a === 'object' ? a.address : a));
                     for (const a of addrs) { const k = handleKey(a); if (k && !map.has(k)) map.set(k, name); }
+                    if (c.avatar && typeof c.avatar === 'string') {
+                        let buf = null;
+                        try { buf = Buffer.from(c.avatar, 'base64'); } catch (_) { buf = null; }
+                        if (buf && buf.length > 64) for (const a of addrs) { const k = handleKey(a); if (k && !avatars.has(k)) avatars.set(k, buf); }
+                    }
                 }
                 this.contacts = map;
+                this.avatars = avatars;
                 this.contactsAt = Date.now();
             } catch (error) {
                 if (!this.contacts) this.contacts = map;
@@ -291,6 +299,26 @@ class BlueBubblesProvider {
             return this.contacts;
         })().finally(() => { this.contactsPromise = null; });
         return this.contactsPromise;
+    }
+
+    /** A contact's picture (JPEG bytes) or null. */
+    contactAvatar(address) {
+        const k = handleKey(address);
+        return (k && this.avatars && this.avatars.get(k)) || null;
+    }
+
+    photoUrl(address) {
+        return this.contactAvatar(address) ? `/api/textmessaging/${encodeURIComponent(this.id)}/avatar/${encodeURIComponent(handleKey(address))}` : null;
+    }
+
+    /** Incoming messages after `since` across a conversation's chats (the unread count). */
+    async countIncoming(chatGuid, since) {
+        const pages = await Promise.all(this.members(chatGuid).map((g) => this.call('POST', 'message/query', {
+            body: { chatGuid: g, limit: 100, offset: 0, after: Math.max(0, Math.floor(since)), sort: 'DESC', with: [] }
+        }).then((rows) => (Array.isArray(rows) ? rows : []), () => [])));
+        let n = 0;
+        for (const rows of pages) for (const r of rows) if (!r.isFromMe && !reactionOf(r.associatedMessageType) && !(r.itemType && r.itemType !== 0)) n += 1;
+        return n;
     }
 
     contactName(address) {
@@ -352,7 +380,7 @@ class BlueBubblesProvider {
     }
 
     normalizeChat(c) {
-        const participants = (Array.isArray(c.participants) ? c.participants : []).map((p) => ({ address: p.address, name: this.contactName(p.address), service: p.service || '' }));
+        const participants = (Array.isArray(c.participants) ? c.participants : []).map((p) => ({ address: p.address, name: this.contactName(p.address), service: p.service || '', photo: this.photoUrl(p.address) }));
         const last = c.lastMessage ? this.normalizeMessage(c.lastMessage, c.guid) : null;
         const isGroup = Number(c.style) === 43 || participants.length > 1;
         const title = String(c.displayName || '').trim()
@@ -365,6 +393,7 @@ class BlueBubblesProvider {
             named: !!String(c.displayName || '').trim(),
             isGroup,
             participants,
+            photo: participants.length === 1 ? participants[0].photo : null,
             service: String(c.guid || '').split(';')[0] || '',
             archived: !!c.isArchived,
             last,

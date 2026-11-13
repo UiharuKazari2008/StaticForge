@@ -320,6 +320,49 @@
     color: #6d6d6d;
 }
 
+/* the conversation's picture: Vista's contact tile frame (white mat, grey edge) */
+#melatonMessengerModal .mm-row-pic {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 2px;
+    background: #fff;
+    border: 1px solid #b9c3cf;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .18);
+    overflow: hidden;
+}
+
+#melatonMessengerModal .mm-row-pic img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#melatonMessengerModal .mm-row-pic.is-blank {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: 600 11px/1 'Segoe UI', Tahoma, sans-serif;
+    color: #fff;
+    background: linear-gradient(#8fb2d8, #5b86b8) content-box, #fff;
+}
+
+#melatonMessengerModal .mm-row-pic.is-blank[data-group="1"] {
+    background: url('/static_images/melaton-messenger/messenger-16.png') no-repeat center / 16px 16px, linear-gradient(#e9eef4, #d3dce6) content-box, #fff;
+}
+
+#melatonMessengerModal .mm-row-count {
+    font-weight: 700;
+    color: #0b4fa0;
+}
+
+#melatonMessengerModal .mm-row.is-unread .mm-row-snip {
+    font-weight: 700;
+    color: #222;
+}
+
 #melatonMessengerModal .mm-row.is-unread :is(.mm-row-title, .mm-row-date) {
     font-weight: 700;
     color: #000;

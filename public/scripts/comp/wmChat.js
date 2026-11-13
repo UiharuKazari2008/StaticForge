@@ -1678,9 +1678,25 @@
     }
 
     /** The accounts, their unread counts and each one's newest line (Today's pages). */
+    /** The logon step's snapshot (textMessaging.snapshot()): Today and the status bar right away. */
+    function tmSeed(tm) {
+        const snap = tm && typeof tm.snapshot === 'function' ? tm.snapshot() : null;
+        if (!snap || tmState.accounts.length) return;
+        tmState.accounts = (snap.accounts || []).filter((a) => a && a.enabled !== false);
+        for (const a of tmState.accounts) {
+            tmState.unread[a.id] = Number(a.unread) || 0;
+            const chats = ((snap.inbox && snap.inbox[a.id]) || []).filter((c) => c && c.last);
+            const c = chats.find((x) => x.unread && !x.last.fromMe) || chats[0];
+            if (c) tmState.last[a.id] = { from: tmFrom(c, c.last), text: tmText(c.last), at: Number(c.last.date) || 0 };
+        }
+        tmTodayChanged();
+        if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
+    }
+
     async function tmRefresh() {
         const tm = tmApi();
         if (!tm || typeof tm.accounts !== 'function') return;
+        tmSeed(tm);
         try {
             let list = null;
             if (typeof tm.summary === 'function') { try { list = await tm.summary(); } catch (_) { list = null; } }

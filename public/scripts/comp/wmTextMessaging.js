@@ -295,6 +295,13 @@
         const tok = ++listTok;
         if (!t || !id) { chats = []; loaded = true; return; }
         const f = folder;
+        // the logon step's snapshot draws the Inbox at once; the full list follows
+        const snap = typeof t.snapshot === 'function' ? t.snapshot() : null;
+        if (f === 'inbox' && !chats.length && snap && snap.inbox && snap.inbox[id]) {
+            chats = snap.inbox[id].slice();
+            loaded = true;
+            try { renderList(); } catch (_) { /* drawn after the read */ }
+        }
         const d = await t.chats(id, { folder: f === 'sent' ? 'all' : f, limit: 200 });
         if (tok !== listTok || id !== accountId || f !== folder) return;
         let list = (d && d.chats) || [];

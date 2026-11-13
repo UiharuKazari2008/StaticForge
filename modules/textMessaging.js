@@ -168,7 +168,22 @@ function applyReadMark(accountId, chat) {
     const last = chat.last;
     if (!last || last.fromMe || last.dateRead) { chat.unread = false; return; }
     const r = loadReadMarks();
-    chat.unread = (Number(last.date) || 0) > Math.max(r.baseline, r.chats[`${accountId}|${chat.guid}`] || 0);
+    chat.readSince = Math.max(r.baseline, r.chats[`${accountId}|${chat.guid}`] || 0);
+    chat.unread = (Number(last.date) || 0) > chat.readSince;
+}
+
+/** How many unread messages each unread conversation holds (unreadCount; 1 when it cannot be counted). */
+async function countUnread(accountId, chats) {
+    const p = providers.get(accountId);
+    const todo = chats.filter((c) => c.unread).slice(0, 40);
+    await Promise.all(todo.map(async (c) => {
+        if (p && typeof p.countIncoming === 'function' && c.readSince != null) {
+            try { c.unreadCount = Math.max(1, await p.countIncoming(c.guid, c.readSince)); } catch (_) { c.unreadCount = 1; }
+        } else {
+            c.unreadCount = 1;
+        }
+    }));
+    for (const c of chats) { if (!c.unread) c.unreadCount = 0; delete c.readSince; }
 }
 
 // ---- Dreamscape Contacts (every workspace's Contacts folder) ----
@@ -428,6 +443,7 @@ async function listChats(accountId, { folder = 'all', limit = 50, offset = 0 } =
     const scan = folder === 'all' ? 0 : 400;
     const [chats, ds] = await Promise.all([p.listChats({ limit: folder === 'all' ? Math.min(Number(limit) || 50, 200) : 300, offset: folder === 'all' ? Number(offset) || 0 : 0, scan }), dreamscapeContacts()]);
     for (const c of chats) { decorateParticipants(c, ds); c.known = isKnownChat(accountId, c, ds); applyReadMark(accountId, c); }
+    await countUnread(accountId, chats);
     if (!offset) {
         const value = { unread: chats.filter((c) => c.known && c.unread).length, unknownUnread: chats.filter((c) => !c.known && c.unread).length };
         summaries.set(accountId, { at: Date.now(), value });
@@ -464,7 +480,7 @@ async function listMessages(accountId, chatGuid, opts) {
 async function getChat(accountId, chatGuid) {
     const p = provider(accountId);
     const [chat, ds] = await Promise.all([p.getChat(chatGuid), dreamscapeContacts()]);
-    if (chat) { decorateParticipants(chat, ds); chat.known = isKnownChat(accountId, chat, ds); applyReadMark(accountId, chat); }
+    if (chat) { decorateParticipants(chat, ds); chat.known = isKnownChat(accountId, chat, ds); applyReadMark(accountId, chat); await countUnread(accountId, [chat]); }
     return chat;
 }
 
@@ -540,6 +556,12 @@ async function pairGoogle(accountId) {
     return p.pairGoogle(cookies);
 }
 
+/** A contact's picture for the lists (JPEG bytes) or null. */
+function avatar(accountId, key) {
+    const p = providers.get(String(accountId || ''));
+    return p && typeof p.contactAvatar === 'function' ? p.contactAvatar(key) : null;
+}
+
 function pairingQr(accountId) { const p = providers.get(String(accountId || '')); return (p && p.qr) || ''; }
 async function refreshQr(accountId) { return provider(accountId).refreshQr(); }
 async function unpair(accountId) { return provider(accountId).unpair(); }
@@ -574,5 +596,5 @@ function _reset() {
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, typing,
-    downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, _reset
+    downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };

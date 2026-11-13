@@ -952,7 +952,40 @@
      * messages, algorithms, certificates). They open over the Accounts tab; ok goes back to it. The
      * signature is Dovecote Express's (userGlobalSettings.mail), so the desktop and the phone share one.
      */
+    // a Text Messaging account's options: the switches of its Dreamscape CardSpace card
+    const TM_OPTS = [
+        ['notify', 'Notify me about new messages'],
+        ['usePrivateApi', 'Use the Private API'],
+        ['sendReadReceipts', 'Send read receipts'],
+        ['sendTyping', 'Send typing indicators'],
+        ['mergeConversations', 'Show iMessage and SMS chats as one conversation'],
+        ['hideEmptyChats', 'Hide conversations with no messages']
+    ];
+
+    function tmAccountFor(key) {
+        const t = window.textMessaging;
+        const id = String(key).slice(3);
+        const snap = t && typeof t.snapshot === 'function' ? t.snapshot() : null;
+        const list = (snap && snap.accounts) || [];
+        return list.find((a) => a.id === id) || null;
+    }
+
     function messagingSubRender(el, d) {
+        if (String(d.sub).startsWith('tm:')) {
+            const a = tmAccountFor(d.sub);
+            if (!a) { el.innerHTML = ui.note('This account is not available right now.'); return; }
+            if (!d.tmOpts) { d.tmOpts = Object.assign({}, a.settings || {}); d.tmOptsInitial = JSON.stringify(d.tmOpts); }
+            const priv = !!(a.server && a.server.privateApi);
+            const opts = a.kind === 'bluebubbles' ? TM_OPTS : TM_OPTS.slice(0, 1);
+            el.innerHTML = `${ui.text(`${a.name}${a.identity ? ` (${a.identity})` : ''}`)}
+                ${opts.map(([k, label]) => ui.check(`tmo-${k}`, label, d.tmOpts[k] !== false, !priv && ['usePrivateApi', 'sendReadReceipts', 'sendTyping'].includes(k) ? 'disabled' : '')).join('')}
+                ${ui.note('Server address and password: Control Panel > Dreamscape CardSpace on the desktop.')}`;
+            opts.forEach(([k]) => {
+                const box = el.querySelector(`input[name="tmo-${k}"]`);
+                if (box) box.addEventListener('change', (e) => { d.tmOpts[k] = e.target.checked; });
+            });
+            return;
+        }
         if (d.sub === 'signatures') {
             const g = d.sig || { signature: '', signatureOutgoing: true, signatureSkipReplies: false };
             el.innerHTML = `${ui.text('Select an account:')}
@@ -984,7 +1017,7 @@
         d.rerender = api.rerender;
         if (tab === 'accounts' && d.sub) { messagingSubRender(el, d); return; }
         if (tab === 'accounts') {
-            const rows = messagingAccounts().map((a) => ({ key: a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
+            const rows = messagingAccounts().map((a) => ({ key: a.key && String(a.key).startsWith('tm:') ? a.key : a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
             rows.push({ key: '__new', label: '\u2002 New Account...', selected: d.acctSel === '__new' });
             el.innerHTML = `${ui.text('Tap an account to change settings.')}
                 ${ui.listbox(rows, { maxHeight: 210 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-accts"')}
@@ -994,6 +1027,8 @@
                 d.acctSel = key;
                 const m = window.wmMessaging;
                 if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
+                // a Text Messaging account (Apple iMessage / RCS): its client options (#779)
+                if (String(key).startsWith('tm:')) { d.sub = key; d.tmOpts = null; api.rerender(); return; }
                 // the device opens a tapped account's settings: Dreamscape Messenger's own pages (#763,
                 // named Text Messages before #779); what was changed here is kept first (ok on those
                 // pages comes back to this tab)
@@ -1074,6 +1109,19 @@
     async function messagingOptionsCommit(d) {
         // ok on Signatures / Security: save the signature, back to the Accounts tab
         if (d.sub) {
+            if (String(d.sub).startsWith('tm:') && d.tmOpts && JSON.stringify(d.tmOpts) !== d.tmOptsInitial) {
+                const a = tmAccountFor(d.sub);
+                const t = window.textMessaging;
+                try {
+                    if (a && t) await t.saveAccount({ id: a.id, kind: a.kind, url: a.url, enabled: a.enabled !== false, settings: d.tmOpts });
+                    d.tmOptsInitial = JSON.stringify(d.tmOpts);
+                    if (t && typeof t.preload === 'function') void t.preload();
+                } catch (err) {
+                    const s1 = sh();
+                    if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account settings could not be saved. ${(err && err.message) || ''}` });
+                    return false;
+                }
+            }
             if (d.sub === 'signatures' && d.sig && JSON.stringify(d.sig) !== d.sigInitial) {
                 try {
                     const c = window.wsClient;

@@ -357,6 +357,12 @@
 
     /** The accounts in the picker's order: Text Messaging (each account), Dreamscape Messenger, Dreamscape Mail, the Director personas. */
     function accounts() {
+        // before Messaging read them itself: the logon step's snapshot (textMessagingClient.js)
+        if (!tmAccts.length) {
+            const t = window.textMessaging;
+            const snap = t && typeof t.snapshot === 'function' ? t.snapshot() : null;
+            if (snap && Array.isArray(snap.accounts)) tmAccts = snap.accounts.filter((a) => a && a.enabled !== false);
+        }
         const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: l.title, icon: 'msg-acct-sms', sub: l.subline, dim: true, unread: tmUnread(a.id) }; });
         return tms.concat([
             { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: chatUserName, dim: !!chatUserName, unread: smsUnread() },
@@ -369,7 +375,7 @@
     /** Go To's account rows (the device lists them after Folders..., the current one with a bullet). */
     function accountItems(cur) {
         const now = cur || currentKey();
-        return accounts().map((a) => ({ label: a.name, radio: a.key === now, action: () => goTo(a.key) }));
+        return accounts().map((a) => ({ key: a.key, label: a.name, radio: a.key === now, action: () => goTo(a.key) }));
     }
 
     /** Another account: Text Messaging is wmTextMessaging.js, Dreamscape Messenger the Chat applet; the rest are this app's lists. */

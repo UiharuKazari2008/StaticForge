@@ -25,6 +25,9 @@
  *       'message' | 'updated' | 'reaction' | 'typing' | 'read' | 'chat' | 'account' | 'settings' | 'pairing'
  *       | 'resync' | 'unread' (detail = { total, byAccount: { id: { unread, unknownUnread } } })
  *   unread()                        -> the last 'unread' detail
+ *   snapshot()                      -> what the logon step read: { at, accounts, settings, inbox: { id: chats } }
+ *                                      (null before it ran); UIs draw from it at once, then refresh
+ *   preload()                       the logon step itself ('Loading text messages', at most 6 s)
  *   REACTIONS                       [{ type, label, glyph }]
  *
  * A 'message' event's detail carries known (false = Unknown Senders), folder and notify (the
@@ -125,6 +128,7 @@
         const d = await call('tm_summary');
         const list = d.accounts || [];
         if (cache) cache.accounts = list;
+        if (snap) snap.accounts = list;
         lastUnread = tally(list);
         fire('unread', lastUnread);
         return list;
@@ -147,7 +151,33 @@
 
     // ---- conversations ----
 
-    const chats = (accountId, opts) => call('tm_chats', Object.assign({ accountId }, opts || {}));
+    const chats = (accountId, opts) => call('tm_chats', Object.assign({ accountId }, opts || {})).then((d) => {
+        // the newest Inbox page keeps the snapshot fresh for the next first draw
+        if (snap && opts && opts.folder === 'inbox' && !opts.offset && Array.isArray(d.chats)) snap.inbox[accountId] = d.chats.slice(0, 20);
+        return d;
+    });
+
+    // ---- the logon snapshot ----
+    // Text Messaging is read while the logon dialog runs (like the user settings), so Today, Messaging,
+    // the status bar and Melaton Messenger have the accounts, counts and newest conversations when the
+    // desktop comes up instead of loading them afterwards.
+    let snap = null;
+    function snapshot() { return snap; }
+
+    async function preload() {
+        wire();
+        const work = (async () => {
+            const d = await accounts(true);
+            snap = { at: Date.now(), accounts: d.accounts || [], settings: d.settings || {}, inbox: {} };
+            if (!snap.accounts.length) return;
+            const list = await summary().catch(() => snap.accounts);
+            await Promise.all((list || []).filter((a) => a.status === 'connected' && a.enabled !== false).map((a) =>
+                chats(a.id, { folder: 'inbox', limit: 20 }).catch(() => null)));
+            fire('snapshot', snap);
+        })();
+        // a Mac or phone that does not answer must not hold the logon: the UIs load it themselves then
+        await Promise.race([work.catch(() => null), new Promise((r) => setTimeout(r, 6000))]);
+    }
     const chat = (accountId, chatGuid) => call('tm_chat', { accountId, chatGuid }).then((d) => d.chat || null);
     const messages = (accountId, chatGuid, opts) => call('tm_messages', Object.assign({ accountId, chatGuid }, opts || {}));
     const send = (accountId, args) => call('tm_send', Object.assign({ accountId }, args || {}));
@@ -201,7 +231,7 @@
     const unpairRcs = (accountId) => call('tm_rcs_unpair', { accountId }).then((d) => { cache = null; return d; });
 
     root.textMessaging = {
-        accounts, summary, unread, label, chats, chat, messages, send, sendFile, react, edit, unsend,
+        accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
         markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
@@ -228,6 +258,14 @@
         const raw = bridge && typeof bridge.takePendingTextMessage === 'function' ? bridge.takePendingTextMessage() : '';
         if (raw) openFromNotification(JSON.parse(raw));
     } catch (_) { /* an older app */ }
+
+    // the logon step (websocket.js registerInitStep; { logon: true } runs in the logon dialog, again on
+    // a reconnect); administrators only (the server refuses others at once)
+    if (root.wsClient && typeof root.wsClient.registerInitStep === 'function') {
+        root.wsClient.registerInitStep(0.48, 'Loading text messages', async () => {
+            try { await preload(); } catch (_) { /* the UIs load it themselves */ }
+        }, true, { logon: true });
+    }
 
     wire();
     if (!wired) {

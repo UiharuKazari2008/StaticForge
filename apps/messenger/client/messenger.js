@@ -387,7 +387,10 @@
             if (!t || !a) { this.chats = []; this.renderList(); return; }
             const want = `${a.id}|${this.folder}`;
             this.listKey = want;
-            this.listNote = 'Loading...';
+            // the logon step's snapshot (textMessaging.snapshot()) draws the Inbox at once
+            const snap = typeof t.snapshot === 'function' ? t.snapshot() : null;
+            const seed = this.folder === 'inbox' && snap && snap.inbox ? snap.inbox[a.id] : null;
+            if (seed && !this.chats.length) { this.chats = seed.slice(); this.listNote = ''; } else this.listNote = 'Loading...';
             this.renderList();
             try {
                 const d = await t.chats(a.id, { folder: this.folder, limit: 100 });
@@ -960,9 +963,16 @@
                 const on = c.guid === this.chatGuid && !this.compose;
                 const last = c.last;
                 const who = last && c.isGroup && !last.fromMe ? `${(last.sender && (last.sender.name || last.sender.address)) || ''}: ` : (last && last.fromMe ? 'You: ' : '');
+                // the contact's picture (the iPhone's, through BlueBubbles), else initials / the group picture
+                const title = c.title || c.identifier || 'Conversation';
+                const initials = c.isGroup ? '' : (String(title).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '#');
+                const pic = c.photo
+                    ? `<span class="mm-row-pic"><img src="${esc(c.photo)}" alt="" loading="lazy" draggable="false"></span>`
+                    : `<span class="mm-row-pic is-blank" data-group="${c.isGroup ? 1 : 0}">${esc(initials)}</span>`;
+                const count = c.unread ? ` <span class="mm-row-count">(${Math.max(1, Number(c.unreadCount) || 1)})</span>` : '';
                 return `<div class="mm-row${on ? ' is-selected' : ''}${c.unread ? ' is-unread' : ''}" data-guid="${esc(c.guid)}">
-                    <span class="mm-row-icon" data-group="${c.isGroup ? 1 : 0}"></span>
-                    <span class="mm-row-main"><span class="mm-row-top"><span class="mm-row-title">${esc(c.title || c.identifier || 'Conversation')}</span><span class="mm-row-date">${esc(shortWhen(last && last.date))}</span></span>
+                    ${pic}
+                    <span class="mm-row-main"><span class="mm-row-top"><span class="mm-row-title">${esc(title)}${count}</span><span class="mm-row-date">${esc(shortWhen(last && last.date))}</span></span>
                     <span class="mm-row-snip">${esc(last ? who + snippet(last) : '')}</span></span>
                 </div>`;
             }).join('');

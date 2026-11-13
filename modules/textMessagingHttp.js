@@ -81,6 +81,15 @@ function mount(app, authMiddleware, globalResources) {
         }
     });
 
+    // a contact's picture (BlueBubbles serves the iPhone's contact photos), by handle key
+    app.get('/api/textmessaging/:accountId/avatar/:key', auth, admin, (req, res) => {
+        const buf = textMessaging.avatar(req.params.accountId, req.params.key);
+        if (!buf) { refuse(res, 404, 'NO_PHOTO', 'No picture.'); return; }
+        res.setHeader('Content-Type', 'image/jpeg');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        res.end(buf);
+    });
+
     // RCS pairing: the current Google Messages QR code as SVG (404 when no pairing is under way)
     app.get('/api/textmessaging/:accountId/pairing-qr.svg', auth, admin, async (req, res) => {
         const url = textMessaging.pairingQr(req.params.accountId);
