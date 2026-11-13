@@ -1017,11 +1017,10 @@
         host.classList.remove('is-entering');
         void host.offsetWidth; // restart the scale-in
         host.classList.add('is-entering');
-        // the list starts all the way below the screen (its first item under the bottom edge) and runs
-        // up into the clock
-        const screenUnits = (host.clientHeight || window.innerHeight) / unit();
-        const below = screenUnits - (focusTop() - ROW * at) + ROW;
-        pos = at - below / ROW;
+        // the list starts all the way above the screen (its last item over the top edge) and runs down
+        // into the clock (Yukimi, Nov 13: from the top)
+        const lastBottom = focusTop() + BAND + ROW * (panels.length - 1 - at);
+        pos = at + (lastBottom + ROW) / ROW;
         startTween(at, at, { backMs: ENTER_MS });
         sh.refreshSoftKeys();
     }
