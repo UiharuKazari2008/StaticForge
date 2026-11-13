@@ -45,6 +45,8 @@ const DEFAULT_SETTINGS = {
     notify: true                // new messages notify (unknown senders still follow notifyUnknown)
 };
 const MAX_CHAT_SCAN = 500;
+// the copy's placeholder for messages the Mac keeps in no chat (never listed)
+const ORPHAN_CHAT = '__no_chat__';
 
 function reactionOf(type) {
     if (type == null || type === '') return null;
@@ -405,6 +407,21 @@ class BlueBubblesProvider {
             size = Math.min(this.syncFast ? 500 : 200, size * 2);
             await new Promise((r) => setTimeout(r, this.syncFast ? 50 : 750));
         }
+        // messages in no chat (group membership notices whose chat link the Mac lost): the query above
+        // leaves them out (it joins the chats), message/count does not; kept under a placeholder that no
+        // list shows, so the copy's count matches the Mac's and the reconcile sees real drift only
+        const orphans = [];
+        for (let offset = 0; offset < 100000; offset += 1000) {
+            const rows = await this.call('POST', 'message/query', { body: { limit: 1000, offset, sort: 'ASC',
+                where: [{ statement: 'message.ROWID NOT IN (SELECT message_id FROM chat_message_join)', args: {} }] }, timeoutMs: 120000 });
+            const list = Array.isArray(rows) ? rows : [];
+            orphans.push(...list);
+            if (list.length < 1000) break;
+        }
+        this.storeRows(orphans.map((r) => Object.assign({}, r, { chats: [{ guid: ORPHAN_CHAT }] })));
+        const keep = new Set(orphans.map((r) => r.guid));
+        const gone = this.store.guidsBetween(this.id, [ORPHAN_CHAT], 0, Date.now() + 86400000).filter((g) => !keep.has(g));
+        if (gone.length) this.store.deleteMessages(this.id, gone);
         this.store.setState(this.id, 'complete', '1');
         this.syncProgress = null;
     }
@@ -797,7 +814,7 @@ class BlueBubblesProvider {
     async searchMessages(q, { limit = 40 } = {}) {
         await this.loadContacts().catch(() => {});
         if (this.storeReady()) {
-            return this.store.search(q, { account: this.id, limit: limit * 2 }).map((r) => r.raw)
+            return this.store.search(q, { account: this.id, limit: limit * 2 }).filter((r) => r.chatGuid !== ORPHAN_CHAT).map((r) => r.raw)
                 .filter((r) => !reactionOf(r.associatedMessageType))
                 .slice(0, limit)
                 .map((r) => this.normalizeMessage(r, this.resolve(Array.isArray(r.chats) && r.chats[0] ? r.chats[0].guid : '')));

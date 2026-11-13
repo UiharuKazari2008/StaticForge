@@ -1,0 +1,14 @@
+{
+    "id": "msgbridge",
+    "version": "1.0.0",
+    "title": "Messaging Bridge",
+    "publisher": "Xyridian Corporation",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "messaging-bridge",
+    "icon": "assets/msgbridge-48.png",
+    "client": {
+        "entry": "client/msgbridge.js",
+        "styles": ["assets/msgbridge.css"]
+    }
+}

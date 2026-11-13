@@ -1,0 +1,705 @@
+/* Messaging Bridge (Yozora #779; apps/msgbridge/client/msgbridge.js): an MMC 3.0 console, its frame
+   measured on the Vista VM's Computer Management at 800x600 (client 784 px: tree 190, 3 px gaps,
+   result, Action pane 190; rebar 23 + 23, 6 px under it; status bar 23), its summary pages after
+   Event Viewer's "Overview and Summary" (title band, collapsible sections). */
+
+.mb-window.mb-window > .modal-content.mb-client {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    background: #f0f0f0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* ---- the rebar: the menu band over the toolbar band, both the VM's pixels ---- */
+
+.mb-window .mb-rebar {
+    flex: none;
+}
+
+.mb-window.mb-window .mb-menubar {
+    display: flex;
+    align-items: flex-start;
+    height: 23px;
+    padding: 0 0 0 2px;
+    border: 0;
+    background: url('menuband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
+}
+
+.mb-window.mb-window .win7 .mb-menubar .naxt-menu-title:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    margin-top: 0;
+    padding: 0 4px 1px;
+    border: 4px solid transparent;
+    border-width: 0 4px;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
+}
+
+.mb-window.mb-window .win7 .mb-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('/melaton-apps/wordpad/assets/menu-hot.png') 0 4 fill / 0 4px stretch;
+    outline: none;
+}
+
+.mb-window.mb-window .win7 .mb-menubar .naxt-menu-title.context-open:not(#_) {
+    border-image: url('/melaton-apps/wordpad/assets/menu-open.png') 0 4 fill / 0 4px stretch;
+}
+
+.mb-window .mb-menubar .naxt-menu-title::before,
+.mb-window .mb-menubar .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* the toolbar: 23 px buttons, mmc.exe bitmap 202 */
+.mb-window .mb-toolbar {
+    display: flex;
+    align-items: center;
+    height: 23px;
+    padding: 0 0 0 1px;
+    background: url('toolband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
+}
+
+.mb-window.mb-window .mb-tb:not(#_) {
+    position: relative;
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mb-window.mb-window .mb-tb:hover:not(:disabled):not(#_) {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+.mb-window.mb-window .mb-tb.is-pressed:not(#_) {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc, #c4e5f6 45%, #98d1ef 55%, #68b3db);
+}
+
+.mb-window .mb-tb::before,
+.mb-window .mb-tb::after {
+    content: none;
+}
+
+.mb-window .mb-tb-icon,
+.mb-window .mb-act-icon {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: url('toolbar-mmc.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.mb-window .mb-tb-icon {
+    left: 2px;
+    top: 2px;
+}
+
+.mb-window .mb-tb:disabled .mb-tb-icon {
+    filter: grayscale(1);
+    opacity: 0.4;
+}
+
+.mb-window .mb-tb-sep {
+    width: 1px;
+    height: 18px;
+    margin: 0 3px;
+    background: #a6b0be;
+    box-shadow: 1px 0 #fff;
+}
+
+/* ---- the body: tree 190, 3 px, result, 3 px, Action pane 190; 6 px under the rebar ---- */
+
+.mb-window .mb-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    padding-top: 6px;
+}
+
+.mb-window .mb-tree {
+    flex: none;
+    width: 190px;
+    box-sizing: border-box;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+    padding-top: 1px;
+}
+
+.mb-window.no-tree .mb-tree,
+.mb-window.no-tree .mb-split {
+    display: none;
+}
+
+.mb-window .mb-split {
+    flex: none;
+    width: 3px;
+    cursor: col-resize;
+}
+
+.mb-window .mb-result {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+}
+
+/* a list view fills the pane with MMC's flat #828790 edge */
+.mb-window .mb-result.is-list {
+    border-color: #828790;
+    box-shadow: none;
+}
+
+/* tree rows: 18 px, 19 px a level, a Vista twisty, the 16 px icon, the selection */
+.mb-window .mb-node {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 18px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.mb-window .mb-twisty {
+    position: absolute;
+    top: 1px;
+    width: 16px;
+    height: 16px;
+    margin-left: -18px;
+}
+
+.mb-window .mb-twisty.is-closed { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M6 4l4 4-4 4z' fill='%23fff' stroke='%23a6a6a6'/%3E%3C/svg%3E") no-repeat; }
+.mb-window .mb-twisty.is-open { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M10 6v5H5z' fill='%23595959' stroke='%23262626'/%3E%3C/svg%3E") no-repeat; }
+
+.mb-window .mb-node > img,
+.mb-window .mb-row-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 2px 0 0;
+}
+
+.mb-window .mb-node-name {
+    position: relative;
+    top: -1px;
+    padding: 0 2px;
+    border: 1px solid transparent;
+    line-height: 15px;
+}
+
+.mb-window .mb-node.is-selected .mb-node-name {
+    border-color: #d9d9d9;
+    border-radius: 2px;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.mb-window .mb-tree:focus-within .mb-node.is-selected .mb-node-name {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+/* ---- the Action pane (MMC 3.0): sunken, "Actions" over the node's group, 24 px rows ---- */
+
+.mb-window .mb-actions {
+    flex: none;
+    width: 190px;
+    box-sizing: border-box;
+    margin-left: 3px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+    padding: 1px 1px 0;
+}
+
+.mb-window:not(.has-actions) .mb-actions {
+    display: none;
+}
+
+.mb-window .mb-act-head {
+    height: 15px;
+    padding: 0 0 0 4px;
+    border-top: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    box-shadow: inset 0 1px #fff, 0 1px #fff;
+    margin-bottom: 1px;
+    background: #f0f0f0;
+    font-weight: bold;
+    line-height: 15px;
+    cursor: default;
+}
+
+.mb-window .mb-act-group {
+    position: relative;
+    height: 25px;
+    padding: 0 18px 0 6px;
+    overflow: hidden;
+    background: #f0f0f0;
+    line-height: 25px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+/* the group's collapse arrow: a 7x4 black triangle, 6 px from the right */
+.mb-window .mb-act-group::after {
+    content: '';
+    position: absolute;
+    right: 5px;
+    top: 11px;
+    border: 4px solid transparent;
+    border-top: 0;
+    border-bottom-color: #000;
+    border-left-width: 3.5px;
+    border-right-width: 3.5px;
+}
+
+.mb-window .mb-act-group.is-collapsed::after {
+    transform: rotate(180deg);
+}
+
+.mb-window .mb-act-group.is-collapsed + .mb-act-items {
+    display: none;
+}
+
+.mb-window .mb-act {
+    position: relative;
+    height: 24px;
+    padding-left: 30px;
+    line-height: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+.mb-window .mb-act .mb-act-icon {
+    left: 4px;
+    top: 4px;
+}
+
+/* hot: the text underlined, nothing else (the VM's) */
+.mb-window .mb-act:not(.is-disabled):hover {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.mb-window .mb-act.is-disabled {
+    color: #a0a0a0;
+}
+
+.mb-window .mb-act.is-disabled .mb-act-icon {
+    filter: grayscale(1);
+    opacity: 0.4;
+}
+
+.mb-window .mb-act-sep {
+    height: 1px;
+    margin: 0 4px 0 5px;
+    background: #f0f0f0;
+}
+
+/* ---- Event Viewer's summary page: a #a0a0a0 title band, sections that collapse ---- */
+
+.mb-window .mb-page-title {
+    display: flex;
+    flex: none;
+    align-items: baseline;
+    justify-content: space-between;
+    height: 27px;
+    padding: 0 8px 0 17px;
+    background: #a0a0a0;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.mb-window .mb-page-title > b {
+    font: 19px/26px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mb-window .mb-page-title > span {
+    padding-left: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+}
+
+.mb-window .mb-page-body {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px 10px 0;
+}
+
+.mb-window .mb-sec {
+    margin-bottom: 10px;
+}
+
+.mb-window .mb-sec-head {
+    position: relative;
+    height: 22px;
+    padding: 0 22px 0 6px;
+    border: 1px solid #646464;
+    background: linear-gradient(#f0f0f0, #aaa);
+    line-height: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+/* the section's arrow: a 5x3 black triangle, 10 px from the right */
+.mb-window .mb-sec-head::after {
+    content: '';
+    position: absolute;
+    right: 9px;
+    top: 9px;
+    border: 3px solid transparent;
+    border-top: 0;
+    border-bottom-color: #000;
+    border-left-width: 2.5px;
+    border-right-width: 2.5px;
+}
+
+.mb-window .mb-sec.is-collapsed .mb-sec-head::after {
+    transform: rotate(180deg);
+}
+
+.mb-window .mb-sec.is-collapsed .mb-sec-body {
+    display: none;
+}
+
+.mb-window .mb-sec-body {
+    padding: 8px 13px 10px;
+    background: #f0f0f0;
+    line-height: 16px;
+}
+
+.mb-window .mb-sec-body p {
+    margin: 0 0 8px;
+}
+
+.mb-window .mb-sec-body p:last-child {
+    margin-bottom: 0;
+}
+
+.mb-window .mb-overview {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.mb-window .mb-overview > img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    margin-right: 6px;
+}
+
+.mb-window .mb-overview p {
+    margin: 0 0 6px;
+}
+
+.mb-window .mb-overview p:last-child {
+    margin-bottom: 0;
+}
+
+/* label: value pairs (Event Viewer's log summaries) */
+.mb-window .mb-props {
+    display: grid;
+    grid-template-columns: minmax(150px, max-content) 1fr;
+    column-gap: 12px;
+    row-gap: 3px;
+}
+
+.mb-window .mb-props > dt {
+    color: #000;
+}
+
+.mb-window .mb-props > dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mb-window .mb-props + .mb-note,
+.mb-window .mb-note {
+    margin: 8px 0 0;
+    color: #000;
+}
+
+.mb-window .mb-props + .mb-list {
+    margin-top: 10px;
+}
+
+.mb-window .mb-good { color: #000; }
+.mb-window .mb-bad { color: #c00; }
+
+.mb-window .mb-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mb-window .mb-state > img {
+    width: 16px;
+    height: 16px;
+}
+
+.mb-window .mb-link {
+    color: #0066cc;
+    cursor: pointer;
+}
+
+.mb-window .mb-link:hover {
+    text-decoration: underline;
+}
+
+/* sync progress: Vista's PROGRESS bar (vista-glass-controls.css styles [role=progressbar] in .win7) */
+.mb-window .mb-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 2px 0 8px;
+}
+
+.mb-window .mb-progress > [role="progressbar"] {
+    flex: 1;
+    max-width: 260px;
+    height: 15px;
+}
+
+/* ---- list views: Vista header items, 19 px rows (MMC's), sortable ---- */
+
+.mb-window .mb-list {
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    outline: none;
+}
+
+.mb-window .mb-result > .mb-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* a list inside a section: framed, at most 10 rows before it scrolls */
+.mb-window .mb-sec-body .mb-list {
+    max-height: 214px;
+    overflow: auto;
+    border: 1px solid #828790;
+}
+
+.mb-window .mb-lhead,
+.mb-window .mb-row {
+    display: grid;
+    grid-template-columns: var(--cols);
+    min-width: max-content;
+}
+
+.mb-window .mb-list.is-fit :is(.mb-lhead, .mb-row, .mb-lbody) {
+    min-width: 0;
+}
+
+.mb-window .mb-list.is-fit {
+    overflow-x: hidden;
+}
+
+.mb-window .mb-lhead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+}
+
+.mb-window.mb-window .mb-col:not(#_) {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    padding: 3px 0 0 6px;
+    overflow: hidden;
+    border: 0;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mb-window.mb-window .mb-col:hover:not(.mb-col-rest):not(#_) { border-image-source: url('/static_images/vista-controls/header-item-hot.png'); }
+.mb-window.mb-window .mb-col.is-num:not(#_) { text-align: right; padding-right: 6px; }
+.mb-window.mb-window .mb-col.is-sorted:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted.png'); }
+.mb-window.mb-window .mb-col.is-sorted:hover:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted-hot.png'); }
+.mb-window.mb-window .mb-col.mb-col-rest:not(#_) { border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch; }
+
+.mb-window .mb-col::before,
+.mb-window .mb-col::after {
+    content: none;
+}
+
+.mb-window .mb-arrow {
+    position: absolute;
+    left: calc(50% - 6px);
+    top: 0;
+    width: 13px;
+    height: 5px;
+    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+}
+
+.mb-window .mb-arrow.is-down {
+    background-position: 0 -5px;
+}
+
+.mb-window .mb-lbody {
+    padding-top: 1px;
+    min-width: max-content;
+}
+
+.mb-window .mb-row {
+    height: 19px;
+    align-items: center;
+    cursor: default;
+}
+
+.mb-window .mb-row > span {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 6px;
+    white-space: nowrap;
+}
+
+.mb-window .mb-row > span > i {
+    overflow: hidden;
+    font-style: normal;
+    text-overflow: ellipsis;
+}
+
+.mb-window .mb-row > span:first-child {
+    padding-left: 4px;
+}
+
+.mb-window .mb-row > span.is-num {
+    justify-content: flex-end;
+}
+
+.mb-window .mb-row.is-selected > span:first-child > i {
+    margin-left: -2px;
+    padding: 0 1px;
+    border: 1px solid #d9d9d9;
+    border-radius: 2px;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.mb-window .mb-list:focus .mb-row.is-selected > span:first-child > i {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+.mb-window .mb-empty {
+    padding: 8px 6px;
+    color: #6d6d6d;
+}
+
+/* ---- the status bar: an etched line, #f1eded panes with #d7d7d7 edges ---- */
+
+.mb-window .mb-status {
+    display: grid;
+    flex: none;
+    grid-template-columns: minmax(0, 1fr) 133px 85px;
+    box-sizing: border-box;
+    height: 23px;
+    border-top: 1px solid #919191;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 0 1px #fff;
+    padding-top: 1px;
+    background: #f1eded;
+}
+
+.mb-window.no-status .mb-status {
+    display: none;
+}
+
+.mb-window .mb-status > span {
+    overflow: hidden;
+    padding: 0 6px;
+    border-right: 1px solid #d7d7d7;
+    line-height: 20px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ---- dialogs (Customize View, About) ---- */
+
+.mb-dialog-checks {
+    display: grid;
+    row-gap: 6px;
+    margin: 4px 0 0;
+}
+
+.mb-dialog-checks label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mb-about {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.mb-about > img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+}
+
+.mb-about p {
+    margin: 0 0 8px;
+}

@@ -119,7 +119,6 @@
                 <div class="modal-focus-overlay"></div>
                 <div class="modal-window-controls">
                     <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize"><i class="fa-regular fa-window-minimize"></i></button>
-                    <button type="button" class="btn-secondary maximize-btn btn-small" title="Maximize"><i class="fa-regular fa-window-maximize"></i></button>
                     <button type="button" class="btn-danger close-btn btn-small pfm-close" title="Close"><i class="fa-regular fa-xmark-large"></i></button>
                 </div>
                 <div class="modal-content win7 pfm-client">

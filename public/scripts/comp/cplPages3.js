@@ -172,6 +172,7 @@
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },
         { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ITEMS}/iscsi-initiator-16.png`, open: () => root.cplDialogs && root.cplDialogs.open('iscsi') },
         { id: 'memory', name: 'Memory Diagnostics Tool', icon: `${ITEMS}/administrative-tools-16.png`, open: () => memoryDiagnostics() },
+        { id: 'messaging-bridge', name: 'Messaging Bridge', icon: '/melaton-apps/msgbridge/assets/msgbridge-16.png', open: () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'msgbridge' }).catch(() => {}); } },
         { id: 'print-management', name: 'Print Management', icon: `${ITEMS}/printers-16.png`, open: () => CP().doAction('item:printers') },
         { id: 'reliability', name: 'Reliability and Performance Monitor', icon: '/static_images/app_icons/16/vista-performance.webp', open: () => launch('perfmon') || launch('event-viewer') },
         { id: 'security-config', name: 'Security Configuration Management', icon: `${ITEMS}/security-center-16.png`, open: () => CP().doAction('item:security-center') },

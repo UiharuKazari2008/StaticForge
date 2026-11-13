@@ -255,6 +255,9 @@ function registerPackets(handlersCtx) {
             const p = payloadOf(ctx.message);
             reply(ctx, 'app_terminate', apps().runner.terminate(String(p.instanceId || ''), ctx.ws, 'closed'));
         } catch (err) {
+            // closing a program the server no longer runs (it restarted since): already stopped, which is
+            // what the close wanted; an error packet would put up an exception box on the desktop
+            if (err && /NOT_RUNNING|NOT_FOUND/.test(String(err.code || ''))) { reply(ctx, 'app_terminate', { alreadyStopped: true }); return; }
             fail(ctx, err);
         }
     }, OWNER);
