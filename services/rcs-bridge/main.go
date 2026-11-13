@@ -9,7 +9,7 @@
 //
 // In:  {"id":1,"cmd":"status","args":{...}}
 // Out: {"id":1,"ok":true,"result":...} | {"id":1,"ok":false,"error":"..."}
-//      {"event":"qr"|"paired"|"message"|"conversation"|"typing"|"settings"|"state"|"logged_out","data":...}
+//      {"event":"qr"|"paired"|"message"|"conversation"|"typing"|"settings"|"state"|"logged_out"|"signed_out","data":...}
 //
 // Protos leave as protojson (field names as in gmproto); the server normalizes them.
 // Commands: status, login, logout, conversations, conversation, messages, send, react, delete,
@@ -26,8 +26,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -58,6 +60,7 @@ var (
 	lastSIM   *gmproto.SIMCard
 	phoneID   string
 	connected bool
+	signedOut bool // Google turned the session down (401/403): told to every server that attaches
 	pjson     = protojson.MarshalOptions{UseProtoNames: false, EmitUnpopulated: false}
 )
 
@@ -88,19 +91,28 @@ func event(name string, data any) { emit(map[string]any{"event": name, "data": d
 
 func sessionFile() string { return filepath.Join(stateDir, "session.json") }
 
+var lastSaved []byte
+
+// saveSession writes the session when it changed. Google rotates a Google account session's cookies
+// on its answers (libgm keeps them in sess.Cookies): they are saved too, or a restarted bridge
+// presents the stale ones from the pairing.
 func saveSession() {
 	sessMu.Lock()
 	defer sessMu.Unlock()
 	if sess == nil {
 		return
 	}
+	sess.CookiesLock.RLock()
 	b, err := json.Marshal(sess)
-	if err != nil {
+	sess.CookiesLock.RUnlock()
+	if err != nil || string(b) == string(lastSaved) {
 		return
 	}
 	tmp := sessionFile() + ".tmp"
 	if err := os.WriteFile(tmp, b, 0600); err == nil {
-		_ = os.Rename(tmp, sessionFile())
+		if os.Rename(tmp, sessionFile()) == nil {
+			lastSaved = b
+		}
 	}
 }
 
@@ -115,6 +127,7 @@ func loadSession() bool {
 		sess = libgm.NewAuthData()
 		return false
 	}
+	lastSaved = b
 	return sess.Browser != nil || sess.TachyonAuthToken != nil
 }
 
@@ -124,7 +137,7 @@ func newClient() {
 }
 
 func state(extra map[string]any) {
-	d := map[string]any{"loggedIn": cli != nil && cli.IsLoggedIn(), "connected": connected, "phoneId": phoneID}
+	d := map[string]any{"loggedIn": cli != nil && cli.IsLoggedIn(), "connected": connected, "phoneId": phoneID, "signedOut": signedOut}
 	for k, v := range extra {
 		d[k] = v
 	}
@@ -137,6 +150,7 @@ func onEvent(raw any) {
 		event("qr", map[string]any{"url": evt.URL})
 	case *events.PairSuccessful:
 		phoneID = evt.PhoneID
+		signedOut = false
 		saveSession()
 		event("paired", map[string]any{"phoneId": evt.PhoneID})
 		// a QR pairing needs a fresh connection with the new tokens
@@ -174,11 +188,18 @@ func onEvent(raw any) {
 		state(map[string]any{"browserActiveElsewhere": true})
 	case *events.ListenFatalError:
 		connected = false
+		var he events.HTTPError
+		if errors.As(evt.Error, &he) && he.Resp != nil && (he.Resp.StatusCode == 401 || he.Resp.StatusCode == 403) {
+			// Google signed the session out (SESSION_COOKIE_INVALID): only a new pairing helps
+			signedOut = true
+			event("signed_out", map[string]any{"status": he.Resp.StatusCode, "body": string(he.Body)})
+		}
 		state(map[string]any{"error": evt.Error.Error(), "fatal": true})
 	case *events.ListenTemporaryError:
 		state(map[string]any{"error": evt.Error.Error()})
 	case *events.ListenRecovered:
 		connected = true
+		signedOut = false
 		state(map[string]any{"error": ""})
 	case *events.GaiaLoggedOut:
 		connected = false
@@ -308,6 +329,7 @@ func handle(ctx context.Context, r request) (any, error) {
 				return
 			}
 			phoneID = phone
+			signedOut = false
 			saveSession()
 			event("paired", map[string]any{"phoneId": phone})
 			if err := cli.Reconnect(context.Background()); err != nil {
@@ -543,6 +565,20 @@ func main() {
 
 	paired := loadSession()
 	newClient()
+
+	// rotated cookies reach the disk within minutes, and on a kill (pm2, the server's stop)
+	go func() {
+		for range time.Tick(2 * time.Minute) {
+			saveSession()
+		}
+	}()
+	go func() {
+		sig := make(chan os.Signal, 1)
+		signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+		<-sig
+		saveSession()
+		os.Exit(0)
+	}()
 	if paired {
 		go func() {
 			if err := cli.Connect(context.Background()); err != nil {

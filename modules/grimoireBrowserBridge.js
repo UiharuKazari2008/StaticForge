@@ -261,6 +261,8 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
         const width = req.body && req.body.width;
         const height = req.body && req.body.height;
         const popup = !!(req.body && req.body.popup);
+        // a private context of its own (CardSpace's Google sign-in for RCS pairing)
+        const isolated = req.body && req.body.isolated === true ? true : undefined;
         const owner = req.body && req.body.owner && typeof req.body.owner === 'object' ? req.body.owner : null;
         // #748: Internet Explorer Mobile's Mobile view asks for the phone version of sites (viewKind 'mobile', with
         // the phone's pixel ratio); nothing is sent for anyone else, and the service stays the desktop browser
@@ -272,7 +274,7 @@ function mountGrimoireBrowserBridge(app, authMiddleware) {
             const upstream = await serviceFetch(config, '/sessions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(Object.assign({ url, width, height, popup, settings, owner, performance }, mobileView))
+                body: JSON.stringify(Object.assign({ url, width, height, popup, isolated, settings, owner, performance }, mobileView))
             });
             const payload = await upstream.json().catch(() => ({}));
             if (!upstream.ok) {

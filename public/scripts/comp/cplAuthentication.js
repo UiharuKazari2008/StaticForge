@@ -780,7 +780,7 @@
     const TM_PICTURE = '/static_images/app_icons/melaton-messenger.webp';
     const TM_PAIR_HINT = 'On your phone, open Google Messages, tap your profile picture > Device pairing > QR code scanner, and scan this code.';
     const TM_GOOGLE_URL = 'https://messages.google.com/web/authentication';
-    const TM_GOOGLE_STEPS = 'An Alchemy window opens at Google Messages for web. Sign in there with the Google account your phone uses, close that window, then press Continue.';
+    const TM_GOOGLE_STEPS = 'A private Alchemy window opens at Google Messages for web. Sign in there with the Google account your phone uses, close that window, then press Continue.';
     const TM_EMOJI_HINT = 'Your phone shows "Is this you?". In Google Messages, tap the emoji that matches this one.';
     const TM_RCS_NOTE = 'Keep Google Messages as your default messaging app. Turn off its notifications: Dreamscape sends them now.';
     const TM_STATE = {
@@ -800,7 +800,8 @@
 
     function tmStatus(row) {
         const [state, word] = TM_STATE[row.status] || (row.id ? ['unchecked', row.status || 'Not connected'] : ['none', 'Not saved']);
-        const text = row.status === 'error' && row.error ? `Error: ${row.error}` : word;
+        const text = row.status === 'error' && row.error ? `Error: ${row.error}`
+            : (row.status === 'unpaired' && /signed this pairing out/.test(row.error || '') ? `${word}: ${row.error}` : word);
         return { state, text };
     }
 
@@ -940,7 +941,8 @@
         const ui = tmUiOf(row.id);
         const status = tmStatus(row);
         const enabled = customCheck('Use this account', row.enabled !== false);
-        const paired = row.status === 'connected' || !!row.identity;
+        // signed out by Google: the phone number is still known, but it needs pairing again
+        const paired = row.status === 'connected' || (!!row.identity && row.status !== 'unpaired');
         details.append(
             customField('Service', tmText('RCS through Google Messages')),
             customField('Phone number', tmText(row.identity || 'Unknown until paired')),
@@ -969,7 +971,7 @@
                 box.append(big, tmText(TM_EMOJI_HINT, 'cpl-tm-hint'));
             } else {
                 box.append(tmText(TM_GOOGLE_STEPS, 'cpl-tm-hint'),
-                    tmButton('Open Alchemy', async () => { await csOpenBrowser(TM_GOOGLE_URL, 'Google Messages'); }),
+                    tmButton('Open Alchemy', async () => { await csOpenBrowser(TM_GOOGLE_URL, 'Google Messages', { isolated: true }); }),
                     tmButton('Continue', async () => {
                         ui.error = '';
                         try {
@@ -1006,7 +1008,7 @@
                 ui.emoji = '';
                 ui.error = '';
                 ui.paired = false;
-                void csOpenBrowser(TM_GOOGLE_URL, 'Google Messages').catch(() => {});
+                void csOpenBrowser(TM_GOOGLE_URL, 'Google Messages', { isolated: true }).catch(() => {});
                 paintTextMessaging();
             }));
             actions.append(tmButton(ui.qr ? 'New QR code' : 'Pair with QR code', async () => {
@@ -2135,14 +2137,14 @@
      * A web page CardSpace needs (the Google sign-in for RCS pairing): a standalone Alchemy window.
      * On the secure desktop it comes up there too (tagged, above CardSpace) until CardSpace leaves.
      */
-    async function csOpenBrowser(url, title) {
+    async function csOpenBrowser(url, title, options) {
         const fl = root.featureLoader;
         if (fl && typeof fl.loadFeature === 'function') await fl.loadFeature('grimoire');
         /* global grimoireOpenStandaloneWindow */
         const open = typeof grimoireOpenStandaloneWindow === 'function' ? grimoireOpenStandaloneWindow : root.grimoireOpenStandaloneWindow;
         if (typeof open !== 'function') { if (typeof root.openGrimoireUrl === 'function') await root.openGrimoireUrl(url); return; }
         const before = new Set(document.querySelectorAll('.modal'));
-        open(url, null, title);
+        open(url, null, title, options);
         const made = [...document.querySelectorAll('.modal')].filter((m) => !before.has(m));
         if (secureDesktop.isActive()) made.forEach((m) => secureDesktop.tag(m));
     }

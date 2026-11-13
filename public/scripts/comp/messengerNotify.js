@@ -79,8 +79,11 @@
         const el = ensureIcon();
         if (!t || !el) return;
         let n = 0;
-        try { const d = await t.accounts(); n = ((d && d.accounts) || []).length; } catch (_) { n = 0; }
+        let list = [];
+        try { const d = await t.accounts(); list = (d && d.accounts) || []; n = list.length; } catch (_) { n = 0; }
         const want = n > 0;
+        // an account that lost its sign-in while this session was away: told once a session
+        for (const a of list) if (a && a.status === 'unpaired' && a.kind === 'rcs' && /signed this pairing out/.test(a.error || '')) onSigninLost({ accountId: a.id, reason: 'signed_out' });
         if (want && el.classList.contains('hidden')) {
             if (typeof root.revealTrayIconElement === 'function') root.revealTrayIconElement(el); else el.classList.remove('hidden');
         } else if (!want) el.classList.add('hidden');
@@ -124,13 +127,42 @@
         }
     }
 
+    /**
+     * An account stopped getting messages (Google signed the RCS pairing out, or the pairing ended): a
+     * warning balloon at the tray icon until clicked, which opens CardSpace to pair again. Once per
+     * account a session.
+     */
+    const lostTold = new Set();
+    function onSigninLost(d) {
+        if (!d || !d.accountId || lostTold.has(d.accountId) || !isDesktopTab()) return;
+        lostTold.add(d.accountId);
+        const anchor = ensureIcon();
+        if (!anchor || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
+        if (anchor.classList.contains('hidden')) {
+            if (typeof root.revealTrayIconElement === 'function') root.revealTrayIconElement(anchor); else anchor.classList.remove('hidden');
+        }
+        const body = d.reason === 'unpaired'
+            ? 'Google Messages ended the pairing, so text messages are not arriving. Click here to pair again.'
+            : 'Google signed Dreamscape out of Google Messages, so text messages are not arriving. Click here to pair again.';
+        const pop = root.PopoverManager.showPopover(anchor, 'warning', 'Text messages stopped', esc(body), false, false,
+            null, null, { popupId: 'text-messages', position: 'top', arrowPosition: 'bottom-right' });
+        if (pop) {
+            pop.style.cursor = 'pointer';
+            pop.onclick = () => {
+                if (root.PopoverManager.hide) root.PopoverManager.hide(anchor);
+                if (root.cplAuthentication && typeof root.cplAuthentication.open === 'function') root.cplAuthentication.open('messaging');
+            };
+        }
+    }
+
     /** Attach to the current window.textMessaging (a test can replace it; we follow). */
     function wire() {
         const t = tm();
         if (!t || typeof t.on !== 'function' || wiredTo === t) return;
-        if (wiredTo && typeof wiredTo.off === 'function') { wiredTo.off('message', onMessage); wiredTo.off('account', syncIcon); }
+        if (wiredTo && typeof wiredTo.off === 'function') { wiredTo.off('message', onMessage); wiredTo.off('account', syncIcon); wiredTo.off('signin_lost', onSigninLost); }
         wiredTo = t;
         t.on('message', onMessage);
+        t.on('signin_lost', onSigninLost);
         t.on('account', syncIcon);
         void syncIcon();
     }

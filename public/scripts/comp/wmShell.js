@@ -2147,6 +2147,19 @@
         tm.on('unread', (u) => {
             if (!(u && Number(u.total) > 0) && smsNewChats.size) { smsNewChats.clear(); refreshStatus(); }
         });
+        // Google signed the RCS pairing out (or it ended): a note that stays, once per account a session
+        const lostTold = new Set();
+        tm.on('signin_lost', (d) => {
+            if (!d || !d.accountId || lostTold.has(d.accountId) || typeof window.wmShell?.notify !== 'function') return;
+            lostTold.add(d.accountId);
+            window.wmShell.notify({
+                title: 'Text messages stopped',
+                text: d.text || 'Text messages are not arriving. Pair again in Dreamscape CardSpace on the computer.',
+                icon: 'warning',
+                asNote: true,
+                timeout: false
+            });
+        });
     }
     let shellMailNew = false;
     let mailMark = null;      // ms of the newest inbox message when the client started

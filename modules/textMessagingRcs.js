@@ -157,6 +157,25 @@ class RcsProvider {
         conn.on('error', () => {});
     }
 
+    /**
+     * The listener ended for good on something other than a sign-out (libgm does not retry then): the
+     * bridge is ended and started again on its saved session, backing off like retryLater.
+     */
+    restartBridge() {
+        if (this.stopped || this.restarting) return;
+        this.restarting = true;
+        const wait = this.restartMs;
+        this.restartMs = Math.min(this.restartMs * 2, RESTART_MAX_MS);
+        this.log(`listener stopped; restarting the bridge in ${Math.round(wait / 1000)} s`);
+        const t = setTimeout(() => {
+            this.restarting = false;
+            if (this.stopped || this.status !== 'error') return;
+            // 'exit' saves the session and ends; the socket close starts a new bridge (attach's gone())
+            try { if (this.child) this.child.write(JSON.stringify({ id: 0, cmd: 'exit' }) + '\n'); } catch (_) { /* gone */ }
+        }, wait);
+        if (t.unref) t.unref();
+    }
+
     retryLater() {
         const t = setTimeout(() => this.spawn(), this.restartMs);
         if (t.unref) t.unref();
@@ -207,7 +226,12 @@ class RcsProvider {
         switch (msg.event) {
             case 'state':
                 this.loggedIn = !!(d && d.loggedIn);
-                if (d && d.fatal) this.setStatus('error', d.error || 'The pairing stopped working.');
+                if (d && d.signedOut && !d.connected) { this.loggedIn = false; this.setStatus('unpaired', 'Google signed this pairing out.'); }
+                else if (d && d.fatal) {
+                    if (this.status === 'unpaired') break; // 'signed_out' came first and said why
+                    this.setStatus('error', d.error || 'The pairing stopped working.');
+                    this.restartBridge();
+                }
                 else if (d && d.error) this.setStatus('connecting', d.error);
                 else if (this.loggedIn && d && d.connected) { this.restartMs = 2000; this.setStatus('connected', d.browserActiveElsewhere ? 'Messages for web is open somewhere else.' : (d.phoneResponding === false ? 'The phone is not answering.' : '')); this.loadContacts().catch(() => {}); this.startSync(); }
                 else if (!this.loggedIn) this.setStatus('unpaired', 'Not paired with Google Messages.');
@@ -234,6 +258,15 @@ class RcsProvider {
             case 'logged_out':
                 this.loggedIn = false;
                 this.setStatus('unpaired', 'Google Messages ended the pairing.');
+                this.emit('signin_lost', { reason: 'unpaired', text: 'Google Messages ended the pairing. Pair again in Dreamscape CardSpace to get text messages.' });
+                break;
+            case 'signed_out':
+                // Google turned the session's sign-in down (401 SESSION_COOKIE_INVALID): nothing arrives
+                // until a new pairing, so the owner is told at once instead of a silent error status
+                this.loggedIn = false;
+                this.setStatus('unpaired', 'Google signed this pairing out.');
+                this.log(`Google signed the pairing out (HTTP ${(d && d.status) || '?'})`);
+                this.emit('signin_lost', { reason: 'signed_out', text: 'Google signed Dreamscape out of Google Messages, so text messages are not arriving. Pair again in Dreamscape CardSpace.' });
                 break;
             case 'settings':
                 this.onSettings(d);

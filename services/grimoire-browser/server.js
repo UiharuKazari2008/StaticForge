@@ -1600,7 +1600,15 @@ async function closeSession(id) {
     try {
         if (session.page) await session.page.close();
     } catch (_) {}
+    // the sign-in outlives its window a while: the owner closes it and then presses Continue, which takes the
+    // cookies and disposes the context itself (modules/textMessaging.js); a context nobody took goes here
+    if (session.isolatedCtx) {
+        const ctx = session.isolatedCtx;
+        session.isolatedCtx = null;
+        setTimeout(() => { ctx.close().catch(() => {}); }, ISOLATED_KEEP_MS).unref();
+    }
 }
+const ISOLATED_KEEP_MS = 15 * 60 * 1000;
 
 let browserLaunch = null;
 let pageUserAgent = '';
@@ -2309,7 +2317,11 @@ async function createSession(body, adoptedPage) {
     const height = clampSize(body && body.height, 800, 240, 1440);
     const instance = await ensureBrowser();
     const ownerForPage = normalizeOwner(body && body.owner);
-    const page = adoptedPage || await openPage(instance, ownerForPage);
+    // isolated: a throwaway browser context of its own (CardSpace's Google sign-in for RCS pairing). Its cookies
+    // never meet the profile's, so the sign-in handed to the RCS bridge is not the one Alchemy keeps using
+    // (Google signs out a session whose rotating cookies two clients present; Nov 13 2026)
+    const isolatedCtx = !adoptedPage && body && body.isolated === true ? await instance.createBrowserContext() : null;
+    const page = adoptedPage || (isolatedCtx ? await isolatedCtx.newPage() : await openPage(instance, ownerForPage));
     ownPages.add(page);
     if (pageUserAgent) await page.setUserAgent(pageUserAgent, pageUserAgentMetadata);
     await page.evaluateOnNewDocument(blockPasskeys);
@@ -2324,6 +2336,7 @@ async function createSession(body, adoptedPage) {
         viewerToken,
         page,
         cdp,
+        isolatedCtx,
         url: adoptedPage ? normalizeWebUrl(page.url()) : (url === 'about:blank' ? '' : url),
         title: '',
         popup,

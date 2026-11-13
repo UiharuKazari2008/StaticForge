@@ -1780,7 +1780,8 @@ function grimoireOpenCurrentPageInNewWindow(shell) {
     return true;
 }
 
-function grimoireOpenStandaloneWindow(url, popup, windowTitle) {
+/** options.isolated: the page gets a private browser context of its own (CardSpace's Google sign-in for RCS). */
+function grimoireOpenStandaloneWindow(url, popup, windowTitle, options) {
     const webUrl = grimoireNormalizeWebUrl(url);
     const session = popup && popup.sessionId ? popup : null;
     // wikiWindowManager: public/scripts/comp/tagWikiSearchModal.js
@@ -1790,6 +1791,7 @@ function grimoireOpenStandaloneWindow(url, popup, windowTitle) {
     const win = wikiWindowManager.createWindow(null, { title: label, name: small ? 'alchemy-popup' : label }, null,
         small ? { alchemyPopup: '1', windowMinWidth: '360', windowMinHeight: '420' } : null);
     if (!win) return;
+    if (options && options.isolated) win._alchemyIsolated = true;
     grimoireOpenRemoteBrowser(win, webUrl, { host: win, session, popup: !!popup });
 }
 
@@ -2009,6 +2011,8 @@ async function grimoireOpenRemoteBrowser(shell, url, options) {
                 width: Math.max(320, shell.displayArea.clientWidth || 1280),
                 height: Math.max(240, shell.displayArea.clientHeight || 800),
                 popup: !!opts.popup,
+                // every session this window makes stays private (a reopened page too)
+                isolated: shell._alchemyIsolated === true || undefined,
                 // the device, IE window and tab that own the page (#756; browsingSessions.js)
                 owner: window.browsingSessions ? window.browsingSessions.ownerForShell(shell) : null
             })
