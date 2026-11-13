@@ -645,6 +645,151 @@ function _appendGlassToastDom(toastId, type, title, message, showProgress, timeo
 }
 
 // ============================================================================
+// THE TOAST POLICY (Yukimi, Nov 13): toasts are outdated. On the desktop a toast becomes a Vista
+// tray balloon (a background event of something with a tray icon), a Vista message box (an error,
+// a warning, a question with buttons, or a note that explains why something cannot be done) or
+// nothing (a confirmation of what the user just did: the result is on screen; chatter). On the
+// phone (wmShell turns toasts into WM notifications and message boxes) confirmations are dropped
+// too. Built from the audit of every call (1241; patterns and exceptions in #793).
+// ============================================================================
+
+// confirmations that are news, kept (on the desktop they go to their balloon, else nowhere)
+const TOAST_KEEP_SUCCESS = /^(updates? (applied|complete|ready)|queue unblocked|quips updated|cursor login|extended free usage|activesync|connected|reconnected)$|saved to downloads/i;
+// the confirmation phrases the phone drops (the desktop drops every plain confirmation)
+const TOAST_CONFIRM_SPAM = /\bcop(ied|y)\b|\b(saved|updated|deleted|removed|added|created|renamed|moved|pinned|unpinned|scrap(p)?ed|unscraped|restored|imported|applied|cleared|reset|changed|regenerated|revoked|approved|denied|unblocked|exported|locked|unlocked|finalised|compiled|loaded|transferred|replaced|emptied)\b/i;
+// noise the audit found: lookups while typing, values the field already shows, hints while dragging
+const TOAST_NOISE_TITLE = /^(dataset tag search error|get tags for path|search tags error|character centers overlap)$/i;
+const TOAST_NOISE_MESSAGE = /^(custom size adjusted|dimensions snapped)/i;
+// an info note that explains a blocked action is a message box; other info notes are chatter
+const TOAST_INFO_DIALOG = /\b(first|please|required)\b|^(select|choose) |nothing selected|no \w+ selected|^(alarm|timer|reminder)\b/i;
+const TOAST_NOT_CONNECTED = /websocket not connected|not connected to (the )?server|connection not healthy/i;
+// background events and the tray icon each belongs to (popupId = the title, as Notifications settings keys it)
+const TOAST_BALLOONS = [
+    [/^(updates? (applied|complete|ready|available)|update ready|restart required|download stalled|service worker (unavailable|not supported)|version mismatch)$/i, 'serviceWorkerTrayIcon'],
+    [/^(novelai subscription status|account fixed anlas expiring|extended free usage|cursor login)$/i, 'walletTrayIcon'],
+    [/^(queue (blocked|unblocked)|new images available)$/i, 'imageGenerationIndicator'],
+    [/^(connection error|connection lost|disconnected)$/i, 'modemTrayIcon'],
+    [/^activesync$/i, 'activeSyncTrayIcon'],
+    [/^director$/i, 'directorTrayIcon']
+];
+
+function _toastPlain(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** { kind: 'pass' | 'drop' | 'dialog' | 'balloon', anchorId, popupId } for a new toast. */
+function _toastPolicyRoute(type, title, message, showProgress, buttons) {
+    if (showProgress) return { kind: 'pass' };
+    const t = _toastPlain(title);
+    const m = _toastPlain(message);
+    const both = `${t} ${m}`;
+    const desktop = _isDesktopModeForNotificationBridge();
+    const phone = typeof window !== 'undefined' && window.uiShell === 'mobile';
+    const hasButtons = Array.isArray(buttons) && buttons.length > 0;
+    if (TOAST_NOISE_TITLE.test(t) || TOAST_NOISE_MESSAGE.test(m)) return { kind: 'drop' };
+    if (desktop && DESKTOP_POPUP_TOAST_TITLES.has(t)) return { kind: 'pass' };
+    if (desktop) {
+        for (const [re, anchorId] of TOAST_BALLOONS) {
+            if (re.test(t)) return { kind: 'balloon', anchorId, popupId: _trayPopupIdForTitle(t) };
+        }
+    }
+    if (type === 'success') {
+        if (hasButtons) return desktop ? { kind: 'dialog' } : { kind: 'pass' };
+        if (TOAST_KEEP_SUCCESS.test(t) || TOAST_KEEP_SUCCESS.test(m)) return desktop ? { kind: 'drop' } : { kind: 'pass' };
+        if (desktop) return { kind: 'drop' };
+        if (phone && TOAST_CONFIRM_SPAM.test(both)) return { kind: 'drop' };
+        return { kind: 'pass' };
+    }
+    if (!desktop) return { kind: 'pass' };
+    if (type === 'error' || type === 'warning' || hasButtons) return { kind: 'dialog' };
+    if (TOAST_INFO_DIALOG.test(both) || !t) return { kind: 'dialog' };
+    return { kind: 'drop' };
+}
+
+const policyDialogsOpen = new Map(); // a message box per key: one at a time, duplicates folded
+let policyDialogQueue = Promise.resolve();
+
+/** Resolves once confirmationDialog.js's one dialog is not showing (it gains .hidden when it closes). */
+function _confirmationDialogFree() {
+    const box = document.getElementById('confirmationDialog');
+    if (!box || box.classList.contains('hidden')) return Promise.resolve();
+    return new Promise((resolve) => {
+        const mo = new MutationObserver(() => {
+            if (!box.isConnected || box.classList.contains('hidden')) { mo.disconnect(); setTimeout(resolve, 0); }
+        });
+        mo.observe(box, { attributes: true, attributeFilter: ['class'] });
+    });
+}
+const policyDroppedToasts = new Set(); // dropped "working..." notes: an update to an error still says it
+
+/** A toast as a Vista message box (its buttons as the box's buttons; the first runs on its own). */
+function _showToastAsDialog(toastId, type, title, message, buttons) {
+    if (typeof showConfirmationDialog !== 'function') return false;
+    const t = _toastPlain(title);
+    const m = _toastPlain(message);
+    const notConnected = TOAST_NOT_CONNECTED.test(`${t} ${m}`);
+    const key = notConnected ? 'not-connected' : `${type}\u0001${t}\u0001${m}`;
+    if (policyDialogsOpen.has(key)) { activeToasts.delete(toastId); return true; }
+    const esc = (v) => String(v).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const body = notConnected
+        ? 'Melaton is not connected to the server. Wait for the connection to come back, then try again.'
+        : (message ? String(message) : esc(t));
+    const caption = notConnected ? 'Not Connected' : (message && t ? t : 'Melaton');
+    const icon = type === 'error' ? 'fas fa-circle-xmark' : type === 'warning' ? 'fas fa-triangle-exclamation' : 'fas fa-circle-info';
+    const list = Array.isArray(buttons) && buttons.length ? buttons : null;
+    const btns = list
+        ? list.map((b, i) => ({ text: b.text || 'OK', value: i, className: i === 0 ? 'btn-standard primary' : 'btn-standard' }))
+        : [{ text: 'OK', value: -1, className: 'btn-standard primary' }];
+    if (list && !list.some((b) => /^(ok|cancel|close|later|dismiss|no|not now|keep)$/i.test(String(b.text || '').trim()))) {
+        btns.push({ text: 'Close', value: -1, className: 'btn-standard' });
+    }
+    // confirmationDialog.js has one dialog: a second call would take it over and the first box's
+    // promise would never settle. Boxes wait their turn, and for any question the app has up.
+    // If the app asks something while the box is up, its question takes the dialog over: the box
+    // then counts as closed once that dialog closes.
+    const done = (policyDialogQueue = policyDialogQueue.then(_confirmationDialogFree).then(() => {
+        const answer = showConfirmationDialog(`<p>${body}</p>`, btns, null, { title: caption, width: 400, icon });
+        const closed = new Promise((r) => requestAnimationFrame(() => _confirmationDialogFree().then(() => setTimeout(() => r(null), 60))));
+        return Promise.race([answer, closed]);
+    }))
+        .catch(() => null)
+        .then((v) => {
+            policyDialogsOpen.delete(key);
+            activeToasts.delete(toastId);
+            if (list && typeof v === 'number' && v >= 0 && list[v]) {
+                const fn = list[v].onClick || list[v].callback;
+                if (typeof fn === 'function') { try { fn(); } catch (err) { console.error('[toast] button failed:', err); } }
+            }
+        });
+    policyDialogsOpen.set(key, done);
+    return true;
+}
+
+/** A background event as a balloon on its tray icon; a click on it runs its first button. */
+function _showPolicyBalloon(toastId, route, type, title, message, timeout, customIcon, buttons) {
+    const anchor = document.getElementById(route.anchorId);
+    if (!anchor || !anchor.getClientRects().length || !window.PopoverManager || typeof showPopover !== 'function') return false;
+    const el = showPopover(anchor, type, title, message, false, timeout === false ? 8000 : timeout, customIcon, null, {
+        position: 'top',
+        arrowPosition: 'bottom-right',
+        popupId: route.popupId,
+        onHide: () => { activeToasts.delete(toastId); }
+    });
+    const first = Array.isArray(buttons) && buttons[0];
+    if (first && el && typeof el.addEventListener === 'function') {
+        el.style.cursor = 'pointer';
+        el.addEventListener('click', () => {
+            const fn = first.onClick || first.callback;
+            if (typeof fn === 'function') { try { fn(); } catch (err) { console.error('[toast] balloon action failed:', err); } }
+        }, { once: true });
+    }
+    if (typeof startPopoverAutoHideTimer === 'function') startPopoverAutoHideTimer(anchor);
+    const stored = activeToasts.get(toastId);
+    if (stored) { stored.inAppOnly = true; stored.desktopPopoverAnchor = anchor; }
+    return true;
+}
+
+// ============================================================================
 // TOAST MANAGEMENT FUNCTIONS (READY FOR MANUAL IMPLEMENTATION)
 // ============================================================================
 
@@ -701,6 +846,25 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
         return toastId;
     }
 
+    // the toast policy: a balloon, a message box or nothing in place of a toast
+    const route = _toastPolicyRoute(type, title, message, showProgress, buttons);
+    if (route.kind === 'drop') {
+        activeToasts.delete(toastId);
+        if (policyDroppedToasts.size > 200) policyDroppedToasts.clear();
+        policyDroppedToasts.add(toastId);
+        return toastId;
+    }
+    if (route.kind === 'balloon') {
+        if (_showPolicyBalloon(toastId, route, type, title, message, resolvedTimeout, customIcon, buttons)) return toastId;
+        // its tray icon is not there: an error still needs saying, anything else goes
+        if (type === 'error' || type === 'warning') { if (_showToastAsDialog(toastId, type, title, message, buttons)) return toastId; }
+        activeToasts.delete(toastId);
+        return toastId;
+    }
+    if (route.kind === 'dialog' && _showToastAsDialog(toastId, type, title, message, buttons)) {
+        return toastId;
+    }
+
     if (!buttons && _promoteToastToDesktopPopupIfWired(toastId, type, title, message, showProgress, resolvedTimeout, customIcon)) {
         return toastId;
     }
@@ -742,6 +906,16 @@ function updateGlassToast(toastId, type, title, message, customIcon = null) {
     if (dialog) {
         if (type === 'success' || type === 'error' || type === 'warning') _endProgressDialog(toastId, { type, title, message });
         else _updateProgressDialog(dialog, title, message);
+        return;
+    }
+    if (policyDroppedToasts.has(toastId)) {
+        if (type === 'error' || type === 'warning') {
+            policyDroppedToasts.delete(toastId);
+            const route = _toastPolicyRoute(type, title, message, false, null);
+            if (route.kind === 'dialog') _showToastAsDialog(toastId, type, title, message, null);
+        } else if (type === 'success') {
+            policyDroppedToasts.delete(toastId);
+        }
         return;
     }
     // Update stored data regardless of render path
@@ -833,6 +1007,7 @@ function _takeProgressDialogResult(toastId, type, title, message, buttons) {
 }
 
 function removeGlassToast(toastId) {
+    policyDroppedToasts.delete(toastId);
     const dialog = progressDialogToasts.get(toastId);
     if (dialog) {
         progressDialogToasts.delete(toastId);
