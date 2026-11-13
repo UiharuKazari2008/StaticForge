@@ -151,6 +151,16 @@
                 console.warn('wmCalendar: could not read', f.name, err);
             }
         }
+        // the phone's own calendar, shown here only (Settings > Default Programs > Phone Data: Show;
+        // Synchronize writes a file into Calendars instead, read above; wmAndroidApps.js, #776)
+        const pd = window.wmPhoneData;
+        if (pd && pd.mode('calendar') === 'show' && pd.granted('calendar')) {
+            const now = Date.now();
+            next.push({
+                id: `c${next.length}`, name: 'Phone', color: '#99ccff', source: 'phone:', refresh: 0, fileId: null, fileName: null,
+                events: pd.calendarEvents(now - 60 * 86400000, now + 400 * 86400000), tasks: [], visible: true, readonly: true
+            });
+        }
         let hidden = [];
         try { hidden = JSON.parse(reg('Hidden', '[]')) || []; } catch (_) { hidden = []; }
         next.forEach((c) => { c.visible = !hidden.includes(c.name); });
@@ -185,6 +195,16 @@
         if (first) ws.busy(p, { paint: true, timeout: 30000 });
         return p;
     }
+
+    /** Why a calendar cannot be changed here: a subscription, or the phone's own calendar (#776). */
+    function readonlyText(cal) {
+        return String(cal.source || '').startsWith('phone:')
+            ? `${cal.name} is the phone's own calendar. Change it in the phone's calendar app.`
+            : `${cal.name} is a subscribed calendar and cannot be changed here.`;
+    }
+
+    // the phone's data changed (Phone Data switched, a sync wrote the mirror): read again
+    document.addEventListener('wmPhoneDataUpdated', () => { if (loadedAt) void reload(true); });
 
     function textB64(t) {
         return new Promise((resolve, reject) => {
@@ -554,7 +574,7 @@
     function openForm(o, start) {
         if (!MC) return;
         if (o && o.cal.readonly) {
-            ws.notify({ title: 'Calendar', icon: 'info', text: `${o.cal.name} is a subscribed calendar and cannot be changed here.` });
+            ws.notify({ title: 'Calendar', icon: 'info', text: readonlyText(o.cal) });
             return;
         }
         fromSummary = layer === 'summary';
@@ -668,7 +688,7 @@
     async function deleteSel() {
         const o = sel;
         if (!o) return;
-        if (o.cal.readonly) { ws.notify({ title: 'Calendar', icon: 'info', text: `${o.cal.name} is a subscribed calendar and cannot be changed here.` }); return; }
+        if (o.cal.readonly) { ws.notify({ title: 'Calendar', icon: 'info', text: readonlyText(o.cal) }); return; }
         const yes = await ws.messageBox({ title: 'Calendar', icon: 'warning', text: 'Permanently delete this appointment?', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] });
         if (!yes) return;
         const i = o.cal.events.indexOf(o.ev);

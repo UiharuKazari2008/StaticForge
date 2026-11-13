@@ -738,6 +738,158 @@
         });
     }
 
+    // ---------------------------------------------------------------- phone calendar and contacts (#776)
+
+    /**
+     * window.wmPhoneData: the phone's own calendar and contacts (DSApp AndroidPim, read only) for
+     * Calendar (wmCalendar.js) and Contacts (wmNotes.js), per Default Programs > Phone Data:
+     *   show  merged in on this phone only (a read-only "Phone" calendar, the phone's contacts)
+     *   sync  mirrored into the workspace: Calendars/Phone (<device>).ics (X-MELATON-SOURCE phone:,
+     *         so read-only on every client) and Contacts/Phone contacts (<device>).vcf, rewritten
+     *         from the phone (one way) at start, when switched on and every few hours
+     */
+    const phoneData = (() => {
+        const pim = () => window.AndroidPim || null;
+        const SYNC_EVERY_MS = 4 * 3600 * 1000;
+        const PAST_MS = 60 * 86400000;
+        const AHEAD_MS = 400 * 86400000;
+        let syncing = null;
+        const mode = (kind) => { const m = (readJson(PHONE_DATA_KEY, {}) || {})[kind]; return m === 'show' || m === 'sync' ? m : 'off'; };
+        const available = () => !!(pim() && typeof pim().events === 'function');
+        const granted = (kind) => { try { return !!JSON.parse(pim().status())[kind]; } catch (_) { return false; } };
+        const device = () => { try { return (window.AndroidActiveSync && window.AndroidActiveSync.getDeviceName && window.AndroidActiveSync.getDeviceName()) || 'Phone'; } catch (_) { return 'Phone'; } };
+        const safe = (s) => String(s).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Phone';
+
+        /** Android's permission, asked once; resolves true/false. */
+        function access(kind) {
+            if (!available()) return Promise.resolve(false);
+            if (granted(kind)) return Promise.resolve(true);
+            return new Promise((resolve) => {
+                const done = (ok) => { window.removeEventListener('androidpim', on); clearTimeout(t); resolve(ok); };
+                const on = (e) => { const d = e.detail || {}; if (d.kind === kind) done(!!d.granted); };
+                const t = setTimeout(() => done(granted(kind)), 120000);
+                window.addEventListener('androidpim', on);
+                try { pim().request(kind); } catch (_) { done(false); }
+            });
+        }
+
+        function events(from, to) {
+            if (!available() || !granted('calendar')) return [];
+            try { const l = JSON.parse(pim().events(from, to)); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+        }
+
+        function contacts() {
+            if (!available() || !granted('contacts')) return [];
+            try { const l = JSON.parse(pim().contacts()); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+        }
+
+        /** Calendar's event model (wmCalendar adopt()) for each phone occurrence. */
+        function calendarEvents(from, to) {
+            return events(from, to).map((e) => {
+                const start = new Date(Number(e.start));
+                let end = new Date(Number(e.end) || Number(e.start));
+                // Android keeps all-day events at UTC midnight: the local date of that day
+                const day = (d) => new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+                return {
+                    uid: `phone-${e.eventId}-${e.start}`, summary: e.title || '(no subject)', location: e.location || '', description: e.description || '', url: '',
+                    start: e.allDay ? day(start) : start, end: e.allDay ? day(end) : end, allDay: !!e.allDay,
+                    rrule: null, exdates: [], reminder: null, reminderAt: null, attendees: []
+                };
+            });
+        }
+
+        /** melatonVCard cards for the phone's contacts (marked with X-MELATON-PHONE). */
+        function cards(VC) {
+            return contacts().map((p) => {
+                const c = VC.blank();
+                c.uid = `phone-${device()}-${p.id}`.replace(/\s+/g, '-');
+                c.first = p.given || '';
+                c.last = p.family || '';
+                c.fn = p.name || '';
+                c.emails = (p.emails || []).map((x) => x.address).filter(Boolean);
+                for (const ph of p.phones || []) {
+                    if (ph.type === 'mobile' && !c.home.mobile) c.home.mobile = ph.number;
+                    else if (ph.type === 'work' && !c.work.phone) c.work.phone = ph.number;
+                    else if (!c.home.phone) c.home.phone = ph.number;
+                    else if (!c.home.mobile) c.home.mobile = ph.number;
+                }
+                c.work.company = p.org || '';
+                c.work.title = p.title || '';
+                c.notes = p.note || '';
+                c.birthday = p.birthday || '';
+                c.categories = ['Phone'];
+                c.extra = [`X-MELATON-PHONE:${device()}`];
+                return c;
+            });
+        }
+
+        const b64 = (text) => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(new Blob([text], { type: 'text/plain' })); });
+        /* global vfsClient, activeWorkspace */
+        const wsRoot = () => { let w = 'Default'; try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) w = activeWorkspace; } catch (_) { /* none */ } return `/Workspaces/${w}`; };
+
+        async function writeFile(folder, name, text, mime) {
+            if (typeof vfsClient === 'undefined') throw new Error('Files are not available.');
+            const root = wsRoot();
+            const leaf = folder.slice(root.length + 1);
+            try {
+                const top = await vfsClient.listDirectory(root, { offset: 0, limit: 500 });
+                if (!((top && top.items) || []).some((i) => i.kind === 'folder' && String(i.name).toLowerCase() === leaf.toLowerCase())) await vfsClient.createFolder(root, leaf);
+            } catch (_) { /* the upload says */ }
+            const res = await vfsClient.listDirectory(folder, { offset: 0, limit: 1000 });
+            const old = ((res && res.items) || []).find((i) => i.name === name && i.kind !== 'folder');
+            const data = await b64(text);
+            if (old && typeof vfsClient.replaceFile === 'function') await vfsClient.replaceFile(old.targetId || old.id, data, mime);
+            else await vfsClient.uploadFile(folder, data, name, mime);
+        }
+
+        /** Mirror the phone into the workspace (sync mode); one run at a time. */
+        function syncNow(kinds) {
+            if (syncing) return syncing;
+            syncing = (async () => {
+                const want = (kinds || ['calendar', 'contacts']).filter((k) => mode(k) === 'sync');
+                for (const kind of want) {
+                    if (!await access(kind)) continue;
+                    try {
+                        if (kind === 'calendar') {
+                            if (!window.melatonApps || typeof window.melatonApps.ensureLoaded !== 'function') continue;
+                            await window.melatonApps.ensureLoaded('calendar');
+                            const MC = window.melatonCalendar;
+                            if (!MC || typeof MC.toIcs !== 'function') continue;
+                            const now = Date.now();
+                            const cal = { name: `Phone (${device()})`, color: '#99ccff', source: `phone:${device()}`, refresh: 0, events: calendarEvents(now - PAST_MS, now + AHEAD_MS), tasks: [] };
+                            await writeFile(`${wsRoot()}/Calendars`, `${safe(cal.name)}.ics`, MC.toIcs(cal), 'text/calendar');
+                        } else {
+                            if (!window.melatonVCard && window.featureLoader) await window.featureLoader._loadScript('scripts/comp/vcard.js');
+                            const VC = window.melatonVCard;
+                            if (!VC) continue;
+                            const text = cards(VC).map((c) => VC.toVcf(c)).join('');
+                            await writeFile(`${wsRoot()}/Contacts`, `${safe(`Phone contacts (${device()})`)}.vcf`, text, 'text/vcard');
+                        }
+                        try { localStorage.setItem(`wmPhoneDataSynced:${kind}`, String(Date.now())); } catch (_) { /* no record */ }
+                    } catch (err) { console.warn('[wmPhoneData] sync', kind, err); }
+                }
+                document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: want } }));
+            })().finally(() => { syncing = null; });
+            return syncing;
+        }
+
+        function start() {
+            if (!available()) return;
+            document.addEventListener('wmPhoneDataChange', async (e) => {
+                const d = (e && e.detail) || {};
+                for (const kind of ['calendar', 'contacts']) if (d[kind] && d[kind] !== 'off') await access(kind);
+                await syncNow();
+                document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: ['calendar', 'contacts'] } }));
+            });
+            // at start (after the desktop work settles) and every few hours while the app runs
+            setTimeout(() => { void syncNow(); }, 20000);
+            setInterval(() => { void syncNow(); }, SYNC_EVERY_MS);
+        }
+
+        return { available, mode, access, granted, calendarEvents, cards, contacts, syncNow, start, device };
+    })();
+    window.wmPhoneData = phoneData;
+
     function register() {
         sh = window.wmShell;
         if (window.wmSettings && typeof window.wmSettings.addProgramFolder === 'function') {
@@ -749,6 +901,7 @@
         registerDefaultsPage();
         // system programs that register after this file still get their stand-in
         setTimeout(applyDefaults, 2500);
+        phoneData.start();
         loadStore();
         if (job.id) poll(true);
         // a program was installed, removed or changed

@@ -842,6 +842,13 @@
                         list.push(makeEntry(c, x.r.id, n, x.r.cards.length, x.f, folderPath()));
                     });
                 }
+                // the phone's own contacts, listed here only (Settings > Default Programs > Phone
+                // Data: Show; Synchronize writes a file into Contacts instead; #776). Read only:
+                // editing one saves a Melaton copy, deleting is the phone's own job
+                const pd = window.wmPhoneData;
+                if (pd && pd.mode('contacts') === 'show' && pd.granted('contacts')) {
+                    pd.cards(VC()).forEach((c) => list.push({ c, key: `phone:${c.uid}`, fileId: null, index: 0, count: 1, fileName: null, item: null, path: null, phone: true }));
+                }
             } catch (err) {
                 failed = (err && err.message) || 'Cannot read the contacts.';
             } finally {
@@ -1385,6 +1392,7 @@
 
         async function deleteContact(e) {
             if (!e || readOnly()) return;
+            if (e.phone) { await ws.messageBox({ title: 'Contacts', icon: 'info', text: `${VC().displayName(e.c)} is a contact of the phone itself. Delete it in the phone's contacts app.` }); return; }
             // 6.5 asks under the contact's name, with the warning sign
             const yes = await ws.messageBox(is65() ? {
                 title: VC().displayName(e.c) || 'Contacts', icon: 'warning', text: 'Permanently delete the selected contact or contacts?',
@@ -1680,6 +1688,8 @@
                 });
             },
             /** Messaging's sender card (Save, #757): a new contact with that name and e-mail address filled in. */
+            /** Read the Contacts folder (and the phone's contacts) again when the list is up (#776). */
+            reload() { if (page && loaded) void load({ keep: true }); },
             async newContact(init = {}) {
                 if (!ws) return;
                 if (ws.current !== APP_ID) ws.open(APP_ID);
@@ -1738,8 +1748,10 @@
     }
 
     window.wmNotesApp = { openNote: (id, wsId, name) => Notes.openNote(id, wsId, name), newest: () => Notes.newest(), list: () => Notes.list() };
-    window.wmContactsApp = { openFile: (item, folder) => Contacts.openFile(item, folder), newContact: (init) => Contacts.newContact(init) };
+    window.wmContactsApp = { openFile: (item, folder) => Contacts.openFile(item, folder), newContact: (init) => Contacts.newContact(init), reload: () => Contacts.reload() };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
+    // the phone's contacts changed (Phone Data switched, a sync wrote the mirror): Contacts reads again
+    document.addEventListener('wmPhoneDataUpdated', () => { try { if (window.wmContactsApp && typeof window.wmContactsApp.reload === 'function') window.wmContactsApp.reload(); } catch (_) { /* next open */ } });
 })();
