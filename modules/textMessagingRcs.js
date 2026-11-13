@@ -56,6 +56,8 @@ class RcsProvider {
         this.nextId = 1;
         this.pending = new Map();
         this.convs = new Map();   // conversationID -> raw conversation
+        this.avatars = new Map(); // handleKey(number) -> JPEG/PNG bytes (Google's participant thumbnails)
+        this.avatarTried = new Set(); // participant ids already asked for
         this.seen = new Map();    // messageID -> status (insertion order = age)
         this.stopped = false;
         this.restartMs = 2000;
@@ -66,7 +68,7 @@ class RcsProvider {
     identity() { return this.phone || ''; }
 
     features() {
-        return { privateApi: false, attachments: true, tapbacks: true, edit: false, unsend: false, reply: true, typing: true, readReceipts: true, newChat: true, effects: false, pairing: true };
+        return { privateApi: false, attachments: true, tapbacks: true, edit: false, unsend: false, reply: true, typing: true, readReceipts: true, newChat: true, effects: false, pairing: true, deleteChat: true };
     }
 
     log(m) { if (this.hooks.log) this.hooks.log(m); else console.warn(`[textMessaging:rcs] ${m}`); }
@@ -310,7 +312,7 @@ class RcsProvider {
         const fromMe = /^OUTGOING_/.test(status);
         const p = raw.senderParticipant || this.participant(conv, raw.participantID);
         const address = p ? ((p.ID && p.ID.number) || p.formattedNumber || '') : '';
-        const sender = fromMe ? { address: this.phone, name: 'Me', me: true } : { address, name: p && p.contactID ? (p.fullName || p.firstName || '') : '', me: false };
+        const sender = fromMe ? { address: this.phone, name: 'Me', me: true } : { address, name: this.nameOf(p) || (p ? this.shownAddress(p) : ''), me: false };
         const texts = [];
         const attachments = [];
         (raw.messageInfo || []).forEach((info, i) => {
@@ -362,6 +364,52 @@ class RcsProvider {
         };
     }
 
+    /** A participant's name: contacts by their card, businesses (RBM agents) by their own name. */
+    nameOf(p) {
+        if (!p) return '';
+        if (p.contactID) return p.fullName || p.firstName || '';
+        if (this.isBusiness(p)) return p.fullName || p.firstName || '';
+        return '';
+    }
+
+    isBusiness(p) {
+        const t = p && p.ID && p.ID.type;
+        const n = String((p && p.ID && p.ID.number) || '');
+        return t === 'BOT' || t === 3 || /@rbm\.goog$/i.test(n);
+    }
+
+    /** What a participant without a name shows: Google's formatted number, else the raw one. */
+    shownAddress(p) {
+        return (p && (p.formattedNumber || (p.ID && p.ID.number))) || '';
+    }
+
+    contactAvatar(key) { return this.avatars.get(String(key || '')) || null; }
+
+    photoUrl(address) {
+        const k = handleKey(address);
+        return k && this.avatars.has(k) ? `/api/textmessaging/${encodeURIComponent(this.id)}/avatar/${encodeURIComponent(k)}` : null;
+    }
+
+    /** Google's pictures for the participants on a page (one request, at most 3 s). */
+    async loadThumbnails(convs) {
+        const want = new Map();
+        for (const c of convs) for (const p of c.participants || []) {
+            const id = p.ID && p.ID.participantID;
+            if (!id || this.isSelf(c, p) || this.avatarTried.has(id)) continue;
+            want.set(id, handleKey(p.ID.number || p.formattedNumber));
+        }
+        if (!want.size) return;
+        for (const id of want.keys()) this.avatarTried.add(id);
+        try {
+            const res = await Promise.race([this.call('thumbnails', { participantIds: [...want.keys()].slice(0, 100) }), new Promise((r) => setTimeout(() => r(null), 3000))]);
+            for (const t of (res && res.thumbnail) || []) {
+                const key = want.get(t.identifier);
+                const b64 = t.data && t.data.imageBuffer;
+                if (key && b64) { const buf = Buffer.from(b64, 'base64'); if (buf.length > 64) this.avatars.set(key, buf); }
+            }
+        } catch (_) { /* no pictures this time */ }
+    }
+
     /** Is this participant you? Google lists you in group chats (and some 1:1s) without isMe. */
     isSelf(c, p) {
         if (!p) return false;
@@ -376,7 +424,10 @@ class RcsProvider {
         if (!c) return null;
         if (c.conversationID) this.convs.set(c.conversationID, c);
         const others = (c.participants || []).filter((p) => !this.isSelf(c, p));
-        const participants = others.map((p) => ({ address: (p.ID && p.ID.number) || p.formattedNumber || '', name: p.contactID ? (p.fullName || p.firstName || '') : '', service: c.type === 'RCS' ? 'RCS' : 'SMS' }));
+        const participants = others.map((p) => {
+            const address = (p.ID && p.ID.number) || p.formattedNumber || '';
+            return { address, display: this.shownAddress(p), name: this.nameOf(p), business: this.isBusiness(p), service: c.type === 'RCS' ? 'RCS' : 'SMS', photo: this.photoUrl(address) };
+        });
         const lm = c.latestMessage || {};
         const last = lm.displayContent != null || c.lastMessageTimestamp ? {
             guid: c.latestMessageID || '', chatGuid: c.conversationID, text: lm.displayContent || '', fromMe: num(lm.fromMe) === 1,
@@ -385,7 +436,9 @@ class RcsProvider {
         return {
             guid: c.conversationID,
             identifier: participants.map((p) => p.address).join(', '),
-            title: c.name || participants.map((p) => p.name || p.address).join(', '),
+            title: (c.isGroupChat && c.name) || participants.map((p) => p.name || p.display || p.address).join(', ') || c.name || '',
+            photo: participants.length === 1 ? participants[0].photo : null,
+            business: participants.length === 1 && participants[0].business,
             named: !!(c.isGroupChat && c.name),
             isGroup: participants.length > 1 || (!!c.isGroupChat && !!c.name),
             participants,
@@ -402,7 +455,9 @@ class RcsProvider {
     async listChats({ limit = 50, offset = 0 } = {}) {
         // Google pages by cursor; offsets past the first page read the whole span again
         const res = await this.call('conversations', { count: Math.min(limit + offset, 200), folder: 'inbox' });
-        const list = ((res && res.conversations) || []).map((c) => this.normalizeChat(c));
+        const raw = (res && res.conversations) || [];
+        await this.loadThumbnails(raw.slice(offset, offset + limit));
+        const list = raw.map((c) => this.normalizeChat(c));
         return list.slice(offset, offset + limit);
     }
 
@@ -474,6 +529,15 @@ class RcsProvider {
         const e = emoji || REACTION_EMOJI[String(reaction || '').replace(/^-/, '')];
         if (!e) throw Object.assign(new Error('Unknown reaction.'), { code: 'BAD_REACTION' });
         await this.call('react', { conversationId: chatGuid, messageId: messageGuid, emoji: e, action: remove ? 'remove' : 'add' });
+        return { ok: true };
+    }
+
+    /** Delete the conversation (in Google Messages on the phone too). */
+    async deleteChat({ chatGuid }) {
+        const conv = this.convs.get(chatGuid);
+        const other = conv ? (conv.participants || []).find((p) => !this.isSelf(conv, p)) : null;
+        await this.call('deleteChat', { conversationId: chatGuid, phone: (other && other.ID && other.ID.number) || '' });
+        this.convs.delete(chatGuid);
         return { ok: true };
     }
 

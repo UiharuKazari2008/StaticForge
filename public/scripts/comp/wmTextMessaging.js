@@ -347,7 +347,8 @@
         const bytes = m ? String(m.text || '').length + (m.attachments || []).reduce((n, a) => n + (Number(a.size) || 0), 0) : 0;
         return `<div class="wch-row wtm-row${sel ? ' is-selected' : ''}${unread ? ' is-unread' : ''}${c.isGroup ? ' is-group' : ''}" role="option" aria-selected="${sel}" data-guid="${esc(c.guid)}">`
             + `<span class="wch-ico" data-ico="${unread ? 'msg-unread' : 'msg-read'}"></span>`
-            + `<span class="wch-namecell"><span class="wch-name">${esc(chatTitle(c))}</span></span>`
+            // RCS chats and businesses (RBM agents, Apple Business Chat) marked after the name
+            + `<span class="wch-namecell"><span class="wch-name">${esc(chatTitle(c))}</span>${c.business ? '<span class="wtm-tag wtm-tag-biz">Business</span>' : ''}${c.service === 'RCS' ? '<span class="wtm-tag wtm-tag-rcs">RCS</span>' : ''}</span>`
             + `<span class="wch-date">${esc(listDate(m && m.date))}</span><span class="wch-size">${sizeText(bytes)}</span>`
             + `<span class="wch-last">${esc(summary(m, c, c.isGroup))}</span></div>`;
     }
@@ -956,6 +957,22 @@
         if (t && typeof t.markUnread === 'function') t.markUnread(accountId, c.guid).catch(() => {});
     }
 
+    /** Delete a conversation (the device asks first; it goes on the Mac / phone too). */
+    async function deleteChat(c) {
+        const t = tm();
+        if (!c || !t || typeof t.deleteChat !== 'function') return;
+        const ok = await sh.messageBox({ title: (acct() && acct().name) || TITLE, icon: 'question', text: 'Delete this conversation?', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] });
+        if (ok !== true) return;
+        try {
+            await t.deleteChat(accountId, c.guid);
+            chats = chats.filter((x) => x.guid !== c.guid);
+            if (selectedGuid === c.guid) selectedGuid = chats[0] ? chats[0].guid : null;
+            renderList();
+        } catch (err) {
+            await sh.messageBox({ title: (acct() && acct().name) || TITLE, icon: 'error', text: `The conversation could not be deleted. ${(err && err.message) || ''}` });
+        }
+    }
+
     /** Mark as Read / Mark as Unread, as the device swaps them by the selected message's state. */
     const readItem = (c) => (c && !c.unread
         ? { label: 'Mark as Unread', action: () => markChatUnread(c) }
@@ -966,6 +983,7 @@
         const items = [];
         if (feat('newChat')) items.push({ label: 'New', action: () => openNew([]) });
         items.push(readItem(c));
+        if (feat('deleteChat')) items.push({ label: 'Delete', disabled: !c, action: () => deleteChat(c) });
         items.push('-');
         items.push({ label: 'Go To', submenu: goToItems });
         items.push({ label: 'Tools', submenu: () => [
@@ -984,7 +1002,8 @@
     function rowMenu(c) {
         return [
             { label: 'Reply', action: () => openConversation(c) },
-            readItem(c)
+            readItem(c),
+            ...(feat('deleteChat') ? [{ label: 'Delete', action: () => deleteChat(c) }] : [])
         ];
     }
 

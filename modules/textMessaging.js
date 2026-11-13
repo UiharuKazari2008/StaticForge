@@ -255,7 +255,7 @@ function decorateParticipants(chat, ds) {
     for (const p of chat.participants || []) {
         if (!p.name) { const n = ds.get(handleKey(p.address)); if (n) p.name = n; }
     }
-    if (!chat.named) chat.title = (chat.participants || []).map((p) => p.name || p.address).join(', ') || chat.title;
+    if (!chat.named) chat.title = (chat.participants || []).map((p) => p.name || p.display || p.address).join(', ') || chat.title;
 }
 
 function isKnownChat(accountId, chat, ds) {
@@ -263,7 +263,8 @@ function isKnownChat(accountId, chat, ds) {
     if ((chat.guids || [chat.guid]).some((g) => known.has(`${accountId}|${g}`))) return true;
     if (chat.spam) return false;
     if (chat.last && chat.last.fromMe) { markWritten(accountId, chat.guid); return true; }
-    return (chat.participants || []).some((p) => p.name || ds.has(handleKey(p.address)));
+    // a business's own name is not a contact: it stays in Unknown Senders unless you saved it
+    return (chat.participants || []).some((p) => (p.name && !p.business) || ds.has(handleKey(p.address)));
 }
 
 // ---- providers ----
@@ -598,6 +599,15 @@ async function markRead(accountId, args) {
     markChatRead(accountId, args && args.chatGuid);
     return provider(accountId).markRead(args);
 }
+async function deleteChat(accountId, args) {
+    const p = provider(accountId);
+    if (typeof p.deleteChat !== 'function') throw Object.assign(new Error('This account cannot delete conversations.'), { code: 'UNSUPPORTED' });
+    await p.deleteChat(args);
+    summaries.delete(accountId);
+    broadcast({ event: 'chat', accountId, chatGuid: args && args.chatGuid, deleted: true });
+    return { ok: true };
+}
+
 async function markUnread(accountId, args) {
     summaries.delete(accountId);
     markChatUnread(accountId, args && args.chatGuid);
@@ -628,6 +638,6 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, typing,
+    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, typing,
     downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };

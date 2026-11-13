@@ -894,3 +894,26 @@
     color: #6d6d6d;
     font-size: 11px;
 }
+
+/* RCS / Business tags after a conversation's name, the business picture (#779) */
+#melatonMessengerModal .mm-tag {
+    flex: none;
+    align-self: center;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 14px;
+    color: #fff;
+    border-radius: 2px;
+}
+
+#melatonMessengerModal .mm-tag-rcs {
+    background: #1a73e8;
+}
+
+#melatonMessengerModal .mm-tag-biz {
+    background: #6b6b6b;
+}
+
+#melatonMessengerModal .mm-row-pic.is-blank[data-business="1"] {
+    background: url('/static_images/wm61/app-office-lg.png') no-repeat center / 20px 20px, linear-gradient(#f3f5f8, #dfe5ec) content-box, #fff;
+}

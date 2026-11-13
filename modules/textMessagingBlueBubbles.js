@@ -113,7 +113,7 @@ class BlueBubblesProvider {
 
     features() {
         const priv = !!(this.info && this.info.private_api) && this.settings.usePrivateApi !== false;
-        return { privateApi: priv, attachments: true, tapbacks: priv, edit: priv, unsend: priv, reply: priv, typing: priv && this.settings.sendTyping !== false, readReceipts: priv && this.settings.sendReadReceipts !== false, newChat: true, effects: priv };
+        return { privateApi: priv, attachments: true, tapbacks: priv, edit: priv, unsend: priv, reply: priv, typing: priv && this.settings.sendTyping !== false, readReceipts: priv && this.settings.sendReadReceipts !== false, newChat: true, effects: priv, deleteChat: priv };
     }
 
     /** The conversation a chat belongs to (merged iMessage + SMS), and its chats. */
@@ -382,7 +382,7 @@ class BlueBubblesProvider {
     }
 
     normalizeChat(c) {
-        const participants = (Array.isArray(c.participants) ? c.participants : []).map((p) => ({ address: p.address, name: this.contactName(p.address), service: p.service || '', photo: this.photoUrl(p.address) }));
+        const participants = (Array.isArray(c.participants) ? c.participants : []).map((p) => ({ address: p.address, name: this.contactName(p.address), service: p.service || '', photo: this.photoUrl(p.address), business: /^urn:biz:/i.test(String(p.address || '')) }));
         const last = c.lastMessage ? this.normalizeMessage(c.lastMessage, c.guid) : null;
         const isGroup = Number(c.style) === 43 || participants.length > 1;
         const title = String(c.displayName || '').trim()
@@ -396,6 +396,7 @@ class BlueBubblesProvider {
             isGroup,
             participants,
             photo: participants.length === 1 ? participants[0].photo : null,
+            business: participants.length === 1 && participants[0].business,
             service: String(c.guid || '').split(';')[0] || '',
             archived: !!c.isArchived,
             last,
@@ -561,6 +562,16 @@ class BlueBubblesProvider {
         // read here always (the core's marks); on the Mac only when read receipts are on
         if (!this.features().readReceipts) return { ok: false };
         await Promise.all(this.members(chatGuid).map((g) => this.call('POST', `chat/${encodeURIComponent(g)}/read`, { body: {} }).catch(() => null)));
+        return { ok: true };
+    }
+
+    /** Delete the conversation on the Mac (Private API), every chat it merges. */
+    async deleteChat({ chatGuid }) {
+        this.requirePrivate('Deleting a conversation');
+        const guids = this.members(chatGuid);
+        await Promise.all(guids.map((g) => this.call('DELETE', `chat/${encodeURIComponent(g)}`)));
+        for (const g of guids) this.primaryOf.delete(g);
+        this.membersOf.delete(this.resolve(chatGuid));
         return { ok: true };
     }
 

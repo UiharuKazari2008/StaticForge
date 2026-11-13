@@ -187,6 +187,7 @@
     const edit = (accountId, args) => call('tm_edit', Object.assign({ accountId }, args || {}));
     const unsend = (accountId, args) => call('tm_unsend', Object.assign({ accountId }, args || {}));
     const markRead = (accountId, chatGuid) => call('tm_read', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
+    const deleteChat = (accountId, chatGuid) => call('tm_delete_chat', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const markUnread = (accountId, chatGuid) => call('tm_unread', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const resolve = (accountId, address) => call('tm_resolve', { accountId, address }).then((d) => d.name || '');
 
@@ -273,7 +274,7 @@
     root.textMessaging = {
         links, linkify, linkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        markRead, markUnread, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
+        markRead, markUnread, deleteChat, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
     // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in

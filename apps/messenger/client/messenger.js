@@ -335,7 +335,8 @@
                     lconfig.sections = [{ type: 'list', items: c ? [
                         { text: 'Open', action: 'row-open' },
                         { separator: true },
-                        c.unread ? { text: 'Mark as Read', action: 'row-read' } : { text: 'Mark as Unread', action: 'row-unread' }
+                        c.unread ? { text: 'Mark as Read', action: 'row-read' } : { text: 'Mark as Unread', action: 'row-unread' },
+                        ...(this.features().deleteChat ? [{ separator: true }, { text: 'Delete', action: 'row-delete' }] : [])
                     ] : [{ text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((x) => x.unread) }] }];
                 },
                 onAction: (action) => void this.command(action)
@@ -526,6 +527,26 @@
             } catch (_) { /* the top stays */ } finally { this.loadingOlder = false; }
         }
 
+        /** Delete a conversation (asks first, as Windows Mail does; on the Mac / phone too). */
+        async deleteChat(guid) {
+            const t = tm();
+            const a = this.account();
+            const c = this.chat(guid);
+            if (!t || !a || !c || typeof t.deleteChat !== 'function') return;
+            const ok = await call('showConfirmationDialog', `<p>Are you sure you want to delete the conversation with ${esc(c.title || c.identifier || 'this person')}?</p><p>It is deleted from ${esc(a.kind === 'rcs' ? 'Google Messages on your phone' : 'your Mac')} too.</p>`,
+                [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], null, { title: NAME, width: 400 });
+            if (ok !== true) return;
+            try {
+                await t.deleteChat(a.id, c.guid);
+                this.chats = this.chats.filter((x) => x.guid !== c.guid);
+                if (this.chatGuid === c.guid) { this.chatGuid = null; this.messages = []; }
+                this.renderList();
+                this.renderConv();
+            } catch (err) {
+                await this.message_(`The conversation could not be deleted. ${(err && err.message) || ''}`);
+            }
+        }
+
         /** Mark as Unread (until it is read again; the Mac too, with the Private API). */
         markUnread(guid) {
             const t = tm();
@@ -656,6 +677,8 @@
                 case 'row-open': if (this.menuGuid) await this.openChat(this.menuGuid); return;
                 case 'row-read': { const c = this.chat(this.menuGuid); if (c && t && a) { c.unread = false; c.unreadCount = 0; this.renderList(); void t.markRead(a.id, c.guid).catch(() => {}); } return; }
                 case 'row-unread': this.markUnread(this.menuGuid); return;
+                case 'delete-chat': await this.deleteChat(this.chatGuid); return;
+                case 'row-delete': await this.deleteChat(this.menuGuid); return;
                 case 'mark-all-read':
                     for (const c of this.chats.filter((x) => x.unread)) { c.unread = false; if (t && a) void t.markRead(a.id, c.guid).catch(() => {}); }
                     this.renderList();
@@ -696,6 +719,7 @@
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'r') { ev.preventDefault(); void this.command('reply'); return; }
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'q') { ev.preventDefault(); void this.command('mark-read'); return; }
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'u') { ev.preventDefault(); void this.command('mark-unread'); return; }
+            if (ctrl && !ev.shiftKey && k.toLowerCase() === 'd' && this.features().deleteChat) { ev.preventDefault(); void this.command('delete-chat'); return; }
             if (k === 'F5') { ev.preventDefault(); void this.command('refresh'); return; }
             if (k === 'F1') { ev.preventDefault(); void this.command('help'); return; }
             // the conversation list by keyboard
@@ -734,6 +758,7 @@
                     sep,
                     { text: 'Mark as Read', subtext: 'Ctrl+Q', action: 'mark-read', disabled: !inChat },
                     { text: 'Mark as Unread', subtext: 'Ctrl+U', action: 'mark-unread', disabled: !inChat || !!(this.chat() && this.chat().unread) },
+                    f.deleteChat ? { text: 'Delete Conversation', subtext: 'Ctrl+D', action: 'delete-chat', disabled: !inChat } : null,
                     { text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((c) => c.unread) }
                 ].filter(Boolean);
             }
@@ -1021,11 +1046,13 @@
                 const initials = c.isGroup ? '' : (String(title).replace(/[^\p{L}\p{N} ]/gu, '').trim().split(/\s+/).slice(0, 2).map((w) => w[0] || '').join('').toUpperCase() || '#');
                 const pic = c.photo
                     ? `<span class="mm-row-pic"><img src="${esc(c.photo)}" alt="" loading="lazy" draggable="false"></span>`
-                    : `<span class="mm-row-pic is-blank" data-group="${c.isGroup ? 1 : 0}">${esc(initials)}</span>`;
+                    : `<span class="mm-row-pic is-blank" data-group="${c.isGroup ? 1 : 0}"${c.business ? ' data-business="1"' : ''}>${c.business ? '' : esc(initials)}</span>`;
+                // RCS chats and businesses marked after the name
+                const tags = `${c.business ? '<span class="mm-tag mm-tag-biz">Business</span>' : ''}${c.service === 'RCS' ? '<span class="mm-tag mm-tag-rcs">RCS</span>' : ''}`;
                 const count = c.unread ? ` <span class="mm-row-count">(${Math.max(1, Number(c.unreadCount) || 1)})</span>` : '';
                 return `<div class="mm-row${on ? ' is-selected' : ''}${c.unread ? ' is-unread' : ''}" data-guid="${esc(c.guid)}">
                     ${pic}
-                    <span class="mm-row-main"><span class="mm-row-top"><span class="mm-row-title">${esc(title)}${count}</span><span class="mm-row-date">${esc(shortWhen(last && last.date))}</span></span>
+                    <span class="mm-row-main"><span class="mm-row-top"><span class="mm-row-title">${esc(title)}${count}</span>${tags}<span class="mm-row-date">${esc(shortWhen(last && last.date))}</span></span>
                     <span class="mm-row-snip">${esc(last ? who + snippet(last) : '')}</span></span>
                 </div>`;
             }).join('');

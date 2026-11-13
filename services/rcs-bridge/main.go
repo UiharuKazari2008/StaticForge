@@ -500,6 +500,28 @@ func handle(ctx context.Context, r request) (any, error) {
 			return nil, err
 		}
 		return protoRaw(res), nil
+	case "deleteChat":
+		if err := cli.DeleteConversation(ctx, str("conversationId"), str("phone")); err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	case "thumbnails":
+		var ids []string
+		if list, ok := a["participantIds"].([]any); ok {
+			for _, v := range list {
+				if s, ok := v.(string); ok && s != "" {
+					ids = append(ids, s)
+				}
+			}
+		}
+		if len(ids) == 0 {
+			return map[string]any{"thumbnail": []any{}}, nil
+		}
+		res, err := cli.GetParticipantThumbnail(ctx, ids...)
+		if err != nil {
+			return nil, err
+		}
+		return protoRaw(res), nil
 	case "contacts":
 		res, err := cli.ListContacts(ctx)
 		if err != nil {
