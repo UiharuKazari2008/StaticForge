@@ -38,6 +38,9 @@
     const ON_ROUTE_M = 300; // this close to the route's line counts as driving it
     const TODAY_CHECK_MS = 15 * 60 * 1000; // Today asks for a fresh report at most this often
     const LEAVE_WINDOW_MIN = 30; // the car also shows this long before and after each leave time
+    const HOME_AFTER_MIN = 150; // the way home: the car stays this long past Leave Work (30 min + 2 h, Yukimi #809)
+    const CAM_WATCH_M = 5 * 1609.344; // driving home: a camera this close ahead on the route puts the position on a live watch
+    const CAM_ALERT_M = 1609.344; // ... and this close it is a notification with an alert sound, once per camera per drive
     const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const LAYER_TITLES = { routes: 'Routes', traps: 'Speed Traps', alerts: 'Alerts', slow: 'Slowdowns', advisor: 'Leave Advisor', settings: 'Traffic Settings', item: 'Details' };
 
@@ -215,6 +218,7 @@
             if (p) { try { localStorage.setItem(LS_PLACE, JSON.stringify({ place: p, at: Date.now() })); } catch (_) { /* none */ } }
             if (direction() !== before) { const r = latest[direction()]; if (configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(direction()); }
             changed();
+            watchCameras();
         };
         const byIp = () => {
             ask('traffic_where', {}, 15000).then((d) => {
@@ -240,6 +244,20 @@
     // left comes from that report alone (no request to Google or TomTom): the route's drive time spread
     // over its length, slow stretches counting 2.2x and jammed ones 4x, from where the phone is to the end.
 
+    /**
+     * Minutes the Leave Advisor moved today's way home past the set Leave Work time (m, minutes since
+     * midnight): its "wait N min" leave time, when that is later the same evening, else 0.
+     */
+    function adviceLaterMin(now, m) {
+        const w = advice.home && advice.home.wait && advice.home.wait.leaveAt;
+        const wAt = typeof w === 'number' ? w : Date.parse(w || '');
+        if (!Number.isFinite(wAt)) return 0;
+        const set = new Date(now);
+        set.setHours(Math.floor(m / 60), m % 60, 0, 0);
+        const later = (wAt - set.getTime()) / 60000;
+        return later > 0 && later < 6 * 60 ? later : 0;
+    }
+
     /** { direction, leaveAt, until } while a commute can be under way, else null. */
     function driveWindow(now = new Date()) {
         const s = settings || {};
@@ -250,7 +268,9 @@
             if (m == null) continue;
             const r = latest[dir];
             const tripMin = r && r.preferred && r.preferred.durationSec ? r.preferred.durationSec / 60 : 60;
-            if (t >= m - LEAVE_WINDOW_MIN && t <= m + Math.max(120, tripMin + 45)) {
+            // the way home: leaving at the end of the car's window still counts (#809)
+            const until = Math.max(120, tripMin + 45, dir === 'home' ? HOME_AFTER_MIN + adviceLaterMin(now, m) + tripMin : 0);
+            if (t >= m - LEAVE_WINDOW_MIN && t <= m + until) {
                 const at = new Date(now);
                 at.setHours(Math.floor(m / 60), m % 60, 0, 0);
                 return { direction: dir, leaveAt: at.getTime() };
@@ -310,7 +330,74 @@
         const f = Math.max(0, Math.min(1, loc.alongM / loc.totalM));
         if (f > 0.995) return null; // arrived
         const leftSec = Math.round(p.durationSec * timeShare(p, f, 1));
-        return { direction: win.direction, leftSec, arriveAt: Date.now() + leftSec * 1000, toGoM: (p.distanceM || loc.totalM) * (1 - f), at: f };
+        return { direction: win.direction, leaveAt: win.leaveAt, leftSec, arriveAt: Date.now() + leftSec * 1000, toGoM: (p.distanceM || loc.totalM) * (1 - f), at: f, totalM: p.distanceM || loc.totalM };
+    }
+
+    // ---------------------------------------------------------------- cameras on the way home (Yukimi, #809)
+    //
+    // Driving home, the OSM cameras of the report on the route ahead of the phone (never behind it):
+    // one within 5 mi puts the position on a live watch (the phone's own GPS, nothing asked of the
+    // server), and at 1 mi each camera is a WM notification with the Warnings sound, once per drive.
+
+    /** [{ trap, aheadM }] for cameras ahead within CAM_WATCH_M, nearest first; f = the phone's fraction along, totalM the route length. */
+    function camerasAhead(traps, f, totalM) {
+        if (!Array.isArray(traps) || !(totalM > 0)) return [];
+        return traps.map((t) => ({ trap: t, aheadM: (t.at - f) * totalM }))
+            .filter((c) => Number.isFinite(c.aheadM) && c.aheadM > 0 && c.aheadM <= CAM_WATCH_M)
+            .sort((a, b) => a.aheadM - b.aheadM);
+    }
+
+    const camKey = (t) => t.id || `${t.lat},${t.lon}`;
+    const camDrive = { key: '', alerted: new Set() };
+    let camWatchId = null;
+    let camFixAt = 0;
+
+    function watchCameras() {
+        const dv = driving();
+        const r = latest.home;
+        if (!dv || dv.direction !== 'home' || !r || !r.traps) { stopCamWatch(); return; }
+        const key = `home:${dv.leaveAt}`;
+        if (camDrive.key !== key) { camDrive.key = key; camDrive.alerted.clear(); }
+        const ahead = camerasAhead(r.traps, dv.at, dv.totalM).filter((c) => !camDrive.alerted.has(camKey(c.trap)));
+        ahead.filter((c) => c.aheadM <= CAM_ALERT_M).forEach((c) => { camDrive.alerted.add(camKey(c.trap)); cameraNote(c.trap, c.aheadM); });
+        if (ahead.some((c) => c.aheadM > CAM_ALERT_M)) startCamWatch(); else stopCamWatch();
+    }
+
+    function startCamWatch() {
+        if (camWatchId != null || !inApp() || geoDenied || !navigator.geolocation || (window.wmGps && !window.wmGps.allowed())) return;
+        camWatchId = navigator.geolocation.watchPosition((pos) => {
+            here = { at: Date.now(), lat: pos.coords.latitude, lon: pos.coords.longitude, accuracyKm: Math.min(5, (pos.coords.accuracy || 0) / 1000), source: 'device' };
+            geoAt = Date.now();
+            watchCameras();
+            // the car on the strip and the time left: every 10 s is plenty
+            if (Date.now() - camFixAt > 10000) { camFixAt = Date.now(); changed(); }
+        }, () => { /* the minute reads carry on */ }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
+    }
+
+    function stopCamWatch() {
+        if (camWatchId == null) return;
+        try { navigator.geolocation.clearWatch(camWatchId); } catch (_) { /* gone */ }
+        camWatchId = null;
+    }
+
+    function cameraNote(t, aheadM) {
+        const title = `${t.label || 'Speed camera'} ahead`;
+        const text = `${miles(aheadM)} ahead${t.street ? ` on ${t.street}` : ''}.${t.maxspeed ? ` Limit ${t.maxspeed}.` : ''}${t.count > 1 ? ` ${t.count} cameras.` : ''}`;
+        const view = () => { if (note && note.close) note.close(); open('home'); openLayer('traps'); };
+        let note = null;
+        if (ws && typeof ws.appNote === 'function') {
+            note = ws.appNote({
+                title,
+                html: esc(text),
+                icon: 'app-traffic',
+                event: 'warning',
+                softKeys: () => ({ left: { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })
+            });
+            if (note) return;
+        }
+        if (ws && typeof ws.notify === 'function') {
+            ws.notify({ title, text, icon: 'warning', asNote: true, timeout: false, buttons: [{ text: 'View', type: 'primary', closeOnClick: true, onClick: view }] });
+        }
     }
 
     // ---------------------------------------------------------------- direction
@@ -377,6 +464,8 @@
     // ---------------------------------------------------------------- art (inline, our own)
 
     const ICON_SVG = {
+        // the phone on the route, seen from above, heading right (Home is the strip's right end)
+        car: '<svg viewBox="0 0 28 16"><defs><linearGradient id="trfCarBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff6a4d"/><stop offset=".45" stop-color="#d8240c"/><stop offset="1" stop-color="#7c1004"/></linearGradient><linearGradient id="trfCarGlass" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe6ff"/><stop offset="1" stop-color="#2b4a6e"/></linearGradient></defs><rect x="3" y="1" width="4" height="2.4" rx=".8" fill="#111"/><rect x="18" y="1" width="4" height="2.4" rx=".8" fill="#111"/><rect x="3" y="12.6" width="4" height="2.4" rx=".8" fill="#111"/><rect x="18" y="12.6" width="4" height="2.4" rx=".8" fill="#111"/><path d="M2.5 4.2Q2.5 2.4 4.6 2.4H21.5Q26.8 2.6 26.8 8T21.5 13.6H4.6Q2.5 13.6 2.5 11.8z" fill="url(#trfCarBody)" stroke="#3a0700" stroke-width=".8"/><path d="M16.6 4.2h2.6q2 .6 2 3.8t-2 3.8h-2.6q.9-1.4.9-3.8t-.9-3.8z" fill="url(#trfCarGlass)" stroke="#16263a" stroke-width=".5"/><path d="M6.2 4.6h2q-.6 1.4-.6 3.4t.6 3.4h-2q-.7-1.3-.7-3.4t.7-3.4z" fill="url(#trfCarGlass)" stroke="#16263a" stroke-width=".5"/><rect x="9.4" y="4.4" width="6.6" height="7.2" rx="1.2" fill="#c41d08" stroke="#5c0b00" stroke-width=".5"/><path d="M9.8 5h5.8" stroke="#ffb3a3" stroke-width=".7" stroke-linecap="round" opacity=".8"/><rect x="25" y="4" width="1.4" height="2.2" rx=".5" fill="#fff6c8"/><rect x="25" y="9.8" width="1.4" height="2.2" rx=".5" fill="#fff6c8"/><rect x="2.4" y="4.2" width="1" height="2" fill="#ff2a10"/><rect x="2.4" y="9.8" width="1" height="2" fill="#ff2a10"/></svg>',
         trap: '<svg viewBox="0 0 20 20"><rect x="2" y="5" width="12" height="9" rx="1.5" fill="#3a4048" stroke="#111" stroke-width=".8"/><rect x="14" y="7" width="4" height="5" rx="1" fill="#22262b" stroke="#111" stroke-width=".8"/><circle cx="7" cy="9.5" r="3" fill="#0d1a2b" stroke="#8fb6e6" stroke-width="1"/><circle cx="6.2" cy="8.7" r=".9" fill="#cfe4ff"/><rect x="11" y="6.3" width="2" height="1.4" fill="#e8341c"/><path d="M8 14v4M5 18h6" stroke="#555" stroke-width="1.6"/></svg>',
         lane: '<svg viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="16" fill="#3b4148"/><path d="M7 2v16M13 2v16" stroke="#fff" stroke-width="1" stroke-dasharray="2 2"/><path d="M14.2 6l3 3-3 3M17 9h-5" fill="none" stroke="#ffc21a" stroke-width="1.8"/><path d="M4 5l4 9M8 5l-4 9" stroke="#e8341c" stroke-width="1.8"/></svg>',
         accident: '<svg viewBox="0 0 20 20"><path d="M10 1l2.2 4.6 5-1.4-2.4 4.4 4.2 2.8-5 .7.3 5.1L10 14.3 5.7 17.2l.3-5.1-5-.7 4.2-2.8L2.8 4.2l5 1.4z" fill="#e03018" stroke="#5c0d02" stroke-width=".8"/><path d="M10 6l1 3h-2zM9 10.5h2v1.8H9z" fill="#fff"/></svg>',
@@ -460,6 +549,7 @@
             els.status.textContent = checking[d] ? '' : 'Tap Refresh to check the traffic.';
             els.segs.innerHTML = '';
             els.pins.innerHTML = '';
+            els.road.classList.remove('is-driving');
             els.via.textContent = '';
             els.advice.hidden = true;
             els.rows.innerHTML = rowsHtml(null);
@@ -487,10 +577,15 @@
             (r.alerts || []).map((a) => ({ at: a.at, kind: a.kind })),
             (r.jams || []).filter((j) => j.major).map((j) => ({ at: j.at, kind: 'jam' }))
         );
-        els.pins.innerHTML = pins.map((pn) => `<span class="trf-pin is-${pn.kind}" style="left:${(Math.max(0.02, Math.min(0.98, pn.at)) * 100).toFixed(2)}%">${ICON_SVG[pn.kind] || ICON_SVG.hazard}</span>`).join('');
+        const pinAt = (at) => `left:${(Math.max(0.02, Math.min(0.98, at)) * 100).toFixed(2)}%`;
+        // driving it: what is behind the car is dimmed, and the car sits where the phone is (#809)
+        els.pins.innerHTML = pins.map((pn) => `<span class="trf-pin is-${pn.kind}${onIt && pn.at < dv.at ? ' is-passed' : ''}" style="${pinAt(pn.at)}">${ICON_SVG[pn.kind] || ICON_SVG.hazard}</span>`).join('')
+            + (onIt ? `<span class="trf-pin is-car" style="${pinAt(dv.at)}" title="${esc(`${Math.round(dv.at * 100)}% of the way, ${miles(dv.toGoM)} to go`)}">${ICON_SVG.car}</span>` : '');
+        els.road.classList.toggle('is-driving', !!onIt);
+        if (onIt) els.road.style.setProperty('--trf-done', `${(Math.max(0, Math.min(1, dv.at)) * 100).toFixed(2)}%`);
         els.roadA.textContent = fromName;
         els.roadB.textContent = toName;
-        els.via.textContent = p.summary ? `via ${p.summary}${p.distanceM ? `  ·  ${miles(p.distanceM)}` : ''}` : '';
+        els.via.textContent = onIt ? `${Math.round(dv.at * 100)}% of the way  ·  ${miles(dv.toGoM)} to go` : (p.summary ? `via ${p.summary}${p.distanceM ? `  ·  ${miles(p.distanceM)}` : ''}` : '');
         // advice: a faster route, else waiting (the way home), else a major slowdown
         const adv = advice[d];
         if (r.better) {
@@ -522,6 +617,7 @@
         els.status.textContent = '';
         els.segs.innerHTML = '';
         els.pins.innerHTML = '';
+        els.road.classList.remove('is-driving');
         els.via.textContent = '';
         els.advice.hidden = true;
         els.rows.innerHTML = `<div class="trf-empty">${esc(text).replace(/\n/g, '<br>')}${setup && isAdmin() ? '<br><button type="button" class="trf-glass-btn" data-open="settings">Set Up Commute</button>' : ''}</div>`;
@@ -1084,7 +1180,8 @@
     /**
      * Near a set leave time on a set day: { direction, leaveAt } (leaving Home = To Work, leaving Work =
      * To Home), else null. From 30 min before (or the Notify lead, when that is longer, so the car is up
-     * when the leave-time report arrives) to 30 min after. Phone time (the leave times are the user's own clock).
+     * when the leave-time report arrives) to 30 min after Leave Home, and to 2 h 30 min after Leave Work
+     * (from the Leave Advisor's "wait" time when that is later). Phone time (the leave times are the user's own clock).
      */
     function leaveWindow(now = new Date()) {
         const s = settings || {};
@@ -1096,7 +1193,9 @@
             if (m == null) continue;
             // minutes from the leave time, across midnight (a 00:10 leave time is near at 23:50)
             const off = ((t - m + 720) % 1440 + 1440) % 1440 - 720;
-            if (off >= -before && off <= LEAVE_WINDOW_MIN) {
+            // the way home: 2 h 30 min past Leave Work, or past the Leave Advisor's later time (#809)
+            const after = dir === 'home' ? HOME_AFTER_MIN + adviceLaterMin(now, m) : LEAVE_WINDOW_MIN;
+            if (off >= -before && off <= after) {
                 const at = new Date(now);
                 at.setHours(Math.floor(m / 60), m % 60, 0, 0);
                 return { direction: dir, leaveAt: at.getTime() };
@@ -1106,7 +1205,7 @@
     }
 
     /**
-     * The title bar's car (wmShell role 'traffic'): shown only near a leave time (leaveWindow, that commute)
+     * The title bar's car (wmShell role 'traffic'): shown only in a leave window (leaveWindow, that commute)
      * or while driving the commute. A 15+ min delay then says so in the bubble; on its own, away from a
      * leave time (at Work at noon), it never puts the car up (#807). { delayed (= show), reason, lines }.
      */
@@ -1192,6 +1291,7 @@
             if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
             // driving: the phone's position each minute, then the time left everywhere it shows
             if (driveWindow()) { readPosition(); if (driving()) changed(); }
+            watchCameras();
         }, 60 * 1000);
     }
 
