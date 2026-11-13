@@ -893,6 +893,11 @@ class WebSocketClient {
         'tm_send',
         'tm_account_test',
         'tm_account_save',
+        // IMAP accounts (#789): connection tests and sending wait for the mail servers
+        'ma_account_test',
+        'ma_account_save',
+        'ma_send',
+        'ma_message',
         'as_call',
         'generate_image',
         'generate_preset',
@@ -1450,6 +1455,8 @@ class WebSocketClient {
         if (type.startsWith('as_')) return true;
         // Text Messaging (textMessagingClient.js, Yozora #779): reads, sends and the tm_event pushes
         if (type.startsWith('tm_')) return true;
+        // IMAP e-mail accounts (mailAccountsClient.js, Yozora #789)
+        if (type.startsWith('ma_')) return true;
         // one push per second for the Sidebar gadgets (modules/sidebarLiveFeed.js)
         if (type === 'sidebar_live' || type === 'sidebar_live_subscribe' || type === 'sidebar_live_subscribe_response') {
             return true;

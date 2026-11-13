@@ -2250,6 +2250,8 @@ require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResour
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
 // modules/textMessagingHttp.js — Text Messaging attachments (BlueBubbles / RCS, Yozora #779)
 require('./modules/textMessagingHttp').mount(app, authMiddleware, globalResources);
+// modules/mailAccountsHttp.js — IMAP e-mail accounts: attachments and uploads (Yozora #789)
+require('./modules/mailAccountsHttp').mount(app, authMiddleware, globalResources);
 // modules/wmProgramIcons.js — Melaton Mobile Program Icons: WM icons for Android programs, one shared store (Yozora #773)
 require('./modules/wmProgramIcons').mount(app, authMiddleware, globalResources);
 
