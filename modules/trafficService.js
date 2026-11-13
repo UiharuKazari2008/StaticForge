@@ -373,9 +373,15 @@ function streetCore(name) {
 
 /** The street an instruction moves onto ("Turn left onto Main St" -> "Main St"), or ''. */
 function streetOfInstruction(text) {
-    const t = String(text || '').replace(/<[^>]+>/g, ' ');
-    const m = /\b(?:onto|on|to stay on|toward|via|for)\s+([^,.\n]+?)(?:\s*(?:\/|,|\.|$|\bthen\b|\btoward\b))/i.exec(t);
-    return m ? m[1].trim() : '';
+    // the first line only: Google adds landmark lines under it ("Pass by ...", "Entering District of Columbia")
+    const t = String(text || '').replace(/<[^>]+>/g, ' ').split(/\r?\n/)[0].replace(/\s+/g, ' ');
+    // the road the step drives: "onto X" first, then "on X" / "to stay on X" (never "keep to the right")
+    const pick = (re) => { const m = re.exec(t); return m ? m[1].trim() : ''; };
+    const end = '(?=\\s*(?:\\/|,|\\.|\\(|$|\\bthen\\b|\\btoward\\b|\\bfor\\b|\\band\\b))';
+    let s = pick(new RegExp(`\\bonto\\s+(.+?)${end}`, 'i')) || pick(new RegExp(`\\b(?:to stay on|continue on|on)\\s+(.+?)${end}`, 'i'));
+    // a fragment is no street ("the right lane", "exit 7A", parentheses)
+    if (!s || /^(the|a|an)\b/i.test(s) || /[()]/.test(s) || s.length > 48) s = '';
+    return s;
 }
 
 /** Which of the streets a route uses: { hit: [names], coverage 0..1 }. */
@@ -586,13 +592,14 @@ async function tomtomTiles(box) {
  */
 async function osmCameras(box) {
     const bb = [box.s, box.w, box.n, box.e].map((v) => v.toFixed(4)).join(',');
-    const query = `[out:json][timeout:25];(node["highway"="speed_camera"](${bb});rel["type"="enforcement"](${bb}););out body;node(r:"device");out body;`;
+    // the main server queues queries while busy (35 s seen on Nov 13): 60 s for the query, 90 s for the answer
+    const query = `[out:json][timeout:60];(node["highway"="speed_camera"](${bb});rel["type"="enforcement"](${bb}););out body;node(r:"device");out body;`;
     let res = null;
     let lastError = null;
     for (const url of OVERPASS) {
         try {
             res = await getJson(url, {
-                timeout: 25000,
+                timeout: url === OVERPASS[0] ? 90000 : 25000,
                 init: { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json', 'User-Agent': 'Dreamscape-Traffic/1.0' }, body: `data=${encodeURIComponent(query)}` }
             });
             break;
@@ -913,11 +920,26 @@ function onRoute(incidents, cameras, route) {
         if (inc.kind === 'jam') out.jams.push(Object.assign(base, { major: inc.magnitude >= 3 }));
         else out.alerts.push(Object.assign(base, { major: inc.kind === 'closure' || (inc.kind === 'accident' && inc.magnitude >= 3) }));
     });
+    // a camera's street is the route step it stands on (OSM nodes rarely carry one); devices mapped
+    // one per lane (several within 50 m along the route) are one entry, with how many there are
+    const stepAt = (m) => route.steps.find((st) => m >= st.fromM && m < st.toM) || route.steps[route.steps.length - 1];
+    const found = [];
     (cameras || []).forEach((c) => {
         const loc = locate(route._points, route._cum, c);
         if (loc.distM > CAMERA_M) return;
-        out.traps.push(Object.assign({}, c, { at: along(loc.alongM) }));
+        found.push({ c, m: loc.alongM });
     });
+    found.sort((a, b) => a.m - b.m).forEach(({ c, m }) => {
+        const last = out.traps[out.traps.length - 1];
+        if (last && m - last._m < 50) {
+            last.count = (last.count || 1) + 1;
+            if (!last.maxspeed && c.maxspeed) last.maxspeed = c.maxspeed;
+            return;
+        }
+        const step = stepAt(m);
+        out.traps.push(Object.assign({}, c, { at: along(m), _m: m, street: c.street || (step && step.street) || '' }));
+    });
+    out.traps.forEach((t) => { delete t._m; });
     const byAt = (a, b) => a.at - b.at;
     out.alerts.sort(byAt); out.traps.sort(byAt); out.jams.sort(byAt);
     return out;

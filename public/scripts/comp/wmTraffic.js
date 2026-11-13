@@ -563,13 +563,24 @@
         }).join('') + (r.streets && r.streets.length ? `<div class="trf-note">Preferred route: ${esc(r.streets.join(' → '))}</div>` : '<div class="trf-note">No preferred streets set: the first route is Google\'s pick. Add your streets in Settings.</div>');
     }
 
+    /** Where on the trip a point at fraction `at` is: "12.4 mi from Home" in the first half, "0.5 mi before Work" after. */
+    function alongText(at) {
+        const d = direction();
+        const r = latest[d];
+        const total = r && r.preferred && r.preferred.distanceM;
+        if (!total) return `${Math.round(at * 100)}% along`;
+        const from = d === 'work' ? 'Home' : 'Work';
+        const to = d === 'work' ? 'Work' : 'Home';
+        return at <= 0.5 ? `${miles(at * total)} from ${from}` : `${miles((1 - at) * total)} before ${to}`;
+    }
+
     function listHtml(rows, empty, kind) {
         if (!rows.length) return `<div class="trf-none">${esc(empty)}</div>`;
         return `<div class="trf-list">${rows.map((a, i) => {
             const where = [a.street, a.city].filter(Boolean).join(', ') || 'On your route';
             const when = a.reportedAt ? `Reported ${ago(a.reportedAt)}` : '';
-            const extra = a.maxspeed ? `Limit ${a.maxspeed}` : (a.delaySec >= 60 ? `+${minText(a.delaySec)}` : '');
-            const along = a.at != null ? `${Math.round(a.at * 100)}% along` : '';
+            const extra = [a.maxspeed ? `Limit ${a.maxspeed}` : (a.delaySec >= 60 ? `+${minText(a.delaySec)}` : ''), a.count > 1 ? `${a.count} cameras` : ''].filter(Boolean).join('  ·  ');
+            const along = a.at != null ? alongText(a.at) : '';
             return `<button type="button" class="trf-li" data-item="${kind || 'alert'}:${i}">${icon(a.kind || kind)}<span class="trf-li-text"><b>${esc(a.label)}</b><span>${esc(where)}</span><small>${esc([extra, a.fixed ? '' : when, along].filter(Boolean).join('  ·  '))}</small></span></button>`;
         }).join('')}</div>`;
     }
@@ -578,7 +589,7 @@
         if (!r) return '<div class="trf-none">No report yet. Tap Refresh.</div>';
         const rows = (r.slowdowns || []).map((s) => ({
             kind: 'slow', label: s.speed === 'TRAFFIC_JAM' ? (s.major ? 'Heavy traffic' : 'Traffic jam') : 'Slow traffic',
-            where: s.street || 'On your route', note: `${miles(s.lengthM)}  ·  ${Math.round(s.from * 100)}% along`, major: s.major
+            where: s.street || 'On your route', note: `${miles(s.lengthM)}  ·  ${alongText(s.from)}`, major: s.major
         })).concat((r.jams || []).map((j) => ({
             kind: 'jam', label: j.label || (j.major ? 'Major jam' : 'Jam'), where: j.street || 'On your route',
             note: [j.speedKmh != null ? `${Math.round(j.speedKmh / 1.609)} mph` : '', j.delaySec ? `+${minText(j.delaySec)}` : '', j.lengthM ? miles(j.lengthM) : '', j.causeText || ''].filter(Boolean).join('  ·  '),
@@ -638,7 +649,7 @@
             ['Expected to end', a.endsAt ? clock(a.endsAt) : ''],
             ['Delay', a.delaySec >= 60 ? minText(a.delaySec) : ''],
             ['Length', a.lengthM ? miles(a.lengthM) : ''],
-            ['Along route', a.at != null ? `${Math.round(a.at * 100)}%` : '']
+            ['On the route', a.at != null ? alongText(a.at) : '']
         ].filter(([, v]) => v);
         return `<div class="trf-item">${icon(a.kind || 'hazard', 'is-big')}<b>${esc(a.label)}</b>${a.description ? `<p>${esc(a.description)}</p>` : ''}</div>
             <div class="trf-facts">${rows.map(([l, v]) => `<span>${esc(l)}</span><span>${esc(v)}</span>`).join('')}</div>
