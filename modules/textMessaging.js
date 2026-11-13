@@ -1,0 +1,425 @@
+/**
+ * Text Messaging accounts (Yozora #779): iMessage through BlueBubbles, later RCS through the
+ * Google Messages pairing, behind one provider-neutral interface for Messaging on the phone,
+ * Melaton Messenger on the desktop and the Android app's notifications.
+ *
+ * Config (config.json textMessaging):  { accounts: [{ id, kind, url, enabled }], notifyUnknown }
+ * Secrets (secure.config.json textMessaging.keys[]): { name: <account id>, password }
+ *
+ * Chat (provider-neutral):
+ *   { guid, identifier, title, named, isGroup, participants:[{address,name,service}], service,
+ *     archived, last: Message|null, unread, known }
+ * Message:
+ *   { guid, chatGuid, text, subject, fromMe, sender:{address,name,me}, date, dateDelivered,
+ *     dateRead, dateEdited, retracted, error, service, replyTo, effect, groupEvent,
+ *     attachments:[{guid,name,mime,size,width,height,sticker,url,thumbUrl}],
+ *     reactions:[{type,fromMe,sender,guid,date}] }
+ *
+ * A chat is "known" when a participant is in the provider's contacts (the iPhone's, through
+ * BlueBubbles) or in a Dreamscape Contacts card (phone or e-mail), or when you have written in it.
+ * Unknown chats are the Unknown Senders folder; their messages notify only when notifyUnknown is on.
+ *
+ * Events (ws `tm_event`, admins only; also onEvent() listeners in the server):
+ *   { event: 'message'|'updated'|'reaction'|'typing'|'read'|'chat'|'account'|'resync',
+ *     accountId, chatGuid, message?, reaction?, targetGuid?, typing?, read?, known?, notify? }
+ */
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+const { randomUUID } = require('crypto');
+const { BlueBubblesProvider, handleKey, normalizeUrl } = require('./textMessagingBlueBubbles');
+
+const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+const KINDS = ['bluebubbles'];
+const CONTACT_SCAN_MS = 5 * 60 * 1000;
+const SUMMARY_TTL_MS = 30 * 1000;
+
+let gr = null;
+const providers = new Map(); // id -> provider
+const listeners = new Set();
+const summaries = new Map(); // id -> { at, value }
+let knownChats = null;       // Set of "<accountId>|<chatGuid>" you have written in
+let dsContacts = { at: 0, keys: new Map(), promise: null };
+let started = false;
+
+function resources() {
+    if (!gr) gr = require('./globalResources');
+    return gr;
+}
+
+function log(msg) { console.log(`[textMessaging] ${msg}`); }
+
+// ---- config ----
+
+function readConfig() {
+    let block = null;
+    try { block = resources().getConfig({ path: 'textMessaging' }); } catch (_) { block = null; }
+    const b = block && typeof block === 'object' ? block : {};
+    return {
+        accounts: Array.isArray(b.accounts) ? b.accounts.filter((a) => a && ID_RE.test(String(a.id || ''))) : [],
+        notifyUnknown: b.notifyUnknown === true
+    };
+}
+
+function writeConfig(next) {
+    resources().updateConfigValue('config', ['textMessaging'], { accounts: next.accounts, notifyUnknown: next.notifyUnknown === true });
+}
+
+function readSecrets() {
+    let block = null;
+    try { block = resources().getSecureConfig({ path: 'textMessaging' }); } catch (_) { block = null; }
+    return block && Array.isArray(block.keys) ? block.keys : [];
+}
+
+function passwordFor(id) {
+    const row = readSecrets().find((k) => k && k.name === id);
+    return row ? String(row.password || '') : '';
+}
+
+function writePassword(id, password) {
+    const keys = readSecrets().filter((k) => k && k.name !== id).map((k) => Object.assign({}, k));
+    if (password) keys.push({ name: id, password });
+    resources().updateConfigValue('secureConfig', ['textMessaging'], { keys });
+}
+
+// ---- known chats (you wrote in them) ----
+
+function knownFile() {
+    let dir;
+    try { dir = resources().getPath('cache'); } catch (_) { dir = null; }
+    return path.join(dir || path.join(__dirname, '..', '.cache'), 'textmessaging-known.json');
+}
+
+function loadKnown() {
+    if (knownChats) return knownChats;
+    knownChats = new Set();
+    try {
+        const arr = JSON.parse(fs.readFileSync(knownFile(), 'utf8'));
+        if (Array.isArray(arr)) arr.forEach((k) => knownChats.add(String(k)));
+    } catch (_) { /* first run */ }
+    return knownChats;
+}
+
+let knownSaveTimer = null;
+function markWritten(accountId, chatGuid) {
+    if (!chatGuid) return;
+    const set = loadKnown();
+    const key = `${accountId}|${chatGuid}`;
+    if (set.has(key)) return;
+    set.add(key);
+    clearTimeout(knownSaveTimer);
+    knownSaveTimer = setTimeout(() => {
+        try { fs.writeFileSync(knownFile(), JSON.stringify([...set])); } catch (error) { log(`known save failed: ${error.message}`); }
+    }, 2000);
+    if (knownSaveTimer.unref) knownSaveTimer.unref();
+}
+
+// ---- Dreamscape Contacts (every workspace's Contacts folder) ----
+
+async function scanDreamscapeContacts() {
+    const keys = new Map();
+    try {
+        const VC = require('../public/scripts/comp/vcard.js');
+        const vfsDatabase = require('./vfsDatabase');
+        const vfs = resources().getVfsManager();
+        const all = resources().getWorkspaceManager().getWorkspaces() || {};
+        for (const workspaceId of Object.keys(all)) {
+            let folder = null;
+            try { folder = await vfs._findWorkspaceFolderByName(workspaceId, null, 'Contacts', { excludeDesktop: true }); } catch (_) { folder = null; }
+            if (!folder) continue;
+            const files = (await vfsDatabase.getUserFilesByLocation('workspace', workspaceId, folder.id)) || [];
+            for (const f of files) {
+                if (!/\.vcf$/i.test(f.original_name || '')) continue;
+                let cards = [];
+                try { cards = VC.parseVcf(await fs.promises.readFile(vfs.getFileBlobPath(f.content_hash), 'utf8')); } catch (_) { continue; }
+                for (const c of cards) {
+                    const name = VC.displayName ? VC.displayName(c) : (c.fn || '');
+                    const addrs = [...(c.emails || []), c.home && c.home.mobile, c.home && c.home.phone, c.work && c.work.phone];
+                    for (const a of addrs) { const k = handleKey(a); if (k && k.length >= 7 && !keys.has(k)) keys.set(k, name || ''); }
+                }
+            }
+        }
+    } catch (error) {
+        log(`contacts scan failed: ${error.message}`);
+    }
+    return keys;
+}
+
+async function dreamscapeContacts() {
+    if (Date.now() - dsContacts.at < CONTACT_SCAN_MS) return dsContacts.keys;
+    if (!dsContacts.promise) {
+        dsContacts.promise = scanDreamscapeContacts().then((keys) => {
+            dsContacts = { at: Date.now(), keys, promise: null };
+            return keys;
+        }, () => { dsContacts.promise = null; return dsContacts.keys; });
+    }
+    // a stale list answers now; the first scan is waited for
+    return dsContacts.at ? dsContacts.keys : dsContacts.promise;
+}
+
+function decorateParticipants(chat, ds) {
+    for (const p of chat.participants || []) {
+        if (!p.name) { const n = ds.get(handleKey(p.address)); if (n) p.name = n; }
+    }
+    if (!chat.named) chat.title = (chat.participants || []).map((p) => p.name || p.address).join(', ') || chat.title;
+}
+
+function isKnownChat(accountId, chat, ds) {
+    if (loadKnown().has(`${accountId}|${chat.guid}`)) return true;
+    if (chat.last && chat.last.fromMe) { markWritten(accountId, chat.guid); return true; }
+    return (chat.participants || []).some((p) => p.name || ds.has(handleKey(p.address)));
+}
+
+// ---- providers ----
+
+function makeProvider(account) {
+    const hooks = { emit: (event, payload) => onProviderEvent(account.id, event, payload), log: (m) => log(`${account.id}: ${m}`) };
+    if (account.kind === 'bluebubbles') return new BlueBubblesProvider({ id: account.id, url: account.url, password: passwordFor(account.id) }, hooks);
+    return null;
+}
+
+function startAccount(account) {
+    stopAccount(account.id);
+    if (account.enabled === false) return;
+    const p = makeProvider(account);
+    if (!p) return;
+    providers.set(account.id, p);
+    p.start().catch((error) => log(`${account.id} start failed: ${error.message}`));
+}
+
+function stopAccount(id) {
+    const p = providers.get(id);
+    if (p) { try { p.stop(); } catch (_) { /* gone */ } providers.delete(id); }
+    summaries.delete(id);
+}
+
+function init(globalResources) {
+    if (globalResources) gr = globalResources;
+    if (started) return;
+    started = true;
+    for (const a of readConfig().accounts) startAccount(a);
+    dreamscapeContacts().catch(() => {});
+}
+
+function provider(accountId) {
+    const p = providers.get(String(accountId || ''));
+    if (!p) throw Object.assign(new Error('That Text Messaging account is not connected.'), { code: 'NO_ACCOUNT' });
+    return p;
+}
+
+// ---- events ----
+
+function broadcast(payload) {
+    let server = null;
+    try { server = resources().getWebSocketServer && resources().getWebSocketServer(); } catch (_) { server = null; }
+    if (server && typeof server.broadcast === 'function') {
+        server.broadcast({ type: 'tm_event', data: payload, timestamp: new Date().toISOString() },
+            (info) => !!(info && info.authenticated && info.userType === 'admin'));
+    }
+    for (const fn of listeners) { try { fn(payload); } catch (error) { log(`listener failed: ${error.message}`); } }
+}
+
+async function onProviderEvent(accountId, event, payload) {
+    const out = Object.assign({ event }, payload);
+    try {
+        if (event === 'message' || event === 'updated') {
+            summaries.delete(accountId);
+            const m = payload.message;
+            if (m && m.fromMe) markWritten(accountId, payload.chatGuid);
+            const ds = await dreamscapeContacts();
+            if (m && !m.fromMe && m.sender && !m.sender.name) { const n = ds.get(handleKey(m.sender.address)); if (n) m.sender.name = n; }
+            let known = m && m.fromMe ? true : null;
+            if (known == null) {
+                const p = providers.get(accountId);
+                let chat = null;
+                if (payload.chat && p && typeof p.normalizeChat === 'function') chat = p.normalizeChat(payload.chat);
+                if (!chat && p) { try { chat = await p.getChat(payload.chatGuid); } catch (_) { chat = null; } }
+                if (chat) { decorateParticipants(chat, ds); out.chatTitle = chat.title; out.isGroup = chat.isGroup; }
+                known = chat ? isKnownChat(accountId, chat, ds) : !!(m && m.sender && (m.sender.name));
+                if (!known && chat && p) {
+                    // a reply of yours further back makes it known too
+                    try {
+                        const page = await p.listMessages(payload.chatGuid, { limit: 25 });
+                        if (page.messages.some((x) => x.fromMe)) { markWritten(accountId, payload.chatGuid); known = true; }
+                    } catch (_) { /* leave it unknown */ }
+                }
+            }
+            delete out.chat;
+            out.known = known;
+            out.folder = known ? 'inbox' : 'unknown';
+            out.notify = event === 'message' && m && !m.fromMe && !m.groupEvent && (known || readConfig().notifyUnknown);
+        } else if (event === 'reaction' || event === 'read') {
+            summaries.delete(accountId);
+        }
+    } catch (error) {
+        log(`event ${event} failed: ${error.message}`);
+    }
+    broadcast(out);
+}
+
+function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
+
+// ---- public API ----
+
+function accountOut(a) {
+    const p = providers.get(a.id);
+    const s = summaries.get(a.id);
+    return {
+        id: a.id,
+        kind: a.kind,
+        name: 'Text Messaging',
+        service: a.kind === 'bluebubbles' ? 'iMessage' : 'RCS',
+        url: a.url || '',
+        enabled: a.enabled !== false,
+        hasPassword: !!passwordFor(a.id),
+        status: p ? p.status : (a.enabled === false ? 'disabled' : 'error'),
+        error: p ? p.error : '',
+        identity: p ? p.identity() : '',
+        features: p ? p.features() : {},
+        unread: s ? s.value.unread : null,
+        unknownUnread: s ? s.value.unknownUnread : null
+    };
+}
+
+function listAccounts() {
+    const cfg = readConfig();
+    return { accounts: cfg.accounts.map(accountOut), settings: { notifyUnknown: cfg.notifyUnknown } };
+}
+
+async function testAccount({ kind, url, password, id }) {
+    if (!KINDS.includes(kind || 'bluebubbles')) throw Object.assign(new Error('Unknown account kind.'), { code: 'BAD_KIND' });
+    const pass = password || (id ? passwordFor(id) : '');
+    const p = new BlueBubblesProvider({ id: id || 'test', url, password: pass }, {});
+    const info = await p.test();
+    p.info = info;
+    return { identity: p.identity(), features: p.features(), serverVersion: info.server_version || '', osVersion: info.os_version || '', computer: info.computer_id || '' };
+}
+
+function saveAccount(input) {
+    const body = input && typeof input === 'object' ? input : {};
+    const kind = body.kind || 'bluebubbles';
+    if (!KINDS.includes(kind)) throw Object.assign(new Error('Unknown account kind.'), { code: 'BAD_KIND' });
+    const cfg = readConfig();
+    let id = String(body.id || '').trim().toLowerCase();
+    if (id && !ID_RE.test(id)) throw Object.assign(new Error('Bad account id.'), { code: 'BAD_ID' });
+    if (!id) {
+        const base = kind === 'bluebubbles' ? 'imessage' : kind;
+        id = base;
+        for (let n = 2; cfg.accounts.some((a) => a.id === id); n += 1) id = `${base}${n}`;
+    }
+    const url = normalizeUrl(body.url);
+    if (!url) throw Object.assign(new Error('Type the BlueBubbles server address.'), { code: 'NO_URL' });
+    const row = { id, kind, url, enabled: body.enabled !== false };
+    const at = cfg.accounts.findIndex((a) => a.id === id);
+    if (at >= 0) cfg.accounts[at] = Object.assign({}, cfg.accounts[at], row);
+    else cfg.accounts.push(row);
+    writeConfig(cfg);
+    if (body.password != null && String(body.password) !== '') writePassword(id, String(body.password));
+    if (!passwordFor(id)) throw Object.assign(new Error('Type the BlueBubbles server password.'), { code: 'NO_PASSWORD' });
+    startAccount(row);
+    broadcast({ event: 'account', accountId: id });
+    return accountOut(row);
+}
+
+function deleteAccount(id) {
+    const cfg = readConfig();
+    cfg.accounts = cfg.accounts.filter((a) => a.id !== id);
+    writeConfig(cfg);
+    writePassword(id, '');
+    stopAccount(id);
+    broadcast({ event: 'account', accountId: id, removed: true });
+    return { ok: true };
+}
+
+function saveSettings(input) {
+    const cfg = readConfig();
+    if (input && typeof input.notifyUnknown === 'boolean') cfg.notifyUnknown = input.notifyUnknown;
+    writeConfig(cfg);
+    broadcast({ event: 'settings', settings: { notifyUnknown: cfg.notifyUnknown } });
+    return { notifyUnknown: cfg.notifyUnknown };
+}
+
+async function listChats(accountId, { folder = 'all', limit = 50, offset = 0 } = {}) {
+    const p = provider(accountId);
+    const [chats, ds] = await Promise.all([p.listChats({ limit: Math.min(Number(limit) || 50, 200), offset: Number(offset) || 0 }), dreamscapeContacts()]);
+    for (const c of chats) { decorateParticipants(c, ds); c.known = isKnownChat(accountId, c, ds); }
+    if (!offset) {
+        const value = { unread: chats.filter((c) => c.known && c.unread).length, unknownUnread: chats.filter((c) => !c.known && c.unread).length };
+        summaries.set(accountId, { at: Date.now(), value });
+    }
+    const list = folder === 'inbox' ? chats.filter((c) => c.known) : folder === 'unknown' ? chats.filter((c) => !c.known) : chats;
+    return { chats: list, more: chats.length >= (Number(limit) || 50) };
+}
+
+/** Unread counts for every account (pickers, Today, tray), cached briefly. */
+async function summary() {
+    const out = [];
+    for (const a of readConfig().accounts) {
+        const p = providers.get(a.id);
+        if (!p || p.status !== 'connected') { out.push(accountOut(a)); continue; }
+        const s = summaries.get(a.id);
+        if (!s || Date.now() - s.at > SUMMARY_TTL_MS) {
+            try { await listChats(a.id, { limit: 100 }); } catch (_) { /* stays null */ }
+        }
+        out.push(accountOut(a));
+    }
+    return out;
+}
+
+async function listMessages(accountId, chatGuid, opts) {
+    const p = provider(accountId);
+    const [page, ds] = await Promise.all([p.listMessages(chatGuid, opts || {}), dreamscapeContacts()]);
+    for (const m of page.messages) if (m.sender && !m.sender.me && !m.sender.name) { const n = ds.get(handleKey(m.sender.address)); if (n) m.sender.name = n; }
+    return page;
+}
+
+async function getChat(accountId, chatGuid) {
+    const p = provider(accountId);
+    const [chat, ds] = await Promise.all([p.getChat(chatGuid), dreamscapeContacts()]);
+    if (chat) { decorateParticipants(chat, ds); chat.known = isKnownChat(accountId, chat, ds); }
+    return chat;
+}
+
+async function send(accountId, args) {
+    const p = provider(accountId);
+    const res = await p.sendText(Object.assign({ tempGuid: args.tempGuid || `temp-${randomUUID()}` }, args));
+    if (res.chatGuid) markWritten(accountId, res.chatGuid);
+    summaries.delete(accountId);
+    return res;
+}
+
+async function sendAttachment(accountId, args) {
+    const p = provider(accountId);
+    const res = await p.sendAttachment(args);
+    if (res.chatGuid) markWritten(accountId, res.chatGuid);
+    return res;
+}
+
+async function react(accountId, args) { return provider(accountId).react(args); }
+async function edit(accountId, args) { return provider(accountId).edit(args); }
+async function unsend(accountId, args) { return provider(accountId).unsend(args); }
+async function markRead(accountId, args) { summaries.delete(accountId); return provider(accountId).markRead(args); }
+async function typing(accountId, args) { return provider(accountId).typing(args); }
+async function downloadAttachment(accountId, guid, opts) { return provider(accountId).downloadAttachment(guid, opts); }
+
+async function resolveName(accountId, address) {
+    const p = providers.get(accountId);
+    if (p && p.loadContacts) { await p.loadContacts().catch(() => {}); const n = p.contactName(address); if (n) return n; }
+    const ds = await dreamscapeContacts();
+    return ds.get(handleKey(address)) || '';
+}
+
+function _reset() {
+    for (const id of [...providers.keys()]) stopAccount(id);
+    started = false;
+    knownChats = null;
+    dsContacts = { at: 0, keys: new Map(), promise: null };
+    listeners.clear();
+}
+
+module.exports = {
+    init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
+    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, typing,
+    downloadAttachment, resolveName, handleKey, _reset
+};

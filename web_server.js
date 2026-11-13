@@ -2247,6 +2247,8 @@ require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, gl
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 // modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
+// modules/textMessagingHttp.js — Text Messaging attachments (BlueBubbles / RCS, Yozora #779)
+require('./modules/textMessagingHttp').mount(app, authMiddleware, globalResources);
 // modules/wmProgramIcons.js — Melaton Mobile Program Icons: WM icons for Android programs, one shared store (Yozora #773)
 require('./modules/wmProgramIcons').mount(app, authMiddleware, globalResources);
 

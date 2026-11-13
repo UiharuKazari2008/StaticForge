@@ -882,6 +882,10 @@ class WebSocketClient {
     static PROGRESS_REQUEST_TYPES = new Set([
         // ActiveSync (activeSyncAgent.js): the phone's user is asked (up to 2 minutes), a relayed call may take as long
         'as_partnership',
+        // Text Messaging (#779): a send waits for the Mac / phone to hand the message over
+        'tm_send',
+        'tm_account_test',
+        'tm_account_save',
         'as_call',
         'generate_image',
         'generate_preset',
@@ -1379,6 +1383,8 @@ class WebSocketClient {
         }
         // ActiveSync: requests, their answers and the pushes (as_request, as_event, as_peers_updated)
         if (type.startsWith('as_')) return true;
+        // Text Messaging (textMessagingClient.js, Yozora #779): reads, sends and the tm_event pushes
+        if (type.startsWith('tm_')) return true;
         // one push per second for the Sidebar gadgets (modules/sidebarLiveFeed.js)
         if (type === 'sidebar_live' || type === 'sidebar_live_subscribe' || type === 'sidebar_live_subscribe_response') {
             return true;

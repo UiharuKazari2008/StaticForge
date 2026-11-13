@@ -47,6 +47,7 @@
     "pm2": "^6.0.10",
     "predictionary": "^1.0.0",
     "sharp": "^0.32.6",
+    "socket.io-client": "^4.8.4",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
     "stream-json": "^1.9.1",
