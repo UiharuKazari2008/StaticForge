@@ -915,9 +915,12 @@
 
     function messagingOptionsInit() {
         const key = (sh() && sh().mailIconAllKey) || 'wmMailIconAll';
+        const smsKey = (sh() && sh().smsIconAllKey) || 'wmSmsIconAll';
         const d = {
             key,
             all: lsGet(key) === '1',
+            smsKey,
+            smsAll: lsGet(smsKey) === '1',
             picker: lsGet(MSG.picker) !== '0',
             replyBody: lsGet(MSG.replyBody) !== '0',
             warnDelete: lsGet(MSG.warnDelete) !== '0',
@@ -1060,7 +1063,9 @@
             const tmBox = `${ui.gap()}
                 ${ui.text('Text Messaging:')}
                 ${ui.check('tm-notify-unknown', 'Notify me about unknown senders', !!d.notifyUnknown, d.notifyUnknown == null ? 'disabled' : '')}
-                ${ui.note('Messages from people who are not in your contacts go to Unknown Senders.')}`;
+                ${ui.note('Messages from people who are not in your contacts go to Unknown Senders.')}
+                ${ui.check('sms-icon-all', 'Show the status icon for any unread text message', d.smsAll)}
+                ${ui.note('When this is off, the icon shows only for text messages received since Melaton Mobile started.')}`;
             el.innerHTML = `${ui.check('replyBody', 'When replying to e-mail, include body', d.replyBody)}
                 ${ui.check('keepSent', 'Keep copies of sent items in Sent folder', true, 'disabled')}
                 ${ui.check('warnDelete', 'Warn when deleting messages in the message list', d.warnDelete)}
@@ -1075,6 +1080,7 @@
             if (tmEl) tmEl.addEventListener('change', (e) => { d.notifyUnknown = e.target.checked; });
             ['replyBody', 'warnDelete'].forEach((k) => el.querySelector(`input[name="${k}"]`).addEventListener('change', (e) => { d[k] = e.target.checked; }));
             el.querySelector('input[name="mail-icon-all"]').addEventListener('change', (e) => { d.all = e.target.checked; });
+            el.querySelector('input[name="sms-icon-all"]').addEventListener('change', (e) => { d.smsAll = e.target.checked; });
             ui.bindCombo(el.querySelector('[data-act="afterDelete"]'), [['next', 'Show next message'], ['list', 'Return to message list']], d.afterDelete, (v) => { d.afterDelete = v; });
             return;
         }
@@ -1144,6 +1150,11 @@
             keys.push(d.key);
             const s1 = sh();
             if (s1 && typeof s1.refreshStatus === 'function') s1.refreshStatus();
+        }
+        if (d.smsAll !== was.smsAll && lsPut(d.smsKey, d.smsAll ? '1' : '0')) {
+            keys.push(d.smsKey);
+            const s2 = sh();
+            if (s2 && typeof s2.refreshStatus === 'function') s2.refreshStatus();
         }
         const put = (k, v, old) => { if (v !== old && lsPut(MSG[k], v)) keys.push(MSG[k]); };
         put('picker', d.picker ? '1' : '0', was.picker ? '1' : '0');

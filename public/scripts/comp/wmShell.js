@@ -482,8 +482,9 @@
     // Dreamscape Messenger message (the chat personas) Windows Live Messenger's buddy (WLMMessengerResources 12000)
     // Weather (#792): an active alert at Home / Work, rain due or falling there with the rain alarm on
     // (Melaton glyphs: scripts/generate-wm-weather-status-icons.py)
-    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', latency: 'status-signal-alert', wxalert: 'status-weather-alert', rain: 'status-rain-alarm' };
-    const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'latency', 'wxalert', 'rain'];
+    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm' };
+    // no High Latency icon (Yukimi, Nov 13: a slow link is neither a status icon nor a notification)
+    const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
     const DIRECTOR_CLAP_FRAMES = 6;
@@ -535,7 +536,6 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="prints" hidden aria-label="Prints"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="director" hidden aria-label="Director"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="update" hidden aria-label="Updates ready"></button>
-                    <button type="button" class="wm-status-icon wm-status-app" data-role="latency" hidden aria-label="High latency"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="wxalert" hidden aria-label="Weather alert"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="rain" hidden aria-label="Rain alarm"></button>
                     <button type="button" class="wm-status-icon" data-role="bluetooth" data-icon="bluetooth" hidden aria-label="Bluetooth"></button>
@@ -2084,6 +2084,36 @@
      * shows while the inbox has unread mail at all, as before.
      */
     const MAIL_ICON_ALL_KEY = 'wmMailIconAll';
+
+    /**
+     * The title bar's text message icon, the same way (Yukimi, Nov 13): as shipped it stands for text
+     * messages received since this client started that are still unread (a conversation that got an
+     * incoming text goes on the list and comes off when it is read); with "show for any unread text
+     * message" (Messaging > Tools > Options, localStorage wmSmsIconAll) it shows while any is unread.
+     */
+    const SMS_ICON_ALL_KEY = 'wmSmsIconAll';
+    const smsNewChats = new Set();
+    let smsNewWired = false;
+    function smsNewWire() {
+        if (smsNewWired) return;
+        const tm = window.textMessaging;
+        if (!tm || typeof tm.on !== 'function') return;
+        smsNewWired = true;
+        const key = (d) => `${d.accountId}\u0001${d.chatGuid}`;
+        tm.on('message', (d) => {
+            const m = d && d.message;
+            if (!m || m.fromMe || m.groupEvent || !d.chatGuid) return;
+            smsNewChats.add(key(d));
+            refreshStatus();
+        });
+        tm.on('read', (d) => {
+            if (!d || d.read === false || !d.chatGuid) return;
+            if (smsNewChats.delete(key(d))) refreshStatus();
+        });
+        tm.on('unread', (u) => {
+            if (!(u && Number(u.total) > 0) && smsNewChats.size) { smsNewChats.clear(); refreshStatus(); }
+        });
+    }
     let shellMailNew = false;
     let mailMark = null;      // ms of the newest inbox message when the client started
     let mailNewBusy = false;
@@ -2294,10 +2324,8 @@
         paintDirectorClap(!!(dir && dir.running));
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
-        hide(shell.querySelector('[data-role="update"]'), !updateReady);
-        // high latency on the link (websocket.js _latencyNotice): the alert icon for a minute after the last warning
-        const lat = window.wsClient && window.wsClient._latencyNotice;
-        hide(shell.querySelector('[data-role="latency"]'), !(lat && Date.now() - lat.at < 60000));
+        // the update icon also stands for a waiting update notice (downloading, stalled, applied ...)
+        hide(shell.querySelector('[data-role="update"]'), !(updateReady || notes.some(isUpdateNote)));
         hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
@@ -2309,7 +2337,9 @@
         // unread text messages (Text Messaging, #779): the phone-and-envelope glyph until they are read;
         // unread Dreamscape Messenger lines: the Messenger buddy (while a class's notification waits,
         // its own glyph stands for them: one, not two)
-        hide(shell.querySelector('[data-role="sms"]'), !(smsUnread() > 0) || noteWaits('sms'));
+        smsNewWire();
+        const smsAll = lsFlag(SMS_ICON_ALL_KEY, false);
+        hide(shell.querySelector('[data-role="sms"]'), !(smsUnread() > 0 && (smsAll || smsNewChats.size > 0)) || noteWaits('sms'));
         hide(shell.querySelector('[data-role="chat"]'), !(chatUnread() > 0) || noteWaits('chat'));
         // Weather (#792): while Home or Work has an alert, and while rain is due or falling there
         // with the rain alarm on (wmWeather.statusState); a waiting notification of its class stands in
@@ -3066,6 +3096,13 @@
     let noteQueued = false;
     let noteKeysFor = ''; // the soft keys on screen were made for this (bubble id + Dismiss or not)
 
+    // Yukimi, Nov 13: a slow link raises no notification; the service worker's update toasts belong to
+    // the title bar's update icon (it shows while one waits, a tap on it brings the notice up), never
+    // the speech bubble
+    const LATENCY_TOAST = /^high latency/i;
+    const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|update check failed|updates? (are )?(ready|available))/i;
+    const isUpdateNote = (n) => !!n && UPDATE_TOAST.test(String(n.title || ''));
+
     function readToasts() {
         const box = document.getElementById('toastContainer');
         if (!box) return [];
@@ -3076,6 +3113,7 @@
             const titleEl = t.querySelector('.toast-title');
             const msgEl = t.querySelector('.toast-message');
             const title = titleEl ? titleEl.textContent.trim() : '';
+            if (LATENCY_TOAST.test(title)) continue;
             const text = msgEl ? msgEl.textContent.replace(/\s+/g, ' ').trim() : '';
             const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
             const key = `${type}\u0001${title}\u0001${text}`;
@@ -3089,6 +3127,8 @@
     }
 
     const noteOf = (id) => (id ? notes.find((n) => n.ids.includes(id)) || null : null);
+    /** The notifications the speech bubble stands for: all but the update notices (the update icon's). */
+    const notesForBubbleIcon = () => notes.filter((n) => !isUpdateNote(n));
     const noteShownNote = () => noteOf(noteShown);
 
     /** Bubbles wait for startup and for full-screen takeovers (logon, errors). */
@@ -3509,17 +3549,20 @@
     // white glyphs of its own, a reminder the clock, anything else the speech bubble
     const NOTE_KIND_ICON = { error: 'status-error', warning: 'status-warning', reminder: 'status-reminder' };
     function noteIcon(n) {
+        if (isUpdateNote(n)) return artImageSet('status-update');
         // an app's own notification (appNote) may bring its own glyph
         const own = n && appNotes.get(n.id);
         if (own && own.icon) return /^(url|image-set)\(/.test(own.icon) ? own.icon : artImageSet(own.icon);
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', latency: 'High Latency', wxalert: 'Weather Alert', rain: 'Rain Alarm' };
+    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
         const icon = shell.querySelector('[data-role="notify"]');
+        // update notices stand on the update icon, not here
+        const notes = notesForBubbleIcon();
         const count = notes.length + statusFolded.length;
         icon.hidden = !count;
         // the most serious pending kind shows, also with several waiting
@@ -3567,7 +3610,7 @@
                 b.addEventListener('click', (e) => { e.stopPropagation(); tap(); });
                 tray.appendChild(b);
             };
-            for (const n of notes) add(noteIcon(n), noteTitle(n), () => showNote(n.id));
+            for (const n of notesForBubbleIcon()) add(noteIcon(n), noteTitle(n), () => showNote(n.id));
             for (const r of statusFolded) {
                 add(artImageSet(STATUS_APP_ICONS[r]), STATUS_APP_LABEL[r], () => {
                     noteTrayOpen = false;
@@ -3788,16 +3831,18 @@
     /** The title bar icon: hides an open bubble; one notification comes back, several open the tray. */
     function noteIconTap() {
         closeMenus(true);
+        // the speech bubble's own notifications (update notices are the update icon's)
+        const mine = notesForBubbleIcon();
         const bub = shell.querySelector('.wm-bubble');
-        if (!notes.length && statusFolded.length === 1 && !bub.hidden && bub.dataset.role === statusFolded[0]) { closeBubble(); return; }
+        if (!mine.length && statusFolded.length === 1 && !bub.hidden && bub.dataset.role === statusFolded[0]) { closeBubble(); return; }
         closeBubble();
         if (noteShownNote()) {
             notes.forEach((n) => n.ids.forEach((id) => noteSeen.add(seenKey(id, n))));
             hideNote();
             return;
         }
-        if (notes.length === 1 && !statusFolded.length) { showNote(notes[0].id); return; }
-        if (!notes.length && statusFolded.length === 1) { statusBubble(statusFolded[0], shell.querySelector('[data-role="notify"]')); return; }
+        if (mine.length === 1 && !statusFolded.length) { showNote(mine[0].id); return; }
+        if (!mine.length && statusFolded.length === 1) { statusBubble(statusFolded[0], shell.querySelector('[data-role="notify"]')); return; }
         noteTrayOpen = !noteTrayOpen;
         renderNotes();
     }
@@ -4111,12 +4156,10 @@
             }
             const links = w ? [{ label: role === 'wxalert' ? 'View Alerts' : 'Open Weather', action: () => { closeBubble(); if (role === 'wxalert' && typeof w.showAlerts === 'function') w.showAlerts(); else w.open(); } }] : [];
             bubble({ title: STATUS_APP_LABEL[role], role, anchor, sections: links.length ? [...sections, { links }] : sections, buttons: [{ text: 'Hide' }] });
-        } else if (role === 'latency') {
-            const lat = window.wsClient && window.wsClient._latencyNotice;
-            const c = window.wsClient;
-            const links = c ? [{ label: 'View Connection', action: () => { closeBubble(); statusBubble('data', shell.querySelector('[data-role="data"]')); } }] : [];
-            bubble({ title: 'High Latency Detected', role, anchor, sections: [lat ? lat.reason : 'The link to Melaton is slow.', ...(links.length ? [{ links }] : [])], buttons: [{ text: 'Hide' }] });
         } else if (role === 'update') {
+            // a waiting update notice (downloading, stalled, applied ...) comes up from its icon
+            const waiting = notes.find(isUpdateNote);
+            if (waiting) { closeBubble(); showNote(waiting.id); return; }
             const sw = window.serviceWorkerManager;
             const n = sw && Number(sw.pendingUpdateFilesTotal);
             const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} files)` : ''}. Melaton restarts to install them.`;
@@ -7701,6 +7744,7 @@
         },
         /** The unread mail icon's "any unread message" switch (Messaging > Tools > Options). */
         mailIconAllKey: MAIL_ICON_ALL_KEY,
+        smsIconAllKey: SMS_ICON_ALL_KEY,
         /** The low battery warning level in percent, and its storage key (Settings > Power). */
         batteryLowLevel,
         refreshStatus: () => refreshStatus(),
