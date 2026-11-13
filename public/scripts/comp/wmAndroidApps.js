@@ -45,6 +45,9 @@
     const MODE_KEY = 'wmProgramIconsMode'; // 'simple' | 'detailed': the last Style picked
     const MODES = [['simple', 'Simple'], ['detailed', 'Detailed']];
     const readMode = () => (localStorage.getItem(MODE_KEY) === 'simple' ? 'simple' : 'detailed');
+    // send each program's themed icon (Android 13's one-colour mark) along: Simple builds from it
+    const THEMED_KEY = 'wmProgramIconsThemed'; // '0' = off; absent = on
+    const readThemed = () => localStorage.getItem(THEMED_KEY) !== '0';
     const START_MENU_KEY = 'wmStartMenu'; // Settings > Menus' own list (wmPrograms.js)
     const FOLDER = 'android';
     const API = '/api/wm-program-icons';
@@ -279,12 +282,12 @@
 
     const job = { id: readJson(JOB_KEY, null), data: null, timer: null, live: null, lastState: null };
 
-    /** The program's own launcher icon as a data URL (the app's icon file at 512 px). */
-    async function iconData(a) {
+    /** The program's own launcher icon (or with themed, its themed layer) as a data URL, 512 px. */
+    async function iconData(a, themed) {
         try {
             const src = String(a.icon || '');
             const abs = src.startsWith('//') ? `${location.protocol}${src}` : src;
-            const res = await fetch(`${abs}${abs.includes('?') ? '&' : '?'}s=512`);
+            const res = await fetch(`${abs}${abs.includes('?') ? '&' : '?'}s=512${themed ? '&mono=1' : ''}`);
             if (!res.ok) return null;
             const blob = await res.blob();
             return await new Promise((resolve) => {
@@ -364,8 +367,10 @@
             el.innerHTML = `<p>Select the programs to give Windows Mobile icons, then tap Request. The server makes them; you can close Program Icons meanwhile.</p>
                 <div class="wm-pi-scroll"><div class="wm-icongrid wm-pi-grid" role="list">${cells}</div></div>
                 ${styleHtml('pi-style', d.mode)}
+                ${ui.check('pi-themed', 'Send themed icons (the program\'s own one-colour mark)', d.themed)}
                 ${ui.buttons([['request', job.id ? 'Request (busy)' : `Request${d.sel.size ? ` (${d.sel.size})` : ''}`, !d.sel.size || !!job.id], ['original', 'Use Android Icon', !anyWm]])}`;
             bindStyle(el, 'pi-style', (v) => { d.mode = v; try { localStorage.setItem(MODE_KEY, v); } catch (_) { /* this visit only */ } });
+            el.querySelector('input[name="pi-themed"]').addEventListener('change', (e) => { d.themed = e.target.checked; try { localStorage.setItem(THEMED_KEY, d.themed ? '1' : '0'); } catch (_) { /* this visit only */ } });
             el.querySelector('.wm-pi-grid').addEventListener('click', (e) => {
                 const cell = e.target.closest('.wm-pi-cell');
                 if (!cell) return;
@@ -377,7 +382,7 @@
                 const chosen = d.list.filter((a) => d.sel.has(a.id));
                 if (!chosen.length || job.id) return;
                 try {
-                    const items = await sh.busy(async () => Promise.all(chosen.map(async (a) => ({ id: a.id, label: a.label, category: a.category || null, game: a.game === true, icon: await iconData(a) }))), { paint: true, timeout: 30000 });
+                    const items = await sh.busy(async () => Promise.all(chosen.map(async (a) => ({ id: a.id, label: a.label, category: a.category || null, game: a.game === true, icon: await iconData(a), themed: d.themed && a.themed === true ? await iconData(a, true) : null }))), { paint: true, timeout: 30000 });
                     const j = await sh.busy(() => api('/jobs', { method: 'POST', body: { mode: d.mode, items } }), { paint: true, timeout: 60000 });
                     setJob(j.job.id, j.job);
                     job.lastState = 'working';
@@ -429,7 +434,7 @@
                 return `<div class="wm-listbox-row wm-pi-row">
                     <label class="wm-check wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}><span></span>` : '<span class="wm-pi-nobox"></span>'}
                     <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
-                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : `${STATE_TEXT[it.state] || it.state}, ${MODE_LABEL[it.mode] || 'Detailed'}`)}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
+                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : `${STATE_TEXT[it.state] || it.state}, ${MODE_LABEL[it.mode] || 'Detailed'}${it.note ? `. ${it.note}` : ''}`)}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
             }).join('');
             el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again in the Style below, then tap Done or Regenerate.'}</p>
                 <div class="wm-listbox wm-pi-list" style="max-height:calc(230 * var(--wm-px))">${rows}</div>
@@ -490,7 +495,7 @@
             init() {
                 const hidden = readSet(HIDDEN_KEY);
                 const list = read().filter((a) => a.role !== 'settings' && !ROLES[a.role] && !hidden.has(a.id)).sort((x, y) => coll.compare(x.label, y.label));
-                const d = { list, sel: new Set(), keep: new Set(), mode: readMode(), regenMode: readMode() };
+                const d = { list, sel: new Set(), keep: new Set(), mode: readMode(), regenMode: readMode(), themed: readThemed() };
                 // a batch another phone started (or one this phone forgot): the newest open one
                 if (!job.id) {
                     api('/jobs').then((j) => {

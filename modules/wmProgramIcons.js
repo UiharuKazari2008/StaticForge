@@ -31,7 +31,7 @@
  * HTTP (session auth; generating and writing the store are admin only):
  *   GET  /api/wm-program-icons/manifest
  *   GET  /api/wm-program-icons/jobs                       open jobs (newest first)
- *   POST /api/wm-program-icons/jobs                       { mode?: 'simple' | 'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL }] }
+ *   POST /api/wm-program-icons/jobs                       { mode?: 'simple' | 'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL, themed?: data URL }] }
  *   GET  /api/wm-program-icons/jobs/:job
  *   GET  /api/wm-program-icons/jobs/:job/files/:file      a preview PNG
  *   POST /api/wm-program-icons/jobs/:job/regenerate       { keys: [...], mode? }
@@ -153,7 +153,8 @@ async function playStoreContext(pkg) {
     if (!/^[A-Za-z0-9_.]+$/.test(String(pkg || ''))) return null;
     const file = path.join(cacheDir(), 'play', `${pkg}.json`);
     const cached = readJson(file, null);
-    if (cached && Date.now() - (cached.at || 0) < PLAY_TTL_MS) return cached.value;
+    // (answers kept before the store images were read are read again)
+    if (cached && Date.now() - (cached.at || 0) < PLAY_TTL_MS && (!cached.value || cached.value.images !== undefined)) return cached.value;
     let value = null;
     try {
         const res = await fetchWithTimeout(`https://play.google.com/store/apps/details?id=${encodeURIComponent(pkg)}&hl=en_US&gl=US`, {
@@ -169,12 +170,26 @@ async function playStoreContext(pkg) {
             const description = collapse(decodeEntities((long ? long[1] : (j && j.description) || '').replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, ' '))).slice(0, 700);
             const og = html.match(/<meta property="og:image" content="([^"]+)"/);
             const icon = (j && j.image) || (og && decodeEntities(og[1]).replace(/=s\d+.*$/, '')) || null;
+            // the program's own store art: its feature graphic and first screenshots (the page's other
+            // images are similar apps' icons and videos)
+            const images = [];
+            for (const m of html.matchAll(/<img[^>]*>/g)) {
+                const tag = m[0];
+                const src = (tag.match(/src="(https:\/\/play-lh\.googleusercontent\.com\/[^"]+)"/) || [])[1];
+                if (!src) continue;
+                const feature = /class="[^"]*\biFm1E\b/.test(tag);
+                if (!feature && !/alt="Screenshot image"/.test(tag)) continue;
+                const base = src.replace(/=.*$/, '');
+                if (images.includes(base)) continue;
+                if (feature) images.unshift(base); else if (images.length < 7) images.push(base);
+            }
             value = {
                 title: collapse(j && j.name) || null,
                 description: description || null,
                 category: collapse(j && j.applicationCategory).replace(/_/g, ' ').toLowerCase() || null,
                 developer: collapse(j && j.author && j.author.name) || null,
-                iconUrl: icon && /^https:\/\/play-lh\.googleusercontent\.com\//.test(icon) ? `${icon.replace(/=.*$/, '')}=s512` : null
+                iconUrl: icon && /^https:\/\/play-lh\.googleusercontent\.com\//.test(icon) ? `${icon.replace(/=.*$/, '')}=s512` : null,
+                images
             };
         }
     } catch (_) { value = null; }
@@ -191,7 +206,7 @@ async function playStoreContext(pkg) {
 //             object that says what the program does
 const MODES = ['simple', 'detailed'];
 const normMode = (m) => (MODES.includes(m) ? m : 'detailed');
-const SIMPLE_TAKE = 'Simple mode: one bold object only, built from two or three big shapes with two tones each, like Windows Mobile\'s own program icons (a handset, an envelope, a globe). Use the app\'s own logo mark as that object; if the app\'s icon is a character or a painted scene, use the game\'s emblem or logo symbol instead, or else one simple object that stands for it (its weapon, a halo, a ball). No faces or figures, no scene, nothing small.';
+const SIMPLE_TAKE = 'Simple mode: one bold mark only, built from two or three big shapes with two tones each, like Windows Mobile\'s own program icons. Build it from the app\'s real mark as the references show it (its themed one-colour icon and/or its official logo): keep that exact shape, proportions and letterforms, in the brand\'s colours; never invent a different emblem or letter. The icon is square and must read at 16 pixels, so never copy a whole wordmark: if the logo has an emblem (a halo, a star, a crest, a symbol over a letter), that emblem alone becomes the icon, with at most the one letter it sits on; if it is lettering only, use its main word when it is short (six letters or fewer), else its initial, in the logo\'s own letterforms. No faces or figures, no scene, nothing small.';
 
 // a regeneration asks for another way to turn the brand into a WM object
 const TAKES = [
@@ -342,6 +357,59 @@ async function describeIcon(name, refBuffers, mode) {
     } catch (_) { return null; }
 }
 
+/**
+ * The program's official logo, found in its store art (feature graphic, screenshots) by a vision
+ * model and cropped (Yukimi, Nov 12: Simple mode drew invented marks - an "N" for NIKKE, a ring for
+ * Blue Archive - when it had no picture of the real one). Writes <key>-logo.png; item.logo =
+ * { found, what }. Never guesses: nothing found leaves found false.
+ */
+async function findLogo(item, ctx, dir) {
+    if (item.logo !== undefined) return item.logo;
+    item.logo = { found: false };
+    const urls = (ctx && Array.isArray(ctx.images) ? ctx.images : []).slice(0, 7);
+    if (!urls.length) return item.logo;
+    let key = null;
+    try { key = appIconGenerator.resolveOpenAiKey(projectRoot).apiKey; } catch (_) { return item.logo; }
+    const imgs = [];
+    for (const u of urls) {
+        try {
+            const r = await fetchWithTimeout(`${u}=w1024`, {}, 15000);
+            if (r.ok) imgs.push(await sharp(Buffer.from(await r.arrayBuffer())).png().toBuffer());
+        } catch (_) { /* one image fewer */ }
+    }
+    if (!imgs.length) return item.logo;
+    const content = [{
+        type: 'text',
+        text: `These are store images of "${item.label}" (numbered from 0 in order). Find its official logo: the emblem or logo lettering as the publisher designed it, not character art, UI text, captions or the publisher's own logo. Answer JSON only: {"found": true|false, "image": <index>, "box": [left, top, right, bottom] as fractions 0..1 of that image, "what": "<short description>"}. Pick the clearest, largest one. If no official logo is visible, answer {"found": false}. Never guess.`
+    }];
+    for (const b of imgs) content.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${(await sharp(b).resize({ width: 768, withoutEnlargement: true }).png().toBuffer()).toString('base64')}` } });
+    try {
+        const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: collapse(settings().briefModel) || 'gpt-5.4-mini', response_format: { type: 'json_object' }, messages: [{ role: 'user', content }] })
+        }, 90000);
+        if (!res.ok) return item.logo;
+        const j = await res.json();
+        const a = JSON.parse((j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content) || '{}');
+        const img = imgs[Number(a.image)];
+        const box = Array.isArray(a.box) ? a.box.map(Number) : null;
+        if (!a.found || !img || !box || box.length !== 4 || box.some((v) => !Number.isFinite(v))) return item.logo;
+        const md = await sharp(img).metadata();
+        // a generous margin: the boxes come back a little tight
+        const [l, t, r, b] = box;
+        const L = Math.max(0, Math.floor((l - 0.08) * md.width));
+        const T = Math.max(0, Math.floor((t - 0.06) * md.height));
+        const R = Math.min(md.width, Math.ceil((r + 0.08) * md.width));
+        const B = Math.min(md.height, Math.ceil((b + 0.06) * md.height));
+        if (R - L < 12 || B - T < 12) return item.logo;
+        const crop = await sharp(img).extract({ left: L, top: T, width: R - L, height: B - T }).resize({ width: 768, height: 768, fit: 'inside' }).png().toBuffer();
+        atomicWrite(path.join(dir, `${item.key}-logo.png`), crop);
+        item.logo = { found: true, what: collapse(a.what).slice(0, 120) };
+    } catch (_) { /* no logo */ }
+    return item.logo;
+}
+
 async function requestIcon(route, prompt, refBuffers) {
     const gate = route.provider === 'tokenrouter' ? require('./tokenRouterGate') : null;
     const client = new OpenAI({
@@ -410,6 +478,7 @@ function publicJob(job) {
             error: it.error || null,
             attempt: it.attempt,
             mode: normMode(it.mode),
+            note: it.note || null,
             preview: it.preview ? Object.fromEntries(PREVIEW_SIZES.map((s) => [s, `/api/wm-program-icons/jobs/${job.id}/files/${it.preview}-${s}.png`])) : null,
             original: it.hasRef ? `/api/wm-program-icons/jobs/${job.id}/files/${it.key}-ref.png` : null,
             store: it.store || null
@@ -473,15 +542,36 @@ async function runItem(job, item) {
         job.model = route.model;
         item.attempt = (item.attempt || 0) + 1;
         const isGame = item.game || /game/i.test(String((ctx && ctx.category) || item.category || ''));
-        // a game: drawn from a brief of its objects, with no picture to cut out (describeIcon)
-        // one brief per mode (a simple icon of a game describes its emblem, not its characters)
-        const mode = normMode(item.mode);
-        if (!item.briefs || typeof item.briefs !== 'object') item.briefs = {};
-        if (isGame && refs.length && item.briefs[mode] === undefined) item.briefs[mode] = await describeIcon(item.label, refs.slice().reverse(), mode);
-        const brief = isGame ? item.briefs[mode] : null;
-        const useBrief = isGame && brief;
-        const prompt = buildPrompt(item, ctx, item.attempt, useBrief ? [] : refNames, useBrief ? brief : null);
-        const master = await requestIcon(route, prompt, useBrief ? [] : refs);
+        let mode = normMode(item.mode);
+        item.note = null;
+        let useRefs = refs;
+        let useNames = refNames;
+        let brief = null;
+        if (mode === 'simple') {
+            // Simple works from the real mark only: the themed icon and the logo in the store art,
+            // with the icons for colour; a game with neither is made in the Detailed style instead
+            const own = [];
+            const ownNames = [];
+            const themedPath = path.join(dir, `${item.key}-themed.png`);
+            if (fs.existsSync(themedPath)) { own.push(fs.readFileSync(themedPath)); ownNames.push('the app\'s themed icon (its own one-colour mark: the shape to keep)'); }
+            const logo = await findLogo(item, ctx, dir);
+            if (logo.found) { own.push(fs.readFileSync(path.join(dir, `${item.key}-logo.png`))); ownNames.push(`its official logo, cropped from its store art (${logo.what || 'logo'})`); }
+            if (own.length) {
+                useRefs = own.concat(refs);
+                useNames = ownNames.concat(refNames.map((n) => `${n} (for its colours)`));
+            } else if (isGame) {
+                mode = 'detailed';
+                item.note = 'No logo or themed icon to work from: made in the Detailed style.';
+            }
+        }
+        if (mode === 'detailed' && isGame && refs.length) {
+            // a game in Detailed: drawn from a brief of its objects, with no picture to cut out
+            if (!item.briefs || typeof item.briefs !== 'object') item.briefs = {};
+            if (item.briefs.detailed === undefined) item.briefs.detailed = await describeIcon(item.label, refs.slice().reverse(), 'detailed');
+            brief = item.briefs.detailed;
+        }
+        const prompt = buildPrompt({ ...item, mode }, ctx, item.attempt, brief ? [] : useNames, brief);
+        const master = await requestIcon(route, prompt, brief ? [] : useRefs);
         const base = `${item.key}-${item.attempt}`;
         atomicWrite(path.join(dir, `${base}.png`), master);
         const square = await wmIconGenerator.squareFromCrop(master, await wmIconGenerator.autoCrop(master));
@@ -533,6 +623,16 @@ async function createJob(body) {
                     atomicWrite(path.join(dir, `${item.key}-ref.png`), await sharp(buf).resize(512, 512, { fit: 'inside' }).png().toBuffer());
                     item.hasRef = true;
                 } catch (_) { /* not an image: the store icon will do */ }
+            }
+        }
+        const t = /^data:image\/(png|webp|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(String(raw.themed || ''));
+        if (t) {
+            const buf = Buffer.from(t[2], 'base64');
+            if (buf.length > 0 && buf.length <= MAX_ICON_BYTES) {
+                try {
+                    atomicWrite(path.join(dir, `${item.key}-themed.png`), await sharp(buf).resize(512, 512, { fit: 'inside' }).png().toBuffer());
+                    item.hasThemed = true;
+                } catch (_) { /* not an image */ }
             }
         }
         job.items.push(item);
@@ -641,7 +741,7 @@ function mount(app, authMiddleware, globalResources) {
         const job = jobOr404(req, res);
         if (!job) return;
         const file = String(req.params.file || '');
-        if (!/^[a-f0-9]{12}-(ref|\d+-(16|32|128))\.png$/.test(file)) return res.status(404).end();
+        if (!/^[a-f0-9]{12}-(ref|themed|logo|\d+-(16|32|128))\.png$/.test(file)) return res.status(404).end();
         const p = path.join(jobDir(job.id), file);
         if (!fs.existsSync(p)) return res.status(404).end();
         res.set('Cache-Control', 'private, max-age=86400');
