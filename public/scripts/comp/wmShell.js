@@ -3598,8 +3598,9 @@
      * Progress box (Yozora #806, Yukimi Nov 13 2026): work the user just started on the phone (a
      * print, Recast, Upscale, Expand Canvas, a save to the phone ...) is a WM box over the screen
      * with its title, a status line, the streaming preview when the work sends one, WM's block
-     * progress bar (marquee while the amount is unknown) and Hide (Cancel too when the work can be
-     * stopped). It closes itself when the work ends. Its own layer under the message box layer, so
+     * progress bar (marquee while the amount is unknown) and the title bar's default button in the
+     * corner: X stops the work when it can be stopped (no Cancel button; a Hide button then sits at
+     * the right), ok otherwise puts the box away. It closes itself when the work ends. Its own layer under the message box layer, so
      * an error or a question still comes up over it; several at once show the newest, the next one
      * comes up when it closes. Hide keeps the work running without its box.
      *   progressBox({ title, text, pct, preview, onCancel })

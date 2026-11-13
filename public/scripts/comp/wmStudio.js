@@ -93,7 +93,7 @@
             if (s.phase === 'queued') { queued++; return; }
             if (RENTAN_PHASES.has(s.phase)) rentan = true;
             const pct = Number(s.progress);
-            if (!best || (Number.isFinite(pct) && pct > best.pct)) best = { phase: s.phase || '', pct: Number.isFinite(pct) ? pct : 0 };
+            if (!best || (Number.isFinite(pct) && pct > best.pct)) best = { phase: s.phase || '', pct: Number.isFinite(pct) ? pct : 0, preview: s.preview || '', status: s.status || '' };
         });
         if (!best && !queued) return null;
         return { ...(best || { phase: 'queued', pct: 0 }), rentan, queued };
@@ -843,15 +843,43 @@
         setTimeout(syncGenerating, 50);
     }
 
+    /**
+     * The print's progress box (#806, Yukimi Nov 13): Generate opens the shell's WM progress box
+     * (status, the streaming preview, the bar, Hide); it closes when the print is done.
+     */
+    let printBox = null;
+    function syncPrintBox(now, starting) {
+        if (!now) { if (printBox) { printBox.close(); printBox = null; } return; }
+        if (!printBox) {
+            // opened by the user's Generate, not by a print already running when Studio comes up
+            if (!starting || !ws || typeof ws.progressBox !== 'function' || !isCurrent()) return;
+            printBox = ws.progressBox({ title: 'Generating Image', text: 'Generating image...', pct: null });
+            if (!printBox) return;
+        }
+        const p = progress();
+        let text = 'Generating image...';
+        let pct = null;
+        if (p) {
+            if (p.rentan) text = p.status || 'Rentan is resolving the scene...';
+            else if (p.phase === 'queued') text = 'Queued...';
+            else text = p.status || text;
+            if (!p.rentan && p.pct > 0 && p.pct <= 100) pct = p.pct;
+            if (p.queued && p.phase !== 'queued') text += ` (+${p.queued} queued)`;
+        }
+        printBox.update({ text, pct, preview: p && p.preview ? p.preview : undefined });
+    }
+
     function syncGenerating() {
         const now = generating();
-        if (now && !wasGenerating) {
+        const starting = now && !wasGenerating;
+        if (starting) {
             // the print shows on the Print page while it runs
             if (shown && !tools.length) setTab('print');
             if (!progressTimer) progressTimer = setInterval(syncGenerating, 500);
         }
         if (!now && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
         wasGenerating = now;
+        syncPrintBox(now, starting);
         if (page) { page.classList.toggle('wms-generating', now); paintEmpty(); }
         refreshTitle();
         if (isCurrent() && !tools.length) ws.refreshSoftKeys();

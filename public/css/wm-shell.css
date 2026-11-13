@@ -3981,3 +3981,74 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     display: block !important;
     background: transparent !important;
 }
+
+/* Progress box (wmShell progressBox, #806): a print, Recast, Upscale, Expand Canvas, a save to the
+ * phone. Under the message box layer (a question or an error comes up over it); the status line,
+ * the streaming preview, WM's block progress bar (1 px black frame, whole 7 px blocks with 2 px
+ * gaps; five blocks walk across while the amount is unknown); the corner's X (stop) or ok (hide). */
+.wm-progress-layer {
+    z-index: 19;
+}
+
+.wm-progress-layer .wm-msgbox-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-progress-layer .wm-progress-preview {
+    display: block;
+    width: auto !important;
+    height: auto !important;
+    max-width: 100%;
+    max-height: calc(220 * var(--wm-px));
+    margin: calc(6 * var(--wm-px)) auto 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+}
+
+.wm-progress-layer .wm-progress-preview[hidden] {
+    display: none;
+}
+
+.wm-progress-layer .wm-progress-bar {
+    position: relative;
+    border-radius: 0 !important;
+    height: calc(15 * var(--wm-px));
+    margin-top: calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+    overflow: hidden;
+}
+
+.wm-progress-layer .wm-progress-bar > span {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: calc(var(--wm-pb-blocks, 0) * 9 * var(--wm-px));
+    max-width: calc(100% - 2 * var(--wm-px));
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0, var(--wm-highlight) calc(7 * var(--wm-px)), transparent calc(7 * var(--wm-px)), transparent calc(9 * var(--wm-px)));
+}
+
+.wm-progress-layer .wm-progress-bar.is-marquee > span {
+    width: calc(45 * var(--wm-px));
+    max-width: none;
+    animation: wm-pb-marquee 2s steps(20) infinite;
+}
+
+@keyframes wm-pb-marquee {
+    from { left: calc(-45 * var(--wm-px)); }
+    to { left: 100%; }
+}
+
+/* its one button (Hide, when the corner's X cancels) sits at the right, 8 units in and 8 up, as
+ * WM's right-aligned dialog buttons; no row when the corner's ok is the only button */
+html.ui-mobile .wm-progress-layer .wm-msgbox-buttons {
+    justify-content: flex-end !important;
+    padding: 0 calc(8 * var(--wm-px)) calc(8 * var(--wm-px)) !important;
+}
+
+html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
+    display: none !important;
+}

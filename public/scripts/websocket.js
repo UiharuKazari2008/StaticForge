@@ -7178,10 +7178,17 @@ class WebSocketClient {
                     ? data.stepFrames[data.stepFrames.length - 1].imageData
                     : null);
 
+            // the phone's Studio progress box reads the newest frame and status from here (wmStudio.js, #806)
+            if (toastPreviewData) progressState.preview = toastPreviewData;
+            if (typeof getGenerationStatusMessage === 'function') {
+                try { progressState.status = getGenerationStatusMessage(data); } catch (_) { /* keep the last */ }
+            }
             if (toastPreviewData && typeof updateGlassToastImagePreview === 'function') {
                 const manualModalEl = document.getElementById('manualModal');
+                // the phone shows the frames in its progress box over Studio too (#806)
                 const skipToastPreview = (galleryRerollActive && !isRerollProgress)
                     || (!isRerollProgress
+                        && window.uiShell !== 'mobile'
                         && data.phase === 'generating'
                         && manualModalEl
                         && !manualModalEl.classList.contains('hidden')

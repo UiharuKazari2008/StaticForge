@@ -869,7 +869,8 @@
                     this.watchTimer = setTimeout(watch, 500);
                 };
                 if (doc && doc.getElementById(id)) this.watchTimer = setTimeout(watch, 500);
-                else if (!own.length) this.close();
+                // no toast drawn: the shell's progress box (#806) closed with the work, nothing to press
+                else this.close();
             });
         }
 

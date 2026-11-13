@@ -99,7 +99,56 @@ function _progressDialogCancelButton(buttons) {
 // the startup window for them (websocket.js), so these stay as they are
 const PROGRESS_DIALOG_EXCLUDED_TITLES = new Set(['Connecting', 'Connected', 'Connection Error', 'Connection Warning', 'Dreamscape']);
 
+// the service worker's update toasts belong to the phone's update icon (wmShell), never a box
+const PHONE_PROGRESS_EXCLUDED = /^(checking for updates|downloading updates|download stalled|loading|switching)/i;
+
+/**
+ * The phone (#806): a progress toast for work the user just started (a print, Recast, Upscale,
+ * Expand Canvas, an upload ...) is wmShell's progress box: title, status line, the streaming
+ * preview, the bar, Hide / Cancel. It closes when the work ends; the result (an error) is the
+ * shell's message box as before. Work that runs on its own stays a notification.
+ * The same op shape as fileOperationProgress.task(), plus setPreview.
+ */
+function _phoneProgressOp(title, message, onCancel) {
+    const sh = typeof window !== 'undefined' ? window.wmShell : null;
+    if (!sh || typeof sh.progressBox !== 'function') return null;
+    if (typeof sh.answersUser === 'function' && !sh.answersUser()) return null;
+    // plain text for the box (callers send escaped markup: "Copying 3 items &amp; ...")
+    const plain = (v) => _toastPlain(v).replace(/&(amp|lt|gt|quot|#39);/g, (m, k) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }[k]));
+    let header = plain(title || message);
+    let line = title ? plain(message) : '';
+    let pct = null;
+    const box = sh.progressBox({ title: header, text: line, pct: null, onCancel });
+    if (!box) return null;
+    const op = {
+        shown: true,
+        get header() { return header; },
+        setHeader(t) { if (t) { header = plain(t); box.update({ title: header }); } },
+        setLine(t) { line = plain(t); box.update({ text: line }); },
+        setPercent(p) { const n = Number(p); pct = Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : null; box.update({ pct }); },
+        setMarquee(on) { if (on) box.update({ pct: null }); },
+        setPreview(src) { box.update({ preview: src || '' }); },
+        setOnCancel(fn) { box.setCancel(fn); },
+        finish() { box.close(); },
+        // the phone's boxes close when the work is done (Yukimi, Nov 13): an error is still said
+        complete() {
+            box.close();
+            return Promise.resolve('close');
+        }
+    };
+    return op;
+}
+
 function _openProgressDialogForToast(toastId, title, message, buttons) {
+    if (typeof window !== 'undefined' && window.uiShell === 'mobile' && !PROGRESS_DIALOG_EXCLUDED_TITLES.has(title)
+        && !PHONE_PROGRESS_EXCLUDED.test(_toastPlain(title || message))) {
+        const cancel = _progressDialogCancelButton(buttons);
+        let op = null;
+        try { op = _phoneProgressOp(title, message, cancel ? () => cancel.onClick(toastId) : null); } catch (error) { console.error('Progress box:', error); }
+        if (!op) return false;
+        progressDialogToasts.set(toastId, { op, titled: !!title, phone: true });
+        return true;
+    }
     if (!_progressDialogsAvailable() || PROGRESS_DIALOG_EXCLUDED_TITLES.has(title)) return false;
     const cancel = _progressDialogCancelButton(buttons);
     let op;
@@ -140,6 +189,17 @@ function _endProgressDialog(toastId, result = {}) {
 
 function _endProgressDialogEntry(entry, toastId, { type, title, message, buttons } = {}) {
     const op = entry.op;
+    if (entry.phone) {
+        // the phone's box closes when the work ends; an error or warning is the shell's message box
+        op.finish();
+        const sh = window.wmShell;
+        if ((type === 'error' || type === 'warning') && sh && typeof sh.messageBox === 'function') {
+            const t = _toastPlain(title);
+            const m = _toastPlain(message);
+            sh.messageBox({ title: (m && t) || op.header || 'Melaton Mobile', text: m || t, icon: type, modal: true });
+        }
+        return;
+    }
     const results = (Array.isArray(buttons) ? buttons : [])
         .filter(b => b && b.text && typeof b.onClick === 'function' && !_progressDialogCancelButton([b]));
     if (type !== 'error' && type !== 'warning' && !results.length) {
@@ -660,6 +720,9 @@ const TOAST_CONFIRM_SPAM = /\bcop(ied|y)\b|\b(saved|updated|deleted|removed|adde
 // noise the audit found: lookups while typing, values the field already shows, hints while dragging
 const TOAST_NOISE_TITLE = /^(dataset tag search error|get tags for path|search tags error|character centers overlap)$/i;
 const TOAST_NOISE_MESSAGE = /^(custom size adjusted|dimensions snapped)/i;
+// the phone (#806, Yukimi Nov 13): balance changes and operation receipts are no news (the Anlas
+// row shows the balance); a deposit still is
+const TOAST_PHONE_NOISE_TITLE = /^(balance updated|(generation|upscaling|vibe encoding|operation) receipt)$/i;
 // an info note that explains a blocked action is a message box; other info notes are chatter
 const TOAST_INFO_DIALOG = /\b(first|please|required)\b|^(select|choose) |nothing selected|no \w+ selected|^(alarm|timer|reminder)\b/i;
 const TOAST_NOT_CONNECTED = /websocket not connected|not connected to (the )?server|connection not healthy/i;
@@ -687,6 +750,7 @@ function _toastPolicyRoute(type, title, message, showProgress, buttons) {
     const phone = typeof window !== 'undefined' && window.uiShell === 'mobile';
     const hasButtons = Array.isArray(buttons) && buttons.length > 0;
     if (TOAST_NOISE_TITLE.test(t) || TOAST_NOISE_MESSAGE.test(m)) return { kind: 'drop' };
+    if (phone && TOAST_PHONE_NOISE_TITLE.test(t)) return { kind: 'drop' };
     if (desktop && DESKTOP_POPUP_TOAST_TITLES.has(t)) return { kind: 'pass' };
     if (desktop) {
         for (const [re, anchorId] of TOAST_BALLOONS) {
@@ -1468,7 +1532,12 @@ function updateGlassToastReasoning(toastId, reasoning, toolName = null, phase = 
  * @param {string} imageData - Base64 image data
  */
 function updateGlassToastImagePreview(toastId, imageData) {
-    if (progressDialogToasts.has(toastId)) return;
+    const dialog = progressDialogToasts.get(toastId);
+    if (dialog) {
+        // the phone's progress box shows the streaming preview (#806); Vista's dialog has none
+        if (typeof dialog.op.setPreview === 'function') dialog.op.setPreview(imageData);
+        return;
+    }
     _androidNotifyToast(toastId, 'updateNotificationImagePreview', _toastNumericId(toastId), imageData ?? '');
 
     const toast = document.getElementById(toastId);
