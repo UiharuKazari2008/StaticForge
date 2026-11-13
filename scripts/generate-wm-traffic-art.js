@@ -20,7 +20,7 @@ const sharp = require('sharp');
 const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
 const OUT65 = path.resolve(__dirname, '..', 'public', 'static_images', 'wm65');
 
-// The lit lamp follows the app's report (Yukimi, Nov 13: the Start icon's signal shows what the app shows):
+// The lit lamp of Today's panel follows the app's report (Yukimi, Nov 13; the program icon stays green):
 // heavy = red, moderate = amber, clear = green (the default files), none = every lamp dark (no report).
 const LAMPS = [
     { cy: 11, dark: '#3a0d0b', lit: ['#ffd6cc', '#ff3b1e', '#9c1606'], glow: '#ff5a3a', small: { cy: 2.8, dark: '#5a1210', lit: '#ff3b1e', hi: '#ffe0d6' } },
@@ -115,19 +115,21 @@ async function render(src, size, file) {
 }
 
 (async () => {
-    // clear (green) keeps the plain names; the other levels are app-traffic-<level>(-lg), start-traffic-<level>
+    // the program icon (6.1 Programs, 6.5 Start): the green signal, as it always was
+    svg = svgFor('clear');
+    await render(svgSmallFor('clear'), 16, 'app-traffic.png');
+    await render(svg, 32, 'app-traffic@2x.png');
+    await render(svg, 64, 'app-traffic@4x.png');
+    await render(svg, 32, 'app-traffic-lg.png');
+    await render(svg, 64, 'app-traffic-lg@2x.png');
+    await render(svg, 128, 'app-traffic-lg@4x.png');
+    await render(svg, 45, path.join(OUT65, 'start-traffic.png'));
+    await render(svg, 90, path.join(OUT65, 'start-traffic@2x.png'));
+    await render(svg, 180, path.join(OUT65, 'start-traffic@4x.png'));
+    // Today's panel lights the report's lamp (wmTraffic.js levelSuffix): clear keeps the plain name
     for (const level of ['clear', 'moderate', 'heavy', 'none']) {
         const sfx = level === 'clear' ? '' : `-${level}`;
         svg = svgFor(level);
-        await render(svgSmallFor(level), 16, `app-traffic${sfx}.png`);
-        await render(svg, 32, `app-traffic${sfx}@2x.png`);
-        await render(svg, 64, `app-traffic${sfx}@4x.png`);
-        await render(svg, 32, `app-traffic${sfx}-lg.png`);
-        await render(svg, 64, `app-traffic${sfx}-lg@2x.png`);
-        await render(svg, 128, `app-traffic${sfx}-lg@4x.png`);
-        await render(svg, 45, path.join(OUT65, `start-traffic${sfx}.png`));
-        await render(svg, 90, path.join(OUT65, `start-traffic${sfx}@2x.png`));
-        await render(svg, 180, path.join(OUT65, `start-traffic${sfx}@4x.png`));
         await panel(0.5, `ti-x-app-traffic-lg${sfx}.png`);
         await panel(1, `ti-x-app-traffic-lg${sfx}@2x.png`);
         await panel(2, `ti-x-app-traffic-lg${sfx}@4x.png`);
