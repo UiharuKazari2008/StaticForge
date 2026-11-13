@@ -82,3 +82,26 @@ socket: the app posts JPEGs (long edge 960, about 7 a second at most, only when 
 `GET /api/activesync/screen/<device>/stream` (multipart/x-mixed-replace). With no reader for 8 s the
 server answers `{ stop: true }` and the phone stops. The page must be open on the phone to be asked;
 once allowed the capture lives in the foreground service and follows the user into other programs.
+
+## Text Messaging notifications (Yozora #779)
+
+The server's Text Messaging accounts (iMessage through BlueBubbles, RCS through the Google Messages
+pairing, `modules/textMessaging.js`) notify on the phone even while the app is in the background.
+`modules/textMessagingPhone.js` sends these to a partnered phone's **service** socket, and only
+while none of the phone's WebViews reports `foreground: true` (when the page is on screen, Melaton
+Mobile shows its own notification):
+
+| event | detail | the app does |
+| --- | --- | --- |
+| `tm.notify` | `{ accountId, chatGuid, guid, title, sender, address, text, isGroup, date, service, account }` | posts (or adds to) a MessagingStyle notification per `accountId + chatGuid` on the "Text messages" channel: quick reply (RemoteInput) and Mark as read; tapping opens the app at that conversation (`dreamscape://textmessaging/<accountId>/<chatGuid>`, the page calls `wmTextMessaging.openChat`) |
+| `tm.dismiss` | `{ accountId, chatGuid }` | cancels that conversation's notification (read elsewhere, or you answered from another device) |
+
+The app answers with ordinary packets on the same socket (it holds the page's session):
+
+- quick reply: `{ type: 'tm_send', requestId, data: { accountId, chatGuid, text } }` -> `tm_send_response`
+  `{ success, tempGuid, chatGuid }` or `{ success: false, code, error }`. On success the app adds the
+  reply to the notification as "You" and keeps it quiet; on failure it shows "Not sent: <error>".
+- Mark as read: `{ type: 'tm_read', requestId, data: { accountId, chatGuid } }`, then cancels the notification.
+
+Google Messages stays the phone's default messaging app (RCS needs it); Yukimi turns its own
+notifications off so a message does not ring twice.

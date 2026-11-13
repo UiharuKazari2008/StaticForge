@@ -860,6 +860,36 @@ function notifyDevice(server, deviceId, name, detail, exceptInfo) {
     }
 }
 
+/**
+ * Partnered phones and their links, for server features that push to the app itself (Text Messaging's
+ * notifications, Yozora #779): { deviceId, name, service (its background socket or null), foreground
+ * (a WebView of it reported being on screen) }.
+ */
+function partnerLinks(globalResources, wsServer) {
+    const server = wsServerOf(globalResources, wsServer);
+    const out = [];
+    const ids = new Set(liveSockets(server, 'device').map((s) => s.info.as.id));
+    for (const id of ids) {
+        const live = liveSockets(server, 'device', id);
+        if (!live.some((s) => s.info.as.session === 'partner')) continue;
+        const service = live.find((s) => s.info.as.speaker === 'service') || null;
+        const foreground = live.some((s) => s.info.as.speaker === 'webview' && s.info.as.status && s.info.as.status.foreground === true);
+        const row = rowOf(globalResources, id);
+        out.push({ deviceId: id, name: row ? row.name : '', service, foreground });
+    }
+    return out;
+}
+
+/** An as_event from the server to one socket (a phone's background link). */
+function sendServerEvent(globalResources, wsServer, socket, name, detail) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!server || !socket) return false;
+    try {
+        server.sendToClient(socket.ws, { type: 'as_event', data: { from: { kind: 'server', id: '', name: '' }, event: name, detail }, timestamp: new Date().toISOString() });
+        return true;
+    } catch (_) { return false; }
+}
+
 /** A device's sync ran (the client tells the server what it finished). */
 function markSynced(globalResources, wsServer, deviceId, summary) {
     if (!isPeerId(deviceId) || !rowOf(globalResources, deviceId)) return false;
@@ -924,5 +954,7 @@ module.exports = {
     getLog,
     forget,
     logEvent,
+    partnerLinks,
+    sendServerEvent,
     resetForTests
 };
