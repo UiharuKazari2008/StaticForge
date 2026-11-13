@@ -1582,6 +1582,16 @@ html.ui-mobile #confirmationDialog textarea {
     user-select: text;
 }
 
+/* a multi-line answer is WM's multi-line edit (wm-programs.css textarea.wm-edit, #784), not one line */
+html.ui-mobile #confirmationDialog textarea {
+    height: calc(54 * var(--wm-px)) !important;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    font: var(--wm-fs) / calc(13 * var(--wm-px)) var(--wm-font) !important;
+    white-space: pre-wrap;
+    overflow-y: auto;
+    resize: none;
+}
+
 html.ui-mobile #confirmationDialog .confirmation-controls {
     display: flex !important;
     flex-direction: row !important;

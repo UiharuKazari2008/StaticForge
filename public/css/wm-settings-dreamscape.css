@@ -57,22 +57,9 @@ html.ui-mobile .wm-ds-list.is-empty {
     color: #8c8e8c;
 }
 
-/* Dovecote > Signatures: a multi-line WM edit box */
+/* Dovecote > Signatures: a WM multi-line edit (wm-programs.css textarea.wm-ds-textarea) */
 html.ui-mobile .wm-ds-textarea {
-    display: block;
-    box-sizing: border-box;
-    width: 100%;
     height: calc(120 * var(--wm-px));
-    margin: 0;
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-radius: 0;
-    background: #fff;
-    color: #000;
-    font: var(--wm-fs) / calc(14 * var(--wm-px)) var(--wm-font);
-    resize: none;
-    outline: none;
-    user-select: text;
 }
 
 /* Search Indexing: WM's progress bar (whole 7 px blocks, 2 px gaps; 18 fill the bar) */

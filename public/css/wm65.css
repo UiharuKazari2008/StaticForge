@@ -620,17 +620,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-fe .fe-row.is-selected .fe-ico::after 
 /* ---- scroll bars (the lists that draw WM's bar): 13 px wide, the theme's grey track, the thumb
  * art (26 x 70 at 2x, its grip dots 12 px from each end) and 19.5 px arrow buttons (the 26 x 26
  * art stretched to 26 x 39 as on the device; the down button is the up art turned over) ---- */
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
     height: calc(13 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-track {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-track {
     background: #e6e6e6;
     border: 0;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-thumb {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-thumb {
     min-height: calc(35 * var(--wm-px));
     border-style: solid;
     border-color: transparent;
@@ -640,7 +640,7 @@ html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-
     background: none;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button {
     display: block;
     width: calc(13 * var(--wm-px));
     height: calc(19.5 * var(--wm-px));
@@ -648,25 +648,25 @@ html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-
     background: #e6e6e6 center / 100% 100% no-repeat;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement {
     border: 0;
     background-image: image-set(url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbaruparrowbutton@4x.png') 4x);
     background-size: 100% 100%;
     background-position: center;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment {
     border: 0;
     background-image: image-set(url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbardownarrowbutton@4x.png') 4x);
     background-size: 100% 100%;
     background-position: center;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
     background-image: image-set(var(--wm65-art-scrollbaruparrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbaruparrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@4x.png')) 4x);
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+html.ui-mobile[data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment:active {
     background-image: image-set(var(--wm65-art-scrollbardownarrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbardownarrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@4x.png')) 4x);
 }
 
@@ -1025,6 +1025,18 @@ html.ui-mobile[data-wm-version="6.5"] .wm-facts:not(.wm-sys-facts .wm-facts) > :
 html.ui-mobile[data-wm-version="6.5"] .wm-edit {
     color: var(--wm65-text);
     font-size: calc(11.5 * var(--wm-px));
+}
+
+/* multi-line edits (#784, wm-programs.css textarea.wm-edit): 6.5's edit text, its line, and the 6.5
+ * scroll bar (in the scroller list below); the suite kit keeps its own 13-unit field text */
+html.ui-mobile[data-wm-version="6.5"] :is(textarea.wm-edit, textarea.wm-ds-textarea) {
+    color: var(--wm65-text);
+    font-size: calc(11.5 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-version="6.5"] textarea.wsk-textarea {
+    color: var(--wm65-text);
 }
 
 /* check box and radio button: 15 px, 1 px black; the device's tick (18 x 14 at 2x) and a 9 px dot */

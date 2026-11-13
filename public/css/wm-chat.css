@@ -337,12 +337,7 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-chat .wch-folder {
 }
 
 .wm-chat .wch-area {
-    display: block;
-    height: auto;
-    min-height: calc(46 * var(--wm-px));
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    resize: none;
-    line-height: calc(14 * var(--wm-px));
+    height: calc(46 * var(--wm-px));
 }
 
 .wm-chat .wch-form .wm-combo {
@@ -442,6 +437,11 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-chat .wch-folder {
  * Tahoma 10.5, rows on a 38.5 pitch with no rule, the name line 15 and the last line 14.5 from 4
  * down, and the selector art from the row's top, 1 short of the pitch and 1.5 short of the right
  * edge (blue from 4.5 to 34 down the row), both lines and the picture inside its blue. */
+
+/* the compose line takes 6.5's text colour like every other edit (#784) */
+html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-input {
+    color: var(--wm65-text);
+}
 
 html.ui-mobile[data-wm-version="6.5"] .wm-chat .wch-row {
     position: relative;

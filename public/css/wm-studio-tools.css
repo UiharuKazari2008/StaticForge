@@ -239,6 +239,7 @@
 
 :is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal textarea {
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    line-height: calc(13 * var(--wm-px)) !important;
     resize: none !important;
 }
 

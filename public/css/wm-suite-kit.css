@@ -296,8 +296,7 @@
     padding: calc(1 * var(--wm-px)) 0 0;
 }
 
-.wsk .wsk-input,
-.wsk .wsk-textarea {
+.wsk .wsk-input {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
@@ -321,19 +320,17 @@
     line-height: calc(17 * var(--wm-px));
 }
 
-/* a multi-line edit (WM's Notes field: framed, grows with the form) */
+/* a multi-line edit: WM's multi-line edit control (wm-programs.css textarea.wsk-textarea: 1-unit
+ * black frame, white, no focus colour, #784) in the kit's 13-unit field text, growing with the form */
 .wsk .wsk-textarea {
-    display: block;
     min-height: calc(60 * var(--wm-px));
-    padding: calc(2 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #a5a5a5;
+    height: auto;
+    font-size: calc(13 * var(--wm-px));
     line-height: calc(15 * var(--wm-px));
-    resize: none;
     field-sizing: content;
 }
 
-.wsk .wsk-input:focus,
-.wsk .wsk-textarea:focus {
+.wsk .wsk-input:focus {
     border-color: #000;
 }
 

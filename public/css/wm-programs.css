@@ -254,6 +254,63 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-icongrid-label span {
     color: #000;
 }
 
+/* ---- multi-line edit (#784): WM's multi-line edit control, as Settings > Owner Information >
+ * Address draws it (~/.cache/wm61/ref/form.png): the one-line edit's 1-unit black frame and white
+ * field, the text from the top-left corner and wrapping, the WM scroll bar when it runs over; no
+ * resize grip, no focus colour, no glow. Every framed text box on the phone is this one rule (the
+ * suite kit's and Dovecote's classes join it); an app rule sets only its height or placement.
+ * Page-filling note editors (Notes, the Notes tabs, a message body) are frameless pages, not this. */
+/* one class weight (0,1,1) for all three, so any app rule wins */
+textarea.wm-edit,
+textarea.wsk-textarea,
+textarea.wm-ds-textarea {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(54 * var(--wm-px));
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) / calc(13 * var(--wm-px)) var(--wm-font);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow-x: hidden;
+    overflow-y: auto;
+    resize: none;
+    user-select: text;
+    -webkit-user-select: text;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+:is(textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea):focus {
+    border-color: #000;
+    background: #fff;
+}
+
+:is(textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea)::placeholder {
+    color: #848284;
+    opacity: 1;
+}
+
+:is(textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea):is(:disabled, [readonly]:disabled) {
+    color: #848284;
+    background: #fff;
+}
+
+/* selected text in any phone edit (one- and multi-line, the note pages): WM's highlight with its
+ * text colour, as the edit control draws it, not the browser's light blue (#784) */
+html.ui-mobile #wmShell :is(input, textarea)::selection {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
+    -webkit-text-fill-color: var(--wm-highlight-text, #fff);
+}
+
 /* check box / radio: 13 px, 1 px black, as drawn by WM's button class */
 .wm-check {
     display: flex;
@@ -714,7 +771,7 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo:disabled::after {
 }
 
 .wm-edit:disabled {
-    color: #8c8e8c;
+    color: #848284;
     background: #fff;
 }
 
@@ -1006,13 +1063,10 @@ html.ui-mobile #wmShell .wm-edit {
     margin: calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
 }
 
-/* Program Icons > Custom: what the icon should be, a WM multi-line edit box */
+/* Program Icons > Custom: what the icon should be, a WM multi-line edit box (textarea.wm-edit) */
 textarea.wm-edit.wm-pi-direction {
     height: calc(58 * var(--wm-px));
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
     margin-bottom: calc(4 * var(--wm-px));
-    resize: none;
-    line-height: calc(13 * var(--wm-px));
 }
 
 .wm-pi-atts {

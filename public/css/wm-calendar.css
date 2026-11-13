@@ -1017,6 +1017,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-field:not(.is-boxed) .wc
     line-height: calc(8 * var(--wm-px)) !important;
 }
 
+/* the Notes tab is a page in the 6.5 text colour like the rest of the form (#784) */
+html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-fnotes {
+    color: var(--wm65-text);
+}
+
 /* ---- the form's tabs: the shell's 6.5 strip (wm65.css .wm-tabs / .wm-tab), 19.5 px ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-calendar .wcl-ftabs {
     height: calc(19.5 * var(--wm-px));

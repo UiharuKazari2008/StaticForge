@@ -165,6 +165,8 @@ html.ui-mobile[data-wm-viewer] .wm-op .wmo-host > .modal {
 
 .wm-op .wmo-host textarea {
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
+    line-height: calc(13 * var(--wm-px)) !important;
+    white-space: pre-wrap;
     resize: none !important;
 }
 

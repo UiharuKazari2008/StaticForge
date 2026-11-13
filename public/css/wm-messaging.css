@@ -1077,22 +1077,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-pick-row.is-selected .msg-pic
 }
 
 /* Options > Accounts > Signatures... (#757): the signature box under the two check boxes */
-/* outranks wm-programs.css .wm-edit (one 20-unit line), which loads after this file */
+/* a WM multi-line edit (wm-programs.css textarea.wm-edit); only its height and place here */
 textarea.wm-edit.wm-msgopt-sig {
-    display: block;
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    width: 100%;
     height: calc(110 * var(--wm-px));
     margin-top: calc(4 * var(--wm-px));
-    box-sizing: border-box;
-    resize: none;
-    font: inherit;
-    white-space: pre-wrap;
-}
-
-textarea.wm-edit.wm-msgopt-sig:disabled {
-    color: #848284;
-    background: #fff;
 }
 
 /* Message Options' help mark at the right of its heading (device 165521: the round blue ?) */
@@ -1160,12 +1148,5 @@ textarea.wm-edit.wm-msgopt-sig:disabled {
 }
 
 textarea.wm-edit.wm-chatopt-area {
-    display: block;
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    width: 100%;
     height: calc(96 * var(--wm-px));
-    box-sizing: border-box;
-    resize: none;
-    font: inherit;
-    white-space: pre-wrap;
 }

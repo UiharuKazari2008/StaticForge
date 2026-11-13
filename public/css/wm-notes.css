@@ -21,6 +21,7 @@
 
 .wm-notes .nt-listview,
 .wm-notes .nt-noteview,
+.wm-notes .nt-formview,
 .wm-contacts .ct-listview,
 .wm-contacts .ct-cardview,
 .wm-contacts .ct-editview {
@@ -123,6 +124,17 @@
     font: calc(13 * var(--nt-zoom) * var(--wm-px)) / 1.35 var(--wm-font);
     user-select: text;
     -webkit-user-select: text;
+}
+
+/* ---- Notes: Rename/Move... and Options... (#784): the shell's form page (wm-programs.css
+ * .wm-form-hdr / .wm-form / .wm-form-row) on white ---- */
+.wm-notes .nt-formview {
+    background: #fff;
+}
+
+.wm-notes .nt-form .wm-combo {
+    width: 100%;
+    min-width: 0;
 }
 
 /* ---- Contacts: list ---- */

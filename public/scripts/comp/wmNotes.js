@@ -11,8 +11,16 @@
  *                theme's white-to-tint gradient
  *   soft keys    New / Menu (View Recording Toolbar, Rename/Move..., Delete, Create Copy | Select
  *                All | Send..., Beam File... | Options...); tap-and-hold: the same rows as a popup
+ *   select all   every row highlighted; Delete and Rename/Move (the folder only) act on all of them;
+ *                a tap on a row goes back to one
+ *   rename/move  a form: Name, Folder (a workspace's Notes); ok renames and / or moves (#784)
+ *   send         Messaging's new e-mail with the note attached as <name>.txt (#784)
+ *   options      a form: Default template (Blank Note, Meeting Notes, Memo, Phone Memo, To Do; the
+ *                typed text of each) and Save to (the folder new notes go to); ok keeps them (#784)
  *   note page    a white page with the typed text; ok saves and goes back to the list; the name of
- *                a new note is its first line (WM's own rule)
+ *                a new note is its first line (WM's own rule); New starts from the default template,
+ *                and a template left as it was is not kept, like an empty note
+ *   not here     Draw and the recording toolbar (no ink or voice store), Beam File (no IR)
  *   delete       "Selected item(s) will be ... deleted. Do you want to continue?" (Yes / No, the
  *                warning icon); the note goes to the workspace's Recycle Bin like Explorer's delete
  * Store: the notes database (wsClient notes_*), listed through the VFS Notes folder of each
@@ -190,14 +198,27 @@
         const SORT_KEY = 'wmNotesSort';
         const FOLDER_KEY = 'wmNotesFolder';
         const SORTS = [['name', 'Name'], ['date', 'Date'], ['size', 'Size'], ['type', 'Type']];
+        const TEMPLATE_KEY = 'wmNotesTemplate';
+        const SAVE_TO_KEY = 'wmNotesSaveTo';
+        // notes.exe's templates in typing form: the device draws them as ink layouts; here the same
+        // headings as text (Options > Default template)
+        const TEMPLATES = [
+            ['blank', 'Blank Note', ''],
+            ['meeting', 'Meeting Notes', 'Meeting Notes\nSubject:\nDate:\nAttendees:\n\nNotes:\n\nAction items:\n'],
+            ['memo', 'Memo', 'Memo\nTo:\nFrom:\nDate:\nSubject:\n\n'],
+            ['phone', 'Phone Memo', 'Phone Memo\nFor:\nFrom:\nPhone:\nDate:\nTime:\n\nMessage:\n'],
+            ['todo', 'To Do', 'To Do\n[ ] \n[ ] \n[ ] \n']
+        ];
         let page = null;
         let items = []; // { id (VFS id), noteId, name, size, modifiedAt, workspaceId, vfs }
-        let selectedId = null;
+        let selectedId = null; // the row last tapped
+        let selected = new Set(); // the highlighted rows (Select All highlights every one)
+        let form = null; // the Rename/Move or Options form on screen: { kind, items, values }
         let loading = false;
         let listToken = 0;
         let sortField = SORTS.some(([k]) => k === stored(SORT_KEY)) ? stored(SORT_KEY) : 'name';
         let folder = stored(FOLDER_KEY) || 'active'; // 'active' | '*' | a workspace id
-        let editing = null; // { noteId|null, workspaceId, name, original, saving: the save in flight }
+        let editing = null; // { noteId|null, workspaceId, name, original, template, saving: the save in flight }
         let pending = null; // a note to open once the app is shown
         const newestCache = { at: 0, ws: null, value: null, list: null, busy: false }; // Today's Notes item
 
@@ -279,9 +300,10 @@
             sortItems();
             if (opts.select) {
                 const hit = items.find((i) => i.noteId === opts.select);
-                if (hit) selectedId = hit.id;
+                if (hit) { selectedId = hit.id; selected = new Set([hit.id]); }
             }
             if (selectedId && !items.some((i) => i.id === selectedId)) selectedId = null;
+            selected = new Set([...selected].filter((id) => items.some((i) => i.id === id)));
             render(failed);
             if (isCurrent()) ws.refreshSoftKeys();
         }
@@ -299,7 +321,8 @@
             if (!page) return;
             renderBar();
             const list = page.querySelector('.nt-list');
-            list.innerHTML = items.map((i) => `<div class="nt-row${i.id === selectedId ? ' is-selected' : ''}" role="option" aria-selected="${i.id === selectedId}" data-id="${esc(i.id)}">`
+            list.setAttribute('aria-multiselectable', 'true');
+            list.innerHTML = items.map((i) => `<div class="nt-row${selected.has(i.id) ? ' is-selected' : ''}" role="option" aria-selected="${selected.has(i.id)}" data-id="${esc(i.id)}">`
                 + `<span class="nt-ico">${icon('notes-note')}</span>`
                 + `<span class="nt-name">${esc(i.name)}</span>`
                 + `<span class="nt-date">${esc(fmtWhen(i.modifiedAt))}</span>`
@@ -309,25 +332,38 @@
             empty.hidden = !failed;
         }
 
-        function selectRow(id) {
-            selectedId = id;
+        function paintSelection() {
             if (!page) return;
             page.querySelectorAll('.nt-row').forEach((r) => {
-                const on = r.dataset.id === id;
+                const on = selected.has(r.dataset.id);
                 r.classList.toggle('is-selected', on);
                 r.setAttribute('aria-selected', String(on));
             });
             if (isCurrent()) ws.refreshSoftKeys();
         }
 
+        function selectRow(id) {
+            selectedId = id;
+            selected = new Set(id ? [id] : []);
+            paintSelection();
+        }
+
+        /** Menu > Select All: every note in the list highlighted (WM keeps the first as the focus). */
+        function selectAll() {
+            selected = new Set(items.map((i) => i.id));
+            if (!selected.has(selectedId)) selectedId = items.length ? items[0].id : null;
+            paintSelection();
+        }
+
         const itemById = (id) => items.find((i) => i.id === id) || null;
-        const selectedItem = () => itemById(selectedId);
+        const selectedItems = () => items.filter((i) => selected.has(i.id));
 
         // ---- the note page
 
         function showView(view) {
             page.querySelector('.nt-listview').hidden = view !== 'list';
             page.querySelector('.nt-noteview').hidden = view !== 'note';
+            page.querySelector('.nt-formview').hidden = view !== 'form';
             page.dataset.view = view;
             if (isCurrent()) {
                 refreshTitleKind();
@@ -337,8 +373,9 @@
 
         async function openNote(noteId, workspaceId, name) {
             const area = page.querySelector('.nt-text');
-            editing = { noteId: noteId || null, workspaceId: workspaceId || folderWs(), name: name || '', original: '' };
-            area.value = '';
+            const tpl = noteId ? '' : templateText();
+            editing = { noteId: noteId || null, workspaceId: workspaceId || folderWs(), name: name || '', original: '', template: tpl };
+            area.value = tpl;
             area.readOnly = !!noteId;
             showView('note');
             ws.syncHistory();
@@ -379,6 +416,25 @@
             return `Note${n}`;
         }
 
+        /** A new note's name: its first line, made free in its folder ("Memo", "Memo (2)"). */
+        function newName(text, workspaceId) {
+            const base = nameFromText(text);
+            if (!base) return freeName();
+            const taken = new Set(items.filter((i) => i.workspaceId === workspaceId).map((i) => i.name.toLowerCase()));
+            let name = base;
+            for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} (${n})`;
+            return name;
+        }
+
+        const templateKey = () => (TEMPLATES.some(([k]) => k === stored(TEMPLATE_KEY)) ? stored(TEMPLATE_KEY) : 'blank');
+        const templateText = () => (TEMPLATES.find(([k]) => k === templateKey()) || TEMPLATES[0])[2];
+
+        /** Options > Save to: the folder new notes go to ('' = the folder on screen, else a workspace id). */
+        function saveToWs() {
+            const v = stored(SAVE_TO_KEY) || '';
+            return v && workspaceList().some((w) => w.id === v) ? v : '';
+        }
+
         /**
          * Saves the page (ok, New, leaving the app). Resolves with the note id saved, or null.
          * Saves of one page run one after another (ed.saving): leaving the app starts a save without
@@ -398,14 +454,29 @@
         async function writeNote(ed, text) {
             try {
                 if (!ed.noteId) {
-                    // an untouched new note is not kept (WM drops an empty note)
-                    if (!text.trim()) return null;
-                    const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
-                    const res = await wsc().createNote({ id, name: nameFromText(text) || freeName(), workspaceId: ed.workspaceId, content: text, icon: 'fas fa-file-lines', color: '#ffc107' });
-                    if (!res || res.success === false) throw new Error('The note could not be created.');
-                    ed.noteId = (res.note && res.note.id) || id;
-                    ed.original = text;
-                    return ed.noteId;
+                    // an untouched new note is not kept (WM drops an empty note, and a template left as it was)
+                    if (!text.trim() || (ed.template && text === ed.template)) return null;
+                    // one id per new page: a create whose answer was lost (the server restarting under
+                    // it) may still have landed, so a retry looks for that note before creating another
+                    if (!ed.newId) ed.newId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+                    let landed = null;
+                    if (ed.createTried) {
+                        try {
+                            const got = await wsc().getNote(ed.newId);
+                            landed = got && (got.note || (got.data && got.data.note));
+                        } catch (_) { /* not there: create it */ }
+                    }
+                    if (landed) {
+                        ed.noteId = ed.newId;
+                        ed.original = landed.content || '';
+                    } else {
+                        ed.createTried = true;
+                        const res = await wsc().createNote({ id: ed.newId, name: newName(text, ed.workspaceId), workspaceId: ed.workspaceId, content: text, icon: 'fas fa-file-lines', color: '#ffc107' });
+                        if (!res || res.success === false) throw new Error('The note could not be created.');
+                        ed.noteId = (res.note && res.note.id) || ed.newId;
+                        ed.original = text;
+                        return ed.noteId;
+                    }
                 }
                 if (text !== ed.original) {
                     const res = await wsc().saveNoteContent(ed.noteId, text);
@@ -436,25 +507,55 @@
                 try { await saveEditing(); } catch (_) { return; }
                 editing = null;
             }
-            await openNote(null, folder === '*' ? activeWs() : folderWs());
+            await openNote(null, saveToWs() || (folder === '*' ? activeWs() : folderWs()));
         }
 
         // ---- operations
 
-        async function renameNote(i) {
-            if (!i || readOnly()) return;
-            const name = await ws.messageBox({
-                title: 'Rename/Move', text: 'Name:', input: { value: i.name },
-                buttons: [{ text: 'ok', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false
-            });
-            if (!name || name === i.name) return;
-            try {
-                const res = await busyOf(() => wsc().updateNote(i.noteId, { name }));
-                if (res && res.success === false) throw new Error('');
-            } catch (err) {
-                await errorBox('Notes', 'The note could not be renamed.', err);
+        /**
+         * Rename/Move... (notes.exe's form: Name, Folder): one note renames and / or moves to another
+         * workspace's Notes; several (Select All) only move. Resolves when the form is closed.
+         */
+        function renameNote(list) {
+            list = (Array.isArray(list) ? list : [list]).filter(Boolean);
+            if (!list.length || readOnly()) return Promise.resolve(false);
+            return openForm('move', list);
+        }
+
+        async function applyMove(list, values) {
+            const one = list.length === 1;
+            const name = one ? String(values.name || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim() : '';
+            if (one && !name) {
+                await ws.messageBox({ title: 'Notes', icon: 'error', text: 'Enter a name for the note.' });
+                return false;
             }
-            await load({ keep: true, select: i.noteId });
+            const to = values.folder;
+            const clash = one && items.some((x) => x !== list[0] && x.workspaceId === (to || list[0].workspaceId) && x.name.toLowerCase() === name.toLowerCase());
+            if (clash) {
+                await ws.messageBox({ title: 'Notes', icon: 'error', text: `A note named "${name}" already exists in that folder.` });
+                return false;
+            }
+            try {
+                await busyOf(async () => {
+                    for (const i of list) {
+                        const updates = {};
+                        if (one && name !== i.name) updates.name = name;
+                        if (to && to !== i.workspaceId) updates.workspace_id = to;
+                        if (!Object.keys(updates).length) continue;
+                        const res = await wsc().updateNote(i.noteId, updates);
+                        if (res && res.success === false) throw new Error('');
+                        if (editing && editing.noteId === i.noteId) {
+                            if (updates.name) editing.name = updates.name;
+                            if (updates.workspace_id) editing.workspaceId = updates.workspace_id;
+                        }
+                    }
+                });
+            } catch (err) {
+                await errorBox('Notes', one ? 'The note could not be renamed or moved.' : 'The notes could not be moved.', err);
+            }
+            // a note moved out of the folder on screen leaves the list; All Folders keeps it
+            await load({ keep: true, select: one ? list[0].noteId : undefined });
+            return true;
         }
 
         async function copyNote(i) {
@@ -474,22 +575,49 @@
             }
         }
 
-        async function deleteNote(i) {
-            if (!i || readOnly()) return;
-            // notes.exe's question (warning icon, No the default); the note goes to the Recycle Bin
+        async function deleteNote(list) {
+            list = (Array.isArray(list) ? list : [list]).filter(Boolean);
+            if (!list.length || readOnly()) return;
+            // notes.exe's question (warning icon, No the default); the notes go to the Recycle Bin
             const yes = await ws.messageBox({
                 title: 'Notes', icon: 'warning', text: 'Selected item(s) will be deleted. Do you want to continue?',
                 buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false
             });
             if (!yes) return;
+            // one trash call per workspace (a Select All over All Folders spans several)
+            const byWs = new Map();
+            list.forEach((i) => { if (!byWs.has(i.workspaceId)) byWs.set(i.workspaceId, []); byWs.get(i.workspaceId).push(i); });
             try {
-                await busyOf(() => vfs().moveToTrash([trashRef(i.vfs)], `/Workspaces/${i.workspaceId}/Notes`));
+                await busyOf(async () => {
+                    for (const [wsId, group] of byWs) await vfs().moveToTrash(group.map((i) => trashRef(i.vfs)), `/Workspaces/${wsId}/Notes`);
+                });
             } catch (err) {
-                await errorBox('Notes', 'The note could not be deleted.', err);
+                await errorBox('Notes', list.length > 1 ? 'The notes could not be deleted.' : 'The note could not be deleted.', err);
             }
-            if (editing && editing.noteId === i.noteId) { editing = null; showView('list'); ws.syncHistory(); }
+            if (editing && list.some((i) => i.noteId === editing.noteId)) { editing = null; showView('list'); ws.syncHistory(); }
             selectedId = null;
+            selected = new Set();
             await load({ keep: true });
+        }
+
+        /** Send...: Messaging's new e-mail with the note attached as <name>.txt (the saved text). */
+        async function sendNote(i) {
+            if (!i || typeof window.wmMessagingCompose !== 'function') return;
+            try {
+                let text = null;
+                if (editing && editing.noteId === i.noteId) text = page.querySelector('.nt-text').value;
+                if (text == null) {
+                    const res = await busyOf(() => wsc().getNote(i.noteId));
+                    const note = res && (res.note || (res.data && res.data.note));
+                    if (!note) throw new Error('The note was not found.');
+                    text = note.content || '';
+                }
+                const blob = new Blob([text], { type: 'text/plain' });
+                const base64 = await blobToBase64(blob);
+                window.wmMessagingCompose({ subject: i.name, attachments: [{ name: `${i.name}.txt`, mimeType: 'text/plain', size: blob.size, base64 }] });
+            } catch (err) {
+                await errorBox('Notes', 'The note could not be sent.', err);
+            }
         }
 
         function setSort(k) {
@@ -507,22 +635,24 @@
             load();
         }
 
-        function itemRows(i) {
-            const none = !i || readOnly();
+        /** The rows for the highlighted notes (list: one or, after Select All, several). */
+        function itemRows(list) {
+            const ro = readOnly();
+            const one = list.length === 1 ? list[0] : null;
             return [
-                { label: 'Rename/Move...', disabled: none, action: () => renameNote(i) },
-                { label: 'Delete', disabled: none, action: () => deleteNote(i) },
-                { label: 'Create Copy', disabled: none, action: () => copyNote(i) },
+                { label: 'Rename/Move...', disabled: !list.length || ro, action: () => renameNote(list) },
+                { label: 'Delete', disabled: !list.length || ro, action: () => deleteNote(list) },
+                { label: 'Create Copy', disabled: !one || ro, action: () => copyNote(one) },
                 '-',
-                { label: 'Select All', disabled: true },
+                { label: 'Select All', disabled: !items.length, action: selectAll },
                 '-',
-                { label: 'Send...', disabled: true },
+                { label: 'Send...', disabled: !one || typeof window.wmMessagingCompose !== 'function', action: () => sendNote(one) },
                 { label: 'Beam File...', disabled: true }
             ];
         }
 
         function listMenu() {
-            return [{ label: 'View Recording Toolbar', disabled: true }, '-'].concat(itemRows(selectedItem()), ['-', { label: 'Options...', disabled: true }]);
+            return [{ label: 'View Recording Toolbar', disabled: true }, '-'].concat(itemRows(selectedItems()), ['-', { label: 'Options...', action: () => openForm('options') }]);
         }
 
         function editCmd(cmd) {
@@ -563,10 +693,85 @@
                 '-',
                 { label: 'Zoom', submenu: [[0.75, '75%'], [1, '100%'], [1.5, '150%'], [2, '200%'], [3, '300%']].map(([s, l]) => ({ label: l, radio: z === s, action: () => zoom(s) })) },
                 { label: 'Tools', submenu: [
-                    { label: 'Rename/Move...', disabled: !cur || ro, action: () => renameNote(cur).then(() => { if (editing) editing.name = (items.find((x) => x.noteId === editing.noteId) || {}).name || editing.name; }) },
+                    { label: 'Rename/Move...', disabled: !cur || ro, action: () => renameNote(cur) },
                     { label: 'Delete', disabled: !cur || ro, action: () => deleteNote(cur) }
                 ] }
             ];
+        }
+
+        // ---- forms: Rename/Move..., Options... (#784)
+
+        function openForm(kind, list = []) {
+            if (!page) return Promise.resolve(false);
+            if (form) closeForm(false);
+            return new Promise((resolve) => {
+                const wsOf = new Set(list.map((i) => i.workspaceId));
+                form = {
+                    kind, items: list, from: page.dataset.view, resolve,
+                    values: kind === 'move'
+                        ? { name: list.length === 1 ? list[0].name : '', folder: wsOf.size === 1 ? [...wsOf][0] : '' }
+                        : { template: templateKey(), saveTo: saveToWs() }
+                };
+                renderForm();
+                if (form.from === 'note') page.querySelector('.nt-text').blur();
+                showView('form');
+                ws.syncHistory();
+                const name = page.querySelector('.nt-form [data-f="name"]');
+                if (name) { name.focus({ preventScroll: true }); name.select(); }
+            });
+        }
+
+        function renderForm() {
+            const f = form;
+            const box = page.querySelector('.nt-formview');
+            const combo = (act, label, disabled) => `<button type="button" class="wm-combo" data-act="${act}"${disabled ? ' disabled' : ''}><span>${esc(label)}</span></button>`;
+            if (f.kind === 'move') {
+                const one = f.items.length === 1;
+                box.innerHTML = `<div class="wm-form-hdr">Rename/Move</div><div class="wm-set-scroll"><div class="wm-form nt-form">`
+                    + (one ? `<div class="wm-form-row"><label for="ntFormName">Name:</label><input id="ntFormName" class="wm-edit" type="text" data-f="name" maxlength="60" autocomplete="off" spellcheck="false" value="${esc(f.values.name)}"></div>` : '')
+                    + `<div class="wm-form-row"><span class="wm-form-label">Folder:</span>${combo('folder', f.values.folder ? workspaceName(f.values.folder) : '')}</div>`
+                    + `</div></div>`;
+            } else {
+                const tpl = (TEMPLATES.find(([k]) => k === f.values.template) || TEMPLATES[0])[1];
+                box.innerHTML = `<div class="wm-form-hdr">Options</div><div class="wm-set-scroll"><div class="wm-form nt-form">`
+                    + `<div class="wm-form-row is-wide"><span class="wm-form-label">Default template:</span>${combo('template', tpl)}</div>`
+                    + `<div class="wm-form-row is-wide"><span class="wm-form-label">Save to:</span>${combo('saveTo', f.values.saveTo ? workspaceName(f.values.saveTo) : 'Current folder')}</div>`
+                    + `</div></div>`;
+            }
+            const name = box.querySelector('[data-f="name"]');
+            if (name) name.addEventListener('input', () => { f.values.name = name.value; });
+            box.querySelectorAll('.wm-combo').forEach((b) => b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const act = b.dataset.act;
+                const pick = (v) => { f.values[act] = v; renderForm(); };
+                let rows;
+                if (act === 'folder') rows = workspaceList().map((w) => ({ label: w.name, radio: f.values.folder === w.id, action: () => pick(w.id) }));
+                else if (act === 'template') rows = TEMPLATES.map(([k, l]) => ({ label: l, radio: f.values.template === k, action: () => pick(k) }));
+                else rows = [{ label: 'Current folder', radio: !f.values.saveTo, action: () => pick('') }].concat(workspaceList().map((w) => ({ label: w.name, radio: f.values.saveTo === w.id, action: () => pick(w.id) })));
+                ws.dropdown(b, rows, 'left');
+            }));
+        }
+
+        /** ok (apply) or Cancel / back: the form goes and the list or the note comes back. */
+        async function closeForm(apply) {
+            const f = form;
+            if (!f) return;
+            if (apply) {
+                if (f.kind === 'move') {
+                    if (f.busy) return;
+                    f.busy = true;
+                    const ok = await applyMove(f.items, f.values).finally(() => { f.busy = false; });
+                    if (!ok || form !== f) return;
+                } else {
+                    store(TEMPLATE_KEY, f.values.template);
+                    store(SAVE_TO_KEY, f.values.saveTo || '');
+                }
+            }
+            form = null;
+            page.querySelector('.nt-formview').innerHTML = '';
+            showView(f.from === 'note' && editing ? 'note' : 'list');
+            ws.syncHistory();
+            f.resolve(!!apply);
         }
 
         // ---- page
@@ -614,14 +819,16 @@
                 </div>
                 <div class="nt-noteview" hidden>
                     <textarea class="nt-text" spellcheck="false" autocapitalize="sentences" aria-label="Note"></textarea>
-                </div>`;
+                </div>
+                <div class="nt-formview" hidden></div>`;
             const z = Number(stored('wmNotesZoom'));
             if (z) p.querySelector('.nt-text').style.setProperty('--nt-zoom', String(z));
 
             const list = p.querySelector('.nt-scroll');
             onHold(list, '.nt-row', (row, x, y) => {
-                selectRow(row.dataset.id);
-                ws.menuAt(x, y, itemRows(itemById(row.dataset.id)));
+                // a hold on a highlighted row keeps the highlight (after Select All: every note)
+                if (!selected.has(row.dataset.id)) selectRow(row.dataset.id);
+                ws.menuAt(x, y, itemRows(selectedItems()));
             });
             list.addEventListener('click', (e) => {
                 const row = e.target.closest('.nt-row');
@@ -664,7 +871,7 @@
                     sip: true,
                     mount,
                     show() {
-                        showView(editing ? 'note' : 'list');
+                        showView(form ? 'form' : (editing ? 'note' : 'list'));
                         renderBar();
                         if (pending) {
                             const p = pending;
@@ -679,19 +886,22 @@
                         if (editing) saveEditing().catch(() => {});
                     },
                     // WM: X on the list (Smart Minimize), ok on a note (saves it, back to the list)
-                    titleKind: () => (page && page.dataset.view === 'note' ? 'ok' : 'close'),
+                    titleKind: () => (page && (page.dataset.view === 'note' || page.dataset.view === 'form') ? 'ok' : 'close'),
                     onTitleOk() {
+                        if (page && page.dataset.view === 'form') { closeForm(true); return true; }
                         if (!page || page.dataset.view !== 'note') return false;
                         closeNote();
                         return true;
                     },
-                    historyDepth: () => (editing ? 1 : 0),
+                    historyDepth: () => (editing ? 1 : 0) + (form ? 1 : 0),
                     onBack() {
+                        if (form) { closeForm(false); return true; }
                         if (!editing) return false;
                         closeNote();
                         return true;
                     },
                     softKeys() {
+                        if (page && page.dataset.view === 'form') return { left: null, right: { label: 'Cancel', action: () => closeForm(false) } };
                         if (page && page.dataset.view === 'note') return { left: { label: 'New', action: newNote }, right: { label: 'Menu', menu: noteMenu } };
                         return { left: { label: 'New', disabled: readOnly(), action: newNote }, right: { label: 'Menu', menu: listMenu } };
                     }
@@ -700,6 +910,7 @@
             /** File Explorer: a note of the Notes folder. */
             openNote(noteId, workspaceId, name) {
                 if (!ws) return;
+                if (form) closeForm(false);
                 if (editing) { saveEditing().catch(() => {}); editing = null; }
                 pending = { noteId, workspaceId, name };
                 ws.open(APP_ID);
