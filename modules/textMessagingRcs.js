@@ -580,14 +580,20 @@ class RcsProvider {
         }
         this.storeConvs(live);
         live.forEach((c) => this.convs.set(c.conversationID, c));
+        // behind = the message Google names as the conversation's latest is not in the copy (that id is not
+        // always the newest one: a conversation can point at an older message than one already held). A
+        // conversation re-read that still does not bring it is one Google lists but never serves: noted, not drift.
         let behind = 0;
         let repaired = 0;
+        const unserved = [];
+        const held = (g) => this.store.getMessages(this.id, [g]).has(g);
         for (const c of live) {
-            const newest = this.store.newestOf(this.id, c.conversationID);
             const want = c.latestMessageID;
-            if (!want || (newest && newest.guid === want)) continue;
-            behind += 1;
-            if (await this.verifyChat(c.conversationID)) repaired += 1;
+            if (!want || held(want)) continue;
+            await this.verifyChat(c.conversationID);
+            if (held(want)) repaired += 1;
+            else if (this.child) unserved.push({ chat: c.conversationID, message: want });
+            else behind += 1;
             await new Promise((r) => setTimeout(r, 200));
         }
         let removed = 0;
@@ -596,7 +602,7 @@ class RcsProvider {
             for (const g of this.store.chatGuids(this.id)) if (!ids.has(g)) { this.store.deleteChat(this.id, g); removed += 1; }
         }
         const st = this.store.stats(this.id);
-        const report = { at: Date.now(), source: { chats: live.length }, local: { chats: st.chats, messages: st.messages }, behind, repaired, removed, inSync: complete && behind === repaired && st.chats === live.length };
+        const report = { at: Date.now(), source: { chats: live.length }, local: { chats: st.chats, messages: st.messages }, behind, repaired, removed, unserved, inSync: complete && behind === 0 && st.chats === live.length };
         this.store.setState(this.id, 'reconcile', JSON.stringify(report));
         return report;
     }

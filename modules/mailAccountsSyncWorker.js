@@ -32,6 +32,9 @@ process.on('message', async (job) => {
         } else {
             folders = folders.filter((f) => job.folders.includes(f.path));
         }
+        // every folder into the copy at once (name, special use, the server's counts), so the apps list
+        // them all while the Inbox is still syncing; each fills in when its turn comes
+        for (const f of folders) { const known = store.getFolder(id, f.path); store.putFolder(id, Object.assign({}, f, { uidvalidity: known ? known.uidvalidity : null })); }
         const rank = (f) => (f.special === '\\Inbox' ? 0 : f.special === '\\Sent' ? 1 : f.special === '\\Drafts' ? 2 : f.special === '\\Junk' || f.special === '\\Trash' ? 9 : 5);
         folders.sort((a, b) => rank(a) - rank(b) || a.path.localeCompare(b.path));
         for (let i = 0; i < folders.length; i += 1) {

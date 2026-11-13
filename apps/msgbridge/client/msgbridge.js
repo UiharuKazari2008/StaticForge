@@ -993,6 +993,7 @@
                     ['Checked', esc(when(r.at) || 'Unknown')],
                     ['Result', r.inSync ? this.state(true, `In sync with ${sourceName(a)}`) : this.state(false, `Out of sync (${this.behindText(a)})`, true)],
                     r.behind != null ? ['Conversations behind', num(r.behind)] : null,
+                    Array.isArray(r.unserved) && r.unserved.length ? ['Listed but not served', `${num(r.unserved.length)} (Google names a latest message it does not return; not drift)`] : null,
                     r.repaired != null ? ['Repaired from the source', num(r.repaired)] : null,
                     r.removed != null ? ['Removed (gone from the source)', num(r.removed)] : null
                 ]) + this.listView([
