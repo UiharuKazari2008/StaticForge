@@ -216,7 +216,7 @@ const vfsSystemOpenRouter = {
 
         const modal = document.createElement('div');
         modal.id = 'vfsSystemTextViewerModal';
-        modal.className = 'modal resizeable-window hidden tool-window';
+        modal.className = 'modal resizeable-window hidden owned-window';
         modal.dataset.windowMinWidth = '420';
         modal.dataset.windowMinHeight = '280';
         modal.dataset.windowMaxWidth = '1200';

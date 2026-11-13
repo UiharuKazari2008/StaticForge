@@ -75,7 +75,7 @@ function showCreditCostDialog(cost, event = null, outputResolution = null, isUps
         // Create fresh dialog elements each time
         const dialog = document.createElement('div');
         dialog.id = 'creditCostDialog';
-        dialog.className = 'modal hidden transient tool-window on-top credit-cost-dialog';
+        dialog.className = 'modal hidden transient owned-window on-top credit-cost-dialog';
         if (isUpscaling) dialog.style.width = '420px';
 
         // Build content programmatically

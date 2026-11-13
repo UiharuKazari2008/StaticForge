@@ -3251,7 +3251,7 @@
     </div>
 
     <!-- Position Dialog Modal -->
-    <div id="positionDialog" class="modal hidden tool-window on-top" data-parent-modal-id="manualModal">
+    <div id="positionDialog" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-crosshairs"></i>
@@ -3599,7 +3599,7 @@
     </div>
 
     <template id="ledgeDeskTemplate">
-        <div class="modal hidden ledge-desk transient tool-window resizeable-window"
+        <div class="modal hidden ledge-desk transient owned-window resizeable-window"
             data-window-min-width="560" data-window-min-height="420" data-window-max-width="1800"
             data-window-max-height="1400" data-window-default-width="1100" data-window-default-height="820">
             <div class="modal-window-title">
@@ -3655,7 +3655,7 @@
 
     <!-- Genso Lock Modal -->
     <!-- Vista (#485): a light window, Explorer's command bar (vista-explorer.css) -->
-    <div id="textReplacementLockModal" class="modal hidden resizeable-window tool-window"
+    <div id="textReplacementLockModal" class="modal hidden resizeable-window owned-window"
         data-parent-modal-id="manualModal" data-window-restore-size="false" data-window-client="light">
         <div class="modal-focus-overlay"></div>
         <div class="modal-window-title">
@@ -3733,7 +3733,7 @@
     <!-- Old modal removed during conversion to DSAP + 2008 Web 2.0 design. -->
 
     <!-- Image Expansion Modal -->
-    <div id="imageExpansionDialog" class="modal hidden tool-window">
+    <div id="imageExpansionDialog" class="modal hidden owned-window">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="mdi mdi-1-25 mdi-relative-scale icon-fa"></i>
@@ -3981,7 +3981,7 @@
     </div>
 
     <!-- Expansion compiled prompt editor -->
-    <div id="expansionCompiledPromptDialog" class="modal hidden resizeable-window tool-window"
+    <div id="expansionCompiledPromptDialog" class="modal hidden resizeable-window owned-window"
         data-parent-modal-id="imageExpansionDialog" data-window-position-mode="cascade-parent"
         data-window-content-anchor="top" data-window-cascade-align="top" data-window-min-width="480"
         data-window-min-height="380" data-window-max-width="1200" data-window-max-height="1000">
@@ -4217,7 +4217,7 @@
     </div>
 
     <!-- Time/Date Selection Modal -->
-    <div id="timeDateModal" class="modal hidden tool-window on-top" data-parent-modal-id="manualModal">
+    <div id="timeDateModal" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-clock icon-fa"></i>
@@ -4268,7 +4268,7 @@
     </div>
 
     <!-- Weather Location Modal -->
-    <div id="weatherLocationModal" class="modal hidden tool-window on-top" data-parent-modal-id="manualModal">
+    <div id="weatherLocationModal" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-map-marker-alt icon-fa"></i>
@@ -4454,7 +4454,7 @@
     </div>
 
     <!-- Image Bias Adjustment Confirmation Dialog -->
-    <div id="biasAdjustmentConfirmDialog" class="modal hidden alert-theme tool-window on-top"
+    <div id="biasAdjustmentConfirmDialog" class="modal hidden alert-theme owned-window on-top"
         data-parent-modal-id="imageBiasAdjustmentModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -4494,7 +4494,7 @@
     </div>
 
     <!-- Base Image Change Alert Modal -->
-    <div id="baseImageChangeAlertModal" class="modal hidden alert-theme tool-window on-top"
+    <div id="baseImageChangeAlertModal" class="modal hidden alert-theme owned-window on-top"
         data-parent-modal-id="imageBiasAdjustmentModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -4526,7 +4526,7 @@
     </div>
 
     <!-- Image Bias Mask Alert Modal -->
-    <div id="imageBiasMaskAlertModal" class="modal hidden alert-theme tool-window on-top"
+    <div id="imageBiasMaskAlertModal" class="modal hidden alert-theme owned-window on-top"
         data-parent-modal-id="imageBiasAdjustmentModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -4559,7 +4559,7 @@
     </div>
 
     <!-- Metadata Dialog (Mobile Only) -->
-    <div id="metadataDialog" class="metadata-dialog hidden tool-window">
+    <div id="metadataDialog" class="metadata-dialog hidden owned-window">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-info-circle icon-fa"></i>
@@ -4661,7 +4661,7 @@
     <!-- Compiled Prompt (Reality Crossover Information): public/scripts/comp/compiledPromptInspector.js.
          A light Vista tool window (css/compiled-prompt-lcd.css): the scene cards on the Sidebar Weather
          gadget's faces over a grouped Property / Value list. -->
-    <div id="compiledPromptModal" class="modal resizeable-window hidden tool-window on-top crossover-window"
+    <div id="compiledPromptModal" class="modal resizeable-window hidden owned-window on-top crossover-window"
         data-window-client="light"
         data-parent-modal-id="manualModal" data-window-min-width="400" data-window-min-height="280"
         data-window-max-width="1200" data-window-max-height="1000"
@@ -4689,7 +4689,7 @@
          (css/compile-to-prompts.css) laid out as Windows Update's list of updates to install: the
          changes Rentan compiled in a report list with check boxes, the selected change's details
          under it, the count and the buttons at the foot. -->
-    <div id="compileToPromptsModal" class="modal resizeable-window hidden tool-window compile-to-prompts-modal"
+    <div id="compileToPromptsModal" class="modal resizeable-window hidden owned-window compile-to-prompts-modal"
         data-window-client="light" data-window-identifier="compile-to-prompts"
         data-parent-modal-id="manualModal" data-window-min-width="480" data-window-min-height="360"
         data-window-max-width="1400" data-window-max-height="1100"
@@ -4781,7 +4781,7 @@
         </div>
     </div>
 
-    <div id="requestFormWindow" class="modal hidden transient tool-window resizeable-window"
+    <div id="requestFormWindow" class="modal hidden transient owned-window resizeable-window"
         data-window-identifier="request-form" data-window-min-width="420" data-window-min-height="280"
         data-window-default-width="560" data-window-default-height="640">
         <div class="modal-window-title">
@@ -4803,7 +4803,7 @@
     </div>
 
     <!-- Director Feedback Modal -->
-    <div id="directorFeedbackModal" class="modal resizeable-window hidden tool-window on-top"
+    <div id="directorFeedbackModal" class="modal resizeable-window hidden owned-window on-top"
         data-parent-modal-id="textReplacementLockModal" data-window-min-width="400" data-window-min-height="280"
         data-window-max-width="900" data-window-max-height="900">
         <div class="modal-window-title">
@@ -4920,7 +4920,7 @@ Examples:
     </div>
 
     <!-- Create Text Replacement Modal -->
-    <div id="createTextReplacementModal" class="modal hidden tool-window on-top"
+    <div id="createTextReplacementModal" class="modal hidden owned-window on-top"
         data-parent-modal-id="textReplacementManagerModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -5051,7 +5051,7 @@ Examples:
     </div>
 
     <!-- Create Request Body Replacement Modal -->
-    <div id="createRequestBodyReplacementModal" class="modal hidden tool-window on-top"
+    <div id="createRequestBodyReplacementModal" class="modal hidden owned-window on-top"
         data-parent-modal-id="requestBodyReplacementsModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -5202,7 +5202,7 @@ Examples:
     </div>
 
     <!-- Update Preset Modal -->
-    <div id="updatePresetModal" class="modal hidden tool-window on-top" data-parent-modal-id="presetManagerModal">
+    <div id="updatePresetModal" class="modal hidden owned-window on-top" data-parent-modal-id="presetManagerModal">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book-spells icon-fa"></i>
@@ -5342,7 +5342,7 @@ Examples:
     </div>
 
     <!-- Add/Rename Workspace Modal -->
-    <div id="workspaceEditModal" class="modal hidden tool-window on-top">
+    <div id="workspaceEditModal" class="modal hidden owned-window on-top">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-planet-ringed icon-fa"></i>
@@ -5413,7 +5413,7 @@ Examples:
     </div>
 
     <!-- Workspace Dump Modal -->
-    <div id="workspaceDumpModal" class="modal hidden tool-window on-top">
+    <div id="workspaceDumpModal" class="modal hidden owned-window on-top">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-planet-ringed icon-fa"></i>
@@ -5544,7 +5544,7 @@ Examples:
     <!-- Unified Upload Modal -->
     <!-- Vista (#494): an Aero Wizard. vistaImportWizard.js adds the caption (Back, icon, title) and keeps
          data-wizard-page on the window; the look is public/css/vista-import-wizard.css -->
-    <div id="unifiedUploadModal" class="modal hidden tool-window on-top" data-window-min-width="480"
+    <div id="unifiedUploadModal" class="modal hidden owned-window on-top" data-window-min-width="480"
         data-window-min-height="320" data-window-max-width="1100" data-window-max-height="900">
         <div class="modal-window-controls">
             <button id="closeUnifiedUploadBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
@@ -6123,7 +6123,7 @@ Examples:
     </div>
 
     <!-- VFS Import Choice Modal -->
-    <div id="vfsImportChoiceModal" data-icon-owner-id="explorerModal" class="modal hidden tool-window">
+    <div id="vfsImportChoiceModal" data-icon-owner-id="explorerModal" class="modal hidden owned-window">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <span id="vfsImportChoiceTitle">Import</span>
@@ -6229,7 +6229,7 @@ Examples:
     </div>
 
     <!-- Combined Vibe Encoding Modal -->
-    <div id="vibeEncodingModal" class="modal hidden tool-window on-top" data-window-min-width="480"
+    <div id="vibeEncodingModal" class="modal hidden owned-window on-top" data-window-min-width="480"
         data-window-min-height="320" data-window-max-width="1100" data-window-max-height="900">
         <div class="modal-window-controls">
             <button id="closeVibeEncodingBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
@@ -6314,7 +6314,7 @@ Examples:
     </div>
 
     <!-- Bulk Change Preset Modal -->
-    <div id="bulkChangePresetModal" class="modal hidden tool-window on-top">
+    <div id="bulkChangePresetModal" class="modal hidden owned-window on-top">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book-spells icon-fa"></i>
@@ -6412,7 +6412,7 @@ Examples:
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Cache Metadata Editing Modal -->
-    <div id="cacheMetadataModal" class="modal hidden tool-window on-top" data-parent-modal-id="cacheManagerModal"
+    <div id="cacheMetadataModal" class="modal hidden owned-window on-top" data-parent-modal-id="cacheManagerModal"
         data-window-min-width="480" data-window-min-height="320" data-window-max-width="900"
         data-window-max-height="900">
         <div class="modal-window-title">
@@ -7197,7 +7197,7 @@ Examples:
 
     <!-- Image Prompt Inspector JSON Metadata Window Template -->
     <div id="imagePromptInspectorJsonTemplate"
-        class="modal hidden transient resizeable-window tool-window on-top image-prompt-inspector-json"
+        class="modal hidden transient resizeable-window owned-window on-top image-prompt-inspector-json"
         data-window-client="light"
         data-window-max-width="1400" data-window-max-height="1100" data-window-min-width="640"
         data-window-min-height="420">
@@ -7683,7 +7683,7 @@ Examples:
     </div>
 
     <!-- NAXT: add custom tag (attached tool window) -->
-    <div id="naxtCustomTagModal" class="modal hidden tool-window on-top" data-parent-modal-id="naxtModal"
+    <div id="naxtCustomTagModal" class="modal hidden owned-window on-top" data-parent-modal-id="naxtModal"
         data-window-position-mode="cascade-parent" data-window-content-anchor="top" data-window-cascade-align="top">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
@@ -8213,7 +8213,7 @@ Examples:
 
     <!-- Runes: checkpoint management. Vista: a light window, its commands in Explorer's command bar
          (vista-explorer.css) acting on the selected checkpoint (configEditorApplet.js) -->
-    <div id="configEditorCheckpointsModal" class="modal hidden resizeable-window tool-window on-top"
+    <div id="configEditorCheckpointsModal" class="modal hidden resizeable-window owned-window on-top"
         data-parent-modal-id="configEditorModal" data-window-position-mode="cascade-parent"
         data-window-content-anchor="top" data-window-cascade-align="top" data-window-default-width="560"
         data-window-default-height="480" data-window-max-width="720" data-window-max-height="640"

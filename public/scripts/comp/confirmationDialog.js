@@ -192,7 +192,7 @@ function showConfirmationDialog(message, options = [], event = null, config = {}
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
             confirmationDialog.id = 'confirmationDialog';
-            confirmationDialog.className = 'modal hidden transient tool-window on-top';
+            confirmationDialog.className = 'modal hidden transient owned-window on-top';
             confirmationDialog.innerHTML = `
                 <div class="modal-window-title">
                     <div class="modal-window-title-main">
@@ -579,7 +579,7 @@ function showInputDialog(message, defaultValue = '', placeholder = '', options =
         if (!confirmationDialog) {
             confirmationDialog = document.createElement('div');
             confirmationDialog.id = 'confirmationDialog';
-            confirmationDialog.className = 'modal hidden transient tool-window on-top';
+            confirmationDialog.className = 'modal hidden transient owned-window on-top';
             confirmationDialog.innerHTML = `
                 <div class="modal-window-title">
                     <div class="modal-window-title-main">

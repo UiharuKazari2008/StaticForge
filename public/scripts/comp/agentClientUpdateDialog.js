@@ -88,7 +88,7 @@
         if (dialog) return dialog;
         dialog = document.createElement('div');
         dialog.id = 'agentClientUpdateDialog';
-        dialog.className = 'modal hidden transient tool-window on-top';
+        dialog.className = 'modal hidden transient owned-window on-top';
         dialog.setAttribute('role', 'dialog');
         dialog.setAttribute('aria-modal', 'true');
         dialog.innerHTML = `

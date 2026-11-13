@@ -10,7 +10,7 @@
  *                                 enhance, studio change, explore publish), and the name prompts
  *                                 built like it (Studio's Save to Desktop / Save Preset): white
  *                                 content, grey footer, no icon
- *   data-vista-dialog="form"      the tool-window form dialogs (presets, replacements,
+ *   data-vista-dialog="form"      the owned form dialogs (presets, replacements,
  *                                 workspaces, uploads, vibes ...): Vista's property sheet
  *   data-vista-icon               question | warning | error | info, from the caption's icon
  *   data-window-client="light" + .win7 on the client: the light-client mechanism

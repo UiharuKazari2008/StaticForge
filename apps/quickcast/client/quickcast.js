@@ -104,7 +104,10 @@
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const pad = (n) => String(n).padStart(2, '0');
     const clock = (t) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
-    const STATUS_MS = 200;
+    // the status is pushed (quickcast_status_push ~1 Hz and on every OBS change, quickcast_meters_push
+    // 5 Hz; modules/ws/handlers/300-quickcastHandler.js): this is only the wait before subscribing again
+    // after a failure (Yukimi, Nov 13: no client polling)
+    const RESUBSCRIBE_MS = 60000;
     const PREVIEW_MS = 500;
     // preview rates: frames a second from still grabs, or RT = a realtime MJPEG stream
     const PV_RATES = [{ id: 'off', label: 'OFF', fps: 0 }, { id: '1', label: '1', fps: 1 }, { id: '2', label: '2', fps: 2 }, { id: '5', label: '5', fps: 5 }, { id: 'rt', label: 'RT', fps: 0 }];
@@ -397,13 +400,68 @@
 
         loop() {
             const sig = this.app.signal;
-            const poll = async () => {
-                if (sig.aborted) return;
-                try { this.st = await this.send('quickcast_status', { cabinet: this.cabinet || '' }); } catch (_) { /* keep the last */ }
-                if (sig.aborted) return;
-                this.render();
-                setTimeout(poll, STATUS_MS);
+            const wsc = root.wsClient;
+            let subFor = null;     // the cabinet the server feeds us for, null = not subscribed
+            let retryT = null;
+            const subscribe = async () => {
+                clearTimeout(retryT);
+                if (sig.aborted || doc.hidden) return;
+                const cab = this.cabinet || '';
+                subFor = cab;
+                try {
+                    const st = await this.send('quickcast_subscribe', { cabinet: cab });
+                    if (sig.aborted) return;
+                    if (st && !st.error) { this.st = st; this.render(); }
+                } catch (_) {
+                    subFor = null;
+                    retryT = setTimeout(subscribe, RESUBSCRIBE_MS);
+                }
             };
+            const unsubscribe = () => {
+                clearTimeout(retryT);
+                if (subFor == null) return;
+                subFor = null;
+                try { if (wsc && wsc.isConnected()) wsc.sendMessage('quickcast_unsubscribe', {}, false).catch(() => {}); } catch (_) { /* gone */ }
+            };
+            const onStatus = (msg) => {
+                const d = msg && msg.data;
+                if (!d || sig.aborted || subFor == null) return;
+                // the picked cabinet changed since: ask for its feed (the diagnostics follow the pick)
+                if ((this.cabinet || '') !== subFor) { void subscribe(); return; }
+                if (d.cabinet !== subFor || !d.status) return;
+                this.st = d.status;
+                this.render();
+                // OBS reported a change (inputs, filters, scenes): the cabinet's controls again
+                if (d.obsSeq !== this.obsSeq) {
+                    const first = this.obsSeq == null;
+                    this.obsSeq = d.obsSeq;
+                    if (!first && this.cabinet && !doc.hidden && !this.ctlBusy) void this.loadControls(false);
+                }
+            };
+            const onMeters = (msg) => {
+                const d = msg && msg.data;
+                if (!d || sig.aborted || !this.st || subFor == null) return;
+                this.st.inputs = d.inputs;
+                this.st.master = d.master;
+                this.render();
+            };
+            const onConnected = () => { if (!sig.aborted) void subscribe(); };
+            const onVisible = () => { if (doc.hidden) unsubscribe(); else void subscribe(); };
+            if (wsc && typeof wsc.on === 'function') {
+                wsc.on('quickcast_status_push', onStatus);
+                wsc.on('quickcast_meters_push', onMeters);
+                wsc.on('connected', onConnected);
+            }
+            doc.addEventListener('visibilitychange', onVisible, { signal: sig });
+            sig.addEventListener('abort', () => {
+                unsubscribe();
+                if (wsc && typeof wsc.off === 'function') {
+                    wsc.off('quickcast_status_push', onStatus);
+                    wsc.off('quickcast_meters_push', onMeters);
+                    wsc.off('connected', onConnected);
+                }
+            });
+            this.resubscribe = () => { if (subFor != null && (this.cabinet || '') !== subFor) void subscribe(); };
             // REALTIME by default; a lower rate is remembered when chosen
             this.pvRate = PV_RATES.some((r) => r.id === lsGet('visioncaster.pvRate', 'rt')) ? lsGet('visioncaster.pvRate', 'rt') : 'rt';
             this.rtFor = '';
@@ -454,12 +512,13 @@
                 void shot();
             };
             this.modal.querySelectorAll('.qc-pvk').forEach((b) => b.addEventListener('click', () => this.setPvRate(b.dataset.pv)));
+            // the controls follow OBS change pushes (onStatus); this once a minute is only a safety net
             const ctl = async () => {
                 if (sig.aborted) return;
                 if (this.cabinet && !doc.hidden && !this.ctlBusy) await this.loadControls(false);
-                setTimeout(ctl, 6000);
+                setTimeout(ctl, 60000);
             };
-            void poll();
+            void subscribe();
             this.setPvRate(this.pvRate);
             setTimeout(ctl, 800);
             const frame = (now) => {
@@ -747,6 +806,7 @@
             if (!cab) return;
             this.cabinet = id;
             try { root.localStorage.setItem(LS_KEY, id); } catch (_) { /* private mode */ }
+            if (this.resubscribe) this.resubscribe();
             this.previewFor = '';
             this.controls = null;
             this.renderControls();
@@ -791,8 +851,10 @@
         openWin(o) {
             const id = `melatonQuickCastWin-${++this.winSeq}`;
             const m = doc.createElement('div');
-            // QuickCast's own panels (remote, chat, settings) are tool windows of the main window
-            m.className = `modal hidden ${o.resizable ? 'resizeable-window' : 'on-top'} tool-window qc-window qc-child ${o.cls || ''}`;
+            // QuickCast's own windows belong to the main window: the unit's remote and Live Chat are
+            // tool windows (o.tool: Vista's tool-window frame), Broadcast Settings and About are
+            // dialogs in the normal frame (owned-window)
+            m.className = `modal hidden ${o.resizable ? 'resizeable-window' : 'on-top'} ${o.tool ? 'tool-window' : 'owned-window'} qc-window qc-child ${o.cls || ''}`;
             m.id = id;
             m.dataset.windowIdentifier = `melatonQuickCast-${o.kind}`;
             m.dataset.windowRestorePosition = o.resizable ? 'true' : 'false';
@@ -820,6 +882,7 @@
             let closed = false;
             const w = {
                 modal: m,
+                signal: ctl.signal,
                 val: (s) => { const e = m.querySelector(s); return e ? e.value.trim() : ''; },
                 busy: (on) => { m.querySelectorAll('.qc-form-btns button').forEach((b) => { b.disabled = on; }); },
                 close: () => {
@@ -1193,15 +1256,32 @@
                 try {
                     const si = await this.send('quickcast_yt_signin', {});
                     showCode(si);
-                    const poll = async () => {
-                        if (!m.isConnected) return;
-                        const r = await this.send('quickcast_yt_signin_state', {}).catch(() => null);
-                        if (!r || r.signIn.state === 'waiting') { setTimeout(poll, 3000); return; }
+                    // the server says when the sign-in ends (quickcast_yt_signin_push); a check once a
+                    // minute and after a reconnect covers a missed push (no 3 s polling, Yukimi Nov 13)
+                    const wsc = root.wsClient;
+                    let ended = false;
+                    let t = null;
+                    const end = async (r) => {
+                        if (ended || !r || !r.signIn || r.signIn.state === 'waiting') return false;
+                        ended = true;
+                        clearTimeout(t);
+                        if (wsc && typeof wsc.off === 'function') { wsc.off('quickcast_yt_signin_push', onPush); wsc.off('connected', check); }
+                        if (!m.isConnected || r.signIn.state === 'closed') return true;
                         if (r.signIn.state === 'failed') await this.box(`YouTube sign-in failed: ${r.signIn.error}`, 'error');
-                        else this.flash(`Signed in to YouTube${r.account.channel ? `: ${r.account.channel}` : ''}.`);
+                        else this.flash(`Signed in to YouTube${r.account && r.account.channel ? `: ${r.account.channel}` : ''}.`);
                         void loadAccount();
+                        return true;
                     };
-                    setTimeout(poll, 3000);
+                    const onPush = (msg) => void end(msg && msg.data);
+                    const check = async () => {
+                        if (ended) return;
+                        if (!m.isConnected) { void end({ signIn: { state: 'closed' } }); return; }
+                        clearTimeout(t);
+                        const r = await this.send('quickcast_yt_signin_state', {}).catch(() => null);
+                        if (!await end(r)) t = setTimeout(check, 60000);
+                    };
+                    if (wsc && typeof wsc.on === 'function') { wsc.on('quickcast_yt_signin_push', onPush); wsc.on('connected', check); }
+                    t = setTimeout(check, 60000);
                 } catch (err) { b.disabled = false; await this.box(err.message, 'error'); }
             });
 
@@ -1257,7 +1337,7 @@
             // the unit's front panel, as on the box: dot-matrix display, then
             //   POWER / ALARM leds | gap | MENU  | D-pad | EXIT
             //   RESET              | gap | INFO  | D-pad | DIAG
-            const w = this.openWin({
+            const w = this.openWin({ tool: true,
                 kind: 'remote', title: 'Remote Front Panel', width: 1120, height: 200, cls: 'qc-remotewin',
                 body: `<div class="qc-fp">
                     <div class="qc-fp-sel"><button type="button" class="qc-bk qc-rsel k-white" data-target="cab">CABINET MIXER</button><button type="button" class="qc-bk qc-rsel k-white" data-target="sat">SATELLITE</button></div>
@@ -1543,7 +1623,7 @@
         chatWin() {
             const open = [...this.children].find((c) => c.kind === 'chat');
             if (open) { call('bringModalToFront', open.modal); return; }
-            const w = this.openWin({
+            const w = this.openWin({ tool: true,
                 kind: 'chat', title: 'Live Chat', width: 380, height: 560, resizable: true, cls: 'qc-chatwin',
                 body: `<div class="qc-chat-head"><span class="qc-chat-state">Connecting...</span><span class="qc-fill"></span><button type="button" class="qc-tb qc-chat-pop" title="Open the video on YouTube" disabled>WATCH</button></div>
                     <div class="qc-chat-list"></div>
@@ -1562,28 +1642,41 @@
                 const badge = x.owner ? '<i class="qc-cb is-owner">OWNER</i>' : x.mod ? '<i class="qc-cb is-mod">MOD</i>' : x.member ? '<i class="qc-cb is-mem">MEMBER</i>' : '';
                 return `<div class="qc-msg${x.amount ? ' is-paid' : ''}${x.owner ? ' is-own' : ''}"><span class="qc-msg-time">${pad(d.getHours())}:${pad(d.getMinutes())}</span>${x.avatar ? `<img class="qc-msg-av" src="${esc(x.avatar)}" alt="" width="20" height="20" referrerpolicy="no-referrer">` : ''}<span class="qc-msg-body"><b class="qc-msg-name">${esc(x.author)}</b>${badge}${x.amount ? `<i class="qc-cb is-paid">${esc(x.amount)}</i>` : ''} <span class="qc-msg-text">${esc(x.text)}</span></span></div>`;
             };
-            const pollChat = async () => {
-                if (!m.isConnected || this.app.signal.aborted) return;
-                try {
-                    const r = await this.send('quickcast_chat', { since });
-                    const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
-                    if (r.messages.length) {
-                        list.querySelector('.qc-chat-empty')?.remove();
-                        list.insertAdjacentHTML('beforeend', r.messages.map(row).join(''));
-                        while (list.children.length > 300) list.firstElementChild.remove();
-                        if (atEnd || since === 0) list.scrollTop = list.scrollHeight;
-                    } else if (!list.children.length) list.innerHTML = '<div class="qc-chat-empty">No messages yet.</div>';
-                    since = r.seq;
-                    m.querySelector('.qc-chat-state').textContent = r.problem ? r.problem : !r.canRead ? 'Set up YouTube in Settings > Account' : r.broadcast ? r.broadcast.title : 'Live chat';
-                    m.classList.toggle('qc-chat-err', !!r.problem || !r.canRead);
-                    input.disabled = !r.canReply;
-                    go.disabled = !r.canReply;
-                    input.placeholder = r.canReply ? 'Say something...' : 'Sign in to YouTube to reply (Settings > Account)';
-                    watch = r.broadcast ? r.broadcast.watchUrl : (this.st && this.st.watchUrl) || '';
-                    m.querySelector('.qc-chat-pop').disabled = !watch;
-                } catch (err) { m.querySelector('.qc-chat-state').textContent = err.message; }
-                setTimeout(pollChat, 1000);
+            // the messages are pushed (quickcast_chat_push, 300-quickcastHandler.js): one subscribe when
+            // the window opens and after a reconnect, no polling (Yukimi, Nov 13)
+            const show = (r) => {
+                if (!r || !m.isConnected) return;
+                const atEnd = list.scrollHeight - list.scrollTop - list.clientHeight < 40;
+                const fresh = (r.messages || []).filter((x) => x.seq > since);
+                if (fresh.length) {
+                    list.querySelector('.qc-chat-empty')?.remove();
+                    list.insertAdjacentHTML('beforeend', fresh.map(row).join(''));
+                    while (list.children.length > 300) list.firstElementChild.remove();
+                    if (atEnd || since === 0) list.scrollTop = list.scrollHeight;
+                } else if (!list.children.length) list.innerHTML = '<div class="qc-chat-empty">No messages yet.</div>';
+                since = Math.max(since, r.seq || 0);
+                m.querySelector('.qc-chat-state').textContent = r.problem ? r.problem : !r.canRead ? 'Set up YouTube in Settings > Account' : r.broadcast ? r.broadcast.title : 'Live chat';
+                m.classList.toggle('qc-chat-err', !!r.problem || !r.canRead);
+                input.disabled = !r.canReply;
+                go.disabled = !r.canReply;
+                input.placeholder = r.canReply ? 'Say something...' : 'Sign in to YouTube to reply (Settings > Account)';
+                watch = r.broadcast ? r.broadcast.watchUrl : (this.st && this.st.watchUrl) || '';
+                m.querySelector('.qc-chat-pop').disabled = !watch;
             };
+            const subscribeChat = async () => {
+                if (!m.isConnected || this.app.signal.aborted || w.signal.aborted) return;
+                try { show(await this.send('quickcast_chat_subscribe', { since })); } catch (err) { m.querySelector('.qc-chat-state').textContent = err.message; }
+            };
+            const wsc = root.wsClient;
+            const onPush = (msg) => show(msg && msg.data);
+            const onConnected = () => void subscribeChat();
+            if (wsc && typeof wsc.on === 'function') { wsc.on('quickcast_chat_push', onPush); wsc.on('connected', onConnected); }
+            const endChat = () => {
+                if (wsc && typeof wsc.off === 'function') { wsc.off('quickcast_chat_push', onPush); wsc.off('connected', onConnected); }
+                try { if (wsc && wsc.isConnected()) wsc.sendMessage('quickcast_chat_unsubscribe', {}, false).catch(() => {}); } catch (_) { /* gone */ }
+            };
+            w.signal.addEventListener('abort', endChat);
+            this.app.signal.addEventListener('abort', endChat);
             const sendIt = async () => {
                 const t = input.value.trim();
                 if (!t || go.disabled) return;
@@ -1595,7 +1688,7 @@
             go.addEventListener('click', () => void sendIt());
             input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); void sendIt(); } });
             m.querySelector('.qc-chat-pop').addEventListener('click', () => { if (watch) root.open(watch, '_blank', 'noopener'); });
-            void pollChat();
+            void subscribeChat();
         }
 
         about() {

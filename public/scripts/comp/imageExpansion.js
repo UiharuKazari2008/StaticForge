@@ -1512,7 +1512,7 @@ function openEnhanceMiniWindow(image, event) {
 
     const dialog = document.createElement('div');
     dialog.id = 'enhanceMiniDialog';
-    dialog.className = 'modal hidden transient tool-window on-top credit-cost-dialog';
+    dialog.className = 'modal hidden transient owned-window on-top credit-cost-dialog';
     dialog.dataset.windowPositionMode = 'manual-only';
 
     const content = document.createElement('div');

@@ -1467,11 +1467,17 @@ function debouncedUpdateTaskbarWindows() {
     }, UPDATE_TASKBAR_DEBOUNCE);
 }
 
-// Check if a modal is a tool window (doesn't remove active class from main window)
+/**
+ * An owned window: it does not take the active state from its owner, closes with it and shows on its
+ * taskbar button. Two kinds share this: .tool-window (real tool windows: an app's palettes and bars,
+ * Find / Emphasis / Smart Text, Jump to Index ... with Vista's WS_EX_TOOLWINDOW frame,
+ * modal-window-title-toolbar.css) and .owned-window (dialogs and other attached windows in the
+ * normal frame: confirmations, form dialogs, pickers, viewers).
+ */
 function isToolWindow(modal) {
     if (!modal) return false;
     const modalElement = typeof modal === 'string' ? document.getElementById(modal) : modal;
-    return modalElement && modalElement.classList.contains('tool-window');
+    return !!modalElement && (modalElement.classList.contains('tool-window') || modalElement.classList.contains('owned-window'));
 }
 
 // Full windows close with Alt+Q; Esc is reserved for confirmations and small pickers.
@@ -1533,7 +1539,7 @@ function getLinkedToolWindows(parentModal) {
     if (!parentElement || !parentElement.id) return [];
 
     // Find all tool windows with this parent's ID
-    return Array.from(document.querySelectorAll('.modal.tool-window')).filter(modal =>
+    return Array.from(document.querySelectorAll('.modal.tool-window, .modal.owned-window')).filter(modal =>
         modal.getAttribute('data-parent-modal-id') === parentElement.id &&
         !modal.classList.contains('hidden')
     );
