@@ -3173,7 +3173,7 @@ const doveEnsureNewMailModal = function () {
 
     modal = document.createElement('div');
     modal.id = DOVE_NEW_MAIL_ID;
-    modal.className = 'modal hidden transient tool-window on-top';
+    modal.className = 'modal hidden transient owned-window on-top';
     modal.dataset.windowClient = 'light';
     modal.dataset.windowPositionMode = 'manual-only';
     modal.setAttribute('role', 'dialog');
