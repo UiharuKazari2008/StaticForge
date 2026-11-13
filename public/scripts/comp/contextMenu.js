@@ -1756,6 +1756,8 @@ class ContextMenuController {
                         const subtextElement = document.createElement('span');
                         subtextElement.className = 'context-menu-item-subtext';
                         subtextElement.textContent = typeof item.subtext === 'function' ? item.subtext(target) : item.subtext;
+                        // a key combination (Ctrl+N, F5, Del): the phone's menus never show those
+                        if (ContextMenuController.isAccelerator(subtextElement.textContent)) subtextElement.dataset.accel = '';
                         textContainer.appendChild(subtextElement);
                     }
 
@@ -2264,9 +2266,19 @@ class ContextMenuController {
         }
     }
 
-    /** A title in a program's Win32 menu bar (role="menubar" with data-win32-menus): its menus take Vista's metrics. */
+    /**
+     * A title in a program's menu bar (any role="menubar"): its menus are Win32 menus, Vista's metrics
+     * with the accelerators in their own right-aligned column ("Ctrl+N" beside "New", not under it).
+     * Every program menu bar is one; data-win32-menus is no longer needed to opt in.
+     */
+    /** "Ctrl+N", "Ctrl+Shift+V", "Alt+F4", "F5", "Del", "Esc": an accelerator, not a description. */
+    static isAccelerator(text) {
+        const t = String(text == null ? '' : text).trim();
+        return /^((Ctrl|Alt|Shift|Win)\s*\+\s*)+.+$/i.test(t) || /^(F\d{1,2}|Del|Delete|Esc|Enter|Ins|Insert|Tab|Backspace|Home|End|PgUp|PgDn|Space)$/i.test(t);
+    }
+
     _isWin32MenuTitle(target, trigger) {
-        return trigger === 'click' && !!(target && target.closest && target.closest('[role="menubar"][data-win32-menus]'));
+        return trigger === 'click' && !!(target && target.closest && target.closest('[role="menubar"]'));
     }
 
     /**
@@ -2684,6 +2696,7 @@ class ContextMenuController {
                     subtextElement.textContent = subtextValue;
                     activeTextContainer.appendChild(subtextElement);
                 }
+                subtextElement.toggleAttribute('data-accel', ContextMenuController.isAccelerator(subtextValue));
             }
         } else {
             const activeTextContainer = itemElement.querySelector('.context-menu-item-text-container');

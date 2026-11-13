@@ -346,8 +346,10 @@
                 let label = resolveV(item.text, target);
                 if (!label) continue;
                 const sub = resolveV(item.subtext, target);
-                // a short note (Instant: NovelAI) stays with the row; long hints have no WM room
-                if (sub && String(sub).length <= 16) label = `${label} (${sub})`;
+                // a short note (Instant: NovelAI) stays with the row; long hints have no WM room, and a
+                // key combination (Ctrl+N, F5) is never shown: WM menus have no accelerators
+                const accel = sub && (/^((Ctrl|Alt|Shift|Win)\s*\+\s*)+.+$/i.test(String(sub).trim()) || /^(F\d{1,2}|Del|Delete|Esc|Enter|Ins|Insert|Tab|Backspace|Home|End|PgUp|PgDn|Space)$/i.test(String(sub).trim()));
+                if (sub && !accel && String(sub).length <= 16) label = `${label} (${sub})`;
                 const row = { label: String(label).replace(/\s+/g, ' ').trim(), disabled: !!resolveV(item.disabled, target) };
                 if (item.indicatorMark === 'radio') row.radio = !!item.checked;
                 else if (item.showIndicator) row.checked = !!item.checked;

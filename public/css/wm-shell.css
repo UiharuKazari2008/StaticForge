@@ -3944,3 +3944,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-viewbar-btn:disabled img {
     from { opacity: 0.85; }
     to { opacity: 0; }
 }
+
+/* a desktop menu drawn on the phone: WM menus show no accelerators (contextMenu.js marks key
+   combinations with data-accel) */
+html.ui-mobile .context-menu-item-subtext[data-accel] {
+    display: none !important;
+}

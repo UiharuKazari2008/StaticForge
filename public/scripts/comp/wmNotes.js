@@ -493,9 +493,31 @@
             return flagArt[color];
         }
 
+        // Melaton Journal's pictures (journal.js Insert > Picture...): a gallery image or a user file
+        const picArt = new Map();
+        function pictureArt(src) {
+            const key = src ? `${src.kind}:${src.filename || src.id}` : '';
+            if (!key) return null;
+            let rec = picArt.get(key);
+            if (!rec) {
+                rec = new Image();
+                picArt.set(key, rec);
+                rec.onload = () => paintInk();
+                if (src.kind === 'image') rec.src = `/images/${encodeURIComponent(src.filename)}`;
+                else if (src.kind === 'file' && vfs()) vfs().downloadFile(src.id).then((r) => { if (r && r.downloadUrl) rec.src = r.downloadUrl; }, () => {});
+            }
+            return rec;
+        }
+
         function drawStroke(ctx, st) {
             const pts = st.pts;
             if (!pts || !pts.length) return;
+            if (st.tool === 'picture') {
+                const im = pictureArt(st.src);
+                if (im && im.complete && im.naturalWidth) ctx.drawImage(im, pts[0][0], pts[0][1], st.w, st.h);
+                else { ctx.save(); ctx.fillStyle = '#eef2f8'; ctx.fillRect(pts[0][0], pts[0][1], st.w, st.h); ctx.restore(); }
+                return;
+            }
             if (st.tool === 'flag') {
                 const im = flagImage(st.color);
                 if (im.complete && im.naturalWidth) ctx.drawImage(im, pts[0][0], pts[0][1], 14.5, 14.5);
@@ -527,7 +549,7 @@
             const k = px() * zoomOf();
             const pageUnits = area.clientWidth / k;
             let right = 0;
-            ((editing && editing.ink.strokes) || []).forEach((st) => st.pts.forEach((pt) => { if (pt[0] > right) right = pt[0]; }));
+            ((editing && editing.ink.strokes) || []).forEach((st) => st.pts.forEach((pt) => { const r = pt[0] + (st.tool === 'picture' ? st.w : 0); if (r > right) right = r; }));
             return k * (right > pageUnits ? pageUnits / right : 1);
         }
 

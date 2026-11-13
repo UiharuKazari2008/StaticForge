@@ -91,6 +91,7 @@
 
     function hitStroke(st, p, r) {
         const pts = st.pts;
+        if (st.tool === 'picture') return p[0] >= pts[0][0] - r && p[0] <= pts[0][0] + st.w + r && p[1] >= pts[0][1] - r && p[1] <= pts[0][1] + st.h + r;
         if (st.tool === 'flag') return Math.abs(p[0] - pts[0][0] - 7) < 9 + r && Math.abs(p[1] - pts[0][1] - 7) < 9 + r;
         const reach = r + (Number(st.width) || 1) / 2;
         if (pts.length === 1) return Math.hypot(p[0] - pts[0][0], p[1] - pts[0][1]) <= reach;
@@ -111,6 +112,11 @@
     function bounds(strokes) {
         let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
         strokes.forEach((st) => {
+            if (st.tool === 'picture') {
+                const [px, py] = st.pts[0];
+                x0 = Math.min(x0, px); y0 = Math.min(y0, py); x1 = Math.max(x1, px + st.w); y1 = Math.max(y1, py + st.h);
+                return;
+            }
             const pad = st.tool === 'flag' ? 16 : (Number(st.width) || 1) / 2;
             st.pts.forEach((pt) => {
                 x0 = Math.min(x0, pt[0] - (st.tool === 'flag' ? 0 : pad));
@@ -127,6 +133,7 @@
         let changed = false;
         const out = [];
         strokes.forEach((st) => {
+            if (st.tool === 'picture') { out.push(st); return; }
             if (st.tool === 'flag') {
                 if (hitStroke(st, p, r)) { changed = true; return; }
                 out.push(st);
@@ -146,9 +153,51 @@
         return changed ? out : null;
     }
 
+    // ---- pictures (Insert > Picture...): a gallery image ({ kind: 'image', filename }) or a user
+    // file ({ kind: 'file', id }), drawn under the ink at { pts: [[x, y]], w, h } in page units
+    const pictures = new Map();
+    function pictureKey(src) { return src ? `${src.kind}:${src.filename || src.id}` : ''; }
+    function pictureImage(src) {
+        const key = pictureKey(src);
+        if (!key) return null;
+        let rec = pictures.get(key);
+        if (!rec) {
+            rec = { img: new Image(), failed: false };
+            pictures.set(key, rec);
+            rec.img.onload = () => { if (ui) ui.paint(); };
+            rec.img.onerror = () => { rec.failed = true; if (ui) ui.paint(); };
+            const set = (url) => { if (url) rec.img.src = url; else rec.failed = true; };
+            if (src.kind === 'image') {
+                const url = typeof root.localGalleryImageUrl === 'function' ? root.localGalleryImageUrl(src.filename) : null;
+                set(url || `/images/${encodeURIComponent(src.filename)}`);
+            } else if (src.kind === 'file' && root.vfsClient) {
+                root.vfsClient.downloadFile(src.id).then((r) => set(r && r.downloadUrl), () => set(null));
+            } else set(null);
+        }
+        return rec;
+    }
+
+    function drawPicture(ctx, st) {
+        const [x, y] = st.pts[0];
+        const rec = pictureImage(st.src);
+        if (rec && rec.img.complete && rec.img.naturalWidth) {
+            ctx.drawImage(rec.img, x, y, st.w, st.h);
+        } else {
+            // loading (or gone): Journal's empty picture frame
+            ctx.save();
+            ctx.fillStyle = rec && rec.failed ? '#f4f4f4' : '#eef2f8';
+            ctx.fillRect(x, y, st.w, st.h);
+            ctx.strokeStyle = '#a0a0a0';
+            ctx.lineWidth = 0.6;
+            ctx.strokeRect(x, y, st.w, st.h);
+            ctx.restore();
+        }
+    }
+
     function drawStroke(ctx, st) {
         const pts = st.pts;
         if (!pts || !pts.length) return;
+        if (st.tool === 'picture') { drawPicture(ctx, st); return; }
         if (st.tool === 'flag') {
             const im = flagImg(st.color || 'red');
             if (im.complete && im.naturalWidth) ctx.drawImage(im, pts[0][0], pts[0][1], 14.5, 14.5);
@@ -277,9 +326,22 @@
             ctx.clearRect(0, 0, cv.width, cv.height);
             const k = this.k();
             ctx.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
+            // pictures under the ink
+            this.strokes.forEach((st) => { if (st.tool === 'picture') drawPicture(ctx, st); });
             this.strokes.forEach((st, i) => {
-                drawStroke(ctx, st);
-                if (this.selection.has(i) && st.tool !== 'flag') {
+                if (st.tool !== 'picture') drawStroke(ctx, st);
+                if (this.selection.has(i) && st.tool === 'picture') {
+                    const [px, py] = st.pts[0];
+                    ctx.save();
+                    ctx.strokeStyle = '#3399ff';
+                    ctx.lineWidth = 1 / k;
+                    ctx.strokeRect(px, py, st.w, st.h);
+                    // the resize grip at the bottom right
+                    ctx.fillStyle = '#fff';
+                    ctx.fillRect(px + st.w - 4 / k, py + st.h - 4 / k, 8 / k, 8 / k);
+                    ctx.strokeRect(px + st.w - 4 / k, py + st.h - 4 / k, 8 / k, 8 / k);
+                    ctx.restore();
+                } else if (this.selection.has(i) && st.tool !== 'flag') {
                     ctx.save();
                     ctx.globalAlpha = 0.35;
                     ctx.strokeStyle = '#3399ff';
@@ -474,6 +536,19 @@
                     drag = { erasing: true, any: false };
                     this.eraseAt(p, drag);
                 } else if (t === 'select') {
+                    const sel = [...this.selection];
+                    const one = sel.length === 1 ? this.strokes[sel[0]] : null;
+                    const grip = 6 / this.k();
+                    if (one && one.tool === 'picture' && Math.abs(p[0] - (one.pts[0][0] + one.w)) <= grip && Math.abs(p[1] - (one.pts[0][1] + one.h)) <= grip) {
+                        this.snapshot();
+                        drag = { resize: one, ratio: one.h / one.w };
+                        this.paint();
+                        return;
+                    }
+                    const picIndex = this.strokes.map((st, i) => (st.tool === 'picture' && hitStroke(st, p, 0) ? i : -1)).filter((i) => i >= 0).pop();
+                    if (picIndex != null && !this.selection.has(picIndex)) {
+                        this.selection = new Set([picIndex]);
+                    }
                     const box = this.selectionBox();
                     if (box && p[0] >= box.x0 - 4 && p[0] <= box.x1 + 4 && p[1] >= box.y0 - 4 && p[1] <= box.y1 + 4) {
                         this.snapshot();
@@ -507,6 +582,13 @@
                     live.lasso.push(this.point(e));
                 } else if (drag && drag.erasing) {
                     evs.forEach((ev) => this.eraseAt(this.point(ev), drag));
+                } else if (drag && drag.resize) {
+                    const p = this.point(e);
+                    const st = drag.resize;
+                    const w = Math.max(20, p[0] - st.pts[0][0]);
+                    st.w = Math.round(w * 10) / 10;
+                    st.h = Math.round(w * drag.ratio * 10) / 10;
+                    drag.moved = true;
                 } else if (drag && drag.move) {
                     const p = this.point(e);
                     const dx = p[0] - drag.from[0];
@@ -538,12 +620,18 @@
                     const poly = live.lasso;
                     if (poly.length > 2) {
                         this.strokes.forEach((st, i) => {
+                            if (st.tool === 'picture') {
+                                if (inPoly([st.pts[0][0] + st.w / 2, st.pts[0][1] + st.h / 2], poly)) this.selection.add(i);
+                                return;
+                            }
                             const inside = st.pts.filter((pt) => inPoly(pt, poly)).length;
                             if (inside && inside >= st.pts.length * 0.6) this.selection.add(i);
                         });
                     }
                 } else if (drag && drag.erasing) {
                     if (drag.any) this.change(); else this.undoStack.pop();
+                } else if (drag && drag.resize) {
+                    if (drag.moved) this.change(); else this.undoStack.pop();
                 } else if (drag && drag.move) {
                     if (drag.moved) this.change(); else this.undoStack.pop();
                 } else if (drag && drag.space) {
@@ -691,6 +779,7 @@
                 case 'new-page': this.extraPages = (this.pages || 1) + 1; this.change(); this.layout(); this.view.scrollTop = (this.pages - 1) * VM_PAGE_H * this.s(); break;
                 case 'text-box': this.setTool('text'); break;
                 case 'voice': await this.recordVoice(); break;
+                case 'picture': await this.insertPicture(); break;
                 case 'move': await mgr.notebookMoveNote(); break;
                 case 'delete-note': if (mgr.notebookCurrentNote) await mgr.notebookDeleteNote(mgr.notebookCurrentNote.id); break;
                 case 'full-screen': this.toggleFullScreen(); break;
@@ -876,7 +965,7 @@
                     { text: 'Insert/Remove Space', action: 'tool:space', disabled: ro, ...radio(this.tool === 'space') },
                     { separator: true },
                     { text: 'Text Box', action: 'text-box', disabled: ro, ...radio(textOn) },
-                    { text: 'Picture...', ...no },
+                    { text: 'Picture...', action: 'picture', disabled: ro || typeof root.studioOpenFolderDialog !== 'function' },
                     { text: 'Voice Recording...', action: 'voice', disabled: ro || !root.soundRecorder },
                     { separator: true },
                     { text: 'Meeting Information...', ...no },
@@ -962,6 +1051,57 @@
                 const data = res && (res.note ? res : res.data);
                 this.setAudio((data && data.note && data.note.metadata && data.note.metadata.audio) || this.audio.filter((a) => a.id !== audioId));
             } catch (_) { /* stays */ }
+        }
+
+        /**
+         * Insert > Picture...: Vista's Open dialog on the workspace's Pictures (generated images) or any
+         * folder (image files); the picture goes on the page in view, at most 400 units wide.
+         */
+        async insertPicture() {
+            const isPic = (i) => !!i && (i.targetKind === 'image' || i.targetKind === 'scrap' || i.shortcutType === 'image'
+                || (i.targetKind === 'user-file' && (/^image\//i.test(i.mimeType || '') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(i.name || ''))));
+            const ws = (this.mgr.notebookCurrentNote && this.mgr.notebookCurrentNote.workspace_id) || this.mgr.notebookCurrentWorkspace || (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default'; // eslint-disable-line no-undef
+            await root.studioOpenFolderDialog('open-vfs', {
+                owner: this.modal,
+                startPath: `/Workspaces/${ws}/Pictures`,
+                host: {
+                    title: 'Insert Picture',
+                    typeLabel: 'All Pictures',
+                    rejectMessage: 'Choose a picture',
+                    acceptItem: isPic,
+                    onOpen: (item) => this.addPicture(item)
+                }
+            });
+        }
+
+        addPicture(item) {
+            let src;
+            if (item.targetKind === 'user-file') src = { kind: 'file', id: item.targetId, name: item.name };
+            else src = { kind: 'image', filename: item.shortcutType === 'image' ? ((item.shortcutData && item.shortcutData.filename) || item.previewImageFilename || item.targetId) : (item.previewImageFilename || item.targetId) };
+            const rec = pictureImage(src);
+            const place = () => {
+                const nw = rec.img.naturalWidth || 400;
+                const nh = rec.img.naturalHeight || 300;
+                const w = Math.min(400, nw);
+                const k = this.k();
+                const x = MARGIN * this.s() / k + 12;
+                const y = Math.max(FIRST_RULE * this.s() / k, (this.view.scrollTop + 40) / k);
+                this.snapshot();
+                this.strokes.push({ tool: 'picture', src, pts: [[Math.round(x), Math.round(y)]], w, h: Math.round((w * nh / nw) * 10) / 10 });
+                this.setTool('select', true);
+                this.selection = new Set([this.strokes.length - 1]);
+                this.change();
+                this.layout();
+                this.renderButtons();
+            };
+            if (rec.img.complete && rec.img.naturalWidth) place();
+            else {
+                let done = false;
+                const once = () => { if (!done) { done = true; place(); } };
+                rec.img.addEventListener('load', once, { once: true });
+                rec.img.addEventListener('error', once, { once: true });
+                setTimeout(once, 4000);
+            }
         }
 
         /** Insert > Voice Recording...: Sound Recorder records; what it records goes onto this note. */
