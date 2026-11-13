@@ -449,6 +449,27 @@
         }
     }
     const onImapNew = (d) => { imapChanged(d); imapNotify(d); };
+    /** Flags changed (here or on another client): flags { uid: [flags] } read at once drop their new state. */
+    function onImapFlags(d) {
+        imapChanged(d);
+        const map = d && d.flags && typeof d.flags === 'object' ? d.flags : null;
+        if (!map) return;
+        const seen = Object.keys(map).filter((u) => Array.isArray(map[u]) && map[u].includes('\\Seen'));
+        if (seen.length) dropFresh(d.accountId, d.folder, seen);
+        // the list on screen shows the change before its reload comes back
+        if (page && isImap() && d.accountId === imapId && d.folder === folder) {
+            let changed = false;
+            Object.keys(map).forEach((u) => {
+                const r = mailById(u);
+                const fl = Array.isArray(map[u]) ? map[u] : null;
+                if (!r || !fl) return;
+                const read = fl.includes('\\Seen');
+                const flagged = fl.includes('\\Flagged');
+                if (r.read !== read || r.flagged !== flagged) { r.read = read; r.flagged = flagged; changed = true; }
+            });
+            if (changed && top() === 'list') renderList();
+        }
+    }
     const onImapRemoved = (d) => { imapChanged(d); if (d) dropFresh(d.accountId, d.folder, d.uids); };
     function onImapAccount(d) {
         loadImapAccounts(true).then(() => {
@@ -476,7 +497,7 @@
             if (!imapLoaded) loadImapAccounts(false).then(imapRepaint);
             return;
         }
-        const ev = [['new', onImapNew], ['flags', imapChanged], ['removed', onImapRemoved], ['folders', imapChanged], ['account', onImapAccount], ['unread', onImapUnread]];
+        const ev = [['new', onImapNew], ['flags', onImapFlags], ['removed', onImapRemoved], ['folders', imapChanged], ['account', onImapAccount], ['unread', onImapUnread]];
         if (imapWiredTo && typeof imapWiredTo.off === 'function') ev.forEach(([e, fn]) => imapWiredTo.off(e, fn));
         ev.forEach(([e, fn]) => m.on(e, fn));
         imapWiredTo = m;
@@ -865,7 +886,7 @@
             replyTo: addrsOf(it.replyTo),
             bcc: addrsOf(it.bcc),
             // pictures inside the HTML (cid:) are shown there, not listed
-            attachments: (it.attachments || []).filter((a) => !(a.inline && a.cid)).map((a) => ({ name: a.filename || 'attachment', url: a.url, mimeType: a.type || 'application/octet-stream', size: a.size }))
+            attachments: (it.attachments || []).filter((a) => !(a.inline && a.cid)).map((a) => ({ name: a.filename || 'attachment', url: a.url, mimeType: a.type || 'application/octet-stream', size: a.size, part: a.part != null ? String(a.part) : null }))
         });
     }
 
@@ -1758,6 +1779,8 @@
     async function openMessage(m) {
         if (!m) return;
         if (m.draft) { openDraft(m); return; }
+        // a draft in an IMAP account's Drafts folder is edited, not read
+        if (isImap() && imapSpecial(folder) === '\\Drafts') { await openImapDraft(m); return; }
         selectedId = String(m.id);
         const token = ++readToken;
         reading = Object.assign({}, m);
@@ -2096,14 +2119,69 @@
         const view = page.querySelector('.msg-view[data-view="compose"]');
         const atts = view.querySelector('.msg-compose-atts');
         // an IMAP account's attachment goes up to the server as it is added: how far, until it is there
-        atts.innerHTML = compose.attachments.map((a, n) => `<div class="msg-att" data-n="${n}">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}${a.upload && !a.uploadId ? ` (${Math.round((a.progress || 0) * 100)}%)` : ''}</span></div>`).join('');
+        atts.innerHTML = compose.attachments.map((a, n) => `<div class="msg-att" role="button" data-n="${n}">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}${a.upload && !a.uploadId ? ` (${Math.round((a.progress || 0) * 100)}%)` : ''}</span></div>`).join('');
         atts.hidden = !compose.attachments.length;
+        fitCompose();
+    }
+
+    /** A tap on an attachment of the new message: its menu (Remove takes it off the message). */
+    function attachmentMenu(el) {
+        const n = Number(el.dataset.n);
+        const c = compose;
+        if (!c || !c.attachments[n]) return;
+        ws.dropdown(el, [{ label: 'Remove', action: () => {
+            const i = c.attachments.indexOf(c.attachments[n]);
+            if (i >= 0) c.attachments.splice(i, 1);
+            if (compose === c) renderAtts();
+        } }], 'left');
+    }
+
+    /**
+     * The new message's header as the device lays it out (6.1 / 6.5 Outlook E-mail form): Bcc and Cc
+     * above From, scrolled out of sight; the form scrolls as one (drag it down, its scroll bar, or up
+     * from To) and the text fills the rest of the page. Bcc only where the account sends one (IMAP).
+     */
+    // a hidden copy of the text box measures how tall its text is (the box itself keeps its height)
+    let textMirror = null;
+    function textHeight(text) {
+        if (!textMirror) {
+            textMirror = document.createElement('textarea');
+            textMirror.className = text.className;
+            textMirror.tabIndex = -1;
+            textMirror.setAttribute('aria-hidden', 'true');
+            textMirror.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;height:0;min-height:0;overflow:hidden;flex:none';
+        }
+        if (textMirror.parentNode !== text.parentNode) text.parentNode.appendChild(textMirror);
+        textMirror.style.width = `${text.offsetWidth}px`;
+        textMirror.value = text.value;
+        return textMirror.scrollHeight + (parseFloat(getComputedStyle(text).borderTopWidth) || 0);
+    }
+
+    function fitCompose(reveal) {
+        const view = page && page.querySelector('.msg-view[data-view="compose"]');
+        if (!view || view.hidden) return;
+        const form = view.querySelector('.msg-form');
+        const from = view.querySelector('.msg-field.is-static');
+        const text = view.querySelector('[name="body"]');
+        if (!form || !from || !text) return;
+        // (fractional rows on 6.5: measured, rounded up, so no rule of Cc peeks over From)
+        const above = Math.ceil(from.getBoundingClientRect().top - form.getBoundingClientRect().top + form.scrollTop);
+        // (never cleared first: a moment without a height would pull the form's scroll back to the top)
+        // the text reaches the page's foot when From is at the top (a pixel over, so From can reach the top)
+        const rest = Math.ceil(form.clientHeight - (text.getBoundingClientRect().top - from.getBoundingClientRect().top)) + 1;
+        // the text grows with what is typed: one scroll bar, the form's, as on the device
+        const h = `${Math.max(60 * px(), rest, textHeight(text))}px`;
+        if (text.style.height !== h) text.style.height = h;
+        if (reveal === true) form.scrollTop = 0;
+        else if (reveal === false) form.scrollTop = above;
     }
 
     function newMessage(init = {}) {
         // an IMAP account's message goes out from that account (mailAccounts.send), whatever is on screen later
         const imapFrom = init.imapId !== undefined ? init.imapId : (isImap() ? imapId : null);
-        compose = { mode: init.mode || 'new', replyTo: init.replyTo || null, reply: init.reply || null, imapId: imapFrom, attachments: Array.isArray(init.attachments) && !imapFrom ? init.attachments.slice() : [], priority: 'normal', language: 'western', lastField: 'to' };
+        // an IMAP account takes the original's attachments along (forwardFrom: a forward's, a draft's own)
+        const atts = Array.isArray(init.attachments) ? init.attachments.filter((a) => !imapFrom || a.fwd) : [];
+        compose = { mode: init.mode || 'new', replyTo: init.replyTo || null, reply: init.reply || null, imapId: imapFrom, fwd: imapFrom ? init.fwd || null : null, draftUid: imapFrom ? init.draftUid || null : null, attachments: atts, priority: 'normal', language: 'western', lastField: 'to' };
         const view = page.querySelector('.msg-view[data-view="compose"]');
         renderAtts();
         // 6.1: "Name <address> (account)" over two lines; 6.5 names the account in brackets
@@ -2113,22 +2191,22 @@
         view.querySelector('.msg-from-addr').textContent = is65() ? `(${acctLabel})` : `${fromAddr} (${acctLabel})`;
         view.querySelector('[name="to"]').value = init.to || '';
         view.querySelector('[name="cc"]').value = init.cc || '';
-        // the device keeps Cc out of sight until it is used (Reply All fills it)
-        view.querySelector('.msg-field.is-cc').hidden = !init.cc;
-        // Bcc: IMAP accounts (Dreamscape Mail sends none), out of sight as Cc is
+        // Bcc: IMAP accounts (Dreamscape Mail sends none); both above From, out of sight until used (fitCompose)
         view.querySelector('[name="bcc"]').value = init.bcc || '';
-        view.querySelector('.msg-field.is-bcc').hidden = !(imapFrom && init.bcc);
+        view.querySelector('.msg-field.is-bcc').hidden = !imapFrom;
         view.querySelector('[name="subject"]').value = init.subject || '';
         const body = view.querySelector('[name="body"]');
         // the signature goes under the new text, above a quoted message (device)
         const sig = init.noSignature ? '' : signatureFor(compose.mode);
         body.value = sig ? (init.body ? sig + init.body : sig) : (init.body || '');
         pushLayer('compose');
+        fitCompose(!!(init.cc || init.bcc));
         requestAnimationFrame(() => {
             const first = init.to ? body : view.querySelector('[name="to"]');
-            first.focus();
+            first.focus({ preventScroll: true });
             if (first === body) body.setSelectionRange(0, 0);
             body.scrollTop = 0;
+            fitCompose(!!(init.cc || init.bcc));
         });
     }
 
@@ -2179,7 +2257,9 @@
         }
         const reply = { folder, uid: Number(full.uid || full.id), kind: kind === 'forward' ? 'forward' : 'reply' };
         if (kind === 'forward') {
-            newMessage({ mode: 'forward', subject: prefixed('FW', full.subject), body: quoted(full, true), reply });
+            // the original's attachments go along (send forwardFrom), each removable
+            const fwdAtts = (full.attachments || []).filter((a) => a.part).map((a) => ({ name: a.name, size: a.size, mimeType: a.mimeType, part: a.part, fwd: true }));
+            newMessage({ mode: 'forward', subject: prefixed('FW', full.subject), body: quoted(full, true), reply, fwd: { folder, uid: Number(full.uid || full.id) }, attachments: fwdAtts });
             return;
         }
         const me = String((imapAcct(imapId) || {}).email || '').toLowerCase();
@@ -2457,9 +2537,10 @@
                 const mail = { to: to.join(', '), subject: f.subject.trim(), text: f.body || ' ' };
                 if (cc.length) mail.cc = cc.join(', ');
                 if (bcc.length) mail.bcc = bcc.join(', ');
-                const ids = c.attachments.map((a) => a.uploadId).filter(Boolean);
-                if (ids.length) mail.attachments = ids;
+                Object.assign(mail, imapMailParts(c));
                 if (c.reply) mail.reply = c.reply;
+                // a draft being sent leaves Drafts
+                if (c.draftUid) mail.draftUid = c.draftUid;
                 await api.send(c.imapId, mail);
             });
         } catch (err) {
@@ -2471,7 +2552,68 @@
         sending = false;
         if (compose === c) popLayer();
         if (top() === 'read') popLayer();
-        if (isImap() && imapId === c.imapId && imapSpecial(folder) === '\\Sent') loadFolder({ keep: true });
+        if (isImap() && imapId === c.imapId && c.draftUid && imapSpecial(folder) === '\\Drafts') {
+            // the sent draft leaves Drafts (the server's 'removed' event reads the list again too)
+            mail = mail.filter((m) => String(m.id) !== String(c.draftUid));
+            renderList();
+            loadFolder({ keep: true });
+        } else if (isImap() && imapId === c.imapId && imapSpecial(folder) === '\\Sent') loadFolder({ keep: true });
+    }
+
+    /** The attachments of an IMAP account's message: the uploads, and the original's parts still on it (forwardFrom). */
+    function imapMailParts(c) {
+        const out = {};
+        const ids = c.attachments.map((a) => a.uploadId).filter(Boolean);
+        if (ids.length) out.attachments = ids;
+        const parts = c.attachments.filter((a) => a.fwd && a.part).map((a) => a.part);
+        if (c.fwd && parts.length) out.forwardFrom = { folder: c.fwd.folder, uid: c.fwd.uid, parts };
+        return out;
+    }
+
+    /** Save to Drafts for an IMAP account: into its Drafts folder on the mail server (the earlier version replaced). */
+    async function saveDraftImap() {
+        const c = compose;
+        const api = maApi();
+        if (!c || !api || typeof api.saveDraft !== 'function') return;
+        const f = composeFields();
+        let saved = null;
+        try {
+            saved = await busyOf(async () => {
+                await Promise.all(c.attachments.map((a) => a.upload || null));
+                const mail = Object.assign({ to: splitAddrs(f.to).join(', '), cc: splitAddrs(f.cc).join(', '), bcc: splitAddrs(f.bcc).join(', '), subject: f.subject, text: f.body }, imapMailParts(c));
+                if (c.draftUid) mail.replaceUid = c.draftUid;
+                return api.saveDraft(c.imapId, mail);
+            });
+        } catch (err) {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || 'The message could not be saved.' });
+            return;
+        }
+        if (compose === c) popLayer();
+        const drafts = saved && saved.folder;
+        if (isImap() && imapId === c.imapId && (folder === drafts || imapSpecial(folder) === '\\Drafts')) loadFolder({ keep: true });
+    }
+
+    /** A draft in an IMAP account's Drafts folder opens for editing (the device's Drafts do). */
+    async function openImapDraft(m) {
+        const api = maApi();
+        const id = imapId;
+        const f = folder;
+        let full = null;
+        try {
+            const r = await busyOf(() => api.message(id, f, Number(m.uid || m.id), { markSeen: false }));
+            if (r) full = imapFull(r);
+        } catch (err) {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || 'The message could not be opened.' });
+            return;
+        }
+        if (!full || !isImap() || imapId !== id) return;
+        selectedId = String(m.id);
+        const fwdAtts = (full.attachments || []).filter((a) => a.part).map((a) => ({ name: a.name, size: a.size, mimeType: a.mimeType, part: a.part, fwd: true }));
+        newMessage({
+            mode: 'new', imapId: id, to: listOf(full.to).join('; '), cc: listOf(full.cc).join('; '), bcc: listOf(full.bcc).join('; '),
+            subject: full.subject || '', body: full.text || bodyText(full), noSignature: true,
+            draftUid: Number(full.uid), fwd: fwdAtts.length ? { folder: f, uid: Number(full.uid) } : null, attachments: fwdAtts
+        });
     }
 
     /** An attachment for an IMAP account's message: up to the server now (mailAccounts.upload), with its progress. */
@@ -2773,8 +2915,8 @@
                 { label: 'File', action: () => insertFile('') }
             ] },
             { label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertMyText(t) })) },
-            // Drafts are kept on this phone for Dreamscape Mail; an IMAP account's would belong on its server
-            { label: 'Save to Drafts', disabled: !!(compose && compose.imapId), action: saveDraft },
+            // Dreamscape Mail's drafts are kept on this phone; an IMAP account's go to its Drafts folder on the server
+            { label: 'Save to Drafts', disabled: !!(compose && compose.imapId && !imapPathOf('\\Drafts', compose.imapId)), action: () => (compose && compose.imapId ? saveDraftImap() : saveDraft()) },
             { label: 'Spell Check', action: () => spellCheckField(page.querySelector('.msg-view[data-view="compose"] [name="body"]')) },
             ...(is65() ? [] : ['-']),
             { label: 'Cancel Message', action: cancel },
@@ -2974,10 +3116,10 @@
             </div>
             <div class="msg-view" data-view="compose" hidden>
                 <form class="msg-form" autocomplete="off" onsubmit="return false">
+                    <label class="msg-field is-bcc" hidden><span>Bcc:</span><input name="bcc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
+                    <label class="msg-field is-cc"><span>Cc:</span><input name="cc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
                     <label class="msg-field is-static"><span>From:</span><output class="msg-from-addr"></output></label>
                     <label class="msg-field"><span>To:</span><input name="to" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
-                    <label class="msg-field is-cc" hidden><span>Cc:</span><input name="cc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
-                    <label class="msg-field is-bcc" hidden><span>Bcc:</span><input name="bcc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
                     <label class="msg-field"><span>Subject:</span><input name="subject" type="text"></label>
                     <div class="msg-atts msg-compose-atts" hidden></div>
                     <textarea name="body" class="msg-text" aria-label="Message" spellcheck="false"></textarea>
@@ -3030,22 +3172,29 @@
             if (box.dataset.key === folder) loadFolder();
         });
         const form = p.querySelector('.msg-form');
+        // an attachment of the new message: tap for its menu (Remove)
+        p.querySelector('.msg-compose-atts').addEventListener('click', (e) => {
+            const att = e.target.closest('.msg-att[data-n]');
+            if (att) { e.stopPropagation(); attachmentMenu(att); }
+        });
+        // the input panel opening / closing changes the page's height: the text fills it again
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => fitCompose()).observe(form);
+        form.querySelector('[name="body"]').addEventListener('input', () => fitCompose());
         form.addEventListener('keydown', (e) => {
-            // up from To: the Cc line (and Bcc for an IMAP account) the header keeps out of sight
-            if (e.key === 'ArrowUp' && e.target.name === 'to' && compose) {
-                const cc = p.querySelector('.msg-field.is-cc');
-                const bcc = p.querySelector('.msg-field.is-bcc');
-                if (cc.hidden || (compose.imapId && bcc.hidden)) {
+            // up / down between the header's lines (the device: up from To scrolls Cc and Bcc into sight)
+            if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.target.tagName === 'INPUT' && compose) {
+                const fields = [...p.querySelectorAll('.msg-form input')].filter((x) => !x.closest('[hidden]'));
+                const next = fields[fields.indexOf(e.target) + (e.key === 'ArrowUp' ? -1 : 1)];
+                if (next) {
                     e.preventDefault();
-                    cc.hidden = false;
-                    if (compose.imapId) bcc.hidden = false;
-                    cc.querySelector('input').focus();
+                    next.focus();
+                    if (e.key === 'ArrowUp' && e.target.name === 'to') fitCompose(true);
                     return;
                 }
             }
             if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
                 e.preventDefault();
-                const fields = [...p.querySelectorAll('.msg-form input, .msg-form textarea')].filter((x) => !x.closest('[hidden]'));
+                const fields = [...p.querySelectorAll('.msg-form input, .msg-form textarea')].filter((x) => !x.closest('[hidden]') && x !== textMirror);
                 const next = fields[fields.indexOf(e.target) + 1];
                 if (next) next.focus();
             }

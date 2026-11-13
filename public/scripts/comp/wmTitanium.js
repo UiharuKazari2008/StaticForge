@@ -139,16 +139,16 @@
             return { label: 'owner', icon: 's:owner', pages: [{ title: st.owner || 'Owner' }], softKey: { label: 'Edit', action: () => openSettings('owner') }, onTap: () => openSettings('owner') };
         }
         if (id === 'messages') {
-            // the last five messages of the inbox, a page each: subject over sender and time
+            // the newest unread mail of Dreamscape Mail and the IMAP accounts (#789), newest first, a page
+            // each: subject over sender and time, the account under them
             const n = st.mailUnread;
             const list = recentMail();
             // the key and the panel open Messaging on Dreamscape Mail's Inbox, not the account picker (#763)
             const go = () => { const a = window.wmMessaging; if (a && typeof a.goTo === 'function') a.goTo('mail'); else sh.open('messaging'); };
-            const openMail = (m) => { const a = window.wmMessaging; if (a && typeof a.openMail === 'function') a.openMail(m.id); else go(); };
             return {
                 label: 'e-mail', count: n ? String(n) : '', icon: 'ti-2008',
                 pages: list.length
-                    ? list.map((m) => ({ title: m.subject || '(no subject)', line2: [mailFrom(m), mailWhen(m.createdAt)].filter(Boolean).join(', '), onTap: () => openMail(m) }))
+                    ? list.map((m) => ({ title: m.subject || '(no subject)', line2: [m.from, mailWhen(m.at)].filter(Boolean).join(', '), line3: m.account, onTap: () => m.open(go) }))
                     : [{ title: 'No New E-mails' }],
                 softKey: { label: 'Messaging', action: go },
                 onTap: go
@@ -193,19 +193,54 @@
         return text ? { label: lower(id), icon: 'x:app-programs-lg', pages: [{ title: text }] } : null;
     }
 
-    // ---- recent mail (dovecote_list_mail, read-only: listing marks nothing read) ----
-    const mail = { list: [], at: 0, busy: false };
+    // ---- recent unread mail: Dreamscape Mail (dovecote_list_mail) and the IMAP accounts (#789,
+    // window.mailAccounts.messages unseenOnly); listing marks nothing read. Read again a minute on,
+    // or at once when mail comes, is read or goes (the accounts' events, Dovecote's push) ----
+    const MAIL_PAGES = 5;
+    const mail = { list: [], at: 0, busy: false, key: '', wired: null };
+    function wireMail() {
+        const M = window.mailAccounts;
+        if (M && M !== mail.wired && typeof M.on === 'function') {
+            mail.wired = M;
+            const again = () => { mail.at = 0; if (mail.busy) mail.again = true; else recentMail(); };
+            ['new', 'flags', 'removed', 'account'].forEach((e) => M.on(e, again));
+        }
+        if (!wireMail.dove) { wireMail.dove = true; document.addEventListener('dovecoteMailboxUpdated', () => { mail.at = 0; if (mail.busy) mail.again = true; else recentMail(); }); }
+    }
     function recentMail() {
+        wireMail();
         const c = window.wsClient;
         if (!mail.busy && Date.now() - mail.at > 60000 && c && typeof c.isConnected === 'function' && c.isConnected() && c.initializationCompleted) {
             mail.busy = true;
-            Promise.resolve(c.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 5 }, false))
-                .then((r) => { mail.list = ((r && (r.mail || (r.data && r.data.mail))) || []).slice(0, 5); })
-                .catch(() => { /* the panel keeps what it had */ })
-                .finally(() => { mail.at = Date.now(); mail.busy = false; });
+            const M = window.mailAccounts;
+            const W = window.wmMessaging;
+            const dove = Promise.resolve(c.sendMessage('dovecote_list_mail', { folder: 'inbox', limit: 30 }, false)).then((r) => ((r && (r.mail || (r.data && r.data.mail))) || [])
+                .filter((m) => !m.read).slice(0, MAIL_PAGES)
+                .map((m) => ({ subject: m.subject, from: mailFrom(m), at: mailWhenMs(m.createdAt), account: 'Dreamscape Mail', open: (go) => { if (W && typeof W.openMail === 'function') W.openMail(m.id); else go(); } })), () => null);
+            const imap = M && typeof M.accounts === 'function'
+                ? Promise.resolve(M.accounts()).then((d) => Promise.all(((d && d.accounts) || []).filter((a) => a && a.enabled !== false).map((a) => Promise.resolve(M.messages(a.id, 'INBOX', { limit: MAIL_PAGES, unseenOnly: true }))
+                    .then((r) => ((r && r.messages) || []).filter((m) => !m.seen).map((m) => ({
+                        subject: m.subject, from: mailFrom({ from: (m.from && m.from[0]) || m.sender }), at: Number(m.date) || 0, account: a.displayName || a.name || a.email,
+                        open: (go) => { if (W && typeof W.openImapMessage === 'function') W.openImapMessage(a.id, m.folder || 'INBOX', m.uid, m); else go(); }
+                    })), () => [])))).then((lists) => [].concat(...lists), () => [])
+                : Promise.resolve([]);
+            Promise.all([dove, imap]).then(([d, i]) => {
+                // a failed Dreamscape Mail read keeps its pages from before
+                const keep = d == null ? mail.list.filter((m) => m.account === 'Dreamscape Mail') : d;
+                mail.list = keep.concat(i).sort((x, y) => (y.at || 0) - (x.at || 0)).slice(0, MAIL_PAGES);
+                const key = mail.list.map((m) => `${m.account}|${m.subject}|${m.at}`).join('\n');
+                if (key !== mail.key) { mail.key = key; if (typeof sh.refreshToday === 'function') sh.refreshToday(); }
+            }).finally(() => {
+                mail.at = Date.now();
+                mail.busy = false;
+                // a change while this read was out: once more
+                if (mail.again) { mail.again = false; mail.at = 0; recentMail(); }
+            });
         }
         return mail.list;
     }
+
+    const mailWhenMs = (v) => { const t = v ? new Date(typeof v === 'number' && v < 1e11 ? v * 1000 : v) : null; return t && !Number.isNaN(t.getTime()) ? t.getTime() : 0; };
 
     function mailFrom(m) {
         const f = (m.fromLabel && !m.labelSuspicious) ? m.fromLabel : m.from;

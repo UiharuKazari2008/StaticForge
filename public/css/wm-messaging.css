@@ -993,7 +993,7 @@ html.ui-mobile[data-wm-version="6.5"] #wmShell .wm-msg .msg-pick-row:not(.is-two
  * in the menu text colour, the From line 15.5 px with the account in brackets, To / Subject 24 px
  * with the typed text in Tahoma 14, 1 px #c6c3c6 rules from x 47.5, a 1 px black rule 4 px under
  * the last field and the text in Tahoma 14 on a 17 px line. (The device keeps Cc / Bcc above From,
- * scrolled out of sight; ours keeps Cc between To and Subject.) */
+ * scrolled out of sight; ours matches it (wmMessaging.js: Bcc and Cc above From, scrolled into view by Up from To or a drag).) */
 html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-field {
     grid-template-columns: calc(46 * var(--wm-px)) minmax(0, 1fr);
     height: calc(24 * var(--wm-px));
