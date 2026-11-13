@@ -37,10 +37,11 @@ from PIL import Image, ImageFilter
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WM65 = os.environ.get('WM65_OUT') or os.path.join(REPO, 'public/static_images/wm65')
 MEL = os.path.join(REPO, 'public/static_images/melaton')
+SIBS = os.path.join(REPO, 'public/static_images/wm65')  # the untouched sibling icons (start-settingsc / -p)
 
 # where the flag sat (x0, y0, x1, y1 in the 90 px grid; measured on the ROM art) and the logo used
 LOGO = {
-    'start-settingss': {'box': (42.5, 41.0, 86.5, 80.0), 'logo': 'colour', 'shadow': (0.5, 1.0, 0.8, 0.50)},
+    'start-settingss': {'box': (41.5, 40.0, 85.5, 79.0), 'logo': 'colour', 'shadow': (0.5, 1.0, 0.8, 0.50)},
     'start-buttons': {'box': (18.5, 25.0, 44.5, 43.5), 'logo': 'white', 'shadow': (0.0, 0.5, 0.5, 0.45)},
     'start-update': {'box': (6.0, 0.0, 66.0, 61.0), 'logo': 'colour', 'shadow': (1.0, 1.5, 1.2, 0.45)},
 }
@@ -165,19 +166,29 @@ def base_settingss(rom):
     S = load(os.path.join(rom, 'win/Start_Icon_SettingsS.png'))
     n = S.shape[0]
     yy, xx = np.mgrid[0:n, 0:n]
-    # the blue badges of C and P with the white glyphs inside them and their drop shadow
-    def badge(a):
-        m = (a[..., 2] > a[..., 0] + 0.05) & (a[..., 3] > 0.3) & (xx > 36) & (yy > 34)
-        return dilate(fill_holes(dilate(m, 1)), 2)
-    bC, bP = badge(C), badge(P)
-    ref = np.where(~bC[..., None], C, P)
-    refok = ~(bC & bP)
-    # C or P shows the bare folder wherever their badges do not both cover it; under both, S has
-    # its flag over nearly all of it: that whole area is filled
-    hole = ~refok & (xx > 36) & (yy > 34)
-    base = np.where(refok[..., None], ref, S)
-    # the folder's outline: its left end per row and the axis it is mirrored about (rows where both
-    # ends are bare)
+    # the three ROM folders are the same art at different offsets: SettingsP is drawn 1 px right of
+    # SettingsC, SettingsS 1 px right and 1 px down (aligned, they are identical pixel for pixel
+    # away from their badges). The base takes SettingsC's place.
+    P = np.roll(P, -1, 1)
+    S = np.roll(np.roll(S, -1, 0), -1, 1)
+    same = lambda a, b: np.abs(a - b).max(-1) < 0.01
+    cp, cs, ps = same(C, P), same(C, S), same(P, S)
+    # a pixel is the bare folder where two of the three show the same thing there
+    base = np.where((cp | cs)[..., None], C, P)
+    hole = ~(cp | cs | ps)
+    # SettingsS alone where it is plainly the folder: folder orange (hue 24-42 degrees, saturated),
+    # 2 px clear of anything of its flag (other hues, its grey shadow, white)
+    rgbS = S[..., :3]; mx, mn = rgbS.max(-1), rgbS.min(-1)
+    hue = np.degrees(np.arctan2(np.sqrt(3) * (rgbS[..., 1] - rgbS[..., 2]), 2 * rgbS[..., 0] - rgbS[..., 1] - rgbS[..., 2])) % 360
+    orange = (hue >= 24) & (hue <= 42) & ((mx - mn) / np.maximum(mx, 1e-3) > 0.75) & (S[..., 3] > 0.99)
+    flagS = ~orange & (S[..., 3] > 0.05) & (xx > 36) & (yy > 34) & ~(cs | ps)
+    sOK = hole & orange & ~dilate(flagS, 2)
+    base = np.where(sOK[..., None], S, base)
+    hole &= ~sOK
+    # two badges can show the same blue at a pixel: blue is never the folder
+    hole |= dilate((base[..., 2] > base[..., 0] + 0.03) & (base[..., 3] > 0.1) & (xx > 36) & (yy > 34), 1)
+    cC = (cp | cs) & ~hole   # SettingsC itself is bare there (its own files at 1x / 4x can be used)
+    # the folder's axis (rows where both ends are bare) and each row's colour (left of the gear)
     def left_end(y):
         xs_ = np.nonzero(base[y, :, 3] > 0.5)[0]
         return xs_.min() if len(xs_) else None
@@ -187,46 +198,113 @@ def base_settingss(rom):
         if len(xs_) and not hole[y, xs_.max()]:
             axes.append((xs_.min() + xs_.max()) / 2.0)
     axis = float(np.median(axes))
-    # each row's colour, from the bare front left of the gear
     rowcol = np.zeros((n, 4))
     for y in range(n):
         sel = (~hole[y]) & (xx[y] >= 11) & (xx[y] <= 22)
         if sel.any():
             rowcol[y] = np.median(base[y][sel], axis=0)
-    # the gear: pixels darker than their row in the front, left of the badges
-    gear = (~hole) & (base[..., 3] > 0.9) & (yy >= 30) & (yy <= 74) & (xx > 14) & (xx < 60) \
+    # the front's last plain row: below it the bottom highlight, edge and drop shadow begin
+    lum_rows = rowcol[:, :3].mean(-1)
+    front_end = max(y for y in range(40, n - 1) if rowcol[y, 3] > 0.99 and abs(lum_rows[y] - lum_rows[y - 1]) < 0.04)
+    # the gear (the same one the siblings show): pixels darker than their row, left of the badges
+    gear = (~hole) & (base[..., 3] > 0.9) & (yy >= 30) & (yy <= front_end) & (xx > 14) & (xx < 60) \
         & ((rowcol[:, None, :3].mean(-1) - base[..., :3].mean(-1)) > 0.06)
-    gear = dilate(gear, 0) if False else gear
+    # measured on its left half, which no badge touches: left end, top and bottom tooth
+    gear &= xx <= 43
+    lab = fill_holes(gear)
     gys, gxs = np.nonzero(gear)
-    gtop, gbot, gleft = int(gys.min()), int(gys.max()) + 1, int(gxs.min())
+    gleft = int(gxs.min())
+    cols = gear[:, 40:44].any(1)
+    gtop, gbot = int(np.nonzero(cols)[0].min()), int(np.nonzero(cols)[0].max()) + 1
     grad = (gbot - gtop) / 2.0
     gcx, gcy = gleft + grad, gtop + grad
-    # the gear's own colour per row (its body is flat), for the centre the mirrors cannot reach
+    # SettingsS on its own is only trusted at the hub (6 px round the gear centre): elsewhere its
+    # flag's dark orange outline passes for gear; the model rebuilds the rest
+    far = sOK & ((xx + 0.5 - gcx) ** 2 + (yy + 0.5 - gcy) ** 2 > 6.0 ** 2)
+    hole |= far
     gearcol = rowcol.copy()
     for y in range(n):
         sel = gear[y] & (np.abs(xx[y] - gcx) < grad - 3)
         if sel.sum() >= 2:
             gearcol[y] = np.median(base[y][sel], axis=0)
     out = base.copy()
+    mirror = lambda y, x: int(np.floor(2 * axis - x - 0.5))
+
+    strong_hits = set()   # gear pixels filled from their true mirror image
+
+    def clean_at(px, py):
+        x0, y0 = int(np.floor(px - 0.5)), int(np.floor(py - 0.5))
+        fx, fy = px - 0.5 - x0, py - 0.5 - y0
+        acc, wsum = np.zeros(4), 0.0
+        for dx, dy, w in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)), (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
+            xi, yi = x0 + dx, y0 + dy
+            if 0 <= xi < n and 0 <= yi < n and not hole[yi, xi] and w > 0:
+                acc += base[yi, xi] * w; wsum += w
+        return acc / wsum if wsum > 0.6 else None
+
+    def gear_sample(px, py):
+        # the same spot of the gear elsewhere: mirrored about its vertical axis, else half a turn,
+        # else a quarter or an eighth turn. The front is a vertical gradient, so what the source shows
+        # is taken as a kind (front, gear body or edge): front and body take this row's own colour,
+        # edges and bevels are copied
+        dx, dy = px - gcx, py - gcy
+        cands = [(gcx - dx, gcy + dy)]
+        for deg in (180, 90, -90, 45, -45, 135, -135):
+            t = np.radians(deg); c, s_ = np.cos(t), np.sin(t)
+            cands.append((gcx + c * dx - s_ * dy, gcy + s_ * dx + c * dy))
+        row = int(py - 0.5)
+        for i, (qx, qy) in enumerate(cands):
+            v = clean_at(qx, qy)
+            if v is None:
+                continue
+            if i == 0:
+                strong_hits.add((row, int(px - 0.5)))
+                return v
+            sr = min(n - 1, max(0, int(qy - 0.5)))
+            if np.abs(v[:3] - rowcol[sr, :3]).max() < 0.03:
+                return rowcol[row]
+            if np.abs(v[:3] - gearcol[sr, :3]).max() < 0.03:
+                return gearcol[row]
+            return v
+        return None
     for y, x in zip(*np.nonzero(hole)):
         xl = left_end(y)
         xr = 2 * axis - xl if xl is not None else n
-        if (x - gcx) ** 2 + (y - gcy) ** 2 <= (grad + 1.0) ** 2:
-            # the gear: its left half mirrored, else turned half round, else the row
-            xm = int(np.floor(2 * gcx - x - 0.5))
-            # the mirror, the column next to it (the axis column mirrors onto itself), half a turn
-            for xi, yi in ((xm, y), (xm - 1, y), (xm, int(np.floor(2 * gcy - y - 0.5)))):
-                if 0 <= xi < n and 0 <= yi < n and not hole[yi, xi]:
-                    out[y, x] = base[yi, xi]; break
-            else:
-                out[y, x] = gearcol[y] if (x - gcx) ** 2 + (y - gcy) ** 2 <= (grad - 4) ** 2 else rowcol[y]
-        elif x >= xr - 6:
-            # the outline's right end and what lies beyond it: the left end mirrored
-            xi = int(np.floor(2 * axis - x - 0.5 + 0.5))
+        if y <= front_end and (x - gcx) ** 2 + (y - gcy) ** 2 <= (grad + 1.0) ** 2:
+            # the gear continues: it is 8-fold symmetric (a tooth every 45 degrees), so each pixel is
+            # read where the clean gear shows the same spot: mirrored about its vertical axis, else
+            # turned by 90, 180, 45 or 135 degrees (bilinear, clean pixels only)
+            got = gear_sample(x + 0.5, y + 0.5)
+            out[y, x] = got if got is not None else (gearcol[y] if (x - gcx) ** 2 + (y - gcy) ** 2 <= (grad - 4) ** 2 else rowcol[y])
+        elif y > front_end or x >= xr - 6:
+            # the folder's edges mirror the opposite side: the bottom highlight, edge and drop shadow
+            # and the right end of the outline, from the bare left
+            xi = mirror(y, x)
             out[y, x] = base[y, xi] if 0 <= xi < n and not hole[y, xi] else (0, 0, 0, 0) if xi < 0 else rowcol[y]
         else:
             out[y, x] = rowcol[y]
-    return out, {'axis': axis, 'gear': (float(gcx), float(gcy), float(grad)), 'filled': int(hole.sum())}
+    # the columns next to the gear's axis that only a turned copy reached: interpolated across the row
+    # between the nearest pixels on either side that are the gear itself (bare or mirrored)
+    gdisc = (xx + 0.5 - gcx) ** 2 + (yy + 0.5 - gcy) ** 2 <= (grad + 1.0) ** 2
+    weak = hole & gdisc & (yy <= front_end)
+    for (ry, rx) in strong_hits:
+        weak[ry, rx] = False
+    fixed = out.copy()
+    for y in range(n):
+        xs_ = np.nonzero(weak[y])[0]
+        if not len(xs_):
+            continue
+        runs = np.split(xs_, np.nonzero(np.diff(xs_) > 1)[0] + 1)
+        for run in runs:
+            l, r = run[0] - 1, run[-1] + 1
+            if len(run) > 6 or l < 0 or r >= n or weak[y, l] or weak[y, r]:
+                continue
+            for j, x in enumerate(run):
+                t = (j + 1) / (len(run) + 1)
+                fixed[y, x] = out[y, l] * (1 - t) + out[y, r] * t
+    out = fixed
+    return out, {'axis': axis, 'gear': (float(gcx), float(gcy), float(grad)), 'front_end': front_end,
+                 'filled': int(hole.sum()), 'sources': [('start-settingsc', cC)]}
 
 
 def base_buttons(rom):
@@ -255,8 +333,18 @@ def base_buttons(rom):
     ring = (rr >= r_in) & (rr < r_in + 1.5) & ~card
     lr = A[..., :3][ring].mean(-1)
     centre = A[..., :3][ring][np.argmin(lr)]
-    fill = laplace_fill(A[..., :3], hole | card & (rr < R))
-    out[..., :3] = np.where(hole[..., None], fill, out[..., :3])
+    # the orb continues round: each radius from the art left at that radius (the rim and its glass
+    # highlight outside the flag, the dark gaps between the panes inside it), interpolated round
+    # the circle; what no radius reaches, a smooth fill
+    cont = ring_fill(A, hole, cx, cy, 0.0, R, skip=card)
+    left = hole & (np.abs(cont - A).max(-1) < 1e-6)
+    out[..., :3] = np.where(hole[..., None], cont[..., :3], out[..., :3])
+    if left.any():
+        fill = laplace_fill(out[..., :3], left | card & (rr < R))
+        out[..., :3] = np.where(left[..., None], fill, out[..., :3])
+    # soften the step between rings (one radius to the next) inside the filled area only
+    sm = np.dstack([blur(out[..., c], 0.7) for c in range(3)])
+    out[..., :3] = np.where((hole & ~dilate(~hole, 1))[..., None], sm, out[..., :3])
     out[..., :3] = np.where((card & (rr < R))[..., None], A[..., :3], out[..., :3])
     out[..., 3] = A[..., 3]
     return out, {'orb': (float(cx), float(cy), float(R)), 'flag_r': r_in}
@@ -301,6 +389,15 @@ def base_update(rom):
     land = (rgb[..., 1] > rgb[..., 2] + 0.02) & dilate(hole, 5) & ~hole
     fillm = hole | ~inside | land
     fill = laplace_fill(rgb, fillm, iters=3000)
+    # the ocean's shading continues round the globe: each radius from the bare ocean on either side
+    # (land skipped), blended with the smooth fill where the arc to bridge is long
+    cont = ring_fill(np.dstack([rgb, A[..., 3]]), hole | ~inside, cx, cy, 0.0, R - 0.5, skip=land | (rgb[..., 1] > rgb[..., 2] + 0.02))
+    got = (hole & inside) & (np.abs(cont[..., :3] - rgb).max(-1) > 1e-6)
+    # one radius to the next picks up different art: smooth across radii (normalised blur over the
+    # continued pixels only) so no rings show
+    wgt = blur(got.astype(float), 1.6)
+    smooth = np.dstack([blur(cont[..., c] * got, 1.6) for c in range(3)]) / np.maximum(wgt, 1e-3)[..., None]
+    fill = np.where(got[..., None], 0.5 * smooth + 0.5 * fill, fill)
     # the limb: the bare ocean's brightness by radius (a smooth fit), taken on only toward the edge
     ocean = inside & ~hole & (A[..., 3] > 0.5) & (rgb[..., 2] > rgb[..., 1] + 0.05)
     t = rr / R
@@ -349,11 +446,25 @@ def stage_base(rom, upscale):
     for name, fn in jobs.items():
         print(name)
         a, info = fn(rom)
-        print('  measured', info)
+        print('  measured', {k: v for k, v in info.items() if k != 'sources'})
         a2 = a if a.shape[0] == 90 else premul_resize(a, 90, 90)  # the 64 px icon, stretched as the device does
-        save(a2, os.path.join(WM65, f'{name}-base@2x.png'))
-        save(premul_resize(a2, 45, 45), os.path.join(WM65, f'{name}-base.png'))
+        a1 = premul_resize(a2, 45, 45)
         a4 = upscale4(a, 180) if upscale else premul_resize(a, 180, 180)
+        # where a sibling shows the same art untouched, its own file at that scale (the bases match
+        # them exactly there); a 2 px (at 4x) feather into the rebuilt part
+        for src, m2 in info.get('sources', []):
+            for arr, k, suf in ((a1, 0.5, ''), (a4, 2.0, '@4x')):
+                sib = load(os.path.join(SIBS, f'{src}{suf}.png'))
+                nn = arr.shape[0]
+                if k > 1:
+                    m = np.kron(m2, np.ones((2, 2), bool))
+                    m = ~dilate(~m, 2)
+                else:
+                    m = m2.reshape(nn, 2, nn, 2).all(axis=(1, 3))
+                w = blur(m.astype(float), 0.8 * k) * m
+                arr[...] = arr * (1 - w[..., None]) + sib * w[..., None]
+        save(a2, os.path.join(WM65, f'{name}-base@2x.png'))
+        save(a1, os.path.join(WM65, f'{name}-base.png'))
         save(a4, os.path.join(WM65, f'{name}-base@4x.png'))
 
 
@@ -396,7 +507,8 @@ def stage_compose():
             layer[ly + sy0:ly + ey, lx + sx0:lx + ex] = L[sy0:ey, sx0:ex]
             dx, dy, sig, op = cfg['shadow']
             sh = np.roll(np.roll(layer[..., 3], int(round(dy * k * 2)), 0), int(round(dx * k * 2)), 1)
-            shadow = np.dstack([np.zeros((n, n, 3)), blur(sh, sig * k * 2) * op])
+            # the logo's shadow falls on the art only (no grey halo past its edges)
+            shadow = np.dstack([np.zeros((n, n, 3)), blur(sh, sig * k * 2) * op * b[..., 3]])
             out = over(over(b, shadow), layer)
             if cfg['logo'] == 'white':
                 out[..., 3] = b[..., 3]   # inside the orb only
