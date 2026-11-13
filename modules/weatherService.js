@@ -1146,9 +1146,10 @@ function getPlaces() {
     if (!out.home) {
         const p = primaryPlace();
         if (p) {
-            // its town once the reverse lookup is cached (countryOf, asked by the monitor)
+            // named "Home" (Yukimi, Nov 13: the reverse lookup gives census districts like "District 8,
+            // Bay"); its region and country once the lookup is cached (countryOf, asked by the monitor)
             const geo = (jsonCache.get(`geo:country:${Math.round(p.lat * 10) / 10}:${Math.round(p.lon * 10) / 10}`) || {}).value || {};
-            out.home = Object.assign(cleanPlace({ name: geo.city || 'Home', region: geo.region, country: geo.country, lat: p.lat, lon: p.lon }), { fallback: true });
+            out.home = Object.assign(cleanPlace({ name: 'Home', region: geo.region, country: geo.country, lat: p.lat, lon: p.lon }), { fallback: true });
         }
     }
     return out;
