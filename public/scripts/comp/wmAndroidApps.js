@@ -53,6 +53,7 @@
     const THEMED_KEY = 'wmProgramIconsThemed'; // '0' = off; absent = on
     const readThemed = () => localStorage.getItem(THEMED_KEY) !== '0';
     const START_MENU_KEY = 'wmStartMenu'; // Settings > Menus' own list (wmPrograms.js)
+    const CAMERA_PINNED_KEY = 'wmCameraStartPinned'; // the Camera was put on a saved Start list once (#788)
     const FOLDER = 'android';
     // a work profile's programs (DSApp: profile 'work', id ...@u<serial>) in a folder of their own (#777)
     const WORK_FOLDER = 'work';
@@ -231,10 +232,12 @@
                 title: role ? ROLES[role].label : labelOf(a),
                 icon: (role && ROLES[role].icon) || iconOf(a),
                 art65: role ? ROLES[role].art65 : undefined,
-                // 'bottom': on Start under the pinned programs; 'programs': in Programs only
-                inStart: onStart.has(a.id) ? 'bottom' : 'programs',
+                // 'bottom': on Start under the pinned programs; 'programs': in Programs only. The
+                // phone's camera is WM's Camera, pinned on the Start menu (Yukimi #788)
+                inStart: role === 'camera' ? 'top' : (onStart.has(a.id) ? 'bottom' : 'programs'),
                 programsFolder: role ? undefined : a.profile === 'work' ? WORK_FOLDER : (inGames(a) ? 'games' : FOLDER),
-                launch: () => start(a),
+                // the Camera through wmCamera.js: Pictures & Videos reads the cards again on return
+                launch: () => (role === 'camera' && window.wmCamera ? window.wmCamera.open() : start(a)),
                 holdMenu: () => holdRows(a, role)
             });
         }
@@ -246,7 +249,12 @@
         try {
             const saved = JSON.parse(localStorage.getItem(START_MENU_KEY) || 'null');
             if (Array.isArray(saved)) {
-                const next = saved.filter((id) => !String(id).startsWith('android:'));
+                // the Camera (role camera) stays where Settings > Menus has it; it joins the list once
+                const cam = apps.find((a) => a.role === 'camera' && !hidden.has(a.id));
+                const camId = cam ? shellId(cam) : null;
+                const next = saved.filter((id) => !String(id).startsWith('android:') || id === camId);
+                if (camId && !next.includes(camId) && localStorage.getItem(CAMERA_PINNED_KEY) !== '1') next.push(camId);
+                if (camId) localStorage.setItem(CAMERA_PINNED_KEY, '1');
                 for (const a of apps) if (onStart.has(a.id) && !hidden.has(a.id)) next.push(shellId(a));
                 if (JSON.stringify(next) !== JSON.stringify(saved)) localStorage.setItem(START_MENU_KEY, JSON.stringify(next));
             }

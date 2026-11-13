@@ -23,6 +23,7 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
 @.cursor/rules/sliders-platform.mdc
 @.cursor/rules/tray-balloons.mdc
 @.cursor/rules/emulator-instances.mdc
+@.cursor/rules/android-app-builds.mdc
 
 ## Yozora access from Claude Code
 

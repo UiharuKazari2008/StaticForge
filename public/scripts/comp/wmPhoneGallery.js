@@ -321,6 +321,17 @@
         return `<button type="button" class="wm-pv-cell wm-photo${e.video ? ' is-video' : ''}${sel}${chk}" data-path="${esc(e.path)}" aria-label="${esc(e.name)}"><img src="${esc(thumbUrl(e))}" alt="" loading="lazy" decoding="async" draggable="false">${dur}</button>`;
     }
 
+    /**
+     * The camera roll's first cell (WM's My Pictures: the Camera tile, shellres.dll icon 8263 at
+     * 32 units, "Camera" under it); a tap starts the phone's camera.
+     */
+    function cameraTileHtml() {
+        const a = sh && sh.art;
+        const img = a ? a.img('pv-camera') : '';
+        const sel = selectedPath === 'camera:' ? ' is-selected' : '';
+        return `<button type="button" class="wm-pv-cell wm-pv-dir wm-pv-camera${sel}" aria-label="Camera">${img}<span class="wm-pv-name">Camera</span></button>`;
+    }
+
     function dirHtml(n) {
         const sel = `dir:${n.path}` === selectedPath ? ' is-selected' : '';
         return `<button type="button" class="wm-pv-cell wm-pv-dir${sel}" data-dir="${esc(n.path)}" aria-label="${esc(n.name)}">${folderArt()}<span class="wm-pv-name">${esc(n.name)}</span></button>`;
@@ -350,12 +361,13 @@
         if (!on) { empty.hidden = true; return; }
         const dirs = query ? [] : subfoldersOf(loc.root, loc.path);
         const list = listNow();
-        const sig = `${loc.root}|${loc.path}|${dirs.map((d) => d.path).join(',')}|${list.length}|${list.length ? list[0].path : ''}|${sortBy}|${query}|${picked ? picked.size : -1}|${entriesKey}`;
+        const camTile = !query && loc.path === CAMERA_DIR && !!(window.wmCamera && window.wmCamera.supported());
+        const sig = `${camTile ? 'cam|' : ''}${loc.root}|${loc.path}|${dirs.map((d) => d.path).join(',')}|${list.length}|${list.length ? list[0].path : ''}|${sortBy}|${query}|${picked ? picked.size : -1}|${entriesKey}`;
         if (!force && sig === gridSig) return;
         gridSig = sig;
         const cols = Number(page.style.getPropertyValue('--wm-pv-cols')) || 3;
         const size = cols * Math.max(1, Math.round(CHUNK / cols));
-        const cells = dirs.map(dirHtml).concat(list.map((e) => e));
+        const cells = (camTile ? [cameraTileHtml()] : []).concat(dirs.map(dirHtml), list.map((e) => e));
         const chunk = (i) => {
             let html = '<div class="wm-pv-chunk">';
             for (const c of cells.slice(i, i + size)) html += typeof c === 'string' ? c : cellHtml(c);
@@ -408,6 +420,10 @@
     }
 
     function onCellTap(page, ev) {
+        if (ev.target.closest('.wm-pv-camera')) {
+            if (window.wmCamera) window.wmCamera.open();
+            return;
+        }
         const dir = ev.target.closest('.wm-pv-dir');
         if (dir) {
             // WM: a tap on a folder selects and opens it (Open)
@@ -429,6 +445,7 @@
     }
 
     function onCellHold(page, ev) {
+        if (ev.target.closest('.wm-pv-camera')) { ev.preventDefault(); return; }
         const dir = ev.target.closest('.wm-pv-dir');
         const cell = ev.target.closest('.wm-pv-cell[data-path]');
         if (!dir && !cell) return;
