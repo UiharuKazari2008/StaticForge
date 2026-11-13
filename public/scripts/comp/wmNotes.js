@@ -834,6 +834,9 @@
                     const res = await vfs().listDirectory(folderPath(), { offset: 0, limit: 1000, sortField: 'name', sortDirection: 'asc', search: '' });
                     files = ((res && res.items) || []).filter((i) => /\.vcf$/i.test(i.name || '') && i.kind !== 'folder');
                 } catch (_) { files = []; } // no Contacts folder yet: no contacts
+                // this phone's own mirror file (Synchronize) is shown live from the phone instead
+                const pdm = window.wmPhoneData;
+                if (pdm && pdm.live('contacts')) files = files.filter((f) => !pdm.isOwnMirror(f.name));
                 const read = await Promise.all(files.map((f) => readFile(f).then((r) => ({ f, r })).catch(() => null)));
                 for (const x of read) {
                     if (!x) continue;
@@ -842,13 +845,9 @@
                         list.push(makeEntry(c, x.r.id, n, x.r.cards.length, x.f, folderPath()));
                     });
                 }
-                // the phone's own contacts, listed here only (Settings > Default Programs > Phone
-                // Data: Show; Synchronize writes a file into Contacts instead; #776). Read only:
-                // editing one saves a Melaton copy, deleting is the phone's own job
-                const pd = window.wmPhoneData;
-                if (pd && pd.mode('contacts') === 'show' && pd.granted('contacts')) {
-                    pd.cards(VC()).forEach((c) => list.push({ c, key: `phone:${c.uid}`, fileId: null, index: 0, count: 1, fileName: null, item: null, path: null, phone: true }));
-                }
+                // the phone's own contacts, live: every field, the photo, edited and deleted on the
+                // phone itself (ActiveSync > Phone Data: Show or Synchronize; #776 / #778)
+                if (pdm && pdm.live('contacts')) list.push(...pdm.contactEntries(VC()));
             } catch (err) {
                 failed = (err && err.message) || 'Cannot read the contacts.';
             } finally {
@@ -908,7 +907,7 @@
                 const sel = e.key === selectedKey;
                 const line1 = viewBy === 'company' && e.c.work.company ? `${e.c.work.company}` : fileAs(e.c);
                 return `<div class="ct-row${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-key="${esc(e.key)}">`
-                    + `<span class="ct-ico">${e.c.photo && /^data:image\//.test(e.c.photo) ? `<img src="${esc(e.c.photo)}" alt="">` : icon('contacts-card')}</span>`
+                    + `<span class="ct-ico">${e.c.photo && (/^data:image\//.test(e.c.photo) || /^https:\/\/appassets\.androidplatform\.net\/contact-photo\//.test(e.c.photo)) ? `<img src="${esc(e.c.photo)}" alt="" loading="lazy">` : icon('contacts-card')}</span>`
                     + `<span class="ct-name">${esc(line1)}</span>`
                     + `<span class="ct-sub"><span class="ct-num">${esc(viewBy === 'company' && e.c.work.company ? fileAs(e.c) : num)}</span>${kind && viewBy !== 'company' ? `<span class="ct-kind">${esc(kind)}</span>` : ''}</span></div>`;
             }).join('');
@@ -1072,7 +1071,7 @@
             const box = page.querySelector('.ct-cardview');
             box.querySelector('.ct-card-name').textContent = VC().displayName(c);
             const pic = box.querySelector('.ct-card-photo');
-            const hasPhoto = !!(c.photo && /^data:image\//.test(c.photo));
+            const hasPhoto = !!(c.photo && (/^data:image\//.test(c.photo) || /^https:\/\/appassets\.androidplatform\.net\/contact-photo\//.test(c.photo)));
             pic.hidden = !hasPhoto && !is65();
             pic.removeAttribute('srcset');
             if (hasPhoto) pic.src = c.photo;
@@ -1337,6 +1336,56 @@
             if (current && view() === 'card') renderCard();
         }
 
+        /** Where an Open dialog item's picture is: a phone file, a gallery picture or scrap, a Dreamscape file. */
+        async function pictureUrlOf(item) {
+            if (item.phoneFile && window.phoneStorage) return window.phoneStorage.fileUrl(item.phoneFile.root, item.phoneFile.path);
+            const g = (item.targetKind === 'image' || item.targetKind === 'scrap') ? (item.previewImageFilename || item.targetId) : (item.shortcutType === 'image' && item.shortcutData && item.shortcutData.filename) || null;
+            if (g) return `/images/${encodeURIComponent(g)}`;
+            if (item.targetKind === 'user-file' && (item.targetId || item.id) && vfs()) { const r = await vfs().downloadFile(item.targetId || item.id); return (r && r.downloadUrl) || null; }
+            return null;
+        }
+
+        /** A picture as the contact's photo: at most 720 px, JPEG data URL. */
+        async function photoFrom(url) {
+            const img = new Image();
+            img.crossOrigin = 'anonymous'; // the phone's own files come from the app's asset host (CORS)
+            await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+            const sc = Math.min(1, 720 / Math.max(img.naturalWidth, img.naturalHeight));
+            const cv = document.createElement('canvas');
+            cv.width = Math.max(1, Math.round(img.naturalWidth * sc));
+            cv.height = Math.max(1, Math.round(img.naturalHeight * sc));
+            cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+            return cv.toDataURL('image/jpeg', 0.9);
+        }
+
+        function pictureMenu(row, x, y) {
+            const setText = () => { const t = row.querySelector('.ct-fstatic'); if (t) t.textContent = draft && draft.photo ? '(picture)' : 'Select a picture...'; };
+            ws.menuAt(x, y, [
+                {
+                    label: 'Select a picture...',
+                    disabled: !window.wmFileDialogs,
+                    action: () => window.wmFileDialogs.open({
+                        title: 'Select Picture', typeLabel: 'Pictures', pictures: true, phone: true,
+                        accept: (i) => !!(i.phoneFile || i.targetKind === 'image' || i.targetKind === 'scrap' || (i.targetKind === 'user-file' && /^image\//i.test(String(i.mimeType || '')))),
+                        onPick: async (item) => {
+                            try {
+                                const url = await pictureUrlOf(item);
+                                if (!url) throw new Error('not a picture');
+                                const data = await photoFrom(url);
+                                if (draft) draft.photo = data;
+                                setText();
+                                return true;
+                            } catch (_) {
+                                await ws.messageBox({ title: 'Contacts', icon: 'error', text: `"${item.name}" could not be used as the picture.` });
+                                return false;
+                            }
+                        }
+                    })
+                },
+                { label: 'Remove picture', disabled: !(draft && draft.photo), action: () => { if (draft) draft.photo = ''; setText(); } }
+            ]);
+        }
+
         /**
          * ok on the form: write the card (a new file in Contacts, or the card's own file with the
          * file's other cards kept). Resolves true once saved (or nothing to save), false otherwise.
@@ -1357,7 +1406,12 @@
             const c = draft;
             let selectKey = null;
             try {
-                if (current && current.fileId) {
+                if (current && current.phone) {
+                    // a contact of the phone: Android gets the whole contact, its other rows kept
+                    const r = window.wmPhoneData.saveContact(c, current.phone);
+                    selectKey = r && r.id ? `phone:${r.id}` : current.key;
+                    current = Object.assign({}, current, { c, key: selectKey });
+                } else if (current && current.fileId) {
                     const { cards, at } = await reread(current);
                     cards[at] = c;
                     await writeCards(current.fileId, cards);
@@ -1392,7 +1446,7 @@
 
         async function deleteContact(e) {
             if (!e || readOnly()) return;
-            if (e.phone) { await ws.messageBox({ title: 'Contacts', icon: 'info', text: `${VC().displayName(e.c)} is a contact of the phone itself. Delete it in the phone's contacts app.` }); return; }
+
             // 6.5 asks under the contact's name, with the warning sign
             const yes = await ws.messageBox(is65() ? {
                 title: VC().displayName(e.c) || 'Contacts', icon: 'warning', text: 'Permanently delete the selected contact or contacts?',
@@ -1411,6 +1465,11 @@
                     cards.splice(at, 1);
                     if (cards.some((x) => !x.group)) await writeCards(e.fileId, cards);
                     else trash = true; // only group cards left: the file goes, as the last person did
+                }
+                if (e.phone) {
+                    // a contact of the phone: Android deletes it
+                    window.wmPhoneData.deleteContact(e.phone);
+                    trash = false;
                 }
                 if (trash) {
                     if (!e.item) throw new Error('The file of this contact is not known.');
@@ -1617,6 +1676,9 @@
             const edit = p.querySelector('.ct-editview');
             edit.querySelector('.ct-form').addEventListener('input', onFormInput);
             edit.querySelector('.ct-form').addEventListener('click', (e) => {
+                // Picture: choose one (pictures, Dreamscape files, the phone's storage) or remove it (#778)
+                const picRow = e.target.closest('.ct-field[data-key="picture"]');
+                if (picRow && draft) { pictureMenu(picRow, e.clientX, e.clientY); return; }
                 const drop = e.target.closest('.ct-fdrop') || (e.target.closest('.ct-field.has-parts input[readonly]'));
                 if (!drop) return;
                 const row = drop.closest('.ct-field');

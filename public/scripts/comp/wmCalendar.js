@@ -151,15 +151,16 @@
                 console.warn('wmCalendar: could not read', f.name, err);
             }
         }
-        // the phone's own calendar, shown here only (Settings > Default Programs > Phone Data: Show;
-        // Synchronize writes a file into Calendars instead, read above; wmAndroidApps.js, #776)
+        // the phone's own calendars, live and editable here (ActiveSync > Phone Data: Show or
+        // Synchronize; the mirror files other devices read are this phone's to write, not to show:
+        // wmAndroidApps.js wmPhoneData, #776 / #778)
         const pd = window.wmPhoneData;
-        if (pd && pd.mode('calendar') === 'show' && pd.granted('calendar')) {
+        if (pd && pd.live('calendar')) {
+            for (let i = next.length - 1; i >= 0; i--) if (pd.isOwnMirror(next[i].fileName, next[i].source)) next.splice(i, 1);
+            next.forEach((c, i) => { c.id = `c${i}`; });
             const now = Date.now();
-            next.push({
-                id: `c${next.length}`, name: 'Phone', color: '#99ccff', source: 'phone:', refresh: 0, fileId: null, fileName: null,
-                events: pd.calendarEvents(now - 60 * 86400000, now + 400 * 86400000), tasks: [], visible: true, readonly: true
-            });
+            const base = next.length;
+            next.push(...pd.calendarModels(now - 60 * 86400000, now + 400 * 86400000, (i) => `c${base + i}`));
         }
         let hidden = [];
         try { hidden = JSON.parse(reg('Hidden', '[]')) || []; } catch (_) { hidden = []; }
@@ -199,7 +200,7 @@
     /** Why a calendar cannot be changed here: a subscription, or the phone's own calendar (#776). */
     function readonlyText(cal) {
         return String(cal.source || '').startsWith('phone:')
-            ? `${cal.name} is the phone's own calendar. Change it in the phone's calendar app.`
+            ? `${cal.name} is a calendar of the phone that Melaton Mobile may not change (read-only, or not allowed in ActiveSync > Menu > Phone Data...).`
             : `${cal.name} is a subscribed calendar and cannot be changed here.`;
     }
 
@@ -237,6 +238,8 @@
     }
 
     async function save(cal) {
+        // a calendar of the phone: what changed goes to Android (wmPhoneData.saveCalendar)
+        if (cal.phone && window.wmPhoneData) return window.wmPhoneData.saveCalendar(cal);
         const V = vfs();
         const data = await textB64(MC.toIcs(cal));
         if (cal.fileId) {

@@ -746,17 +746,23 @@
         const SYNC_EVERY_MS = 4 * 3600 * 1000;
         const PAST_MS = 60 * 86400000;
         const AHEAD_MS = 400 * 86400000;
+        const PHOTO_URL = /^https:\/\/appassets\.androidplatform\.net\/contact-photo\//;
         let syncing = null;
         const mode = (kind) => { const m = (readJson(PHONE_DATA_KEY, {}) || {})[kind]; return m === 'show' || m === 'sync' ? m : 'off'; };
         const available = () => !!(pim() && typeof pim().events === 'function');
-        const granted = (kind) => { try { return !!JSON.parse(pim().status())[kind]; } catch (_) { return false; } };
+        const st = () => { try { return JSON.parse(pim().status()) || {}; } catch (_) { return {}; } };
+        const granted = (kind) => !!st()[kind];
+        const canWrite = (kind) => !!st()[kind === 'calendar' ? 'calendarWrite' : 'contactsWrite'] && typeof pim()[kind === 'calendar' ? 'saveEvent' : 'saveContact'] === 'function';
         const device = () => { try { return (window.AndroidActiveSync && window.AndroidActiveSync.getDeviceName && window.AndroidActiveSync.getDeviceName()) || 'Phone'; } catch (_) { return 'Phone'; } };
         const safe = (s) => String(s).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Phone';
+        const parse = (fn, ...a) => { try { const v = JSON.parse(pim()[fn](...a)); return v; } catch (_) { return null; } };
+        /** On this phone, Calendar and Contacts use the phone's data live (Show and Synchronize alike). */
+        const live = (kind) => available() && mode(kind) !== 'off' && granted(kind);
 
-        /** Android's permission, asked once; resolves true/false. */
+        /** Android's permission (read + write), asked once; resolves true/false. */
         function access(kind) {
             if (!available()) return Promise.resolve(false);
-            if (granted(kind)) return Promise.resolve(true);
+            if (granted(kind) && (canWrite(kind) || typeof pim().saveEvent !== 'function')) return Promise.resolve(true);
             return new Promise((resolve) => {
                 const done = (ok) => { window.removeEventListener('androidpim', on); clearTimeout(t); resolve(ok); };
                 const on = (e) => { const d = e.detail || {}; if (d.kind === kind) done(!!d.granted); };
@@ -766,73 +772,311 @@
             });
         }
 
-        function events(from, to) {
-            if (!available() || !granted('calendar')) return [];
-            try { const l = JSON.parse(pim().events(from, to)); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+        // ---------------------------------------------------------------- calendar
+
+        const MCx = () => window.melatonCalendar || null;
+        /** Android's RRULE text as the calendar package's rule ({ freq, interval, count, until, byday ... }). */
+        function ruleOf(text) {
+            const MC = MCx();
+            if (!text || !MC) return null;
+            try { return (MC.parseIcs(`BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:x\r\nDTSTART:20000101T000000Z\r\nRRULE:${text}\r\nEND:VEVENT\r\nEND:VCALENDAR`).events[0] || {}).rrule || null; } catch (_) { return null; }
+        }
+        function ruleText(r) {
+            const MC = MCx();
+            if (!r || !MC) return null;
+            try {
+                const ics = MC.toIcs({ name: 'x', color: '#ffffff', source: '', refresh: 0, tasks: [], events: [{ uid: 'x', summary: '', location: '', description: '', url: '', start: new Date(0), end: new Date(3600000), allDay: false, rrule: r, exdates: [], reminder: null, reminderAt: null, attendees: [] }] });
+                const m = /RRULE:([^\r\n]+)/.exec(ics);
+                return m ? m[1] : null;
+            } catch (_) { return null; }
+        }
+        // "P3600S", "PT1H30M", "P1D", "P2W"
+        const durMs = (d) => {
+            const m = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/i.exec(String(d || ''));
+            if (!m) return 3600000;
+            return ((+m[1] || 0) * 604800 + (+m[2] || 0) * 86400 + (+m[3] || 0) * 3600 + (+m[4] || 0) * 60 + (+m[5] || 0)) * 1000;
+        };
+        // Android keeps all-day times at UTC midnight: the local date of that day, and back
+        const dayOf = (ms) => { const d = new Date(ms); return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
+        const utcDay = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+        const icsTime = (ms, allDay) => (allDay ? new Date(ms).toISOString().slice(0, 10).replace(/-/g, '') : new Date(ms).toISOString().replace(/[-:]/g, '').replace(/\.\d+/, ''));
+        const exParse = (text, allDay) => String(text || '').split(/[,;\n]/).map((x) => x.replace(/^.*:/, '').trim()).filter(Boolean).map((x) => {
+            const m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?$/.exec(x);
+            if (!m) return null;
+            if (!m[4]) return allDay ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : Date.UTC(+m[1], +m[2] - 1, +m[3]);
+            return m[7] ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+        }).filter((x) => x != null);
+
+        /** One Android event as Calendar's model; the original rides along for the write back. */
+        function eventModel(e) {
+            const allDay = !!e.allDay;
+            const startMs = Number(e.start);
+            const endMs = e.end != null ? Number(e.end) : startMs + durMs(e.duration);
+            const alert = (e.reminders || []).find((r) => r.method === 1 || r.method === 0);
+            const own = exParse(e.exdate, allDay);
+            return {
+                uid: `phone-${e.id}`, summary: e.title || '', location: e.location || '', description: e.description || '', url: '',
+                start: allDay ? dayOf(startMs) : new Date(startMs), end: allDay ? dayOf(endMs) : new Date(endMs), allDay,
+                rrule: ruleOf(e.rrule), exdates: own.slice(), reminder: alert ? Number(alert.minutes) || 0 : null, reminderAt: null,
+                attendees: (e.attendees || []).filter((a) => a.email && a.relationship !== 2).map((a) => ({ name: a.name || '', email: a.email })),
+                phone: { id: e.id, orig: e, ownExdates: own }
+            };
         }
 
-        function contacts() {
-            if (!available() || !granted('contacts')) return [];
-            try { const l = JSON.parse(pim().contacts()); return Array.isArray(l) ? l : []; } catch (_) { return []; }
+        /** The phone's calendars for Calendar (one per Android calendar it shows), events from-to. */
+        function calendarSets(from, to) {
+            if (!live('calendar')) return [];
+            const cals = (parse('calendars') || []).filter((c) => c.visible);
+            const events = parse('events', from, to) || [];
+            const byCal = new Map(cals.map((c) => [c.id, []]));
+            const models = new Map();
+            for (const e of events) {
+                if (!byCal.has(e.calendarId)) continue;
+                const m = eventModel(e);
+                models.set(e.id, m);
+                byCal.get(e.calendarId).push(m);
+            }
+            // an exception replaces one occurrence of its series: the series skips that start
+            for (const e of events) {
+                if (e.originalId == null || e.originalStart == null) continue;
+                const s = models.get(e.originalId);
+                if (!s) continue;
+                const t = e.originalAllDay ? dayOf(Number(e.originalStart)).getTime() : Number(e.originalStart);
+                s.exdates.push(t);
+                (s.phone._exc = s.phone._exc || []).push(t);
+            }
+            return cals.map((c) => ({ cal: c, events: byCal.get(c.id) || [] }));
         }
 
-        /** Calendar's event model (wmCalendar adopt()) for each phone occurrence. */
-        function calendarEvents(from, to) {
-            return events(from, to).map((e) => {
-                const start = new Date(Number(e.start));
-                let end = new Date(Number(e.end) || Number(e.start));
-                // Android keeps all-day events at UTC midnight: the local date of that day
-                const day = (d) => new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-                return {
-                    uid: `phone-${e.eventId}-${e.start}`, summary: e.title || '(no subject)', location: e.location || '', description: e.description || '', url: '',
-                    start: e.allDay ? day(start) : start, end: e.allDay ? day(end) : end, allDay: !!e.allDay,
-                    rrule: null, exdates: [], reminder: null, reminderAt: null, attendees: []
-                };
+        const evSig = (ev) => JSON.stringify([ev.summary, ev.location, ev.description, +new Date(ev.start), +new Date(ev.end), !!ev.allDay, ev.rrule || null, (ev.exdates || []).slice().sort(), ev.reminder, ev.reminderAt ? +new Date(ev.reminderAt) : null, (ev.attendees || []).map((a) => a.email)]);
+
+        /** Calendar's model back to Android's row, keeping what Calendar does not show. */
+        function androidEvent(ev, calendarId) {
+            const o = (ev.phone && ev.phone.orig) || {};
+            const allDay = !!ev.allDay;
+            const start = allDay ? utcDay(new Date(ev.start)) : +new Date(ev.start);
+            const end = allDay ? utcDay(new Date(ev.end)) : +new Date(ev.end);
+            const out = { calendarId, title: ev.summary || '', location: ev.location || '', description: ev.description || '', start, end, allDay, timezone: allDay ? 'UTC' : (o.allDay ? '' : o.timezone) || Intl.DateTimeFormat().resolvedOptions().timeZone };
+            if (ev.phone) out.id = ev.phone.id;
+            // the rule: Android's own text when the form left it as it was (it may hold parts Calendar
+            // has no field for), else the rule written again
+            const origRule = ruleOf(o.rrule);
+            out.rrule = ev.rrule ? (o.rrule && JSON.stringify(origRule) === JSON.stringify(ev.rrule) ? o.rrule : ruleText(ev.rrule)) : null;
+            if (out.rrule) out.duration = `P${Math.max(60, Math.round((end - start) / 1000))}S`;
+            // the series' own skipped dates (the exceptions' starts are Android's to keep)
+            const own = ev.phone ? ev.phone.ownExdates : [];
+            const added = (ev.exdates || []).filter((x) => !(ev.phone && ev.phone._exc && ev.phone._exc.includes(x)));
+            out.exdate = JSON.stringify(added.slice().sort()) === JSON.stringify(own.slice().sort()) ? (o.exdate || null) : (added.length ? added.map((x) => icsTime(x, allDay)).join(',') : null);
+            // reminders: the first alert is Calendar's; the others stay
+            const rest = (o.reminders || []).filter((r, i, a) => r !== a.find((x) => x.method === 1 || x.method === 0));
+            const minutes = ev.reminderAt ? Math.max(0, Math.round((start - +new Date(ev.reminderAt)) / 60000)) : ev.reminder;
+            out.reminders = (minutes != null ? [{ minutes, method: 1 }] : []).concat(rest);
+            // attendees: the organizer and every known one keep their status
+            const known = new Map((o.attendees || []).map((a) => [String(a.email).toLowerCase(), a]));
+            out.attendees = (o.attendees || []).filter((a) => a.relationship === 2)
+                .concat((ev.attendees || []).map((a) => Object.assign({ status: 0, type: 1, relationship: 1 }, known.get(String(a.email).toLowerCase()) || {}, { name: a.name || '', email: a.email })));
+            ['availability', 'accessLevel'].forEach((k) => { if (o[k] != null) out[k] = o[k]; });
+            return out;
+        }
+
+        /** wmCalendar save(cal) for a phone calendar: what changed since it was read goes to Android. */
+        async function saveCalendar(cal) {
+            if (!canWrite('calendar')) throw new Error('Melaton Mobile may not change the phone\'s calendar. Allow it in ActiveSync > Menu > Phone Data...');
+            const snap = cal.phoneSnap || new Map();
+            const now = new Map(cal.events.map((ev) => [ev.uid, ev]));
+            for (const ev of cal.events) {
+                const was = snap.get(ev.uid);
+                if (was && was === evSig(ev)) continue;
+                const r = JSON.parse(pim().saveEvent(JSON.stringify(androidEvent(ev, cal.phone.calendarId))));
+                if (!r || !r.ok) throw new Error(`The appointment could not be saved on the phone${r && r.error ? ` (${r.error})` : ''}.`);
+                if (!ev.phone) { ev.phone = { id: r.id, orig: null, ownExdates: [] }; ev.uid = `phone-${r.id}`; }
+            }
+            for (const [uid] of snap) {
+                if (now.has(uid)) continue;
+                const id = Number(String(uid).replace(/^phone-/, ''));
+                if (id && !pim().deleteEvent(id)) throw new Error('The appointment could not be deleted on the phone.');
+            }
+            cal.phoneSnap = new Map(cal.events.map((ev) => [ev.uid, evSig(ev)]));
+            document.dispatchEvent(new CustomEvent('wmPhoneDataLocalChange', { detail: { kind: 'calendar' } }));
+            return true;
+        }
+
+        /** Calendar's calendars from the phone (wmCalendar load), each with its snapshot for saving. */
+        function calendarModels(from, to, nextId) {
+            const writable = canWrite('calendar');
+            return calendarSets(from, to).map(({ cal, events }, i) => ({
+                id: nextId(i), name: cal.name || 'Phone', color: cal.color || '#99ccff', source: `phone:${device()}`, refresh: 0, fileId: null, fileName: null,
+                events, tasks: [], visible: true, readonly: !(writable && cal.writable), phone: { calendarId: cal.id },
+                phoneSnap: new Map(events.map((ev) => [ev.uid, evSig(ev)]))
+            }));
+        }
+
+        // ---------------------------------------------------------------- contacts
+
+        // Android type numbers (ContactsContract.CommonDataKinds)
+        const PH = { HOME: 1, MOBILE: 2, WORK: 3, FAX_WORK: 4, FAX_HOME: 5, PAGER: 6, OTHER: 7, MAIN: 12, WORK_MOBILE: 17, WORK_PAGER: 18 };
+        const PHONE_SLOTS = [['home', 'phone', [PH.HOME, PH.MAIN, PH.OTHER]], ['home', 'mobile', [PH.MOBILE]], ['home', 'fax', [PH.FAX_HOME]], ['work', 'phone', [PH.WORK, PH.WORK_MOBILE]], ['work', 'fax', [PH.FAX_WORK]], ['work', 'pager', [PH.PAGER, PH.WORK_PAGER]]];
+        const SLOT_TYPE = { 'home.phone': PH.HOME, 'home.mobile': PH.MOBILE, 'home.fax': PH.FAX_HOME, 'work.phone': PH.WORK, 'work.fax': PH.FAX_WORK, 'work.pager': PH.PAGER };
+        const ADDR = { HOME: 1, WORK: 2 };
+        const WEB = { HOMEPAGE: 1, HOME: 4, WORK: 5 };
+        const EVT = { ANNIVERSARY: 1, BIRTHDAY: 3 };
+        const REL = { CHILD: 3, PARTNER: 10, SPOUSE: 14 };
+
+        /** One Android contact as a Melaton card; .map says which Android rows went into which field. */
+        function cardOf(VC, p) {
+            const c = VC.blank();
+            const map = { phones: {}, addresses: {}, websites: {}, events: {}, relations: [] };
+            c.uid = `phone-${p.id}`;
+            const n = p.name || {};
+            c.first = n.given || ''; c.middle = n.middle || ''; c.last = n.family || ''; c.prefix = n.prefix || ''; c.suffix = n.suffix || '';
+            c.fn = n.display || [c.first, c.middle, c.last].filter(Boolean).join(' ');
+            c.nickname = p.nickname || '';
+            c.emails = (p.emails || []).map((x) => x.address).filter(Boolean);
+            const phones = p.phones || [];
+            const used = new Set();
+            for (const [grp, key, types] of PHONE_SLOTS) {
+                const i = phones.findIndex((x, k) => !used.has(k) && types.includes(Number(x.type)));
+                if (i >= 0) { c[grp][key] = phones[i].number; used.add(i); map.phones[`${grp}.${key}`] = i; }
+            }
+            // other numbers fill the slots still empty (a second mobile becomes the home number ...)
+            phones.forEach((x, k) => {
+                if (used.has(k)) return;
+                const slot = PHONE_SLOTS.find(([grp, key]) => !c[grp][key] && !(`${grp}.${key}` in map.phones));
+                if (slot) { c[slot[0]][slot[1]] = x.number; used.add(k); map.phones[`${slot[0]}.${slot[1]}`] = k; }
+            });
+            const addrs = p.addresses || [];
+            const ai = { home: addrs.findIndex((a) => Number(a.type) === ADDR.HOME), work: addrs.findIndex((a) => Number(a.type) === ADDR.WORK) };
+            if (ai.home < 0) ai.home = addrs.findIndex((a, k) => k !== ai.work);
+            for (const grp of ['home', 'work']) {
+                const a = addrs[ai[grp]];
+                if (!a) continue;
+                Object.assign(c[grp], { street: [a.street, a.pobox, a.neighborhood].filter(Boolean).join('\n'), city: a.city || '', region: a.region || '', postal: a.postcode || '', country: a.country || '' });
+                map.addresses[grp] = ai[grp];
+            }
+            const org = p.org || {};
+            Object.assign(c.work, { company: org.company || '', title: org.title || '', department: org.department || '', office: org.office || '' });
+            const webs = p.websites || [];
+            const wi = { work: webs.findIndex((w) => Number(w.type) === WEB.WORK) };
+            wi.home = webs.findIndex((w, k) => k !== wi.work);
+            for (const grp of ['home', 'work']) if (webs[wi[grp]]) { c[grp].url = webs[wi[grp]].url; map.websites[grp] = wi[grp]; }
+            const evs = p.events || [];
+            const bi = evs.findIndex((e) => Number(e.type) === EVT.BIRTHDAY);
+            const an = evs.findIndex((e) => Number(e.type) === EVT.ANNIVERSARY);
+            const day = (s) => String(s || '').replace(/^--/, '1604-');
+            if (bi >= 0) { c.birthday = day(evs[bi].date); map.events.birthday = bi; }
+            if (an >= 0) { c.anniversary = day(evs[an].date); map.events.anniversary = an; }
+            (p.relations || []).forEach((r, k) => {
+                const t = Number(r.type);
+                if ((t === REL.SPOUSE || t === REL.PARTNER) && !c.spouse) { c.spouse = r.name; map.relations.push(k); } else if (t === REL.CHILD) { c.children.push(r.name); map.relations.push(k); }
+            });
+            c.notes = p.note || '';
+            c.photo = p.photo || '';
+            c.categories = ['Phone'];
+            c.extra = [`X-MELATON-PHONE:${device()}`];
+            return { card: c, map };
+        }
+
+        /** The card back as the full Android contact: changed fields replaced, rows with no field kept. */
+        function androidContact(c, orig, map) {
+            const o = orig ? JSON.parse(JSON.stringify(orig)) : { phones: [], emails: [], addresses: [], websites: [], ims: [], events: [], relations: [], org: {}, name: {} };
+            map = map || { phones: {}, addresses: {}, websites: {}, events: {}, relations: [] };
+            o.name = Object.assign({}, o.name, { prefix: c.prefix, given: c.first, middle: c.middle, family: c.last, suffix: c.suffix, display: c.fn || [c.first, c.middle, c.last].filter(Boolean).join(' ') });
+            o.nickname = c.nickname || null;
+            o.note = c.notes || null;
+            // phones: the six fields, then the numbers that had no field
+            const keepPhones = (o.phones || []).filter((_, k) => !Object.values(map.phones).includes(k));
+            const slotPhones = Object.keys(SLOT_TYPE).map((slot) => {
+                const [grp, key] = slot.split('.');
+                const v = c[grp][key];
+                if (!v) return null;
+                const was = map.phones[slot] != null ? orig.phones[map.phones[slot]] : null;
+                return was && was.number === v ? was : { number: v, type: was ? was.type : SLOT_TYPE[slot], label: was ? was.label : undefined };
+            }).filter(Boolean);
+            o.phones = slotPhones.concat(keepPhones);
+            const byAddr = new Map((orig ? orig.emails : []).map((e) => [String(e.address).toLowerCase(), e]));
+            o.emails = c.emails.filter(Boolean).map((a) => byAddr.get(String(a).toLowerCase()) || { address: a, type: 1 });
+            const keepAddr = (o.addresses || []).filter((_, k) => !Object.values(map.addresses).includes(k));
+            const addr = ['home', 'work'].map((grp) => {
+                const g = c[grp];
+                if (!(g.street || g.city || g.region || g.postal || g.country)) return null;
+                const was = map.addresses[grp] != null ? orig.addresses[map.addresses[grp]] : null;
+                return Object.assign({}, was || {}, { street: g.street || '', pobox: '', neighborhood: '', city: g.city || '', region: g.region || '', postcode: g.postal || '', country: g.country || '', type: was ? was.type : ADDR[grp.toUpperCase()] });
+            }).filter(Boolean);
+            o.addresses = addr.concat(keepAddr);
+            o.org = Object.assign({}, o.org, { company: c.work.company, title: c.work.title, department: c.work.department, office: c.work.office });
+            const keepWeb = (o.websites || []).filter((_, k) => !Object.values(map.websites).includes(k));
+            o.websites = ['home', 'work'].map((grp) => (c[grp].url ? { url: c[grp].url, type: grp === 'work' ? WEB.WORK : WEB.HOMEPAGE } : null)).filter(Boolean).concat(keepWeb);
+            const keepEv = (o.events || []).filter((_, k) => !Object.values(map.events).includes(k));
+            const undayed = (s) => String(s || '').replace(/^1604-/, '--');
+            o.events = [c.birthday ? { date: undayed(c.birthday), type: EVT.BIRTHDAY } : null, c.anniversary ? { date: undayed(c.anniversary), type: EVT.ANNIVERSARY } : null].filter(Boolean).concat(keepEv);
+            const keepRel = (o.relations || []).filter((_, k) => !map.relations.includes(k));
+            o.relations = (c.spouse ? [{ name: c.spouse, type: REL.SPOUSE }] : []).concat((c.children || []).filter(Boolean).map((k) => ({ name: k, type: REL.CHILD }))).concat(keepRel);
+            // the photo: unchanged is left out (kept), a new picture sent, a removed one cleared
+            if (!c.photo) { if (orig && orig.photo) o.photo = null; else delete o.photo; } else if (/^data:image\//.test(c.photo)) o.photo = c.photo; else delete o.photo;
+            return o;
+        }
+
+        /** Contacts' entries from the phone (wmNotes load); each keeps its Android contact. */
+        function contactEntries(VC) {
+            if (!live('contacts')) return [];
+            const writable = canWrite('contacts');
+            return (parse('contacts') || []).filter((p) => p && ((p.name && p.name.display) || (p.phones || []).length || (p.emails || []).length)).map((p) => {
+                const { card, map } = cardOf(VC, p);
+                return { c: card, key: `phone:${p.id}`, fileId: null, index: 0, count: 1, fileName: null, item: null, path: null, phone: { id: p.id, orig: p, map, writable } };
             });
         }
 
-        /** melatonVCard cards for the phone's contacts (marked with X-MELATON-PHONE). */
-        function cards(VC) {
-            return contacts().map((p) => {
-                const c = VC.blank();
-                c.uid = `phone-${device()}-${p.id}`.replace(/\s+/g, '-');
-                c.first = p.given || '';
-                c.last = p.family || '';
-                c.fn = p.name || '';
-                c.emails = (p.emails || []).map((x) => x.address).filter(Boolean);
-                for (const ph of p.phones || []) {
-                    if (ph.type === 'mobile' && !c.home.mobile) c.home.mobile = ph.number;
-                    else if (ph.type === 'work' && !c.work.phone) c.work.phone = ph.number;
-                    else if (!c.home.phone) c.home.phone = ph.number;
-                    else if (!c.home.mobile) c.home.mobile = ph.number;
-                }
-                c.work.company = p.org || '';
-                c.work.title = p.title || '';
-                c.notes = p.note || '';
-                c.birthday = p.birthday || '';
-                c.categories = ['Phone'];
-                c.extra = [`X-MELATON-PHONE:${device()}`];
-                return c;
-            });
+        /** Contacts' save for a phone entry (or a new card for the phone): Android gets the whole contact. */
+        function saveContact(card, phone) {
+            if (!canWrite('contacts')) throw new Error('Melaton Mobile may not change the phone\'s contacts. Allow it in ActiveSync > Menu > Phone Data...');
+            const r = JSON.parse(pim().saveContact(JSON.stringify(androidContact(card, phone && phone.orig, phone && phone.map))));
+            if (!r || !r.ok) throw new Error(`The contact could not be saved on the phone${r && r.error ? ` (${r.error})` : ''}.`);
+            document.dispatchEvent(new CustomEvent('wmPhoneDataLocalChange', { detail: { kind: 'contacts' } }));
+            return r;
         }
+
+        function deleteContact(phone) {
+            if (!canWrite('contacts')) throw new Error('Melaton Mobile may not change the phone\'s contacts. Allow it in ActiveSync > Menu > Phone Data...');
+            if (!pim().deleteContact(Number(phone.id))) throw new Error('The contact could not be deleted on the phone.');
+            document.dispatchEvent(new CustomEvent('wmPhoneDataLocalChange', { detail: { kind: 'contacts' } }));
+            return true;
+        }
+
+        // ---------------------------------------------------------------- the mirror (Synchronize)
 
         const b64 = (text) => new Promise((resolve) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result).split(',')[1] || ''); fr.readAsDataURL(new Blob([text], { type: 'text/plain' })); });
         /* global vfsClient, activeWorkspace */
         const wsRoot = () => { let w = 'Default'; try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) w = activeWorkspace; } catch (_) { /* none */ } return `/Workspaces/${w}`; };
 
+        async function listOf(folder) {
+            try { const r = await vfsClient.listDirectory(folder, { offset: 0, limit: 1000 }); return (r && r.items) || []; } catch (_) { return []; }
+        }
+
         async function writeFile(folder, name, text, mime) {
             if (typeof vfsClient === 'undefined') throw new Error('Files are not available.');
             const root = wsRoot();
             const leaf = folder.slice(root.length + 1);
-            try {
-                const top = await vfsClient.listDirectory(root, { offset: 0, limit: 500 });
-                if (!((top && top.items) || []).some((i) => i.kind === 'folder' && String(i.name).toLowerCase() === leaf.toLowerCase())) await vfsClient.createFolder(root, leaf);
-            } catch (_) { /* the upload says */ }
-            const res = await vfsClient.listDirectory(folder, { offset: 0, limit: 1000 });
-            const old = ((res && res.items) || []).find((i) => i.name === name && i.kind !== 'folder');
+            const top = await listOf(root);
+            if (!top.some((i) => i.kind === 'folder' && String(i.name).toLowerCase() === leaf.toLowerCase())) { try { await vfsClient.createFolder(root, leaf); } catch (_) { /* the upload says */ } }
+            const old = (await listOf(folder)).find((i) => i.name === name && i.kind !== 'folder');
             const data = await b64(text);
             if (old && typeof vfsClient.replaceFile === 'function') await vfsClient.replaceFile(old.targetId || old.id, data, mime);
             else await vfsClient.uploadFile(folder, data, name, mime);
+        }
+
+        /** A contact photo as a small data URL for the mirror's vCard (256 px JPEG). */
+        async function photoData(url) {
+            try {
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+                const s = Math.min(1, 256 / Math.max(img.naturalWidth, img.naturalHeight));
+                const cv = document.createElement('canvas');
+                cv.width = Math.max(1, Math.round(img.naturalWidth * s));
+                cv.height = Math.max(1, Math.round(img.naturalHeight * s));
+                cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+                return cv.toDataURL('image/jpeg', 0.85);
+            } catch (_) { return ''; }
         }
 
         /** Mirror the phone into the workspace (sync mode); one run at a time. */
@@ -846,17 +1090,30 @@
                         if (kind === 'calendar') {
                             if (!window.melatonApps || typeof window.melatonApps.ensureLoaded !== 'function') continue;
                             await window.melatonApps.ensureLoaded('calendar');
-                            const MC = window.melatonCalendar;
+                            const MC = MCx();
                             if (!MC || typeof MC.toIcs !== 'function') continue;
                             const now = Date.now();
-                            const cal = { name: `Phone (${device()})`, color: '#99ccff', source: `phone:${device()}`, refresh: 0, events: calendarEvents(now - PAST_MS, now + AHEAD_MS), tasks: [] };
-                            await writeFile(`${wsRoot()}/Calendars`, `${safe(cal.name)}.ics`, MC.toIcs(cal), 'text/calendar');
+                            const folder = `${wsRoot()}/Calendars`;
+                            const written = new Set();
+                            // one file per calendar the phone shows: "Phone - <name> (<device>).ics"
+                            for (const { cal, events } of calendarSets(now - PAST_MS, now + AHEAD_MS)) {
+                                const name = `${safe(`Phone - ${cal.name || 'Calendar'} (${device()})`)}.ics`;
+                                const out = { name: `${cal.name || 'Calendar'} (${device()})`, color: cal.color || '#99ccff', source: `phone:${device()}`, refresh: 0, tasks: [], events: events.map((ev) => Object.assign({}, ev, { phone: undefined })) };
+                                await writeFile(folder, name, MC.toIcs(out), 'text/calendar');
+                                written.add(name);
+                            }
+                            // calendars the phone no longer shows (and the first single-file mirror) go
+                            const suffix = `(${safe(device())}).ics`;
+                            const stale = (await listOf(folder)).filter((i) => i.kind !== 'folder' && String(i.name).endsWith(suffix) && /^Phone( - |\s*\()/.test(i.name) && !written.has(i.name));
+                            if (stale.length && typeof vfsClient.moveToTrash === 'function') { try { await vfsClient.moveToTrash(stale.map((i) => ({ id: i.id, name: i.name, kind: i.kind, targetKind: i.targetKind, targetId: i.targetId, isShortcut: false, isUserFileLink: false, isDesktopShortcut: false, isVfsShortcutEntry: false, workspaceId: i.workspaceId, size: i.size, modifiedAt: i.modifiedAt, mimeType: i.mimeType || undefined })), folder); } catch (_) { /* next time */ } }
                         } else {
                             if (!window.melatonVCard && window.featureLoader) await window.featureLoader._loadScript('scripts/comp/vcard.js');
                             const VC = window.melatonVCard;
                             if (!VC) continue;
-                            const text = cards(VC).map((c) => VC.toVcf(c)).join('');
-                            await writeFile(`${wsRoot()}/Contacts`, `${safe(`Phone contacts (${device()})`)}.vcf`, text, 'text/vcard');
+                            const cards = contactEntries(VC).map((e) => e.c);
+                            // every field, the photo too (as a small JPEG in the card)
+                            for (const c of cards) if (PHOTO_URL.test(c.photo || '')) c.photo = await photoData(c.photo);
+                            await writeFile(`${wsRoot()}/Contacts`, `${safe(`Phone contacts (${device()})`)}.vcf`, cards.map((c) => VC.toVcf(c)).join(''), 'text/vcard');
                         }
                         try { localStorage.setItem(`wmPhoneDataSynced:${kind}`, String(Date.now())); } catch (_) { /* no record */ }
                     } catch (err) { console.warn('[wmPhoneData] sync', kind, err); }
@@ -864,6 +1121,13 @@
                 document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: want } }));
             })().finally(() => { syncing = null; });
             return syncing;
+        }
+
+        /** The mirror file of this phone (read live on the phone instead). */
+        function isOwnMirror(name, source) {
+            const d = device();
+            if (source && source === `phone:${d}`) return true;
+            return String(name || '') === `${safe(`Phone contacts (${d})`)}.vcf`;
         }
 
         function start() {
@@ -874,12 +1138,18 @@
                 await syncNow();
                 document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: ['calendar', 'contacts'] } }));
             });
-            // at start (after the desktop work settles) and every few hours while the app runs
+            // an edit made here reaches the mirror soon after
+            let soon = null;
+            document.addEventListener('wmPhoneDataLocalChange', (e) => {
+                const kind = e.detail && e.detail.kind;
+                clearTimeout(soon);
+                soon = setTimeout(() => { void syncNow(kind ? [kind] : undefined); }, 4000);
+            });
             setTimeout(() => { void syncNow(); }, 20000);
             setInterval(() => { void syncNow(); }, SYNC_EVERY_MS);
         }
 
-        return { available, mode, access, granted, calendarEvents, cards, contacts, syncNow, start, device };
+        return { available, mode, live, access, granted, canWrite, calendarModels, saveCalendar, contactEntries, saveContact, deleteContact, syncNow, start, device, isOwnMirror, PHOTO_URL };
     })();
     window.wmPhoneData = phoneData;
 
