@@ -123,7 +123,7 @@ PERSONAS.forEach((persona) => {
     });
 });
 
-// 8. The in-between sizes are read off the points she is actually on.
+// 7b. The in-between sizes are read off the points she is actually on.
 assert.ok(/none of this stage's 2 in-between sizes yet, and the next one is 7 points away/
     .test(voice.inBetweenLine(voice.PERSONA_VOICES.kabuki, { stage: 'base', points: 0 })), 'base at 0 points: nothing taken yet');
 assert.ok(/she has taken 1 of 2 in-between sizes inside this stage, and the next one is 6 points away/
@@ -167,6 +167,41 @@ PERSONAS.forEach((persona) => {
     assert.ok(/no size after this one/.test(topped), `${persona}: her last stage says there is no further`);
 });
 
+// 9. One streak each, and only hers (#814, Yukimi 2026-11-13): Yumiya silly, Chiyo possessive, Yozora
+//    proud - each with its guardrail in the same line, and riding on every stage's prompt.
+const QUIRKS = {
+    wren: {
+        has: /silly and a bit childish/i,
+        guard: /never stupid/i,
+        others: [/attached to them past good sense/i, /Your pride is in the work/i]
+    },
+    kabuki: {
+        has: /attached to them past good sense/i,
+        guard: /never land on them|affection, not control/i,
+        others: [/silly and a bit childish/i, /Your pride is in the work/i]
+    },
+    xi: {
+        has: /Your pride is in the work/i,
+        guard: /check the edge nobody asked about|the reason the ones inside you come out perfect/i,
+        others: [/silly and a bit childish/i, /attached to them past good sense/i]
+    }
+};
+PERSONAS.forEach((persona) => {
+    const cfg = voice.PERSONA_VOICES[persona];
+    const q = QUIRKS[persona];
+    assert.ok(cfg.quirk, `${persona}: has her own streak`);
+    assert.ok(q.has.test(cfg.quirk), `${persona}: the streak is the one she was given`);
+    assert.ok(q.guard.test(cfg.quirk), `${persona}: and it carries its guardrail`);
+    q.others.forEach((re) => assert.ok(!re.test(cfg.quirk), `${persona}: no other persona's streak is grafted on`));
+    cfg.order.forEach((stage) => {
+        const at = cfg.points[cfg.order.indexOf(stage)];
+        const prompt = voice.personaVoiceLines(persona, { stage, points: at, nextAt: cfg.points[cfg.order.indexOf(stage) + 1] }, {}).join('\n');
+        assert.ok(prompt.includes(cfg.quirk), `${persona}/${stage}: the streak rides on the turn`);
+    });
+});
+// Yozora is the one who says the fond thing out loud rather than only showing it.
+assert.ok(/say it plainly|says it plainly/.test(voice.PERSONA_VOICES.xi.quirk), 'Yozora says it plainly');
+
 const kabukiBase = voice.personaVoiceLines('kabuki', { stage: 'base', points: 0, nextAt: 20 }, {}).join('\n');
 assert.ok(kabukiBase.includes('Growth stage: 1/3 "base"'), 'base is stated');
 assert.ok(kabukiBase.includes('exactly at this stage and no further'), 'base is capped');
@@ -178,7 +213,7 @@ const kabukiStray = voice.personaVoiceLines('kabuki', { stage: 'stuffed', points
 assert.ok(kabukiStray.includes('the stage the client sent is not one this persona has'), 'another persona\'s stage is not accepted');
 assert.ok(kabukiStray.includes('speak from Stage 1 of 3'), 'and she falls back to her first stage');
 
-// 9. Yozora (the coding agent) gets the coding ladder, not the print one.
+// 10. Yozora (the coding agent) gets the coding ladder, not the print one.
 const xi = voice.personaVoiceLines('xi', { stage: 'bigger', points: 20, nextAt: 20 }, { coding: true }).join('\n');
 assert.ok(xi.includes('The code, the facts and the commands stay exact'), 'Yozora keeps the coding ladder');
 assert.ok(!xi.includes('amp the picture and the closeness'), 'Yozora does not get the print amp line');
