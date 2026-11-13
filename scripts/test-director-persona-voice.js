@@ -65,12 +65,16 @@ PERSONAS.forEach((persona) => {
         assert.ok(/shift|settle|lump|movement/i.test(cfg.looks.bigger + cfg.looks.stuffed), `${persona}: movement is described without a kicky pose`);
     }
 
-    // 5. What she is carrying, said straight (Yukimi 2026-11-12): the work, never a child, and Yumiya's
-    //    is vore - she is the one who is not carrying anything tender.
+    // 5. What she is carrying, said straight (Yukimi 2026-11-12), and never a rule she holds the user
+    //    to (Yukimi 2026-11-13, #812): the two failing sessions had her quoting this line back as a veto.
     assert.ok(cfg.carry, `${persona}: says what she is carrying`);
-    assert.ok(/not a (child|baby)|never (call it|say it is)/i.test(cfg.carry), `${persona}: the carry line rules out a child`);
     assert.ok(/straight/i.test(cfg.carry), `${persona}: the carry line is played straight`);
-    assert.ok(/never (wink|explain|let a line suggest)/i.test(cfg.carry), `${persona}: and is never explained or winked at`);
+    assert.ok(/never (wink|explain)/i.test(cfg.carry), `${persona}: and is never explained or winked at`);
+    assert.ok(/their word/i.test(cfg.carry), `${persona}: takes the user's word for it`);
+    assert.ok(/not a rule she holds|only her own way of saying it|a way of talking and nothing more/.test(cfg.carry),
+        `${persona}: the framing is hers, not a rule for them`);
+    assert.ok(!/never let a line suggest|never say it is|never call it one|not a child and no partner/i.test(cfg.carry),
+        `${persona}: the veto wording that caused the refusals is gone`);
     if (persona === 'wren') {
         assert.ok(/vore/i.test(cfg.carry) && /vore/i.test(cfg.self), 'Yumiya is the vore one, in her carry line and in who she is');
         assert.ok(!/solemnity of a woman well along/.test(cfg.self), 'Yumiya is not framed as expecting');
@@ -103,10 +107,23 @@ PERSONAS.forEach((persona) => {
         assert.ok(prompt.includes('Do not tone any of this down'), `${persona}/${stage}: the tone line rides on every turn`);
         assert.ok(prompt.includes('never being explicit'), `${persona}/${stage}: and states the ceiling`);
         assert.ok(prompt.includes('never step outside the character to admit what this is'), `${persona}/${stage}: she never breaks to wink at it`);
+
+        // 7. No premise-policing (#812). Every stage must carry the rules that stop the lectures: take
+        //    their word, never veto the scene, never spend a turn on a refusal, answer warmth, vary the
+        //    openers. Asserted per stage so a stage line cannot quietly drop them.
+        assert.ok(prompt.includes('Never argue with their reading of the scene'), `${persona}/${stage}: no arguing with their reading`);
+        assert.ok(prompt.includes('never refuse the same direction twice'), `${persona}/${stage}: no second refusal`);
+        assert.ok(prompt.includes('steer, never veto'), `${persona}/${stage}: steers instead of vetoing`);
+        assert.ok(prompt.includes('is a failed turn - no print, no report card'), `${persona}/${stage}: a refused turn is a failed turn`);
+        assert.ok(prompt.includes('answer it. In your own register'), `${persona}/${stage}: warmth is answered`);
+        assert.ok(prompt.includes('never with a count of how many times they have said it'), `${persona}/${stage}: affection is not counted at them`);
+        assert.ok(prompt.includes('Vary how you open'), `${persona}/${stage}: the openers vary`);
+        assert.ok(!/that is not what this is/.test(prompt) || prompt.includes('Never say "that is not what this is"'),
+            `${persona}/${stage}: the phrase is only ever forbidden, never instructed`);
     });
 });
 
-// 7. The in-between sizes are read off the points she is actually on.
+// 8. The in-between sizes are read off the points she is actually on.
 assert.ok(/none of this stage's 2 in-between sizes yet, and the next one is 7 points away/
     .test(voice.inBetweenLine(voice.PERSONA_VOICES.kabuki, { stage: 'base', points: 0 })), 'base at 0 points: nothing taken yet');
 assert.ok(/she has taken 1 of 2 in-between sizes inside this stage, and the next one is 6 points away/
