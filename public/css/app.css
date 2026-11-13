@@ -3282,14 +3282,14 @@ body:not(.windows-classic-theme) .btn-standard:focus-visible {
 }
 
 /* Active button states - only for text inputs */
-input[type="text"]:active,
-input[type="number"]:active,
-input[type="email"]:active,
-input[type="password"]:active,
-input[type="search"]:active,
-input[type="tel"]:active,
-input[type="url"]:active,
-textarea:active {
+:where(html:not(.ui-mobile)) input[type="text"]:active,
+:where(html:not(.ui-mobile)) input[type="number"]:active,
+:where(html:not(.ui-mobile)) input[type="email"]:active,
+:where(html:not(.ui-mobile)) input[type="password"]:active,
+:where(html:not(.ui-mobile)) input[type="search"]:active,
+:where(html:not(.ui-mobile)) input[type="tel"]:active,
+:where(html:not(.ui-mobile)) input[type="url"]:active,
+:where(html:not(.ui-mobile)) textarea:active {
     background: hsl(0 0% 100% / 25%);
     border: 1px solid hsl(0deg 0% 100% / 25%);
     z-index: var(--z-layer-4);
@@ -4543,16 +4543,16 @@ button::-moz-focus-inner {
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    :not(.hover-show) > .form-control:hover:not(:disabled) {
+    :where(html:not(.ui-mobile)) :not(.hover-show) > .form-control:hover:not(:disabled) {
         background: var(--glass-layer-3);
         border: 1px solid var(--glass-border-3);
     }
 }
 
-.form-row input:not(.hover-show):focus,
-.form-row .percentage-input-container:not(.hover-show):focus-within,
-.form-control:not(.hover-show):focus,
-.form-control:not(.hover-show):active {
+:where(html:not(.ui-mobile)) .form-row input:not(.hover-show):focus,
+:where(html:not(.ui-mobile)) .form-row .percentage-input-container:not(.hover-show):focus-within,
+:where(html:not(.ui-mobile)) .form-control:not(.hover-show):focus,
+:where(html:not(.ui-mobile)) .form-control:not(.hover-show):active {
     background: var(--glass-layer-4);
     border: 1px solid var(--glass-border-4);
 }

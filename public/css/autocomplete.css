@@ -591,10 +591,10 @@ textarea {
 }
 
 @supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    select:hover:not(:disabled),
-    select:focus,
-    textarea:hover:not(:disabled),
-    textarea:focus {
+    :where(html:not(.ui-mobile)) select:hover:not(:disabled),
+    :where(html:not(.ui-mobile)) select:focus,
+    :where(html:not(.ui-mobile)) textarea:hover:not(:disabled),
+    :where(html:not(.ui-mobile)) textarea:focus {
         background: rgba(255, 255, 255, 0.25);
         padding: 0.45em;
         outline: none;
