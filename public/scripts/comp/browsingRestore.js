@@ -6,8 +6,8 @@
  * buttons: Restore (the ticked tabs come back window by window; live Alchemy pages move here without
  * reloading), New (a new window; the old ones stay stored and are not offered again) and Discard (they go).
  *
- * When it shows (userGlobalSettings.alchemy.sessions): the first time Grimoire (IE) opens; at startup once
- * the desktop is up only when showAtStartup is ticked (off by default since Nov 13); alwaysRestore skips the question. The times are set in
+ * When it shows (userGlobalSettings.alchemy.sessions): the first time Grimoire (IE) opens, never at
+ * startup (Yukimi Nov 13); showAtStartup ("Ask to restore the last session") off = never asks; alwaysRestore skips the question. The times are set in
  * Internet Properties > General > Tabs > Sessions (openSettings).
  *
  * window.browsingRestore = { openSettings(owner), openRestore(reason), restoreWindows(windows), pending() }
@@ -44,7 +44,7 @@
     const UNITS = { m: 1, h: 60, d: 1440 };
     const SESSION_TPL = { t: 'Browsing Session Settings', w: 262, h: 214, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
         [-1, 'B', 7, 7, 248, 62, 0x50000007, 'When Grimoire starts', 0],
-        [701, 'B', 15, 20, 232, 12, 0x50010003, 'Show &Restore Session when the computer starts', 0],
+        [701, 'B', 15, 20, 232, 12, 0x50010003, '&Ask to restore the last session when Grimoire opens', 0],
         [-1, 'S', 27, 32, 220, 9, 0x50020000, 'Otherwise it shows the first time Grimoire opens.', 0],
         [702, 'B', 15, 46, 232, 12, 0x50010003, '&Always restore my last session without asking', 0],
         [-1, 'B', 7, 75, 248, 90, 0x50000007, 'Keeping sessions', 0],
@@ -75,7 +75,7 @@
             const res = root.browsingSessions ? await root.browsingSessions.list() : null;
             s = res && res.settings;
         } catch (_) { s = null; }
-        return Object.assign({ idleMinutes: 15, keepMinutes: 4320, showAtStartup: false, alwaysRestore: false, roam: false }, s || {});
+        return Object.assign({ idleMinutes: 15, keepMinutes: 4320, showAtStartup: true, alwaysRestore: false, roam: false }, s || {});
     }
 
     async function saveSessionSettings(patch) {
@@ -435,11 +435,9 @@
             whenDesktopUp().then(restoreAll);
             return;
         }
-        // only when asked for (Yukimi Nov 13): by default the question waits for the first IE window
-        if (s.showAtStartup === true) {
-            whenDesktopUp().then(() => openRestore('startup'));
-            return;
-        }
+        // never at startup (Yukimi Nov 13): the question waits for the first IE window; the box
+        // "Ask to restore the last session" (showAtStartup) turns the question off altogether
+        if (s.showAtStartup === false) return;
         pendingOnOpen = true;
         hookGrimoireOpen();
     }
