@@ -39,7 +39,7 @@
 
     function balloon(type, title, text) {
         if (!icon || !root.PopoverManager || typeof root.PopoverManager.showPopover !== 'function') return;
-        root.PopoverManager.showPopover(icon, type, esc(title), esc(text), false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null, { popupId: 'activesync', position: 'top' });
+        root.PopoverManager.showPopover(icon, type, esc(title), esc(text), false, 8000, `<img src="${ART}/activesync-32.png" alt="" width="32" height="32">`, null, { popupId: 'activesync', position: 'top', arrowPosition: 'bottom-right' });
     }
 
     function line(d) {

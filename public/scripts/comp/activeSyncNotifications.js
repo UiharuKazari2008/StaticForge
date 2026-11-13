@@ -74,7 +74,7 @@
         const mine = showing;
         // the popup renders title and message as HTML: a notification's words are escaped, always
         root.PopoverManager.showPopover(anchor, 'info', esc(n.title || n.app), `${esc(n.text)}${n.text ? '<br>' : ''}<small>${esc(n.title ? `${n.app} • ${device.name}` : device.name)}</small>`, false, 8000, img, null, {
-            popupId: 'activesync-notify', position: 'top',
+            popupId: 'activesync-notify', position: 'top', arrowPosition: 'bottom-right',
             onHide: () => { if (showing === mine) showing = null; }
         });
     }

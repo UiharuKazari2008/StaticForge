@@ -30,8 +30,70 @@ function trayBalloonPolicy(anchor) {
     return rule;
 }
 
+ /**
+  * Tray balloons, the standard (Yukimi, Nov 12 2026; .cursor/rules/tray-balloons.mdc): a balloon
+  * anchored on a notification-area icon (inside #desktopTaskbar) is placed as Vista's NotifyIcon
+  * balloon: above the icon, its stem 15 px in from the balloon's right edge, pointing at the icon
+  * (position 'top' + arrow 'bottom-right', forced here whatever the caller passed), and only one
+  * shows at a time: one that comes while another is up waits for it to close (Vista queues them),
+  * at most TRAY_QUEUE_MAX_WAIT_MS, then the waiting one takes the place. Melaton Update's own balloon
+  * (serviceWorkerManager) takes part through trayBusy / whenTrayFree / trayReleased.
+  */
+const TRAY_QUEUE_MAX_WAIT_MS = 12000;
+const TRAY_QUEUE_GAP_MS = 250;
+const trayQueue = []; // { key, show, at }
+let trayDrainTimer = null;
+const isTrayAnchor = (el) => !!(el && el.closest && el.closest('#desktopTaskbar'));
+
 const PopoverManager = {
     activePopovers: new Map(),
+
+    /** A balloon on a tray icon other than `exceptKey` (an anchor element or a key) is showing. */
+    trayBusy(exceptKey = null) {
+        for (const [el, data] of this.activePopovers) {
+            if (el === exceptKey || data.hoverOnly || !isTrayAnchor(el)) continue;
+            if (data.popover && data.popover.classList.contains('show')) return true;
+        }
+        const sw = document.getElementById('serviceWorkerUpdateTrayPopup');
+        return !!(sw && sw.classList.contains('show') && exceptKey !== 'sw-update');
+    },
+
+    /** Run `show` once no other tray balloon is up (a later one with the same key replaces it). */
+    whenTrayFree(key, show) {
+        const at = trayQueue.findIndex((q) => q.key === key);
+        const item = { key, show, at: Date.now() };
+        if (at >= 0) trayQueue[at] = { ...item, at: trayQueue[at].at }; else trayQueue.push(item);
+        this._scheduleTrayDrain(TRAY_QUEUE_MAX_WAIT_MS);
+    },
+
+    /** A tray balloon closed: the next waiting one shows. */
+    trayReleased() {
+        this._scheduleTrayDrain(TRAY_QUEUE_GAP_MS);
+    },
+
+    _scheduleTrayDrain(ms) {
+        clearTimeout(trayDrainTimer);
+        if (!trayQueue.length) return;
+        trayDrainTimer = setTimeout(() => this._drainTray(), ms);
+    },
+
+    _drainTray() {
+        trayDrainTimer = null;
+        if (!trayQueue.length) return;
+        const next = trayQueue[0];
+        if (this.trayBusy()) {
+            // waited long enough: the waiting balloon takes the place of the one up now
+            if (Date.now() - next.at < TRAY_QUEUE_MAX_WAIT_MS) { this._scheduleTrayDrain(1000); return; }
+            for (const [el, data] of this.activePopovers) {
+                if (!data.hoverOnly && isTrayAnchor(el) && data.popover.classList.contains('show')) this.hide(el);
+            }
+            const m = window.serviceWorkerManager;
+            if (m && typeof m._hideServiceWorkerTrayPopup === 'function') m._hideServiceWorkerTrayPopup();
+        }
+        trayQueue.shift();
+        try { next.show(); } catch (err) { console.warn('[tray] queued balloon failed', err); }
+        if (trayQueue.length) this._scheduleTrayDrain(TRAY_QUEUE_MAX_WAIT_MS);
+    },
     
     /**
      * Show a popover with toast-like API
@@ -59,6 +121,13 @@ const PopoverManager = {
             }
             return null;
         }
+        const trayBalloon = !options.hoverOnly && isTrayAnchor(element);
+        // the tray standard: one balloon at a time (this icon's own balloon may be replaced in place)
+        if (trayBalloon && this.trayBusy(element)) {
+            const args = [element, type, title, message, showProgress, timeout, customIcon, buttons, options];
+            this.whenTrayFree(element.id || title || 'balloon', () => this.showPopover(...args));
+            return null;
+        }
         if (options.popupId) trayNotePopup(options.popupId, title);
         timeout = trayClampPopupTimeout(timeout);
 
@@ -77,10 +146,13 @@ const PopoverManager = {
         }
         
         const {
-            position = 'top',
-            arrowPosition = null,
+            position: askedPosition = 'top',
+            arrowPosition: askedArrow = null,
             hoverOnly = false
         } = options;
+        // ... and placed as Vista's NotifyIcon balloon, pointing at its icon
+        const position = trayBalloon ? 'top' : askedPosition;
+        const arrowPosition = trayBalloon ? 'bottom-right' : askedArrow;
         
         // Build popover content structure
         const hasTitle = title && title.trim();
@@ -148,6 +220,9 @@ const PopoverManager = {
         // Show the popover (use requestAnimationFrame to ensure DOM is ready)
         requestAnimationFrame(() => {
             this.show(element);
+            // a tray balloon without its own timeout still closes (systemTrayManager's fallback,
+            // hover-aware); run here, once it shows (callers ran it before the frame: a no-op)
+            if (trayBalloon && typeof startPopoverAutoHideTimer === 'function') startPopoverAutoHideTimer(element);
         });
         
         return this.activePopovers.get(element)?.popover || null;
@@ -332,6 +407,8 @@ const PopoverManager = {
         if (!element.isConnected) {
             this.detach(element);
         }
+        // the next waiting tray balloon
+        if (!popoverData.hoverOnly && isTrayAnchor(element)) this.trayReleased();
     },
     
     /**

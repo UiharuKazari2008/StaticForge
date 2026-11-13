@@ -1008,8 +1008,11 @@ class ServiceWorkerManager {
 
     _hideServiceWorkerTrayPopup() {
         if (!this.trayPopup.el) return;
+        const wasShown = this.trayPopup.el.classList.contains('show');
         this.trayPopup.el.classList.remove('show');
         this.trayPopup.state = 'hidden';
+        // one tray balloon at a time (popoverManager.js): the next waiting one shows
+        if (wasShown && window.PopoverManager && typeof window.PopoverManager.trayReleased === 'function') window.PopoverManager.trayReleased();
     }
 
     /** Vista's Windows Update balloon: the icon, a bold title, one line; a click opens the page. */
@@ -1313,6 +1316,16 @@ class ServiceWorkerManager {
 
         this.trayPopup.anchorEl = this._getServiceWorkerTrayAnchor();
         if (!this.trayPopup.anchorEl) return false;
+
+        // the tray standard: one balloon at a time. Another icon's balloon is up: this one waits for
+        // it (latest state wins); ours already showing is updated in place
+        const pm = window.PopoverManager;
+        const shown = this.trayPopup.el && this.trayPopup.el.classList.contains('show');
+        if (!shown && pm && typeof pm.trayBusy === 'function' && pm.trayBusy('sw-update')) {
+            const args = [nextState, { message, progress, filesTotal, kind }];
+            pm.whenTrayFree('sw-update', () => this._showServiceWorkerTrayPopup(...args));
+            return false;
+        }
 
         this.trayPopup.state = nextState;
         if (typeof message === 'string') this.trayPopup.message = message;
