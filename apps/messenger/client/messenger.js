@@ -32,6 +32,23 @@
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const tm = () => root.textMessaging || null;
 
+
+    /** Link cards (textMessaging.linkPreview) into the [data-tm-link] slots a draw left. */
+    function fillLinkCards(box, onSize) {
+        const t = window.textMessaging;
+        if (!box || !t || typeof t.linkPreview !== 'function') return;
+        box.querySelectorAll('[data-tm-link]:not([data-tm-filled])').forEach((slot) => {
+            slot.dataset.tmFilled = '1';
+            const url = slot.dataset.tmLink;
+            t.linkPreview(url).then((p) => {
+                if (!p || !slot.isConnected) return;
+                const e = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                slot.innerHTML = `<a class="tm-card" href="${e(url)}" target="_blank" rel="noopener noreferrer">${p.image ? `<img class="tm-card-img" src="${e(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="tm-card-body"><span class="tm-card-title">${e(p.title || p.site)}</span>${p.description ? `<span class="tm-card-desc">${e(p.description)}</span>` : ''}<span class="tm-card-site">${e(p.site)}</span></span></a>`;
+                slot.hidden = false;
+                if (typeof onSize === 'function') onSize();
+            });
+        });
+    }
     function soundOn() {
         try { return localStorage.getItem(SOUND_KEY) !== 'off'; } catch (_) { return true; }
     }
@@ -307,6 +324,23 @@
                 onAction: (action) => void this.command(action)
             };
             cm.attachClickMenuToElement(react, rconfig);
+            // a right click on a conversation in the list
+            const list = this.q('.mm-list');
+            const lconfig = {
+                sections: [{ type: 'list', items: [] }],
+                beforeShow: (ev) => {
+                    const row = ev && ev.target && ev.target.closest ? ev.target.closest('.mm-row[data-guid]') : null;
+                    this.menuGuid = row ? row.dataset.guid : null;
+                    const c = row ? this.chat(row.dataset.guid) : null;
+                    lconfig.sections = [{ type: 'list', items: c ? [
+                        { text: 'Open', action: 'row-open' },
+                        { separator: true },
+                        c.unread ? { text: 'Mark as Read', action: 'row-read' } : { text: 'Mark as Unread', action: 'row-unread' }
+                    ] : [{ text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((x) => x.unread) }] }];
+                },
+                onAction: (action) => void this.command(action)
+            };
+            cm.attachToElement(list, lconfig);
             // a right click on a message
             const thread = this.q('.mm-thread');
             const tconfig = {
@@ -492,6 +526,19 @@
             } catch (_) { /* the top stays */ } finally { this.loadingOlder = false; }
         }
 
+        /** Mark as Unread (until it is read again; the Mac too, with the Private API). */
+        markUnread(guid) {
+            const t = tm();
+            const a = this.account();
+            const c = this.chat(guid);
+            if (!t || !a || !c || typeof t.markUnread !== 'function') return;
+            c.unread = true;
+            c.unreadCount = Math.max(1, Number(c.unreadCount) || 0);
+            this.renderList();
+            this.renderStatus();
+            void t.markUnread(a.id, c.guid).catch(() => {});
+        }
+
         markRead() {
             const t = tm();
             const a = this.account();
@@ -605,6 +652,10 @@
                 case 'reply': if (sel && f.reply) this.setReply(sel); return;
                 case 'refresh': await this.loadAccounts(true); if (this.chatGuid) await this.openChat(this.chatGuid); return;
                 case 'mark-read': { const c = this.chat(); if (c) { c.unread = true; this.markRead(); } return; }
+                case 'mark-unread': this.markUnread(this.chatGuid); return;
+                case 'row-open': if (this.menuGuid) await this.openChat(this.menuGuid); return;
+                case 'row-read': { const c = this.chat(this.menuGuid); if (c && t && a) { c.unread = false; c.unreadCount = 0; this.renderList(); void t.markRead(a.id, c.guid).catch(() => {}); } return; }
+                case 'row-unread': this.markUnread(this.menuGuid); return;
                 case 'mark-all-read':
                     for (const c of this.chats.filter((x) => x.unread)) { c.unread = false; if (t && a) void t.markRead(a.id, c.guid).catch(() => {}); }
                     this.renderList();
@@ -644,6 +695,7 @@
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'n') { ev.preventDefault(); void this.command('new'); return; }
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'r') { ev.preventDefault(); void this.command('reply'); return; }
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'q') { ev.preventDefault(); void this.command('mark-read'); return; }
+            if (ctrl && !ev.shiftKey && k.toLowerCase() === 'u') { ev.preventDefault(); void this.command('mark-unread'); return; }
             if (k === 'F5') { ev.preventDefault(); void this.command('refresh'); return; }
             if (k === 'F1') { ev.preventDefault(); void this.command('help'); return; }
             // the conversation list by keyboard
@@ -681,6 +733,7 @@
                     f.unsend ? { text: 'Unsend Message', action: 'unsend', disabled: !mine } : null,
                     sep,
                     { text: 'Mark as Read', subtext: 'Ctrl+Q', action: 'mark-read', disabled: !inChat },
+                    { text: 'Mark as Unread', subtext: 'Ctrl+U', action: 'mark-unread', disabled: !inChat || !!(this.chat() && this.chat().unread) },
                     { text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((c) => c.unread) }
                 ].filter(Boolean);
             }
@@ -1064,7 +1117,10 @@
                     }
                     for (const att of m.attachments || []) inner.push(this.attachmentHtml(att, m));
                     if (m.subject) inner.push(`<div class="mm-subject">${esc(m.subject)}</div>`);
-                    if (m.text) inner.push(`<div class="mm-text">${esc(m.text)}</div>`);
+                    if (m.text) inner.push(`<div class="mm-text">${t && typeof t.linkify === 'function' ? t.linkify(m.text, 'mm-link') : esc(m.text)}</div>`);
+                    // the first link's card (title, picture), filled after the draw
+                    const firstLink = m.text && t && typeof t.links === 'function' && !(m.attachments || []).length ? t.links(m.text)[0] : null;
+                    if (firstLink) inner.push(`<div class="mm-linkcard" data-tm-link="${esc(firstLink)}" hidden></div>`);
                     const reacts = new Map();
                     for (const r of m.reactions || []) {
                         // RCS: a reaction outside the six is type 'emoji' with its own emoji
@@ -1090,6 +1146,7 @@
             }
             th.innerHTML = out.join('');
             if (stick === true || atBottom) th.scrollTop = th.scrollHeight;
+            fillLinkCards(th, () => { if (th.scrollHeight - th.scrollTop - th.clientHeight < 300) th.scrollTop = th.scrollHeight; });
             // pictures load after: keep the bottom in view while they do
             th.querySelectorAll('img').forEach((img) => {
                 if (img.complete) return;

@@ -1599,6 +1599,9 @@
      * in 6.5: 6.1's Today counts Dreamscape Messenger in its Messaging row.
      */
     function registerToday() {
+        // Yukimi (Nov 13): Dreamscape Messenger is part of the Text panel now (registerTextToday's pages)
+        return;
+        // eslint-disable-next-line no-unreachable
         if (sh.version !== '6.5' || typeof sh.registerTodayItem !== 'function') return;
         const showList = () => window.wmChatApp.showList();
         sh.registerTodayItem({
@@ -1852,6 +1855,11 @@
      * swipe, the D-pad: wmTitanium.js). A page: the newest sender and line, the account's Apple ID or
      * number and its unread count. A tap opens that account.
      */
+    /** Dreamscape Messenger's unread lines, for the Text panel's count. */
+    function chatUnreadTotal() {
+        try { return unreadList().reduce((k, x) => k + (Number(x.unread) || 0), 0); } catch (_) { return 0; }
+    }
+
     function registerTextToday() {
         if (sh.version !== '6.5' || typeof sh.registerTodayItem !== 'function') return;
         sh.registerTodayItem({
@@ -1859,10 +1867,11 @@
             label: 'Text',
             icon: 'ti-2007',
             after: 'connection',
-            text: () => { const n = tmUnread(); return n ? `${n} new text ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
+            text: () => { const n = tmUnread() + chatUnreadTotal(); return n ? `${n} new ${n === 1 ? 'message' : 'messages'}` : 'No new messages'; },
             onTap: () => tmOpenAccount(),
             titanium() {
-                const n = tmUnread();
+                const chatList = unreadList();
+                const n = tmUnread() + chatUnreadTotal();
                 const pages = tmState.accounts.map((a) => {
                     const u = tmUnread(a.id);
                     const last = tmState.last[a.id];
@@ -1873,6 +1882,10 @@
                         ? { title: last.from, line2: last.text, line3: [sub, count, u ? '' : whenShort(last.at)].filter(Boolean).join(', '), onTap: open }
                         : { title: 'No New Messages', line2: sub, onTap: open };
                 });
+                // Dreamscape Messenger in the same panel: a page per unread conversation, else one page
+                const showList = () => window.wmChatApp.showList();
+                if (chatList.length) chatList.forEach((x) => pages.push({ title: x.name, line2: x.text, line3: [SMS_TITLE, whenShort(x.at)].filter(Boolean).join(', '), onTap: () => { openChatById(x.id); } }));
+                else pages.push({ title: 'No New Messages', line2: SMS_TITLE, onTap: showList });
                 return {
                     label: 'text',
                     icon: 'ti-2007',

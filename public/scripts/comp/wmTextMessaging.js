@@ -577,7 +577,12 @@
             body += '<div class="wch-says wtm-unsent">This message was unsent.</div>';
         } else {
             if (m.subject) body += `<div class="wtm-subject">${esc(m.subject)}</div>`;
-            if (m.text) body += `<div class="wch-says">${esc(m.text)}${m.dateEdited ? ' <span class="wtm-edited">(Edited)</span>' : ''}</div>`;
+            const tmc = window.textMessaging;
+            const said = tmc && typeof tmc.linkify === 'function' ? tmc.linkify(m.text, 'wtm-link') : esc(m.text);
+            if (m.text) body += `<div class="wch-says">${said}${m.dateEdited ? ' <span class="wtm-edited">(Edited)</span>' : ''}</div>`;
+            // the first link's card (title, picture), filled after the draw
+            const firstLink = m.text && tmc && typeof tmc.links === 'function' && !(m.attachments || []).length ? tmc.links(m.text)[0] : null;
+            if (firstLink) body += `<div class="wtm-linkcard" data-tm-link="${esc(firstLink)}" hidden></div>`;
             (m.attachments || []).forEach((a, i) => { body += attHtml(a, i, m); });
             if (m._upload) body += `<div class="wtm-progress"><i style="width:${Math.round((m._progress || 0) * 100)}%"></i></div>`;
         }
@@ -614,7 +619,26 @@
         html += `<div class="wtm-typing-slot">${typingHtml()}</div>`;
         box.innerHTML = html;
         if (toEnd || atEnd) box.scrollTop = box.scrollHeight;
+        fillLinkCards(box, () => { if (box.scrollHeight - box.scrollTop - box.clientHeight < 200) box.scrollTop = box.scrollHeight; });
     }
+
+    /** Link cards (textMessaging.linkPreview) into the [data-tm-link] slots a draw left. */
+    function fillLinkCards(box, onSize) {
+        const t = window.textMessaging;
+        if (!box || !t || typeof t.linkPreview !== 'function') return;
+        box.querySelectorAll('[data-tm-link]:not([data-tm-filled])').forEach((slot) => {
+            slot.dataset.tmFilled = '1';
+            const url = slot.dataset.tmLink;
+            t.linkPreview(url).then((p) => {
+                if (!p || !slot.isConnected) return;
+                const e = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                slot.innerHTML = `<a class="tm-card" href="${e(url)}" target="_blank" rel="noopener noreferrer">${p.image ? `<img class="tm-card-img" src="${e(p.image)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}<span class="tm-card-body"><span class="tm-card-title">${e(p.title || p.site)}</span>${p.description ? `<span class="tm-card-desc">${e(p.description)}</span>` : ''}<span class="tm-card-site">${e(p.site)}</span></span></a>`;
+                slot.hidden = false;
+                if (typeof onSize === 'function') onSize();
+            });
+        });
+    }
+
 
     function paintTyping() {
         if (!page || view() !== 'conv') return;
@@ -922,11 +946,26 @@
         if (t) t.markRead(accountId, c.guid).catch(() => {});
     }
 
+    /** Mark as Unread (until it is read again): the device's menu shows it for a read message. */
+    function markChatUnread(c) {
+        if (!c) return;
+        const t = tm();
+        c.unread = true;
+        c.unreadCount = Math.max(1, Number(c.unreadCount) || 0);
+        renderList();
+        if (t && typeof t.markUnread === 'function') t.markUnread(accountId, c.guid).catch(() => {});
+    }
+
+    /** Mark as Read / Mark as Unread, as the device swaps them by the selected message's state. */
+    const readItem = (c) => (c && !c.unread
+        ? { label: 'Mark as Unread', action: () => markChatUnread(c) }
+        : { label: 'Mark as Read', disabled: !(c && c.unread), action: () => markChatRead(c) });
+
     function listMenu() {
         const c = selectedChat();
         const items = [];
         if (feat('newChat')) items.push({ label: 'New', action: () => openNew([]) });
-        items.push({ label: 'Mark as Read', disabled: !(c && c.unread), action: () => markChatRead(c) });
+        items.push(readItem(c));
         items.push('-');
         items.push({ label: 'Go To', submenu: goToItems });
         items.push({ label: 'Tools', submenu: () => [
@@ -945,7 +984,7 @@
     function rowMenu(c) {
         return [
             { label: 'Reply', action: () => openConversation(c) },
-            { label: 'Mark as Read', disabled: !c.unread, action: () => markChatRead(c) }
+            readItem(c)
         ];
     }
 
@@ -1131,9 +1170,11 @@
         loadAccounts(false);
         sh.registerApp({
             id: APP_ID,
-            title: TITLE,
-            icon: 'msg-acct-sms',
-            inStart: false,
+            // Start: 6.5's "Text" (the ROM's Text icon, wmStart65 APP_ART65), 6.1's "Text Messages" with
+            // the ROM's SMS account art (outres.dll 10010) as the program icon
+            title: sh.version === '6.5' ? 'Text' : 'Text Messages',
+            icon: 'app-sms',
+            inStart: 'top',
             sip: true,
             mount,
             show() {

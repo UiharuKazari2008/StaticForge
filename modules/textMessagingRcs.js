@@ -20,6 +20,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('child_process');
+const net = require('net');
 const { randomUUID } = require('crypto');
 const { handleKey } = require('./textMessagingBlueBubbles');
 
@@ -91,13 +92,45 @@ class RcsProvider {
         this.spawn();
     }
 
+    /**
+     * The bridge runs detached and outlives the server (a new Google Messages connection on every
+     * restart makes the phone announce "your messages are now available on the device you paired"):
+     * connect to its socket, and start it only when nothing listens there.
+     */
     spawn() {
-        if (this.child || this.stopped) return;
-        const child = spawn(this.bin, [this.stateDir], { stdio: ['pipe', 'pipe', 'pipe'] });
-        this.child = child;
+        if (this.child || this.stopped || this.connecting) return;
+        this.connecting = true;
+        const sock = path.join(this.stateDir, 'bridge.sock');
+        const attach = (tries) => {
+            const c = net.createConnection(sock);
+            c.once('connect', () => { this.connecting = false; this.attach(c); });
+            c.once('error', () => {
+                c.destroy();
+                if (this.stopped) { this.connecting = false; return; }
+                if (tries === 0) this.launch(sock);
+                if (tries < 20) setTimeout(() => attach(tries + 1), 500).unref();
+                else { this.connecting = false; this.setStatus('error', 'The RCS bridge did not start.'); this.retryLater(); }
+            });
+        };
+        attach(0);
+    }
+
+    launch(sock) {
+        try {
+            const log = fs.openSync(path.join(this.stateDir, 'bridge.log'), 'a');
+            const child = spawn(this.bin, [this.stateDir], { detached: true, stdio: ['ignore', log, log], env: Object.assign({}, process.env, { RCS_BRIDGE_SOCKET: sock }) });
+            child.unref();
+            fs.closeSync(log);
+        } catch (error) {
+            this.log(`launch failed: ${error.message}`);
+        }
+    }
+
+    attach(conn) {
+        this.child = conn;
         this.buf = '';
-        child.stdout.setEncoding('utf8');
-        child.stdout.on('data', (chunk) => {
+        conn.setEncoding('utf8');
+        conn.on('data', (chunk) => {
             this.buf += chunk;
             let nl;
             while ((nl = this.buf.indexOf('\n')) >= 0) {
@@ -106,28 +139,34 @@ class RcsProvider {
                 if (line.trim()) this.onLine(line);
             }
         });
-        child.stderr.setEncoding('utf8');
-        child.stderr.on('data', (chunk) => {
-            for (const line of String(chunk).split('\n')) {
-                if (/"level":"(error|warn)"/.test(line)) this.log(line.slice(0, 400));
-            }
-        });
-        child.on('exit', (code, signal) => {
+        const gone = () => {
+            if (this.child !== conn) return;
             this.child = null;
             for (const [, p] of this.pending) p.reject(Object.assign(new Error('The RCS bridge stopped.'), { code: 'BRIDGE_EXIT' }));
             this.pending.clear();
             if (this.stopped) return;
-            this.setStatus('error', `The RCS bridge stopped (${signal || code}).`);
-            const t = setTimeout(() => this.spawn(), this.restartMs);
-            if (t.unref) t.unref();
-            this.restartMs = Math.min(this.restartMs * 2, RESTART_MAX_MS);
-        });
+            this.setStatus('error', 'The RCS bridge stopped.');
+            this.retryLater();
+        };
+        conn.on('close', gone);
+        conn.on('error', () => {});
+    }
+
+    retryLater() {
+        const t = setTimeout(() => this.spawn(), this.restartMs);
+        if (t.unref) t.unref();
+        this.restartMs = Math.min(this.restartMs * 2, RESTART_MAX_MS);
     }
 
     stop() {
         this.stopped = true;
-        if (this.child) { try { this.child.stdin.end(); } catch (_) { /* gone */ } const c = this.child; setTimeout(() => { try { c.kill('SIGTERM'); } catch (_) { /* gone */ } }, 3000).unref(); }
+        const c = this.child;
         this.child = null;
+        if (c) {
+            // removed or turned off: the bridge ends too
+            try { c.write(JSON.stringify({ id: 0, cmd: 'exit' }) + '\n'); } catch (_) { /* gone */ }
+            setTimeout(() => { try { c.destroy(); } catch (_) { /* gone */ } }, 1000).unref();
+        }
         this.setStatus('disabled', '');
     }
 
@@ -140,7 +179,7 @@ class RcsProvider {
                 resolve: (v) => { clearTimeout(timer); resolve(v); },
                 reject: (e) => { clearTimeout(timer); reject(e); }
             });
-            this.child.stdin.write(JSON.stringify({ id, cmd, args: args || {} }) + '\n');
+            this.child.write(JSON.stringify({ id, cmd, args: args || {} }) + '\n');
         });
     }
 

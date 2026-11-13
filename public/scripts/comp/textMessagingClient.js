@@ -13,7 +13,7 @@
  *   sendFile(accountId, chatGuid, file, { replyTo, audio, onProgress(0..1) }) -> { tempGuid, message }
  *   react(accountId, { chatGuid, messageGuid, messageText, reaction, remove })
  *   edit(accountId, { messageGuid, text }) / unsend(accountId, { messageGuid })
- *   markRead(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
+ *   markRead(accountId, chatGuid) / markUnread(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
  *   testAccount / saveAccount / deleteAccount / saveSettings({ notifyUnknown })
  *   pairRcs(accountId) -> { qr }   (show the URL as a QR code; 'pairing' events: { qr } refreshed, { paired: true })
  *   pairRcsGoogle(accountId) -> { emoji }  (Google account pairing: the sign-in is Alchemy's, signed in at
@@ -29,6 +29,8 @@
  *                                      (null before it ran); UIs draw from it at once, then refresh
  *   preload()                       the logon step itself ('Loading text messages', at most 6 s)
  *   REACTIONS                       [{ type, label, glyph }]
+ *   links(text) / linkify(text, cls) -> the links in a message / its text as HTML with <a> links
+ *   linkPreview(url)                -> { title, description, image, site } or null (cached)
  *
  * A 'message' event's detail carries known (false = Unknown Senders), folder and notify (the
  * server's rule: incoming, not a group event, known or notifyUnknown on). Text messages notify in
@@ -185,6 +187,7 @@
     const edit = (accountId, args) => call('tm_edit', Object.assign({ accountId }, args || {}));
     const unsend = (accountId, args) => call('tm_unsend', Object.assign({ accountId }, args || {}));
     const markRead = (accountId, chatGuid) => call('tm_read', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
+    const markUnread = (accountId, chatGuid) => call('tm_unread', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const resolve = (accountId, address) => call('tm_resolve', { accountId, address }).then((d) => d.name || '');
 
     function typing(accountId, chatGuid, on) {
@@ -230,9 +233,47 @@
     const pairRcsGoogle = (accountId) => call('tm_rcs_pair_google', { accountId });
     const unpairRcs = (accountId) => call('tm_rcs_unpair', { accountId }).then((d) => { cache = null; return d; });
 
+    // ---- links in messages ----
+    const URL_RE = /\b((?:https?:\/\/|www\.)[^\s<>"']+[^\s<>"'.,;:!?)\]}])/gi;
+    const escHtml = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+    /** The links in a text (http/https; www. gets https://). */
+    function links(text) {
+        const out = [];
+        String(text || '').replace(URL_RE, (m) => { out.push(/^www\./i.test(m) ? `https://${m}` : m); return m; });
+        return out;
+    }
+
+    /** A message's text as HTML: escaped, links as <a> (opened by the caller's click handling). */
+    function linkify(text, cls) {
+        let html = '';
+        let last = 0;
+        const s = String(text || '');
+        s.replace(URL_RE, (m, _g, at) => {
+            html += escHtml(s.slice(last, at));
+            const href = /^www\./i.test(m) ? `https://${m}` : m;
+            html += `<a class="${cls || 'tm-link'}" href="${escHtml(href)}" target="_blank" rel="noopener noreferrer">${escHtml(m)}</a>`;
+            last = at + m.length;
+            return m;
+        });
+        return html + escHtml(s.slice(last));
+    }
+
+    const previewCache = new Map();
+    /** { url, title, description, image, site } for a link (the server reads the page's head), or null. */
+    function linkPreview(url) {
+        if (!previewCache.has(url)) {
+            previewCache.set(url, fetch(`/api/textmessaging/link-preview?url=${encodeURIComponent(url)}`, { credentials: 'same-origin' })
+                .then((r) => (r.ok ? r.json() : null)).then((d) => (d && d.success !== false && (d.title || d.image) ? d : null)).catch(() => null));
+            if (previewCache.size > 300) previewCache.delete(previewCache.keys().next().value);
+        }
+        return previewCache.get(url);
+    }
+
     root.textMessaging = {
+        links, linkify, linkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
+        markRead, markUnread, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
     // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in

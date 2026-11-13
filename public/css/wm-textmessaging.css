@@ -259,3 +259,42 @@
     white-space: nowrap;
     text-align: center;
 }
+
+/* links in messages and the first link's card (#779): Pocket IE link blue, a plain framed box */
+.wm-tm .wtm-link {
+    color: #00f;
+    text-decoration: underline;
+    word-break: break-all;
+}
+
+.wm-tm .wtm-linkcard .tm-card {
+    display: block;
+    margin: calc(2 * var(--wm-px, 1px)) 0 calc(3 * var(--wm-px, 1px));
+    max-width: 92%;
+    color: #000;
+    text-decoration: none;
+    background: #fff;
+    border: var(--wm-px, 1px) solid #808080;
+}
+
+.wm-tm .wtm-linkcard .tm-card-img {
+    display: block;
+    width: 100%;
+    max-height: calc(80 * var(--wm-px, 1px));
+    object-fit: cover;
+}
+
+.wm-tm .wtm-linkcard .tm-card-body {
+    display: block;
+    padding: calc(2 * var(--wm-px, 1px)) calc(3 * var(--wm-px, 1px));
+}
+
+.wm-tm .wtm-linkcard .tm-card-title {
+    display: block;
+    font-weight: 700;
+}
+
+.wm-tm .wtm-linkcard :is(.tm-card-desc, .tm-card-site) {
+    display: block;
+    color: #555;
+}

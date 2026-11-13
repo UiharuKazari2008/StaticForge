@@ -24,6 +24,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -46,6 +47,8 @@ type request struct {
 }
 
 var (
+	out          io.Writer = os.Stdout // the server's connection (stdout, or the socket's current client)
+	lastSettings json.RawMessage       // re-sent to a server that connects again (the phone number)
 	outMu     sync.Mutex
 	stateDir  string
 	sessMu    sync.Mutex
@@ -64,7 +67,9 @@ func emit(v any) {
 		return
 	}
 	outMu.Lock()
-	os.Stdout.Write(append(b, '\n'))
+	if out != nil {
+		_, _ = out.Write(append(b, '\n'))
+	}
 	outMu.Unlock()
 }
 
@@ -156,7 +161,8 @@ func onEvent(raw any) {
 		if sims := evt.GetSIMCards(); len(sims) > 0 {
 			lastSIM = sims[0]
 		}
-		event("settings", protoRaw(evt))
+		lastSettings = protoRaw(evt)
+		event("settings", lastSettings)
 	case *events.AuthTokenRefreshed:
 		saveSession()
 	case *events.PhoneNotResponding:
@@ -229,6 +235,10 @@ func handle(ctx context.Context, r request) (any, error) {
 		return def
 	}
 	switch r.Cmd {
+	case "exit":
+		// the account was removed or turned off: the bridge ends (the session file stays)
+		go func() { time.Sleep(200 * time.Millisecond); saveSession(); if cli != nil { cli.Disconnect() }; os.Exit(0) }()
+		return map[string]any{"ok": true}, nil
 	case "status":
 		return map[string]any{"loggedIn": cli != nil && cli.IsLoggedIn(), "connected": connected, "phoneId": phoneID}, nil
 	case "login":
@@ -524,26 +534,76 @@ func main() {
 		state(nil)
 	}
 
-	scan := bufio.NewScanner(os.Stdin)
-	scan.Buffer(make([]byte, 1024*1024), 16*1024*1024)
-	for scan.Scan() {
-		var r request
-		if err := json.Unmarshal(scan.Bytes(), &r); err != nil {
-			continue
-		}
-		go func(r request) {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
-			defer cancel()
-			res, err := handle(ctx, r)
-			if err != nil {
-				emit(map[string]any{"id": r.ID, "ok": false, "error": err.Error()})
-				return
-			}
-			emit(map[string]any{"id": r.ID, "ok": true, "result": res})
-		}(r)
+	// With a socket path the bridge outlives the server: it keeps its one Google Messages session
+	// (every new connection makes the phone say "your messages are now available on the device you
+	// paired") and the server connects again after a restart. Without one: stdin / stdout.
+	if sock := os.Getenv("RCS_BRIDGE_SOCKET"); sock != "" {
+		serveSocket(sock)
+	} else {
+		serve(os.Stdin)
 	}
 	saveSession()
 	if cli != nil {
 		cli.Disconnect()
+	}
+}
+
+func serve(r io.Reader) {
+	scan := bufio.NewScanner(r)
+	scan.Buffer(make([]byte, 1024*1024), 16*1024*1024)
+	for scan.Scan() {
+		var req request
+		if err := json.Unmarshal(scan.Bytes(), &req); err != nil {
+			continue
+		}
+		go func(req request) {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+			defer cancel()
+			res, err := handle(ctx, req)
+			if err != nil {
+				emit(map[string]any{"id": req.ID, "ok": false, "error": err.Error()})
+				return
+			}
+			emit(map[string]any{"id": req.ID, "ok": true, "result": res})
+		}(req)
+	}
+}
+
+// One server at a time: a new connection takes over from the old one.
+func serveSocket(path string) {
+	_ = os.Remove(path)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "listen:", err)
+		os.Exit(1)
+	}
+	_ = os.Chmod(path, 0600)
+	outMu.Lock()
+	out = nil
+	outMu.Unlock()
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			continue
+		}
+		outMu.Lock()
+		if c, ok := out.(net.Conn); ok && c != nil {
+			_ = c.Close()
+		}
+		out = conn
+		outMu.Unlock()
+		state(nil)
+		if lastSettings != nil {
+			event("settings", lastSettings)
+		}
+		go func(c net.Conn) {
+			serve(c)
+			outMu.Lock()
+			if out == c {
+				out = nil
+			}
+			outMu.Unlock()
+			_ = c.Close()
+		}(conn)
 	}
 }

@@ -564,6 +564,13 @@ class BlueBubblesProvider {
         return { ok: true };
     }
 
+    /** Mark as Unread on the Mac too (Private API), every chat of the conversation. */
+    async markUnread({ chatGuid }) {
+        if (!this.features().privateApi) return { ok: false };
+        await Promise.all(this.members(chatGuid).map((g) => this.call('POST', `chat/${encodeURIComponent(g)}/unread`, { body: {} }).catch(() => null)));
+        return { ok: true };
+    }
+
     async typing({ chatGuid, typing }) {
         if (!this.features().typing) return { ok: false };
         await this.call(typing ? 'POST' : 'DELETE', `chat/${encodeURIComponent(this.resolve(chatGuid))}/typing`);

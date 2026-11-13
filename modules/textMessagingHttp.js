@@ -4,6 +4,8 @@
  *   GET  /api/textmessaging/:accountId/attachment/:guid[?thumb=1]
  *        the provider's file (HEIC comes out as JPEG; ?thumb=1 = a 480 px preview), cached on disk
  *        in .cache/textmessaging-attachments by account + guid. Admins only.
+ *   GET  /api/textmessaging/link-preview?url=     { title, description, image, site } of a link in a message
+ *        (public hosts only, the head of the page only, cached 6 h)
  *   GET  /api/textmessaging/:accountId/pairing-qr.svg   the RCS account's pairing QR code (no-store)
  *   POST /api/textmessaging/:accountId/send-attachment?chat=<guid>&name=<file>&replyTo=&tempGuid=&audio=1
  *        body = the file (Content-Type = its MIME type), up to 100 MB. -> { success, tempGuid, message }
@@ -33,6 +35,72 @@ function readBody(req, limit) {
         req.on('end', () => resolve(Buffer.concat(parts)));
         req.on('error', reject);
     });
+}
+
+// ---- link previews (a link in a message: title, description, picture), public hosts only ----
+const PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
+const PREVIEW_MAX_BYTES = 768 * 1024;
+const previews = new Map(); // url -> { at, value }
+
+function isPrivateAddress(ip) {
+    const net = require('net');
+    if (net.isIPv4(ip)) {
+        const [a, b] = ip.split('.').map(Number);
+        return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127) || a >= 224;
+    }
+    const v = ip.toLowerCase();
+    return v === '::1' || v === '::' || v.startsWith('fc') || v.startsWith('fd') || v.startsWith('fe80') || v.startsWith('::ffff:127.') || v.startsWith('::ffff:10.') || v.startsWith('::ffff:192.168.');
+}
+
+function metaOf(html, base) {
+    const pick = (re) => { const m = re.exec(html); return m ? m[1] : ''; };
+    const meta = (name) => pick(new RegExp(`<meta[^>]+(?:property|name)=["']${name}["'][^>]*content=["']([^"']*)["']`, 'i'))
+        || pick(new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]*(?:property|name)=["']${name}["']`, 'i'));
+    const decode = (t) => String(t || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#(\d+);/g, (m, n) => String.fromCharCode(Number(n))).trim();
+    const title = decode(meta('og:title') || meta('twitter:title') || pick(/<title[^>]*>([^<]*)<\/title>/i));
+    const description = decode(meta('og:description') || meta('twitter:description') || meta('description'));
+    let image = decode(meta('og:image') || meta('og:image:url') || meta('twitter:image'));
+    try { image = image ? new URL(image, base).href : ''; } catch (_) { image = ''; }
+    if (image && !/^https:/i.test(image)) image = '';
+    const site = decode(meta('og:site_name')) || new URL(base).hostname.replace(/^www\./, '');
+    return { title: title.slice(0, 300), description: description.slice(0, 500), image, site };
+}
+
+async function linkPreview(raw) {
+    let u;
+    try { u = new URL(String(raw)); } catch (_) { throw Object.assign(new Error('Not a link.'), { code: 'BAD_URL' }); }
+    if (!/^https?:$/.test(u.protocol)) throw Object.assign(new Error('Not a web link.'), { code: 'BAD_URL' });
+    const hit = previews.get(u.href);
+    if (hit && Date.now() - hit.at < PREVIEW_TTL_MS) return hit.value;
+    const dns = require('dns').promises;
+    const addrs = await dns.lookup(u.hostname, { all: true }).catch(() => []);
+    if (!addrs.length || addrs.some((x) => isPrivateAddress(x.address))) throw Object.assign(new Error('No preview for that address.'), { code: 'PRIVATE' });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 7000);
+    let value = { url: u.href, title: '', description: '', image: '', site: u.hostname.replace(/^www\./, '') };
+    try {
+        const res = await fetch(u.href, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MelatonMessenger/1.0; link preview)', Accept: 'text/html,application/xhtml+xml' } });
+        const type = res.headers.get('content-type') || '';
+        if (res.ok && /^image\//i.test(type) && /^https:/i.test(res.url)) value.image = res.url;
+        else if (res.ok && /html/i.test(type) && res.body) {
+            const reader = res.body.getReader();
+            const parts = [];
+            let size = 0;
+            while (size < PREVIEW_MAX_BYTES) {
+                const { done, value: chunk } = await reader.read();
+                if (done) break;
+                parts.push(chunk);
+                size += chunk.length;
+                if (/<\/head>/i.test(Buffer.from(chunk).toString('latin1'))) break;
+            }
+            try { reader.cancel(); } catch (_) { /* done */ }
+            value = Object.assign(value, metaOf(Buffer.concat(parts.map((c) => Buffer.from(c))).toString('utf8'), res.url || u.href));
+        }
+    } catch (_) { /* a bare preview: the address */ }
+    clearTimeout(timer);
+    previews.set(u.href, { at: Date.now(), value });
+    if (previews.size > 500) previews.delete(previews.keys().next().value);
+    return value;
 }
 
 function mount(app, authMiddleware, globalResources) {
@@ -78,6 +146,16 @@ function mount(app, authMiddleware, globalResources) {
             await fs.promises.writeFile(`${file}.json`, JSON.stringify({ type, name, at: Date.now() }));
         } catch (error) {
             console.warn('[textMessaging] attachment cache write failed:', error.message);
+        }
+    });
+
+    app.get('/api/textmessaging/link-preview', auth, admin, async (req, res) => {
+        try {
+            const value = await linkPreview(req.query.url);
+            res.setHeader('Cache-Control', 'private, max-age=3600');
+            res.json(Object.assign({ success: true }, value));
+        } catch (error) {
+            refuse(res, 400, error.code || 'ERROR', error.message);
         }
     });
 

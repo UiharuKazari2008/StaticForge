@@ -19,6 +19,7 @@ const textMessaging = require('../../textMessaging');
  *   tm_edit     { accountId, messageGuid, text }
  *   tm_unsend   { accountId, messageGuid }
  *   tm_read     { accountId, chatGuid }
+ *   tm_unread   { accountId, chatGuid }      Mark as Unread (until it is read again)
  *   tm_typing   { accountId, chatGuid, typing }
  *   tm_resolve  { accountId, address }                                    { name }
  *   tm_rcs_pair_google { accountId } -> { emoji }  (sign-in from Alchemy; tap the emoji on the phone)
@@ -69,6 +70,7 @@ function registerPackets(handlersCtx) {
     reg('tm_edit', async (d) => textMessaging.edit(d.accountId, d));
     reg('tm_unsend', async (d) => textMessaging.unsend(d.accountId, d), { destructive: true });
     reg('tm_read', async (d) => textMessaging.markRead(d.accountId, d));
+    reg('tm_unread', async (d) => textMessaging.markUnread(d.accountId, d));
     reg('tm_typing', async (d) => textMessaging.typing(d.accountId, d));
     // RCS (Google Messages pairing): a QR code for the phone, re-pair, end the pairing
     reg('tm_rcs_pair', async (d) => textMessaging.pair(String(d.accountId || '')));

@@ -123,7 +123,9 @@
     const APP_ART65 = {
         today: 'today', gallery: 'photos', fileexplorer: 'fileexp', messaging: 'msg', browser: 'ie', notes: 'notes',
         contacts: 'contacts', calendar: 'calendar', calculator: 'calc', taskmgr: 'taskmgr', 'windows-media': 'wmp',
-        settings: 'settings', help: 'help', tasks: 'tasks', search: 'search', activesync: 'async'
+        settings: 'settings', help: 'help', tasks: 'tasks', search: 'search', activesync: 'async',
+        // Text: the ROM's Text icon (Text Messaging, #779)
+        textmessaging: 'sms'
     };
     // WM 6.5's own order, read from a factory device (ranks under HKLM\Security\Shell\StartInfo and
     // the screen): Today, Phone, Text, E-mail, Contacts, Internet Explorer, Calendar, Settings,
@@ -142,8 +144,9 @@
     // Started's cell before Pictures and Media.
     // Yukimi (Nov 12, second pass): the Dreamscape folder, File Explorer and Games stand in the three
     // cells before Calculator; PayPass, Remote Desktop and XLink are unranked and come last, by name.
+    // Text (Text Messaging, #779) follows Settings so the device cells above keep their places
     const RANK = ['a:today', 'a:director', 'a:studio', 'a:messaging', 'a:contacts', 'a:browser', 'a:calendar', 'a:settings',
-        'a:weather', 'a:gallery', 'a:windows-media', 'folder:dreamscape', 'a:fileexplorer', 'folder:games',
+        'a:textmessaging', 'a:weather', 'a:gallery', 'a:windows-media', 'folder:dreamscape', 'a:fileexplorer', 'folder:games',
         'a:calculator', 'a:notes', 'a:tasks', 'a:activesync', 'a:taskmgr', 'a:search', 'a:help'];
 
     // ---------------------------------------------------------------- items

@@ -155,16 +155,29 @@ function markChatRead(accountId, chatGuid, at) {
     if (!chatGuid) return;
     const r = loadReadMarks();
     const key = `${accountId}|${chatGuid}`;
+    if (r.unread && r.unread[key]) { delete r.unread[key]; saveReadMarks(); }
     const t = at || Date.now();
     if ((r.chats[key] || 0) >= t) return;
     r.chats[key] = t;
     saveReadMarks();
 }
 
-/** A BlueBubbles chat's unread state from the read marks. */
+/** Mark as Unread (a held conversation): it stays unread until it is read again. */
+function markChatUnread(accountId, chatGuid) {
+    if (!chatGuid) return;
+    const r = loadReadMarks();
+    if (!r.unread) r.unread = {};
+    r.unread[`${accountId}|${chatGuid}`] = Date.now();
+    saveReadMarks();
+}
+
+/** A chat's unread state: Mark as Unread first, then (BlueBubbles) the read marks. */
 function applyReadMark(accountId, chat) {
     const p = providers.get(accountId);
-    if (!p || p.kind !== 'bluebubbles' || !chat) return;
+    if (!chat) return;
+    const r0 = loadReadMarks();
+    if (r0.unread && r0.unread[`${accountId}|${chat.guid}`]) { chat.unread = true; chat.markedUnread = true; return; }
+    if (!p || p.kind !== 'bluebubbles') return;
     const last = chat.last;
     if (!last || last.fromMe || last.dateRead) { chat.unread = false; return; }
     const r = loadReadMarks();
@@ -183,7 +196,8 @@ const IMESSAGE_UNREAD_DAYS = 14;
 /** How many unread messages each unread conversation holds (unreadCount; 1 when it cannot be counted). */
 async function countUnread(accountId, chats) {
     const p = providers.get(accountId);
-    const todo = chats.filter((c) => c.unread).slice(0, 40);
+    const todo = chats.filter((c) => c.unread && !c.markedUnread).slice(0, 40);
+    for (const c of chats) if (c.markedUnread) c.unreadCount = 1;
     await Promise.all(todo.map(async (c) => {
         if (p && typeof p.countIncoming === 'function' && c.readSince != null) {
             try { c.unreadCount = Math.max(1, await p.countIncoming(c.guid, c.readSinceFor || c.readSince)); } catch (_) { c.unreadCount = 1; }
@@ -191,7 +205,7 @@ async function countUnread(accountId, chats) {
             c.unreadCount = 1;
         }
     }));
-    for (const c of chats) { if (!c.unread) c.unreadCount = 0; delete c.readSince; delete c.readSinceFor; }
+    for (const c of chats) { if (!c.unread) c.unreadCount = 0; delete c.readSince; delete c.readSinceFor; delete c.markedUnread; }
 }
 
 // ---- Dreamscape Contacts (every workspace's Contacts folder) ----
@@ -584,6 +598,15 @@ async function markRead(accountId, args) {
     markChatRead(accountId, args && args.chatGuid);
     return provider(accountId).markRead(args);
 }
+async function markUnread(accountId, args) {
+    summaries.delete(accountId);
+    markChatUnread(accountId, args && args.chatGuid);
+    const p = provider(accountId);
+    if (typeof p.markUnread === 'function') { try { await p.markUnread(args); } catch (_) { /* kept here anyway */ } }
+    broadcast({ event: 'read', accountId, chatGuid: args && args.chatGuid, read: false });
+    return { ok: true };
+}
+
 async function typing(accountId, args) { return provider(accountId).typing(args); }
 async function downloadAttachment(accountId, guid, opts) { return provider(accountId).downloadAttachment(guid, opts); }
 
@@ -605,6 +628,6 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, typing,
+    listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, typing,
     downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };
