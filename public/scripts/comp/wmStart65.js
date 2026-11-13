@@ -290,6 +290,10 @@
             // only the phone's own games, as in Programs > Games (#786)
             for (const a of apps) if (a.inStart && !NOT_LISTED.has(a.id) && inFolder(a) === 'games') items.push(appItem(a));
         } else {
+            // folders made inside this folder (Android / Work, #805): the plain 6.5 folder, even while empty
+            if (folder) {
+                for (const [id, f] of extra) if (f.parent === folder) items.push({ key: `folder:${id}`, label: f.label, img: art65('folder'), folder: id });
+            }
             for (const a of apps) {
                 if (!a.inStart || NOT_LISTED.has(a.id) || (inFolder(a) || null) !== (folder || null)) continue;
                 items.push(appItem(a));
@@ -298,8 +302,10 @@
                 if (apps.some((a) => a.inStart && inFolder(a) === 'games')) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
                 items.push({ key: 'folder:dreamscape', label: FOLDERS.dreamscape.label, img: FOLDERS.dreamscape.icon(), folder: 'dreamscape' });
                 for (const [id, f] of extra) {
+                    if (f.parent) continue; // listed inside its parent folder
                     // 6.5's folders (Android, Work: their 3D emblem; any other: the plain 6.5 folder)
-                    if (apps.some((a) => a.inStart && inFolder(a) === id)) items.push({ key: `folder:${id}`, label: f.label, img: art65(FOLDER_ART65.has(id) ? `folder-${id}` : 'folder'), folder: id });
+                    const holds = (a) => { const at = inFolder(a); return at === id || (extra.get(at) || {}).parent === id; };
+                    if (apps.some((a) => a.inStart && holds(a))) items.push({ key: `folder:${id}`, label: f.label, img: art65(FOLDER_ART65.has(id) ? `folder-${id}` : 'folder'), folder: id });
                 }
             }
             desktopLaunchables().forEach(desktopItem);
@@ -606,8 +612,10 @@
         const folder = folderNow();
         const top = topItems(layout()).map((t) => t.key);
         const at = top.indexOf(it.key);
-        // a program's own rows (the Android programs: Add to Start, Move to Games, Hide ...; #773)
-        const own = it.app ? sh.appHoldMenu(it.app) : [];
+        // a program's own rows (the Android programs: Add to Start, Move to Games, Hide ...; #773); a
+        // folder made inside Android / Work: Rename, Delete, New Folder (#805)
+        const AF = window.wmAndroidFolders;
+        const own = it.app ? sh.appHoldMenu(it.app) : (it.folder && AF && AF.isUser(it.folder) ? AF.folderRows(it.folder) : []);
         if (folder && at >= 0 && !own.length) return false;
         select(i, true);
         const run = (up) => () => {

@@ -157,6 +157,120 @@
         document.dispatchEvent(new CustomEvent('wmAppsChanged'));
     }
 
+    // ---------------------------------------------------------------- folders of your own (#805)
+    // Inside Android and Work (Yukimi, Nov 13): New Folder, Rename, Delete and Move to Folder. Kept as
+    // wmAndroidFolders { v: 1, folders: [{ id, parent: 'android' | 'work', name }], of: { <program id>:
+    // <folder id> } }; each folder is a Programs folder with its parent (wmSettings.setProgramFolders),
+    // drawn with the plain folder (6.1 app-folder, 6.5 start-folder). Deleting one puts its programs back.
+    const SUB_KEY = 'wmAndroidFolders';
+    function subState() {
+        const v = readJson(SUB_KEY, null);
+        return v && Array.isArray(v.folders) ? { folders: v.folders.filter((f) => f && f.id && f.parent), of: (v.of && typeof v.of === 'object') ? v.of : {} } : { folders: [], of: {} };
+    }
+    const subSave = (st) => writeJson(SUB_KEY, { v: 1, folders: st.folders, of: st.of });
+    const parentOfApp = (a) => (a.profile === 'work' ? WORK_FOLDER : FOLDER);
+    const parentLabel = (p) => (p === WORK_FOLDER ? 'Work' : 'Android');
+
+    function syncSubfolders() {
+        const W = window.wmSettings;
+        if (!W || typeof W.setProgramFolders !== 'function') return;
+        W.setProgramFolders('android-user', subState().folders.map((f) => ({ id: f.id, label: f.name, icon: 'app-folder', parent: f.parent })));
+    }
+
+    async function askFolderName(title, text, value) {
+        const v = await sh.messageBox({
+            title, icon: null, text, input: { value: value || '' },
+            buttons: [{ text: 'OK', value: true }, { text: 'Cancel', value: false }], cancelValue: false
+        });
+        if (v === false || v == null || v === true) return null;
+        const name = String(v).trim().slice(0, 60);
+        if (!name) return null;
+        return name;
+    }
+
+    /** New Folder in Android or Work; with a program, it moves there too. */
+    async function newFolder(parent, a) {
+        const name = await askFolderName('New Folder', `Name of the new folder in ${parentLabel(parent)}:`, 'New Folder');
+        if (!name) return null;
+        const st = subState();
+        if (st.folders.some((f) => f.parent === parent && f.name.toLowerCase() === name.toLowerCase())) {
+            await sh.messageBox({ title: 'New Folder', icon: 'warning', text: `There is already a folder named ${name} in ${parentLabel(parent)}.` });
+            return null;
+        }
+        const id = `${parent}~${Date.now().toString(36)}`;
+        st.folders.push({ id, parent, name });
+        if (a) st.of[a.id] = id;
+        subSave(st);
+        refresh();
+        return id;
+    }
+
+    async function renameFolder(id) {
+        const st = subState();
+        const f = st.folders.find((x) => x.id === id);
+        if (!f) return;
+        const name = await askFolderName('Rename', `New name for ${f.name}:`, f.name);
+        if (!name || name === f.name) return;
+        f.name = name;
+        subSave(st);
+        refresh();
+    }
+
+    async function deleteFolder(id) {
+        const st = subState();
+        const f = st.folders.find((x) => x.id === id);
+        if (!f) return;
+        const yes = await sh.messageBox({
+            title: 'Delete', icon: 'question',
+            text: `Delete the folder ${f.name}? Its programs go back to ${parentLabel(f.parent)}.`,
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+        });
+        if (!yes) return;
+        st.folders = st.folders.filter((x) => x.id !== id);
+        for (const k of Object.keys(st.of)) if (st.of[k] === id) delete st.of[k];
+        subSave(st);
+        refresh();
+    }
+
+    /** The folder a program is filed in (one of its parent's own folders), or null. */
+    function subfolderOf(a) {
+        const st = subState();
+        const id = st.of[a.id];
+        const f = id && st.folders.find((x) => x.id === id);
+        return f && f.parent === parentOfApp(a) ? f.id : null;
+    }
+
+    function moveRows(a) {
+        const parent = parentOfApp(a);
+        const here = subfolderOf(a);
+        const mine = subState().folders.filter((f) => f.parent === parent);
+        const go = (id) => () => {
+            const st = subState();
+            if (id) st.of[a.id] = id; else delete st.of[a.id];
+            subSave(st);
+            refresh();
+        };
+        const sub = [{ label: parentLabel(parent), radio: !here, action: go(null) }]
+            .concat(mine.map((f) => ({ label: f.name, radio: here === f.id, action: go(f.id) })))
+            .concat(['-', { label: 'New Folder...', action: () => { void newFolder(parent, a); } }]);
+        return [{ label: 'Move to Folder', submenu: sub }];
+    }
+
+    window.wmAndroidFolders = {
+        /** a folder the user made (Rename / Delete on its hold menu) */
+        isUser: (id) => subState().folders.some((f) => f.id === id),
+        /** a folder's own hold menu rows */
+        folderRows: (id) => {
+            const f = subState().folders.find((x) => x.id === id);
+            if (!f) return [];
+            return [{ label: 'Rename...', action: () => { void renameFolder(id); } }, { label: 'Delete', action: () => { void deleteFolder(id); } },
+                '-', { label: 'New Folder...', action: () => { void newFolder(f.parent); } }];
+        },
+        /** New Folder in Android / Work (also from inside one of its folders) */
+        newFolder: (parent) => newFolder(parent === WORK_FOLDER ? WORK_FOLDER : FOLDER),
+        parentOf: (id) => { const f = subState().folders.find((x) => x.id === id); return f ? f.parent : null; }
+    };
+
     // ---------------------------------------------------------------- tap-and-hold menu
 
     /** WM's rename box; an empty name gives the program its own name back. */
@@ -199,6 +313,8 @@
                 }
             });
         }
+        // Move to Folder: Android / Work itself or one of its folders, or a new one (#805)
+        if (!role) rows.push(...moveRows(a));
         rows.push('-', { label: 'Rename...', action: () => { void renameProgram(a); } }, {
             label: 'Hide program',
             action: async () => {
@@ -239,6 +355,7 @@
     /** Programs, Start and Settings follow the phone's list and the stored choices. */
     function sync() {
         apps = read();
+        syncSubfolders();
         const hidden = readSet(HIDDEN_KEY);
         const onStart = readSet(START_KEY);
         const want = new Set();
@@ -268,7 +385,8 @@
                 // 'bottom': on Start under the pinned programs; 'programs': in Programs only. The
                 // phone's camera is WM's Camera, pinned on the Start menu (Yukimi #788)
                 inStart: role === 'camera' ? 'top' : (onStart.has(a.id) ? 'bottom' : 'programs'),
-                programsFolder: role ? undefined : a.profile === 'work' ? WORK_FOLDER : (inGames(a) ? 'games' : FOLDER),
+                // a folder of its own (#805) wins over its parent and over Games
+                programsFolder: role ? undefined : (subfolderOf(a) || (a.profile === 'work' ? WORK_FOLDER : (inGames(a) ? 'games' : FOLDER))),
                 // the Camera through wmCamera.js: Pictures & Videos reads the cards again on return
                 launch: () => (role === 'camera' && window.wmCamera ? window.wmCamera.open() : start(a)),
                 holdMenu: () => holdRows(a, role)

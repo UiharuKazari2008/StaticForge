@@ -542,6 +542,9 @@
     const FOLDER_ORDER = ['games', 'dreamscape'];
     // more folders from other files (wmSettings.addProgramFolder): shown once a program is filed in them
     const EXTRA_FOLDERS = new Set();
+    // folders inside another folder (#805: the ones made in Android / Work): id -> parent id
+    const FOLDER_PARENT = new Map();
+    const FOLDER_GROUPS = new Map(); // setProgramFolders group -> its ids
     const DREAMSCAPE_APPS = new Set(['studio', 'director', 'spellcaster', 'phasewalker', 'atelier', 'reference', 'characters', 'expanders', 'spellbook', 'emotion', 'teleport', 'chat']);
     const DREAMSCAPE_DESKTOP = new Set(['explore-gallery', 'novels', 'ispy', 'image-search']);
     // WM 6.1 art for desktop entries the phone lists as they are (the dsap apps)
@@ -595,6 +598,10 @@
             // InkBall and the Android ones); the desktop's other games are not listed on the phone
             folderApps('games');
         } else if (PROGRAM_FOLDERS[folder]) {
+            // folders made inside this one (#805), shown even while empty
+            for (const [cid, parent] of FOLDER_PARENT) {
+                if (parent === folder && PROGRAM_FOLDERS[cid]) items.push({ key: `folder:${cid}`, label: PROGRAM_FOLDERS[cid].label, img: PROGRAM_FOLDERS[cid].icon(), folder: cid });
+            }
             folderApps(folder);
             desktopLaunchables().forEach(desktopItem);
             desktopLaunchables('toolbox').forEach(desktopItem);
@@ -602,7 +609,8 @@
             const phoneGames = shellApps.some((a) => a.inStart && appFolder(a) === 'games');
             if (phoneGames) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
             for (const [id, f] of Object.entries(PROGRAM_FOLDERS)) {
-                if (EXTRA_FOLDERS.has(id) && !shellApps.some((a) => a.inStart && appFolder(a) === id)) continue;
+                if (FOLDER_PARENT.has(id)) continue; // listed inside its parent
+                if (EXTRA_FOLDERS.has(id) && !shellApps.some((a) => a.inStart && (appFolder(a) === id || FOLDER_PARENT.get(appFolder(a)) === id))) continue;
                 items.push({ key: `folder:${id}`, label: f.label, img: f.icon(), folder: id });
             }
             // no Toolbox folder: its programs sit here with the rest
@@ -674,8 +682,12 @@
                 grid.addEventListener('contextmenu', (e) => {
                     const cell = e.target.closest('.wm-icongrid-cell');
                     e.preventDefault();
-                    if (!cell || !cell.dataset.key.startsWith('a:')) return;
-                    const rows = sh.appHoldMenu(cell.dataset.key.slice(2));
+                    if (!cell) return;
+                    const key = cell.dataset.key;
+                    const AF = window.wmAndroidFolders;
+                    // a folder made inside Android / Work: Rename, Delete, New Folder (#805)
+                    const rows = key.startsWith('a:') ? sh.appHoldMenu(key.slice(2))
+                        : (key.startsWith('folder:') && AF && AF.isUser(key.slice(7)) ? AF.folderRows(key.slice(7)) : []);
                     if (!rows.length) return;
                     grid.querySelectorAll('.wm-icongrid-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
                     cell.classList.add('is-selected');
@@ -695,12 +707,15 @@
             },
             hide() { folder = null; },
             softKeys() { return { left: null, right: null }; },
-            historyDepth: () => (folder ? 1 : 0),
+            // a folder inside a folder (#805) is one step deeper
+            historyDepth: () => (folder ? (FOLDER_PARENT.has(folder) ? 2 : 1) : 0),
             // X in a folder goes back to Programs; X on Programs itself closes (Yukimi, Nov 10)
             closeGoesBack: true,
             onBack() {
                 if (!folder) return false;
-                folder = null;
+                // out of a folder made inside Android / Work: back to that folder (#805)
+                folder = FOLDER_PARENT.get(folder) || null;
+                if (folder && !PROGRAM_FOLDERS[folder]) folder = null;
                 render();
                 return true;
             }
@@ -1972,7 +1987,31 @@
             EXTRA_FOLDERS.add(id);
             FOLDER_ORDER.push(id);
         },
-        programFolders: () => Object.entries(PROGRAM_FOLDERS).map(([id, f]) => ({ id, label: f.label, extra: EXTRA_FOLDERS.has(id) })),
+        /**
+         * A group of folders kept by another file, replaced as a whole (the folders made inside Android
+         * and Work, wmAndroidApps.js #805): [{ id, label, icon, parent }]; a folder with a parent is
+         * listed inside that folder, not in Programs itself.
+         */
+        setProgramFolders: (group, list) => {
+            for (const id of (FOLDER_GROUPS.get(group) || [])) {
+                delete PROGRAM_FOLDERS[id];
+                EXTRA_FOLDERS.delete(id);
+                FOLDER_PARENT.delete(id);
+                const i = FOLDER_ORDER.indexOf(id);
+                if (i >= 0) FOLDER_ORDER.splice(i, 1);
+            }
+            const ids = [];
+            for (const f of (Array.isArray(list) ? list : [])) {
+                if (!f || !f.id || !f.label || PROGRAM_FOLDERS[f.id]) continue;
+                PROGRAM_FOLDERS[f.id] = { label: f.label, icon: () => wmLargeIcon(f.icon || 'app-folder') };
+                EXTRA_FOLDERS.add(f.id);
+                if (f.parent) FOLDER_PARENT.set(f.id, f.parent);
+                FOLDER_ORDER.push(f.id);
+                ids.push(f.id);
+            }
+            FOLDER_GROUPS.set(group, ids);
+        },
+        programFolders: () => Object.entries(PROGRAM_FOLDERS).map(([id, f]) => ({ id, label: f.label, extra: EXTRA_FOLDERS.has(id), parent: FOLDER_PARENT.get(id) || null })),
         /** A Settings grid item that opens a program: { id, tab, label, icon, app } (or open()). */
         addLink: (link) => {
             if (!link || !link.id || !PAGE_GRIDS.has(link.tab) || SETTINGS_LINKS.some((l) => l.id === link.id)) return;
