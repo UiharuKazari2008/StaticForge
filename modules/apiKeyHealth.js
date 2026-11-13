@@ -249,7 +249,9 @@ function publicStatuses(gr) {
     Object.keys(manager.SERVICE_METADATA).forEach((service) => {
         const field = manager.SERVICE_METADATA[service].secondary && manager.SERVICE_METADATA[service].secondary.field;
         out[service] = manager.getServiceKeys(service).map((key, index) => {
-            const row = { index, apiKey: statusFor(service, 'apiKey', key && key.apiKey) };
+            // the same secret the check was stored under (Apple Weather: key + its ids, credentialSecret)
+            const secret = typeof manager.credentialSecret === 'function' ? manager.credentialSecret(service, key) : (key && key.apiKey);
+            const row = { index, apiKey: statusFor(service, 'apiKey', secret) };
             if (field) row[field] = statusFor(service, field, key && key[field]);
             return row;
         });
