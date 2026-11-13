@@ -1,5 +1,27 @@
 {
-  "version": 0,
-  "updatedAt": null,
-  "icons": {}
+  "version": 2,
+  "updatedAt": "2026-11-13T00:13:28.033Z",
+  "icons": {
+    "com.google.android.youtube": {
+      "name": "com-google-android-youtube-ea08c8-mwe848kg",
+      "package": "com.google.android.youtube",
+      "label": "YouTube",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:13:26.427Z"
+    },
+    "com.proximabeta.nikke": {
+      "name": "com-proximabeta-nikke-037ccc-mwe84996",
+      "package": "com.proximabeta.nikke",
+      "label": "NIKKE",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:13:27.263Z"
+    },
+    "com.nexon.bluearchive": {
+      "name": "com-nexon-bluearchive-e8606a-mwe849to",
+      "package": "com.nexon.bluearchive",
+      "label": "Blue Archive",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:13:28.033Z"
+    }
+  }
 }

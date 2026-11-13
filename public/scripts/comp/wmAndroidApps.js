@@ -88,7 +88,14 @@
     }
 
     /** The icon a program shows: its Windows Mobile one from the store, else its own launcher icon. */
-    const storeIcon = (a) => (store.icons[a.id] && store.icons[a.id].icon) || null;
+    // the program's entry in the store: its exact "package/activity", else one for its package (an
+    // entry saved by package name, or from a phone whose launcher activity has another name)
+    const storeKey = (a) => {
+        if (store.icons[a.id]) return a.id;
+        if (store.icons[a.package]) return a.package;
+        return Object.keys(store.icons).find((k) => store.icons[k] && store.icons[k].package === a.package) || null;
+    };
+    const storeIcon = (a) => { const k = storeKey(a); return (k && store.icons[k].icon) || null; };
     const iconOf = (a) => storeIcon(a) || a.icon;
     const inGames = (a) => {
         const o = readJson(GAMES_KEY, {});
@@ -363,7 +370,8 @@
                     <span class="wm-icongrid-icon"><img src="${esc(src)}" alt="" draggable="false" loading="lazy"><i class="wm-pi-check"></i></span>
                     <span class="wm-icongrid-label"><span>${esc(a.label)}</span></span></button>`;
             }).join('');
-            const anyWm = [...d.sel].some((id) => store.icons[id]);
+            const byId = new Map(d.list.map((a) => [a.id, a]));
+            const anyWm = [...d.sel].some((id) => byId.has(id) && storeKey(byId.get(id)));
             el.innerHTML = `<p>Select the programs to give Windows Mobile icons, then tap Request. The server makes them; you can close Program Icons meanwhile.</p>
                 <div class="wm-pi-scroll"><div class="wm-icongrid wm-pi-grid" role="list">${cells}</div></div>
                 ${styleHtml('pi-style', d.mode)}
@@ -395,7 +403,8 @@
                 }
             });
             el.querySelector('[data-act="original"]').addEventListener('click', async () => {
-                const ids = [...d.sel].filter((id) => store.icons[id]);
+                // the store keys these programs draw from (exact, or their package's)
+                const ids = [...new Set([...d.sel].map((id) => byId.get(id)).filter(Boolean).map(storeKey).filter(Boolean))];
                 if (!ids.length) return;
                 const yes = await sh.messageBox({
                     title: 'Program Icons', icon: 'question',
