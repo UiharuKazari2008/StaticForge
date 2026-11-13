@@ -604,6 +604,7 @@
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (b.dataset.role === 'notify') noteIconTap();
+                else if (messageIconTap(b.dataset.role)) { /* its waiting notification */ }
                 else statusBubble(b.dataset.role, b);
             });
         });
@@ -2372,14 +2373,15 @@
         // IMAP accounts (#789) count the same way; while their New E-mail notification waits it stands for them
         const noteWaits = (ev) => notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === ev); });
         const mailAll = lsFlag(MAIL_ICON_ALL_KEY, false);
-        hide(mailEl, !(mailAll ? shellMailUnread > 0 || (imapUnread() > 0 && !noteWaits('mail')) : shellMailNew || (imapNew() > 0 && !noteWaits('mail'))));
+        // the class's notifications stand on its icon too (messageNotes): one glyph per class
+        hide(mailEl, !(messageNotes('mail').length || (mailAll ? shellMailUnread > 0 || imapUnread() > 0 : shellMailNew || imapNew() > 0)));
         // unread text messages (Text Messaging, #779): the phone-and-envelope glyph until they are read;
         // unread Dreamscape Messenger lines: the Messenger buddy (while a class's notification waits,
         // its own glyph stands for them: one, not two)
         smsNewWire();
         const smsAll = lsFlag(SMS_ICON_ALL_KEY, false);
-        hide(shell.querySelector('[data-role="sms"]'), !(smsUnread() > 0 && (smsAll || smsNewChats.size > 0)) || noteWaits('sms'));
-        hide(shell.querySelector('[data-role="chat"]'), !(chatUnread() > 0) || noteWaits('chat'));
+        hide(shell.querySelector('[data-role="sms"]'), !(messageNotes('sms').length || (smsUnread() > 0 && (smsAll || smsNewChats.size > 0))));
+        hide(shell.querySelector('[data-role="chat"]'), !(messageNotes('chat').length || chatUnread() > 0));
         // Weather (#792): while Home or Work has an alert, and while rain is due or falling there
         // with the rain alarm on (wmWeather.statusState); a waiting notification of its class stands in
         const wx = window.wmWeather && typeof window.wmWeather.statusState === 'function' ? window.wmWeather.statusState() : null;
@@ -3209,7 +3211,13 @@
 
     const noteOf = (id) => (id ? notes.find((n) => n.ids.includes(id)) || null : null);
     /** The notifications the speech bubble stands for: all but the update notices (the update icon's). */
-    const notesForBubbleIcon = () => notes.filter((n) => !isUpdateNote(n));
+    // New e-mail (any account: Dreamscape Mail, IMAP), text messages (any Text Messaging account) and
+    // Dreamscape Messenger each have one status icon of their own; their notifications stand on it,
+    // never on the speech bubble, so two accounts never show two glyphs (Yukimi, Nov 13)
+    const MESSAGE_CLASS = { mail: 'mail', sms: 'sms', chat: 'chat' };
+    const messageClassOf = (n) => MESSAGE_CLASS[noteEvent(n)] || null;
+    const notesForBubbleIcon = () => notes.filter((n) => !isUpdateNote(n) && !messageClassOf(n));
+    const messageNotes = (role) => notes.filter((n) => messageClassOf(n) === role);
     const noteShownNote = () => noteOf(noteShown);
 
     /** Bubbles wait for startup and for full-screen takeovers (logon, errors). */
@@ -3728,7 +3736,12 @@
 
     let noteTrayKey = '';
     let noteKeyCount = -1;
+    let messageNotesSig = '';
     function renderNotes() {
+        // a mail / text / Messenger notification came or went: its class icon follows (refreshStatus
+        // may draw the notes again; the unchanged signature ends it there)
+        const sig = ['mail', 'sms', 'chat'].map((r) => messageNotes(r).length).join(',');
+        if (sig !== messageNotesSig) { messageNotesSig = sig; refreshStatus(); }
         fitStatus();
         // Today's left soft key follows whether a notification is waiting
         if ((notes.length > 0) !== (noteKeyCount > 0) && current === 'today' && shell) { noteKeyCount = notes.length; renderSoftKeys(); } else noteKeyCount = notes.length;
@@ -3969,6 +3982,19 @@
     }
 
     /** The title bar icon: hides an open bubble; one notification comes back, several open the tray. */
+    /** The mail / text / Messenger icon with notifications of its class waiting: the newest one opens (a second tap closes it). */
+    function messageIconTap(role) {
+        if (!MESSAGE_CLASS[role]) return false;
+        const mine = messageNotes(role);
+        if (!mine.length) return false;
+        closeMenus(true);
+        const shown = noteShownNote();
+        if (shown && messageClassOf(shown) === role) { hideNote(); return true; }
+        closeBubble();
+        showNote(mine[mine.length - 1].id);
+        return true;
+    }
+
     function noteIconTap() {
         closeMenus(true);
         // the speech bubble's own notifications (update notices are the update icon's)
