@@ -256,16 +256,21 @@
                 const art = b.level < 10 ? 0 : b.level < 35 ? 1 : b.level < 60 ? 2 : b.level < 85 ? 3 : 4;
                 out.push(['Battery', `<img class="explorer-details-inline-icon" src="/static_images/activesync/battery-${art}-16.png" alt="">${esc(`${Math.round(b.level)}%${b.charging ? ', charging' : ''}${b.saver ? ', battery saver on' : ''}`)}`]);
             }
-            const bars = (n) => (n == null ? '' : `, signal ${n} of 4`);
-            const wifi = st.wifi && st.wifi.connected ? `${st.wifi.ssid || 'Connected'}${bars(st.wifi.level)}` : '';
+            // Vista's signal bars (pnidui.dll 13-18: none, then one to five green bars); the phone reports 0-4
+            const bars = (n) => {
+                if (n == null) return '';
+                const five = Math.max(0, Math.min(5, Math.round(Number(n) * 5 / 4)));
+                return `<img class="explorer-details-inline-icon" src="${ART}/signal-${five}-16.png" srcset="${ART}/signal-${five}-16.png 1x, ${ART}/signal-${five}-32.png 2x" alt="${esc(`${n} of 4`)}" title="${esc(`Signal: ${n} of 4`)}">`;
+            };
+            const wifi = st.wifi && st.wifi.connected ? `${bars(st.wifi.level)}${esc(st.wifi.ssid || 'Connected')}` : '';
             const cell = st.cellular && st.cellular.present
-                ? (st.cellular.airplane ? 'Flight mode' : [st.cellular.operator, st.cellular.dataType, st.cellular.roaming ? 'roaming' : ''].filter(Boolean).join(' ') + bars(st.cellular.level))
+                ? (st.cellular.airplane ? esc('Flight mode') : `${bars(st.cellular.level)}${esc([st.cellular.operator, st.cellular.dataType, st.cellular.roaming ? 'roaming' : ''].filter(Boolean).join(' ') || 'No service')}`)
                 : '';
             // the link Dreamscape reaches the phone over, then the radio it uses for data
             const via = st.active === 'wifi' ? 'Wi-Fi' : st.active === 'cellular' ? 'Cellular data' : st.active === 'ethernet' ? 'Ethernet' : '';
             out.push(['Connected via', esc(['ActiveSync', via].filter(Boolean).join(' over '))]);
-            if (wifi) out.push(['Wi-Fi', esc(wifi)]);
-            if (cell) out.push(['Signal', esc(cell)]);
+            if (wifi) out.push(['Wi-Fi', wifi]);
+            if (cell) out.push(['Signal', cell]);
             const as = root.activeSync;
             const syncing = as && typeof as.transferring === 'function' && as.transferring();
             const when = (ms) => {
