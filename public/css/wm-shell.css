@@ -398,6 +398,38 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"] #wmShell {
     --wm-safe-right: 0px;
 }
 
+/* Settings > Screen > Camera > Keep the title bar clear (Yukimi, Nov 12): with the phone's status
+ * bar hidden, the camera's status-bar-tall cutout box is not reserved either: the title bar runs to
+ * the screen's edge and its icons step around the camera (wmShell applyCameraHole's gap). Kept, it
+ * left an empty black band above the title bar. data-wm-bezel-edge is 'none' while the camera is
+ * ignored (status bar showing, a turned phone with Only in portrait), so the safe area stays then. */
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="top"],
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="top"] #wmShell {
+    --wm-safe-top: 0px;
+}
+
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="top"] body {
+    border-top-width: 0 !important;
+}
+
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="left"],
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="left"] #wmShell {
+    --wm-safe-left: 0px;
+}
+
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="left"] body {
+    border-left-width: 0 !important;
+}
+
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="right"],
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="right"] #wmShell {
+    --wm-safe-right: 0px;
+}
+
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="right"] body {
+    border-right-width: 0 !important;
+}
+
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before,
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     content: '';
