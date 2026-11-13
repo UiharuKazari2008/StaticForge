@@ -576,13 +576,31 @@
     }
     const pad = (n) => String(n).padStart(2, '0');
 
-    function skinHtml() {
+    /**
+     * The skin in this screen's shape: a portrait screen taller than the skin's 480x536 gives the extra
+     * height to the album art (the background's gradient above the control bar stretches with it) and
+     * the control bar stays at the bottom, instead of an empty band under the skin.
+     */
+    let skinExtra = 0;
+    const BAR_TOP = 396; // portrait: the control bar's top edge in the background (VGA units)
+    function skinLayout() {
         const L = LAYOUT[orient];
+        if (orient !== 'portrait' || !skinExtra) return L;
+        const d = skinExtra;
+        const down = (r) => [r[0], r[1] + d].concat(r.slice(2));
+        const buttons = {};
+        Object.entries(L.buttons).forEach(([k, b]) => { buttons[k] = down(b); });
+        return { ...L, size: [L.size[0], L.size[1] + d], art: [L.art[0], L.art[1], L.art[2], L.art[3] + d], time: down(L.time), vol: down(L.vol), seek: down(L.seek), buttons };
+    }
+
+    function skinHtml() {
+        const L = skinLayout();
         const btn = (k) => {
             const b = L.buttons[k];
             return `<button type="button" class="wmp-btn" data-b="${k}" style="${box(b)};--px:${u(-b[4])};--px2:${u(-(b[5] || b[4]))};--px3:${u(-(b[6] || b[4]))}" aria-label="${k}"></button>`;
         };
-        return `<div class="wmp-skin is-${orient}" style="width:${u(L.size[0])};height:${u(L.size[1])};--bg:image-set(url('${SKIN}${L.bg}.png') 1x, url('${SKIN}${L.bg}@2x.png') 2x);--pushed:image-set(url('${SKIN}${L.pushed}.png') 1x, url('${SKIN}${L.pushed}@2x.png') 2x);--pw:${u(PUSHED_W[orient][0])};--ph:${u(PUSHED_W[orient][1])};--disabled:image-set(url('${SKIN}${L.disabled}.png') 1x, url('${SKIN}${L.disabled}@2x.png') 2x);--dw:${u(DISABLED_W[orient][0])};--dh:${u(DISABLED_W[orient][1])}">
+        const stretch = orient === 'portrait' && skinExtra ? `;--wmp-extra:${skinExtra};--wmp-bar:${BAR_TOP}` : '';
+        return `<div class="wmp-skin is-${orient}${stretch ? ' is-stretched' : ''}" style="width:${u(L.size[0])};height:${u(L.size[1])}${stretch};--bg:image-set(url('${SKIN}${L.bg}.png') 1x, url('${SKIN}${L.bg}@2x.png') 2x);--pushed:image-set(url('${SKIN}${L.pushed}.png') 1x, url('${SKIN}${L.pushed}@2x.png') 2x);--pw:${u(PUSHED_W[orient][0])};--ph:${u(PUSHED_W[orient][1])};--disabled:image-set(url('${SKIN}${L.disabled}.png') 1x, url('${SKIN}${L.disabled}@2x.png') 2x);--dw:${u(DISABLED_W[orient][0])};--dh:${u(DISABLED_W[orient][1])}">
             <div class="wmp-art" style="${box(L.art)}"></div>
             <div class="wmp-marquee" style="${box(L.marquee)};font-size:${u(L.marquee[4])}"></div>
             <div class="wmp-status" style="${box(L.status)};font-size:${u(L.status[4])}"></div>
@@ -604,9 +622,12 @@
         const L = LAYOUT[o];
         // the skin keeps its shape and fills the screen (its VGA units scaled to fit)
         const unit = Math.min(w / L.size[0], h / L.size[1]);
+        // portrait on a tall screen: the skin fills the height too (skinLayout)
+        const extra = o === 'portrait' ? Math.max(0, Math.floor(h / unit - L.size[1])) : 0;
         host.style.setProperty('--wmp-u', `${unit}px`);
-        if (o !== orient || !host.querySelector('.wmp-skin')) {
+        if (o !== orient || extra !== skinExtra || !host.querySelector('.wmp-skin')) {
             orient = o;
+            skinExtra = extra;
             host.innerHTML = skinHtml();
             paintSkin();
         }
@@ -777,12 +798,16 @@
         box.querySelectorAll('input[name="wmp-show"]').forEach((c) => c.addEventListener('change', () => { if (c.checked) optsDraft.delete(c.value); else optsDraft.add(c.value); }));
     }
 
-    function saveOptions() {
+    function keepOptions() {
         const A = window.wmMediaApps;
         if (A && A.setHidden && optsDraft) A.setHidden([...optsDraft]);
         optsDraft = null;
         layer = 'skin';
         render();
+    }
+
+    function saveOptions() {
+        keepOptions();
         ws.syncHistory();
     }
 
@@ -1024,7 +1049,8 @@
             titleKind: () => (layer === 'skin' ? 'close' : layer === 'options' ? null : 'ok'),
             historyDepth: () => (layer === 'skin' ? 0 : layer === 'queue' || layer === 'options' ? 1 : 1 + libPath.length),
             onBack() {
-                if (layer === 'options') { optsDraft = null; layer = 'skin'; render(); return true; }
+                // the back key keeps the page, as ok and back do on every WM settings page; only Cancel drops it
+                if (layer === 'options') { keepOptions(); return true; }
                 if (layer === 'library' && libPath.length) { libPath = libPath.slice(0, -1); libSel = 0; render(); return true; }
                 if (layer !== 'skin') { layer = 'skin'; render(); return true; }
                 return false;
@@ -1106,7 +1132,7 @@
             const it = current();
             if (!it) return null;
             const v = media.el;
-            return { title: it.name, artist: it.artist || (it.kind === 'audio' ? it.folder || '' : ''), art: it.art || '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
+            return { title: it.name, artist: it.artist || (it.kind === 'audio' ? it.folder || '' : ''), art: it.kind === 'audio' ? it.art || '' : '', albumArt: it.kind === 'audio' ? it.albumArt || '' : '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
         },
         playPause: () => playPause(),
         next: () => next(false),

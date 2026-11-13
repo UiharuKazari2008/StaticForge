@@ -1954,7 +1954,7 @@
         const M = window.wmMedia;
         const m = M && typeof M.now === 'function' ? M.now() : null;
         if (m && m.title && !/^(Stopped|Ready|Error)$/.test(m.status || '')) {
-            mel = { kind: 'melaton', id: '', title: m.title, artist: m.artist || '', app: (favCatalog().get(MUSIC_DEFAULT) || {}).label || 'Melaton Media', playing: !!m.playing || /^(Opening|Buffering)/.test(m.status || ''), key: MUSIC_DEFAULT, next: m.index < m.count - 1, previous: true };
+            mel = { kind: 'melaton', id: '', title: m.title, artist: m.artist || '', art: m.art || '', albumArt: m.albumArt || '', app: (favCatalog().get(MUSIC_DEFAULT) || {}).label || 'Melaton Media', playing: !!m.playing || /^(Opening|Buffering)/.test(m.status || ''), key: MUSIC_DEFAULT, next: m.index < m.count - 1, previous: true };
         }
         if (droid && mel) return mel.playing && !droid.playing ? mel : droid;
         return droid || mel;
@@ -1968,7 +1968,34 @@
             }
             if (music.art) return music.art;
         }
+        // Melaton Media: the song's cover from the phone's library, else its album's (as Now Playing's skin)
+        if (now && now.kind === 'melaton') {
+            const pic = musicPicture([now.art, now.albumArt]);
+            if (pic) return pic;
+        }
         return `${MUSIC_ART}ti-2403@4x.png`;
+    }
+
+    /** The first of these pictures that loads; one still loading repaints the item when it settles. */
+    const musicPics = new Map(); // url -> 'ok' | 'bad' | 'loading'
+    function musicPicture(urls) {
+        for (const url of urls) {
+            if (!url) continue;
+            const st = musicPics.get(url);
+            if (st === 'ok') return url;
+            if (st === 'bad') continue;
+            if (!st) {
+                if (musicPics.size > 200) musicPics.clear();
+                musicPics.set(url, 'loading');
+                const im = new Image();
+                im.decoding = 'async';
+                im.onload = () => { musicPics.set(url, 'ok'); musicRepaint(); };
+                im.onerror = () => { musicPics.set(url, 'bad'); musicRepaint(); };
+                im.src = url;
+            }
+            return '';
+        }
+        return '';
     }
 
     function musicToggle(now) {

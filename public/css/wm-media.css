@@ -75,6 +75,24 @@
     color: #fff;
 }
 
+/* a tall portrait screen (wmMedia.js skinLayout): the control bar sits at the bottom at its own size and
+   the gradient above it stretches over the extra height, so no empty band is left under the skin */
+.wm-media .wmp-skin.is-stretched {
+    background-position: 0 100%;
+    background-size: 100% calc(536 * var(--wmp-u));
+}
+
+.wm-media .wmp-skin.is-stretched::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: calc((var(--wmp-bar) + var(--wmp-extra)) * var(--wmp-u));
+    background: var(--bg) 0 0 / 100% calc(536 * (var(--wmp-bar) + var(--wmp-extra)) / var(--wmp-bar) * var(--wmp-u)) no-repeat;
+    pointer-events: none;
+}
+
 .wm-media .wmp-skin > * {
     position: absolute;
     box-sizing: border-box;
