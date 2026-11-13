@@ -214,6 +214,14 @@ async function ensureSessionValid() {
             }
         }
 
+        // Melaton Mobile with the socket down: the server is out of reach, which says nothing about
+        // the session. No PIN prompt for a dropped connection (the connectivity icon shows it); the
+        // socket's own auth answer asks for logon when the session really has gone (Yukimi, Nov 13)
+        if (window.wsClient && !window.wsClient.isConnected() && window.wsClient.connectionPhase !== 'auth'
+            && document.documentElement.classList.contains('ui-mobile') && window.wmShell) {
+            return true;
+        }
+
         // Show PIN modal for re-authentication
         if (pinModalPromise) return pinModalPromise;
         pinModalPromise = await window.showPinModal();

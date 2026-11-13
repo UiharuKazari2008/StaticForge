@@ -3097,6 +3097,20 @@ html.ui-mobile body > .pswp .pswp__preloader {
     justify-content: space-between;
 }
 
+.wm-bubble-section.is-links.has-text {
+    flex-wrap: nowrap;
+    align-items: baseline;
+}
+
+.wm-bubble-section.is-links.has-text > .wm-bubble-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-bubble-section.is-links.has-text > .wm-bubble-link {
+    flex: none;
+}
+
 .wm-bubble-section.is-links.is-right {
     justify-content: flex-end;
     /* WM 6.1's Phone bubble: the Wireless Manager link sits right under the operator, no rule */

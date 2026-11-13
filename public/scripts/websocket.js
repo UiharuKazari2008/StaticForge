@@ -1271,6 +1271,10 @@ class WebSocketClient {
      * Auth still uses full UI.
      */
     _shouldSuppressConnectionDialUi() {
+        // Melaton Mobile once it is up: a dropped connection is the title bar's connectivity icon
+        // and its bubble (wmShell statusBubble), never a Connection box; a command that needs the
+        // server asks Retry / Abort (_mobileDomainUnreachable)
+        if (this._isMobileShell() && this.initializationCompleted && this.connectionPhase !== 'auth') return true;
         if (!this._trayOnlyReconnect) return false;
         if (this.connectionPhase === 'auth') return false;
         if (!this.initializationCompleted) return false;
@@ -1300,6 +1304,58 @@ class WebSocketClient {
 
         this._updateModemTrayIcon();
         this._updateServiceWorkerTrayIcon();
+        if (this._isMobileShell() && typeof window.wmShell.refreshStatus === 'function') window.wmShell.refreshStatus();
+    }
+
+    /** The Melaton Mobile shell (html.ui-mobile with wmShell) runs this page. */
+    _isMobileShell() {
+        return !!(typeof document !== 'undefined' && document.documentElement
+            && document.documentElement.classList.contains('ui-mobile') && window.wmShell);
+    }
+
+    /**
+     * Melaton Mobile: a command sent while the server cannot be reached, in answer to the user's
+     * own tap (opening an app, a button; sent within 700 ms of it), asks "The Domain Controller is unreachable." with Retry
+     * and Abort instead of failing quietly. Retry reconnects and sends it again once the socket is
+     * back (asking again if it is not); Abort rejects with the original error. Background requests
+     * (polls, timers) keep failing quietly. One box for every request waiting.
+     * @returns {Promise|null} null when the request should simply fail
+     */
+    _mobileDomainUnreachable(type, data, showBanner, error) {
+        if (!this._isMobileShell() || !this.initializationCompleted) return null;
+        const sh = window.wmShell;
+        if (typeof sh.domainUnreachable !== 'function') return null;
+        if (!this._dcUnreachablePrompt) {
+            // only what the tap itself sends: a poll that happens to run after a tap stays quiet
+            if (typeof sh.tapCommand !== 'function' || !sh.tapCommand()) return null;
+            this._dcUnreachablePrompt = (async () => {
+                for (;;) {
+                    const choice = await sh.domainUnreachable();
+                    if (choice !== 'retry') return false;
+                    if (await this._waitForMobileReconnect()) return true;
+                }
+            })().finally(() => { this._dcUnreachablePrompt = null; });
+        }
+        return this._dcUnreachablePrompt.then((ok) => (ok ? this.sendMessage(type, data, showBanner) : Promise.reject(error)));
+    }
+
+    /** Retry from the unreachable box: reconnect now, under the wait cursor, for up to 12 s. */
+    async _waitForMobileReconnect() {
+        const sh = window.wmShell;
+        const release = sh && typeof sh.busy === 'function' ? sh.busy(true, { delay: 0, timeout: 15000 }) : null;
+        try {
+            if (!this.isConnectionHealthy() && !this.isConnecting && typeof this.manualReconnect === 'function') {
+                try { this.manualReconnect(); } catch (_) { /* the wait below decides */ }
+            }
+            const until = Date.now() + 12000;
+            while (Date.now() < until) {
+                if (this.isConnectionHealthy() && this.ws && typeof this.ws.onmessage === 'function') return true;
+                await new Promise((resolve) => setTimeout(resolve, 250));
+            }
+            return false;
+        } finally {
+            if (typeof release === 'function') release();
+        }
     }
 
     _setConnectionBeat(beat, patch = {}) {
@@ -3578,11 +3634,11 @@ class WebSocketClient {
      */
     _updatePreStartupStageProgress(progressPercent, message) {
         const booting = !!(this.lastServerStartupStatus && this.lastServerStartupStatus.isReady === false);
-        // Melaton Mobile: the same window as a WM message box (wmShell mainframeBox), in place
-        // of the Connection box's "Compiling client files…" line
-        if ((typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains('ui-mobile') && window.wmShell && window.wmShell.mainframeBox)) {
-            const up = typeof progressPercent === 'number' && Number.isFinite(progressPercent) && booting;
-            window.wmShell.mainframeBox(up ? progressPercent : null, message);
+        // Melaton Mobile: no box while the server boots; the connectivity bubble's server line
+        // reads "Waiting for domain controller..." (wmShell statusBubble)
+        if (this._isMobileShell()) {
+            if (window.wmShell.mainframeBox) window.wmShell.mainframeBox(null);
+            if (typeof window.wmShell.refreshStatus === 'function') window.wmShell.refreshStatus();
             return;
         }
         const win = window.mainframeServerWindow;
@@ -8816,7 +8872,9 @@ class WebSocketClient {
             if (!this.isConnectionHealthy()) {
                 const error = new Error('WebSocket connection not healthy');
                 error.code = 'CONNECTION_UNHEALTHY';
-                reject(error);
+                const asked = type !== 'ping' && !silentTicker ? this._mobileDomainUnreachable(type, data, showBanner, error) : null;
+                if (asked) asked.then(resolve, reject);
+                else reject(error);
                 return;
             }
 

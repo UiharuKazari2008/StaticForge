@@ -3149,6 +3149,8 @@ function mountRuntimeAssetMiddleware(app) {
 
 app.get('/app', async (req, res, next) => {
     try {
+        // public/sw.js: an /app page with this mark came from this server, not the front proxy
+        res.setHeader('X-Melaton-Shell', 'app');
         if (req.query.agent === '1') {
             res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private, max-age=0');
             res.setHeader('Pragma', 'no-cache');

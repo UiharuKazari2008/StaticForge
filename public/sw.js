@@ -1308,6 +1308,30 @@ workbox.routing.registerRoute(
   }
 );
 
+// Opening / or /app: only a page the Dreamscape server itself sent may load. A front proxy's
+// error page (nginx 502 / 504 while the server is down or stalled) never carries the server's
+// X-Melaton-Shell mark; then, or with no answer at all, the installed boot shell (/launch) takes
+// over and waits for the server (Yukimi, Nov 13). Other answers pass as sent (the site gate's
+// cover and a logged-out redirect stay what the server decided).
+workbox.routing.registerRoute(
+  ({ url, request }) => request.mode === 'navigate' && url.origin === self.location.origin
+    && (url.pathname === '/' || url.pathname === '/app' || url.pathname === '/index.html'),
+  async ({ request }) => {
+    let response = null;
+    try {
+      response = await fetch(request);
+    } catch (_err) {
+      response = null;
+    }
+    if (response && (response.status < 500 || response.headers.get('x-melaton-shell'))) return response;
+    try {
+      const cache = await caches.open(LAUNCH_SHELL_CACHE);
+      if (await cache.match(LAUNCH_SHELL_KEY)) return Response.redirect('/launch', 302);
+    } catch (_err) { /* no boot shell: what the network said */ }
+    return response || Response.error();
+  }
+);
+
 // Unified route handler for all requests
 workbox.routing.registerRoute(
   ({ url, request }) => {
