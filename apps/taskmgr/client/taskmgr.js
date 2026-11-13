@@ -90,8 +90,19 @@
             this.selApp = null;
             this.admin = (root.localStorage && root.localStorage.getItem('userType') === 'admin') || false;
             this.build();
+            // the host's figures are pushed (taskmgr_subscribe -> taskmgr_snapshot_push, one shared
+            // sampler on the server at this window's speed); no polling (Yukimi, Nov 13)
+            this.subscribed = false;
+            this.onPush = (msg) => { if (this.subscribed && msg && msg.data) this.apply(msg.data); };
+            // a new socket: the server knows nothing of the old subscription
+            this.onConnected = () => { this.subscribed = false; this.subKey = ''; void this.schedule(); };
+            this.onVisible = () => this.schedule();
+            if (root.wsClient && typeof root.wsClient.on === 'function') {
+                root.wsClient.on('taskmgr_snapshot_push', this.onPush);
+                root.wsClient.on('connected', this.onConnected);
+            }
+            doc.addEventListener('visibilitychange', this.onVisible);
             this.schedule();
-            void this.poll();
         }
 
         build() {
@@ -232,25 +243,71 @@
             if (!on) call('bringModalToFront', this.modal);
         }
 
-        schedule() {
+        /** Speed, tab or visibility changed: subscribe at the new rate (Paused / hidden: none). */
+        async schedule() {
             clearInterval(this.timer);
+            this.timer = null;
             const ms = SPEEDS[this.speed];
-            if (ms) this.timer = setInterval(() => void this.poll(), ms);
+            const ws = root.wsClient;
+            const want = !!(ms && this.admin && ws && !doc.hidden && ws.isConnected && ws.isConnected());
+            if (!want) {
+                this.unsubscribe();
+                // Melaton's own view (not an administrator): redrawn here, nothing is asked of the server
+                if (ms && !this.admin && !doc.hidden) this.timer = setInterval(() => this.apply(null), ms);
+                return;
+            }
+            const key = `${ms}:${this.tab === 2}`;
+            if (this.subscribed && this.subKey === key) return;
+            this.subKey = key;
+            try {
+                let r = await ws.sendMessage('taskmgr_subscribe', { intervalMs: ms, services: this.tab === 2 || !this.snap }, false);
+                if (r && r.data) r = r.data;
+                this.subscribed = true;
+                this.apply(r);
+            } catch (err) {
+                this.subscribed = false;
+                this.subKey = '';
+                // not an administrator after all: Melaton's own view only
+                if (/admin/i.test(String(err && err.message))) { this.admin = false; this.schedule(); }
+            }
         }
 
+        unsubscribe() {
+            if (!this.subscribed) return;
+            this.subscribed = false;
+            this.subKey = '';
+            const ws = root.wsClient;
+            try { if (ws && ws.isConnected()) ws.sendMessage('taskmgr_unsubscribe', {}, false).catch(() => {}); } catch (_) { /* gone */ }
+        }
+
+        /** Refresh Now (F5): one read. */
         async poll() {
             if (this.polling) return;
             this.polling = true;
+            let snap = null;
             try {
                 if (this.admin && root.wsClient) {
                     try {
-                        this.snap = await root.wsClient.sendMessage('taskmgr_snapshot', { services: this.tab === 2 || !this.snap }, false);
-                        if (this.snap && this.snap.data) this.snap = this.snap.data;
+                        snap = await root.wsClient.sendMessage('taskmgr_snapshot', { services: this.tab === 2 || !this.snap }, false);
+                        if (snap && snap.data) snap = snap.data;
                     } catch (err) {
-                        // not an administrator after all, or the server is busy: Melaton's own view only
                         if (/admin/i.test(String(err && err.message))) this.admin = false;
                     }
                 }
+            } finally {
+                this.polling = false;
+            }
+            this.apply(snap);
+        }
+
+        /** A snapshot came (or none, for Melaton's own view): the histories and the tab. */
+        apply(snap) {
+            if (snap) {
+                // the services list rides only when the Services tab asked: keep the last one otherwise
+                if (!snap.services && this.snap && this.snap.services) snap.services = this.snap.services;
+                this.snap = snap;
+            }
+            {
                 const s = this.snap;
                 if (s && s.cpu) {
                     this.ticks += 1;
@@ -262,8 +319,6 @@
                     if (this.memHist.length > HISTORY) this.memHist.shift();
                 }
                 this.render();
-            } finally {
-                this.polling = false;
             }
         }
 
@@ -277,6 +332,8 @@
             this.el('.wtm-pane').dataset.tab = String(this.tab);
             this.el('.wtm-pane').innerHTML = '';
             this.render();
+            // the services list is in the feed only while the Services tab shows
+            if (this.subscribed !== undefined) void this.schedule();
         }
 
         // ---- the tabs ---------------------------------------------------------------------------
@@ -717,6 +774,12 @@
 
         destroy() {
             clearInterval(this.timer);
+            this.unsubscribe();
+            if (root.wsClient && typeof root.wsClient.off === 'function') {
+                root.wsClient.off('taskmgr_snapshot_push', this.onPush);
+                root.wsClient.off('connected', this.onConnected);
+            }
+            doc.removeEventListener('visibilitychange', this.onVisible);
             if (this.resizer) this.resizer.disconnect();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;

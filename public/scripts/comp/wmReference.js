@@ -34,7 +34,7 @@
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
     const APP_ID = 'reference';
-    const ICON = '/static_images/app_icons/ref.png';
+    const ICON = '/static_images/app_icons/ref.webp';
     const MODES = [['all', 'All'], ['image', 'Image References'], ['vibe', 'Vibes'], ['character', 'Character & Style']];
     const PRECISE = { 1: ['Character & Style', 'CS'], 2: ['Character', 'C'], 3: ['Style', 'S'] };
     const MODE_KEY = 'wmReferenceMode';

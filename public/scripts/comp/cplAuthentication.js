@@ -777,7 +777,7 @@
     // one per server) is paired by scanning a QR code with the phone. window.textMessaging
     // (textMessagingClient.js) is read at call time; its 'account' and 'pairing' events repaint.
 
-    const TM_PICTURE = '/static_images/app_icons/melaton-messenger.png';
+    const TM_PICTURE = '/static_images/app_icons/melaton-messenger.webp';
     const TM_PAIR_HINT = 'On your phone, open Google Messages, tap your profile picture > Device pairing > QR code scanner, and scan this code.';
     const TM_GOOGLE_URL = 'https://messages.google.com/web/authentication';
     const TM_GOOGLE_STEPS = 'An Alchemy window opens at Google Messages for web. Sign in there with the Google account your phone uses, close that window, then press Continue.';
@@ -1182,7 +1182,7 @@
     // (mailAccountsClient.js) is read at call time. A new or removed account repaints the list;
     // status and sync changes only rewrite the card's status lines, so typing in a card survives them.
 
-    const MA_PICTURE = '/static_images/app_icons/vista-mail.png';
+    const MA_PICTURE = '/static_images/app_icons/vista-mail.webp';
     const MA_STATE = {
         connected: ['ok', 'Connected'], connecting: ['warn', 'Connecting'], error: ['fail', 'Error'], disabled: ['unchecked', 'Turned off']
     };
@@ -1612,7 +1612,7 @@
     // without one keeps CardSpace's Personal card picture. Missing: OpenAI, OpenWeather, Exa Search,
     // RunPod, and the StaticForge MCP agents' application keys.
     const XAI = '/dist/custom-icons/xAI_Logomark_Dark.png';
-    const DIRECTOR = '/static_images/app_icons/director.png';
+    const DIRECTOR = '/static_images/app_icons/director.webp';
     const CURSOR = '/dist/custom-icons/cursor-icon.svg';
     const CLAUDE = '/dist/custom-icons/claude-icon.svg';
     // #781 card covers (generated card faces, full bleed) for cards with no logo of their own

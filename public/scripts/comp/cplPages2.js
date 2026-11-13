@@ -543,7 +543,7 @@
                 <p class="cpl-vtext">BitLocker Drive Encryption helps prevent unauthorized access to any files stored on the volume shown below. You are able to use the computer normally, but unauthorized users cannot read or use your files.</p>
                 <p class="cpl-vtext cpl-vgap"><a href="#" class="cpl-vlink is-underlined" data-cpl-vpage="help" data-topic="bitlocker">What should I know about BitLocker Drive Encryption before I turn it on?</a></p>
                 <div class="cpl-vsection"><span>Volumes</span></div>
-                <div class="cpl-bl-vol"><img src="/static_images/vista-icons/explorer/drive-48.png" alt="" onerror="this.src='/static_images/vista-cpl/items/bitlocker-drive-encryption-32.png'"><div><b>Server (C:)</b><br>${on ? 'On' : 'Off'}</div><button type="button" class="cpl-vlink" data-cpl-vpage="toggle"><img src="${SHIELD}" alt=""> ${on ? 'Turn Off BitLocker' : 'Turn On BitLocker'}</button></div>
+                <div class="cpl-bl-vol"><img src="/static_images/vista-explorer/drive-system-48.png" alt="" onerror="this.src='/static_images/vista-cpl/items/bitlocker-drive-encryption-32.png'"><div><b>Server (C:)</b><br>${on ? 'On' : 'Off'}</div><button type="button" class="cpl-vlink" data-cpl-vpage="toggle"><img src="${SHIELD}" alt=""> ${on ? 'Turn Off BitLocker' : 'Turn On BitLocker'}</button></div>
             </div>`;
         }
     };

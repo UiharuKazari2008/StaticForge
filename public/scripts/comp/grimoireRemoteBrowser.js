@@ -50,7 +50,7 @@ function grimoireRegisterVolumeSource() {
     window.tabVolume.registerSource({
         id: 'alchemy',
         label: 'Alchemy',
-        icon: typeof resolveAppIconPath === 'function' ? resolveAppIconPath('alchemy.png', 16) : '/static_images/app_icons/alchemy.png',
+        icon: typeof resolveAppIconPath === 'function' ? resolveAppIconPath('alchemy.png', 16) : '/static_images/app_icons/alchemy.webp',
         isActive: () => grimoireAudioLive,
         getVolume: () => grimoireAudioVolumeNow(),
         isMuted: () => settings().audioEnabled === false,

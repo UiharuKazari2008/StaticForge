@@ -27,7 +27,7 @@
     const APP_ID = 'characters';
     const TITLE = 'Characters';
     const ICON = 'app-characters'; // WM art (public/static_images/wm61)
-    const FOLDER = '/static_images/app_icons/vista-folder.png';
+    const FOLDER = '/static_images/app_icons/vista-folder.webp';
     const SESSION = 'wm_characters';
 
     let sh = null;

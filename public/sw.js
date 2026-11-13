@@ -1332,6 +1332,29 @@ workbox.routing.registerRoute(
   }
 );
 
+/** /logon-picture: network first; a good answer is kept, the kept copy answers when the server does not. */
+async function handleLogonPicture(request) {
+  const cache = await caches.open(LAUNCH_SHELL_CACHE);
+  let response = null;
+  try {
+    response = await fetch(request, { cache: 'no-store' });
+  } catch (_err) {
+    response = null;
+  }
+  const isImage = response && response.ok && /^image\//i.test(response.headers.get('content-type') || '');
+  if (isImage) {
+    try { await cache.put('/logon-picture', response.clone()); } catch (_err) { /* the page still gets it */ }
+    return response;
+  }
+  // 404: Use Vista Logon is off; the kept picture goes with it
+  if (response && response.status === 404) {
+    try { await cache.delete('/logon-picture'); } catch (_err) { /* nothing kept */ }
+    return response;
+  }
+  const kept = await cache.match('/logon-picture');
+  return kept || response || Response.error();
+}
+
 // Unified route handler for all requests
 workbox.routing.registerRoute(
   ({ url, request }) => {
@@ -1443,6 +1466,11 @@ workbox.routing.registerRoute(
       // radar frame lives ~2 h); the browser's HTTP cache keeps them for their max-age
       else if (url.pathname.startsWith('/weather/')) {
         response = await fetch(request);
+      }
+      // The Vista Welcome screen's picture (an uploaded one has no static path): the network copy,
+      // kept so the logon / lock screens still show it while the server restarts (Yukimi, Nov 13)
+      else if (url.pathname === '/logon-picture') {
+        response = await handleLogonPicture(request);
       }
       // Every cached file has an extension (the manifest's only extensionless entries are the
       // routes above): API calls, /status, /logon-picture and the like go straight to the

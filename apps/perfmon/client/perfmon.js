@@ -96,8 +96,41 @@
             this.sort = {};
             this.build();
             this.select('root', false);
-            this.timer = setInterval(() => { if (this.running) void this.poll(); }, 1000);
-            void this.poll();
+            // the Resource View figures are pushed (perfmon_subscribe -> perfmon_snapshot_push, one
+            // shared sampler on the server, 1 s); Stop or a hidden tab ends the feed (Yukimi, Nov 13)
+            this.subscribed = false;
+            this.onPush = (msg) => { if (this.subscribed && this.running && msg && msg.data) this.apply(msg.data); };
+            this.onConnected = () => { this.subscribed = false; void this.schedule(); };
+            this.onVisible = () => void this.schedule();
+            if (root.wsClient && typeof root.wsClient.on === 'function') {
+                root.wsClient.on('perfmon_snapshot_push', this.onPush);
+                root.wsClient.on('connected', this.onConnected);
+            }
+            doc.addEventListener('visibilitychange', this.onVisible);
+            void this.schedule();
+        }
+
+        async schedule() {
+            const ws = root.wsClient;
+            const want = !!(this.running && this.admin && ws && !doc.hidden && ws.isConnected && ws.isConnected());
+            if (!want) { this.unsubscribe(); return; }
+            if (this.subscribed) return;
+            this.subscribed = true;
+            try {
+                let r = await ws.sendMessage('perfmon_subscribe', { intervalMs: 1000 }, false);
+                if (r && r.data) r = r.data;
+                this.apply(r);
+            } catch (err) {
+                this.subscribed = false;
+                if (/admin/i.test(String(err && err.message))) { this.admin = false; this.render(); }
+            }
+        }
+
+        unsubscribe() {
+            if (!this.subscribed) return;
+            this.subscribed = false;
+            const ws = root.wsClient;
+            try { if (ws && ws.isConnected()) ws.sendMessage('perfmon_unsubscribe', {}, false).catch(() => {}); } catch (_) { /* gone */ }
         }
 
         build() {
@@ -257,8 +290,8 @@
                     return;
                 }
                 case 'refresh': await this.poll(); return;
-                case 'start': this.running = true; this.renderToolbar(); return;
-                case 'stop': this.running = false; this.renderToolbar(); return;
+                case 'start': this.running = true; this.renderToolbar(); void this.schedule(); return;
+                case 'stop': this.running = false; this.renderToolbar(); void this.schedule(); return;
                 case 'help': if (root.melatonApps) root.melatonApps.launch({ packageId: 'help', args: { topic: 'perfmon' } }); return;
                 case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Reliability and Performance Monitor' }); return;
                 default:
@@ -323,19 +356,10 @@
 
         // ---- data -------------------------------------------------------------------------------
 
-        async poll() {
-            if (this.polling) return;
-            this.polling = true;
-            try {
-                if (this.admin && root.wsClient) {
-                    try {
-                        let s = await root.wsClient.sendMessage('perfmon_snapshot', {}, false);
-                        if (s && s.data) s = s.data;
-                        this.snap = s;
-                    } catch (err) {
-                        if (/admin/i.test(String(err && err.message))) this.admin = false;
-                    }
-                }
+        /** A snapshot came: the histories and the pane. */
+        apply(snap) {
+            if (snap) this.snap = snap;
+            {
                 const s = this.snap;
                 if (s) {
                     const used = ((s.memory.total - s.memory.available) / s.memory.total) * 100;
@@ -347,8 +371,6 @@
                     this.push('faults', s.hardFaults); this.push('mem', used);
                 }
                 this.render();
-            } finally {
-                this.polling = false;
             }
         }
 
@@ -1003,6 +1025,12 @@
 
         destroy() {
             clearInterval(this.timer);
+            this.unsubscribe();
+            if (root.wsClient && typeof root.wsClient.off === 'function') {
+                root.wsClient.off('perfmon_snapshot_push', this.onPush);
+                root.wsClient.off('connected', this.onConnected);
+            }
+            doc.removeEventListener('visibilitychange', this.onVisible);
             this.closeRelPop();
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;

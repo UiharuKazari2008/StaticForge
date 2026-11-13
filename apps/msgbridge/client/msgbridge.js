@@ -40,7 +40,7 @@
     const tm = () => root.textMessaging || null;
     const ma = () => root.mailAccounts || null;
     const MAIL_16 = '/static_images/vista-cmdbar/mail.png';
-    const MAIL_32 = '/static_images/app_icons/vista-mail.png';
+    const MAIL_32 = '/static_images/app_icons/vista-mail.webp';
     // IMAP special-use folders: Windows Mail's names and its folder bitmap (vista-mail/folders-16.png)
     const SPECIAL = {
         '\\Inbox': ['Inbox', 7], '\\Drafts': ['Drafts', 11], '\\Sent': ['Sent Items', 9], '\\Trash': ['Deleted Items', 10],

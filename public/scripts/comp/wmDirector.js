@@ -854,8 +854,9 @@
             let label = resolveV(item.text, target) || resolveV(item.label, target) || (item.content ? plainText(resolveV(item.content, target)) : '');
             if (!label) continue;
             label = String(label).replace(/\s+/g, ' ').trim();
-            const subtext = resolveV(item.subtext, target);
-            if (subtext) label += ` (${subtext})`;
+            const sub = resolveV(item.subtext, target);
+            // WM menus have no accelerators: a key combination (Ctrl+N, F5) is left off the row
+            if (sub && !(/^((Ctrl|Alt|Shift|Win)\s*\+\s*)+.+$/i.test(String(sub).trim()) || /^(F\d{1,2}|Del|Delete|Esc|Enter|Ins|Insert|Tab|Backspace|Home|End|PgUp|PgDn|Space)$/i.test(String(sub).trim()))) label += ` (${sub})`;
             const row = { label, disabled: !!resolveV(item.disabled, target) };
             if (Array.isArray(item.submenu) || typeof item.optionsfn === 'function') {
                 const valueList = item.valueDisplay != null;
@@ -1073,9 +1074,9 @@
             // no preview (a chat without prints, a deleted print): the Director's icon, as the desktop row's fallback
             thumb = src
                 ? `<img class="wmd-session-thumb" src="${esc(src)}" data-file="${esc(s.filename || '')}" alt="" loading="lazy" decoding="async">`
-                : '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.png" alt="">';
+                : '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.webp" alt="">';
         } else {
-            thumb = '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.png" alt="">';
+            thumb = '<img class="wmd-session-thumb is-icon" src="/static_images/app_icons/director.webp" alt="">';
         }
         const busy = d._running && d._runningSessionId === s.id;
         // the workspace the chat belongs to (the desktop row's colour dot): its colour and name
@@ -1106,7 +1107,7 @@
                 if (full && img.dataset.fullTried !== '1') { img.dataset.fullTried = '1'; img.src = full; return; }
                 img.onerror = null;
                 img.classList.add('is-icon');
-                img.src = '/static_images/app_icons/director.png';
+                img.src = '/static_images/app_icons/director.webp';
             };
         });
     }
@@ -1977,7 +1978,7 @@
         page.innerHTML = `
             <div class="wmd-host"></div>
             <div class="wmd-dock"><div class="wmd-choices"></div><div class="wmd-strip" role="list" aria-label="Prints"></div></div>
-            <div class="wmd-status" hidden><img src="/static_images/app_icons/director.png" alt=""><span class="wmd-status-text"></span></div>`;
+            <div class="wmd-status" hidden><img src="/static_images/app_icons/director.webp" alt=""><span class="wmd-status-text"></span></div>`;
         watchLayout();
         wireThumbs(page.querySelector('.wmd-strip'));
         // the dock's height moves her text box (choices come and go with the reply)

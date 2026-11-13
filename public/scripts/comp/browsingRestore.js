@@ -237,7 +237,7 @@
                 id: 'grimoireRestoreSession',
                 tpl: RESTORE_TPL,
                 // Internet Explorer's window (Grimoire is IE here): its icon on the caption and the taskbar
-                icon: '/static_images/app_icons/vista-iexplore.png',
+                icon: '/static_images/app_icons/vista-iexplore.webp',
                 title: RESTORE_TPL.t,
                 overrides: { 802: { html: treeHtml(sessions), cls: 'tbp-tree brs-tree' } },
                 init(ctx) {

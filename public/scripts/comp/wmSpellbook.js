@@ -38,7 +38,7 @@
 
     const APP_ID = 'spellbook';
     const TITLE = 'Spellbook';
-    const ICON = '/static_images/app_icons/presetbook.png';
+    const ICON = '/static_images/app_icons/presetbook.webp';
     const GROUPS = ['#ab', 'cde', 'fgh', 'ijk', 'lmn', 'opq', 'rst', 'uvw', 'xyz'];
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const wsc = () => window.wsClient || null;

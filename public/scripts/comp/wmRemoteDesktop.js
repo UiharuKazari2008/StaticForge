@@ -39,7 +39,7 @@
 
     const APP_ID = 'remote-desktop-mobile';
     const TITLE = 'Remote Desktop Mobile';
-    const ICON = '/static_images/app_icons/vista-remote-desktop.png';
+    const ICON = '/static_images/app_icons/vista-remote-desktop.webp';
     const OPT_KEY = 'wmRemoteDesktopOptions';
     const DOMAIN_KEY = 'wmRemoteDesktopDomain';
     const LAST_KEY = 'wmRemoteDesktopComputer';

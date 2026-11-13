@@ -29,7 +29,7 @@
     const APP_ID = 'spellcaster';
     const TITLE = 'Spellcaster';
     const ICON = 'app-spellcaster'; // WM art (public/static_images/wm61)
-    const ROW_ICON = '/static_images/app_icons/presetbook.png';
+    const ROW_ICON = '/static_images/app_icons/presetbook.webp';
 
     let sh = null;
     let K = null;

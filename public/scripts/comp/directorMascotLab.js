@@ -99,7 +99,7 @@ html.ui-mobile #directorMascotLab { top: auto; bottom: 46px; left: 4px; right: 4
         const prints = director && typeof director.sessionPrints === 'function' ? director.sessionPrints() : [];
         const last = prints[prints.length - 1];
         /* global localGalleryImageUrl */
-        const url = last && typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(last.filename) : '/static_images/app_icons/director.png';
+        const url = last && typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(last.filename) : '/static_images/app_icons/director.webp';
         m.onPrint(url, {});
     }
 
