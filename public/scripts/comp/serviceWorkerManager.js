@@ -1539,9 +1539,37 @@ class ServiceWorkerManager {
             if (sent || !worker) return;
             sent = true;
             worker.postMessage({ type: 'SW_MAINTENANCE' });
+            // signed in by now: the worker keeps every Vista font the stylesheets name
+            // (/protected/fonts/), so a restart never swaps the text to a fallback font
+            const fonts = this._protectedFontPaths();
+            if (fonts.length) worker.postMessage({ type: 'CACHE_PROTECTED_FONTS', paths: fonts });
         };
         document.addEventListener('desktopBootDone', () => setTimeout(send, 15000), { once: true });
         setTimeout(send, 120000);
+    }
+
+    /** /protected/fonts/ URLs in every @font-face this page has (resolved against their sheet). */
+    _protectedFontPaths() {
+        const out = new Set();
+        const walk = (rules, base) => {
+            for (const rule of rules || []) {
+                if (rule.cssRules) { walk(rule.cssRules, base); continue; }
+                if (!(typeof CSSFontFaceRule !== 'undefined' && rule instanceof CSSFontFaceRule)) continue;
+                const src = rule.style && rule.style.getPropertyValue('src');
+                for (const m of String(src || '').matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)) {
+                    try {
+                        const u = new URL(m[1], base);
+                        if (u.origin === location.origin && u.pathname.startsWith('/protected/fonts/')) out.add(u.pathname);
+                    } catch (_) { /* not a URL */ }
+                }
+            }
+        };
+        for (const sheet of document.styleSheets) {
+            let rules = null;
+            try { rules = sheet.cssRules; } catch (_) { continue; }
+            walk(rules, sheet.href || location.href);
+        }
+        return [...out];
     }
 
     _attachLateServiceWorkerRegistration(registerPromise) {

@@ -30,6 +30,10 @@ const DYNAMIC_CACHE = 'dynamic-cache-v1';
 const INTERNAL_CACHE = 'internal-cache-v1';
 const IMAGE_CACHE = 'image-cache-v1';
 const WALLPAPER_CACHE = 'wallpaper-cache-v1';
+// The Vista fonts (/protected/fonts/, behind the logon): kept once a signed-in client has them, so
+// a server restart or a slow answer never swaps the text to a fallback font (Yukimi, Nov 13)
+const PROTECTED_FONT_CACHE = 'protected-font-cache-v1';
+const PROTECTED_FONT_PREFIX = '/protected/fonts/';
 // Explorer file previews (Yozora #643): /<vfs uuid>/previews/<fileId>?v=<version> and
 // /cache/preview/<hash>.webp. Its own limits, apart from the Gallery's IMAGE_CACHE.
 const EXPLORER_PREVIEW_CACHE = 'explorer-preview-cache-v1';
@@ -1332,6 +1336,55 @@ workbox.routing.registerRoute(
   }
 );
 
+/** A real font from the server (not the site gate's cover page or a logon redirect). */
+function isFontResponse(response) {
+  if (!response || response.status !== 200 || response.redirected) return false;
+  const type = (response.headers.get('content-type') || '').toLowerCase();
+  return /^font\/|woff|truetype|opentype|application\/octet-stream|application\/x-font/.test(type);
+}
+
+async function fetchProtectedFont(pathname) {
+  const response = await fetch(pathname, { credentials: 'same-origin', cache: 'no-store' });
+  if (!isFontResponse(response)) return null;
+  const cache = await caches.open(PROTECTED_FONT_CACHE);
+  await cache.put(pathname, response.clone());
+  return response;
+}
+
+/**
+ * /protected/fonts/*: the kept copy first (fonts do not change between deploys of the same name;
+ * a fresh copy is fetched behind it once per worker run), else the network, kept when it is a font.
+ */
+const protectedFontRefreshed = new Set();
+async function handleProtectedFont(event, url) {
+  const cache = await caches.open(PROTECTED_FONT_CACHE);
+  const kept = await cache.match(url.pathname);
+  if (kept) {
+    if (!protectedFontRefreshed.has(url.pathname)) {
+      protectedFontRefreshed.add(url.pathname);
+      event.waitUntil(fetchProtectedFont(url.pathname).catch(() => null));
+    }
+    return kept;
+  }
+  try {
+    const fresh = await fetchProtectedFont(url.pathname);
+    if (fresh) return fresh;
+  } catch (_err) { /* down: what the network says below */ }
+  return fetch(event.request);
+}
+
+/** CACHE_PROTECTED_FONTS from the page after logon: every Vista font its stylesheets name, kept. */
+async function cacheProtectedFonts(paths) {
+  const cache = await caches.open(PROTECTED_FONT_CACHE);
+  let added = 0;
+  for (const p of paths) {
+    if (typeof p !== 'string' || !p.startsWith(PROTECTED_FONT_PREFIX) || p.includes('..')) continue;
+    if (await cache.match(p)) continue;
+    try { if (await fetchProtectedFont(p)) added += 1; } catch (_err) { /* the next boot tries again */ }
+  }
+  return added;
+}
+
 /** /logon-picture: network first; a good answer is kept, the kept copy answers when the server does not. */
 async function handleLogonPicture(request) {
   const cache = await caches.open(LAUNCH_SHELL_CACHE);
@@ -1354,6 +1407,11 @@ async function handleLogonPicture(request) {
   const kept = await cache.match('/logon-picture');
   return kept || response || Response.error();
 }
+
+workbox.routing.registerRoute(
+  ({ url, request }) => request.method === 'GET' && url.origin === self.location.origin && url.pathname.startsWith(PROTECTED_FONT_PREFIX),
+  ({ event, url }) => handleProtectedFont(event, url)
+);
 
 // Unified route handler for all requests
 workbox.routing.registerRoute(
@@ -1596,6 +1654,8 @@ workbox.routing.registerRoute(
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SW_PERF_TRACE') {
         event.waitUntil(loadPerfTraceFlag());
+    } else if (event.data && event.data.type === 'CACHE_PROTECTED_FONTS') {
+        event.waitUntil(cacheProtectedFonts(Array.isArray(event.data.paths) ? event.data.paths : []));
     } else if (event.data && event.data.type === 'SW_MAINTENANCE') {
         event.waitUntil(runCacheMaintenance(event.data.force === true));
     } else if (event.data && event.data.type === 'CACHE_STATIC_FILES') {
@@ -2609,7 +2669,8 @@ self.addEventListener('activate', (event) => {
               cacheName !== INTERNAL_CACHE &&
               cacheName !== WALLPAPER_CACHE &&
               cacheName !== EXPLORER_PREVIEW_CACHE &&
-              cacheName !== LAUNCH_SHELL_CACHE) {
+              cacheName !== LAUNCH_SHELL_CACHE &&
+              cacheName !== PROTECTED_FONT_CACHE) {
             return caches.delete(cacheName);
           }
         })
