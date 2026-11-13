@@ -42,7 +42,9 @@ SIBS = os.path.join(REPO, 'public/static_images/wm65')  # the untouched sibling 
 # where the flag sat (x0, y0, x1, y1 in the 90 px grid; measured on the ROM art) and the logo used
 LOGO = {
     'start-settingss': {'box': (41.5, 40.0, 85.5, 79.0), 'logo': 'colour', 'shadow': (0.5, 1.0, 0.8, 0.50)},
-    'start-buttons': {'box': (18.5, 25.0, 44.5, 43.5), 'logo': 'white', 'shadow': (0.0, 0.5, 0.5, 0.45)},
+    # centred on the orb's circle (top y 9, widest row x 11..53: centre 32, 30.5, r 21), not on its dark
+    # area under the glass highlight, which sat the flower 3.5 px low (Yukimi, Nov 13)
+    'start-buttons': {'box': (20.0, 18.5, 44.0, 42.5), 'logo': 'white', 'shadow': (0.0, 0.5, 0.5, 0.45)},
     'start-update': {'box': (6.0, 0.0, 66.0, 61.0), 'logo': 'colour', 'shadow': (1.0, 1.5, 1.2, 0.45)},
 }
 
