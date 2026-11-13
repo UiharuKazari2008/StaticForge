@@ -2893,39 +2893,47 @@
         statusFolded = [];
         // WM 6.1's notification area (#811): a fixed number of slots left of the device icons. The
         // app icons and the speech bubble each take one; once more are pending than there are
-        // slots, all of them fold into the one group icon, whose tap opens the tray of them
+        // slots, the group icon (whose tap opens the tray of them) takes the last free slot and
+        // holds the rest: the first icons keep the other slots, none is left empty (Yukimi, Nov 13)
         const slots = statusSlots();
         const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
-        const fold = () => {
-            apps.forEach((r) => el(r).classList.add('wm-shed'));
-            statusFolded = apps;
+        const fold = (keep) => {
+            const folded = apps.slice(keep);
+            folded.forEach((r) => el(r).classList.add('wm-shed'));
+            statusFolded = folded;
         };
-        if (apps.length + (notesForBubbleIcon().length ? 1 : 0) > slots) fold();
+        if (apps.length + (notesForBubbleIcon().length ? 1 : 0) > slots) fold(slots - 1);
         paintNotifyIcon();
         const reserve = shell.querySelector('.wm-status-reserve');
-        const used = (statusFolded.length ? 0 : apps.length) + (el('notify').hidden ? 0 : 1);
+        const used = (apps.length - statusFolded.length) + (el('notify').hidden ? 0 : 1);
         const free = Math.max(0, slots - used);
-        const cameraInBar = applyCameraHole(bar);
         // the unused slots stay as room, so the title ends at the same place whatever is pending
         // (not with the camera in the bar: its own layout decides there)
         const setReserve = (n) => {
             reserve.hidden = !n;
             if (n) reserve.style.setProperty('--slots', String(n));
         };
-        setReserve(cameraInBar ? 0 : free);
+        setReserve(0);
+        // the camera's layout moves left of it what does not fit right of it, so it is laid out
+        // again after every icon that steps aside or folds: the group icon then goes into the room
+        // right of the camera instead of staying left of it (Yukimi, Nov 13, Fold7)
+        let cameraInBar = applyCameraHole(bar);
+        const relayout = () => { if (cameraInBar) cameraInBar = applyCameraHole(bar); };
+        if (!cameraInBar) setReserve(free);
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
         // status icons (Yukimi, Nov 13); Today keeps it
-        if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
+        if (cameraInBar && current !== 'today' && !el('volume').hidden) { el('volume').classList.add('wm-shed'); relayout(); }
         if (fits()) return;
         // a bar too narrow for the reserved room gives it up first
         if (!reserve.hidden) { setReserve(0); if (fits()) return; }
-        if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); if (fits()) return; }
-        if (apps.length && !statusFolded.length) {
-            fold();
+        if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); relayout(); if (fits()) return; }
+        if (apps.length && statusFolded.length < apps.length) {
+            fold(0);
             paintNotifyIcon();
+            relayout();
             if (fits()) return;
         }
-        if (!el('volume').hidden) el('volume').classList.add('wm-shed');
+        if (!el('volume').hidden) { el('volume').classList.add('wm-shed'); relayout(); }
     }
 
     /** The title bar's notification slots (#811): Settings key wmStatusSlots, 1 to 4, 2 by default. */
