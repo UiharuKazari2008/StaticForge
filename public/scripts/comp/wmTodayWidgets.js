@@ -2132,6 +2132,15 @@
 
     // tests: ask the server again on the next paint
     window.wmTodayWidgets = {
+        /** A program's key ('a:<app id>') joins the end of Favorites (a pinned shortcut, #794). */
+        addFavorite(key) {
+            if (!key) return;
+            const list = favList().slice();
+            if (list.includes(key)) return;
+            list.push(key);
+            favSave(list);
+            fav.at = 0;
+        },
         refetch() {
             server.at = 0; server.infoAt = 0; server.workersAt = 0; server.loadDenied = false;
             director.asked = 0; director.at = { wren: 0, kabuki: 0, xi: 0 };

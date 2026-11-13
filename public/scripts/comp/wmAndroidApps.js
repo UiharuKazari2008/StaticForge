@@ -252,7 +252,8 @@
                 // the Camera (role camera) stays where Settings > Menus has it; it joins the list once
                 const cam = apps.find((a) => a.role === 'camera' && !hidden.has(a.id));
                 const camId = cam ? shellId(cam) : null;
-                const next = saved.filter((id) => !String(id).startsWith('android:') || id === camId);
+                // pinned shortcuts (wmShortcuts.js) keep the place their own code gave them
+                const next = saved.filter((id) => !String(id).startsWith('android:') || id === camId || String(id).startsWith('android:shortcut:'));
                 if (camId && !next.includes(camId) && localStorage.getItem(CAMERA_PINNED_KEY) !== '1') next.push(camId);
                 if (camId) localStorage.setItem(CAMERA_PINNED_KEY, '1');
                 for (const a of apps) if (onStart.has(a.id) && !hidden.has(a.id)) next.push(shellId(a));
