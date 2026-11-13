@@ -192,11 +192,16 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
 #off { right: calc(40 * var(--u)); top: calc(160 * var(--u)); }
 #off .hw-hd { background: #c00; }
 .hw-sub { display: block; margin-top: calc(4 * var(--u)); font-size: calc(17 * var(--u)); color: #8ea4c2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: calc(760 * var(--u)); }
-#gms { right: calc(40 * var(--u)); top: calc(40 * var(--u)); }
-#gms.lost .hw-hd { background: #c00; }
-#gms.lost b { color: #ff6b5e; animation: bl 0.8s steps(1, end) infinite; }
-#gms.ok .hw-hd { background: #1a8a3a; }
-#gms.ok b { color: #6bf08a; }
+/* XLink comm loss: a small two-line red-on-black notice in the top-right corner (no header bar) */
+#gms { right: calc(40 * var(--u)); top: calc(40 * var(--u)); min-width: 0; background: #000; border-color: #e00000; }
+#gms .hw-hd { display: none; }
+#gms .hw-bd { padding: calc(6 * var(--u)) calc(12 * var(--u)); }
+#gms b { font-size: calc(20 * var(--u)); letter-spacing: calc(2 * var(--u)); }
+#gms .hw-sub { margin-top: calc(2 * var(--u)); font-size: calc(15 * var(--u)); }
+#gms.lost b { color: #ff2a2a; animation: bl 0.8s steps(1, end) infinite; }
+#gms.lost .hw-sub { color: #ff2a2a; }
+#gms.ok { border-color: #1a8a3a; }
+#gms.ok b, #gms.ok .hw-sub { color: #6bf08a; }
 #toast { right: calc(40 * var(--u)); bottom: calc(60 * var(--u)); left: auto; transform: none; padding: 0; white-space: normal; }
 </style></head>
 <body class="t-takao">
@@ -359,8 +364,8 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
   function showGms(lost) {
     clearTimeout(gmsT);
     $('gms').className = 'hw on' + (lost ? ' lost' : ' ok');
-    $('gmst').textContent = lost ? 'COMMUNICATION LOST' : 'COMMUNICATION RESTORED';
-    $('gmss').textContent = lost ? 'RETRYING...  LOCAL OPERATION CONTINUES' : 'REMOTE CONTROL AVAILABLE';
+    $('gmst').textContent = lost ? 'XLINK COMM LOSS' : 'XLINK COMM RESTORED';
+    $('gmss').textContent = lost ? 'Press RESET or DIAG for diagnostics' : 'Remote control available';
     if (!lost) gmsT = setTimeout(function () { $('gms').className = 'hw'; }, 4000);
   }
 })();
