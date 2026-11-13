@@ -88,10 +88,27 @@
         } catch (_) { return { version: 0, icons: {} }; }
     }
 
+    /**
+     * The phone's programs. AndroidApps.list() is a synchronous bridge call that took ~750 ms on the
+     * Fold7 (it asks the package manager for every launcher activity), and Pictures & Videos asked for
+     * the camera program through it on every 700 ms grid tick, so the page spent nearly all its time
+     * there (#804). The list is kept until the app says programs changed ('androidapps'), the page
+     * comes back to the front (events are skipped while it is frozen), or 5 minutes pass. Callers get
+     * a fresh array of the same entries.
+     */
+    const READ_TTL = 5 * 60 * 1000;
+    let readCache = null;
+    let readAt = 0;
+    const dropRead = () => { readCache = null; };
+    window.addEventListener('androidapps', dropRead);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') dropRead(); });
     function read() {
+        if (readCache && Date.now() - readAt < READ_TTL) return readCache.slice();
         try {
             const list = JSON.parse(bridge.list());
-            return withCameraRole(Array.isArray(list) ? list.filter((a) => a && typeof a.id === 'string' && a.label) : []);
+            readCache = withCameraRole(Array.isArray(list) ? list.filter((a) => a && typeof a.id === 'string' && a.label) : []);
+            readAt = Date.now();
+            return readCache.slice();
         } catch (_) { return []; }
     }
 
