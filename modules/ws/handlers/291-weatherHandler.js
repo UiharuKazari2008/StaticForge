@@ -9,11 +9,17 @@ const sidebarGadgets = require('../../sidebarGadgets');
 //   weather_geocode    { name, count? }                       any signed-in client (Add Location)
 //   weather_radar      {}                                     radar frames + tile URL templates
 //   weather_alert      { id, lang? }                          the full text of an Apple Weather alert
-//   weather_alerts_active {}                                  the primary location's active alerts
+//   weather_alerts_active {}                                  active alerts of Home and Work
+//   weather_places_get    {}                                  { places: { home, work }, rain, alerts }
+//   weather_places_save   { places: { home?, work? } }        admins; null clears one (#792)
+//   weather_rain_status   {}                                  rain now / soon at Home and Work
 //
 // Broadcasts (weatherService alert monitor, every 5 min on the configured home location):
-//   weather_alert_issued    { alert, place, source }   a new alert, once (to every signed-in client)
-//   weather_alerts_changed  { place, alerts, source, checkedAt }   the active list changed
+//   weather_alert_issued    { alert, place: { id, label, name, ... }, source }   a new alert, once
+//   weather_alerts_changed  weather_alerts_active's shape                         the active lists changed
+//   weather_rain_alarm      { place, startsInMin, endsInMin, peakMmh, kind, summary }   once per rain spell
+//   weather_rain_status     weather_rain_status's shape                          rain began / ended / moved
+//   weather_places_changed  { places }                                           Home / Work saved
 //
 // The Apple Weather account is a Service Key (apiKeyManager `appleweather`, Dreamscape CardSpace).
 // { here: true } is the Sidebar gadget's place (client IP, then the configured home): admins only,
@@ -113,6 +119,34 @@ async function handleAlertsActive(handlersCtx, ws, message) {
     }
 }
 
+async function handlePlacesGet(handlersCtx, ws, message) {
+    try {
+        weatherService.bind(handlersCtx.globalResources);
+        reply(handlersCtx, ws, message, { places: weatherService.getPlaces(), rain: weatherService.getRainStatus(), alerts: weatherService.getActiveAlerts() });
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'Places could not be loaded');
+    }
+}
+
+async function handlePlacesSave(handlersCtx, ws, message, clientInfo) {
+    if (!requireAdmin(handlersCtx, ws, message, clientInfo)) return;
+    try {
+        weatherService.bind(handlersCtx.globalResources);
+        reply(handlersCtx, ws, message, { places: await weatherService.savePlaces(message.places || {}) });
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'The place could not be saved');
+    }
+}
+
+async function handleRainStatus(handlersCtx, ws, message) {
+    try {
+        weatherService.bind(handlersCtx.globalResources);
+        reply(handlersCtx, ws, message, weatherService.getRainStatus());
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'Rain status could not be loaded');
+    }
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[291-weatherHandler] registerPackets: missing handlersCtx');
@@ -129,6 +163,9 @@ function registerPackets(handlersCtx) {
     reg('weather_radar', handleRadar);
     reg('weather_alert', handleAlert);
     reg('weather_alerts_active', handleAlertsActive);
+    reg('weather_places_get', handlePlacesGet);
+    reg('weather_places_save', handlePlacesSave, { destructive: true });
+    reg('weather_rain_status', handleRainStatus);
     // the primary location's alerts, broadcast to every client as they are issued
     weatherService.startAlertMonitor();
 }

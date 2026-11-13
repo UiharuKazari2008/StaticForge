@@ -162,7 +162,8 @@ async function memo(key, fn, opts = {}) {
     const run = (async () => {
         try {
             const value = await fn();
-            cache.set(key, { ok: true, value, at: Date.now(), expires: Date.now() + (opts.ttl || TTL.forecast), size: opts.size ? opts.size(value) : 0 });
+            const ttl = (opts.ttlOf && opts.ttlOf(value)) || opts.ttl || TTL.forecast;
+            cache.set(key, { ok: true, value, at: Date.now(), expires: Date.now() + ttl, size: opts.size ? opts.size(value) : 0 });
             return value;
         } catch (error) {
             const lastGood = hit && hit.ok ? { value: hit.value, at: hit.at } : (hit && hit.lastGood) || null;
@@ -498,7 +499,8 @@ async function countryOf(lat, lon) {
         return await memo(`geo:country:${la}:${lo}`, async () => {
             const params = new URLSearchParams({ latitude: String(la), longitude: String(lo), localityLanguage: 'en' });
             const body = await request('geo', `https://api.bigdatacloud.net/data/reverse-geocode-client?${params}`, { timeout: 8000 });
-            return { code: body && body.countryCode ? String(body.countryCode).toUpperCase() : '', city: (body && (body.city || body.locality)) || '', region: (body && body.principalSubdivision) || '', country: (body && body.countryName) || '' };
+            // a town only: the locality can be a census district ("District 8, Bay")
+            return { code: body && body.countryCode ? String(body.countryCode).toUpperCase() : '', city: (body && body.city) || '', locality: (body && body.locality) || '', region: (body && body.principalSubdivision) || '', country: (body && body.countryName) || '' };
         }, { ttl: TTL.country, failTtl: 10 * MIN });
     } catch (_e) {
         return { code: '', city: '', region: '', country: '' };
@@ -546,6 +548,9 @@ function normaliseApple(body, tz, meta = {}) {
         alerts: [],
         alertsUrl: null
     };
+    // Apple says when each part goes stale: the soonest of current / next hour is the cache's expiry (#792)
+    const expiries = ['currentWeather', 'forecastNextHour'].map((k) => body[k] && body[k].metadata && Date.parse(body[k].metadata.expireTime)).filter((t) => Number.isFinite(t) && t > now);
+    out.expiresAt = expiries.length ? new Date(Math.min(...expiries)).toISOString() : null;
     const c = body.currentWeather;
     if (c) {
         const cond = appleCondition(c.conditionCode);
@@ -709,7 +714,8 @@ async function fetchApple(lat, lon, opts = {}) {
         dataSets: sets.join(','),
         timezone: tz,
         hourlyStart: new Date(now - 3 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z'),
-        hourlyEnd: new Date(now + 72 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z'),
+        // all ten days hourly (WeatherKit's 240 h): graphs to 10 days, a Day page per day (#792)
+        hourlyEnd: new Date(now + 240 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z'),
         // the end is exclusive and counts from now: 11 days asked = 10 whole ones
         dailyEnd: new Date(now + 11 * 24 * HOUR).toISOString().replace(/\.\d+Z$/, 'Z')
     });
@@ -903,7 +909,7 @@ async function fetchOpenMeteo(lat, lon) {
         daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_probability_max,precipitation_sum,snowfall_sum,uv_index_max,sunrise,sunset,daylight_duration,wind_speed_10m_max,wind_gusts_10m_max,wind_direction_10m_dominant',
         forecast_days: '10',
         past_hours: '4',
-        forecast_hours: '72',
+        forecast_hours: '240',
         forecast_minutely_15: '12',
         past_minutely_15: '1',
         timezone: 'auto'
@@ -947,7 +953,7 @@ async function forecastFrom(p, opts) {
     if (wanted === 'apple' && appleAccount()) {
         try {
             const fp = accountFingerprint(appleAccount()).slice(0, 8);
-            return await memo(`apple:fc:${fp}:${p.lat}:${p.lon}:${opts.lang || 'en'}`, () => fetchApple(p.lat, p.lon, opts), { ttl: TTL.forecast, failTtl: TTL.forecastFail });
+            return await memo(`apple:fc:${fp}:${p.lat}:${p.lon}:${opts.lang || 'en'}`, () => fetchApple(p.lat, p.lon, opts), { ttl: TTL.forecast, ttlOf: appleTtl, failTtl: TTL.forecastFail });
         } catch (error) {
             if (opts.provider === 'apple') throw error;
             const fallback = await memo(`om:fc:${p.lat}:${p.lon}`, () => fetchOpenMeteo(p.lat, p.lon), { ttl: TTL.forecast, failTtl: TTL.forecastFail });
@@ -1008,10 +1014,107 @@ async function attachAlerts(forecast, lat, lon) {
     }
 }
 
+// ------------------------------------------------------------------------------------------ Home and Work (#792)
+
+const PLACE_IDS = ['home', 'work'];
+const PLACE_LABEL = { home: 'Home', work: 'Work' };
+const PLACE_DEFAULTS = { radiusKm: 3, alerts: true, rainAlarm: false, rainLeadMin: 15 };
+
+/** Kilometres between two points (haversine). */
+function distanceKm(a, b) {
+    const R = 6371;
+    const rad = (d) => (d * Math.PI) / 180;
+    const dLat = rad(b.lat - a.lat);
+    const dLon = rad(b.lon - a.lon);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function cleanPlace(p) {
+    if (!p || typeof p !== 'object') return null;
+    const lat = Number(p.lat);
+    const lon = Number(p.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+    const str = (v, n) => String(v == null ? '' : v).trim().slice(0, n);
+    const num = (v, lo, hi, d) => (Number.isFinite(Number(v)) ? Math.max(lo, Math.min(hi, Number(v))) : d);
+    return {
+        name: str(p.name, 80) || 'Unnamed place',
+        region: str(p.region, 80),
+        country: str(p.country, 80),
+        lat: Math.round(lat * 10000) / 10000,
+        lon: Math.round(lon * 10000) / 10000,
+        radiusKm: num(p.radiusKm, 0.5, 50, PLACE_DEFAULTS.radiusKm),
+        alerts: p.alerts !== false,
+        rainAlarm: p.rainAlarm === true,
+        rainLeadMin: Math.round(num(p.rainLeadMin, 5, 60, PLACE_DEFAULTS.rainLeadMin))
+    };
+}
+
+/**
+ * The monitored places: { home, work } (null when not set). Saved in config `weather.places`;
+ * until a Home is saved, the configured location (secure config `location`, dynamic generation's)
+ * stands in for it, marked `fallback`.
+ */
+function getPlaces() {
+    const saved = (config('weather', {}) || {}).places || {};
+    const out = {};
+    PLACE_IDS.forEach((id) => { out[id] = cleanPlace(saved[id]); });
+    if (!out.home) {
+        const p = primaryPlace();
+        if (p) {
+            // its town once the reverse lookup is cached (countryOf, asked by the monitor)
+            const geo = (jsonCache.get(`geo:country:${Math.round(p.lat * 10) / 10}:${Math.round(p.lon * 10) / 10}`) || {}).value || {};
+            out.home = Object.assign(cleanPlace({ name: geo.city || 'Home', region: geo.region, country: geo.country, lat: p.lat, lon: p.lon }), { fallback: true });
+        }
+    }
+    return out;
+}
+
+/** Save Home and / or Work: { home?: place | null, work?: place | null } (null clears one). */
+async function savePlaces(next = {}) {
+    if (!gr) throw new WeatherError('Weather service is not ready', 'NOT_READY');
+    const cur = Object.assign({}, ((config('weather', {}) || {}).places) || {});
+    PLACE_IDS.forEach((id) => {
+        if (!(id in next)) return;
+        if (next[id] === null) { delete cur[id]; return; }
+        const p = cleanPlace(Object.assign({}, cur[id] || {}, next[id]));
+        if (!p) throw new WeatherError(`${PLACE_LABEL[id]} needs a place with coordinates`, 'BAD_PLACE');
+        cur[id] = p;
+    });
+    await writePrefs({ places: cur });
+    const places = getPlaces();
+    broadcast({ type: 'weather_places_changed', data: { places } });
+    pollPlaces().catch(() => {});
+    return places;
+}
+
+async function writePrefs(next) {
+    const cur = config('weather', {}) || {};
+    const saved = gr.modifyConfig('config').assign(['weather'], Object.assign({}, cur, next));
+    if (saved && typeof saved.then === 'function') await saved;
+}
+
+/** The monitored place a point belongs to (inside its radius), or null: { id, place, km }. */
+function placeFor(lat, lon) {
+    const places = getPlaces();
+    let best = null;
+    PLACE_IDS.forEach((id) => {
+        const p = places[id];
+        if (!p) return;
+        const km = distanceKm({ lat: Number(lat), lon: Number(lon) }, p);
+        if (km <= p.radiusKm && (!best || km < best.km)) best = { id, place: p, km };
+    });
+    return best;
+}
+
+// ------------------------------------------------------------------------------------------ monitor: alerts and rain alarm
+
 const ALERT_SEVERITY = { extreme: 4, severe: 3, moderate: 2, minor: 1, unknown: 0 };
 const ALERT_POLL_MS = 5 * MIN;
+const RAIN_MMH = 0.1; // wet from here
+const RAIN_DRY_RESET_MIN = 20; // a spell ends after this long dry
 const ALERTS_SEEN_FILE = process.env.WEATHER_ALERTS_SEEN_FILE || require('path').join(__dirname, '..', '.cache', 'weather-alerts-seen.json');
-const monitor = { timer: null, place: null, alerts: [], provider: null, checkedAt: null, seen: null };
+const monitor = { timer: null, seen: null, byPlace: {}, rain: {}, checkedAt: null };
 
 function loadSeen() {
     if (monitor.seen) return monitor.seen;
@@ -1034,7 +1137,7 @@ function saveSeen() {
     } catch (_e) { /* the next poll tries again */ }
 }
 
-/** The primary location: the configured home (secure config `location`), as dynamic generation uses it. */
+/** The configured location (secure config `location`, as dynamic generation uses it). */
 function primaryPlace() {
     const loc = secure('location');
     if (!loc || loc.latitude == null || loc.longitude == null) return null;
@@ -1051,55 +1154,139 @@ function broadcast(message) {
             server.broadcast(Object.assign({ timestamp: new Date().toISOString() }, message), (info) => !!(info && info.authenticated !== false));
         }
     } catch (error) {
-        console.warn(`[weather] alert broadcast skipped: ${error.message}`);
+        console.warn(`[weather] broadcast skipped: ${error.message}`);
     }
+}
+
+/** A place as the broadcasts carry it. */
+function placeTag(id, p) {
+    return { id, label: PLACE_LABEL[id], name: p.name, region: p.region || '', country: p.country || '', lat: p.lat, lon: p.lon };
 }
 
 /**
- * One look at the primary location's alerts. New alerts (never broadcast before, kept across restarts in
- * .cache/weather-alerts-seen.json until they expire) go to every signed-in client as weather_alert_issued;
- * any change to the active list goes out as weather_alerts_changed.
+ * Rain in the next hour for a forecast: { wet (raining now), startsInMin, endsInMin, peakMmh, summary },
+ * from the minute-by-minute forecast (Apple) or the 15-minute one (Open-Meteo).
  */
-async function pollAlerts() {
-    const p = primaryPlace();
-    if (!p) return getActiveAlerts();
+function rainOutlook(forecast) {
+    const m = forecast && forecast.minutely;
+    const mins = m && Array.isArray(m.minutes) ? m.minutes : [];
+    if (!mins.length) return null;
+    const step = m.stepMinutes || 1;
+    const nowIso = localIso(Date.now(), forecast.tz || 'UTC') || '';
+    const ahead = mins.filter((x) => (x.time || '') >= nowIso.slice(0, 16) || step > 1);
+    const list = ahead.length ? ahead : mins;
+    const wetAt = list.findIndex((x) => (Number(x.mmh) || 0) >= RAIN_MMH);
+    const peak = list.reduce((mx, x) => Math.max(mx, Number(x.mmh) || 0), 0);
+    let endsInMin = null;
+    if (wetAt >= 0) {
+        const dryAt = list.slice(wetAt).findIndex((x) => (Number(x.mmh) || 0) < RAIN_MMH);
+        if (dryAt > 0) endsInMin = (wetAt + dryAt) * step;
+    }
+    return { wet: wetAt === 0, startsInMin: wetAt < 0 ? null : wetAt * step, endsInMin, peakMmh: peak, summary: m.summary || '', step };
+}
+
+function rainWord(mmh) {
+    return mmh >= 4 ? 'Heavy rain' : mmh >= 1 ? 'Rain' : 'Light rain';
+}
+
+/** One look at a monitored place: its alerts (new ones broadcast once) and its rain alarm. */
+async function pollPlace(id, p, changes) {
     let forecast;
-    try { forecast = await getForecast(p.lat, p.lon); } catch (_e) { return getActiveAlerts(); }
-    const place = forecast.place && forecast.place.city ? forecast.place : await countryOf(p.lat, p.lon);
-    const alerts = (Array.isArray(forecast.alerts) ? forecast.alerts : []).slice().sort((x, y) => (ALERT_SEVERITY[y.severity] || 0) - (ALERT_SEVERITY[x.severity] || 0));
-    const before = monitor.alerts.map((a) => a.id).join('|');
-    monitor.place = { lat: p.lat, lon: p.lon, name: place.city || '', region: place.region || '', country: place.country || '' };
-    monitor.alerts = alerts;
-    monitor.provider = forecast.alertsSource || (forecast.provider === 'apple' ? 'Apple Weather' : null);
-    monitor.checkedAt = new Date().toISOString();
+    try { forecast = await getForecast(p.lat, p.lon); } catch (_e) { return; }
+    const tag = placeTag(id, p);
+    // alerts
+    const alerts = p.alerts === false ? [] : (Array.isArray(forecast.alerts) ? forecast.alerts : []).slice().sort((x, y) => (ALERT_SEVERITY[y.severity] || 0) - (ALERT_SEVERITY[x.severity] || 0));
+    const before = ((monitor.byPlace[id] || {}).alerts || []).map((a) => a.id).join('|');
+    monitor.byPlace[id] = { place: tag, alerts, source: forecast.alertsSource || (forecast.provider === 'apple' ? 'Apple Weather' : null) };
     const seen = loadSeen();
-    const fresh = alerts.filter((a) => !seen.has(a.id));
+    const fresh = alerts.filter((a) => !seen.has(`${id}:${a.id}`) && !seen.has(a.id));
     fresh.forEach((a) => {
-        const until = Date.parse(`${a.expires || a.ends || ''}Z`) - forecast.offset * 1000;
-        seen.set(a.id, Number.isFinite(until) ? until + HOUR : Date.now() + 2 * 24 * HOUR);
+        const until = Date.parse(`${a.expires || a.ends || ''}Z`) - (forecast.offset || 0) * 1000;
+        seen.set(`${id}:${a.id}`, Number.isFinite(until) ? until + HOUR : Date.now() + 2 * 24 * HOUR);
     });
     if (fresh.length) {
         saveSeen();
-        fresh.forEach((alert) => broadcast({ type: 'weather_alert_issued', data: { alert, place: monitor.place, source: monitor.provider } }));
-        console.log(`[weather] ${fresh.length} new alert(s) for the primary location: ${fresh.map((a) => a.title).join(', ')}`);
+        fresh.forEach((alert) => broadcast({ type: 'weather_alert_issued', data: { alert, place: tag, source: monitor.byPlace[id].source } }));
+        console.log(`[weather] ${fresh.length} new alert(s) for ${tag.label}: ${fresh.map((a) => a.title).join(', ')}`);
     }
-    if (alerts.map((a) => a.id).join('|') !== before) broadcast({ type: 'weather_alerts_changed', data: getActiveAlerts() });
+    if (alerts.map((a) => a.id).join('|') !== before) changes.alerts = true;
+    // rain alarm: once per spell, when rain is due within the lead time and it is dry now
+    const r = rainOutlook(forecast);
+    const st = monitor.rain[id] || { alarmed: false, dryFor: 0, outlook: null };
+    if (r) {
+        if (r.wet || r.startsInMin != null) st.dryFor = 0;
+        else st.dryFor += ALERT_POLL_MS / MIN;
+        if (st.dryFor >= RAIN_DRY_RESET_MIN) st.alarmed = false;
+        if (p.rainAlarm && !st.alarmed && !r.wet && r.startsInMin != null && r.startsInMin <= p.rainLeadMin) {
+            st.alarmed = true;
+            const data = { place: tag, startsInMin: r.startsInMin, endsInMin: r.endsInMin, peakMmh: r.peakMmh, kind: rainWord(r.peakMmh), summary: r.summary };
+            broadcast({ type: 'weather_rain_alarm', data });
+            console.log(`[weather] rain alarm for ${tag.label}: ${data.kind} in ${r.startsInMin} min`);
+        }
+        const was = st.outlook ? `${st.outlook.wet}|${st.outlook.startsInMin}` : '';
+        if (`${r.wet}|${r.startsInMin}` !== was) changes.rain = true;
+    }
+    st.outlook = r;
+    monitor.rain[id] = st;
+}
+
+/** Look at Home and Work. Changes go out as weather_alerts_changed / weather_rain_status. */
+async function pollPlaces() {
+    const primary = primaryPlace();
+    if (primary) await countryOf(primary.lat, primary.lon); // names the stand-in Home
+    const places = getPlaces();
+    const changes = {};
+    for (const id of PLACE_IDS) {
+        if (places[id]) await pollPlace(id, places[id], changes);
+        else if (monitor.byPlace[id]) { delete monitor.byPlace[id]; delete monitor.rain[id]; changes.alerts = true; changes.rain = true; }
+    }
+    monitor.checkedAt = new Date().toISOString();
+    if (changes.alerts) broadcast({ type: 'weather_alerts_changed', data: getActiveAlerts() });
+    if (changes.rain) broadcast({ type: 'weather_rain_status', data: getRainStatus() });
     return getActiveAlerts();
 }
 
-/** The primary location's active alerts from the last poll (weather_alerts_active). */
+/** Kept for older callers: one look at the monitored places. */
+const pollAlerts = pollPlaces;
+
+/**
+ * Active alerts of the monitored places: { places: { home: { place, alerts, source } }, alerts (all,
+ * each with its place), place (Home's, for older readers), checkedAt }.
+ */
 function getActiveAlerts() {
-    return { place: monitor.place, alerts: monitor.alerts, source: monitor.provider, checkedAt: monitor.checkedAt };
+    const all = [];
+    Object.values(monitor.byPlace).forEach((b) => b.alerts.forEach((a) => all.push(Object.assign({ place: b.place }, a))));
+    const home = monitor.byPlace.home;
+    return { places: monitor.byPlace, alerts: all, place: home ? home.place : null, source: home ? home.source : null, checkedAt: monitor.checkedAt };
 }
 
-/** Start watching the primary location's alerts (once per process; the first look after 30 s). */
+/** Rain now / soon at the monitored places: { places: { home: { place, rainAlarm, wet, startsInMin, ... } } }. */
+function getRainStatus() {
+    const places = getPlaces();
+    const out = {};
+    PLACE_IDS.forEach((id) => {
+        const p = places[id];
+        const st = monitor.rain[id];
+        if (!p || !st || !st.outlook) return;
+        out[id] = Object.assign({ place: placeTag(id, p), rainAlarm: p.rainAlarm }, st.outlook, { kind: rainWord(st.outlook.peakMmh) });
+    });
+    return { places: out, checkedAt: monitor.checkedAt };
+}
+
+/** Start watching Home and Work (once per process; the first look after 30 s). */
 function startAlertMonitor() {
     if (monitor.timer) return;
-    const run = () => { pollAlerts().catch((error) => console.warn(`[weather] alert poll failed: ${error.message}`)); };
+    const run = () => { pollPlaces().catch((error) => console.warn(`[weather] place poll failed: ${error.message}`)); };
     monitor.timer = setInterval(run, ALERT_POLL_MS);
     if (monitor.timer.unref) monitor.timer.unref();
     const first = setTimeout(run, 30 * 1000);
     if (first.unref) first.unref();
+}
+
+/** Until Apple's own expiry, between 2 and 15 minutes (the monitor looks every 5). */
+function appleTtl(f) {
+    const t = f && f.expiresAt ? Date.parse(f.expiresAt) - Date.now() : NaN;
+    return Number.isFinite(t) ? Math.max(2 * MIN, Math.min(15 * MIN, t)) : TTL.forecast;
 }
 
 /** The Sidebar gadget's shape: current + four days, plus the provider and its attribution. */
@@ -1305,11 +1492,16 @@ module.exports = {
     normalisePrivateKey,
     startAlertMonitor,
     pollAlerts,
+    pollPlaces,
     getActiveAlerts,
+    getRainStatus,
+    getPlaces,
+    savePlaces,
+    placeFor,
     activeProvider,
     usage,
     cached,
     openMeteoRaw,
     WeatherError,
-    _test: { normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
+    _test: { rainOutlook, distanceKm, monitor, normaliseApple, normaliseOpenMeteo, signAppleToken, normalisePrivateKey, memo, Limiter, Lru, localIso, offsetAt, appleCondition, nextHourSummary, jsonCache, limiters }
 };

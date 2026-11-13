@@ -27,7 +27,10 @@ US alerts come from the National Weather Service when Apple's alerts are not in 
 | `weather_geocode` | `weather_geocode_response` | signed in | `{ name, count? }` -> `{ results: [{ name, region, country, countryCode, lat, lon }] }` (Open-Meteo geocoding, cached 7 days). |
 | `weather_radar` | `weather_radar_response` | signed in | `{}` -> `{ frames: [{ time, id, nowcast }], maxZoom: 7, radarTile, baseTile, styles, attribution }`. Tiles: `GET /weather/tile/radar/<id>/<z>/<x>/<y>.png` (RainViewer, z ≤ 7, cached 30 min) and `GET /weather/tile/base/<style>/<z>/<x>/<y>.png` (Esri basemaps `dark`, `light`, `streets`, `labels`, `dark-labels`; z ≤ 16, cached 7 days). Both need the session cookie. |
 | `weather_alert` | `weather_alert_response` | signed in | `{ id, lang? }` -> `{ id, title, area, severity, source, text, detailsUrl }`, the full text of an Apple Weather alert. |
-| `weather_alerts_active` | `weather_alerts_active_response` | signed in | `{}` -> `{ place, alerts, source, checkedAt }` for the primary location (the configured home, secure config `location`). |
+| `weather_alerts_active` | `weather_alerts_active_response` | signed in | `{}` -> `{ places: { home?, work?: { place, alerts, source } }, alerts (all, each with its place), place, source, checkedAt }`. |
+| `weather_places_get` | `weather_places_get_response` | signed in | `{}` -> `{ places: { home, work }, rain, alerts }`. A place: `{ name, region, country, lat, lon, radiusKm, alerts, rainAlarm, rainLeadMin, fallback? }`; Home falls back to secure config `location` (`fallback: true`) until one is saved (#792). |
+| `weather_places_save` | `weather_places_save_response` | admin/destructive | `{ places: { home?: place \| null, work?: place \| null } }` merges into config `weather.places` (null clears) -> `{ places }`; broadcasts `weather_places_changed` and polls at once. |
+| `weather_rain_status` | `weather_rain_status_response` | signed in | `{}` -> `{ places: { home?, work?: { place, rainAlarm, wet, startsInMin, endsInMin, peakMmh, kind, summary, step } }, checkedAt }`. |
 
 Errors carry the service's code: `BAD_COORDINATES`, `RATE_LIMITED`, `BUDGET_EXCEEDED`, `UNREACHABLE`, `AUTH_FAILED`, `HTTP_ERROR`, `NO_ACCOUNT`.
 
@@ -35,8 +38,13 @@ Errors carry the service's code: `BAD_COORDINATES`, `RATE_LIMITED`, `BUDGET_EXCE
 
 | Type | When | Data |
 |---|---|---|
-| `weather_alert_issued` | A new alert for the primary location (polled every 5 min), once per alert across restarts (`.cache/weather-alerts-seen.json`), to every signed-in client | `{ alert, place: { lat, lon, name, region, country }, source }` |
-| `weather_alerts_changed` | The primary location's active list changed | same as `weather_alerts_active` |
+| `weather_alert_issued` | A new alert at Home or Work (polled every 5 min), once per alert and place across restarts (`.cache/weather-alerts-seen.json`), to every signed-in client | `{ alert, place: { id, label, name, region, country, lat, lon }, source }` |
+| `weather_alerts_changed` | Home's or Work's active list changed | same as `weather_alerts_active` |
+| `weather_rain_alarm` | Rain due at Home / Work within its `rainLeadMin` while dry, rain alarm on; once per spell (a spell ends after 20 min dry) | `{ place, startsInMin, endsInMin, peakMmh, kind, summary }` |
+| `weather_rain_status` | Rain began, ended or its start moved at Home / Work | same as `weather_rain_status` |
+| `weather_places_changed` | Home / Work saved | `{ places }` |
+
+Apple replies are cached until their own `metadata.expireTime` (2 to 15 minutes); hourly covers 240 h (10 days).
 
 ## Forecast model
 

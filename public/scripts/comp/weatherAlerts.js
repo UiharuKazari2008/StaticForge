@@ -8,6 +8,9 @@
  *   Phone    a WM notification; View opens Melaton Mobile's Weather on the alert
  *            (wmWeather.showAlert). Errors-style notes stay until dismissed.
  *
+ * Rain alarm (#792): weather_rain_alarm for Home / Work, once per spell: a WM notification in the
+ * Weather: Rain alarm class on phones, a notification on the desktop.
+ *
  * window.weatherAlerts: last() -> the last alert received, details(alert) opens its text.
  */
 (function (root) {
@@ -81,11 +84,28 @@
         lastAlert = Object.assign({ place: data.place || null, source: data.source || '' }, alert);
         document.dispatchEvent(new CustomEvent('weatherAlertIssued', { detail: lastAlert }));
         const text = summary(alert, data.place);
+        const severe = alert.severity === 'extreme' || alert.severity === 'severe';
+        // a WM notification of its own sound class (Settings > Sounds & Notifications: Weather: Alert /
+        // Weather: Severe alert), View and Dismiss on the soft keys; it stays until dismissed (#792)
+        if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
+            const label = data.place && data.place.label ? `${data.place.label}: ` : '';
+            const note = root.wmShell.appNote({
+                title: alert.title || 'Weather Alert',
+                html: esc(`${label}${text || 'A weather alert was issued.'}`),
+                icon: 'status-weather-alert',
+                event: severe ? 'weather-severe' : 'weather-alert',
+                softKeys: () => ({
+                    left: { label: 'View', action: () => { if (note) note.close(); details(lastAlert); } },
+                    right: { label: 'Dismiss', action: () => { if (note) note.close(); } }
+                })
+            });
+            if (note) return;
+        }
         if (isPhone() && root.wmShell && typeof root.wmShell.notify === 'function') {
             root.wmShell.notify({
                 title: alert.title || 'Weather Alert',
                 text: text || 'A weather alert was issued for your area.',
-                icon: alert.severity === 'extreme' || alert.severity === 'severe' ? 'error' : 'warning',
+                icon: severe ? 'error' : 'warning',
                 asNote: true,
                 timeout: false,
                 buttons: [{ text: 'View', type: 'primary', closeOnClick: true, onClick: () => details(lastAlert) }]
@@ -98,12 +118,43 @@
         }
     }
 
+    /**
+     * The rain alarm for Home / Work (weather_rain_alarm, once per rain spell): a WM notification in
+     * the Weather: Rain alarm sound class on phones, a notification on the desktop (#792).
+     */
+    function onRain(packet) {
+        const d = packet && (packet.data || packet);
+        if (!d || !d.place) return;
+        const key = `${d.place.id}:${Math.floor(Date.now() / 600000)}`;
+        if (shown.has(key)) return;
+        shown.add(key);
+        const where = d.place.label || d.place.name || 'your place';
+        const title = `${d.kind || 'Rain'} at ${where} in ${d.startsInMin} min`;
+        const text = d.endsInMin ? `${d.kind || 'Rain'} from about ${d.startsInMin} minutes from now, stopping after about ${Math.max(5, d.endsInMin - d.startsInMin)} minutes.` : (d.summary || `${d.kind || 'Rain'} expected in about ${d.startsInMin} minutes.`);
+        document.dispatchEvent(new CustomEvent('weatherRainAlarm', { detail: d }));
+        if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
+            const note = root.wmShell.appNote({
+                title,
+                html: esc(text),
+                icon: 'status-rain-alarm',
+                event: 'rain-alarm',
+                softKeys: () => ({
+                    left: { label: 'Weather', action: () => { if (note) note.close(); if (root.wmWeather) root.wmWeather.open(); } },
+                    right: { label: 'Dismiss', action: () => { if (note) note.close(); } }
+                })
+            });
+            if (note) return;
+        }
+        if (typeof root.showGlassToast === 'function') root.showGlassToast('info', esc(title), esc(text), false, 15000);
+    }
+
     function wire() {
         if (wired) return true;
         const c = root.wsClient;
         if (!c || typeof c.on !== 'function') return false;
         wired = true;
         c.on('weather_alert_issued', onIssued);
+        c.on('weather_rain_alarm', onRain);
         return true;
     }
 
@@ -112,5 +163,5 @@
         const timer = setInterval(() => { if (wire() || ++tries > 240) clearInterval(timer); }, 500);
     }
 
-    root.weatherAlerts = { last: () => lastAlert, details, _onIssued: onIssued };
+    root.weatherAlerts = { last: () => lastAlert, details, _onIssued: onIssued, _onRain: onRain };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1595,3 +1595,38 @@
     background-size: 1100% 100%;
     background-position: calc(var(--i, 0) * 10%) 0;
 }
+
+/* ---------------------------------------------------------------- #792: Settings, Home / Work */
+
+/* Menu > Settings: the shell's own WM form (wm-programs.css), white like every settings page */
+.wm-weather .wxw-settings-layer {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    color: #000;
+    animation: none;
+    font-family: var(--wm-font, Tahoma, sans-serif);
+    user-select: none;
+}
+
+.wm-weather .wxw-settings-layer[hidden] { display: none; }
+.wm-weather .wxw-settings { flex: 1 1 auto; overflow-y: auto; }
+
+/* Home's house and Work's briefcase before the name, as the Current location pin */
+.wm-weather .wxw-pin.is-home { color: #ffd65a; }
+.wm-weather .wxw-pin.is-work { color: #c9e4ff; }
+.wm-weather .wxw-plate .wxw-pin.is-home,
+.wm-weather .wxw-plate .wxw-pin.is-work { color: #3a4654; }
+
+/* the header's weather intro (#792): one canvas over the sky, under the clock and numerals */
+.wm-weather .wxw-fx {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s linear;
+}
+
+.wm-weather .wxw-fx.is-on { opacity: 1; }

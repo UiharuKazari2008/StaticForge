@@ -88,15 +88,143 @@
 
     const keyOf = (p) => (p.id === 'here' && !Number.isFinite(p.lat) ? 'here' : `${Number(p.lat).toFixed(2)},${Number(p.lon).toFixed(2)}`);
 
+    // ---------------------------------------------------------------- Home and Work (#792)
+    //
+    // Home and Work live on the server (weather_places_*: the monitor watches them for alerts and the
+    // rain alarm); every client shows them first. Current location inside Home's or Work's radius is
+    // that place: one tile, one fetch ("Home · Current location").
+    const MONITORED = ['home', 'work'];
+    const PLACE_LABEL = { home: 'Home', work: 'Work' };
+    let monitored = load('wmWeatherMonitored', {}); // { home, work } as the server keeps them
+    let rainStatus = null; // weather_rain_status
+    let activeAlerts = null; // weather_alerts_active
+    const settings = Object.assign({ feels: false, effects: true }, load('wmWeatherSettings', {}));
+    const saveSettings = () => save('wmWeatherSettings', settings);
+
+    function distKm(a, b) {
+        const r = (d) => (d * Math.PI) / 180;
+        const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lon - a.lon) / 2) ** 2;
+        return 12742 * Math.asin(Math.min(1, Math.sqrt(h)));
+    }
+
+    /** 'home' / 'work' when Current location lies inside that place's radius, else null. */
+    function hereInside() {
+        if (!here || !Number.isFinite(here.lat)) return null;
+        let best = null;
+        MONITORED.forEach((id) => {
+            const m = monitored[id];
+            if (!m || !Number.isFinite(m.lat)) return;
+            const km = distKm(here, m);
+            if (km <= (m.radiusKm || 3) && (!best || km < best.km)) best = { id, km };
+        });
+        return best ? best.id : null;
+    }
+
     function places() {
         const list = [];
-        if (here && here.name) list.push(Object.assign({ id: 'here', here: true }, here));
+        const inside = hereInside();
+        MONITORED.forEach((id) => {
+            const m = monitored[id];
+            if (m && Number.isFinite(m.lat)) list.push(Object.assign({}, m, { id, monitored: id, here: inside === id }));
+        });
+        if (here && here.name && !inside) list.push(Object.assign({ id: 'here', here: true }, here));
         return list.concat(saved);
     }
 
     function selected() {
         const list = places();
-        return list.find((p) => p.id === selectedId) || list[0] || null;
+        const want = selectedId === 'here' && hereInside() ? hereInside() : selectedId;
+        return list.find((p) => p.id === want) || list[0] || null;
+    }
+
+    /** A place's second line: Home / Work (and Current location), or its region and country. */
+    function placeSub(p) {
+        if (p.monitored) return `${PLACE_LABEL[p.monitored]}${p.here ? ' · Current location' : ''}`;
+        return p.here ? 'Current location' : [p.region, p.country].filter(Boolean).join(', ');
+    }
+
+    function applyMonitored(list) {
+        if (!list || typeof list !== 'object') return;
+        monitored = { home: list.home || null, work: list.work || null };
+        save('wmWeatherMonitored', monitored);
+        if (els) render();
+        changed();
+    }
+
+    let monitoredAt = 0;
+    async function loadMonitored() {
+        try {
+            const r = await ask('weather_places_get', {}, 12000);
+            if (!r) return;
+            monitoredAt = Date.now();
+            if (r.rain) rainStatus = r.rain;
+            if (r.alerts) activeAlerts = r.alerts;
+            applyMonitored(r.places);
+        } catch (_) { /* the stored copy stands */ }
+    }
+
+    /** Save a place as Home or Work on the server (administrators); a saved place of this phone moves there. */
+    async function setMonitored(id, p) {
+        if (!isAdmin()) {
+            ws.messageBox({ title: 'Weather', icon: 'info', text: `Only the administrator can set ${PLACE_LABEL[id]}.` });
+            return;
+        }
+        try {
+            const r = await ws.busy(() => ask('weather_places_save', { places: { [id]: { name: p.name, region: p.region || '', country: p.country || '', lat: p.lat, lon: p.lon } } }), { delay: 250, timeout: 15000 });
+            if (saved.some((x) => x.id === p.id)) {
+                saved = saved.filter((x) => x.id !== p.id);
+                save(LS.places, saved);
+            }
+            applyMonitored(r && r.places);
+            select(id);
+        } catch (err) {
+            ws.messageBox({ title: 'Weather', icon: 'error', text: `${PLACE_LABEL[id]} could not be saved. ${(err && err.message) || ''}`.trim() });
+        }
+    }
+
+    /** Change Home's / Work's own settings (alerts, rain alarm, lead, radius), or clear it (null). */
+    async function patchMonitored(id, patch) {
+        if (!isAdmin()) {
+            ws.messageBox({ title: 'Weather', icon: 'info', text: 'Only the administrator can change Home and Work.' });
+            return false;
+        }
+        try {
+            const r = await ask('weather_places_save', { places: { [id]: patch === null ? null : patch } }, 15000);
+            applyMonitored(r && r.places);
+            return true;
+        } catch (err) {
+            ws.messageBox({ title: 'Weather', icon: 'error', text: `The change could not be saved. ${(err && err.message) || ''}`.trim() });
+            return false;
+        }
+    }
+
+    /** Current location as a place of this phone (Save Location). */
+    function saveHere() {
+        if (!here || !Number.isFinite(here.lat)) return;
+        addPlace({ name: here.name, region: here.region, country: here.country, lat: here.lat, lon: here.lon });
+    }
+
+    /**
+     * For the shell's status icons (every 2 s: cheap): { alerts: [{ place, title, until }], rain: { text } | null }.
+     * Alerts at Home / Work; rain due or falling where the rain alarm is on.
+     */
+    function statusState() {
+        const alerts = [];
+        const byPlace = (activeAlerts && activeAlerts.places) || {};
+        MONITORED.forEach((id) => {
+            const b = byPlace[id];
+            if (!b || !Array.isArray(b.alerts)) return;
+            b.alerts.forEach((a) => alerts.push({ id: a.id, place: PLACE_LABEL[id], title: a.title, until: dayTime(a.ends || a.expires) }));
+        });
+        let rain = null;
+        const rp = (rainStatus && rainStatus.places) || {};
+        MONITORED.forEach((id) => {
+            const r = rp[id];
+            if (rain || !r || !r.rainAlarm) return;
+            if (r.wet) rain = { id, text: `${r.kind || 'Rain'} at ${PLACE_LABEL[id]} now${r.endsInMin ? `, stopping in about ${r.endsInMin} min` : ''}.` };
+            else if (r.startsInMin != null) rain = { id, text: `${r.kind || 'Rain'} at ${PLACE_LABEL[id]} in about ${r.startsInMin} min.` };
+        });
+        return { alerts, rain };
     }
 
     function unit() {
@@ -156,6 +284,10 @@
     const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
     const tempOf = (c) => { const v = num(c); return v == null ? null : Math.round(unit() === 'F' ? v * 9 / 5 + 32 : v); };
     const temp = (c) => { const v = tempOf(c); return v == null ? '--' : `${v}°`; };
+    // Settings > Use feels-like as the main temperature (#792): the big numerals, hours, days and Today
+    const mainC = (x) => (x ? (settings.feels && num(x.feelsC) != null ? x.feelsC : x.tempC) : null);
+    const hiC = (d) => (d ? (settings.feels && num(d.feelsMaxC) != null ? d.feelsMaxC : d.maxC) : null);
+    const loC = (d) => (d ? (settings.feels && num(d.feelsMinC) != null ? d.feelsMinC : d.minC) : null);
     const wind = (kmh) => {
         const v = num(kmh);
         if (v == null) return '--';
@@ -355,8 +487,15 @@
                 if (!here || !Number.isFinite(here.lat)) throw new Error('No weather for this place');
                 return true;
             }
+            const before = cache[key] && cache[key].data;
             const data = await fetchForecast(p.lat, p.lon);
             cache[key] = { at: Date.now(), data };
+            // a saved place's new alert notifies (Home / Work's come from the server's monitor); never
+            // on a first load, so adding a place does not ring for alerts already running (#792)
+            if (!p.monitored && before && Array.isArray(data.alerts) && window.weatherAlerts) {
+                const had = new Set((before.alerts || []).map((a) => a.id));
+                data.alerts.filter((a) => !had.has(a.id)).forEach((a) => window.weatherAlerts._onIssued({ data: { alert: a, place: { label: p.name, name: p.name } } }));
+            }
             state.failedAt.delete(key);
             persistCache();
             return true;
@@ -379,6 +518,8 @@
     let quietGen = 0;
     async function quiet(all) {
         const gen = ++quietGen;
+        // Home / Work, their alerts and rain: again when the first ask came before the link was up
+        if (Date.now() - monitoredAt > 10 * 60 * 1000) await loadMonitored();
         await resolveHere();
         await seed();
         const list = all ? places() : [selected()].filter(Boolean);
@@ -445,8 +586,16 @@
         wind: '<svg viewBox="0 0 16 16"><path d="M8 1.5 L12 13 L8 10.5 L4 13 Z" fill="currentColor"/></svg>',
         humidity: '<svg viewBox="0 0 16 16"><path d="M8 1.5 C 9 4 12.5 7 12.5 10 A 4.5 4.5 0 0 1 3.5 10 C 3.5 7 7 4 8 1.5 Z" fill="currentColor"/></svg>',
         sun: '<svg viewBox="0 0 16 16"><path d="M3 11 A5 5 0 0 1 13 11 Z" fill="currentColor"/><path d="M1 13h14" stroke="currentColor" stroke-width="1.4"/><path d="M8 2v2M3 4.5l1.3 1.3M13 4.5l-1.3 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
-        pin: '<svg viewBox="0 0 16 16"><path d="M8 1.5a4.5 4.5 0 0 1 4.5 4.5c0 3.4-4.5 8.5-4.5 8.5S3.5 9.4 3.5 6A4.5 4.5 0 0 1 8 1.5z" fill="currentColor"/><circle cx="8" cy="6" r="1.7" fill="#fff"/></svg>'
+        pin: '<svg viewBox="0 0 16 16"><path d="M8 1.5a4.5 4.5 0 0 1 4.5 4.5c0 3.4-4.5 8.5-4.5 8.5S3.5 9.4 3.5 6A4.5 4.5 0 0 1 8 1.5z" fill="currentColor"/><circle cx="8" cy="6" r="1.7" fill="#fff"/></svg>',
+        home: '<svg viewBox="0 0 16 16"><path d="M8 1.8 1.2 8h2v6.2h3.9V10h1.8v4.2h3.9V8h2z" fill="currentColor"/></svg>',
+        work: '<svg viewBox="0 0 16 16"><path d="M6 2.5h4a1 1 0 0 1 1 1V5h3a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3V3.5a1 1 0 0 1 1-1zm.5 1.3V5h3V3.8zM1 8.6h14v1H9.3v1H6.7v-1H1z" fill="currentColor" fill-rule="evenodd"/></svg>'
     };
+
+    /** The glyph before a place's name: house (Home), briefcase (Work), pin (Current location). */
+    function placeGlyph(p) {
+        if (p.monitored) return `<i class="wxw-pin is-${p.monitored}">${GLYPH[p.monitored]}</i>`;
+        return p.here ? `<i class="wxw-pin">${GLYPH.pin}</i>` : '';
+    }
 
     function build() {
         page.innerHTML = `
@@ -520,6 +669,7 @@
                     <div class="wxw-map-attr"></div>
                 </div>
                 <div class="wxw-layer wxw-alert-layer" hidden><div class="wxw-alert-list"></div></div>
+                <div class="wxw-layer wxw-settings-layer" hidden><div class="wm-form-hdr">Weather Settings</div><div class="wm-form wxw-settings"></div></div>
                 <div class="wxw-layer wxw-day-layer" hidden><div class="wxw-day-page"></div></div>
                 <div class="wxw-layer wxw-add-layer" hidden>
                     <div class="wxw-add-box">
@@ -586,6 +736,8 @@
             mapAttr: q('.wxw-map-attr'),
             alertLayer: q('.wxw-alert-layer'),
             alertList: q('.wxw-alert-list'),
+            settingsLayer: q('.wxw-settings-layer'),
+            settingsBody: q('.wxw-settings'),
             dayLayer: q('.wxw-day-layer'),
             dayPage: q('.wxw-day-page')
         };
@@ -676,8 +828,8 @@
         els.plate.classList.toggle('is-single', !many);
         els.name.textContent = p ? p.name : 'Weather';
         els.name.classList.toggle('is-here', !!(p && p.here));
-        els.name.innerHTML = p ? `${p.here ? `<i class="wxw-pin">${GLYPH.pin}</i>` : ''}${ws.escapeHtml(p.name)}` : 'Weather';
-        els.sub.textContent = p ? (p.here ? 'Current location' : [p.region, p.country].filter(Boolean).join(', ')) : '';
+        els.name.innerHTML = p ? `${placeGlyph(p)}${ws.escapeHtml(p.name)}` : 'Weather';
+        els.sub.textContent = p ? placeSub(p) : '';
         els.dots.innerHTML = many ? list.map((x) => `<i class="${p && x.id === p.id ? 'is-on' : ''}"></i>`).join('') : '';
     }
 
@@ -697,12 +849,12 @@
         const phase = phaseOf(data);
         s.dataset.phase = phase;
         s.dataset.scene = cond.scene;
-        const v = tempOf(cur.tempC);
+        const v = tempOf(mainC(cur));
         els.deg.textContent = v == null ? '--' : String(v);
         els.unit.textContent = `°${unit()}`;
         els.cond.textContent = cond.text;
         const today = data.daily && data.daily[0];
-        els.hilo.innerHTML = today ? `<span>H</span> ${temp(today.maxC)}&ensp;<span>L</span> ${temp(today.minC)}` : '';
+        els.hilo.innerHTML = today ? `<span>H</span> ${temp(hiC(today))}&ensp;<span>L</span> ${temp(loC(today))}` : '';
         // the moon's phase: a shadow disc that slides across (waxing lights the right side)
         const age = moonAge();
         const x = age < 0.5 ? -(age / 0.5) * 100 : (1 - (age - 0.5) / 0.5) * 100;
@@ -713,7 +865,8 @@
         const g = (k) => els.gauges.querySelector(`[data-k="${k}"]`);
         const cur = data && data.current;
         const today = data && data.daily && data.daily[0];
-        g('feels').querySelector('b').textContent = cur ? temp(cur.feelsC) : '--';
+        g('feels').querySelector('b').textContent = cur ? temp(settings.feels ? cur.tempC : cur.feelsC) : '--';
+        g('feels').querySelector('span').textContent = settings.feels ? 'Actual' : 'Feels like';
         const w = g('wind');
         w.querySelector('b').textContent = cur && cur.windKmh != null ? wind(cur.windKmh) : '--';
         w.querySelector('span').textContent = `Wind ${cur ? compass(cur.windDir) : ''}`.trim();
@@ -752,7 +905,7 @@
             return `<div class="wxw-hour${i === 0 ? ' is-now' : ''}">
                 <div class="wxw-hour-time">${i === 0 ? 'Now' : hourLabel(h.time)}</div>
                 ${iconImg(cond.icon, 'wxw-hour-icon')}
-                <div class="wxw-hour-temp">${temp(h.tempC)}</div>
+                <div class="wxw-hour-temp">${temp(mainC(h))}</div>
                 <div class="wxw-hour-rain">${rain != null && rain >= 10 ? `${Math.round(rain)}%` : '&nbsp;'}</div>
             </div>`;
         }).join('');
@@ -768,8 +921,8 @@
         const days = data && data.daily ? data.daily.slice(0, 10) : [];
         if (els.daysTitle) els.daysTitle.textContent = `${days.length > 7 ? days.length : 7}-Day Forecast`;
         if (!days.length) { els.days.innerHTML = ''; return; }
-        const mins = days.map((d) => num(d.minC)).filter((v) => v != null);
-        const maxs = days.map((d) => num(d.maxC)).filter((v) => v != null);
+        const mins = days.map((d) => num(loC(d))).filter((v) => v != null);
+        const maxs = days.map((d) => num(hiC(d))).filter((v) => v != null);
         const lo = Math.min(...mins);
         const hi = Math.max(...maxs);
         const span = Math.max(1, hi - lo);
@@ -777,8 +930,10 @@
             const cond = condOf(d, true);
             const dow = dayOf(d.date);
             const name = i === 0 ? 'Today' : DAYS[dow].slice(0, 3);
-            const left = num(d.minC) == null ? 0 : ((d.minC - lo) / span) * 100;
-            const width = num(d.maxC) == null || num(d.minC) == null ? 0 : Math.max(6, ((d.maxC - d.minC) / span) * 100);
+            const dLo = num(loC(d));
+            const dHi = num(hiC(d));
+            const left = dLo == null ? 0 : ((dLo - lo) / span) * 100;
+            const width = dHi == null || dLo == null ? 0 : Math.max(6, ((dHi - dLo) / span) * 100);
             const rain = num(d.rain);
             const uv = num(d.uv);
             const dt = new Date(localMs(d.date));
@@ -795,9 +950,9 @@
                         ${iconImg(cond.icon, 'wxw-day-icon')}
                         <div class="wxw-day-cond">${cond.text}${rain != null && rain >= 30 ? ` <em>${Math.round(rain)}%</em>` : ''}</div>
                         <div class="wxw-range">
-                            <span class="wxw-lo">${temp(d.minC)}</span>
-                            <span class="wxw-bar"><i style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;background:linear-gradient(90deg,hsl(${tempHue(d.minC)} 85% 55%),hsl(${tempHue(d.maxC)} 90% 52%))"></i></span>
-                            <span class="wxw-hi">${temp(d.maxC)}</span>
+                            <span class="wxw-lo">${temp(dLo)}</span>
+                            <span class="wxw-bar"><i style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;background:linear-gradient(90deg,hsl(${tempHue(dLo)} 85% 55%),hsl(${tempHue(dHi)} 90% 52%))"></i></span>
+                            <span class="wxw-hi">${temp(dHi)}</span>
                         </div>
                     </div>
                     <div class="wxw-face wxw-back">
@@ -848,6 +1003,7 @@
         render();
         if (els) els.main.scrollTop = 0;
         changed();
+        setTimeout(() => fxPlay(true), 60);
         const p = selected();
         if (p && !fresh(p)) {
             // switching is a tap: the cursor shows if it takes a moment, and a failure answers it
@@ -868,6 +1024,7 @@
             const quick = Date.now() - start.t < 700;
             start = null;
             if (quick && Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.6) step(dx < 0 ? 1 : -1);
+            else if (quick && Math.abs(dx) < 8 && Math.abs(dy) < 8) fxPlay(true); // a tap on the sky plays it again
         });
         els.scene.addEventListener('pointercancel', () => { start = null; });
     }
@@ -896,13 +1053,15 @@
         els.radar.hidden = top !== 'radar';
         els.alertLayer.hidden = top !== 'alert';
         els.dayLayer.hidden = top !== 'day';
+        els.settingsLayer.hidden = top !== 'settings';
+        if (top === 'settings') renderSettings();
         if (top === 'places') renderTiles();
         if (top === 'graphs') renderGraph();
         if (top === 'alert') renderAlertList();
         if (top !== 'radar') stopRadarPlay();
         if (top !== 'alert') extraAlert = top ? extraAlert : null;
         if (top !== 'add' && document.activeElement === els.input) els.input.blur();
-        const TITLES = { places: 'Locations', add: 'Add Location', graphs: 'Graphs', radar: 'Radar', alert: 'Weather Alerts' };
+        const TITLES = { places: 'Locations', add: 'Add Location', graphs: 'Graphs', radar: 'Radar', alert: 'Weather Alerts', settings: 'Settings' };
         ws.setTitle(TITLES[top] || 'Weather');
         if (top === 'day') renderDay();
         ws.syncHistory();
@@ -910,7 +1069,8 @@
         ws.refreshTitleAction();
     }
 
-    function openPlaces() { pushLayer('places'); }
+    // every place's tile needs its weather: fetch the ones without fresh data (quietly)
+    function openPlaces() { pushLayer('places'); quiet(true); }
 
     function openAdd() {
         addResults = [];
@@ -931,12 +1091,12 @@
             const today = data && data.daily && data.daily[0];
             return `<div class="wxw-tile${p && x.id === p.id ? ' is-on' : ''}" data-id="${ws.escapeHtml(x.id)}" data-phase="${data && cur ? phaseOf(data) : 'day'}" data-scene="${cond ? cond.scene : 'fair'}">
                 <div class="wxw-tile-text">
-                    <div class="wxw-tile-name">${x.here ? `<i class="wxw-pin">${GLYPH.pin}</i>` : ''}${ws.escapeHtml(x.name)}</div>
-                    <div class="wxw-tile-sub">${ws.escapeHtml(x.here ? 'Current location' : [x.region, x.country].filter(Boolean).join(', '))}</div>
+                    <div class="wxw-tile-name">${placeGlyph(x)}${ws.escapeHtml(x.name)}</div>
+                    <div class="wxw-tile-sub">${ws.escapeHtml(placeSub(x))}</div>
                     <div class="wxw-tile-cond">${cond ? cond.text : '&nbsp;'}</div>
                 </div>
                 ${cond ? iconImg(cond.icon, 'wxw-tile-icon') : ''}
-                <div class="wxw-tile-temp"><b>${cur ? temp(cur.tempC) : '--'}</b><span>${today ? `${temp(today.maxC)} / ${temp(today.minC)}` : ''}</span></div>
+                <div class="wxw-tile-temp"><b>${cur ? temp(mainC(cur)) : '--'}</b><span>${today ? `${temp(hiC(today))} / ${temp(loC(today))}` : ''}</span></div>
             </div>`;
         }).join('') : '<div class="wxw-tiles-none">No places. Tap Add to add a city.</div>';
     }
@@ -967,16 +1127,43 @@
     }
 
     function tileMenu(id, x, y) {
-        const at = saved.findIndex((p) => p.id === id);
+        const p = places().find((q) => q.id === id);
+        if (!p) return;
+        const at = saved.findIndex((q) => q.id === id);
         const items = [{ label: 'Show', action: () => { select(id); popLayer(); } }];
-        if (at >= 0) {
+        if (p.monitored) {
+            const mid = p.monitored;
             items.push('-',
+                { label: 'Weather Alerts', checked: p.alerts !== false, action: () => patchMonitored(mid, { alerts: p.alerts === false }) },
+                { label: 'Rain Alarm', checked: !!p.rainAlarm, action: () => patchMonitored(mid, { rainAlarm: !p.rainAlarm }) },
+                '-');
+            if (p.here && here) items.push({ label: 'Save Location', action: saveHere });
+            items.push({ label: `Clear ${PLACE_LABEL[mid]}`, disabled: !!p.fallback, action: () => clearMonitored(mid) });
+        } else if (p.here) {
+            items.push('-',
+                { label: 'Save Location', action: saveHere },
+                { label: 'Save as Home', action: () => setMonitored('home', p) },
+                { label: 'Save as Work', action: () => setMonitored('work', p) });
+        } else if (at >= 0) {
+            items.push('-',
+                { label: 'Set as Home', action: () => setMonitored('home', p) },
+                { label: 'Set as Work', action: () => setMonitored('work', p) },
+                '-',
                 { label: 'Move Up', disabled: at === 0, action: () => move(id, -1) },
                 { label: 'Move Down', disabled: at === saved.length - 1, action: () => move(id, 1) },
                 '-',
                 { label: 'Remove', action: () => remove(id) });
         }
         ws.menuAt(x, y, items);
+    }
+
+    async function clearMonitored(id) {
+        const ok = await ws.messageBox({
+            title: 'Weather', icon: 'question',
+            text: `Clear ${PLACE_LABEL[id]}? Its alerts and rain alarm stop.`,
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }]
+        });
+        if (ok) patchMonitored(id, null);
     }
 
     function move(id, dir) {
@@ -1296,6 +1483,8 @@
         { id: 'uv', label: 'UV Index' },
         { id: 'pressure', label: 'Pressure' }
     ];
+    // all ten days are hourly now (#792)
+    const GRAPH_RANGES = [[24, '24 h'], [48, '48 h'], [72, '72 h'], [168, '7 days'], [240, '10 days']];
     let graphKind = 'temp';
     let graphRange = 24;
     let graphPick = null; // hour index under the finger
@@ -1333,7 +1522,7 @@
     function renderGraph() {
         const data = dataOf(selected());
         els.graphTabs.innerHTML = GRAPHS.map((g) => `<button type="button" data-g="${g.id}" class="${g.id === graphKind ? 'is-on' : ''}">${g.label}</button>`).join('');
-        els.rangeTabs.innerHTML = [24, 48, 72].map((r) => `<button type="button" data-r="${r}" class="${r === graphRange ? 'is-on' : ''}">${r} hours</button>`).join('');
+        els.rangeTabs.innerHTML = GRAPH_RANGES.map(([r, label]) => `<button type="button" data-r="${r}" class="${r === graphRange ? 'is-on' : ''}">${label}</button>`).join('');
         const all = (data && data.hourly) || [];
         const from = nowIndex(data);
         const hours = all.slice(from, from + graphRange);
@@ -1369,7 +1558,7 @@
         hours.forEach((h, i) => {
             if (!h.isDay) svg += `<rect x="${(X(i) - pw / (hours.length - 1) / 2).toFixed(1)}" y="${T}" width="${(pw / (hours.length - 1)).toFixed(2)}" height="${ph}" class="wxw-night"/>`;
             const hr = Number(h.time.slice(11, 13));
-            const every = graphRange <= 24 ? 3 : graphRange <= 48 ? 6 : 12;
+            const every = graphRange <= 24 ? 3 : graphRange <= 48 ? 6 : graphRange <= 72 ? 12 : 24;
             if (hr % every === 0) svg += `<text x="${X(i).toFixed(1)}" y="${H - B + 12}" class="wxw-xlab" text-anchor="middle">${hr === 0 ? DAYS[dayOf(h.time.slice(0, 10))].slice(0, 3) : hourLabel(h.time).replace(':00', '')}</text>`;
             if (hr === 0 && i > 0) svg += `<line x1="${X(i).toFixed(1)}" y1="${T}" x2="${X(i).toFixed(1)}" y2="${T + ph}" class="wxw-daysep"/>`;
         });
@@ -1887,6 +2076,365 @@
         if (miniMap) miniMap.layout();
     }
 
+    // ---------------------------------------------------------------- header animations (#792)
+    //
+    // A short full-header play of the weather (our own, in the spirit of HTC Sense's weather intros)
+    // when Weather opens, the place changes or the sky is tapped, then the calm CSS scene goes on:
+    //   rain / drizzle / heavy   drops land on the glass, swell and run down leaving a wet trail
+    //   storm                    the rain, two flashes and a forked bolt
+    //   snow / sleet             flakes tumble down, swaying
+    //   clear, fair (day)        a flare sweeps across from the sun, ghosts along its line
+    //   clear, fair (night)      a shooting star or two over twinkling stars
+    //   partly / cloudy          banks of cloud roll through
+    //   fog                      mist bands drift through and thin out
+    // One canvas over the scene, drawn at the device's pixel ratio; ~3.4 s; stops while hidden; none
+    // with reduced motion or Settings > Animated weather effects off.
+    const FX_MS = 3400;
+    const fx = { canvas: null, ctx: null, raf: 0, t0: 0, scene: '', phase: '', parts: null, w: 0, h: 0, dpr: 1 };
+    const rand = (a, b) => a + Math.random() * (b - a);
+    const reducedMotion = () => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { return false; } };
+
+    function fxStop() {
+        if (fx.raf) cancelAnimationFrame(fx.raf);
+        fx.raf = 0;
+        if (fx.ctx) fx.ctx.clearRect(0, 0, fx.w, fx.h);
+        if (fx.canvas) fx.canvas.classList.remove('is-on');
+    }
+
+    function fxSetup() {
+        if (!fx.canvas) {
+            fx.canvas = document.createElement('canvas');
+            fx.canvas.className = 'wxw-fx';
+            fx.canvas.setAttribute('aria-hidden', 'true');
+            els.scene.insertBefore(fx.canvas, els.scene.querySelector('.wxw-hero'));
+            fx.ctx = fx.canvas.getContext('2d');
+        }
+        const r = els.scene.getBoundingClientRect();
+        fx.dpr = Math.min(3, window.devicePixelRatio || 1);
+        fx.w = Math.max(1, Math.round(r.width * fx.dpr));
+        fx.h = Math.max(1, Math.round(r.height * fx.dpr));
+        if (fx.canvas.width !== fx.w) fx.canvas.width = fx.w;
+        if (fx.canvas.height !== fx.h) fx.canvas.height = fx.h;
+    }
+
+    /** The particles for a scene, in canvas pixels. */
+    function fxParts(scene, phase) {
+        const { w, h, dpr } = fx;
+        const u = dpr * Math.max(0.6, Math.min(1.6, w / dpr / 360));
+        if (/^(drizzle|rain|heavy|storm|sleet)$/.test(scene)) {
+            const n = scene === 'drizzle' ? 26 : scene === 'heavy' || scene === 'storm' ? 70 : 46;
+            return {
+                drops: Array.from({ length: n }, () => ({ x: rand(0, w), y: rand(-h * 0.1, h * 0.85), r: rand(2.5, scene === 'drizzle' ? 5 : 8) * u, at: rand(0, 0.55), slide: Math.random() < 0.45, v: rand(40, 140) * u, wob: rand(0, 6) })),
+                streaks: Array.from({ length: Math.round(n * 1.6) }, () => ({ x: rand(-w * 0.2, w), y: rand(-h, h), len: rand(14, 34) * u, v: rand(900, 1500) * u })),
+                bolt: scene === 'storm' ? fxBolt(w, h) : null,
+                snow: scene === 'sleet' ? fxSnow(Math.round(n * 0.6), u) : null
+            };
+        }
+        if (scene === 'snow') return { snow: fxSnow(90, u) };
+        if (scene === 'fog') return { bands: Array.from({ length: 5 }, (_, i) => ({ y: h * (0.25 + i * 0.13), hgt: rand(30, 60) * u, x: rand(-w, 0), v: rand(60, 140) * u, a: rand(0.18, 0.32) })) };
+        if (scene === 'cloudy' || scene === 'partly') {
+            return { clouds: Array.from({ length: scene === 'cloudy' ? 7 : 4 }, (_, i) => ({ y: h * rand(0.05, 0.55), s: rand(0.7, 1.4) * u, x: i % 2 ? w * 1.2 : -w * 0.6, v: (i % 2 ? -1 : 1) * rand(160, 320) * u, a: rand(0.35, 0.7) })) };
+        }
+        if (phase === 'night') {
+            return {
+                stars: Array.from({ length: 40 }, () => ({ x: rand(0, w), y: rand(0, h * 0.6), r: rand(0.6, 1.8) * u, at: rand(0, 1) })),
+                meteors: Array.from({ length: Math.random() < 0.5 ? 1 : 2 }, (_, i) => ({ x: rand(w * 0.3, w * 1.1), y: rand(0, h * 0.25), at: 0.15 + i * 0.35, v: rand(900, 1300) * u }))
+            };
+        }
+        return { flare: { from: { x: w * 0.82, y: h * 0.16 }, u } };
+    }
+
+    function fxSnow(n, u) {
+        return Array.from({ length: n }, () => ({ x: rand(0, fx.w), y: rand(-fx.h, 0), r: rand(1.4, 4) * u, v: rand(50, 120) * u, sway: rand(10, 30) * u, ph: rand(0, 6.28), spin: rand(0.6, 2) }));
+    }
+
+    /** A forked bolt from the top: a jagged main path and one branch. */
+    function fxBolt(w, h) {
+        const pts = [];
+        let x = rand(w * 0.25, w * 0.75);
+        let y = 0;
+        while (y < h * 0.78) { pts.push([x, y]); x += rand(-w * 0.06, w * 0.06); y += rand(h * 0.05, h * 0.1); }
+        const k = Math.floor(pts.length / 2);
+        const branch = [pts[k]];
+        let [bx, by] = pts[k];
+        for (let i = 0; i < 4; i++) { bx += rand(w * 0.02, w * 0.07) * (pts[k][0] > w / 2 ? -1 : 1); by += rand(h * 0.04, h * 0.08); branch.push([bx, by]); }
+        return { pts, branch };
+    }
+
+    function fxFrame(now) {
+        const t = (now - fx.t0) / FX_MS; // 0..1
+        const c = fx.ctx;
+        const { w, h } = fx;
+        const P = fx.parts;
+        c.clearRect(0, 0, w, h);
+        if (t >= 1 || document.hidden) { fxStop(); return; }
+        const fade = t < 0.08 ? t / 0.08 : t > 0.8 ? (1 - t) / 0.2 : 1;
+        const s = (now - fx.t0) / 1000;
+        c.save();
+        c.globalAlpha = fade;
+        if (P.streaks) {
+            c.strokeStyle = 'rgba(200, 225, 255, 0.45)';
+            c.lineWidth = Math.max(1, fx.dpr * 0.9);
+            c.beginPath();
+            P.streaks.forEach((k) => {
+                const y = ((k.y + k.v * s) % (h * 1.4)) - h * 0.2;
+                const x = k.x + (y + h * 0.2) * 0.18;
+                c.moveTo(x, y);
+                c.lineTo(x + k.len * 0.18, y + k.len);
+            });
+            c.stroke();
+        }
+        if (P.drops) {
+            P.drops.forEach((d) => {
+                if (t < d.at) return;
+                const age = (t - d.at) * FX_MS / 1000;
+                const grow = Math.min(1, age * 4);
+                const y = d.slide ? d.y + Math.max(0, age - 0.25) ** 1.6 * d.v : d.y;
+                const x = d.x + Math.sin(age * 3 + d.wob) * (d.slide ? 1.5 * fx.dpr : 0);
+                const r = d.r * (0.5 + 0.5 * grow);
+                if (d.slide && y > d.y + 2) {
+                    // the wet trail it leaves behind
+                    const g = c.createLinearGradient(x, d.y, x, y);
+                    g.addColorStop(0, 'rgba(210, 230, 255, 0)');
+                    g.addColorStop(1, 'rgba(210, 230, 255, 0.22)');
+                    c.fillStyle = g;
+                    c.fillRect(x - r * 0.35, d.y, r * 0.7, y - d.y);
+                }
+                // a bead of water: darker rim, a bright highlight up and left (light through glass)
+                const g = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
+                g.addColorStop(0, 'rgba(255, 255, 255, 0.85)');
+                g.addColorStop(0.35, 'rgba(220, 235, 255, 0.25)');
+                g.addColorStop(0.85, 'rgba(40, 60, 90, 0.25)');
+                g.addColorStop(1, 'rgba(255, 255, 255, 0.35)');
+                c.fillStyle = g;
+                c.beginPath();
+                c.ellipse(x, y, r, r * (d.slide ? 1.15 : 1), 0, 0, Math.PI * 2);
+                c.fill();
+            });
+        }
+        if (P.bolt) {
+            [0.22, 0.52].forEach((at, i) => {
+                const k = (t - at) / 0.07;
+                if (k < 0 || k > 1) return;
+                c.fillStyle = `rgba(230, 235, 255, ${(1 - k) * (i ? 0.45 : 0.6)})`;
+                c.fillRect(0, 0, w, h);
+                if (i === 0) {
+                    c.save();
+                    c.globalAlpha = fade * (1 - k);
+                    c.shadowColor = 'rgba(190, 210, 255, 1)';
+                    c.shadowBlur = 18 * fx.dpr;
+                    c.strokeStyle = '#fff';
+                    c.lineJoin = 'round';
+                    [[P.bolt.pts, 3], [P.bolt.branch, 1.6]].forEach(([pts, lw]) => {
+                        c.lineWidth = lw * fx.dpr;
+                        c.beginPath();
+                        pts.forEach(([x, y], j) => (j ? c.lineTo(x, y) : c.moveTo(x, y)));
+                        c.stroke();
+                    });
+                    c.restore();
+                }
+            });
+        }
+        if (P.snow) {
+            c.fillStyle = 'rgba(255, 255, 255, 0.9)';
+            P.snow.forEach((f) => {
+                const y = f.y + f.v * s * 1.6 + h * t * 0.4;
+                const x = f.x + Math.sin(s * f.spin + f.ph) * f.sway;
+                if (y < -10 || y > h + 10) return;
+                c.beginPath();
+                c.arc(x, y, f.r, 0, Math.PI * 2);
+                c.fill();
+            });
+        }
+        if (P.bands) {
+            P.bands.forEach((b) => {
+                const x = b.x + b.v * s;
+                const g = c.createLinearGradient(0, b.y - b.hgt, 0, b.y + b.hgt);
+                g.addColorStop(0, 'rgba(235, 240, 245, 0)');
+                g.addColorStop(0.5, `rgba(235, 240, 245, ${b.a})`);
+                g.addColorStop(1, 'rgba(235, 240, 245, 0)');
+                c.fillStyle = g;
+                c.fillRect(x, b.y - b.hgt, w * 1.6, b.hgt * 2);
+            });
+        }
+        if (P.clouds) {
+            P.clouds.forEach((k) => {
+                const x = k.x + k.v * s;
+                c.fillStyle = `rgba(255, 255, 255, ${k.a})`;
+                c.beginPath();
+                [[0, 0, 46], [40, -14, 38], [80, 0, 42], [30, 14, 40], [64, 12, 36]].forEach(([dx, dy, r]) => {
+                    c.moveTo(x + dx * k.s + r * k.s, y0(k) + dy * k.s);
+                    c.arc(x + dx * k.s, y0(k) + dy * k.s, r * k.s, 0, Math.PI * 2);
+                });
+                c.fill();
+            });
+        }
+        if (P.stars) {
+            c.fillStyle = '#fff';
+            P.stars.forEach((st) => {
+                c.globalAlpha = fade * (0.35 + 0.65 * Math.abs(Math.sin((t + st.at) * Math.PI * 3)));
+                c.beginPath();
+                c.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+                c.fill();
+            });
+            c.globalAlpha = fade;
+            P.meteors.forEach((m) => {
+                const k = (t - m.at) / 0.35;
+                if (k < 0 || k > 1) return;
+                const x = m.x - m.v * k * 0.6;
+                const y = m.y + m.v * k * 0.3;
+                const g = c.createLinearGradient(x, y, x + 90 * fx.dpr, y - 45 * fx.dpr);
+                g.addColorStop(0, `rgba(255, 255, 255, ${1 - k})`);
+                g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                c.strokeStyle = g;
+                c.lineWidth = 2 * fx.dpr;
+                c.beginPath();
+                c.moveTo(x, y);
+                c.lineTo(x + 90 * fx.dpr, y - 45 * fx.dpr);
+                c.stroke();
+            });
+        }
+        if (P.flare) {
+            // the flare sweeps from the sun across the header; ghosts sit on the line through its centre
+            const { from, u } = P.flare;
+            const k = Math.min(1, t * 1.25);
+            const cx = from.x;
+            const cy = from.y;
+            const tx = w * (1 - k) * 0.9;
+            const ty = h * (0.2 + 0.5 * k);
+            c.globalCompositeOperation = 'lighter';
+            const glow = c.createRadialGradient(cx, cy, 0, cx, cy, 120 * u);
+            glow.addColorStop(0, 'rgba(255, 250, 220, 0.75)');
+            glow.addColorStop(1, 'rgba(255, 230, 160, 0)');
+            c.fillStyle = glow;
+            c.fillRect(0, 0, w, h);
+            [[0.25, 18, 'rgba(255, 210, 140, 0.35)'], [0.5, 30, 'rgba(160, 220, 255, 0.25)'], [0.7, 12, 'rgba(255, 180, 220, 0.35)'], [1.0, 46, 'rgba(180, 255, 200, 0.18)']].forEach(([f, r, col]) => {
+                const x = cx + (tx - cx) * f;
+                const y = cy + (ty - cy) * f;
+                c.fillStyle = col;
+                c.beginPath();
+                for (let i = 0; i < 6; i++) {
+                    const a = (Math.PI / 3) * i + Math.PI / 6;
+                    const px = x + Math.cos(a) * r * u;
+                    const py = y + Math.sin(a) * r * u;
+                    if (i) c.lineTo(px, py); else c.moveTo(px, py);
+                }
+                c.closePath();
+                c.fill();
+            });
+            // a streak through the sun
+            const sg = c.createLinearGradient(cx - 160 * u, cy, cx + 160 * u, cy);
+            sg.addColorStop(0, 'rgba(255, 240, 200, 0)');
+            sg.addColorStop(0.5, 'rgba(255, 240, 200, 0.55)');
+            sg.addColorStop(1, 'rgba(255, 240, 200, 0)');
+            c.fillStyle = sg;
+            c.fillRect(cx - 160 * u, cy - 1.5 * u, 320 * u, 3 * u);
+            c.globalCompositeOperation = 'source-over';
+        }
+        c.restore();
+        fx.raf = requestAnimationFrame(fxFrame);
+    }
+
+    const y0 = (k) => k.y;
+
+    /** Play the intro for the scene on screen (force: replay even when the scene is the same). */
+    function fxPlay(force) {
+        if (!els || !shown || settings.effects === false || reducedMotion() || document.hidden) return;
+        const scene = els.scene.dataset.scene;
+        const phase = els.scene.dataset.phase;
+        const p = selected();
+        if (!p || !dataOf(p)) return;
+        const key = `${p.id}|${scene}|${phase}`;
+        if (!force && fx.raf && fx.key === key) return;
+        fxStop();
+        fxSetup();
+        fx.key = key;
+        fx.parts = fxParts(scene, phase);
+        fx.canvas.classList.add('is-on');
+        fx.t0 = performance.now();
+        fx.raf = requestAnimationFrame(fxFrame);
+    }
+
+    window.wmWeatherFx = {
+        play: () => fxPlay(true),
+        enabled(on) { settings.effects = !!on; if (!on) fxStop(); }
+    };
+
+    // ---------------------------------------------------------------- settings (#792)
+
+    const LEADS = [[5, '5 minutes'], [10, '10 minutes'], [15, '15 minutes'], [30, '30 minutes'], [60, '1 hour']];
+    const RADII = [[1, '1 km'], [3, '3 km'], [5, '5 km'], [10, '10 km'], [25, '25 km']];
+
+    function openSettings() { pushLayer('settings'); }
+
+    /** Menu > Settings: a WM form (wmSettings.ui), changes apply at once. */
+    function renderSettings() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const box = els.settingsBody;
+        if (!ui) { box.innerHTML = '<p>Settings are not available.</p>'; return; }
+        const admin = isAdmin();
+        const off = admin ? '' : 'disabled';
+        const placeHtml = (id) => {
+            const m = monitored[id];
+            if (!m) return `${ui.sub(PLACE_LABEL[id])}${ui.note(`Not set. In Locations, tap and hold a place and choose Save as ${PLACE_LABEL[id]} or Set as ${PLACE_LABEL[id]}.`)}`;
+            const lead = (LEADS.find(([v]) => v === (m.rainLeadMin || 15)) || LEADS[2])[1];
+            const rad = (RADII.find(([v]) => v === (m.radiusKm || 3)) || [0, `${m.radiusKm} km`])[1];
+            return `${ui.sub(`${PLACE_LABEL[id]}: ${m.name}${m.fallback ? ' (configured location)' : ''}`)}
+                ${ui.check(`${id}-alerts`, 'Weather alerts', m.alerts !== false, off)}
+                ${ui.check(`${id}-rain`, 'Rain alarm', !!m.rainAlarm, off)}
+                ${ui.row('Warn me', ui.comboHtml(`${id}-lead`, lead, !admin || !m.rainAlarm))}
+                ${ui.row('Radius', ui.comboHtml(`${id}-radius`, rad, !admin))}`;
+        };
+        box.innerHTML = `
+            ${ui.sub('Units')}
+            ${ui.radio('unit', 'C', 'Celsius (°C, km/h, mm)', unit() === 'C')}
+            ${ui.radio('unit', 'F', 'Fahrenheit (°F, mph, in)', unit() === 'F')}
+            ${ui.gap()}
+            ${ui.check('feels', 'Use feels-like as the main temperature', settings.feels)}
+            ${ui.check('effects', 'Animated weather effects', settings.effects !== false)}
+            ${ui.gap()}
+            ${placeHtml('home')}
+            ${ui.gap()}
+            ${placeHtml('work')}
+            ${ui.gap()}
+            ${ui.note(admin ? 'Home and Work are watched for weather alerts and rain, also while Weather is closed. Sounds: Settings > Sounds & Notifications (Weather: Alert, Weather: Severe alert, Weather: Rain alarm).' : 'Only the administrator can change Home and Work.')}`;
+        box.querySelectorAll('input[name="unit"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) setUnit(r.value); }));
+        box.querySelector('input[name="feels"]').addEventListener('change', (e) => { settings.feels = e.target.checked; saveSettings(); render(); changed(); });
+        box.querySelector('input[name="effects"]').addEventListener('change', (e) => {
+            settings.effects = e.target.checked;
+            saveSettings();
+            if (window.wmWeatherFx) window.wmWeatherFx.enabled(settings.effects);
+        });
+        MONITORED.forEach((id) => {
+            if (!monitored[id] || !admin) return;
+            const chk = (name, key) => {
+                const el = box.querySelector(`input[name="${id}-${name}"]`);
+                if (el) el.addEventListener('change', async () => { if (!(await patchMonitored(id, { [key]: el.checked }))) el.checked = !el.checked; renderSettings(); });
+            };
+            chk('alerts', 'alerts');
+            chk('rain', 'rainAlarm');
+            const lead = box.querySelector(`[data-act="${id}-lead"]`);
+            if (lead && !lead.disabled) ui.bindCombo(lead, LEADS, monitored[id].rainLeadMin || 15, (v) => patchMonitored(id, { rainLeadMin: Number(v) }).then(renderSettings));
+            const rad = box.querySelector(`[data-act="${id}-radius"]`);
+            if (rad) ui.bindCombo(rad, RADII, monitored[id].radiusKm || 3, (v) => patchMonitored(id, { radiusKm: Number(v) }).then(() => { renderSettings(); render(); }));
+        });
+    }
+
+    /** The Alert page for Home / Work's alerts (the status bubble's View Alerts). */
+    function showAlerts() {
+        if (ws) ws.open(APP_ID);
+        setTimeout(() => {
+            const st = statusState();
+            if (st.alerts[0]) {
+                const id = st.alerts.find(Boolean);
+                const pid = MONITORED.find((m) => ((activeAlerts && activeAlerts.places && activeAlerts.places[m]) || {}).alerts?.some((a) => a.id === id.id));
+                if (pid) select(pid);
+                layers = layers.filter((l) => l !== 'alert');
+                openAlerts(id.id);
+            }
+        }, 0);
+    }
+
     // ---------------------------------------------------------------- shell
 
     function setUnit(u) {
@@ -1922,6 +2470,7 @@
                 ]
             },
             { label: 'Refresh', disabled: !selected(), action: userRefresh },
+            { label: 'Settings...', action: openSettings },
             '-',
             { label: 'About', action: about }
         ];
@@ -1961,8 +2510,23 @@
         pollTimer = setInterval(() => { if (shown && !document.hidden) quiet(false); }, 60 * 1000);
     }
 
+    /** The server's weather broadcasts (#792): Home / Work, their alerts and rain. */
+    let wired = false;
+    function wireServer() {
+        const c = window.wsClient;
+        if (wired || !c || typeof c.on !== 'function') return !!wired;
+        wired = true;
+        const data = (pk) => (pk && (pk.data || pk)) || {};
+        c.on('weather_places_changed', (pk) => applyMonitored(data(pk).places));
+        c.on('weather_alerts_changed', (pk) => { activeAlerts = data(pk); if (ws) ws.refreshStatus(); if (shown) render(); });
+        c.on('weather_rain_status', (pk) => { rainStatus = data(pk); if (ws) ws.refreshStatus(); });
+        loadMonitored();
+        return true;
+    }
+
     function register() {
         ws = window.wmShell;
+        if (!wireServer()) { let n = 0; const t = setInterval(() => { if (wireServer() || ++n > 120) clearInterval(t); }, 1000); }
         document.addEventListener('keydown', onKey, true);
         document.addEventListener('visibilitychange', () => {
             if (!els) return;
@@ -1985,11 +2549,13 @@
                 els.root.classList.remove('is-paused');
                 syncLayers();
                 render();
+                // the intro once the page is laid out (and again when first data lands: select / update)
+                setTimeout(() => fxPlay(true), 120);
                 startPoll();
                 // opening is a tap: a first load without any data shows the cursor and answers a failure
                 const p = selected();
                 if (p && !dataOf(p)) {
-                    ws.busy(update(p).then(() => { changed(); render(); }), { delay: 250, timeout: 20000 })
+                    ws.busy(update(p).then(() => { changed(); render(); fxPlay(true); }), { delay: 250, timeout: 20000 })
                         .catch(() => ws.messageBox({ title: 'Weather', icon: 'error', text: 'Weather information could not be loaded. Check the data connection, then try again.' }));
                 } else {
                     quiet(false);
@@ -1999,6 +2565,7 @@
             hide() {
                 shown = false;
                 stopRadarPlay();
+                fxStop();
                 clearTimeout(clockTimer);
                 clockTimer = null;
                 clearInterval(pollTimer);
@@ -2041,7 +2608,7 @@
                         right: {
                             label: 'Menu',
                             menu: () => GRAPHS.map((g) => ({ label: g.label, radio: g.id === graphKind, action: () => { graphKind = g.id; renderGraph(); } }))
-                                .concat(['-'], [24, 48, 72].map((r) => ({ label: `Next ${r} Hours`, radio: r === graphRange, action: () => { graphRange = r; renderGraph(); } })))
+                                .concat(['-'], GRAPH_RANGES.map(([r, label]) => ({ label: `Next ${label}`, radio: r === graphRange, action: () => { graphRange = r; renderGraph(); } })))
                         }
                     };
                 }
@@ -2061,7 +2628,7 @@
                         }
                     };
                 }
-                if (top === 'alert') {
+                if (top === 'alert' || top === 'settings') {
                     return { left: { label: 'Done', action: popLayer }, right: null };
                 }
                 if (top === 'add') {
@@ -2109,8 +2676,9 @@
                 place: p.name,
                 region: p.here ? '' : [p.region, p.country].filter(Boolean).join(', '),
                 here: !!p.here,
-                tempC: num(cur.tempC),
-                temp: tempOf(cur.tempC),
+                tempC: num(mainC(cur)),
+                temp: tempOf(mainC(cur)),
+                feelsLike: !!settings.feels,
                 unit: unit(),
                 code: cur.code,
                 condition: cond.text,
@@ -2118,10 +2686,10 @@
                 iconUrl: iconUrl(cond.icon),
                 iconUrl2x: iconUrl(cond.icon, true),
                 isDay: cur.isDay !== false,
-                hiC: today ? num(today.maxC) : null,
-                loC: today ? num(today.minC) : null,
-                hi: today ? tempOf(today.maxC) : null,
-                lo: today ? tempOf(today.minC) : null,
+                hiC: today ? num(hiC(today)) : null,
+                loC: today ? num(loC(today)) : null,
+                hi: today ? tempOf(hiC(today)) : null,
+                lo: today ? tempOf(loC(today)) : null,
                 updatedAt: (cache[keyOf(p)] || {}).at || null
             };
         },
@@ -2132,7 +2700,7 @@
             if (!p || !data || !Array.isArray(data.daily)) return [];
             return data.daily.slice(1, 7).map((d) => {
                 const cond = condOf(d, true);
-                return { day: DAYS[dayOf(d.date)], condition: cond.text, icon: cond.icon, iconUrl: iconUrl(cond.icon), iconUrl2x: iconUrl(cond.icon, true), hi: tempOf(d.maxC), lo: tempOf(d.minC), rain: num(d.rain) };
+                return { day: DAYS[dayOf(d.date)], condition: cond.text, icon: cond.icon, iconUrl: iconUrl(cond.icon), iconUrl2x: iconUrl(cond.icon, true), hi: tempOf(hiC(d)), lo: tempOf(loC(d)), rain: num(d.rain) };
             });
         },
         open() { if (ws) ws.open(APP_ID); },
@@ -2140,6 +2708,12 @@
         showAlert,
         /** The selected place's active alerts. */
         alerts() { return placeAlerts(dataOf(selected())); },
+        /** Home / Work alerts and rain for the shell's status icons (cheap). */
+        statusState,
+        /** The Alert page for Home / Work's alerts. */
+        showAlerts,
+        /** { home, work } as the server keeps them. */
+        monitored: () => monitored,
         refresh() { return quiet(false); },
         unit: () => unit(),
         iconUrl

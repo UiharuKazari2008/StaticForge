@@ -228,7 +228,39 @@ function appleFixture() {
         assert.strictEqual(sent.filter((m) => m.type === 'weather_alerts_changed').length, 1);
         await ws.pollAlerts();
         assert.strictEqual(sent.filter((m) => m.type === 'weather_alert_issued').length, 1, 'not again');
-        assert.strictEqual(sent[0].data.place.name, 'New York');
+        assert.strictEqual(sent[0].data.place.label, 'Home');
+    });
+
+    await test('rain alarm: once per spell, when rain is due inside the lead time', async () => {
+        const sent = [];
+        const cfg = { weather: { places: { home: { name: 'Home', lat: 40.71, lon: -74.01, rainAlarm: true, rainLeadMin: 15 }, work: { name: 'Office', lat: 40.75, lon: -73.98, rainAlarm: false } } } };
+        const gr = {
+            getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o == null ? o : o[k]), cfg),
+            getSecureConfig: () => null,
+            getApiKeyManager: () => null,
+            getWebSocketServer: () => ({ broadcast: (msg) => sent.push(msg) })
+        };
+        // a fresh module copy so the bind and the monitor state are this test's
+        delete require.cache[require.resolve('../modules/weatherService')];
+        const w = require('../modules/weatherService');
+        w.bind(gr);
+        const tz = 'America/New_York';
+        const t0 = Date.now();
+        const minutes = Array.from({ length: 60 }, (_, i) => ({ time: w._test.localIso(t0 + i * 60000, tz), rain: i >= 10 ? 70 : 0, mmh: i >= 10 ? 1.5 : 0 }));
+        const fc = { provider: 'openmeteo', tz, offset: -18000, current: { tempC: 10 }, hourly: [], daily: [], alerts: [], alertsSource: 'none', minutely: { stepMinutes: 1, summary: 'Rain starting in 10 min', minutes } };
+        ['40.71:-74.01', '40.75:-73.98'].forEach((k) => w._test.jsonCache.set(`om:fc:${k}`, { ok: true, value: fc, at: Date.now(), expires: Date.now() + 60000 }));
+        await w.pollPlaces();
+        const alarms = sent.filter((m) => m.type === 'weather_rain_alarm');
+        assert.strictEqual(alarms.length, 1, 'Home only (Work has the alarm off)');
+        assert.strictEqual(alarms[0].data.place.id, 'home');
+        assert.strictEqual(alarms[0].data.startsInMin, 10);
+        assert.strictEqual(alarms[0].data.kind, 'Rain');
+        await w.pollPlaces();
+        assert.strictEqual(sent.filter((m) => m.type === 'weather_rain_alarm').length, 1, 'not again in the same spell');
+        assert.ok(sent.some((m) => m.type === 'weather_rain_status'));
+        const near = w.placeFor(40.712, -74.006);
+        assert.strictEqual(near && near.id, 'home', 'a point inside Home\'s radius is Home');
+        assert.strictEqual(w.placeFor(41.5, -74.0), null);
     });
 
     console.log(failures ? `\n${failures} failed` : '\nall passed');

@@ -2254,15 +2254,24 @@
     const hide = (el, h) => { h = !!h; if (el.hidden !== h) el.hidden = h; };
 
     /*
-     * The domain controller out of reach for a while (a restart, the phone's link): one plain
-     * notification instead of the server's start-up progress (Yukimi, Nov 13). It goes by itself
-     * when the connection is back; short drops (under DC_NOTICE_MS) never raise it.
+     * "Domain Controller is not ready" (Yukimi, Nov 13): only when it matters, never on a plain
+     * disconnect (the connectivity icon shows that): at start-up, when the phone comes up without
+     * reaching the server (DC_NOTICE_MS after Today; a normal boot connects well before), and when something is asked of the server
+     * while it is out of reach (dcNotice(), from websocket.js _mobileDomainUnreachable). It goes by
+     * itself when the connection is back.
      */
     const DC_NOTICE_MS = 10000;
     const DC_NOTICE_TEXT = 'Domain Controller is not ready, any remote data that has not been synced to this mobile device will not be available until the connection resumes.';
     let dcWasUp = false;
     let dcDownSince = 0;
     let dcNote = null;
+    function dcNotice() {
+        if (dcNote || !shell) return;
+        const ws = window.wsClient;
+        if (ws && typeof ws.isConnected === 'function' && ws.isConnected()) return;
+        dcNote = appNote({ title: 'Domain Controller', html: escapeHtml(DC_NOTICE_TEXT), event: 'disconnect', icon: 'status-data-off' });
+    }
+
     function dcNoticeCheck(ws, connected) {
         if (connected) {
             dcWasUp = true;
@@ -2270,12 +2279,10 @@
             if (dcNote) { dcNote.close(); dcNote = null; }
             return;
         }
-        // only for a lost connection after this device was up, never during its own start-up
-        if (!dcWasUp || !bootDoneAt || !ws) return;
+        // start-up only: Today is up and this load never reached the server
+        if (dcWasUp || !bootDoneAt || !ws) return;
         if (!dcDownSince) dcDownSince = Date.now();
-        if (!dcNote && Date.now() - dcDownSince >= DC_NOTICE_MS) {
-            dcNote = appNote({ title: 'Domain Controller', html: escapeHtml(DC_NOTICE_TEXT), event: 'disconnect', icon: 'status-data-off' });
-        }
+        if (Date.now() - dcDownSince >= DC_NOTICE_MS) dcNotice();
     }
 
     function refreshStatus() {
@@ -3114,6 +3121,9 @@
             const msgEl = t.querySelector('.toast-message');
             const title = titleEl ? titleEl.textContent.trim() : '';
             if (LATENCY_TOAST.test(title)) continue;
+            // a notification: toastManager's timer leaves it until the user dismisses it (WM
+            // notifications never close by themselves, Yukimi Nov 13)
+            t.dataset.wmNote = '1';
             const text = msgEl ? msgEl.textContent.replace(/\s+/g, ' ').trim() : '';
             const type = (t.className.match(/glass-toast-(\w+)/) || [])[1] || 'info';
             const key = `${type}\u0001${title}\u0001${text}`;
@@ -5502,6 +5512,14 @@
     }
 
     /** Preview URL for a gallery row, resolved the way the gallery's own tiles are (galleryView.js). */
+    /** A print's fit preview (<file stem>@fit.webp, made by the server on first request, #788). */
+    function fitPreviewUrl(item) {
+        const file = item && (item.original || item.filename || item.upscaled);
+        if (!file || typeof file !== 'string') return '';
+        const stem = file.split('/').pop().replace(/\.(png|jpe?g|webp)$/i, '');
+        return stem ? `/previews/${encodeURIComponent(`${stem}@fit.webp`)}` : '';
+    }
+
     function previewUrl(item) {
         try {
             if (typeof resolveGalleryPreviewUrl === 'function') {
@@ -6201,7 +6219,10 @@
                 for (const item of part) {
                     const name = nameOf(item);
                     const sel = name === selectedName ? ' is-selected' : '';
-                    html += `<button type="button" class="wm-pv-cell wm-photo${sel}" data-filename="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(previewUrl(item))}" alt="" loading="lazy" decoding="async" draggable="false"></button>`;
+                    // the print in its own proportions (@fit.webp, #788), the square preview if there is none
+                    const square = previewUrl(item);
+                    const fit = fitPreviewUrl(item) || square;
+                    html += `<button type="button" class="wm-pv-cell wm-photo${sel}" data-filename="${escapeHtml(name)}" aria-label="${escapeHtml(name)}"><img src="${escapeHtml(fit)}"${fit !== square && square ? ` data-fallback="${escapeHtml(square)}"` : ''} alt="" loading="lazy" decoding="async" draggable="false"></button>`;
                 }
                 return `${html}</div>`;
             };
@@ -6650,6 +6671,11 @@
                     else if (b.dataset.act === 'index') { if (!phoneOn()) open('pv-vindex'); }
                     else stepSize(page, b.dataset.act === 'larger' ? 1 : -1);
                 });
+                // a print without a fit preview (the server could not make one): its square preview
+                page.querySelector('.wm-pv-grid').addEventListener('error', (e) => {
+                    const img = e.target;
+                    if (img && img.tagName === 'IMG' && img.dataset.fallback) { const f = img.dataset.fallback; delete img.dataset.fallback; img.src = f; }
+                }, true);
                 page.querySelector('.wm-pv-grid').addEventListener('click', (e) => {
                     const cell = e.target.closest('.wm-pv-cell');
                     if (!cell) return;
@@ -7694,6 +7720,8 @@
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
         /** "The Domain Controller is unreachable." Retry / Abort box: resolves 'retry' | 'abort'. */
         domainUnreachable: () => domainUnreachable(),
+        /** The "Domain Controller is not ready" notification (closes itself on reconnect). */
+        dcNotice: () => dcNotice(),
         /** A request now is the user's own command: a tap on a program (not the title bar or a bubble) in the last 700 ms. */
         tapCommand: () => tapRecent() && !lastTapChrome,
         /** A WM notification: notify({ title, text, icon: 'info' | 'warning' | 'error' | 'success', timeout, buttons }). */
