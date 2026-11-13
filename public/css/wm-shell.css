@@ -3929,3 +3929,27 @@ html.ui-mobile .context-menu-item-subtext[data-accel] {
     width: 100%;
     background: transparent;
 }
+
+/* ---- Continuity (Yozora #798): the phone's screen is off (DSApp sets html[data-screen-off] before it
+ * stops drawing the WebView). Yukimi: disable all animation and cover the view so nothing renders or
+ * wastes CPU. Every CSS animation and transition stands still, the page's content is hidden (nothing to
+ * paint) under one black sheet; the socket, the Continuity bus and audio keep running. ---- */
+html[data-screen-off] *,
+html[data-screen-off] *::before,
+html[data-screen-off] *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+}
+
+html[data-screen-off] body > * {
+    visibility: hidden !important;
+}
+
+html[data-screen-off] body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    background: #000;
+    pointer-events: none;
+}
