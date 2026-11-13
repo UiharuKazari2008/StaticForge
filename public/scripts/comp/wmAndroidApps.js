@@ -312,7 +312,9 @@
     }
 
     function rerenderLive() {
-        if (pageShown() && job.live.api) job.live.api.rerender();
+        // never under the user's typing (Custom's text box): the next poll redraws
+        const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest('.wm-pi-direction');
+        if (pageShown() && job.live.api && !typing) job.live.api.rerender();
     }
 
     function setJob(id, data) {
@@ -433,6 +435,47 @@
             });
         }
 
+        /**
+         * Custom: one program, a Style and what the icon should be, in the user's words (Yukimi,
+         * Nov 12: "Apple Music: not the black and white icon, an iTunes-like one"). The server
+         * follows the direction even where it conflicts with the program's own art.
+         */
+        function renderCustom(el, d, pageApi) {
+            if (!d.customSel && d.sel.size === 1) d.customSel = [...d.sel][0];
+            const rows = d.list.map((a) => {
+                const ic = iconOf(a);
+                return { key: a.id, label: a.label, selected: a.id === d.customSel, img: sh.art.isSet && sh.art.isSet(ic) ? `${ic}.png` : ic };
+            });
+            el.innerHTML = `<p>Choose one program and a Style, then describe the icon you want.</p>
+                ${ui.listbox(rows, { maxHeight: 120 }).replace('class="wm-listbox"', 'class="wm-listbox wm-pi-custom-list"')}
+                ${styleHtml('pi-custom-style', d.customMode)}
+                <textarea class="wm-edit wm-pi-direction" rows="4" maxlength="600" placeholder="For example: not the black and white icon, an iTunes-like one">${esc(d.customText || '')}</textarea>
+                ${ui.buttons([['custom-request', job.id ? 'Request (busy)' : 'Request', true]])}`;
+            const btn = el.querySelector('[data-act="custom-request"]');
+            const sync = () => { btn.disabled = !!job.id || !d.customSel || !String(d.customText || '').trim(); };
+            ui.bindListbox(el.querySelector('.wm-pi-custom-list'), (key) => { d.customSel = key; sync(); });
+            bindStyle(el, 'pi-custom-style', (v) => { d.customMode = v; });
+            el.querySelector('.wm-pi-direction').addEventListener('input', (e) => { d.customText = e.target.value; sync(); });
+            sync();
+            btn.addEventListener('click', async () => {
+                const a = d.list.find((x) => x.id === d.customSel);
+                const text = String(d.customText || '').trim();
+                if (!a || !text || job.id) return;
+                try {
+                    const item = await sh.busy(async () => ({ id: a.id, label: a.label, category: a.category || null, game: a.game === true, direction: text, icon: await iconData(a), themed: d.themed && a.themed === true ? await iconData(a, true) : null }), { paint: true, timeout: 30000 });
+                    const j = await sh.busy(() => api('/jobs', { method: 'POST', body: { mode: d.customMode, items: [item] } }), { paint: true, timeout: 60000 });
+                    setJob(j.job.id, j.job);
+                    job.lastState = 'working';
+                    d.customText = '';
+                    poll(false);
+                    await sh.messageBox({ title: 'Program Icons', icon: 'info', text: `The server is making ${a.label}'s icon. You can close Program Icons: Melaton Mobile tells you when it is ready.` });
+                    if (d.goTab) d.goTab('pi-results');
+                } catch (err) {
+                    void sh.messageBox({ title: 'Program Icons', icon: 'error', text: `The icon could not be requested. ${err.message}` });
+                }
+            });
+        }
+
         function renderResults(el, d, pageApi) {
             const jd = job.id ? job.data : null;
             if (!jd) {
@@ -452,7 +495,7 @@
                 return `<div class="wm-listbox-row wm-pi-row">
                     <label class="wm-check wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}><span></span>` : '<span class="wm-pi-nobox"></span>'}
                     <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
-                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : `${STATE_TEXT[it.state] || it.state}, ${MODE_LABEL[it.mode] || 'Detailed'}${it.note ? `. ${it.note}` : ''}`)}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
+                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : `${STATE_TEXT[it.state] || it.state}, ${MODE_LABEL[it.mode] || 'Detailed'}${it.direction ? ', custom' : ''}${it.note ? `. ${it.note}` : ''}`)}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
             }).join('');
             el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again in the Style below, then tap Done or Regenerate.'}</p>
                 <div class="wm-listbox wm-pi-list" style="max-height:calc(230 * var(--wm-px))">${rows}</div>
@@ -514,11 +557,11 @@
 
         ws.registerPage({
             id: PAGE_ID, tab: 'personal', label: 'Program Icons', icon: 'app-program-icons',
-            tabs: [['pi-programs', 'Programs'], ['pi-results', 'Results']],
+            tabs: [['pi-programs', 'Programs'], ['pi-custom', 'Custom'], ['pi-results', 'Results']],
             init() {
                 const hidden = readSet(HIDDEN_KEY);
                 const list = read().filter((a) => a.role !== 'settings' && !ROLES[a.role] && !hidden.has(a.id)).sort((x, y) => coll.compare(x.label, y.label));
-                const d = { list, sel: new Set(), keep: new Set(), mode: readMode(), regenMode: readMode(), themed: readThemed() };
+                const d = { list, sel: new Set(), keep: new Set(), mode: readMode(), regenMode: readMode(), themed: readThemed(), customSel: null, customMode: readMode(), customText: '' };
                 // a batch another phone started (or one this phone forgot): the newest open one
                 if (!job.id) {
                     api('/jobs').then((j) => {
@@ -536,6 +579,7 @@
                 // the Request button moves to Results: the Settings host opens the page there
                 d.goTab = (t) => { if (window.wmSettings) window.wmSettings.open(PAGE_ID, t); };
                 if (tab === 'pi-results') renderResults(el, d, pageApi);
+                else if (tab === 'pi-custom') renderCustom(el, d, pageApi);
                 else renderPrograms(el, d, pageApi);
             },
             commit() { return []; }

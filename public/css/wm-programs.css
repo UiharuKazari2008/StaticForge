@@ -1005,3 +1005,12 @@ html.ui-mobile #wmShell .wm-edit {
     gap: calc(10 * var(--wm-px));
     margin: calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
 }
+
+/* Program Icons > Custom: what the icon should be, a WM multi-line edit box */
+textarea.wm-edit.wm-pi-direction {
+    height: calc(58 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    margin-bottom: calc(4 * var(--wm-px));
+    resize: none;
+    line-height: calc(13 * var(--wm-px));
+}

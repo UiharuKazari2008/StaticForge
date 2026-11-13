@@ -214,21 +214,43 @@ const MODES = ['simple', 'detailed'];
 const normMode = (m) => (MODES.includes(m) ? m : 'detailed');
 const SIMPLE_TAKE = 'Simple mode: one bold mark only, built from two or three big shapes with two tones each, like Windows Mobile\'s own program icons. Build it from the app\'s real mark as the references show it (its themed one-colour icon and/or its official logo): keep that exact shape, proportions and letterforms, in the brand\'s colours; never invent a different emblem or letter. The icon is square and must read at 16 pixels, so never copy a whole wordmark: if the logo has an emblem (a halo, a star, a crest, a symbol over a letter), that emblem alone becomes the icon, with at most the one letter it sits on; if it is lettering only, use its main word when it is short (six letters or fewer), else its initial, in the logo\'s own letterforms. No faces or figures, no scene, nothing small.';
 
+// Windows Mobile 6's own program icons, attached as style references to every request (Yukimi,
+// Nov 12: the results were too glossy next to the OS icons). Plain objects, no logos to copy.
+const STYLE_REFS = [
+    { file: 'app-calendar-lg@4x.png', label: 'Calendar' },
+    { file: 'app-messaging-lg@4x.png', label: 'Messaging' },
+    { file: 'app-tasks-lg@4x.png', label: 'Tasks' }
+];
+let styleBuffers = null;
+async function styleRefs() {
+    if (styleBuffers) return styleBuffers;
+    const out = [];
+    for (const r of STYLE_REFS) {
+        try {
+            // on white: the model reads a transparent reference's edges as dark fringes
+            out.push(await sharp(path.join(projectRoot, 'public', 'static_images', 'wm61', r.file)).resize(256, 256, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+                .flatten({ background: '#ffffff' }).png().toBuffer());
+        } catch (_) { /* fewer references */ }
+    }
+    styleBuffers = out;
+    return out;
+}
+
 // a regeneration asks for another way to turn the brand into a WM object
 const TAKES = [
-    'Turn the brand mark itself into a solid, glossy object: a thick moulded plastic or glass emblem with a rounded bevel, a bright gloss band across its top half and a darker rim, standing free with no plate behind it.',
+    'Turn the brand mark itself into a solid object with a little depth: a thick emblem with a slight bevel and a soft light top edge, standing free with no plate behind it.',
     'Show the job the program does as a physical object of the era (a handset, an envelope, a camera, a speaker, a globe, a notepad, a disc, a game pad, a map, a chat bubble...) in the brand\'s own colours, with the brand mark set into it or overlapping its lower right like a WM badge.',
-    'Combine the two: the brand mark as a glossy emblem in front, with a small object that says what the program does tucked behind or beside it, the way Windows Mobile icons layer a main shape and an accessory.',
-    'Treat the mark as a glossy orb or pebble (like the era\'s Windows Media and Messenger orbs) carrying the brand symbol embossed in its face, the brand colours deep and saturated, a crisp white highlight crescent on top.'
+    'Combine the two: the brand mark as an emblem in front, with a small object that says what the program does tucked behind or beside it, the way Windows Mobile icons layer a main shape and an accessory.',
+    'Set the brand symbol on a simple rounded token or disc seen slightly from the front, in the brand colours, with one soft gradient and a light top edge (not a glass orb).'
 ];
 
 // a game's store icon is usually a painted scene: the icon is its few signature objects, rebuilt
-const GAME_TAKE = 'This is a game whose store icon is a painted illustration. If its icon is a character, draw that character as a free-standing head-and-shoulders figure whose hair and shoulders end in their own outline (never cut off by a straight or rounded edge), like the era\'s Messenger buddy figures. Otherwise pick its one to three signature objects or characters (for example the three candies of a candy game, the bird of a bird game) and draw each again as a clean, chunky object in the Windows Mobile style (few flat tones, stepped shading), grouped tightly and overlapping a little, like a 2009 Windows Mobile game icon (Bubble Breaker, Solitaire). Simplify their shapes and surface detail so each reads at 16 pixels; drop the scene, sparkles and background.';
+const GAME_TAKE = 'This is a game whose store icon is a painted illustration. If its icon is a character, draw that character as a free-standing head-and-shoulders figure whose hair and shoulders end in their own outline (never cut off by a straight or rounded edge), like the era\'s Messenger buddy figures. Otherwise pick its one to three signature objects or characters (for example the three candies of a candy game, the bird of a bird game) and draw each again as a clean, chunky object in the Windows Mobile style (few flat tones, soft stepped shading), grouped tightly and overlapping a little, like a 2009 Windows Mobile game icon (Bubble Breaker, Solitaire). Simplify their shapes and surface detail so each reads at 16 pixels; drop the scene, sparkles and background.';
 
-function buildPrompt(item, ctx, attempt, refs, brief) {
+function buildPrompt(item, ctx, attempt, refs, brief, styleCount = 0) {
     const name = collapse(item.label) || collapse(ctx && ctx.title) || item.package;
     const lines = [
-        `Redraw the icon of the Android app "${name}"${ctx && ctx.developer ? ` by ${ctx.developer}` : ''} as the program icon it would have had if it had shipped on a 2009 Windows Mobile 6.5 Professional phone, in Microsoft's own icon style of that time (the glossy Windows Vista / Windows Mobile 6 generation).`,
+        `Redraw the icon of the Android app "${name}"${ctx && ctx.developer ? ` by ${ctx.developer}` : ''} as the program icon it would have had if it had shipped on a 2009 Windows Mobile 6.5 Professional phone, in Microsoft's own icon style of that time (Windows Mobile 6's program icons: Calendar, Messaging, Tasks).`,
         'Context about the app, to keep its purpose clear:',
         `- Name: ${name}${ctx && ctx.title && collapse(ctx.title) !== name ? ` (store title: ${collapse(ctx.title)})` : ''}`
     ];
@@ -240,21 +262,26 @@ function buildPrompt(item, ctx, attempt, refs, brief) {
         'Keep the brand: the same signature colours, the same mark or symbol and its silhouette, so anyone who knows the app recognises it at a glance. Keep what the program is for.',
         'Redraw, never cut out: build the icon again from scratch in the style below. Do not trace, crop or remove the background from the reference and keep its painting; a result that looks like the reference with its tile removed is wrong.',
         'Leave out everything that is not the app\'s own mark: publisher or developer logos and wordmarks (a studio\'s name in a corner, a "King" or "Google" badge), corner ribbons, "new" or "beta" tags, store badges.',
-        'But make it a real 2009 Windows Mobile icon, not the modern icon with a gloss filter:',
+        'But make it a real 2009 Windows Mobile icon, not the modern icon with a filter on it:',
         '- No modern app-icon plate: no flat rounded-square or circle tile behind the mark, no Material Design long shadows, no flat vector look, no 2020s gradients. Windows Mobile icons are free-standing objects on a transparent background.',
         '- Nothing is cropped or masked into a shape: no rounded corners, no rounded-square, circle or badge outline cutting the picture, no vignette. Rounded app-icon shapes did not exist in 2009. Every object ends in its own silhouette.',
-        '- Light and colour the way the era\'s icons were drawn (Yukimi: limited colour, staggered shading): a slight three-quarter turn or front-on view, light from the upper left, each surface in a small palette of three or four tones of its colour laid down as distinct steps or bands (a light top, a mid tone, a darker lower edge), not smooth airbrushed or painterly shading, no soft ambient occlusion, no detailed rendering of hair strands, skin or fabric. One crisp white gloss highlight on rounded parts. Every shape outlined thinly in a darker shade of its own colour (never black).',
-        '- Built from a few big, simple shapes that stay readable at 32 and 16 pixels; no fine texture, hairlines or small text.',
+        '- Flatter than you would expect, but not flat (Yukimi: the OS icons are flatter, lower complexity, limited colour, staggered shading): a slight three-quarter turn or front-on view, light from the upper left, each surface in two or three tones of its colour as broad soft steps (a lighter top, a mid tone, a slightly darker lower edge). Little shine: at most a faint light band or edge on the top of rounded parts; no wet or glassy gloss, no bright specular streaks, no glass orbs or bubbles, no chrome, no 3D render look, no ambient occlusion, no detailed rendering of hair strands, skin or fabric. Every shape outlined thinly in a darker shade of its own colour (never black).',
+        '- Low complexity: a few big, simple shapes that stay readable at 32 and 16 pixels; no fine texture, hairlines or small text.',
         `- ${normMode(item.mode) === 'simple' ? SIMPLE_TAKE : (item.game || /game/i.test(cat)) && (Number(attempt) || 1) === 1 ? GAME_TAKE : TAKES[(Math.max(1, Number(attempt) || 1) - 1) % TAKES.length]}`,
-        '- Lettering only where the brand mark itself is a letter or a short word; then keep it as a bold glossy shape. No other text.',
+        '- Lettering only where the brand mark itself is a letter or a short word; then keep it as a bold simple shape. No other text.',
         '',
         'The object fills the square canvas almost edge to edge, centred, about 94% of the canvas on its longest side.',
         'Transparent background: no floor, plate, backdrop, drop shadow, contact shadow, reflection or glow. Clean anti-aliased edge with no fringe or halo. Keep surfaces off pure white so highlights stay visible.'
     );
     if (brief) lines.push(`The signature objects to model (from the store icon; nothing else of it): ${brief}`);
     if (refs.length) {
-        lines.push(`Reference images attached in order: ${refs.join('; ')}. Use them for the brand mark, its shape and colours only; do not copy their plate, framing or flat rendering.`);
+        lines.push(`Reference images attached first, in order: ${refs.join('; ')}. Use them for the brand mark, its shape and colours only; do not copy their plate, framing or flat rendering.`);
     }
+    if (styleCount) {
+        lines.push(`The last ${styleCount} attached images are Windows Mobile 6's own program icons (${STYLE_REFS.slice(0, styleCount).map((r) => r.label).join(', ')}): style references only. Match their amount of shading, shine, outline and detail exactly; do not copy their subjects, shapes or colours.`);
+    }
+    const direction = collapse(item.direction);
+    if (direction) lines.push(`Required direction from the user for this icon; follow it even when it conflicts with anything above or with the references: ${direction}`);
     if (attempt > 1) lines.push(`This is attempt ${attempt}: the earlier ones were not kept. Make a clearly different design from the obvious one, still faithful to the brand.`);
     return lines.join('\n');
 }
@@ -485,6 +512,7 @@ function publicJob(job) {
             attempt: it.attempt,
             mode: normMode(it.mode),
             note: it.note || null,
+            direction: it.direction || null,
             preview: it.preview ? Object.fromEntries(PREVIEW_SIZES.map((s) => [s, `/api/wm-program-icons/jobs/${job.id}/files/${it.preview}-${s}.png`])) : null,
             original: it.hasRef ? `/api/wm-program-icons/jobs/${job.id}/files/${it.key}-ref.png` : null,
             store: it.store || null
@@ -576,8 +604,9 @@ async function runItem(job, item) {
             if (item.briefs.detailed === undefined) item.briefs.detailed = await describeIcon(item.label, refs.slice().reverse(), 'detailed');
             brief = item.briefs.detailed;
         }
-        const prompt = buildPrompt({ ...item, mode }, ctx, item.attempt, brief ? [] : useNames, brief);
-        const master = await requestIcon(route, prompt, brief ? [] : useRefs);
+        const style = settings().styleRefs === false ? [] : await styleRefs();
+        const prompt = buildPrompt({ ...item, mode }, ctx, item.attempt, brief ? [] : useNames, brief, style.length);
+        const master = await requestIcon(route, prompt, (brief ? [] : useRefs).concat(style));
         const base = `${item.key}-${item.attempt}`;
         atomicWrite(path.join(dir, `${base}.png`), master);
         const square = await wmIconGenerator.squareFromCrop(master, await wmIconGenerator.autoCrop(master));
@@ -618,6 +647,8 @@ async function createJob(body) {
             category: collapse(raw.category).slice(0, 32) || null,
             game: raw.game === true,
             mode: normMode(raw.mode || (body && body.mode)),
+            // a custom request: what the user wants this icon to be (kept for Regenerate)
+            direction: collapse(raw.direction).slice(0, 600) || null,
             attempt: 0,
             hasRef: false
         };
