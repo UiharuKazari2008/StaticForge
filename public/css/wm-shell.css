@@ -92,6 +92,13 @@ html.ui-mobile:not([data-wm-app="today"]) body > .page-background {
     display: none !important;
 }
 
+/* Windows Mobile draws the Today background at once: the desktop's 3 s fade of the wallpaper
+ * layer (opacity and colour, from nothing as a page starts) made Today fade in from white after
+ * every (re)start (Yukimi, Nov 12) */
+html.ui-mobile body > .page-background {
+    transition: none !important;
+}
+
 /* the body stays see-through: .page-background (z-index -2) paints under it, html is black */
 /* the desktop's body::after vignette (and its darker editor-open state, set by windows that stay
  * hidden on a phone) never paints into the shell */
