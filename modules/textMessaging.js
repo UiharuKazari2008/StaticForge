@@ -412,6 +412,61 @@ async function sendAttachment(accountId, args) {
 
 /** RCS: a QR code for Google Messages > Device pairing ('pairing' events follow: { qr } then { paired }). */
 async function pair(accountId) { return provider(accountId).pair(); }
+/**
+ * The Google sign-in for RCS pairing, taken from Alchemy (Dreamscape's server browser, its own
+ * profile, CDP on 127.0.0.1 ALCHEMY_CDP_PORT, default 9339) when the owner presses Continue on the
+ * RCS card after signing in at messages.google.com there. Only the cookies the pairing needs leave
+ * Alchemy, straight to the bridge; nothing is logged or stored here (the bridge keeps its session).
+ */
+const GOOGLE_COOKIES = ['SID', 'HSID', 'SSID', 'APISID', 'SAPISID', 'OSID', '__Secure-1PSIDTS', '__Secure-1PSID', '__Secure-3PSID', '__Secure-1PAPISID', '__Secure-3PAPISID', 'NID'];
+function alchemyGoogleCookies() {
+    const port = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9339) || 0);
+    if (!port) return Promise.reject(Object.assign(new Error('Alchemy has no debugging port.'), { code: 'NO_ALCHEMY' }));
+    const http = require('http');
+    const WebSocket = require('ws');
+    return new Promise((resolve, reject) => {
+        const req = http.get({ host: '127.0.0.1', port, path: '/json/version', timeout: 5000 }, (res) => {
+            let body = '';
+            res.on('data', (c) => { body += c; });
+            res.on('end', () => {
+                let url;
+                try { url = JSON.parse(body).webSocketDebuggerUrl; } catch (_) { url = null; }
+                if (!url) { reject(Object.assign(new Error('Alchemy is not running.'), { code: 'NO_ALCHEMY' })); return; }
+                const ws = new WebSocket(url, { perMessageDeflate: false });
+                const timer = setTimeout(() => { try { ws.terminate(); } catch (_) { /* gone */ } reject(Object.assign(new Error('Alchemy did not answer.'), { code: 'NO_ALCHEMY' })); }, 8000);
+                ws.on('open', () => ws.send(JSON.stringify({ id: 1, method: 'Storage.getCookies' })));
+                ws.on('error', (e) => { clearTimeout(timer); reject(Object.assign(new Error(`Alchemy: ${e.message}`), { code: 'NO_ALCHEMY' })); });
+                ws.on('message', (raw) => {
+                    let m;
+                    try { m = JSON.parse(raw); } catch (_) { return; }
+                    if (m.id !== 1) return;
+                    clearTimeout(timer);
+                    try { ws.close(); } catch (_) { /* gone */ }
+                    const out = {};
+                    for (const c of (m.result && m.result.cookies) || []) {
+                        const d = String(c.domain || '');
+                        if (!GOOGLE_COOKIES.includes(c.name)) continue;
+                        if (c.name === 'OSID' ? !/messages\.google\.com$/.test(d) : d !== '.google.com') continue;
+                        out[c.name] = c.value;
+                    }
+                    resolve(out);
+                });
+            });
+        });
+        req.on('timeout', () => req.destroy(new Error('timeout')));
+        req.on('error', () => reject(Object.assign(new Error('Alchemy is not running.'), { code: 'NO_ALCHEMY' })));
+    });
+}
+
+/** RCS by Google account: the sign-in from Alchemy, then { emoji } to tap on the phone. */
+async function pairGoogle(accountId) {
+    const p = provider(accountId);
+    if (typeof p.pairGoogle !== 'function') throw Object.assign(new Error('Not an RCS account.'), { code: 'BAD_KIND' });
+    const cookies = await alchemyGoogleCookies();
+    if (!cookies.SID || !cookies.SAPISID) throw Object.assign(new Error('Alchemy is not signed in to Google. Sign in at messages.google.com in Alchemy first.'), { code: 'NOT_SIGNED_IN' });
+    return p.pairGoogle(cookies);
+}
+
 function pairingQr(accountId) { const p = providers.get(String(accountId || '')); return (p && p.qr) || ''; }
 async function refreshQr(accountId) { return provider(accountId).refreshQr(); }
 async function unpair(accountId) { return provider(accountId).unpair(); }
@@ -441,5 +496,5 @@ function _reset() {
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, typing,
-    downloadAttachment, resolveName, handleKey, pair, refreshQr, unpair, pairingQr, _reset
+    downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, _reset
 };

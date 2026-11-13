@@ -16,6 +16,8 @@
  *   markRead(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
  *   testAccount / saveAccount / deleteAccount / saveSettings({ notifyUnknown })
  *   pairRcs(accountId) -> { qr }   (show the URL as a QR code; 'pairing' events: { qr } refreshed, { paired: true })
+ *   pairRcsGoogle(accountId) -> { emoji }  (Google account pairing: the sign-in is Alchemy's, signed in at
+ *       messages.google.com; 'pairing' events: { emoji, emojiSvg }, then { paired: true } or { error })
  *   refreshRcsQr(accountId) / unpairRcs(accountId)
  *   An RCS account is saveAccount({ kind: 'rcs' }) (one per server); status 'unpaired' until paired.
  *   messages() pages back with { before: page.cursor } (opaque: a date for iMessage, a cursor for RCS).
@@ -195,11 +197,12 @@
 
     const pairRcs = (accountId) => call('tm_rcs_pair', { accountId });
     const refreshRcsQr = (accountId) => call('tm_rcs_refresh_qr', { accountId });
+    const pairRcsGoogle = (accountId) => call('tm_rcs_pair_google', { accountId });
     const unpairRcs = (accountId) => call('tm_rcs_unpair', { accountId }).then((d) => { cache = null; return d; });
 
     root.textMessaging = {
         accounts, summary, unread, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, refreshRcsQr,
+        markRead, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };
     // A tapped Android notification (the app's TextMessageNotifier, #779): open that conversation in

@@ -457,6 +457,19 @@
     gap: 6px;
 }
 
+/* Google account pairing: the emoji to tap on the phone (#779) */
+#dreamscapeCardSpaceModal .cpl-tm-emoji {
+    width: 112px;
+    height: 112px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 72px;
+    line-height: 1;
+    background: #fff;
+    border: 1px solid #a0a0a0;
+}
+
 #dreamscapeCardSpaceModal .cpl-tm-qr {
     width: 200px;
     height: 200px;

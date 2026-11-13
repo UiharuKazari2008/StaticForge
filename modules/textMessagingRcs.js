@@ -174,7 +174,18 @@ class RcsProvider {
                 break;
             case 'paired':
                 this.qr = '';
+                this.emoji = '';
                 this.emit('pairing', { paired: true });
+                break;
+            case 'emoji':
+                // Google account pairing: the phone asks to tap this emoji
+                this.emoji = (d && d.emoji) || '';
+                this.emit('pairing', { emoji: this.emoji, emojiSvg: (d && d.svg) || '' });
+                break;
+            case 'pair_failed':
+                this.emoji = '';
+                this.setStatus('unpaired', (d && d.error) || 'Pairing failed.');
+                this.emit('pairing', { error: (d && d.error) || 'Pairing failed.' });
                 break;
             case 'logged_out':
                 this.loggedIn = false;
@@ -440,6 +451,21 @@ class RcsProvider {
         this.qr = (res && res.qr) || '';
         this.setStatus('pairing', '');
         return { qr: this.qr };
+    }
+
+    /** Google account pairing with a signed-in session's cookies: -> { emoji } to tap on the phone. */
+    async pairGoogle(cookies) {
+        let res;
+        try {
+            res = await this.call('loginGoogle', { cookies }, 120000);
+        } catch (error) {
+            const m = /^(BAD_COOKIES|NO_DEVICES|PHONE_TIMEOUT): (.*)$/.exec(error.message || '');
+            if (m) throw Object.assign(new Error(m[2]), { code: m[1] });
+            throw error;
+        }
+        this.emoji = (res && res.emoji) || '';
+        this.setStatus('pairing', '');
+        return { emoji: this.emoji };
     }
 
     async refreshQr() { const res = await this.call('refreshQr', {}); this.qr = (res && res.qr) || ''; return { qr: this.qr }; }

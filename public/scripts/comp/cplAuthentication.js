@@ -779,6 +779,9 @@
 
     const TM_PICTURE = '/static_images/app_icons/melaton-messenger.png';
     const TM_PAIR_HINT = 'On your phone, open Google Messages, tap your profile picture > Device pairing > QR code scanner, and scan this code.';
+    const TM_GOOGLE_URL = 'https://messages.google.com/web/authentication';
+    const TM_GOOGLE_STEPS = 'Alchemy opens at Google Messages for web. Sign in there with the Google account your phone uses, then press Continue.';
+    const TM_EMOJI_HINT = 'Your phone shows "Is this you?". In Google Messages, tap the emoji that matches this one.';
     const TM_RCS_NOTE = 'Keep Google Messages as your default messaging app. Turn off its notifications: Dreamscape sends them now.';
     const TM_STATE = {
         connected: ['ok', 'Connected'], error: ['fail', 'Error'], disabled: ['unchecked', 'Turned off'],
@@ -909,6 +912,42 @@
             customField('Status', tmText(ui.paired ? 'Paired' : status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
             customField('Enabled', enabled.wrap)
         );
+        if (ui.google && !paired) {
+            // Google account pairing (Google Messages without a QR scanner): sign in inside Alchemy,
+            // Continue takes that sign-in, the phone asks for the emoji shown here
+            const box = document.createElement('div');
+            box.className = 'cpl-tm-pair';
+            if (ui.emoji) {
+                const big = document.createElement('div');
+                big.className = 'cpl-tm-emoji';
+                if (ui.emojiSvg) {
+                    const img = document.createElement('img');
+                    img.src = ui.emojiSvg;
+                    img.alt = ui.emoji;
+                    img.width = 96;
+                    img.height = 96;
+                    big.appendChild(img);
+                } else {
+                    big.textContent = ui.emoji;
+                }
+                box.append(big, tmText(TM_EMOJI_HINT, 'cpl-tm-hint'));
+            } else {
+                box.append(tmText(TM_GOOGLE_STEPS, 'cpl-tm-hint'),
+                    tmButton('Open Alchemy', async () => { if (typeof root.openGrimoireUrl === 'function') await root.openGrimoireUrl(TM_GOOGLE_URL); }),
+                    tmButton('Continue', async () => {
+                        ui.error = '';
+                        try {
+                            const res = await tmApi().pairRcsGoogle(row.id);
+                            ui.emoji = (res && res.emoji) || ui.emoji;
+                        } catch (err) {
+                            ui.error = (err && err.message) || 'Pairing could not start.';
+                        }
+                        paintTextMessaging();
+                    }));
+            }
+            if (ui.error) box.append(tmText(ui.error, 'cpl-tm-error'));
+            details.append(customField('Pairing', box));
+        }
         if (ui.qr && !paired) {
             const box = document.createElement('div');
             box.className = 'cpl-tm-pair';
@@ -925,9 +964,19 @@
         }
         details.append(customField('Note', tmText(TM_RCS_NOTE, 'cpl-tm-hint')));
         if (!paired) {
-            actions.append(tmButton(ui.qr ? 'Pair again' : 'Pair', async () => {
+            actions.append(tmButton('Pair with Google account', async () => {
+                ui.google = true;
+                ui.qr = false;
+                ui.emoji = '';
+                ui.error = '';
+                ui.paired = false;
+                if (typeof root.openGrimoireUrl === 'function') void root.openGrimoireUrl(TM_GOOGLE_URL).catch(() => {});
+                paintTextMessaging();
+            }));
+            actions.append(tmButton(ui.qr ? 'New QR code' : 'Pair with QR code', async () => {
                 const res = await tmApi().pairRcs(row.id);
                 ui.qr = true;
+                ui.google = false;
                 ui.qrAt = Date.now();
                 ui.paired = false;
                 void res;
@@ -1035,7 +1084,9 @@
     function tmOnPairing(d) {
         if (!d || !d.accountId) return;
         const ui = tmUiOf(d.accountId);
-        if (d.paired) { ui.paired = true; ui.qr = false; void loadTextMessaging(true); return; }
+        if (d.paired) { ui.paired = true; ui.qr = false; ui.google = false; ui.emoji = ''; void loadTextMessaging(true); return; }
+        if (d.emoji) { ui.google = true; ui.emoji = d.emoji; ui.emojiSvg = d.emojiSvg || ''; ui.error = ''; paintTextMessaging(); return; }
+        if (d.error) { ui.emoji = ''; ui.error = d.error; paintTextMessaging(); return; }
         if (d.qr) {
             ui.qr = true;
             ui.qrAt = Date.now();

@@ -243,6 +243,71 @@ func handle(ctx context.Context, r request) (any, error) {
 		}
 		event("qr", map[string]any{"url": url})
 		return map[string]any{"qr": url}, nil
+	case "loginGoogle":
+		// Google account pairing (Google Messages > Device pairing without a QR scanner): a signed-in
+		// Google session's cookies, then the phone asks to tap the emoji shown here
+		cookies := map[string]string{}
+		if m, ok := a["cookies"].(map[string]any); ok {
+			for k, v := range m {
+				if s, ok := v.(string); ok && s != "" {
+					cookies[k] = s
+				}
+			}
+		}
+		for _, need := range []string{"SID", "HSID", "SSID", "APISID", "SAPISID"} {
+			if cookies[need] == "" {
+				return nil, fmt.Errorf("BAD_COOKIES: the Google cookie %s is missing", need)
+			}
+		}
+		if cli != nil {
+			cli.Disconnect()
+		}
+		sess = libgm.NewAuthData()
+		sess.Cookies = cookies
+		newClient()
+		if err := cli.FetchConfig(ctx); err != nil {
+			return nil, fmt.Errorf("Google did not accept the sign-in: %w", err)
+		}
+		bg, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		emoji, ps, err := cli.StartGaiaPairing(ctx, bg)
+		if err != nil {
+			cancel()
+			switch {
+			case errors.Is(err, libgm.ErrNoDevicesFound):
+				return nil, errors.New("NO_DEVICES: Google Messages on your phone is not set up for this Google account")
+			case errors.Is(err, libgm.ErrPairingInitTimeout):
+				return nil, errors.New("PHONE_TIMEOUT: the phone did not answer; open Google Messages on it and try again")
+			}
+			return nil, err
+		}
+		event("emoji", map[string]any{"emoji": emoji, "svg": libgm.GetEmojiSVG(emoji)})
+		go func() {
+			defer cancel()
+			phone, err := cli.FinishGaiaPairing(bg, ps)
+			if err != nil {
+				msg := err.Error()
+				switch {
+				case errors.Is(err, libgm.ErrIncorrectEmoji):
+					msg = "The wrong emoji was tapped."
+				case errors.Is(err, libgm.ErrPairingCancelled):
+					msg = "Pairing was cancelled on the phone."
+				case errors.Is(err, libgm.ErrPairingTimeout):
+					msg = "The emoji was not tapped in time."
+				}
+				event("pair_failed", map[string]any{"error": msg})
+				return
+			}
+			phoneID = phone
+			saveSession()
+			event("paired", map[string]any{"phoneId": phone})
+			if err := cli.Reconnect(context.Background()); err != nil {
+				state(map[string]any{"error": err.Error()})
+				return
+			}
+			connected = true
+			state(nil)
+		}()
+		return map[string]any{"emoji": emoji}, nil
 	case "refreshQr":
 		if cli == nil {
 			return nil, errors.New("no login in progress")

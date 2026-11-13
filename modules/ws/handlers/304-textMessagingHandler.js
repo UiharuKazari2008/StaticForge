@@ -21,6 +21,7 @@ const textMessaging = require('../../textMessaging');
  *   tm_read     { accountId, chatGuid }
  *   tm_typing   { accountId, chatGuid, typing }
  *   tm_resolve  { accountId, address }                                    { name }
+ *   tm_rcs_pair_google { accountId } -> { emoji }  (sign-in from Alchemy; tap the emoji on the phone)
  *   tm_rcs_pair { accountId } -> { qr }   tm_rcs_refresh_qr { accountId }   tm_rcs_unpair { accountId }
  *               (RCS accounts: pairing events arrive as tm_event { event: 'pairing', qr | paired })
  *
@@ -71,6 +72,8 @@ function registerPackets(handlersCtx) {
     reg('tm_typing', async (d) => textMessaging.typing(d.accountId, d));
     // RCS (Google Messages pairing): a QR code for the phone, re-pair, end the pairing
     reg('tm_rcs_pair', async (d) => textMessaging.pair(String(d.accountId || '')));
+    // Google account pairing: the sign-in comes from Alchemy (the owner signed in at messages.google.com there)
+    reg('tm_rcs_pair_google', async (d) => textMessaging.pairGoogle(String(d.accountId || '')), { destructive: true });
     reg('tm_rcs_refresh_qr', async (d) => textMessaging.refreshQr(String(d.accountId || '')));
     reg('tm_rcs_unpair', async (d) => textMessaging.unpair(String(d.accountId || '')), { destructive: true });
     reg('tm_resolve', async (d) => ({ name: await textMessaging.resolveName(d.accountId, String(d.address || '')) }));
