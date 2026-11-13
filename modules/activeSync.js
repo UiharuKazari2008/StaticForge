@@ -240,6 +240,18 @@ function getDb(globalResources) {
             text TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS as_log_device ON as_log (device_id, id);
+        CREATE TABLE IF NOT EXISTS as_received (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            op TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            detail TEXT NOT NULL DEFAULT '{}',
+            from_name TEXT NOT NULL DEFAULT '',
+            created INTEGER NOT NULL,
+            seen INTEGER NOT NULL DEFAULT 0
+        );
+        CREATE INDEX IF NOT EXISTS as_received_device ON as_received (device_id, id);
     `);
     return db;
 }
@@ -594,6 +606,7 @@ async function call(globalResources, wsServer, clientInfo, data) {
         if (!target) throw fail('UNSUPPORTED', 'The device does not support this.');
         const res = await sendRequest(server, target, fromOf(clientInfo), op, args, timeoutMs);
         if (!res.ok) throw fail(res.error.code, res.error.message);
+        if (target.info.as.speaker === 'service') { try { noteReceived(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
         return { success: true, result: res.result };
     }
 
@@ -623,6 +636,7 @@ async function serverCall(globalResources, wsServer, deviceId, op, args, opts = 
     const timeoutMs = Math.min(opts.maxTimeoutMs || CALL_TIMEOUT_MAX_MS, Math.max(1000, Number(opts.timeoutMs) || CALL_TIMEOUT_MS));
     const res = await sendRequest(server, target, { kind: 'computer', id: '', name: clampString(opts.fromName, 64) || hostName() }, op, args, timeoutMs);
     if (!res.ok) throw fail(res.error.code, res.error.message);
+    if (target.info.as.speaker === 'service') { try { noteReceived(globalResources, server, deviceId, op, args, opts.fromName || hostName()); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
     return res.result;
 }
 
@@ -650,6 +664,67 @@ function isDeviceSession(globalResources, wsServer, deviceId, sessionId) {
 function devicePermits(globalResources, wsServer, deviceId, permission) {
     const sess = deviceSession(wsServerOf(globalResources, wsServer), deviceId);
     return !!(sess && sess.session !== 'pending' && sess.permissions.includes(permission));
+}
+
+// ---- Received Items (#803): what reached the phone while it was locked or away ----------------------
+// A delivery counts when it came out of the queue (the phone was disconnected) or was taken by the
+// app's background service (the page was not on screen: locked, screen off, another app in front).
+// The phone's status bar shows them and ActiveSync's Received Items tab lets the user act on each.
+const RECEIVED_MAX = 100;
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|heic|heif|bmp|avif)$/i;
+
+function receivedOf(op, args) {
+    const a = isPlainObject(args) ? args : {};
+    const base = (p) => String(p || '').split('/').filter(Boolean).pop() || '';
+    if (op === 'open.item' && a.kind === 'url' && a.url) return { kind: 'link', title: clampString(a.title || a.url, 200), detail: { url: clampString(a.url, 4000) } };
+    if (op === 'stream.receive') {
+        const name = clampString(a.name || 'file', 200);
+        const dir = String(a.dir || '/');
+        return { kind: IMAGE_EXT.test(name) ? 'picture' : 'file', title: name, detail: { root: clampString(a.root || '', 64), path: `${dir.replace(/\/+$/, '')}/${name}`, size: Number(a.size) || 0 } };
+    }
+    if (op === 'apps.install') return { kind: 'program', title: clampString(base(a.path) || 'Program', 200), detail: { root: clampString(a.root || '', 64), path: clampString(a.path || '', 1000) } };
+    if (op === 'clipboard.set') return { kind: 'clipboard', title: clampString(String(a.text || '').replace(/\s+/g, ' ') || 'Clipboard', 120), detail: { text: clampString(String(a.text || ''), 4000) } };
+    if (op === 'notify.show') return { kind: 'note', title: clampString(a.title || a.text || 'Notification', 200), detail: { text: clampString(String(a.text || ''), 2000) } };
+    if (op === 'studio.setSession') return { kind: 'studio', title: 'Studio session', detail: {} };
+    return null;
+}
+
+function noteReceived(globalResources, server, deviceId, op, args, fromName) {
+    const r = receivedOf(op, args);
+    if (!r) return;
+    const d = getDb(globalResources);
+    // an .apk sent to be installed: the program stands for the file it came in
+    if (r.kind === 'program' && r.detail.path) {
+        d.prepare("DELETE FROM as_received WHERE device_id = ? AND kind = 'file' AND json_extract(detail, '$.path') = ? AND created > ?").run(deviceId, r.detail.path, Date.now() - 10 * 60 * 1000);
+    }
+    d.prepare('INSERT INTO as_received (device_id, kind, op, title, detail, from_name, created) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(deviceId, r.kind, op, r.title, JSON.stringify(r.detail), clampString(fromName || '', 64), Date.now());
+    d.prepare('DELETE FROM as_received WHERE device_id = ? AND id NOT IN (SELECT id FROM as_received WHERE device_id = ? ORDER BY id DESC LIMIT ?)').run(deviceId, deviceId, RECEIVED_MAX);
+    notifyDevice(server, deviceId, 'received.changed', { unseen: receivedUnseen(globalResources, deviceId) });
+}
+
+function receivedUnseen(globalResources, deviceId) {
+    return getDb(globalResources).prepare('SELECT COUNT(*) AS n FROM as_received WHERE device_id = ? AND seen = 0').get(deviceId).n;
+}
+
+/** The device's received items, newest first. */
+function listReceived(globalResources, deviceId) {
+    if (!isPeerId(deviceId)) return [];
+    return getDb(globalResources).prepare('SELECT * FROM as_received WHERE device_id = ? ORDER BY id DESC').all(deviceId).map((r) => ({
+        id: r.id, kind: r.kind, op: r.op, title: r.title, detail: parseJson(r.detail, {}), from: r.from_name, at: r.created, seen: !!r.seen
+    }));
+}
+
+/** action: 'seen' (all), 'remove' (one id), 'clear' (all). */
+function updateReceived(globalResources, wsServer, deviceId, action, id) {
+    if (!isPeerId(deviceId)) throw fail('UNKNOWN_DEVICE', 'No such device.');
+    const d = getDb(globalResources);
+    if (action === 'seen') d.prepare('UPDATE as_received SET seen = 1 WHERE device_id = ?').run(deviceId);
+    else if (action === 'remove') d.prepare('DELETE FROM as_received WHERE device_id = ? AND id = ?').run(deviceId, Number(id) || 0);
+    else if (action === 'clear') d.prepare('DELETE FROM as_received WHERE device_id = ?').run(deviceId);
+    else throw fail('BAD_ACTION', 'action is seen, remove or clear');
+    notifyDevice(wsServerOf(globalResources, wsServer), deviceId, 'received.changed', { unseen: receivedUnseen(globalResources, deviceId) });
+    return { success: true };
 }
 
 // told when a queued item got its answer (ok or refused), so what it pointed at can be released
@@ -698,6 +773,7 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
         if (!res.ok && (res.error.code === 'TIMEOUT' || res.error.code === 'DISCONNECTED' || res.error.code === 'SEND_FAILED')) break;
         d.prepare('DELETE FROM as_queue WHERE id = ?').run(item.id);
         logEvent(globalResources, deviceId, res.ok ? 'info' : 'warning', res.ok ? `Delivered: ${item.op}` : `Refused by the device: ${item.op} (${res.error.message})`);
+        if (res.ok) { try { noteReceived(globalResources, server, deviceId, item.op, parseJson(item.args, {}), item.from_name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
         for (const fn of queueListeners) {
             try { fn({ deviceId, op: item.op, args: parseJson(item.args, {}), ok: res.ok }); } catch (err) { console.warn('[activeSync] queue listener failed:', err.message); }
         }
@@ -949,6 +1025,10 @@ module.exports = {
     call,
     serverCall,
     queueFor,
+    listReceived,
+    updateReceived,
+    receivedUnseen,
+    __test: { noteReceived, receivedOf },
     deviceOnline,
     isDeviceSession,
     devicePermits,

@@ -22,3 +22,61 @@ html.ui-mobile .wm-activesync { background: #fff; color: #000; overflow-y: auto;
 .wm-activesync .was-log li { padding: 3px 4px; border-bottom: 1px solid #c6c6c6; }
 .wm-activesync .was-log time { display: block; color: #555; font-size: .85em; }
 .wm-activesync .was-log li.is-warning { color: #7a4a00; }
+
+/* Received Items (#803): what reached the phone while it was locked or away. Rows as WM's list views:
+ * the icon, the name in bold, a grey line under it (kind, from, when); the selected row in the
+ * highlight colour; unseen ones keep a bold name after they are seen too (until the list is reopened) */
+.wm-activesync .was-rxlist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.wm-activesync .was-rx {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid var(--wm-rule, #ccc);
+}
+
+.wm-activesync .was-rx > img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    flex: 0 0 auto;
+}
+
+.wm-activesync .was-rx-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.wm-activesync .was-rx-text b,
+.wm-activesync .was-rx-text small {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-activesync .was-rx:not(.is-new) .was-rx-text b {
+    font-weight: normal;
+}
+
+.wm-activesync .was-rx-text small {
+    color: #666;
+    font-size: calc(9 * var(--wm-px));
+}
+
+.wm-activesync .was-rx.is-selected {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-activesync .was-rx.is-selected .was-rx-text small {
+    color: inherit;
+}
+
+.wm-activesync .was-rx-none {
+    padding: calc(4 * var(--wm-px));
+}

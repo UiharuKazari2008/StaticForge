@@ -15,6 +15,10 @@
  *   Options...         what the computer may do: one check box per permission; soft key Delete ends
  *                      the partnership (as ActiveSync's Options deletes a source)
  *   Status...          the server's log for this device, newest first
+ *   Received Items     (#803) what reached this phone while it was locked or away (links, files,
+ *                      pictures, programs to install, clipboard text, notifications), newest first;
+ *                      the selected one's action on the left soft key (Open / Install / View / Copy),
+ *                      Menu: Remove, Clear All. Opened from the title bar's ActiveSync icon too.
  *
  * Only inside the Dreamscape app (activeSync.kind === 'device') and only on phones.
  * Styles: public/css/wm-activesync.css.
@@ -42,6 +46,7 @@
     let view = 'main'; // 'main' | 'options' | 'status'
     let busy = 0;
     let logEntries = [];
+    let rxSel = 0;
     let activity = 0;     // requests being served: the picture turns while > 0
     let activityTimer = null;
 
@@ -121,6 +126,87 @@
         }
     }
 
+    // ---------------------------------------------------------------- Received Items (#803)
+    const RX = {
+        link: { icon: 'ie-page', word: 'Link', act: 'Open' },
+        file: { icon: 'fe-file', word: 'File', act: 'Open' },
+        picture: { icon: 'fe-file', word: 'Picture', act: 'View' },
+        program: { icon: 'app-programs', word: 'Program', act: 'Install' },
+        clipboard: { icon: 'msg-read', word: 'Clipboard', act: 'Copy' },
+        note: { icon: 'msgbox-info', word: 'Notification', act: 'View' },
+        studio: { icon: 'app-studio', word: 'Studio session', act: 'Open' }
+    };
+    const rxItems = () => (typeof as.receivedItems === 'function' ? as.receivedItems() : []);
+
+    function receivedHtml() {
+        const items = rxItems();
+        if (rxSel >= items.length) rxSel = Math.max(0, items.length - 1);
+        const row = (it, i) => {
+            const k = RX[it.kind] || RX.file;
+            const img = ws.art && ws.art.img ? ws.art.img(k.icon) : '';
+            return `<li class="was-rx${i === rxSel ? ' is-selected' : ''}${it.seen ? '' : ' is-new'}" data-i="${i}">${img}<span class="was-rx-text"><b>${esc(it.title)}</b><small>${esc(k.word)}${it.from ? ` from ${esc(it.from)}` : ''}, ${esc(when(it.at))}</small></span></li>`;
+        };
+        return `<div class="wm-form-hdr">Received Items</div>
+            <ul class="was-rxlist">${items.length ? items.map(row).join('') : '<li class="was-rx-none">Nothing was received while this device was away.</li>'}</ul>`;
+    }
+
+    function openReceived() {
+        ws.open(APP_ID);
+        view = 'received';
+        rxSel = 0;
+        render();
+        ws.syncHistory();
+        // seen once the list is on screen: the title bar's icon goes
+        if (typeof as.received === 'function' && as.receivedUnseen() > 0) as.received('seen').then(render, () => {});
+    }
+
+    async function actOn(it) {
+        if (!it) return;
+        const d = it.detail || {};
+        if (it.kind === 'link') {
+            const B = window.wmBrowser;
+            if (!(B && B.open(d.url))) await ws.messageBox({ title: 'ActiveSync', icon: 'warning', text: `This link cannot be opened here:\n${d.url || ''}` });
+            return;
+        }
+        if (it.kind === 'picture' || it.kind === 'file') {
+            const dir = String(d.path || '/').replace(/\/[^/]*$/, '') || '/';
+            if (it.kind === 'picture' && window.wmPhoneGallery && d.root) { ws.open('gallery'); void window.wmPhoneGallery.open(d.root, dir); return; }
+            const E = window.wmFileExplorer;
+            if (E && typeof E.openFolder === 'function') { E.openFolder(`phone://${d.root}${dir}`, dir.split('/').pop() || d.root); return; }
+            return;
+        }
+        if (it.kind === 'program') {
+            // the app opens Android's installer (or installs through Shizuku): the same way a push installs
+            const st = as.state();
+            await run(async () => {
+                const r = await fetch(`/api/activesync/install/${encodeURIComponent(st.id)}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ root: d.root, path: d.path }) });
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok || j.success === false) throw new Error(j.error || 'The program could not be installed.');
+            });
+            return;
+        }
+        if (it.kind === 'clipboard') {
+            try {
+                const copy = typeof window.copyTextToClipboard === 'function' ? window.copyTextToClipboard : null;
+                if (copy) await copy(d.text || ''); else await navigator.clipboard.writeText(d.text || '');
+                ws.notify({ title: 'ActiveSync', icon: 'info', text: 'Copied to the clipboard.', timeout: 3000 });
+            } catch (_) { await ws.messageBox({ title: 'ActiveSync', icon: 'warning', text: 'The clipboard could not be written.' }); }
+            return;
+        }
+        if (it.kind === 'note') { await ws.messageBox({ title: it.title || 'Notification', icon: 'info', text: d.text || it.title }); return; }
+        if (it.kind === 'studio') ws.open('studio');
+    }
+
+    async function removeReceived(all) {
+        const it = rxItems()[rxSel];
+        if (!all && !it) return;
+        if (all) {
+            const yes = await ws.messageBox({ title: 'ActiveSync', icon: 'question', modal: true, cancelValue: false, text: 'Remove every received item from the list?', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] });
+            if (yes !== true) return;
+        }
+        await run(() => as.received(all ? 'clear' : 'remove', all ? undefined : it.id));
+    }
+
     function statusHtml() {
         return `<div class="wm-form-hdr">Status</div>
             <ul class="was-log">${logEntries.length ? logEntries.map((e) => `<li class="is-${esc(e.level)}"><time>${esc(when(e.at))}</time>${esc(e.text)}</li>`).join('') : '<li>No activity yet.</li>'}</ul>`;
@@ -130,7 +216,7 @@
         if (!page) return;
         const st = as.state();
         if (view === 'options' && st.session !== 'partner') view = 'main';
-        const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'status' ? statusHtml() : mainHtml(st);
+        const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
         if (page.dataset.html !== html) {
             page.dataset.html = html;
             page.innerHTML = html;
@@ -196,6 +282,7 @@
             { label: 'Options...', action: () => { view = 'options'; render(); ws.syncHistory(); }, disabled: st.session !== 'partner' },
             { label: 'Phone Data...', action: () => { view = 'phonedata'; render(); ws.syncHistory(); }, disabled: !(phoneData() && phoneData().available()) },
             { label: 'Status...', action: showStatus, disabled: !st.online },
+            { label: `Received Items${as.receivedUnseen && as.receivedUnseen() ? ` (${as.receivedUnseen()})` : ''}...`, action: openReceived },
             '-',
             // activeSyncClipboard.js: to the computer this phone is connected to
             { label: 'Send Clipboard', action: () => { const c = window.activeSyncClipboard; const t = c && c.targets()[0]; if (t) void c.sendClipboard(t.id); }, disabled: !canSend(st) },
@@ -213,6 +300,15 @@
             mount(p) {
                 page = p;
                 p.classList.add('wm-activesync');
+                // Received Items: a tap selects, a tap on the selected one does its action
+                p.addEventListener('click', (e) => {
+                    const li = view === 'received' && e.target.closest('.was-rx[data-i]');
+                    if (!li) return;
+                    const i = Number(li.dataset.i);
+                    if (i === rxSel) { void actOn(rxItems()[i]); return; }
+                    rxSel = i;
+                    render();
+                });
             },
             show() { render(); },
             // Options is a form (ok saves); Status is a page over the main one
@@ -233,10 +329,24 @@
                 if (view === 'options') return { left: { label: 'Delete', action: endPartnership }, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'status') return { left: { label: 'Done', action: () => { view = 'main'; render(); ws.syncHistory(); } }, right: null };
                 if (view === 'phonedata') return { left: null, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
+                if (view === 'received') {
+                    const items = rxItems();
+                    const it = items[rxSel];
+                    return {
+                        left: { label: it ? (RX[it.kind] || RX.file).act : 'Done', action: () => { if (it) void actOn(it); else { view = 'main'; render(); ws.syncHistory(); } } },
+                        right: { label: 'Menu', menu: () => [
+                            { label: it ? (RX[it.kind] || RX.file).act : 'Open', action: () => actOn(it), disabled: !it },
+                            { label: 'Remove', action: () => removeReceived(false), disabled: !it },
+                            { label: 'Clear All', action: () => removeReceived(true), disabled: !items.length }, '-',
+                            { label: 'Done', action: () => { view = 'main'; render(); ws.syncHistory(); } }
+                        ] }
+                    };
+                }
                 return { left: { label: 'Sync', action: sync, disabled: busy > 0 }, right: { label: 'Menu', menu: menuItems } };
             }
         });
         as.on('state', render);
+        as.on('received', () => { if (view === 'received' || view === 'main') render(); });
         // the picture turns while the computer is being served
         as.on('request', () => {
             activity += 1;
@@ -245,6 +355,9 @@
             activityTimer = setTimeout(() => { activity = 0; render(); }, 1600);
         });
     }
+
+    // the title bar's ActiveSync icon opens the list (wmShell.js 'received' bubble)
+    window.wmActiveSync = { openReceived: () => { if (ws) openReceived(); } };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

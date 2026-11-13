@@ -107,6 +107,22 @@ function registerPackets(handlersCtx) {
         reply(ws, 'as_synced_response', message, { success: activeSync.markSynced(gr(), wsServer, deviceId, typeof src.summary === 'string' ? src.summary : '') });
     });
 
+    // Received Items (#803): the phone's own list (or any device's for an admin)
+    reg('as_received', async ({ ws, message, clientInfo, wsServer }) => {
+        const src = body(message);
+        const own = clientInfo && clientInfo.as && clientInfo.as.kind === 'device' ? clientInfo.as.id : null;
+        const deviceId = own || (isAdmin(clientInfo) ? String(src.deviceId || '') : '');
+        if (!deviceId) { reply(ws, 'as_received_response', message, { success: false, code: 'INSUFFICIENT_PERMISSIONS', items: [] }); return; }
+        try {
+            if (src.action) {
+                activeSync.updateReceived(gr(), wsServer, deviceId, String(src.action), src.id);
+            }
+            reply(ws, 'as_received_response', message, { success: true, items: activeSync.listReceived(gr(), deviceId), unseen: activeSync.receivedUnseen(gr(), deviceId) });
+        } catch (error) {
+            reply(ws, 'as_received_response', message, { ...refused(error), items: [] });
+        }
+    });
+
     reg('as_log', async ({ ws, message, clientInfo }) => {
         const src = body(message);
         const own = clientInfo && clientInfo.as && clientInfo.as.kind === 'device' ? clientInfo.as.id : null;

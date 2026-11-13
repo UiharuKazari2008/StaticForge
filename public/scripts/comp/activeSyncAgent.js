@@ -247,6 +247,7 @@
             takeLists(res);
             lastStatusAt = Date.now();
             fire('state', state());
+            if (kind === 'device') loadReceived();
             if (helloAgain) scheduleHello(200);
         } catch (e) {
             st.online = false;
@@ -343,9 +344,27 @@
         }
     }
 
+    // ---------------------------------------------------------------- Received Items (#803)
+    // What reached this phone while it was locked or away (the server keeps the list, modules/activeSync.js
+    // noteReceived): the status bar shows the unseen ones, ActiveSync's Received Items tab acts on them.
+    const rx = { items: [], unseen: 0 };
+    function takeReceived(res) {
+        rx.items = Array.isArray(res && res.items) ? res.items : [];
+        rx.unseen = Number(res && res.unseen) || 0;
+        fire('received', { items: rx.items.slice(), unseen: rx.unseen });
+        return rx.items.slice();
+    }
+    function loadReceived() {
+        return send('as_received', {}).then(takeReceived, () => rx.items.slice());
+    }
+    function received(action, id) {
+        return send('as_received', action ? { action, id } : {}).then(takeReceived);
+    }
+
     function onEvent(msg) {
         const d = (msg && msg.data) || {};
         if (!d.event) return;
+        if (kind === 'device' && d.from && d.from.kind === 'server' && d.event === 'received.changed') loadReceived();
         if (kind === 'device' && d.from && d.from.kind === 'server' && d.event === 'partnership.changed' && d.detail) {
             st.session = d.detail.session || 'pending';
             st.permissions = Array.isArray(d.detail.permissions) ? d.detail.permissions : [];
@@ -625,6 +644,11 @@
         forget: (deviceId) => (continuityLocal(deviceId) ? Promise.reject(continuityRefusal()) : send('as_forget', { deviceId }).then((res) => { st.devices = st.devices.filter((d) => d.deviceId !== deviceId); fire('state', state()); return res; })),
         log: (deviceId, limit) => send('as_log', { deviceId, limit }).then((res) => res.entries || []),
         synced: (deviceId, summary) => send('as_synced', { deviceId, summary }),
+        // Received Items (#803): receivedItems() the last list, receivedUnseen(), received(action?, id?)
+        // with action 'seen' | 'remove' | 'clear' (a Promise of the new list); event 'received'
+        receivedItems: () => rx.items.slice(),
+        receivedUnseen: () => rx.unseen,
+        received: (action, id) => received(action, id),
         hello,
         deviceStatus,
         _fire: fire
