@@ -18,6 +18,7 @@
  *   wmTitleBar         'flat' | 'glossy'                      (absent = flat; html[data-wm-titlebar])
  *   wmTodayUseDesktop  '1' | '0'   (absent: '0' when wmTodayBackground is set, else '1')
  *   wmTodayBackground  same-site preview path ('/previews/...'), written by Pictures and here
+ *   wmTodayWallSource  'workspace' | 'selected' | 'android' (this device only; #799: Android's wallpaper behind Today)
  *   wmTodayItems       JSON [{ id, on }] in display order; ids = Today's data-row values
  *                      (6.5 keeps its own list in wmTodayItems65)
  *   wmStartMenu        JSON [appId] shown in the Start menu (absent = the apps' own inStart)
@@ -38,6 +39,7 @@
         titleBar: 'wmTitleBar',
         todayUseDesktop: 'wmTodayUseDesktop',
         todayBackground: 'wmTodayBackground',
+        todayWallSource: 'wmTodayWallSource',
         // 6.5 has a list of its own (the clock sits in the middle of its home screen)
         todayItems: root.dataset.wmVersion === '6.5' ? 'wmTodayItems65' : 'wmTodayItems',
         // 6.5 Today > Items > "Today timeout": { on, hours }; stored only, nothing reads it yet
@@ -849,7 +851,7 @@
 
     /** The picture Today would show with this draft: the chosen picture, else the desktop's. */
     function wallPictureFor(d) {
-        if (!d.useDesktop && sameSite(d.picture)) return d.picture;
+        if (d.source === 'selected' && sameSite(d.picture)) return d.picture;
         return sh.wallpaper ? sh.wallpaper.desktop() : null;
     }
 
@@ -1083,7 +1085,7 @@
             id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
             tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
             init: () => ({
-                useDesktop: todayUsesDesktop(), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
+                useDesktop: todayUsesDesktop(), source: sh && sh.todayWallSource ? sh.todayWallSource() : (todayUsesDesktop() ? 'workspace' : 'selected'), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
                 screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
             }),
@@ -1097,20 +1099,30 @@
                         el.innerHTML = `<p>Select a picture for the Today screen.</p>
                             ${pics.length ? `<div class="wm-picker">${pics.map((it) => { const p = previewPath(it); const full = todayPictureFor(it) || p; return `<button type="button" class="wm-picker-cell${full === d.picture || p === d.picture ? ' is-selected' : ''}" data-path="${esc(full)}" aria-label="${esc(it.filename || '')}"><img src="${esc(p)}" alt="" loading="lazy" draggable="false"></button>`; }).join('')}</div>` : '<p class="wm-form-note">No pictures.</p>'}
                             <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
-                        el.querySelectorAll('.wm-picker-cell').forEach((c) => c.addEventListener('click', () => { d.picture = c.dataset.path; d.useDesktop = false; d.browsing = false; api.rerender(); }));
+                        el.querySelectorAll('.wm-picker-cell').forEach((c) => c.addEventListener('click', () => { d.picture = c.dataset.path; d.useDesktop = false; d.source = 'selected'; d.browsing = false; api.rerender(); }));
                         el.querySelector('[data-act="done"]').addEventListener('click', () => { d.browsing = false; api.rerender(); });
                         return;
                     }
-                    renderWall(el, d, api);
+                    // Use: the workspace's wallpaper, the phone's own Android wallpaper (Android draws it,
+                    // each screen of a foldable its own: #799), or a picture chosen here
+                    const sources = [['workspace', "Workspace's Wallpaper"]];
+                    if (sh && sh.androidWallAvailable && sh.androidWallAvailable()) sources.push(['android', 'Android Wallpaper']);
+                    sources.push(['selected', 'Selected Wallpaper']);
+                    if (!sources.some(([v]) => v === d.source)) d.source = 'workspace';
+                    if (d.source === 'android') {
+                        el.innerHTML = `<p>Today shows this phone's own Android wallpaper. Android draws it, so placement and effects don't apply; on a foldable each screen shows its own wallpaper.</p>
+                            <p class="wm-form-note">Change it in Android's Settings &gt; Wallpaper.</p>`;
+                    } else renderWall(el, d, api);
                     const pick = document.createElement('div');
                     pick.className = 'wm-wall-pick';
-                    pick.innerHTML = `${check('desk', 'Use desktop wallpaper', d.useDesktop)}
-                        <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="browse"${d.useDesktop ? ' disabled' : ''}>Browse</button></div>`;
+                    pick.innerHTML = `<div class="wm-form-row"><label>Use:</label>${ui.comboHtml('source', (sources.find(([v]) => v === d.source) || sources[0])[1])}</div>
+                        <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="browse"${d.source !== 'selected' ? ' disabled' : ''}>Browse</button></div>`;
                     el.insertBefore(pick, el.firstChild);
-                    pick.querySelector('input[name="desk"]').addEventListener('change', (e) => {
-                        d.useDesktop = e.target.checked;
-                        // a custom picture needs one: Browse opens at once when none is set yet
-                        if (!d.useDesktop && !sameSite(d.picture)) d.browsing = true;
+                    ui.bindCombo(pick.querySelector('.wm-combo[data-act="source"]'), sources, d.source, (v) => {
+                        d.source = v;
+                        d.useDesktop = v !== 'selected';
+                        // a selected picture needs one: Browse opens at once when none is set yet
+                        if (v === 'selected' && !sameSite(d.picture)) d.browsing = true;
                         api.rerender();
                     });
                     pick.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
@@ -1222,8 +1234,8 @@
                         <div class="wm-preview-box" data-f="preview"></div>
                     </div>`;
                 const prev = el.querySelector('[data-f="preview"]');
-                if (!d.useDesktop && sameSite(d.picture)) prev.style.backgroundImage = `url("${d.picture.replace(/["\\\n]/g, encodeURIComponent)}")`;
-                else prev.textContent = d.useDesktop ? 'Desktop' : '';
+                if (d.source === 'selected' && sameSite(d.picture)) prev.style.backgroundImage = `url("${d.picture.replace(/["\\\n]/g, encodeURIComponent)}")`;
+                else prev.textContent = d.source === 'android' ? 'Android' : d.useDesktop ? 'Desktop' : '';
                 el.querySelectorAll('[data-tb]').forEach((b) => b.addEventListener('click', () => { d.titleBar = b.dataset.tb; api.rerender(); }));
                 // Rotation: whether Today turns with the phone; a foldable has a choice for each of its screens
                 const canLock = !!(window.AndroidDisplay && typeof window.AndroidDisplay.setRotationLock === 'function');
@@ -1243,14 +1255,15 @@
             async commit(d) {
                 // the Appearance and Items choices are local: they are kept even when the
                 // workspace wallpaper save fails (the page then stays open to retry)
-                const useDesktop = d.useDesktop || !sameSite(d.picture);
+                const useDesktop = d.source !== 'selected' || !sameSite(d.picture);
                 lsSet(K.todayUseDesktop, useDesktop ? '1' : '0');
+                lsSet(K.todayWallSource, d.source === 'android' ? 'android' : useDesktop ? 'workspace' : 'selected');
                 if (sameSite(d.picture)) lsSet(K.todayBackground, d.picture);
                 lsSet(K.todayItems, JSON.stringify(d.items.map((r) => ({ id: r.id, on: r.on }))));
                 lsSet(TODAY_OPTIONS_KEY, JSON.stringify(d.opts || {}));
                 lsSet(K.titleBar, d.titleBar);
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]

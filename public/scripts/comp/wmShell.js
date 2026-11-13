@@ -5600,7 +5600,39 @@
      * else the workspace's desktop wallpaper, else the page background. Both are placed by the
      * workspace's phone placement (Settings > Today > Wallpaper), else the desktop's.
      */
+    /**
+     * Settings > Today > Wallpaper > Use (#799): 'workspace' (the desktop wallpaper), 'selected' (a
+     * picture) or 'android' (the phone's own wallpaper: Android draws it behind the page, each screen
+     * of a foldable its own). Device-local wmTodayWallSource; without it, the older "use desktop".
+     */
+    const WALL_SOURCE_KEY = 'wmTodayWallSource';
+    const androidWallAvailable = () => !!(window.AndroidHome && typeof window.AndroidHome.setShowWallpaper === 'function' && !(window.AndroidHome.isExternalDisplay && window.AndroidHome.isExternalDisplay()));
+    function todayWallSource() {
+        let s = null;
+        try { s = localStorage.getItem(WALL_SOURCE_KEY); } catch (_) { /* storage off */ }
+        if (s === 'android') return androidWallAvailable() ? 'android' : 'workspace';
+        if (s === 'workspace' || s === 'selected') return s;
+        let useDesktop = true;
+        try {
+            useDesktop = window.wmSettings && typeof window.wmSettings.todayUsesDesktop === 'function'
+                ? window.wmSettings.todayUsesDesktop()
+                : localStorage.getItem('wmTodayUseDesktop') !== '0';
+        } catch (_) { /* default */ }
+        return useDesktop ? 'workspace' : 'selected';
+    }
+
+    // the window shows Android's wallpaper (and the page lets it through) only while chosen
+    let androidWallOn = null;
+    function applyAndroidWall(on) {
+        document.documentElement.classList.toggle('wm-android-wall', on);
+        if (!window.AndroidHome || typeof window.AndroidHome.setShowWallpaper !== 'function') return;
+        if (androidWallOn === on) return;
+        androidWallOn = on;
+        try { window.AndroidHome.setShowWallpaper(on); } catch (_) { /* bridge gone */ }
+    }
+
     function todayPicture() {
+        if (todayWallSource() === 'android') return null;
         let picture = null;
         try { picture = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
         // Settings > Today: "Use desktop wallpaper" wins over a picture that is still stored
@@ -5619,10 +5651,12 @@
     function applyTodayBackground(force) {
         const today = apps.get('today');
         if (!today || !today.page) return;
-        const url = todayPicture();
+        const android = todayWallSource() === 'android';
+        applyAndroidWall(android);
+        const url = android ? null : todayPicture();
         const placement = wallpaperPlacement();
         const fx = todayEffect();
-        const key = `${url}|${placement.size}|${placement.position}|${fx.effect}|${fx.level}`;
+        const key = `${android ? 'android' : url}|${placement.size}|${placement.position}|${fx.effect}|${fx.level}`;
         if (!force && key === todayBgKey) return;
         todayBgKey = key;
         const set = (u, drawn) => {
@@ -5635,7 +5669,8 @@
             // Fit and Center leave margins: WM painted a solid colour there, not the workspace
             // theme behind the shell (black, like the Settings preview)
             today.page.style.backgroundColor = u ? '#000' : '';
-            today.page.classList.toggle('has-picture', !!u);
+            // Android's wallpaper shows through (wm-android-wall in wm-shell.css): text keeps its picture shadow
+            today.page.classList.toggle('has-picture', !!u || android);
             const wall = WM65 && shell.querySelector('.wm-wall65');
             if (wall) {
                 Object.assign(wall.style, { backgroundImage: bg.image, backgroundSize: bg.size, backgroundPosition: bg.position, backgroundRepeat: bg.repeat });
@@ -6517,6 +6552,7 @@
                 if (!name) {
                     localStorage.removeItem(TODAY_BG_KEY);
                     localStorage.setItem(useKey, '1');
+                    localStorage.setItem(WALL_SOURCE_KEY, 'workspace');
                 } else {
                     // the viewer passes its own item: a picture opened from Director or Today need not be in this list
                     const pic = (item && (item.filename || item.original) === name) ? item : galleryList().find((it) => (it.filename || it.original) === name);
@@ -6527,12 +6563,13 @@
                     }
                     localStorage.setItem(TODAY_BG_KEY, url);
                     localStorage.setItem(useKey, '0');
+                    localStorage.setItem(WALL_SOURCE_KEY, 'selected');
                 }
             } catch (_) {
                 messageBox({ title: 'Pictures', icon: 'error', text: 'The Today background could not be saved on this device.' });
                 return;
             }
-            document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [useKey, TODAY_BG_KEY] } }));
+            document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [useKey, TODAY_BG_KEY, WALL_SOURCE_KEY] } }));
         }
         setTodayBackgroundFn = setTodayBackground;
 
@@ -8025,6 +8062,9 @@
         // for apps in their own files (wmFileExplorer.js ...)
         menu: (side, items, btn) => showPopup(side, items, btn),
         dropdown: (anchor, items, align, onClose) => showDropdown(anchor, items, align, onClose),
+        /** Settings > Today > Wallpaper > Use (#799): 'workspace' | 'selected' | 'android', and whether Android's can be used here. */
+        todayWallSource: () => todayWallSource(),
+        androidWallAvailable: () => androidWallAvailable(),
         closeMenus: () => closeMenus(),
         /** Registered apps (id, title, icon, inStart) in registration order. */
         /**

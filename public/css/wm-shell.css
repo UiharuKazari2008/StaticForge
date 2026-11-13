@@ -3953,3 +3953,31 @@ html[data-screen-off] body::after {
     background: #000;
     pointer-events: none;
 }
+
+/* Settings > Today > Wallpaper > Use: Android Wallpaper (#799). The app's window shows the phone's own
+ * wallpaper (FLAG_SHOW_WALLPAPER, a see-through WebView: AndroidHome.setShowWallpaper) and Android
+ * draws it, each screen of a foldable its own, cropped and rotated as the launcher would. Every layer
+ * of the page behind Today (and 6.5's Start, over its 50 % sheet) lets it through; the system bar
+ * bands keep their black. Other programs paint over it as before. */
+html.ui-mobile.wm-android-wall[data-wm-app="today"],
+html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] {
+    background: transparent !important;
+}
+
+html.ui-mobile.wm-android-wall body > .page-background {
+    display: none !important;
+}
+
+html.ui-mobile.wm-android-wall[data-wm-app="today"] .wm-today {
+    background: transparent !important;
+}
+
+html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmShell {
+    background: transparent;
+}
+
+html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65,
+html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65 {
+    display: block !important;
+    background: transparent !important;
+}
