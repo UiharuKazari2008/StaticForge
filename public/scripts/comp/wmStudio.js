@@ -873,11 +873,12 @@
         const now = generating();
         const starting = now && !wasGenerating;
         if (starting) {
-            // the print shows on the Print page while it runs
-            if (shown && !tools.length) setTab('print');
+            // the progress box shows the print while it runs (#806): the page stays where it is
             if (!progressTimer) progressTimer = setInterval(syncGenerating, 500);
         }
         if (!now && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+        // done: the Print page shows the result (Stage Results comes up over it for a staged print)
+        if (!now && wasGenerating && printBox && shown && !tools.length) setTab('print');
         wasGenerating = now;
         syncPrintBox(now, starting);
         if (page) { page.classList.toggle('wms-generating', now); paintEmpty(); }

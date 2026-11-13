@@ -1738,6 +1738,8 @@ function setGenerationPreviewForegroundLinesActive(active) {
 
 function startPreviewAnimation() {
     if (generationAnimationActive) return;
+    // the phone (#806): the progress box shows the generation; Studio draws no animation under it
+    if (window.uiShell === 'mobile') return;
 
     // Safety check: ensure all required elements exist
     if (!previewContainer || !previewStars || !previewBackgroundLines || !previewForegroundLines) {

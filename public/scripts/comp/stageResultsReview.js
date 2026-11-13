@@ -240,6 +240,8 @@ class StageResultsReviewManager {
 
         this.sessionActive = true;
         this.renderSlots(slots);
+        // the phone (#806): the progress box covers the generation; the results come up once it is done
+        if (window.uiShell === 'mobile') { this.showWhenSaved = true; return; }
         this.show();
     }
 
@@ -936,6 +938,7 @@ class StageResultsReviewManager {
      */
     applySavedFilenames(filenames) {
         if (!this.view) return;
+        if (this.showWhenSaved) { this.showWhenSaved = false; this.show(); }
         const list = Array.isArray(filenames) ? filenames : (filenames ? [filenames] : []);
         const items = this.items();
         const used = new Set();
