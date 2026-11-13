@@ -117,10 +117,13 @@ class RcsProvider {
 
     launch(sock) {
         try {
-            const log = fs.openSync(path.join(this.stateDir, 'bridge.log'), 'a');
-            const child = spawn(this.bin, [this.stateDir], { detached: true, stdio: ['ignore', log, log], env: Object.assign({}, process.env, { RCS_BRIDGE_SOCKET: sock }) });
+            // through a shell that exits at once: the bridge is re-parented away from the server, so
+            // pm2's tree kill on a restart does not reach it (a direct child would die with the server)
+            const log = path.join(this.stateDir, 'bridge.log');
+            const child = spawn('/bin/sh', ['-c', 'setsid "$0" "$1" </dev/null >>"$2" 2>&1 &', this.bin, this.stateDir, log], {
+                detached: true, stdio: 'ignore', env: Object.assign({}, process.env, { RCS_BRIDGE_SOCKET: sock })
+            });
             child.unref();
-            fs.closeSync(log);
         } catch (error) {
             this.log(`launch failed: ${error.message}`);
         }
