@@ -757,6 +757,9 @@
      */
     let zoomTimer = 0;
     function zoomIn(open, entering) {
+        // after the entrance or a Home press (#800): the bigger grow with the panel fading in
+        entering = !!entering || homeArrival;
+        homeArrival = false;
         clearTimeout(zoomTimer);
         host.classList.remove('is-zoom', 'is-zoom-enter');
         void host.offsetWidth; // restart the animation
@@ -995,9 +998,12 @@
         // Home while Today is already on screen (#800): the list runs back to the clock (the key's
         // pace, 45 ms an item), then the clock panel grows in
         if (opts && opts.animate) {
+            homeArrival = true;
             if (sel !== at || tw || !host.classList.contains('is-rest')) { select(at, true); return; }
+            // already on the clock: the panel still grows and fades in, so the press shows
             expKey = '';
             drawExpanded();
+            zoomIn(false);
             return;
         }
         select(at, false);
@@ -1030,6 +1036,7 @@
 
     // when Today comes back: the page from the background (an Android app, the recents list), or Today
     // from another program
+    let homeArrival = false; // the move under way was started by Home: its panel grows and fades in
     let shownAt = 0;
     let hiddenAt = 0;
     let hiddenSpan = 0;
