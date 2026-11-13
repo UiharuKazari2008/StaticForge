@@ -4298,9 +4298,9 @@ class GlobalResources {
                 } catch (_e) { /* ignore */ }
                 continue;
             }
-            if (preview.endsWith('@studio.webp')) {
-                // Studio preview (#648): named after the file, the original or its _upscaled
-                base = preview.replace(/@studio\.webp$/, '').replace(/_upscaled$/, '');
+            if (preview.endsWith('@studio.webp') || preview.endsWith('@fit.webp')) {
+                // Studio (#648) and fit (#788) previews: named after the file, the original or its _upscaled
+                base = preview.replace(/@(studio|fit)\.webp$/, '').replace(/_upscaled$/, '');
             } else if (preview.endsWith('@lq.webp')) {
                 base = preview.replace(/@lq\.webp$/, '');
             } else if (preview.endsWith('@2x.webp')) {

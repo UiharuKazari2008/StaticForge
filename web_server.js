@@ -1951,6 +1951,12 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
             return res.status(404).json({ success: false, error: 'Preview not found' });
         }
     }
+    // fit preview (<file stem>@fit.webp, #788): Melaton Mobile's cells, made on first request
+    if (studioPreview.isFitPreviewName(previewFile)) {
+        if (!await studioPreview.ensureFitPreview(imagesDir, previewsDir, previewFile)) {
+            return res.status(404).json({ success: false, error: 'Preview not found' });
+        }
+    }
     const previewStat = await statOrNull(previewPath);
     if (!previewStat || !previewStat.isFile()) {
         return res.status(404).json({ success: false, error: 'Preview not found' });

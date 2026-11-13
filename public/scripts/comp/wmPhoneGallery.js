@@ -186,8 +186,12 @@
      * Where a card opens when it is picked in the drop-down (Yukimi: the camera roll): its
      * DCIM\Camera when that holds pictures, else the card itself with its albums as folder cells.
      */
+    // cards opened since the app started: the camera roll is the first visit's only (Yukimi #788);
+    // a card picked again goes to its root
+    const visitedCards = new Set();
     function cardStart(rootId) {
-        if (albumAt(rootId, CAMERA_DIR)) return { root: rootId, path: CAMERA_DIR };
+        const first = !visitedCards.has(rootId);
+        if (first && albumAt(rootId, CAMERA_DIR)) return { root: rootId, path: CAMERA_DIR };
         return { root: rootId, path: '/' };
     }
 
@@ -240,6 +244,7 @@
 
     async function open(root, path) {
         loc = root ? { root, path: path || '/' } : null;
+        if (root) visitedCards.add(root);
         selectedPath = null;
         picked = null;
         query = '';

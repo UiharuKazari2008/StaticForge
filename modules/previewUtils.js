@@ -124,6 +124,13 @@ async function generateMobilePreviews(imagePath, basename) {
                 .toFile(lowQualityPreviewPath)
         ];
 
+        // the picture in its own proportions for Melaton Mobile's Pictures & Videos cells (#788),
+        // named after the file like the Studio preview
+        previewPromises.push(image.clone()
+            .resize(FIT_PREVIEW_EDGE, FIT_PREVIEW_EDGE, { fit: 'inside', ...commonResizeOptions })
+            .webp({ quality: 72, effort: 2 })
+            .toFile(path.join(previewsDir, fitPreviewNameForFile(imagePath))));
+
         const [previewResults, blurhash] = await Promise.all([
             Promise.allSettled(previewPromises),
             blurhashPromise
@@ -204,7 +211,92 @@ async function ensureStudioPreview(imagesDir, previewsDir, previewName) {
     return job;
 }
 
+// Fit preview (#788): the gallery file at most 320 px on its long side in its own proportions,
+// for Melaton Mobile's Pictures & Videos (WM fits each picture into its cell, never crops it).
+// Made with new prints (generateMobilePreviews) and, for older ones, on first request.
+const FIT_PREVIEW_SUFFIX = '@fit.webp';
+const FIT_PREVIEW_EDGE = 320;
+
+function isFitPreviewName(name) {
+    return typeof name === 'string' && name.endsWith(FIT_PREVIEW_SUFFIX);
+}
+
+function fitPreviewNameForFile(filename) {
+    return `${path.basename(filename).replace(/\.(png|jpe?g|webp)$/i, '')}${FIT_PREVIEW_SUFFIX}`;
+}
+
+// at most two encodes at once: a phone opening a large gallery must not starve the server
+const FIT_CONCURRENCY = 2;
+const FIT_WAIT_MS = 1500;
+const fitJobs = new Map();
+const fitWaiting = [];
+let fitRunning = 0;
+function fitSlot() {
+    return new Promise((resolve) => {
+        const grant = () => {
+            fitRunning++;
+            let done = false;
+            resolve(() => {
+                if (done) return;
+                done = true;
+                fitRunning--;
+                const next = fitWaiting.shift();
+                if (next) next();
+            });
+        };
+        if (fitRunning < FIT_CONCURRENCY) grant(); else fitWaiting.push(grant);
+    });
+}
+
+async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
+    if (!isFitPreviewName(previewName)) return null;
+    const name = path.basename(previewName);
+    const stem = name.slice(0, -FIT_PREVIEW_SUFFIX.length);
+    if (!stem) return null;
+    let sourcePath = null;
+    let sourceStat = null;
+    for (const ext of [...STUDIO_PREVIEW_SOURCE_EXTS, '.webp']) {
+        const candidate = path.join(imagesDir, `${stem}${ext}`);
+        const st = await statOrNullAsync(candidate);
+        if (st && st.isFile()) { sourcePath = candidate; sourceStat = st; break; }
+    }
+    if (!sourcePath) return null;
+    const outPath = path.join(previewsDir, name);
+    const outStat = await statOrNullAsync(outPath);
+    if (outStat && outStat.isFile() && outStat.size > 0 && outStat.mtimeMs >= sourceStat.mtimeMs) return outPath;
+    let job = fitJobs.get(outPath);
+    if (!job) {
+        job = fitSlot().then(async (release) => {
+            const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
+            try {
+                await sharp(sourcePath, { failOnError: false })
+                    .resize(FIT_PREVIEW_EDGE, FIT_PREVIEW_EDGE, { fit: 'inside', withoutEnlargement: true, fastShrinkOnLoad: true })
+                    .webp({ quality: 72, effort: 2 })
+                    .toFile(tmpPath);
+                await fs.promises.rename(tmpPath, outPath);
+                return outPath;
+            } catch (e) {
+                fs.promises.unlink(tmpPath).catch(() => {});
+                console.error('Failed to generate fit preview for', sourcePath, ':', e.message);
+                return null;
+            } finally { release(); }
+        }).finally(() => fitJobs.delete(outPath));
+        fitJobs.set(outPath, job);
+    }
+    // a grid asks for a hundred at once: a request waits a moment, then the client shows the square
+    // preview and the fit one is there next time (the encode carries on)
+    if (!opts || opts.wait !== false) {
+        const timer = new Promise((resolve) => setTimeout(() => resolve(null), FIT_WAIT_MS).unref());
+        return Promise.race([job, timer]);
+    }
+    return job;
+}
+
 module.exports = {
+    FIT_PREVIEW_SUFFIX,
+    isFitPreviewName,
+    fitPreviewNameForFile,
+    ensureFitPreview,
     generatePreview,
     generateBlurredPreview,
     generateMobilePreviews,

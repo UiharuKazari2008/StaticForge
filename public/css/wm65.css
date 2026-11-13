@@ -1288,7 +1288,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort { padding-right: ca
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-arrow { flex: 0 0 auto; width: calc(9.5 * var(--wm-px)); height: calc(5 * var(--wm-px)); margin: calc(6 * var(--wm-px)) 0 0 calc(5 * var(--wm-px)); border: 0; background: #000; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-bar .wm-pv-sort .wm-pv-arrow { margin-left: calc(4.5 * var(--wm-px)); }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-cell { height: calc(60.5 * var(--wm-px) * var(--wm-pv-k, 1)); border-right: 0 !important; border-bottom: 0 !important; }
-html.ui-mobile[data-wm-version="6.5"] .wm-pv-cell img { width: calc(53 * var(--wm-px) * var(--wm-pv-k, 1)); height: calc(53 * var(--wm-px) * var(--wm-pv-k, 1)); max-width: none; max-height: none; object-fit: cover; }
+/* the picture fitted into the 53-unit box in its own proportions (Yukimi #788: not cropped square) */
+html.ui-mobile[data-wm-version="6.5"] .wm-pv-cell img { width: auto; height: auto; max-width: calc(53 * var(--wm-px) * var(--wm-pv-k, 1)); max-height: calc(53 * var(--wm-px) * var(--wm-pv-k, 1)); object-fit: contain; }
 html.ui-mobile[data-wm-version="6.5"] .wm-pv-cell.wm-pv-dir img { width: calc(32 * var(--wm-px) * var(--wm-pv-k, 1)); height: calc(32 * var(--wm-px) * var(--wm-pv-k, 1)); object-fit: contain; }
 
 /* ---- the wait cursor: 6.5's ring of four coloured dots, 80 x 80 (wmShell.js showBusyCursor) ---- */
