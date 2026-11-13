@@ -57,7 +57,7 @@ function normalizeAlchemyHomePage(raw) {
 
 // Browsing sessions (Yozora #756): how long a disconnected device keeps its Alchemy tabs in memory, and how long
 // their addresses and history are kept after that (no upper limit; always longer than the idle time).
-const SESSION_DEFAULTS = Object.freeze({ idleMinutes: 15, keepMinutes: 3 * 24 * 60, showAtStartup: true, alwaysRestore: false, roam: false });
+const SESSION_DEFAULTS = Object.freeze({ idleMinutes: 15, keepMinutes: 3 * 24 * 60, showAtStartup: false, alwaysRestore: false, roam: false });
 
 function normalizeSessionSettings(raw) {
     const src = raw && typeof raw === 'object' ? raw : {};
@@ -66,7 +66,8 @@ function normalizeSessionSettings(raw) {
     return {
         idleMinutes,
         keepMinutes: Math.max(keepMinutes, idleMinutes + 1),
-        showAtStartup: src.showAtStartup !== false,
+        // off unless ticked: Restore Session waits for the first IE window (Yukimi Nov 13)
+        showAtStartup: src.showAtStartup === true,
         alwaysRestore: src.alwaysRestore === true,
         roam: src.roam === true
     };

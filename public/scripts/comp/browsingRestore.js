@@ -6,8 +6,8 @@
  * buttons: Restore (the ticked tabs come back window by window; live Alchemy pages move here without
  * reloading), New (a new window; the old ones stay stored and are not offered again) and Discard (they go).
  *
- * When it shows (userGlobalSettings.alchemy.sessions): at startup once the desktop is up (showAtStartup),
- * otherwise the first time Grimoire opens; alwaysRestore skips the question. The times are set in
+ * When it shows (userGlobalSettings.alchemy.sessions): the first time Grimoire (IE) opens; at startup once
+ * the desktop is up only when showAtStartup is ticked (off by default since Nov 13); alwaysRestore skips the question. The times are set in
  * Internet Properties > General > Tabs > Sessions (openSettings).
  *
  * window.browsingRestore = { openSettings(owner), openRestore(reason), restoreWindows(windows), pending() }
@@ -75,7 +75,7 @@
             const res = root.browsingSessions ? await root.browsingSessions.list() : null;
             s = res && res.settings;
         } catch (_) { s = null; }
-        return Object.assign({ idleMinutes: 15, keepMinutes: 4320, showAtStartup: true, alwaysRestore: false, roam: false }, s || {});
+        return Object.assign({ idleMinutes: 15, keepMinutes: 4320, showAtStartup: false, alwaysRestore: false, roam: false }, s || {});
     }
 
     async function saveSessionSettings(patch) {
@@ -236,7 +236,8 @@
             V().openDialog({
                 id: 'grimoireRestoreSession',
                 tpl: RESTORE_TPL,
-                icon: '/static_images/app_icons/books.webp',
+                // Internet Explorer's window (Grimoire is IE here): its icon on the caption and the taskbar
+                icon: '/static_images/app_icons/vista-iexplore.png',
                 title: RESTORE_TPL.t,
                 overrides: { 802: { html: treeHtml(sessions), cls: 'tbp-tree brs-tree' } },
                 init(ctx) {
@@ -434,7 +435,8 @@
             whenDesktopUp().then(restoreAll);
             return;
         }
-        if (s.showAtStartup !== false) {
+        // only when asked for (Yukimi Nov 13): by default the question waits for the first IE window
+        if (s.showAtStartup === true) {
             whenDesktopUp().then(() => openRestore('startup'));
             return;
         }

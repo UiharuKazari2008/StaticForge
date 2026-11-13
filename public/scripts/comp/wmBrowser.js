@@ -2024,7 +2024,7 @@
     const pick = (list, v) => (list.find(([k]) => Number(k) === Number(v)) || list[0])[1];
 
     function sessionsFormHtml() {
-        const c = (sessionOpts && sessionOpts.sessions) || { idleMinutes: 15, keepMinutes: 4320, showAtStartup: true, alwaysRestore: false, roam: false };
+        const c = (sessionOpts && sessionOpts.sessions) || { idleMinutes: 15, keepMinutes: 4320, showAtStartup: false, alwaysRestore: false, roam: false };
         const idle = splitMinutes(c.idleMinutes, ['h', 'm']);
         const keep = splitMinutes(c.keepMinutes, ['d', 'h', 'm']);
         const check = (k, t) => `<label class="wm-check wmb-op-check"><input type="checkbox" data-ss="${k}"${c[k] ? ' checked' : ''}><span>${t}</span></label>`;
