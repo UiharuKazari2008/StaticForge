@@ -1,0 +1,84 @@
+#!/usr/bin/env node
+/**
+ * Art for Melaton Mobile's Traffic app (wmTraffic.js, Yozora #795): the program icon, our own design.
+ * A traffic signal (black housing, red / amber / green lamps, green lit) standing over a road that
+ * runs into the distance. Limited colours, stepped shading, no rounded-square plate (2009 WM style).
+ *
+ *   node scripts/generate-wm-traffic-art.js
+ *
+ * Writes public/static_images/wm61/app-traffic.png (16, @2x 32, @4x 64) and app-traffic-lg.png
+ * (32, @2x 64, @4x 128). The 6.5 home screen panel (ti-x-app-traffic-lg) is cut from the -lg @4x by
+ * ~/.cache/wm65/art/build.sh's panel().
+ */
+'use strict';
+
+const path = require('path');
+const sharp = require('sharp');
+
+const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
+
+const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<defs>
+  <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
+    <stop offset="0" stop-color="#5d6670"/><stop offset="0.5" stop-color="#454c55"/><stop offset="1" stop-color="#2f343b"/>
+  </linearGradient>
+  <linearGradient id="house" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#3a3f46"/><stop offset="0.35" stop-color="#22262b"/><stop offset="1" stop-color="#101215"/>
+  </linearGradient>
+  <linearGradient id="pole" x1="0" y1="0" x2="1" y2="0">
+    <stop offset="0" stop-color="#9aa3ad"/><stop offset="0.5" stop-color="#6b737c"/><stop offset="1" stop-color="#454b52"/>
+  </linearGradient>
+  <radialGradient id="g" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#d8ffb8"/><stop offset="0.45" stop-color="#4bd62a"/><stop offset="1" stop-color="#1c7d10"/></radialGradient>
+  <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#7dff52" stop-opacity="0.75"/><stop offset="1" stop-color="#7dff52" stop-opacity="0"/></radialGradient>
+</defs>
+<!-- road into the distance -->
+<path d="M2 62 L26 30 L38 30 L62 62 Z" fill="url(#road)"/>
+<path d="M2 62 L26 30 L27.5 30 L5.5 62 Z" fill="#c9ced4"/>
+<path d="M62 62 L38 30 L36.5 30 L58.5 62 Z" fill="#c9ced4"/>
+<path d="M31.2 33 L32.8 33 L33.2 38 L30.8 38 Z M30.4 42 L33.6 42 L34.3 50 L29.7 50 Z M29.2 54 L34.8 54 L35.6 62 L28.4 62 Z" fill="#ffd23a"/>
+<!-- pole -->
+<rect x="45" y="30" width="4" height="30" fill="url(#pole)"/>
+<rect x="43" y="58" width="8" height="3" fill="#3d4247"/>
+<!-- housing with hoods -->
+<rect x="38" y="2" width="18" height="40" rx="3" fill="url(#house)" stroke="#05070a" stroke-width="1.2"/>
+<rect x="39.3" y="3.2" width="2" height="37.6" rx="1" fill="#5a616a" opacity="0.7"/>
+<circle cx="47" cy="11" r="5.2" fill="#3a0d0b" stroke="#000" stroke-width="0.8"/>
+<circle cx="47" cy="22" r="5.2" fill="#3d2a06" stroke="#000" stroke-width="0.8"/>
+<circle cx="47" cy="33" r="9" fill="url(#glow)"/>
+<circle cx="47" cy="33" r="5.2" fill="url(#g)" stroke="#000" stroke-width="0.8"/>
+<path d="M42.6 9.3 Q47 4.8 51.4 9.3" fill="none" stroke="#8e969f" stroke-width="1.4"/>
+<path d="M42.6 20.3 Q47 15.8 51.4 20.3" fill="none" stroke="#8e969f" stroke-width="1.4"/>
+<path d="M42.6 31.3 Q47 26.8 51.4 31.3" fill="none" stroke="#8e969f" stroke-width="1.4"/>
+<ellipse cx="45.4" cy="31.4" rx="1.8" ry="1.1" fill="#fff" opacity="0.8"/>
+<ellipse cx="45.4" cy="9.4" rx="1.6" ry="1" fill="#fff" opacity="0.18"/>
+<ellipse cx="45.4" cy="20.4" rx="1.6" ry="1" fill="#fff" opacity="0.18"/>
+</svg>`;
+
+// the 16 px icon: fewer parts (the signal alone, lamps one pixel bigger), so it stays readable
+const svgSmall = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+<path d="M0 16 L6 9 L10 9 L16 16 Z" fill="#454c55"/>
+<path d="M7.6 10 h0.8 v1.6 h-0.8 z M7.4 13 h1.2 v2.4 h-1.2 z" fill="#ffd23a"/>
+<rect x="10" y="0.5" width="5" height="11" rx="1" fill="#1a1d21" stroke="#000" stroke-width="0.5"/>
+<circle cx="12.5" cy="2.8" r="1.35" fill="#5a1210"/>
+<circle cx="12.5" cy="6" r="1.35" fill="#5a420a"/>
+<circle cx="12.5" cy="9.2" r="1.45" fill="#46d628"/>
+<circle cx="12.1" cy="8.8" r="0.45" fill="#e4ffd0"/>
+<rect x="12" y="11.5" width="1" height="4" fill="#7b838c"/>
+</svg>`;
+
+async function render(src, size, file) {
+    await sharp(Buffer.from(src), { density: Math.max(72, Math.round((72 * size) / 16)) })
+        .resize(size, size)
+        .png()
+        .toFile(path.join(OUT, file));
+    console.log(file, size);
+}
+
+(async () => {
+    await render(svgSmall, 16, 'app-traffic.png');
+    await render(svg, 32, 'app-traffic@2x.png');
+    await render(svg, 64, 'app-traffic@4x.png');
+    await render(svg, 32, 'app-traffic-lg.png');
+    await render(svg, 64, 'app-traffic-lg@2x.png');
+    await render(svg, 128, 'app-traffic-lg@4x.png');
+})();

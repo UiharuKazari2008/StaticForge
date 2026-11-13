@@ -72,6 +72,27 @@ class ApiKeyManager {
                 normalizeKey: (value) => require('./weatherService').normalisePrivateKey(value),
                 fingerprint: (key) => (key.keyId ? `Key ${key.keyId}` : null)
             },
+            // Yozora #795: Melaton Mobile Traffic (modules/trafficService.js). Google Routes API computeRoutes,
+            // traffic-aware ("Compute Routes Pro": a monthly free allowance, then billed); the key needs the
+            // Routes API enabled. No status probe: a check would spend a metered call.
+            googlemaps: {
+                label: 'Google Maps',
+                description: 'Routes API drive times, alternatives and slowdowns for Melaton Traffic (enable the Routes API on the key)',
+                icon: 'fas fa-map-location-dot',
+                requiresRestart: false
+            },
+            // OpenWeb Ninja's Waze API: alerts (speed traps, accidents, closures) and jams on the commute.
+            // Through RapidAPI by default; Host api.openwebninja.com uses the direct API. Free plan: 100 a month.
+            waze: {
+                label: 'Waze',
+                description: 'Speed traps, accidents, hazards and jams on the Melaton Traffic commute (OpenWeb Ninja Waze API)',
+                icon: 'fas fa-car',
+                requiresRestart: false,
+                keyLabel: 'API key',
+                fields: [
+                    { field: 'host', label: 'Host', placeholder: 'waze.p.rapidapi.com (or api.openwebninja.com)', pattern: '^[a-z0-9.-]{0,80}$', optional: true }
+                ]
+            },
             // Yozora #781: Claude accounts for the Director's Claude engine (Wren, Xi, Rentan). The key is
             // a `claude setup-token` OAuth token; syncClaudeTokenFile() keeps the selected one in
             // xiLaunch.MANAGED_CLAUDE_TOKEN_FILE, which every Claude CLI launch reads first.
@@ -330,6 +351,7 @@ class ApiKeyManager {
             let v = values && values[f.field] != null ? String(values[f.field]).trim() : '';
             if (f.upper) v = v.toUpperCase();
             if (!v && existing && existing[f.field]) v = existing[f.field];
+            if (!v && f.optional) return; // e.g. Waze's Host: blank = the default
             if (!v) throw new Error(`${f.label} is required for ${meta.label}`);
             if (f.pattern && !new RegExp(f.pattern).test(v)) throw new Error(`${f.label} does not look right (${f.placeholder || f.pattern})`);
             out[f.field] = v;

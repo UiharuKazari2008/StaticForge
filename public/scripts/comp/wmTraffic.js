@@ -1,0 +1,873 @@
+/**
+ * Melaton Mobile: Traffic (Yozora #795). Yukimi, Nov 13 2026: "a 2009 era premium windows mobile app
+ * for me to check traffic conditions to and from work", with a Today item on 6.1 and 6.5, Home and
+ * Work, a preferred route given as street names, alerts and major slowdowns with a better route,
+ * "Speed Traps on route", and leave times that send a notification (and on the way home, whether to
+ * wait before leaving).
+ *
+ * Our own design, a premium 2009 phone app with skeuomorphism: a brushed-metal plate with the To Work
+ * | To Home switch, a piano-black dashboard with a lit traffic signal and backlit LCD minutes, a road
+ * strip (asphalt with the slow and jammed stretches glowing, pins for speed traps and alerts), an
+ * amber advice plate (faster route / wait before leaving), and glossy list rows. The WM 6.1 shell
+ * stays around it (title bar, soft keys Refresh | Menu).
+ *
+ * Data: the server's traffic service (modules/trafficService.js, 292-trafficHandler.js), which calls
+ * Google Routes and Waze within monthly budgets. This app never polls: traffic_get reads the last
+ * reports, traffic_check runs when the app opens on a report older than 3 minutes or on Refresh, and
+ * the server pushes traffic_updated after every check (the scheduler's too). traffic_report (at the
+ * leave times) is a WM notification with View / Dismiss.
+ *
+ * window.wmTraffic: open(direction?), latest() -> { work, home }, direction() (the one Today shows).
+ * Art: public/static_images/wm61/app-traffic* (scripts/generate-wm-traffic-art.js), wm65 ti-x panel.
+ * Styles: public/css/wm-traffic.css. Phones only. Admin (and dev_admin test tabs) only.
+ */
+(function () {
+    'use strict';
+
+    const MOBILE = window.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
+    if (!MOBILE) return;
+
+    const APP_ID = 'traffic';
+    const TITLE = 'Traffic';
+    const STALE_MS = 3 * 60 * 1000;
+    const LS_DIR = 'wmTrafficDirection';
+    const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const LAYER_TITLES = { routes: 'Routes', traps: 'Speed Traps', alerts: 'Alerts', slow: 'Slowdowns', advisor: 'Leave Advisor', settings: 'Traffic Settings', item: 'Details' };
+
+    let ws = null;
+    let page = null;
+    let els = null;
+    let shown = false;
+    let layers = [];
+    let settings = null;
+    let latest = { work: null, home: null };
+    let advice = { work: null, home: null };
+    let provs = null;
+    let loaded = false;
+    let loadFailed = '';
+    let dirPicked = null;
+    let checking = { work: false, home: false };
+    let itemView = null; // the row a Details page shows
+
+    const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const canUse = () => { try { return /^(admin|dev_admin)$/.test(localStorage.getItem('userType') || ''); } catch (_) { return false; } };
+    const isAdmin = () => { try { return localStorage.getItem('userType') === 'admin'; } catch (_) { return false; } };
+    const client = () => (window.wsClient && (!window.wsClient.isConnected || window.wsClient.isConnected()) ? window.wsClient : null);
+
+    // ---------------------------------------------------------------- formatting
+
+    const fmtClock = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const clock = (iso) => { const t = typeof iso === 'number' ? iso : Date.parse(iso); return Number.isFinite(t) ? fmtClock.format(new Date(t)) : ''; };
+    const mins = (sec) => (sec == null ? '--' : String(Math.max(1, Math.round(sec / 60))));
+    const minText = (sec) => {
+        if (sec == null) return '';
+        const m = Math.max(1, Math.round(sec / 60));
+        return m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m} min`;
+    };
+    const miles = (m) => (m == null ? '' : `${(m / 1609.344).toFixed(m < 16093 ? 1 : 0)} mi`);
+    const ago = (iso) => {
+        const t = Date.parse(iso);
+        if (!Number.isFinite(t)) return '';
+        const m = Math.round((Date.now() - t) / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return `${m} min ago`;
+        const h = Math.round(m / 60);
+        return h < 24 ? `${h} hr ago` : clock(iso);
+    };
+    const hhmmLabel = (v) => {
+        if (!v) return 'Off';
+        const [h, m] = v.split(':').map(Number);
+        return clock(new Date(2000, 0, 1, h, m).getTime());
+    };
+    const LEVEL_TEXT = { clear: 'Traffic is light', moderate: 'Some slowdowns', heavy: 'Heavy traffic' };
+
+    // ---------------------------------------------------------------- server
+
+    async function ask(type, payload, ms = 25000) {
+        const c = client();
+        if (!c) throw new Error('Not connected');
+        const r = await Promise.race([
+            c.sendMessage(type, payload || {}, false),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), ms))
+        ]);
+        return r && r.data && typeof r.data === 'object' ? r.data : r;
+    }
+
+    async function load() {
+        if (!canUse() || !client()) return;
+        try {
+            const d = await ask('traffic_get', {});
+            settings = d.settings || null;
+            latest = Object.assign({ work: null, home: null }, d.latest || {});
+            provs = d.providers || null;
+            loaded = true;
+            loadFailed = '';
+        } catch (err) {
+            loadFailed = (err && err.message) || 'Traffic could not be loaded';
+        }
+        changed();
+    }
+
+    /** A fresh report (the server answers from its 3 minute cache unless force). */
+    async function check(direction, force) {
+        if (checking[direction]) return latest[direction];
+        checking[direction] = true;
+        render();
+        try {
+            const d = await ask('traffic_check', { direction, force: !!force }, 40000);
+            if (d && d.report) latest[direction] = d.report;
+            if (d && d.providers) provs = d.providers;
+            return latest[direction];
+        } finally {
+            checking[direction] = false;
+            changed();
+        }
+    }
+
+    async function loadAdvice(direction, force) {
+        const d = await ask('traffic_advise', { direction, force: !!force }, 45000);
+        if (d && d.providers) provs = d.providers;
+        advice[direction] = d && d.advice;
+        return advice[direction];
+    }
+
+    function changed() {
+        render();
+        if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
+        document.dispatchEvent(new CustomEvent('wmTrafficChange'));
+    }
+
+    // ---------------------------------------------------------------- direction
+
+    function minutesOf(hhmm) { const m = /^(\d\d):(\d\d)$/.exec(hhmm || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : null; }
+
+    /** The commute that matters now: before noon (or before leaving Home) To Work, after it To Home. */
+    function autoDirection() {
+        const now = new Date();
+        const t = now.getHours() * 60 + now.getMinutes();
+        const lw = minutesOf(settings && settings.leaveWork);
+        const lh = minutesOf(settings && settings.leaveHome);
+        if (lh != null && lw != null) return t < Math.round((lh + lw) / 2) + 120 && t >= 180 ? 'work' : 'home';
+        return t >= 3 * 60 && t < 12 * 60 ? 'work' : 'home';
+    }
+
+    function direction() {
+        if (dirPicked) return dirPicked;
+        return autoDirection();
+    }
+
+    function setDirection(d) {
+        dirPicked = d;
+        try { sessionStorage.setItem(LS_DIR, d); } catch (_) { /* none */ }
+        render();
+        const r = latest[d];
+        if (shown && configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(d);
+    }
+
+    const configured = () => !!(settings && settings.home && settings.work);
+
+    function quietCheck(d) {
+        check(d, false).catch(() => {});
+    }
+
+    async function userRefresh() {
+        const d = direction();
+        if (!configured()) { openSettings(); return; }
+        try {
+            await ws.busy(check(d, true), { delay: 250, timeout: 45000 });
+            if (layers[layers.length - 1] === 'advisor') await ws.busy(loadAdvice(d, true), { delay: 0, timeout: 45000 });
+            render();
+        } catch (err) {
+            ws.messageBox({ title: TITLE, icon: 'error', text: `Traffic could not be checked.\n\n${(err && err.message) || 'Check the data connection, then try again.'}` });
+        }
+    }
+
+    // ---------------------------------------------------------------- art (inline, our own)
+
+    const ICON_SVG = {
+        trap: '<svg viewBox="0 0 20 20"><path d="M10 1.5l7 2.6v5.2c0 4.3-3 7.6-7 9.2-4-1.6-7-4.9-7-9.2V4.1z" fill="#1d4fa8" stroke="#0a1f46" stroke-width="1"/><path d="M10 4.3l1.3 2.7 3 .4-2.2 2.1.5 3-2.6-1.4-2.6 1.4.5-3-2.2-2.1 3-.4z" fill="#ffd23a" stroke="#7a5a00" stroke-width=".5"/></svg>',
+        accident: '<svg viewBox="0 0 20 20"><path d="M10 1l2.2 4.6 5-1.4-2.4 4.4 4.2 2.8-5 .7.3 5.1L10 14.3 5.7 17.2l.3-5.1-5-.7 4.2-2.8L2.8 4.2l5 1.4z" fill="#e03018" stroke="#5c0d02" stroke-width=".8"/><path d="M10 6l1 3h-2zM9 10.5h2v1.8H9z" fill="#fff"/></svg>',
+        hazard: '<svg viewBox="0 0 20 20"><path d="M10 1.8l8.6 15.4H1.4z" fill="#ffc21a" stroke="#6b4a00" stroke-width="1" stroke-linejoin="round"/><path d="M9 6.5h2l-.4 6h-1.2zM9 13.8h2v2H9z" fill="#1a1a1a"/></svg>',
+        closure: '<svg viewBox="0 0 20 20"><rect x="1.5" y="6" width="17" height="6" fill="#fff" stroke="#5c0d02"/><path d="M3 6l4 6M8 6l4 6M13 6l4 6" stroke="#e03018" stroke-width="2.2"/><path d="M4 12v6M16 12v6" stroke="#555" stroke-width="1.6"/></svg>',
+        construction: '<svg viewBox="0 0 20 20"><path d="M8.3 2h3.4l4.3 14H4z" fill="#ff7a12" stroke="#6b2a00" stroke-width=".8"/><path d="M7 7h6l.8 2.6H6.2zM5.3 12.3h9.4l.7 2.3H4.6z" fill="#fff"/><rect x="2" y="16" width="16" height="2.4" fill="#444"/></svg>',
+        jam: '<svg viewBox="0 0 20 20"><rect x="1.5" y="8" width="9" height="5" rx="1.5" fill="#d23b2a" stroke="#4a0c05" stroke-width=".7"/><rect x="9.5" y="5" width="9" height="5" rx="1.5" fill="#e8a317" stroke="#5a3a00" stroke-width=".7"/><circle cx="4" cy="13.5" r="1.4" fill="#222"/><circle cx="8" cy="13.5" r="1.4" fill="#222"/><circle cx="12" cy="10.5" r="1.4" fill="#222"/><circle cx="16" cy="10.5" r="1.4" fill="#222"/></svg>',
+        slow: '<svg viewBox="0 0 20 20"><circle cx="10" cy="11" r="7.5" fill="#f2f2f2" stroke="#444" stroke-width="1.2"/><path d="M4.5 11a5.5 5.5 0 0111 0" fill="none" stroke="#e8a317" stroke-width="2"/><path d="M10 11L6.4 7.6" stroke="#d23b2a" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="11" r="1.2" fill="#222"/></svg>',
+        advisor: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="#fdfdfd" stroke="#38424d" stroke-width="1.4"/><path d="M10 4.5V10l3.6 2.2" fill="none" stroke="#1d4fa8" stroke-width="1.6" stroke-linecap="round"/></svg>',
+        routes: '<svg viewBox="0 0 20 20"><path d="M4 18c0-6 12-4 12-10V3" fill="none" stroke="#3f8f22" stroke-width="2.2"/><path d="M4 18V9c0-3 3-5 6-5" fill="none" stroke="#1d4fa8" stroke-width="2.2" stroke-dasharray="2.4 1.6"/><circle cx="4" cy="18" r="1.8" fill="#222"/><path d="M16 1l2.6 3.2h-5.2z" fill="#222"/></svg>',
+        home: '<svg viewBox="0 0 20 20"><path d="M10 2.5l8 7h-2.3V17H4.3V9.5H2z" fill="#f5f5f5" stroke="#28323c" stroke-width="1.2" stroke-linejoin="round"/><rect x="8.3" y="11.5" width="3.4" height="5.5" fill="#b0562a"/></svg>',
+        work: '<svg viewBox="0 0 20 20"><rect x="2" y="6" width="16" height="11" rx="1.5" fill="#6b4a2b" stroke="#2a1a0b" stroke-width="1"/><path d="M7 6V4h6v2" fill="none" stroke="#2a1a0b" stroke-width="1.4"/><rect x="2" y="10" width="16" height="1.6" fill="#3d2913"/></svg>'
+    };
+    const icon = (k, cls = '') => `<span class="trf-ico ${cls}" aria-hidden="true">${ICON_SVG[k] || ICON_SVG.hazard}</span>`;
+
+    // ---------------------------------------------------------------- build
+
+    function build() {
+        page.innerHTML = `
+            <div class="trf-root">
+                <div class="trf-plate">
+                    <div class="trf-seg" role="tablist">
+                        <button type="button" class="trf-seg-btn" data-dir="work" role="tab">${icon('work', 'is-small')}<span>To Work</span></button>
+                        <button type="button" class="trf-seg-btn" data-dir="home" role="tab">${icon('home', 'is-small')}<span>To Home</span></button>
+                    </div>
+                    <div class="trf-ends"></div>
+                </div>
+                <div class="trf-scroll">
+                    <div class="trf-dash">
+                        <div class="trf-signal" aria-hidden="true"><i class="is-red"></i><i class="is-amber"></i><i class="is-green"></i></div>
+                        <div class="trf-lcd">
+                            <div class="trf-lcd-num"><b class="trf-min">--</b><span class="trf-min-unit">min</span></div>
+                            <div class="trf-lcd-sub"></div>
+                        </div>
+                        <div class="trf-delay"></div>
+                    </div>
+                    <div class="trf-status"></div>
+                    <div class="trf-road"><div class="trf-road-bed"><div class="trf-road-segs"></div><div class="trf-road-line"></div><div class="trf-road-pins"></div></div><div class="trf-road-ends"><span class="trf-road-a"></span><span class="trf-road-via"></span><span class="trf-road-b"></span></div></div>
+                    <button type="button" class="trf-advice" hidden></button>
+                    <div class="trf-rows"></div>
+                    <div class="trf-foot"></div>
+                </div>
+                <div class="trf-layer" hidden><div class="wm-form-hdr trf-layer-hdr"></div><div class="trf-layer-body"></div></div>
+            </div>`;
+        const q = (s) => page.querySelector(s);
+        els = {
+            root: q('.trf-root'), seg: q('.trf-seg'), ends: q('.trf-ends'), scroll: q('.trf-scroll'), dash: q('.trf-dash'),
+            signal: q('.trf-signal'), min: q('.trf-min'), lcdSub: q('.trf-lcd-sub'), delay: q('.trf-delay'), status: q('.trf-status'),
+            road: q('.trf-road'), segs: q('.trf-road-segs'), pins: q('.trf-road-pins'), roadA: q('.trf-road-a'), roadB: q('.trf-road-b'), via: q('.trf-road-via'),
+            advice: q('.trf-advice'), rows: q('.trf-rows'), foot: q('.trf-foot'),
+            layer: q('.trf-layer'), layerHdr: q('.trf-layer-hdr'), layerBody: q('.trf-layer-body')
+        };
+        els.seg.addEventListener('click', (e) => { const b = e.target.closest('[data-dir]'); if (b) setDirection(b.dataset.dir); });
+        els.rows.addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b) openLayer(b.dataset.open); });
+        els.advice.addEventListener('click', () => openLayer(els.advice.dataset.open || 'routes'));
+        els.road.addEventListener('click', () => openLayer('routes'));
+        els.layerBody.addEventListener('click', onLayerClick);
+    }
+
+    // ---------------------------------------------------------------- main page
+
+    function render() {
+        if (!els) return;
+        const d = direction();
+        els.seg.querySelectorAll('[data-dir]').forEach((b) => { b.classList.toggle('is-on', b.dataset.dir === d); b.setAttribute('aria-selected', String(b.dataset.dir === d)); });
+        if (layers.length) renderLayer();
+        const r = latest[d];
+        if (!canUse()) { setEmpty('Traffic is available to the administrator only.'); return; }
+        if (!loaded) { setEmpty(loadFailed ? `Traffic could not be loaded.\n${loadFailed}` : 'Loading...'); return; }
+        if (!configured()) { setEmpty(isAdmin() ? 'Set your Home and Work, the streets you like to take, and when you leave. Tap Menu > Settings.' : 'The administrator has not set up the commute yet.', true); return; }
+        els.root.classList.remove('is-empty');
+        const fromName = d === 'work' ? 'Home' : 'Work';
+        const toName = d === 'work' ? 'Work' : 'Home';
+        els.ends.textContent = `${fromName}  →  ${toName}`;
+        if (!r) {
+            els.min.textContent = '--';
+            els.lcdSub.textContent = checking[d] ? 'Checking traffic...' : 'No report yet';
+            els.delay.innerHTML = '';
+            els.signal.dataset.level = 'none';
+            els.status.textContent = checking[d] ? '' : 'Tap Refresh to check the traffic.';
+            els.segs.innerHTML = '';
+            els.pins.innerHTML = '';
+            els.via.textContent = '';
+            els.advice.hidden = true;
+            els.rows.innerHTML = rowsHtml(null);
+            els.foot.textContent = footText();
+            return;
+        }
+        const p = r.preferred || {};
+        els.signal.dataset.level = r.level || 'clear';
+        els.dash.classList.toggle('is-checking', !!checking[d]);
+        els.min.textContent = mins(p.durationSec);
+        const arrive = p.durationSec != null ? clock(Date.now() + p.durationSec * 1000) : '';
+        els.lcdSub.textContent = arrive ? `Arrive ${arrive}` : '';
+        const delay = r.delaySec || 0;
+        const usual = p.staticSec ? `<small>usually ${esc(mins(p.staticSec))}</small>` : '';
+        els.delay.innerHTML = `<span class="trf-delay-badge is-${delay >= 60 ? r.level : 'clear'}">${delay >= 60 ? `+${mins(delay)}` : 'On time'}</span>${usual}`;
+        const majors = (r.alerts || []).filter((a) => a.kind === 'accident' || a.kind === 'closure');
+        els.status.textContent = majors.length ? `${majors[0].label}${majors[0].street ? ` on ${majors[0].street}` : ''}` : (LEVEL_TEXT[r.level] || '');
+        els.status.className = `trf-status is-${majors.length ? 'heavy' : r.level}`;
+        // the road strip: slow and jammed stretches, pins along it
+        els.segs.innerHTML = (p.segments || []).filter((s) => s.speed !== 'NORMAL').map((s) => `<i class="is-${s.speed === 'TRAFFIC_JAM' ? 'jam' : 'slow'}" style="left:${(s.from * 100).toFixed(2)}%;width:${Math.max(1.5, (s.to - s.from) * 100).toFixed(2)}%"></i>`).join('');
+        const pins = [].concat(
+            (r.traps || []).map((t) => ({ at: t.at, kind: 'trap' })),
+            (r.alerts || []).map((a) => ({ at: a.at, kind: a.kind })),
+            (r.jams || []).filter((j) => j.major).map((j) => ({ at: j.at, kind: 'jam' }))
+        );
+        els.pins.innerHTML = pins.map((pn) => `<span class="trf-pin is-${pn.kind}" style="left:${(Math.max(0.02, Math.min(0.98, pn.at)) * 100).toFixed(2)}%">${ICON_SVG[pn.kind] || ICON_SVG.hazard}</span>`).join('');
+        els.roadA.textContent = fromName;
+        els.roadB.textContent = toName;
+        els.via.textContent = p.summary ? `via ${p.summary}${p.distanceM ? `  ·  ${miles(p.distanceM)}` : ''}` : '';
+        // advice: a faster route, else waiting (the way home), else a major slowdown
+        const adv = advice[d];
+        if (r.better) {
+            els.advice.hidden = false;
+            els.advice.dataset.open = 'routes';
+            els.advice.innerHTML = `${icon('routes')}<span><b>Faster route available</b><br>via ${esc(r.better.summary)} saves ${esc(minText(r.better.savesSec))}</span>`;
+        } else if (adv && adv.wait) {
+            els.advice.hidden = false;
+            els.advice.dataset.open = 'advisor';
+            els.advice.innerHTML = `${icon('advisor')}<span><b>Wait ${esc(adv.wait.offsetMin)} min before leaving</b><br>Leave at ${esc(clock(adv.wait.leaveAt))} and drive ${esc(minText(adv.wait.savesSec))} less</span>`;
+        } else if (r.major) {
+            els.advice.hidden = false;
+            els.advice.dataset.open = 'slow';
+            els.advice.innerHTML = `${icon('slow')}<span><b>Major slowdown on your route</b><br>No faster route right now</span>`;
+        } else {
+            els.advice.hidden = true;
+        }
+        els.rows.innerHTML = rowsHtml(r);
+        els.foot.textContent = footText(r);
+    }
+
+    function setEmpty(text, setup) {
+        els.root.classList.add('is-empty');
+        els.ends.textContent = '';
+        els.min.textContent = '--';
+        els.lcdSub.textContent = '';
+        els.delay.innerHTML = '';
+        els.signal.dataset.level = 'none';
+        els.status.textContent = '';
+        els.segs.innerHTML = '';
+        els.pins.innerHTML = '';
+        els.via.textContent = '';
+        els.advice.hidden = true;
+        els.rows.innerHTML = `<div class="trf-empty">${esc(text).replace(/\n/g, '<br>')}${setup && isAdmin() ? '<br><button type="button" class="trf-glass-btn" data-open="settings">Set Up Commute</button>' : ''}</div>`;
+        els.foot.textContent = '';
+    }
+
+    function rowsHtml(r) {
+        const n = (a) => (r && Array.isArray(a) ? a.length : 0);
+        const row = (open, ico, label, count, extra = '') => `<button type="button" class="trf-row${count ? ' has-items' : ''}" data-open="${open}">${icon(ico)}<span class="trf-row-label">${esc(label)}</span>${extra}<span class="trf-row-count">${count == null ? '' : esc(count)}</span><span class="trf-row-arrow"></span></button>`;
+        const trapCount = r ? (r.wazeChecked ? n(r.traps) : '?') : null;
+        return row('traps', 'trap', 'Speed Traps on route', trapCount)
+            + row('alerts', 'hazard', 'Alerts', r ? (r.wazeChecked ? n(r.alerts) : '?') : null)
+            + row('slow', 'slow', 'Slowdowns', r ? n(r.slowdowns) + n((r.jams || []).filter((j) => !r.slowdowns.length || j.major)) : null)
+            + row('advisor', 'advisor', direction() === 'home' ? 'When to Leave' : 'Leave Advisor', null)
+            + row('routes', 'routes', 'Routes', r ? n(r.routes) : null);
+    }
+
+    function footText(r) {
+        const parts = [];
+        if (r) parts.push(`Updated ${clock(r.at)}`);
+        if (r && r.provider) parts.push(r.provider === 'google' ? (r.wazeChecked ? 'Google, Waze' : 'Google') : 'Waze');
+        if (r && r.errors && r.errors.length) parts.push(r.errors[0]);
+        return parts.join('  ·  ');
+    }
+
+    // ---------------------------------------------------------------- layers
+
+    function openLayer(name) {
+        if (name === 'settings' && !isAdmin()) { ws.messageBox({ title: TITLE, icon: 'info', text: 'Only the administrator can change the commute.' }); return; }
+        if (name !== 'settings' && !configured()) { if (isAdmin()) name = 'settings'; else return; }
+        if (layers[layers.length - 1] !== name) layers.push(name);
+        if (name === 'settings') draft = null;
+        syncLayers();
+        if (name === 'advisor') ensureAdvice();
+    }
+
+    function popLayer() {
+        if (!layers.length) return false;
+        layers.pop();
+        syncLayers();
+        return true;
+    }
+
+    function syncLayers() {
+        if (!els) return;
+        const top = layers[layers.length - 1] || null;
+        els.layer.hidden = !top;
+        if (top) renderLayer();
+        ws.setTitle(top ? (LAYER_TITLES[top] || TITLE) : TITLE);
+        ws.syncHistory();
+        ws.refreshSoftKeys();
+        ws.refreshTitleAction();
+    }
+
+    function renderLayer() {
+        const top = layers[layers.length - 1];
+        if (!top || !els) return;
+        const d = direction();
+        const r = latest[d];
+        els.layer.dataset.layer = top;
+        const hdr = { routes: `Routes ${d === 'work' ? 'to Work' : 'to Home'}`, traps: 'Speed Traps on route', alerts: 'Alerts on route', slow: 'Slowdowns on route', advisor: d === 'home' ? 'When to Leave Work' : 'When to Leave Home', settings: 'Traffic Settings', item: (itemView && itemView.label) || 'Details' }[top];
+        els.layerHdr.textContent = hdr;
+        if (top === 'settings') { renderSettings(); return; }
+        if (top === 'routes') els.layerBody.innerHTML = routesHtml(r);
+        else if (top === 'traps') els.layerBody.innerHTML = listHtml((r && r.traps) || [], r && !r.wazeChecked ? wazeMissing() : 'No speed traps reported on your route.', 'trap');
+        else if (top === 'alerts') els.layerBody.innerHTML = listHtml((r && r.alerts) || [], r && !r.wazeChecked ? wazeMissing() : 'No accidents, hazards or closures reported on your route.');
+        else if (top === 'slow') els.layerBody.innerHTML = slowHtml(r);
+        else if (top === 'advisor') els.layerBody.innerHTML = advisorHtml(d);
+        else if (top === 'item') els.layerBody.innerHTML = itemHtml(itemView);
+        els.layerBody.className = 'trf-layer-body';
+    }
+
+    function wazeMissing() {
+        if (provs && !provs.waze.configured) return 'Speed traps and alerts come from Waze. Add a Waze key in Dreamscape CardSpace > Service keys.';
+        if (provs && provs.waze.left <= 0) return 'This month\'s Waze budget is used up. Alerts return next month.';
+        return 'Waze was not checked for this report. Tap Refresh.';
+    }
+
+    function routeStrip(rt) {
+        const segs = (rt.segments || []).filter((s) => s.speed !== 'NORMAL').map((s) => `<i class="is-${s.speed === 'TRAFFIC_JAM' ? 'jam' : 'slow'}" style="left:${(s.from * 100).toFixed(2)}%;width:${Math.max(1.5, (s.to - s.from) * 100).toFixed(2)}%"></i>`).join('');
+        return `<div class="trf-mini-road"><div class="trf-road-segs">${segs}</div><div class="trf-road-line"></div></div>`;
+    }
+
+    function routesHtml(r) {
+        if (!r || !r.routes || !r.routes.length) return '<div class="trf-none">No routes yet. Tap Refresh.</div>';
+        return r.routes.map((rt) => {
+            const badges = [rt.preferred ? '<span class="trf-badge is-pref">Preferred</span>' : '', rt.fastest ? '<span class="trf-badge is-fast">Fastest</span>' : ''].join('');
+            const c = rt.counts || {};
+            const facts = [rt.distanceM ? miles(rt.distanceM) : '', rt.delaySec >= 60 ? `+${minText(rt.delaySec)} traffic` : 'no delay', c.traps ? `${c.traps} speed trap${c.traps > 1 ? 's' : ''}` : '', c.alerts ? `${c.alerts} alert${c.alerts > 1 ? 's' : ''}` : ''].filter(Boolean).join('  ·  ');
+            const streets = rt.streetsHit && rt.streetsHit.length && r.streets && r.streets.length ? `Uses ${rt.streetsHit.length} of your ${r.streets.length} streets` : '';
+            return `<div class="trf-card${rt.preferred ? ' is-pref' : ''}">
+                <div class="trf-card-top"><b class="trf-card-min">${esc(mins(rt.durationSec))}<small>min</small></b><span class="trf-card-name">via ${esc(rt.summary || 'route')}</span>${badges}</div>
+                ${routeStrip(rt)}
+                <div class="trf-card-facts">${esc(facts)}</div>
+                ${streets ? `<div class="trf-card-facts">${esc(streets)}</div>` : ''}
+                ${(rt.warnings || []).length ? `<div class="trf-card-warn">${esc(rt.warnings.join('; '))}</div>` : ''}
+                ${rt.preferred ? '' : `<div class="trf-card-act"><button type="button" class="trf-glass-btn is-small" data-turns="${esc(rt.id)}">Directions</button></div>`}
+            </div>`;
+        }).join('') + (r.streets && r.streets.length ? `<div class="trf-note">Preferred route: ${esc(r.streets.join(' → '))}</div>` : '<div class="trf-note">No preferred streets set: the first route is Google\'s pick. Add your streets in Settings.</div>');
+    }
+
+    function listHtml(rows, empty, kind) {
+        if (!rows.length) return `<div class="trf-none">${esc(empty)}</div>`;
+        return `<div class="trf-list">${rows.map((a, i) => {
+            const where = [a.street, a.city].filter(Boolean).join(', ') || 'On your route';
+            const when = a.reportedAt ? `Reported ${ago(a.reportedAt)}` : '';
+            const thumbs = a.thumbsUp ? `${a.thumbsUp} confirmed` : '';
+            const along = a.at != null ? `${Math.round(a.at * 100)}% along` : '';
+            return `<button type="button" class="trf-li" data-item="${kind || 'alert'}:${i}">${icon(a.kind || kind)}<span class="trf-li-text"><b>${esc(a.label)}</b><span>${esc(where)}</span><small>${esc([when, thumbs, along].filter(Boolean).join('  ·  '))}</small></span></button>`;
+        }).join('')}</div>`;
+    }
+
+    function slowHtml(r) {
+        if (!r) return '<div class="trf-none">No report yet. Tap Refresh.</div>';
+        const rows = (r.slowdowns || []).map((s) => ({
+            kind: 'slow', label: s.speed === 'TRAFFIC_JAM' ? (s.major ? 'Heavy traffic' : 'Traffic jam') : 'Slow traffic',
+            where: s.street || 'On your route', note: `${miles(s.lengthM)}  ·  ${Math.round(s.from * 100)}% along`, major: s.major
+        })).concat((r.jams || []).map((j) => ({
+            kind: 'jam', label: j.major ? 'Major jam (Waze)' : 'Jam (Waze)', where: j.street || 'On your route',
+            note: [j.speedKmh != null ? `${Math.round(j.speedKmh / 1.609)} mph` : '', j.delaySec ? `+${minText(j.delaySec)}` : '', j.lengthM ? miles(j.lengthM) : '', j.causeText || ''].filter(Boolean).join('  ·  '),
+            major: j.major
+        })));
+        if (!rows.length) return '<div class="trf-none">Traffic is moving normally on your route.</div>';
+        return `<div class="trf-list">${rows.map((s) => `<div class="trf-li${s.major ? ' is-major' : ''}">${icon(s.kind)}<span class="trf-li-text"><b>${esc(s.label)}</b><span>${esc(s.where)}</span><small>${esc(s.note)}</small></span></div>`).join('')}</div>`
+            + (r.better ? `<button type="button" class="trf-advice is-inline" data-go="routes">${icon('routes')}<span><b>Faster: via ${esc(r.better.summary)}</b><br>saves ${esc(minText(r.better.savesSec))}</span></button>` : '');
+    }
+
+    let adviceLoading = false;
+    let adviceError = '';
+    async function ensureAdvice(force) {
+        const d = direction();
+        const a = advice[d];
+        if (!force && a && Date.now() - Date.parse(a.at) < 5 * 60 * 1000) return;
+        adviceLoading = true;
+        adviceError = '';
+        renderLayer();
+        try {
+            await ws.busy(loadAdvice(d, force), { delay: 250, timeout: 45000 });
+        } catch (err) {
+            adviceError = (err && err.message) || 'The leave advisor could not be loaded.';
+        } finally {
+            adviceLoading = false;
+            renderLayer();
+            render();
+        }
+    }
+
+    function advisorHtml(d) {
+        const a = advice[d];
+        if (adviceLoading && !a) return '<div class="trf-none">Looking at the traffic ahead...</div>';
+        if (adviceError && !a) return `<div class="trf-none">${esc(adviceError)}</div>`;
+        if (!a) return '<div class="trf-none">No forecast yet.</div>';
+        const ok = a.steps.filter((s) => s.durationSec != null);
+        const max = Math.max(...ok.map((s) => s.durationSec), 1);
+        const min = Math.min(...ok.map((s) => s.durationSec));
+        const head = `<div class="trf-adv-head${a.wait ? ' is-wait' : ''}">${icon('advisor')}<span>${esc(a.summary)}</span></div>`;
+        const rows = a.steps.map((s) => {
+            if (s.durationSec == null) return `<div class="trf-adv-row is-off"><span class="trf-adv-t">${esc(clock(s.leaveAt))}</span><span class="trf-adv-bar"></span><span class="trf-adv-v">--</span></div>`;
+            const w = Math.max(8, Math.round((s.durationSec / max) * 100));
+            const lvl = s.durationSec <= min + 120 ? 'clear' : s.durationSec - min > 600 ? 'heavy' : 'moderate';
+            const pick = a.wait ? s.offsetMin === a.wait.offsetMin : s.offsetMin === 0;
+            return `<div class="trf-adv-row${pick ? ' is-pick' : ''}"><span class="trf-adv-t">${s.offsetMin ? esc(clock(s.leaveAt)) : 'Now'}</span><span class="trf-adv-bar"><i class="is-${lvl}" style="width:${w}%"></i></span><span class="trf-adv-v">${esc(mins(s.durationSec))} min<small>arrive ${esc(clock(s.arriveAt))}</small></span></div>`;
+        }).join('');
+        return `${head}<div class="trf-adv">${rows}</div><div class="trf-note">Drive times on your preferred route with the traffic Google expects at each time. Updated ${esc(clock(a.at))}.</div>`;
+    }
+
+    function itemHtml(it) {
+        if (!it) return '';
+        const a = it.row;
+        const rows = [
+            ['Where', [a.street, a.city].filter(Boolean).join(', ') || 'On your route'],
+            ['Reported', a.reportedAt ? `${clock(a.reportedAt)} (${ago(a.reportedAt)})` : ''],
+            ['Confirmed by', a.thumbsUp ? `${a.thumbsUp} driver${a.thumbsUp > 1 ? 's' : ''}` : ''],
+            ['Reliability', a.reliability != null ? `${a.reliability} of 10` : ''],
+            ['Along route', a.at != null ? `${Math.round(a.at * 100)}%` : '']
+        ].filter(([, v]) => v);
+        return `<div class="trf-item">${icon(a.kind || 'hazard', 'is-big')}<b>${esc(a.label)}</b>${a.description ? `<p>${esc(a.description)}</p>` : ''}</div>
+            <div class="trf-facts">${rows.map(([l, v]) => `<span>${esc(l)}</span><span>${esc(v)}</span>`).join('')}</div>
+            <div class="trf-note">Reported by Waze drivers.</div>`;
+    }
+
+    function onLayerClick(e) {
+        const go = e.target.closest('[data-go]');
+        if (go) { layers.pop(); openLayer(go.dataset.go); return; }
+        const t = e.target.closest('[data-turns]');
+        if (t) { showTurns(t.dataset.turns); return; }
+        const it = e.target.closest('[data-item]');
+        if (it) {
+            const [kind, i] = it.dataset.item.split(':');
+            const r = latest[direction()];
+            const list = kind === 'trap' ? r.traps : r.alerts;
+            const row = list && list[Number(i)];
+            if (!row) return;
+            itemView = { label: row.label, row };
+            openLayer('item');
+        }
+    }
+
+    function showTurns(id) {
+        const r = latest[direction()];
+        const rt = r && r.routes.find((x) => x.id === id);
+        if (!rt) return;
+        const steps = (rt.steps || []).map((s) => s.text).filter(Boolean);
+        ws.messageBox({ title: `via ${rt.summary || 'route'}`, icon: 'info', text: steps.length ? steps.slice(0, 24).join('\n') + (steps.length > 24 ? '\n...' : '') : 'No turn list for this route.' });
+    }
+
+    // ---------------------------------------------------------------- settings
+
+    let draft = null;
+
+    function draftOf() {
+        if (draft) return draft;
+        const s = settings || {};
+        draft = {
+            home: (s.home && (s.home.address || (s.home.lat != null ? `${s.home.lat}, ${s.home.lon}` : ''))) || '',
+            work: (s.work && (s.work.address || (s.work.lat != null ? `${s.work.lat}, ${s.work.lon}` : ''))) || '',
+            area: s.area || '',
+            streets: (s.streets || []).join('\n'),
+            leaveHome: s.leaveHome || '',
+            leaveWork: s.leaveWork || '',
+            days: (s.days || [1, 2, 3, 4, 5]).slice(),
+            leadMin: s.leadMin != null ? s.leadMin : 10,
+            betterMin: s.betterMin || 5,
+            waitMin: s.waitMin || 8,
+            notify: s.notify !== false
+        };
+        return draft;
+    }
+
+    const TIMES = (from, to) => {
+        const out = [['', 'Off']];
+        for (let m = from * 60; m <= to * 60; m += 5) {
+            const v = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+            out.push([v, hhmmLabel(v)]);
+        }
+        return out;
+    };
+    const LEADS = [[0, 'At the leave time'], [5, '5 minutes before'], [10, '10 minutes before'], [15, '15 minutes before'], [20, '20 minutes before'], [30, '30 minutes before'], [45, '45 minutes before'], [60, '1 hour before']];
+    const BETTER = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes'], [15, '15 minutes']];
+    const WAITS = [[5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes'], [15, '15 minutes'], [20, '20 minutes']];
+
+    function renderSettings() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const box = els.layerBody;
+        box.className = 'trf-layer-body wm-form trf-settings';
+        if (!ui) { box.innerHTML = '<p>Settings are not available.</p>'; return; }
+        const f = draftOf();
+        const label = (list, v) => (list.find(([x]) => String(x) === String(v)) || list[0])[1];
+        const homeTimes = TIMES(4, 12);
+        const workTimes = TIMES(11, 23);
+        const p = provs || { google: {}, waze: {} };
+        const budgetLine = (name, b) => (b && b.configured ? `${name}: ${b.used} of ${b.budget} this month` : `${name}: no key (Dreamscape CardSpace > Service keys)`);
+        box.innerHTML = `
+            ${ui.sub('Places')}
+            ${ui.row('Home:', ui.edit('trfHome', f.home, 'placeholder="Street address" data-k="home" maxlength="200"'), { for: 'trfHome' })}
+            ${ui.row('Work:', ui.edit('trfWork', f.work, 'placeholder="Street address" data-k="work" maxlength="200"'), { for: 'trfWork' })}
+            ${ui.row('City:', ui.edit('trfArea', f.area, 'placeholder="City, State" data-k="area" maxlength="80"'), { for: 'trfArea' })}
+            ${ui.gap()}
+            ${ui.sub('Preferred route')}
+            ${ui.note('Streets from Home to Work, one a line, in the order you drive them (for example Main St, then I-90 E). The way home uses them in reverse.')}
+            <textarea class="wm-edit trf-streets" data-k="streets" rows="5" placeholder="Main St\nI-90 E\nOmaha St">${esc(f.streets)}</textarea>
+            ${ui.gap()}
+            ${ui.sub('When I leave')}
+            ${ui.row('Home at:', ui.comboHtml('leaveHome', label(homeTimes, f.leaveHome)), { wide: true })}
+            ${ui.row('Work at:', ui.comboHtml('leaveWork', label(workTimes, f.leaveWork)), { wide: true })}
+            <div class="trf-days">${DAY_SHORT.map((n, i) => ui.check(`day${i}`, n, f.days.includes(i), `data-day="${i}"`)).join('')}</div>
+            ${ui.check('notify', 'Notify me with the traffic before I leave', f.notify, 'data-k="notify"')}
+            ${ui.row('Notify:', ui.comboHtml('leadMin', label(LEADS, f.leadMin), !f.notify), { wide: true })}
+            ${ui.gap()}
+            ${ui.sub('Advice')}
+            ${ui.row('Faster route:', ui.comboHtml('betterMin', `saves ${label(BETTER, f.betterMin)}`), { wide: true })}
+            ${ui.row('Wait to leave:', ui.comboHtml('waitMin', `saves ${label(WAITS, f.waitMin)}`), { wide: true })}
+            ${ui.gap()}
+            ${ui.sub('Data')}
+            ${ui.note(budgetLine('Google Routes', p.google))}
+            ${ui.note(budgetLine('Waze', p.waze))}`;
+        box.querySelectorAll('input.wm-edit[data-k], textarea[data-k]').forEach((el) => el.addEventListener('input', () => { f[el.dataset.k] = el.value; }));
+        box.querySelectorAll('input[data-day]').forEach((el) => el.addEventListener('change', () => {
+            const d = Number(el.dataset.day);
+            f.days = el.checked ? [...new Set(f.days.concat(d))].sort() : f.days.filter((x) => x !== d);
+        }));
+        const notify = box.querySelector('input[data-k="notify"]');
+        notify.addEventListener('change', () => { f.notify = notify.checked; const c = box.querySelector('[data-act="leadMin"]'); if (c) c.disabled = !f.notify; });
+        const combo = (act, list, key, fmt) => {
+            const btn = box.querySelector(`[data-act="${act}"]`);
+            ui.bindCombo(btn, fmt ? list.map(([v, l]) => [v, fmt(l)]) : list, f[key], (v) => { f[key] = v; });
+        };
+        combo('leaveHome', homeTimes, 'leaveHome');
+        combo('leaveWork', workTimes, 'leaveWork');
+        combo('leadMin', LEADS, 'leadMin');
+        combo('betterMin', BETTER, 'betterMin', (l) => `saves ${l}`);
+        combo('waitMin', WAITS, 'waitMin', (l) => `saves ${l}`);
+    }
+
+    /** "44.08, -103.23" as coordinates, anything else an address. */
+    function placeFrom(text) {
+        const t = String(text || '').trim();
+        if (!t) return null;
+        const m = /^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(t);
+        if (m) return { lat: Number(m[1]), lon: Number(m[2]) };
+        return { address: t };
+    }
+
+    async function saveSettings() {
+        const f = draftOf();
+        const home = placeFrom(f.home);
+        const work = placeFrom(f.work);
+        if (!home || !work) {
+            await ws.messageBox({ title: TITLE, icon: 'warning', text: 'Enter both a Home and a Work address.' });
+            return;
+        }
+        const payload = {
+            home, work,
+            area: f.area,
+            streets: String(f.streets || '').split('\n').map((s) => s.trim()).filter(Boolean),
+            leaveHome: f.leaveHome, leaveWork: f.leaveWork, days: f.days,
+            leadMin: Number(f.leadMin), betterMin: Number(f.betterMin), waitMin: Number(f.waitMin), notify: !!f.notify,
+            timeZone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { return ''; } })()
+        };
+        try {
+            const d = await ws.busy(ask('traffic_settings_save', { settings: payload }), { delay: 200, timeout: 20000 });
+            settings = d.settings || settings;
+            latest = { work: null, home: null };
+            advice = { work: null, home: null };
+            draft = null;
+            layers = layers.filter((l) => l !== 'settings');
+            syncLayers();
+            changed();
+            quietCheck(direction());
+        } catch (err) {
+            ws.messageBox({ title: TITLE, icon: 'error', text: `The settings could not be saved.\n\n${(err && err.message) || ''}`.trim() });
+        }
+    }
+
+    // ---------------------------------------------------------------- notifications
+
+    const noted = new Set();
+    function onReport(pk) {
+        const d = (pk && (pk.data || pk)) || {};
+        if (!canUse()) return;
+        const key = `${d.kind}:${d.direction}:${(d.report && d.report.at) || d.error || ''}`;
+        if (noted.has(key)) return;
+        noted.add(key);
+        if (d.report) latest[d.direction] = d.report;
+        if (d.advice && !d.advice.error) advice[d.direction] = d.advice;
+        changed();
+        const label = d.direction === 'work' ? 'To Work' : 'To Home';
+        let title;
+        let text;
+        if (d.error) {
+            title = `Traffic: ${label}`;
+            text = `Traffic could not be checked: ${d.error}`;
+        } else if (d.kind === 'go') {
+            title = `Time to leave: ${label}`;
+            text = `${minText(d.report.preferred.durationSec)} via ${d.report.preferred.summary || 'your route'} now.${d.report.better ? ` Faster: via ${d.report.better.summary} saves ${minText(d.report.better.savesSec)}.` : ''}`;
+        } else {
+            title = `Traffic: ${label}`;
+            text = d.report.summary || '';
+            if (d.advice && d.advice.wait) text += ` ${d.advice.summary}`;
+        }
+        const view = () => { if (note && note.close) note.close(); open(d.direction); if (d.advice && d.advice.wait) openLayer('advisor'); };
+        let note = null;
+        if (ws && typeof ws.appNote === 'function') {
+            note = ws.appNote({
+                title,
+                html: esc(text),
+                icon: 'app-traffic',
+                event: 'notification',
+                softKeys: () => ({
+                    left: { label: 'View', action: view },
+                    right: { label: 'Dismiss', action: () => { if (note) note.close(); } }
+                })
+            });
+            if (note) return;
+        }
+        if (ws && typeof ws.notify === 'function') {
+            ws.notify({ title, text, icon: d.error ? 'warning' : 'info', asNote: true, timeout: false, buttons: [{ text: 'View', type: 'primary', closeOnClick: true, onClick: view }] });
+        }
+    }
+
+    let wired = false;
+    function wire() {
+        const c = window.wsClient;
+        if (wired || !c || typeof c.on !== 'function') return !!wired;
+        wired = true;
+        const data = (pk) => (pk && (pk.data || pk)) || {};
+        c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = d.report; changed(); } });
+        c.on('traffic_report', onReport);
+        c.on('traffic_settings_changed', (pk) => { const d = data(pk); if (d.settings) { settings = d.settings; changed(); } });
+        c.on('connected', () => load());
+        load();
+        return true;
+    }
+
+    // ---------------------------------------------------------------- menus
+
+    function about() {
+        const p = provs || { google: {}, waze: {} };
+        const line = (n, b) => (b && b.configured ? `${n}: ${b.left} of ${b.budget} requests left this month` : `${n}: not set up`);
+        ws.messageBox({
+            title: TITLE,
+            icon: 'info',
+            text: `Melaton Traffic\nVersion 1.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nRoutes and traffic: Google. Speed traps and alerts: Waze.\n${line('Google Routes', p.google)}\n${line('Waze', p.waze)}`
+        });
+    }
+
+    function mainMenu() {
+        const d = direction();
+        const ok = configured();
+        return [
+            { label: 'To Work', radio: d === 'work', action: () => setDirection('work') },
+            { label: 'To Home', radio: d === 'home', action: () => setDirection('home') },
+            '-',
+            { label: 'Routes', disabled: !ok, action: () => openLayer('routes') },
+            { label: 'Speed Traps on Route', disabled: !ok, action: () => openLayer('traps') },
+            { label: 'Alerts', disabled: !ok, action: () => openLayer('alerts') },
+            { label: 'Slowdowns', disabled: !ok, action: () => openLayer('slow') },
+            { label: d === 'home' ? 'When to Leave' : 'Leave Advisor', disabled: !ok, action: () => openLayer('advisor') },
+            '-',
+            { label: 'Settings...', disabled: !isAdmin(), action: () => openLayer('settings') },
+            { label: 'About', action: about }
+        ];
+    }
+
+    // ---------------------------------------------------------------- app
+
+    function open(dir) {
+        if (dir === 'work' || dir === 'home') dirPicked = dir;
+        if (ws) ws.open(APP_ID);
+        if (shown) render();
+    }
+
+    const APP = {
+        id: APP_ID,
+        title: TITLE,
+        icon: 'app-traffic',
+        inStart: 'programs',
+        sip: true,
+        mount(p) {
+            page = p;
+            p.classList.add('wm-traffic');
+            build();
+        },
+        show() {
+            shown = true;
+            try { const s = sessionStorage.getItem(LS_DIR); if (s && !dirPicked) dirPicked = s; } catch (_) { /* none */ }
+            syncLayers();
+            render();
+            if (!loaded) {
+                ws.busy(load(), { delay: 250, timeout: 20000 }).then(() => {
+                    const r = latest[direction()];
+                    if (configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(direction());
+                }).catch(() => {});
+                return;
+            }
+            const r = latest[direction()];
+            if (configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(direction());
+        },
+        hide() { shown = false; },
+        historyDepth: () => layers.length,
+        onBack: () => popLayer(),
+        titleKind: () => (layers.length ? 'ok' : 'close'),
+        onTitleOk: () => { if (layers[layers.length - 1] === 'settings') saveSettings(); else popLayer(); },
+        onTitleClose() { layers = []; },
+        softKeys() {
+            const top = layers[layers.length - 1];
+            if (top === 'settings') return { left: { label: 'Save', action: saveSettings }, right: { label: 'Cancel', action: () => { draft = null; popLayer(); } } };
+            if (top === 'advisor') return { left: { label: 'Refresh', action: () => ensureAdvice(true) }, right: { label: 'Done', action: popLayer } };
+            if (top) return { left: { label: 'Done', action: popLayer }, right: { label: 'Refresh', action: userRefresh } };
+            return { left: { label: 'Refresh', disabled: !canUse(), action: userRefresh }, right: { label: 'Menu', menu: mainMenu } };
+        }
+    };
+
+    // ---------------------------------------------------------------- Today (6.1 row, 6.5 panel)
+
+    function todayLine(d) {
+        const r = latest[d];
+        const label = d === 'work' ? 'To Work' : 'To Home';
+        if (!r || !r.preferred) return { title: `${label}: no report`, sub: configured() ? 'Tap to check the traffic' : 'Tap to set up your commute', level: 'none' };
+        const p = r.preferred;
+        const delay = r.delaySec >= 60 ? ` (+${mins(r.delaySec)})` : '';
+        const bits = [];
+        if (r.better) bits.push(`Faster via ${r.better.summary}`);
+        else if (advice[d] && advice[d].wait) bits.push(`Wait ${advice[d].wait.offsetMin} min`);
+        else if (p.summary) bits.push(`via ${p.summary}`);
+        if (r.traps && r.traps.length) bits.push(`${r.traps.length} speed trap${r.traps.length > 1 ? 's' : ''}`);
+        const old = Date.now() - Date.parse(r.at) > 30 * 60 * 1000;
+        if (old) bits.push(`at ${clock(r.at)}`);
+        return { title: `${label}: ${minText(p.durationSec)}${delay}`, sub: bits.join(', '), level: old ? 'none' : r.level };
+    }
+
+    let todayHtml = '';
+    function todayRender(el) {
+        if (!canUse()) return false;
+        if (!loaded) { if (!wired) wire(); return false; }
+        if (!configured() && !isAdmin()) return false;
+        const d = direction();
+        const t = todayLine(d);
+        if (!el.dataset.trfBound) {
+            el.dataset.trfBound = '1';
+            el.classList.add('wtw', 'trf-today');
+            el.setAttribute('role', 'button');
+            el.tabIndex = 0;
+            el.addEventListener('click', () => open(direction()));
+        }
+        const html = `<span class="trf-today-sig" data-level="${t.level}"><i></i><i></i><i></i></span><span class="wtw-lines"><span class="wtw-title">${esc(t.title)}</span><span class="wtw-sub">${esc(t.sub)}</span></span>`;
+        if (html !== todayHtml || !el.firstChild) { todayHtml = html; el.innerHTML = html; }
+        return true;
+    }
+
+    function todayTitanium() {
+        if (!canUse() || !loaded) return null;
+        const go = () => open(direction());
+        const first = direction();
+        const pages = [first, first === 'work' ? 'home' : 'work'].map((d) => {
+            const t = todayLine(d);
+            const r = latest[d];
+            return { title: t.title, line2: t.sub, line3: r && r.alerts && r.alerts.length ? `${r.alerts.length} alert${r.alerts.length > 1 ? 's' : ''} on route` : '' };
+        });
+        return { label: 'traffic', icon: 'x:app-traffic-lg', pages, softKey: { label: 'Traffic', action: go }, onTap: go };
+    }
+
+    // ---------------------------------------------------------------- register
+
+    function register() {
+        ws = window.wmShell;
+        if (!ws) return;
+        ws.registerApp(APP);
+        if (typeof ws.registerTodayItem === 'function') {
+            ws.registerTodayItem({ id: 'traffic', label: 'Traffic', icon: 'app-traffic', after: 'weather', render: todayRender, titanium: todayTitanium });
+        }
+        if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
+    }
+
+    window.wmTraffic = {
+        open,
+        latest: () => latest,
+        direction,
+        refresh: () => check(direction(), false),
+        _onReport: onReport
+    };
+
+    if (window.wmShell) register();
+    else document.addEventListener('wmShellReady', register, { once: true });
+})();

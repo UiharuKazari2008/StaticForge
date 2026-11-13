@@ -538,6 +538,12 @@ class BannerManager {
             'weather_alert': 'Weather Alert',
             'weather_alerts_active': 'Weather Alerts',
 
+            // Traffic (#795)
+            'traffic_get': 'Traffic',
+            'traffic_check': 'Check Traffic',
+            'traffic_advise': 'Leave Advisor',
+            'traffic_settings_save': 'Save Traffic Settings',
+
             // Cursor accounts
             'get_cursor_accounts': 'Get Cursor Accounts',
             'switch_cursor_account': 'Switch Cursor Account',
@@ -970,6 +976,8 @@ class WebSocketClient {
         // XLink status refresh and PayPass's card-wait long poll
         'xlink_device',
         'paypass_wait',
+        // Traffic (#795): the Today item's read of the last reports (no provider call)
+        'traffic_get',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
