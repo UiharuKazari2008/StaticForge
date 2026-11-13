@@ -131,6 +131,12 @@ function appleFixture() {
         assert.strictEqual(calls, 2, 'no retry inside the back-off');
         assert.strictEqual(again.stale, true);
         await assert.rejects(T.memo('t:2', fn, { ttl: 1, noStale: true }), /down/);
+        // a stale list stays a list
+        fail = false;
+        await T.memo('t:3', async () => [1, 2], { ttl: 1 });
+        await new Promise((r) => setTimeout(r, 5));
+        const list = await T.memo('t:3', async () => { throw new Error('down'); }, { ttl: 1, failTtl: 60000 });
+        assert.ok(Array.isArray(list), 'stale list is an array');
     });
 
     await test('limiter: per-minute bucket and daily budget', () => {

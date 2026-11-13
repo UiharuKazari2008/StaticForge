@@ -178,7 +178,9 @@ async function memo(key, fn, opts = {}) {
 }
 
 function markStale(value) {
-    return value && typeof value === 'object' && !Buffer.isBuffer(value) && !value.buffer ? Object.assign({}, value, { stale: true }) : value;
+    // a list (alerts, places) stays a list: only a forecast-like object carries the flag
+    if (!value || typeof value !== 'object' || Array.isArray(value) || Buffer.isBuffer(value) || value.buffer) return value;
+    return Object.assign({}, value, { stale: true });
 }
 
 // ------------------------------------------------------------------------------------------ rate limits
@@ -1064,7 +1066,7 @@ async function pollAlerts() {
     let forecast;
     try { forecast = await getForecast(p.lat, p.lon); } catch (_e) { return getActiveAlerts(); }
     const place = forecast.place && forecast.place.city ? forecast.place : await countryOf(p.lat, p.lon);
-    const alerts = (forecast.alerts || []).slice().sort((x, y) => (ALERT_SEVERITY[y.severity] || 0) - (ALERT_SEVERITY[x.severity] || 0));
+    const alerts = (Array.isArray(forecast.alerts) ? forecast.alerts : []).slice().sort((x, y) => (ALERT_SEVERITY[y.severity] || 0) - (ALERT_SEVERITY[x.severity] || 0));
     const before = monitor.alerts.map((a) => a.id).join('|');
     monitor.place = { lat: p.lat, lon: p.lon, name: place.city || '', region: place.region || '', country: place.country || '' };
     monitor.alerts = alerts;
