@@ -255,7 +255,8 @@
                 { separator: true },
                 { text: 'Customize...', action: 'dm-none', disabled: true }
             ],
-            help: [{ text: 'Help Topics', action: 'dm-help' }, { separator: true }, { text: 'About Microsoft Management Console'.replace('Microsoft', 'Xyridian'), action: 'dm-about' }]
+            // the VM's Device Manager: Help Topics | About ... Management Console..., About Device Manager...
+            help: [{ text: 'Help Topics', action: 'dm-help' }, { separator: true }, { text: 'About Xyridian Management Console...', action: 'dm-about' }, { text: 'About Device Manager...', action: 'dm-about-snapin' }]
         }[btn.dataset.dmMenu];
         cm.attachClickMenuToElement(btn, {
             sections: [{ type: 'list', items }],
@@ -268,7 +269,8 @@
                 else if (action === 'dm-props') {
                     const sel = win.querySelector('.dm-row.is-selected.is-dev');
                     if (sel) openProperties(Number(sel.dataset.cat), Number(sel.dataset.dev));
-                } else if (action === 'dm-about') callGlobal('openAboutMelatoninModal');
+                } else if (action === 'dm-about') callGlobal('openAboutMelatoninModal', { program: 'Xyridian Management Console', product: 'Management Console 3.0' });
+                else if (action === 'dm-about-snapin') callGlobal('openSnapinAbout', { name: 'Device Manager', description: 'You can use Device Manager to view a list of hardware devices installed on your computer and set properties for each device.' });
             }
         });
     }

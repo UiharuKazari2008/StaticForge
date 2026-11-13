@@ -217,7 +217,8 @@
                     { separator: true }, { text: 'Refresh', subtext: 'F5', action: 'refresh' }];
                 case 'favorites': return [{ text: 'Add to Favorites...', action: 'none', disabled: true }, { text: 'Organize Favorites...', action: 'none', disabled: true }];
                 case 'window': return [{ text: '1 Reliability and Performance', action: 'none', showIndicator: true, checked: true }];
-                case 'help': return [{ text: 'Help Topics', action: 'help' }, { separator: true }, { text: 'About Microsoft Management Console...'.replace('Microsoft', 'Xyridian'), action: 'about' }];
+                // the VM's Reliability and Performance Monitor: help rows, then both About boxes
+                case 'help': return [{ text: 'Help on Reliability and Performance Monitor', action: 'help' }, { text: 'Help Topics', action: 'help' }, { separator: true }, { text: 'About Xyridian Management Console...', action: 'about-mmc' }, { text: 'About Reliability and Performance Monitor...', action: 'about' }];
                 default: return [];
             }
         }
@@ -293,7 +294,8 @@
                 case 'start': this.running = true; this.renderToolbar(); void this.schedule(); return;
                 case 'stop': this.running = false; this.renderToolbar(); void this.schedule(); return;
                 case 'help': if (root.melatonApps) root.melatonApps.launch({ packageId: 'help', args: { topic: 'perfmon' } }); return;
-                case 'about': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Reliability and Performance Monitor' }); return;
+                case 'about-mmc': if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: 'Xyridian Management Console', product: 'Management Console 3.0' }); return;
+                case 'about': if (typeof root.openSnapinAbout === 'function') root.openSnapinAbout({ name: 'Reliability and Performance Monitor', description: 'Reliability and Performance Monitor' }); return;
                 default:
             }
         }

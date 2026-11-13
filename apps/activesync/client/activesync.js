@@ -556,8 +556,29 @@
             });
         }
 
+        /**
+         * Help > About: WMDC 6.1's own About box (About Windows Mobile Device Center on the Vista VM,
+         * ~/.cache/vista-vm/about/about-wmdc.png): 436 x 300, its green field (assets/about-background.png),
+         * the logo at the top right, the name / version / product ID / copyright in white, the notice
+         * in a framed scrolling box, OK.
+         */
         async about() {
-            await call('showConfirmationDialog', `<p><b>${NAME}</b><br>Version 6.1.6965.0</p><p>© 2007 Xyridian Corporation. All rights reserved.</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `About ${NAME}`, width: 380 });
+            const V = root.vistaDialogTemplate;
+            if (!V || typeof V.openDialog !== 'function') {
+                await call('showConfirmationDialog', `<p><b>${NAME}</b><br>Version: 6.1.6965</p><p>Copyright © 2007 Xyridian Corporation. All rights reserved.</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `About ${NAME}`, width: 380 });
+                return;
+            }
+            // 420 x 264 client in MS Shell Dlg 8 units (x 1.5 px, y 1.625 px)
+            const tpl = { t: `About ${NAME}`, w: 280, h: 162, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+                [900, 'S', 0, 0, 280, 162, 0x50000000, '', 0],
+                [1, 'B', 223, 139, 48, 14, 0x50010001, 'OK', 0]
+            ] };
+            const html = `<div class="asdc-about">
+                <div class="asdc-about-logo"><img src="/static_images/wm61/boot-melaton.png" alt=""><b>Melaton</b><i>Mobile</i></div>
+                <div class="asdc-about-facts"><b>${NAME}</b><br>Version: 6.1.6965<br>Product ID: 75436-457-3586175-04226<br>Copyright © 2007 Xyridian Corporation. All rights reserved.</div>
+                <div class="asdc-about-notice">This product contains security information licensed from RSA Data Security, Inc.<br>Warning: This computer program is protected by copyright law and international treaties. Unauthorized reproduction or distribution of this program, or any portion of it, may result in severe civil and criminal penalties, and will be prosecuted to the maximum extent possible under the law.</div>
+            </div>`;
+            V.openDialog({ id: 'asdcAboutDialog', tpl, title: tpl.t, owner: this.modal, overrides: { 900: { html, cls: 'asdc-about-host' } } });
         }
     }
 

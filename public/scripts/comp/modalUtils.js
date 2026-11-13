@@ -10188,11 +10188,107 @@ function showMeletonLicenseTerms() {
     );
 }
 
-async function openAboutMelatoninModal() {
+/**
+ * An MMC snap-in's About (Help > About Device Manager... on the Vista VM, 325 x 242): the snap-in's
+ * 32-px icon, its name, vendor and version on three lines, the description under them, OK.
+ *   openSnapinAbout({ name, vendor, version, description, icon, owner })
+ */
+function openSnapinAbout(opts = {}) {
+    const V = window.vistaDialogTemplate;
+    const info = typeof getMeletonVersionInfo === 'function' ? getMeletonVersionInfo() : {};
+    const name = String(opts.name || 'Snap-in');
+    const version = opts.version || `Version: ${info.version || ''}${info.build && info.build !== 'Unknown' ? `.${info.build}` : ''}`;
+    const icon = opts.icon || shellAboutProgramIcon({ owner: opts.owner });
+    const esc = (t) => String(t == null ? '' : t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    if (!V || typeof V.openDialog !== 'function') {
+        showConfirmationDialog(`<p>${esc(name)}<br>${esc(opts.vendor || 'Xyridian Corporation')}<br>${esc(version)}</p><p>${esc(opts.description || '')}</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `About ${name}` });
+        return;
+    }
+    // 319 x 212 client in MS Shell Dlg 8 units (x 1.5 px, y 1.625 px), measured on the VM
+    const tpl = { t: `About ${name}`, w: 213, h: 130, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+        [800, 'S', 10, 6, 22, 20, 0x50000000, '', 0],
+        [801, 'S', 58, 17, 150, 8, 0x50020000, name, 0],
+        [802, 'S', 58, 26, 150, 8, 0x50020000, opts.vendor || 'Xyridian Corporation', 0],
+        [803, 'S', 58, 35, 150, 8, 0x50020000, version, 0],
+        [804, 'S', 30, 54, 161, 34, 0x50020000, opts.description || '', 0],
+        [1, 'B', 153, 105, 50, 14, 0x50010001, 'OK', 0]
+    ] };
+    V.openDialog({
+        id: 'snapinAboutDialog',
+        tpl,
+        title: tpl.t,
+        owner: opts.owner,
+        overrides: { 800: { html: icon ? `<img src="${esc(icon)}" width="32" height="32" alt="" draggable="false">` : '' } }
+    });
+}
+
+/**
+ * The program's icon for its About box: opts.icon, else the caption icon of the window that asked
+ * (the active window), at 32 px where that size exists.
+ */
+function shellAboutProgramIcon(opts) {
+    if (opts && opts.icon) return opts.icon;
+    const owner = (opts && opts.owner && (typeof opts.owner === 'string' ? document.getElementById(opts.owner) : opts.owner))
+        || document.querySelector('.modal.active-window:not(#aboutMelatoninModal):not(.hidden)');
+    const img = owner && owner.querySelector('.modal-window-title-main img.icon-image, .modal-window-title-main img');
+    const src = img && (img.getAttribute('src') || '');
+    if (!src) return '';
+    return src.replace(/\/app_icons\/(16|24)\//, '/app_icons/32/');
+}
+
+/**
+ * About Melaton (winver) with no options; with { program } it is Vista's ShellAbout, the box every
+ * accessory's Help > About shows (About Notepad on the Vista VM, ~/.cache/vista-vm/about): the same
+ * 429 x 423 window, captioned "About <program>" with no caption icon, the program's 32-px icon in
+ * the slot left of the version text (8, 87).
+ */
+async function openAboutMelatoninModal(opts = {}) {
     const modal = document.getElementById('aboutMelatoninModal');
     if (!modal) {
         console.error('About Melaton modal not found');
         return;
+    }
+    const program = opts && typeof opts === 'object' && opts.program ? String(opts.program) : '';
+    const titleEl = document.getElementById('aboutWindowsTitle');
+    if (titleEl) titleEl.textContent = program ? `About ${program}` : 'About Melaton';
+    modal.classList.toggle('is-shell-about', !!program);
+    let appIcon = modal.querySelector('.about-windows-appicon');
+    const iconSrc = program ? shellAboutProgramIcon(opts) : '';
+    if (iconSrc) {
+        if (!appIcon) {
+            appIcon = document.createElement('img');
+            appIcon.className = 'about-windows-appicon';
+            appIcon.width = 32;
+            appIcon.height = 32;
+            appIcon.alt = '';
+            appIcon.draggable = false;
+            modal.querySelector('.about-windows-client').appendChild(appIcon);
+        }
+        appIcon.onerror = () => { appIcon.onerror = null; if (/\/app_icons\/32\//.test(appIcon.src)) appIcon.src = appIcon.src.replace('/app_icons/32/', '/app_icons/24/'); };
+        appIcon.src = iconSrc;
+        appIcon.hidden = false;
+    } else if (appIcon) {
+        appIcon.hidden = true;
+    }
+    // ShellAbout's "Title#First line" (MMC: "Management Console 3.0" in place of the product line)
+    // and its other-stuff line (Journal: "Windows Journal 6.0.6002" under the legal text)
+    const productEl = document.getElementById('aboutWindowsProduct');
+    if (productEl) {
+        if (productEl.dataset.winver == null) productEl.dataset.winver = productEl.innerHTML;
+        if (program && opts.product) productEl.textContent = String(opts.product);
+        else productEl.innerHTML = productEl.dataset.winver;
+    }
+    let otherEl = modal.querySelector('.about-windows-other');
+    if (program && opts.other) {
+        if (!otherEl) {
+            otherEl = document.createElement('div');
+            otherEl.className = 'about-windows-text about-windows-other';
+            modal.querySelector('.about-windows-client').appendChild(otherEl);
+        }
+        otherEl.textContent = String(opts.other);
+        otherEl.hidden = false;
+    } else if (otherEl) {
+        otherEl.hidden = true;
     }
 
     const close = () => { closeModal(modal); };

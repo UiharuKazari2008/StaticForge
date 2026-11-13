@@ -799,8 +799,11 @@
         }
 
         async about() {
-            if (typeof root.showConfirmationDialog !== 'function') return;
-            await root.showConfirmationDialog('<p><b>Melaton Journal</b></p><p>Melaton Desktop 2026 R7</p><p>Notes with handwriting, drawings and voice recordings, shared with Melaton Mobile\'s Notes.</p>', [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'About Melaton Journal', width: 360 });
+            // Journal.exe's About is ShellAbout with its version line under the legal text
+            if (typeof root.openAboutMelatoninModal !== 'function') return;
+            const info = typeof root.getMeletonVersionInfo === 'function' ? root.getMeletonVersionInfo() : {};
+            const ver = [info.version, info.build && info.build !== 'Unknown' ? info.build : ''].filter(Boolean).join('.');
+            await root.openAboutMelatoninModal({ program: 'Melaton Journal', other: `Melaton Journal ${ver}`.trim(), owner: this.modal });
         }
 
         /** View Recent Notes: the notes of the workspace in the view instead of the page (Journal's list). */

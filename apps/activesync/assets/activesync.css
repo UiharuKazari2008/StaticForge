@@ -187,3 +187,14 @@ body.desktop-mode:not(.windows-classic-theme) #melatonMobileDeviceCenterModal.mo
 /* "more»": a tile's whole task list on a page */
 .asdc-more-list { max-height: 330px; overflow-y: auto; }
 .asdc-root .asdc-more-list .asdc-item:first-child { margin-top: 0; }
+
+/* Help > About: WMDC 6.1's About box (about-wmdc.png on the VM): the green field, the logo at the top
+   right, bold white facts from (12, 61), the notice in a framed scrolling box at (9, 127) 398 x 75 */
+.asdc-about-host { position: absolute; inset: 0; padding: 0 !important; }
+.asdc-about { position: absolute; inset: 0; background: url("/melaton-apps/activesync/assets/about-background.png") 0 0 / 420px 264px no-repeat; color: #fff; font: bold 12px/15px 'Segoe UI', Tahoma, sans-serif; }
+.asdc-about-logo { position: absolute; left: 226px; top: 12px; width: 190px; height: 60px; }
+.asdc-about-logo img { position: absolute; left: -1px; top: -1px; width: 60px; height: 60px; }
+.asdc-about-logo b { position: absolute; left: 71px; top: 9px; font: normal 12px/1 'Segoe UI', sans-serif; color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, .3); }
+.asdc-about-logo i { position: absolute; left: 70px; top: 15px; font: normal 36px/1 'Segoe UI', sans-serif; font-style: normal; letter-spacing: -.5px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+.asdc-about-facts { position: absolute; left: 12px; top: 61px; white-space: nowrap; text-shadow: 0 1px 1px rgba(0, 0, 0, .25); }
+.asdc-about-notice { position: absolute; left: 9px; top: 127px; width: 398px; height: 75px; box-sizing: border-box; padding: 3px 6px; overflow-y: scroll; border: 1px solid rgba(255, 255, 255, .55); background: rgba(118, 196, 60, .55); font: normal 11px/14px 'Segoe UI', Tahoma, sans-serif; }

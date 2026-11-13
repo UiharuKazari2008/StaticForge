@@ -591,13 +591,8 @@ const handleDesktopCalculatorMenuAction = function (action) {
     else if (action.indexOf('mode:') === 0) calcSetMode(action.slice(5));
     else if (action === 'tape') calcSetTape(!desktopCalcEls.modal.hasAttribute('data-calc-tape'));
     else if (action === 'about') {
-        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js (a Vista message box on the desktop)
-        showConfirmationDialog(
-            '<p>Calculator</p><p>Standard, Scientific and Programmer modes with a history tape. The keypad and menus follow Windows Vista\'s calc.exe.</p>',
-            [{ text: 'OK', value: true, className: 'btn-standard primary' }],
-            null,
-            { title: 'About Calculator', icon: 'fas fa-calculator' }
-        );
+        // calc.exe's Help > About Calculator is Vista's ShellAbout (modalUtils.js openAboutMelatoninModal)
+        if (typeof window.openAboutMelatoninModal === 'function') window.openAboutMelatoninModal({ program: 'Calculator', owner: desktopCalcEls.modal });
     }
 };
 

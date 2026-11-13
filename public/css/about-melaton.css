@@ -222,3 +222,32 @@ body.desktop-mode:not(.windows-classic-theme) #aboutMelatoninModal .modal-window
         animation: none;
     }
 }
+
+/* Vista's ShellAbout (openAboutMelatoninModal({ program })): "About Notepad" on the VM has no caption
+   icon and shows the program's 32-px icon left of the version text */
+#aboutMelatoninModal.is-shell-about > .modal-window-title > .modal-window-title-main > :is(.icon-image, .icon-fa) {
+    display: none;
+}
+
+#aboutMelatoninModal .about-windows-appicon {
+    position: absolute;
+    left: 8px;
+    top: 87px;
+    width: 32px;
+    height: 32px;
+}
+
+#aboutMelatoninModal .about-windows-appicon[hidden] {
+    display: none;
+}
+
+/* ShellAbout's other-stuff line (Journal: "Windows Journal 6.0.6002" between the legal text and the
+   licence on the VM) */
+#aboutMelatoninModal .about-windows-other {
+    top: 202px;
+    width: 352px;
+}
+
+#aboutMelatoninModal .about-windows-other[hidden] {
+    display: none;
+}
