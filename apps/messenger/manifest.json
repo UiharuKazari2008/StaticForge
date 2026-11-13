@@ -1,0 +1,14 @@
+{
+    "id": "messenger",
+    "version": "1.0.0",
+    "title": "Melaton Messenger",
+    "publisher": "Xyridian Corporation",
+    "format": "msaz",
+    "type": "native",
+    "launchId": "melaton-messenger",
+    "icon": "assets/messenger-48.png",
+    "client": {
+        "entry": "client/messenger.js",
+        "styles": ["assets/messenger.css"]
+    }
+}

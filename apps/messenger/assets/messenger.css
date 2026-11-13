@@ -1,0 +1,793 @@
+/* Melaton Messenger (Yozora #779): Windows Mail's frame (menu band, blue command bar, folder
+   pane, list, status bar; colours from Windows Mail on the Vista VM, see dovecote.css) around a
+   conversation of bubbles. Art: Windows Mail's msoeres.dll bitmaps in static_images/vista-mail. */
+
+#melatonMessengerModal {
+    flex-direction: column;
+    width: 900px;
+    height: 620px;
+}
+
+#melatonMessengerModal > .modal-content.mm-client {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    height: auto;
+    padding: 0;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+#melatonMessengerModal .hidden { display: none !important; }
+
+/* ---- menu band (Windows Mail: #fefeff to #e5eaf5 over 9px, #d4dbed to #e1e6f6, #b6bccc line) ---- */
+#melatonMessengerModal .mm-client > .naxt-menubar.mm-menubar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 24px;
+    padding: 0 2px;
+    background: linear-gradient(#fefeff, #e5eaf5 9px, #d4dbed 9px, #e1e6f6 22px);
+    border: 0;
+    border-bottom: 1px solid #b6bccc;
+    box-sizing: border-box;
+}
+
+#melatonMessengerModal .mm-menubar > button.naxt-menu-title {
+    width: auto;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 7px;
+    background: none;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+}
+
+#melatonMessengerModal .mm-menubar > button.naxt-menu-title:is(:hover, :focus-visible, .context-open) {
+    background: #3399ff;
+    color: #fff;
+    outline: none;
+}
+
+#melatonMessengerModal .mm-client button:is(.naxt-menu-title, .mm-cmd, .mm-reply-x)::before,
+#melatonMessengerModal .mm-client button:is(.naxt-menu-title, .mm-cmd, .mm-reply-x)::after {
+    content: none;
+}
+
+/* ---- the command bar (Windows Mail: #8fbbed line, #4b90df to #295591 over 14px, #183d76 to #325f9e, #819ec4 line, #484848 under) ---- */
+#melatonMessengerModal .mm-cmdbar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    height: 30px;
+    margin-bottom: 3px;
+    padding: 0 3px;
+    background: linear-gradient(#8fbbed 1px, #4b90df 1px, #295591 15px, #183d76 15px, #325f9e calc(100% - 1px), #819ec4 calc(100% - 1px));
+    border-bottom: 1px solid #484848;
+    box-sizing: border-box;
+}
+
+#melatonMessengerModal .mm-cmdbar > button.mm-cmd {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    width: auto;
+    min-width: 0;
+    height: 24px;
+    min-height: 0;
+    margin: 0 1px;
+    padding: 0 6px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #fff;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-shadow: none;
+}
+
+#melatonMessengerModal .mm-cmdbar > button.mm-cmd:not(:disabled):hover,
+#melatonMessengerModal .mm-cmdbar > button.mm-cmd.context-open {
+    background: linear-gradient(hsl(0 0% 100% / 35%), hsl(0 0% 100% / 12%) 50%, hsl(0 0% 100% / 4%) 50%, hsl(0 0% 100% / 18%));
+    border-color: hsl(212 50% 18% / 85%);
+    box-shadow: inset 0 0 0 1px hsl(0 0% 100% / 45%);
+}
+
+#melatonMessengerModal .mm-cmdbar > button.mm-cmd:not(:disabled):active {
+    background: linear-gradient(hsl(212 60% 15% / 45%), hsl(212 60% 15% / 25%));
+    border-color: hsl(212 50% 12% / 90%);
+    box-shadow: inset 0 1px 2px hsl(0 0% 0% / 40%);
+}
+
+#melatonMessengerModal .mm-cmdbar > button.mm-cmd:disabled {
+    color: hsl(0 0% 100% / 50%);
+}
+
+#melatonMessengerModal .mm-cmdbar > button.mm-cmd:disabled .mm-cmd-icon {
+    opacity: .45;
+}
+
+#melatonMessengerModal .mm-cmd-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: image-set(url('/static_images/vista-mail/toolbar-16.png') 1x, url('/static_images/vista-mail/toolbar-24.png') 1.5x) no-repeat;
+    background-size: 1024px 16px;
+    background-position: calc(var(--mm-icon, 0) * -16px) 0;
+}
+
+/* toolbar-16.png (msoeres.dll bitmap 40): 22 Create Mail, 49 Attach, 32 Reply, 38 Send/Receive; Reactions has no art (text only) */
+#melatonMessengerModal .mm-cmd[data-mm-icon="new"] { --mm-icon: 22; }
+#melatonMessengerModal .mm-cmd[data-mm-icon="attach"] { --mm-icon: 49; }
+#melatonMessengerModal .mm-cmd[data-mm-icon="reply"] { --mm-icon: 32; }
+#melatonMessengerModal .mm-cmd[data-mm-icon="refresh"] { --mm-icon: 38; }
+
+#melatonMessengerModal .mm-cmd-chevron {
+    width: 5px;
+    height: 3px;
+    margin-left: 1px;
+    background: currentColor;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* ---- the panes ---- */
+#melatonMessengerModal .mm-body {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+#melatonMessengerModal .mm-folders,
+#melatonMessengerModal .mm-list {
+    flex: none;
+    overflow: auto;
+    background: #fff;
+    outline: none;
+    box-sizing: border-box;
+}
+
+#melatonMessengerModal .mm-folders {
+    width: 200px;
+    padding: 2px 0;
+    border-right: 1px solid #99b4d1;
+}
+
+#melatonMessengerModal .mm-list {
+    width: 260px;
+    border-left: 1px solid #99b4d1;
+    border-right: 1px solid #99b4d1;
+}
+
+#melatonMessengerModal .mm-split {
+    flex: none;
+    width: 4px;
+    background: #f0f0f0;
+    cursor: col-resize;
+}
+
+#melatonMessengerModal .mm-pane-note {
+    padding: 8px;
+    color: #6d6d6d;
+    text-align: center;
+}
+
+/* folder tree: Windows Mail's folder list (16 px icons from folders-16.png, the selection #99defd over #f2f9fe to #d6f0fd) */
+#melatonMessengerModal .mm-account-group + .mm-account-group {
+    margin-top: 6px;
+}
+
+#melatonMessengerModal :is(.mm-account, .mm-folder) {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0 2px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    cursor: default;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-account {
+    align-items: flex-start;
+    padding: 2px 4px;
+}
+
+#melatonMessengerModal .mm-folder {
+    height: 20px;
+    padding: 0 4px 0 22px;
+}
+
+#melatonMessengerModal :is(.mm-account, .mm-folder):hover {
+    background: linear-gradient(#fafdfe, #e8f5fd);
+    border-color: #b8e5fb;
+}
+
+#melatonMessengerModal .mm-folder.is-selected {
+    background: linear-gradient(#f2f9fe, #d6f0fd);
+    border-color: #99defd;
+}
+
+#melatonMessengerModal .mm-ficon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: image-set(url('/static_images/vista-mail/folders-16.png') 1x, url('/static_images/vista-mail/folders-32.png') 2x) no-repeat;
+    background-size: 544px 16px;
+    background-position: calc(var(--mm-ficon, 7) * -16px) 0;
+}
+
+/* folders-16.png (msoeres.dll bitmap 16, counted from 0): 6 Inbox, 13 Junk E-mail, 19 a mail server account */
+#melatonMessengerModal .mm-ficon[data-mm-ficon="inbox"] { --mm-ficon: 6; }
+#melatonMessengerModal .mm-ficon[data-mm-ficon="unknown"] { --mm-ficon: 13; }
+#melatonMessengerModal .mm-ficon[data-mm-ficon="account"] { --mm-ficon: 19; }
+
+#melatonMessengerModal .mm-account-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#melatonMessengerModal .mm-account-title {
+    font-weight: 700;
+    line-height: 16px;
+}
+
+#melatonMessengerModal :is(.mm-account-sub, .mm-fname, .mm-account-title) {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#melatonMessengerModal .mm-account-sub {
+    color: #6d6d6d;
+    line-height: 15px;
+}
+
+#melatonMessengerModal .mm-account-sub.is-error {
+    color: #c00;
+}
+
+#melatonMessengerModal .mm-folder.has-unread .mm-fname {
+    font-weight: 700;
+}
+
+#melatonMessengerModal .mm-fcount {
+    color: #0033cc;
+    font-weight: 700;
+}
+
+/* conversation list: two lines a row, unread in bold (Windows Mail's list) */
+#melatonMessengerModal .mm-row {
+    display: flex;
+    gap: 6px;
+    padding: 4px 6px 5px;
+    border: 1px solid transparent;
+    border-bottom-color: #ededed;
+    cursor: default;
+}
+
+#melatonMessengerModal .mm-row:hover {
+    background: linear-gradient(#fafdfe, #e8f5fd);
+    border-color: #b8e5fb;
+}
+
+#melatonMessengerModal .mm-row.is-selected {
+    background: linear-gradient(#f2f9fe, #d6f0fd);
+    border-color: #99defd;
+}
+
+#melatonMessengerModal .mm-row-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    background: url('/static_images/melaton-messenger/messenger-16.png') no-repeat center / 16px 16px;
+}
+
+#melatonMessengerModal .mm-row:not(.is-unread) .mm-row-icon {
+    opacity: .55;
+}
+
+#melatonMessengerModal .mm-row-main {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#melatonMessengerModal .mm-row-top {
+    display: flex;
+    gap: 6px;
+}
+
+#melatonMessengerModal .mm-row-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-row-date {
+    flex: none;
+    color: #6d6d6d;
+}
+
+#melatonMessengerModal .mm-row.is-unread :is(.mm-row-title, .mm-row-date) {
+    font-weight: 700;
+    color: #000;
+}
+
+#melatonMessengerModal .mm-row-snip {
+    overflow: hidden;
+    color: #555;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* ---- the conversation ---- */
+#melatonMessengerModal .mm-conv {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    background: #fff;
+    border-left: 1px solid #99b4d1;
+}
+
+#melatonMessengerModal .mm-conv-head {
+    flex: none;
+    background: linear-gradient(#fff, #eef3fa);
+    border-bottom: 1px solid #99b4d1;
+}
+
+#melatonMessengerModal .mm-conv-head:empty {
+    display: none;
+}
+
+#melatonMessengerModal .mm-conv-title {
+    padding: 6px 10px 0;
+    font-size: 15px;
+    color: #1e395b;
+}
+
+#melatonMessengerModal .mm-conv-people {
+    padding: 1px 10px 6px;
+    overflow: hidden;
+    color: #333;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-hlabel {
+    color: #6d6d6d;
+}
+
+#melatonMessengerModal .mm-conv-service {
+    color: #6d6d6d;
+}
+
+/* the information bar (Vista's: #ffffe1 with a #a0a0a0 edge) */
+#melatonMessengerModal .mm-infobar {
+    padding: 3px 10px;
+    background: #ffffe1;
+    border-top: 1px solid #a0a0a0;
+    color: #000;
+}
+
+#melatonMessengerModal .mm-compose-head {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    align-items: center;
+    gap: 6px 8px;
+    padding: 8px 10px;
+}
+
+#melatonMessengerModal .mm-compose-head :is(input, select) {
+    height: 22px;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+#melatonMessengerModal .mm-thread {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 8px 12px 4px;
+    overflow: auto;
+    outline: none;
+    user-select: text;
+}
+
+#melatonMessengerModal .mm-conv.is-empty .mm-compose,
+#melatonMessengerModal .mm-conv.is-empty .mm-typing {
+    display: none;
+}
+
+#melatonMessengerModal :is(.mm-thread-note, .mm-thread-more) {
+    padding: 16px 8px;
+    color: #6d6d6d;
+    text-align: center;
+}
+
+#melatonMessengerModal .mm-thread-more {
+    padding: 4px;
+    font-size: 11px;
+}
+
+#melatonMessengerModal .mm-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 48px 16px;
+    color: #333;
+    text-align: center;
+}
+
+#melatonMessengerModal .mm-welcome-title {
+    font-size: 15px;
+    color: #1e395b;
+}
+
+#melatonMessengerModal a {
+    color: #0066cc;
+}
+
+#melatonMessengerModal .mm-stamp,
+#melatonMessengerModal .mm-event {
+    margin: 10px 0 6px;
+    color: #6d6d6d;
+    font-size: 11px;
+    text-align: center;
+}
+
+#melatonMessengerModal .mm-msg {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    margin-top: 2px;
+}
+
+#melatonMessengerModal .mm-msg.is-first {
+    margin-top: 8px;
+}
+
+#melatonMessengerModal .mm-msg.is-me {
+    align-items: flex-end;
+}
+
+#melatonMessengerModal .mm-sender {
+    margin: 0 0 1px 8px;
+    color: #6d6d6d;
+    font-size: 11px;
+}
+
+#melatonMessengerModal .mm-bubble {
+    position: relative;
+    max-width: 70%;
+    padding: 5px 9px 6px;
+    border: 1px solid #c5c9cf;
+    border-radius: 9px;
+    background: linear-gradient(#fbfbfb, #ececec);
+    box-shadow: 0 1px 1px hsl(0 0% 0% / 8%);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+#melatonMessengerModal .mm-msg.is-me .mm-bubble {
+    border-color: #8db2e3;
+    background: linear-gradient(#eaf3fd, #cfe2f9);
+}
+
+#melatonMessengerModal .mm-msg.is-selected .mm-bubble {
+    box-shadow: 0 0 0 2px #3399ff;
+}
+
+#melatonMessengerModal .mm-msg.is-pending .mm-bubble {
+    opacity: .7;
+}
+
+#melatonMessengerModal .mm-msg.is-error .mm-bubble {
+    border-color: #d77;
+}
+
+#melatonMessengerModal .mm-bubble.has-tapbacks {
+    margin-top: 12px;
+}
+
+#melatonMessengerModal .mm-tapbacks {
+    position: absolute;
+    top: -13px;
+    right: -6px;
+    display: flex;
+    gap: 2px;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-msg.is-me .mm-tapbacks {
+    right: auto;
+    left: -6px;
+}
+
+#melatonMessengerModal .mm-tapback {
+    min-width: 14px;
+    padding: 1px 4px;
+    background: #fff;
+    border: 1px solid #a6b6cc;
+    border-radius: 9px;
+    color: #1e395b;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 13px;
+    text-align: center;
+}
+
+#melatonMessengerModal .mm-tapback sub {
+    margin-left: 1px;
+    font-size: 9px;
+    font-weight: 400;
+}
+
+#melatonMessengerModal .mm-quote {
+    margin: 0 0 4px;
+    padding: 1px 0 1px 6px;
+    border-left: 3px solid #99b4d1;
+    color: #555;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 320px;
+}
+
+#melatonMessengerModal .mm-quote-who {
+    font-weight: 700;
+}
+
+#melatonMessengerModal .mm-subject {
+    font-weight: 700;
+}
+
+#melatonMessengerModal :is(.mm-pic-link, .mm-file-link) {
+    position: relative;
+    display: block;
+    margin: 2px 0;
+}
+
+#melatonMessengerModal .mm-pic {
+    display: block;
+    max-width: 240px;
+    max-height: 240px;
+    height: auto;
+    border: 1px solid #c5c9cf;
+    border-radius: 4px;
+    background: #fff;
+}
+
+#melatonMessengerModal .mm-pic.is-sticker {
+    border: 0;
+    background: none;
+}
+
+#melatonMessengerModal .mm-file-link {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+}
+
+/* list-16.png (msoeres.dll): the paper clip */
+#melatonMessengerModal .mm-file-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/toolbar-16.png') no-repeat calc(49 * -16px) 0 / 1024px 16px;
+}
+
+#melatonMessengerModal .mm-unsent {
+    padding: 4px 9px;
+    border: 1px dashed #c5c9cf;
+    border-radius: 9px;
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+#melatonMessengerModal .mm-meta {
+    margin: 1px 6px 0;
+    color: #6d6d6d;
+    font-size: 11px;
+}
+
+#melatonMessengerModal .mm-meta-error {
+    color: #c00;
+}
+
+/* a progress bar as Vista's PROGRESS part (msstyles 622/627, vista-controls) */
+#melatonMessengerModal .mm-progress {
+    display: block;
+    width: 120px;
+    height: 11px;
+    margin-top: 3px;
+    overflow: hidden;
+    background: linear-gradient(#f3f3f3, #fcfcfc);
+    border: 1px solid #bcbcbc;
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+#melatonMessengerModal .mm-progress-fill {
+    display: block;
+    width: 0;
+    height: 100%;
+    background: linear-gradient(#cdf5c0, #6bd352 45%, #2fb51d 55%, #4ec93a);
+}
+
+#melatonMessengerModal .mm-typing {
+    flex: none;
+    height: 18px;
+    padding: 0 12px;
+    color: #6d6d6d;
+    font-size: 11px;
+    font-style: italic;
+    line-height: 18px;
+}
+
+#melatonMessengerModal .mm-reply {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 6px 3px 10px;
+    background: #ffffe1;
+    border-top: 1px solid #a0a0a0;
+}
+
+#melatonMessengerModal .mm-reply-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-reply > button.mm-reply-x {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    background: url('/static_images/vista-mail/toolbar-16.png') no-repeat calc(5 * -16px) 0 / 1024px 16px;
+    border: 0;
+    box-shadow: none;
+}
+
+#melatonMessengerModal .mm-compose {
+    display: flex;
+    flex: none;
+    gap: 6px;
+    padding: 6px;
+    background: #f0f0f0;
+    border-top: 1px solid #99b4d1;
+}
+
+#melatonMessengerModal .mm-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 52px;
+    resize: none;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+#melatonMessengerModal .mm-compose-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#melatonMessengerModal .mm-compose-buttons > button {
+    min-width: 75px;
+}
+
+#melatonMessengerModal .mm-drop {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: hsl(210 80% 96% / 85%);
+    border: 2px dashed #3399ff;
+    color: #1e395b;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+/* ---- status bar (Windows Mail: #f1eded, #919191 line, a white line under it) ---- */
+#melatonMessengerModal .mm-status {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 22px;
+    background: #f1eded;
+    border-top: 1px solid #919191;
+    box-shadow: inset 0 1px 0 #fff;
+    box-sizing: border-box;
+}
+
+#melatonMessengerModal .mm-status > span:not(.hidden) {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 4px 0;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-status-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#melatonMessengerModal .mm-status-progress .mm-progress {
+    margin: 0;
+    width: 140px;
+}
+
+#melatonMessengerModal .mm-status-online {
+    gap: 4px;
+    min-width: 120px;
+    margin-left: auto;
+    box-shadow: inset 1px 0 0 #d7d7d7, inset 2px 0 0 #fff;
+    box-sizing: border-box;
+}
+
+/* status-16.png: 11 working online, 10 working offline (Windows Mail's status bar) */
+#melatonMessengerModal .mm-status-online-icon {
+    width: 16px;
+    height: 16px;
+    margin-left: 4px;
+    background: url('/static_images/vista-mail/status-16.png') no-repeat -176px 0 / 192px 16px;
+}
+
+#melatonMessengerModal .mm-status-online-icon[data-state="off"] {
+    background-position: -160px 0;
+}
+
+/* ---- dialogs ---- */
+.mm-options-group {
+    margin: 0 0 8px;
+    padding: 6px 10px 8px;
+}
+
+.mm-options-group .desktop-settings-check {
+    margin: 4px 0;
+}
+
+.mm-options,
+.mm-about {
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+}
+
+.mm-options-note {
+    margin: 0;
+    color: #444;
+    font-size: 12px;
+}
+
+.mm-about {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.mm-about p {
+    margin: 0 0 8px;
+}

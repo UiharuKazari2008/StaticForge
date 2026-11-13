@@ -8,6 +8,8 @@
  *   Application Keys    keys programs use to reach Dreamscape, requests waiting for approval,
  *                       the request log (Create an application key, View the request log)
  *   Custom Model Providers (Director)   URL, key, default model, Obliterated Memories, age tool
+ *   Text Messaging      BlueBubbles servers (address, password, Test connection) and the RCS
+ *                       account (Google Messages, paired with a QR code), Yozora #779
  *
  * PINs moved to User Accounts (cplUserAccounts.js) and approved IPs to Windows Defender
  * (cplDefender.js). The page runs its own copy of the Security Center driver
@@ -319,7 +321,9 @@
                     list.appendChild(note);
                     return;
                 }
-                const key = `${spec.body}:${cells[0].textContent.trim() || index}`;
+                // the row's id when it has one: two keys can share a name (Rook and its old key)
+                const rowId = tr.dataset.secAppkeyId || tr.dataset.secAppkeyReq || tr.dataset.secKeychainService || tr.dataset.secCursorAccId;
+                const key = `${spec.body}:${rowId || cells[0].textContent.trim() || index}`;
                 const row = document.createElement('div');
                 row.className = 'cpl-vault-row';
                 row.dataset.cplVaultKey = key;
@@ -408,6 +412,31 @@
             buildHeader(section);
             section.tables.forEach(vaultTable);
         });
+    }
+
+    /**
+     * #781: the Director's Cursor profiles as one Cursor service key. Its details hold the profile
+     * rows (still rebuilt by vaultTable into the same list) and Add a Cursor profile / Refresh.
+     * It sits in its own list after the keychain's, so the keychain's rebuilds cannot drop it.
+     */
+    function mountCursorCard() {
+        if (!hostEl || hostEl.querySelector('#cplCardExtraList')) return;
+        const profiles = hostEl.querySelector('.cpl-vault-list[data-cpl-vault-for="secCursorAccountsTableBody"]');
+        const keychain = hostEl.querySelector('.cpl-vault-list[data-cpl-vault-for="secKeychainTableBody"]');
+        if (!profiles || !keychain) return;
+        const list = document.createElement('div');
+        list.className = 'cpl-vault-list';
+        list.id = 'cplCardExtraList';
+        const row = document.createElement('div');
+        row.className = 'cpl-vault-row';
+        row.dataset.cplVaultKey = 'cursor:';
+        row.innerHTML = `<button type="button" class="cpl-vault-line" aria-expanded="false"><span class="cpl-vault-name">Cursor<span class="cpl-vault-sub">Cursor profiles the Director can run Yumiya and Yozora on</span></span><span class="cpl-vault-summary"></span><span class="cpl-vault-chevron" aria-hidden="true"></span></button>
+            <div class="cpl-vault-details"><div class="cpl-vault-field cs-nested-intro"><span class="cpl-vault-label">Profiles:</span><span class="cpl-vault-value">Open a profile to activate it for Yumiya or Yozora, sign it in again, or edit it.</span></div>
+            <div class="cs-nested"></div>
+            <div class="cpl-vault-actions"><button type="button" data-cs-proxy="secCursorAccountsAddBtn">Add a Cursor profile</button><button type="button" data-cs-proxy="secCursorAccountsRefresh">Refresh</button></div></div>`;
+        row.querySelector('.cs-nested').appendChild(profiles);
+        list.appendChild(row);
+        keychain.parentNode.insertBefore(list, keychain.nextSibling);
     }
 
     let customProviderRows = [];
@@ -742,6 +771,323 @@
         });
     }
 
+    // ---- Text Messaging (Yozora #779): the accounts Melaton Messenger and the phone's Messaging use ----
+    //
+    // A BlueBubbles server (iMessage) is its address and password; an RCS account (Google Messages,
+    // one per server) is paired by scanning a QR code with the phone. window.textMessaging
+    // (textMessagingClient.js) is read at call time; its 'account' and 'pairing' events repaint.
+
+    const TM_PICTURE = '/static_images/app_icons/melaton-messenger.png';
+    const TM_PAIR_HINT = 'On your phone, open Google Messages, tap your profile picture > Device pairing > QR code scanner, and scan this code.';
+    const TM_RCS_NOTE = 'Keep Google Messages as your default messaging app. Turn off its notifications: Dreamscape sends them now.';
+    const TM_STATE = {
+        connected: ['ok', 'Connected'], error: ['fail', 'Error'], disabled: ['unchecked', 'Turned off'],
+        unpaired: ['warn', 'Not paired'], pairing: ['warn', 'Pairing']
+    };
+    let tmRows = [];
+    let tmLoadError = '';
+    const tmUi = {};          // id -> { open, test, testError, qr, qrAt, paired, busy }
+    let tmOff = null;
+    const tmApi = () => root.textMessaging || null;
+
+    function tmUiOf(id) {
+        if (!tmUi[id]) tmUi[id] = {};
+        return tmUi[id];
+    }
+
+    function tmStatus(row) {
+        const [state, word] = TM_STATE[row.status] || (row.id ? ['unchecked', row.status || 'Not connected'] : ['none', 'Not saved']);
+        const text = row.status === 'error' && row.error ? `Error: ${row.error}` : word;
+        return { state, text };
+    }
+
+    function tmToast(text) {
+        if (typeof showGlassToast === 'function') showGlassToast('error', 'Dreamscape CardSpace', text);
+    }
+
+    async function loadTextMessaging(force) {
+        const t = tmApi();
+        if (!t) { tmLoadError = 'Text Messaging is not available.'; paintTextMessaging(); return; }
+        try {
+            const d = await t.accounts(force !== false);
+            const drafts = tmRows.filter((r) => !r.id);
+            tmRows = ((d && d.accounts) || []).concat(drafts);
+            tmLoadError = '';
+        } catch (err) {
+            tmLoadError = (err && err.message) || 'The Text Messaging accounts could not be read.';
+        }
+        if (hostEl && hostEl.isConnected) paintTextMessaging();
+    }
+
+    function tmPassword(placeholder) {
+        const input = document.createElement('input');
+        input.type = 'password';
+        input.className = 'cpl-ua-input';
+        input.autocomplete = 'new-password';
+        input.placeholder = placeholder;
+        return input;
+    }
+
+    function tmButton(text, fn) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sec-dsap-action-btn';
+        b.textContent = text;
+        b.addEventListener('click', async () => {
+            b.disabled = true;
+            try { await fn(); } catch (err) { tmToast((err && err.message) || `${text} failed`); }
+            if (b.isConnected) b.disabled = false;
+        });
+        return b;
+    }
+
+    function tmText(text, className) {
+        const span = document.createElement('span');
+        if (className) span.className = className;
+        span.textContent = text;
+        return span;
+    }
+
+    /** What Test connection learned: the Apple ID or phone, the server's version, Private API. */
+    function tmTestText(ui) {
+        if (ui.testError) return `Could not connect: ${ui.testError}`;
+        if (!ui.test) return 'Not tested yet';
+        const r = ui.test;
+        const bits = [r.identity ? `Signed in as ${r.identity}` : 'Connected'];
+        if (r.serverVersion) bits.push(`server ${r.serverVersion}`);
+        bits.push(`Private API: ${r.features && r.features.privateApi ? 'Yes' : 'No'}`);
+        return bits.join(' \u00b7 ');
+    }
+
+    function tmDetailsBlueBubbles(row, details, actions) {
+        const ui = tmUiOf(row.id || '');
+        const url = customInput(row.url, 'https://bluebubbles.example.com');
+        const pass = tmPassword(row.hasPassword ? 'Leave blank to keep the current password' : 'The server password');
+        const enabled = customCheck('Use this account', row.enabled !== false);
+        const status = tmStatus(row);
+        const testOut = tmText(tmTestText(ui), ui.testError ? 'cpl-tm-error' : '');
+        details.append(
+            customField('Service', tmText('iMessage through a BlueBubbles server')),
+            customField('Server address', url),
+            customField('Password', pass),
+            customField('Enabled', enabled.wrap),
+            customField('Signed in as', tmText(row.identity || 'Unknown until connected')),
+            customField('Status', tmText(status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
+            customField('Test result', testOut)
+        );
+        actions.append(
+            tmButton('Test connection', async () => {
+                testOut.textContent = 'Connecting...';
+                testOut.className = '';
+                try {
+                    ui.test = await tmApi().testAccount({ kind: 'bluebubbles', id: row.id || undefined, url: url.value, password: pass.value || undefined });
+                    ui.testError = '';
+                } catch (err) {
+                    ui.test = null;
+                    ui.testError = (err && err.message) || 'No answer';
+                }
+                testOut.textContent = tmTestText(ui);
+                testOut.className = ui.testError ? 'cpl-tm-error' : '';
+            }),
+            tmButton('Save', async () => {
+                const saved = await tmApi().saveAccount({ id: row.id || undefined, kind: 'bluebubbles', url: url.value, password: pass.value || undefined, enabled: enabled.input.checked });
+                tmRows = tmRows.filter((r) => r.id);
+                if (saved && saved.id) { tmUiOf(saved.id).open = true; csSel = `sms:${saved.id}`; }
+                await loadTextMessaging(true);
+            })
+        );
+    }
+
+    function tmDetailsRcs(row, details, actions) {
+        const ui = tmUiOf(row.id);
+        const status = tmStatus(row);
+        const enabled = customCheck('Use this account', row.enabled !== false);
+        const paired = row.status === 'connected' || !!row.identity;
+        details.append(
+            customField('Service', tmText('RCS through Google Messages')),
+            customField('Phone number', tmText(row.identity || 'Unknown until paired')),
+            customField('Status', tmText(ui.paired ? 'Paired' : status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
+            customField('Enabled', enabled.wrap)
+        );
+        if (ui.qr && !paired) {
+            const box = document.createElement('div');
+            box.className = 'cpl-tm-pair';
+            const img = document.createElement('img');
+            img.className = 'cpl-tm-qr';
+            img.alt = 'Pairing QR code';
+            img.width = 200;
+            img.height = 200;
+            img.src = `/api/textmessaging/${encodeURIComponent(row.id)}/pairing-qr.svg?t=${ui.qrAt || Date.now()}`;
+            img.dataset.tmQr = row.id;
+            const hint = tmText(TM_PAIR_HINT, 'cpl-tm-hint');
+            box.append(img, hint, tmButton('Refresh code', async () => { await tmApi().refreshRcsQr(row.id); ui.qrAt = Date.now(); paintTextMessaging(); }));
+            details.append(customField('Pairing', box));
+        }
+        details.append(customField('Note', tmText(TM_RCS_NOTE, 'cpl-tm-hint')));
+        if (!paired) {
+            actions.append(tmButton(ui.qr ? 'Pair again' : 'Pair', async () => {
+                const res = await tmApi().pairRcs(row.id);
+                ui.qr = true;
+                ui.qrAt = Date.now();
+                ui.paired = false;
+                void res;
+                paintTextMessaging();
+            }));
+        } else {
+            actions.append(tmButton('Unpair', async () => {
+                const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog('<p>Unpair this computer from Google Messages? Text messages stop until you pair again.</p>',
+                    [{ text: 'Unpair', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
+                if (ok !== true) return;
+                await tmApi().unpairRcs(row.id);
+                ui.qr = false;
+                ui.paired = false;
+                await loadTextMessaging(true);
+            }));
+        }
+        actions.append(tmButton('Save', async () => {
+            await tmApi().saveAccount({ id: row.id, kind: 'rcs', enabled: enabled.input.checked });
+            await loadTextMessaging(true);
+        }));
+    }
+
+    function paintTextMessaging() {
+        const list = hostEl && hostEl.querySelector('#cplTextMessagingList');
+        if (!list) return;
+        list.textContent = '';
+        if (!tmRows.length) {
+            const empty = document.createElement('div');
+            empty.className = 'cpl-vault-empty';
+            empty.textContent = tmLoadError || 'No Text Messaging accounts.';
+            list.appendChild(empty);
+            csRefresh();
+            return;
+        }
+        tmRows.forEach((row) => {
+            const ui = tmUiOf(row.id || '');
+            const rcs = row.kind === 'rcs';
+            const block = document.createElement('div');
+            block.className = 'cpl-vault-row' + (ui.open ? ' is-open' : '');
+            block.dataset.cplVaultKey = `sms:${row.id || ''}`;
+            block.dataset.cplCardPicture = TM_PICTURE;
+            const line = document.createElement('button');
+            line.type = 'button';
+            line.className = 'cpl-vault-line';
+            const name = document.createElement('span');
+            name.className = 'cpl-vault-name';
+            name.textContent = row.identity || (rcs ? 'Google Messages' : (row.id ? 'BlueBubbles server' : 'New BlueBubbles server'));
+            const sub = document.createElement('span');
+            sub.className = 'cpl-vault-sub';
+            sub.textContent = rcs ? 'RCS (Google Messages)' : `iMessage (BlueBubbles)${row.url ? ` \u00b7 ${row.url}` : ''}`;
+            name.appendChild(sub);
+            const status = tmStatus(row);
+            const summary = document.createElement('span');
+            summary.className = 'cpl-vault-summary';
+            summary.textContent = row.id ? status.text : 'Not saved';
+            const chevron = document.createElement('span');
+            chevron.className = 'cpl-vault-chevron';
+            line.append(name, summary);
+            if (row.id) line.append(makeGlance([{ state: status.state, label: status.text }]));
+            line.append(chevron);
+            line.addEventListener('click', () => { ui.open = !ui.open; paintTextMessaging(); });
+            const details = document.createElement('div');
+            details.className = 'cpl-vault-details';
+            const actions = document.createElement('div');
+            actions.className = 'cpl-vault-actions';
+            if (rcs) tmDetailsRcs(row, details, actions); else tmDetailsBlueBubbles(row, details, actions);
+            if (row.id) {
+                actions.append(tmButton('Delete', async () => {
+                    const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog(`<p>Delete the Text Messaging account ${esc(row.identity || row.url || row.id)}? Melaton Messenger and the phone stop showing its messages.</p>`,
+                        [{ text: 'Delete', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
+                    if (ok !== true) return;
+                    await tmApi().deleteAccount(row.id);
+                    delete tmUi[row.id];
+                    await loadTextMessaging(true);
+                }));
+            }
+            details.appendChild(actions);
+            block.append(line, details);
+            list.appendChild(block);
+        });
+        csRefresh();
+    }
+
+    function tmAddBlueBubbles() {
+        if (!tmRows.some((r) => !r.id)) tmRows.push({ id: '', kind: 'bluebubbles', url: '', enabled: true, hasPassword: false });
+        tmUiOf('').open = true;
+        paintTextMessaging();
+    }
+
+    async function tmAddRcs() {
+        const t = tmApi();
+        if (!t) return null;
+        const existing = tmRows.find((r) => r.kind === 'rcs' && r.id);
+        if (existing) return existing.id;
+        try {
+            const saved = await t.saveAccount({ kind: 'rcs' });
+            await loadTextMessaging(true);
+            return saved && saved.id ? saved.id : null;
+        } catch (err) {
+            tmToast((err && err.message) || 'The RCS account could not be added');
+            return null;
+        }
+    }
+
+    function tmOnPairing(d) {
+        if (!d || !d.accountId) return;
+        const ui = tmUiOf(d.accountId);
+        if (d.paired) { ui.paired = true; ui.qr = false; void loadTextMessaging(true); return; }
+        if (d.qr) {
+            ui.qr = true;
+            ui.qrAt = Date.now();
+            // QR codes expire: the shown one follows the server's
+            const img = hostEl && [...hostEl.querySelectorAll('img[data-tm-qr]')].find((x) => x.dataset.tmQr === d.accountId);
+            const live = win && [...win.querySelectorAll('img[data-tm-qr]')].find((x) => x.dataset.tmQr === d.accountId);
+            const src = `/api/textmessaging/${encodeURIComponent(d.accountId)}/pairing-qr.svg?t=${ui.qrAt}`;
+            if (img || live) [img, live].forEach((x) => { if (x) x.src = src; }); else paintTextMessaging();
+        }
+    }
+
+    function mountTextMessaging() {
+        if (!hostEl || hostEl.querySelector('#cplVault-text-messaging')) return;
+        const head = document.createElement('div');
+        head.className = 'cpl-vault-head';
+        head.id = 'cplVault-text-messaging';
+        head.innerHTML = `<img src="/static_images/melaton-messenger/messenger-16.png" alt=""><span class="cpl-vault-title">Text Messaging</span><span class="cpl-vault-links"></span>`;
+        const links = head.querySelector('.cpl-vault-links');
+        const addBb = document.createElement('button');
+        addBb.type = 'button';
+        addBb.className = 'cpl-vault-link';
+        addBb.id = 'cplTmAddBlueBubbles';
+        addBb.textContent = 'Add a BlueBubbles server';
+        addBb.addEventListener('click', tmAddBlueBubbles);
+        const addRcs = document.createElement('button');
+        addRcs.type = 'button';
+        addRcs.className = 'cpl-vault-link';
+        addRcs.id = 'cplTmAddRcs';
+        addRcs.textContent = 'Add an RCS account (Google Messages)';
+        addRcs.addEventListener('click', () => void tmAddRcs());
+        links.append(addBb, addRcs);
+        const list = document.createElement('div');
+        list.className = 'cpl-vault-list';
+        list.id = 'cplTextMessagingList';
+        hostEl.append(head, list);
+        paintTextMessaging();
+        const t = tmApi();
+        if (t && typeof t.on === 'function' && !tmOff) {
+            const onAccount = () => void loadTextMessaging(true);
+            t.on('account', onAccount);
+            t.on('pairing', tmOnPairing);
+            tmOff = () => { if (typeof t.off === 'function') { t.off('account', onAccount); t.off('pairing', tmOnPairing); } };
+        }
+        void loadTextMessaging(true);
+    }
+
+    function unmountTextMessaging() {
+        if (tmOff) { tmOff(); tmOff = null; }
+        tmRows = [];
+        Object.keys(tmUi).forEach((k) => { delete tmUi[k]; });
+    }
+
     // ---- the window: Vista's Windows CardSpace (icardagt.exe, icardres.dll; measured on the VM) ----
     //
     // Windows CardSpace is a window of its own (Control Panel only starts it). Its three views:
@@ -753,12 +1099,16 @@
     // The vault (above) still builds the rows inside the window's hidden host; the views read it.
 
     const CS = '/static_images/vista-cardspace';
+    // #781: one Service keys group holds the keychain services (Claude among them), Cursor (the
+    // Director's profiles, no longer its only accounts) and each custom model provider.
     const CARD_KINDS = {
-        director: ['Director accounts', 'Director Account'],
         service: ['Service keys', 'Service Key'],
         application: ['Application keys', 'Application Key'],
-        'custom-models': ['Custom model providers', 'Custom Model Provider']
+        'text-messaging': ['Text Messaging accounts', 'Text Messaging Account']
     };
+    // the driver's forms and the request log: shown in the window's form view while open
+    const CS_FORMS = ['secCursorAccountPanel', 'secKeychainEditPanel', 'secKeychainAddPanel', 'secAppkeysCreatePanel', 'secAppkeysEditPanel', 'secAppkeysLogPage'];
+    const SECURE_PREF = 'cardspace.secureDesktop';
     let win = null;
     let csView = 'home';
     let csSel = null;
@@ -766,6 +1116,10 @@
     let csTimer = 0;
     let csPendingSection = null;
     let csObserver = null;
+    let csFormObserver = null;
+    let csForm = null;
+    let csFormReturn = 'home';
+    let csFormOff = [];
 
     function csEl(sel) {
         return win ? win.querySelector(sel) : null;
@@ -774,16 +1128,26 @@
     /** The section a vault row belongs to (its list's head, or the custom providers' list). */
     function csKindOf(row) {
         const list = row.closest('.cpl-vault-list');
-        if (!list) return 'director';
-        if (list.id === 'cplCustomProviderList') return 'custom-models';
+        if (!list) return 'service';
+        if (list.id === 'cplCustomProviderList' || list.id === 'cplCardExtraList') return 'service';
+        if (list.id === 'cplTextMessagingList') return 'text-messaging';
         const body = list.dataset.cplVaultFor || '';
-        if (/Cursor/.test(body)) return 'director';
+        if (/Cursor/.test(body)) return 'cursor-profile';
         if (/Keychain/.test(body)) return 'service';
         return 'application';
     }
 
+    /** What the details view calls the card, under its picture. */
+    function csKindLabel(row) {
+        const key = row.dataset.cplVaultKey || '';
+        if (key === 'cursor:') return 'Director Accounts';
+        if (key.startsWith('custom:')) return 'Model Provider';
+        return (CARD_KINDS[csKindOf(row)] || CARD_KINDS.service)[1];
+    }
+
+    /** Every card (the Cursor profiles are rows inside the Cursor card, not cards of their own). */
     function csRows() {
-        return hostEl ? [...hostEl.querySelectorAll('.cpl-vault-row[data-cpl-vault-key]')] : [];
+        return hostEl ? [...hostEl.querySelectorAll('.cpl-vault-row[data-cpl-vault-key]')].filter((r) => !r.closest('.cs-nested')) : [];
     }
 
     function csRow(key) {
@@ -800,7 +1164,7 @@
 
     /** The row's action buttons: Edit and Delete first, as CardSpace's own order. */
     function csActions(row) {
-        const holder = (csMoved && csMoved.row === row) ? csMoved.actions : row.querySelector('.cpl-vault-actions');
+        const holder = (csMoved && csMoved.row === row) ? csMoved.actions : row.querySelector(':scope > .cpl-vault-details > .cpl-vault-actions');
         return holder ? [...holder.querySelectorAll('button')] : [];
     }
 
@@ -814,11 +1178,23 @@
     // RunPod, and the StaticForge MCP agents' application keys.
     const XAI = '/dist/custom-icons/xAI_Logomark_Dark.png';
     const DIRECTOR = '/static_images/app_icons/director.png';
+    const CURSOR = '/dist/custom-icons/cursor-icon.svg';
+    const CLAUDE = '/dist/custom-icons/claude-icon.svg';
+    // #781 card covers (generated card faces, full bleed) for cards with no logo of their own
+    const COVER = (name) => `${CS}/covers/${name}.webp`;
+    const SERVICE_COVERS = [
+        [/^openai$/i, COVER('openai')],
+        [/^openweather$/i, COVER('openweather')],
+        [/^exa\b/i, COVER('exa')],
+        [/^runpod$/i, COVER('runpod')]
+    ];
     const SERVICE_LOGOS = [
         [/^novelai$/i, '/static_images/novelai-round.png'],
         [/^grok\b|xai/i, XAI],
         [/^google$/i, '/static_images/vista-gadgets/flowerpot/images/google.png'],
-        [/^tokenrouter$/i, '/dist/custom-icons/tokenrouter-icon.svg']
+        [/^tokenrouter$/i, '/dist/custom-icons/tokenrouter-icon.svg'],
+        [/^claude$/i, CLAUDE],
+        [/^apple weather$/i, '/static_images/weather/apple-weather-mark@2x.png']
     ];
     // an application key's app, from its name and its client (user agent)
     const APP_LOGOS = [
@@ -829,27 +1205,48 @@
         [/^grok$/i, XAI]
     ];
 
-    function csLogo(row) {
-        if (row.dataset.cplCardPicture) return row.dataset.cplCardPicture;
+    /** { src, logo }: a logo sits on white in the frame, a cover fills it. */
+    function csPicture(row) {
+        if (row.dataset.cplCardPicture) return { src: row.dataset.cplCardPicture, logo: true };
+        const key = row.dataset.cplVaultKey || '';
         const kind = csKindOf(row);
         const name = csName(row);
         const sub = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
-        if (kind === 'director') return DIRECTOR;
         const hit = (list, text) => (list.find(([re]) => re.test(text)) || [])[1] || '';
-        if (kind === 'service') return hit(SERVICE_LOGOS, name);
-        if (kind === 'application') return hit(APP_LOGOS, name) || hit(APP_LOGOS, sub);
-        return '';
+        if (key === 'cursor:') return { src: CURSOR, logo: true };
+        if (key.startsWith('custom:')) return { src: COVER('model-provider'), logo: false };
+        if (kind === 'service') {
+            const logo = hit(SERVICE_LOGOS, name);
+            if (logo) return { src: logo, logo: true };
+            const cover = hit(SERVICE_COVERS, name);
+            return { src: cover || COVER('service-key'), logo: false };
+        }
+        if (kind === 'application') {
+            const logo = hit(APP_LOGOS, name) || hit(APP_LOGOS, sub);
+            if (logo) return { src: logo, logo: true };
+            // the StaticForge MCP agents (Rook, Sala, Menma …) send "<Name>/1.0 (StaticForge; …)"
+            if (/\(StaticForge;/i.test(sub)) return { src: COVER('mcp-agent'), logo: false };
+            return { src: COVER('application'), logo: false };
+        }
+        return { src: `${CS}/personal-card.png`, logo: false };
+    }
+
+    /** The Cursor card's dots: one per profile, from the profile rows inside it. */
+    function csNestedDots(row) {
+        const holder = csMoved && csMoved.row === row && csMoved.details ? csMoved.details : row;
+        return [...holder.querySelectorAll('.cs-nested .cpl-vault-row .cpl-vault-status')].map((el) => el.innerHTML).join('');
     }
 
     /** A card: the picture in its dark frame, the name under it (the VM's 130 x 106 cell). */
     function csCard(row, extra) {
-        const logo = csLogo(row);
-        const picture = logo || `${CS}/personal-card.png`;
-        const dot = row.querySelector('.cpl-vault-status');
+        const pic = csPicture(row);
+        const logo = pic.logo;
+        const picture = pic.src;
+        const dot = row.dataset.cplVaultKey === 'cursor:' ? { innerHTML: csNestedDots(row) } : row.querySelector('.cpl-vault-status');
         const tip = (row.querySelector('.cpl-vault-sub') || {}).textContent || '';
         return `<button type="button" class="cs-card${extra || ''}" data-cs-key="${esc(row.dataset.cplVaultKey)}" title="${esc(tip)}">
             <span class="cs-card-pic${logo ? ' is-logo' : ''}"><img src="${esc(picture)}" alt="" draggable="false"></span>
-            <span class="cs-card-name">${esc(csName(row))}</span>${dot ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
+            <span class="cs-card-name">${esc(csName(row))}</span>${dot && dot.innerHTML ? `<span class="cs-card-dots">${dot.innerHTML}</span>` : ''}</button>`;
     }
 
     /** A group per kind of card (as CardSpace's "Your cards:" group), Add a card in its own group after them. */
@@ -880,6 +1277,10 @@
             list.innerHTML = csTask('What type of card should I add?', 'data-cs-task="help"') + csTask('Help', 'data-cs-task="help"');
             return;
         }
+        if (csView === 'form' || csView === 'prefs') {
+            list.innerHTML = csTask('Help', 'data-cs-task="help"');
+            return;
+        }
         const del = row && csFind(row, /delete|revoke|deny/i);
         const has = (id) => !!(hostEl && hostEl.querySelector(`#${id}`));
         list.innerHTML = csTask('Duplicate card', '', false) + csTask('Delete card', 'data-cs-task="delete"', !!del)
@@ -887,7 +1288,7 @@
             + csTask('Add a card', 'data-cs-go="add"')
             + csTask('Save key changes', 'data-cs-click="secKeychainSave"', has('secKeychainSave'))
             + csTask('View the request log', 'data-cs-click="secAppkeysLogBtn"', has('secAppkeysLogBtn'))
-            + csTask('Preferences', 'data-cs-task="preferences"')
+            + csTask('Preferences', 'data-cs-go="prefs"')
             + '<li class="cs-sep"></li>'
             + csTask('Delete all cards', '', false)
             + '<li class="cs-sep"></li>'
@@ -905,6 +1306,10 @@
             foot.innerHTML = save
                 ? '<button type="button" class="tbp-button cs-foot-btn cs-foot-save" data-dialog-primary="1" data-cs-task="save">Save</button><button type="button" class="tbp-button cs-foot-btn" data-cs-go="home">Cancel</button>'
                 : (edit ? '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-task="edit">Edit</button>' : '');
+        } else if (csView === 'form') {
+            foot.innerHTML = '<button type="button" class="tbp-button cs-foot-btn" data-cs-task="form-close">Close</button>';
+        } else if (csView === 'prefs') {
+            foot.innerHTML = '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-go="home">OK</button>';
         } else foot.innerHTML = '';
     }
 
@@ -925,11 +1330,10 @@
         if (!csMoved || csMoved.row !== row) {
             csPutBack();
             const details = row.querySelector('.cpl-vault-details');
-            const actions = details && details.querySelector('.cpl-vault-actions');
+            const actions = details && details.querySelector(':scope > .cpl-vault-actions');
             csMoved = { row, details, actions };
         }
-        const kind = csKindOf(row);
-        pane.innerHTML = `<div class="cs-details-card">${csCard(row, ' is-details')}<div class="cs-details-kind">${esc(CARD_KINDS[kind][1])}</div></div>
+        pane.innerHTML = `<div class="cs-details-card">${csCard(row, ' is-details')}<div class="cs-details-kind">${esc(csKindLabel(row))}</div></div>
             <div class="cs-details-info"><div class="cs-group-label"><span>Information in this card:</span></div><div class="cs-details-fields"></div></div>`;
         if (csMoved.details) pane.querySelector('.cs-details-fields').appendChild(csMoved.details);
     }
@@ -937,7 +1341,9 @@
     const CS_TEXT = {
         home: ['Select a card to preview', 'To see or edit card data before you send it, select a card, and then click Preview. To create a new card, click Add a card.'],
         details: ['Card Details', 'This card is kept on the Dreamscape server. To change the card data, use the tasks on the right or click Edit.'],
-        add: ['Add a card', 'Select the type of card you want to add.']
+        add: ['Add a card', 'Select the type of card you want to add.'],
+        form: ['', 'Fill in the card data, and then click Save. To leave the card as it was, click Back.'],
+        prefs: ['Preferences', 'Choose how Dreamscape CardSpace opens. The PINs and the approved computers have their own places in Control Panel.']
     };
 
     function csRender() {
@@ -945,11 +1351,15 @@
         const picked = csApplyPending();
         if (picked && csView !== 'home') { csPutBack(); csView = 'home'; }
         win.dataset.csView = csView;
-        csEl('.cs-title').textContent = CS_TEXT[csView][0];
-        csEl('.cs-desc').textContent = CS_TEXT[csView][1];
+        csEl('.cs-title').textContent = csView === 'form' ? csFormTitle() : CS_TEXT[csView][0];
+        csEl('.cs-desc').textContent = csView === 'form' && csForm && csForm.id === 'secAppkeysLogPage'
+            ? 'The requests programs made with their application keys. Inactive keys lists the keys that no longer work.'
+            : CS_TEXT[csView][1];
         csEl('.cs-back').disabled = csView === 'home';
         if (csView === 'home') { csPutBack(); csRenderHome(); }
         if (csView === 'details') csRenderDetails();
+        if (csView === 'add') csRenderAdd();
+        if (csView === 'prefs') csRenderPrefs();
         csRenderTasks();
         csRenderFoot();
         if (picked) {
@@ -960,6 +1370,11 @@
 
     /** Drop an unsaved "New provider" draft (Cancel, Back, or leaving its details). */
     function csDiscardDraft() {
+        if (tmRows.some((row) => !row.id)) {
+            tmRows = tmRows.filter((row) => row.id);
+            if (csSel === 'sms:') csSel = null;
+            paintTextMessaging();
+        }
         if (!customProviderRows.some((row) => !row.id)) return false;
         customProviderRows = customProviderRows.filter((row) => row.id);
         if (csSel === 'custom:') csSel = null;
@@ -969,10 +1384,160 @@
 
     function csGo(next) {
         if (next === 'details' && !(csSel && csRow(csSel))) return;
+        // leaving a form closes it through the driver (its close button), which brings us back
+        if (csView === 'form' && next !== 'form' && csForm) { csCloseForm(); return; }
         if (next !== 'details') { csPutBack(); csDiscardDraft(); }
         csView = next;
         csRender();
     }
+
+    // ---- the form view: a driver panel (or the request log) opened inside the window (#781) ----
+    // The panels stay in the host (the driver finds its inputs under it). The form view shows the
+    // host with every branch but the open panel hidden; closing the panel brings the view back.
+
+    function csFormTarget() {
+        if (!hostEl) return null;
+        for (const id of CS_FORMS) {
+            const el = hostEl.querySelector(`#${id}`);
+            if (el && !el.classList.contains('hidden')) return el;
+        }
+        return null;
+    }
+
+    function csFormTitle() {
+        if (!csForm) return '';
+        if (csForm.id === 'secAppkeysLogPage') return 'Request log';
+        const strong = csForm.querySelector('.sec-details-header strong');
+        return strong ? strong.textContent.trim().replace(/Cursor Account Profile/, 'Cursor profile') : 'Card';
+    }
+
+    function csUnmarkForm() {
+        csFormOff.forEach((el) => el.classList.remove('cs-form-off'));
+        csFormOff = [];
+    }
+
+    function csMarkForm(target) {
+        csUnmarkForm();
+        for (let el = target; el && el !== hostEl; el = el.parentElement) {
+            const parent = el.parentElement;
+            if (!parent) break;
+            [...parent.children].forEach((sib) => {
+                if (sib !== el && !sib.classList.contains('cs-form-off')) {
+                    sib.classList.add('cs-form-off');
+                    csFormOff.push(sib);
+                }
+            });
+        }
+    }
+
+    function csCloseForm() {
+        const target = csForm;
+        if (!target) return;
+        const close = target.id === 'secAppkeysLogPage'
+            ? target.querySelector('#secAppkeysLogBack')
+            : target.querySelector('.sec-details-header [data-sec-action^="close-"]');
+        if (close) close.click(); else target.classList.add('hidden');
+        csFormSync();
+    }
+
+    /** A driver panel opened or closed (a class change under the host). */
+    function csFormSync() {
+        if (!win || !hostEl) return;
+        const target = csFormTarget();
+        if (target) {
+            if (csForm === target && csView === 'form') return;
+            if (csView !== 'form') csFormReturn = csView === 'details' ? 'details' : 'home';
+            csForm = target;
+            csMarkForm(target);
+            csView = 'form';
+            csRender();
+            const pane = csEl('.cs-panel > .cs-host');
+            if (pane) pane.scrollTop = 0;
+            const first = target.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=color]), textarea');
+            if (first && typeof first.focus === 'function') first.focus({ preventScroll: true });
+            return;
+        }
+        if (csView !== 'form') return;
+        csForm = null;
+        csUnmarkForm();
+        csView = csFormReturn === 'details' && csSel && csRow(csSel) ? 'details' : 'home';
+        if (csView === 'home') csPutBack();
+        csRender();
+    }
+
+    // ---- Preferences (was a link to the old Security Center) ----
+
+    function csSecurePref() {
+        try { return localStorage.getItem(SECURE_PREF) !== '0'; } catch (_err) { return true; }
+    }
+
+    function csRenderPrefs() {
+        csEl('.cs-prefs').innerHTML = `<div class="cs-group-label"><span>When Dreamscape CardSpace opens:</span></div>
+            <div class="cs-pref-check desktop-settings-check"><input type="checkbox" id="csPrefSecure" data-cs-pref="secure"${csSecurePref() ? ' checked' : ''}><label for="csPrefSecure">Switch to the secure desktop</label></div>
+            <p class="cs-pref-note">The rest of the desktop is dimmed and cannot be used until CardSpace closes, as when Melaton asks for your permission.</p>
+            <div class="cs-group-label"><span>Related settings:</span></div>
+            <ul class="cs-pref-links">
+                <li><button type="button" class="cs-task" data-cs-related="pins">Change the logon PINs (User Accounts)</button></li>
+                <li><button type="button" class="cs-task" data-cs-related="approved">Approved computers (Melaton Defender)</button></li>
+            </ul>`;
+    }
+
+    function csOpenRelated(which) {
+        // another window cannot sit behind the secure desktop: CardSpace closes first
+        if (typeof root.closeModal === 'function') root.closeModal(win);
+        csClose();
+        setTimeout(() => {
+            if (which === 'pins' && root.cplUserAccounts && typeof root.cplUserAccounts.open === 'function') root.cplUserAccounts.open();
+            /* global securityDsapOpenDefender */
+            if (which === 'approved' && typeof securityDsapOpenDefender === 'function') securityDsapOpenDefender('approved');
+        }, 0);
+    }
+
+    // ---- the secure desktop: Vista switches to it for CardSpace (the desktop dimmed, CardSpace alone) ----
+    // Above the taskbar (--z-taskbar 2701, its popovers 2710) and under confirmation dialogs (2800)
+    // and toasts, so the driver's own prompts still come up over the window.
+    const SECURE_Z = 2720;
+    let csSecureEl = null;
+    let csSecureWatch = null;
+
+    function csSecureOn() {
+        if (!win || !csSecurePref() || typeof document === 'undefined') return;
+        if (!csSecureEl) {
+            csSecureEl = document.createElement('div');
+            csSecureEl.id = 'cardSpaceSecureDesktop';
+            csSecureEl.className = 'cs-secure-desktop';
+            csSecureEl.setAttribute('aria-hidden', 'true');
+            // the secure desktop has nothing else on it: clicks there go nowhere
+            ['mousedown', 'click', 'contextmenu', 'dblclick'].forEach((type) => csSecureEl.addEventListener(type, (ev) => { ev.preventDefault(); ev.stopPropagation(); }));
+        }
+        csSecureEl.style.zIndex = String(SECURE_Z);
+        if (!csSecureEl.isConnected) document.body.appendChild(csSecureEl);
+        // cpl-cardspace.css lifts .cs-secure to 2721 (!important: the window manager rewrites the inline z)
+        win.classList.add('cs-secure');
+        document.documentElement.classList.add('cardspace-secure-desktop');
+        void csSecureEl.offsetWidth;
+        csSecureEl.classList.add('is-on');
+        if (!csSecureWatch) {
+            // closed from anywhere (taskbar, closeModal): back to the normal desktop
+            csSecureWatch = new MutationObserver(() => { if (win.classList.contains('hidden')) csSecureOff(); });
+            csSecureWatch.observe(win, { attributes: true, attributeFilter: ['class'] });
+        }
+    }
+
+    function csSecureOff() {
+        if (csSecureWatch) { csSecureWatch.disconnect(); csSecureWatch = null; }
+        if (win && win.classList.contains('cs-secure')) {
+            win.classList.remove('cs-secure');
+            if (typeof root.bringModalToFront === 'function' && !win.classList.contains('hidden')) root.bringModalToFront(win);
+        }
+        if (typeof document !== 'undefined') document.documentElement.classList.remove('cardspace-secure-desktop');
+        if (csSecureEl) {
+            const el = csSecureEl;
+            el.classList.remove('is-on');
+            setTimeout(() => { if (!el.classList.contains('is-on')) el.remove(); }, 260);
+        }
+    }
+
 
     /**
      * Which card is selected, from state alone (no DOM): the selection the user made, or the first
@@ -1022,17 +1587,48 @@
 
     /** Add a card's entries: the vault's own add buttons. */
     const CS_ADD = [
-        ['secCursorAccountsAddBtn', 'Add a Director account', 'Director accounts are the Cursor profiles the Director runs Wren and Xi on. Add one to sign in with another profile or to share the work between two.'],
+        ['key:claude', 'Add a Claude account', 'A Claude account the Director signs in with (paste the token from claude setup-token). The selected account runs the Claude engine for Yumiya, Yozora and Rentan.'],
+        ['secCursorAccountsAddBtn', 'Add a Cursor profile', 'A Cursor profile the Director can run Yumiya and Yozora on. Add one to sign in with another profile or to share the work between two.'],
+        ['custom-provider', 'Add a custom model provider', 'Another model host for the Director: its address, its key and the model it uses by default.'],
         ['secAppkeysCreateBtn', 'Create an application key', 'Application keys let programs reach Dreamscape on your behalf. Each key has its own name and can be revoked at any time.'],
-        ['custom-provider', 'Add a custom model provider', 'Custom model providers give the Director another model host: its address, its key and the model it uses by default.']
+        ['tm-bluebubbles', 'Add a BlueBubbles server', 'A BlueBubbles server on a Mac brings your iMessage conversations to Melaton Messenger and the phone. Type its address and password.'],
+        ['tm-rcs', 'Add an RCS account (Google Messages)', 'Pair Google Messages on your Android phone by scanning a QR code, and its RCS and SMS conversations join Melaton Messenger.']
     ];
 
     function csRenderAdd() {
         csEl('.cs-add').innerHTML = CS_ADD.map(([id, title, text]) => `<button type="button" class="cs-add-item" data-cs-add="${esc(id)}">
-            <img src="${CS}/arrow.png" alt="" class="cs-add-arrow"><span class="cs-add-title">${esc(title)}</span><span class="cs-add-text">${esc(text)}</span></button>`).join('');
+            <img src="${CS}/arrow.png" alt="" class="cs-add-arrow"><span class="cs-add-title">${esc(title)}</span><span class="cs-add-text">${esc(text)}</span></button>`).join('')
+            + csAddKeys();
+    }
+
+    /** "Add a service key for:" one link per keychain service (Claude has its own entry above). */
+    function csAddKeys() {
+        const services = ((driver && driver._state && driver._state.keychain && driver._state.keychain.services) || []).filter((sv) => sv.id !== 'claude');
+        if (!services.length) return '';
+        return `<div class="cs-add-keys"><span class="cs-add-keys-label">Add a service key for:</span>${services.map((sv) => `<button type="button" class="cs-task" data-cs-add="key:${esc(sv.id)}">${esc(sv.label || sv.id)}</button>`).join('')}</div>`;
     }
 
     function csAdd(id) {
+        if (id.startsWith('key:')) {
+            csGo('home');
+            if (driver && typeof driver._openKeychainAddPanel === 'function') driver._openKeychainAddPanel(hostEl, id.slice(4));
+            return;
+        }
+        if (id === 'tm-bluebubbles') {
+            tmAddBlueBubbles();
+            setTimeout(() => {
+                const fresh = csRow('sms:');
+                if (fresh) { csSel = fresh.dataset.cplVaultKey; csGo('details'); } else csGo('home');
+            }, 0);
+            return;
+        }
+        if (id === 'tm-rcs') {
+            void tmAddRcs().then((newId) => {
+                const row = newId && csRow(`sms:${newId}`);
+                if (row) { csSel = row.dataset.cplVaultKey; csGo('details'); } else csGo('home');
+            });
+            return;
+        }
         if (id === 'custom-provider') {
             const add = hostEl.querySelector('#cplVault-custom-models .cpl-vault-link');
             if (add) add.click();
@@ -1050,6 +1646,17 @@
     function csWire() {
         win.addEventListener('click', (ev) => {
             const t = ev.target;
+            // The driver listens on its host only. Buttons the window moved out of it (a card's
+            // fields, its tasks, the Cursor profiles) hand their click to the driver here.
+            const act = t.closest('[data-sec-action]');
+            if (act && driver && hostEl && !hostEl.contains(act)) {
+                if (!act.disabled) driver._onClick({ target: act });
+                return;
+            }
+            const proxy = t.closest('[data-cs-proxy]');
+            if (proxy) { const b = hostEl && hostEl.querySelector(`#${proxy.dataset.csProxy}`); if (b) b.click(); return; }
+            const related = t.closest('[data-cs-related]');
+            if (related) { csOpenRelated(related.dataset.csRelated); return; }
             const card = t.closest('.cs-card[data-cs-key]');
             if (card && csView === 'home') {
                 csSelect(card.dataset.csKey);
@@ -1057,7 +1664,7 @@
             }
             const go = t.closest('[data-cs-go]');
             if (go && !go.disabled) { csGo(go.dataset.csGo); return; }
-            if (t.closest('.cs-back')) { csGo('home'); return; }
+            if (t.closest('.cs-back')) { csGo(csView === 'form' ? csFormReturn : 'home'); return; }
             const add = t.closest('[data-cs-add]');
             if (add) { csAdd(add.dataset.csAdd); return; }
             const click = t.closest('[data-cs-click]');
@@ -1067,10 +1674,16 @@
                 const row = csSel && csRow(csSel);
                 const which = task.dataset.csTask;
                 if (which === 'help') { if (typeof root.openHelpAndSupport === 'function') root.openHelpAndSupport('cardspace'); return; }
-                if (which === 'preferences') { if (typeof openDsapInGrimoire === 'function') openDsapInGrimoire(`dsap://${SECURITY_URL}/`); return; }
+                if (which === 'form-close') { csCloseForm(); return; }
                 const btn = row && (which === 'delete' ? csFind(row, /delete|revoke|deny/i) : which === 'save' ? csFind(row, /^\s*save\s*$/i) : csFind(row, /edit/i));
                 if (btn) btn.click();
             }
+        });
+        win.addEventListener('change', (ev) => {
+            const pref = ev.target.closest('[data-cs-pref="secure"]');
+            if (!pref) return;
+            try { localStorage.setItem(SECURE_PREF, pref.checked ? '1' : '0'); } catch (_err) { /* this session only */ }
+            if (pref.checked) csSecureOn(); else csSecureOff();
         });
         win.addEventListener('dblclick', (ev) => {
             const card = ev.target.closest('.cs-home .cs-card[data-cs-key]');
@@ -1090,7 +1703,8 @@
         win.dataset.windowClient = 'light';
         win.dataset.windowDefaultWidth = '756';
         win.dataset.windowDefaultHeight = '550';
-        win.dataset.windowMinWidth = '640';
+        // the panel and the Tasks column sit at fixed client offsets (588 px + Tasks): narrower cuts Tasks off
+        win.dataset.windowMinWidth = '756';
         win.dataset.windowMinHeight = '420';
         win.innerHTML = `
             <div class="modal-window-title"><div class="modal-window-title-main"><img class="icon-image" src="${CS}/cardspace-16.png" alt=""><span>Dreamscape CardSpace</span></div></div>
@@ -1108,6 +1722,7 @@
                     <div class="cs-home"></div>
                     <div class="cs-details"></div>
                     <div class="cs-add"></div>
+                    <div class="cs-prefs"></div>
                     <div class="cs-host cpl-auth-host"></div>
                 </div>
                 <div class="cs-tasks"><div class="cs-tasks-head">Tasks</div><ul class="cs-tasks-list"></ul></div>
@@ -1119,8 +1734,12 @@
     }
 
     function csClose() {
+        csSecureOff();
+        csUnmarkForm();
+        csForm = null;
         csPutBack();
         if (csObserver) { csObserver.disconnect(); csObserver = null; }
+        if (csFormObserver) { csFormObserver.disconnect(); csFormObserver = null; }
         unmount();
         csSel = null;
         csPendingSection = null;
@@ -1137,6 +1756,7 @@
         if (section) csPendingSection = section;
         if (typeof root.openModal === 'function') root.openModal(win); else win.classList.remove('hidden');
         if (typeof root.bringModalToFront === 'function') root.bringModalToFront(win);
+        if (!wasOpen) csSecureOn();
         if (!wasOpen) {
             csView = 'home';
             csSel = null;
@@ -1146,6 +1766,11 @@
             if (csObserver) csObserver.disconnect();
             csObserver = new MutationObserver(csRefresh);
             csObserver.observe(hostEl, { childList: true, subtree: true });
+            if (csFormObserver) csFormObserver.disconnect();
+            csFormObserver = new MutationObserver((records) => {
+                if (records.some((r) => r.target.id && CS_FORMS.includes(r.target.id))) csFormSync();
+            });
+            csFormObserver.observe(hostEl, { attributes: true, attributeFilter: ['class'], subtree: true });
             csRender();
         }
         if (section) csRender();
@@ -1181,7 +1806,9 @@
         driver._clickMenuTargets = [];
         driver.init(makeHost(hostEl));
         vault();
+        mountCursorCard();
         mountCustomProviders();
+        mountTextMessaging();
     }
 
     function unmount() {
@@ -1192,6 +1819,7 @@
         }
         driver = null;
         customProviderRows = [];
+        unmountTextMessaging();
         if (hostEl) hostEl.innerHTML = '';
         hostEl = null;
     }

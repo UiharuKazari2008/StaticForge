@@ -440,3 +440,411 @@
 #dreamscapeCardSpaceModal .cs-details-card .cs-card-pic.is-logo img {
     padding: 8px 14px;
 }
+
+/* Text Messaging cards (Yozora #779): error text, the RCS pairing QR code and its instruction */
+#dreamscapeCardSpaceModal .cpl-tm-error {
+    color: #c00;
+}
+
+#dreamscapeCardSpaceModal .cpl-tm-hint {
+    color: #444;
+}
+
+#dreamscapeCardSpaceModal .cpl-tm-pair {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+#dreamscapeCardSpaceModal .cpl-tm-qr {
+    width: 200px;
+    height: 200px;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #a0a0a0;
+    image-rendering: pixelated;
+}
+
+/* ---- #781 the form view: the driver's open panel (or the request log) inside the window ---- */
+#dreamscapeCardSpaceModal[data-cs-view="form"] .cs-panel > :not(.cs-host),
+#dreamscapeCardSpaceModal[data-cs-view="prefs"] .cs-panel > :not(.cs-prefs),
+#dreamscapeCardSpaceModal:not([data-cs-view="prefs"]) .cs-panel > .cs-prefs {
+    display: none;
+}
+
+#dreamscapeCardSpaceModal[data-cs-view="form"] .cs-panel > .cs-host {
+    display: block;
+    padding: 10px 14px 12px;
+}
+
+#dreamscapeCardSpaceModal .cs-host .cs-form-off {
+    display: none !important;
+}
+
+/* the window's title and Back replace the panel's own header and its close box */
+#dreamscapeCardSpaceModal .cs-host .sec-details-header,
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage > .sec-dsap-section-hdr,
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogBack {
+    display: none !important;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-details-panel {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-appkeys-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 520px;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-appkeys-form > label:not(.sec-check) {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    align-items: center;
+    gap: 8px;
+    color: #000;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-appkeys-form > label.sec-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 148px;
+    color: #000;
+}
+
+#dreamscapeCardSpaceModal .cs-host :is(.sec-input, select.sec-input, textarea.sec-input) {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 21px;
+    padding: 2px 4px;
+    border: 1px solid #abadb3;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-input:focus {
+    border-color: #3d7bad;
+    outline: none;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-token-row,
+#dreamscapeCardSpaceModal .cs-host .sec-color-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-readonly-row,
+#dreamscapeCardSpaceModal .cs-host .sec-dsap-setting-hint,
+#dreamscapeCardSpaceModal .cs-host .sec-appkeys-scopes > span {
+    color: #5a5a5a;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-appkeys-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    padding-top: 4px;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-dsap-action-btn i,
+#dreamscapeCardSpaceModal .cs-host .dsap-smf-btn i:not(.fa-caret-down) {
+    display: none;
+}
+
+/* the request log: its toolbar as links, the table as a Vista list */
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-toolbar {
+    display: flex;
+    gap: 14px;
+    margin: 0 0 8px;
+}
+
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-toolbar .sec-dsap-action-btn {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: #0066cc;
+    cursor: pointer;
+}
+
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-toolbar .sec-dsap-action-btn::before,
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-toolbar .sec-dsap-action-btn::after {
+    content: none;
+}
+
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-toolbar .sec-applog-tab.active {
+    color: #000;
+    font-weight: bold;
+}
+
+#dreamscapeCardSpaceModal .cs-host #secAppkeysLogPage .sec-dsap-statusbox {
+    margin: 0 0 6px;
+    color: #5a5a5a;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-data-table {
+    width: 100%;
+    border: 0;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-data-table th {
+    height: 24px;
+    padding: 0 6px;
+    border: 0;
+    border-right: 1px solid #e5e5e5;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fff, #f3f4f6);
+    color: #4c607a;
+    font-weight: normal;
+    text-align: left;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-data-table td {
+    padding: 3px 6px;
+    border: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: top;
+    word-break: break-word;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-data-table tbody tr:hover td {
+    background: #e8f4fd;
+}
+
+#dreamscapeCardSpaceModal .cs-host .sec-pager {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+/* ---- the Cursor card: its profiles as rows inside the details ---- */
+#dreamscapeCardSpaceModal .cs-details-fields .cs-nested .cpl-vault-list {
+    display: block !important;
+    margin: 2px 0 8px;
+    border: 1px solid #d5dbe5;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-row + .cpl-vault-row {
+    border-top: 1px solid #e5e9f0;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 28px;
+    margin: 0;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    text-align: left;
+    cursor: pointer;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-line::before,
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-line::after {
+    content: none;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-line:hover {
+    background: #e8f4fd;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-name {
+    flex: 1;
+    min-width: 0;
+    color: #000;
+    font-weight: bold;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-sub {
+    margin-left: 6px;
+    color: #5a5a5a;
+    font-weight: normal;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-chevron::before {
+    content: '\25B8';
+    color: #6d7a8c;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-row.is-open .cpl-vault-chevron::before {
+    content: '\25BE';
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-details {
+    display: none !important;
+    padding: 0 8px 8px 16px !important;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-row.is-open .cpl-vault-details {
+    display: block !important;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-actions,
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-vault-details > .cpl-vault-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    padding-top: 4px;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-actions button,
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-value button {
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: #0066cc;
+    cursor: pointer;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-actions button:hover:not(:disabled),
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-value button:hover:not(:disabled) {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .cpl-vault-actions button:disabled {
+    color: #7e859c;
+}
+
+#dreamscapeCardSpaceModal .cs-nested :is(.cpl-vault-actions, .cpl-vault-value) button::before,
+#dreamscapeCardSpaceModal .cs-nested :is(.cpl-vault-actions, .cpl-vault-value) button::after,
+#dreamscapeCardSpaceModal .cs-nested :is(.cpl-vault-actions, .cpl-vault-value) button i {
+    content: none;
+    display: none;
+}
+
+#dreamscapeCardSpaceModal .cs-nested .director-account-badge {
+    display: none;
+}
+
+/* ---- Add a card: one link per service under the kinds ---- */
+#dreamscapeCardSpaceModal .cs-add-keys {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    width: 512px;
+    margin: 8px 0 12px;
+    padding-left: 33px;
+}
+
+#dreamscapeCardSpaceModal .cs-add-keys-label {
+    flex-basis: 100%;
+    color: #000;
+}
+
+#dreamscapeCardSpaceModal :is(.cs-add-keys, .cs-pref-links) .cs-task {
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: #0066cc;
+    cursor: pointer;
+}
+
+#dreamscapeCardSpaceModal :is(.cs-add-keys, .cs-pref-links) .cs-task:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+/* ---- Preferences ---- */
+#dreamscapeCardSpaceModal .cs-prefs {
+    padding: 10px 0 0;
+}
+
+#dreamscapeCardSpaceModal .cs-pref-check {
+    margin: 8px 0 0 28px;
+    color: #000;
+}
+
+#dreamscapeCardSpaceModal .cs-pref-note {
+    margin: 4px 24px 14px 50px;
+    color: #5a5a5a;
+    line-height: 16px;
+}
+
+#dreamscapeCardSpaceModal .cs-pref-links {
+    margin: 6px 0 0 28px;
+    padding: 0;
+    list-style: none;
+}
+
+/* ---- the secure desktop: the desktop dimmed under CardSpace, nothing else usable ---- */
+.cs-secure-desktop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    transition: opacity 0.25s linear;
+    pointer-events: auto;
+    cursor: var(--c-default, default);
+}
+
+.cs-secure-desktop.is-on {
+    opacity: 1;
+}
+
+/* CardSpace alone above the dimmed desktop (cplAuthentication.js SECURE_Z + 1) */
+#dreamscapeCardSpaceModal.cs-secure {
+    z-index: 2721 !important;
+}
+
+/* the secure desktop has no taskbar to minimise to */
+#dreamscapeCardSpaceModal.cs-secure .minimize-btn {
+    display: none !important;
+}
+
+/* the details' edit boxes as Control Panel's (melaton-network.css #melatonControlPanelModal .cpl-ua-input):
+   outside Control Panel they fell back to the browser's 16 px text */
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ua-input {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 320px;
+    height: 23px;
+    padding: 2px 4px;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ua-input::placeholder {
+    color: #6d6d6d;
+    font-style: italic;
+}
+
+/* the profile form's colour box: a swatch beside its hex field, not a stretched bar */
+#dreamscapeCardSpaceModal .cs-host .sec-color-row input[type="color"] {
+    flex: none;
+    width: 34px;
+    height: 21px;
+    padding: 1px;
+    border: 1px solid #abadb3;
+    background: #fff;
+}

@@ -561,7 +561,7 @@
             }
             return `<div class="cpl-vpage cpl-chat">
                 <h1 class="cpl-vtitle">Change chat settings</h1>
-                <p class="cpl-vtext">Choose the engine and model the chat personas use, and tell them about yourself. These settings are shared with Text Messages on your phone.</p>
+                <p class="cpl-vtext">Choose the engine and model the chat personas use, and tell them about yourself. These settings are shared with Dreamscape Messenger on your phone.</p>
                 ${inner}
             </div>`;
         },

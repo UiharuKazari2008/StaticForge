@@ -6664,6 +6664,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'paypass', icon: 'fas fa-credit-card', imageIcon: 'paypass.png', text: 'PayPass Operator', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'paypass' }) },
         // Melaton Mobile Device Center: phones running the Dreamscape app (Yozora #747; apps/activesync, a system package)
         { launchId: 'mobile-device-center', icon: 'fas fa-mobile-screen', imageIcon: 'mobile-device-center.png', text: 'Melaton Mobile Device Center', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'activesync' }) },
+        // Melaton Messenger: the Text Messaging accounts (iMessage through BlueBubbles, RCS), admins (Yozora #779; apps/messenger, a system package)
+        { launchId: 'melaton-messenger', icon: 'fas fa-comments', imageIcon: 'melaton-messenger.png', text: 'Melaton Messenger', desktopOnly: true, adminOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'messenger' }) },
         // XLink Operator Console: the arcade cabinets' control menu, admins (Yozora #719; apps/xlink, a system package)
         // VisionCaster (was QuickCast): video mixer remote for the cabinet mixers and the satellite encoder, and one-touch YouTube live, admins (Yozora #734; apps/quickcast, a system package)
         { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'VisionCaster', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },
@@ -7843,6 +7845,7 @@ function getStartMenuPackageItems(apps = START_MENU_PACKAGE_APPS) {
 // Accessories. 'top' = the top level of All Programs; a folder id = that folder; label = the VM's name.
 const START_MENU_SYSTEM_PLACES = {
     'mobile-device-center': { at: 'top' },         // Windows Mobile Device Center
+    'melaton-messenger': { at: 'top' },            // Windows Live Messenger / Windows Mail sit at the top level
     calendar: { at: 'top' },                       // Windows Calendar
     contacts: { at: 'top' },                       // Windows Contacts
     'media-player': { at: 'top' },                 // Windows Media Player

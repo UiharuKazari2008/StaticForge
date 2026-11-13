@@ -17,7 +17,9 @@
  *
  * Chat personas (Yozora #763): a card with X-DREAMSCAPE-CHAT-ID (modules/chatPersonaContacts.js
  * makes one per persona) shows the persona's state under its name in the preview pane, gets
- * Action > Send Text Message (the chat), and a Persona page in its Properties (apps/contacts).
+ * Action > Send Instant Message (its chat in Dreamscape Messenger), and a Persona page in its
+ * Properties (apps/contacts). Any other card with a phone number or an e-mail address gets Action >
+ * Send Text Message: Melaton Messenger writing to that address (Yozora #779).
  * The state is read from the server when shown: personaState(chatId) -> get_chat_persona_state.
  *
  * The cards are read here (melatonVCard, vcard.js); the sheets and dialogs are the contacts
@@ -275,7 +277,21 @@
         return rows;
     }
 
-    /** Open the persona's chat: Text Messages on a phone, the chat window on the desktop. */
+    /** The address a text message goes to: the mobile number, then the other phones, then the e-mail address. */
+    function textAddress(card) {
+        if (!card || card.group) return '';
+        return card.home.mobile || card.home.phone || card.work.phone || (V() ? V().email(card) : '') || '';
+    }
+
+    /** Melaton Messenger writing to the card's address (the chat personas keep their chat window). */
+    async function openTextMessage(card) {
+        const to = textAddress(card);
+        if (!to || !root.melatonApps || typeof root.melatonApps.launch !== 'function') return false;
+        await root.melatonApps.launch({ packageId: 'messenger', args: { compose: { to } } });
+        return true;
+    }
+
+    /** Open the persona's chat: Dreamscape Messenger on a phone, the chat window on the desktop. */
     async function openPersonaChat(card) {
         if (!isPersona(card)) return false;
         const id = Number(card.chatId);
@@ -340,7 +356,7 @@
                     box.innerHTML = (rows.length
                         ? `<dl class="explorer-preview-props">${rows.map(([k, v]) => `<dt>${esc(k)}:</dt><dd title="${esc(v)}">${esc(v)}</dd>`).join('')}</dl>`
                         : '<div class="explorer-preview-persona-note">No messages yet.</div>')
-                        + '<a href="#" class="explorer-preview-link explorer-preview-chat">Send Text Message</a>';
+                        + '<a href="#" class="explorer-preview-link explorer-preview-chat">Send Instant Message</a>';
                     const chat = box.querySelector('.explorer-preview-chat');
                     if (chat) chat.addEventListener('click', (ev) => { ev.preventDefault(); void openPersonaChat(c); });
                 });
@@ -484,7 +500,9 @@
                 { text: 'Send E-mail', action: 'explorer-contact-email', disabled: !hasMail },
                 { text: 'Send E-mail To...', disabled: true },
                 { text: 'Call This Contact...', action: 'explorer-contact-call', disabled: !(c && (c.home.phone || c.work.phone || c.home.mobile)) }
-            ].concat(isPersona(c) ? [{ text: 'Send Text Message', action: 'explorer-contact-chat', disabled: !!c.chatDeleted }] : []) },
+            ].concat(isPersona(c)
+                ? [{ text: 'Send Instant Message', action: 'explorer-contact-chat', disabled: !!c.chatDeleted }]
+                : (root.textMessaging && textAddress(c) && localStorage.getItem('userType') === 'admin' ? [{ text: 'Send Text Message', action: 'explorer-contact-text' }] : [])) },
             { text: 'This Is Me', action: 'explorer-contact-me', image: `${ART}/contact-16.png`, disabled: !!(c && c.group) },
             { text: 'Send Contact', action: 'explorer-contact-send', disabled: !!(c && c.group) }
         ];
@@ -511,6 +529,14 @@
             const c = one ? cardOf(one) : null;
             if (c && !(await openPersonaChat(c)) && typeof root.showConfirmationDialog === 'function') {
                 await root.showConfirmationDialog(`<p>The chat with ${esc(V().displayName(c))} could not be opened.</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Melaton Contacts', width: 400 });
+            }
+            return;
+        }
+        if (verb === 'text') {
+            const one = (items || []).filter(isCardFile)[0];
+            const c = one ? cardOf(one) : null;
+            if (c && !(await openTextMessage(c)) && typeof root.showConfirmationDialog === 'function') {
+                await root.showConfirmationDialog(`<p>Melaton Messenger could not be opened for ${esc(V().displayName(c))}.</p>`, [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'Melaton Contacts', width: 400 });
             }
             return;
         }
@@ -566,6 +592,8 @@
         personaState,
         personaRows,
         openPersonaChat,
+        openTextMessage,
+        textAddress,
         ART
     };
     root.explorerContacts = api;

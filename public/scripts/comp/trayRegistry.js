@@ -11,6 +11,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'naxtBagTrayIcon', label: 'Atelier Bag' },
     { id: 'dovecoteTrayIcon', label: 'Mail' },
     { id: 'activeSyncTrayIcon', label: 'Melaton Mobile Device Center' },
+    { id: 'melatonMessengerTrayIcon', label: 'Melaton Messenger' },
     { id: 'vistaSidebarTrayIcon', label: 'Melaton Sidebar' },
     { id: 'searchIndexingIndicator', label: 'Search indexing' },
     { id: 'walletTrayIcon', label: 'Account Manager' },
@@ -24,6 +25,7 @@ const TRAY_ICON_CATALOG = [
 ];
 
 const TRAY_POPUP_CATALOG = [
+    { id: 'text-messages', label: 'Text messages' },
     { id: 'windows-update', label: 'Melaton Update' },
     { id: 'mail', label: 'Mail' },
     { id: 'activesync', label: 'Mobile devices' },
