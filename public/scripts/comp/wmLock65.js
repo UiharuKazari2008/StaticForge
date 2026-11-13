@@ -109,7 +109,7 @@
         };
         el.slider.querySelector('.wm-lock65-handle').setAttribute('aria-label', 'Slide to unlock');
         // under the workspace switch cover and the splash, which come later in the shell
-        const before = shell.querySelector(':scope > .wm-switch, :scope > .wm-splash');
+        const before = shell.querySelector(':scope > .wm-splash');
         if (before) shell.insertBefore(layer, before); else shell.appendChild(layer);
 
         // 66 units of travel for the handle (slider 192 - handle 60, halved); a notification's

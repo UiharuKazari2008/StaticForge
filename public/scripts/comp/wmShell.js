@@ -1398,7 +1398,7 @@
     const HOLD_MENU_MS = WM65 ? 50 : 0;    // from the whole ring to the menu
     const HOLD_LEAVE_MS = WM65 ? 0 : 80;   // the ring stays this long after the menu (6.1)
     const HOLD_SLOP = 8;                   // CSS px the pen may wander
-    const HOLD_SKIP = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], .wm-titlebar, .wm-softkeys, .wm-viewbar, .wm-popup, .wm-msgbox-layer, .wm-busy, .wm-splash, .wm-switch, .wm-lock65, .wm-bubble, .wm-notify, .wm-notify-tray, .wrd-touch, .wmb-touch, .wmb-core, [data-wm-no-hold]';
+    const HOLD_SKIP = 'input, textarea, select, [contenteditable=""], [contenteditable="true"], .wm-titlebar, .wm-softkeys, .wm-viewbar, .wm-popup, .wm-msgbox-layer, .wm-busy, .wm-splash, .wm-lock65, .wm-bubble, .wm-notify, .wm-notify-tray, .wrd-touch, .wmb-touch, .wmb-core, [data-wm-no-hold]';
     const holdRing = { el: null, id: null, x: 0, y: 0, target: null, timers: [], touchAt: 0 };
 
     function holdRingEnd(keepMs) {
@@ -3247,10 +3247,11 @@
             } catch (_) { /* the switch runs uncovered */ }
             let r;
             try { r = orig.apply(this, arguments); } catch (err) { switchingWorkspace = false; if (covered) hideSwitchCover(); throw err; }
-            Promise.resolve(r).then(
-                () => { if (covered) setTimeout(() => { if (switchCoverFor === id) settleSwitchCover(id); }, 4000); },
-                () => { if (covered) hideSwitchCover(); }
-            ).finally(() => { setTimeout(() => { switchingWorkspace = false; }, 1500); });
+            // the splash stays until the switch reports complete (workspaceSwitchComplete, below) and
+            // Today is ready; setActiveWorkspace resolves once the server took the switch, long before
+            // the gallery has loaded, so its end lifts nothing (only a rejection does)
+            Promise.resolve(r).catch(() => { if (covered && switchCoverFor === id) hideSwitchCover(); })
+                .finally(() => { setTimeout(() => { switchingWorkspace = false; }, 1500); });
             return r;
         };
         wrapped.wmWrapped = true;
@@ -3260,44 +3261,65 @@
             const id = ev && ev.detail && ev.detail.workspaceId;
             if (switchCoverFor && (!id || id === switchCoverFor)) void settleSwitchCover(switchCoverFor);
         });
+        // the server refused or the socket dropped: the splash goes at once, the error box shows
+        document.addEventListener('workspaceSwitchFailed', (ev) => {
+            const id = ev && ev.detail && ev.detail.workspaceId;
+            if (switchCoverFor && (!id || id === switchCoverFor)) hideSwitchCover();
+        });
         return true;
     }
 
     /**
      * A workspace switch reconfigures the whole phone: theme colours, the Today picture and its
-     * placement, the Today layout, the gallery. Drawn live that was a run of jumps (old picture,
-     * then the colours, then rows moving). So the screen is covered from the moment the switch
-     * starts: the white base with the wait cursor and the workspace's name, over the bars too.
-     * It lifts when the switch reported complete (workspaceSwitchComplete), the workspace's Today
-     * settings are in place, its picture has loaded (2.5 s at most) and two frames were painted;
-     * never before 0.9 s (no flash on a fast switch), never after 25 s.
+     * placement, the Today layout, the gallery and the newest prints. Drawn live that was a run of
+     * jumps, and the old plain white "Loading" cover lifted on a 4 s timer whether the workspace had
+     * loaded or not (Yukimi, Nov 13: a better splash, held until all data is loaded, then Today).
+     * So a switch is a short restart into the other workspace: the version's own boot splash
+     * (6.1's green rings, 6.5's orange glow; buildBootLayers) with the boot's wait wheel and
+     * "Loading <workspace>..." under it, over the bars too. The phone goes back to Today under it.
+     * It holds until the switch reported complete (workspaceSwitchComplete: the gallery's list is
+     * in), the workspace's Today layout is in place, its picture and every picture on Today (the
+     * newest prints, 6.5's panels) have loaded (8 s at most for those) and two frames were painted;
+     * never before 1.2 s, and 90 s at the most for a switch that never reports (a 16,000-print workspace took 29 s in a test tab). Then Today comes up
+     * the way the boot ends (playBootReveal: body, soft keys, title bar, 6.1's rows in groups).
      */
     let switchCoverFor = null;
     let switchCoverAt = 0;
     let switchCoverTimer = null;
+    const SWITCH_MIN_MS = 1200;
+    const SWITCH_MAX_MS = 90000;
+    const SWITCH_ART_MAX_MS = 8000;
 
     function showSwitchCover(id) {
-        let cover = shell.querySelector('.wm-switch');
-        if (!cover) {
-            cover = document.createElement('div');
-            cover.className = 'wm-switch';
-            cover.setAttribute('role', 'status');
-            cover.setAttribute('aria-live', 'polite');
-            cover.innerHTML = '<img class="wm-switch-wait" alt="" draggable="false"><p class="wm-switch-text"></p>';
-            shell.appendChild(cover);
+        const splash = shell.querySelector('.wm-splash');
+        if (!splash) return;
+        let status = splash.querySelector('.wm-switch-status');
+        if (!status) {
+            status = document.createElement('p');
+            status.className = 'wm-switch-status';
+            status.setAttribute('role', 'status');
+            status.setAttribute('aria-live', 'polite');
+            splash.appendChild(status);
         }
         let name = '';
         try { if (typeof workspaces !== 'undefined' && workspaces[id]) name = workspaces[id].name || ''; } catch (_) { name = ''; }
-        cover.querySelector('.wm-switch-text').textContent = name ? `Loading ${name}...` : 'Loading workspace...';
-        const img = cover.querySelector('.wm-switch-wait');
-        waitStrip(img);
-        cover.hidden = false;
+        status.textContent = name ? `Loading ${name}...` : 'Loading workspace...';
         closeMenus(true);
+        delete root.dataset.wmReveal;
         root.dataset.wmSwitching = '1';
+        const wait = shell.querySelector('.wm-boot-wait');
+        if (wait) { waitStrip(wait); wait.hidden = false; }
         switchCoverFor = id;
         switchCoverAt = Date.now();
         clearTimeout(switchCoverTimer);
-        switchCoverTimer = setTimeout(hideSwitchCover, 25000);
+        switchCoverTimer = setTimeout(() => { if (switchCoverFor === id) void settleSwitchCover(id, true); }, SWITCH_MAX_MS);
+        // back to Today under the splash (the boot's own reset of the back stack): the switch ends there
+        void afterPaint().then(() => {
+            if (switchCoverFor !== id) return;
+            stack.length = 0;
+            stack.push('today');
+            if (current !== 'today') activate('today');
+        });
     }
 
     function hideSwitchCover() {
@@ -3305,25 +3327,54 @@
         switchCoverTimer = null;
         switchCoverFor = null;
         delete root.dataset.wmSwitching;
-        const cover = shell && shell.querySelector('.wm-switch');
-        if (cover) cover.hidden = true;
+        const wait = shell && shell.querySelector('.wm-boot-wait');
+        if (wait && root.dataset.wmBoot === 'done') wait.hidden = true;
     }
 
-    /** The switch is through: wait for the new Today picture and two painted frames, then lift the cover. */
-    async function settleSwitchCover(id) {
+    /** Resolves when every picture Today shows (img elements, the print tiles' backgrounds) has loaded or failed. */
+    function todayPicturesLoaded(page) {
+        const urls = new Set();
+        const pic = todayPicture();
+        if (pic) urls.add(pic);
+        if (page) {
+            page.querySelectorAll('[style*="background-image"]').forEach((el) => {
+                const m = /url\((['"]?)(.*?)\1\)/.exec(el.style.backgroundImage || '');
+                if (m && m[2]) urls.add(m[2]);
+            });
+        }
+        const waits = [...urls].map((u) => new Promise((resolve) => { const im = new Image(); im.onload = im.onerror = resolve; im.src = u; }));
+        if (page) {
+            page.querySelectorAll('img').forEach((im) => {
+                if (im.complete || im.closest('[hidden]')) return;
+                waits.push(new Promise((resolve) => { im.addEventListener('load', resolve, { once: true }); im.addEventListener('error', resolve, { once: true }); }));
+            });
+        }
+        return Promise.all(waits);
+    }
+
+    /** The switch is through: Today redrawn with the workspace's data and pictures, two frames painted, then Today comes up. */
+    async function settleSwitchCover(id, timedOut) {
         if (switchCoverFor !== id) return;
-        const url = todayPicture();
-        if (url) {
+        const today = apps.get('today');
+        if (!timedOut) {
+            loadTodayPrefs(false);
+            if (today && today.page) { try { today.refresh(); } catch (err) { console.warn('[wmShell] today refresh', err); } }
+            // a refresh that came in from the gallery list a frame later (newest prints) is painted first
+            await afterPaint();
+            if (switchCoverFor !== id) return;
+            if (today && today.page) { try { today.refresh(); } catch (_) { /* drawn above */ } }
             await Promise.race([
-                new Promise((resolve) => { const im = new Image(); im.onload = im.onerror = resolve; im.src = url; }),
-                new Promise((resolve) => setTimeout(resolve, 2500))
+                todayPicturesLoaded(today && today.page),
+                new Promise((resolve) => setTimeout(resolve, SWITCH_ART_MAX_MS))
             ]);
         }
         await afterPaint();
         await afterPaint();
-        const left = 900 - (Date.now() - switchCoverAt);
+        const left = SWITCH_MIN_MS - (Date.now() - switchCoverAt);
         if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
-        if (switchCoverFor === id) hideSwitchCover();
+        if (switchCoverFor !== id) return;
+        hideSwitchCover();
+        if (current === 'today') playBootReveal();
     }
 
     function showLoadingBox(text, caption) {
@@ -7471,10 +7522,52 @@
         requestAnimationFrame(() => setTimeout(mark, 5000));
     }
 
+    // ---------------------------------------------------------------- the phone's home screen (#794)
+
+    /**
+     * Home pressed while Melaton Mobile is the phone's launcher (DSApp sends window event
+     * 'melatonhome'): menus, bubbles, the task switcher and the picture view close, Today comes up
+     * on the clock with every item back at its home position (scroll, sideways pages); apps keep
+     * running, as WM's Home does. A message box that waits for an answer stays.
+     */
+    function goHome() {
+        // the device lock screen stays over everything (unlocking lands on Today anyway)
+        try { if (window.wmLock && window.wmLock.isLocked) return; } catch (_) { /* no lock screen */ }
+        closeMenus(true);
+        try { closeTaskSwitcher(true); } catch (_) { /* not open */ }
+        try { closeBubble(); } catch (_) { /* none */ }
+        if (viewerActive) closeViewer();
+        if (current !== 'today') open('today');
+        const t = apps.get('today');
+        const page = t && t.page;
+        if (page) {
+            page.scrollTop = 0;
+            page.querySelectorAll('*').forEach((el) => { if (el.scrollLeft) el.scrollLeft = 0; });
+        }
+        if (window.wmTitanium && typeof window.wmTitanium.home === 'function') window.wmTitanium.home();
+        document.dispatchEvent(new CustomEvent('wmTodayHome'));
+    }
+    window.addEventListener('melatonhome', goHome);
+
+    /** After a boot the supervisor caused (DSApp HomeRole crash notice): what happened, once. */
+    function showCrashNotice() {
+        const h = window.AndroidHome;
+        if (!h || typeof h.takeCrashNotice !== 'function') return;
+        let n = null;
+        try { n = JSON.parse(h.takeCrashNotice() || 'null'); } catch (_) { n = null; }
+        if (!n || !n.kind) return;
+        // an old notice (the phone was off since) is dropped
+        if (Number(n.at) && Date.now() - Number(n.at) > 10 * 60 * 1000) return;
+        const text = n.kind === 'hang' ? 'Melaton Mobile stopped responding and was restarted.'
+            : n.kind === 'killed' ? 'Melaton Mobile was closed by the phone to free memory and was restarted.'
+                : 'Melaton Mobile stopped unexpectedly and was restarted.';
+        void messageBox({ title: 'Melaton Mobile', icon: 'warning', text, modal: true });
+    }
+
     function setBoot(phase) {
         if (root.dataset.wmBoot === phase) return;
         root.dataset.wmBoot = phase;
-        if (phase === 'done') bootDoneAt = Date.now();
+        if (phase === 'done') { bootDoneAt = Date.now(); setTimeout(showCrashNotice, 600); }
         const bootWait = shell.querySelector('.wm-boot-wait');
         // the wheel stays from the splash through Today's fill-in (reveal) until done
         if (!(phase === 'reveal' && bootWait && !bootWait.hidden)) {
@@ -7588,6 +7681,11 @@
         // gwes plays SystemStart as the shell comes up (only once audio is unlocked: a tap or key
         // during startup, e.g. the PIN; a cold load stays silent)
         playSystemSound('SystemStart');
+        playBootReveal();
+    }
+
+    /** The end of the boot (and of a workspace switch's splash): Today's body, then the bars, 6.1's rows in groups. */
+    function playBootReveal() {
         root.dataset.wmReveal = 'body';
         const steps = WM65 ? [['keys', 180], ['bars', 100]] : [['left', 60], ['keys', 40], ['bars', 40]];
         let t = 0;

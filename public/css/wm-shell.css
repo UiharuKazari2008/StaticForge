@@ -3764,43 +3764,41 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
     opacity: 0.55;
 }
 
-/* ---- workspace switch cover (wmShell.js showSwitchCover) ----
- * the white base over the whole screen, bars included, with the wait cursor and the workspace's
- * name, while a switch reconfigures colours, the Today picture and layout and the gallery */
-.wm-switch {
-    position: absolute;
-    top: var(--wm-safe-top);
-    right: var(--wm-safe-right);
-    bottom: var(--wm-safe-bottom);
-    left: var(--wm-safe-left);
-    z-index: 28;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: calc(8 * var(--wm-px));
-    background: #fff;
-    color: #000;
-    font-size: var(--wm-fs);
+/* ---- workspace switch splash (wmShell.js showSwitchCover) ----
+ * a switch is a short restart into the other workspace: the boot splash (6.1's rings, 6.5's glow)
+ * over the whole screen, bars included, the boot's wait wheel in the middle (.wm-boot-wait) and
+ * "Loading <workspace>..." under it, until Today has the workspace's data and pictures; then the
+ * boot's reveal (wm-stage.css html[data-wm-reveal]) brings Today up */
+html.ui-mobile[data-wm-switching] .wm-splash {
+    display: block;
     pointer-events: auto;
 }
 
-.wm-switch[hidden] {
+.wm-switch-status {
     display: none;
-}
-
-.wm-switch-wait {
-    width: calc(32 * var(--wm-px));
-    height: calc(32 * var(--wm-px));
-}
-
-.wm-switch-text {
+    position: absolute;
+    left: 5%;
+    right: 5%;
+    top: calc(50% + 24 * var(--wm-px));
     margin: 0;
-    max-width: 90%;
     text-align: center;
+    font: var(--wm-fs) / 1.3 var(--wm-font);
+    color: #fff;
+    text-shadow: 0 calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) rgba(0, 0, 0, 0.35);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+html.ui-mobile[data-wm-switching] .wm-switch-status {
+    display: block;
+}
+
+/* the theme's 4 s colour fade (app.css body.workspace-transitioning) runs under the splash: no
+ * fade there, the colours are final when Today comes up */
+html.ui-mobile[data-wm-switching] body.workspace-transitioning,
+html.ui-mobile[data-wm-switching] body.workspace-transitioning * {
+    transition: none !important;
 }
 
 /* the status box and the wait cursor of the switch itself stay under the cover */
