@@ -86,9 +86,12 @@
                 const root = document.documentElement;
                 const cam = localStorage.getItem('wmCamera') === 'bezel' ? 'bezel' : 'clear';
                 root.dataset.wmCamera = cam;
-                const all = cam === 'bezel' ? JSON.parse(localStorage.getItem('wmBezelCache') || '{}') : null;
+                // the camera's edge in both modes: Keep the title bar clear needs it too, or the safe
+                // area's empty band shows above the title bar until the app sends the camera (#776)
+                const all = JSON.parse(localStorage.getItem('wmBezelCache') || '{}');
                 const e = all && all[innerWidth + 'x' + innerHeight];
-                if (e) {
+                if (e && cam !== 'bezel') root.dataset.wmBezelEdge = e.edge || 'none';
+                if (e && cam === 'bezel') {
                     root.dataset.wmBezelEdge = e.edge || 'none';
                     root.style.setProperty('--wm-bezel-top', (e.top || 0) + 'px');
                     root.style.setProperty('--wm-bezel-left', (e.left || 0) + 'px');
