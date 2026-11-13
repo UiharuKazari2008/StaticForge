@@ -1256,15 +1256,16 @@
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
                 closeMenus();
-                // switching keeps the app as it was (its page stays mounted)
-                switchTo(b.dataset.app);
+                // switching keeps the app as it was (its page stays mounted); the wait cursor shows
+                // at once that the tap was taken (every launch tap, #775 follow-up)
+                busy(() => switchTo(b.dataset.app), { paint: true, timeout: 15000 });
             });
         });
         menu.querySelectorAll('.wm-startmenu-item').forEach((b) => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
                 closeMenus();
-                open(b.dataset.app, { fromStart: true });
+                busy(() => open(b.dataset.app, { fromStart: true }), { paint: true, timeout: 15000 });
             });
         });
         // the device opens Start with its first row ("Today") under the highlight
@@ -5521,17 +5522,17 @@
                 });
                 // the Messaging row opens Messaging on the account with news: unread text messages
                 // alone open Text Messages, else Dreamscape Mail's Inbox (not the account picker, #763)
-                page.querySelector('[data-row="messages"]').addEventListener('click', () => {
+                page.querySelector('[data-row="messages"]').addEventListener('click', () => busy(() => {
                     const chat = window.wmChatApp;
                     const msg = window.wmMessaging;
                     if (smsUnread() > 0 && !(mailUnread > 0) && chat && typeof chat.showList === 'function') chat.showList();
                     else if (msg && typeof msg.goTo === 'function') msg.goTo('mail');
                     else open('messaging');
-                });
+                }, { paint: true, timeout: 15000 }));
                 // the Tasks row opens Tasks (device); the list changing repaints the row
-                page.querySelector('[data-row="tasks"]').addEventListener('click', () => {
+                page.querySelector('[data-row="tasks"]').addEventListener('click', () => busy(() => {
                     if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open();
-                });
+                }, { paint: true, timeout: 15000 }));
                 document.addEventListener('wmTasksChange', () => { if (current === 'today') this.refresh(); });
                 page.querySelector('[data-row="search"]').addEventListener('submit', (e) => {
                     e.preventDefault();
@@ -5539,20 +5540,24 @@
                     const q = input.value.trim();
                     input.value = '';
                     input.blur();
-                    open('gallery');
-                    if (q) {
-                        const gallery = apps.get('gallery');
-                        if (gallery && typeof gallery.search === 'function') gallery.search(q);
-                    }
+                    busy(() => {
+                        open('gallery');
+                        if (q) {
+                            const gallery = apps.get('gallery');
+                            if (gallery && typeof gallery.search === 'function') gallery.search(q);
+                        }
+                    }, { paint: true, timeout: 15000 });
                 });
                 page.querySelector('[data-row="prints"]').addEventListener('click', (e) => {
                     const tile = e.target.closest('[data-filename]');
                     if (!tile) return;
-                    open('gallery');
-                    // the gallery's own viewer (PhotoSwipe), on the print that was tapped
-                    try {
-                        if (typeof showLightbox === 'function') showLightbox({ filename: tile.dataset.filename });
-                    } catch (_) { /* the gallery opens without the viewer */ }
+                    busy(() => {
+                        open('gallery');
+                        // the gallery's own viewer (PhotoSwipe), on the print that was tapped
+                        try {
+                            if (typeof showLightbox === 'function') showLightbox({ filename: tile.dataset.filename });
+                        } catch (_) { /* the gallery opens without the viewer */ }
+                    }, { paint: true, timeout: 15000 });
                 });
                 document.addEventListener('dovecoteMailboxUpdated', (ev) => {
                     const boxes = ev.detail && ev.detail.mailboxes;

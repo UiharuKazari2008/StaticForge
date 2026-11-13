@@ -261,7 +261,10 @@
             if (!cell) return;
             box.querySelectorAll('.wm-icongrid-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
             cell.classList.add('is-selected');
-            setTimeout(() => onOpen(cell.dataset.key), 90);
+            // the highlight and the wait cursor paint together, then the item opens: a slow open
+            // (a Settings page that reads the phone's programs, a first mount) shows at once that
+            // the tap was taken (Yukimi, Nov 12)
+            sh.busy(() => onOpen(cell.dataset.key), { paint: true, timeout: 15000 });
         });
     }
 

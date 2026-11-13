@@ -905,7 +905,8 @@
             if (Math.abs(e.clientX - downX) > PAN_START * unit()) return;
             // WM's tap: the item is selected (the glow), then opens
             select(hit, true);
-            setTimeout(() => { if (sh.current === 'start' && selected === hit) openItem(hit); }, 90);
+            // the glow and the wait cursor paint together, then the item opens (a slow open shows the tap was taken)
+            sh.busy(() => { if (sh.current === 'start' && selected === hit) return openItem(hit); return undefined; }, { paint: true, timeout: 15000 });
         };
         view.addEventListener('pointerup', (e) => release(e, false));
         view.addEventListener('pointercancel', (e) => release(e, true));

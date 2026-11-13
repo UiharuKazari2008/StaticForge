@@ -1,6 +1,6 @@
 {
-  "version": 5,
-  "updatedAt": "2026-11-13T00:42:47.797Z",
+  "version": 8,
+  "updatedAt": "2026-11-13T00:44:47.173Z",
   "icons": {
     "com.google.android.youtube": {
       "name": "com-google-android-youtube-ea08c8-mwe848kg",
@@ -50,6 +50,62 @@
       "label": "YouTube",
       "model": "gpt-image-2.5-sunburst",
       "updatedAt": "2026-11-13T00:32:04.147Z"
+    },
+    "com.anthropic.claude/com.anthropic.claude.mainactivity.MainActivity": {
+      "name": "com-anthropic-claude-914a0e-mwe974fm",
+      "package": "com.anthropic.claude",
+      "label": "Claude",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:40.644Z"
+    },
+    "com.flipperdevices.app/com.flipperdevices.singleactivity.impl.SingleActivity": {
+      "name": "com-flipperdevices-app-b6a065-mwe9752x",
+      "package": "com.flipperdevices.app",
+      "label": "Flipper",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:41.483Z"
+    },
+    "game.qualiarts.hololive.dreams.com/com.unity3d.player.UnityPlayerActivity": {
+      "name": "game-qualiarts-hololive-dreams-com-7c661c-mwe975wf",
+      "package": "game.qualiarts.hololive.dreams.com",
+      "label": "hololive Dreams",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:42.770Z"
+    },
+    "com.kick.mobile/com.kick.mobile.MainActivity": {
+      "name": "com-kick-mobile-015806-mwe976qf",
+      "package": "com.kick.mobile",
+      "label": "Kick",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:43.760Z"
+    },
+    "com.google.android.apps.maps/com.google.android.maps.MapsActivity": {
+      "name": "com-google-android-apps-maps-fe0675-mwe977d2",
+      "package": "com.google.android.apps.maps",
+      "label": "Maps",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:44.358Z"
+    },
+    "com.acmeaom.android.myradarpro/com.acmeaom.android.myradar.app.activity.LaunchActivity": {
+      "name": "com-acmeaom-android-myradarpro-1fd893-mwe977uk",
+      "package": "com.acmeaom.android.myradarpro",
+      "label": "MyRadar",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:45.348Z"
+    },
+    "com.zigzagame.paranoize/com.google.firebase.MessagingUnityPlayerActivity": {
+      "name": "com-zigzagame-paranoize-a3846c-mwe978mr",
+      "package": "com.zigzagame.paranoize",
+      "label": "Paranoize",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:46.021Z"
+    },
+    "org.chromium.webapk.a522ef9992b747cb0_v2/org.chromium.webapk.shell_apk.h2o.H2OOpaqueMainActivity": {
+      "name": "org-chromium-webapk-a522ef9992b747cb0-v2-fc084f-mwe97964",
+      "package": "org.chromium.webapk.a522ef9992b747cb0_v2",
+      "label": "Sequenzia",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-13T00:43:46.673Z"
     }
   }
 }
