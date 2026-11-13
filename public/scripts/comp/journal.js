@@ -926,11 +926,12 @@
             return list.map((n, i) => ({ text: `${i + 1} ${n.name}`, action: `recent-note:${n.id}` })).concat([{ separator: true }, { text: 'More Notes...', action: 'open' }]);
         }
 
-        // ---- recordings: speakers along the top of the page under the title (#785)
+        // ---- recordings: speakers in the margin gutter (#785)
 
         renderClips() {
             const s = this.s();
-            this.clips.innerHTML = this.audio.map((a, n) => `<button type="button" class="jnl-clip" data-audio="${esc(a.id)}" title="${esc(a.name || 'Recording')}" style="left:${Math.round((MARGIN + 8 + n * 40) * s)}px"><img src="${ART}voice-clip.png" alt=""></button>`).join('');
+            // in the margin gutter, one under another from the first rule (the typing keeps its lines)
+            this.clips.innerHTML = this.audio.map((a, n) => `<button type="button" class="jnl-clip" data-audio="${esc(a.id)}" title="${esc(a.name || 'Recording')}" style="top:${Math.round((FIRST_RULE + n * RULE * 2) * s)}px"><img src="${ART}voice-clip.png" alt=""></button>`).join('');
         }
 
         setAudio(list) {

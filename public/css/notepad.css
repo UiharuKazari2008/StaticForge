@@ -782,16 +782,17 @@
     position: absolute;
     z-index: 4;
     left: 0;
-    right: 0;
-    top: calc(80px * var(--jnl-s));
+    top: 0;
+    width: calc(53px * var(--jnl-s));
     height: 0;
 }
 
+/* a speaker fills the gutter left of the margin: 46 x 44 VM px */
 #notebookModal .jnl-clip {
     position: absolute;
-    top: 0;
-    width: calc(34px * var(--jnl-s) + 8px);
-    height: calc(32px * var(--jnl-s) + 8px);
+    left: calc(3px * var(--jnl-s));
+    width: calc(46px * var(--jnl-s));
+    height: calc(44px * var(--jnl-s));
     margin: 0;
     padding: 0;
     border: 0;
