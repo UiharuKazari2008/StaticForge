@@ -209,7 +209,10 @@
         }
         const folders = SETTINGS_FOLDERS.filter(([tab]) => grid.some((g) => g.tab === tab && !SETTINGS_TOP.has(g.key)))
             .map(([tab, label, art]) => ({ key: `folder:settings:${tab}`, label, img: art65(art), folder: `settings:${tab}` }));
-        return grid.filter((g) => SETTINGS_TOP.has(g.key)).map(applet).sort(byLabel).concat(folders);
+        // the phone's own Android Settings comes last, after System (Yukimi, Nov 12 2026)
+        const last = new Set(['link-android']);
+        return grid.filter((g) => SETTINGS_TOP.has(g.key) && !last.has(g.key)).map(applet).sort(byLabel)
+            .concat(folders, grid.filter((g) => last.has(g.key)).map(applet));
     }
 
     function desktopLaunchables(list) {
