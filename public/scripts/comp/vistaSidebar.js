@@ -875,7 +875,7 @@ const vsbNotesApply = function (inst) {
     vsbNotesPaint(inst);
 };
 
-/** A Windows Journal note (notepadManager.js notebook): read it, unless the gadget has unsaved typing. */
+/** A Melaton Journal note (notepadManager.js notebook): read it, unless the gadget has unsaved typing. */
 const vsbNotesLoadLinked = async function (inst) {
     const id = inst.g.settings.noteId;
     let note = null;
@@ -888,8 +888,8 @@ const vsbNotesLoadLinked = async function (inst) {
     if (inst.destroyed || inst.g.settings.noteId !== id || inst.notionDirty) return;
     const area = inst.parts.area;
     area.readOnly = !note || !!inst.g.settings.readOnly;
-    area.title = note ? `Windows Journal: ${note.name || 'Untitled'}` : '';
-    const content = note ? (note.content || '') : 'This Windows Journal note is no longer available.';
+    area.title = note ? `Melaton Journal: ${note.name || 'Untitled'}` : '';
+    const content = note ? (note.content || '') : 'This Melaton Journal note is no longer available.';
     if (area.value !== content) area.value = content;
 };
 
@@ -946,7 +946,7 @@ const vsbNotesOptions = {
             <div class="group"><label for="vsbNotesSize">Size:</label>
                 <select id="vsbNotesSize">${vsbOptions(sizes, set.size)}</select></div>
             <div><input type="checkbox" id="vsbNotesReadOnly"${set.readOnly ? ' checked' : ''}><label for="vsbNotesReadOnly">Read only</label></div>
-            <div class="group"><label for="vsbNotesLink">Show a Windows Journal note:</label>
+            <div class="group"><label for="vsbNotesLink">Show a Melaton Journal note:</label>
                 <select id="vsbNotesLink"><option value="">None (notes kept in this gadget)</option>${set.noteId ? `<option value="${escapeHtmlAttribute(set.noteId)}" selected>Loading...</option>` : ''}</select></div>
         </div>`;
     },

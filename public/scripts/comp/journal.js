@@ -1,5 +1,5 @@
 /**
- * Windows Journal (Yozora #785): the notebook window (notepadManager.js notebook*) as Vista's
+ * Melaton Journal (Yozora #785): the notebook window (notepadManager.js notebook*) as Vista's
  * Journal.exe, 1:1 from the Vista VM (captures and resources in ~/.cache/vista-vm/journal).
  *
  *   menus     File, Edit, View, Insert, Actions, Tools, Help: Journal.exe.mui menu 104, items and
@@ -595,7 +595,7 @@
                 const c = e.target.closest('.jnl-clip');
                 if (!c || typeof root.showConfirmationDialog !== 'function') return;
                 e.preventDefault();
-                const yes = await root.showConfirmationDialog(`<p>Delete the recording "${esc(c.title)}" from this note?</p>`, [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], null, { title: 'Windows Journal', width: 360 });
+                const yes = await root.showConfirmationDialog(`<p>Delete the recording "${esc(c.title)}" from this note?</p>`, [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], null, { title: 'Melaton Journal', width: 360 });
                 if (yes === true) void this.deleteClip(c.dataset.audio);
             });
             // the Pen band's drop-downs (Pen, Highlighter, Eraser, Flag) and the menu bar
@@ -711,7 +711,7 @@
 
         async about() {
             if (typeof root.showConfirmationDialog !== 'function') return;
-            await root.showConfirmationDialog('<p><b>Windows Journal</b></p><p>Melaton Desktop 2026 R7</p><p>Notes with handwriting, drawings and voice recordings, shared with Melaton Mobile\'s Notes.</p>', [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'About Windows Journal', width: 360 });
+            await root.showConfirmationDialog('<p><b>Melaton Journal</b></p><p>Melaton Desktop 2026 R7</p><p>Notes with handwriting, drawings and voice recordings, shared with Melaton Mobile\'s Notes.</p>', [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: 'About Melaton Journal', width: 360 });
         }
 
         /** View Recent Notes: the notes of the workspace in the view instead of the page (Journal's list). */
@@ -725,7 +725,7 @@
 
         async openDialog() {
             if (typeof this.mgr.showOpenNoteModal === 'function') {
-                await this.mgr.showOpenNoteModal();
+                await this.mgr.showOpenNoteModal({ journal: true });
                 return;
             }
             this.toggleRecent(true);
@@ -838,7 +838,7 @@
                     { text: 'Format...', ...no },
                     { separator: true },
                     { text: 'Copy Lookback', action: 'copy-lookback', disabled: !note },
-                    { text: 'Modify Note', action: 'modify-note', disabled: !note }
+                    { text: 'Note Properties...', action: 'modify-note', disabled: !note }
                 ];
             }
             if (menu === 'view') {
@@ -914,9 +914,9 @@
                 ];
             }
             return [
-                { text: 'Windows Journal Help', subtext: 'F1', action: 'help', disabled: typeof root.openHelpTopic !== 'function' },
+                { text: 'Melaton Journal Help', subtext: 'F1', action: 'help', disabled: typeof root.openHelpTopic !== 'function' },
                 { separator: true },
-                { text: 'About Windows Journal', action: 'about' }
+                { text: 'About Melaton Journal', action: 'about' }
             ];
         }
 
@@ -950,7 +950,7 @@
                 this.player = new Audio(`data:${data.mime || 'audio/webm'};base64,${data.base64}`);
                 await this.player.play();
             } catch (err) {
-                if (typeof root.showGlassToast === 'function') root.showGlassToast('error', 'Windows Journal', `Cannot play the recording. ${err && err.message ? err.message : ''}`, false, 4000);
+                if (typeof root.showGlassToast === 'function') root.showGlassToast('error', 'Melaton Journal', `Cannot play the recording. ${err && err.message ? err.message : ''}`, false, 4000);
             }
         }
 
@@ -990,7 +990,7 @@
                 const data = res && (res.audio ? res : res.data);
                 this.setAudio((data && data.note && data.note.metadata && data.note.metadata.audio) || this.audio.concat([{ id: audioId, name: `Recording${n}`, ms: blob.ms }]));
             } catch (err) {
-                if (typeof root.showGlassToast === 'function') root.showGlassToast('error', 'Windows Journal', `The recording could not be saved. ${err && err.message ? err.message : ''}`, false, 5000);
+                if (typeof root.showGlassToast === 'function') root.showGlassToast('error', 'Melaton Journal', `The recording could not be saved. ${err && err.message ? err.message : ''}`, false, 5000);
             }
         }
     }

@@ -46,7 +46,7 @@ Start menu: All Programs lists these in a **Dreamscape 2026 R7** folder (`START_
 | `encyclopedia` | Grimoire |
 | `alchemy` | Alchemy (Grimoire's remote browser, opens Home) |
 | `naxt` | Atelier |
-| `notebook` | Windows Journal (was Notion) |
+| `notebook` | Melaton Journal (was Notion, then Windows Journal) |
 | `bracket-generation` | Phasewalker |
 | `presets` | Spellbook (preset manager, Toolbox) |
 | `expanders` | Expanders |

@@ -203,7 +203,7 @@
             id: p.launchId,
             name: p.text,
             icon: p.imageIcon && typeof root.resolveAppIconPath === 'function' ? root.resolveAppIconPath(p.imageIcon, 16) : `${ITEMS}/programs-and-features-16.png`,
-            publisher: /^(Studio|Gallery|Dovecote|Windows Journal|Notion|Grimoire|Lumen|Glancewell|Ledge|Agora|Atelier|Spellcaster|Phasewalker|Director|Chat|Periscope|Runes|Cartograph|eMotion)/i.test(p.text) ? 'Dreamscape' : 'Xyridian Corporation'
+            publisher: /^(Studio|Gallery|Dovecote|Melaton Journal|Notion|Grimoire|Lumen|Glancewell|Ledge|Agora|Atelier|Spellcaster|Phasewalker|Director|Chat|Periscope|Runes|Cartograph|eMotion)/i.test(p.text) ? 'Dreamscape' : 'Xyridian Corporation'
         })).sort((a, b) => a.name.localeCompare(b.name));
     }
 

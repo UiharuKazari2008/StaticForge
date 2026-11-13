@@ -1265,7 +1265,7 @@ body:not(.windows-classic-theme) :is(.custom-dropdown-badge, .image-prompt-inspe
    dialogs they are plain text boxes and take the face); Studio
    (#manualModal) keeps its own control mix; the window chrome toolbars (.modal-window-title-toolbar:
    address and search boxes) draw their own Vista boxes; Classic draws its own. Prompt boxes
-   (.prompt-textarea) keep the prompt font: their emphasis overlay mirrors it. Notepad and Windows Journal
+   (.prompt-textarea) keep the prompt font: their emphasis overlay mirrors it. Notepad and Melaton Journal
    pages (.notepad-textarea) and the Sidebar note (.vsb-notes-text) are a borderless page, not a
    text box. Only form elements: .form-control on a div (the Control Panel's breadcrumb box,
    readouts) is not a text box. No #id inside :not() here: it would lift these rules over every

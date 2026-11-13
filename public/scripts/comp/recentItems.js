@@ -216,7 +216,7 @@
         add({ kind: 'director', key: String(session.id), title: session.name || 'Director session', sub: 'Director', data: { id: session.id } });
     }
 
-    /** Notepad / Windows Journal: a note opened. */
+    /** Notepad / Melaton Journal: a note opened. */
     function noteNote(note) {
         if (!note || !note.id) return;
         add({ kind: 'note', key: String(note.id), title: note.name || 'Untitled', data: { id: note.id } });

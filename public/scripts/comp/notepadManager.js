@@ -503,7 +503,7 @@ class NotepadManager {
             const note = response.note;
 
             // a note with handwriting or recordings (#785: the phone's Writing mode and voice bar,
-            // Windows Journal's pen) is not plain text: Notepad says so and offers Windows Journal
+            // Melaton Journal's pen) is not plain text: Notepad says so and offers Melaton Journal
             if (NotepadManager.isRichNote(note)) {
                 await this.refuseRichNote(note);
                 return null;
@@ -546,15 +546,15 @@ class NotepadManager {
             || (Array.isArray(meta.audio) && meta.audio.length > 0);
     }
 
-    /** Notepad's error for a rich note, with the way to Windows Journal. */
+    /** Notepad's error for a rich note, with the way to Melaton Journal. */
     async refuseRichNote(note) {
         const name = this.escapeHtml(note.name || 'Untitled');
         let choice = 'journal';
         if (typeof showConfirmationDialog === 'function') {
             choice = await showConfirmationDialog(
-                `<p>Notepad cannot open "${name}" because it contains handwriting, drawings or voice recordings.</p><p>Open it in Windows Journal instead.</p>`,
+                `<p>Notepad cannot open "${name}" because it contains handwriting, drawings or voice recordings.</p><p>Open it in Melaton Journal instead.</p>`,
                 [
-                    { text: 'Open in Windows Journal', value: 'journal', className: 'btn-standard primary' },
+                    { text: 'Open in Melaton Journal', value: 'journal', className: 'btn-standard primary' },
                     { text: 'Cancel', value: 'cancel', className: 'btn-standard' }
                 ],
                 null,
@@ -606,7 +606,30 @@ class NotepadManager {
     }
 
     // Show open note modal
-    async showOpenNoteModal() {
+    /**
+     * Open a note: Vista's common Open dialog on the workspace's Notes folder (studioOpenFolderDialog,
+     * as Notepad's File > Open); opts.journal opens the pick in Melaton Journal, else in Notepad.
+     * The old note picker stays only where that dialog is missing.
+     */
+    async showOpenNoteModal(opts = {}) {
+        if (typeof studioOpenFolderDialog === 'function') {
+            const ws = this.notebookCurrentWorkspace || (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default';
+            await studioOpenFolderDialog('open-vfs', {
+                owner: opts.journal ? this.notebookModal : undefined,
+                startPath: `/Workspaces/${ws}/Notes`,
+                host: {
+                    title: 'Open',
+                    typeLabel: 'Notes',
+                    rejectMessage: 'Choose a note',
+                    acceptItem: (item) => !!item && item.targetKind === 'note',
+                    onOpen: async (item) => {
+                        if (opts.journal) await this.notebookLoadNote(item.targetId);
+                        else await this.openExistingNote(item.targetId);
+                    }
+                }
+            });
+            return;
+        }
         if (!this.openNoteModal || !this.openNoteList) {
             console.error('Open note modal not found');
             return;
@@ -711,7 +734,96 @@ class NotepadManager {
     }
 
     // Show update note modal
+    /**
+     * Vista's Save As on the Notes folders (Melaton Journal's Save As, first save, Move to Folder):
+     * resolves { name, workspaceId } for a workspace's Notes folder, or null when cancelled.
+     */
+    notesSaveDialog(title, suggest) {
+        if (typeof studioOpenFolderDialog !== 'function') return Promise.resolve(null);
+        const ws = (this.notebookCurrentNote && this.notebookCurrentNote.workspace_id) || this.notebookCurrentWorkspace || (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default';
+        return new Promise((resolve) => {
+            let settled = false;
+            const finish = (v) => { if (!settled) { settled = true; resolve(v); } };
+            studioOpenFolderDialog('save', {
+                owner: this.notebookModal,
+                startPath: `/Workspaces/${ws}/Notes`,
+                host: {
+                    title,
+                    typeLabel: 'Notes',
+                    acceptItem: (item) => !!item && item.targetKind === 'note',
+                    suggestName: () => suggest || 'Note1',
+                    onCancel: () => finish(null),
+                    onSave: async (info) => {
+                        const m = /^\/Workspaces\/([^/]+)(?:\/Notes)?\/?$/.exec(String(info.path || ''));
+                        if (!m) {
+                            await showConfirmationDialog('<p>Notes are kept in a workspace\'s Notes folder. Choose a Notes folder.</p>', [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title, width: 360, icon: 'fas fa-circle-info' });
+                            return false;
+                        }
+                        const name = String(info.name || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+                        if (!name) return false;
+                        finish({ name, workspaceId: m[1] });
+                        return true;
+                    }
+                }
+            }).catch(() => finish(null));
+        });
+    }
+
+    /**
+     * Note Properties in Vista's dialog frame (vistaDialogTemplate): Name, Color, Icon, Workspace,
+     * OK / Cancel; notepad is anything with .note and .updateNote(updates). False when the Vista
+     * dialogs are not there (the old Modify Note takes over).
+     */
+    showNotePropertiesVista(notepad) {
+        const V = window.vistaDialogTemplate;
+        const note = notepad && notepad.note;
+        if (!V || typeof V.openDialog !== 'function' || !note) return false;
+        const label = (t) => [-1, 'S', 7, 0, 46, 8, 0x50020000, t, 0];
+        const row = (y, ctl) => { const l = label(ctl[1]); l[3] = y + 2; return [l, [ctl[0], ctl[2], 56, y, 164, ctl[2] === 'E' ? 13 : 120, ctl[2] === 'E' ? 0x50810080 : 0x50210003, '', 0]]; };
+        const tpl = { t: `${note.name} Properties`, w: 227, h: 105, f: ['MS Shell Dlg', 8], s: 0x80C800C0, c: [
+            ...row(7, [801, '&Name:', 'E']),
+            ...row(26, [802, '&Color:', 'C']),
+            ...row(45, [803, '&Icon:', 'C']),
+            ...row(64, [804, '&Workspace:', 'C']),
+            [1, 'B', 116, 85, 50, 14, 0x50010001, 'OK', 0],
+            [2, 'B', 170, 85, 50, 14, 0x50010000, 'Cancel', 0]
+        ] };
+        const here = note.workspace_id || note.workspaceId || this.notebookCurrentWorkspace || 'default';
+        const colors = NOTE_PRESET_COLORS.map((c) => ({ value: c.color, text: c.label }));
+        if (note.color && !colors.some((c) => c.value === note.color)) colors.unshift({ value: note.color, text: note.color });
+        const icons = NOTE_PRESET_ICONS.map((i) => ({ value: i.icon, text: i.label }));
+        if (note.icon && !icons.some((i) => i.value === note.icon)) icons.unshift({ value: note.icon, text: 'Current' });
+        const spaces = this.getSortedWorkspacesList().map((w) => ({ value: w.id, text: w.name || w.id }));
+        V.openDialog({
+            id: 'notePropertiesDialog',
+            tpl,
+            title: tpl.t,
+            focusFirst: true,
+            init: (ctx) => {
+                ctx.set(801, note.name || '');
+                ctx.options(802, colors, note.color || '#ffc107');
+                ctx.options(803, icons, note.icon || 'fas fa-file-lines');
+                ctx.options(804, spaces, here);
+            },
+            ok: async (ctx) => {
+                const name = String(ctx.get(801) || '').trim();
+                if (!name) return false;
+                const updates = { name, color: ctx.get(802), icon: ctx.get(803) };
+                const to = ctx.get(804);
+                if (to && to !== here) updates.workspace_id = to;
+                await notepad.updateNote(updates);
+                if (updates.workspace_id) {
+                    this.invalidateWorkspaceNotesCache(here);
+                    this.invalidateWorkspaceNotesCache(to);
+                }
+                return true;
+            }
+        });
+        return true;
+    }
+
     showUpdateNoteModal(notepad) {
+        if (this.showNotePropertiesVista(notepad)) return;
         if (!this.updateNoteModal) {
             console.error('Update note modal not found');
             return;
@@ -1002,14 +1114,14 @@ class NotepadManager {
 
         this.setupNotebookWorkspaceDropdown();
         this.setupNotebookNovelActions();
-        // Windows Journal 1:1 (journal.js, #785): its menus, rebar, ink and page; the old menu bar
+        // Melaton Journal 1:1 (journal.js, #785): its menus, rebar, ink and page; the old menu bar
         // only when journal.js is not there
         this.journal = window.journalUI ? window.journalUI.attach(this) : null;
         if (!this.journal) this.setupNotebookMenuBar();
         this.notebookRecent = [];
     }
 
-    // Windows Journal's menu bar (shown on the Vista desktop: vista-atelier.css)
+    // Melaton Journal's menu bar (shown on the Vista desktop: vista-atelier.css)
     setupNotebookMenuBar() {
         const onAction = (action) => this.notebookRunMenuAction(action);
         this.notebookModal.querySelectorAll('[data-notebook-menu]').forEach((title) => {
@@ -1134,7 +1246,7 @@ class NotepadManager {
         document.querySelectorAll('.novel-notebook-only').forEach((el) => {
             el.classList.toggle('hidden', !isNovel);
         });
-        // Windows Journal: the novel buttons are a band of their own, shown with them
+        // Melaton Journal: the novel buttons are a band of their own, shown with them
         const band = this.notebookModal && this.notebookModal.querySelector('.jnl-band-novel');
         if (band) band.classList.toggle('hidden', !isNovel);
         const undoBtn = document.getElementById('notebookNovelUndoBtn');
@@ -1548,12 +1660,21 @@ class NotepadManager {
 
             // If note doesn't exist yet, create it first
             if (!this.notebookCurrentNote || !this.notebookCurrentNote.id) {
-                // Journal: the Note Title names it (Save As asks only when the title is empty)
-                const titled = J ? J.titleValue() : '';
-                const name = titled || await showInputDialog('Enter note name:', J ? 'Note1' : 'Untitled', 'Note name...');
+                // Journal: the first save is Vista's Save As on the Notes folders, named from the
+                // Note Title (as Journal.exe names a new note's file)
+                let name;
+                let wsPick = null;
+                if (J && typeof studioOpenFolderDialog === 'function') {
+                    const pick = await this.notesSaveDialog('Save As', J.titleValue() || 'Note1');
+                    if (!pick) return;
+                    name = pick.name;
+                    wsPick = pick.workspaceId;
+                } else {
+                    name = await showInputDialog('Enter note name:', 'Untitled', 'Note name...');
+                }
                 if (!name) return;
 
-                const note = await this.createNote(name, content, J ? J.inkJson() : null);
+                const note = await this.createNote(name, content, J ? J.inkJson() : null, wsPick);
                 if (J) { J.saved(); J.titleInput.value = name; }
                 this.notebookCurrentNote = note;
                 this.notebookHasUnsavedChanges = false;
@@ -1596,15 +1717,16 @@ class NotepadManager {
         }
     }
 
-    /** Windows Journal File > Save As...: a copy under a new name (typing, strokes, recordings). */
+    /** Melaton Journal File > Save As...: a copy under a new name (typing, strokes, recordings). */
     async notebookSaveAs() {
         const J = this.journal;
-        const base = (J && J.titleValue()) || (this.notebookCurrentNote && this.notebookCurrentNote.name) || 'Untitled';
-        const name = await showInputDialog('Save as:', base, 'Note name...');
-        if (!name) return;
+        const base = (J && J.titleValue()) || (this.notebookCurrentNote && this.notebookCurrentNote.name) || 'Note1';
+        const pick = await this.notesSaveDialog('Save As', base);
+        if (!pick) return;
+        const name = pick.name;
         try {
             const from = this.notebookCurrentNote;
-            const note = await this.createNote(name, this.notebookTextarea.value, J ? J.inkJson() : null);
+            const note = await this.createNote(name, this.notebookTextarea.value, J ? J.inkJson() : null, pick.workspaceId);
             const audio = from && from.metadata && Array.isArray(from.metadata.audio) ? from.metadata.audio : [];
             if (from && from.id && audio.length) {
                 await wsClient.copyNoteAudio(from.id, note.id);
@@ -1618,21 +1740,24 @@ class NotepadManager {
         }
     }
 
-    /** Windows Journal File > Move to Folder...: the note to another workspace's Notes. */
+    /** Melaton Journal File > Move to Folder...: Vista's folder dialog on the Notes folders. */
     async notebookMoveNote() {
         const note = this.notebookCurrentNote;
-        if (!note || !note.id || typeof showConfirmationDialog !== 'function') return;
-        const list = this.getSortedWorkspacesList ? this.getSortedWorkspacesList() : [];
+        if (!note || !note.id) return;
         const here = note.workspace_id || this.notebookCurrentWorkspace;
-        const choices = list.filter((w) => (w.id || w[0]) !== here).slice(0, 8).map((w) => ({ text: w.name || w[1] || w.id, value: w.id || w[0], className: 'btn-standard' }));
-        if (!choices.length) return;
-        const to = await showConfirmationDialog(`<p>Move "${this.escapeHtml(note.name)}" to the Notes folder of:</p>`, choices.concat([{ text: 'Cancel', value: null, className: 'btn-standard' }]), null, { title: 'Move to Folder', width: 420 });
-        if (!to) return;
+        const pick = await this.notesSaveDialog('Move to Folder', note.name);
+        if (!pick) return;
+        const updates = {};
+        if (pick.workspaceId !== here) updates.workspace_id = pick.workspaceId;
+        if (pick.name && pick.name !== note.name) updates.name = pick.name;
+        if (!Object.keys(updates).length) return;
         try {
-            await wsClient.updateNote(note.id, { workspace_id: to });
-            note.workspace_id = to;
+            await wsClient.updateNote(note.id, updates);
+            Object.assign(note, updates);
+            if (this.journal && updates.name) this.journal.titleInput.value = updates.name;
             this.invalidateWorkspaceNotesCache(here);
-            this.invalidateWorkspaceNotesCache(to);
+            if (updates.workspace_id) this.invalidateWorkspaceNotesCache(updates.workspace_id);
+            this.notebookUpdateTitle();
             await this.notebookRefreshNotesList();
         } catch (error) {
             this.showToast('error', 'Failed to move note', error.message);
@@ -1678,15 +1803,15 @@ class NotepadManager {
         if (!this.notebookTitleElement) return;
 
         if (this.journal) {
-            // Journal.exe: "<title> - Windows Journal", a new page is "Note1"; no unsaved marker
+            // Journal.exe: "<title> - Melaton Journal", a new page is "Note1"; no unsaved marker
             const name = this.journal.titleValue() || (this.notebookCurrentNote && this.notebookCurrentNote.name) || 'Note1';
-            this.notebookTitleElement.textContent = `${name} - Windows Journal`;
+            this.notebookTitleElement.textContent = `${name} - Melaton Journal`;
         } else if (this.notebookCurrentNote) {
             const unsavedMarker = this.notebookHasUnsavedChanges ? ' *' : '';
-            this.notebookTitleElement.textContent = `${this.notebookCurrentNote.name}${unsavedMarker} - Windows Journal`;
+            this.notebookTitleElement.textContent = `${this.notebookCurrentNote.name}${unsavedMarker} - Melaton Journal`;
         } else {
-            // "Untitled* - Windows Journal" for a new unsaved note, "Windows Journal" for none
-            const title = this.notebookHasUnsavedChanges ? 'Untitled* - Windows Journal' : 'Windows Journal';
+            // "Untitled* - Melaton Journal" for a new unsaved note, "Melaton Journal" for none
+            const title = this.notebookHasUnsavedChanges ? 'Untitled* - Melaton Journal' : 'Melaton Journal';
             this.notebookTitleElement.textContent = title;
         }
     }
@@ -1726,9 +1851,9 @@ class NotepadManager {
      * @param {string} content - Initial content
      * @returns {Promise<Object>} - Created note object
      */
-    async createNote(name, content = '', ink = null) {
+    async createNote(name, content = '', ink = null, inWorkspace = null) {
         const noteId = this.generateUUID();
-        const workspaceId = this.notebookCurrentWorkspace || activeWorkspace || 'default';
+        const workspaceId = inWorkspace || this.notebookCurrentWorkspace || activeWorkspace || 'default';
 
         const response = await wsClient.createNote({
             id: noteId,
@@ -1891,7 +2016,7 @@ class Notepad {
                 { text: 'Open', icon: 'fas fa-folder-open', action: 'open' },
                 { text: 'Save', icon: 'fas fa-save', action: 'save', disabled: !this.hasUnsavedChanges },
                 { separator: true },
-                { text: 'Open in Windows Journal', icon: 'fa-regular fa-window-maximize', action: 'open-in-notion' },
+                { text: 'Open in Melaton Journal', icon: 'fa-regular fa-window-maximize', action: 'open-in-notion' },
                 { text: 'Update', icon: 'fas fa-cog', action: 'update', disabled: noNote },
                 { text: 'Add to Desktop', icon: 'fas fa-arrow-down-left', action: 'add-shortcut', disabled: noNote },
                 { separator: true },

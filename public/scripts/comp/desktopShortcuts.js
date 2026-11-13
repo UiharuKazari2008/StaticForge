@@ -1933,7 +1933,7 @@ class DesktopShortcutsManager {
                         },
                         {
                             icon: 'fas fa-book',
-                            text: 'Open in Windows Journal',
+                            text: 'Open in Melaton Journal',
                             action: 'open-note-in-notebook'
                         },
                         ...this.getShortcutManagementMenuItems(true)

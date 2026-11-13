@@ -200,7 +200,7 @@ async function handleNotesUpdate(handlersCtx, ws, message, clientInfo, wsServer)
     }
 }
 
-// ---- ink and recordings (#785): the phone's Notes Draw mode and voice bar, Windows Journal ----
+// ---- ink and recordings (#785): the phone's Notes Draw mode and voice bar, Melaton Journal ----
 
 const MAX_INK_CHARS = 6 * 1024 * 1024;
 

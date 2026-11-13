@@ -602,7 +602,7 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 .vsb .vsb-notes-add:hover { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_hover.png'); }
 .vsb .vsb-notes-add:active { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_pressed.png'); }
 .vsb .vsb-notes-add:disabled { background-image: url('/static_images/vista-sidebar/notes/sticky_plus_disabled.png'); }
-/* a Windows Journal note is one page: no local pages to add, delete or step through */
+/* a Melaton Journal note is one page: no local pages to add, delete or step through */
 .vsb-notes.is-linked .vsb-notes-bar { visibility: hidden; }
 
 /* ---------- Picture Puzzle ---------- */

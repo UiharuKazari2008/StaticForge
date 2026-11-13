@@ -481,7 +481,7 @@
             wrap.scrollTop = top;
         }
 
-        // Windows Journal's flags on a shared page (journal.js): its flag bitmaps
+        // Melaton Journal's flags on a shared page (journal.js): its flag bitmaps
         const flagArt = {};
         function flagImage(color) {
             if (!flagArt[color]) {
@@ -519,7 +519,7 @@
         }
 
         /**
-         * Page units -> px: the phone writes 1 unit = 1 WM unit; a page drawn in Windows Journal (850
+         * Page units -> px: the phone writes 1 unit = 1 WM unit; a page drawn in Melaton Journal (850
          * units across a Letter page) is shrunk to the phone's page width.
          */
         function inkScale() {

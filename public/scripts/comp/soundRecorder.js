@@ -6,7 +6,7 @@
  * the elapsed time (0:00:00), the input level meter (147 x 27 trough) and Help with its drop arrow.
  * Start Recording becomes [■ Stop Recording] (Alt+S) while it records.
  *
- * Windows Journal opens it for Insert > Voice Recording...: what it records goes onto the note
+ * Melaton Journal opens it for Insert > Voice Recording...: what it records goes onto the note
  * (Vista's Save As is skipped: the note is the file).
  *
  *   window.soundRecorder.record({ owner }) -> Promise<{ blob, ms } | null>  (null: closed unrecorded)

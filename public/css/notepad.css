@@ -460,7 +460,7 @@
     height: 520px;
 }
 
-/* ---- Windows Journal 1:1 (#785, journal.js). Measured on the Vista VM (~/.cache/vista-vm/journal,
+/* ---- Melaton Journal 1:1 (#785, journal.js). Measured on the Vista VM (~/.cache/vista-vm/journal,
    j04.png): the menu bar (vista-atelier.css), then the rebar: a #F0F0F0 / #A0A0A0 rule, 31-px bands
    of #FFF -> #E5EAF5 over #D3DAED -> #E1E6F6 with a #B6BCCC foot; the view sunken by #A0A0A0 / #646464;
    toolbar buttons 31 px apart round Journal.exe's 24-px art. Page lengths: the VM's px at its

@@ -388,7 +388,7 @@ function setupMainMenuContextMenus() {
                     },
                     {
                         icon: 'fa-regular fa-notebook',
-                        text: 'Windows Journal',
+                        text: 'Melaton Journal',
                         action: 'open-notebook'
                     },
                     {

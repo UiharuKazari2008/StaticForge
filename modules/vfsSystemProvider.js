@@ -49,7 +49,7 @@ const APPLICATION_ENTRIES = [
     { id: 'memories', name: 'Memories', icon: 'fas fa-box-open-full', openTarget: 'applet', appletId: 'memories' },
     { id: 'nax-vibes', name: 'NAX Vibes', icon: 'fas fa-globe', openTarget: 'dsap', dsapUrl: 'dsap://vibes.novelai.net' },
     { id: 'novels', name: 'Novels', icon: 'fas fa-book-open', openTarget: 'applet', appletId: 'novels' },
-    { id: 'notebook', name: 'Windows Journal', icon: 'fas fa-notebook', openTarget: 'applet', appletId: 'notebook' },
+    { id: 'notebook', name: 'Melaton Journal', icon: 'fas fa-notebook', openTarget: 'applet', appletId: 'notebook' },
     { id: 'bracket-generation', name: 'Phasewalker', icon: 'fas fa-layer-group', openTarget: 'applet', appletId: 'bracket-generation' },
     { id: 'reference', name: 'Reference', icon: 'fas fa-swatchbook', openTarget: 'applet', appletId: 'reference' },
     { id: 'run', name: 'Run', icon: 'fas fa-magnifying-glass', openTarget: 'applet', appletId: 'run' },

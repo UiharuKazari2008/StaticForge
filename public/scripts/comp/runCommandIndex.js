@@ -53,7 +53,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['reference', 'references', 'vibe', 'style', 'cache', 'swatchbook'], launchIds: ['reference'] },
     { aliases: ['grimoire', 'wiki', 'e621', 'danbooru', 'e6', 'dan', 'encyclopedia', 'books', 'novelai', 'help', 'search'], launchIds: ['encyclopedia'] },
     { aliases: ['alchemy', 'browser', 'web', 'internet', 'bing'], launchIds: ['alchemy'] },
-    { aliases: ['journal', 'windows journal', 'notion', 'notes', 'notebook'], launchIds: ['notebook'] },
+    { aliases: ['journal', 'melaton journal', 'windows journal', 'notion', 'notes', 'notebook'], launchIds: ['notebook'] },
     { aliases: ['notepad', 'notepad.exe'], launchIds: ['notepad'] },
     { aliases: ['mspaint', 'mspaint.exe', 'paint', 'pbrush'], launchIds: ['paint'] },
     { aliases: ['charmap', 'charmap.exe', 'character map'], launchIds: ['charmap'] },
@@ -1431,7 +1431,7 @@ function runSearchWords(text) {
 
 /**
  * Vista's Start Search matches the start of words, not substrings or near misses: "pa" finds
- * Paint and Control Panel, not Expanders or Dreamscape; "note" finds Notepad, not Windows Journal.
+ * Paint and Control Panel, not Expanders or Dreamscape; "note" finds Notepad, not Melaton Journal.
  * Every query word must start a word of the label (rank 1) or of a keyword (rank 2); the whole
  * label starting with the query is rank 0. -1 is no match. The Run window keeps the fuzzy ranking.
  * @param {string} query normalized query

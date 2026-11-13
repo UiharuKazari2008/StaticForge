@@ -1,5 +1,5 @@
 /**
- * Recordings attached to notes (#785): the phone's Notes voice bar and Windows Journal's voice clips.
+ * Recordings attached to notes (#785): the phone's Notes voice bar and Melaton Journal's voice clips.
  * One folder per note under .cache/notes-audio/<noteId>/, one file per recording (<audioId>.<ext>).
  * The note's metadata.audio lists them ({ id, name, ms, mime, bytes, at }); the files follow the
  * note through rename, move and the Recycle Bin (the note row stays) and go when the note is purged

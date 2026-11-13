@@ -957,6 +957,11 @@ class WebSocketClient {
         'quickcast_status',
         'quickcast_subscribe',
         'quickcast_unsubscribe',
+        // Task Manager / Perfmon live feeds (pushed since Nov 13)
+        'taskmgr_subscribe',
+        'taskmgr_unsubscribe',
+        'perfmon_subscribe',
+        'perfmon_unsubscribe',
         'quickcast_preview',
         'quickcast_cabinet',
         'quickcast_chat',
@@ -10783,7 +10788,7 @@ class WebSocketClient {
         }
     }
 
-    // ---- a note's ink and recordings (#785): phone Notes, Windows Journal
+    // ---- a note's ink and recordings (#785): phone Notes, Melaton Journal
 
     /** ink: { v, w, h, strokes: [{ tool, color, width, pts: [[x, y], ...] }] } or null (no drawing). */
     async saveNoteInk(noteId, ink) {

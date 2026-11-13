@@ -278,7 +278,7 @@
         const item = (iconHtml, label, extra = '') => `
             <div class="taskbar-window-item${extra}"><div class="taskbar-window-item-content">${iconHtml}<span>${esc(label)}</span>${extra.includes('group') ? '<span class="taskbar-group-count">7</span>' : ''}</div></div>`;
         const buttons = c.group
-            ? item(explorer, 'Cartograph', ' taskbar-window-group') + item(notes, 'Untitled - Windows Journal')
+            ? item(explorer, 'Cartograph', ' taskbar-window-group') + item(notes, 'Untitled - Melaton Journal')
             : item(explorer, 'Documents') + item(explorer, 'Pictures') + item(explorer, 'Music');
         // the real Quick Launch list (taskbarSettings.js quickLaunchItems)
         const ts = root.taskbarSettings;
