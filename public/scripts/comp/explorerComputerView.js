@@ -14,6 +14,14 @@
  *   details pane           nothing selected: the computer (imageres.dll 103), its name, processor
  *                          and memory; the drive selected: Space used / Space free / Total size,
  *                          File system (the disk's statfs type, when the server sends it)
+ *   Portable Devices       each phone connected over ActiveSync (guest or partner; activeSyncAgent.js),
+ *                          a tile with wpdshext.dll icon 14 and its name, as Vista lists a Windows
+ *                          Mobile device; selected: name + "Portable Device" in the details pane.
+ *                          Opening it goes to its page, "Computer/dev:<deviceId>" (Computer ▸ Galaxy
+ *                          Fold): the phone's storages as drive tiles with their space bars (internal
+ *                          = imageres 26, a card / USB = 29, no letters), opening to phone://<root>
+ *                          (explorerPhoneDrive.js over activeSyncRemoteStorage.js). Inside the
+ *                          Android app the phone is this computer: its roots stay removable disks.
  *   command bar            System properties (Control Panel > System) and Open Control Panel, as
  *                          Vista's Computer has them (explorerVistaChrome.js syncCommands)
  *
@@ -25,6 +33,8 @@
 
     const ART = '/static_images/vista-explorer';
     const COMPUTER_PATH = 'Computer';
+    // a portable device's own page under Computer (Vista: Computer ▸ Pocket_PC): "Computer/dev:<deviceId>"
+    const DEVICE_PREFIX = 'Computer/dev:';
     const DRIVES = [{ letter: 'C', label: 'Local Disk', path: '/' }];
     // the column headers Vista gives Computer (VM: 80, 80, 80 and 85px, grouped and sorted by Type)
     const COLUMNS = [{ label: 'Name' }, { label: 'Type', active: true }, { label: 'Total Size' }, { label: 'Free Space' }];
@@ -94,10 +104,33 @@
             this.el = null;
             this._loading = null;
             this.mount();
+            // phones come and go over ActiveSync: Portable Devices follows them while Computer is open
+            const as = root.activeSync;
+            if (as && typeof as.on === 'function') {
+                as.on('state', () => {
+                    if (!ExplorerComputerView.isPath(this.app.currentPath)) return;
+                    const sig = JSON.stringify(this.portableDevices().map((d) => [d.key, d.name, d.files]));
+                    if (sig === this._deviceSig) return;
+                    this._deviceSig = sig;
+                    if (this.deviceId()) void this.showDevice();
+                    else this.render();
+                    this.app.renderStatusText();
+                });
+            }
         }
 
         static isPath(path) {
-            return path === COMPUTER_PATH;
+            return path === COMPUTER_PATH || String(path || '').startsWith(DEVICE_PREFIX);
+        }
+
+        static devicePath(deviceId) {
+            return DEVICE_PREFIX + encodeURIComponent(deviceId);
+        }
+
+        /** The device whose page a path is, or null (Computer itself, anything else). */
+        static deviceIdOf(path) {
+            const s = String(path || '');
+            return s.startsWith(DEVICE_PREFIX) ? decodeURIComponent(s.slice(DEVICE_PREFIX.length)) || null : null;
         }
 
         /** Typed into the address box: "Computer" in any case. */
@@ -140,7 +173,7 @@
                 if (ev.key === 'Enter' && this.selected) {
                     ev.preventDefault();
                     this.openDrive(this.selected);
-                } else if ((ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'Home') && !this.selected && !this.collapsed) {
+                } else if ((ev.key === 'ArrowDown' || ev.key === 'ArrowRight' || ev.key === 'Home') && !this.selected && !this.collapsed && !this.deviceId()) {
                     ev.preventDefault();
                     this.select(DRIVES[0].letter);
                 }
@@ -183,9 +216,98 @@
             return DRIVES.find((d) => d.letter === letter) || null;
         }
 
-        /** The phone's drives (Portable Devices, explorerPhoneDrive.js): only inside the Android app. */
+        /** The phone's drives as removable disks (explorerPhoneDrive.js): only inside the Android app,
+            where the phone is this computer. A phone reached over ActiveSync is a portable device. */
         phoneDrives() {
+            if (root.phoneStorage && root.phoneStorage.remote) return [];
             return root.explorerPhoneDrive && root.explorerPhoneDrive.available() ? root.explorerPhoneDrive.computerDrives() : [];
+        }
+
+        /** Portable Devices: every phone connected over ActiveSync (activeSyncAgent.js), guest or partner,
+            as Vista lists a connected Windows Mobile device (VM: Pocket_PC, wpdshext.dll icon 14). */
+        portableDevices() {
+            const as = root.activeSync;
+            if (!as || as.kind !== 'computer' || typeof as.state !== 'function') return [];
+            const st = as.state() || {};
+            return (st.devices || [])
+                .filter((d) => d.online && (d.session === 'guest' || d.session === 'partner'))
+                .map((d) => ({
+                    key: `dev:${d.deviceId}`,
+                    deviceId: d.deviceId,
+                    name: d.name || 'Phone',
+                    files: Array.isArray(d.permissions) && d.permissions.includes('files')
+                }));
+        }
+
+        portableDevice(key) {
+            return String(key || '').startsWith('dev:') ? (this.portableDevices().find((d) => d.key === key) || null) : null;
+        }
+
+        /** The device whose page is on screen (Computer ▸ <device>), or null. */
+        deviceId() {
+            return ExplorerComputerView.deviceIdOf(this.app.currentPath);
+        }
+
+        deviceName(deviceId) {
+            const d = this.portableDevices().find((x) => x.deviceId === deviceId);
+            if (d) return d.name;
+            const as = root.activeSync;
+            const known = as && typeof as.state === 'function' ? (as.state().devices || []).find((x) => x.deviceId === deviceId) : null;
+            return (known && known.name) || 'Portable Device';
+        }
+
+        /** The title / crumb for a Computer path: Computer, or the device's name. */
+        placeName(path) {
+            const id = ExplorerComputerView.deviceIdOf(path);
+            return id ? this.deviceName(id) : 'Computer';
+        }
+
+        /** The device page's storages: the phone's roots once its storage answers, or why not. */
+        deviceStorage() {
+            const id = this.deviceId();
+            if (!id) return { roots: [], block: null };
+            const dev = this.portableDevices().find((d) => d.deviceId === id);
+            if (!dev) return { roots: [], block: 'This device is not connected.' };
+            if (!dev.files) return { roots: [], block: 'This computer has no access to the files on the device. Allow it in ActiveSync on the device.' };
+            const ps = root.phoneStorage;
+            const st = ps && ps.remote && ps.deviceId === id ? ps.state() : null;
+            if (!st) return { roots: [], block: 'Connecting to the device…' };
+            if (!st.enabled) return { roots: [], block: 'Turn on phone storage in the app on the device.' };
+            if (!st.access) return { roots: [], block: 'Allow storage access on the device.' };
+            if (st.locked) return { roots: [], block: 'Unlock the app on the device to browse its files.' };
+            const roots = (Array.isArray(st.roots) ? st.roots : []).map((r) => ({
+                key: `st:${r.id}`,
+                rootId: r.id,
+                name: r.name || r.id,
+                // VM: the device's own memory is a fixed disk (imageres 26), a card a removable one (29)
+                icon: r.kind === 'internal' ? 'drive-fixed' : 'drive-removable',
+                total: Number(r.total) || 0,
+                free: Number(r.free) || 0
+            }));
+            return { roots, block: roots.length ? null : 'This device has no storage to show.' };
+        }
+
+        storage(key) {
+            return String(key || '').startsWith('st:') ? (this.deviceStorage().roots.find((r) => r.key === key) || null) : null;
+        }
+
+        /** Opens a device page: that phone becomes the one phoneStorage shows, then its storages list. */
+        async showDevice() {
+            const path = this.app.currentPath;
+            const id = ExplorerComputerView.deviceIdOf(path);
+            const ps = root.phoneStorage;
+            if (id && ps && ps.remote) {
+                if (ps.deviceId !== id) ps.select(id);
+                // storage events re-render this page (explorerPhoneDrive.js bind: config / state)
+                if (root.explorerPhoneDrive) root.explorerPhoneDrive.attach(this.app);
+            }
+            this.render();
+            if (id && ps && ps.remote && ps.deviceId === id && typeof ps.hello === 'function') {
+                try { await ps.hello(); } catch (_err) { /* the block line says why */ }
+            }
+            if (this.app.currentPath !== path) return;
+            this.render();
+            this.app.renderStatusText();
         }
 
         phoneDrive(key) {
@@ -211,6 +333,16 @@
         }
 
         openDrive(letter) {
+            const dev = this.portableDevice(letter);
+            if (dev) {
+                this.app.navigateTo(ExplorerComputerView.devicePath(dev.deviceId));
+                return;
+            }
+            const store = this.storage(letter);
+            if (store) {
+                this.app.navigateTo(`phone://${encodeURIComponent(store.rootId)}`);
+                return;
+            }
             if (this.phoneDrive(letter)) {
                 root.explorerPhoneDrive.openComputerDrive(this.app, letter);
                 return;
@@ -235,7 +367,7 @@
         }
 
         select(letter) {
-            this.selected = letter && (this.drive(letter) || this.phoneDrive(letter) || this.networkDrive(letter)) ? letter : null;
+            this.selected = letter && (this.drive(letter) || this.phoneDrive(letter) || this.networkDrive(letter) || this.portableDevice(letter) || this.storage(letter)) ? letter : null;
             if (this.el) {
                 this.el.querySelectorAll('[data-drive]').forEach((t) => {
                     const on = t.dataset.drive === this.selected;
@@ -262,6 +394,10 @@
         async show({ reload = false } = {}) {
             if (!this.el) return;
             this.selected = null;
+            if (this.deviceId()) {
+                await this.showDevice();
+                return;
+            }
             this.render();
             // the network drive's state arrives on its own; the tile appears (or changes) when it does
             const net = root.explorerSequenzia ? root.explorerSequenzia.refreshStatus(reload) : null;
@@ -281,6 +417,10 @@
 
         render() {
             if (!this.el) return;
+            if (this.deviceId()) {
+                this.renderDevice();
+                return;
+            }
             const disk = diskFacts(this.sys);
             const tiles = DRIVES.map((d) => {
                 const bar = disk
@@ -323,7 +463,54 @@
                 <section class="explorer-computer-group${this.collapsed ? ' is-collapsed' : ''}">
                     <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
                     <div class="explorer-computer-tiles">${tiles}</div>
-                </section>${phoneGroup}${this.networkGroup()}`;
+                </section>${phoneGroup}${this.portableGroup()}${this.networkGroup()}`;
+        }
+
+        /** Vista's Portable Devices group: a tile a device, its icon and name (no space bar). */
+        portableGroup() {
+            const devices = this.portableDevices();
+            this._deviceSig = JSON.stringify(devices.map((d) => [d.key, d.name, d.files]));
+            if (!devices.length) return '';
+            const tiles = devices.map((d) => `<div class="explorer-computer-tile explorer-computer-tile-device${d.key === this.selected ? ' is-selected' : ''}" data-drive="${esc(d.key)}" role="option" aria-selected="${d.key === this.selected}" title="${esc(d.name)}">
+                        <img class="explorer-computer-tile-icon" src="${ART}/portable-device-48.png" alt="" draggable="false">
+                        <div class="explorer-computer-tile-text">
+                            <div class="explorer-computer-tile-name">${esc(d.name)}</div>
+                        </div>
+                    </div>`).join('');
+            return `
+                <section class="explorer-computer-group explorer-computer-group-portable${this.groupFolded('portable') ? ' is-collapsed' : ''}">
+                    <h3 class="explorer-computer-group-head"><span>Portable Devices (${devices.length})</span>${this.groupToggle('portable')}</h3>
+                    <div class="explorer-computer-tiles">${tiles}</div>
+                </section>`;
+        }
+
+        /** A device's page (VM: Computer ▸ Pocket_PC): its storages as drive tiles, no group heading. */
+        renderDevice() {
+            const { roots, block } = this.deviceStorage();
+            if (block) {
+                this.el.innerHTML = `<div class="explorer-computer-empty">${esc(block)}</div>`;
+                return;
+            }
+            const tiles = roots.map((r) => {
+                const used = r.total ? Math.max(0, Math.min(1, 1 - r.free / r.total)) : 0;
+                const full = r.total && r.free / r.total < 0.1;
+                const bar = r.total
+                    ? `<div class="explorer-drive-bar${full ? ' is-full' : ''}" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(used * 100)}"><div class="explorer-drive-bar-fill" style="--used:${used.toFixed(4)}"></div></div>`
+                    : '';
+                const line = r.total ? `${formatSize(r.free)} free of ${formatSize(r.total)}` : '';
+                return `<div class="explorer-computer-tile${r.key === this.selected ? ' is-selected' : ''}" data-drive="${esc(r.key)}" role="option" aria-selected="${r.key === this.selected}" title="${esc(line)}">
+                        <img class="explorer-computer-tile-icon" src="${ART}/${r.icon}-48.png" alt="" draggable="false">
+                        <div class="explorer-computer-tile-text">
+                            <div class="explorer-computer-tile-name">${esc(r.name)}</div>
+                            ${bar}
+                            <div class="explorer-computer-tile-free">${esc(line)}</div>
+                        </div>
+                    </div>`;
+            }).join('');
+            this.el.innerHTML = `
+                <section class="explorer-computer-group explorer-computer-group-storage">
+                    <div class="explorer-computer-tiles">${tiles}</div>
+                </section>`;
         }
 
         groupFolded(group) {
@@ -356,11 +543,18 @@
 
         /** Vista's status words for the old status line (classic theme). */
         statusText() {
+            if (this.deviceId()) {
+                const store = this.storage(this.selected);
+                if (store) return store.total ? `${formatSize(store.free)} free of ${formatSize(store.total)}` : '1 item selected';
+                const n = this.deviceStorage().roots.length;
+                return `${n} item${n === 1 ? '' : 's'}`;
+            }
+            if (this.portableDevice(this.selected)) return '1 item selected';
             const phone = this.phoneDrive(this.selected);
             if (phone) return phone.block ? phone.block.text : (phone.total ? `${formatSize(phone.free)} free of ${formatSize(phone.total)}` : '1 item selected');
             const net = this.networkDrive(this.selected);
             if (net) return net.online ? '1 item selected' : net.line;
-            const count = DRIVES.length + this.phoneDrives().length + this.networkDrives().length;
+            const count = DRIVES.length + this.phoneDrives().length + this.portableDevices().length + this.networkDrives().length;
             if (this.selected) {
                 const disk = diskFacts(this.sys);
                 return disk ? `${formatSize(disk.free)} free of ${formatSize(disk.total)}` : '1 item selected';
@@ -384,6 +578,35 @@
                 + `<div class="explorer-details-name">${esc(name)}</div>${pair(...(rows[0] || ['', '']))}${extra ? pair(...extra) : empty}`
                 + rows.slice(1).map((r) => `<span></span>${pair(...r)}${empty}`).join('')
                 + '</div>';
+            const setIcon = (key, file) => {
+                if (icon.dataset.detailsKey === key) return;
+                icon.dataset.detailsKey = key;
+                icon.className = 'explorer-details-icon explorer-item-icon-box explorer-item-icon-box-md';
+                icon.innerHTML = `<img class="explorer-details-shell-icon" src="${ART}/${file}" alt="" draggable="false">`;
+            };
+            if (this.deviceId()) {
+                // a storage: its space; nothing selected: the device and its item count (VM)
+                const store = this.storage(this.selected);
+                if (store) {
+                    setIcon(`computer:${store.key}`, `${store.icon}-64.png`);
+                    const used = store.total ? Math.max(0, Math.min(1, 1 - store.free / store.total)) : 0;
+                    info.innerHTML = grid(store.name, [
+                        ['Space used', store.total ? `<span class="explorer-drive-bar"><span class="explorer-drive-bar-fill" style="--used:${used.toFixed(4)}"></span></span>` : ''],
+                        ['Space free', store.total ? esc(formatSize(store.free)) : ''],
+                        ['Total size', store.total ? esc(formatSize(store.total)) : '']
+                    ]);
+                    return;
+                }
+                setIcon('computer:device', 'portable-device-64.png');
+                info.innerHTML = `<div class="explorer-details-summary">${esc(this.statusText())}</div>`;
+                return;
+            }
+            const device = this.portableDevice(this.selected);
+            if (device) {
+                setIcon(`computer:${device.key}`, 'portable-device-64.png');
+                info.innerHTML = `<div class="explorer-details-name">${esc(device.name)}</div><div class="explorer-details-type">Portable Device</div>`;
+                return;
+            }
             const phone = this.phoneDrive(this.selected);
             if (phone) {
                 const pkey = `computer:${phone.key}`;
@@ -444,6 +667,7 @@
     }
 
     ExplorerComputerView.PATH = COMPUTER_PATH;
+    ExplorerComputerView.DEVICE_PREFIX = DEVICE_PREFIX;
     /** The Cartograph root as Vista names the system drive (the breadcrumb, Recent Pages). */
     ExplorerComputerView.ROOT_NAME = `${DRIVES[0].label} (${DRIVES[0].letter}:)`;
     ExplorerComputerView._test = { parseSize, formatSize, diskFacts, hostFacts };

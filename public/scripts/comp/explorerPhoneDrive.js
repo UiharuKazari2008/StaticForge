@@ -341,6 +341,8 @@
 
     /** Drive letters after Cartograph's C:, in the phone's root order: D: internal storage, E: a USB drive... */
     function driveLetter(rootId) {
+        // a phone reached over ActiveSync is a portable device: its storages carry no letters (VM)
+        if (remote()) return '';
         const i = rootsOf(state()).findIndex((r) => r.id === rootId);
         return i < 0 ? '' : String.fromCharCode(Math.min(90, 68 + i));
     }
@@ -372,7 +374,26 @@
     }
 
     /** Computer ▸ Internal storage (D:) ▸ DCIM ▸ Camera: a drive sits right under Computer. */
+    /** Computer ▸ <device>, the page a remote phone's storages hang off (explorerComputerView.js). */
+    function devicePage() {
+        const view = root.ExplorerComputerView;
+        return remote() && view && PS().deviceId ? view.devicePath(PS().deviceId) : null;
+    }
+
     function crumbs(path) {
+        const page = devicePage();
+        if (page) {
+            // Computer ▸ Galaxy Fold ▸ Internal storage ▸ DCIM, as Vista walks to a device's folder
+            const list = [{ label: phoneName(), path: page }];
+            const p = parse(path);
+            if (path === TRASH) list.push({ label: 'Phone trash', path: TRASH });
+            else if (p.root) {
+                list.push({ label: rootName(p.root), path: pathFor(p.root, '/') });
+                const parts = p.path.split('/').filter(Boolean);
+                parts.forEach((part, i) => list.push({ label: part, path: pathFor(p.root, '/' + parts.slice(0, i + 1).join('/')) }));
+            }
+            return list;
+        }
         if (path === TRASH || !parse(path).root) {
             const list = [{ label: phoneName(), path: PREFIX }];
             if (path === TRASH) list.push({ label: 'Phone trash', path: TRASH });
@@ -389,6 +410,8 @@
     function crumbIcon(path) {
         const p = parse(path);
         if (path === TRASH) return 'fav-recycle.png';
+        if (remote() && !p.root) return 'portable-device-16.png';
+        if (remote() && p.path === '/') return (rootInfo(p.root) || {}).kind === 'internal' ? 'drive-fixed-16.png' : 'drive-removable-16.png';
         if (!p.root || p.path === '/') return 'drive-removable-16.png';
         return 'crumb-folder.png';
     }
@@ -414,10 +437,10 @@
     }
 
     function parentOf(path) {
-        if (path === TRASH) return PREFIX;
+        if (path === TRASH) return devicePage() || PREFIX;
         const p = parse(path);
-        // up from a drive (or the drive list) is Computer
-        if (!p.root || p.path === '/') return null;
+        // up from a drive (or the drive list) is Computer; from a remote phone's storage, its device page
+        if (!p.root || p.path === '/') return devicePage();
         return pathFor(p.root, PS().parentPath(p.path));
     }
 

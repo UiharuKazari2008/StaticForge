@@ -322,6 +322,9 @@
             const computer = typeof root.ExplorerComputerView === 'function' && !!this.app.computer;
             const atComputer = computer && root.ExplorerComputerView.isPath(this.app.currentPath);
             const crumbs = computer ? [{ label: 'Computer', path: root.ExplorerComputerView.PATH }] : [];
+            // Computer ▸ <device>: a portable device's page (explorerComputerView.js)
+            const deviceId = atComputer ? root.ExplorerComputerView.deviceIdOf(this.app.currentPath) : null;
+            if (deviceId) crumbs.push({ label: this.app.computer.deviceName(deviceId), path: this.app.currentPath });
             const phone = root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(this.app.currentPath);
             if (phone) {
                 // Computer ▸ Phone ▸ Internal storage ▸ DCIM (explorerPhoneDrive.js)
@@ -340,7 +343,7 @@
             this.crumbs = crumbs;
             // the place's own icon: Computer, the drive, or a folder
             const current = this.app.currentPath;
-            this.crumbIcon = atComputer ? 'computer-16.png' : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
+            this.crumbIcon = atComputer ? (deviceId ? 'portable-device-16.png' : 'computer-16.png') : (current === '/' && computer ? 'drive-system-16.png' : 'crumb-folder.png');
             // the Contacts folder's own icon (wab32res IDI_ICON_FOLDER, explorerContacts.js)
             if (root.explorerContacts && root.explorerContacts.isPath(current)) this.crumbIcon = '../vista-contacts/folder-16.png';
             if (phone) this.crumbIcon = root.explorerPhoneDrive.crumbIcon(current);
@@ -499,7 +502,9 @@
             shown(this.el.download, 'explorerDownloadBtn');
             shown(this.el.replace, 'explorerReplaceBtn');
             if (this.el.preview) this.el.preview.classList.toggle('hidden', !this.selectedPicture());
-            const atComputer = typeof this.app._isComputerPath === 'function' && this.app._isComputerPath();
+            // Computer's own commands; a device's page (Computer ▸ <device>) has only Organize and Views (VM)
+            const atComputer = typeof this.app._isComputerPath === 'function' && this.app._isComputerPath()
+                && !(root.ExplorerComputerView && root.ExplorerComputerView.deviceIdOf(this.app.currentPath));
             if (this.el.systemProperties) this.el.systemProperties.classList.toggle('hidden', !atComputer);
             if (this.el.uninstall) this.el.uninstall.classList.toggle('hidden', !atComputer);
             if (this.el.controlPanel) this.el.controlPanel.classList.toggle('hidden', !atComputer);
@@ -604,6 +609,8 @@
                 computer: ['computer-16.png', 'tree-computer-32.png'],
                 drive: ['drive-system-16.png', 'tree-drive-system-32.png'],
                 removable: ['drive-removable-16.png'],
+                fixed: ['drive-fixed-16.png'],
+                device: ['portable-device-16.png', 'portable-device-32.png'],
                 network: ['drive-network-16.png'],
                 'network-off': ['drive-network-off-16.png'],
                 'control-panel': ['tree-control-panel-16.png', 'tree-control-panel-32.png'],
@@ -646,6 +653,16 @@
             const list = [{ label: rootLabel(), icon: 'drive', path: '/', folders: '/' }];
             if (!view) return list;
             const open = (key) => () => view.openDrive(key);
+            // Portable Devices: each ActiveSync phone, opening to its storages (Computer ▸ <device>)
+            (view.portableDevices ? view.portableDevices() : []).forEach((d) => {
+                list.push({
+                    label: d.name,
+                    icon: 'device',
+                    path: root.ExplorerComputerView.devicePath(d.deviceId),
+                    leaf: !d.files,
+                    children: () => this.deviceStorageSpecs(d.deviceId)
+                });
+            });
             (view.phoneDrives ? view.phoneDrives() : []).forEach((d) => {
                 list.push({ label: d.name, icon: 'removable', path: d.path || null, leaf: true, action: open(d.key) });
             });
@@ -653,6 +670,22 @@
                 list.push({ label: d.name, icon: d.online ? 'network' : 'network-off', path: d.path || null, leaf: true, action: open(d.key) });
             });
             return list;
+        }
+
+        /** A device's storages for its tree node; the phone becomes the one phoneStorage shows. */
+        async deviceStorageSpecs(deviceId) {
+            const ps = root.phoneStorage;
+            if (!ps || !ps.remote) return [];
+            if (ps.deviceId !== deviceId) ps.select(deviceId);
+            if (ps.deviceId !== deviceId) return [];
+            try { await ps.hello(); } catch (_err) { return []; }
+            const st = ps.deviceId === deviceId ? ps.state() : null;
+            return (st && Array.isArray(st.roots) ? st.roots : []).map((r) => ({
+                label: r.name || r.id,
+                icon: r.kind === 'internal' ? 'fixed' : 'removable',
+                path: `phone://${encodeURIComponent(r.id)}`,
+                leaf: true
+            }));
         }
 
         openControlPanel() {
@@ -787,7 +820,15 @@
             if (!path) return head;
             if (path === desktop) return head;
             if (computer && path === computer) return head.concat(computer);
-            if (root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(path)) return computer ? head.concat(computer) : head;
+            const view = root.ExplorerComputerView;
+            if (view && view.deviceIdOf(path)) return head.concat(computer, path);
+            if (root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(path)) {
+                // a remote phone's storage: Computer ▸ <device> ▸ <storage> (the storage node is the deepest)
+                const ps = root.phoneStorage;
+                const m = String(path).match(/^phone:\/\/([^/]+)/);
+                if (ps && ps.remote && ps.deviceId && view && m) return head.concat(computer, view.devicePath(ps.deviceId), `phone://${m[1]}`);
+                return computer ? head.concat(computer) : head;
+            }
             if (root.explorerSequenzia && root.explorerSequenzia.isPath(path)) {
                 return head.concat(computer ? [computer] : [], prefixes(String(root.explorerSequenzia.ROOT).split('/').filter(Boolean).length, path));
             }

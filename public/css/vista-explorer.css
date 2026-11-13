@@ -3326,3 +3326,18 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
     margin-top: auto;
     color: #1e3287;
 }
+
+/* a portable device's page with nothing to list yet (connecting, no file access): one grey line,
+   centred near the top, as Vista words an empty folder */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-empty {
+    padding: 28px 16px 0;
+    color: #6d6d6d;
+    font: 12px var(--ex-font);
+    text-align: center;
+}
+
+/* Portable Devices: a device tile has only its name, level with the icon's middle (VM Pocket_PC:
+   caps 18px under the tile's top edge, 13px lower than a drive's name) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-computer-tile-device .explorer-computer-tile-text {
+    top: 13px;
+}

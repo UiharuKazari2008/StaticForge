@@ -3808,7 +3808,8 @@ class ExplorerApplet {
             if (phonePath) path = phonePath;
         }
         if (this.computer && (ExplorerComputerView.isPath(path) || ExplorerComputerView.matchesInput(path))) {
-            path = ExplorerComputerView.PATH;
+            // a portable device's page (Computer ▸ <device>) stays itself
+            path = ExplorerComputerView.isPath(path) ? path : ExplorerComputerView.PATH;
         }
         const normalized = this._isComputerPath(path)
             ? path
@@ -3872,7 +3873,12 @@ class ExplorerApplet {
     }
 
     goUp() {
-        if (this._loading || this._isComputerPath()) return;
+        if (this._loading) return;
+        if (this._isComputerPath()) {
+            // up from a portable device's page is Computer (explorerComputerView.js)
+            if (ExplorerComputerView.deviceIdOf(this.currentPath)) this.navigateTo(ExplorerComputerView.PATH);
+            return;
+        }
         if (this._isPhonePath()) {
             // up from the phone's drive list is Computer
             const up = explorerPhoneDrive.parentOf(this.currentPath);
@@ -4134,7 +4140,7 @@ class ExplorerApplet {
     }
 
     _fallbackDisplayName(path) {
-        if (this._isComputerPath(path)) return 'Computer';
+        if (this._isComputerPath(path)) return this.computer.placeName(path);
         if (this._isPhonePath(path)) return explorerPhoneDrive.displayName(path);
         if (!path || path === '/') return 'Root';
         const parts = path.split('/').filter(Boolean);
@@ -4157,7 +4163,7 @@ class ExplorerApplet {
     }
 
     _fallbackDisplayPath(path) {
-        if (this._isComputerPath(path)) return 'Computer';
+        if (this._isComputerPath(path)) return this.computer.placeName(path);
         if (this._isPhonePath(path)) return explorerPhoneDrive.displayPath(path);
         if (!path || path === '/') return '/';
         const parts = path.split('/').filter(Boolean);
