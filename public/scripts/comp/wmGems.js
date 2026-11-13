@@ -511,6 +511,7 @@
 
     function buildSprites() {
         const { dpr, cell, bw } = L;
+        if (!bw || !cell) return;
         const key = [cell, dpr, L.tint].join('|');
         if (key === spriteKey && boardLayer && gemSheet) return;
         spriteKey = key;
@@ -555,14 +556,16 @@
     const easeIn = (t) => ease(t) * ease(t);
 
     function draw(now) {
-        if (!ctx || !G) return;
+        // nothing to draw on before the first layout (a new game is dealt in mount, before it)
+        if (!ctx || !G || !L.bw || !L.w) return;
         now = now || performance.now();
         const c = ctx;
         const { dpr, cell, ox, oy, bw } = L;
         c.setTransform(dpr, 0, 0, dpr, 0, 0);
         c.fillStyle = '#fff';
         c.fillRect(0, 0, L.w, L.h);
-        if (!boardLayer) buildSprites();
+        if (!boardLayer || !gemSheet) buildSprites();
+        if (!boardLayer || !boardLayer.width || !gemSheet || !gemSheet.width) return;
         // the board layer (checker in the theme tint, 1 px frame), copied 1:1 in device pixels
         c.setTransform(1, 0, 0, 1, 0, 0);
         c.drawImage(boardLayer, Math.round(ox * dpr), Math.round(oy * dpr));
