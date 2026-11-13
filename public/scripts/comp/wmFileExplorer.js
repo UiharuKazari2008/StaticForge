@@ -739,12 +739,46 @@
 
     // ---------------------------------------------------------------- opening
 
-    function noApp(i) {
+    /**
+     * WM's "no application" box. Where the file can leave Melaton (Yukimi, Nov 12: an .apk sent to
+     * the Fold could not be opened), the box has Open Externally: a phone file goes to Android's own
+     * app, a Dreamscape file is downloaded (the app saves it and its notification opens it in Android:
+     * the installer for an .apk; a browser keeps it in its downloads). opts.noExternal: Android
+     * already said no.
+     */
+    function noApp(i, opts = {}) {
+        const text = `There is no application associated with "${i.name}". Run the application first, then open the file from within the application.`;
+        const ext = opts.noExternal ? null : externalOpener(i);
+        if (!ext) return ws.messageBox({ title: 'File Explorer', icon: 'warning', text });
         return ws.messageBox({
-            title: 'File Explorer',
-            icon: 'warning',
-            text: `There is no application associated with "${i.name}". Run the application first, then open the file from within the application.`
-        });
+            title: 'File Explorer', icon: 'warning', text,
+            buttons: [{ text: 'Open Externally', value: 'ext' }, { text: 'Cancel', value: false }],
+            cancelValue: false
+        }).then((v) => (v === 'ext' ? ext() : undefined));
+    }
+
+    function externalOpener(i) {
+        if (!i || i.kind === 'folder') return null;
+        if (isPhoneItem(i)) return phoneCan('open') && !phoneBlock() ? () => openInAndroid(i) : null;
+        /* global vfsClient */
+        if (i.targetKind === 'user-file' && i.targetId && typeof vfsClient !== 'undefined') {
+            return async () => {
+                try {
+                    const resp = await busyOf(() => vfsClient.downloadFile(i.targetId));
+                    if (!resp || !resp.downloadUrl) throw new Error('no download');
+                    const a = document.createElement('a');
+                    a.href = resp.downloadUrl;
+                    a.download = i.name;
+                    a.rel = 'noopener';
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                } catch (err) {
+                    await ws.messageBox({ title: 'File Explorer', icon: 'error', text: `"${i.name}" could not be opened outside Melaton.` });
+                }
+            };
+        }
+        return null;
     }
 
     function galleryHas(filename) {
@@ -849,11 +883,11 @@
     }
 
     async function openInAndroid(i) {
-        if (!phoneCan('open')) { await noApp(i); return; }
+        if (!phoneCan('open')) { await noApp(i, { noExternal: true }); return; }
         try {
             await busyOf(() => PS().call('open', { root: i.phone.root, path: i.phone.path, chooser: true }));
         } catch (err) {
-            if (err && err.code === 'no_app') await noApp(i);
+            if (err && err.code === 'no_app') await noApp(i, { noExternal: true });
             else await errorBox('File Explorer', 'open', i, err);
         }
     }
@@ -1889,6 +1923,8 @@
         if (director.length) list.push('-', ...director);
         // the phone's own items: Android's app for a file, and the bridge's facts
         const one = sel.length === 1 ? sel[0] : null;
+        // a Dreamscape file out to Android (a download: the app's notification opens it)
+        if (one && one.targetKind === 'user-file' && one.kind !== 'folder' && externalOpener(one)) list.push('-', { label: 'Open Externally', action: () => externalOpener(one)() });
         if (one && (isPhoneItem(one) || isPhoneRoot(one))) {
             list.push('-');
             if (isPhoneItem(one) && !one.phone.dir) list.push({ label: 'Open in Android app', disabled: !phoneCan('open') || !!phoneBlock(), action: () => openInAndroid(one) });
