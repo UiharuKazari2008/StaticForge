@@ -291,7 +291,7 @@ class RcsProvider {
         if (!k) return '';
         for (const c of this.convs.values()) {
             for (const p of c.participants || []) {
-                if (p.isMe || !p.contactID) continue;
+                if (this.isSelf(c, p) || !p.contactID) continue;
                 if (handleKey(p.ID && p.ID.number) === k || handleKey(p.formattedNumber) === k) return p.fullName || p.firstName || '';
             }
         }
@@ -335,7 +335,7 @@ class RcsProvider {
             const type = REACTION_FROM_TYPE[data.type] || 'emoji';
             for (const pid of r.participantIDs || []) {
                 const rp = this.participant(conv, pid);
-                const mine = !!(rp && rp.isMe) || (conv && pid === conv.defaultOutgoingID);
+                const mine = this.isSelf(conv, rp) || (conv && pid === conv.defaultOutgoingID);
                 reactions.push({ type, emoji: data.unicode || '', fromMe: mine, sender: mine ? { address: this.phone, name: 'Me', me: true } : { address: rp ? (rp.ID && rp.ID.number) || '' : '', name: rp && rp.contactID ? rp.fullName || '' : '', me: false } });
             }
         }
@@ -362,10 +362,20 @@ class RcsProvider {
         };
     }
 
+    /** Is this participant you? Google lists you in group chats (and some 1:1s) without isMe. */
+    isSelf(c, p) {
+        if (!p) return false;
+        if (p.isMe) return true;
+        const id = p.ID && p.ID.participantID;
+        if (id && c && (id === c.defaultOutgoingID || (c.simParticipantMaybe && id === c.simParticipantMaybe.ID))) return true;
+        const mine = handleKey(this.phone);
+        return !!mine && (handleKey(p.ID && p.ID.number) === mine || handleKey(p.formattedNumber) === mine);
+    }
+
     normalizeChat(c) {
         if (!c) return null;
         if (c.conversationID) this.convs.set(c.conversationID, c);
-        const others = (c.participants || []).filter((p) => !p.isMe);
+        const others = (c.participants || []).filter((p) => !this.isSelf(c, p));
         const participants = others.map((p) => ({ address: (p.ID && p.ID.number) || p.formattedNumber || '', name: p.contactID ? (p.fullName || p.firstName || '') : '', service: c.type === 'RCS' ? 'RCS' : 'SMS' }));
         const lm = c.latestMessage || {};
         const last = lm.displayContent != null || c.lastMessageTimestamp ? {
@@ -377,7 +387,7 @@ class RcsProvider {
             identifier: participants.map((p) => p.address).join(', '),
             title: c.name || participants.map((p) => p.name || p.address).join(', '),
             named: !!(c.isGroupChat && c.name),
-            isGroup: !!c.isGroupChat || participants.length > 1,
+            isGroup: participants.length > 1 || (!!c.isGroupChat && !!c.name),
             participants,
             service: c.type === 'RCS' ? 'RCS' : 'SMS',
             archived: c.status === 'ARCHIVED',
