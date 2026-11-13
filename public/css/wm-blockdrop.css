@@ -1,0 +1,137 @@
+/*
+ * Melaton Mobile: Block Drop, Yozora #786. wmBlockDrop.js.
+ * Status row as the device's Bubble Breaker (VGA halved, lengths N * --wm-px): white, 16.5 tall, Tahoma
+ * 12.5, labels #0000ff and values black, 10.5 in from both edges, a one-pixel black rule under it. The
+ * well and its side column (Next, Hold, Lines) are one canvas the script sizes in device pixels, 10
+ * units in from the sides and 5 from the top, as Bubble Breaker's board. Options / Statistics are the
+ * shell's settings page (.wm-set, .wm-form-hdr, .wm-form, .wm-combo, .wm-check, .wm-button); About is
+ * Bubble Breaker's: centred lines under the art.
+ */
+
+.wm-page.wm-blockdrop {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: var(--wm-font);
+}
+
+.wm-blockdrop .wbd-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-blockdrop .wbd-view[hidden] {
+    display: none;
+}
+
+.wm-blockdrop .wbd-status {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(10.5 * var(--wm-px)) max(1px, calc(0.5 * var(--wm-px)));
+    border-bottom: max(1px, calc(0.5 * var(--wm-px))) solid #000;
+    font-size: calc(12.5 * var(--wm-px));
+    font-weight: normal;
+    line-height: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-blockdrop .wbd-status b {
+    color: #0000ff;
+    font-weight: normal;
+    margin-right: calc(3 * var(--wm-px));
+}
+
+/* the whole area under the status row takes the pen (drag, tap, flick), with no tap-and-hold ring */
+.wm-blockdrop .wbd-board {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    padding: calc(5 * var(--wm-px)) calc(10 * var(--wm-px));
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-blockdrop .wbd-canvas {
+    flex: none;
+    display: block;
+    margin: 0 auto auto;
+}
+
+/* ---- Options / Statistics ---- */
+.wm-blockdrop .wbd-form .wm-check {
+    margin-top: calc(4 * var(--wm-px));
+}
+
+.wm-blockdrop .wbd-help {
+    margin: calc(10 * var(--wm-px)) 0 0;
+}
+
+.wm-blockdrop .wbd-sub {
+    font-weight: bold;
+    margin-bottom: calc(2 * var(--wm-px));
+}
+
+.wm-blockdrop .wbd-best {
+    margin: 0 0 calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
+}
+
+.wm-blockdrop .wbd-best-row {
+    display: grid;
+    grid-template-columns: calc(16 * var(--wm-px)) calc(64 * var(--wm-px)) auto;
+    min-height: calc(13 * var(--wm-px));
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-blockdrop .wbd-best-row > span:nth-child(2) {
+    text-align: right;
+    padding-right: calc(12 * var(--wm-px));
+}
+
+.wm-blockdrop .wbd-stat {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(8 * var(--wm-px));
+    min-height: calc(14 * var(--wm-px));
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-blockdrop .wbd-form .wm-buttons {
+    margin-top: calc(8 * var(--wm-px));
+}
+
+/* ---- About (Bubble Breaker's page: the art, then centred lines 16 units apart) ---- */
+.wm-blockdrop .wbd-about {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: calc(14 * var(--wm-px)) calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-blockdrop .wbd-about-art {
+    display: block;
+    margin-bottom: calc(14 * var(--wm-px));
+}
+
+/* ---- 6.5 ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-blockdrop .wbd-status {
+    /* the same white row with the blue labels as 6.1 (Bubble Breaker on the 6.5 device) */
+    background: #fff;
+}

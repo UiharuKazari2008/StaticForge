@@ -1,0 +1,193 @@
+/*
+ * Melaton Mobile: Gems (#786), wmGems.js. Redrawn in WM style after the device's
+ * Bubble Breaker (emulator, VGA; lengths N * --wm-px = VGA / 2): white page; status row VGA rows
+ * 52-84 (16.5 units), Tahoma 13 units, labels #0000ff, values black, 10 units in from the sides,
+ * a 1 VGA px black rule under it. The field is a canvas (wmBrickBreaker.js draws it at device
+ * pixels). Options / Statistics / About are full pages with the shared form classes.
+ */
+
+.wm-page.wm-gems {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: var(--wm-font);
+}
+
+.wm-gems .wgm-probe {
+    position: absolute;
+    width: calc(100 * var(--wm-px));
+    height: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.wm-gems .wgm-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-gems .wgm-view[hidden] {
+    display: none;
+}
+
+/* ---- the game ---- */
+
+.wm-gems .wgm-status {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(10 * var(--wm-px));
+    border-bottom: calc(0.5 * var(--wm-px)) solid #000;
+    font-size: calc(13 * var(--wm-px));
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.wm-gems .wgm-status b {
+    font-weight: normal;
+    color: #0000ff;
+}
+
+.wm-gems .wgm-status i {
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-gems .wgm-field {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.wm-gems .wgm-field canvas {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block;
+    touch-action: none;
+}
+
+/* ---- Options ---- */
+
+.wm-gems .wgm-form .wm-form-row {
+    margin-bottom: calc(5 * var(--wm-px));
+}
+
+.wm-gems .wgm-form .wm-form-row.is-wide {
+    grid-template-columns: calc(80 * var(--wm-px)) minmax(0, calc(100 * var(--wm-px)));
+}
+
+.wm-gems .wgm-form .wm-form-row > .wm-form-label {
+    text-align: left;
+    padding-left: calc(3 * var(--wm-px));
+}
+
+.wm-gems .wgm-checks {
+    margin-top: calc(8 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
+}
+
+.wm-gems .wgm-checks .wm-check {
+    min-height: calc(21 * var(--wm-px));
+}
+
+/* ---- Statistics: Bubble Breaker's table (centred columns, labels left), Reset push button ---- */
+
+.wm-gems .wgm-stats {
+    padding: calc(5 * var(--wm-px)) calc(7 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: var(--wm-fs);
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wm-gems .wgm-stats table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wm-gems .wgm-high th {
+    font-weight: normal;
+    text-align: center;
+}
+
+.wm-gems .wgm-high td {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-gems .wgm-high .is-rank {
+    width: calc(16 * var(--wm-px));
+    text-align: left;
+}
+
+.wm-gems .wgm-totals {
+    margin-top: calc(6 * var(--wm-px));
+}
+
+.wm-gems .wgm-totals td:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-gems .wgm-reset {
+    margin-top: calc(8 * var(--wm-px));
+}
+
+.wm-gems .wgm-reset .wm-button {
+    min-width: calc(78 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+}
+
+/* ---- About: Bubble Breaker's (picture at the top, centred lines 16 units apart) ---- */
+
+.wm-gems .wgm-about {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) calc(10 * var(--wm-px));
+    text-align: center;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+}
+
+.wm-gems .wgm-logo {
+    width: calc(90 * var(--wm-px));
+    height: calc(90 * var(--wm-px));
+    margin-bottom: calc(10 * var(--wm-px));
+}
+
+.wm-gems .wgm-about p {
+    margin: 0;
+}
+
+.wm-gems .wgm-about .wgm-copy {
+    margin-top: calc(10 * var(--wm-px));
+    font-size: calc(9 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+
+/* ---- 6.5: Bubble Breaker draws the same page under 6.5's black bars; the shared form classes
+ * take 6.5's look from wm65.css ---- */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-gems .wgm-checks .wm-check {
+    min-height: calc(24 * var(--wm-px));
+}
+
+/* ---- Gems' own: the status row's game type at the right; the high-score caption ---- */
+.wm-gems .wgm-status > span[data-v="type"] {
+    color: #0000ff;
+}
+
+.wm-gems .wgm-stats-type {
+    margin: 0 0 calc(3 * var(--wm-px));
+}

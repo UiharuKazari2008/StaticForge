@@ -63,7 +63,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "set-buttons", "app-chat", "app-chat-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-error", "status-update", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2926,6 +2926,14 @@
             else if (sec && sec.links) {
                 part.classList.add('is-links');
                 if (sec.align === 'right') part.classList.add('is-right');
+                // a line of text with its links at the right of the same row
+                if (sec.text) {
+                    part.classList.add('has-text');
+                    const t = document.createElement('span');
+                    t.className = 'wm-bubble-text';
+                    t.textContent = sec.text;
+                    part.appendChild(t);
+                }
                 for (const l of sec.links) {
                     const a = document.createElement('button');
                     a.type = 'button';
@@ -3247,6 +3255,23 @@
         if (mainframeIcon && !mainframeIcon.running) mainframeIcon.start();
     }
 
+    /**
+     * A command or an app that needs the server while it cannot be reached (websocket.js
+     * _mobileDomainUnreachable): WM's error box with Retry and Abort, titled by the app in front.
+     * Resolves 'retry' or 'abort'.
+     */
+    function domainUnreachable() {
+        const app = current && current !== 'today' ? apps.get(current) : null;
+        return messageBox({
+            title: (app && app.title) || 'Melaton Mobile',
+            text: 'The Domain Controller is unreachable.',
+            icon: 'error',
+            buttons: [{ text: 'Retry', value: 'retry', default: true }, { text: 'Abort', value: 'abort' }],
+            cancelValue: 'abort',
+            modal: true
+        });
+    }
+
     function hideLoadingBox() {
         clearInterval(loadingTimer);
         loadingTimer = null;
@@ -3266,6 +3291,9 @@
                 const ttl = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
                 const isStatus = STATUS_TOAST.test(ttl);
                 const starting = bootDoneAt && Date.now() - bootDoneAt < 20000;
+                // up and running, a dropped or restored connection is the connectivity icon and its
+                // bubble, not a Connection box (Yukimi, Nov 13); a workspace switch keeps its box
+                if (isStatus && bootDoneAt && !switchingWorkspace && !t.querySelector('.toast-buttons')) continue;
                 if (!t.querySelector('.toast-buttons') && ((isStatus && !starting) || switchingWorkspace)) {
                     const txt = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
                     t.dataset.wmBusy = '1';
@@ -3909,15 +3937,22 @@
                 if (dev.active === 'wifi') sections.push(`Wi-Fi: ${dev.wifiName || 'Connected'}.${wl}`);
                 else sections.push(`${dev.link.text}.`);
             }
-            sections.push(connected
-                ? `Connected to Dreamscape at ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
-                : (ws && ws.connectionUi && ws.connectionUi.message) || `Not connected to Dreamscape at ${host}.`);
+            // the server still starting: no Mainframe Server box on the phone, this line instead (Yukimi, Nov 13)
+            const dcBooting = !!(ws && ws.lastServerStartupStatus && ws.lastServerStartupStatus.isReady === false);
+            // the Dreamscape link as one "VPN:" row like the Wi-Fi one, Reconnect at its right (Yukimi, Nov 13)
+            const vpn = connected
+                ? `Connected to ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
+                : dcBooting ? 'Waiting for domain controller...'
+                    : ws && ws.connectionPhase === 'auth' ? 'Logon required.'
+                        : ws && (ws.isConnecting || ws.connectionPhase === 'dialing') ? 'Connecting...'
+                            : `Not connected to ${host}.`;
+            sections.push(connected ? `VPN: ${vpn}`
+                : { text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
             // the install / update download the connecting icon also stands for
             const inst = swDownloading();
             if (inst != null) sections.push(`Installing Melaton Mobile... ${Math.round(inst)}%`);
             // WM 6.1's Connectivity bubble (shellres 5588-5635): Wireless Manager at the right, a rule,
             // the sessions, then Settings | Hide
-            if (!connected) sections.push({ links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
             const connSettings = () => {
                 const st = window.wmSettings;
                 if (st && typeof st.open === 'function' && st.open('connections')) return;
@@ -4776,6 +4811,9 @@
      * upscales, Director turns, streams) is left out, and the cursor gives up after 8 s.
      */
     let lastTapAt = -1e9;
+    // the last trusted tap landed on shell chrome (title bar, a bubble, a menu): not a command
+    let lastTapChrome = false;
+    const CHROME_TAP = '.wm-titlebar, .wm-bubble, .wm-msgbox-layer';
     const LONG_REQUEST = /generat|^print|_print|upscale|director_(send|turn|chat|run|continue|regenerate|reply)|wren|stream|subscribe|unsubscribe|^ping$|heartbeat|telemetry|presence|keepalive/i;
     const tapRecent = () => performance.now() - lastTapAt < 700;
 
@@ -4800,7 +4838,11 @@
     }
 
     function watchRequestBusy() {
-        const mark = (e) => { if (e.isTrusted) lastTapAt = performance.now(); };
+        const mark = (e) => {
+            if (!e.isTrusted) return;
+            lastTapAt = performance.now();
+            lastTapChrome = !!(e.target && e.target.closest && e.target.closest(CHROME_TAP));
+        };
         document.addEventListener('click', mark, true);
         document.addEventListener('keydown', (e) => { if (e.key === 'Enter') mark(e); }, true);
         const wrapWs = () => {
@@ -7448,6 +7490,10 @@
         messageBox,
         /** Dreamscape Mainframe Server box while the server boots: mainframeBox(percent, stage); null hides. */
         mainframeBox: (percent, stage) => mainframeBox(percent, stage),
+        /** "The Domain Controller is unreachable." Retry / Abort box: resolves 'retry' | 'abort'. */
+        domainUnreachable: () => domainUnreachable(),
+        /** A request now is the user's own command: a tap on a program (not the title bar or a bubble) in the last 700 ms. */
+        tapCommand: () => tapRecent() && !lastTapChrome,
         /** A WM notification: notify({ title, text, icon: 'info' | 'warning' | 'error' | 'success', timeout, buttons }). */
         notify: (opts) => notify(opts || {}),
         /** An app's own notification with a live progress bar, soft keys and title bar glyph (appNote above). */
@@ -7575,6 +7621,8 @@
         sounds: {
             play: (name, opts) => playSystemSound(name, opts || {}),
             log: snd.log,
+            /** True while the phone makes no sound (sound mode not on, or the ringer at 0): games check it (#786). */
+            silent: () => sndSilentNow(),
             /** Settings' Sound list: the ROM's files ({ file, label }). */
             files: () => WM_SOUNDS.map((file) => ({ file, label: wmSoundLabel(file) })),
             /** The phone's sound events ({ id, label, kind, sound, repeatable, desktop, dovecote }). */

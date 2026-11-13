@@ -1,0 +1,186 @@
+/*
+ * Melaton Mobile: Solitaire (Windows Mobile 6's own), Yozora #786. wmSolitaire.js.
+ * Measured on the WM 6.1 / 6.5 emulators (VGA; ~/.cache/claude-run/wmgames/ref), lengths N * --wm-px
+ * (a unit is two VGA pixels): the table is a canvas; the status strip 21 units (6.1) / 20 (6.5) in
+ * the theme tint, Tahoma 12 units, "Time:" at x 2, its number at 37.5, "Score:" at 82.5, its number
+ * at 120. Options (property sheet, SolitaireDlgTitle header 24 units): label x 7, combo x 57, 87 x 20,
+ * rows 26 units apart; check boxes 21 apart; Card Back: "Select a card back:" at y 32, six 35 x 47
+ * buttons from x 12, y 53, the chosen one in a 3 unit grey frame.
+ */
+
+.wm-page.wm-solitaire {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #008000;
+    color: #000;
+    font-family: var(--wm-font);
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.wm-solitaire .wsol-table {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.wm-solitaire .wsol-canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    touch-action: none;
+}
+
+.wm-solitaire .wsol-status {
+    position: relative;
+    flex: 0 0 auto;
+    height: calc(21 * var(--wm-px));
+    background: var(--wm-tint);
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(21 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.wm-solitaire .wsol-status[hidden] {
+    display: none;
+}
+
+.wm-solitaire .wsol-status > span {
+    position: absolute;
+    top: 0;
+}
+
+.wm-solitaire .wsol-status > span[hidden] {
+    display: none;
+}
+
+.wm-solitaire .wsol-time-l { left: calc(2 * var(--wm-px)); }
+.wm-solitaire .wsol-time { left: calc(37.5 * var(--wm-px)); }
+.wm-solitaire .wsol-score-l { left: calc(82.5 * var(--wm-px)); }
+.wm-solitaire .wsol-score { left: calc(120 * var(--wm-px)); }
+
+/* ---- Options ---- */
+.wm-solitaire .wsol-options {
+    display: none;
+}
+
+.wm-solitaire[data-view="options"] .wsol-table,
+.wm-solitaire[data-view="options"] .wsol-status {
+    display: none;
+}
+
+.wm-solitaire[data-view="options"] .wsol-options {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: #fff;
+    touch-action: auto;
+}
+
+.wm-solitaire .wsol-opt-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    /* the sheet's controls are Tahoma 24 VGA px (ui font: -24), larger than the shell's 21 */
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-opt-body .wm-combo {
+    font-size: calc(12 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-rules {
+    padding: calc(5 * var(--wm-px)) calc(7 * var(--wm-px)) 0;
+}
+
+.wm-solitaire .wsol-rules[hidden],
+.wm-solitaire .wsol-cardback[hidden] {
+    display: none;
+}
+
+.wm-solitaire .wsol-row {
+    display: flex;
+    align-items: center;
+    height: calc(20 * var(--wm-px));
+    margin-bottom: calc(6 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-row > span {
+    flex: 0 0 calc(50 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-row > .wm-combo {
+    flex: 0 0 calc(87 * var(--wm-px));
+    width: calc(87 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-rules .wm-check {
+    height: calc(17 * var(--wm-px));
+    min-height: 0;
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+/* the device's check box: 15 units with a 1 unit frame */
+.wm-solitaire .wsol-rules .wm-check input {
+    width: calc(15 * var(--wm-px));
+    height: calc(15 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-cardback {
+    padding: calc(8 * var(--wm-px)) calc(7 * var(--wm-px)) 0;
+}
+
+.wm-solitaire .wsol-cardback p {
+    margin: 0 0 calc(7 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-backs {
+    display: flex;
+    flex-wrap: wrap;
+    margin-left: calc(5 * var(--wm-px));
+}
+
+.wm-solitaire .wsol-back {
+    box-sizing: border-box;
+    width: calc(35 * var(--wm-px));
+    height: calc(47 * var(--wm-px));
+    margin: 0;
+    padding: calc(3 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    outline: none;
+}
+
+.wm-solitaire .wsol-back.is-selected {
+    background: #808080;
+}
+
+/* the card backs are row 4 of the card sheet (cells 0-5, 29 x 41 at 1x) */
+.wm-solitaire .wsol-back > i {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background-image: url("/static_images/wm-games/solitaire/cards.png");
+    background-image: image-set(url("/static_images/wm-games/solitaire/cards.png") 1x, url("/static_images/wm-games/solitaire/cards@2x.png") 2x, url("/static_images/wm-games/solitaire/cards@4x.webp") 4x);
+    background-size: 1300% 500%;
+    background-position: calc(var(--n) * 100% / 12) 100%;
+    background-repeat: no-repeat;
+}
+
+.wm-solitaire .wsol-opt-body + .wm-tabs {
+    flex: 0 0 auto;
+}
+
+/* ---- 6.5: the strip in its lavender tint, text in the theme's dark blue, 2 VGA px shorter ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-solitaire .wsol-status {
+    height: calc(20 * var(--wm-px));
+    line-height: calc(20 * var(--wm-px));
+    color: #08042f;
+}

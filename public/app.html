@@ -476,6 +476,12 @@
     <link rel="stylesheet" href="/css/wm-settings-connections.css">
     <link rel="stylesheet" href="/css/wm-settings-dreamscape.css">
     <link rel="stylesheet" href="/css/wm-calculator.css">
+    <link rel="stylesheet" href="/css/wm-solitaire.css">
+    <link rel="stylesheet" href="/css/wm-minesweeper.css">
+    <link rel="stylesheet" href="/css/wm-blockdrop.css">
+    <link rel="stylesheet" href="/css/wm-brickbreaker.css">
+    <link rel="stylesheet" href="/css/wm-inkball.css">
+    <link rel="stylesheet" href="/css/wm-gems.css">
     <link rel="stylesheet" href="/css/wm-calendar.css">
     <link rel="stylesheet" href="/css/wm-task-manager.css">
     <link rel="stylesheet" href="/css/wm-tasks.css">
@@ -6154,42 +6160,69 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content notebook-content">
+        <div class="modal-content notebook-content jnl">
             <div class="naxt-menubar" role="menubar">
                 <button type="button" class="naxt-menu-title" data-notebook-menu="file" role="menuitem">File</button>
                 <button type="button" class="naxt-menu-title" data-notebook-menu="edit" role="menuitem">Edit</button>
                 <button type="button" class="naxt-menu-title" data-notebook-menu="view" role="menuitem">View</button>
+                <button type="button" class="naxt-menu-title" data-notebook-menu="insert" role="menuitem">Insert</button>
                 <button type="button" class="naxt-menu-title" data-notebook-menu="actions" role="menuitem">Actions</button>
+                <button type="button" class="naxt-menu-title" data-notebook-menu="tools" role="menuitem">Tools</button>
+                <button type="button" class="naxt-menu-title" data-notebook-menu="help" role="menuitem">Help</button>
             </div>
-            <div class="explorer-actions-header" role="toolbar">
-                <div class="explorer-command-set">
-                    <button type="button" id="notebookNewNoteBtn" class="btn-secondary btn-small explorer-command-btn" title="New Note"><i class="fas fa-plus"></i>New</button>
-                    <button type="button" id="notebookSaveBtn" class="btn-secondary btn-small explorer-command-btn" title="Save Note"><i class="fas fa-save"></i>Save</button>
-                    <button type="button" id="notebookNovelGenerateBtn" class="btn-secondary btn-small explorer-command-btn hidden novel-notebook-only" title="Generate Next"><i class="fas fa-pen-fancy"></i>Generate</button>
-                    <button type="button" id="notebookNovelUndoBtn" class="btn-secondary btn-small explorer-command-btn hidden novel-notebook-only" title="Undo Last Generation"><i class="fas fa-undo"></i>Undo</button>
-                    <button type="button" id="notebookNovelContinueBtn" class="btn-secondary btn-small explorer-command-btn hidden novel-notebook-only" title="Continue Story in Manual Modal"><i class="fas fa-book-open"></i>Continue</button>
+            <!-- Windows Journal's rebar (journal.js): Standard band (toolbar 112) and Pen band (toolbar 117) -->
+            <div class="jnl-rebar" role="toolbar">
+                <div class="jnl-band" data-band="standard">
+                    <span class="jnl-grip" aria-hidden="true"></span>
+                    <button type="button" class="jnl-btn" data-jnl-cmd="new" title="New Note" style="--i:0" id="notebookNewNoteBtn"></button><button type="button" class="jnl-btn" data-jnl-cmd="recent" title="View Recent Notes" style="--i:1"></button><button type="button" class="jnl-btn" data-jnl-cmd="save" title="Save" style="--i:2" id="notebookSaveBtn"></button><button type="button" class="jnl-btn" data-jnl-cmd="import" title="Import" style="--i:3" disabled></button><button type="button" class="jnl-btn" data-jnl-cmd="find" title="Find" style="--i:4"></button>
+                    <span class="jnl-sep" aria-hidden="true"></span>
+                    <button type="button" class="jnl-btn" data-jnl-cmd="cut" title="Cut" style="--i:5"></button><button type="button" class="jnl-btn" data-jnl-cmd="copy" title="Copy" style="--i:6"></button><button type="button" class="jnl-btn" data-jnl-cmd="paste" title="Paste" style="--i:7"></button>
+                    <span class="jnl-sep" aria-hidden="true"></span>
+                    <button type="button" class="jnl-btn" data-jnl-cmd="undo" title="Undo" style="--i:8"></button><button type="button" class="jnl-btn" data-jnl-cmd="redo" title="Redo" style="--i:9"></button>
+                    <select class="jnl-zoom" title="Zoom" aria-label="Zoom"><option value="width">Page Width</option><option value="whole">Whole Page</option><option value="2">200%</option><option value="1.5">150%</option><option value="1.3">130%</option><option value="1.15">115%</option><option value="1">100%</option><option value="0.85">85%</option><option value="0.75">75%</option><option value="0.5">50%</option><option value="0.15">15%</option></select>
                 </div>
-                <div class="explorer-command-set">
-                    <div id="notebookWorkspaceDropdown" class="custom-dropdown">
-                        <button type="button" id="notebookWorkspaceDropdownBtn" class="btn-secondary btn-small explorer-command-btn has-menu" title="Switch workspace"><i class="fas fa-planet-ringed"></i><span id="notebookWorkspaceSelected">Default</span><span class="explorer-command-glyph" aria-hidden="true"></span></button>
-                        <div id="notebookWorkspaceDropdownMenu" class="custom-dropdown-menu hidden"></div>
+                <div class="jnl-band" data-band="pen">
+                    <span class="jnl-grip" aria-hidden="true"></span>
+                    <span class="jnl-split" data-split="pen"><button type="button" class="jnl-btn jnl-tool" data-jnl-tool="pen" title="Pen" style="--i:0"></button><button type="button" class="jnl-drop" data-jnl-drop="pen" aria-label="Pen options"></button></span><span class="jnl-split" data-split="highlighter"><button type="button" class="jnl-btn jnl-tool" data-jnl-tool="highlighter" title="Highlighter" style="--i:1"></button><button type="button" class="jnl-drop" data-jnl-drop="highlighter" aria-label="Highlighter options"></button></span><span class="jnl-split" data-split="eraser"><button type="button" class="jnl-btn jnl-tool" data-jnl-tool="eraser" title="Eraser" style="--i:2"></button><button type="button" class="jnl-drop" data-jnl-drop="eraser" aria-label="Eraser options"></button></span><button type="button" class="jnl-btn jnl-tool" data-jnl-tool="select" title="Selection Tool" style="--i:3"></button><button type="button" class="jnl-btn jnl-tool" data-jnl-tool="space" title="Insert/Remove Space" style="--i:4"></button><span class="jnl-split" data-split="flag"><button type="button" class="jnl-btn jnl-tool" data-jnl-tool="flag" title="Flag" style="--i:5"></button><button type="button" class="jnl-drop" data-jnl-drop="flag" aria-label="Flag options"></button></span>
+                </div>
+                <div class="jnl-band jnl-band-novel hidden" data-band="novel">
+                    <span class="jnl-grip" aria-hidden="true"></span>
+                    <button type="button" id="notebookNovelGenerateBtn" class="jnl-tbtn hidden novel-notebook-only" title="Generate Next">Generate</button>
+                    <button type="button" id="notebookNovelUndoBtn" class="jnl-tbtn hidden novel-notebook-only" title="Undo Last Generation">Undo</button>
+                    <button type="button" id="notebookNovelContinueBtn" class="jnl-tbtn hidden novel-notebook-only" title="Continue Story in Manual Modal">Continue</button>
+                </div>
+            </div>
+            <div class="jnl-body">
+                <div class="jnl-view">
+                    <div class="jnl-page">
+                        <div class="jnl-title">
+                            <input type="text" class="jnl-title-input" maxlength="80" autocomplete="off" spellcheck="false" aria-label="Note Title">
+                            <span class="jnl-title-label">Note Title</span>
+                            <span class="jnl-title-date"></span>
+                        </div>
+                        <textarea id="notebookTextarea" class="notepad-textarea jnl-text" spellcheck="false" aria-label="Note text"></textarea>
+                        <canvas class="jnl-ink" aria-hidden="true"></canvas>
+                        <div class="jnl-clips"></div>
                     </div>
                 </div>
-            </div>
-            <div class="notebook-split">
-                <!-- Notes List Panel -->
-                <div class="notebook-list-panel">
-                    <div class="notebook-list-content">
-                        <div class="notebook-notes-list">
-                            <!-- Notes will be populated here -->
+                <!-- View > Recent Notes (View Recent Notes on the Standard band): the workspace's notes -->
+                <div class="notebook-list-panel jnl-recent-view">
+                    <div class="jnl-recent-head">
+                        <div id="notebookWorkspaceDropdown" class="custom-dropdown">
+                            <button type="button" id="notebookWorkspaceDropdownBtn" class="btn-secondary btn-small explorer-command-btn has-menu" title="Switch workspace"><i class="fas fa-planet-ringed"></i><span id="notebookWorkspaceSelected">Default</span><span class="explorer-command-glyph" aria-hidden="true"></span></button>
+                            <div id="notebookWorkspaceDropdownMenu" class="custom-dropdown-menu hidden"></div>
                         </div>
                     </div>
+                    <div class="notebook-list-content">
+                        <div class="notebook-notes-list"></div>
+                    </div>
                 </div>
-
-                <!-- Note Editor Panel -->
-                <div class="notebook-editor-panel">
-                    <textarea id="notebookTextarea" class="notepad-textarea"
-                        placeholder="Select a note or create a new one..."></textarea>
+                <div class="jnl-pagebar">
+                    <span class="jnl-pagebar-text">1 / 1</span>
+                    <span class="jnl-pagebar-arrows">
+                        <button type="button" class="jnl-pagebar-btn" data-jnl-page="prev" title="Previous Page"></button>
+                        <button type="button" class="jnl-pagebar-btn" data-jnl-page="next" title="Next Page"></button>
+                    </span>
                 </div>
             </div>
         </div>
@@ -8638,6 +8671,12 @@ Examples:
     <script src="scripts/comp/wmSettingsApplets.js"></script>
     <script src="scripts/comp/wmSettingsDreamscape.js"></script>
     <script src="scripts/comp/wmCalculator.js"></script>
+    <script src="scripts/comp/wmSolitaire.js"></script>
+    <script src="scripts/comp/wmMinesweeper.js"></script>
+    <script src="scripts/comp/wmBlockDrop.js"></script>
+    <script src="scripts/comp/wmBrickBreaker.js"></script>
+    <script src="scripts/comp/wmInkBall.js"></script>
+    <script src="scripts/comp/wmGems.js"></script>
     <script src="scripts/comp/wmCalendar.js"></script>
     <script src="scripts/comp/wmTaskManager.js"></script>
     <script src="scripts/comp/wmTasks.js"></script>

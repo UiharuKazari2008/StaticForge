@@ -542,19 +542,16 @@
         const folderApps = (f) => shellApps.filter((a) => a.inStart && appFolder(a) === f && !SHELL_ONLY.has(a.id) && !IN_SETTINGS_APPS.has(a.id))
             .forEach((a) => items.push({ key: `a:${a.id}`, label: a.startLabel || a.title || a.id, img: wmLargeIcon(a.icon || 'app-programs') }));
         if (folder === 'games') {
+            // only the phone's own games (#786: Solitaire, Minesweeper, Block Drop, Brick Breaker,
+            // InkBall and the Android ones); the desktop's other games are not listed on the phone
             folderApps('games');
-            for (const g of desktopLaunchables('games')) {
-                if (!g || !g.text || !g.imageIcon) continue;
-                // games come later (Yukimi, Nov 10): listed, not yet playable on the phone
-                items.push({ key: `d:${g.launchId}`, label: g.text, img: appIcon(g.imageIcon), desktop: g.text, game: true });
-            }
         } else if (PROGRAM_FOLDERS[folder]) {
             folderApps(folder);
             desktopLaunchables().forEach(desktopItem);
             desktopLaunchables('toolbox').forEach(desktopItem);
         } else {
             const phoneGames = shellApps.some((a) => a.inStart && appFolder(a) === 'games');
-            if (phoneGames || desktopLaunchables('games').length) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
+            if (phoneGames) items.push({ key: 'folder:games', label: 'Games', img: wmLargeIcon('app-games'), folder: 'games' });
             for (const [id, f] of Object.entries(PROGRAM_FOLDERS)) {
                 if (EXTRA_FOLDERS.has(id) && !shellApps.some((a) => a.inStart && appFolder(a) === id)) continue;
                 items.push({ key: `folder:${id}`, label: f.label, img: f.icon(), folder: id });

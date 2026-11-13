@@ -281,19 +281,15 @@
             items.push({ key: `d:${l.launchId}`, label: l.text, img: art ? art61(art) : artDesktop(l.imageIcon), desktop: l.text, launch: l });
         };
         if (folder === 'games') {
+            // only the phone's own games, as in Programs > Games (#786)
             for (const a of apps) if (a.inStart && !NOT_LISTED.has(a.id) && inFolder(a) === 'games') items.push(appItem(a));
-            for (const g of desktopLaunchables('games')) {
-                if (!g || !g.text || !g.imageIcon) continue;
-                // listed, not yet playable on the phone (as in Programs > Games)
-                items.push({ key: `d:${g.launchId}`, label: g.text, img: artDesktop(g.imageIcon), desktop: g.text });
-            }
         } else {
             for (const a of apps) {
                 if (!a.inStart || NOT_LISTED.has(a.id) || (inFolder(a) || null) !== (folder || null)) continue;
                 items.push(appItem(a));
             }
             if (!folder) {
-                if (apps.some((a) => a.inStart && inFolder(a) === 'games') || desktopLaunchables('games').length) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
+                if (apps.some((a) => a.inStart && inFolder(a) === 'games')) items.push({ key: 'folder:games', label: FOLDERS.games.label, img: FOLDERS.games.icon(), folder: 'games' });
                 items.push({ key: 'folder:dreamscape', label: FOLDERS.dreamscape.label, img: FOLDERS.dreamscape.icon(), folder: 'dreamscape' });
                 for (const [id, f] of extra) {
                     if (apps.some((a) => a.inStart && inFolder(a) === id)) items.push({ key: `folder:${id}`, label: f.label, img: art61(`app-folder-${id}`), folder: id });

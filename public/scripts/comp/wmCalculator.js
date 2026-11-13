@@ -205,7 +205,7 @@
         if (!ws || ws.current !== APP_ID || e.ctrlKey || e.metaKey || e.altKey) return;
         const t = e.target;
         if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
-        if (document.querySelector('#wmShell .wm-popup, #wmShell .wm-msgbox-layer:not([hidden])')) return;
+        if (document.querySelector('#wmShell .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
         const k = /^[0-9]$/.test(e.key) ? e.key : KEYMAP[e.key];
         if (!k) return;
         e.preventDefault();

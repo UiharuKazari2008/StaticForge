@@ -1,0 +1,150 @@
+/*
+ * Melaton Mobile: Minesweeper, Yozora #786. wmMinesweeper.js.
+ * Status row as the device's Bubble Breaker (VGA halved, lengths N * --wm-px): white, 16.5 tall, Tahoma
+ * 12.5, labels #0000ff and values black, 10.5 in from both edges, a one-pixel black rule under it (VGA
+ * row 85 on both 6.1 and 6.5: the row does not follow the theme). The board is a canvas the script
+ * sizes in device pixels (tiles 14 to 32 units, 10 units in from the sides and 5 from the top and bottom, as Bubble
+ * Breaker's board); a board too big
+ * for the page scrolls. Options / Statistics are the shell's settings page (.wm-set, .wm-form-hdr,
+ * .wm-form, .wm-combo, .wm-check, .wm-button); About is Bubble Breaker's: centred lines under the art.
+ */
+
+.wm-page.wm-minesweeper {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: var(--wm-font);
+}
+
+.wm-minesweeper .wmm-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-minesweeper .wmm-view[hidden] {
+    display: none;
+}
+
+.wm-minesweeper .wmm-status {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(10.5 * var(--wm-px)) max(1px, calc(0.5 * var(--wm-px)));
+    border-bottom: max(1px, calc(0.5 * var(--wm-px))) solid #000;
+    font-size: calc(12.5 * var(--wm-px));
+    font-weight: normal;
+    line-height: 1;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-minesweeper .wmm-status b {
+    color: #0000ff;
+    font-weight: normal;
+    margin-right: calc(3 * var(--wm-px));
+}
+
+.wm-minesweeper .wmm-board {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    padding: calc(5 * var(--wm-px)) calc(10 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-minesweeper .wmm-canvas {
+    flex: none;
+    display: block;
+    /* Bubble Breaker's board sits under the status row (not in the middle of a tall page) */
+    margin: 0 auto auto;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    user-select: none;
+}
+
+/* a board bigger than the page (Advanced, a landscape Intermediate) scrolls under the finger */
+.wm-minesweeper .wmm-board.is-scroll {
+    overflow: auto;
+    overscroll-behavior: contain;
+}
+
+.wm-minesweeper .wmm-board.is-scroll .wmm-canvas {
+    touch-action: pan-x pan-y;
+}
+
+/* ---- Options / Statistics ---- */
+.wm-minesweeper .wmm-form .wm-check {
+    margin-top: calc(4 * var(--wm-px));
+}
+
+.wm-minesweeper .wmm-level-note {
+    margin: calc(2 * var(--wm-px)) 0 calc(6 * var(--wm-px)) calc(67 * var(--wm-px));
+    color: #000;
+}
+
+.wm-minesweeper .wmm-help {
+    margin: calc(10 * var(--wm-px)) 0 0;
+}
+
+.wm-minesweeper .wmm-stats {
+    margin: calc(6 * var(--wm-px)) 0 calc(8 * var(--wm-px));
+}
+
+.wm-minesweeper .wmm-sub {
+    font-weight: bold;
+    margin-bottom: calc(2 * var(--wm-px));
+}
+
+.wm-minesweeper .wmm-best {
+    margin: 0 0 calc(8 * var(--wm-px)) calc(8 * var(--wm-px));
+}
+
+.wm-minesweeper .wmm-best-row {
+    display: grid;
+    grid-template-columns: calc(16 * var(--wm-px)) calc(48 * var(--wm-px)) auto;
+    min-height: calc(13 * var(--wm-px));
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-minesweeper .wmm-stat {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(8 * var(--wm-px));
+    min-height: calc(14 * var(--wm-px));
+}
+
+.wm-minesweeper .wmm-stat > span:last-child {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- About (Bubble Breaker's page: the art, then centred lines 16 units apart) ---- */
+.wm-minesweeper .wmm-about {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: calc(14 * var(--wm-px)) calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: calc(12 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-minesweeper .wmm-about-art {
+    display: block;
+    margin-bottom: calc(14 * var(--wm-px));
+}
+
+/* ---- 6.5 ---- */
+html.ui-mobile[data-wm-version="6.5"] .wm-minesweeper .wmm-status {
+    /* the same white row with the blue labels as 6.1 (Bubble Breaker on the 6.5 device) */
+    background: #fff;
+}
