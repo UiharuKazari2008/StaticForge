@@ -1340,6 +1340,8 @@ class WebSocketClient {
         if (!this._dcUnreachablePrompt) {
             // only what the tap itself sends: a poll that happens to run after a tap stays quiet
             if (typeof sh.tapCommand !== 'function' || !sh.tapCommand()) return null;
+            // asked for while out of reach: the standing notice too (wmShell dcNotice)
+            if (typeof sh.dcNotice === 'function') sh.dcNotice();
             this._dcUnreachablePrompt = (async () => {
                 for (;;) {
                     const choice = await sh.domainUnreachable();
