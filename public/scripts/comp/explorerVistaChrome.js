@@ -10,8 +10,9 @@
  *                   contextual Upload / Download / Replace; the old icon buttons stay hidden in
  *                   the markup and do the work (their disabled state drives the menu)
  *   navigation pane Favorite Links (this workspace's Desktop / Pictures / References / Notes,
- *                   Workspaces, Library, Trash) and the Folders bar opening a 7.css tree view
- *                   whose folders load as they open
+ *                   Workspaces, Library, Trash; three and More » while Folders is open) and the
+ *                   Folders bar opening Vista's namespace tree (Desktop ▸ workspace, Workspaces,
+ *                   Computer ▸ drives, Control Panel, Recycle Bin), open down to the folder on screen
  *   details pane    the selected item (icon, name, type, Date modified, Size) or the folder's
  *                   item count
  *   Details view    Vista's type names (File Folder, PNG Image) and dates (11/2/2006 8:24 AM)
@@ -58,6 +59,7 @@
             this.app = app;
             const $ = (id) => document.getElementById(id);
             this.labels = new Map([['/', rootLabel()]]);
+            this.treeSpecs = new WeakMap();
             this.el = {
                 addressGroup: app.modal.querySelector('.explorer-address-group'),
                 breadcrumb: $('explorerBreadcrumb'),
@@ -70,11 +72,13 @@
                 replace: $('explorerReplaceCmd'),
                 preview: $('explorerPreviewCmd'),
                 systemProperties: $('explorerSystemPropertiesCmd'),
+                uninstall: $('explorerUninstallCmd'),
                 controlPanel: $('explorerControlPanelCmd'),
                 help: $('explorerHelpBtn'),
                 favorites: $('explorerFavoriteLinks'),
                 folders: $('explorerFolders'),
                 foldersBar: $('explorerFoldersBar'),
+                favoritesMore: $('explorerFavoritesMore'),
                 tree: $('explorerFolderTree'),
                 detailsIcon: $('explorerDetailsIcon'),
                 detailsInfo: $('explorerDetailsInfo')
@@ -127,11 +131,14 @@
                 const ready = loader && typeof loader.loadFeature === 'function' ? loader.loadFeature('control_panel') : Promise.resolve();
                 Promise.resolve(ready).then(() => {
                     if (page === 'system' && root.cplSystem) root.cplSystem.open();
+                    else if (page === 'programs' && root.melatonControlPanel && root.melatonControlPanel.openItem) root.melatonControlPanel.openItem('programs');
                     else if (root.melatonControlPanel) root.melatonControlPanel.open(page);
                 }).catch((err) => console.error('Control Panel', err));
             };
             if (e.systemProperties) e.systemProperties.addEventListener('click', () => controlPanel('system'));
             if (e.controlPanel) e.controlPanel.addEventListener('click', () => controlPanel('home'));
+            // Vista's Computer: Uninstall or change a program opens Programs and Features (cplPages.js)
+            if (e.uninstall) e.uninstall.addEventListener('click', () => controlPanel('programs'));
             if (e.help) {
                 e.help.addEventListener('click', () => {
                     if (typeof root.openGrimoireApplet === 'function') root.openGrimoireApplet();
@@ -168,17 +175,23 @@
                     if (link) this.app.navigateTo(link.dataset.path);
                 });
             }
+            if (e.favoritesMore) e.favoritesMore.addEventListener('pointerdown', () => this.attachFavoritesMore(), true);
             if (e.tree) {
+                // the glyph opens and closes a node; the name goes there (Vista: a double-click also expands)
                 e.tree.addEventListener('click', (ev) => {
-                    const label = ev.target.closest('.explorer-tree-label');
-                    if (!label) return;
+                    const li = ev.target.closest('.explorer-tree-node');
+                    if (!li || !e.tree.contains(li)) return;
                     ev.preventDefault();
-                    this.app.navigateTo(label.dataset.path);
+                    if (ev.target.closest('.explorer-tree-glyph')) {
+                        this.toggleTreeNode(li);
+                        return;
+                    }
+                    if (ev.target.closest('.explorer-tree-label')) this.openTreeNode(li);
                 });
-                e.tree.addEventListener('toggle', (ev) => {
-                    const details = ev.target;
-                    if (details.open && details.dataset.loaded !== '1') this.loadTreeChildren(details);
-                }, true);
+                e.tree.addEventListener('dblclick', (ev) => {
+                    const li = ev.target.closest('.explorer-tree-node');
+                    if (li && ev.target.closest('.explorer-tree-label')) this.toggleTreeNode(li, true);
+                });
             }
         }
 
@@ -335,6 +348,7 @@
             this.layoutBreadcrumb();
             this.watchBreadcrumbWidth();
             this.highlightFavorite();
+            this.syncTree();
         }
 
         /** Vista drops the trailing ▸ first, then folds crumbs from the left into « (a menu of them). */
@@ -487,6 +501,7 @@
             if (this.el.preview) this.el.preview.classList.toggle('hidden', !this.selectedPicture());
             const atComputer = typeof this.app._isComputerPath === 'function' && this.app._isComputerPath();
             if (this.el.systemProperties) this.el.systemProperties.classList.toggle('hidden', !atComputer);
+            if (this.el.uninstall) this.el.uninstall.classList.toggle('hidden', !atComputer);
             if (this.el.controlPanel) this.el.controlPanel.classList.toggle('hidden', !atComputer);
         }
 
@@ -515,6 +530,7 @@
             host.innerHTML = this.favoriteLinks().map((l) => `
                 <li><button type="button" class="explorer-favorite-link" data-path="${esc(l.path)}" title="${esc(l.label)}">
                     <img src="${ART}/${l.icon}" alt=""><span>${esc(l.label)}</span></button></li>`).join('');
+            this.layoutFavorites();
             this.highlightFavorite();
         }
 
@@ -535,55 +551,275 @@
             const open = !folders.classList.contains('is-open');
             folders.classList.toggle('is-open', open);
             if (foldersBar) foldersBar.setAttribute('aria-expanded', open ? 'true' : 'false');
-            if (open && tree && !tree.childElementCount) this.renderTreeLevel(tree, '/');
-        }
-
-        treeNode(item, path) {
-            const li = document.createElement('li');
-            const details = document.createElement('details');
-            details.dataset.path = path;
-            const summary = document.createElement('summary');
-            const label = document.createElement('span');
-            label.className = 'explorer-tree-label';
-            label.dataset.path = path;
-            label.textContent = item.name || path.split('/').pop();
-            summary.appendChild(label);
-            details.appendChild(summary);
-            const ul = document.createElement('ul');
-            details.appendChild(ul);
-            li.appendChild(details);
-            return li;
-        }
-
-        async renderTreeLevel(ul, path) {
-            if (typeof root.vfsClient === 'undefined' && typeof vfsClient === 'undefined') return;
-            const client = root.vfsClient || vfsClient;
-            ul.innerHTML = '<li class="explorer-tree-loading">Loading…</li>';
-            try {
-                const result = await client.listDirectory(path, { offset: 0, limit: 200, sortField: 'name', sortDirection: 'asc' });
-                const folders = (result && result.items || []).filter((item) => this.app.isFolderItem(item));
-                ul.innerHTML = '';
-                folders.forEach((item) => {
-                    // the applet resolves VFS folders against the folder on screen; the tree
-                    // resolves them against its own node
-                    const base = path === '/' ? '' : path;
-                    let target = item.navPath || null;
-                    if (!target && item.targetKind === 'vfs-folder') target = `${base}/${item.targetId || item.id}`;
-                    if (!target && typeof this.app.resolveNavigationPath === 'function') target = this.app.resolveNavigationPath(item);
-                    if (!target) target = `${base}/${item.name}`;
-                    ul.appendChild(this.treeNode(item, target));
-                });
-                if (!folders.length) ul.innerHTML = '';
-            } catch (err) {
-                ul.innerHTML = '';
-                console.error('Cartograph folders', err);
+            const nav = folders.closest('.explorer-nav-pane');
+            if (nav) nav.classList.toggle('folders-open', open);
+            this.layoutFavorites();
+            if (open && tree) {
+                if (!tree.childElementCount) this.renderTreeRoot();
+                this.syncTree();
             }
         }
 
-        loadTreeChildren(details) {
-            details.dataset.loaded = '1';
-            const ul = details.querySelector(':scope > ul');
-            if (ul) this.renderTreeLevel(ul, details.dataset.path);
+        /** Folders open: Vista's Favorite Links keeps three links and folds the rest into More ». */
+        layoutFavorites() {
+            const host = this.el.favorites;
+            const more = this.el.favoritesMore;
+            if (!host) return;
+            const open = !!(this.el.folders && this.el.folders.classList.contains('is-open'));
+            const links = [...host.querySelectorAll(':scope > li')];
+            links.forEach((li, i) => li.classList.toggle('is-folded', open && i >= 3));
+            if (more) more.classList.toggle('hidden', !open || links.length <= 3);
+        }
+
+        attachFavoritesMore() {
+            const cm = root.contextMenu;
+            const more = this.el.favoritesMore;
+            if (!cm || !more) return;
+            const items = this.favoriteLinks().slice(3).map((l) => ({ text: l.label, action: l.path, icon: 'fas fa-folder' }));
+            cm.detachClickMenuFromElement(more);
+            cm.attachClickMenuToElement(more, {
+                sections: [{ type: 'list', items }],
+                onAction: (path) => this.app.navigateTo(path)
+            });
+        }
+
+        // ---- Folders tree ----
+        // Vista's namespace tree (VM, Explorer's Folders pane): Desktop at the root, then the user's
+        // folder, Public, Computer with its drives, Network, Control Panel and Recycle Bin, then the
+        // folders on the desktop. Here the user's folder is the workspace, Public is Workspaces, the
+        // drives are Local Disk (C:) (the VFS root) plus the phone and network drives Computer
+        // shows, and Recycle Bin is the workspace's Trash. Folders load as they open; the tree
+        // opens down to the folder on screen and marks it.
+
+        workspaceId() {
+            if (typeof root.activeWorkspace !== 'undefined' && root.activeWorkspace) return root.activeWorkspace;
+            return typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+        }
+
+        treeIcon(name) {
+            const icons = {
+                desktop: ['tree-desktop-16.png', 'tree-desktop-32.png'],
+                user: ['tree-user-16.png', 'tree-user-32.png'],
+                public: ['fav-public.png'],
+                computer: ['computer-16.png', 'tree-computer-32.png'],
+                drive: ['drive-system-16.png', 'tree-drive-system-32.png'],
+                removable: ['drive-removable-16.png'],
+                network: ['drive-network-16.png'],
+                'network-off': ['drive-network-off-16.png'],
+                'control-panel': ['tree-control-panel-16.png', 'tree-control-panel-32.png'],
+                recycle: ['../vista-icons/explorer/recycle-16.png', '../vista-icons/explorer/recycle-32.png'],
+                folder: ['../vista-icons/explorer/folder-16.png', '../vista-icons/explorer/folder-32.png']
+            };
+            const [one, two] = icons[name] || icons.folder;
+            const srcset = two ? ` srcset="${ART}/${one} 1x, ${ART}/${two} 2x"` : '';
+            return `<img class="explorer-tree-icon" src="${ART}/${one}"${srcset} alt="" draggable="false">`;
+        }
+
+        rootSpecs() {
+            const ws = this.workspaceId();
+            const computerPath = root.ExplorerComputerView ? root.ExplorerComputerView.PATH : null;
+            const desktopPath = ws ? `/Workspaces/${ws}/Desktop` : null;
+            const children = () => {
+                const list = [];
+                if (ws) {
+                    const name = typeof root.getWorkspaceDisplayName === 'function' ? root.getWorkspaceDisplayName(ws)
+                        : (typeof getWorkspaceDisplayName === 'function' ? getWorkspaceDisplayName(ws) : this.labelFor(`/Workspaces/${ws}`));
+                    list.push({ label: name || ws, icon: 'user', path: `/Workspaces/${ws}`, folders: `/Workspaces/${ws}` });
+                }
+                list.push({ label: 'Workspaces', icon: 'public', path: '/Workspaces', folders: '/Workspaces' });
+                if (computerPath && this.app.computer) {
+                    list.push({ label: 'Computer', icon: 'computer', path: computerPath, children: () => this.computerSpecs() });
+                }
+                list.push({ label: 'Control Panel', icon: 'control-panel', leaf: true, action: () => this.openControlPanel() });
+                if (ws) list.push({ label: 'Recycle Bin', icon: 'recycle', path: `/Workspaces/${ws}/Trash`, leaf: true });
+                // the folders on the desktop follow, as Vista lists them under Desktop
+                if (!desktopPath) return list;
+                return this.folderSpecs(desktopPath).then((folders) => list.concat(folders), () => list);
+            };
+            if (!desktopPath) return [{ label: 'Desktop', icon: 'desktop', children, open: true }];
+            return [{ label: 'Desktop', icon: 'desktop', path: desktopPath, children, open: true }];
+        }
+
+        /** Computer's drives in the order its window groups them: hard disk, removable, network. */
+        computerSpecs() {
+            const view = this.app.computer;
+            const list = [{ label: rootLabel(), icon: 'drive', path: '/', folders: '/' }];
+            if (!view) return list;
+            const open = (key) => () => view.openDrive(key);
+            (view.phoneDrives ? view.phoneDrives() : []).forEach((d) => {
+                list.push({ label: d.name, icon: 'removable', path: d.path || null, leaf: true, action: open(d.key) });
+            });
+            (view.networkDrives ? view.networkDrives() : []).forEach((d) => {
+                list.push({ label: d.name, icon: d.online ? 'network' : 'network-off', path: d.path || null, leaf: true, action: open(d.key) });
+            });
+            return list;
+        }
+
+        openControlPanel() {
+            const loader = root.featureLoader;
+            const ready = loader && typeof loader.loadFeature === 'function' ? loader.loadFeature('control_panel') : Promise.resolve();
+            Promise.resolve(ready).then(() => {
+                if (root.melatonControlPanel) root.melatonControlPanel.open('home');
+            }).catch((err) => console.error('Control Panel', err));
+        }
+
+        /** The sub-folders of a VFS folder, as tree nodes that load their own when opened. */
+        async folderSpecs(path) {
+            const client = root.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null);
+            if (!client) return [];
+            const result = await client.listDirectory(path, { offset: 0, limit: 500, sortField: 'name', sortDirection: 'asc' });
+            const base = path === '/' ? '' : path;
+            return (result && result.items || []).filter((item) => this.app.isFolderItem(item)).map((item) => {
+                // the applet resolves VFS folders against the folder on screen; the tree resolves
+                // them against its own node
+                let target = item.navPath || null;
+                if (!target && item.targetKind === 'vfs-folder') target = `${base}/${item.targetId || item.id}`;
+                if (!target && typeof this.app.resolveNavigationPath === 'function') target = this.app.resolveNavigationPath(item);
+                if (!target) target = `${base}/${item.name}`;
+                const label = item.name || target.split('/').pop();
+                this.labels.set(target, label);
+                const recycle = item.name === 'Trash' && /^\/Workspaces\/[^/]+\/Trash$/.test(target);
+                return { label, icon: recycle ? 'recycle' : 'folder', path: target, folders: target };
+            });
+        }
+
+        renderTreeRoot() {
+            const tree = this.el.tree;
+            if (!tree) return;
+            this.treeSpecs = new WeakMap();
+            tree.innerHTML = '';
+            this.rootSpecs().forEach((spec) => tree.appendChild(this.treeNode(spec, 0)));
+        }
+
+        treeNode(spec, depth) {
+            const li = document.createElement('li');
+            li.className = 'explorer-tree-node';
+            li.setAttribute('role', 'treeitem');
+            if (spec.path) li.dataset.path = spec.path;
+            const leaf = !!spec.leaf || (!spec.children && !spec.folders);
+            li.classList.toggle('is-leaf', leaf);
+            li.setAttribute('aria-expanded', 'false');
+            li.innerHTML = `<div class="explorer-tree-row" style="--tree-depth:${depth}"><span class="explorer-tree-glyph" aria-hidden="true"></span><span class="explorer-tree-label" title="${esc(spec.label)}">${this.treeIcon(spec.icon)}<span class="explorer-tree-text">${esc(spec.label)}</span></span></div><ul class="explorer-tree-children" role="group"></ul>`;
+            li.dataset.depth = String(depth);
+            this.treeSpecs.set(li, spec);
+            if (spec.open) this.expandTreeNode(li);
+            return li;
+        }
+
+        /** Opens a node, loading its children the first time (again after it was closed, so new folders show). */
+        expandTreeNode(li) {
+            const spec = this.treeSpecs && this.treeSpecs.get(li);
+            if (!spec || li.classList.contains('is-leaf')) return Promise.resolve();
+            li.classList.add('is-open');
+            li.setAttribute('aria-expanded', 'true');
+            if (li._treeLoad) return li._treeLoad;
+            const ul = li.querySelector(':scope > .explorer-tree-children');
+            const depth = Number(li.dataset.depth || 0) + 1;
+            const source = spec.children ? spec.children() : this.folderSpecs(spec.folders);
+            li._treeLoad = Promise.resolve(source).then((specs) => {
+                ul.innerHTML = '';
+                (specs || []).forEach((child) => ul.appendChild(this.treeNode(child, depth)));
+                // Vista drops the glyph of a folder that turns out to be empty
+                if (!ul.childElementCount) {
+                    li.classList.add('is-leaf');
+                    li.classList.remove('is-open');
+                    li.setAttribute('aria-expanded', 'false');
+                }
+            }).catch((err) => {
+                console.error('Cartograph folders', err);
+                li._treeLoad = null;
+            });
+            return li._treeLoad;
+        }
+
+        collapseTreeNode(li) {
+            li.classList.remove('is-open');
+            li.setAttribute('aria-expanded', 'false');
+            const spec = this.treeSpecs && this.treeSpecs.get(li);
+            // folder nodes list again when reopened; Desktop and Computer keep their nodes
+            if (spec && spec.folders) li._treeLoad = null;
+        }
+
+        toggleTreeNode(li, onlyOpen) {
+            if (li.classList.contains('is-open')) {
+                if (!onlyOpen) this.collapseTreeNode(li);
+            } else {
+                this.expandTreeNode(li);
+            }
+        }
+
+        openTreeNode(li) {
+            const spec = this.treeSpecs && this.treeSpecs.get(li);
+            if (!spec) return;
+            if (spec.action) spec.action();
+            else if (spec.path) this.app.navigateTo(spec.path);
+            else this.toggleTreeNode(li);
+        }
+
+        markTreeNode(li) {
+            const tree = this.el.tree;
+            if (!tree) return;
+            tree.querySelectorAll('.explorer-tree-node.is-selected').forEach((n) => {
+                if (n !== li) {
+                    n.classList.remove('is-selected');
+                    n.setAttribute('aria-selected', 'false');
+                }
+            });
+            if (!li) return;
+            li.classList.add('is-selected');
+            li.setAttribute('aria-selected', 'true');
+            const row = li.querySelector(':scope > .explorer-tree-row');
+            if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' });
+        }
+
+        /** The nodes from Desktop down to a path, as Vista walks its namespace to the folder on screen. */
+        treeChain(path) {
+            const ws = this.workspaceId();
+            const desktop = ws ? `/Workspaces/${ws}/Desktop` : null;
+            const computer = root.ExplorerComputerView ? root.ExplorerComputerView.PATH : null;
+            const prefixes = (from, p) => {
+                const parts = String(p).split('/').filter(Boolean);
+                const out = [];
+                for (let i = from; i <= parts.length; i++) out.push('/' + parts.slice(0, i).join('/'));
+                return out;
+            };
+            const head = desktop ? [desktop] : [];
+            if (!path) return head;
+            if (path === desktop) return head;
+            if (computer && path === computer) return head.concat(computer);
+            if (root.explorerPhoneDrive && root.explorerPhoneDrive.isPath(path)) return computer ? head.concat(computer) : head;
+            if (root.explorerSequenzia && root.explorerSequenzia.isPath(path)) {
+                return head.concat(computer ? [computer] : [], prefixes(String(root.explorerSequenzia.ROOT).split('/').filter(Boolean).length, path));
+            }
+            if (ws && (path === `/Workspaces/${ws}` || path.startsWith(`/Workspaces/${ws}/`))) return head.concat(prefixes(2, path));
+            if (path === '/Workspaces' || path.startsWith('/Workspaces/')) return head.concat(prefixes(1, path));
+            return head.concat(computer ? [computer] : [], prefixes(0, path));
+        }
+
+        /** Opens the tree down to the folder on screen and marks it (Folders open only). */
+        async syncTree() {
+            const { tree, folders } = this.el;
+            if (!tree || !folders || !folders.classList.contains('is-open')) return;
+            if (!tree.childElementCount) this.renderTreeRoot();
+            const token = (this._treeSync = (this._treeSync || 0) + 1);
+            const chain = this.treeChain(this.app.currentPath);
+            let node = null;
+            let level = tree;
+            for (let i = 0; i < chain.length; i++) {
+                const next = [...level.children].find((li) => li.dataset.path === chain[i]);
+                if (!next) break;
+                node = next;
+                if (i < chain.length - 1) {
+                    await this.expandTreeNode(node);
+                    if (token !== this._treeSync) return;
+                    level = node.querySelector(':scope > .explorer-tree-children');
+                }
+            }
+            if (token !== this._treeSync) return;
+            const here = node && node.dataset.path === this.app.currentPath ? node : null;
+            this.markTreeNode(here);
+            // Vista opens the folder on screen too, showing what is inside it
+            if (here && here.dataset.depth !== '0') this.expandTreeNode(here);
         }
 
         // ---- details pane ----

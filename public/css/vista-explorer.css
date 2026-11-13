@@ -614,7 +614,9 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     display: flex;
     flex: 0 0 158px;
     flex-direction: column;
+    min-width: 0;
     min-height: 0;
+    overflow: hidden;
     background: #fcfcfc;
     border-right: 1px solid #a7bac5;
     box-shadow: 1px 0 0 #fff;
@@ -721,7 +723,7 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
-    padding: 2px 4px;
+    padding: 3px 0 1px;
     background: #fcfcfc;
 }
 
@@ -729,39 +731,136 @@ body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFol
     display: block;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-folders-tree ul.tree-view {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    font: 12px var(--ex-font);
+/* Folders open: Favorite Links keeps its heading, three links and More » (VM: the bar 121px
+   down the pane, links at a 22px pitch); the open bar sits right under it */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-nav-pane.folders-open .explorer-favorites {
+    flex: 0 0 auto;
+    overflow: hidden;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-folders-tree .explorer-tree-label {
-    display: inline-flex;
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-nav-pane.folders-open .explorer-favorites > :not(.explorer-nav-heading, .explorer-favorite-links, .explorer-favorites-more) {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorite-links > li.is-folded {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorites-more {
+    display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 1px 3px;
+    gap: 6px;
+    height: 22px;
+    margin: 0 0 0 4px;
+    padding: 0 4px 0 24px;
+    background: none;
     border: 1px solid transparent;
-    border-radius: 2px;
+    border-radius: 3px;
+    box-shadow: none;
+    color: var(--ex-link);
+    font: 12px var(--ex-font);
+    text-shadow: none;
+    cursor: var(--c-default);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorites-more.hidden {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorites-more span {
     color: #000;
+    font-weight: 600;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-folders-tree .explorer-tree-label::before {
-    content: '';
-    width: 16px;
-    height: 16px;
-    background: image-set(url('/static_images/vista-icons/explorer/folder-16.png') 1x, url('/static_images/vista-icons/explorer/folder-32.png') 2x) no-repeat center / 16px 16px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-folders-tree .explorer-tree-label:hover {
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-favorites-more:hover {
     background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #e7f5fd);
     border-color: #99defd;
 }
 
-body.desktop-mode:not(.windows-classic-theme) :is(#explorerModal, #studioSaveFolderModal) .explorer-tree-loading {
-    color: #6d6d6d;
-    font-style: italic;
+/* the Folders bar under the pointer (VM: #e5f4fd to #a6d9f4, a light line under it) */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-folders-bar:hover {
+    background: linear-gradient(#e5f4fd, #d8effc 35%, #bce5fc 52%, #a6d9f4);
+    box-shadow: inset 0 -1px 0 #e8f5fc;
+}
+
+/* the tree (VM Folders pane): 19px rows, 10px a level, Vista's triangle glyphs (aero TREEVIEW
+   GLYPH, hollow closed / filled open), a 16px icon, the name 5px after it; the folder on screen
+   carries the inactive selection (grey, #d9d9d9 edge), blue while the tree has focus */
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree,
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-children {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree {
+    min-width: max-content;
+    color: #000;
+    font: 12px var(--ex-font);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-children {
+    display: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-node.is-open > .explorer-tree-children {
+    display: block;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-row {
+    display: flex;
+    align-items: center;
+    height: 19px;
+    padding: 0 6px 0 calc(1px + var(--tree-depth, 0) * 10px);
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-glyph {
+    flex: 0 0 16px;
+    align-self: stretch;
+    background: url('/static_images/vista-controls/tree-closed.png') no-repeat right 0 center;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-node.is-open > .explorer-tree-row .explorer-tree-glyph {
+    background-image: url('/static_images/vista-controls/tree-open.png');
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-node.is-leaf > .explorer-tree-row .explorer-tree-glyph {
+    background: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 18px;
+    padding: 0 4px 0 1px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-sizing: border-box;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+@media (hover: hover) {
+    body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-label:hover {
+        background: linear-gradient(#fafbfd, #ebf3fd);
+        border-color: #b8d6fb;
+    }
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree-node.is-selected > .explorer-tree-row .explorer-tree-label {
+    background: linear-gradient(#fafafb, #e7e7e7);
+    border-color: #d9d9d9;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #explorerModal .explorer-tree:focus-within .explorer-tree-node.is-selected > .explorer-tree-row .explorer-tree-label {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
 }
 
 /* ---- the file area ---- */

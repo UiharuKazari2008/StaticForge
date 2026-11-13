@@ -119,8 +119,13 @@
             this.mountColumns();
 
             el.addEventListener('click', (ev) => {
-                if (ev.target.closest('.explorer-computer-group-toggle')) {
-                    this.collapsed = !this.collapsed;
+                const toggle = ev.target.closest('.explorer-computer-group-toggle');
+                if (toggle) {
+                    // every group folds on its own chevron, as in Vista; Hard Disk Drives keeps this.collapsed
+                    const group = toggle.dataset.group;
+                    if (!group) this.collapsed = !this.collapsed;
+                    else if (this.collapsedGroups.has(group)) this.collapsedGroups.delete(group);
+                    else this.collapsedGroups.add(group);
                     this.render();
                     return;
                 }
@@ -310,8 +315,8 @@
             }).join('');
             // removable disks are Vista's own group below the hard disks
             const phoneGroup = phones.length ? `
-                <section class="explorer-computer-group explorer-computer-group-devices">
-                    <h3 class="explorer-computer-group-head"><span>Devices with Removable Storage (${phones.length})</span></h3>
+                <section class="explorer-computer-group explorer-computer-group-devices${this.groupFolded('devices') ? ' is-collapsed' : ''}">
+                    <h3 class="explorer-computer-group-head"><span>Devices with Removable Storage (${phones.length})</span>${this.groupToggle('devices')}</h3>
                     <div class="explorer-computer-tiles">${phoneTiles}</div>
                 </section>` : '';
             this.el.innerHTML = `
@@ -319,6 +324,16 @@
                     <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
                     <div class="explorer-computer-tiles">${tiles}</div>
                 </section>${phoneGroup}${this.networkGroup()}`;
+        }
+
+        groupFolded(group) {
+            if (!this.collapsedGroups) this.collapsedGroups = new Set();
+            return this.collapsedGroups.has(group);
+        }
+
+        groupToggle(group) {
+            const folded = this.groupFolded(group);
+            return `<button type="button" class="explorer-computer-group-toggle" data-group="${group}" tabindex="-1" aria-expanded="${!folded}" aria-label="${folded ? 'Expand' : 'Collapse'} the group"></button>`;
         }
 
         /** Vista's Network Location group: mapped drives, below the disks and devices. */
@@ -333,8 +348,8 @@
                         </div>
                     </div>`).join('');
             return `
-                <section class="explorer-computer-group explorer-computer-group-network">
-                    <h3 class="explorer-computer-group-head"><span>Network Location (${nets.length})</span></h3>
+                <section class="explorer-computer-group explorer-computer-group-network${this.groupFolded('network') ? ' is-collapsed' : ''}">
+                    <h3 class="explorer-computer-group-head"><span>Network Location (${nets.length})</span>${this.groupToggle('network')}</h3>
                     <div class="explorer-computer-tiles">${tiles}</div>
                 </section>`;
         }
