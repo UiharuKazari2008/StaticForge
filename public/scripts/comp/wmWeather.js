@@ -551,20 +551,20 @@
 
     // ---------------------------------------------------------------- scene
 
-    const HILLS = `<svg class="wxw-land" viewBox="0 0 400 90" preserveAspectRatio="none" aria-hidden="true">
-        <path class="wxw-hill-far" d="M0 52 C 40 38 70 34 110 44 S 180 62 230 46 S 320 22 360 34 S 392 44 400 42 L400 90 L0 90 Z"/>
-        <path class="wxw-hill-near" d="M0 70 C 50 58 90 54 140 64 S 230 80 280 66 S 360 50 400 60 L400 90 L0 90 Z"/>
-        <path class="wxw-hill-rim" d="M0 70 C 50 58 90 54 140 64 S 230 80 280 66 S 360 50 400 60"/>
-    </svg>`;
+    // the horizon: photographic landscapes (scripts/generate-wm-weather-photo-art.js), the snowy one for
+    // snow and sleet; wm-weather.css tints them for the time of day and the weather (#792)
+    // photographic scene art is WebP (a fifth of the PNG's size)
+    const landImg = (name, cls) => `<img class="${cls}" src="${ART}${name}.webp" srcset="${ART}${name}.webp 1x, ${ART}${name}@2x.webp 2x" alt="" draggable="false" decoding="async">`;
+    const HILLS = `<div class="wxw-land-photo" aria-hidden="true">${landImg('land', 'is-green')}${landImg('land-snow', 'is-snow')}</div>`;
 
-    const cloudImg = (name, cls) => `<div class="wxw-cloud ${cls}"><img src="${ART}${name}.png" srcset="${ART}${name}.png 1x, ${ART}${name}@2x.png 2x" alt="" draggable="false"></div>`;
+    const cloudImg = (name, cls) => `<div class="wxw-cloud ${cls}"><img src="${ART}${name}.webp" srcset="${ART}${name}.webp 1x, ${ART}${name}@2x.webp 2x" alt="" draggable="false" decoding="async"></div>`;
 
     function sceneHtml() {
         return `
             <div class="wxw-sky"></div>
             <div class="wxw-stars"><i></i><i></i></div>
             <div class="wxw-sun"><div class="wxw-sun-rays"></div><div class="wxw-sun-disc"></div><div class="wxw-flare"></div></div>
-            <div class="wxw-moon"><img src="${ART}moon.png" srcset="${ART}moon.png 1x, ${ART}moon@2x.png 2x" alt="" draggable="false"><div class="wxw-moon-shadow"></div></div>
+            <div class="wxw-moon"><img src="${ART}moon.webp" srcset="${ART}moon.webp 1x, ${ART}moon@2x.webp 2x" alt="" draggable="false" decoding="async"><div class="wxw-moon-shadow"></div></div>
             <div class="wxw-clouds wxw-clouds-light">${cloudImg('cloud-a', 'c1')}${cloudImg('cloud-b', 'c2')}${cloudImg('cloud-c', 'c3')}${cloudImg('cloud-b', 'c4')}${cloudImg('cloud-a', 'c5')}</div>
             <div class="wxw-clouds wxw-clouds-dark">${cloudImg('cloud-c-dark', 'c3')}${cloudImg('cloud-a-dark', 'c1')}${cloudImg('cloud-b-dark', 'c2')}${cloudImg('cloud-a-dark', 'c5')}</div>
             <div class="wxw-fog"><i></i><i></i></div>
@@ -2274,15 +2274,16 @@
             });
         }
         if (P.clouds) {
-            P.clouds.forEach((k) => {
+            // the photographed clouds (the scene's own art), rolling through
+            P.clouds.forEach((k, i) => {
                 const x = k.x + k.v * s;
-                c.fillStyle = `rgba(255, 255, 255, ${k.a})`;
-                c.beginPath();
-                [[0, 0, 46], [40, -14, 38], [80, 0, 42], [30, 14, 40], [64, 12, 36]].forEach(([dx, dy, r]) => {
-                    c.moveTo(x + dx * k.s + r * k.s, y0(k) + dy * k.s);
-                    c.arc(x + dx * k.s, y0(k) + dy * k.s, r * k.s, 0, Math.PI * 2);
-                });
-                c.fill();
+                const img = FX_CLOUDS[i % FX_CLOUDS.length];
+                if (img && img.complete && img.naturalWidth) {
+                    const cw = 220 * k.s;
+                    c.globalAlpha = fade * Math.min(1, k.a + 0.25);
+                    c.drawImage(img, x - cw / 2, y0(k) - (cw * img.naturalHeight / img.naturalWidth) / 2, cw, cw * img.naturalHeight / img.naturalWidth);
+                    c.globalAlpha = fade;
+                }
             });
         }
         if (P.stars) {
@@ -2352,6 +2353,11 @@
     }
 
     const y0 = (k) => k.y;
+    // the intro's cloud banks draw the scene's photographed clouds
+    let FX_CLOUDS = [];
+    const fxCloudArt = () => {
+        if (!FX_CLOUDS.length && typeof Image === 'function') FX_CLOUDS = ['cloud-a', 'cloud-c', 'cloud-b'].map((n) => { const im = new Image(); im.decoding = 'async'; im.src = `${ART}${n}@2x.webp`; return im; });
+    };
 
     /** Play the intro for the scene on screen (force: replay even when the scene is the same). */
     function fxPlay(force) {
@@ -2364,6 +2370,7 @@
         if (!force && fx.raf && fx.key === key) return;
         fxStop();
         fxSetup();
+        fxCloudArt();
         fx.key = key;
         fx.parts = fxParts(scene, phase);
         fx.canvas.classList.add('is-on');

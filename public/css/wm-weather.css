@@ -1668,3 +1668,88 @@
 #melatonWeatherModal .wxw-map-track { display: flex; flex-direction: column; justify-content: center; }
 #melatonWeatherModal .wxd-track-scale { display: flex; justify-content: space-between; color: #c9d4df; font-size: 11px; }
 #melatonWeatherModal .wxw-map-track input[type="range"] { width: 100%; }
+
+/* ================================================================ lifelike scene (#792, Yukimi Nov 13)
+   Photographic art from scripts/generate-wm-weather-photo-art.js: real clouds, sun and moon, a
+   landscape horizon, motion-blurred rain and soft snow tiles; skies in photographic colours. */
+
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile) { --wxw-sky: linear-gradient(to bottom, #1d58b0 0%, #3a82d4 34%, #86b9e6 74%, #cfe3f3 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile)[data-phase="dawn"] { --wxw-sky: linear-gradient(to bottom, #2b467f 0%, #6f6f9e 34%, #d48f7d 68%, #ffd59c 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile)[data-phase="dusk"] { --wxw-sky: linear-gradient(to bottom, #1d2c5e 0%, #5d4f86 32%, #c66e72 64%, #ffae6a 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile)[data-phase="night"] { --wxw-sky: linear-gradient(to bottom, #01040c 0%, #071230 46%, #12254a 80%, #1f3560 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile):is([data-scene="cloudy"], [data-scene="fog"], [data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"]) { --wxw-sky: linear-gradient(to bottom, #7f8b99 0%, #a3adb8 40%, #c7ced5 78%, #dde1e5 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile):is([data-scene="rain"], [data-scene="heavy"], [data-scene="storm"]) { --wxw-sky: linear-gradient(to bottom, #3c4550 0%, #58626d 42%, #7c858f 80%, #959da5 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile):is([data-phase="dawn"], [data-phase="dusk"]):is([data-scene="cloudy"], [data-scene="fog"], [data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"], [data-scene="rain"], [data-scene="heavy"], [data-scene="storm"]) { --wxw-sky: linear-gradient(to bottom, #424a62 0%, #6e6b80 42%, #a99293 78%, #d2b199 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile)[data-phase="night"]:is([data-scene="cloudy"], [data-scene="fog"], [data-scene="drizzle"], [data-scene="sleet"], [data-scene="snow"]) { --wxw-sky: linear-gradient(to bottom, #0d121b 0%, #1a2130 50%, #2b3445 100%); }
+:is(.wm-weather .wxw-scene, .wm-weather .wxw-tile)[data-phase="night"]:is([data-scene="rain"], [data-scene="heavy"], [data-scene="storm"]) { --wxw-sky: linear-gradient(to bottom, #07090d 0%, #12161e 50%, #20252e 100%); }
+
+/* the horizon: the green landscape, or the snowy one; tinted for light and weather */
+.wm-weather .wxw-land-photo { left: 0; right: 0; bottom: 0; height: 34%; pointer-events: none; }
+.wm-weather .wxw-land-photo img { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 100%; }
+.wm-weather .wxw-land-photo .is-snow { display: none; }
+.wm-weather .wxw-scene:is([data-scene="snow"], [data-scene="sleet"]) .wxw-land-photo .is-snow { display: block; }
+.wm-weather .wxw-scene:is([data-scene="snow"], [data-scene="sleet"]) .wxw-land-photo .is-green { display: none; }
+.wm-weather .wxw-scene:is([data-scene="cloudy"], [data-scene="fog"], [data-scene="drizzle"]) .wxw-land-photo { filter: saturate(0.72) brightness(0.86); }
+.wm-weather .wxw-scene:is([data-scene="rain"], [data-scene="heavy"], [data-scene="storm"]) .wxw-land-photo { filter: saturate(0.55) brightness(0.62) contrast(1.05); }
+.wm-weather .wxw-scene[data-scene="fog"] .wxw-land-photo { filter: saturate(0.4) brightness(1.05) contrast(0.7); opacity: 0.75; }
+.wm-weather .wxw-scene:is([data-phase="dawn"], [data-phase="dusk"]) .wxw-land-photo { filter: brightness(0.62) sepia(0.35) saturate(1.25) hue-rotate(-14deg); }
+.wm-weather .wxw-scene[data-phase="night"] .wxw-land-photo { filter: brightness(0.24) saturate(0.55) hue-rotate(18deg); }
+
+/* the sun: the photographed disc with its corona (no drawn rays) */
+.wm-weather .wxw-sun-rays { display: none; }
+.wm-weather .wxw-sun-disc,
+.wm-weather .wxw-scene:is([data-phase="dawn"], [data-phase="dusk"]) .wxw-sun-disc {
+    inset: -70%;
+    border-radius: 0;
+    background: image-set(url('/static_images/wm61/weather/sun.webp') 1x, url('/static_images/wm61/weather/sun@2x.webp') 2x) center / contain no-repeat;
+    box-shadow: none;
+}
+.wm-weather .wxw-scene:is([data-phase="dawn"], [data-phase="dusk"]) .wxw-sun-disc { filter: sepia(0.45) saturate(1.7) hue-rotate(-22deg); }
+
+/* the moon: the photographed disc, a softer glow */
+.wm-weather .wxw-moon { box-shadow: 0 0 calc(26 * var(--u)) calc(3 * var(--u)) rgba(200, 215, 240, 0.22); }
+.wm-weather .wxw-moon-shadow { background: rgba(6, 12, 30, 0.82); box-shadow: 0 0 calc(5 * var(--u)) calc(3 * var(--u)) rgba(6, 12, 30, 0.82); }
+
+/* rain: motion-blurred streak tiles (256 x 512), a near layer larger and faster */
+.wm-weather .wxw-rain i {
+    top: -512px;
+    height: calc(100% + 512px);
+    background-image: image-set(url('/static_images/wm61/weather/rain.png') 1x, url('/static_images/wm61/weather/rain@2x.png') 2x);
+    background-size: 256px 512px;
+    animation: wxw-rain-far 0.58s linear infinite;
+}
+.wm-weather .wxw-rain i + i {
+    top: -768px;
+    height: calc(100% + 768px);
+    background-size: 384px 768px;
+    background-position: 90px 0;
+    opacity: 0.6;
+    animation: wxw-rain-near 0.46s linear infinite;
+}
+@keyframes wxw-rain-far { to { transform: translateY(512px); } }
+@keyframes wxw-rain-near { to { transform: translateY(768px); } }
+
+/* snow: soft flake tiles (256 x 256), the near layer larger, faster and swaying */
+.wm-weather .wxw-snow i {
+    top: -256px;
+    height: calc(100% + 256px);
+    background-image: image-set(url('/static_images/wm61/weather/snow.png') 1x, url('/static_images/wm61/weather/snow@2x.png') 2x);
+    background-size: 256px 256px;
+    animation: wxw-snow-far2 12s linear infinite;
+}
+.wm-weather .wxw-snow i + i {
+    top: -400px;
+    height: calc(100% + 400px);
+    transform: none;
+    background-size: 400px 400px;
+    background-position: 120px 60px;
+    animation: wxw-snow-near2 8s linear infinite;
+}
+@keyframes wxw-snow-far2 { to { transform: translateY(256px); } }
+@keyframes wxw-snow-near2 {
+    0% { transform: translate(0, 0); }
+    50% { transform: translate(14px, 200px); }
+    100% { transform: translate(0, 400px); }
+}
+/* the drawn lens-flare rings read as fake next to the photographed sun */
+.wm-weather .wxw-flare { display: none; }
