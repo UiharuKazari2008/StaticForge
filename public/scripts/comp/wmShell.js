@@ -1655,6 +1655,25 @@
         stagePlay(before, id, page, firstMount);
     }
 
+    // programs that cannot do anything without the server (offline check on #794: they hung, showed
+    // a raw "WebSocket connection not healthy" or a misleading error). Programs with something kept
+    // on the device (Pictures' storage cards, Notes, Contacts ...) open as they are.
+    const NEEDS_SERVER = new Set(['director', 'accounts', 'traffic', 'tasks', 'calendar', 'fileexplorer', 'inkball',
+        'paypass-mobile', 'characters', 'expanders', 'atelier', 'spellbook', 'reference', 'xlink-mobile']);
+
+    function serverDown() {
+        const ws = window.wsClient;
+        return !!(ws && typeof ws.isConnected === 'function' && !ws.isConnected());
+    }
+
+    async function openWhenServerBack(id, opts) {
+        for (;;) {
+            const v = await domainUnreachable();
+            if (v === 'abort') return;
+            if (!serverDown()) { open(id, opts); return; }
+        }
+    }
+
     function open(id, opts = {}) {
         if (!apps.has(id)) return;
         closeMenus(true);
@@ -1670,6 +1689,13 @@
         const starter = apps.get(id);
         if (typeof starter.launch === 'function') {
             try { starter.launch(); } catch (err) { console.warn('[wmShell] launch', id, err); }
+            return;
+        }
+        // a program that works only with the server, opened while the phone has no connection to it
+        // (the launcher started without the server, #794): WM's Domain Controller box instead of a
+        // page that hangs or shows a raw socket error; Retry opens it once the server answers
+        if (NEEDS_SERVER.has(id) && serverDown() && !opts.offlineOk) {
+            void openWhenServerBack(id, opts);
             return;
         }
         // an app opened over the picture view (Start menu) replaces it
