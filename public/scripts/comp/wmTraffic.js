@@ -148,10 +148,14 @@
      * red, no report or one over 30 minutes old: every lamp dark. 6.1 app-traffic[-lg]-<level>, 6.5
      * start-traffic-<level>; clear keeps the plain names (scripts/generate-wm-traffic-art.js).
      */
+    function levelSuffix() {
+        const lv = loaded ? (todayLine(direction()).level || 'none') : 'none';
+        return lv === 'clear' ? '' : `-${['moderate', 'heavy'].includes(lv) ? lv : 'none'}`;
+    }
+
     function syncIcon() {
         if (!ws || typeof ws.setAppIcon !== 'function') return;
-        const lv = loaded ? (todayLine(direction()).level || 'none') : 'none';
-        const sfx = lv === 'clear' ? '' : `-${['moderate', 'heavy'].includes(lv) ? lv : 'none'}`;
+        const sfx = levelSuffix();
         ws.setAppIcon(APP_ID, { icon: `app-traffic${sfx}`, art65: `traffic${sfx}` });
     }
 
@@ -1367,7 +1371,8 @@
             const r = latest[d];
             return { title: t.title, line2: t.sub, line3: r && r.alerts && r.alerts.length ? `${r.alerts.length} alert${r.alerts.length > 1 ? 's' : ''} on route` : '' };
         });
-        return { label: 'traffic', icon: 'x:app-traffic-lg', pages, softKey: { label: 'Traffic', action: go }, onTap: go };
+        // the panel's signal lights as the app's does (ti-x-app-traffic-lg-<level>, the same level as the icon)
+        return { label: 'traffic', icon: `x:app-traffic-lg${levelSuffix()}`, pages, softKey: { label: 'Traffic', action: go }, onTap: go };
     }
 
     // ---------------------------------------------------------------- register
