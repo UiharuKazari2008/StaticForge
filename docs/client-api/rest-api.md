@@ -1252,6 +1252,42 @@ See [docs/ANDROID_BRIDGE.md](../ANDROID_BRIDGE.md).
 
 ---
 
+## Text Messaging and IMAP mail accounts
+
+All routes below need a signed-in **admin** session.
+
+| Route | Notes |
+|---|---|
+| `GET /api/textmessaging/:accountId/attachment/:guid[?thumb=1]` | The provider's file (HEIC served as JPEG; `thumb=1` = 480 px preview), cached in `.cache/textmessaging-attachments`. Yozora #779. |
+| `GET /api/textmessaging/link-preview?url=` | `{ title, description, image, site }` for a link in a message (public hosts only, page head only, cached 6 h). |
+| `GET /api/textmessaging/:accountId/avatar/:key` | Contact avatar. |
+| `GET /api/textmessaging/:accountId/pairing-qr.svg` | RCS pairing QR (no-store). |
+| `POST /api/textmessaging/:accountId/send-attachment?chat=<guid>&name=<file>&replyTo=&tempGuid=&audio=1` | Body = the file (Content-Type = its MIME type), up to 100 MB -> `{ success, tempGuid, message }`. |
+| `GET /api/mailaccounts/:accountId/attachment?folder=&uid=&part=` | An IMAP message part. Yozora #789. |
+| `POST /api/mailaccounts/upload?name=` | Upload an attachment for `ma_send` / `ma_save_draft` -> upload id. |
+
+WebSocket side: [ws/textMessaging.md](./ws/textMessaging.md), [ws/mailAccounts.md](./ws/mailAccounts.md).
+
+## Program Icons (Melaton Mobile)
+
+Session auth; generating and writing the store are admin only. Yozora #773 (`modules/wmProgramIcons.js`). Store: `public/static_images/wm-android/` + `manifest.json`.
+
+| Route | Notes |
+|---|---|
+| `GET /api/wm-program-icons/manifest` | Signed in. |
+| `GET /api/wm-program-icons/jobs` | Open jobs, newest first. |
+| `POST /api/wm-program-icons/jobs` | `{ mode?: 'simple'|'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL, themed?: data URL }] }` |
+| `GET /api/wm-program-icons/jobs/:job` | Job state. |
+| `GET /api/wm-program-icons/jobs/:job/files/:file` | A preview PNG. |
+| `POST /api/wm-program-icons/jobs/:job/regenerate` | `{ keys: [...], mode? }` |
+| `POST /api/wm-program-icons/jobs/:job/done` | `{ accept: [...] }` -> store, recompile runtime assets. |
+| `POST /api/wm-program-icons/jobs/:job/cancel` | |
+| `DELETE /api/wm-program-icons/store?id=<package/activity>` | Back to the Android icon. |
+
+### `GET /install/packages`
+
+Melaton Update > Applied Updates (#774): the Melaton packages with file count and size from the service-worker cache manifest, and which this client has.
+
 ## Miscellaneous
 
 ### `GET /characters.json`
