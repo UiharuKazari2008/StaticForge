@@ -1507,7 +1507,19 @@
     const FAV_APPS = { key: 'favapps', label: 'Programs', type: 'checks', get choices() { return favChoices('favapps'); }, get value() { return favUnchecked('favapps'); } };
     const FAV_ANDROID = { key: 'favandroid', label: 'Android', type: 'checks', get choices() { return favChoices('favandroid'); }, get value() { return favUnchecked('favandroid'); } };
     const FAV_SIZE = { key: 'size', label: 'Icons', value: 'large', choices: [['large', 'Large'], ['small', 'Small, with the name beside them']] };
-    const FAV_OPTIONS = [FAV_APPS, FAV_SIZE];
+    // Options... shows one list (Yukimi, Nov 12, #777): the favourites first, in their order (Move Up /
+    // Move Down), then every other program, Start's then the Android ones; the page's list box
+    // scrolls, the page does not. Stored as the favourites' keys in order (wmPrograms 'orderedChecks')
+    const FAV_ORDER = {
+        key: 'favorder', label: 'Favorites', type: 'orderedChecks',
+        get choices() {
+            const all = [...favCatalog().values()];
+            const g = (it) => (favGroup(it.key) === 'favandroid' ? 1 : 0);
+            return all.sort((a, b) => g(a) - g(b) || favColl.compare(a.label, b.label)).map((it) => [it.key, it.label, it.small && it.small.src]);
+        },
+        get value() { const map = favCatalog(); return favList().filter((k) => map.has(k)).join(','); }
+    };
+    const FAV_OPTIONS = [FAV_ORDER, FAV_SIZE];
     const fav = { at: 0, map: null, raw: null, state: null, checked: [], sel: '' };
     let favPanel = null; // the favourites on show, for the 6.5 panel
     const favGroup = (key) => (String(key).startsWith('a:android:') ? 'favandroid' : 'favapps');
@@ -1541,10 +1553,6 @@
         fav.map = map;
         fav.at = Date.now();
         // the Android list is offered once the phone has programs to list
-        const android = [...map.keys()].some((k) => favGroup(k) === 'favandroid');
-        const at = FAV_OPTIONS.indexOf(FAV_ANDROID);
-        if (android && at < 0) FAV_OPTIONS.splice(1, 0, FAV_ANDROID);
-        else if (!android && at >= 0) FAV_OPTIONS.splice(at, 1);
         return map;
     }
 
@@ -1577,11 +1585,21 @@
         let all = null;
         try { all = JSON.parse(localStorage.getItem(sh.todayOptionsKey || 'wmTodayOptions') || 'null'); } catch (_) { all = null; }
         const stored = (all && all.favorites) || null;
-        if (!stored || !FAV_GROUPS.some((g) => typeof stored[g] === 'string')) return fav.state.list;
+        if (!stored || !(typeof stored.favorder === 'string' || FAV_GROUPS.some((g) => typeof stored[g] === 'string'))) return fav.state.list;
         let list = fav.state.list.slice();
         const seen = { ...fav.state.seen };
         const map = favCatalog();
         const fresh = [];
+        // Options...'s ordered list (#777): exactly these, in this order; favourites Start no longer
+        // lists keep their place after them (the program may come back)
+        if (typeof stored.favorder === 'string') {
+            if (stored.favorder !== seen.favorder) {
+                const want = stored.favorder.split(',').filter(Boolean);
+                list = want.concat(list.filter((k) => !map.has(k) && !want.includes(k)));
+                seen.favorder = stored.favorder;
+            }
+            delete stored.favorder;
+        }
         for (const g of FAV_GROUPS) {
             const text = stored[g];
             if (typeof text !== 'string') continue;
@@ -1687,7 +1705,8 @@
         const change = { label: 'Change', action: favOptions };
         // a panel page's small icon is one file: the densest of the set
         const one = (ic) => { const set = String(ic.srcset || '').split(',').map((s) => s.trim().split(' ')[0]).filter(Boolean); return set[set.length - 1] || ic.src; };
-        const pages = items.map((it) => ({ smallIcon: one(it.small), title: it.label, softKey: change, onTap: afterTap(() => favStart(it)) }));
+        // each page shows its program's own icon where the panel's star is (Yukimi, Nov 12, #777)
+        const pages = items.map((it) => ({ icon: one(it.img), smallIcon: one(it.small), title: it.label, softKey: change, onTap: afterTap(() => favStart(it)) }));
         pages.push({ smallIcon: 'ti-2551', title: 'Add/Remove', softKey: change, onTap: afterTap(favOptions) });
         panelChanged('favorites', pages);
         return { label: 'favorites', icon: 'ti-2550', pages, softKey: change, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : favOptions()) };

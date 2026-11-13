@@ -437,6 +437,21 @@ html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="right"] body {
     border-right-width: 0 !important;
 }
 
+/* ... and Extend Status Bar to edge of Camera (#777): the page starts under the camera
+ * (--wm-camera-extend: how far it reaches below the title bar, wmShell applyCameraHole) and the
+ * title bar grows up over that strip, its row of icons where it was */
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="top"][data-wm-bar-extend],
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="top"][data-wm-bar-extend] #wmShell {
+    --wm-safe-top: var(--wm-camera-extend, 0px);
+}
+
+html.ui-mobile[data-wm-camera="clear"][data-wm-bezel-edge="top"][data-wm-bar-extend] #wmShell > .wm-titlebar,
+html.ui-mobile[data-wm-version="6.5"][data-wm-camera="clear"][data-wm-bezel-edge="top"][data-wm-bar-extend] #wmShell > .wm-titlebar {
+    height: calc(26 * var(--wm-px) + var(--wm-camera-extend, 0px));
+    margin-top: calc(-1 * var(--wm-camera-extend, 0px));
+    padding-top: var(--wm-camera-extend, 0px);
+}
+
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::before,
 html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"]::after {
     content: '';

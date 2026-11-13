@@ -1021,3 +1021,94 @@ textarea.wm-edit.wm-pi-direction {
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+/* ---- Settings > Screen > Bezel: the top of the phone (wmPrograms drawBezelPreview, #777) ---- */
+.wm-setb-preview {
+    position: relative;
+    overflow: hidden;
+    margin-bottom: calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #000;
+    pointer-events: none;
+}
+
+.wm-setb-preview .sbp-screen {
+    position: absolute;
+    left: 0;
+    top: 0;
+    transform-origin: 0 0;
+    background: #000;
+    overflow: hidden;
+}
+
+.wm-setb-preview .sbp-android {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 calc(14 * var(--wm-px));
+    box-sizing: border-box;
+    color: #fff;
+    font: 600 calc(11 * var(--wm-px)) Roboto, 'Segoe UI', sans-serif;
+}
+
+.wm-setb-preview .sbp-bezel {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    background: #000 image-set(url('/static_images/xyridian/xyridian-wordmark-white-512.png') 1x, url('/static_images/xyridian/xyridian-wordmark-white.png') 2x) right calc(14 * var(--wm-px)) top 0 / auto 70% no-repeat;
+    opacity: 1;
+}
+
+.wm-setb-preview .sbp-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    box-sizing: border-box;
+    background: var(--wm-title);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
+    background: var(--wm65-bar, #000);
+}
+
+.wm-setb-preview .sbp-bar > .wm-titlebar {
+    position: relative;
+    z-index: 0;
+}
+
+.wm-setb-preview .sbp-page {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #fff;
+    padding: calc(6 * var(--wm-px));
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--wm-px));
+}
+
+.wm-setb-preview .sbp-page span {
+    display: block;
+    height: calc(6 * var(--wm-px));
+    width: 60%;
+    background: #d8d8d8;
+}
+
+.wm-setb-preview .sbp-page span + span {
+    width: 40%;
+}
+
+/* the camera: a black lens with a faint ring, over everything */
+.wm-setb-preview .sbp-hole {
+    position: absolute;
+    z-index: 2;
+    border-radius: 50%;
+    background: radial-gradient(circle at 40% 40%, #2a3340 0 18%, #05070a 30%);
+    box-shadow: 0 0 0 calc(1 * var(--wm-px)) #1a1a1a;
+}

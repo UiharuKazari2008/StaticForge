@@ -90,6 +90,35 @@
             ${PERMISSIONS.map(([id, label]) => `<label class="wm-check"><input type="checkbox" name="${id}"${st.permissions.includes(id) ? ' checked' : ''}><span>${esc(label)}</span></label>`).join('')}</div>`;
     }
 
+    // Menu > Phone Data... (Yukimi, Nov 12, #777): the phone's own calendar and contacts in Calendar
+    // and Contacts: shown on this phone only, or synchronized to Melaton (wmAndroidApps.js wmPhoneData)
+    const PHONE_DATA_KEY = 'wmPhoneData';
+    const PHONE_DATA = [['off', 'Off'], ['show', 'Show on this phone'], ['sync', 'Synchronize to Melaton']];
+    const phoneData = () => window.wmPhoneData || null;
+    function phoneDataHtml() {
+        let cur = {};
+        try { cur = JSON.parse(localStorage.getItem(PHONE_DATA_KEY) || '{}') || {}; } catch (_) { cur = {}; }
+        const group = (kind, label) => `<p>${esc(label)}:</p>${PHONE_DATA.map(([v, l]) => `<label class="wm-check"><input type="radio" name="pd-${kind}" value="${v}"${(cur[kind] || 'off') === v ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}`;
+        return `<div class="wm-form-hdr">Phone Data</div>
+            <div class="was-form was-phonedata"><p>The phone's own calendar and contacts in Calendar and Contacts. Synchronize copies them to Melaton, so every computer and phone sees them (read-only there; this phone stays the source).</p>
+            ${group('calendar', 'Calendar')}<div class="wm-form-gap"></div>${group('contacts', 'Contacts')}</div>`;
+    }
+
+    async function savePhoneData() {
+        const pick = (kind) => { const r = page.querySelector(`input[name="pd-${kind}"]:checked`); return r ? r.value : 'off'; };
+        const next = { calendar: pick('calendar'), contacts: pick('contacts') };
+        let before = {};
+        try { before = JSON.parse(localStorage.getItem(PHONE_DATA_KEY) || '{}') || {}; } catch (_) { before = {}; }
+        try { localStorage.setItem(PHONE_DATA_KEY, JSON.stringify(next)); } catch (_) { /* this session only */ }
+        view = 'main';
+        render();
+        ws.syncHistory();
+        // Android asks for access the first time; the mirror is written at once in Synchronize
+        if (before.calendar !== next.calendar || before.contacts !== next.contacts) {
+            document.dispatchEvent(new CustomEvent('wmPhoneDataChange', { detail: Object.assign({}, next) }));
+        }
+    }
+
     function statusHtml() {
         return `<div class="wm-form-hdr">Status</div>
             <ul class="was-log">${logEntries.length ? logEntries.map((e) => `<li class="is-${esc(e.level)}"><time>${esc(when(e.at))}</time>${esc(e.text)}</li>`).join('') : '<li>No activity yet.</li>'}</ul>`;
@@ -99,7 +128,7 @@
         if (!page) return;
         const st = as.state();
         if (view === 'options' && st.session !== 'partner') view = 'main';
-        const html = view === 'options' ? optionsHtml(st) : view === 'status' ? statusHtml() : mainHtml(st);
+        const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'status' ? statusHtml() : mainHtml(st);
         if (page.dataset.html !== html) {
             page.dataset.html = html;
             page.innerHTML = html;
@@ -163,6 +192,7 @@
         const st = as.state();
         return [
             { label: 'Options...', action: () => { view = 'options'; render(); ws.syncHistory(); }, disabled: st.session !== 'partner' },
+            { label: 'Phone Data...', action: () => { view = 'phonedata'; render(); ws.syncHistory(); }, disabled: !(phoneData() && phoneData().available()) },
             { label: 'Status...', action: showStatus, disabled: !st.online },
             '-',
             // activeSyncClipboard.js: to the computer this phone is connected to
@@ -184,9 +214,10 @@
             },
             show() { render(); },
             // Options is a form (ok saves); Status is a page over the main one
-            titleKind() { return view === 'options' ? 'ok' : 'close'; },
+            titleKind() { return view === 'options' || view === 'phonedata' ? 'ok' : 'close'; },
             onTitleOk() {
                 if (view === 'options') { void saveOptions(); return true; }
+                if (view === 'phonedata') { void savePhoneData(); return true; }
                 return false;
             },
             historyDepth() { return view === 'main' ? 0 : 1; },
@@ -199,6 +230,7 @@
             softKeys() {
                 if (view === 'options') return { left: { label: 'Delete', action: endPartnership }, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'status') return { left: { label: 'Done', action: () => { view = 'main'; render(); ws.syncHistory(); } }, right: null };
+                if (view === 'phonedata') return { left: null, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
                 return { left: { label: 'Sync', action: sync, disabled: busy > 0 }, right: { label: 'Menu', menu: menuItems } };
             }
         });

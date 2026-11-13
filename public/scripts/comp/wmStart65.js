@@ -177,7 +177,8 @@
     // folders Connections, Personal and System, each sorted by name (emulator). The applets come
     // from wmPrograms.js when it exports them (wmSettings.gridItems() -> [{ key, tab, label, icon,
     // app?, open? }]); until then the Settings item opens the Settings program as it is.
-    const SETTINGS_TOP = new Set(['clock', 'lock', 'power', 'sounds', 'today']);
+    // the phone's own Android Settings sits in Settings itself, not in System (Yukimi, Nov 12, #777)
+    const SETTINGS_TOP = new Set(['clock', 'lock', 'power', 'sounds', 'today', 'link-android']);
     // the ROM's Start icon of the same applet; applets WM does not have keep their own art, and so
     // do Buttons and About (Start_Icon_Buttons / _About show the Windows flag)
     const SETTINGS_ART65 = {
@@ -965,16 +966,11 @@
                 list = page.querySelector('.wm-s65-list');
                 bindTouch();
             },
-            // Start always opens at its top with Today selected (emulator, after any program)
+            // Start always opens at its top with Today selected, back from a Settings applet too
+            // (Yukimi, Nov 12, #777: never where it was left; the device returned to the folder)
             show() {
                 stopMotion();
                 paintWallpaper();
-                // back from the applet (the program shown until now is Settings): the folder as it was left
-                if (resume && shownApp === 'settings' && list.childElementCount) {
-                    resume = false;
-                    if (path.length) sh.setTitle(path[path.length - 1].label);
-                    return;
-                }
                 resume = false;
                 path.length = 0;
                 render();
@@ -989,8 +985,8 @@
             titleKind: () => 'close',
             // a lifted icon is a step of its own: the back key puts it back
             historyDepth: () => path.length + (drag ? 1 : 0),
-            // X in a folder goes back to Start, as in Programs (Yukimi, Nov 10); X on Start closes it
-            closeGoesBack: true,
+            // X closes Start, in a folder too (Yukimi, Nov 12, #777): Back is the soft key's job
+            closeGoesBack: false,
             onBack: () => endDrag(false) || closeFolder()
         });
     }

@@ -7401,6 +7401,61 @@
         "generated"
       ],
       "notes": "Large (Programs grid) version of app-program-icons. Not ROM art."
+    },
+    "app-android-bridge": {
+      "1x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-android-bridge-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-android-bridge.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-android-bridge.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Android Bridge (settings for how the phone shell connects to Android programs, calendar and contacts). Subject: a silver Windows Mobile Pocket PC phone (reference 1) and the green Android robot head (as on reference 2) joined by a short bright blue two-way bridge arrow between them."
+    },
+    "app-android-bridge-lg": {
+      "1x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-android-bridge.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-android-bridge.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-android-bridge.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-android-bridge. Not ROM art."
     }
   },
   "notDelivered": {

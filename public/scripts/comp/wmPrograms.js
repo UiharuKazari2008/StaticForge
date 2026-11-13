@@ -48,6 +48,8 @@
         startIcon: 'wmStartIcon',
         camera: 'wmCamera',
         cameraPortraitOnly: 'wmCameraPortraitOnly',
+        // Settings > Screen > Bezel: the title bar grows down to the camera's lower edge (#777)
+        cameraExtend: 'wmCameraExtendBar',
         showBluetoothIcon: 'wmShowBluetoothIcon',
         showCellIcon: 'wmShowCellIcon',
         bezelLogoOpacity: 'wmBezelLogoOpacity',
@@ -135,6 +137,57 @@
 
     function applyCamera() {
         root.dataset.wmCamera = cameraStyle();
+    }
+
+    /**
+     * Settings > Screen > Bezel's preview (Yukimi, Nov 12, #777): the top of this phone drawn at its
+     * real size and scaled into the page: the camera where Android reports it (a nominal punch hole
+     * in a browser), then per mode Android's own status bar, the Windows title bar (grown to the
+     * camera's lower edge with Extend), or the pseudo bezel with its logo; a copy of the real title
+     * bar (theme, version, icons) and a strip of the page under it.
+     */
+    function drawBezelPreview(host, mode, d) {
+        if (!host) return;
+        const st = root.style;
+        const v = (n) => parseFloat(st.getPropertyValue(n)) || 0;
+        const W = window.innerWidth;
+        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        let hole = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
+        if (!(hole.width > 0 && hole.height > 0)) hole = { left: W / 2 - 6 * px, top: 4 * px, width: 12 * px, height: 12 * px };
+        const barH = 26 * px;
+        const holeBottom = hole.top + hole.height;
+        let top = 0;
+        let html = '';
+        if (mode === 'android') {
+            const h = Math.max(Math.ceil(holeBottom + 3 * px), Math.round(24 * px));
+            html += `<div class="sbp-android" style="height:${h}px"><span>12:00</span><span>&#9650; &#9646;&#9646;&#9646; 100%</span></div>`;
+            top = h;
+        } else if (mode === 'bezel') {
+            const band = Math.ceil(holeBottom + 6);
+            html += `<div class="sbp-bezel" style="height:${band}px"></div>`;
+            top = band;
+        }
+        const extend = mode === 'windows' && d.extend ? Math.max(0, Math.ceil(holeBottom + 2 * px - barH)) : 0;
+        const H = top + barH + extend + 34 * px;
+        html += `<div class="sbp-bar" style="top:${top}px;height:${barH + extend}px;padding-top:${extend}px"></div>`;
+        html += `<div class="sbp-page" style="top:${top + barH + extend}px"><span></span><span></span></div>`;
+        html += `<span class="sbp-hole" style="left:${hole.left}px;top:${hole.top}px;width:${hole.width}px;height:${hole.height}px"></span>`;
+        const s = (host.clientWidth || W) / W;
+        host.style.height = `${Math.round(H * s)}px`;
+        host.innerHTML = `<div class="sbp-screen" style="width:${W}px;height:${H}px;transform:scale(${s})">${html}</div>`;
+        // a copy of the title bar on screen now: its theme, version and icons
+        const real = document.querySelector('#wmShell > .wm-titlebar, #wmShell .wm-titlebar');
+        const slot = host.querySelector('.sbp-bar');
+        if (real && slot) {
+            const c = real.cloneNode(true);
+            c.querySelectorAll('.wm-cutout-gap').forEach((g) => g.remove());
+            c.querySelectorAll('.wm-status-left > *').forEach((i) => c.querySelector('.wm-status') && c.querySelector('.wm-status').prepend(i));
+            c.querySelectorAll('.wm-status-left').forEach((g) => g.remove());
+            c.querySelectorAll('[style]').forEach((x) => x.removeAttribute('style'));
+            c.querySelectorAll('[id]').forEach((x) => x.removeAttribute('id'));
+            c.style.height = `${barH}px`;
+            slot.appendChild(c);
+        }
     }
 
     // Settings > Screen > Full Screen (#735): the Android app hides its status bar and/or gesture bar
@@ -1023,12 +1076,56 @@
                     const item = d.items.find((r) => r.id === id);
                     // type 'checks': one check box per choice, kept as the comma list of the unchecked ones
                     const offList = (o) => String(cur[o.key] != null ? cur[o.key] : (o.value || '')).split(',').filter(Boolean);
-                    const field = (o) => (o.type === 'checks'
-                        ? o.choices.map(([v, l]) => check(`opt-${o.key}`, l, !offList(o).includes(v), `value="${esc(v)}"`)).join('')
-                        : o.choices.map(([v, l]) => radio(`opt-${o.key}`, v, l, (cur[o.key] != null ? cur[o.key] : o.value) === v)).join(''));
+                    // 'orderedChecks' (Favorites, #777): the checked keys in order, kept as their comma list
+                    const orderOf = (o) => String(cur[o.key] != null ? cur[o.key] : (o.value || '')).split(',').filter(Boolean);
+                    if (!d.optSel) d.optSel = {};
+                    const ordered = (o) => {
+                        const on = orderOf(o);
+                        const choices = o.choices;
+                        const byKey = new Map(choices.map((c) => [c[0], c]));
+                        const rows = on.filter((k) => byKey.has(k)).map((k) => byKey.get(k)).concat(choices.filter((c) => !on.includes(c[0])));
+                        const sel = d.optSel[o.key];
+                        const at = on.indexOf(sel);
+                        return `<div class="wm-listbox wm-opt-list" data-opt="${esc(o.key)}">${rows.map(([v, l, img]) => `<div class="wm-listbox-row${v === sel ? ' is-selected' : ''}" data-key="${esc(v)}">${check(`opt-${o.key}`, '', on.includes(v), `value="${esc(v)}"`)}${img ? `<img src="${esc(img)}" alt="" draggable="false">` : ''}<span>${esc(l)}</span></div>`).join('')}</div>
+                            <div class="wm-buttons"><button type="button" class="wm-button" data-act="opt-up" data-opt="${esc(o.key)}"${at > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="opt-down" data-opt="${esc(o.key)}"${at >= 0 && at < on.length - 1 ? '' : ' disabled'}>Move Down</button></div>`;
+                    };
+                    // a long check list is a list box that scrolls inside the page (the page itself never scrolls)
+                    const field = (o) => (o.type === 'orderedChecks' ? ordered(o)
+                        : o.type === 'checks'
+                            ? `<div class="wm-listbox wm-opt-list">${o.choices.map(([v, l]) => `<div class="wm-listbox-row">${check(`opt-${o.key}`, l, !offList(o).includes(v), `value="${esc(v)}"`)}</div>`).join('')}</div>`
+                            : o.choices.map(([v, l]) => radio(`opt-${o.key}`, v, l, (cur[o.key] != null ? cur[o.key] : o.value) === v)).join(''));
                     el.innerHTML = `<p><b>${esc(item ? item.label : id)}</b></p>${defs.map((o) => `<div class="wm-form-gap"></div><p>${esc(o.label)}:</p>${field(o)}`).join('')}
                         <div class="wm-buttons is-right"><button type="button" class="wm-button" data-act="done">Done</button></div>`;
-                    defs.forEach((o) => el.querySelectorAll(`input[name="opt-${o.key}"]`).forEach((r) => r.addEventListener('change', () => {
+                    // the ordered list: a checked box joins the end of the favourites, a cleared one leaves;
+                    // a tap on the row selects it for Move Up / Move Down
+                    defs.filter((o) => o.type === 'orderedChecks').forEach((o) => {
+                        const box = el.querySelector(`.wm-opt-list[data-opt="${o.key}"]`);
+                        const setOrder = (list) => { d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: list.join(',') }); };
+                        box.querySelectorAll('.wm-listbox-row').forEach((row) => row.addEventListener('click', (e) => {
+                            if (e.target.closest('input')) return;
+                            d.optSel[o.key] = row.dataset.key;
+                            api.rerender();
+                        }));
+                        box.querySelectorAll('input').forEach((c) => c.addEventListener('change', () => {
+                            const list = orderOf(o).filter((k) => k !== c.value);
+                            if (c.checked) list.push(c.value);
+                            setOrder(list);
+                            d.optSel[o.key] = c.value;
+                            api.rerender();
+                        }));
+                        const move = (by) => {
+                            const list = orderOf(o);
+                            const i = list.indexOf(d.optSel[o.key]);
+                            const j = i + by;
+                            if (i < 0 || j < 0 || j >= list.length) return;
+                            list.splice(j, 0, list.splice(i, 1)[0]);
+                            setOrder(list);
+                            api.rerender();
+                        };
+                        el.querySelector(`[data-act="opt-up"][data-opt="${o.key}"]`).addEventListener('click', () => move(-1));
+                        el.querySelector(`[data-act="opt-down"][data-opt="${o.key}"]`).addEventListener('click', () => move(1));
+                    });
+                    defs.filter((o) => o.type !== 'orderedChecks').forEach((o) => el.querySelectorAll(`input[name="opt-${o.key}"]`).forEach((r) => r.addEventListener('change', () => {
                         if (o.type === 'checks') {
                             const off = [...el.querySelectorAll(`input[name="opt-${o.key}"]`)].filter((x) => !x.checked).map((x) => x.value);
                             d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: off.join(',') });
@@ -1291,6 +1388,7 @@
             tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel']],
             init: () => ({
                 scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
+                extend: lsGet(K.cameraExtend) === '1',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
                 logoSize: BEZEL_LOGO_SIZES.includes(Number(lsGet(K.bezelLogoSize))) ? Number(lsGet(K.bezelLogoSize)) : 70,
                 logoPos: lsGet(K.bezelLogoPos) || 'auto',
@@ -1311,16 +1409,14 @@
                     const statusShown = !!(d.bars && !d.bars.hideStatus);
                     const POS = [['auto', 'Automatic'], ['left', 'Left'], ['center', 'Centre'], ['right', 'Right']];
                     const posLabel = (v) => (POS.find(([k]) => k === v) || POS[0])[1];
-                    el.innerHTML = `${d.bars
-                            ? `<div class="wm-form-sub">Full screen</div>
-                               ${check('wmHideStatus', 'Hide the phone\'s status bar', d.bars.hideStatus)}
-                               ${check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation)}
-                               <p class="wm-form-note">The camera settings below need the status bar hidden: with it showing, the camera sits under it. Swipe from the edge to show a hidden bar for a moment.</p>
-                               <div class="wm-form-gap"></div>`
-                            : ''}
-                        <div class="wm-form-sub">Camera</div>
-                        ${radio('wmCamera', 'clear', 'Keep the title bar clear of the camera', d.camera === 'clear')}
-                        ${radio('wmCamera', 'bezel', 'Black bezel above the screen', d.camera === 'bezel')}
+                    // the top of the screen as one choice (Yukimi, Nov 12, #777): Android's own status bar,
+                    // the Windows title bar running to the edge round the camera, or the pseudo bezel
+                    const MODES = (d.bars ? [['android', 'Android\'s Status Bar']] : []).concat([['windows', 'Windows Status Bar'], ['bezel', 'Pseudo Bezel']]);
+                    const modeNow = () => (d.bars && !d.bars.hideStatus ? 'android' : d.camera === 'bezel' ? 'bezel' : 'windows');
+                    el.innerHTML = `<div class="wm-setb-preview" aria-hidden="true"></div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Top of screen:</span>${ui.comboHtml('topmode', (MODES.find(([k]) => k === modeNow()) || MODES[0])[1])}</div>
+                        ${d.bars ? check('wmHideNavigation', 'Hide the gesture bar', d.bars.hideNavigation) : ''}
+                        ${check('wmCameraExtend', 'Extend Status Bar to edge of Camera', d.extend)}
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Logo</div>
@@ -1361,7 +1457,9 @@
                     // everything after the status bar works only with it hidden; the bezel's parts with the bezel
                     const sync = () => {
                         const off = !!(d.bars && !d.bars.hideStatus);
-                        el.querySelectorAll('input[name="wmCamera"], input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
+                        el.querySelectorAll('input[name="wmCameraPortraitOnly"]').forEach((i) => { i.disabled = off; });
+                        el.querySelectorAll('input[name="wmCameraExtend"]').forEach((i) => { i.disabled = off || d.camera === 'bezel'; });
+                        drawBezelPreview(q('.wm-setb-preview'), modeNow(), d);
                         const noBezel = off || d.camera !== 'bezel';
                         el.querySelectorAll('[data-act="logopos"], input[name="wmModelShow"], input[name="wmLed"]').forEach((i) => { i.disabled = noBezel; });
                         el.querySelectorAll('[data-act="modelpos"], [data-f="model"]').forEach((i) => { i.disabled = noBezel || !d.modelShow; });
@@ -1369,10 +1467,14 @@
                         if (msz && typeof msz.setDisabled === 'function') msz.setDisabled(noBezel || !d.modelShow);
                         el.querySelectorAll('.wm-setb-led input').forEach((i) => { i.disabled = noBezel || !d.led; });
                     };
-                    if (d.bars) bind('wmHideStatus', (v) => { d.bars.hideStatus = v; });
                     if (d.bars) bind('wmHideNavigation', (v) => { d.bars.hideNavigation = v; });
+                    bind('wmCameraExtend', (v) => { d.extend = v; });
+                    ui.bindCombo(q('[data-act="topmode"]'), MODES, modeNow(), (v) => {
+                        if (d.bars) d.bars.hideStatus = v !== 'android';
+                        d.camera = v === 'bezel' ? 'bezel' : 'clear';
+                        sync();
+                    });
                     bind('wmModelShow', (v) => { d.modelShow = v; });
-                    el.querySelectorAll('input[name="wmCamera"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.camera = r.value; sync(); }));
                     bind('wmCameraPortraitOnly', (v) => { d.portraitOnly = v; });
                     bind('wmLed', (v) => { d.led = v; });
                     bind('wmLedNotify', (v) => { d.ledNotify = v; });
@@ -1451,6 +1553,10 @@
                 ];
                 for (const [k, v] of bezelSets) {
                     if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); }
+                }
+                if (d.extend !== (lsGet(K.cameraExtend) === '1')) {
+                    lsSet(K.cameraExtend, d.extend ? '1' : null);
+                    keys.push(K.cameraExtend);
                 }
                 if (d.portraitOnly !== (lsGet(K.cameraPortraitOnly) === '1')) {
                     lsSet(K.cameraPortraitOnly, d.portraitOnly ? '1' : null);
@@ -1857,13 +1963,28 @@
             const cs = getComputedStyle(form);
             const used = form.getBoundingClientRect().height + (parseFloat(cs.marginTop) || 0) + (parseFloat(cs.marginBottom) || 0);
             const free = Math.floor(sc.clientHeight - used);
-            if (free < 2) return;
-            const share = Math.floor(free / lists.length);
-            for (const l of lists) {
-                const h = Math.floor(l.getBoundingClientRect().height) + share;
-                l.style.height = `${h}px`;
-                l.style.maxHeight = `${h}px`;
+            if (Math.abs(free) < 2) return;
+            const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+            const heights = lists.map((l) => Math.floor(l.getBoundingClientRect().height));
+            let next;
+            if (free > 0) {
+                // room left: the lists grow to the tabs, shared evenly
+                const share = Math.floor(free / lists.length);
+                next = heights.map((h) => h + share);
+            } else {
+                // the page is taller than the screen: the lists give the height back (down to a few
+                // rows each) so the page itself does not scroll (Yukimi, Nov 12, #777)
+                const min = Math.round(54 * px);
+                const spare = heights.map((h) => Math.max(0, h - min));
+                const total = spare.reduce((a, b) => a + b, 0);
+                if (!total) return;
+                const take = Math.min(total, -free);
+                next = heights.map((h, i) => Math.floor(h - take * spare[i] / total));
             }
+            lists.forEach((l, i) => {
+                l.style.height = `${next[i]}px`;
+                l.style.maxHeight = `${next[i]}px`;
+            });
         }
         window.addEventListener('resize', () => { if (open) requestAnimationFrame(fitLists); });
 

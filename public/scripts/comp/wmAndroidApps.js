@@ -42,7 +42,7 @@
     const GAMES_KEY = 'wmAndroidGames';
     const NAMES_KEY = 'wmAndroidNames';      // { id: name } the user gave a program (#776)
     const DEFAULTS_KEY = 'wmDefaultPrograms'; // { system app id: android program id } (#776)
-    // system programs an Android program can stand in for (Default Programs), by their shell titles
+    // system programs an Android program can stand in for (Android Bridge), by their shell titles
     const REPLACEABLE = ['Melaton Media', 'Calendar', 'Calculator', 'Contacts', 'Messaging', 'Internet Explorer', 'Pictures & Videos', 'Notes', 'Tasks', 'Weather', 'File Explorer', 'Search'];
     const STORE_KEY = 'wmAndroidIconStore';
     const JOB_KEY = 'wmProgramIconsJob';
@@ -209,9 +209,9 @@
             // the phone's own Settings is "Android" in Settings, never a program of Programs
             if (a.role === 'settings') {
                 want.add(shellId(a));
-                sh.registerApp({ id: shellId(a), title: 'Android', icon: 'app-android', inStart: false, launch: () => start(a) });
+                sh.registerApp({ id: shellId(a), title: 'Android Settings', icon: 'app-android', inStart: false, launch: () => start(a) });
                 if (window.wmSettings && typeof window.wmSettings.addLink === 'function') {
-                    window.wmSettings.addLink({ id: 'link-android', tab: 'system', label: 'Android', icon: 'app-android', app: shellId(a) });
+                    window.wmSettings.addLink({ id: 'link-android', tab: 'system', label: 'Android Settings', icon: 'app-android', app: shellId(a) });
                 }
                 continue;
             }
@@ -244,7 +244,7 @@
         } catch (_) { /* Start shows the programs' own places */ }
     }
 
-    // ---------------------------------------------------------------- Default Programs (#776)
+    // ---------------------------------------------------------------- Android Bridge (Default Programs, #776)
 
     /** System programs by title -> their shell ids (the files name them with their own constants). */
     function systemApps() {
@@ -684,7 +684,7 @@
         });
     }
 
-    // ---------------------------------------------------------------- Default Programs page (#776)
+    // ---------------------------------------------------------------- Android Bridge page (#776)
 
     const PHONE_DATA_KEY = 'wmPhoneData'; // { calendar: 'off' | 'show' | 'sync', contacts: ... }
     const PHONE_DATA = [['off', 'Off'], ['show', 'Show on this phone'], ['sync', 'Synchronize to Melaton']];
@@ -697,27 +697,17 @@
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
         const pim = () => window.AndroidPim || null;
         ws.registerPage({
-            id: 'default-programs', tab: 'system', label: 'Default Programs', icon: 'app-android',
-            tabs: [['dp-programs', 'Programs'], ['dp-data', 'Phone Data']],
+            id: 'default-programs', tab: 'system', label: 'Android Bridge', icon: 'app-android-bridge',
+            // Phone Data lives in ActiveSync (Menu > Phone Data..., Yukimi, Nov 12, #777)
+            tabs: [],
             init() {
                 const hidden = readSet(HIDDEN_KEY);
                 return {
                     map: Object.assign({}, readJson(DEFAULTS_KEY, {}) || {}),
-                    data: Object.assign({ calendar: 'off', contacts: 'off' }, readJson(PHONE_DATA_KEY, {}) || {}),
                     list: read().filter((a) => a.role !== 'settings' && !hidden.has(a.id)).sort((x, y) => coll.compare(labelOf(x), labelOf(y)))
                 };
             },
             render(el, tab, d) {
-                if (tab === 'dp-data') {
-                    const can = !!(pim() && typeof pim().calendar === 'function');
-                    el.innerHTML = `<p>Show the phone's own calendar and contacts in Calendar and Contacts. Synchronize copies them to Melaton, so every computer and phone sees them (read-only there; the phone stays the source).</p>
-                        <div class="wm-form-row is-wide"><span class="wm-form-label">Calendar:</span>${ui.comboHtml('dp-cal', PHONE_DATA.find(([v]) => v === d.data.calendar)[1], !can)}</div>
-                        <div class="wm-form-row is-wide"><span class="wm-form-label">Contacts:</span>${ui.comboHtml('dp-con', PHONE_DATA.find(([v]) => v === d.data.contacts)[1], !can)}</div>
-                        ${can ? '' : ui.note('This version of the Dreamscape app cannot read the phone\'s calendar and contacts.')}`;
-                    ui.bindCombo(el.querySelector('[data-act="dp-cal"]'), PHONE_DATA, d.data.calendar, (v) => { d.data.calendar = v; });
-                    ui.bindCombo(el.querySelector('[data-act="dp-con"]'), PHONE_DATA, d.data.contacts, (v) => { d.data.contacts = v; });
-                    return;
-                }
                 const opts = [['', 'Melaton (built in)']].concat(d.list.map((a) => [a.id, labelOf(a)]));
                 const sys = systemApps();
                 el.innerHTML = `<p>Choose the program that opens for each of these. Built in opens Melaton Mobile's own.</p>
@@ -726,14 +716,8 @@
             },
             commit(d) {
                 writeJson(DEFAULTS_KEY, d.map);
-                const before = readJson(PHONE_DATA_KEY, {}) || {};
-                writeJson(PHONE_DATA_KEY, d.data);
                 applyDefaults();
-                // Calendar and Contacts read the phone (permission asked by the app on first use)
-                if (before.calendar !== d.data.calendar || before.contacts !== d.data.contacts) {
-                    document.dispatchEvent(new CustomEvent('wmPhoneDataChange', { detail: Object.assign({}, d.data) }));
-                }
-                return [DEFAULTS_KEY, PHONE_DATA_KEY];
+                return [DEFAULTS_KEY];
             }
         });
     }
@@ -742,7 +726,7 @@
 
     /**
      * window.wmPhoneData: the phone's own calendar and contacts (DSApp AndroidPim, read only) for
-     * Calendar (wmCalendar.js) and Contacts (wmNotes.js), per Default Programs > Phone Data:
+     * Calendar (wmCalendar.js) and Contacts (wmNotes.js), per Android Bridge > Phone Data:
      *   show  merged in on this phone only (a read-only "Phone" calendar, the phone's contacts)
      *   sync  mirrored into the workspace: Calendars/Phone (<device>).ics (X-MELATON-SOURCE phone:,
      *         so read-only on every client) and Contacts/Phone contacts (<device>).vcf, rewritten
