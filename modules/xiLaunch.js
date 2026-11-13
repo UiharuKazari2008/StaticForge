@@ -42,9 +42,16 @@ const JAIL_KEY_FILE = `${JAIL_KEY_DIR}/api-key`;
 const JAIL_CLAUDE_TOKEN_FILE = `${JAIL_KEY_DIR}/claude-token`;
 const DEFAULT_CLAUDE_TOKEN_FILE = path.join(os.homedir(), '.secrets', 'claude-max.oauth');
 
+// #781: the Claude account selected in CardSpace (apiKeyManager.syncClaudeTokenFile writes it, 0600).
+const MANAGED_CLAUDE_TOKEN_FILE = path.join(__dirname, '..', '.cache', 'secrets', 'claude.oauth');
+
 function resolveClaudeTokenFile(options) {
     const opts = options || {};
-    return opts.claudeTokenFile || process.env.CLAUDE_TOKEN_FILE || DEFAULT_CLAUDE_TOKEN_FILE;
+    if (opts.claudeTokenFile || process.env.CLAUDE_TOKEN_FILE) return opts.claudeTokenFile || process.env.CLAUDE_TOKEN_FILE;
+    try {
+        if (fs.statSync(MANAGED_CLAUDE_TOKEN_FILE).size > 0) return MANAGED_CLAUDE_TOKEN_FILE;
+    } catch (_) { /* no account selected in CardSpace */ }
+    return DEFAULT_CLAUDE_TOKEN_FILE;
 }
 
 function apiKeyStore() {
@@ -607,6 +614,7 @@ module.exports = {
     JAIL_KEY_FILE,
     JAIL_CLAUDE_TOKEN_FILE,
     DEFAULT_CLAUDE_TOKEN_FILE,
+    MANAGED_CLAUDE_TOKEN_FILE,
     defaultProjectDir,
     resolveHomeAccess,
     resolveClaudeTokenFile,

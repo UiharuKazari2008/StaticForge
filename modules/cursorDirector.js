@@ -2385,6 +2385,27 @@ async function ensureKeyScopes(manager, keyId, scopes, userType) {
     }
 }
 
+// #781: the key file holds the only key a persona uses. Older active keys of the same name and
+// user agent (minted after a Cleanup / Reinstall lost the file) are orphans: retire them, so
+// CardSpace lists one Dreamscape Director and one Xi key.
+// ensureAppKey runs per packet: sweep each name once per process (and after every mint).
+const retiredSiblings = new Set();
+
+async function retireSiblingAppKeys(manager, keepId, appName) {
+    if (!keepId || typeof manager.listApplicationKeys !== 'function') return;
+    try {
+        const keys = await manager.listApplicationKeys({ includeExpired: true });
+        for (const key of keys || []) {
+            if (!key || key.id === keepId || key.appName !== appName || key.userAgent !== DIRECTOR_UA) continue;
+            if (key.status === 'revoked' || key.status === 'replaced' || key.revokedAt) continue;
+            await manager.revokeApplicationKey(key.id);
+            console.log(`Director: retired orphan application key ${key.id} (${appName})`);
+        }
+    } catch (err) {
+        console.error(`Director key cleanup failed: ${err.message}`);
+    }
+}
+
 async function ensureAppKey(gr, keyPath, appName = PROJECT_NAME) {
     const manager = gr.getApplicationAuthManager();
     let raw = null;
@@ -2396,6 +2417,10 @@ async function ensureAppKey(gr, keyPath, appName = PROJECT_NAME) {
         const validation = await manager.validateApplicationKey(raw, DIRECTOR_UA, { skipUserAgent: true });
         if (validation.valid) {
             await ensureKeyScopes(manager, validation.applicationKeyId, validation.scopes, validation.userType);
+            if (!retiredSiblings.has(appName)) {
+                retiredSiblings.add(appName);
+                await retireSiblingAppKeys(manager, validation.applicationKeyId, appName);
+            }
             return raw;
         }
         if (validation.code === 'REFRESH_REQUIRED') {
@@ -2404,6 +2429,7 @@ async function ensureAppKey(gr, keyPath, appName = PROJECT_NAME) {
                 fs.writeFileSync(keyPath, refreshed.key, { mode: 0o600 });
                 const summary = refreshed.summary || {};
                 await ensureKeyScopes(manager, summary.id, summary.scopes, summary.userType);
+                await retireSiblingAppKeys(manager, summary.id, appName);
                 return refreshed.key;
             }
         }
@@ -2419,6 +2445,8 @@ async function ensureAppKey(gr, keyPath, appName = PROJECT_NAME) {
     });
     fs.mkdirSync(path.dirname(keyPath), { recursive: true });
     fs.writeFileSync(keyPath, created.key, { mode: 0o600 });
+    const createdId = created.summary ? created.summary.id : created.id;
+    await retireSiblingAppKeys(manager, createdId, appName);
     return created.key;
 }
 
