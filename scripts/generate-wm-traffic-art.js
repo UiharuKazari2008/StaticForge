@@ -20,7 +20,24 @@ const sharp = require('sharp');
 const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
 const OUT65 = path.resolve(__dirname, '..', 'public', 'static_images', 'wm65');
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+// The lit lamp follows the app's report (Yukimi, Nov 13: the Start icon's signal shows what the app shows):
+// heavy = red, moderate = amber, clear = green (the default files), none = every lamp dark (no report).
+const LAMPS = [
+    { cy: 11, dark: '#3a0d0b', lit: ['#ffd6cc', '#ff3b1e', '#9c1606'], glow: '#ff5a3a', small: { cy: 2.8, dark: '#5a1210', lit: '#ff3b1e', hi: '#ffe0d6' } },
+    { cy: 22, dark: '#3d2a06', lit: ['#fff3c4', '#ffb31a', '#a86400'], glow: '#ffc23a', small: { cy: 6, dark: '#5a420a', lit: '#ffb31a', hi: '#fff4cc' } },
+    { cy: 33, dark: '#0d2e08', lit: ['#d8ffb8', '#4bd62a', '#1c7d10'], glow: '#7dff52', small: { cy: 9.2, dark: '#123d0c', lit: '#46d628', hi: '#e4ffd0' } }
+];
+const LIT = { heavy: 0, moderate: 1, clear: 2, none: -1 };
+
+const svgFor = (level) => {
+    const on = LIT[level];
+    const lamps = LAMPS.map((l, i) => i === on
+        ? `<circle cx="47" cy="${l.cy}" r="9" fill="url(#glow${i})"/><circle cx="47" cy="${l.cy}" r="5.2" fill="url(#lamp${i})" stroke="#000" stroke-width="0.8"/>`
+        : `<circle cx="47" cy="${l.cy}" r="5.2" fill="${l.dark}" stroke="#000" stroke-width="0.8"/>`).join('\n');
+    const shines = LAMPS.map((l, i) => `<ellipse cx="45.4" cy="${l.cy - 1.6}" rx="${i === on ? 1.8 : 1.6}" ry="${i === on ? 1.1 : 1}" fill="#fff" opacity="${i === on ? 0.8 : 0.18}"/>`).join('\n');
+    const defs = LAMPS.map((l, i) => `<radialGradient id="lamp${i}" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="${l.lit[0]}"/><stop offset="0.45" stop-color="${l.lit[1]}"/><stop offset="1" stop-color="${l.lit[2]}"/></radialGradient>
+  <radialGradient id="glow${i}" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="${l.glow}" stop-opacity="0.75"/><stop offset="1" stop-color="${l.glow}" stop-opacity="0"/></radialGradient>`).join('\n  ');
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <defs>
   <linearGradient id="road" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="#5d6670"/><stop offset="0.5" stop-color="#454c55"/><stop offset="1" stop-color="#2f343b"/>
@@ -31,8 +48,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
   <linearGradient id="pole" x1="0" y1="0" x2="1" y2="0">
     <stop offset="0" stop-color="#9aa3ad"/><stop offset="0.5" stop-color="#6b737c"/><stop offset="1" stop-color="#454b52"/>
   </linearGradient>
-  <radialGradient id="g" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#d8ffb8"/><stop offset="0.45" stop-color="#4bd62a"/><stop offset="1" stop-color="#1c7d10"/></radialGradient>
-  <radialGradient id="glow" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#7dff52" stop-opacity="0.75"/><stop offset="1" stop-color="#7dff52" stop-opacity="0"/></radialGradient>
+  ${defs}
 </defs>
 <!-- road into the distance -->
 <path d="M2 62 L26 30 L38 30 L62 62 Z" fill="url(#road)"/>
@@ -45,29 +61,30 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
 <!-- housing with hoods -->
 <rect x="38" y="2" width="18" height="40" rx="3" fill="url(#house)" stroke="#05070a" stroke-width="1.2"/>
 <rect x="39.3" y="3.2" width="2" height="37.6" rx="1" fill="#5a616a" opacity="0.7"/>
-<circle cx="47" cy="11" r="5.2" fill="#3a0d0b" stroke="#000" stroke-width="0.8"/>
-<circle cx="47" cy="22" r="5.2" fill="#3d2a06" stroke="#000" stroke-width="0.8"/>
-<circle cx="47" cy="33" r="9" fill="url(#glow)"/>
-<circle cx="47" cy="33" r="5.2" fill="url(#g)" stroke="#000" stroke-width="0.8"/>
+${lamps}
 <path d="M42.6 9.3 Q47 4.8 51.4 9.3" fill="none" stroke="#8e969f" stroke-width="1.4"/>
 <path d="M42.6 20.3 Q47 15.8 51.4 20.3" fill="none" stroke="#8e969f" stroke-width="1.4"/>
 <path d="M42.6 31.3 Q47 26.8 51.4 31.3" fill="none" stroke="#8e969f" stroke-width="1.4"/>
-<ellipse cx="45.4" cy="31.4" rx="1.8" ry="1.1" fill="#fff" opacity="0.8"/>
-<ellipse cx="45.4" cy="9.4" rx="1.6" ry="1" fill="#fff" opacity="0.18"/>
-<ellipse cx="45.4" cy="20.4" rx="1.6" ry="1" fill="#fff" opacity="0.18"/>
+${shines}
 </svg>`;
+};
 
 // the 16 px icon: fewer parts (the signal alone, lamps one pixel bigger), so it stays readable
-const svgSmall = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+const svgSmallFor = (level) => {
+    const on = LIT[level];
+    const lamps = LAMPS.map((l, i) => i === on
+        ? `<circle cx="12.5" cy="${l.small.cy}" r="1.45" fill="${l.small.lit}"/><circle cx="12.1" cy="${l.small.cy - 0.4}" r="0.45" fill="${l.small.hi}"/>`
+        : `<circle cx="12.5" cy="${l.small.cy}" r="1.35" fill="${l.small.dark}"/>`).join('\n');
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
 <path d="M0 16 L6 9 L10 9 L16 16 Z" fill="#454c55"/>
 <path d="M7.6 10 h0.8 v1.6 h-0.8 z M7.4 13 h1.2 v2.4 h-1.2 z" fill="#ffd23a"/>
 <rect x="10" y="0.5" width="5" height="11" rx="1" fill="#1a1d21" stroke="#000" stroke-width="0.5"/>
-<circle cx="12.5" cy="2.8" r="1.35" fill="#5a1210"/>
-<circle cx="12.5" cy="6" r="1.35" fill="#5a420a"/>
-<circle cx="12.5" cy="9.2" r="1.45" fill="#46d628"/>
-<circle cx="12.1" cy="8.8" r="0.45" fill="#e4ffd0"/>
+${lamps}
 <rect x="12" y="11.5" width="1" height="4" fill="#7b838c"/>
 </svg>`;
+};
+
+let svg = svgFor('clear');
 
 /** A 6.5 home screen panel icon at scale k (1 = the 2x frame): art, then its fading mirror. */
 async function panel(k, file) {
@@ -98,16 +115,21 @@ async function render(src, size, file) {
 }
 
 (async () => {
-    await render(svgSmall, 16, 'app-traffic.png');
-    await render(svg, 32, 'app-traffic@2x.png');
-    await render(svg, 64, 'app-traffic@4x.png');
-    await render(svg, 32, 'app-traffic-lg.png');
-    await render(svg, 64, 'app-traffic-lg@2x.png');
-    await render(svg, 128, 'app-traffic-lg@4x.png');
-    await render(svg, 45, path.join(OUT65, 'start-traffic.png'));
-    await render(svg, 90, path.join(OUT65, 'start-traffic@2x.png'));
-    await render(svg, 180, path.join(OUT65, 'start-traffic@4x.png'));
-    await panel(0.5, 'ti-x-app-traffic-lg.png');
-    await panel(1, 'ti-x-app-traffic-lg@2x.png');
-    await panel(2, 'ti-x-app-traffic-lg@4x.png');
+    // clear (green) keeps the plain names; the other levels are app-traffic-<level>(-lg), start-traffic-<level>
+    for (const level of ['clear', 'moderate', 'heavy', 'none']) {
+        const sfx = level === 'clear' ? '' : `-${level}`;
+        svg = svgFor(level);
+        await render(svgSmallFor(level), 16, `app-traffic${sfx}.png`);
+        await render(svg, 32, `app-traffic${sfx}@2x.png`);
+        await render(svg, 64, `app-traffic${sfx}@4x.png`);
+        await render(svg, 32, `app-traffic${sfx}-lg.png`);
+        await render(svg, 64, `app-traffic${sfx}-lg@2x.png`);
+        await render(svg, 128, `app-traffic${sfx}-lg@4x.png`);
+        await render(svg, 45, path.join(OUT65, `start-traffic${sfx}.png`));
+        await render(svg, 90, path.join(OUT65, `start-traffic${sfx}@2x.png`));
+        await render(svg, 180, path.join(OUT65, `start-traffic${sfx}@4x.png`));
+        await panel(0.5, `ti-x-app-traffic-lg${sfx}.png`);
+        await panel(1, `ti-x-app-traffic-lg${sfx}@2x.png`);
+        await panel(2, `ti-x-app-traffic-lg${sfx}@4x.png`);
+    }
 })();

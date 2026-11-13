@@ -142,7 +142,21 @@
         return advice[direction];
     }
 
+    /**
+     * The program icon's signal shows what the app shows (Yukimi, Nov 13): the lamp of the report for the
+     * commute that matters now (direction()), as Today's line has it: clear green, moderate amber, heavy
+     * red, no report or one over 30 minutes old: every lamp dark. 6.1 app-traffic[-lg]-<level>, 6.5
+     * start-traffic-<level>; clear keeps the plain names (scripts/generate-wm-traffic-art.js).
+     */
+    function syncIcon() {
+        if (!ws || typeof ws.setAppIcon !== 'function') return;
+        const lv = loaded ? (todayLine(direction()).level || 'none') : 'none';
+        const sfx = lv === 'clear' ? '' : `-${['moderate', 'heavy'].includes(lv) ? lv : 'none'}`;
+        ws.setAppIcon(APP_ID, { icon: `app-traffic${sfx}`, art65: `traffic${sfx}` });
+    }
+
     function changed() {
+        syncIcon();
         render();
         if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
         if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus();
@@ -1365,6 +1379,8 @@
             const w = leaveWindow();
             const key = w ? `${w.direction}:${w.leaveAt}` : '';
             if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
+            // a report going stale (30 min) or the commute switching direction darkens / moves the icon's lamp
+            syncIcon();
             // driving: the phone's position each minute, then the time left everywhere it shows
             if (driveWindow()) { readPosition(); if (driving()) changed(); }
             armNativeWatch();
