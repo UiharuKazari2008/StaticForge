@@ -1,0 +1,50 @@
+/*
+ * Melaton Mobile: Messaging's IMAP e-mail accounts (Yozora #789, wmMessaging.js). The accounts use
+ * Dreamscape Mail's list, reading page and new message (wm-messaging.css); this adds what only they
+ * have: the Follow up flag in the list and the line about pictures from the Internet held back.
+ */
+
+/* a flagged message: outres 10006's red flag at the right end of the subject line (the glyph is the
+ * middle 12 units of a 16-unit icon) */
+.wm-msg .msg-row.is-flagged {
+    position: relative;
+}
+
+.wm-msg .msg-row.is-flagged .msg-subj {
+    padding-right: calc(14 * var(--wm-px));
+}
+
+.wm-msg .msg-row .msg-flag {
+    position: absolute;
+    right: calc(5 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: calc(12 * var(--wm-px));
+    height: calc(12 * var(--wm-px));
+    background: no-repeat center / calc(16 * var(--wm-px)) calc(16 * var(--wm-px));
+    background-image: image-set(url('/static_images/wm61/msg-flag.png') 1x, url('/static_images/wm61/msg-flag@2x.png') 2x);
+    z-index: 1;
+    pointer-events: none;
+}
+
+/* (6.5 lifts every cell of a row over its selector: the flag stays where it is placed) */
+html.ui-mobile[data-wm-version="6.5"] .wm-msg .msg-row .msg-flag {
+    position: absolute;
+    right: calc(5.5 * var(--wm-px));
+    bottom: calc(4.5 * var(--wm-px));
+}
+
+/* "To protect your privacy, pictures from the Internet are not automatically downloaded." over the
+ * message, its link under it (outres 33594 / 33595) */
+.wm-msg .msg-read .msg-pics {
+    margin: 0 0 calc(6 * var(--wm-px));
+    white-space: normal;
+    user-select: none;
+}
+
+.wm-msg .msg-read .msg-pics-link {
+    display: inline-block;
+    margin-top: calc(2 * var(--wm-px));
+    color: #00f;
+    text-decoration: underline;
+    -webkit-tap-highlight-color: transparent;
+}

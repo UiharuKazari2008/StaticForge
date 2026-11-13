@@ -16,6 +16,14 @@
  *                    toExternal); the agents' mailboxes are not accounts: the folder tree has them
  *                    under Dreamscape Mail > Other Mailboxes, one folder per mailbox (read-only here,
  *                    as on the desktop: every mark / move / delete / send acts on the person's own)
+ *   IMAP accounts    one row per e-mail account the server keeps (#789, window.mailAccounts: Gmail,
+ *                    iCloud, Outlook.com...), its name (display name or address) with the address on
+ *                    the second line and the device's POP3/IMAP account icon. Drawn and handled as
+ *                    Dreamscape Mail is (the same list, reading page, new message and menus); its
+ *                    folders are the mail server's, named and pictured by special use (Inbox, Drafts,
+ *                    Sent Items, Deleted Items, Junk E-mail, the rest as plain folders nested by the
+ *                    server's delimiter). Keys 'imap:<account id>'. New Inbox mail the server announces
+ *                    (detail.notify) is the device's New E-mail Message notification ('mail' class)
  *   Yumiya, Chiyo, Yozora  the Director personas (wren / kabuki / xi; Yozora only while Xi is on):
  *                    Inbox = the persona's sessions (director_get_sessions), Deleted Items = its
  *                    archived ones, Drafts = a new session. A session opens in Director
@@ -112,7 +120,8 @@
     const busyOf = (fn, opts) => (ws && typeof ws.busy === 'function' ? ws.busy(fn, opts) : fn());
     let page = null;
     let mailboxes = []; // [{ owner, label, unread, spamUnread, address }]
-    let acct = 'mail'; // the account on screen: 'mail' | 'dir'
+    let acct = 'mail'; // the account on screen: 'mail' | 'imap' | 'dir'
+    let imapId = null; // the IMAP account of an 'imap' account (its folder is the mail server's path)
     let dirP = 'wren'; // the Director persona of a 'dir' account
     let owner = null; // the mailbox on screen ('mail'): the person's, or an agent's (Other Mailboxes)
     let folder = 'inbox';
@@ -156,7 +165,12 @@
     const wsc = () => window.wsClient || (typeof wsClient !== 'undefined' ? wsClient : null); // eslint-disable-line no-undef
     const isCurrent = () => !!(ws && ws.current === APP_ID);
     const isMail = () => acct === 'mail';
+    const isImap = () => acct === 'imap';
+    // an e-mail list (Dreamscape Mail or an IMAP account), as against the Director's sessions
+    const isList = () => isMail() || isImap();
     const isMine = () => isMail() && owner === human();
+    // marks, moves, deletes and replies act here: the person's own mailbox or an IMAP account
+    const canAct = () => isImap() || isMine();
     const top = () => (layers.length ? layers[layers.length - 1] : 'list');
     const folderList = () => (isMail() ? FOLDERS : DIR_FOLDERS);
     const folderOf = (id, list) => (list || folderList()).find((f) => f.id === id) || (list || folderList()).find((f) => f.id === 'inbox');
@@ -207,6 +221,7 @@
 
     /** The account's name as the title bar gives it. */
     function accountTitle() {
+        if (isImap()) return imapName(imapAcct(imapId)) || 'E-mail';
         return isMail() ? MAIL_ACCOUNT : personaName(dirP);
     }
 
@@ -343,6 +358,220 @@
         loadTmAccounts(false).then(() => { tmRepaint(); if (t && typeof t.summary === 'function') t.summary().then((list) => { if (Array.isArray(list)) tmAccts = list; tmRepaint(); }, () => {}); });
     }
 
+    // ---- IMAP e-mail accounts (#789): read through window.mailAccounts at call time (a test tab
+    // swaps in a stand-in after load); the accounts and each account's folders are cached here and
+    // read again on its events ('new', 'flags', 'removed', 'folders', 'account', 'unread')
+    let imapAccts = [];
+    let imapLoaded = false;
+    const imapFolders = new Map(); // account id -> [{ path, name, delimiter, special, total, unseen }]
+    let imapWiredTo = null;
+    const maApi = () => window.mailAccounts || null;
+    const imapAcct = (id) => imapAccts.find((a) => a.id === id) || null;
+    const imapName = (a) => (a ? String(a.displayName || a.name || a.email || '').trim() : '');
+    function imapUnread(id) {
+        const m = maApi();
+        try {
+            const u = m && typeof m.unread === 'function' ? m.unread() : null;
+            if (u && u.byAccount && u.byAccount[id] != null) return Number(u.byAccount[id]) || 0;
+        } catch (_) { /* below */ }
+        const a = imapAcct(id);
+        return a ? Number(a.unread) || 0 : 0;
+    }
+    // the folders the device knows by name and picture (special use); the rest keep the server's name
+    const SPECIAL = {
+        '\\Inbox': { label: 'Inbox', icon: 'msg-folder-inbox' },
+        '\\Drafts': { label: 'Drafts', icon: 'msg-folder-drafts' },
+        '\\Sent': { label: 'Sent Items', icon: 'msg-folder-outbox' },
+        '\\Trash': { label: 'Deleted Items', icon: 'msg-folder-deleted' },
+        '\\Junk': { label: 'Junk E-mail', icon: 'msg-folder-folder' }
+    };
+    const leafName = (p, delim) => { const s = String(p || ''); if (!delim) return s; const i = s.lastIndexOf(delim); return i >= 0 ? s.slice(i + 1) : s; };
+    const imapFolderOf = (p, id = imapId) => (imapFolders.get(id) || []).find((f) => f.path === p) || null;
+    function imapSpecial(p, id = imapId) {
+        const f = imapFolderOf(p, id);
+        if (f) return f.special || null;
+        return String(p || '').toUpperCase() === 'INBOX' ? '\\Inbox' : null;
+    }
+    /** A folder's name and picture as the device shows it. */
+    function imapFolderInfo(p, id = imapId) {
+        const f = imapFolderOf(p, id);
+        const sp = SPECIAL[imapSpecial(p, id)];
+        if (sp) return { label: sp.label, icon: sp.icon };
+        return { label: (f && f.name) || leafName(p, f && f.delimiter) || String(p || ''), icon: 'msg-folder-folder' };
+    }
+    function imapPathOf(special, id = imapId) {
+        const f = (imapFolders.get(id) || []).find((x) => x.special === special);
+        return f ? f.path : (special === '\\Inbox' ? 'INBOX' : null);
+    }
+    // sent mail and drafts list the recipients, not the sender
+    const outFolder = () => (isImap() ? ['\\Sent', '\\Drafts'].includes(imapSpecial(folder)) : (folder === 'sent' || folder === 'outbox'));
+
+    async function loadImapAccounts(force) {
+        const m = maApi();
+        if (!m || typeof m.accounts !== 'function') { imapAccts = []; return imapAccts; }
+        try {
+            const d = await m.accounts(force);
+            imapAccts = ((d && d.accounts) || []).filter((a) => a && a.id && a.enabled !== false);
+            imapLoaded = true;
+        } catch (_) { /* keeps the last list */ }
+        return imapAccts;
+    }
+    async function loadImapFolders(id) {
+        const m = maApi();
+        if (!id || !m || typeof m.folders !== 'function') return imapFolders.get(id) || [];
+        try { const list = await m.folders(id); if (Array.isArray(list)) imapFolders.set(id, list); } catch (_) { /* keeps the last list */ }
+        return imapFolders.get(id) || [];
+    }
+    function imapRepaint() {
+        tmRepaint();
+        if (page && isImap() && top() === 'list') { renderBar(); renderStatus(); }
+    }
+    const shellStatus = () => { if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); };
+
+    // a burst of events (a sync, a batch delete) reads the list and the counts once
+    let imapListTimer = null;
+    let imapMetaTimer = null;
+    const imapMetaDue = new Set();
+    function imapChanged(d) {
+        if (!d || !d.accountId) return;
+        if (imapFolders.has(d.accountId) || d.accountId === imapId) {
+            imapMetaDue.add(d.accountId);
+            clearTimeout(imapMetaTimer);
+            imapMetaTimer = setTimeout(() => {
+                const ids = [...imapMetaDue];
+                imapMetaDue.clear();
+                Promise.all(ids.map(loadImapFolders)).then(imapRepaint);
+            }, 400);
+        }
+        if (page && isImap() && d.accountId === imapId && (!d.folder || d.folder === folder) && isCurrent()) {
+            clearTimeout(imapListTimer);
+            imapListTimer = setTimeout(() => { if (page && isImap() && d.accountId === imapId && top() !== 'compose') loadFolder({ keep: true }); }, 300);
+        }
+    }
+    const onImapNew = (d) => { imapChanged(d); imapNotify(d); };
+    const onImapRemoved = (d) => { imapChanged(d); if (d) dropFresh(d.accountId, d.folder, d.uids); };
+    function onImapAccount(d) {
+        loadImapAccounts(true).then(() => {
+            // the account on screen was deleted (Dreamscape CardSpace): back to Dreamscape Mail
+            if (isImap() && !imapAcct(imapId) && d && d.accountId === imapId) goTo('mail');
+            imapRepaint();
+            if (isImap() && top() === 'list') ws.setTitle(titleText());
+        });
+    }
+    function onImapUnread(u) {
+        // an account read to the end has nothing new left
+        const by = (u && u.byAccount) || {};
+        const before = imapFresh.length;
+        for (let i = imapFresh.length - 1; i >= 0; i--) if (by[imapFresh[i].accountId] === 0) imapFresh.splice(i, 1);
+        [...imapPending].forEach((k) => { if (by[k.split('|')[0]] === 0) imapPending.delete(k); });
+        if (imapFresh.length !== before) updateImapNote();
+        imapRepaint();
+        shellStatus();
+    }
+    function wireImap() {
+        const m = maApi();
+        if (!m || typeof m.on !== 'function') return;
+        if (m === imapWiredTo) {
+            // the first read failed (not connected yet): again until it answers (it also wires the client's events)
+            if (!imapLoaded) loadImapAccounts(false).then(imapRepaint);
+            return;
+        }
+        const ev = [['new', onImapNew], ['flags', imapChanged], ['removed', onImapRemoved], ['folders', imapChanged], ['account', onImapAccount], ['unread', onImapUnread]];
+        if (imapWiredTo && typeof imapWiredTo.off === 'function') ev.forEach(([e, fn]) => imapWiredTo.off(e, fn));
+        ev.forEach(([e, fn]) => m.on(e, fn));
+        imapWiredTo = m;
+        imapLoaded = false;
+        loadImapAccounts(false).then(imapRepaint);
+    }
+    function refreshImap() {
+        wireImap();
+        loadImapAccounts(true).then(imapRepaint);
+    }
+
+    // ---- New E-mail Message (outres 33323 / 33324): mail the server announces with notify, until it
+    // is read; the shell's envelope and Today count these arrivals (window.wmMessaging.imapNew)
+    const imapFresh = []; // the note's arrivals: [{ accountId, folder, uid, from, subject }]
+    // arrivals not read yet (the title bar envelope): Dismiss closes the note, the envelope stays until they are read
+    const imapPending = new Set(); // 'account|folder|uid'
+    const pendKey = (a, f, u) => `${a}|${f}|${u}`;
+    let imapNote = null;
+    function imapNotify(d) {
+        if (!d || d.notify !== true || !d.message || d.message.seen) return;
+        // that Inbox on screen in front: the new row is the news
+        if (isCurrent() && !document.hidden && isImap() && imapId === d.accountId && folder === d.folder && top() === 'list') return;
+        const m = d.message;
+        const f = Array.isArray(m.from) && m.from[0] ? m.from[0] : null;
+        imapFresh.push({ accountId: d.accountId, folder: d.folder || m.folder, uid: m.uid, from: (f && (f.name || f.address)) || headerName(m.sender) || '', subject: m.subject || '(no subject)' });
+        if (imapFresh.length > 50) imapFresh.shift();
+        imapPending.add(pendKey(d.accountId, d.folder || m.folder, m.uid));
+        showImapNote();
+        shellStatus();
+    }
+    function dropFresh(accountId, f, uids) {
+        const set = new Set([].concat(uids || []).map(String));
+        const before = imapFresh.length + imapPending.size;
+        for (let i = imapFresh.length - 1; i >= 0; i--) {
+            const x = imapFresh[i];
+            if (x.accountId === accountId && x.folder === f && set.has(String(x.uid))) imapFresh.splice(i, 1);
+        }
+        set.forEach((u) => imapPending.delete(pendKey(accountId, f, u)));
+        if (imapFresh.length + imapPending.size !== before) { updateImapNote(); shellStatus(); }
+    }
+    function imapNoteParts() {
+        const n = imapFresh.length;
+        const last = imapFresh[n - 1];
+        return {
+            title: n === 1 ? 'New E-mail Message' : 'New E-mail Messages',
+            html: n === 1
+                ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(last.from)}</span><span class="wch-note-text">${esc(last.subject)}</span></button>`
+                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} unread e-mail messages.</span></button>`
+        };
+    }
+    function closeImapNote(clear) {
+        if (clear) imapFresh.length = 0;
+        if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } }
+        imapNote = null;
+        shellStatus();
+    }
+    function openImapFresh() {
+        const list = imapFresh.slice();
+        closeImapNote(true);
+        const last = list[list.length - 1];
+        if (!last) return;
+        const one = list.every((x) => x.accountId === last.accountId);
+        if (list.length === 1) openImapMessage(last.accountId, last.folder, last.uid);
+        else goTo(`imap:${one ? last.accountId : list[0].accountId}`);
+    }
+    function showImapNote() {
+        // each arrival is a new notification: it sounds and comes up again
+        if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } imapNote = null; }
+        if (!imapFresh.length || !ws || typeof ws.appNote !== 'function') return;
+        const parts = imapNoteParts();
+        const note = ws.appNote({
+            title: parts.title,
+            html: parts.html,
+            icon: 'status-mail',
+            event: 'mail',
+            softKeys: () => ({
+                left: { label: 'Dismiss', action: () => closeImapNote(true) },
+                right: { label: 'Menu', menu: () => [
+                    { label: 'View', action: openImapFresh },
+                    { label: 'Hide', action: () => { if (imapNote) imapNote.hide(); } }
+                ] }
+            })
+        });
+        if (!note) return;
+        imapNote = note;
+        const el = document.getElementById(note.id);
+        if (el) el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wch-note-open')) openImapFresh(); });
+    }
+    /** What is still waiting, without a new sound: the text changes in place (or the note goes). */
+    function updateImapNote() {
+        if (!imapNote) return;
+        if (!imapFresh.length) { closeImapNote(false); return; }
+        imapNote.update(imapNoteParts());
+    }
+
     // Dreamscape Messenger's subline: your name from the persona settings (Control Panel > Chat, the
     // phone's Dreamscape Messenger options), read each time the picker loads
     let chatUserName = '';
@@ -367,10 +596,11 @@
         return tms.concat([
             { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: chatUserName, dim: !!chatUserName, unread: smsUnread() },
             { key: 'mail', name: MAIL_ACCOUNT, icon: 'msg-acct-outlook', sub: mailAddress(), dim: true, unread: mailUnread() }
-        ]).concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: n, icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 })));
+        ]).concat(imapAccts.map((a) => ({ key: `imap:${a.id}`, name: imapName(a), icon: 'msg-acct-mail', sub: a.email || '', dim: true, unread: imapUnread(a.id) })))
+            .concat(personas().map(([p, n]) => ({ key: `dir:${p}`, name: n, icon: `today-persona-${p}`, sub: 'Director', dim: true, unread: 0 })));
     }
 
-    const currentKey = () => (isMail() ? 'mail' : `dir:${dirP}`);
+    const currentKey = () => (isImap() ? `imap:${imapId}` : isMail() ? 'mail' : `dir:${dirP}`);
 
     /** Go To's account rows (the device lists them after Folders..., the current one with a bullet). */
     function accountItems(cur) {
@@ -399,6 +629,25 @@
             switchTo(key === 'mail' ? human() : key.slice(4), f || 'inbox', { popLayers: true });
             return;
         }
+        if (key.startsWith('imap:')) {
+            const id = key.slice(5);
+            if (!imapAcct(id) && imapLoaded) return;
+            acct = 'imap';
+            imapId = id;
+            // the Inbox until the folders are known (its path is INBOX on every server)
+            // ('inbox': an account row in the tree, Go To)
+            folder = f && f !== 'inbox' ? f : imapPathOf('\\Inbox', id) || 'INBOX';
+            layers = [];
+            pickerRoot = false;
+            endSelect();
+            selectedId = null;
+            mail = [];
+            if (isCurrent()) { ws.setTitle(accountTitle()); ws.syncHistory(); }
+            showLayer();
+            loadFolder();
+            if (!imapFolders.has(id)) loadImapFolders(id).then(() => { if (isImap() && imapId === id) { renderBar(); renderStatus(); } });
+            return;
+        }
         if (key.startsWith('dir:')) {
             const p = key.slice(4);
             if (!PERSONAS.some(([k]) => k === p)) return;
@@ -423,7 +672,7 @@
         await ws.messageBox({
             title: 'Messaging',
             icon: 'info',
-            text: 'E-mail accounts are set up on the desktop in Dovecote. Messaging shows Dreamscape Mail, the other Dreamscape mailboxes (under Other Mailboxes) and the Director personas.'
+            text: 'E-mail accounts are set up on the desktop in Control Panel > Dreamscape CardSpace. Messaging shows them with Dreamscape Mail, the other Dreamscape mailboxes (under Other Mailboxes) and the Director personas.'
         });
     }
 
@@ -465,7 +714,7 @@
 
     function sorted(list) {
         const out = list.slice();
-        if (!isMail()) return out; // the Director's own order: last activity first
+        if (!isList()) return out; // the Director's own order: last activity first
         if (sortField === 'from') out.sort((a, b) => senderText(a).localeCompare(senderText(b), undefined, { sensitivity: 'base' }) || (b.createdAt > a.createdAt ? 1 : -1));
         else if (sortField === 'subject') out.sort((a, b) => String(a.subject || '').localeCompare(String(b.subject || ''), undefined, { sensitivity: 'base' }) || (b.createdAt > a.createdAt ? 1 : -1));
         else out.sort((a, b) => (b.createdAt > a.createdAt ? 1 : b.createdAt < a.createdAt ? -1 : 0));
@@ -475,9 +724,11 @@
     function syncMap() {
         try { return JSON.parse(stored(OPT.sync) || '{}') || {}; } catch (_) { return {}; }
     }
-    const folderSynced = (id) => !(FOLDERS.find((f) => f.id === id) || {}).sync || syncMap()[id] !== false;
+    // an IMAP account's folders all come from the server's copy
+    const folderSynced = (id) => isImap() || !(FOLDERS.find((f) => f.id === id) || {}).sync || syncMap()[id] !== false;
 
     async function loadFolder(opts = {}) {
+        if (isImap()) return loadImap(opts);
         if (!isMail()) return loadDirector(opts);
         const token = ++listToken;
         loading = true;
@@ -556,6 +807,7 @@
     }
 
     async function loadMore() {
+        if (isImap()) { loadMoreImap(); return; }
         if (!isMail() || !hasMore || loadingMore || loading || !nextCursor) return;
         const token = listToken;
         loadingMore = true;
@@ -577,6 +829,212 @@
             if (!stale) loadingMore = false;
         }
         renderList();
+    }
+
+    // ---------------------------------------------------------------- IMAP account lists (#789)
+
+    const addrsOf = (list) => (Array.isArray(list) ? list : []).map((a) => (a && typeof a === 'object' ? a.address || a.name : a)).filter(Boolean);
+
+    /** A list item of window.mailAccounts as the list's row (the shape Dreamscape Mail's rows have). */
+    function imapRow(it) {
+        const f = Array.isArray(it.from) && it.from[0] ? it.from[0] : null;
+        return {
+            id: String(it.uid), uid: Number(it.uid), imap: true,
+            from: (f && f.address) || headerName(it.sender) || '',
+            fromLabel: (f && f.name) || '',
+            to: addrsOf(it.to), cc: addrsOf(it.cc),
+            subject: it.subject || '', createdAt: Number(it.date) || null,
+            read: !!it.seen, flagged: !!it.flagged, answered: !!it.answered,
+            size: it.size != null ? it.size : null, snippet: it.snippet || '',
+            // the list knows only that there are some: the envelope with the clip
+            attachments: it.hasAttachments ? [{ name: '' }] : []
+        };
+    }
+
+    /** The whole message (message()): the row plus its body, pictures held back and attachments. */
+    function imapFull(it) {
+        const row = imapRow(it);
+        const html = String(it.html || '');
+        return Object.assign(row, {
+            format: html ? 'html' : 'text',
+            body: html || String(it.text || ''),
+            html,
+            text: String(it.text || ''),
+            remoteImages: Array.isArray(it.remoteImages) ? it.remoteImages : [],
+            showPictures: false,
+            replyTo: addrsOf(it.replyTo),
+            bcc: addrsOf(it.bcc),
+            // pictures inside the HTML (cid:) are shown there, not listed
+            attachments: (it.attachments || []).filter((a) => !(a.inline && a.cid)).map((a) => ({ name: a.filename || 'attachment', url: a.url, mimeType: a.type || 'application/octet-stream', size: a.size }))
+        });
+    }
+
+    async function loadImap(opts = {}) {
+        const m = maApi();
+        const id = imapId;
+        const token = ++listToken;
+        loading = true;
+        loadingMore = false;
+        listError = '';
+        if (!opts.keep) { mail = []; hasMore = false; nextCursor = null; selectedId = null; endSelect(); renderList(); }
+        if (!m || typeof m.messages !== 'function') {
+            loading = false;
+            listError = 'E-mail accounts are not available.';
+            renderList();
+            return false;
+        }
+        const ask = () => m.messages(id, folder, { limit: Math.min(500, Math.max(PAGE_LIMIT, opts.keep ? mail.length : 0)) });
+        let ok = true;
+        try {
+            // a new folder / account is a wait (the wait cursor); a refresh of the list on screen runs behind it
+            const r = await (opts.keep ? ask() : busyOf(ask));
+            if (token !== listToken) return false;
+            mail = ((r && r.messages) || []).map(imapRow);
+            nextCursor = (r && r.cursor) || null;
+            hasMore = !!(r && r.more);
+            if (selectedId && !mailById(selectedId)) selectedId = null;
+            [...multi].forEach((x) => { if (!mailById(x)) multi.delete(x); });
+        } catch (err) {
+            if (token !== listToken) return false;
+            ok = false;
+            if (!opts.keep) mail = [];
+            hasMore = false;
+            listError = (err && err.message) || 'Could not load messages.';
+        }
+        loading = false;
+        renderList();
+        if (isCurrent()) ws.refreshSoftKeys();
+        return ok;
+    }
+
+    /** The next page of older mail (the server's cursor: before the last row's date). */
+    async function loadMoreImap() {
+        const m = maApi();
+        if (!m || !hasMore || loadingMore || loading || !nextCursor) return;
+        const token = listToken;
+        loadingMore = true;
+        let stale = false;
+        try {
+            const r = await m.messages(imapId, folder, { limit: PAGE_LIMIT, before: nextCursor });
+            if (token !== listToken) { stale = true; return; }
+            const seen = new Set(mail.map((x) => String(x.id)));
+            ((r && r.messages) || []).map(imapRow).forEach((x) => { if (!seen.has(x.id)) mail.push(x); });
+            nextCursor = (r && r.cursor) || null;
+            hasMore = !!(r && r.more);
+        } catch (_) {
+            if (token !== listToken) { stale = true; return; }
+            hasMore = false;
+        } finally {
+            if (!stale) loadingMore = false;
+        }
+        renderList();
+    }
+
+    const uidsOf = (ids) => ids.map((x) => Number(String(x))).filter((n) => n > 0);
+
+    /** A change at the mail server under the wait cursor; a refusal is the device's error box. */
+    async function imapDo(fn, fail) {
+        try {
+            await busyOf(fn);
+            return true;
+        } catch (err) {
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || fail || 'The message could not be changed.' });
+            return false;
+        }
+    }
+
+    /** Follow up > Set Flag / Clear Flag (IMAP's \Flagged; Complete Flag is Exchange's). */
+    async function setFlagged(ids, on) {
+        const m = maApi();
+        if (!isImap() || !ids.length || !m) return;
+        if (!(await imapDo(() => (on ? m.flag : m.unflag)(imapId, folder, uidsOf(ids))))) return;
+        ids.forEach((x) => {
+            const r = mailById(x);
+            if (r) r.flagged = on;
+            if (reading && String(reading.id) === String(x)) reading.flagged = on;
+        });
+        endSelect();
+        renderList();
+        if (isCurrent()) ws.refreshSoftKeys();
+    }
+
+    function followUpItem(rows) {
+        const list = (rows || []).filter(Boolean);
+        return {
+            label: 'Follow up',
+            disabled: !list.length,
+            submenu: () => [
+                { label: 'Set Flag', disabled: list.every((m) => m.flagged), action: () => setFlagged(list.map((m) => String(m.id)), true) },
+                { label: 'Complete Flag', disabled: true },
+                { label: 'Clear Flag', disabled: !list.some((m) => m.flagged), action: () => setFlagged(list.map((m) => String(m.id)), false) }
+            ]
+        };
+    }
+
+    /** Move for an IMAP account: to another of its folders at the mail server. */
+    async function moveToImap(target) {
+        const ids = moveIds.slice();
+        const m = maApi();
+        if (!ids.length || !m) return;
+        popLayer();
+        if (target === folder) return;
+        if (!(await imapDo(() => m.move(imapId, folder, uidsOf(ids), target), 'The message could not be moved.'))) return;
+        dropFresh(imapId, folder, ids);
+        afterRemoved(ids);
+    }
+
+    /** Rows gone from the list (deleted, moved): the next one down takes the selection, as on the device. */
+    function afterRemoved(ids, opts = {}) {
+        const wasReading = top() === 'read';
+        if (wasReading) popLayer();
+        const rows = sorted(mail);
+        const at = rows.findIndex((m) => String(m.id) === String(ids[0]));
+        const gone = new Set(ids.map(String));
+        mail = mail.filter((m) => !gone.has(String(m.id)));
+        endSelect();
+        const rest = sorted(mail);
+        const next = rest.length ? rest[Math.min(Math.max(at, 0), rest.length - 1)] : null;
+        selectedId = next ? String(next.id) : null;
+        // Options > Message: "After deleting or moving a message: Show next message"
+        if (wasReading && next && !opts.noNext && stored(OPT.afterDelete) !== 'list') openMessage(next);
+        renderList();
+        loadFolder({ keep: true });
+    }
+
+    /** Empty Deleted Items for an IMAP account: everything in its Trash, for good. */
+    async function emptyImapTrash() {
+        const m = maApi();
+        const trash = imapPathOf('\\Trash');
+        if (!m || !trash) return;
+        const yes = await ws.messageBox({ title: 'Messaging', icon: 'warning', text: 'All items in the Deleted Items folder will be permanently deleted. Continue?', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false });
+        if (!yes) return;
+        const id = imapId;
+        await imapDo(async () => {
+            for (let round = 0; round < 20; round++) {
+                const r = await m.messages(id, trash, { limit: 500 });
+                const uids = ((r && r.messages) || []).map((x) => Number(x.uid)).filter(Boolean);
+                if (!uids.length) break;
+                await m.remove(id, trash, uids);
+                if (!(r && r.more)) break;
+            }
+        }, 'The Deleted Items folder could not be emptied.');
+        if (isImap() && imapId === id && folder === trash) loadFolder();
+    }
+
+    /**
+     * Search Phone, the new-mail notification: Messaging on that IMAP account and folder, the
+     * message open (its list item when the caller has one, else fetched by uid).
+     */
+    function openImapMessage(accountId, f, uid, item) {
+        if (!ws || !accountId || uid == null) return;
+        skipPicker = true;
+        ws.open(APP_ID, { fromStart: true });
+        if (!page) return;
+        const path = f || 'INBOX';
+        if (!(isImap() && imapId === accountId && folder === path && top() === 'list')) goTo(`imap:${accountId}`, path);
+        if (!isImap() || imapId !== accountId) return;
+        const row = (item && imapRow(item)) || mailById(String(uid)) || { id: String(uid), uid: Number(uid), imap: true, subject: '', read: true, attachments: [] };
+        openMessage(row);
     }
 
     function switchTo(o, f, opts = {}) {
@@ -610,7 +1068,11 @@
     }
 
     async function setRead(ids, read) {
-        if (!(await mark(ids, { read }))) return;
+        if (isImap()) {
+            const m = maApi();
+            if (!ids.length || !m || !(await imapDo(() => (read ? m.markRead : m.markUnread)(imapId, folder, uidsOf(ids))))) return;
+            if (read) dropFresh(imapId, folder, ids);
+        } else if (!(await mark(ids, { read }))) return;
         ids.forEach((id) => {
             const m = mailById(id);
             if (m) m.read = read;
@@ -618,13 +1080,13 @@
         });
         endSelect();
         renderList();
-        loadMailboxes();
+        if (!isImap()) loadMailboxes();
         if (isCurrent()) ws.refreshSoftKeys();
     }
 
     async function deleteIds(ids, opts = {}) {
-        if (!ids.length || !isMine()) return;
-        if (folder === 'drafts') {
+        if (!ids.length || !canAct()) return;
+        if (isMail() && folder === 'drafts') {
             if (opts.fromList && optOn(OPT.warnDelete)) {
                 const yes = await ws.messageBox({ title: 'Messaging', icon: 'question', text: ids.length === 1 ? 'Delete the selected message?' : `Delete the ${ids.length} selected messages?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false });
                 if (!yes) return;
@@ -634,7 +1096,8 @@
             loadFolder({ keep: true });
             return;
         }
-        const permanent = folder === 'deleted';
+        // an IMAP account's Trash deletes for good at the mail server (mailAccounts.remove)
+        const permanent = isImap() ? imapSpecial(folder) === '\\Trash' : folder === 'deleted';
         if (permanent) {
             const yes = await ws.messageBox({
                 title: 'Messaging',
@@ -654,6 +1117,13 @@
                 cancelValue: false
             });
             if (!yes) return;
+        }
+        if (isImap()) {
+            const m = maApi();
+            if (!m || !(await imapDo(() => m.remove(imapId, folder, uidsOf(ids)), 'The message could not be deleted.'))) return;
+            dropFresh(imapId, folder, ids);
+            afterRemoved(ids);
+            return;
         }
         const rows = sorted(mail);
         const at = rows.findIndex((m) => String(m.id) === String(ids[0]));
@@ -680,6 +1150,7 @@
     }
 
     async function moveTo(target) {
+        if (isImap()) { await moveToImap(target); return; }
         const t = MOVE_TARGETS.find((x) => x.id === target);
         const ids = moveIds.slice();
         if (!t || !ids.length) return;
@@ -703,6 +1174,7 @@
     }
 
     async function emptyDeleted() {
+        if (isImap()) { await emptyImapTrash(); return; }
         if (!isMine()) return;
         const yes = await ws.messageBox({
             title: 'Messaging',
@@ -736,6 +1208,13 @@
         let ok = true;
         try {
             if (isMail()) await loadMailboxes();
+            // an IMAP account: the server checks the mail server now (mailAccounts.resync); the list
+            // reads its copy, and again as the new mail comes in ('new' / 'folders' events)
+            if (isImap()) {
+                const m = maApi();
+                if (m && typeof m.resync === 'function') await m.resync(imapId, false);
+                loadImapFolders(imapId).then(imapRepaint);
+            }
             ok = await loadFolder({ keep: true });
         } catch (_) { ok = false; }
         const stopped = !syncing || listToken > token;
@@ -821,13 +1300,13 @@
 
     function renderBar() {
         if (!page) return;
-        const f = folderOf(folder);
+        const f = isImap() ? imapFolderInfo(folder) : folderOf(folder);
         const btn = page.querySelector('.msg-folder');
         if (!btn || tree) return;
         btn.querySelector('img').outerHTML = img(f.icon);
         btn.querySelector('.msg-folder-name').textContent = f.label;
         const sort = page.querySelector('.msg-sort');
-        sort.hidden = !isMail();
+        sort.hidden = !isList();
         sort.querySelector('span').textContent = (SORTS.find(([k]) => k === sortField) || SORTS[0])[1];
     }
 
@@ -835,7 +1314,7 @@
 
     function rowHtml(m) {
         const id = esc(m.id);
-        const out = folder === 'sent' || folder === 'outbox' || !!m.draft;
+        const out = outFolder() || !!m.draft;
         const who = out ? listOf(m.to).map(personName).join('; ') : senderText(m);
         const unread = !m.read && !out;
         // a message with attachments has the envelope with the paper clip (its unread state is the bold)
@@ -843,12 +1322,13 @@
         const on = isPicked(m.id);
         // the envelope is a CSS background (wm-messaging.css): an <img srcset> per row cost ~10 ms
         // each to insert on a throttled phone (image selection runs as the list is parsed)
-        return `<div class="msg-row${unread ? ' is-unread' : ''}${on ? ' is-selected' : ''}" role="option" data-id="${id}" aria-selected="${on}">
+        // a flagged message (Follow up, IMAP accounts) has outres 10006's red flag at the end of its subject line
+        return `<div class="msg-row${unread ? ' is-unread' : ''}${on ? ' is-selected' : ''}${m.flagged ? ' is-flagged' : ''}" role="option" data-id="${id}" aria-selected="${on}">
             <span class="msg-ico" data-ico="${icon}"></span>
             <span class="msg-from">${esc(who || (out ? '' : '(no sender)'))}</span>
             <span class="msg-date">${esc(listDate(m.createdAt))}</span>
             <span class="msg-size">${m.size != null ? sizeText(m.size) : ''}</span>
-            <span class="msg-subj">${m.importance ? `<span class="msg-prio" data-prio="${m.importance === 'high' ? 'high' : 'low'}" aria-label="${m.importance === 'high' ? 'High priority' : 'Low priority'}"></span>` : ''}${esc(m.subject || '(no subject)')}</span>
+            <span class="msg-subj">${m.importance ? `<span class="msg-prio" data-prio="${m.importance === 'high' ? 'high' : 'low'}" aria-label="${m.importance === 'high' ? 'High priority' : 'Low priority'}"></span>` : ''}${esc(m.subject || '(no subject)')}</span>${m.flagged ? '<span class="msg-flag" aria-label="Flagged"></span>' : ''}
         </div>`;
     }
 
@@ -881,7 +1361,7 @@
         const empty = page.querySelector('.msg-empty');
         if (!list) return;
         let text = '';
-        if (isMail()) {
+        if (isList()) {
             const rows = sorted(mail);
             // the device keeps a message selected: the first one when none is
             if (!multi.size && rows.length && (!selectedId || !mailById(selectedId))) selectedId = String(rows[0].id);
@@ -910,23 +1390,28 @@
         if (!line) return;
         const acctEl = line.querySelector('.msg-status-acct');
         const countEl = line.querySelector('.msg-status-count');
-        if (syncing || (loading && !(isMail() ? mail.length : dirRows().length))) {
+        if (syncing || (loading && !(isList() ? mail.length : dirRows().length))) {
             acctEl.textContent = 'Connecting...';
             countEl.textContent = '';
             return;
         }
-        if (!isMail()) {
+        if (!isList()) {
             const n = dirRows().filter((s) => !s.draft).length;
             acctEl.textContent = accountTitle();
             countEl.textContent = `${n} Items.`;
             return;
         }
-        const out = folder === 'sent' || folder === 'outbox' || folder === 'drafts';
-        // the inbox's unread count is the mailbox's own (the list holds one page of it)
+        const out = isImap() ? outFolder() : (folder === 'sent' || folder === 'outbox' || folder === 'drafts');
+        // the inbox's unread count is the mailbox's own (the list holds one page of it); an IMAP
+        // folder's is the server's count for the folder
         const box = mailboxes.find((x) => x.owner === owner);
-        const unread = out ? 0 : (folder === 'inbox' && box && !hasMore ? box.unread || 0 : mail.filter((m) => !m.read).length);
+        const imf = isImap() ? imapFolderOf(folder) : null;
+        const unread = out ? 0 : isImap() ? (hasMore && imf ? Number(imf.unseen) || 0 : mail.filter((m) => !m.read).length)
+            : (folder === 'inbox' && box && !hasMore ? box.unread || 0 : mail.filter((m) => !m.read).length);
         acctEl.textContent = statusName();
-        countEl.textContent = `${mail.length}${hasMore ? '+' : ''} Items${unread ? `, ${unread} Unread` : ''}.`;
+        // an IMAP folder knows its size (the server's count); a Dreamscape Mail list counts its pages
+        const total = imf && imf.total != null && hasMore ? `${Math.max(Number(imf.total) || 0, mail.length)}` : `${mail.length}${hasMore ? '+' : ''}`;
+        countEl.textContent = `${total} Items${unread ? `, ${unread} Unread` : ''}.`;
     }
 
     function selectRow(id, scroll) {
@@ -980,6 +1465,52 @@
 
     const sortByLabel = (list) => list.slice().sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 
+    /** The paths above an IMAP folder in the server's tree (a/b/c -> a, a/b). */
+    function imapAncestors(p, id = imapId) {
+        const f = imapFolderOf(p, id);
+        const d = f && f.delimiter;
+        if (!d || SPECIAL[f.special]) return [];
+        const parts = String(p).split(d);
+        const out = [];
+        for (let i = 1; i < parts.length; i++) out.push(parts.slice(0, i).join(d));
+        return out;
+    }
+
+    /**
+     * An IMAP account's folders as tree nodes: the device's folders (by special use) at the top, the
+     * rest nested by the server's delimiter; a parent the server does not list (Gmail's [Gmail]) is a
+     * node that only opens. Unread counts on all but Sent Items, Drafts and Deleted Items.
+     */
+    function imapTreeNodes(id, keyOf) {
+        const list = imapFolders.get(id) || [];
+        const byPath = new Map();
+        const roots = [];
+        for (const f of list) {
+            const info = imapFolderInfo(f.path, id);
+            const counted = !['\\Sent', '\\Drafts', '\\Trash'].includes(f.special);
+            byPath.set(f.path, { key: keyOf(f.path), label: info.label, icon: info.icon, count: counted ? Number(f.unseen) || 0 : 0, children: [] });
+        }
+        const place = (p, d, n) => {
+            const at = d ? String(p).lastIndexOf(d) : -1;
+            if (at <= 0) { roots.push(n); return; }
+            const up = String(p).slice(0, at);
+            let parent = byPath.get(up);
+            if (!parent) {
+                parent = { key: keyOf(up), label: leafName(up, d), icon: 'msg-folder-folder', noselect: true, children: [] };
+                byPath.set(up, parent);
+                place(up, d, parent);
+            }
+            parent.children.push(n);
+        };
+        for (const f of list) {
+            const n = byPath.get(f.path);
+            if (SPECIAL[f.special]) roots.push(n);
+            else place(f.path, f.delimiter, n);
+        }
+        const sortDeep = (nodes) => { nodes.forEach((n) => { if (n.children.length) n.children = sortDeep(n.children); }); return sortByLabel(nodes); };
+        return sortDeep(roots);
+    }
+
     /** The tree: every account (alphabetical, as the device sorts them) with its folders. */
     function treeModel(cur) {
         const agents = mailboxes.map((b) => b.owner).filter((o) => o !== human());
@@ -1016,7 +1547,8 @@
                     });
                 }
                 children = sortByLabel(children);
-            } else if (a.key.startsWith('dir:')) children = DIR_FOLDERS.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon }));
+            } else if (a.key.startsWith('imap:')) children = imapTreeNodes(a.key.slice(5), (p) => `${a.key}/${p}`);
+            else if (a.key.startsWith('dir:')) children = DIR_FOLDERS.map((f) => ({ key: `${a.key}/${f.id}`, label: f.label, icon: f.icon }));
             // several Text Messaging accounts share the name: the tree tells them apart by the Apple ID / number
             const label = a.key.startsWith('tm:') && tmAccts.length > 1 && a.sub ? `${a.name} (${a.sub})` : a.name;
             return { key: a.key, label, icon: 'msg-folder-account', children };
@@ -1027,6 +1559,7 @@
     /** The key of the folder on screen, as the tree names it. */
     function treeCurrent(opts) {
         if (opts.acct === 'sms' || String(opts.acct || '').startsWith('tm:')) return `${opts.acct}/${opts.folder || 'inbox'}`;
+        if (isImap()) return `imap:${imapId}/${folder}`;
         if (!isMail()) return `dir:${dirP}/${folder}`;
         return isMine() ? `mail/${folder}` : `box:${owner}/${folder}`;
     }
@@ -1039,7 +1572,7 @@
             const open = kids && expanded.has(n.key);
             const lines = guides.map((on, d) => (on ? `<i class="mt-v" style="--d:${d}"></i>` : '')).join('');
             const first = depth === 0 && i === 0;
-            html += `<div class="mt-row${n.key === cur ? ' is-current' : ''}" role="treeitem" data-key="${esc(n.key)}" style="--depth:${depth}"${kids ? ` aria-expanded="${!!open}"` : ''}>
+            html += `<div class="mt-row${n.key === cur ? ' is-current' : ''}" role="treeitem" data-key="${esc(n.key)}" style="--depth:${depth}"${kids ? ` aria-expanded="${!!open}"` : ''}${n.noselect ? ' data-noselect="1"' : ''}>
                 ${lines}<i class="mt-c${first ? ' is-first' : ''}${last ? ' is-last' : ''}" style="--d:${depth}"></i><i class="mt-h" style="--d:${depth}"></i>
                 ${kids ? `<button type="button" class="mt-box${open ? ' is-open' : ''}" tabindex="-1" aria-label="${open ? 'Collapse' : 'Expand'}" style="--d:${depth}"></button>` : ''}
                 <span class="mt-ico">${img(n.icon)}</span><span class="mt-label">${esc(n.label)}</span>${n.count ? `<span class="mt-count">(${n.count})</span>` : ''}
@@ -1076,6 +1609,10 @@
         expanded.clear();
         expanded.add(o.acct === 'sms' || String(o.acct || '').startsWith('tm:') ? o.acct : currentKey());
         if (curKey.startsWith('box:')) { expanded.add('mail'); expanded.add('mail/other'); expanded.add(curKey.split('/')[0]); }
+        // an IMAP folder deep in the server's tree: the way down to it is open
+        if (isImap() && o.acct === currentKey()) imapAncestors(folder).forEach((p) => expanded.add(`imap:${imapId}/${p}`));
+        // the IMAP accounts' folders come from the server: the tree fills in as they arrive
+        imapAccts.forEach((a) => { if (!imapFolders.has(a.id)) loadImapFolders(a.id).then(() => renderTree()); });
         const el = document.createElement('div');
         el.className = 'wm-msgtree';
         el.innerHTML = '<div class="mt-tree" role="tree" aria-label="Folders"></div>';
@@ -1122,7 +1659,7 @@
         if (!row) return;
         const key = row.dataset.key;
         const kids = row.hasAttribute('aria-expanded');
-        if (e.target.closest('.mt-box') || key === 'mail/other') {
+        if (e.target.closest('.mt-box') || key === 'mail/other' || row.dataset.noselect) {
             if (kids) { if (expanded.has(key)) expanded.delete(key); else expanded.add(key); renderTree(); }
             return;
         }
@@ -1168,6 +1705,21 @@
     }
 
     function renderMove() {
+        if (isImap()) {
+            // the account's folders as its tree, flattened with their depth (the one on screen is not a target)
+            const rows = [];
+            const walk = (nodes, depth) => nodes.forEach((n) => {
+                const p = n.key.slice(n.key.indexOf('/') + 1);
+                rows.push({ icon: n.icon, name: n.label, indent: depth, current: false, go: n.noselect || p === folder ? () => null : () => moveTo(p), path: p, off: !!n.noselect || p === folder });
+                if (n.children && n.children.length) walk(n.children, depth + 1);
+            });
+            walk(imapTreeNodes(imapId, (p) => `imap:${imapId}/${p}`), 1);
+            const first = rows.find((r) => !r.off);
+            if (first) first.current = true;
+            rows.unshift({ icon: 'msg-folder-account', name: accountTitle(), indent: 0, go: () => null });
+            pickRows('move', rows);
+            return;
+        }
         const first = (MOVE_TARGETS.find((t) => t.id !== folder) || MOVE_TARGETS[0]).id;
         const rows = MOVE_TARGETS.map((t) => {
             const f = folderOf(t.id, FOLDERS);
@@ -1187,7 +1739,7 @@
     }
 
     function openMove(ids) {
-        if (!isMine() || !ids.length) return;
+        if (!canAct() || !ids.length) return;
         moveIds = ids.map(String);
         pushLayer('move');
     }
@@ -1211,6 +1763,26 @@
         reading = Object.assign({}, m);
         pushLayer('read');
         renderRead(true);
+        if (isImap()) {
+            // message() marks it read at the mail server
+            const api = maApi();
+            const id = imapId;
+            const f = folder;
+            try {
+                const full = await busyOf(() => api.message(id, f, Number(m.uid || m.id)));
+                if (token !== readToken) return;
+                if (full) reading = imapFull(full);
+                const row = mailById(m.id);
+                if (row && !row.read) { row.read = true; renderList(); }
+                dropFresh(id, f, [m.uid || m.id]);
+            } catch (err) {
+                if (token !== readToken) return;
+                reading.loadError = (err && err.message) || 'The message could not be opened.';
+            }
+            renderRead(false);
+            if (isCurrent()) ws.refreshSoftKeys();
+            return;
+        }
         const request = { id: m.id };
         // an agent's mailbox is only looked at: its unread mail stays unread for the agent
         if (!isMine()) { request.viewAsOwner = owner; request.markRead = false; }
@@ -1250,7 +1822,7 @@
         host.dataset.size = textSize();
         const att = (m.attachments || []).map((a, n) => `<div class="msg-att" role="button" data-n="${n}">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}</span></div>`).join('');
         const [day, time] = sentDate(m.createdAt);
-        const out = folder === 'sent' || folder === 'outbox';
+        const out = outFolder();
         const who = out ? listOf(m.to).map(personName).join('; ') : senderText(m);
         host.innerHTML = `
             <div class="msg-hdr">
@@ -1296,7 +1868,10 @@
         const token = readToken;
         host.textContent = m.snippet || '';
         let r;
-        if (isMine()) {
+        if (m.imap) {
+            // the server sanitized it (mailAccounts.message): its own pictures load, the Internet's wait
+            r = { html: imapHtml(m) };
+        } else if (isMine()) {
             try {
                 r = await busyOf(() => send('dovecote_render_body', { id: m.id }, true));
             } catch (_) {
@@ -1313,7 +1888,9 @@
         frame.className = 'msg-frame';
         // View > Text Size (Medium = the device's 12 units; 6.5 keeps its 12)
         const fs = textPx() * px();
-        frame.srcdoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'"><style>html{margin:0;padding:0;overflow-y:hidden;overflow-x:auto}body{margin:0;padding:0;overflow:visible;font:${fs}px Tahoma,'Segoe UI',Verdana,sans-serif;color:#000;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}a{color:#00f}</style></head><body>${(r && r.html) || ''}</body></html>`;
+        // Download Internet pictures (IMAP mail) lets the frame load them
+        const imgSrc = m.imap && m.showPictures ? "'self' data: blob: https: http:" : "'self' data: blob:";
+        frame.srcdoc = `<!DOCTYPE html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${imgSrc}; style-src 'unsafe-inline'"><style>html{margin:0;padding:0;overflow-y:hidden;overflow-x:auto}body{margin:0;padding:0;overflow:visible;font:${fs}px Tahoma,'Segoe UI',Verdana,sans-serif;color:#000;background:#fff;word-wrap:break-word}img{max-width:100%;height:auto}table{max-width:100%}a{color:#00f}</style></head><body>${(r && r.html) || ''}</body></html>`;
         const fit = () => {
             try {
                 const d = frame.contentDocument;
@@ -1354,7 +1931,40 @@
             } catch (_) { /* no access */ }
         });
         host.textContent = '';
+        // pictures from the Internet held back (outres 33594 / 33595): the device's line and link over the message
+        if (m.imap && !m.showPictures && m.remoteImages && m.remoteImages.length) {
+            const band = document.createElement('div');
+            band.className = 'msg-pics';
+            band.innerHTML = '<span>To protect your privacy, pictures from the Internet are not automatically downloaded.</span> <a href="#" class="msg-pics-link" role="button">Download Internet pictures</a>';
+            host.appendChild(band);
+        }
         host.appendChild(frame);
+    }
+
+    /** An IMAP message's HTML for the frame: same-origin pictures (data-dove-local) loaded, the Internet's on request. */
+    function imapHtml(m) {
+        try {
+            const doc = new DOMParser().parseFromString(String(m.html || ''), 'text/html');
+            doc.querySelectorAll('img[data-dove-local]').forEach((el) => {
+                const src = el.getAttribute('data-dove-local');
+                if (src && src.startsWith('/') && !src.startsWith('//')) el.setAttribute('src', src);
+            });
+            if (m.showPictures) {
+                doc.querySelectorAll('img[data-blocked-src]').forEach((el) => {
+                    const src = el.getAttribute('data-blocked-src');
+                    if (/^https?:\/\//i.test(src || '')) el.setAttribute('src', src);
+                });
+            }
+            return `${[...doc.head.querySelectorAll('style')].map((st) => st.outerHTML).join('')}${doc.body ? doc.body.innerHTML : ''}`;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function downloadPictures() {
+        if (!reading || !reading.imap || top() !== 'read') return;
+        reading.showPictures = true;
+        renderRead(false);
     }
 
     /**
@@ -1364,6 +1974,20 @@
     async function openAttachment(n) {
         const m = reading;
         const a = m && m.attachments && m.attachments[n];
+        if (a && m.imap) {
+            // an IMAP attachment is a same-origin URL (the server fetches it from the mail server the first time)
+            if (!a.url) return;
+            if (String(a.mimeType || '').startsWith('image/') && typeof showLightbox === 'function') { // eslint-disable-line no-undef
+                try { showLightbox({ url: a.url, title: a.name || 'attachment' }); return; } catch (_) { /* saved below */ } // eslint-disable-line no-undef
+            }
+            const link = document.createElement('a');
+            link.href = a.url;
+            link.download = a.name || 'attachment';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            return;
+        }
         if (!a || !a.id) return;
         const request = { id: a.id };
         if (!isMine()) request.viewAsOwner = owner;
@@ -1459,7 +2083,8 @@
     /** Outlook Mobile's quote under a reply or forward (a reply without it when Options says so). */
     function quoted(m, forward) {
         if (!forward && !optOn(OPT.replyBody)) return '';
-        return `\n\n-----Original Message-----\nFrom: ${address(m.from)}\nSent: ${longDate(m.createdAt)}\nTo: ${listOf(m.to).map(address).join('; ')}\n${listOf(m.cc).length ? `Cc: ${listOf(m.cc).map(address).join('; ')}\n` : ''}Subject: ${m.subject || ''}\n\n${bodyText(m)}`;
+        // an IMAP message's own text part when it has one (its HTML turned into text otherwise)
+        return `\n\n-----Original Message-----\nFrom: ${address(m.from)}\nSent: ${longDate(m.createdAt)}\nTo: ${listOf(m.to).map(address).join('; ')}\n${listOf(m.cc).length ? `Cc: ${listOf(m.cc).map(address).join('; ')}\n` : ''}Subject: ${m.subject || ''}\n\n${m.imap && m.text ? m.text : bodyText(m)}`;
     }
 
     const prefixed = (pre, subject) => {
@@ -1470,20 +2095,29 @@
     function renderAtts() {
         const view = page.querySelector('.msg-view[data-view="compose"]');
         const atts = view.querySelector('.msg-compose-atts');
-        atts.innerHTML = compose.attachments.map((a, n) => `<div class="msg-att" data-n="${n}">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}</span></div>`).join('');
+        // an IMAP account's attachment goes up to the server as it is added: how far, until it is there
+        atts.innerHTML = compose.attachments.map((a, n) => `<div class="msg-att" data-n="${n}">${img('msg-attachment')}<span>${esc(a.name || 'attachment')}${a.upload && !a.uploadId ? ` (${Math.round((a.progress || 0) * 100)}%)` : ''}</span></div>`).join('');
         atts.hidden = !compose.attachments.length;
     }
 
     function newMessage(init = {}) {
-        compose = { mode: init.mode || 'new', replyTo: init.replyTo || null, attachments: Array.isArray(init.attachments) ? init.attachments.slice() : [], priority: 'normal', language: 'western', lastField: 'to' };
+        // an IMAP account's message goes out from that account (mailAccounts.send), whatever is on screen later
+        const imapFrom = init.imapId !== undefined ? init.imapId : (isImap() ? imapId : null);
+        compose = { mode: init.mode || 'new', replyTo: init.replyTo || null, reply: init.reply || null, imapId: imapFrom, attachments: Array.isArray(init.attachments) && !imapFrom ? init.attachments.slice() : [], priority: 'normal', language: 'western', lastField: 'to' };
         const view = page.querySelector('.msg-view[data-view="compose"]');
         renderAtts();
         // 6.1: "Name <address> (account)" over two lines; 6.5 names the account in brackets
-        view.querySelector('.msg-from-addr').textContent = is65() ? `(${MAIL_ACCOUNT})` : `${ownerName()} <${mailAddress()}> (${MAIL_ACCOUNT})`;
+        const ia = imapFrom ? imapAcct(imapFrom) : null;
+        const acctLabel = ia ? imapName(ia) : MAIL_ACCOUNT;
+        const fromAddr = ia ? `${ia.displayName || ownerName()} <${ia.email}>` : `${ownerName()} <${mailAddress()}>`;
+        view.querySelector('.msg-from-addr').textContent = is65() ? `(${acctLabel})` : `${fromAddr} (${acctLabel})`;
         view.querySelector('[name="to"]').value = init.to || '';
         view.querySelector('[name="cc"]').value = init.cc || '';
         // the device keeps Cc out of sight until it is used (Reply All fills it)
         view.querySelector('.msg-field.is-cc').hidden = !init.cc;
+        // Bcc: IMAP accounts (Dreamscape Mail sends none), out of sight as Cc is
+        view.querySelector('[name="bcc"]').value = init.bcc || '';
+        view.querySelector('.msg-field.is-bcc').hidden = !(imapFrom && init.bcc);
         view.querySelector('[name="subject"]').value = init.subject || '';
         const body = view.querySelector('[name="body"]');
         // the signature goes under the new text, above a quoted message (device)
@@ -1499,7 +2133,8 @@
     }
 
     async function respond(kind, m) {
-        if (!m || !isMine()) return;
+        if (!m || !canAct()) return;
+        if (isImap()) { await respondImap(kind, m); return; }
         let full = m;
         if (m.body == null) {
             try {
@@ -1530,6 +2165,36 @@
             subject: prefixed('RE', full.subject),
             body: quoted(full)
         });
+    }
+
+    /** Reply / Reply All / Forward on an IMAP account: the reply goes out threaded (reply: { folder, uid, kind }). */
+    async function respondImap(kind, m) {
+        let full = m;
+        if (m.body == null) {
+            const api = maApi();
+            try {
+                const r = await busyOf(() => api.message(imapId, folder, Number(m.uid || m.id), { markSeen: false }));
+                if (r) full = imapFull(r);
+            } catch (_) { /* the quote has no body */ }
+        }
+        const reply = { folder, uid: Number(full.uid || full.id), kind: kind === 'forward' ? 'forward' : 'reply' };
+        if (kind === 'forward') {
+            newMessage({ mode: 'forward', subject: prefixed('FW', full.subject), body: quoted(full, true), reply });
+            return;
+        }
+        const me = String((imapAcct(imapId) || {}).email || '').toLowerCase();
+        // the sender's Reply-To when the message names one
+        let to = full.replyTo && full.replyTo.length ? full.replyTo.slice() : [full.from];
+        let cc = [];
+        if (kind === 'replyAll') {
+            to = to.concat(listOf(full.to));
+            cc = listOf(full.cc);
+        }
+        const clean = (list, skip) => [...new Set(list.map((n) => String(n).trim()).filter((n) => n && n.toLowerCase() !== me && !(skip || []).includes(n)))];
+        to = clean(to);
+        if (!to.length && full.from) to = [full.from];
+        cc = clean(cc, to);
+        newMessage({ mode: kind, reply, to: to.join('; '), cc: cc.join('; '), subject: prefixed('RE', full.subject), body: quoted(full) });
     }
 
     // ---- Drafts, Spell Check, Voice Note, signature (#757) ----
@@ -1668,6 +2333,12 @@
         if (!keep || !chunks.length || !compose) return;
         const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
         const ext = /mp4/.test(blob.type) ? 'm4a' : /ogg/.test(blob.type) ? 'ogg' : 'webm';
+        if (compose.imapId) {
+            const at = new Date(started).toTimeString().slice(0, 5).replace(':', '');
+            const secs0 = Math.max(1, Math.round((Date.now() - started) / 1000));
+            addImapFile(new File([blob], `Voice Note ${at} (${secs0}s).${ext}`, { type: blob.type.split(';')[0] }));
+            return;
+        }
         const base64 = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1] || ''); r.readAsDataURL(blob); });
         const secs = Math.max(1, Math.round((Date.now() - started) / 1000));
         const hhmm = new Date(started).toTimeString().slice(0, 5).replace(':', '');
@@ -1699,6 +2370,7 @@
         return {
             to: view.querySelector('[name="to"]').value,
             cc: view.querySelector('[name="cc"]').value,
+            bcc: view.querySelector('[name="bcc"]').value,
             subject: view.querySelector('[name="subject"]').value,
             body: view.querySelector('[name="body"]').value
         };
@@ -1707,7 +2379,7 @@
     function composeDirty() {
         if (!compose) return false;
         const f = composeFields();
-        return !!(f.to.trim() || f.cc.trim() || f.subject.trim() || f.body.trim() || compose.attachments.length);
+        return !!(f.to.trim() || f.cc.trim() || f.bcc.trim() || f.subject.trim() || f.body.trim() || compose.attachments.length);
     }
 
     async function confirmCancelCompose() {
@@ -1725,6 +2397,7 @@
     async function sendCompose() {
         if (sending || !compose) return;
         const f = composeFields();
+        if (compose.imapId) { await sendImap(f); return; }
         const to = bare(f.to);
         const cc = bare(f.cc);
         if (!to.length && !cc.length) {
@@ -1761,8 +2434,73 @@
         loadMailboxes();
     }
 
+    const splitAddrs = (v) => String(v || '').split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+
+    /** Send from an IMAP account: attachments still going up are waited for, then mailAccounts.send. */
+    async function sendImap(f) {
+        const to = splitAddrs(f.to);
+        const cc = splitAddrs(f.cc);
+        const bcc = splitAddrs(f.bcc);
+        if (!to.length && !cc.length && !bcc.length) {
+            await ws.messageBox({ title: 'Messaging', icon: 'warning', text: 'Before sending this message, please specify at least one recipient.' });
+            page.querySelector('.msg-view[data-view="compose"] [name="to"]').focus();
+            return;
+        }
+        const c = compose;
+        const api = maApi();
+        if (!api || typeof api.send !== 'function') return;
+        sending = true;
+        if (isCurrent()) ws.refreshSoftKeys();
+        try {
+            await busyOf(async () => {
+                await Promise.all(c.attachments.map((a) => a.upload || null));
+                const mail = { to: to.join(', '), subject: f.subject.trim(), text: f.body || ' ' };
+                if (cc.length) mail.cc = cc.join(', ');
+                if (bcc.length) mail.bcc = bcc.join(', ');
+                const ids = c.attachments.map((a) => a.uploadId).filter(Boolean);
+                if (ids.length) mail.attachments = ids;
+                if (c.reply) mail.reply = c.reply;
+                await api.send(c.imapId, mail);
+            });
+        } catch (err) {
+            sending = false;
+            if (isCurrent()) ws.refreshSoftKeys();
+            await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || 'The message could not be sent.' });
+            return;
+        }
+        sending = false;
+        if (compose === c) popLayer();
+        if (top() === 'read') popLayer();
+        if (isImap() && imapId === c.imapId && imapSpecial(folder) === '\\Sent') loadFolder({ keep: true });
+    }
+
+    /** An attachment for an IMAP account's message: up to the server now (mailAccounts.upload), with its progress. */
+    function addImapFile(file) {
+        const api = maApi();
+        if (!compose || !file || !api || typeof api.upload !== 'function') return;
+        const c = compose;
+        const a = { name: file.name || 'attachment', mimeType: file.type || 'application/octet-stream', size: file.size, progress: 0 };
+        const paint = () => { if (compose === c && top() === 'compose') renderAtts(); };
+        a.upload = api.upload(file, { onProgress: (p) => { a.progress = p; paint(); } }).then((d) => {
+            a.uploadId = d && d.uploadId;
+            a.progress = 1;
+            paint();
+            return d;
+        }, async (err) => {
+            const i = c.attachments.indexOf(a);
+            if (i >= 0) c.attachments.splice(i, 1);
+            paint();
+            if (compose === c) await ws.messageBox({ title: 'Messaging', icon: 'error', text: (err && err.message) || 'The attachment could not be added.' });
+            return null;
+        });
+        c.attachments.push(a);
+        renderAtts();
+    }
+
     /** Add Recipient...: the Dreamscape mailboxes, as Contacts would list them. */
     function recipientList() {
+        // an IMAP account's message leaves Dreamscape: only mailboxes with an outside address
+        if (compose && compose.imapId) return mailboxes.filter((b) => b.owner !== human() && b.address).map((b) => ({ owner: b.owner, name: boxLabel(b.owner), address: b.address }));
         return mailboxes.map((b) => b.owner).filter((o) => o !== human()).map((o) => ({ owner: o, name: boxLabel(o), address: address(o) }));
     }
 
@@ -1783,9 +2521,10 @@
 
     function checkNames() {
         const view = page.querySelector('.msg-view[data-view="compose"]');
-        ['to', 'cc'].forEach((n) => {
+        ['to', 'cc', 'bcc'].forEach((n) => {
             const input = view.querySelector(`[name="${n}"]`);
-            input.value = bare(input.value).map(address).join('; ');
+            // outside addresses as typed for an IMAP account; Dreamscape names get the domain
+            input.value = compose && compose.imapId ? splitAddrs(input.value).join('; ') : bare(input.value).map(address).join('; ');
         });
     }
 
@@ -1809,6 +2548,7 @@
         input.addEventListener('change', () => {
             const file = input.files && input.files[0];
             if (!file || !compose) return;
+            if (compose.imapId) { addImapFile(file); return; }
             const reader = new FileReader();
             reader.onload = () => {
                 if (!compose) return;
@@ -1843,7 +2583,7 @@
     // ---------------------------------------------------------------- menus
 
     function respondItems(m) {
-        const can = !!m && isMine();
+        const can = !!m && canAct();
         return [
             { label: 'Reply', disabled: !can, action: () => respond('reply', m) },
             { label: 'Reply All', disabled: !can || !(listOf(m.to).length + listOf(m.cc).length > 1), action: () => respond('replyAll', m) },
@@ -1869,8 +2609,8 @@
         const list = ids.map(mailById).filter(Boolean);
         const allRead = list.length && list.every((m) => m.read);
         return allRead
-            ? { label: 'Mark as Unread', disabled: !isMine(), action: () => setRead(ids, false) }
-            : { label: 'Mark as Read', disabled: !list.length || !isMine(), action: () => setRead(ids, true) };
+            ? { label: 'Mark as Unread', disabled: !canAct(), action: () => setRead(ids, false) }
+            : { label: 'Mark as Read', disabled: !list.length || !canAct(), action: () => setRead(ids, true) };
     }
 
     function selectItems() {
@@ -1909,23 +2649,27 @@
     }
 
     function listMenu() {
-        if (!isMail()) return directorListMenu();
+        if (!isList()) return directorListMenu();
         const m = selectedMail();
-        const mine = isMine();
+        const mine = canAct();
         const ids = targetIds();
+        // Follow up (outres 32308) where the account keeps flags: IMAP accounts
+        const follow = isImap() ? [followUpItem(ids.map(mailById))] : [];
+        const clearItem = { label: `Clear "${accountTitle()}"`, disabled: true };
         if (is65()) {
             // the device's Outlook E-mail list menu (Delete is the left soft key there)
             return [
                 { label: 'New', action: () => newMessage() },
                 { label: 'Reply/Forward', submenu: () => respondItems(m) },
                 readItem(ids),
+                ...follow,
                 { label: 'Move...', disabled: !ids.length || !mine, action: () => openMove(ids) },
                 { label: 'Go To', submenu: goToItems },
                 { label: 'Tools', submenu: () => [
                     { label: 'Sort By', submenu: () => sortItems() },
-                    { label: 'Manage Folders...', disabled: !mine, action: () => pushLayer('manage') },
-                    { label: `Clear "${MAIL_ACCOUNT}"`, disabled: true },
-                    { label: 'Empty Deleted Items', disabled: !mine, action: emptyDeleted },
+                    { label: 'Manage Folders...', disabled: !isMine(), action: () => pushLayer('manage') },
+                    clearItem,
+                    { label: 'Empty Deleted Items', disabled: !mine || (isImap() && !imapPathOf('\\Trash')), action: emptyDeleted },
                     { label: 'Enable Updates', disabled: true },
                     { label: 'New Account...', action: setupAccount },
                     optionsItem()
@@ -1939,15 +2683,16 @@
             { label: 'New', action: () => newMessage() },
             { label: 'Reply', submenu: () => respondItems(m) },
             readItem(ids),
+            ...follow,
             { label: 'Move...', disabled: !ids.length || !mine, action: () => openMove(ids) },
             '-',
             { label: 'Go To', submenu: goToItems },
             { label: 'Tools', submenu: () => [
                 { label: 'Sort By', submenu: sortItems },
-                { label: 'Manage Folders...', disabled: !mine, action: () => pushLayer('manage') },
+                { label: 'Manage Folders...', disabled: !isMine(), action: () => pushLayer('manage') },
                 '-',
-                { label: 'Empty Deleted Items', disabled: !mine, action: emptyDeleted },
-                { label: `Clear "${MAIL_ACCOUNT}"`, disabled: true },
+                { label: 'Empty Deleted Items', disabled: !mine || (isImap() && !imapPathOf('\\Trash')), action: emptyDeleted },
+                clearItem,
                 '-',
                 { label: 'New Account...', action: setupAccount },
                 optionsItem()
@@ -1959,8 +2704,8 @@
     }
 
     function contextMenu(m) {
-        const mine = isMine();
-        if (!isMail()) {
+        const mine = canAct();
+        if (!isList()) {
             const s = m;
             if (!s) return [{ label: 'New', action: () => newDirectorSession(dirP) }, { label: 'Send/Receive', action: sendReceive }];
             const rows = dirSessionRows(s);
@@ -1974,6 +2719,7 @@
                 m.read
                     ? { label: 'Mark as Unread', disabled: !mine, action: () => setRead([String(m.id)], false) }
                     : { label: 'Mark as Read', disabled: !mine, action: () => setRead([String(m.id)], true) },
+                ...(isImap() ? [followUpItem([m])] : []),
                 { label: 'Move...', disabled: !mine, action: () => openMove([String(m.id)]) },
                 { label: 'Download Message', disabled: true }
             ];
@@ -1986,6 +2732,7 @@
             m.read
                 ? { label: 'Mark as Unread', disabled: !mine, action: () => setRead([String(m.id)], false) }
                 : { label: 'Mark as Read', disabled: !mine, action: () => setRead([String(m.id)], true) },
+            ...(isImap() ? [followUpItem([m])] : []),
             { label: 'Move...', disabled: !mine, action: () => openMove([String(m.id)]) }
         ];
     }
@@ -1993,11 +2740,12 @@
     /** The reading page's menu (165439-165447). */
     function readMenu() {
         const m = reading;
-        const mine = isMine();
+        const mine = canAct();
         return [
             { label: 'Delete', disabled: !m || !mine, action: () => deleteIds([String(m.id)]) },
             { label: 'Reply', submenu: () => respondItems(m) },
             { label: 'Mark as Unread', disabled: !m || !mine, action: async () => { await setRead([String(m.id)], false); popLayer(); } },
+            ...(isImap() ? [followUpItem([m])] : []),
             { label: 'Move...', disabled: !m || !mine, action: () => openMove([String(m.id)]) },
             { label: 'View', submenu: () => [
                 // the whole message is downloaded and HTML mail shows as HTML already
@@ -2025,7 +2773,8 @@
                 { label: 'File', action: () => insertFile('') }
             ] },
             { label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertMyText(t) })) },
-            { label: 'Save to Drafts', action: saveDraft },
+            // Drafts are kept on this phone for Dreamscape Mail; an IMAP account's would belong on its server
+            { label: 'Save to Drafts', disabled: !!(compose && compose.imapId), action: saveDraft },
             { label: 'Spell Check', action: () => spellCheckField(page.querySelector('.msg-view[data-view="compose"] [name="body"]')) },
             ...(is65() ? [] : ['-']),
             { label: 'Cancel Message', action: cancel },
@@ -2055,15 +2804,15 @@
             };
         }
         if (t === 'read') {
-            return { left: { label: 'Reply', disabled: !reading || !isMine(), action: () => respond('reply', reading) }, right: { label: 'Menu', menu: readMenu } };
+            return { left: { label: 'Reply', disabled: !reading || !canAct(), action: () => respond('reply', reading) }, right: { label: 'Menu', menu: readMenu } };
         }
         if (t === 'compose') {
             return { left: { label: 'Send', disabled: sending, action: sendCompose }, right: { label: 'Menu', menu: composeMenu } };
         }
-        if (!isMail()) return { left: { label: 'New', action: () => newDirectorSession(dirP) }, right: { label: 'Menu', menu: listMenu } };
+        if (!isList()) return { left: { label: 'New', action: () => newDirectorSession(dirP) }, right: { label: 'Menu', menu: listMenu } };
         const ids = targetIds();
         // 6.1 and 6.5 alike: Delete / Menu on the list (164304)
-        return { left: { label: 'Delete', disabled: !ids.length || !isMine(), action: () => deleteIds(ids, { fromList: true }) }, right: { label: 'Menu', menu: listMenu } };
+        return { left: { label: 'Delete', disabled: !ids.length || !canAct(), action: () => deleteIds(ids, { fromList: true }) }, right: { label: 'Menu', menu: listMenu } };
     }
 
     // ---------------------------------------------------------------- Director
@@ -2103,7 +2852,7 @@
         let timer = null;
         const again = () => {
             clearTimeout(timer);
-            timer = setTimeout(() => { if (!isMail() && page) loadDirector({ keep: true }); }, 400);
+            timer = setTimeout(() => { if (acct === 'dir' && page) loadDirector({ keep: true }); }, 400);
         };
         ['director_delete_session_response', 'director_fork_session_response', 'director_move_session_response', 'director_session_renamed', 'director_session_repair', 'director_create_session_response'].forEach((t) => c.on(t, again));
     }
@@ -2135,7 +2884,7 @@
         e.preventDefault();
     }, true);
 
-    const rowItem = (id) => (isMail() ? mailById(id) : dirRows().find((s) => String(s.id) === String(id)) || null);
+    const rowItem = (id) => (isList() ? mailById(id) : dirRows().find((s) => String(s.id) === String(id)) || null);
 
     function onListPointer(scroll) {
         let timer = null;
@@ -2175,7 +2924,7 @@
             if (several) { toggleMulti(row.dataset.id); return; }
             if (multi.size) { endSelect(); renderList(); }
             selectRow(row.dataset.id);
-            if (!isMail()) { openDirectorRow(rowItem(row.dataset.id)); return; }
+            if (!isList()) { openDirectorRow(rowItem(row.dataset.id)); return; }
             openMessage(mailById(row.dataset.id));
         });
         scroll.addEventListener('scroll', () => {
@@ -2228,6 +2977,7 @@
                     <label class="msg-field is-static"><span>From:</span><output class="msg-from-addr"></output></label>
                     <label class="msg-field"><span>To:</span><input name="to" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
                     <label class="msg-field is-cc" hidden><span>Cc:</span><input name="cc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
+                    <label class="msg-field is-bcc" hidden><span>Bcc:</span><input name="bcc" type="text" inputmode="email" autocapitalize="off" spellcheck="false"></label>
                     <label class="msg-field"><span>Subject:</span><input name="subject" type="text"></label>
                     <div class="msg-atts msg-compose-atts" hidden></div>
                     <textarea name="body" class="msg-text" aria-label="Message" spellcheck="false"></textarea>
@@ -2241,6 +2991,7 @@
             else ws.messageBox({ title: 'Message Options', icon: 'info', text: 'Priority, security, permission and language apply to this message only. Priority goes out with the message as its importance.' });
         });
         p.querySelector('.msg-read').addEventListener('click', (e) => {
+            if (e.target.closest('.msg-pics-link')) { e.preventDefault(); downloadPictures(); return; }
             const att = e.target.closest('.msg-atts .msg-att[data-n]');
             if (att) { openAttachment(Number(att.dataset.n)); return; }
             if (e.target.closest('.msg-sender')) pushLayer('sender');
@@ -2280,6 +3031,18 @@
         });
         const form = p.querySelector('.msg-form');
         form.addEventListener('keydown', (e) => {
+            // up from To: the Cc line (and Bcc for an IMAP account) the header keeps out of sight
+            if (e.key === 'ArrowUp' && e.target.name === 'to' && compose) {
+                const cc = p.querySelector('.msg-field.is-cc');
+                const bcc = p.querySelector('.msg-field.is-bcc');
+                if (cc.hidden || (compose.imapId && bcc.hidden)) {
+                    e.preventDefault();
+                    cc.hidden = false;
+                    if (compose.imapId) bcc.hidden = false;
+                    cc.querySelector('input').focus();
+                    return;
+                }
+            }
             if (e.key === 'Enter' && e.target.tagName === 'INPUT') {
                 e.preventDefault();
                 const fields = [...p.querySelectorAll('.msg-form input, .msg-form textarea')].filter((x) => !x.closest('[hidden]'));
@@ -2327,7 +3090,7 @@
             return;
         }
         if (t !== 'list') return;
-        const rows = isMail() ? sorted(mail) : dirRows();
+        const rows = isList() ? sorted(mail) : dirRows();
         const at = rows.findIndex((m) => String(m.id) === String(selectedId));
         if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault();
@@ -2336,9 +3099,9 @@
         } else if (e.key === 'Enter' && at >= 0) {
             e.preventDefault();
             if (several) toggleMulti(rows[at].id);
-            else if (isMail()) openMessage(rows[at]);
+            else if (isList()) openMessage(rows[at]);
             else openDirectorRow(rows[at]);
-        } else if (e.key === 'Delete' && isMail() && targetIds().length) {
+        } else if (e.key === 'Delete' && isList() && targetIds().length) {
             e.preventDefault();
             deleteIds(targetIds(), { fromList: true });
         }
@@ -2451,7 +3214,13 @@
         if (row) openMessage(row);
     }
 
-    window.wmMessaging = { openMail, showTree, closeTree, accountItems, goTo, openAccount: (key, f) => goTo(key || 'mail', f), setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature };
+    window.wmMessaging = {
+        openMail, showTree, closeTree, accountItems, goTo, openAccount: (key, f) => goTo(key || 'mail', f), setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature,
+        // IMAP accounts (#789): Search Phone opens a message; the shell's envelope / Today count the new arrivals
+        openImapMessage,
+        imapNew: () => imapPending.size,
+        imapAccounts: () => imapAccts.map((a) => ({ id: a.id, name: imapName(a), email: a.email, unread: imapUnread(a.id) }))
+    };
 
     // ---------------------------------------------------------------- registration
 
@@ -2460,7 +3229,9 @@
         if (!ws || typeof ws.registerApp !== 'function') return;
         // Text Messaging accounts for the picker / Go To / tree, again when window.textMessaging is replaced
         wireTm();
-        setInterval(wireTm, 3000);
+        // and the IMAP accounts (#789): their rows, and their new mail's notification while Messaging is closed
+        wireImap();
+        setInterval(() => { wireTm(); wireImap(); }, 3000);
         ws.registerApp({
             id: APP_ID,
             title: 'Messaging',
@@ -2485,8 +3256,9 @@
                 probeXi();
                 refreshSms();
                 refreshTm();
+                refreshImap();
                 // behind the picker the list loads without the wait cursor (nothing waits on it yet)
-                loadFolder({ keep: pickerRoot || (isMail() ? mail.length : (dirLists[dirP] || []).length) > 0 });
+                loadFolder({ keep: pickerRoot || (isList() ? mail.length : (dirLists[dirP] || []).length) > 0 });
             },
             hide() {
                 clearTimeout(pushTimer);

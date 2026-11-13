@@ -15,6 +15,8 @@ const mailAccounts = require('../../mailAccounts');
  *   ma_move      { accountId, folder, uids, to }
  *   ma_delete    { accountId, folder, uids }      (into Trash; for good in Trash)
  *   ma_send      { accountId, to, cc, bcc, subject, text, html, attachments: [uploadId], reply: { folder, uid, kind } }
+ *   ma_save_draft { accountId, to, cc, bcc, subject, text, html, attachments, forwardFrom?, replaceUid? } -> { folder, uid }
+ *   (ma_send also takes forwardFrom: { folder, uid, parts? } and draftUid)
  *   ma_search    { q, accountId?, limit }         { results }
  *   ma_sync_status / ma_resync { accountId, rebuild }
  * Events: ma_event. Attachments: GET /api/mailaccounts/:id/attachment?folder&uid&part; uploads: POST /api/mailaccounts/upload?name=
@@ -40,6 +42,7 @@ function registerPackets(handlersCtx) {
     reg('ma_move', async (d) => mailAccounts.move(d.accountId, String(d.folder || 'INBOX'), d.uids, String(d.to || '')));
     reg('ma_delete', async (d) => mailAccounts.remove(d.accountId, String(d.folder || 'INBOX'), d.uids), { destructive: true });
     reg('ma_send', async (d) => mailAccounts.send(d.accountId, d));
+    reg('ma_save_draft', async (d) => mailAccounts.saveDraft(d.accountId, d));
     reg('ma_search', async (d) => mailAccounts.search(d.q, { accountId: d.accountId || null, limit: d.limit }));
     reg('ma_sync_status', async () => mailAccounts.syncStatus());
     reg('ma_resync', async (d) => mailAccounts.resync(String(d.accountId || ''), { rebuild: d.rebuild === true }), { destructive: true });

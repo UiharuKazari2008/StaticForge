@@ -26,7 +26,10 @@
  *                  company, e-mail address and number; a tap opens the card (wmContactsApp.openFile)
  *   E-mail         Dreamscape Mail: subject, sender and the start of the text of the newest 200
  *                  messages of every folder but Junk (dovecote_list_mail, headers only: nothing is
- *                  marked read); a tap opens the message (wmMessaging.openMail)
+ *                  marked read); a tap opens the message (wmMessaging.openMail). The IMAP e-mail
+ *                  accounts (#789) answer under the same Type: the server's search of its copy
+ *                  (window.mailAccounts.search, every folder but Junk); a tap opens the message in
+ *                  Messaging on that account (wmMessaging.openImapMessage)
  *   Text Messages  iMessage / RCS through the server's search (window.textMessaging.search); the
  *                  row's second line is the matching text and its date; a tap opens the
  *                  conversation (wmTextMessaging.openChat)
@@ -365,6 +368,24 @@
         return out.sort(byRank);
     }
 
+    /** The IMAP e-mail accounts (#789): the server's search of its copy (headers and text), its order (newest first). */
+    async function imapMail(q, raw) {
+        const M = window.mailAccounts;
+        const W = window.wmMessaging;
+        if (!M || typeof M.search !== 'function' || !W || typeof W.openImapMessage !== 'function') return [];
+        const list = (await M.search(raw || q, { limit: 60 })) || [];
+        // Junk is left out, as Dreamscape Mail's spam is; the folder's special use is in Messaging's copy of the folders
+        return list.filter((m) => !/(^|[/.])(junk|spam)( e-?mail)?$/i.test(String(m.folder || ''))).map((m, i) => {
+            const f = Array.isArray(m.from) && m.from[0] ? m.from[0] : null;
+            const from = (f && (f.name || f.address)) || String(m.sender || '').replace(/\s*<[^>]*>\s*$/, '').replace(/^"|"$/g, '');
+            const r = rankIn(q, m.subject, [from], m.snippet);
+            return {
+                kind: 'E-mail', title: m.subject || '(no subject)', img: artImg(m.seen ? 'msg-read' : 'msg-unread'), rank: r < 0 ? 1000 + i : r, date: toDate(m.date), size: Number(m.size) || 0,
+                open: () => W.openImapMessage(m.accountId, m.folder, m.uid, m)
+            };
+        }).sort(byRank);
+    }
+
     /** The server's search over the Text Messaging accounts (iMessage, RCS): its own order (newest first). */
     async function texts(q, raw) {
         const T = window.textMessaging;
@@ -579,6 +600,8 @@
         { id: 'contacts', label: 'Contacts', run: contacts, slow: true, available: () => !!window.wmContactsApp },
         { id: 'director', label: 'Director', run: director, slow: true, available: () => !!(window.wmDirectorApp || window.directorInstance) },
         { id: 'messages', label: 'E-mail', run: email, available: () => !!window.wmMessaging },
+        // the IMAP accounts are more E-mail (group: the same Type entry, not one of their own)
+        { id: 'mailaccounts', label: 'E-mail', group: 'messages', run: imapMail, slow: true, available: () => !!(window.mailAccounts && typeof window.mailAccounts.search === 'function' && window.wmMessaging) },
         { id: 'files', label: 'Files', run: files, slow: true, available: () => !!window.wmFileExplorer },
         { id: 'help', label: 'Help', run: help, available: () => !!(window.wmHelp && typeof window.wmHelp.search === 'function') },
         { id: 'chats', label: 'Messenger', run: chats, slow: true, available: () => !!window.wmChatApp },
@@ -591,7 +614,7 @@
     ];
     // "All data": Programs lead (the Start menu's order), the people and messages next, the
     // workspace's things after, the pictures last
-    const ALL_ORDER = ['programs', 'android', 'contacts', 'messages', 'texts', 'chats', 'director', 'calendar', 'tasks', 'notes', 'presets', 'files', 'help', 'pictures'];
+    const ALL_ORDER = ['programs', 'android', 'contacts', 'messages', 'mailaccounts', 'texts', 'chats', 'director', 'calendar', 'tasks', 'notes', 'presets', 'files', 'help', 'pictures'];
     const sources = () => SOURCES.filter((s) => { try { return !s.available || s.available(); } catch (_) { return false; } });
 
     // ---------------------------------------------------------------- history
@@ -667,7 +690,7 @@
         remember(raw);
         const id = ++runId;
         const ql = raw.toLowerCase();
-        const list = type === 'all' ? ALL_ORDER.map((k) => sources().find((s) => s.id === k)).filter(Boolean) : sources().filter((s) => s.id === type);
+        const list = type === 'all' ? ALL_ORDER.map((k) => sources().find((s) => s.id === k)).filter(Boolean) : sources().filter((s) => s.id === type || s.group === type);
         const parts = list.map(() => null); // null = still asking
         let drawn = false;
         picked = false;
@@ -742,7 +765,7 @@
             ws.dropdown(e.currentTarget.parentElement, list.map((h) => ({ label: h, action: () => { q.value = h; ws.refreshSoftKeys(); } })), 'left');
         });
         p.querySelector('.wsr-type').addEventListener('click', (e) => {
-            const items = [{ id: 'all', label: 'All data' }].concat(sources()).map((s) => ({ label: s.label, radio: type === s.id, action: () => { type = s.id; renderType(); } }));
+            const items = [{ id: 'all', label: 'All data' }].concat(sources().filter((s) => !s.group)).map((s) => ({ label: s.label, radio: type === s.id, action: () => { type = s.id; renderType(); } }));
             ws.dropdown(e.currentTarget, items, 'left');
         });
         const box = p.querySelector('.wsr-results');
@@ -781,7 +804,7 @@
             if (typeId && (typeId === 'all' || sources().some((s) => s.id === typeId))) { type = typeId; renderType(); }
             if (text != null && page) { field().value = String(text); ws.refreshSoftKeys(); if (String(text).trim()) search(); }
         },
-        types: () => ['all'].concat(sources().map((s) => s.id)),
+        types: () => ['all'].concat(sources().filter((s) => !s.group).map((s) => s.id)),
         _state: () => ({ type, results, sel })
     };
 

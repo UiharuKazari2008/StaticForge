@@ -131,6 +131,9 @@
 
 .dovecote-tree-level-1 { padding-left: 19px; }
 .dovecote-tree-level-2 { padding-left: 38px; }
+.dovecote-tree-level-3 { padding-left: 57px; }
+.dovecote-tree-level-4 { padding-left: 76px; }
+.dovecote-tree-level-5 { padding-left: 95px; }
 
 #desktopDovecoteModal .dovecote-unread-badge {
     margin-left: 0.4em;
@@ -214,8 +217,31 @@
 
 #desktopDovecoteModal .dovecote-col-unread,
 #desktopDovecoteModal .dovecote-col-attachment,
-#desktopDovecoteModal .dovecote-col-route {
+#desktopDovecoteModal .dovecote-col-route,
+#desktopDovecoteModal .dovecote-col-flag {
     text-align: center;
+}
+
+/* Windows Mail's flag column: an e-mail account's list (Yozora #789) has it where Dreamscape
+   Mail's route column is; the grid keeps its six columns */
+#desktopDovecoteModal .dovecote-col-flag,
+#desktopDovecoteModal .dovecote-imap-view .dovecote-col-route {
+    display: none;
+}
+
+#desktopDovecoteModal .dovecote-imap-view .dovecote-col-flag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+#desktopDovecoteModal .dovecote-imap-view .dovecote-message-rows .dovecote-col-flag {
+    cursor: var(--c-pointer);
+}
+
+#desktopDovecoteModal .dovecote-col-flag > i {
+    color: #d40000;
 }
 
 .dovecote-route-icon,
@@ -803,14 +829,18 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
 }
 
 /* folders-16.png (msoeres.dll bitmap 16, bitmap 20 at 32px): 7 Inbox, 8 Outbox, 9 Sent Items,
-   10 Deleted Items, 6 a mail folder (Archive), 20 Local Folders, 16 the communities server,
-   21 a newsgroup (a bot mailbox) */
-:is(.dovecote-folder-btn[data-dove-folder="inbox"] > i, .dovecote-tree-icon[data-dove-tree-icon="inbox"]) { --dove-folder-icon: 7; }
+   10 Deleted Items, 11 Drafts, 13 Junk E-mail, 6 a mail folder (Archive, an e-mail account's own
+   folders), 19 a mail server (an e-mail account), 20 Local Folders, 16 the communities server,
+   21 a newsgroup (a bot mailbox). .dove-move-icon: the Move dialog's tree (doveImapMoveDialog) */
+:is(.dovecote-folder-btn[data-dove-folder="inbox"] > i, .dovecote-tree-icon[data-dove-tree-icon="inbox"], .dove-move-icon[data-dove-tree-icon="inbox"]) { --dove-folder-icon: 7; }
 :is(.dovecote-folder-btn[data-dove-folder="outbox"] > i, .dovecote-tree-icon[data-dove-tree-icon="outbox"]) { --dove-folder-icon: 8; }
-:is(.dovecote-folder-btn[data-dove-folder="sent"] > i, .dovecote-tree-icon[data-dove-tree-icon="sent"]) { --dove-folder-icon: 9; }
-:is(.dovecote-folder-btn[data-dove-folder="deleted"] > i, .dovecote-tree-icon[data-dove-tree-icon="deleted"]) { --dove-folder-icon: 10; }
-:is(.dovecote-folder-btn[data-dove-folder="archive"] > i, .dovecote-tree-icon[data-dove-tree-icon="archive"]) { --dove-folder-icon: 6; }
-:is(.dovecote-folder-btn[data-dove-folder="spam"] > i, .dovecote-tree-icon[data-dove-tree-icon="spam"]) { --dove-folder-icon: 11; }
+:is(.dovecote-folder-btn[data-dove-folder="sent"] > i, .dovecote-tree-icon[data-dove-tree-icon="sent"], .dove-move-icon[data-dove-tree-icon="sent"]) { --dove-folder-icon: 9; }
+:is(.dovecote-folder-btn[data-dove-folder="deleted"] > i, .dovecote-tree-icon[data-dove-tree-icon="deleted"], .dove-move-icon[data-dove-tree-icon="deleted"]) { --dove-folder-icon: 10; }
+:is(.dovecote-folder-btn[data-dove-folder="archive"] > i, .dovecote-tree-icon[data-dove-tree-icon="archive"], .dove-move-icon[data-dove-tree-icon="archive"]) { --dove-folder-icon: 6; }
+:is(.dovecote-folder-btn[data-dove-folder="spam"] > i, .dovecote-tree-icon[data-dove-tree-icon="spam"], .dove-move-icon[data-dove-tree-icon="spam"]) { --dove-folder-icon: 13; }
+:is(.dovecote-folder-btn[data-dove-folder="drafts"] > i, .dovecote-tree-icon[data-dove-tree-icon="drafts"], .dove-move-icon[data-dove-tree-icon="drafts"]) { --dove-folder-icon: 11; }
+:is(.dovecote-folder-btn[data-dove-folder="folder"] > i, .dovecote-tree-icon[data-dove-tree-icon="folder"], .dove-move-icon[data-dove-tree-icon="folder"]) { --dove-folder-icon: 6; }
+:is(.dovecote-tree-icon, .dove-move-icon)[data-dove-tree-icon="account"] { --dove-folder-icon: 19; }
 .dovecote-tree-icon[data-dove-tree-icon="local"] { --dove-folder-icon: 20; }
 .dovecote-tree-icon[data-dove-tree-icon="communities"] { --dove-folder-icon: 16; }
 .dovecote-tree-icon[data-dove-tree-icon="mailbox"] { --dove-folder-icon: 21; }
@@ -878,13 +908,13 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     font-weight: 400;
 }
 
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row[data-dove-tree-owner]:hover .dovecote-tree-label {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row:is([data-dove-tree-owner], [data-dove-tree-account]:not([data-dove-tree-group])):hover .dovecote-tree-label {
     background: linear-gradient(#fafbfd, #ebf3fd);
     border-color: #b8d6fb;
 }
 
 body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-label.is-current,
-body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row[data-dove-tree-owner]:hover .dovecote-tree-label.is-current {
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-tree-row:is([data-dove-tree-owner], [data-dove-tree-account]):hover .dovecote-tree-label.is-current {
     background: linear-gradient(#f2f9fe, #d6f0fd);
     border-color: #99defd;
 }
@@ -1110,6 +1140,37 @@ body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-con
     width: 16px;
     height: 16px;
     background: url('/static_images/vista-mail/list-16.png') no-repeat -128px 0 / 960px 16px;
+}
+
+/* the flag column (e-mail accounts): the header's black flag, a flagged message's red flag
+   (list-16.png 33 / 34) */
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-flag {
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-header > .dovecote-col-flag::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -528px 0 / 960px 16px;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-message-row > .dovecote-col-flag {
+    justify-content: center;
+    padding: 0;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-flag > i {
+    display: none;
+}
+
+body:not(.windows-classic-theme) .modal[data-window-client="light"] > .modal-content.win7.dovecote-client .dovecote-message-rows .dovecote-col-flag:has(> i)::before {
+    content: '';
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mail/list-16.png') no-repeat -544px 0 / 960px 16px;
 }
 
 /* route: 16px shared vista-icons, same cell size as unread / paperclip */
@@ -1682,4 +1743,85 @@ body.windows-classic-theme #dovecoteNewMailModal .dovecote-new-mail {
 
 body.desktop-mode:not(.windows-classic-theme) #dovecoteNewMailModal .dovecote-new-mail-preview {
     color: #6d6d6d;
+}
+
+/* ---- Edit > Move to Folder... (an e-mail account, doveImapMoveDialog): Windows Mail's Move
+   dialog, the account's folder tree in a white sunken box inside the confirmation dialog ---- */
+
+.dove-move-dialog {
+    min-width: 280px;
+    margin: 0;
+}
+
+.dove-move-text {
+    margin: 0 0 6px;
+}
+
+.dove-move-tree {
+    height: 200px;
+    padding: 2px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #828790;
+    box-sizing: border-box;
+    color: #000;
+    font: 12px "Segoe UI", "Noto Sans", sans-serif;
+    text-align: left;
+}
+
+.dove-move-row {
+    display: flex;
+    align-items: center;
+    height: 18px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+.dove-move-level-1 { padding-left: 19px; }
+.dove-move-level-2 { padding-left: 38px; }
+.dove-move-level-3 { padding-left: 57px; }
+.dove-move-level-4 { padding-left: 76px; }
+.dove-move-level-5 { padding-left: 95px; }
+
+.dove-move-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+    background: image-set(url('/static_images/vista-mail/folders-16.png') 1x, url('/static_images/vista-mail/folders-32.png') 2x) no-repeat;
+    background-size: 544px 16px;
+    background-position: calc(var(--dove-folder-icon, 6) * -16px) 0;
+}
+
+.dove-move-label {
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 3px;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    box-sizing: border-box;
+}
+
+.dove-move-row[data-dove-move-path]:hover .dove-move-label {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+.dove-move-row.is-selected .dove-move-label,
+.dove-move-row.is-selected:hover .dove-move-label {
+    background: linear-gradient(#f2f9fe, #d6f0fd);
+    border-color: #99defd;
+}
+
+body.windows-classic-theme .dove-move-row.is-selected .dove-move-label {
+    background: #0a246a;
+    border-color: #0a246a;
+    color: #fff;
+}
+
+/* New Message's From: combo box (several accounts) spans the row like the address boxes */
+.dovecote-compose-window .dovecote-compose-from {
+    flex: 1 1 auto;
+    min-width: 0;
 }

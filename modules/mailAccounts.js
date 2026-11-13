@@ -122,7 +122,7 @@ async function startWatch(rt) {
         c.on('exists', () => { onNewMail(rt).catch((e) => log(`${rt.account.id} new mail: ${e.message}`)); });
         c.on('flags', (d) => {
             if (!d || !d.uid) return;
-            if (store.setFlags(rt.account.id, 'INBOX', d.uid, [...(d.flags || [])])) { store.recount(rt.account.id, 'INBOX'); broadcast({ event: 'flags', accountId: rt.account.id, folder: 'INBOX', uids: [d.uid] }); }
+            if (store.setFlags(rt.account.id, 'INBOX', d.uid, [...(d.flags || [])])) { store.recount(rt.account.id, 'INBOX'); broadcast({ event: 'flags', accountId: rt.account.id, folder: 'INBOX', uids: [d.uid], flags: { [d.uid]: [...(d.flags || [])] } }); }
         });
         c.on('expunge', () => { syncSoon(rt, ['INBOX']); });
         // this imapflow does not idle by itself: keep IDLE running (it ends on its own every few
@@ -397,15 +397,16 @@ async function setFlags(accountId, folder, uidList, { add = [], remove = [] } = 
     const r0 = rt(accountId);
     const list = (uidList || []).map(Number).filter((u) => u > 0);
     if (!list.length) return { ok: true };
+    const now = {};
     const c = await opsClient(r0);
     const lock = await c.getMailboxLock(folder);
     try {
         if (add.length) await c.messageFlagsAdd(list.join(','), add, { uid: true });
         if (remove.length) await c.messageFlagsRemove(list.join(','), remove, { uid: true });
-        for await (const m of c.fetch(list.join(','), { uid: true, flags: true }, { uid: true })) store.setFlags(accountId, folder, m.uid, [...(m.flags || [])]);
+        for await (const m of c.fetch(list.join(','), { uid: true, flags: true }, { uid: true })) { store.setFlags(accountId, folder, m.uid, [...(m.flags || [])]); now[m.uid] = [...(m.flags || [])]; }
     } finally { lock.release(); }
     store.recount(accountId, folder);
-    broadcast({ event: 'flags', accountId, folder, uids: list });
+    broadcast({ event: 'flags', accountId, folder, uids: list, flags: now });
     return { ok: true };
 }
 
@@ -450,23 +451,39 @@ function smtpOptions(a, password) {
  * Send: { to, cc, bcc, subject, text, html, attachments: [uploadId], reply: { folder, uid, kind: 'reply'|'forward' } }.
  * Saved to Sent by APPEND unless the provider keeps sent mail itself (Gmail, Outlook.com).
  */
-async function send(accountId, body) {
-    const r0 = rt(accountId);
-    const a = r0.account;
-    const sec = secretFor(accountId);
-    const nodemailer = require('nodemailer');
-    const MailComposer = require('nodemailer/lib/mail-composer');
-    const list = (v) => (Array.isArray(v) ? v : String(v || '').split(/[;,]/)).map((s) => String(s).trim()).filter(Boolean);
+/** The message object (nodemailer) for send and drafts: recipients, body, uploads, an original's attachments, threading. */
+async function composeMessage(accountId, a, body, { needRecipient }) {
+    const list = (v) => (Array.isArray(v) ? v : String(v || '').split(/[;,]/)).map((x) => String(x).trim()).filter(Boolean);
     const to = list(body.to);
     const cc = list(body.cc);
     const bcc = list(body.bcc);
-    if (!to.length && !cc.length && !bcc.length) throw fail('NO_RECIPIENT', 'Who is the message for?');
+    if (needRecipient && !to.length && !cc.length && !bcc.length) throw fail('NO_RECIPIENT', 'Who is the message for?');
     const msg = { from: a.displayName ? { name: a.displayName, address: a.email } : a.email, to, cc, bcc, subject: String(body.subject || ''), text: body.text != null ? String(body.text) : undefined, html: body.html ? String(body.html) : undefined, attachments: [] };
     for (const idAtt of body.attachments || []) {
         const u = uploads.get(idAtt);
         if (!u) throw fail('NO_UPLOAD', 'An attachment expired. Attach it again.');
         msg.attachments.push({ filename: u.name, path: u.file, contentType: u.type });
     }
+    // Forward: the original's attachments come along (from the mail server, cached)
+    if (body.forwardFrom && body.forwardFrom.uid) {
+        const orig = store.getMessage(accountId, body.forwardFrom.folder, Number(body.forwardFrom.uid));
+        const all = orig ? (() => { try { return JSON.parse(orig.att || '[]'); } catch (_) { return []; } })() : [];
+        const want = Array.isArray(body.forwardFrom.parts) ? body.forwardFrom.parts.map(String) : all.filter((x) => !x.inline).map((x) => x.part);
+        for (const part of want) {
+            const f = await attachment(accountId, body.forwardFrom.folder, Number(body.forwardFrom.uid), part);
+            msg.attachments.push({ filename: f.name, path: f.file, contentType: f.type });
+        }
+    }
+    return msg;
+}
+
+async function send(accountId, body) {
+    const r0 = rt(accountId);
+    const a = r0.account;
+    const sec = secretFor(accountId);
+    const nodemailer = require('nodemailer');
+    const MailComposer = require('nodemailer/lib/mail-composer');
+    const msg = await composeMessage(accountId, a, body, { needRecipient: true });
     if (body.reply && body.reply.uid) {
         const orig = store.getMessage(accountId, body.reply.folder, Number(body.reply.uid));
         if (orig && orig.msgid) {
@@ -493,7 +510,32 @@ async function send(accountId, body) {
     if (body.reply && body.reply.uid && body.reply.kind !== 'forward') setFlags(accountId, body.reply.folder, [body.reply.uid], { add: ['\\Answered'] }).catch(() => {});
     for (const idAtt of body.attachments || []) { const u = uploads.get(idAtt); if (u) { fs.promises.unlink(u.file).catch(() => {}); uploads.delete(idAtt); } }
     if (sent) syncSoon(r0, [sent.path]);
+    // a sent draft leaves Drafts
+    if (body.draftUid) { const dr = store.listFolders(accountId).find((f) => f.special === '\\Drafts'); if (dr) remove(accountId, dr.path, [body.draftUid]).catch(() => {}); }
     return { ok: true, messageId: info.messageId };
+}
+
+/**
+ * Save a draft into the account's Drafts folder on the mail server (APPEND, \Draft \Seen); replaceUid
+ * removes the draft it replaces. -> { folder, uid } (uid when the server reports it, UIDPLUS).
+ */
+async function saveDraft(accountId, body) {
+    const r0 = rt(accountId);
+    const a = r0.account;
+    const MailComposer = require('nodemailer/lib/mail-composer');
+    const drafts = store.listFolders(accountId).find((f) => f.special === '\\Drafts');
+    if (!drafts) throw fail('NO_DRAFTS', 'This account has no Drafts folder.');
+    const msg = await composeMessage(accountId, a, body, { needRecipient: false });
+    const raw = await new MailComposer(msg).compile().build();
+    const c = await opsClient(r0);
+    const res = await c.append(drafts.path, raw, ['\\Draft', '\\Seen']);
+    if (body.replaceUid) {
+        const lock = await c.getMailboxLock(drafts.path);
+        try { await c.messageDelete(String(body.replaceUid), { uid: true }); } catch (_) { /* already gone */ } finally { lock.release(); }
+        store.deleteMessages(accountId, drafts.path, [Number(body.replaceUid)]);
+    }
+    syncSoon(r0, [drafts.path]);
+    return { folder: drafts.path, uid: res && res.uid ? res.uid : null };
 }
 
 /** An attachment's body from the mail server (the copy keeps only its listing), cached on disk. */
@@ -555,5 +597,5 @@ function unreadSummary() {
 
 module.exports = {
     init, listAccounts, testAccount, saveAccount, deleteAccount, listFolders, listMessages, getMessage, setFlags, move, remove, send,
-    attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS
+    attachment, addUpload, search, syncStatus, resync, unreadSummary, presetFor, PRESETS, saveDraft
 };

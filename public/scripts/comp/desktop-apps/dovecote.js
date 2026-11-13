@@ -130,12 +130,14 @@ const doveApplyServerMailSettings = function (mail) {
 
 // The signature goes under what the user writes, after a blank line: at the bottom of a new message
 // or a reply, and above a forwarded message's text (which is quoted under it).
-const doveWithSignature = function (mode, body) {
+// quoted: the body is the original message under the reply (an e-mail account's reply, doveImapOpenCompose),
+// so the signature goes above it, as for a forward.
+const doveWithSignature = function (mode, body, quoted) {
     const opts = doveSignatureSettings;
     const signature = opts.signature.replace(/\s+$/, '');
     if (!signature.trim() || !opts.signatureOutgoing) return body || '';
     if (mode !== 'create' && opts.signatureSkipReplies) return body || '';
-    if (mode === 'forward') return '\n\n' + signature + (body ? '\n\n' + body : '');
+    if (mode === 'forward' || quoted) return '\n\n' + signature + (body ? '\n\n' + String(body).replace(/^\n+/, '') : '');
     return (body || '') + '\n\n' + signature;
 };
 
@@ -164,8 +166,11 @@ window.openDovecoteMailOptions = doveOpenMailOptions;
 // { folder, sortKey, sortDir, viewAsOwner, mail: [], selectedId, selectedIds, mailboxes: [],
 //   bodyView, searchText, mobileMessageOpen, nextCursor, hasMore, folderTotal, folderUnread,
 //   countsKey (doveCountsKey of the folder those counts belong to) }
+// account: the open IMAP e-mail account's id (Yozora #789, doveOpenImapFolder), null for Dreamscape
+// Mail; folder is then that account's folder path.
 const desktopDovecote = {
     loaded: false,
+    account: null,
     folder: 'inbox',
     sortKey: 'createdAt',
     sortDir: 'desc',
@@ -221,6 +226,8 @@ function openDesktopDovecote() {
         desktopDovecote.loaded = true;
         doveRefreshMailboxes();
         doveLoadFolder(desktopDovecote.folder);
+        doveImapBind();
+        doveImapRefreshAccounts();
     }
 }
 
@@ -515,6 +522,8 @@ const doveBuildToolbar = function () {
     const forwardBtn = doveCreateCommand('forward', 'Forward', 'fas fa-share', 'Forward');
     // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
     contextMenu.attachClickMenuToElement(forwardBtn, doveForwardMenuConfig);
+    // an e-mail account's message forwards straight to a New Message (doveSyncForwardButtons)
+    forwardBtn.dataset.doveForward = 'true';
     [replyBtn, replyAllBtn, forwardBtn].forEach((btn) => {
         btn.dataset.doveMutating = 'true';
         btn.dataset.doveNeedsMail = 'true';
@@ -575,10 +584,18 @@ const doveMenuSelection = function () {
     const count = rows.length;
     const one = count === 1 ? rows[0] : null;
     const anyUnread = rows.some((mail) => !mail.read);
-    const inDeleted = desktopDovecote.folder === 'deleted' || rows.some((mail) => mail.folder === 'deleted');
+    const inDeleted = doveCurrentFolderKind() === 'deleted' || rows.some((mail) => mail.folder === 'deleted');
     const inSpam = rows.length > 0 && rows.every((mail) => mail.folder === 'spam');
     const anyNotSpam = rows.some((mail) => mail.folder !== 'spam');
-    return { rows, count, one, anyUnread, inDeleted, inSpam, anyNotSpam };
+    const imap = !!desktopDovecote.account;
+    const allFlagged = rows.length > 0 && rows.every((mail) => mail.flagged);
+    return { rows, count, one, anyUnread, inDeleted, inSpam, anyNotSpam, imap, allFlagged };
+};
+
+// What the open folder is: Dreamscape Mail's folder id, or an e-mail account folder's kind by its
+// special use (inbox, drafts, sent, deleted, spam, archive, other: doveImapFolderKind).
+const doveCurrentFolderKind = function () {
+    return desktopDovecote.account ? doveImapFolderKind(desktopDovecote.account, desktopDovecote.folder) : desktopDovecote.folder;
 };
 
 const DOVE_MENUS = {
@@ -606,20 +623,29 @@ const DOVE_MENUS = {
             doveMenuItem('Move to Archive', 'archive', { disabled: off }),
             doveMenuItem('Move to Spam', 'spam', { disabled: off || !sel.anyNotSpam }),
             doveMenuItem('Not spam', 'notSpam', { disabled: off || !sel.inSpam }),
+            // Windows Mail's Edit > Move to Folder... (an e-mail account's folders, doveImapMoveDialog)
+            ...(sel.imap ? [doveMenuItem('Move to Folder...', 'move', { disabled: off })] : []),
             { separator: true },
             doveMenuItem('Find', 'find')
         ];
     },
+    // Windows Mail's Tools > Accounts...: the e-mail accounts live in Dreamscape CardSpace (doveOpenMailAccounts)
     tools: () => [
+        doveMenuItem('Accounts...', 'accounts'),
+        { separator: true },
         doveMenuItem('Options...', 'options')
     ],
     view: () => {
         const sortItems = [['from', 'From'], ['subject', 'Subject'], ['createdAt', 'Received']].map(([key, text]) => (
             doveMenuItem(text, 'sort', { doveSortKey: key, showIndicator: true, indicatorMark: 'radio', checked: desktopDovecote.sortKey === key })
         ));
-        const folderItems = DESKTOP_DOVECOTE_FOLDERS.map((folder) => (
-            doveMenuItem(folder.label, 'folder', { doveFolderId: folder.id, showIndicator: true, indicatorMark: 'radio', checked: desktopDovecote.folder === folder.id })
-        ));
+        const folderItems = desktopDovecote.account
+            ? doveImapFolderNodes(desktopDovecote.account).filter((node) => node.selectable).map((node) => (
+                doveMenuItem(node.label, 'imapFolder', { doveImapPath: node.path, showIndicator: true, indicatorMark: 'radio', checked: desktopDovecote.folder === node.path })
+            ))
+            : DESKTOP_DOVECOTE_FOLDERS.map((folder) => (
+                doveMenuItem(folder.label, 'folder', { doveFolderId: folder.id, showIndicator: true, indicatorMark: 'radio', checked: desktopDovecote.folder === folder.id })
+            ));
         return [
             { text: 'Sort By', submenu: sortItems },
             { text: 'Go to Folder', submenu: folderItems },
@@ -638,11 +664,18 @@ const DOVE_MENUS = {
             { separator: true },
             doveMenuItem('Reply to Sender', 'reply', { disabled: readOnly || sel.count !== 1 }),
             doveMenuItem('Reply to All', 'replyAll', { disabled: readOnly || sel.count !== 1 }),
-            {
-                text: sel.count > 1 ? 'Forward ' + sel.count + ' Messages' : 'Forward',
-                disabled: readOnly || !sel.count || !others.length,
-                submenu: others.map((box) => doveMenuItem(box.label, 'forward', { doveOwner: box.owner }))
-            }
+            // an e-mail account forwards to a New Message; Dreamscape Mail picks a mailbox
+            sel.imap
+                ? doveMenuItem(sel.count > 1 ? 'Forward ' + sel.count + ' Messages' : 'Forward', 'forward', { disabled: !sel.count })
+                : {
+                    text: sel.count > 1 ? 'Forward ' + sel.count + ' Messages' : 'Forward',
+                    disabled: readOnly || !sel.count || !others.length,
+                    submenu: others.map((box) => doveMenuItem(box.label, 'forward', { doveOwner: box.owner }))
+                },
+            ...(sel.imap ? [
+                { separator: true },
+                doveMenuItem('Flag Message', 'flag', { disabled: !sel.count, showIndicator: true, checked: sel.allFlagged })
+            ] : [])
         ];
     }
 };
@@ -656,8 +689,12 @@ const doveRunMenuAction = function (item) {
         case 'find': desktopDovecoteEls.searchInput.focus(); return;
         case 'sort': doveSetSort(item.doveSortKey); return;
         case 'folder': doveOpenTreeFolder(desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER, item.doveFolderId); return;
+        case 'imapFolder': doveOpenImapFolder(desktopDovecote.account, item.doveImapPath); return;
         case 'html': doveSetBodyView(desktopDovecote.bodyView === 'rendered' ? 'raw' : 'rendered'); return;
         case 'options': doveOpenMailOptions(); return;
+        case 'accounts': doveOpenMailAccounts(); return;
+        case 'flag': doveMarkMailIds(sel.rows.map((mail) => mail.id), { flagged: !sel.allFlagged }, { stay: true }); return;
+        case 'move': doveImapMoveDialog(sel.rows.map((mail) => mail.id)); return;
         case 'forward': doveForwardSelected(item.doveOwner); return;
         case 'selectAll': doveSelectAllVisible(); return;
         default: doveDispatchAction(item.doveMenu);
@@ -707,6 +744,12 @@ const doveBuildSearchBox = function () {
     searchGroup.appendChild(searchIcon);
     searchInput.addEventListener('input', () => {
         desktopDovecote.searchText = searchInput.value;
+        // an e-mail account searches its whole copy on the server (mailAccounts.search, doveImapFetchPage)
+        if (desktopDovecote.account) {
+            clearTimeout(doveImap.searchTimer);
+            doveImap.searchTimer = setTimeout(() => doveLoadFolder(desktopDovecote.folder), 350);
+            return;
+        }
         doveRenderMessageList();
     });
     return searchGroup;
@@ -727,6 +770,26 @@ const doveBuildFolderBar = function () {
     tree.id = 'desktopDovecoteFolderTree';
     tree.setAttribute('role', 'tree');
     tree.addEventListener('click', (ev) => {
+        // an e-mail account's tree: the expander folds it, a folder opens, the account row opens its Inbox
+        const accountRow = ev.target.closest('[data-dove-tree-account]');
+        if (accountRow) {
+            const accountId = accountRow.dataset.doveTreeAccount;
+            if (ev.target.closest('.dovecote-tree-expander[data-state]') && accountRow.dataset.doveTreePath == null) {
+                if (doveImap.collapsed.has(accountId)) doveImap.collapsed.delete(accountId);
+                else doveImap.collapsed.add(accountId);
+                doveRenderFolderTree();
+                return;
+            }
+            let path = accountRow.dataset.doveTreePath;
+            if (path == null && !accountRow.dataset.doveTreeGroup) {
+                const inbox = doveImapFolderBySpecial(accountId, '\\Inbox');
+                path = inbox ? inbox.path : 'INBOX';
+            }
+            if (path == null) return;
+            doveToggleFolderTree(false);
+            doveOpenImapFolder(accountId, path);
+            return;
+        }
         const row = ev.target.closest('[data-dove-tree-owner]');
         if (!row) return;
         doveToggleFolderTree(false);
@@ -777,6 +840,7 @@ const doveToggleFolderTree = function (force) {
     doveRenderFolderTree();
     // Fresh unread counts for every mailbox; doveRefreshMailboxes re-renders the open tree.
     doveRefreshMailboxes();
+    doveImapRefreshAccounts();
     doveFolderTreeDismiss = (ev) => {
         if (ev.type === 'keydown') {
             if (ev.key === 'Escape') doveToggleFolderTree(false);
@@ -788,13 +852,19 @@ const doveToggleFolderTree = function (force) {
     document.addEventListener('keydown', doveFolderTreeDismiss, true);
 };
 
-// opts: { level, label, icon, owner, folder, count, expander: 'open' | 'closed', current }
+// opts: { level, label, icon, owner, folder, count, expander: 'open' | 'closed', current,
+//   account, path (an e-mail account's folder; no path = the account row), group (a folder that
+//   only holds others), title }
 const doveBuildTreeRow = function (opts) {
     const row = document.createElement('div');
     row.className = 'dovecote-tree-row dovecote-tree-level-' + opts.level;
     row.setAttribute('role', 'treeitem');
     if (opts.owner) row.dataset.doveTreeOwner = opts.owner;
     if (opts.folder) row.dataset.doveTreeFolder = opts.folder;
+    if (opts.account) row.dataset.doveTreeAccount = opts.account;
+    if (opts.path != null) row.dataset.doveTreePath = opts.path;
+    if (opts.group) row.dataset.doveTreeGroup = 'true';
+    if (opts.title) row.title = opts.title;
     const expander = document.createElement('span');
     expander.className = 'dovecote-tree-expander';
     if (opts.expander) {
@@ -845,11 +915,14 @@ const doveRenderFolderTree = function () {
         owner: owner,
         folder: folder.id,
         count: folder.id === 'inbox' ? unreadOf(owner) : (folder.id === 'spam' ? spamUnreadOf(owner) : 0),
-        current: current === owner && desktopDovecote.folder === folder.id
+        current: !desktopDovecote.account && current === owner && desktopDovecote.folder === folder.id
     }));
     const bots = desktopDovecote.mailboxes.filter((box) => doveIsBotOwner(box.owner));
+    // Windows Mail with several accounts: Local Folders, then each e-mail account's own tree under
+    // its name (doveImapTreeRows), then the communities.
     const rows = [doveBuildTreeRow({ level: 0, label: DOVE_LOCAL_FOLDERS_LABEL, icon: 'local', expander: 'open' })]
         .concat(folderRows(human, 1))
+        .concat(doveImapTreeRows())
         .concat(doveBuildTreeRow({ level: 0, label: DOVE_COMMUNITIES_LABEL, icon: 'communities', expander: bots.length ? 'open' : null }));
     bots.forEach((box) => {
         const open = current === box.owner;
@@ -870,6 +943,7 @@ const doveRenderFolderTree = function () {
 // the same mailbox just loads the folder.
 const doveOpenTreeFolder = function (owner, folder) {
     const current = desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER;
+    if (desktopDovecote.account) doveLeaveImapAccount();
     desktopDovecote.folder = folder;
     if (owner !== current) {
         doveSwitchMailbox(owner);
@@ -880,6 +954,16 @@ const doveOpenTreeFolder = function (owner, folder) {
 
 const doveRenderFolderButton = function () {
     const button = document.getElementById('desktopDovecoteFolderBtn');
+    if (button && desktopDovecote.account) {
+        // an e-mail account's folder: its special-use picture and Windows Mail's name (doveImapFolderView)
+        const view = doveImapFolderView(desktopDovecote.account, desktopDovecote.folder);
+        button.dataset.doveFolder = view.icon;
+        button.querySelector('i').className = 'fas fa-folder';
+        button.querySelector('.dovecote-folder-btn-label').textContent = view.label;
+        doveRenderWindowTitle();
+        doveRenderFolderTree();
+        return;
+    }
     const folder = DESKTOP_DOVECOTE_FOLDERS.find((f) => f.id === desktopDovecote.folder);
     if (!button || !folder) return;
     button.dataset.doveFolder = folder.id;
@@ -892,6 +976,7 @@ const doveRenderFolderButton = function () {
 // The folder whose counts desktopDovecote.folderTotal / folderUnread hold (doveApplyListPage):
 // the caption leaves the count off while a newly picked folder is still loading.
 const doveCountsKey = function () {
+    if (desktopDovecote.account) return DOVE_IMAP_PREFIX + desktopDovecote.account + '/' + desktopDovecote.folder;
     return (desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER) + '/' + desktopDovecote.folder;
 };
 
@@ -899,13 +984,19 @@ const doveCountsKey = function () {
 // count, "Inbox - Dovecote Express" when nothing in it is unread; a bot mailbox adds its name.
 const doveRenderWindowTitle = function () {
     const el = desktopDovecoteEls && desktopDovecoteEls.titleText;
-    const folder = DESKTOP_DOVECOTE_FOLDERS.find((f) => f.id === desktopDovecote.folder);
+    const imapAccount = desktopDovecote.account ? doveImapAccount(desktopDovecote.account) : null;
+    const folder = desktopDovecote.account
+        ? { label: doveImapFolderView(desktopDovecote.account, desktopDovecote.folder).label }
+        : DESKTOP_DOVECOTE_FOLDERS.find((f) => f.id === desktopDovecote.folder);
     if (!el || !folder) return;
     const owner = desktopDovecote.viewAsOwner;
     const box = owner && desktopDovecote.mailboxes.find((b) => b.owner === owner);
     const unread = desktopDovecote.countsKey === doveCountsKey() ? (desktopDovecote.folderUnread || 0) : 0;
-    const text = folder.label + (unread > 0 ? ' (' + unread + ')' : '')
-        + (owner ? ' - ' + ((box && box.label) || owner) : '') + ' - ' + DOVE_APP_TITLE;
+    // an e-mail account's folder adds the account, as a bot mailbox adds its name
+    const where = desktopDovecote.account
+        ? ' - ' + (imapAccount ? doveImapAccountLabel(imapAccount) : desktopDovecote.account)
+        : (owner ? ' - ' + ((box && box.label) || owner) : '');
+    const text = folder.label + (unread > 0 ? ' (' + unread + ')' : '') + where + ' - ' + DOVE_APP_TITLE;
     if (el.textContent === text) return;
     el.textContent = text;
     // debouncedUpdateTaskbarWindows: public/scripts/comp/modalUtils.js
@@ -995,7 +1086,8 @@ const doveBuildMailRowMenuSections = function (mailId) {
     const anyRead = rows.some((row) => row.read);
     const inSpam = rows.every((row) => row.folder === 'spam');
     const anyNotSpam = rows.some((row) => row.folder !== 'spam');
-    const inDeleted = desktopDovecote.folder === 'deleted' || rows.every((row) => row.folder === 'deleted');
+    const inDeleted = doveCurrentFolderKind() === 'deleted' || rows.every((row) => row.folder === 'deleted');
+    if (rows.some((row) => row.imap)) return doveImapRowMenuSections(rows, mail, ids, { count, bulk, anyUnread, anyRead, inSpam, anyNotSpam, inDeleted });
     const items = [];
     if (bulk) {
         items.push({ text: count + ' selected', disabled: true });
@@ -1046,6 +1138,7 @@ const doveHandleMailRowMenuAction = function (item) {
         case 'dove-row-open': doveOpenSelected(mailId); return;
         case 'dove-row-open-window': doveOpenReaderWindow(mailId); return;
         case 'dove-row-reply': doveReplyToMailId(mailId); return;
+        case 'dove-row-reply-all': doveFetchMailFull(mailId).then((mail) => { if (mail) doveOpenCompose('replyAll', mail); }); return;
         case 'dove-row-forward': doveForwardSelected(item.doveOwner, ids); return;
         case 'dove-row-mark-read': doveMarkMailIds(ids, { read: true }); return;
         case 'dove-row-mark-unread': doveMarkMailIds(ids, { read: false }); return;
@@ -1056,6 +1149,8 @@ const doveHandleMailRowMenuAction = function (item) {
         case 'dove-row-delete':
             doveConfirmPermanentDelete(ids.length).then((ok) => { if (ok) doveMarkMailIds(ids, { deleted: true }); });
             return;
+        case 'dove-row-flag': doveMarkMailIds(ids, { flagged: item.doveFlag === true }, { stay: true }); return;
+        case 'dove-row-move': doveImapMoveDialog(ids); return;
         default: return;
     }
 };
@@ -1063,6 +1158,14 @@ const doveHandleMailRowMenuAction = function (item) {
 // Reply/Forward need the full message body, which the list summaries don't carry —
 // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks it read).
 const doveFetchMailFull = async function (id, options) {
+    if (doveIsImapId(id)) {
+        try {
+            return await doveImapFetchFull(id, { markSeen: !(options && options.markRead === false) });
+        } catch (err) {
+            doveShowError((err && err.message) || 'Could not open message');
+            return null;
+        }
+    }
     const request = { id: id };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
     if (options && options.markRead === false) request.markRead = false;
@@ -1139,6 +1242,11 @@ const doveMarkMailIds = async function (ids, patch, options) {
     if (desktopDovecote.viewAsOwner) return;
     const list = (ids || []).map(String).filter(Boolean);
     if (!list.length) return;
+    // an e-mail account's messages: flags and moves at its mail server (doveImapMark)
+    if (list.some(doveIsImapId)) {
+        await doveImapMark(list.filter(doveIsImapId), patch, options);
+        return;
+    }
     const stay = options && options.stay;
     try {
         const request = Object.assign({ ids: list }, patch);
@@ -1174,6 +1282,7 @@ const doveMarkMailIds = async function (ids, patch, options) {
 };
 
 const doveSwitchMailbox = function (owner) {
+    if (desktopDovecote.account) doveLeaveImapAccount();
     desktopDovecote.viewAsOwner = owner === DESKTOP_DOVECOTE_HUMAN_OWNER ? null : owner;
     doveClearSelection();
     doveRenderMailboxBanner();
@@ -1207,6 +1316,8 @@ const DESKTOP_DOVECOTE_LIST_COLUMNS = [
     { key: 'unread', label: '', sortable: false },
     { key: 'attachment', label: '📎', sortable: false },
     { key: 'route', label: '', sortable: false },
+    // Windows Mail's flag column: e-mail accounts only (.dovecote-imap-view swaps it for route)
+    { key: 'flag', label: '', sortable: false },
     { key: 'from', label: 'From', sortable: true },
     { key: 'subject', label: 'Subject', sortable: true },
     { key: 'createdAt', label: 'Received', sortable: true }
@@ -1251,6 +1362,12 @@ const doveBuildMainPane = function () {
     rows.addEventListener('click', (ev) => {
         const row = ev.target.closest('[data-dove-mail-id]');
         if (!row) return;
+        // Windows Mail: a click in the flag column flags or clears that message
+        if (ev.target.closest('.dovecote-col-flag') && doveIsImapId(row.dataset.doveMailId) && !doveHasModifierSelect(ev) && !ev.shiftKey) {
+            const mail = desktopDovecote.mail.find((m) => String(m.id) === row.dataset.doveMailId);
+            if (mail) doveMarkMailIds([mail.id], { flagged: !mail.flagged }, { stay: true });
+            return;
+        }
         doveHandleRowActivate(row.dataset.doveMailId, ev);
     });
     rows.addEventListener('dblclick', (ev) => {
@@ -1404,6 +1521,7 @@ const doveBuildPreviewPane = function () {
         if (action === 'forward') {
             // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
             contextMenu.attachClickMenuToElement(btn, doveForwardMenuConfig);
+            btn.dataset.doveForward = 'true';
         } else {
             btn.dataset.doveAction = action;
         }
@@ -1541,7 +1659,10 @@ const doveDispatchAction = function (action) {
         case 'spam': doveSpamSelected(true); return;
         case 'notSpam': doveSpamSelected(false); return;
         case 'selectAll': doveSelectAllVisible(); return;
-        case 'refresh': doveLoadFolder(desktopDovecote.folder); return;
+        // Send/Receive: every e-mail account fetches from its mail server, then the folder reloads
+        case 'refresh': doveImapSendReceive(); doveLoadFolder(desktopDovecote.folder); return;
+        // an e-mail account's Forward (doveSyncForwardButtons): straight to a New Message
+        case 'forward': doveForwardSelected(null); return;
         case 'mobileBack': doveSetMobileMessageOpen(false); return;
         default: return;
     }
@@ -1596,12 +1717,14 @@ const doveLoadFolder = async function (folder, options) {
     doveShowError(null);
     const request = { folder: folder };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    const imap = !!desktopDovecote.account;
     try {
-        // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js
-        const result = await wsClient.sendMessage('dovecote_list_mail', request, false);
+        // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js; an e-mail account's
+        // folder (or its search) from window.mailAccounts in the same page shape (doveImapFetchPage)
+        const result = imap ? await doveImapFetchPage(null) : await wsClient.sendMessage('dovecote_list_mail', request, false);
         if (token !== doveFolderToken) return;
         doveApplyListPage(result, false);
-        doveNoteMailIds(desktopDovecote.mail, { announce: false });
+        if (!imap) doveNoteMailIds(desktopDovecote.mail, { announce: false });
         const keep = doveSelectedIdSet();
         desktopDovecote.selectedIds = desktopDovecote.mail
             .map((mail) => String(mail.id))
@@ -1611,7 +1734,10 @@ const doveLoadFolder = async function (folder, options) {
             desktopDovecote.selectedMail = null;
         }
         doveRenderMessageList();
-        if (folder === 'inbox') {
+        if (imap) {
+            // the tray's Dreamscape Inbox count is not this list's; the account's counts: doveImapRefreshFolders
+            doveImapScheduleFolders(desktopDovecote.account);
+        } else if (folder === 'inbox') {
             doveRenderInboxBadge(desktopDovecote.folderUnread);
         } else if (!desktopDovecote.viewAsOwner) {
             const known = options && options.inboxUnread;
@@ -1637,12 +1763,14 @@ const doveLoadMoreFolder = async function () {
     doveRenderMessageList();
     const request = { folder: desktopDovecote.folder, cursor: desktopDovecote.nextCursor };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    const imap = !!desktopDovecote.account;
     try {
-        // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js
-        const result = await wsClient.sendMessage('dovecote_list_mail', request, false);
+        // dovecote_list_mail: modules/ws/handlers/250-dovecoteHandler.js; an e-mail account pages
+        // with mailAccounts.messages' before: cursor (doveImapFetchPage)
+        const result = imap ? await doveImapFetchPage(desktopDovecote.nextCursor) : await wsClient.sendMessage('dovecote_list_mail', request, false);
         if (token !== doveFolderToken) return;
         doveApplyListPage(result, true);
-        doveNoteMailIds((result && result.mail) || [], { announce: false });
+        if (!imap) doveNoteMailIds((result && result.mail) || [], { announce: false });
     } catch (err) {
         if (token !== doveFolderToken) return;
         doveShowError((err && err.message) || 'Could not load older mail');
@@ -1691,7 +1819,8 @@ const doveSetBodyView = function (view) {
 const doveFilteredSortedMail = function () {
     const query = desktopDovecote.searchText.trim().toLowerCase();
     let list = desktopDovecote.mail;
-    if (query) {
+    // an e-mail account's list already is the server's search result (body text too)
+    if (query && !desktopDovecote.account) {
         list = list.filter((m) => (
             (m.subject || '').toLowerCase().includes(query)
             || doveDisplayAddress(m.from).toLowerCase().includes(query)
@@ -1728,6 +1857,8 @@ const doveRenderMessageList = function () {
     // Windows Mail marks the sorted column: header arrow + tinted cells (dovecote.css)
     rows.parentNode.dataset.sortKey = desktopDovecote.sortKey;
     rows.parentNode.dataset.sortDir = desktopDovecote.sortDir;
+    rows.parentNode.classList.toggle('dovecote-imap-view', !!desktopDovecote.account);
+    const inSent = doveCurrentFolderKind() === 'sent' && !desktopDovecote.account;
     const list = doveFilteredSortedMail();
     list.forEach((mail) => {
         const row = document.createElement('div');
@@ -1743,7 +1874,7 @@ const doveRenderMessageList = function () {
         const unreadCell = document.createElement('span');
         unreadCell.className = 'dovecote-col-unread';
         if (signed) unreadCell.title = DOVE_SIGNED_TOOLTIP;
-        if (desktopDovecote.folder === 'sent') {
+        if (inSent) {
             // Read receipt (#2): a sent message shows a check once the recipient has opened it.
             if (mail.readByRecipient) {
                 const check = document.createElement('i');
@@ -1766,10 +1897,12 @@ const doveRenderMessageList = function () {
 
         const attachCell = document.createElement('span');
         attachCell.className = 'dovecote-col-attachment';
-        if (mail.attachments && mail.attachments.length) {
+        if ((mail.attachments && mail.attachments.length) || mail.hasAttachments) {
             const clip = document.createElement('i');
             clip.className = 'fas fa-paperclip';
-            clip.title = mail.attachments.length + ' attachment' + (mail.attachments.length === 1 ? '' : 's');
+            clip.title = mail.attachments && mail.attachments.length
+                ? mail.attachments.length + ' attachment' + (mail.attachments.length === 1 ? '' : 's')
+                : 'Has attachments';
             clip.setAttribute('aria-hidden', 'true');
             attachCell.appendChild(clip);
         }
@@ -1777,6 +1910,16 @@ const doveRenderMessageList = function () {
         const routeCell = document.createElement('span');
         routeCell.className = 'dovecote-col-route';
         routeCell.appendChild(doveBuildRouteIcon(mail.route));
+
+        const flagCell = document.createElement('span');
+        flagCell.className = 'dovecote-col-flag';
+        if (mail.flagged) {
+            const flagIcon = document.createElement('i');
+            flagIcon.className = 'fas fa-flag';
+            flagIcon.setAttribute('aria-hidden', 'true');
+            flagCell.appendChild(flagIcon);
+            flagCell.title = 'Flagged';
+        }
 
         const fromCell = document.createElement('span');
         fromCell.className = 'dovecote-col-from';
@@ -1793,6 +1936,7 @@ const doveRenderMessageList = function () {
         row.appendChild(unreadCell);
         row.appendChild(attachCell);
         row.appendChild(routeCell);
+        row.appendChild(flagCell);
         row.appendChild(fromCell);
         row.appendChild(subjectCell);
         row.appendChild(dateCell);
@@ -1876,9 +2020,11 @@ const doveOpenSelected = async function (id) {
     doveShowError(null);
     const request = { id: id };
     if (desktopDovecote.viewAsOwner) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    const imap = doveIsImapId(id);
     try {
-        // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks the message read server-side)
-        const result = await wsClient.sendMessage('dovecote_get_mail', request);
+        // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks the message read server-side);
+        // an e-mail account's message: mailAccounts.message, which marks it read at the mail server
+        const result = imap ? { mail: await doveImapFetchFull(id) } : await wsClient.sendMessage('dovecote_get_mail', request);
         doveSetSelectedIds([id], id);
         desktopDovecote.anchorId = String(id);
         desktopDovecote.selectedMail = result && result.mail;
@@ -1887,9 +2033,10 @@ const doveOpenSelected = async function (id) {
         if (found && !found.read) {
             found.read = true;
             desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 1) - 1);
+            if (imap) doveImapNoteRead(found, true);
         }
         doveRenderMessageList();
-        doveRenderInboxBadgeFromState();
+        if (!imap) doveRenderInboxBadgeFromState();
         doveRenderPreview();
         doveSetMobileMessageOpen(true);
     } catch (err) {
@@ -2038,7 +2185,8 @@ const doveRenderOeHeaderInto = function (els, mail) {
     els.oeSubject.textContent = mail ? (mail.subject || '(no subject)') : '';
     els.oeDate.textContent = mail ? doveFormatDate(mail.createdAt) : '';
     doveFillRouteSlot(els.oeRoute, mail ? mail.route : 'internal');
-    if (els.oeRoute) els.oeRoute.classList.toggle('hidden', !mail);
+    // the route mark is Dreamscape Mail's (internal / gateway); an e-mail account's mail has none
+    if (els.oeRoute) els.oeRoute.classList.toggle('hidden', !mail || !!mail.imap);
     if (els.oeSpam) els.oeSpam.textContent = doveFormatSpamScore(mail);
     if (els.oeAuth) els.oeAuth.textContent = doveFormatSpamAuth(mail);
     if (els.forgedBadge) els.forgedBadge.classList.toggle('hidden', !(mail && mail.spamForgedOurs));
@@ -2133,9 +2281,40 @@ const doveSaveAttachment = function (att, base64) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
+// An e-mail account's attachment (att.url, mailAccounts.message): the server fetches it from the
+// mail server on first open; ?download=1 makes it a download.
+const doveFetchUrlBase64 = async function (url) {
+    const response = await fetch(url, { credentials: 'same-origin' });
+    if (!response.ok) {
+        let message = 'The attachment could not be opened (' + response.status + ').';
+        try { const data = await response.json(); if (data && data.error) message = data.error; } catch (_) { /* not JSON */ }
+        throw new Error(message);
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || '').split(',')[1] || '');
+        reader.onerror = () => reject(new Error('The attachment could not be read.'));
+        reader.readAsDataURL(blob);
+    });
+};
+
+const doveSaveAttachmentUrl = function (att) {
+    const link = document.createElement('a');
+    link.href = att.url + (att.url.includes('?') ? '&' : '?') + 'download=1';
+    link.download = att.name || 'attachment';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+};
+
 const doveOpenAttachment = async function (att, viewAsOwner, action) {
     try {
-        const base64 = await doveFetchAttachmentBase64(att.id, viewAsOwner);
+        if (att.url && (action === 'save' || doveAttachmentKind(att) === 'file')) {
+            doveSaveAttachmentUrl(att);
+            return;
+        }
+        const base64 = att.url ? await doveFetchUrlBase64(att.url) : await doveFetchAttachmentBase64(att.id, viewAsOwner);
         if (!base64) return;
         const kind = doveAttachmentKind(att);
         const name = att.name || 'attachment';
@@ -2276,9 +2455,13 @@ const doveRenderAttachmentsInto = function (els, mail, viewAsOwner) {
             thumb.className = 'dovecote-attachment-thumb';
             thumb.alt = '';
             button.appendChild(thumb);
-            doveFetchAttachmentBase64(att.id, viewAsOwner).then((base64) => {
-                if (base64) thumb.src = 'data:' + att.mimeType + ';base64,' + base64;
-            }).catch(() => {});
+            if (att.url) {
+                thumb.src = att.url;
+            } else {
+                doveFetchAttachmentBase64(att.id, viewAsOwner).then((base64) => {
+                    if (base64) thumb.src = 'data:' + att.mimeType + ';base64,' + base64;
+                }).catch(() => {});
+            }
         } else {
             const icon = document.createElement('i');
             icon.className = doveAttachmentIcon(kind);
@@ -2374,9 +2557,22 @@ const doveWrapWideFrameTables = function (iframe) {
 // send_mail attachment given by vfsPath can be referenced as cid:<name> or by its vfsPath), and
 // otherwise stay as same-origin URLs. Remote images blocked by Safe that point at this origin are
 // restored too; true remote images still need Safe off (Load images / always-load sender).
-const doveResolveInlineImages = async function (html, mail, viewAsOwner) {
+const doveResolveInlineImages = async function (html, mail, viewAsOwner, allowRemoteImages) {
     if (!/data-dove-(cid|local)|data-blocked-src/.test(html)) return html;
     const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+    // An e-mail account's message (mailAccounts.message): data-dove-local is a same-origin picture
+    // (its cid: pictures and attachments, already at the attachment URL) to load as is; a remote
+    // picture (data-blocked-src) loads only after the images bar's Load images.
+    if (mail && mail.imap) {
+        doc.querySelectorAll('img[data-dove-local]').forEach((img) => img.setAttribute('src', img.getAttribute('data-dove-local')));
+        doc.querySelectorAll('img[data-blocked-src]').forEach((img) => {
+            try {
+                const url = new URL(img.getAttribute('data-blocked-src'), window.location.href);
+                if (allowRemoteImages || url.origin === window.location.origin) img.setAttribute('src', url.href);
+            } catch (_) { /* leave blocked */ }
+        });
+        return doc.body.innerHTML;
+    }
     const attachments = (mail && mail.attachments) || [];
     const findAttachment = (ref) => {
         const key = String(ref || '').trim();
@@ -2441,7 +2637,11 @@ const doveRenderRenderedBodyInto = async function (els, mail, options) {
     try {
         // dovecote_render_body: modules/ws/handlers/250-dovecoteHandler.js — html is already fully
         // sanitized server-side. Never run any client-side sanitization or trust-adding logic here.
-        result = await wsClient.sendMessage('dovecote_render_body', request);
+        // An e-mail account's message came with its html from the same sanitizer (mailAccounts.message);
+        // a text-only one is shown as its text.
+        result = mail.imap
+            ? { html: mail.html || doveImapTextAsHtml(mail.body), remoteImages: mail.remoteImages || [], strippedCounts: null }
+            : await wsClient.sendMessage('dovecote_render_body', request);
     } catch (err) {
         doveShowError((err && err.message) || 'Could not render message body');
         return;
@@ -2460,7 +2660,7 @@ const doveRenderRenderedBodyInto = async function (els, mail, options) {
         els.imagesBar.classList.add('hidden');
     }
 
-    const bodyHtml = await doveResolveInlineImages(result.html || '', mail, options.viewAsOwner);
+    const bodyHtml = await doveResolveInlineImages(result.html || '', mail, options.viewAsOwner, options.allowRemoteImages);
     if (options.isStale && options.isStale()) return;
     els.bodyWrap.querySelectorAll('iframe, pre.dovecote-raw-body').forEach((node) => node.remove());
     const iframe = document.createElement('iframe');
@@ -2500,7 +2700,8 @@ const doveRenderImagesBarInto = function (els, mail, onLoadImages) {
     });
     bar.appendChild(text);
     bar.appendChild(loadBtn);
-    bar.appendChild(alwaysBtn);
+    // the per-sender preference is Dreamscape Mail's (dovecote_set_image_pref); an e-mail account has Load images only
+    if (!mail.imap) bar.appendChild(alwaysBtn);
 };
 
 // bodyView: 'raw' | 'rendered'. options: see doveRenderRenderedBodyInto, minus onLoadImages
@@ -2559,8 +2760,12 @@ const doveRenderToolbarState = function () {
         if (action === 'spam') off = off || !sel.anyNotSpam;
         if (action === 'notSpam') off = off || !sel.inSpam;
         if (action === 'restore') off = off || !sel.inDeleted;
+        // an e-mail account moves to its own Archive / Junk folder: off when the server has none
+        if (sel.imap && action === 'archive') off = off || !doveImapFolderBySpecial(desktopDovecote.account, '\\Archive') || doveCurrentFolderKind() === 'archive';
+        if (sel.imap && action === 'spam') off = off || !doveImapFolderBySpecial(desktopDovecote.account, '\\Junk');
         btn.disabled = off;
     });
+    doveSyncForwardButtons();
     const countEl = document.getElementById('desktopDovecoteSelectedCount');
     if (countEl) {
         countEl.textContent = String(sel.count);
@@ -2580,8 +2785,9 @@ const doveToggleRead = async function () {
 };
 
 // Deleting from Trash is permanent: ask first (Vista message box).
-const doveConfirmPermanentDelete = async function (count) {
-    if (desktopDovecote.folder !== 'deleted') return true;
+// inTrash: the message is known to be in Deleted Items (a reader window's), whatever folder is open
+const doveConfirmPermanentDelete = async function (count, inTrash) {
+    if (!inTrash && doveCurrentFolderKind() !== 'deleted') return true;
     // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
     if (typeof showConfirmationDialog !== 'function') return window.confirm('Permanently delete ' + count + ' message(s)?');
     const answer = await showConfirmationDialog(
@@ -2634,6 +2840,11 @@ const doveSpamSelected = async function (toSpam) {
 const doveOpenCompose = function (mode, mail, presetTo) {
     if (desktopDovecote.viewAsOwner) return;
     if (mode !== 'create' && !mail) return;
+    // an e-mail account's message: real addresses, the original quoted, sent from that account
+    if (mail && mail.imap) {
+        doveImapOpenCompose(mode, mail);
+        return;
+    }
 
     let to = '';
     let subject = '';
@@ -2694,7 +2905,9 @@ const doveOpenComposeWindow = function (initial) {
         doveShowWindow(existing);
         return;
     }
-    const modal = doveBuildComposeWindow(key, Object.assign({}, initial, { body: doveWithSignature(initial.mode, initial.body) }));
+    // From: the open e-mail account unless the caller chose (null = Dreamscape Mail)
+    const accountId = initial.accountId !== undefined ? initial.accountId : (desktopDovecote.account || null);
+    const modal = doveBuildComposeWindow(key, Object.assign({}, initial, { accountId: accountId, body: doveWithSignature(initial.mode, initial.body, initial.quoted) }));
     doveComposeWindows.set(key, modal);
     document.body.appendChild(modal);
     doveShowWindow(modal);
@@ -2743,6 +2956,35 @@ const doveBuildComposeWindow = function (key, initial) {
     header.className = 'dovecote-compose-header';
     body.appendChild(header);
 
+    // Windows Mail's From: box once there is more than one account: Dreamscape Mail and each
+    // e-mail account (window.mailAccounts, Yozora #789). value '' = Dreamscape Mail.
+    const imapAccounts = doveImap.accounts.slice();
+    let fromSelect = null;
+    if (imapAccounts.length) {
+        const fromRow = document.createElement('div');
+        fromRow.className = 'form-row dovecote-compose-field-row';
+        const fromLabel = document.createElement('label');
+        fromLabel.textContent = 'From:';
+        fromSelect = document.createElement('select');
+        // a plain select: 7.css paints Vista's combo box (.form-control would flatten it to an edit box)
+        fromSelect.className = 'dovecote-compose-from';
+        const dream = document.createElement('option');
+        dream.value = '';
+        dream.textContent = doveDisplayAddress(DESKTOP_DOVECOTE_HUMAN_OWNER) + ' (Dreamscape Mail)';
+        fromSelect.appendChild(dream);
+        imapAccounts.forEach((account) => {
+            const option = document.createElement('option');
+            option.value = account.id;
+            option.textContent = doveImapFromText(account);
+            fromSelect.appendChild(option);
+        });
+        fromSelect.value = initial.accountId && doveImapAccount(initial.accountId) ? initial.accountId : '';
+        fromRow.appendChild(fromLabel);
+        fromRow.appendChild(fromSelect);
+        header.appendChild(fromRow);
+    }
+    const fromAccount = () => (fromSelect && fromSelect.value) || null;
+
     // dovecote-compose-field-row: vertically centers the label against the input (the plain
     // form-row default is top-aligned, which looks off for a single-line label + input pair).
     const toRow = document.createElement('div');
@@ -2753,11 +2995,31 @@ const doveBuildComposeWindow = function (key, initial) {
     const toInput = document.createElement('input');
     toInput.type = 'text';
     toInput.className = 'form-control';
-    toInput.value = doveFormatAddressList(initial.to);
+    toInput.value = initial.accountId ? String(initial.to || '') : doveFormatAddressList(initial.to);
     toInput.placeholder = 'name' + DOVE_ADDRESS_DOMAIN;
     toRow.appendChild(toLabel);
     toRow.appendChild(toInput);
     header.appendChild(toRow);
+
+    // Cc: an e-mail account's message (Windows Mail's New Message has To and Cc); Dreamscape Mail has To only
+    const ccRow = document.createElement('div');
+    ccRow.className = 'form-row dovecote-compose-field-row';
+    const ccLabel = document.createElement('label');
+    ccLabel.textContent = 'Cc:';
+    const ccInput = document.createElement('input');
+    ccInput.type = 'text';
+    ccInput.className = 'form-control';
+    ccInput.value = String(initial.cc || '');
+    ccRow.appendChild(ccLabel);
+    ccRow.appendChild(ccInput);
+    header.appendChild(ccRow);
+    const applyFrom = function () {
+        const imap = !!fromAccount();
+        ccRow.classList.toggle('hidden', !imap);
+        toInput.placeholder = imap ? '' : 'name' + DOVE_ADDRESS_DOMAIN;
+    };
+    applyFrom();
+    if (fromSelect) fromSelect.addEventListener('change', applyFrom);
 
     const subjectRow = document.createElement('div');
     subjectRow.className = 'form-row dovecote-compose-field-row';
@@ -2808,7 +3070,10 @@ const doveBuildComposeWindow = function (key, initial) {
             icon.className = (att.mimeType || '').startsWith('image/') ? 'fas fa-image' : 'fas fa-paperclip';
             icon.setAttribute('aria-hidden', 'true');
             const name = document.createElement('span');
-            name.textContent = att.name + ' (' + doveFormatBytes(att.size) + ')';
+            // an upload to an e-mail account in progress (doveImapEnsureUpload) shows how far it is
+            const uploading = att.uploadPromise && !att.uploadId;
+            name.textContent = att.name + ' (' + doveFormatBytes(att.size) + ')'
+                + (uploading ? ' - ' + Math.round((att.progress || 0) * 100) + '%' : '');
             const removeBtn = doveCreateButton('btn-secondary btn-small', 'Remove', 'fa-regular fa-xmark');
             removeBtn.addEventListener('click', () => {
                 pendingAttachments.splice(index, 1);
@@ -2826,6 +3091,26 @@ const doveBuildComposeWindow = function (key, initial) {
     fileInput.addEventListener('change', async () => {
         const files = Array.from(fileInput.files || []);
         fileInput.value = '';
+        // From an e-mail account: each file goes up to the server at once (mailAccounts.upload,
+        // its progress on the chip); Send waits for any still on the way.
+        if (fromAccount()) {
+            files.forEach((file) => {
+                if (file.size > DOVE_IMAP_MAX_UPLOAD_BYTES) {
+                    doveShowError(`"${file.name}" is larger than ${Math.round(DOVE_IMAP_MAX_UPLOAD_BYTES / 1024 / 1024)} MB`);
+                    return;
+                }
+                const att = { name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, file: file };
+                pendingAttachments.push(att);
+                doveImapEnsureUpload(att, renderAttachList).catch((err) => {
+                    doveShowError((err && err.message) || 'The attachment could not be uploaded.');
+                    const at = pendingAttachments.indexOf(att);
+                    if (at >= 0) pendingAttachments.splice(at, 1);
+                    renderAttachList();
+                });
+            });
+            renderAttachList();
+            return;
+        }
         for (const file of files) {
             if (file.size > DOVE_MAX_ATTACHMENT_BYTES) {
                 doveShowError(`"${file.name}" exceeds the ${Math.round(DOVE_MAX_ATTACHMENT_BYTES / 1024 / 1024)}MB per-file limit`);
@@ -2838,13 +3123,25 @@ const doveBuildComposeWindow = function (key, initial) {
             }
             // fileToBase64: public/scripts/utils/referenceUtils.js
             const base64 = await fileToBase64(file);
-            pendingAttachments.push({ name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, base64: base64 });
+            pendingAttachments.push({ name: file.name, mimeType: file.type || 'application/octet-stream', size: file.size, base64: base64, file: file });
         }
         renderAttachList();
     });
 
     // Send on the command bar; Windows Mail has no Cancel, the caption's close discards.
-    sendBtn.addEventListener('click', () => doveSendComposeWindow(toInput, subjectInput, bodyTextarea, initial.replyTo, pendingAttachments, closeCompose));
+    sendBtn.addEventListener('click', () => {
+        const accountId = fromAccount();
+        if (accountId) {
+            // a reply keeps its threading only from the account the original came to
+            const reply = initial.imapReply && initial.accountId === accountId ? initial.imapReply : null;
+            doveImapSendCompose({
+                accountId, reply, toInput, ccInput, subjectInput, bodyTextarea, sendBtn, status,
+                attachments: pendingAttachments, render: renderAttachList, onSent: closeCompose
+            });
+            return;
+        }
+        doveSendComposeWindow(toInput, subjectInput, bodyTextarea, initial.replyTo, pendingAttachments, closeCompose);
+    });
 
     content.appendChild(body);
     const status = document.createElement('div');
@@ -2865,6 +3162,8 @@ const doveSendComposeWindow = async function (toInput, subjectInput, bodyTextare
         return;
     }
     try {
+        // files picked while From was an e-mail account, or a forwarded account message's attachments
+        await doveEnsureAttachmentBase64(attachments);
         // dovecote_send_mail: modules/ws/handlers/250-dovecoteHandler.js
         const request = { to: to, subject: subject, body: body, format: 'text' };
         if (replyTo) request.replyTo = replyTo;
@@ -2883,7 +3182,8 @@ const doveSendComposeWindow = async function (toInput, subjectInput, bodyTextare
 // opens it in its own standalone window — same sandboxed rendering as the inline preview,
 // with Reply/Reply All/Forward available from its own toolbar. ----------------------------
 
-const doveBuildReaderToolbar = function (getMail) {
+// imap: an e-mail account's message window (Forward opens a New Message, no mailbox picker)
+const doveBuildReaderToolbar = function (getMail, imap) {
     // Windows Mail's message window: the same blue command bar as the main window (#473).
     const toolbar = document.createElement('div');
     toolbar.className = 'dovecote-command-bar';
@@ -2894,8 +3194,12 @@ const doveBuildReaderToolbar = function (getMail) {
     const replyAllBtn = doveCreateCommand('replyAll', 'Reply All', 'fas fa-reply-all', 'Reply All');
     replyAllBtn.dataset.doveReaderAction = 'replyAll';
     const forwardBtn = doveCreateCommand('forward', 'Forward', 'fas fa-share', 'Forward');
-    // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-    contextMenu.attachClickMenuToElement(forwardBtn, doveMakeForwardMenuConfig(getMail));
+    if (imap) {
+        forwardBtn.dataset.doveReaderAction = 'forward';
+    } else {
+        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+        contextMenu.attachClickMenuToElement(forwardBtn, doveMakeForwardMenuConfig(getMail));
+    }
     const toggleReadBtn = doveCreateCommand('read', 'Mark as Read / Unread', 'fas fa-envelope-open');
     toggleReadBtn.dataset.doveReaderAction = 'toggleRead';
     const deleteBtn = doveCreateCommand('delete', 'Delete', 'fas fa-trash');
@@ -2956,7 +3260,7 @@ const doveBuildReaderWindow = function (key) {
         doveReaderWindows.delete(key);
         modal.remove();
     };
-    const toolbar = doveBuildReaderToolbar(getMail);
+    const toolbar = doveBuildReaderToolbar(getMail, doveIsImapId(key));
     modal.dataset.iconOwnerId = DESKTOP_DOVECOTE_MODAL_ID;
     modal.appendChild(doveBuildWindowTitle('Message', 'fas fa-envelope-open'));
     modal.appendChild(document.createElement('div')).className = 'modal-focus-overlay';
@@ -3034,18 +3338,21 @@ const doveBuildReaderWindow = function (key) {
 const doveLoadReaderMail = async function (state, id, options) {
     const request = { id: id };
     if (desktopDovecote.viewAsOwner && !(options && options.ownMailbox)) request.viewAsOwner = desktopDovecote.viewAsOwner;
+    const imap = doveIsImapId(id);
     try {
-        // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks the message read server-side)
-        const result = await wsClient.sendMessage('dovecote_get_mail', request);
+        // dovecote_get_mail: modules/ws/handlers/250-dovecoteHandler.js (also marks the message read server-side);
+        // an e-mail account's message: mailAccounts.message (doveImapFetchFull)
+        const result = imap ? { mail: await doveImapFetchFull(id) } : await wsClient.sendMessage('dovecote_get_mail', request);
         if (state.closed) return;
         state.mail = result && result.mail;
         const found = desktopDovecote.mail.find((m) => String(m.id) === String(id));
         if (found && !found.read) {
             found.read = true;
             desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 1) - 1);
+            if (imap) doveImapNoteRead(found, true);
         }
         doveRenderMessageList();
-        doveRenderInboxBadgeFromState();
+        if (!imap) doveRenderInboxBadgeFromState();
         doveRenderToolbarState();
         doveRenderReaderWindow(state);
     } catch (err) {
@@ -3103,6 +3410,7 @@ const doveDispatchReaderAction = function (state, action) {
     switch (action) {
         case 'reply': doveOpenCompose('reply', mail); return;
         case 'replyAll': doveOpenCompose('replyAll', mail); return;
+        case 'forward': doveOpenCompose('forward', mail); return;
         case 'toggleRead': doveReaderToggleRead(state); return;
         case 'delete': doveReaderMarkSelected(state, { deleted: true }); return;
         case 'archive': doveReaderMarkSelected(state, { archived: true }); return;
@@ -3116,8 +3424,10 @@ const doveReaderToggleRead = async function (state) {
     const mail = state.mail;
     if (!mail || desktopDovecote.viewAsOwner) return;
     try {
-        // dovecote_mark_mail: modules/ws/handlers/250-dovecoteHandler.js
-        await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, read: !mail.read });
+        // dovecote_mark_mail: modules/ws/handlers/250-dovecoteHandler.js; an e-mail account's
+        // message: \Seen at its mail server (doveImapMark)
+        if (mail.imap) await doveImapMark([mail.id], { read: !mail.read }, { stay: true, quiet: true });
+        else await wsClient.sendMessage('dovecote_mark_mail', { id: mail.id, read: !mail.read });
         mail.read = !mail.read;
         const found = desktopDovecote.mail.find((m) => String(m.id) === String(mail.id));
         if (found) found.read = mail.read;
@@ -3132,14 +3442,12 @@ const doveReaderMarkSelected = async function (state, patch) {
     const mail = state.mail;
     if (!mail || desktopDovecote.viewAsOwner) return;
     if (patch && patch.deleted === true && mail.folder === 'deleted') {
-        const prev = desktopDovecote.folder;
-        desktopDovecote.folder = 'deleted';
-        const ok = await doveConfirmPermanentDelete(1);
-        desktopDovecote.folder = prev;
+        const ok = await doveConfirmPermanentDelete(1, true);
         if (!ok) return;
     }
     try {
-        await wsClient.sendMessage('dovecote_mark_mail', Object.assign({ id: mail.id }, patch));
+        if (mail.imap) await doveImapApply([mail.id], patch);
+        else await wsClient.sendMessage('dovecote_mark_mail', Object.assign({ id: mail.id }, patch));
         if (doveSelectedIdSet().has(String(mail.id)) || String(desktopDovecote.selectedId) === String(mail.id)) {
             doveClearSelection();
             doveRenderPreview();
@@ -3149,6 +3457,907 @@ const doveReaderMarkSelected = async function (state, patch) {
     } catch (err) {
         doveShowError((err && err.message) || 'Could not update message');
     }
+};
+
+// ---- IMAP e-mail accounts (Yozora #789) --------------------------------------------------------
+// window.mailAccounts (public/scripts/comp/mailAccountsClient.js) reaches the server's IMAP accounts:
+// the server is the mail client and keeps the copy (modules/mailAccounts.js). Each account is its own
+// tree in the folder list, as Windows Mail shows several accounts (Local Folders stay Dreamscape
+// Mail's). desktopDovecote.account is the open account's id and desktopDovecote.folder its folder
+// path then. Its messages keep Dovecote's row shape (doveImapRow, ids 'imap:<account>:<uid>:<folder>'),
+// so the list, reading pane, message windows and New Message are the same views; only the data
+// calls switch on an imap id / mail.imap.
+
+const DOVE_IMAP_PREFIX = 'imap:';
+// modules/mailAccountsHttp.js MAX_UPLOAD (the server enforces it)
+const DOVE_IMAP_MAX_UPLOAD_BYTES = 35 * 1024 * 1024;
+// Special-use folders: Windows Mail's names and pictures, in this order before the others
+const DOVE_IMAP_SPECIAL = {
+    '\\Inbox': { label: 'Inbox', icon: 'inbox', kind: 'inbox', order: 0 },
+    '\\Drafts': { label: 'Drafts', icon: 'drafts', kind: 'drafts', order: 1 },
+    '\\Sent': { label: 'Sent Items', icon: 'sent', kind: 'sent', order: 2 },
+    '\\Trash': { label: 'Deleted Items', icon: 'deleted', kind: 'deleted', order: 3 },
+    '\\Junk': { label: 'Junk E-mail', icon: 'spam', kind: 'spam', order: 4 },
+    '\\Archive': { label: 'Archive', icon: 'archive', kind: 'archive', order: 5 }
+};
+
+// accounts: mailAccounts.accounts(); folders: accountId -> mailAccounts.folders(); collapsed: account
+// trees folded in the folder list; recent: 'account|folder|uid' -> when this window changed its flags
+// (the server's 'flags' echo of our own change does not reload the list)
+const doveImap = {
+    accounts: [],
+    folders: {},
+    collapsed: new Set(),
+    bound: false,
+    accountsPromise: null,
+    searchTimer: null,
+    reloadTimer: null,
+    folderTimers: {},
+    recent: new Map(),
+    announce: [],
+    announceTimer: null
+};
+
+const doveImapApi = function () {
+    return window.mailAccounts && typeof window.mailAccounts.messages === 'function' ? window.mailAccounts : null;
+};
+const doveIsImapId = function (id) {
+    return String(id || '').startsWith(DOVE_IMAP_PREFIX);
+};
+const doveImapId = function (accountId, folder, uid) {
+    return DOVE_IMAP_PREFIX + accountId + ':' + uid + ':' + folder;
+};
+// account ids never hold ':' (modules/mailAccounts.js ID_RE); the folder path is the rest
+const doveImapParseId = function (id) {
+    const text = String(id || '');
+    if (!text.startsWith(DOVE_IMAP_PREFIX)) return null;
+    const rest = text.slice(DOVE_IMAP_PREFIX.length);
+    const a = rest.indexOf(':');
+    const b = rest.indexOf(':', a + 1);
+    if (a < 1 || b < 0) return null;
+    return { accountId: rest.slice(0, a), uid: Number(rest.slice(a + 1, b)), folder: rest.slice(b + 1) };
+};
+const doveImapEscape = function (text) {
+    return String(text == null ? '' : text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+};
+
+const doveImapAccount = function (id) {
+    return doveImap.accounts.find((account) => account.id === id) || null;
+};
+// The folder list shows the account by its address (two accounts may share a display name)
+const doveImapAccountLabel = function (account) {
+    return (account && (account.email || account.name || account.id)) || '';
+};
+// Windows Mail's From: box, "address (account)": the provider's name, else the mail server
+const doveImapFromText = function (account) {
+    const api = doveImapApi();
+    const preset = api && typeof api.presetFor === 'function' ? api.presetFor(account.email) : null;
+    const where = (preset && preset.name) || (account.imap && account.imap.host) || account.name || '';
+    return account.email + (where ? ' (' + where + ')' : '');
+};
+const doveImapAccountTitle = function (account) {
+    const who = account.displayName ? account.displayName + ' <' + account.email + '>' : account.email;
+    if (account.status === 'error' && account.error) return who + '\nCould not connect: ' + account.error;
+    return who;
+};
+
+const doveImapSpecialOf = function (folder) {
+    if (!folder) return null;
+    if (folder.special && DOVE_IMAP_SPECIAL[folder.special]) return folder.special;
+    return String(folder.path || '').toUpperCase() === 'INBOX' ? '\\Inbox' : null;
+};
+const doveImapFolderInfo = function (accountId, path) {
+    return (doveImap.folders[accountId] || []).find((folder) => folder.path === path) || null;
+};
+const doveImapFolderBySpecial = function (accountId, special) {
+    return (doveImap.folders[accountId] || []).find((folder) => doveImapSpecialOf(folder) === special) || null;
+};
+const doveImapFolderKind = function (accountId, path) {
+    const special = doveImapSpecialOf(doveImapFolderInfo(accountId, path) || { path: path });
+    return special ? DOVE_IMAP_SPECIAL[special].kind : 'other';
+};
+const doveImapLeafName = function (folder) {
+    const delimiter = folder.delimiter || '/';
+    if (folder.name && folder.name !== folder.path) return folder.name;
+    return String(folder.path || '').split(delimiter).pop();
+};
+// { label, icon } for the Folder Bar, caption and Go to Folder
+const doveImapFolderView = function (accountId, path) {
+    const info = doveImapFolderInfo(accountId, path) || { path: path };
+    const special = doveImapSpecialOf(info);
+    return special
+        ? { label: DOVE_IMAP_SPECIAL[special].label, icon: DOVE_IMAP_SPECIAL[special].icon }
+        : { label: doveImapLeafName(info), icon: 'folder' };
+};
+
+// The account's folders as the folder list shows them: the special-use folders first (Inbox, Drafts,
+// Sent Items, Deleted Items, Junk E-mail, Archive), then the others by name, nested by the server's
+// delimiter; a parent the server does not list (Gmail's [Gmail]) is a group row that only holds others.
+// -> [{ path, label, depth, selectable, icon, unseen }]
+const doveImapFolderNodes = function (accountId) {
+    const list = doveImap.folders[accountId] || [];
+    if (!list.length) return [{ path: 'INBOX', label: 'Inbox', depth: 0, selectable: true, icon: 'inbox', unseen: 0 }];
+    const nodes = new Map();
+    const specials = [];
+    const roots = [];
+    const make = (path, label, folder) => ({ path: path, label: label, folder: folder, special: null, children: [] });
+    list.forEach((folder) => {
+        const special = doveImapSpecialOf(folder);
+        if (!special) return;
+        const node = make(folder.path, DOVE_IMAP_SPECIAL[special].label, folder);
+        node.special = special;
+        nodes.set(folder.path, node);
+        specials.push(node);
+    });
+    list.forEach((folder) => {
+        if (nodes.has(folder.path) && nodes.get(folder.path).special) return;
+        const delimiter = folder.delimiter || '/';
+        const parts = String(folder.path).split(delimiter);
+        let parent = null;
+        for (let i = 0; i < parts.length; i++) {
+            const path = parts.slice(0, i + 1).join(delimiter);
+            let node = nodes.get(path);
+            if (!node) {
+                node = make(path, parts[i], null);
+                nodes.set(path, node);
+                (parent ? parent.children : roots).push(node);
+            }
+            parent = node;
+        }
+        parent.folder = folder;
+        if (folder.name && folder.name !== folder.path) parent.label = folder.name;
+    });
+    const byLabel = (a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' });
+    const out = [];
+    const walk = (node, depth) => {
+        out.push({
+            path: node.path,
+            label: node.label,
+            depth: depth,
+            selectable: !!node.folder,
+            icon: node.special ? DOVE_IMAP_SPECIAL[node.special].icon : 'folder',
+            unseen: node.folder ? (Number(node.folder.unseen) || 0) : 0
+        });
+        node.children.sort(byLabel).forEach((child) => walk(child, depth + 1));
+    };
+    specials.sort((a, b) => DOVE_IMAP_SPECIAL[a.special].order - DOVE_IMAP_SPECIAL[b.special].order).forEach((node) => walk(node, 0));
+    roots.sort(byLabel).forEach((node) => walk(node, 0));
+    return out;
+};
+
+// The account trees between Local Folders and the communities (doveRenderFolderTree). Unread counts
+// as Windows Mail shows them: on each folder with unread mail, on a folded account its Inbox's.
+const doveImapTreeRows = function () {
+    const rows = [];
+    doveImap.accounts.forEach((account) => {
+        const open = !doveImap.collapsed.has(account.id);
+        rows.push(doveBuildTreeRow({
+            level: 0,
+            label: doveImapAccountLabel(account),
+            icon: 'account',
+            account: account.id,
+            expander: open ? 'open' : 'closed',
+            count: open ? 0 : (Number(account.unread) || 0),
+            title: doveImapAccountTitle(account)
+        }));
+        if (!open) return;
+        doveImapFolderNodes(account.id).forEach((node) => rows.push(doveBuildTreeRow({
+            level: Math.min(1 + node.depth, 5),
+            label: node.label,
+            icon: node.icon,
+            account: account.id,
+            path: node.selectable ? node.path : null,
+            group: !node.selectable,
+            count: node.unseen,
+            current: desktopDovecote.account === account.id && desktopDovecote.folder === node.path
+        })));
+    });
+    return rows;
+};
+
+const doveImapUnreadTotal = function () {
+    const api = doveImapApi();
+    if (!api || typeof api.unread !== 'function') return 0;
+    const unread = api.unread();
+    return (unread && Number(unread.total)) || 0;
+};
+
+// Accounts and their folders. A user who is not an admin, or no server, has none: Dovecote is
+// then Dreamscape Mail only.
+const doveImapRefreshAccounts = function () {
+    const api = doveImapApi();
+    if (!api) return Promise.resolve([]);
+    if (doveImap.accountsPromise) return doveImap.accountsPromise;
+    doveImap.accountsPromise = (async () => {
+        let list = [];
+        try {
+            const result = await api.accounts(true);
+            list = (result && result.accounts) || [];
+        } catch (_) {
+            list = [];
+        }
+        doveImap.accounts = list.filter((account) => account && account.id && account.enabled !== false);
+        Object.keys(doveImap.folders).forEach((id) => { if (!doveImapAccount(id)) delete doveImap.folders[id]; });
+        if (desktopDovecote.account && !doveImapAccount(desktopDovecote.account)) {
+            doveLeaveImapAccount();
+            desktopDovecote.folder = 'inbox';
+            if (desktopDovecote.loaded) doveLoadFolder('inbox');
+        }
+        await Promise.all(doveImap.accounts.map((account) => doveImapRefreshFolders(account.id)));
+        doveImapRenderAccountState();
+        return doveImap.accounts;
+    })().finally(() => { doveImap.accountsPromise = null; });
+    return doveImap.accountsPromise;
+};
+
+const doveImapRefreshFolders = async function (accountId) {
+    const api = doveImapApi();
+    if (!api) return;
+    try {
+        doveImap.folders[accountId] = (await api.folders(accountId)) || [];
+    } catch (_) {
+        // the account is not running (bad password, server down): keep what we had
+        if (!doveImap.folders[accountId]) doveImap.folders[accountId] = [];
+        return;
+    }
+    // the open folder's counts from the server's copy (not while a search result is listed)
+    if (desktopDovecote.account === accountId && desktopDovecote.countsKey === doveCountsKey() && !desktopDovecote.searchText.trim()) {
+        const info = doveImapFolderInfo(accountId, desktopDovecote.folder);
+        if (info) {
+            desktopDovecote.folderTotal = Number(info.total) || 0;
+            desktopDovecote.folderUnread = Number(info.unseen) || 0;
+        }
+    }
+};
+
+const doveImapRenderAccountState = function () {
+    if (!desktopDovecoteEls) return;
+    doveRenderFolderTree();
+    if (desktopDovecote.account) {
+        doveRenderFolderButton();
+        doveRenderStatusCounts();
+        doveRenderToolbarState();
+    }
+};
+
+const doveImapScheduleFolders = function (accountId) {
+    if (!accountId) return;
+    clearTimeout(doveImap.folderTimers[accountId]);
+    doveImap.folderTimers[accountId] = setTimeout(async () => {
+        delete doveImap.folderTimers[accountId];
+        await doveImapRefreshFolders(accountId);
+        doveImapRenderAccountState();
+    }, 600);
+};
+
+const doveImapClearSearch = function () {
+    desktopDovecote.searchText = '';
+    if (desktopDovecoteEls && desktopDovecoteEls.searchInput) desktopDovecoteEls.searchInput.value = '';
+};
+
+// A tree row or View > Go to Folder: an e-mail account's folder
+const doveOpenImapFolder = function (accountId, path) {
+    if (!accountId || path == null) return;
+    const changed = desktopDovecote.account !== accountId || desktopDovecote.folder !== path;
+    const wasBotView = !!desktopDovecote.viewAsOwner;
+    desktopDovecote.viewAsOwner = null;
+    desktopDovecote.account = accountId;
+    desktopDovecote.folder = path;
+    if (changed || wasBotView) {
+        doveClearSelection();
+        doveImapClearSearch();
+        doveRenderPreview();
+    }
+    doveRenderMailboxBanner();
+    if (wasBotView) doveReaderWindows.forEach((state) => doveRenderReaderToolbarState(state));
+    doveRenderToolbarState();
+    doveLoadFolder(path);
+};
+
+// Back to Dreamscape Mail (a Local Folders / communities row): the caller loads its folder
+const doveLeaveImapAccount = function () {
+    desktopDovecote.account = null;
+    doveImapClearSearch();
+    if (!desktopDovecoteEls) return;
+    doveClearSelection();
+    doveRenderPreview();
+};
+
+const doveImapAddress = function (entry) {
+    if (!entry) return '';
+    if (typeof entry === 'string') return entry;
+    const address = entry.address || '';
+    const name = String(entry.name || '').replace(/[",;<>]/g, '').trim();
+    return name && address ? name + ' <' + address + '>' : (address || name);
+};
+
+const doveImapIso = function (value) {
+    if (value == null || value === '') return '';
+    const d = new Date(typeof value === 'number' || /^\d+$/.test(String(value)) ? Number(value) : value);
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString();
+};
+
+// mailAccounts list item -> Dovecote's row: folder is the folder's kind (inbox, sent, deleted, spam,
+// archive, drafts, other) for the menus' checks, imap holds where it really is.
+const doveImapRow = function (item) {
+    const from0 = Array.isArray(item.from) ? item.from[0] : null;
+    const kind = doveImapFolderKind(item.accountId, item.folder);
+    return {
+        id: doveImapId(item.accountId, item.folder, item.uid),
+        imap: { accountId: item.accountId, folder: item.folder, uid: Number(item.uid) },
+        folder: kind,
+        from: from0 ? (from0.address || from0.name || '') : (item.sender || ''),
+        fromLabel: from0 && from0.name ? String(from0.name) : '',
+        to: (item.to || []).map(doveImapAddress).filter(Boolean),
+        cc: (item.cc || []).map(doveImapAddress).filter(Boolean),
+        subject: item.subject || '',
+        createdAt: doveImapIso(item.date),
+        read: !!item.seen,
+        flagged: !!item.flagged,
+        answered: !!item.answered,
+        snippet: item.snippet || '',
+        hasAttachments: !!item.hasAttachments,
+        size: Number(item.size) || 0,
+        // Dovecote's route column is Dreamscape Mail's; an account's mail all came over the internet
+        route: kind === 'sent' || kind === 'drafts' ? 'outbound' : 'inbound'
+    };
+};
+
+// One page of the open folder in doveApplyListPage's shape; with text in the search box, the
+// server's search of the whole account instead (mailAccounts.search, its FTS copy).
+const doveImapFetchPage = async function (cursor) {
+    const api = doveImapApi();
+    if (!api) throw new Error('E-mail accounts are not available.');
+    const accountId = desktopDovecote.account;
+    const folder = desktopDovecote.folder;
+    const query = desktopDovecote.searchText.trim();
+    if (query) {
+        if (cursor) return { mail: [], hasMore: false, nextCursor: null };
+        const results = await api.search(query, { accountId: accountId, limit: 200 });
+        const mail = (results || []).map(doveImapRow);
+        return { mail: mail, hasMore: false, nextCursor: null, total: mail.length, unread: mail.filter((row) => !row.read).length };
+    }
+    const page = await api.messages(accountId, folder, cursor ? { limit: 50, before: cursor } : { limit: 50 });
+    const mail = ((page && page.messages) || []).map(doveImapRow);
+    const info = doveImapFolderInfo(accountId, folder);
+    const result = { mail: mail, nextCursor: (page && page.cursor) || null, hasMore: !!(page && page.more) };
+    if (!cursor) {
+        result.total = info ? (Number(info.total) || 0) : mail.length;
+        result.unread = info ? (Number(info.unseen) || 0) : mail.filter((row) => !row.read).length;
+    }
+    return result;
+};
+
+const doveImapHtmlToText = function (html) {
+    if (!html) return '';
+    const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+    return (doc.body.innerText || doc.body.textContent || '').replace(/\n{3,}/g, '\n\n').trim();
+};
+
+const doveImapTextAsHtml = function (text) {
+    return '<pre style="margin: 0; font: inherit; white-space: pre-wrap;">' + doveImapEscape(text || '') + '</pre>';
+};
+
+// A whole message (mailAccounts.message marks it read unless markSeen is false): the row plus its
+// text, sanitized html, remote pictures held back and attachments ({ id: part, name, mimeType, size, url }).
+const doveImapFetchFull = async function (id, options) {
+    const ref = doveImapParseId(id);
+    const api = doveImapApi();
+    if (!ref || !api) throw new Error('E-mail accounts are not available.');
+    const msg = await api.message(ref.accountId, ref.folder, ref.uid, { markSeen: !(options && options.markSeen === false) });
+    if (!msg) throw new Error('That message is not in this folder any more.');
+    const row = doveImapRow(Object.assign({ accountId: ref.accountId, folder: ref.folder }, msg));
+    const from0 = Array.isArray(msg.from) ? msg.from[0] : null;
+    const attachments = (msg.attachments || []).filter((att) => !att.inline).map((att) => ({
+        id: String(att.part),
+        name: att.filename || 'attachment',
+        mimeType: att.type || 'application/octet-stream',
+        size: Number(att.size) || 0,
+        url: att.url
+    }));
+    return Object.assign(row, {
+        fromFull: doveImapAddress(from0) || row.from,
+        replyTo: (msg.replyTo || []).map(doveImapAddress).filter(Boolean),
+        body: msg.text || doveImapHtmlToText(msg.html),
+        html: msg.html || '',
+        remoteImages: msg.remoteImages || [],
+        attachments: attachments,
+        hasAttachments: attachments.length > 0
+    });
+};
+
+// A message read or unread here: its folder's count (and a folded account's) at once, the server's after
+const doveImapNoteRead = function (row, read) {
+    if (!row || !row.imap) return;
+    const info = doveImapFolderInfo(row.imap.accountId, row.imap.folder);
+    if (info) info.unseen = Math.max(0, (Number(info.unseen) || 0) + (read ? -1 : 1));
+    const account = doveImapAccount(row.imap.accountId);
+    if (account && row.folder === 'inbox') account.unread = Math.max(0, (Number(account.unread) || 0) + (read ? -1 : 1));
+    doveRenderFolderTree();
+};
+
+const doveImapGroup = function (ids) {
+    const groups = new Map();
+    ids.forEach((id) => {
+        const ref = doveImapParseId(id);
+        if (!ref) return;
+        const key = ref.accountId + '|' + ref.folder;
+        if (!groups.has(key)) groups.set(key, { accountId: ref.accountId, folder: ref.folder, uids: [] });
+        groups.get(key).uids.push(ref.uid);
+    });
+    return groups;
+};
+
+// The change at the mail server (Dovecote's patch: read, flagged, deleted, archived, spam). Throws.
+const doveImapApply = async function (ids, patch) {
+    const api = doveImapApi();
+    if (!api) throw new Error('E-mail accounts are not available.');
+    const groups = doveImapGroup(ids);
+    for (const group of groups.values()) {
+        const { accountId, folder, uids } = group;
+        const inbox = () => (doveImapFolderBySpecial(accountId, '\\Inbox') || { path: 'INBOX' }).path;
+        const target = (special, name) => {
+            const found = doveImapFolderBySpecial(accountId, special);
+            if (!found) throw new Error('This account has no ' + name + ' folder.');
+            return found.path;
+        };
+        const now = Date.now();
+        uids.forEach((uid) => doveImap.recent.set(accountId + '|' + folder + '|' + uid, now));
+        if (typeof patch.read === 'boolean') await (patch.read ? api.markRead : api.markUnread)(accountId, folder, uids);
+        if (typeof patch.flagged === 'boolean') await (patch.flagged ? api.flag : api.unflag)(accountId, folder, uids);
+        if (patch.deleted === true) await api.remove(accountId, folder, uids);
+        else if (patch.deleted === false) await api.move(accountId, folder, uids, inbox());
+        if (patch.archived === true) await api.move(accountId, folder, uids, target('\\Archive', 'Archive'));
+        if (patch.spam === true) await api.move(accountId, folder, uids, target('\\Junk', 'Junk E-mail'));
+        else if (patch.spam === false) await api.move(accountId, folder, uids, inbox());
+    }
+    groups.forEach((group) => doveImapScheduleFolders(group.accountId));
+};
+
+// doveMarkMailIds for an e-mail account's messages. options: { stay (read / flag changes stay in the
+// list), quiet (the caller updates its own view and shows errors) }
+const doveImapMark = async function (ids, patch, options) {
+    const opts = options || {};
+    try {
+        await doveImapApply(ids, patch);
+    } catch (err) {
+        if (opts.quiet) throw err;
+        doveShowError((err && err.message) || 'Could not update message');
+        return;
+    }
+    if (opts.quiet) return;
+    const idSet = new Set(ids.map(String));
+    const moves = patch.deleted !== undefined || patch.archived !== undefined || patch.spam !== undefined;
+    if (!moves) {
+        const apply = (mail) => {
+            if (!mail || !idSet.has(String(mail.id))) return false;
+            if (typeof patch.flagged === 'boolean') mail.flagged = patch.flagged;
+            if (typeof patch.read === 'boolean' && mail.read !== patch.read) {
+                mail.read = patch.read;
+                return true;
+            }
+            return false;
+        };
+        desktopDovecote.mail.forEach((mail) => {
+            if (!apply(mail)) return;
+            if (!desktopDovecote.searchText.trim()) desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 0) + (patch.read ? -1 : 1));
+            doveImapNoteRead(mail, patch.read);
+        });
+        apply(desktopDovecote.selectedMail);
+        doveReaderWindows.forEach((state) => apply(state.mail));
+        doveRenderMessageList();
+        return;
+    }
+    if (desktopDovecote.selectedIds.some((id) => idSet.has(String(id))) || idSet.has(String(desktopDovecote.selectedId))) {
+        doveClearSelection();
+        doveRenderPreview();
+    }
+    if (desktopDovecote.account) doveLoadFolder(desktopDovecote.folder);
+};
+
+// Windows Mail's context menu on an account's message (doveBuildMailRowMenuSections)
+const doveImapRowMenuSections = function (rows, mail, ids, s) {
+    const accountId = mail.imap.accountId;
+    const hasArchive = !!doveImapFolderBySpecial(accountId, '\\Archive');
+    const hasJunk = !!doveImapFolderBySpecial(accountId, '\\Junk');
+    const allFlagged = rows.every((row) => row.flagged);
+    const items = [];
+    if (s.bulk) {
+        items.push({ text: s.count + ' selected', disabled: true });
+        items.push({ separator: true });
+    } else {
+        items.push({ text: 'Open', icon: 'fas fa-envelope-open-text', action: 'dove-row-open', doveMailId: mail.id });
+        items.push({ text: 'Open in Window', icon: 'fas fa-up-right-from-square', action: 'dove-row-open-window', doveMailId: mail.id });
+        items.push({ separator: true });
+        items.push({ text: 'Reply to Sender', icon: 'fas fa-reply', action: 'dove-row-reply', doveMailId: mail.id });
+        items.push({ text: 'Reply to All', icon: 'fas fa-reply-all', action: 'dove-row-reply-all', doveMailId: mail.id });
+    }
+    items.push({ text: s.bulk ? 'Forward ' + s.count + ' Messages' : 'Forward', icon: 'fas fa-share', action: 'dove-row-forward', doveMailIds: ids });
+    items.push({ separator: true });
+    items.push({ text: 'Mark as Read', icon: 'fas fa-envelope-open', action: 'dove-row-mark-read', doveMailIds: ids, disabled: !s.anyUnread });
+    items.push({ text: 'Mark as Unread', icon: 'fas fa-envelope', action: 'dove-row-mark-unread', doveMailIds: ids, disabled: !s.anyRead });
+    items.push({ text: allFlagged ? 'Clear Flag' : 'Flag Message', icon: 'fas fa-flag', action: 'dove-row-flag', doveMailIds: ids, doveFlag: !allFlagged });
+    items.push({ text: 'Move to Folder...', action: 'dove-row-move', doveMailIds: ids });
+    if (hasArchive) items.push({ text: 'Archive', icon: 'fas fa-box-archive', action: 'dove-row-archive', doveMailIds: ids, disabled: rows.every((row) => row.folder === 'archive') });
+    items.push({ text: 'Move to Spam', icon: 'fas fa-ban', action: 'dove-row-spam', doveMailIds: ids, disabled: !hasJunk || !s.anyNotSpam });
+    items.push({ text: 'Not spam', icon: 'fas fa-inbox', action: 'dove-row-not-spam', doveMailIds: ids, disabled: !s.inSpam });
+    items.push({ text: 'Restore', icon: 'fas fa-inbox', action: 'dove-row-restore', doveMailIds: ids, disabled: !s.inDeleted });
+    items.push({
+        text: s.inDeleted ? 'Delete Permanently' : 'Delete',
+        icon: 'fas fa-trash',
+        action: 'dove-row-delete',
+        doveMailIds: ids,
+        className: 'context-menu-item-danger'
+    });
+    return [{ type: 'list', items: items }];
+};
+
+// Windows Mail's Edit > Move to Folder...: the Move dialog, the account's folder tree, OK / Cancel
+const doveImapMoveDialog = async function (ids) {
+    const list = (ids || []).map(String).filter(doveIsImapId);
+    const api = doveImapApi();
+    if (!list.length || !api) return;
+    const accountId = doveImapParseId(list[0]).accountId;
+    const account = doveImapAccount(accountId);
+    const nodes = doveImapFolderNodes(accountId);
+    const row = (level, icon, label, path) => '<div class="dove-move-row dove-move-level-' + Math.min(level, 5) + (path == null ? ' is-group' : '') + '" role="treeitem"'
+        + (path == null ? '' : ' data-dove-move-path="' + doveImapEscape(path) + '"') + '>'
+        + '<span class="dove-move-icon" data-dove-tree-icon="' + icon + '"></span><span class="dove-move-label">' + doveImapEscape(label) + '</span></div>';
+    const html = '<div class="form-group dove-move-dialog"><p class="dove-move-text">Move the selected message(s) to the selected folder:</p>'
+        + '<div class="dove-move-tree" role="tree">'
+        + row(0, 'account', doveImapAccountLabel(account) || accountId, null)
+        + nodes.map((node) => row(node.depth + 1, node.icon, node.label, node.selectable ? node.path : null)).join('')
+        + '</div></div>';
+    if (typeof showConfirmationDialog !== 'function') return;
+    // showConfirmationDialog: public/scripts/comp/confirmationDialog.js (resolveValue reads the pick)
+    const picked = showConfirmationDialog(html, [
+        { text: 'OK', value: 'ok', className: 'btn-primary' },
+        { text: 'Cancel', value: false, className: 'btn-secondary' }
+    ], null, {
+        title: 'Move',
+        icon: 'fas fa-folder-open',
+        resolveValue: (value, dialog) => {
+            if (value !== 'ok') return null;
+            const selected = dialog.querySelector('.dove-move-row.is-selected');
+            return selected ? selected.dataset.doveMovePath : null;
+        }
+    });
+    const tree = document.querySelector('#confirmationMessage .dove-move-tree');
+    if (tree) {
+        const okBtn = document.querySelector('#confirmationControls [data-dialog-primary]');
+        const select = (el) => {
+            tree.querySelectorAll('.dove-move-row.is-selected').forEach((node) => node.classList.remove('is-selected'));
+            if (el) el.classList.add('is-selected');
+            if (okBtn) okBtn.disabled = !el;
+        };
+        const fromFolder = doveImapParseId(list[0]).folder;
+        select(Array.from(tree.querySelectorAll('[data-dove-move-path]')).find((el) => el.dataset.doveMovePath === fromFolder) || null);
+        tree.addEventListener('click', (ev) => {
+            const el = ev.target.closest('[data-dove-move-path]');
+            if (el) select(el);
+        });
+        tree.addEventListener('dblclick', (ev) => {
+            const el = ev.target.closest('[data-dove-move-path]');
+            if (el && okBtn) {
+                select(el);
+                okBtn.click();
+            }
+        });
+    }
+    const target = await picked;
+    if (!target) return;
+    try {
+        for (const group of doveImapGroup(list).values()) {
+            if (group.folder === target) continue;
+            const now = Date.now();
+            group.uids.forEach((uid) => doveImap.recent.set(group.accountId + '|' + group.folder + '|' + uid, now));
+            await api.move(group.accountId, group.folder, group.uids, target);
+        }
+    } catch (err) {
+        doveShowError((err && err.message) || 'Could not move the message');
+    }
+    doveImapScheduleFolders(accountId);
+    const moved = new Set(list);
+    if (desktopDovecote.selectedIds.some((id) => moved.has(String(id)))) {
+        doveClearSelection();
+        doveRenderPreview();
+    }
+    if (desktopDovecote.account) doveLoadFolder(desktopDovecote.folder);
+};
+
+// Tools > Accounts...: Dreamscape CardSpace's e-mail accounts (cplAuthentication.js, loaded with
+// the control_panel feature; the section id 'mail-accounts' -- CardSpace opens its home page if it
+// does not know it yet)
+const doveOpenMailAccounts = async function () {
+    try {
+        if (!window.cplAuthentication && window.featureLoader && typeof featureLoader.loadFeature === 'function') {
+            await featureLoader.loadFeature('control_panel');
+        }
+        if (window.cplAuthentication && typeof window.cplAuthentication.open === 'function') {
+            window.cplAuthentication.open('mail-accounts');
+            return;
+        }
+    } catch (err) {
+        doveShowError((err && err.message) || 'Could not open Dreamscape CardSpace');
+        return;
+    }
+    doveShowError('Dreamscape CardSpace is not available.');
+};
+
+// Send/Receive: every account fetches from its mail server now (mailAccounts.resync); the
+// 'sync' / 'new' events bring the mail in.
+const doveImapSendReceive = function () {
+    const api = doveImapApi();
+    if (!api) return;
+    doveImap.accounts.forEach((account) => {
+        api.resync(account.id, false).catch((err) => doveShowError(doveImapAccountLabel(account) + ': ' + ((err && err.message) || 'Send/Receive failed')));
+    });
+};
+
+// Forward on the command bar and the narrow layout's bar: Dreamscape Mail's mailbox picker (a click
+// menu), an account's message straight to a New Message (data-dove-action="forward").
+const doveSyncForwardButtons = function () {
+    if (!desktopDovecoteEls || !desktopDovecoteEls.modal) return;
+    const imap = !!desktopDovecote.account;
+    desktopDovecoteEls.modal.querySelectorAll('[data-dove-forward]').forEach((btn) => {
+        if (btn.dataset.clickMenu && !btn.dataset.doveClickMenu) btn.dataset.doveClickMenu = btn.dataset.clickMenu;
+        if (imap) {
+            btn.removeAttribute('data-click-menu');
+            btn.dataset.doveAction = 'forward';
+        } else {
+            if (btn.dataset.doveClickMenu) btn.setAttribute('data-click-menu', btn.dataset.doveClickMenu);
+            delete btn.dataset.doveAction;
+        }
+    });
+};
+
+// New Message from an account's message: Windows Mail's plain-text reply (the original under
+// "----- Original Message -----", quoted with > for a reply), from that account, threaded with
+// reply: { folder, uid, kind }; a forward carries the attachments (fetched and uploaded on Send).
+const doveImapOpenCompose = function (mode, mail) {
+    const account = doveImapAccount(mail.imap.accountId);
+    const own = account && account.email ? account.email.toLowerCase() : '';
+    const bare = (value) => {
+        const match = String(value || '').match(/<([^>]+)>/);
+        return (match ? match[1] : String(value || '')).trim().toLowerCase();
+    };
+    const to = [];
+    const cc = [];
+    if (mode === 'reply' || mode === 'replyAll') {
+        const sender = mail.replyTo && mail.replyTo.length ? mail.replyTo : [mail.fromFull || mail.from].filter(Boolean);
+        sender.forEach((entry) => to.push(entry));
+        if (mode === 'replyAll') {
+            const seen = new Set(to.map(bare).concat(own ? [own] : []));
+            [].concat(mail.to || [], mail.cc || []).forEach((entry) => {
+                const key = bare(entry);
+                if (!key || seen.has(key)) return;
+                seen.add(key);
+                cc.push(entry);
+            });
+        }
+    }
+    const original = String(mail.subject || '');
+    const subject = mode === 'forward'
+        ? (/^fwd?:/i.test(original) ? original : 'Fwd: ' + original)
+        : (/^re:/i.test(original) ? original : 'Re: ' + original);
+    const sent = mail.createdAt ? new Date(mail.createdAt).toLocaleString(undefined, {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    }) : '';
+    const head = ['----- Original Message -----', 'From: ' + (mail.fromFull || mail.from || '')];
+    if (mail.to && mail.to.length) head.push('To: ' + mail.to.join('; '));
+    if (mail.cc && mail.cc.length) head.push('Cc: ' + mail.cc.join('; '));
+    if (sent) head.push('Sent: ' + sent);
+    head.push('Subject: ' + original);
+    const text = String(mail.body || '').replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+    const quoted = mode === 'forward' ? text : text.split('\n').map((line) => (line ? '> ' + line : '>')).join('\n');
+    doveOpenComposeWindow({
+        mode: mode,
+        to: to.join(', '),
+        cc: cc.join(', '),
+        subject: subject,
+        body: '\n\n' + head.join('\n') + '\n\n' + quoted,
+        quoted: true,
+        replyTo: null,
+        accountId: mail.imap.accountId,
+        imapReply: { folder: mail.imap.folder, uid: mail.imap.uid, kind: mode === 'forward' ? 'forward' : 'reply' },
+        attachments: mode === 'forward'
+            ? (mail.attachments || []).map((att) => ({ name: att.name, mimeType: att.mimeType, size: att.size, url: att.url }))
+            : [],
+        sourceMailId: mail.id
+    });
+};
+
+// One attachment up to the server for an account's message (mailAccounts.upload, kept an hour):
+// a picked file, a file handed over as base64 (Snipping Tool) or a forwarded message's attachment
+// (fetched from its url). Resolves the uploadId; onProgress re-renders the chip.
+const doveImapEnsureUpload = function (att, onProgress) {
+    if (att.uploadId) return Promise.resolve(att.uploadId);
+    att.listeners = att.listeners || new Set();
+    if (onProgress) att.listeners.add(onProgress);
+    if (att.uploadPromise) return att.uploadPromise;
+    const notify = () => att.listeners.forEach((fn) => { try { fn(att.progress || 0); } catch (_) { /* a closed window */ } });
+    att.uploadPromise = (async () => {
+        const api = doveImapApi();
+        if (!api) throw new Error('E-mail accounts are not available.');
+        let file = att.file || null;
+        if (!file && att.base64) file = new File([doveBase64ToBlob(att.base64, att.mimeType)], att.name, { type: att.mimeType });
+        if (!file && att.url) {
+            const response = await fetch(att.url, { credentials: 'same-origin' });
+            if (!response.ok) throw new Error('"' + att.name + '" could not be fetched from the mail server.');
+            file = new File([await response.blob()], att.name, { type: att.mimeType });
+        }
+        if (!file) throw new Error('"' + att.name + '" could not be read.');
+        if (file.size > DOVE_IMAP_MAX_UPLOAD_BYTES) throw new Error('"' + att.name + '" is larger than ' + Math.round(DOVE_IMAP_MAX_UPLOAD_BYTES / 1024 / 1024) + ' MB');
+        att.progress = 0;
+        notify();
+        const result = await api.upload(file, { onProgress: (p) => { att.progress = p; notify(); } });
+        att.uploadId = result && result.uploadId;
+        if (!att.uploadId) throw new Error('"' + att.name + '" could not be uploaded.');
+        att.progress = 1;
+        return att.uploadId;
+    })();
+    att.uploadPromise.then(() => { att.uploadPromise = null; notify(); }, () => { att.uploadPromise = null; notify(); });
+    return att.uploadPromise;
+};
+
+// Dreamscape Mail sends attachments as base64: files picked while From was an account, and a
+// forwarded account message's attachments, are read now.
+const doveEnsureAttachmentBase64 = async function (attachments) {
+    for (const att of attachments || []) {
+        if (att.base64) continue;
+        // fileToBase64: public/scripts/utils/referenceUtils.js
+        if (att.file) att.base64 = await fileToBase64(att.file);
+        else if (att.url) att.base64 = await doveFetchUrlBase64(att.url);
+    }
+};
+
+// Send from an account: attachments finish uploading (progress in the status bar), then mailAccounts.send
+const doveImapSendCompose = async function (o) {
+    const api = doveImapApi();
+    const to = o.toInput.value.trim();
+    const cc = o.ccInput.value.trim();
+    if (!to && !cc) {
+        doveShowError('To is required');
+        return;
+    }
+    if (!api) {
+        doveShowError('E-mail accounts are not available.');
+        return;
+    }
+    o.sendBtn.disabled = true;
+    try {
+        const pending = o.attachments.slice();
+        for (const att of pending) {
+            const show = () => {
+                o.render();
+                o.status.textContent = 'Uploading ' + att.name + '... ' + Math.round((att.progress || 0) * 100) + '%';
+            };
+            if (!att.uploadId) show();
+            await doveImapEnsureUpload(att, show);
+        }
+        o.status.textContent = 'Sending...';
+        const mail = {
+            to: to,
+            cc: cc,
+            subject: o.subjectInput.value.trim(),
+            text: o.bodyTextarea.value,
+            attachments: pending.map((att) => att.uploadId)
+        };
+        if (o.reply) mail.reply = o.reply;
+        await api.send(o.accountId, mail);
+        o.onSent();
+        if (desktopDovecote.account === o.accountId) {
+            doveImapScheduleFolders(o.accountId);
+            if (doveCurrentFolderKind() === 'sent') doveImapScheduleReload();
+        }
+    } catch (err) {
+        o.status.textContent = '';
+        o.sendBtn.disabled = false;
+        doveShowError((err && err.message) || 'Could not send message');
+    }
+};
+
+const doveImapScheduleReload = function () {
+    clearTimeout(doveImap.reloadTimer);
+    doveImap.reloadTimer = setTimeout(() => {
+        if (desktopDovecote.loaded && desktopDovecote.account) doveLoadFolder(desktopDovecote.folder);
+    }, 500);
+};
+
+// Every uid a recent change of ours (doveImapApply): the server's 'flags' echo needs no reload
+const doveImapAllRecent = function (accountId, folder, uids) {
+    const now = Date.now();
+    doveImap.recent.forEach((at, key) => { if (now - at > 8000) doveImap.recent.delete(key); });
+    const list = uids || [];
+    return list.length > 0 && list.every((uid) => doveImap.recent.has(accountId + '|' + folder + '|' + uid));
+};
+
+// New mail for an account with notify on: the same alert as Dreamscape Mail's (dovePlayNewMailAlert:
+// Mail Options' sound, then the tray balloon), one for a burst of messages.
+const doveImapQueueAnnounce = function (message) {
+    doveImap.announce.push(message);
+    clearTimeout(doveImap.announceTimer);
+    doveImap.announceTimer = setTimeout(() => doveImapAnnounce(doveImap.announce.splice(0)), 700);
+};
+
+const doveImapAnnounce = function (list) {
+    if (!list.length) return;
+    // the phone shell's Messaging raises its own notification and sound for the same mail
+    if (window.uiShell === 'mobile') return;
+    // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
+    if (!doveTrayRegistered || (typeof isDesktopTrayBootPending === 'function' && isDesktopTrayBootPending())) return;
+    // desktopSounds.play: public/scripts/comp/desktopSounds.js
+    if (doveMailOptions.soundOn() && typeof desktopSounds !== 'undefined') desktopSounds.play('notify');
+    if (!doveMailOptions.notifyOn()) return;
+    const latest = list[list.length - 1];
+    const from0 = Array.isArray(latest.from) ? latest.from[0] : null;
+    const from = from0 ? (from0.name || from0.address || '') : (latest.sender || '');
+    const body = list.length > 1
+        ? 'You have ' + list.length + ' new messages.'
+        : (from ? 'From: ' + from + '. ' : '') + (latest.subject || '(no subject)');
+    doveMailBalloon('New mail', body);
+};
+
+// mailAccounts events: 'new' / 'flags' / 'removed' / 'folders' / 'sync' refresh the account's counts
+// and, when it is open, its list; 'account' re-reads the accounts; 'unread' repaints the tray badge.
+const doveImapOnEvent = function (type, detail) {
+    const d = detail || {};
+    const accountId = d.accountId;
+    if (type === 'account') {
+        doveImapRefreshAccounts();
+        return;
+    }
+    if (type === 'new' && d.notify && d.message) doveImapQueueAnnounce(d.message);
+    if (accountId) doveImapScheduleFolders(accountId);
+    if (!desktopDovecote.loaded || !desktopDovecoteEls || desktopDovecote.account !== accountId) return;
+    if (desktopDovecote.searchText.trim()) return;
+    const here = d.folder === desktopDovecote.folder;
+    if (type === 'removed') {
+        if (!here) return;
+        const gone = new Set((d.uids || []).map((uid) => doveImapId(accountId, d.folder, uid)));
+        const before = desktopDovecote.mail.length;
+        desktopDovecote.mail = desktopDovecote.mail.filter((mail) => !gone.has(String(mail.id)));
+        if (desktopDovecote.mail.length === before) return;
+        desktopDovecote.folderTotal = Math.max(0, (desktopDovecote.folderTotal || 0) - (before - desktopDovecote.mail.length));
+        if (desktopDovecote.selectedIds.some((id) => gone.has(String(id)))) {
+            doveClearSelection();
+            doveRenderPreview();
+        }
+        doveRenderMessageList();
+        return;
+    }
+    if (type === 'flags' && (!here || doveImapAllRecent(accountId, d.folder, d.uids))) return;
+    // flags: { uid: [flags] } -> the rows change in place, no reload
+    if (type === 'flags' && d.flags && typeof d.flags === 'object') {
+        let unreadDelta = 0;
+        Object.keys(d.flags).forEach((uid) => {
+            const flags = Array.isArray(d.flags[uid]) ? d.flags[uid] : [];
+            const id = doveImapId(accountId, d.folder, uid);
+            [desktopDovecote.mail.find((mail) => String(mail.id) === id), desktopDovecote.selectedMail].forEach((mail, index) => {
+                if (!mail || String(mail.id) !== id) return;
+                const read = flags.includes('\\Seen');
+                if (index === 0 && mail.read !== read) unreadDelta += read ? -1 : 1;
+                mail.read = read;
+                mail.flagged = flags.includes('\\Flagged');
+                mail.answered = flags.includes('\\Answered');
+            });
+        });
+        desktopDovecote.folderUnread = Math.max(0, (desktopDovecote.folderUnread || 0) + unreadDelta);
+        doveRenderMessageList();
+        return;
+    }
+    if ((type === 'new' || type === 'folders') && d.folder && !here) return;
+    doveImapScheduleReload();
+};
+
+const doveImapBind = function () {
+    const api = doveImapApi();
+    if (!api || doveImap.bound || typeof api.on !== 'function') return;
+    doveImap.bound = true;
+    ['new', 'flags', 'removed', 'folders', 'account', 'sync'].forEach((type) => api.on(type, (detail) => doveImapOnEvent(type, detail)));
+    api.on('unread', () => {
+        if (doveDreamUnread !== null) doveApplyTrayBadge(doveDreamUnread);
+    });
 };
 
 // ---- New mail tool window --------------------------------------------------------
@@ -3402,10 +4611,14 @@ const dovePlayNewMailAlert = function (count) {
 // (public/scripts/comp/trayIndicators.js): reveal:false sets state without showing,
 // reveal:true (or omitted, post-boot) shows/hides for real. Never plays the new-mail
 // sound; that is doveNoteMailIds({ announce: true }) when a new inbox id appears.
-const doveApplyTrayBadge = function (unread, options) {
+// unread: Dreamscape Mail's Inbox; the e-mail accounts' Inbox unread (mailAccounts.unread) is added on.
+let doveDreamUnread = null;
+const doveApplyTrayBadge = function (dreamUnread, options) {
     const icon = document.getElementById('dovecoteTrayIcon');
     const badge = document.getElementById('dovecoteTrayBadge');
     if (!icon || !badge) return;
+    doveDreamUnread = Number(dreamUnread) || 0;
+    const unread = doveDreamUnread + doveImapUnreadTotal();
     const opts = options || {};
     // isDesktopTrayBootPending: public/scripts/comp/trayIndicators.js
     const reveal = opts.reveal !== false && !isDesktopTrayBootPending() && doveTrayRegistered;
@@ -3461,6 +4674,8 @@ function initializeDovecoteTray() {
     const icon = document.getElementById('dovecoteTrayIcon');
     if (!icon || doveTrayInitialized) return;
     doveTrayInitialized = true;
+    // e-mail accounts' new mail and Inbox unread reach the tray too (doveImapOnEvent)
+    doveImapBind();
     icon.addEventListener('click', (e) => {
         e.preventDefault();
         doveToggleTrayInbox();
@@ -3622,6 +4837,8 @@ const doveOnMailboxUpdated = function (message) {
     doveRenderMailboxBanner();
     doveRenderWindowTitle();
     doveRenderFolderTree();
+    // an e-mail account is open: its list follows the account's own events (doveImapOnEvent)
+    if (desktopDovecote.account) return;
 
     const viewing = desktopDovecote.viewAsOwner || DESKTOP_DOVECOTE_HUMAN_OWNER;
     if (owners.indexOf(viewing) === -1) return;
@@ -3662,6 +4879,7 @@ const doveBindMailboxPush = function () {
 };
 
 doveBindMailboxPush();
+doveImapBind();
 
 if (typeof module !== 'undefined' && module.exports) {
     module.exports._test = {

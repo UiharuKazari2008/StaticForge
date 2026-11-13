@@ -18,6 +18,9 @@
  *   move(accountId, folder, uids, toFolder) / remove(accountId, folder, uids)   (remove = to Trash, for good in Trash)
  *   upload(file, { onProgress }) -> { uploadId }      (attachments for send; kept an hour)
  *   send(accountId, { to, cc, bcc, subject, text, html, attachments: [uploadId], reply: { folder, uid, kind: 'reply'|'forward' } })
+ *   saveDraft(accountId, { to, cc, bcc, subject, text, html, attachments, forwardFrom, replaceUid }) -> { folder, uid }  (in the account's Drafts)
+ *   send also takes forwardFrom: { folder, uid, parts? } (the original's attachments come along) and draftUid (that draft leaves Drafts)
+ *   'flags' events carry flags: { uid: [flags] }
  *   search(q, { accountId, limit }) -> [item]
  *   testAccount / saveAccount / deleteAccount (saveAccount { sameSmtpPassword: true } drops a separate SMTP password; account.hasSmtpPassword), syncStatus(), resync(accountId, rebuild)
  *   unread() -> { total, byAccount: { id: n } }   (Inbox unread)
@@ -108,6 +111,7 @@
     const move = (accountId, folder, uids, to) => call('ma_move', { accountId, folder, uids: [].concat(uids), to });
     const remove = (accountId, folder, uids) => call('ma_delete', { accountId, folder, uids: [].concat(uids) });
     const send = (accountId, mail) => call('ma_send', Object.assign({ accountId }, mail || {}));
+    const saveDraft = (accountId, mail) => call('ma_save_draft', Object.assign({ accountId }, mail || {}));
     const search = (q, opts) => call('ma_search', Object.assign({ q }, opts || {})).then((d) => d.results || []);
     const testAccount = (a) => call('ma_account_test', a || {});
     const saveAccount = (a) => call('ma_account_save', a || {}).then((d) => { cache = null; return d.account; });
@@ -137,7 +141,7 @@
 
     root.mailAccounts = {
         accounts, presetFor, folders, messages, message, setFlags, markRead, markUnread, flag, unflag, move, remove,
-        upload, send, search, testAccount, saveAccount, deleteAccount, syncStatus, resync, unread, on, off
+        upload, send, saveDraft, search, testAccount, saveAccount, deleteAccount, syncStatus, resync, unread, on, off
     };
     if (!wire()) {
         const t = setInterval(() => { if (wire()) { clearInterval(t); scheduleUnread(); } }, 1000);

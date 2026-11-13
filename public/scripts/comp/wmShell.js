@@ -2272,11 +2272,13 @@
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
         // that came in since this client started and is still unread (mailNewCheck)
-        hide(mailEl, !(lsFlag(MAIL_ICON_ALL_KEY, false) ? shellMailUnread > 0 : shellMailNew));
+        // IMAP accounts (#789) count the same way; while their New E-mail notification waits it stands for them
+        const noteWaits = (ev) => notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === ev); });
+        const mailAll = lsFlag(MAIL_ICON_ALL_KEY, false);
+        hide(mailEl, !(mailAll ? shellMailUnread > 0 || (imapUnread() > 0 && !noteWaits('mail')) : shellMailNew || (imapNew() > 0 && !noteWaits('mail'))));
         // unread text messages (Text Messaging, #779): the phone-and-envelope glyph until they are read;
         // unread Dreamscape Messenger lines: the Messenger buddy (while a class's notification waits,
         // its own glyph stands for them: one, not two)
-        const noteWaits = (ev) => notes.some((n) => { const o = appNotes.get(n.id); return !!(o && o.event === ev); });
         hide(shell.querySelector('[data-role="sms"]'), !(smsUnread() > 0) || noteWaits('sms'));
         hide(shell.querySelector('[data-role="chat"]'), !(chatUnread() > 0) || noteWaits('chat'));
         paintBezelLed();
@@ -2862,6 +2864,9 @@
     };
     /** Unread Dreamscape Messenger lines: the persona lines wmChat.js has not shown yet. */
     const chatUnread = () => { try { const c = window.wmChatApp; return c && typeof c.unread === 'function' ? Number(c.unread()) || 0 : 0; } catch (_) { return 0; } };
+    /** IMAP e-mail accounts (#789): unread Inbox mail (window.mailAccounts), and new arrivals not read yet (wmMessaging.js). */
+    const imapUnread = () => { try { const m = window.mailAccounts; const u = m && typeof m.unread === 'function' ? m.unread() : null; return u ? Number(u.total) || 0 : 0; } catch (_) { return 0; } };
+    const imapNew = () => { try { const m = window.wmMessaging; return m && typeof m.imapNew === 'function' ? Number(m.imapNew()) || 0 : 0; } catch (_) { return 0; } };
     const GEN_REQUEST_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
 
     /** { running, persona, name } from director_computer_status (null before the first answer). */
@@ -4066,7 +4071,9 @@
             const chat = window.wmChatApp;
             bubble({ title: 'Dreamscape Messenger', role, anchor, sections: [n ? `${n} new ${n === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(chat && typeof chat.showList === 'function' ? [{ links: [{ label: 'Dreamscape Messenger', action: () => { closeBubble(); chat.showList(); } }] }] : [])], buttons: [{ text: 'Hide' }] });
         } else if (role === 'mail') {
-            bubble({ title: 'Messaging', role, anchor, sections: [shellMailUnread ? `${shellMailUnread} unread ${shellMailUnread === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
+            // Dreamscape Mail and the IMAP accounts (#789) together
+            const n = shellMailUnread + imapUnread();
+            bubble({ title: 'Messaging', role, anchor, sections: [n ? `${n} unread ${n === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
         }
     }
 
@@ -5637,8 +5644,11 @@
                     const text = window.wmTextShell;
                     const sms = smsUnread() > 0;
                     const im = chatUnread() > 0;
-                    if (sms && !im && !(mailUnread > 0) && text && typeof text.openAccount === 'function') text.openAccount();
-                    else if (im && !sms && !(mailUnread > 0) && chat && typeof chat.showList === 'function') chat.showList();
+                    // unread IMAP mail (#789) alone opens the account with the most of it
+                    const imap = imapUnread() > 0 && !(mailUnread > 0) && msg && typeof msg.imapAccounts === 'function' ? msg.imapAccounts().filter((a) => a.unread > 0).sort((x, y) => y.unread - x.unread)[0] : null;
+                    if (sms && !im && !(mailUnread > 0) && !imapUnread() && text && typeof text.openAccount === 'function') text.openAccount();
+                    else if (im && !sms && !(mailUnread > 0) && !imapUnread() && chat && typeof chat.showList === 'function') chat.showList();
+                    else if (imap && !sms && !im) msg.goTo(`imap:${imap.id}`);
                     else if (msg && typeof msg.goTo === 'function') msg.goTo('mail');
                     else open('messaging');
                 }, { paint: true, timeout: 15000 }));
@@ -5703,13 +5713,13 @@
                     if (window.wsClient && window.wsClient.initializationCompleted) loadMail();
                 } else {
                     // unread e-mail, text messages (Text Messaging, #779) and Dreamscape Messenger lines together
-                    const unread = mailUnread + smsUnread() + chatUnread();
+                    const unread = mailUnread + imapUnread() + smsUnread() + chatUnread();
                     setText(page.querySelector('[data-f="messages"]'), unread ? `${unread} unread ${unread === 1 ? 'message' : 'messages'}` : 'No unread messages');
                 }
                 const tasks = tasksText();
                 setText(page.querySelector('[data-f="tasks"]'), tasks);
                 page.querySelector('[data-row="tasks"]').hidden = tasks === 'No tasks' && todayOption('tasks', 'empty') === 'hide';
-                if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !(mailUnread + smsUnread() + chatUnread()) && todayOption('messages', 'empty') === 'hide';
+                if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !(mailUnread + imapUnread() + smsUnread() + chatUnread()) && todayOption('messages', 'empty') === 'hide';
                 // the Director, NovelAI balance and calendar items are widgets now (wmTodayWidgets.js,
                 // wmAccounts.js: registerTodayItem)
                 const wsEl = page.querySelector('[data-f="workspace"]');
@@ -5752,7 +5762,8 @@
                 return {
                     connection: carrierText(),
                     owner: acc && typeof acc.name === 'function' ? acc.name() : '',
-                    mailUnread,
+                    // the e-mail count: Dreamscape Mail and the IMAP accounts (#789)
+                    mailUnread: mailUnread == null ? null : mailUnread + imapUnread(),
                     smsUnread: smsUnread(),
                     chatUnread: chatUnread(),
                     tasks: tasks === 'No tasks' ? '' : tasks,
