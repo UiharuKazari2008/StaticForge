@@ -999,3 +999,11 @@ html.ui-mobile #wmShell .wm-edit {
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* Program Icons' Style: Simple | Detailed, one line above the buttons */
+.wm-pi-style {
+    display: flex;
+    align-items: center;
+    gap: calc(10 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+}

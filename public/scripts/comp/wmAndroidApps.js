@@ -25,7 +25,9 @@
  *
  * Stored on the phone: wmAndroidHidden, wmAndroidStart (JSON arrays of "package/activity"),
  * wmAndroidGames (JSON { id: true | false }: a choice that overrides Android's category),
- * wmAndroidIconStore (the store's manifest, last seen), wmProgramIconsJob (the open batch).
+ * wmAndroidIconStore (the store's manifest, last seen), wmProgramIconsJob (the open batch),
+ * wmProgramIconsMode (Program Icons' Style: Simple = the app's mark or one object, Detailed = characters
+ * and signature objects).
  * Only inside the app, on phones.
  */
 (function () {
@@ -40,6 +42,9 @@
     const GAMES_KEY = 'wmAndroidGames';
     const STORE_KEY = 'wmAndroidIconStore';
     const JOB_KEY = 'wmProgramIconsJob';
+    const MODE_KEY = 'wmProgramIconsMode'; // 'simple' | 'detailed': the last Style picked
+    const MODES = [['simple', 'Simple'], ['detailed', 'Detailed']];
+    const readMode = () => (localStorage.getItem(MODE_KEY) === 'simple' ? 'simple' : 'detailed');
     const START_MENU_KEY = 'wmStartMenu'; // Settings > Menus' own list (wmPrograms.js)
     const FOLDER = 'android';
     const API = '/api/wm-program-icons';
@@ -342,6 +347,10 @@
         const esc = (s) => sh.escapeHtml(s);
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
         const STATE_TEXT = { queued: 'Waiting', working: 'Making...', ready: 'Ready', failed: 'Failed' };
+        const MODE_LABEL = Object.fromEntries(MODES);
+        /** Style: Simple (the app's mark or one object) | Detailed (characters, signature objects). */
+        const styleHtml = (name, now) => `<div class="wm-pi-style"><span>Style:</span>${MODES.map(([v, l]) => `<label class="wm-check"><input type="radio" name="${name}" value="${v}"${v === now ? ' checked' : ''}><span>${l}</span></label>`).join('')}</div>`;
+        const bindStyle = (el, name, set) => el.querySelectorAll(`input[name="${name}"]`).forEach((r) => r.addEventListener('change', () => { if (r.checked) set(r.value); }));
 
         function renderPrograms(el, d, pageApi) {
             const cells = d.list.map((a) => {
@@ -354,7 +363,9 @@
             const anyWm = [...d.sel].some((id) => store.icons[id]);
             el.innerHTML = `<p>Select the programs to give Windows Mobile icons, then tap Request. The server makes them; you can close Program Icons meanwhile.</p>
                 <div class="wm-pi-scroll"><div class="wm-icongrid wm-pi-grid" role="list">${cells}</div></div>
+                ${styleHtml('pi-style', d.mode)}
                 ${ui.buttons([['request', job.id ? 'Request (busy)' : `Request${d.sel.size ? ` (${d.sel.size})` : ''}`, !d.sel.size || !!job.id], ['original', 'Use Android Icon', !anyWm]])}`;
+            bindStyle(el, 'pi-style', (v) => { d.mode = v; try { localStorage.setItem(MODE_KEY, v); } catch (_) { /* this visit only */ } });
             el.querySelector('.wm-pi-grid').addEventListener('click', (e) => {
                 const cell = e.target.closest('.wm-pi-cell');
                 if (!cell) return;
@@ -367,7 +378,7 @@
                 if (!chosen.length || job.id) return;
                 try {
                     const items = await sh.busy(async () => Promise.all(chosen.map(async (a) => ({ id: a.id, label: a.label, category: a.category || null, game: a.game === true, icon: await iconData(a) }))), { paint: true, timeout: 30000 });
-                    const j = await sh.busy(() => api('/jobs', { method: 'POST', body: { items } }), { paint: true, timeout: 60000 });
+                    const j = await sh.busy(() => api('/jobs', { method: 'POST', body: { mode: d.mode, items } }), { paint: true, timeout: 60000 });
                     setJob(j.job.id, j.job);
                     job.lastState = 'working';
                     d.sel.clear();
@@ -418,11 +429,14 @@
                 return `<div class="wm-listbox-row wm-pi-row">
                     <label class="wm-check wm-pi-pick">${can ? `<input type="checkbox" data-key="${esc(it.key)}"${d.keep.has(it.key) ? ' checked' : ''}><span></span>` : '<span class="wm-pi-nobox"></span>'}
                     <span class="wm-pi-thumbs">${it.original ? `<img class="wm-pi-orig" src="${esc(it.original)}" alt="">` : ''}${pv ? `<img class="wm-pi-big" src="${esc(pv[128])}" alt=""><img class="wm-pi-small" src="${esc(pv[16])}" alt="">` : '<span class="wm-pi-big wm-pi-empty"></span>'}</span>
-                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : (STATE_TEXT[it.state] || it.state))}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
+                    <span class="wm-pi-text"><b>${esc(it.label)}</b><span>${esc(it.state === 'failed' ? `Failed: ${it.error || ''}` : `${STATE_TEXT[it.state] || it.state}, ${MODE_LABEL[it.mode] || 'Detailed'}`)}${it.attempt > 1 && it.state === 'ready' ? ` (try ${it.attempt})` : ''}</span></span></label></div>`;
             }).join('');
-            el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again, then tap Done or Regenerate.'}</p>
+            el.innerHTML = `<p>${busy ? `Making icons: ${done} of ${items.length} finished. You can close Program Icons.` : 'Check the icons to keep, or to make again in the Style below, then tap Done or Regenerate.'}</p>
                 <div class="wm-listbox wm-pi-list" style="max-height:calc(230 * var(--wm-px))">${rows}</div>
+                ${styleHtml('pi-regen-style', d.regenMode)}
                 ${ui.buttons([['regen', 'Regenerate', !d.keep.size], ['done', 'Done', busy || !items.some((it) => it.state === 'ready')], ['discard', 'Discard', false]])}`;
+            // Regenerate makes the checked icons again in this Style (each row says which it has now)
+            bindStyle(el, 'pi-regen-style', (v) => { d.regenMode = v; });
             el.querySelectorAll('input[data-key]').forEach((c) => c.addEventListener('change', () => {
                 if (c.checked) d.keep.add(c.dataset.key); else d.keep.delete(c.dataset.key);
                 pageApi.rerender();
@@ -430,7 +444,7 @@
             el.querySelector('[data-act="regen"]').addEventListener('click', async () => {
                 if (!d.keep.size) return;
                 try {
-                    const j = await sh.busy(() => api(`/jobs/${encodeURIComponent(job.id)}/regenerate`, { method: 'POST', body: { keys: [...d.keep] } }), { paint: true, timeout: 20000 });
+                    const j = await sh.busy(() => api(`/jobs/${encodeURIComponent(job.id)}/regenerate`, { method: 'POST', body: { keys: [...d.keep], mode: d.regenMode } }), { paint: true, timeout: 20000 });
                     job.data = j.job;
                     job.lastState = 'working';
                     d.keep.clear();
@@ -476,7 +490,7 @@
             init() {
                 const hidden = readSet(HIDDEN_KEY);
                 const list = read().filter((a) => a.role !== 'settings' && !ROLES[a.role] && !hidden.has(a.id)).sort((x, y) => coll.compare(x.label, y.label));
-                const d = { list, sel: new Set(), keep: new Set() };
+                const d = { list, sel: new Set(), keep: new Set(), mode: readMode(), regenMode: readMode() };
                 // a batch another phone started (or one this phone forgot): the newest open one
                 if (!job.id) {
                     api('/jobs').then((j) => {

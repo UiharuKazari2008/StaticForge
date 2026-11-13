@@ -31,10 +31,10 @@
  * HTTP (session auth; generating and writing the store are admin only):
  *   GET  /api/wm-program-icons/manifest
  *   GET  /api/wm-program-icons/jobs                       open jobs (newest first)
- *   POST /api/wm-program-icons/jobs                       { items: [{ id, package, label, category?, game?, icon: data URL }] }
+ *   POST /api/wm-program-icons/jobs                       { mode?: 'simple' | 'detailed', items: [{ id, package, label, category?, game?, mode?, icon: data URL }] }
  *   GET  /api/wm-program-icons/jobs/:job
  *   GET  /api/wm-program-icons/jobs/:job/files/:file      a preview PNG
- *   POST /api/wm-program-icons/jobs/:job/regenerate       { keys: [...] }
+ *   POST /api/wm-program-icons/jobs/:job/regenerate       { keys: [...], mode? }
  *   POST /api/wm-program-icons/jobs/:job/done             { accept: [...] } -> store, recompile
  *   POST /api/wm-program-icons/jobs/:job/cancel
  *   DELETE /api/wm-program-icons/store?id=<package/activity>   back to the Android icon
@@ -184,6 +184,15 @@ async function playStoreContext(pkg) {
 
 // ---------------------------------------------------------------- prompt
 
+// Modes (Yukimi, Nov 12): chosen when the icons are requested and again on Regenerate.
+//   simple    the app's mark or one iconic object, like Windows Mobile's own program icons; a game
+//             gets its emblem or one object that stands for it, never a character portrait
+//   detailed  the richer take: a game's characters or signature objects, a brand mark with an
+//             object that says what the program does
+const MODES = ['simple', 'detailed'];
+const normMode = (m) => (MODES.includes(m) ? m : 'detailed');
+const SIMPLE_TAKE = 'Simple mode: one bold object only, built from two or three big shapes with two tones each, like Windows Mobile\'s own program icons (a handset, an envelope, a globe). Use the app\'s own logo mark as that object; if the app\'s icon is a character or a painted scene, use the game\'s emblem or logo symbol instead, or else one simple object that stands for it (its weapon, a halo, a ball). No faces or figures, no scene, nothing small.';
+
 // a regeneration asks for another way to turn the brand into a WM object
 const TAKES = [
     'Turn the brand mark itself into a solid, glossy object: a thick moulded plastic or glass emblem with a rounded bevel, a bright gloss band across its top half and a darker rim, standing free with no plate behind it.',
@@ -215,7 +224,7 @@ function buildPrompt(item, ctx, attempt, refs, brief) {
         '- Nothing is cropped or masked into a shape: no rounded corners, no rounded-square, circle or badge outline cutting the picture, no vignette. Rounded app-icon shapes did not exist in 2009. Every object ends in its own silhouette.',
         '- Light and colour the way the era\'s icons were drawn (Yukimi: limited colour, staggered shading): a slight three-quarter turn or front-on view, light from the upper left, each surface in a small palette of three or four tones of its colour laid down as distinct steps or bands (a light top, a mid tone, a darker lower edge), not smooth airbrushed or painterly shading, no soft ambient occlusion, no detailed rendering of hair strands, skin or fabric. One crisp white gloss highlight on rounded parts. Every shape outlined thinly in a darker shade of its own colour (never black).',
         '- Built from a few big, simple shapes that stay readable at 32 and 16 pixels; no fine texture, hairlines or small text.',
-        `- ${(item.game || /game/i.test(cat)) && (Number(attempt) || 1) === 1 ? GAME_TAKE : TAKES[(Math.max(1, Number(attempt) || 1) - 1) % TAKES.length]}`,
+        `- ${normMode(item.mode) === 'simple' ? SIMPLE_TAKE : (item.game || /game/i.test(cat)) && (Number(attempt) || 1) === 1 ? GAME_TAKE : TAKES[(Math.max(1, Number(attempt) || 1) - 1) % TAKES.length]}`,
         '- Lettering only where the brand mark itself is a letter or a short word; then keep it as a bold glossy shape. No other text.',
         '',
         'The object fills the square canvas almost edge to edge, centred, about 94% of the canvas on its longest side.',
@@ -303,7 +312,7 @@ async function chooseRoute() {
  * So a vision model writes a brief of the signature objects first and the icon is drawn from text.
  * config wmProgramIcons.briefModel (default gpt-5.4-mini, OpenAI directly). null when unavailable.
  */
-async function describeIcon(name, refBuffers) {
+async function describeIcon(name, refBuffers, mode) {
     let key = null;
     try { key = appIconGenerator.resolveOpenAiKey(projectRoot).apiKey; } catch (_) { return null; }
     const model = collapse(settings().briefModel) || 'gpt-5.4-mini';
@@ -319,7 +328,9 @@ async function describeIcon(name, refBuffers) {
                     role: 'user',
                     content: [{
                         type: 'text',
-                        text: `These are icons of the game "${name}". Name its one to three signature objects or characters that make the icon recognisable, and describe each for an illustrator who will model it again from scratch: shape, proportions, colours, distinctive features, pose. Leave out the background, the scene, sparkles, the icon tile, any publisher or developer logo, wordmark or badge (studio names, corner ribbons), and all text, event banners and anniversary or season ribbons. Describe colours as a few flat tones. Plain prose, at most 90 words, no preamble.`
+                        text: `These are icons of the game "${name}". ${mode === 'simple'
+                            ? 'Name exactly ONE thing for a simple icon of this game and describe it: shape, proportions, colours. Prefer the game\'s emblem or logo symbol (not its wordmark text); if none is visible, use what you know about the game for its best-known symbol or object (a halo, a weapon, a ball, one candy...). Always answer with one thing, never "none", never a group. No characters, faces or figures.'
+                            : 'Name its one to three signature objects or characters that make the icon recognisable, and describe each for an illustrator who will model it again from scratch: shape, proportions, colours, distinctive features, pose.'} Leave out the background, the scene, sparkles, the icon tile, any publisher or developer logo, wordmark or badge (studio names, corner ribbons), and all text, event banners and anniversary or season ribbons. Describe colours as a few flat tones. Plain prose, at most 90 words, no preamble.`
                     }, ...images]
                 }]
             })
@@ -398,6 +409,7 @@ function publicJob(job) {
             state: it.state,
             error: it.error || null,
             attempt: it.attempt,
+            mode: normMode(it.mode),
             preview: it.preview ? Object.fromEntries(PREVIEW_SIZES.map((s) => [s, `/api/wm-program-icons/jobs/${job.id}/files/${it.preview}-${s}.png`])) : null,
             original: it.hasRef ? `/api/wm-program-icons/jobs/${job.id}/files/${it.key}-ref.png` : null,
             store: it.store || null
@@ -462,9 +474,13 @@ async function runItem(job, item) {
         item.attempt = (item.attempt || 0) + 1;
         const isGame = item.game || /game/i.test(String((ctx && ctx.category) || item.category || ''));
         // a game: drawn from a brief of its objects, with no picture to cut out (describeIcon)
-        if (isGame && refs.length && item.brief === undefined) item.brief = await describeIcon(item.label, refs.slice().reverse());
-        const useBrief = isGame && item.brief;
-        const prompt = buildPrompt(item, ctx, item.attempt, useBrief ? [] : refNames, useBrief ? item.brief : null);
+        // one brief per mode (a simple icon of a game describes its emblem, not its characters)
+        const mode = normMode(item.mode);
+        if (!item.briefs || typeof item.briefs !== 'object') item.briefs = {};
+        if (isGame && refs.length && item.briefs[mode] === undefined) item.briefs[mode] = await describeIcon(item.label, refs.slice().reverse(), mode);
+        const brief = isGame ? item.briefs[mode] : null;
+        const useBrief = isGame && brief;
+        const prompt = buildPrompt(item, ctx, item.attempt, useBrief ? [] : refNames, useBrief ? brief : null);
         const master = await requestIcon(route, prompt, useBrief ? [] : refs);
         const base = `${item.key}-${item.attempt}`;
         atomicWrite(path.join(dir, `${base}.png`), master);
@@ -505,6 +521,7 @@ async function createJob(body) {
             label: collapse(raw.label).slice(0, 80) || appId.split('/')[0],
             category: collapse(raw.category).slice(0, 32) || null,
             game: raw.game === true,
+            mode: normMode(raw.mode || (body && body.mode)),
             attempt: 0,
             hasRef: false
         };
@@ -528,12 +545,13 @@ async function createJob(body) {
     return job;
 }
 
-function regenerate(job, keys) {
+function regenerate(job, keys, mode) {
     if (job.state === 'done' || job.state === 'cancelled') throw Object.assign(new Error('This batch is closed.'), { status: 409 });
     const want = new Set(Array.isArray(keys) ? keys.map(String) : []);
     let n = 0;
     for (const it of job.items) {
         if (!want.has(it.key) || it.state === 'queued' || it.state === 'working') continue;
+        if (mode) it.mode = normMode(mode);
         enqueue(job, it);
         n++;
     }
@@ -633,7 +651,7 @@ function mount(app, authMiddleware, globalResources) {
     app.post(`${base}/jobs/:job/regenerate`, auth, admin, json, (req, res) => {
         const job = jobOr404(req, res);
         if (!job) return;
-        try { const n = regenerate(job, req.body && req.body.keys); res.json({ success: true, queued: n, job: publicJob(job) }); } catch (err) { fail(res, err); }
+        try { const n = regenerate(job, req.body && req.body.keys, req.body && req.body.mode); res.json({ success: true, queued: n, job: publicJob(job) }); } catch (err) { fail(res, err); }
     });
     app.post(`${base}/jobs/:job/done`, auth, admin, json, async (req, res) => {
         const job = jobOr404(req, res);
