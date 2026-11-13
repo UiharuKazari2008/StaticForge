@@ -476,14 +476,38 @@
             const top = wrap.scrollTop;
             area.style.height = '0px';
             const text = area.scrollHeight;
-            const ink = low ? low * px() * zoomOf() + (writing ? view : view * 0.25) : 0;
+            const ink = low ? low * inkScale() + (writing ? view : view * 0.25) : 0;
             area.style.height = `${Math.ceil(Math.max(view, text, ink))}px`;
             wrap.scrollTop = top;
         }
 
+        // Windows Journal's flags on a shared page (journal.js): its flag bitmaps
+        const flagArt = {};
+        function flagImage(color) {
+            if (!flagArt[color]) {
+                const im = new Image();
+                im.src = `/static_images/vista-journal/flag-${['red', 'blue', 'green', 'orange', 'purple'].includes(color) ? color : 'red'}.png`;
+                im.onload = () => paintInk();
+                flagArt[color] = im;
+            }
+            return flagArt[color];
+        }
+
         function drawStroke(ctx, st) {
             const pts = st.pts;
-            if (!pts.length) return;
+            if (!pts || !pts.length) return;
+            if (st.tool === 'flag') {
+                const im = flagImage(st.color);
+                if (im.complete && im.naturalWidth) ctx.drawImage(im, pts[0][0], pts[0][1], 14.5, 14.5);
+                return;
+            }
+            if (st.tool === 'highlighter') {
+                // Journal's highlighter: see-through, square-ended
+                ctx.save();
+                ctx.globalAlpha = 0.5;
+                ctx.globalCompositeOperation = 'multiply';
+                ctx.lineCap = 'square';
+            }
             ctx.strokeStyle = st.color || '#000';
             ctx.lineWidth = Number(st.width) || PEN;
             ctx.beginPath();
@@ -491,6 +515,20 @@
             if (pts.length === 1) ctx.lineTo(pts[0][0] + 0.01, pts[0][1]);
             for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
             ctx.stroke();
+            if (st.tool === 'highlighter') ctx.restore();
+        }
+
+        /**
+         * Page units -> px: the phone writes 1 unit = 1 WM unit; a page drawn in Windows Journal (850
+         * units across a Letter page) is shrunk to the phone's page width.
+         */
+        function inkScale() {
+            const area = page.querySelector('.nt-text');
+            const k = px() * zoomOf();
+            const pageUnits = area.clientWidth / k;
+            let right = 0;
+            ((editing && editing.ink.strokes) || []).forEach((st) => st.pts.forEach((pt) => { if (pt[0] > right) right = pt[0]; }));
+            return k * (right > pageUnits ? pageUnits / right : 1);
         }
 
         /** Redraws the strokes over the page as it is scrolled (page units * --wm-px * zoom). */
@@ -510,7 +548,7 @@
             const ctx = cv.getContext('2d');
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.clearRect(0, 0, cv.width, cv.height);
-            const k = px() * zoomOf();
+            const k = inkScale();
             ctx.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
             ctx.lineCap = 'round';
             ctx.lineJoin = 'round';
@@ -521,7 +559,7 @@
         function inkPoint(e) {
             const area = page.querySelector('.nt-text');
             const r = area.getBoundingClientRect();
-            const k = px() * zoomOf();
+            const k = inkScale();
             return [Math.round(((e.clientX - r.left) / k) * 10) / 10, Math.round(((e.clientY - r.top) / k) * 10) / 10];
         }
 
