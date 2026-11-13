@@ -1027,7 +1027,25 @@
         L.font = cs.fontFamily || L.font;
         colors.paddle = parseColor(cs.getPropertyValue('--wm-highlight')) || colors.paddle;
         bricksDirty = true;
+        sprites.clear();
         draw();
+    }
+
+    // Sprites: the ball, the paddle (per width) and the capsules are drawn once per size and theme
+    // into small canvases and copied each frame, instead of gradients and paths every frame.
+    const sprites = new Map();
+    function sprite(key, w, h, paint) {
+        let sp = sprites.get(key);
+        if (!sp) {
+            // the paddle's grow / shrink makes a sprite per step: start over rather than pile up
+            if (sprites.size > 48) sprites.clear();
+            sp = document.createElement('canvas');
+            sp.width = Math.max(1, Math.ceil(w));
+            sp.height = Math.max(1, Math.ceil(h));
+            paint(sp.getContext('2d'), sp.width, sp.height);
+            sprites.set(key, sp);
+        }
+        return sp;
     }
 
     function parseColor(v) {
@@ -1098,20 +1116,25 @@
         bricksDirty = false;
     }
 
-    // Bubble Breaker's shaded ball: a radial light up and to the left, a dark rim
+    // Bubble Breaker's shaded ball: a radial light up and to the left, a dark rim (one sprite)
     function drawBall(c, b) {
         const x = (L.ox + b.x * L.scale) * L.dpr;
         const y = (L.oy + b.y * L.scale) * L.dpr;
         const r = Math.max(2, DS(BALL_R));
-        const g = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.1, x, y, r);
-        g.addColorStop(0, '#ffffff');
-        g.addColorStop(0.35, '#b5bac6');
-        g.addColorStop(0.8, '#4a5063');
-        g.addColorStop(1, '#21242c');
-        c.fillStyle = g;
-        c.beginPath();
-        c.arc(x, y, r, 0, Math.PI * 2);
-        c.fill();
+        const d = Math.ceil(r * 2) + 2;
+        const sp = sprite(`ball|${d}`, d, d, (g) => {
+            const cx = d / 2;
+            const gr = g.createRadialGradient(cx - r * 0.35, cx - r * 0.4, r * 0.1, cx, cx, r);
+            gr.addColorStop(0, '#ffffff');
+            gr.addColorStop(0.35, '#b5bac6');
+            gr.addColorStop(0.8, '#4a5063');
+            gr.addColorStop(1, '#21242c');
+            g.fillStyle = gr;
+            g.beginPath();
+            g.arc(cx, cx, r, 0, Math.PI * 2);
+            g.fill();
+        });
+        c.drawImage(sp, Math.round(x - d / 2), Math.round(y - d / 2));
     }
 
     function drawPaddle(c) {
@@ -1123,18 +1146,22 @@
         const y0 = DY(top);
         const y1 = DY(top + PADDLE_H - 4);
         const h = y1 - y0;
+        const w = x1 - x0;
         const col = colors.paddle;
-        // a bar with round ends: dark frame, the colour, a light band in its upper third
-        c.fillStyle = rgb(mix(col, BLACK, 0.6));
-        roundRect(c, x0, y0, x1 - x0, h, h / 2);
-        c.fill();
-        c.fillStyle = rgb(col);
-        roundRect(c, x0 + 1, y0 + 1, x1 - x0 - 2, h - 2, (h - 2) / 2);
-        c.fill();
-        c.fillStyle = rgb(mix(col, WHITE, 0.6));
-        const band = Math.max(1, Math.round(h * 0.22));
-        roundRect(c, x0 + Math.round(h * 0.45), y0 + Math.max(2, Math.round(h * 0.18)), x1 - x0 - Math.round(h * 0.9), band, band / 2);
-        c.fill();
+        // a bar with round ends: dark frame, the colour, a light band in its upper third (one sprite per width)
+        const sp = sprite(`paddle|${w}|${h}|${col.join(',')}`, w, h, (g) => {
+            g.fillStyle = rgb(mix(col, BLACK, 0.6));
+            roundRect(g, 0, 0, w, h, h / 2);
+            g.fill();
+            g.fillStyle = rgb(col);
+            roundRect(g, 1, 1, w - 2, h - 2, (h - 2) / 2);
+            g.fill();
+            g.fillStyle = rgb(mix(col, WHITE, 0.6));
+            const band = Math.max(1, Math.round(h * 0.22));
+            roundRect(g, Math.round(h * 0.45), Math.max(2, Math.round(h * 0.18)), w - Math.round(h * 0.9), band, band / 2);
+            g.fill();
+        });
+        c.drawImage(sp, x0, y0);
     }
 
     function roundRect(c, x, y, w, h, r) {
@@ -1150,21 +1177,24 @@
 
     function drawCapsule(c, cap) {
         const k = CAPSULE[cap.type] || CAPSULE.wide;
-        const w = DS(26);
-        const h = DS(12);
-        const x = (L.ox + cap.x * L.scale) * L.dpr - w / 2;
-        const y = (L.oy + cap.y * L.scale) * L.dpr - h / 2;
-        c.fillStyle = rgb(mix(k.rgb, BLACK, 0.55));
-        roundRect(c, Math.round(x), Math.round(y), Math.round(w), Math.round(h), h / 2);
-        c.fill();
-        c.fillStyle = rgb(k.rgb);
-        roundRect(c, Math.round(x) + 1, Math.round(y) + 1, Math.round(w) - 2, Math.round(h) - 2, h / 2 - 1);
-        c.fill();
-        c.fillStyle = '#fff';
-        c.font = `bold ${Math.round(DS(10))}px ${L.font}`;
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        c.fillText(k.text, x + w / 2, y + h / 2 + DS(0.5));
+        const w = Math.round(DS(26));
+        const h = Math.round(DS(12));
+        const x = Math.round((L.ox + cap.x * L.scale) * L.dpr - w / 2);
+        const y = Math.round((L.oy + cap.y * L.scale) * L.dpr - h / 2);
+        const sp = sprite(`cap|${cap.type}|${w}|${h}`, w, h, (g) => {
+            g.fillStyle = rgb(mix(k.rgb, BLACK, 0.55));
+            roundRect(g, 0, 0, w, h, h / 2);
+            g.fill();
+            g.fillStyle = rgb(k.rgb);
+            roundRect(g, 1, 1, w - 2, h - 2, h / 2 - 1);
+            g.fill();
+            g.fillStyle = '#fff';
+            g.font = `bold ${Math.round(DS(10))}px ${L.font}`;
+            g.textAlign = 'center';
+            g.textBaseline = 'middle';
+            g.fillText(k.text, w / 2, h / 2 + DS(0.5));
+        });
+        c.drawImage(sp, x, y);
     }
 
     function text(c, str, x, y, size, opts = {}) {

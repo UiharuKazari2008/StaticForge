@@ -835,31 +835,59 @@
     }
 
     // a block: flat colour, a light band at the top / left and a dark one at the bottom / right (GDI's raised edge)
-    function block(px, py, s, ci) {
+    function paintBlock(c, px, py, s, ci) {
         const base = FILL[ci] || FILL[7];
         const e = Math.max(1, Math.round(s / 8));
-        ctx.fillStyle = base;
-        ctx.fillRect(px, py, s, s);
-        ctx.fillStyle = shade(base, -0.45);
-        ctx.fillRect(px, py + s - e, s, e);
-        ctx.fillRect(px + s - e, py, e, s);
-        ctx.fillStyle = shade(base, 0.55);
-        ctx.fillRect(px, py, s - e, e);
-        ctx.fillRect(px, py, e, s - e);
-        ctx.beginPath();
-        ctx.moveTo(px + s - e, py); ctx.lineTo(px + s, py); ctx.lineTo(px + s - e, py + e); ctx.closePath();
-        ctx.moveTo(px, py + s - e); ctx.lineTo(px + e, py + s - e); ctx.lineTo(px, py + s); ctx.closePath();
-        ctx.fill();
+        c.fillStyle = base;
+        c.fillRect(px, py, s, s);
+        c.fillStyle = shade(base, -0.45);
+        c.fillRect(px, py + s - e, s, e);
+        c.fillRect(px + s - e, py, e, s);
+        c.fillStyle = shade(base, 0.55);
+        c.fillRect(px, py, s - e, e);
+        c.fillRect(px, py, e, s - e);
+        c.beginPath();
+        c.moveTo(px + s - e, py); c.lineTo(px + s, py); c.lineTo(px + s - e, py + e); c.closePath();
+        c.moveTo(px, py + s - e); c.lineTo(px + e, py + s - e); c.lineTo(px, py + s); c.closePath();
+        c.fill();
+    }
+
+    function paintGhost(c, px, py, s, ci) {
+        const base = FILL[ci] || FILL[7];
+        const e = Math.max(1, Math.round(s / 10));
+        c.fillStyle = shade(base, 0.8);
+        c.fillRect(px, py, s, s);
+        c.strokeStyle = base;
+        c.lineWidth = e;
+        c.strokeRect(px + e / 2, py + e / 2, s - e, s - e);
+    }
+
+    // Each block and ghost block is drawn once per colour and size into a sprite sheet (one row per
+    // size: the colours, then their ghosts) and copied from it, instead of edges and colour maths for
+    // every block of every frame.
+    const sheets = new Map(); // size -> canvas
+    function sheetFor(s) {
+        let sh = sheets.get(s);
+        if (sh) return sh;
+        if (sheets.size > 8) sheets.clear();
+        const n = FILL.length;
+        sh = document.createElement('canvas');
+        sh.width = s * n * 2;
+        sh.height = s;
+        const c = sh.getContext('2d');
+        for (let ci = 0; ci < n; ci++) { paintBlock(c, ci * s, 0, s, ci); paintGhost(c, (n + ci) * s, 0, s, ci); }
+        sheets.set(s, sh);
+        return sh;
+    }
+
+    function block(px, py, s, ci) {
+        const i = FILL[ci] ? ci : 7;
+        ctx.drawImage(sheetFor(s), i * s, 0, s, s, px, py, s, s);
     }
 
     function ghostBlock(px, py, s, ci) {
-        const base = FILL[ci] || FILL[7];
-        const e = Math.max(1, Math.round(s / 10));
-        ctx.fillStyle = shade(base, 0.8);
-        ctx.fillRect(px, py, s, s);
-        ctx.strokeStyle = base;
-        ctx.lineWidth = e;
-        ctx.strokeRect(px + e / 2, py + e / 2, s - e, s - e);
+        const i = FILL[ci] ? ci : 7;
+        ctx.drawImage(sheetFor(s), (FILL.length + i) * s, 0, s, s, px, py, s, s);
     }
 
     // a piece in a box (Next, Hold), centred, at a cell size of its own

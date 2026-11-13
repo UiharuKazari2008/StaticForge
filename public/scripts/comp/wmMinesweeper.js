@@ -562,27 +562,24 @@
             else if (c && c.open && c.count) b.neighbours(press.x, press.y, (n, nx, ny) => { if (!n.open && n.mark !== 1) sunk.add(ny * b.w + nx); });
         }
         const over = game.state === 'won' || game.state === 'lost';
+        const sheet = tileSheet(cell);
+        const blit = (n, px, py) => ctx.drawImage(sheet, n * cell, 0, cell, cell, px, py, cell, cell);
+        const lost = game.state === 'lost';
         for (let vy = 0; vy < rows; vy++) {
             for (let vx = 0; vx < cols; vx++) {
                 const { x, y } = toBoard(vx, vy);
                 const c = b.cell(x, y);
                 const px = vx * cell;
                 const py = vy * cell;
-                const lost = game.state === 'lost';
+                let n;
                 if (c.open || (lost && c.mine && c.mark !== 1)) {
                     const hit = lost && game.loseAt && game.loseAt.x === x && game.loseAt.y === y;
-                    openTile(px, py, cell, hit);
-                    if (c.mine) mine(px, py, cell);
-                    else if (c.count) number(px, py, cell, c.count);
-                } else if (sunk.has(y * b.w + x)) {
-                    downTile(px, py, cell);
-                } else {
-                    tile(px, py, cell);
-                    if (c.mark === 1) {
-                        flag(px, py, cell);
-                        if (lost && !c.mine) cross(px, py, cell);
-                    } else if (c.mark === 2) question(px, py, cell);
-                }
+                    n = c.mine ? (hit ? T.MINE_HIT : T.MINE) : c.count ? T.NUM + c.count - 1 : T.OPEN;
+                } else if (sunk.has(y * b.w + x)) n = T.DOWN;
+                else if (c.mark === 1) n = lost && !c.mine ? T.FLAG_WRONG : T.FLAG;
+                else if (c.mark === 2) n = T.QUESTION;
+                else n = T.TILE;
+                blit(n, px, py);
             }
         }
         if (cursor && !over) {
@@ -592,6 +589,36 @@
             ctx.lineWidth = lw;
             ctx.strokeRect(vx * cell + lw / 2, vy * cell + lw / 2, cell - lw, cell - lw);
         }
+    }
+
+    // The tiles as one sprite sheet, a strip of cell x cell pictures drawn once per tile size and theme
+    // (a draw is then one copy per tile instead of edges, text and gradients for each of up to 480)
+    const T = { TILE: 0, DOWN: 1, OPEN: 2, MINE: 3, MINE_HIT: 4, FLAG: 5, FLAG_WRONG: 6, QUESTION: 7, NUM: 8 }; // NUM..NUM+7 = 1..8
+    let sheetCanvas = null;
+    let sheetKey = '';
+    function tileSheet(cell) {
+        const key = `${cell}|${colours.tile}|${colours.font}`;
+        if (sheetCanvas && sheetKey === key) return sheetCanvas;
+        sheetKey = key;
+        sheetCanvas = sheetCanvas || document.createElement('canvas');
+        sheetCanvas.width = cell * (T.NUM + 8);
+        sheetCanvas.height = cell;
+        const keep = ctx;
+        ctx = sheetCanvas.getContext('2d');
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, sheetCanvas.width, cell);
+        const at = (n) => n * cell;
+        tile(at(T.TILE), 0, cell);
+        downTile(at(T.DOWN), 0, cell);
+        openTile(at(T.OPEN), 0, cell, false);
+        openTile(at(T.MINE), 0, cell, false); mine(at(T.MINE), 0, cell);
+        openTile(at(T.MINE_HIT), 0, cell, true); mine(at(T.MINE_HIT), 0, cell);
+        tile(at(T.FLAG), 0, cell); flag(at(T.FLAG), 0, cell);
+        tile(at(T.FLAG_WRONG), 0, cell); flag(at(T.FLAG_WRONG), 0, cell); cross(at(T.FLAG_WRONG), 0, cell);
+        tile(at(T.QUESTION), 0, cell); question(at(T.QUESTION), 0, cell);
+        for (let k = 1; k <= 8; k++) { openTile(at(T.NUM + k - 1), 0, cell, false); number(at(T.NUM + k - 1), 0, cell, k); }
+        ctx = keep;
+        return sheetCanvas;
     }
 
     // a covered tile: GDI's raised edge on the button face (the device's system colours: COLOR_BTNFACE

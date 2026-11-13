@@ -1355,6 +1355,7 @@
         cv.style.top = `${snap(br.top)}px`;
         L.font = getComputedStyle(page).fontFamily || L.font;
         tilesKey = '';
+        inkLayerKey = '';
         draw();
     }
 
@@ -1541,6 +1542,39 @@
         });
     }
 
+    let inkLayer = null;
+    let inkLayerKey = '';
+    function renderInk(g, bx0, by0, bx1, by1) {
+        if (!inkLayer) inkLayer = document.createElement('canvas');
+        if (inkLayer.width !== cv.width || inkLayer.height !== cv.height) { inkLayer.width = cv.width; inkLayer.height = cv.height; }
+        const c = inkLayer.getContext('2d');
+        c.clearRect(0, 0, inkLayer.width, inkLayer.height);
+        c.save();
+        c.beginPath();
+        c.rect(bx0, by0, bx1 - bx0, by1 - by0);
+        c.clip();
+        c.strokeStyle = '#000';
+        c.fillStyle = '#000';
+        c.lineWidth = DS(INK_HALF * 2);
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+        const X = (v) => (L.ox + v * L.scale) * L.dpr;
+        const Y = (v) => (L.oy + v * L.scale) * L.dpr;
+        g.strokes.forEach((st) => {
+            const p = st.points;
+            c.beginPath();
+            if (p.length === 1) {
+                c.arc(X(p[0][0]), Y(p[0][1]), DS(INK_HALF), 0, Math.PI * 2);
+                c.fill();
+                return;
+            }
+            c.moveTo(X(p[0][0]), Y(p[0][1]));
+            for (let i = 1; i < p.length; i++) c.lineTo(X(p[i][0]), Y(p[i][1]));
+            c.stroke();
+        });
+        c.restore();
+    }
+
     function renderTiles() {
         if (!tilesLayer) tilesLayer = document.createElement('canvas');
         if (tilesLayer.width !== cv.width || tilesLayer.height !== cv.height) {
@@ -1560,18 +1594,33 @@
         return k;
     }
 
-    // inkball.exe's ball, as Bubble Breaker shades its own: a light up and to the left, a dark rim
+    // inkball.exe's ball, as Bubble Breaker shades its own: a light up and to the left, a dark rim.
+    // Drawn once per colour and size into a sprite (radius kept to half device pixels).
+    const ballSprites = new Map();
     function drawBall(c, x, y, r, col, sunk) {
-        const base = sunk ? mix(col, BLACK, 0.35) : col;
-        const g = c.createRadialGradient(x - r * 0.35, y - r * 0.4, r * 0.08, x, y, r);
-        g.addColorStop(0, rgb(mix(base, WHITE, 0.85)));
-        g.addColorStop(0.4, rgb(base));
-        g.addColorStop(0.85, rgb(mix(base, BLACK, 0.45)));
-        g.addColorStop(1, rgb(mix(base, BLACK, 0.7)));
-        c.fillStyle = g;
-        c.beginPath();
-        c.arc(x, y, r, 0, Math.PI * 2);
-        c.fill();
+        const rq = Math.max(1, Math.round(r * 2) / 2);
+        const key = `${col.join(',')}|${rq}|${sunk ? 1 : 0}`;
+        let sp = ballSprites.get(key);
+        if (!sp) {
+            if (ballSprites.size > 64) ballSprites.clear();
+            const d = Math.ceil(rq * 2) + 2;
+            sp = document.createElement('canvas');
+            sp.width = sp.height = d;
+            const g = sp.getContext('2d');
+            const cx = d / 2;
+            const base = sunk ? mix(col, BLACK, 0.35) : col;
+            const gr = g.createRadialGradient(cx - rq * 0.35, cx - rq * 0.4, rq * 0.08, cx, cx, rq);
+            gr.addColorStop(0, rgb(mix(base, WHITE, 0.85)));
+            gr.addColorStop(0.4, rgb(base));
+            gr.addColorStop(0.85, rgb(mix(base, BLACK, 0.45)));
+            gr.addColorStop(1, rgb(mix(base, BLACK, 0.7)));
+            g.fillStyle = gr;
+            g.beginPath();
+            g.arc(cx, cx, rq, 0, Math.PI * 2);
+            g.fill();
+            ballSprites.set(key, sp);
+        }
+        c.drawImage(sp, x - sp.width / 2, y - sp.height / 2);
     }
 
     function text(c, str, x, y, size, opts = {}) {
@@ -1655,32 +1704,12 @@
         if (key !== tilesKey) { renderTiles(); tilesKey = key; }
         c.drawImage(tilesLayer, 0, 0);
         if (g.gold) g.gold.tiles.forEach((t) => { if (t) drawTile(c, t, true); });
-        // the ink: black, 10 units wide, round ends (the Ink renderer's)
+        // the ink: black, 10 units wide, round ends (the Ink renderer's), in a layer of its own that
+        // is drawn again only when a stroke is added, grows or goes
         if (g.strokes.length) {
-            c.save();
-            c.beginPath();
-            c.rect(bx0, by0, bx1 - bx0, by1 - by0);
-            c.clip();
-            c.strokeStyle = '#000';
-            c.fillStyle = '#000';
-            c.lineWidth = DS(INK_HALF * 2);
-            c.lineCap = 'round';
-            c.lineJoin = 'round';
-            g.strokes.forEach((s) => {
-                const p = s.points;
-                const X = (v) => (L.ox + v * L.scale) * L.dpr;
-                const Y = (v) => (L.oy + v * L.scale) * L.dpr;
-                c.beginPath();
-                if (p.length === 1) {
-                    c.arc(X(p[0][0]), Y(p[0][1]), DS(INK_HALF), 0, Math.PI * 2);
-                    c.fill();
-                    return;
-                }
-                c.moveTo(X(p[0][0]), Y(p[0][1]));
-                for (let i = 1; i < p.length; i++) c.lineTo(X(p[i][0]), Y(p[i][1]));
-                c.stroke();
-            });
-            c.restore();
+            const inkKey = `${cv.width}x${cv.height}|${g.strokes.map((st) => st.points.length + ':' + (st.points[0] || []).join(',')).join(';')}`;
+            if (inkKey !== inkLayerKey) { renderInk(g, bx0, by0, bx1, by1); inkLayerKey = inkKey; }
+            c.drawImage(inkLayer, 0, 0);
         }
         // the balls, between the last two ticks
         const a = running() && g.state === 'play' ? Math.min(1, R.acc / TICK) : 1;

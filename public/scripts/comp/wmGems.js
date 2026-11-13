@@ -482,12 +482,73 @@
         const side = Math.max(8, Math.min(w - gap * 2, h - bar - gap * 3));
         const cell = Math.floor(side / N);
         const bw = cell * N;
-        L = { dpr, cell, unit, ox: Math.round((w - bw) / 2), oy: Math.max(gap, Math.round((h - bw - bar - gap) / 2)), bw, bar, gap, w, h };
-        cv.width = Math.round(w * dpr);
-        cv.height = Math.round(h * dpr);
+        const cs = getComputedStyle(page);
+        L = {
+            dpr, cell, unit, ox: Math.round((w - bw) / 2), oy: Math.max(gap, Math.round((h - bw - bar - gap) / 2)), bw, bar, gap, w, h,
+            // theme colours read once per layout (show() lays out again after a theme change)
+            tint: cs.getPropertyValue('--wm-tint').trim() || '#d6ebce',
+            hl: cs.getPropertyValue('--wm-highlight').trim() || '#31d339'
+        };
+        if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+            cv.width = Math.round(w * dpr);
+            cv.height = Math.round(h * dpr);
+        }
         cv.style.width = `${w}px`;
         cv.style.height = `${h}px`;
+        buildSprites();
         draw();
+    }
+
+    // ---------------------------------------------------------------- sprites
+    //
+    // Everything that does not move is drawn once per size and theme: the board (checker and frame)
+    // as one layer, and the gems as a sprite sheet (row 0 the six cuts, row 1 the six Cross gems,
+    // then the Star), each a cell at device pixels. A frame is then a layer copy and a blit per gem.
+
+    let boardLayer = null;
+    let gemSheet = null;
+    let spriteKey = '';
+
+    function buildSprites() {
+        const { dpr, cell, bw } = L;
+        const key = [cell, dpr, L.tint].join('|');
+        if (key === spriteKey && boardLayer && gemSheet) return;
+        spriteKey = key;
+        const px = Math.round(bw * dpr);
+        boardLayer = boardLayer || document.createElement('canvas');
+        boardLayer.width = px;
+        boardLayer.height = px;
+        const b = boardLayer.getContext('2d');
+        b.setTransform(dpr, 0, 0, dpr, 0, 0);
+        for (let y = 0; y < N; y++) {
+            for (let x = 0; x < N; x++) {
+                b.fillStyle = (x + y) % 2 ? L.tint : '#fff';
+                b.fillRect(x * cell, y * cell, cell, cell);
+            }
+        }
+        b.strokeStyle = '#000';
+        b.lineWidth = 1 / dpr;
+        b.strokeRect(0.5 / dpr, 0.5 / dpr, bw - 1 / dpr, bw - 1 / dpr);
+        const cp = Math.round(cell * dpr);
+        gemSheet = gemSheet || document.createElement('canvas');
+        gemSheet.width = cp * KINDS;
+        gemSheet.height = cp * 3;
+        const g = gemSheet.getContext('2d');
+        g.clearRect(0, 0, gemSheet.width, gemSheet.height);
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        for (let sp = 0; sp < 2; sp++) for (let k = 0; k < KINDS; k++) drawGem(g, { k, sp }, k * cell, sp * cell, cell, 1, 0);
+        drawGem(g, { k: STAR, sp: 2 }, 0, 2 * cell, cell, 1, 0);
+        gemSheet.cell = cp;
+    }
+
+    /** A gem from the sheet at (x, y) in css px, shrunk about its centre by sc. */
+    function blitGem(c, gem, x, y, sc) {
+        if (sc <= 0) return;
+        const cp = gemSheet.cell;
+        const col = gem.k === STAR ? 0 : gem.k;
+        const row = gem.k === STAR ? 2 : (gem.sp === 1 ? 1 : 0);
+        const d = L.cell * sc;
+        c.drawImage(gemSheet, col * cp, row * cp, cp, cp, x + (L.cell - d) / 2, y + (L.cell - d) / 2, d, d);
     }
 
     const ease = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
@@ -501,17 +562,11 @@
         c.setTransform(dpr, 0, 0, dpr, 0, 0);
         c.fillStyle = '#fff';
         c.fillRect(0, 0, L.w, L.h);
-        // the board: a light checker in the theme tint, a 1 px frame
-        const tint = getComputedStyle(page).getPropertyValue('--wm-tint').trim() || '#d6ebce';
-        for (let y = 0; y < N; y++) {
-            for (let x = 0; x < N; x++) {
-                c.fillStyle = (x + y) % 2 ? tint : '#fff';
-                c.fillRect(ox + x * cell, oy + y * cell, cell, cell);
-            }
-        }
-        c.strokeStyle = '#000';
-        c.lineWidth = 1 / dpr;
-        c.strokeRect(ox + 0.5 / dpr, oy + 0.5 / dpr, bw - 1 / dpr, bw - 1 / dpr);
+        if (!boardLayer) buildSprites();
+        // the board layer (checker in the theme tint, 1 px frame), copied 1:1 in device pixels
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.drawImage(boardLayer, Math.round(ox * dpr), Math.round(oy * dpr));
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
         // gems
         const a = anim;
         const p = a ? ease((now - a.t0) / a.dur) : 1;
@@ -533,7 +588,7 @@
         c.beginPath();
         c.rect(ox, oy, bw, bw);
         c.clip();
-        for (const [g, [x, y]] of pos) drawGem(c, g, ox + x * cell, oy + y * cell, cell, scale.has(g) ? scale.get(g) : 1, now);
+        for (const [g, [x, y]] of pos) blitGem(c, g, ox + x * cell, oy + y * cell, scale.has(g) ? scale.get(g) : 1);
         c.restore();
         // selection and hint frames: the theme's highlight, 2 units
         const frameAt = (x, y, col) => {
@@ -542,7 +597,7 @@
             const i = c.lineWidth / 2;
             c.strokeRect(ox + x * cell + i, oy + y * cell + i, cell - i * 2, cell - i * 2);
         };
-        const hl = getComputedStyle(page).getPropertyValue('--wm-highlight').trim() || '#31d339';
+        const hl = L.hl;
         if (sel && !a) frameAt(sel.x, sel.y, hl);
         if (hint && !a && Math.floor((now - hint.t0) / 300) % 2 === 0) frameAt(hint.x, hint.y, '#000');
         // points rising from a clear

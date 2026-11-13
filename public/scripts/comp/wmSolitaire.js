@@ -339,6 +339,7 @@
         if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
         canvas.style.width = `${w}px`;
         canvas.style.height = `${h}px`;
+        if (drag) drag.layer = false; // the drag layer is redrawn at the new size
         paint();
     }
 
@@ -451,6 +452,30 @@
         }
     }
 
+    // While cards are dragged the table under them does not change: it is kept as a layer and each
+    // pen move copies it and draws only the lifted cards.
+    let dragLayer = null;
+    function paintDrag() {
+        const sh = sheetFor();
+        if (!sh || !drag || !drag.active) { paint(); return; }
+        if (!drag.layer) {
+            const keep = drag.vx;
+            dragLayer = dragLayer || document.createElement('canvas');
+            dragLayer.width = canvas.width;
+            dragLayer.height = canvas.height;
+            const lifted = drag;
+            drag = Object.assign({}, lifted, { cards: [] }); // the table with the lifted cards taken off
+            paint();
+            dragLayer.getContext('2d').drawImage(canvas, 0, 0);
+            drag = lifted;
+            drag.vx = keep;
+            drag.layer = true;
+        }
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(dragLayer, 0, 0);
+        drag.cards.forEach((c, k) => cell(ctx, sh, c, drag.vx, drag.vy + k * UP_DY));
+    }
+
     function paintStatus() {
         if (!page || !st) return;
         const bar = page.querySelector('.wsol-status');
@@ -538,7 +563,7 @@
         drag.vx = p.vx - drag.gx;
         drag.vy = p.vy - drag.gy;
         e.preventDefault();
-        paint();
+        paintDrag();
     }
 
     function onUp(e) {
