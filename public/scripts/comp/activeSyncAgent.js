@@ -247,7 +247,7 @@
             takeLists(res);
             lastStatusAt = Date.now();
             fire('state', state());
-            if (kind === 'device') loadReceived();
+            if (kind === 'device') { loadReceived(); tellVisible(); }
             if (helloAgain) scheduleHello(200);
         } catch (e) {
             st.online = false;
@@ -354,6 +354,19 @@
         fire('received', { items: rx.items.slice(), unseen: rx.unseen });
         return rx.items.slice();
     }
+    // whether this page is on screen: a delivery the app's background service takes while it is not
+    // (locked, screen off, another app in front) is a received item (modules/activeSync.js)
+    function tellVisible() {
+        const c = client();
+        if (kind !== 'device' || !st.online || !c || !c.ws || c.ws.readyState !== 1) return;
+        const visible = root.document && root.document.visibilityState === 'visible' && root.document.documentElement.dataset.screenOff === undefined;
+        try { c.ws.send(JSON.stringify({ type: 'as_visible', visible })); } catch (_) { /* closing */ }
+    }
+    if (root.document) {
+        root.document.addEventListener('visibilitychange', tellVisible);
+        root.addEventListener('melatonscreen', () => setTimeout(tellVisible, 0));
+    }
+
     function loadReceived() {
         return send('as_received', {}).then(takeReceived, () => rx.items.slice());
     }

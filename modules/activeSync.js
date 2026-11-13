@@ -606,7 +606,7 @@ async function call(globalResources, wsServer, clientInfo, data) {
         if (!target) throw fail('UNSUPPORTED', 'The device does not support this.');
         const res = await sendRequest(server, target, fromOf(clientInfo), op, args, timeoutMs);
         if (!res.ok) throw fail(res.error.code, res.error.message);
-        if (target.info.as.speaker === 'service') { try { noteReceived(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
+        if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
         return { success: true, result: res.result };
     }
 
@@ -636,7 +636,7 @@ async function serverCall(globalResources, wsServer, deviceId, op, args, opts = 
     const timeoutMs = Math.min(opts.maxTimeoutMs || CALL_TIMEOUT_MAX_MS, Math.max(1000, Number(opts.timeoutMs) || CALL_TIMEOUT_MS));
     const res = await sendRequest(server, target, { kind: 'computer', id: '', name: clampString(opts.fromName, 64) || hostName() }, op, args, timeoutMs);
     if (!res.ok) throw fail(res.error.code, res.error.message);
-    if (target.info.as.speaker === 'service') { try { noteReceived(globalResources, server, deviceId, op, args, opts.fromName || hostName()); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
+    if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, deviceId, op, args, opts.fromName || hostName()); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
     return res.result;
 }
 
@@ -687,6 +687,24 @@ function receivedOf(op, args) {
     if (op === 'notify.show') return { kind: 'note', title: clampString(a.title || a.text || 'Notification', 200), detail: { text: clampString(String(a.text || ''), 2000) } };
     if (op === 'studio.setSession') return { kind: 'studio', title: 'Studio session', detail: {} };
     return null;
+}
+
+/** Is the phone's page on screen (its webview socket says visible: not locked, screen on, in front)? */
+function pageOnScreen(server, deviceId) {
+    return liveSockets(server, 'device', deviceId).some((s) => s.info.as.speaker !== 'service' && s.info.as.visible === true);
+}
+
+/** A live delivery the background service took: an item only when the page was not on screen. */
+function noteReceivedLive(globalResources, server, deviceId, op, args, fromName) {
+    if (pageOnScreen(server, deviceId)) return;
+    noteReceived(globalResources, server, deviceId, op, args, fromName);
+}
+
+/** The phone's page tells whether it is on screen (as_visible). */
+function setVisible(clientInfo, visible) {
+    if (!clientInfo || !clientInfo.as || clientInfo.as.kind !== 'device') return false;
+    clientInfo.as.visible = !!visible;
+    return true;
 }
 
 function noteReceived(globalResources, server, deviceId, op, args, fromName) {
@@ -1027,6 +1045,7 @@ module.exports = {
     queueFor,
     listReceived,
     updateReceived,
+    setVisible,
     receivedUnseen,
     __test: { noteReceived, receivedOf },
     deviceOnline,

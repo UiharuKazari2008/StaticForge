@@ -107,6 +107,11 @@ function registerPackets(handlersCtx) {
         reply(ws, 'as_synced_response', message, { success: activeSync.markSynced(gr(), wsServer, deviceId, typeof src.summary === 'string' ? src.summary : '') });
     });
 
+    // the phone's page on screen or not (#803: only what arrives while it is not counts as received)
+    reg('as_visible', async ({ message, clientInfo }) => {
+        activeSync.setVisible(clientInfo, !!body(message).visible);
+    });
+
     // Received Items (#803): the phone's own list (or any device's for an admin)
     reg('as_received', async ({ ws, message, clientInfo, wsServer }) => {
         const src = body(message);
