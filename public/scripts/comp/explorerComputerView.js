@@ -22,6 +22,11 @@
  *                          = imageres 26, a card / USB = 29, no letters), opening to phone://<root>
  *                          (explorerPhoneDrive.js over activeSyncRemoteStorage.js). Inside the
  *                          Android app the phone is this computer: its roots stay removable disks.
+ *   Continuity (#798)      in the DeX window of a hybrid phone (AndroidHome.getContinuity: DeX opened
+ *                          once, Dreamscape as home) the phone is this computer's own disks: its
+ *                          internal storage is D: under Hard Disk Drives (imageres 26), cards and USB
+ *                          drives are E:, F: ... under Devices with Removable Storage, and the phone
+ *                          itself is left out of Portable Devices
  *   command bar            System properties (Control Panel > System) and Open Control Panel, as
  *                          Vista's Computer has them (explorerVistaChrome.js syncCommands)
  *
@@ -38,6 +43,16 @@
     const DRIVES = [{ letter: 'C', label: 'Local Disk', path: '/' }];
     // the column headers Vista gives Computer (VM: 80, 80, 80 and 85px, grouped and sorted by Type)
     const COLUMNS = [{ label: 'Name' }, { label: 'Type', active: true }, { label: 'Total Size' }, { label: 'Free Space' }];
+
+    /** Continuity (#798): the DeX window of a hybrid phone, else null (AndroidHome.getContinuity). */
+    function continuity() {
+        try {
+            const H = root.AndroidHome;
+            if (!H || typeof H.getContinuity !== 'function') return null;
+            const c = JSON.parse(H.getContinuity());
+            return c && c.hybrid && c.external ? c : null;
+        } catch (_) { return null; }
+    }
 
     function esc(text) {
         return String(text == null ? '' : text)
@@ -221,10 +236,20 @@
         }
 
         /** The phone's drives as removable disks (explorerPhoneDrive.js): only inside the Android app,
-            where the phone is this computer. A phone reached over ActiveSync is a portable device. */
+            where the phone is this computer. A phone reached over ActiveSync is a portable device.
+            Hybrid (#798): lettered from D: (internal storage, a hard disk), then E:, F: ... */
         phoneDrives() {
             if (root.phoneStorage && root.phoneStorage.remote) return [];
-            return root.explorerPhoneDrive && root.explorerPhoneDrive.available() ? root.explorerPhoneDrive.computerDrives() : [];
+            const list = root.explorerPhoneDrive && root.explorerPhoneDrive.available() ? root.explorerPhoneDrive.computerDrives() : [];
+            if (!continuity()) return list;
+            const internal = list.filter((d) => d.kind === 'internal');
+            const others = list.filter((d) => d.kind !== 'internal');
+            let code = 'D'.charCodeAt(0);
+            return internal.concat(others).map((d) => {
+                if (d.block) return d;
+                const letter = String.fromCharCode(code++);
+                return Object.assign({}, d, { letter, hdd: d.kind === 'internal', icon: d.kind === 'internal' ? 'drive-fixed' : d.icon });
+            });
         }
 
         /** Portable Devices: every phone connected over ActiveSync (activeSyncAgent.js), guest or partner,
@@ -233,8 +258,11 @@
             const as = root.activeSync;
             if (!as || as.kind !== 'computer' || typeof as.state !== 'function') return [];
             const st = as.state() || {};
+            const self = continuity();
             return (st.devices || [])
                 .filter((d) => d.online && (d.session === 'guest' || d.session === 'partner'))
+                // the hybrid phone this DeX window runs on is this computer, not a device on a link (#798)
+                .filter((d) => !(self && String(self.deviceId).toLowerCase() === String(d.deviceId).toLowerCase()))
                 .map((d) => ({
                     key: `dev:${d.deviceId}`,
                     deviceId: d.deviceId,
@@ -487,8 +515,11 @@
                         </div>
                     </div>`;
             }).join('');
-            const phones = this.phoneDrives();
-            const phoneTiles = phones.map((d) => {
+            const allPhones = this.phoneDrives();
+            // hybrid: the phone's internal storage stands with the hard disks (D:)
+            const hddPhones = allPhones.filter((d) => d.hdd);
+            const phones = allPhones.filter((d) => !d.hdd);
+            const phoneTile = (d) => {
                 const used = d.total ? Math.max(0, Math.min(1, 1 - d.free / d.total)) : 0;
                 const full = d.total && d.free / d.total < 0.1;
                 const bar = d.total
@@ -498,12 +529,14 @@
                 return `<div class="explorer-computer-tile${d.key === this.selected ? ' is-selected' : ''}${d.block ? ' is-blocked' : ''}" data-drive="${esc(d.key)}" role="option" aria-selected="${d.key === this.selected}" title="${esc(line)}">
                         ${this.deviceIcon(d, 48)}
                         <div class="explorer-computer-tile-text">
-                            <div class="explorer-computer-tile-name">${esc(d.name)}</div>
+                            <div class="explorer-computer-tile-name">${esc(d.letter ? `${d.name} (${d.letter}:)` : d.name)}</div>
                             ${bar}
                             <div class="explorer-computer-tile-free">${esc(line)}</div>
                         </div>
                     </div>`;
-            }).join('');
+            };
+            const phoneTiles = phones.map(phoneTile).join('');
+            const hddCount = DRIVES.length + hddPhones.length;
             // removable disks are Vista's own group below the hard disks
             const phoneGroup = phones.length ? `
                 <section class="explorer-computer-group explorer-computer-group-devices${this.groupFolded('devices') ? ' is-collapsed' : ''}">
@@ -512,8 +545,8 @@
                 </section>` : '';
             this.el.innerHTML = `
                 <section class="explorer-computer-group${this.collapsed ? ' is-collapsed' : ''}">
-                    <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${DRIVES.length})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
-                    <div class="explorer-computer-tiles">${tiles}</div>
+                    <h3 class="explorer-computer-group-head"><span>Hard Disk Drives (${hddCount})</span><button type="button" class="explorer-computer-group-toggle" tabindex="-1" aria-expanded="${!this.collapsed}" aria-label="${this.collapsed ? 'Expand' : 'Collapse'} the group"></button></h3>
+                    <div class="explorer-computer-tiles">${tiles}${hddPhones.map(phoneTile).join('')}</div>
                 </section>${phoneGroup}${this.portableGroup()}${this.networkGroup()}`;
         }
 

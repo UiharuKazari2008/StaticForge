@@ -675,6 +675,11 @@
             const list = [{ label: rootLabel(), icon: 'drive', path: '/', folders: '/' }];
             if (!view) return list;
             const open = (key) => () => view.openDrive(key);
+            // the phone's own drives inside the app; lettered on a hybrid phone's DeX window (#798: D: is
+            // its internal storage, a hard disk; E:, F: ... cards and USB), drives before devices as in Vista
+            (view.phoneDrives ? view.phoneDrives() : []).forEach((d) => {
+                list.push({ label: d.letter ? `${d.name} (${d.letter}:)` : d.name, icon: d.hdd ? 'drive' : 'removable', path: d.path || null, leaf: true, action: open(d.key) });
+            });
             // Portable Devices: each ActiveSync phone, opening to its storages (Computer ▸ <device>)
             (view.portableDevices ? view.portableDevices() : []).forEach((d) => {
                 list.push({
@@ -684,9 +689,6 @@
                     leaf: !d.files,
                     children: () => this.deviceStorageSpecs(d.deviceId)
                 });
-            });
-            (view.phoneDrives ? view.phoneDrives() : []).forEach((d) => {
-                list.push({ label: d.name, icon: 'removable', path: d.path || null, leaf: true, action: open(d.key) });
             });
             (view.networkDrives ? view.networkDrives() : []).forEach((d) => {
                 list.push({ label: d.name, icon: d.online ? 'network' : 'network-off', path: d.path || null, leaf: true, action: open(d.key) });

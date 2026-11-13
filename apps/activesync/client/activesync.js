@@ -208,11 +208,13 @@
 
         tasks(tile, dev) {
             const out = [];
+            // the phone this DeX window runs on, as a hybrid device (#798): no connection to set up or end
+            const local = isContinuityDevice(dev);
             if (tile === 'settings') {
-                if (dev && dev.online && !dev.partner) out.push({ id: 'setup', text: 'Set up your device', icon: 'setup-32.png' });
-                out.push({ id: 'connection', text: 'Connection settings', icon: 'connection-32.png' });
+                if (dev && dev.online && !dev.partner && !local) out.push({ id: 'setup', text: 'Set up your device', icon: 'setup-32.png' });
+                if (!local) out.push({ id: 'connection', text: 'Connection settings', icon: 'connection-32.png' });
                 if (dev) out.push({ id: 'info', text: 'Device information', icon: 'item-32.png' });
-                if (dev && dev.partner) out.push({ id: 'end', text: 'End a partnership', icon: 'end-partnership-32.png' });
+                if (dev && dev.partner && !local) out.push({ id: 'end', text: 'End a partnership', icon: 'end-partnership-32.png' });
             }
             if (tile === 'programs' && dev && dev.online && dev.permissions.includes('notify') && root.activeSyncNotifications) {
                 const n = root.activeSyncNotifications.count(dev.deviceId);
@@ -220,6 +222,8 @@
             }
             for (const t of extraTasks[tile] || []) {
                 if (!dev || (typeof t.when === 'function' && !t.when(dev))) continue;
+                // the same phone needs no clipboard, link or screen sent over: it is this screen's own
+                if (local && CONTINUITY_HIDDEN_TASKS.has(t.id)) continue;
                 out.push({ id: `x:${tile}:${t.id}`, text: typeof t.text === 'function' ? t.text(dev) : t.text, icon: t.icon || 'item-32.png', extra: t });
             }
             return out;
@@ -294,6 +298,8 @@
         paintStatus() {
             const img = this.el('.asdc-status img');
             const text = this.el('.asdc-status span');
+            // this handheld in continuity: being connected to itself is not news (#798)
+            this.el('.asdc-status').hidden = isContinuityDevice(this.device());
             this.el('.asdc-status').dataset.status = this.status;
             if (this.status === 'connecting') {
                 img.src = `${A}/status-connecting-${(this.frame % 8) + 1}.png`;
@@ -356,9 +362,14 @@
             row('Model:', esc(dev.model));
             row('Operating system:', esc(dev.os));
             row('Program:', esc(dev.app));
-            row('Status:', esc(!dev.online ? 'Not Connected' : dev.session === 'partner' ? 'Connected (partnership)' : dev.session === 'guest' ? 'Connected (guest)' : 'Connected'));
-            // the phone's own DeX window (#794): its link is USB, as a cradle's
-            if (dev.online) row('Connection:', esc(dev.link === 'usb' ? 'USB' : 'Network'));
+            if (isContinuityDevice(dev)) {
+                // the phone this DeX window runs on (#798): one device, no status to report
+                row('Connection:', esc('This Handheld (Continuity)'));
+            } else {
+                row('Status:', esc(!dev.online ? 'Not Connected' : dev.session === 'partner' ? 'Connected (partnership)' : dev.session === 'guest' ? 'Connected (guest)' : 'Connected'));
+                // the phone's own DeX window (#794): its link is USB, as a cradle's
+                if (dev.online) row('Connection:', esc(dev.link === 'usb' ? 'USB' : 'Network'));
+            }
             if (dev.online && st.battery && st.battery.level != null) {
                 row('Battery:', `<img src="${A}/${batteryArt(st.battery)}-16.png" alt="">${Math.round(st.battery.level)}%${st.battery.charging ? ', charging' : ''}${st.battery.saver ? ', battery saver on' : ''}`);
             }
@@ -596,6 +607,22 @@
         const c = new Center(app);
         running = c;
         app.onExit(() => { if (running === c) running = null; c.destroy(); });
+    }
+
+    // ---- Continuity (#798): in the DeX window of a hybrid phone (DeX opened once, Dreamscape as home),
+    // the phone is this handheld, not a device across a link (AndroidHome.getContinuity, DSApp 4dac430)
+    const CONTINUITY_HIDDEN_TASKS = new Set(['clipboard-send', 'link-send', 'screen-view']);
+    function continuity() {
+        try {
+            const H = root.AndroidHome;
+            if (!H || typeof H.getContinuity !== 'function') return null;
+            const c = JSON.parse(H.getContinuity());
+            return c && c.hybrid && c.external ? c : null;
+        } catch (_) { return null; }
+    }
+    function isContinuityDevice(dev) {
+        const c = dev && continuity();
+        return !!(c && c.deviceId && String(c.deviceId).toLowerCase() === String(dev.deviceId).toLowerCase());
     }
 
     /** A task in a tile ('programs' | 'media' | 'files' | 'settings'): { id, text, icon, when(device), run(device, center) }. */

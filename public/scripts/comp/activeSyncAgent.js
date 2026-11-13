@@ -367,6 +367,22 @@
         try { c.ws.send(JSON.stringify({ type: 'as_event', event, detail: detail == null ? null : detail })); } catch (_) { /* closing */ }
     }
 
+    /** True for the phone this DeX window runs on when the phone is hybrid (AndroidHome.getContinuity, #798). */
+    function continuityLocal(deviceId) {
+        try {
+            const H = root.AndroidHome;
+            if (!H || typeof H.getContinuity !== 'function') return false;
+            const c = JSON.parse(H.getContinuity());
+            return !!(c && c.hybrid && c.external && String(c.deviceId).toLowerCase() === String(deviceId).toLowerCase());
+        } catch (_) { return false; }
+    }
+
+    function continuityRefusal() {
+        const e = new Error('This handheld runs this window (continuity): its partnership cannot be ended here.');
+        e.code = 'CONTINUITY';
+        return e;
+    }
+
     const partnershipCall = (data) => send('as_partnership', data).then((res) => { if (res.device) mergeDevice(res.device); return res; });
 
     function mergeDevice(dev) {
@@ -599,8 +615,9 @@
         refresh: () => send('as_list', {}).then((res) => { takeLists(res); fire('state', state()); return state(); }),
         propose: (deviceId, mode, opts) => partnershipCall(Object.assign({ action: 'propose', deviceId, mode }, opts || {})),
         update: (deviceId, changes) => partnershipCall(Object.assign({ action: 'update', deviceId }, changes || {})),
-        endPartnership: (deviceId) => partnershipCall({ action: 'end', deviceId }),
-        forget: (deviceId) => send('as_forget', { deviceId }).then((res) => { st.devices = st.devices.filter((d) => d.deviceId !== deviceId); fire('state', state()); return res; }),
+        // the phone a hybrid DeX window runs on (#798) keeps its partnership: it is this handheld
+        endPartnership: (deviceId) => (continuityLocal(deviceId) ? Promise.reject(continuityRefusal()) : partnershipCall({ action: 'end', deviceId })),
+        forget: (deviceId) => (continuityLocal(deviceId) ? Promise.reject(continuityRefusal()) : send('as_forget', { deviceId }).then((res) => { st.devices = st.devices.filter((d) => d.deviceId !== deviceId); fire('state', state()); return res; })),
         log: (deviceId, limit) => send('as_log', { deviceId, limit }).then((res) => res.entries || []),
         synced: (deviceId, summary) => send('as_synced', { deviceId, summary }),
         hello,
