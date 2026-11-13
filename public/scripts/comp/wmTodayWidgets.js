@@ -1452,7 +1452,8 @@
         pages.push({ smallIcon: artBest('ie-page'), title: 'History', softKey: { label: 'Other Devices', action: () => ieCall('otherDevices', [], show) }, onTap: afterTap(() => ieCall('openHistory', [], show)) });
         panelChanged('ie', pages);
         // (the panel's own tap is the Enter key's: the page on show answers it)
-        return { label: 'internet explorer', icon: 's:ie', pages, softKey: pages[0].softKey, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : show()) };
+        // the band says "internet" (Yukimi, Nov 13: the full name sat badly on the home screen)
+        return { label: 'internet', icon: 's:ie', pages, softKey: pages[0].softKey, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : show()) };
     }
 
     function renderIe(el, { option }) {

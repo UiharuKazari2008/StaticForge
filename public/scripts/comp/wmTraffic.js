@@ -35,6 +35,7 @@
     const GEO_EVERY_MS = 5 * 60 * 1000; // the phone's position is read at most this often, while on screen
     const DELAY_STATUS_SEC = 15 * 60; // the title bar's car: the commute ahead is this late or more
     const TODAY_CHECK_MS = 15 * 60 * 1000; // Today asks for a fresh report at most this often
+    const LEAVE_WINDOW_MIN = 30; // the car also shows this long before and after each leave time
     const DAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     const LAYER_TITLES = { routes: 'Routes', traps: 'Speed Traps', alerts: 'Alerts', slow: 'Slowdowns', advisor: 'Leave Advisor', settings: 'Traffic Settings', item: 'Details' };
 
@@ -973,12 +974,42 @@
     let todayHtml = '';
     let todayCheckAt = 0;
 
-    /** The title bar's car (wmShell role 'traffic'): the commute ahead is 15+ min late; the bubble's lines. */
+    /**
+     * Within 30 minutes of a set leave time on a set day: { direction, leaveAt } (leaving Home = To Work,
+     * leaving Work = To Home), else null. Phone time (the leave times are the user's own clock).
+     */
+    function leaveWindow(now = new Date()) {
+        const s = settings || {};
+        if (!Array.isArray(s.days) || !s.days.includes(now.getDay())) return null;
+        const t = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+        for (const [key, dir] of [['leaveHome', 'work'], ['leaveWork', 'home']]) {
+            const m = minutesOf(s[key]);
+            if (m == null) continue;
+            if (Math.abs(t - m) <= LEAVE_WINDOW_MIN) {
+                const at = new Date(now);
+                at.setHours(Math.floor(m / 60), m % 60, 0, 0);
+                return { direction: dir, leaveAt: at.getTime() };
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The title bar's car (wmShell role 'traffic'): shown from 30 min before to 30 min after a leave time
+     * (that commute), and whenever the commute ahead is 15+ min late. { delayed (= show), reason, lines }.
+     */
     function statusState() {
         if (!canUse() || !loaded || !configured()) return null;
-        const d = direction();
+        const win = leaveWindow();
+        const d = win ? win.direction : direction();
         const r = latest[d];
-        if (!r || !r.preferred) return { delayed: false, direction: d, title: 'Traffic', lines: [] };
+        // in the window the car needs a current report: one check (at most every 15 min; the server caches)
+        if (win && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r || Date.now() - Date.parse(r.at) > TODAY_CHECK_MS)) {
+            todayCheckAt = Date.now();
+            quietCheck(d);
+        }
+        const leaveLine = win ? `Leave ${d === 'work' ? 'Home' : 'Work'} at ${clock(win.leaveAt)}.` : '';
+        if (!r || !r.preferred) return { delayed: !!win, reason: win ? 'leave' : '', direction: d, title: 'Traffic', lines: [leaveLine || 'No commute report.', ...(win ? ['Checking the traffic...'] : [])].filter(Boolean) };
         const fresh = Date.now() - Date.parse(r.at) < 45 * 60 * 1000;
         const p = r.preferred;
         const lines = [`${d === 'work' ? 'To Work' : 'To Home'}: ${minText(p.durationSec)}${r.delaySec >= 60 ? `, ${minText(r.delaySec)} late` : ''}`];
@@ -988,7 +1019,9 @@
         const majors = (r.alerts || []).filter((a) => a.major);
         if (majors.length) lines.push(`${majors[0].label}${majors[0].street ? ` on ${majors[0].street}` : ''}.`);
         if (!fresh) lines.push(`Checked at ${clock(r.at)}.`);
-        return { delayed: fresh && (r.delaySec || 0) >= DELAY_STATUS_SEC, direction: d, title: 'Traffic', lines };
+        if (leaveLine) lines.unshift(leaveLine);
+        const late = fresh && (r.delaySec || 0) >= DELAY_STATUS_SEC;
+        return { delayed: !!win || late, reason: late ? 'delay' : (win ? 'leave' : ''), direction: d, title: 'Traffic', lines };
     }
     function todayRender(el) {
         if (!canUse()) return false;
@@ -1029,9 +1062,20 @@
 
     // ---------------------------------------------------------------- register
 
+    let windowKey = '';
+    function watchLeaveWindow() {
+        setInterval(() => {
+            if (!loaded || document.hidden) return;
+            const w = leaveWindow();
+            const key = w ? `${w.direction}:${w.leaveAt}` : '';
+            if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
+        }, 60 * 1000);
+    }
+
     function register() {
         ws = window.wmShell;
         if (!ws) return;
+        watchLeaveWindow();
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
             ws.registerTodayItem({ id: 'traffic', label: 'Traffic', icon: 'app-traffic', after: 'weather', render: todayRender, titanium: todayTitanium });
