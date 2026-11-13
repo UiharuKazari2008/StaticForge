@@ -420,6 +420,10 @@ let otherWallpapersPreloaded = false;
  */
 function preloadOtherWorkspaceWallpapers() {
     if (otherWallpapersPreloaded) return Promise.resolve();
+    // a hybrid phone's window (#798): it shares one renderer with the DeX window, which shows the desktop
+    // wallpapers; the phone's Today paints its own, so every workspace's decoded wallpaper here is wasted RAM
+    const mc = window.melatonContinuity;
+    if (mc && mc.available && mc.role() === 'phone' && (mc.hybrid() || {}).hybrid) return Promise.resolve();
     otherWallpapersPreloaded = true;
     const idle = () => new Promise((resolve) => {
         if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 2000 });

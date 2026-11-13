@@ -4805,6 +4805,17 @@ class WebSocketClient {
                         return;
                     }
 
+                    // Continuity (#798): the DeX window's shared connection went with the phone's. No
+                    // retries, no loss sound or dial: melatonContinuity reconnects it when the phone is back
+                    if (connectedSocket && connectedSocket.continuity && window.melatonContinuity
+                        && typeof window.melatonContinuity.waitForPhone === 'function' && window.melatonContinuity.waitForPhone()) {
+                        if (connectedSocket === this.ws) this.ws = null;
+                        this._teardownGenerationUiState();
+                        this.reconnectAttempts = 0;
+                        this.triggerEvent('disconnected', event);
+                        return;
+                    }
+
                     // Vista Welcome screen: stop spinning on "Please wait..." and ask Retry / Cancel
                     if (this._offerVistaLogonError()) {
                         this._showVistaLogonError();
@@ -4819,7 +4830,12 @@ class WebSocketClient {
                     // leaves the loading window up through a second handshake.
                     if (this._quietResume || document.visibilityState === 'hidden') {
                         if (connectedSocket === this.ws) this.ws = null;
-                        if (document.visibilityState === 'visible' && !this.isConnecting && !this.connectionLock) {
+                        // Continuity (#798): a hybrid phone's window with the screen off still carries the
+                        // DeX window, so it does not wait for the screen to come on: quiet retries, no cap
+                        const keep = this._keepConnectedForContinuity();
+                        if (keep && document.visibilityState === 'hidden') {
+                            this.reconnect();
+                        } else if (document.visibilityState === 'visible' && !this.isConnecting && !this.connectionLock) {
                             this.connect();
                         }
                         this.triggerEvent('disconnected', event);
@@ -5108,6 +5124,12 @@ class WebSocketClient {
         return this.startupHaltedForInstall === true;
     }
 
+    /** Continuity (#798): the phone window while the DeX window rides its socket (melatonContinuity.js). */
+    _keepConnectedForContinuity() {
+        const mc = window.melatonContinuity;
+        try { return !!(mc && typeof mc.keepPhoneConnected === 'function' && mc.keepPhoneConnected()); } catch (_) { return false; }
+    }
+
     reconnect() {
         if (this._isStartupHaltedForInstall() || this._vistaLogonError) {
             return;
@@ -5137,7 +5159,11 @@ class WebSocketClient {
         this.reconnectAttempts++;
         this.lastConnectionAttempt = Date.now();
 
-        // Check if we've exceeded max attempts
+        // Check if we've exceeded max attempts. The phone window carrying a DeX window keeps trying at
+        // the longest delay instead (#798): nobody is at the phone to press Reconnect
+        if (this.reconnectAttempts > this.maxReconnectAttempts && this._keepConnectedForContinuity()) {
+            this.reconnectAttempts = this.maxReconnectAttempts;
+        }
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
             this.circuitBreaker = true;
             this._setConnectionPhase('failed', {
@@ -8379,6 +8405,11 @@ class WebSocketClient {
         if (!this.isConnected()) {
             return;
         }
+        // Continuity (#798): the DeX window's shared connection is the phone's; the phone's pings keep it
+        // (and the server answers the sub-client's heartbeat itself): no second ping over bus + phone + server
+        if (this.ws && this.ws.continuity) {
+            return;
+        }
 
         // Start periodic pings
         this.heartbeatInterval = setInterval(() => {
@@ -8474,6 +8505,11 @@ class WebSocketClient {
      */
     _checkInactivity() {
         if (!this.isConnected()) {
+            return;
+        }
+        // Continuity (#798): the phone window carries the DeX window; the person works there, not on the phone
+        if (this._keepConnectedForContinuity()) {
+            this.lastUserActivity = Date.now();
             return;
         }
 

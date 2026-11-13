@@ -330,7 +330,8 @@ class WebSocketServer {
                     }
 
                     // Clean up session workspace (not for a slideshow device: it shares the tab's session)
-                    if (!(info.deviceId || info.deviceApp)) {
+                    // nor while another client of the session is still up (a Continuity DeX window and its phone, #798)
+                    if (!(info.deviceId || info.deviceApp) && !this.hasOtherClientForSession(clientInfo.sessionId, ws)) {
                         this.globalResources.getWorkspaceManager().cleanupSessionWorkspace(clientInfo.sessionId);
                     }
                     
@@ -391,6 +392,17 @@ class WebSocketServer {
         });
 
         console.log('✓ WebSocket server initialized');
+    }
+
+    /**
+     * Every open client socket: the server's own, then Continuity sub-clients (#798,
+     * modules/ws/virtualSocket.js), which wss.clients never holds; broadcasts and sendToUser reach them too.
+     */
+    forEachSocket(fn) {
+        this.wss.clients.forEach(fn);
+        for (const ws of this.clients.keys()) {
+            if (ws && ws.virtual) fn(ws);
+        }
     }
 
     hasOtherClientForSession(sessionId, exceptWs) {
@@ -735,7 +747,7 @@ class WebSocketServer {
         const now = Date.now();
         const isFinal = this.isRuntimeCompileProgressFinal(data);
 
-        this.wss.clients.forEach((client) => {
+        this.forEachSocket((client) => {
             if (client.readyState !== WebSocket.OPEN) {
                 return;
             }
@@ -837,7 +849,7 @@ class WebSocketServer {
     broadcastRuntimeCompileLogsThrottled(data) {
         const now = Date.now();
 
-        this.wss.clients.forEach((client) => {
+        this.forEachSocket((client) => {
             if (client.readyState !== WebSocket.OPEN) {
                 return;
             }
@@ -879,7 +891,7 @@ class WebSocketServer {
 
     broadcast(message, filter = null) {
         let payload = null;
-        this.wss.clients.forEach(client => {
+        this.forEachSocket(client => {
             if (client.readyState === WebSocket.OPEN) {
                 if (!filter || filter(this.clients.get(client))) {
                     if (payload === null) payload = JSON.stringify(message);
@@ -896,7 +908,7 @@ class WebSocketServer {
 
     sendToUser(sessionId, message) {
         let payload = null;
-        this.wss.clients.forEach(client => {
+        this.forEachSocket(client => {
             const clientInfo = this.clients.get(client);
             if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN) {
                 if (payload === null) payload = JSON.stringify(message);

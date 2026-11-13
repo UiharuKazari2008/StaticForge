@@ -143,7 +143,16 @@
     const SUB = 'desktop';
     let phoneReadyNow = false;
     let lastReadySent = null;
-    const isDw = () => api.available && api.role() === 'desktop' && !!(api.hybrid() || {}).hybrid;
+    // the window's role and the phone's hybrid state do not change while a page lives: asked once
+    let dwCached = null;
+    const isDw = () => {
+        if (dwCached !== null) return dwCached;
+        if (!api.available) return false;
+        const h = api.hybrid();
+        if (!h) return false; // the app's bridges not there yet: ask again later
+        dwCached = api.role() === 'desktop' && !!h.hybrid;
+        return dwCached;
+    };
     const isPhone = () => api.available && api.role() === 'phone';
     const inApp = () => !!root.wsClient && !root.isLaunchPage;
 
@@ -160,13 +169,25 @@
         lastReadySent = ready;
         api.post({ type: 'phone-ready', ready });
     }
+    // the phone socket the DeX window's sub-client was opened on: a packet never goes over a newer
+    // socket (the server would not know the sub-client there; it answers sub_closed, but only once the
+    // DeX window sends something, and an idle DeX window only listens)
+    let carrierWs = null;
     function carrierSend(packet) {
         const c = root.wsClient;
         if (!c || !c.ws || c.ws.readyState !== 1) return false;
+        if (packet.type === 'sub_open') carrierWs = c.ws;
+        else if (c.ws !== carrierWs) return false;
         try { c.ws.send(JSON.stringify(packet)); return true; } catch (_) { return false; }
     }
+    /** The DeX window's sub-client is gone: it is told, with whether the phone is still ready for a new one. */
+    function dropCarry(reason, always) {
+        const was = carryingNow;
+        setCarrying(false);
+        if (was || always) api.post({ type: 'ws-closed', reason, phoneReady: phoneReadyState() });
+    }
     let carryingNow = false;
-    function setCarrying(v) { const on = !!v; if (on !== carryingNow) { carryingNow = on; statusChanged(); } return on; }
+    function setCarrying(v) { const on = !!v; if (on !== carryingNow) { carryingNow = on; statusChanged(); } if (!on) carrierWs = null; return on; }
     const statusChanged = () => { const sh = root.wmShell; if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus(); };
     // carrying: the title bar's Continuity glyph follows it
     Object.defineProperty(api, '_carrying', { get: () => carryingNow });
@@ -174,9 +195,13 @@
     api.on('ws-open', () => {
         if (!isPhone()) return;
         setCarrying(carrierSend({ type: 'sub_open', sub: SUB }));
-        api.post(carryingNow ? { type: 'ws-opened' } : { type: 'ws-closed', reason: 'The phone is not connected' });
+        api.post(carryingNow ? { type: 'ws-opened' } : { type: 'ws-closed', reason: 'The phone is not connected', phoneReady: false });
     });
-    api.on('ws-up', (m) => { if (isPhone() && typeof m.data === 'string' && !carrierSend({ type: 'sub_packet', sub: SUB, data: m.data })) api.post({ type: 'ws-closed', reason: 'The phone is not connected' }); });
+    api.on('ws-up', (m) => {
+        if (!isPhone() || typeof m.data !== 'string') return;
+        if (!carryingNow) { api.post({ type: 'ws-closed', reason: 'The phone is not carrying the connection', phoneReady: phoneReadyState() }); return; }
+        if (!carrierSend({ type: 'sub_packet', sub: SUB, data: m.data })) dropCarry('The phone reconnected');
+    });
     api.on('ws-close', () => { if (isPhone() && carryingNow) { carrierSend({ type: 'sub_close', sub: SUB }); setCarrying(false); } });
     // the DeX window went away (unplugged, closed, restarting): its sub-client ends with it
     api.on('peer', (m) => { if (m.role === 'desktop' && m.state === 'left' && isPhone() && carryingNow) { carrierSend({ type: 'sub_close', sub: SUB }); setCarrying(false); } });
@@ -184,13 +209,55 @@
     api.fromServer = (message) => {
         if (!message || (message.type !== 'sub_packet' && message.type !== 'sub_closed')) return false;
         if (message.sub !== SUB) return true;
-        if (message.type === 'sub_closed') { setCarrying(false); api.post({ type: 'ws-closed', reason: 'The server ended the shared connection' }); return true; }
+        if (message.type === 'sub_closed') { dropCarry('The server ended the shared connection', true); return true; }
         if (typeof message.data === 'string') api.post({ type: 'ws-down', data: message.data });
         return true;
     };
 
     // ---- the DeX window: readiness, the socket stand-in, restarts
-    api.on('phone-ready', (m) => { phoneReadyNow = !!m.ready; });
+    //
+    // The DeX window's connection follows the phone's: while the phone has no connection the DeX
+    // window does not spend websocket.js's retries (five, then "Use Reconnect") on a bus that cannot
+    // carry it; it waits (waitForPhone) and connects the moment the phone says it is ready again.
+    let waitingForPhone = false;
+    let waitSafety = null;
+    function followPhone() {
+        const c = root.wsClient;
+        if (!isDw() || !inApp() || !c || !phoneReadyNow) return;
+        const onBus = !!(c.ws && c.ws.continuity);
+        // up on the bus already, or a connect under way: nothing to do
+        if ((c.isConnected() && onBus) || c.isConnecting || c.connectionLock) return;
+        // a window still idle-disconnected stays that way (its own activity reconnects it)
+        if (c.disconnectedDueToInactivity) return;
+        // on its own socket (the phone was not there when it connected) or down: onto the phone's
+        waitingForPhone = false;
+        clearTimeout(waitSafety);
+        // the modem tray shows it, not the connection dialog (a phone coming back is not a fault)
+        if (typeof c._beginTrayOnlyReconnect === 'function') c._beginTrayOnlyReconnect('continuity');
+        if (typeof c.manualReconnect === 'function') c.manualReconnect();
+    }
+    api.on('phone-ready', (m) => {
+        const was = phoneReadyNow;
+        phoneReadyNow = !!m.ready;
+        if (phoneReadyNow && (!was || waitingForPhone)) followPhone();
+    });
+    api.on('ws-closed', (m) => { if (typeof m.phoneReady === 'boolean') phoneReadyNow = m.phoneReady; });
+    /**
+     * websocket.js (DeX window): its bus socket closed. True when the phone is not ready to carry a new one:
+     * websocket.js then neither reconnects nor shows the loss; the phone's next "ready" reconnects it
+     * (a minute's safety retry in case that message never comes).
+     */
+    api.waitForPhone = () => {
+        if (!isDw() || phoneReadyNow) return false;
+        waitingForPhone = true;
+        clearTimeout(waitSafety);
+        waitSafety = setTimeout(() => {
+            if (!waitingForPhone) return;
+            api.post({ type: 'phone-ready?' });
+            waitSafety = setTimeout(() => { if (waitingForPhone) { phoneReadyNow = true; followPhone(); } }, 60000);
+        }, 60000);
+        return true;
+    };
     api.on('peer', (m) => {
         if (m.role === 'phone' && m.state === 'joined' && isDw()) api.post({ type: 'phone-ready?' });
         if (m.role === 'phone' && m.state === 'left') {
@@ -209,14 +276,17 @@
         location.replace('/launch');
     }
     /** The DeX window: true once the phone said it is ready (the BIOS waits on this). */
+    let lastAsk = 0;
     api.phoneReady = () => {
-        if (!phoneReadyNow && isDw()) api.post({ type: 'phone-ready?' });
+        // the BIOS asks every 150 ms; the phone page is asked at most every 2 s (it answers on changes anyway)
+        if (!phoneReadyNow && isDw() && Date.now() - lastAsk > 2000) { lastAsk = Date.now(); api.post({ type: 'phone-ready?' }); }
         return phoneReadyNow;
     };
 
     /** A WebSocket stand-in over the bus (DeX window): what websocket.js uses instead of new WebSocket(). */
     class BusSocket {
         constructor() {
+            this.continuity = true;
             this.readyState = 0;
             this.binaryType = 'blob';
             this.bufferedAmount = 0;
@@ -255,6 +325,24 @@
     api.active = () => isPhone() && carryingNow;
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
     api.isDexWindow = () => isDw();
+    /**
+     * The phone window keeps its connection up while the DeX window is there (websocket.js): no idle
+     * disconnect (the person is working in DeX, not touching the phone) and no "wait until the screen
+     * is on" before a reconnect.
+     */
+    api.keepPhoneConnected = () => isPhone() && api.peers().includes('desktop');
+    /**
+     * The DeX window wants a restart for updates (serviceWorkerManager.forceRestart): the phone does it
+     * (it installs, one app and one service worker) and the DeX window follows its restart. False when
+     * there is no phone window to ask.
+     */
+    api.restartViaPhone = (why) => (isDw() && api.peers().includes('phone') ? api.post({ type: 'restart-request', why: String(why || 'updates') }) : false);
+    api.on('restart-request', () => {
+        if (!isPhone()) return;
+        const m = root.serviceWorkerManager;
+        if (m && typeof m.forceRestart === 'function') m.forceRestart();
+        else if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
+    });
 
     // the phone window: say when it is ready, and that it is going
     if (api.available) {
@@ -263,8 +351,18 @@
             new MutationObserver(() => announceReady(false)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-boot'] });
             const c = root.wsClient;
             if (c && typeof c.on === 'function') {
-                c.on('connected', () => { announceReady(false); });
-                c.on('disconnected', () => { setCarrying(false); api.post({ type: 'ws-closed', reason: 'The phone lost its connection' }); announceReady(false); });
+                c.on('connected', () => {
+                    // a carry left over from the socket before (it went without a 'disconnected'): the
+                    // DeX window starts its sub-client again on this one
+                    if (carryingNow && c.ws !== carrierWs) dropCarry('The phone reconnected');
+                    announceReady(true);
+                });
+                c.on('disconnected', () => {
+                    lastReadySent = false;
+                    api.post({ type: 'phone-ready', ready: false });
+                    if (carryingNow) dropCarry('The phone lost its connection');
+                    else api.post({ type: 'ws-closed', reason: 'The phone lost its connection', phoneReady: false });
+                });
             }
             announceReady(true);
         };

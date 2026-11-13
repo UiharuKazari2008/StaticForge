@@ -257,6 +257,16 @@ class ServiceWorkerManager {
         this.init();
     }
 
+    /**
+     * Continuity (#798): this is a hybrid phone's DeX window. The phone window handles updates (one app,
+     * one service worker and cache): this window never checks, downloads or opens the installer, and its
+     * restarts for updates are the phone's (melatonContinuity.restartViaPhone; it follows the phone).
+     */
+    _isContinuityDexWindow() {
+        const mc = window.melatonContinuity;
+        try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+    }
+
     _isDesktopTrayMode() {
         return Boolean(window.isDesktop && document.body.classList.contains('desktop-mode'));
     }
@@ -1545,6 +1555,8 @@ class ServiceWorkerManager {
      * the desktop boot, or 2 minutes after load elsewhere; the worker runs it at most once a day.
      */
     _scheduleWorkerMaintenance() {
+        // Continuity (#798): one worker for both windows; the phone window asks for its upkeep
+        if (this._isContinuityDexWindow()) return;
         let sent = false;
         const send = () => {
             const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
@@ -1808,7 +1820,7 @@ class ServiceWorkerManager {
         }
         // Continuity (#798): a hybrid phone's DeX window leaves updates to the phone; restarting the phone
         // restarts it, and it loads what the phone installed (one app, one service worker)
-        if (window.melatonContinuity && typeof window.melatonContinuity.isDexWindow === 'function' && window.melatonContinuity.isDexWindow()) {
+        if (this._isContinuityDexWindow()) {
             return;
         }
         if (!window.isLoginPage && this._isBeforeDesktop()) {
@@ -1903,6 +1915,8 @@ class ServiceWorkerManager {
     }
 
     async updateStaticCache(files, noToast = false, cacheOptions = null) {
+        // Continuity (#798): the phone window downloads; this DeX window gets the files with its restart
+        if (this._isContinuityDexWindow()) return;
         if (this.agentSession) {
             return;
         }
@@ -4196,6 +4210,13 @@ class ServiceWorkerManager {
     }
 
     forceRestart() {
+        // Continuity (#798): the DeX window's "Restart Now" restarts the phone, which installs; this window
+        // restarts with it. With no phone window to ask, this window restarts on its own.
+        if (this._isContinuityDexWindow() && window.melatonContinuity.restartViaPhone('updates')) {
+            console.log('🔄 Restart for updates: the phone restarts, this DeX window follows it');
+            this.resetPendingUpdateFuse();
+            return;
+        }
         console.log('🔄 Force restarting application...');
         if (this.pendingUpdateFuse) {
             // the downloaded updates install with this restart (the update page's "Updates were installed")
@@ -4423,6 +4444,8 @@ class ServiceWorkerManager {
      */
     _rebootIntoInstaller(count, reason) {
         if (this._launchRedirectStarted) return true;
+        // Continuity (#798): never the installer in the DeX window; the phone installs
+        if (this._isContinuityDexWindow()) return false;
         // The launch card would hand straight back here (_launchInstallsHere)
         if (!this._launchInstallsHere()) return false;
         let last = 0;
@@ -4505,6 +4528,15 @@ class ServiceWorkerManager {
         if (window.bootUiDebug) {
             await window.bootUiDebug.gate('system-update', { detail: 'Checking for updates…' });
         }
+
+            // Continuity (#798): the DeX window booted after the phone was ready (the BIOS waits for it),
+            // so the phone already brought the shared cache up to date: no manifest, no cache scan here
+            if (this._isContinuityDexWindow()) {
+                this._clearLegacyInstallWizardSession();
+                document.body.classList.remove('initializing');
+                this._resolveBootComplete();
+                return null;
+            }
 
             let verifyPass = 0;
             const MAX_VERIFY_PASSES = 5;

@@ -493,6 +493,12 @@
          * picks: 'hdd' (Melaton, the boot screen) or 'cdrom' (the installation media, the
          * loading bar and Setup). No BIOS module: the same work, no screen.
          */
+        /** Continuity (#798): a hybrid phone's DeX window. It waits for the phone, and the phone installs. */
+        function isHybridDw() {
+            const mc = root.melatonContinuity;
+            try { return !!(mc && mc.available && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+        }
+
         async function runBios(run) {
             ctl.biosF8 = false;
             show('bios');
@@ -516,12 +522,15 @@
                     env.sleep(config.biosProbeMs).then(() => null)
                 ]) },
                 // the manifest digest check, real work the boot needs next; a slow check shows on the bar
+                // (not in a hybrid phone's DeX window: the phone checks and installs, #798)
                 { id: 'manifest', weight: 4, run: () => Promise.race([
-                    env.engine && typeof env.engine.check === 'function' ? env.engine.check(env).catch(() => null) : Promise.resolve(null),
+                    !isHybridDw() && env.engine && typeof env.engine.check === 'function' ? env.engine.check(env).catch(() => null) : Promise.resolve(null),
                     env.sleep(config.biosManifestMs).then(() => null)
                 ]) }
             ];
-            const hasOsAfter = (results) => !!results.os && !results.resume;
+            // a hybrid phone's DeX window boots the disk: an install mark it read during the POST is the
+            // phone's own install under way (shared storage), which it waits out at "Connecting to Phone"
+            const hasOsAfter = (results) => isHybridDw() || (!!results.os && !results.resume);
             const bios = ensureBios();
             if (!bios) {
                 const results = {};
@@ -588,7 +597,7 @@
             };
             // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
             const mc = root.melatonContinuity;
-            const hybridDw = !!(mc && mc.available && mc.role() === 'desktop' && (mc.hybrid() || {}).hybrid);
+            const hybridDw = isHybridDw();
             const outcome = await bios.post({
                 phoneWait: hybridDw ? () => mc.phoneReady() : undefined,
                 tasks,
@@ -722,7 +731,9 @@
                 await handOff();
                 return run === ctl.runId ? 'teal' : 'cancelled';
             }
-            const updated = await runUpdates(run);
+            // Continuity (#798): the DeX window never opens the installer; the phone (ready before this
+            // window got past its BIOS) has already installed into the shared cache
+            const updated = isHybridDw() ? 'handoff' : await runUpdates(run);
             if (updated !== 'handoff') return updated;
             await handOff();
             if (run !== ctl.runId) return 'cancelled';

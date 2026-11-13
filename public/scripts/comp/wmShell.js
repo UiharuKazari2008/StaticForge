@@ -533,6 +533,7 @@
                 </button>
                 <div class="wm-title" role="heading" aria-level="1">Start</div>
                 <div class="wm-status">
+                    <span class="wm-status-reserve" aria-hidden="true" hidden></span>
                     <button type="button" class="wm-status-icon" data-role="notify" hidden aria-label="Notifications"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="mail" hidden aria-label="Messages"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="sms" hidden aria-label="New text messages"></button>
@@ -2890,21 +2891,48 @@
         };
         ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
         statusFolded = [];
+        // WM 6.1's notification area (#811): a fixed number of slots left of the device icons. The
+        // app icons and the speech bubble each take one; once more are pending than there are
+        // slots, all of them fold into the one group icon, whose tap opens the tray of them
+        const slots = statusSlots();
+        const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
+        const fold = () => {
+            apps.forEach((r) => el(r).classList.add('wm-shed'));
+            statusFolded = apps;
+        };
+        if (apps.length + (notesForBubbleIcon().length ? 1 : 0) > slots) fold();
         paintNotifyIcon();
+        const reserve = shell.querySelector('.wm-status-reserve');
+        const used = (statusFolded.length ? 0 : apps.length) + (el('notify').hidden ? 0 : 1);
+        const free = Math.max(0, slots - used);
         const cameraInBar = applyCameraHole(bar);
+        // the unused slots stay as room, so the title ends at the same place whatever is pending
+        // (not with the camera in the bar: its own layout decides there)
+        const setReserve = (n) => {
+            reserve.hidden = !n;
+            if (n) reserve.style.setProperty('--slots', String(n));
+        };
+        setReserve(cameraInBar ? 0 : free);
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
         // status icons (Yukimi, Nov 13); Today keeps it
         if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
         if (fits()) return;
+        // a bar too narrow for the reserved room gives it up first
+        if (!reserve.hidden) { setReserve(0); if (fits()) return; }
         if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); if (fits()) return; }
-        const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
-        if (apps.length) {
-            apps.forEach((r) => el(r).classList.add('wm-shed'));
-            statusFolded = apps;
+        if (apps.length && !statusFolded.length) {
+            fold();
             paintNotifyIcon();
             if (fits()) return;
         }
         if (!el('volume').hidden) el('volume').classList.add('wm-shed');
+    }
+
+    /** The title bar's notification slots (#811): Settings key wmStatusSlots, 1 to 4, 2 by default. */
+    function statusSlots() {
+        let n = NaN;
+        try { n = parseInt(localStorage.getItem('wmStatusSlots'), 10); } catch (_) { n = NaN; }
+        return Number.isFinite(n) ? Math.min(4, Math.max(1, n)) : 2;
     }
 
     // ---------------------------------------------------------------- status: device (battery, signal, data, Wi-Fi)
@@ -4115,7 +4143,8 @@
                 add(artImageSet(STATUS_APP_ICONS[r]), STATUS_APP_LABEL[r], () => {
                     noteTrayOpen = false;
                     renderNotes();
-                    statusBubble(r, shell.querySelector('[data-role="notify"]'));
+                    // as its own icon would: mail / text / Messenger open their waiting notification
+                    if (!messageIconTap(r)) statusBubble(r, shell.querySelector('[data-role="notify"]'));
                 });
             }
         }
@@ -8387,8 +8416,12 @@
         // the app on screen decides whether the volume icon makes room for the camera (fitStatusNow)
         new MutationObserver(() => fitStatus()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
         checkTakeover();
-        setInterval(checkTakeover, 400);
-        setInterval(checkViewer, 150);
+        // screen off (html[data-screen-off], the app's melatonscreen): nothing is on screen to take over, and
+        // on a hybrid phone these ticks share the renderer with the DeX window (#798); one pass at screen on
+        const screenOn = () => document.documentElement.dataset.screenOff === undefined;
+        setInterval(() => { if (screenOn()) checkTakeover(); }, 400);
+        setInterval(() => { if (screenOn()) checkViewer(); }, 150);
+        window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) { checkTakeover(); checkViewer(); } });
         // ActiveSync Received Items (#803): the status icon follows the agent's list
         (function wireReceived(tries) {
             const asx = window.activeSync;

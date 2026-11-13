@@ -514,7 +514,9 @@
         // (featureLoader may come after this file: wrapped at the first tap, before its handlers run)
         document.addEventListener('click', (e) => { if (e.isTrusted) { lastTapAt = Date.now(); watchTapLoads(); } }, true);
         watchTapLoads();
-        setInterval(sweep, 1500);
+        // not while the screen is off (#798: the ticks share the renderer with a DeX window); a pass at screen on
+        setInterval(() => { if (document.documentElement.dataset.screenOff === undefined) sweep(); }, 1500);
+        window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) sweep(); });
         setInterval(() => { for (const w of behind.keys()) if (!isOpen(w) || !w.isConnected) unnotify(w); }, 2000);
     }
 
