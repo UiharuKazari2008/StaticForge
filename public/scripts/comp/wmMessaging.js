@@ -541,12 +541,23 @@
     function imapNoteParts() {
         const n = imapFresh.length;
         const last = imapFresh[n - 1];
+        // several: the device's line, then the newest three, each a link to its message (Yukimi, Nov 13)
+        const items = imapFresh.slice(-3).reverse().map((x, k) => `<button type="button" class="wch-note-open wch-note-item" data-i="${n - 1 - k}"><span class="wch-note-from">${esc(x.from)}</span><span class="wch-note-text">${esc(x.subject)}</span></button>`).join('');
         return {
             title: n === 1 ? 'New E-mail Message' : 'New E-mail Messages',
             html: n === 1
-                ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(last.from)}</span><span class="wch-note-text">${esc(last.subject)}</span></button>`
-                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} unread e-mail messages.</span></button>`
+                ? `<button type="button" class="wch-note-open" data-i="0"><span class="wch-note-from">From: ${esc(last.from)}</span><span class="wch-note-text">${esc(last.subject)}</span></button>`
+                : `<button type="button" class="wch-note-open" data-i="all"><span class="wch-note-text">You have ${n} unread e-mail messages.</span></button>${items}`
         };
+    }
+    /** One message of the note: it opens, the others keep waiting. */
+    function openImapOne(i) {
+        const x = imapFresh[i];
+        if (!x) { openImapFresh(); return; }
+        imapFresh.splice(i, 1);
+        // the others stay in the tray, the bubble goes (the message comes up)
+        if (imapFresh.length) { updateImapNote(); if (imapNote) imapNote.hide(); } else closeImapNote(false);
+        openImapMessage(x.accountId, x.folder, x.uid);
     }
     function closeImapNote(clear) {
         if (clear) imapFresh.length = 0;
@@ -584,7 +595,11 @@
         if (!note) return;
         imapNote = note;
         const el = document.getElementById(note.id);
-        if (el) el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wch-note-open')) openImapFresh(); });
+        if (el) el.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('.wch-note-open');
+            if (!b) return;
+            if (b.dataset.i === 'all' || b.dataset.i == null) openImapFresh(); else openImapOne(Number(b.dataset.i));
+        });
     }
     /** What is still waiting, without a new sound: the text changes in place (or the note goes). */
     function updateImapNote() {
@@ -3367,9 +3382,22 @@
         openMail, showTree, closeTree, accountItems, goTo, openAccount: (key, f) => goTo(key || 'mail', f), setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature,
         // IMAP accounts (#789): Search Phone opens a message; the shell's envelope / Today count the new arrivals
         openImapMessage,
+        // "Select an Account" (the Today panels' Messaging key, Yukimi Nov 13)
+        showAccounts,
         imapNew: () => imapPending.size,
         imapAccounts: () => imapAccts.map((a) => ({ id: a.id, name: imapName(a), email: a.email, unread: imapUnread(a.id) }))
     };
+
+    /** Messaging on its "Select an Account" list, open or not. */
+    function showAccounts() {
+        layers = ['accounts'];
+        pickerRoot = true;
+        pickIndex = -1;
+        if (ws.current === APP_ID && page) { showLayer(); return; }
+        skipPicker = true; // show() keeps the list set here
+        freshOpen = false;
+        ws.open(APP_ID);
+    }
 
     // ---------------------------------------------------------------- registration
 

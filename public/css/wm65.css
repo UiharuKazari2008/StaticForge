@@ -842,7 +842,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-title {
     border: 0;
     border-image: none;
     border-radius: calc(7 * var(--wm-px)) calc(7 * var(--wm-px)) 0 0;
-    background: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) center / 100% 100% no-repeat;
+    /* the art (389 x 46) carries its own frame: 2 px black left, right and top (the box's frame on
+       the device). Drawn whole inside our 1 px border it doubled the frame: a thick dark band down
+       the right, light arcs round the top corners where its transparent corners met our radius.
+       Scaled so those 2 px fall just outside the band; its 2 px grey bottom line stays (the device
+       has it) (Yukimi, Nov 13) */
+    background: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) center bottom / calc(100% * 389 / 385) calc(100% * 46 / 44) no-repeat;
     color: var(--wm65-caption-text);
     font-weight: bold;
 }

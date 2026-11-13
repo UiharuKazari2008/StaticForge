@@ -425,6 +425,20 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-chat .wch-folder {
     overflow-wrap: anywhere;
 }
 
+/* several waiting: the newest three under the device's line, each a link to its message (one line of
+   text each, the sender above it) */
+.wch-note-item {
+    margin-top: calc(4 * var(--wm-px));
+}
+
+.wch-note-item .wch-note-text {
+    color: #00f;
+    text-decoration: underline;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* landscape and wide screens: the empty list's line sits higher */
 @media (min-aspect-ratio: 4/3) {
     .wm-chat .wch-empty {

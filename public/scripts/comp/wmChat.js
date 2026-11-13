@@ -760,11 +760,7 @@
         closeSmsNote(); // a new arrival is a new notification: it sounds and comes up again
         if (!fresh.size || typeof sh.appNote !== 'function') return;
         const n = fresh.size;
-        const [id, last] = [...fresh.entries()].pop();
-        const s = sessionById(id);
-        const html = n === 1
-            ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(personaOf(s))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`
-            : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new messages.</span></button>`;
+        const html = smsNoteHtml();
         const open = () => { const one = fresh.size === 1 ? [...fresh.keys()][0] : null; closeSmsNote(); if (one != null) openFromNotice(one); else if (window.wmChatApp) window.wmChatApp.showList(); };
         const icon = SMS_ICON;
         const note = sh.appNote({
@@ -784,7 +780,24 @@
         smsNote = note;
         // the bubble's copy forwards a tap on its button to this toast's own button
         const el = document.getElementById(note.id);
-        if (el) el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wch-note-open')) open(); });
+        if (el) el.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('.wch-note-open');
+            if (!b) return;
+            const id = b.dataset.chat;
+            // one conversation of several: it opens and is read (readFresh), the others keep waiting
+            if (id && fresh.size > 1) { const key = [...fresh.keys()].find((k) => String(k) === id); if (key != null) { if (smsNote) smsNote.hide(); openFromNotice(key); return; } }
+            open();
+        });
+    }
+
+    /** The note's body: one reply, or the device's line and the newest three, each a link to its conversation. */
+    function smsNoteHtml() {
+        const n = fresh.size;
+        const all = [...fresh.entries()];
+        const [id, last] = all[all.length - 1];
+        if (n === 1) return `<button type="button" class="wch-note-open" data-chat="${esc(String(id))}"><span class="wch-note-from">From: ${esc(personaOf(sessionById(id)))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`;
+        const items = all.slice(-3).reverse().map(([k, x]) => `<button type="button" class="wch-note-open wch-note-item" data-chat="${esc(String(k))}"><span class="wch-note-from">${esc(personaOf(sessionById(k)))}</span><span class="wch-note-text">${esc(x.said)}</span></button>`).join('');
+        return `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new messages.</span></button>${items}`;
     }
 
     /** A conversation read: its replies are no longer new (the notification follows). */
@@ -797,14 +810,7 @@
     /** What is still waiting, without a new sound: the note's text changes in place. */
     function showSmsNoteQuiet() {
         if (!smsNote || !fresh.size) { closeSmsNote(); return; }
-        const n = fresh.size;
-        const [id, last] = [...fresh.entries()].pop();
-        smsNote.update({
-            title: SMS_TITLE,
-            html: n === 1
-                ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(personaOf(sessionById(id)))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`
-                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new messages.</span></button>`
-        });
+        smsNote.update({ title: SMS_TITLE, html: smsNoteHtml() });
     }
 
     async function openFromNotice(id) {
@@ -1824,12 +1830,28 @@
     function tmNoteParts() {
         const n = tmFresh.length;
         const last = tmFresh[n - 1];
+        // several: the device's line, then the newest three, each a link to its conversation (Yukimi, Nov 13)
+        const items = tmFresh.slice(-3).reverse().map((x, k) => `<button type="button" class="wch-note-open wch-note-item" data-i="${n - 1 - k}"><span class="wch-note-from">${esc(x.from)}</span><span class="wch-note-text">${esc(x.text)}</span></button>`).join('');
         return {
             title: n === 1 ? 'New Text Message' : 'New Text Messages',
             html: n === 1
-                ? `<button type="button" class="wch-note-open"><span class="wch-note-from">From: ${esc(last.from)}</span><span class="wch-note-text">${esc(last.text)}</span></button>`
-                : `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new text messages.</span></button>`
+                ? `<button type="button" class="wch-note-open" data-i="0"><span class="wch-note-from">From: ${esc(last.from)}</span><span class="wch-note-text">${esc(last.text)}</span></button>`
+                : `<button type="button" class="wch-note-open" data-i="all"><span class="wch-note-text">You have ${n} new text messages.</span></button>${items}`
         };
+    }
+
+    /** One message of the note: its conversation opens, the others keep waiting. */
+    function tmOpenOne(i) {
+        const x = tmFresh[i];
+        if (!x) { tmOpenFresh(); return; }
+        // that conversation's arrivals are all read by opening it
+        for (let k = tmFresh.length - 1; k >= 0; k--) if (tmFresh[k].accountId === x.accountId && tmFresh[k].chatGuid === x.chatGuid) tmFresh.splice(k, 1);
+        // the others stay in the tray, the bubble goes (the program comes up)
+        if (tmFresh.length && tmNote) { tmNote.update(tmNoteParts()); tmNote.hide(); } else tmCloseNote(false);
+        const ui = tmUi();
+        if (ui && typeof ui.openChat === 'function') Promise.resolve(ui.openChat(x.accountId, x.chatGuid)).then((ok) => { if (ok === false) tmOpenAccount(x.accountId); }, () => tmOpenAccount(x.accountId));
+        else tmOpenAccount(x.accountId);
+        if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
     }
 
     function tmShowNote(o) {
@@ -1854,7 +1876,11 @@
         if (!note) return;
         tmNote = note;
         const el = document.getElementById(note.id);
-        if (el) el.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('.wch-note-open')) tmOpenFresh(); });
+        if (el) el.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('.wch-note-open');
+            if (!b) return;
+            if (b.dataset.i === 'all' || b.dataset.i == null) tmOpenFresh(); else tmOpenOne(Number(b.dataset.i));
+        });
         if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
     }
 
@@ -1911,7 +1937,8 @@
                     icon: 'ti-2007',
                     count: n ? String(n) : '',
                     pages: pages.length ? pages : [{ title: 'No New Messages' }],
-                    softKey: { label: 'Messaging', action: () => tmOpenAccount() },
+                    // the key opens Messaging on "Select an Account" (Yukimi, Nov 13); the panel, the account
+                    softKey: { label: 'Messaging', action: () => { const M = window.wmMessaging; if (M && typeof M.showAccounts === 'function') M.showAccounts(); else tmOpenAccount(); } },
                     onTap: () => tmOpenAccount()
                 };
             }

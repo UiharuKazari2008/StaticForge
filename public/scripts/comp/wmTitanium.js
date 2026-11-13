@@ -145,14 +145,15 @@
             // each: subject over sender and time, the account under them
             const n = st.mailUnread;
             const list = recentMail();
-            // the key and the panel open Messaging on Dreamscape Mail's Inbox, not the account picker (#763)
+            // the panel opens Dreamscape Mail's Inbox (#763); its Messaging key, "Select an Account" (Yukimi, Nov 13)
             const go = () => { const a = window.wmMessaging; if (a && typeof a.goTo === 'function') a.goTo('mail'); else sh.open('messaging'); };
+            const accounts = () => { const a = window.wmMessaging; if (a && typeof a.showAccounts === 'function') a.showAccounts(); else go(); };
             return {
                 label: 'e-mail', count: n ? String(n) : '', icon: 'ti-2008',
                 pages: list.length
                     ? list.map((m) => ({ title: m.subject || '(no subject)', line2: [m.from, mailWhen(m.at)].filter(Boolean).join(', '), line3: m.account, onTap: () => m.open(go) }))
                     : [{ title: 'No New E-mails' }],
-                softKey: { label: 'Messaging', action: go },
+                softKey: { label: 'Messaging', action: accounts },
                 onTap: go
             };
         }
