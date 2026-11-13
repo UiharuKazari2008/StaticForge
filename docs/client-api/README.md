@@ -78,7 +78,11 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Notes (+ novels) | [ws/notes.md](./ws/notes.md) | 14 |
 | Windows Sidebar | [ws/sidebar.md](./ws/sidebar.md) | 5 (+ `sidebar_updated` push) |
 | Slideshow devices (Melaton SideShow) | [ws/slideshowDevices.md](./ws/slideshowDevices.md) | 8 (+ `device_command`, `devices_updated` push) |
-| Reliability and Performance Monitor | [ws/perfmon.md](./ws/perfmon.md) | 2 |
+| Reliability and Performance Monitor | [ws/perfmon.md](./ws/perfmon.md) | 4 |
+| Task Manager | [ws/taskmgr.md](./ws/taskmgr.md) | 3 |
+| Text Messaging (iMessage / RCS) | [ws/textMessaging.md](./ws/textMessaging.md) | 24 |
+| IMAP mail accounts | [ws/mailAccounts.md](./ws/mailAccounts.md) | 15 |
+| Traffic | [ws/traffic.md](./ws/traffic.md) | 4 |
 | XLink Operator Console | [ws/xlink.md](./ws/xlink.md) | 5 |
 | PayPass Operator (openCreditIC) | [ws/paypass.md](./ws/paypass.md) | 5 |
 | VisionCaster (video mixer remote, was QuickCast) | [ws/quickcast.md](./ws/quickcast.md) | 8 |
