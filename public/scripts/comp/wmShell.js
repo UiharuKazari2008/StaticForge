@@ -2812,9 +2812,50 @@
         return true;
     }
 
+    /**
+     * The screen's rounded corners (Yukimi, Nov 13: Start and the X sat in the Fold7's corner curve
+     * with the title bar run up to the top edge). Where the bar touches the screen's top (camera
+     * "clear": no safe area above it), each end moves in just enough that the row of icons clears
+     * the curve: for a corner of radius r and the row's top y (CSS px, the app's physical pixels /
+     * devicePixelRatio), the curve is r - sqrt(r^2 - (r - y)^2) in from the edge at that height; what
+     * the layout's own margin already covers is not added again. AndroidDisplay.getScreenInfo
+     * cornerTopLeftPx / cornerTopRightPx; an app without them, or a bar below the edge, gets none.
+     */
+    function applyCornerInset(bar) {
+        let left = 0;
+        let right = 0;
+        const D = window.AndroidDisplay;
+        const atTop = bar && bar.getBoundingClientRect().top <= 0.5;
+        if (atTop && D && typeof D.getScreenInfo === 'function') {
+            let info = null;
+            try { info = JSON.parse(D.getScreenInfo() || 'null'); } catch (_) { info = null; }
+            const dpr = window.devicePixelRatio || 1;
+            const icon = bar.querySelector('.wm-start img') || bar.querySelector('.wm-status-icon:not([hidden])');
+            const rowTop = icon ? Math.max(0, icon.getBoundingClientRect().top) : 0;
+            const curve = (px) => {
+                const r = (Number(px) || 0) / dpr;
+                if (r <= rowTop) return 0;
+                return r - Math.sqrt(Math.max(0, r * r - (r - rowTop) * (r - rowTop)));
+            };
+            const startImg = bar.querySelector('.wm-start img');
+            const ownLeft = startImg ? Math.max(0, startImg.getBoundingClientRect().left - bar.getBoundingClientRect().left - (parseFloat(bar.style.paddingLeft) || 0)) : 0;
+            const act = bar.querySelector('.wm-title-action');
+            const ownRight = act && !act.hidden ? Math.max(0, parseFloat(getComputedStyle(act).marginRight) || 0) : 0;
+            if (info) {
+                left = Math.max(0, curve(info.cornerTopLeftPx) - ownLeft);
+                right = Math.max(0, curve(info.cornerTopRightPx) - ownRight);
+            }
+        }
+        const l = left ? `${left.toFixed(2)}px` : '';
+        const r = right ? `${right.toFixed(2)}px` : '';
+        if (bar && bar.style.paddingLeft !== l) bar.style.paddingLeft = l;
+        if (bar && bar.style.paddingRight !== r) bar.style.paddingRight = r;
+    }
+
     function fitStatusNow() {
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
+        applyCornerInset(bar);
         const el = (r) => shell.querySelector(`.wm-status-icon[data-role="${r}"]`);
         // the children's own boxes, not scrollWidth: 6.5's corner button carries a pressed
         // highlight that reaches 22 units past it (wm65.css), which made the bar always "too
