@@ -852,6 +852,7 @@
     /** The picture Today would show with this draft: the chosen picture, else the desktop's. */
     function wallPictureFor(d) {
         if (d.source === 'selected' && sameSite(d.picture)) return d.picture;
+        if (d.source === 'android' && sh.androidWallUrl) { const a = sh.androidWallUrl(); if (a) return a; }
         return sh.wallpaper ? sh.wallpaper.desktop() : null;
     }
 
@@ -1109,10 +1110,11 @@
                     if (sh && sh.androidWallAvailable && sh.androidWallAvailable()) sources.push(['android', 'Android Wallpaper']);
                     sources.push(['selected', 'Selected Wallpaper']);
                     if (!sources.some(([v]) => v === d.source)) d.source = 'workspace';
+                    renderWall(el, d, api);
                     if (d.source === 'android') {
-                        el.innerHTML = `<p>Today shows this phone's own Android wallpaper. Android draws it, so placement and effects don't apply; on a foldable each screen shows its own wallpaper.</p>
-                            <p class="wm-form-note">Change it in Android's Settings &gt; Wallpaper.</p>`;
-                    } else renderWall(el, d, api);
+                        // the phone's wallpaper for this screen (a foldable's cover and main screens each their own)
+                        el.insertAdjacentHTML('beforeend', `<p class="wm-form-note">${sh.androidWallUrl && sh.androidWallUrl() ? "Today shows this screen's Android wallpaper; change it in Android's Settings &gt; Wallpaper." : "This screen's Android wallpaper is a live wallpaper or can't be read: Today shows the workspace's wallpaper."}</p>`);
+                    }
                     const pick = document.createElement('div');
                     pick.className = 'wm-wall-pick';
                     pick.innerHTML = `<div class="wm-form-row"><label>Use:</label>${ui.comboHtml('source', (sources.find(([v]) => v === d.source) || sources[0])[1])}</div>

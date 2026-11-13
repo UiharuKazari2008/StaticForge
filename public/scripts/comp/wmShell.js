@@ -5606,7 +5606,21 @@
      * of a foldable its own). Device-local wmTodayWallSource; without it, the older "use desktop".
      */
     const WALL_SOURCE_KEY = 'wmTodayWallSource';
-    const androidWallAvailable = () => !!(window.AndroidHome && typeof window.AndroidHome.setShowWallpaper === 'function' && !(window.AndroidHome.isExternalDisplay && window.AndroidHome.isExternalDisplay()));
+    const androidWallAvailable = () => !!(window.AndroidHome && typeof window.AndroidHome.wallpaperInfo === 'function' && !(window.AndroidHome.isExternalDisplay && window.AndroidHome.isExternalDisplay()));
+
+    /**
+     * Android Wallpaper as a picture (#799): the app reads the wallpaper this screen draws (a foldable's
+     * cover or main one) and serves it (AndroidWallpaper.kt); Today draws it like any picture, so the
+     * page stays opaque. (A see-through window over the system wallpaper left Samsung's surface
+     * uncleared on the Fold7: old frames, no wallpaper.) A live wallpaper has no picture: '' (the
+     * workspace's then).
+     */
+    function androidWallUrl() {
+        try {
+            const i = JSON.parse(window.AndroidHome.wallpaperInfo() || 'null');
+            return i && i.url && !i.live ? i.url : '';
+        } catch (_) { return ''; }
+    }
     function todayWallSource() {
         let s = null;
         try { s = localStorage.getItem(WALL_SOURCE_KEY); } catch (_) { /* storage off */ }
@@ -5622,17 +5636,27 @@
     }
 
     // the window shows Android's wallpaper (and the page lets it through) only while chosen
-    let androidWallOn = null;
-    function applyAndroidWall(on) {
-        document.documentElement.classList.toggle('wm-android-wall', on);
-        if (!window.AndroidHome || typeof window.AndroidHome.setShowWallpaper !== 'function') return;
-        if (androidWallOn === on) return;
-        androidWallOn = on;
-        try { window.AndroidHome.setShowWallpaper(on); } catch (_) { /* bridge gone */ }
+    // the see-through window of the first try is switched off once (builds that turned it on)
+    let androidWallOff = false;
+    function applyAndroidWall() {
+        document.documentElement.classList.remove('wm-android-wall');
+        if (androidWallOff || !window.AndroidHome || typeof window.AndroidHome.setShowWallpaper !== 'function') return;
+        androidWallOff = true;
+        try { window.AndroidHome.setShowWallpaper(false); } catch (_) { /* bridge gone */ }
     }
+    // a new Android wallpaper, or the other screen of a foldable: Today draws the matching picture
+    window.addEventListener('androidwallpaper', () => { if (todayWallSource() === 'android') applyTodayBackground(true); });
+    let wallResize = 0;
+    window.addEventListener('resize', () => {
+        clearTimeout(wallResize);
+        wallResize = setTimeout(() => { if (todayWallSource() === 'android') applyTodayBackground(false); }, 400);
+    });
 
     function todayPicture() {
-        if (todayWallSource() === 'android') return null;
+        if (todayWallSource() === 'android') {
+            const a = androidWallUrl();
+            if (a) return a;
+        }
         let picture = null;
         try { picture = localStorage.getItem(TODAY_BG_KEY); } catch (_) { /* storage off */ }
         // Settings > Today: "Use desktop wallpaper" wins over a picture that is still stored
@@ -5651,12 +5675,11 @@
     function applyTodayBackground(force) {
         const today = apps.get('today');
         if (!today || !today.page) return;
-        const android = todayWallSource() === 'android';
-        applyAndroidWall(android);
-        const url = android ? null : todayPicture();
+        applyAndroidWall();
+        const url = todayPicture();
         const placement = wallpaperPlacement();
         const fx = todayEffect();
-        const key = `${android ? 'android' : url}|${placement.size}|${placement.position}|${fx.effect}|${fx.level}`;
+        const key = `${url}|${placement.size}|${placement.position}|${fx.effect}|${fx.level}`;
         if (!force && key === todayBgKey) return;
         todayBgKey = key;
         const set = (u, drawn) => {
@@ -5670,7 +5693,7 @@
             // theme behind the shell (black, like the Settings preview)
             today.page.style.backgroundColor = u ? '#000' : '';
             // Android's wallpaper shows through (wm-android-wall in wm-shell.css): text keeps its picture shadow
-            today.page.classList.toggle('has-picture', !!u || android);
+            today.page.classList.toggle('has-picture', !!u);
             const wall = WM65 && shell.querySelector('.wm-wall65');
             if (wall) {
                 Object.assign(wall.style, { backgroundImage: bg.image, backgroundSize: bg.size, backgroundPosition: bg.position, backgroundRepeat: bg.repeat });
@@ -8065,6 +8088,7 @@
         /** Settings > Today > Wallpaper > Use (#799): 'workspace' | 'selected' | 'android', and whether Android's can be used here. */
         todayWallSource: () => todayWallSource(),
         androidWallAvailable: () => androidWallAvailable(),
+        androidWallUrl: () => androidWallUrl(),
         closeMenus: () => closeMenus(),
         /** Registered apps (id, title, icon, inStart) in registration order. */
         /**
