@@ -1022,6 +1022,7 @@
                 if (item.checked != null) b.setAttribute('aria-checked', item.checked ? 'true' : 'false');
             }
             b.textContent = item.label;
+            if (item.icon) { b.classList.add('has-icon'); b.insertAdjacentHTML('afterbegin', imgTag(item.icon)); }
             b.disabled = !!item.disabled;
             // path levels in a drop-down (File Explorer's folder list): 12 px per level
             if (item.indent) b.style.setProperty('--wm-indent', String(Number(item.indent) || 0));
@@ -5485,14 +5486,22 @@
         const GEN_TYPES = new Set(['generate_image', 'generate_preset', 'reroll_image', 'upscale_image', 'expand_image', 'reroll_expanded_image', 'enhance_image', 'max_enhance_image', 'animate_image']);
         let mailUnread = null;
         let mailLoading = false;
-        let mailFailedAt = 0; // a failed request waits 45 s before the next try
+        // mail comes by push (dovecote_mailbox_updated); a failed first read is tried again when the
+        // socket comes back, else after 5 min, not from the Today repaint (no polling, Yukimi Nov 13)
+        let mailFailedAt = 0;
+        const MAIL_RETRY_MS = 300000;
+        let mailWiredWs = null;
         let recentKey = '';
 
         const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
 
         async function loadMail() {
-            if (mailLoading || Date.now() - mailFailedAt < 45000) return;
             const ws = window.wsClient;
+            if (ws && ws !== mailWiredWs && typeof ws.on === 'function') {
+                mailWiredWs = ws;
+                ws.on('connected', () => { if (mailUnread == null) { mailFailedAt = 0; loadMail(); } });
+            }
+            if (mailLoading || Date.now() - mailFailedAt < MAIL_RETRY_MS) return;
             if (!ws || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
             mailLoading = true;
             let ok = false;
@@ -5870,6 +5879,11 @@
 
     function registerGalleryApp() {
         const VIEWS = [['images', 'Images'], ['scraps', 'Scraps'], ['pinned', 'Pinned'], ['upscaled', 'Upscaled']];
+        // Pictures & Videos' storage cards (wmPhoneGallery.js, #788): the phone's albums beside My
+        // Device (this device's internal storage: the gallery's views). phoneOn(): a card folder is on screen
+        const phoneGallery = () => (window.wmPhoneGallery && window.wmPhoneGallery.available() ? window.wmPhoneGallery : null);
+        const phoneOn = () => { const g = phoneGallery(); return !!(g && g.location()); };
+        let phoneStarted = false;
         let searchBar = null;
         let searchSubmitted = false; // a search ran since the bar opened: Cancel must clear it
         const activeView = () => {
@@ -5881,6 +5895,7 @@
         const searchTarget = () => document.getElementById('fileSearchInput');
         const pvInput = () => { const pg = apps.get('gallery') && apps.get('gallery').page; return pg ? pg.querySelector('.wm-pv-q') : null; };
         function runSearch(q) {
+            if (phoneOn()) { phoneGallery().search(q); return; }
             const t = searchTarget();
             if (!t) return;
             if (!String(q || '').trim()) { setSearch(false); return; }
@@ -5898,6 +5913,7 @@
             // ending always clears, also after the box was emptied by hand: emptying the box resets
             // fileSearch's query but keeps the filtered results (fileSearch.clearSearch restores all)
             if (input) input.value = '';
+            if (window.wmPhoneGallery) window.wmPhoneGallery.search('');
             const t = searchTarget();
             const fs = window.fileSearch;
             const active = searchSubmitted || !!((fs && fs.currentQuery) || (t && t.value)) || !!searchResults;
@@ -5999,8 +6015,20 @@
 
         function renderFolderBar(page) {
             const view = VIEWS.find(([v]) => v === activeView());
-            page.querySelector('.wm-pv-folder span').textContent = searchResults ? 'Search results' : (view ? view[1] : 'Pictures');
+            const g = phoneOn() ? phoneGallery() : null;
+            page.querySelector('.wm-pv-folder span').textContent = g ? g.barLabel() : (searchResults ? 'Search results' : (view ? view[1] : 'Pictures'));
+            // the volume's picture beside the folder: the device or the storage card (ref-pv captures)
+            const icon = g ? 'fe-storage-card' : 'fe-device';
+            const img = page.querySelector('.wm-pv-folder img');
+            if (img && img.dataset.icon !== icon) { img.dataset.icon = icon; img.src = art(icon); img.srcset = srcset(icon); }
             const sortBtn = page.querySelector('.wm-pv-sort');
+            const idx = page.querySelector('.wm-pv-tool[data-act="index"]');
+            if (idx) idx.disabled = !!g;
+            if (g) {
+                if (dropdownAnchor !== sortBtn) sortBtn.querySelector('span').textContent = g.searching() ? 'Relevance' : g.sortLabel();
+                sortBtn.disabled = g.searching();
+                return;
+            }
             // while its drop-down is open the control reads "Sort By", as on the device
             if (dropdownAnchor !== sortBtn) sortBtn.querySelector('span').textContent = searchResults ? 'Relevance' : (SORTS.find(([k]) => k === sortBy) || SORTS[1])[1];
             sortBtn.disabled = !!searchResults;
@@ -6023,6 +6051,9 @@
         }
 
         function renderGrid(page, force) {
+            const pgal = window.wmPhoneGallery;
+            if (pgal) pgal.render(page, force);
+            if (phoneOn()) { renderFolderBar(page); return; }
             const view = activeView();
             if (view !== gridView) {
                 // another view (Images / Scraps / ...) starts at its top; a search belongs to its view
@@ -6173,10 +6204,26 @@
             ];
         }
 
-        /** WM's folder drop-down: the gallery views, the current one with a dot. */
+        /**
+         * WM's folder drop-down (ref-pv/03-folder-menu.png): My Device with its folders (the gallery
+         * views, the current one with a dot), a rule, then each storage card with its folder tree.
+         */
         function folderMenu() {
             const view = activeView();
-            return VIEWS.map(([v, label]) => ({ label, radio: view === v, action: () => switchView(v) }));
+            const g = phoneGallery();
+            const onCard = phoneOn();
+            const toDevice = (v) => {
+                const page = apps.get('gallery') && apps.get('gallery').page;
+                if (onCard) void g.open(null);
+                if (v && v !== view) switchView(v);
+                if (page) renderGrid(page, true);
+                if (current === 'gallery') renderSoftKeys();
+            };
+            return [
+                { label: 'My Device', icon: 'fe-device', action: () => toDevice(null) },
+                ...VIEWS.map(([v, label]) => ({ label, indent: 1, radio: !onCard && view === v, action: () => toDevice(v) })),
+                ...(g ? ['-', ...g.folderItems()] : [])
+            ];
         }
 
         function sortMenu(page) {
@@ -6449,14 +6496,15 @@
                 if (input) input.value = q;
                 runSearch(q);
             },
-            title: 'Pictures',
+            title: 'Pictures & Videos',
+            softLabel: 'Pictures',
             icon: 'app-pictures',
             inStart: 'top',
             mount(page) {
                 page.classList.add('wm-pv');
                 page.innerHTML = `
                     <div class="wm-pv-bar">
-                        <button type="button" class="wm-pv-folder" aria-haspopup="menu">${imgTag('app-pictures')}<span></span><i class="wm-pv-arrow"></i></button>
+                        <button type="button" class="wm-pv-folder" aria-haspopup="menu">${imgTag('fe-device')}<span></span><i class="wm-pv-arrow"></i></button>
                         <button type="button" class="wm-pv-sort" aria-haspopup="menu"><span></span><i class="wm-pv-arrow"></i></button>
                     </div>
                     <div class="wm-pv-tools" role="toolbar">
@@ -6479,7 +6527,7 @@
                     const b = e.target.closest('.wm-pv-tool');
                     if (!b) return;
                     if (b.dataset.act === 'top') page.querySelector('.wm-pv-scroll').scrollTop = 0;
-                    else if (b.dataset.act === 'index') open('pv-vindex');
+                    else if (b.dataset.act === 'index') { if (!phoneOn()) open('pv-vindex'); }
                     else stepSize(page, b.dataset.act === 'larger' ? 1 : -1);
                 });
                 page.querySelector('.wm-pv-grid').addEventListener('click', (e) => {
@@ -6506,6 +6554,14 @@
                     e.stopPropagation();
                     // the drop-down's label reads "Sort By" while it is open
                     const btn = e.currentTarget;
+                    if (phoneOn()) {
+                        const g = phoneGallery();
+                        if (g.searching()) return;
+                        const opening = !(openPopup && dropdownAnchor === btn);
+                        if (opening) btn.querySelector('span').textContent = 'Sort By';
+                        showDropdown(btn, g.sortItems(page), 'right', () => renderFolderBar(page));
+                        return;
+                    }
                     if (searchResults) return; // search results keep their relevance order
                     const opening = !(openPopup && dropdownAnchor === btn);
                     if (opening) btn.querySelector('span').textContent = 'Sort By';
@@ -6517,6 +6573,23 @@
             },
             show(page) {
                 layoutGrid(page);
+                // the storage cards: the drive's state, and the first opening goes to the phone's
+                // camera roll (WM's Pictures & Videos opens in My Pictures); a later change redraws
+                const pgal = window.wmPhoneGallery;
+                if (pgal) {
+                    busy(pgal.init(() => {
+                        const pg = apps.get('gallery') && apps.get('gallery').page;
+                        if (pg) renderGrid(pg, false);
+                        if (current === 'gallery') renderSoftKeys();
+                    }).then((ok) => {
+                        if (ok && !phoneStarted) {
+                            phoneStarted = true;
+                            const start = pgal.startLocation();
+                            if (start) return pgal.open(start.root, start.path);
+                        }
+                        return null;
+                    }).catch(() => { /* My Device alone */ }), { paint: true });
+                }
                 // the first fill of the grid behind WM's wait cursor (the folder bar and soft keys are
                 // up at once); later shows only redraw what changed
                 if (!gridSig) busy(() => renderGrid(page, false), { paint: true });
@@ -6532,6 +6605,7 @@
             },
             softKeys() {
                 const page = this.page;
+                if (phoneOn()) return phoneGallery().softKeys(page);
                 return {
                     left: { label: 'View', disabled: !selectedName, action: () => viewPicture(selectedName) },
                     right: {
@@ -6671,6 +6745,13 @@
         const item = viewerItem();
         const pic = item && (item.filename || item.original);
         if (act === 'prev' || act === 'next') return { enabled: viewerSlides() > 1 };
+        // a storage card's picture (wmPhoneGallery.js): Director and Delete act on the phone's file
+        if (item && item.phoneMedia) {
+            if (act === 'director') return { enabled: !item.phoneMedia.video && !!window.wmDirectorApp };
+            if (act === 'delete') return { enabled: true };
+            if (act === 'zoom') return { enabled: !item.phoneMedia.video };
+            return { enabled: false };
+        }
         // Studio edits a print by its file: a picture shown by its address alone has none
         if (act === 'studio') return { enabled: !!(pic && typeof window.openManualModalWithContent === 'function') };
         if (act === 'director') return { enabled: !!(pic && typeof window.askWrenAboutImage === 'function') };
@@ -6714,6 +6795,12 @@
         const pic = item && (item.filename || item.original);
         if (act === 'prev') { if (p && p.prev) p.prev(); return; }
         if (act === 'next') { if (p && p.next) p.next(); return; }
+        if (item && item.phoneMedia && window.wmPhoneGallery) {
+            if (act === 'director') { window.wmPhoneGallery.viewerDirector(item.phoneMedia); return; }
+            if (act === 'delete') { void window.wmPhoneGallery.viewerDelete(item.phoneMedia); return; }
+            if (act === 'zoom') { if (p && typeof p.toggleZoom === 'function') p.toggleZoom(); return; }
+            return;
+        }
         // Edit: as the Menu's Edit > DreamStudio / Director, over the viewer (Back returns here)
         if (act === 'studio') { if (item) window.openManualModalWithContent({ type: 'image', image: item }); return; }
         if (act === 'director') { if (pic) window.askWrenAboutImage(pic); return; }
@@ -6894,6 +6981,8 @@
     }
 
     function viewerSoftKeys() {
+        const shownItem = viewerItem();
+        if (shownItem && shownItem.phoneMedia && window.wmPhoneGallery) return window.wmPhoneGallery.viewerSoftKeys(shownItem.phoneMedia);
         return {
             left: { label: 'Save', disabled: !viewerButton('Download image') && !viewerSlideFile(), action: viewerSave },
             right: {
@@ -6988,7 +7077,7 @@
         closeMenus(true);
         if (open) {
             root.setAttribute('data-wm-viewer', '');
-            setTitle('Pictures');
+            setTitle('Pictures & Videos');
             attachViewbar();
         } else {
             renderViewbar();
@@ -7595,6 +7684,8 @@
         onPopState,
         thumbFor,
         viewPicture,
+        /** Pictures & Videos' Set as Today Background for a print (filename, gallery item). */
+        setTodayBackground: (name, item) => { if (setTodayBackgroundFn) setTodayBackgroundFn(name, item); },
         viewerPadding,
         bubble: (opts) => bubble(opts || {}),
         /** WM's wait cursor while the user must wait: busy(promise | fn, { delay, timeout }) or busy() -> release. */

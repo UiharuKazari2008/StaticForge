@@ -1147,7 +1147,7 @@
      * it). The phone's volumes (Android app only) come with it, already cached by the bridge.
      */
     const FILES_MS = 3 * 60 * 1000;
-    const FILES_RETRY_MS = 45 * 1000;
+    const FILES_RETRY_MS = 60 * 1000; // a failed read waits a minute (no sub-minute polling, Yukimi Nov 13)
     const FILES_PAGE = 60; // folders list first: enough to reach the files of a workspace's top level
     const FILES_PLACES = { documents: ['', 'My Documents'], downloads: ['/Downloads', 'Downloads'], pictures: ['/Pictures', 'My Pictures'], scraps: ['/Scraps', 'Scraps'] };
     const FILES_OPTIONS = [

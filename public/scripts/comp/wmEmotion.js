@@ -144,22 +144,39 @@
         render();
     }
 
-    function startPoll(requestId) {
+    // the server pushes the job (emotion_job_update) to this session's sockets; read again on a
+    // reconnect and once a minute as a safety net, never every 1.5 s (Yukimi, Nov 13)
+    let follow = null;
+    function stopFollow() {
         clearInterval(poll);
-        poll = setInterval(async () => {
-            if (!st.running || st.requestId !== requestId) { clearInterval(poll); poll = null; return; }
-            const job = await fetchJob();
-            if (!job || st.requestId !== requestId) return;
+        poll = null;
+        const c = follow && follow.client;
+        if (c && typeof c.off === 'function') { c.off('emotion_job_update', follow.onPush); c.off('connected', follow.check); }
+        follow = null;
+    }
+
+    function startPoll(requestId) {
+        stopFollow();
+        const apply = (job) => {
+            if (!job || !st.running || st.requestId !== requestId) return;
             if (job.requestId && requestId !== 'resumed' && job.requestId !== requestId) return;
             applyUpdate(job);
             if (job.status === 'completed' || job.status === 'failed') finish(requestId, job.status === 'completed' ? job.result : null, job.error);
-        }, 1500);
+        };
+        const check = async () => {
+            if (!st.running || st.requestId !== requestId) { stopFollow(); return; }
+            apply(await fetchJob());
+        };
+        const onPush = (message) => apply(message && message.data);
+        const client = window.wsClient;
+        if (client && typeof client.on === 'function') { client.on('emotion_job_update', onPush); client.on('connected', check); }
+        follow = { client, onPush, check };
+        poll = setInterval(check, 60000);
     }
 
     function finish(requestId, result, error) {
         if (st.requestId !== requestId) return;
-        clearInterval(poll);
-        poll = null;
+        stopFollow();
         if (onProgress && window.wsClient && typeof window.wsClient.off === 'function') window.wsClient.off('image_animation_progress', onProgress);
         onProgress = null;
         st.running = false;
@@ -221,8 +238,7 @@
     function stop() {
         if (!st.running) return;
         const id = st.requestId;
-        clearInterval(poll);
-        poll = null;
+        stopFollow();
         st.running = false;
         st.requestId = null;
         st.filmstrip = null;

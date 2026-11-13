@@ -544,6 +544,35 @@ function scopeFault(f, cabinetId, machine) {
     return machine && f.machine === machine ? f : null;
 }
 
+/** The program scene's inputs as of the last status read (names, mute): the meter push reads them. */
+let meterInputs = [];
+
+/** { inputs, master } from the meters OBS streams in (no OBS request). */
+function meterSnapshot() {
+    const meters = link.takeMeters();
+    const master = { mag: [-100, -100], peak: [-100, -100] };
+    const out = meterInputs.map((inp) => {
+        const m = meters.get(inp.name) || { mag: [], peak: [] };
+        const mag = m.mag.map(toDb);
+        const peak = m.peak.map(toDb);
+        if (!inp.muted) {
+            for (let ch = 0; ch < 2; ch++) {
+                const i = Math.min(ch, Math.max(0, mag.length - 1));
+                if (mag.length) {
+                    master.mag[ch] = Math.max(master.mag[ch], mag[i]);
+                    master.peak[ch] = Math.max(master.peak[ch], peak[i]);
+                }
+            }
+        }
+        return { name: inp.name, muted: inp.muted, mag: mag.map(round1), peak: peak.map(round1) };
+    });
+    const masterOut = { mag: master.mag.map(round1), peak: master.peak.map(round1) };
+    return { inputs: out, master: masterOut };
+}
+
+/** Changes OBS reports (scene, stream, profile, inputs; not the meters): fn(type, data). */
+function onObsEvent(fn) { link.listeners.add(fn); return () => link.listeners.delete(fn); }
+
 /** Everything the client shows, one read per poll (~8 Hz). Never throws for an offline OBS.
  *  opts.cabinet: the picked cabinet, for the pipeline diagnostics (default: the one on program). */
 async function status(opts = {}) {
@@ -621,27 +650,12 @@ async function status(opts = {}) {
             renderSkipped: stats.renderSkippedFrames || 0,
             renderTotal: stats.renderTotalFrames || 0
         };
-        // meters for what the stream hears with the program scene on
-        const meters = link.takeMeters();
+        // meters for what the stream hears with the program scene on (meterSnapshot: also the
+        // 5 Hz meter push between status reads, 300-quickcastHandler.js)
         let inputs = [];
         if (base.program) { try { inputs = await audioInputsFor(base.program); } catch (_) { inputs = []; } }
-        const master = { mag: [-100, -100], peak: [-100, -100] };
-        base.inputs = inputs.map((inp) => {
-            const m = meters.get(inp.name) || { mag: [], peak: [] };
-            const mag = m.mag.map(toDb);
-            const peak = m.peak.map(toDb);
-            if (!inp.muted) {
-                for (let ch = 0; ch < 2; ch++) {
-                    const i = Math.min(ch, Math.max(0, mag.length - 1));
-                    if (mag.length) {
-                        master.mag[ch] = Math.max(master.mag[ch], mag[i]);
-                        master.peak[ch] = Math.max(master.peak[ch], peak[i]);
-                    }
-                }
-            }
-            return { name: inp.name, muted: inp.muted, mag: mag.map(round1), peak: peak.map(round1) };
-        });
-        base.master = { mag: master.mag.map(round1), peak: master.peak.map(round1) };
+        meterInputs = inputs.map((inp) => ({ name: inp.name, muted: !!inp.muted }));
+        Object.assign(base, meterSnapshot());
         base.youtube.health = yt.streamHealth(!!stream.outputActive);
         const pick = cfg.cabinets.some((c) => c.id === opts.cabinet) ? opts.cabinet : base.programCabinet;
         try { base.diag = diag.diagnose(base, stats, pick); } catch (_) { base.diag = null; }
@@ -1158,4 +1172,4 @@ function info() {
     return { host: cfg.obs.host, port: cfg.obs.port, profile: cfg.profile, collection: cfg.collection, server: cfg.youtube.server, launchTask: cfg.launch.task };
 }
 
-module.exports = { cabinetXlinkMenu, cabinetXlinkDo, liveTicket, liveStream, osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };
+module.exports = { meterSnapshot, onObsEvent, cabinetXlinkMenu, cabinetXlinkDo, liveTicket, liveStream, osd: avOsd, status, preview, prepare, goLive, stop, launch, powerOff, setKey, info, getEncoder, setEncoder, cabinetControls, cabinetAction, setMute, youtube: yt, _link: link, _readConfig: readConfig, _ps: ps, DATA_DIR };

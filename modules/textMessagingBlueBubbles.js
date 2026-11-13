@@ -337,7 +337,11 @@ class BlueBubblesProvider {
         this.syncChild = child;
         child.on('message', (m) => {
             if (!m) return;
-            if (m.progress !== undefined) this.syncProgress = m.progress;
+            if (m.progress !== undefined) {
+                this.syncProgress = m.progress;
+                // msgbridge's counters follow this push (the worker reports every 2 s), no status polling
+                if (m.progress && this.hooks.emit) this.hooks.emit('syncprogress', { accountId: this.id, running: true, done: m.progress.done != null ? m.progress.done : null, total: m.progress.total != null ? m.progress.total : null });
+            }
             if (m.log) this.log(m.log);
             if (m.error) this.log(`sync failed: ${m.error}`);
         });

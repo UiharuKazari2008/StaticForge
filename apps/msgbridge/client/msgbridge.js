@@ -34,8 +34,10 @@
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const tm = () => root.textMessaging || null;
     const num = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
-    const POLL_RUNNING_MS = 3000;
-    const POLL_IDLE_MS = 30000;
+    // the server pushes sync progress (tm_event syncprogress) and every account / sync change: the
+    // timer is only a once-a-minute safety net (no polling under 60 s, Yukimi Nov 13)
+    const POLL_RUNNING_MS = 60000;
+    const POLL_IDLE_MS = 60000;
 
     /** Explorer's sizes: bytes, then KB / MB / GB to three significant figures. */
     function size(b) {
@@ -217,6 +219,15 @@
         listen() {
             const t = tm();
             if (!t || typeof t.on !== 'function') return;
+            this.onProgress = (d) => {
+                const a = d && this.accounts.find((x) => x.id === d.accountId);
+                if (!a) return;
+                a.sync = Object.assign({}, a.sync || {}, { running: d.running !== false, done: d.done, total: d.total });
+                // the counters only; the tree and lists stay as they are
+                this.renderToolbar();
+                this.render();
+            };
+            t.on('syncprogress', this.onProgress);
             this.onEvent = (d) => {
                 if (d && d.accountId && this.chats.has(d.accountId)) this.chats.delete(d.accountId);
                 clearTimeout(this.eventTimer);
@@ -957,6 +968,7 @@
             clearTimeout(this.eventTimer);
             const t = this.tmListened;
             if (t && typeof t.off === 'function' && this.onEvent) this.events.forEach((e) => t.off(e, this.onEvent));
+            if (t && typeof t.off === 'function' && this.onProgress) t.off('syncprogress', this.onProgress);
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
             setTimeout(() => m.remove(), 300);

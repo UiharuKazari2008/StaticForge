@@ -147,28 +147,44 @@ async function emotionResumeJob() {
     }
 }
 
-// While a job runs, poll the server copy too: it survives socket drops (the original request
-// promise does not) and carries the preview filmstrip.
+// While a job runs, follow the server copy too: it survives socket drops (the original request
+// promise does not) and carries the preview filmstrip. The server pushes it (emotion_job_update,
+// modules/imageAnimation.js pushEmotionJob) to every socket of this session; it is read once
+// more on a reconnect (an update missed while down) and once a minute as a safety net, never
+// polled every 1.5 s (Yukimi, Nov 13).
 function emotionStartResumePoll(requestId) {
     emotionStopResumePoll();
-    desktopEmotion.resumePollTimer = setInterval(async () => {
-        if (!desktopEmotion.running || desktopEmotion.requestId !== requestId) {
-            emotionStopResumePoll();
-            return;
-        }
-        const job = await emotionFetchCurrentJob();
-        if (!job || desktopEmotion.requestId !== requestId) return;
+    const client = window.wsClient;
+    const apply = (job) => {
+        if (!job || !desktopEmotion.running || desktopEmotion.requestId !== requestId) return;
         if (job.requestId && requestId !== 'resumed' && job.requestId !== requestId) return;
         emotionApplyJobUpdate(job);
         if (job.status === 'completed' || job.status === 'failed') {
             emotionFinishJob(requestId, job.status === 'completed' ? job.result : null, job.error);
         }
-    }, 1500);
+    };
+    const check = async () => {
+        if (!desktopEmotion.running || desktopEmotion.requestId !== requestId) { emotionStopResumePoll(); return; }
+        apply(await emotionFetchCurrentJob());
+    };
+    const onPush = (message) => apply(message && message.data);
+    if (client && typeof client.on === 'function') {
+        client.on('emotion_job_update', onPush);
+        client.on('connected', check);
+    }
+    desktopEmotion.resumeFollow = { client, onPush, check };
+    desktopEmotion.resumePollTimer = setInterval(check, 60000);
 }
 
 function emotionStopResumePoll() {
     if (desktopEmotion.resumePollTimer) clearInterval(desktopEmotion.resumePollTimer);
     desktopEmotion.resumePollTimer = null;
+    const f = desktopEmotion.resumeFollow;
+    if (f && f.client && typeof f.client.off === 'function') {
+        f.client.off('emotion_job_update', f.onPush);
+        f.client.off('connected', f.check);
+    }
+    desktopEmotion.resumeFollow = null;
 }
 
 function emotionFinishJob(requestId, result, error) {

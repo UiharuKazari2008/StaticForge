@@ -30,7 +30,9 @@
     'use strict';
 
     const doc = typeof document !== 'undefined' ? document : null;
-    const STATUS_POLL_MS = 5000;
+    // a once-a-minute check; a link change (socket connected / dropped) asks again at once and the
+    // uptime counts on locally between answers (no 5 s polling, Yukimi Nov 13)
+    const STATUS_POLL_MS = 60000;
     const LIVE_TICK_MS = 1000;
 
     const items = [];
@@ -869,7 +871,7 @@
                 dot: status.isReady ? 'on' : 'busy',
                 value: status.isReady ? 'Ready' : `Starting (${status.stageMessage || 'please wait'})`
             },
-            { label: 'Server uptime', value: formatDuration(status.uptime) },
+            { label: 'Server uptime', value: formatDuration(status === lastStatus && lastStatusAt ? status.uptime + (Date.now() - lastStatusAt) : status.uptime) },
             { label: 'Session service', dot: onOff(caps.websocket), value: caps.websocket ? 'On' : 'Off' },
             { label: 'Image generation', dot: onOff(caps.generation), value: caps.generation ? 'On' : 'Off' },
             { label: 'Static content', dot: onOff(caps.staticAssets), value: caps.staticAssets ? 'On' : 'Off' }
@@ -1002,6 +1004,7 @@
     async function pollStatus() {
         try {
             lastStatus = await fetchStatus();
+            lastStatusAt = Date.now();
             statusError = false;
             const client = ws();
             if (client && lastStatus && lastStatus.melaton) client.melatonConnection = lastStatus.melaton;
@@ -1043,8 +1046,20 @@
         }
     }
 
+    let lastStatusAt = 0;
+    let linkWired = null;
+    function wireLinkEvents() {
+        const client = ws();
+        if (!client || typeof client.on !== 'function' || linkWired === client) return;
+        linkWired = client;
+        const again = () => { if (current === 'network' && modal && !modal.classList.contains('hidden')) pollStatus(); };
+        client.on('connected', again);
+        client.on('disconnected', again);
+    }
+
     function startTimers() {
         stopTimers();
+        wireLinkEvents();
         liveTimer = setInterval(() => {
             if (!modal || modal.classList.contains('hidden')) { stopTimers(); return; }
             if (current === 'network') {

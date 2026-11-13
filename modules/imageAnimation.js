@@ -37,6 +37,24 @@ function publicEmotionJob(job, knownPreviewSeq = -1) {
     return out;
 }
 
+/**
+ * The job changed: its public state to every socket of the owner's session (emotion_job_update),
+ * so an eMotion window on another tab or after a reconnect follows it without polling
+ * emotion_current_job (Yukimi, Nov 13). The preview frame rides along when it is new.
+ */
+function pushEmotionJob(jobState) {
+    if (!jobState || !jobState.sessionId || !__runtimeGr) return;
+    let server = null;
+    try { server = __runtimeGr.getWebSocketServer && __runtimeGr.getWebSocketServer(); } catch (_) { server = null; }
+    if (!server || typeof server.sendToUser !== 'function') return;
+    const sentSeq = jobState._pushedPreviewSeq == null ? -1 : jobState._pushedPreviewSeq;
+    const data = publicEmotionJob(jobState, sentSeq);
+    jobState._pushedPreviewSeq = jobState.previewSeq;
+    try {
+        server.sendToUser(jobState.sessionId, { type: 'emotion_job_update', data, timestamp: new Date().toISOString() });
+    } catch (_err) { /* sockets gone: emotion_current_job on reconnect */ }
+}
+
 async function animateWithLocalWorker(imageBuffer, options, ws, handler, requestId, jobState) {
     return await animateBufferWithLocalWorker(__runtimeGr, imageBuffer, {
         onJobId: (jobId) => { if (jobState) jobState.workerJobId = jobId; },
@@ -65,6 +83,7 @@ async function animateWithLocalWorker(imageBuffer, options, ws, handler, request
                     jobState.previewBase64 = detail.previewBase64;
                     jobState.previewSeq = (jobState.previewSeq || 0) + 1;
                 }
+                pushEmotionJob(jobState);
             }
             if (!ws || !handler || !requestId) return;
             try {
@@ -127,6 +146,9 @@ async function animateImageWebSocket(globalResources, filename, workspaceId, use
             startedAt: Date.now(),
             updatedAt: Date.now()
         };
+        // who to push to (pushEmotionJob); not enumerable, so it never goes out in the job's JSON
+        Object.defineProperty(jobState, 'sessionId', { value: sessionId || null, enumerable: false });
+        Object.defineProperty(jobState, '_pushedPreviewSeq', { value: -1, enumerable: false, writable: true });
         emotionJobs.set(emotionOwnerKey(sessionId), jobState);
 
         const jobResult = await animateWithLocalWorker(imageBuffer, options, ws, handler, requestId, jobState);
@@ -176,6 +198,7 @@ async function animateImageWebSocket(globalResources, filename, workspaceId, use
             jobState.message = 'Done';
             jobState.result = { filename: primaryFilename, formats: savedFiles };
             jobState.updatedAt = Date.now();
+            pushEmotionJob(jobState);
         }
 
         return {
@@ -195,6 +218,7 @@ async function animateImageWebSocket(globalResources, filename, workspaceId, use
             jobState.status = 'failed';
             jobState.error = error.message || 'Animate failed';
             jobState.updatedAt = Date.now();
+            pushEmotionJob(jobState);
         }
         throw error;
     }

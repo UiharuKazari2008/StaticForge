@@ -297,6 +297,23 @@ function broadcastProgress(phase, current, total, detail) {
     });
 }
 
+/** The job ended: its state to admin sockets, so the waiting dialog needs no status polling. */
+function broadcastJobDone(job) {
+    if (!globalResourcesRef) return;
+    let wsServer;
+    try {
+        wsServer = globalResourcesRef.getWebSocketServer();
+    } catch (_e) {
+        return;
+    }
+    if (!wsServer || typeof wsServer.broadcast !== 'function') return;
+    wsServer.broadcast({
+        type: 'replication_separation_done',
+        data: { jobId: job.id, job },
+        timestamp: new Date().toISOString()
+    }, (info) => !!(info && info.userType === 'admin'));
+}
+
 async function createSeparationBundle(options = {}) {
     const root = options.root || getRoot();
     const cloneProfile = normalizeCloneProfile(options.cloneProfile);
@@ -563,12 +580,14 @@ function startSeparationJob(options) {
             job.result = result;
             job.finishedAt = new Date().toISOString();
             job.phase = 'complete';
+            broadcastJobDone(job);
         })
         .catch((error) => {
             job.status = 'error';
             job.error = error.message || String(error);
             job.finishedAt = new Date().toISOString();
             job.phase = 'error';
+            broadcastJobDone(job);
         });
 
     return jobId;

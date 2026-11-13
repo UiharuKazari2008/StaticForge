@@ -38,7 +38,8 @@
     const esc = ui.esc;
     const root = window;
 
-    const STATUS_POLL_MS = 5000; // melatonControlPanel.js STATUS_POLL_MS
+    // melatonControlPanel.js STATUS_POLL_MS: once a minute, and at once when the link comes up or drops
+    const STATUS_POLL_MS = 60000;
     const LIVE_TICK_MS = 1000;
 
     // ---------------------------------------------------------------- connection facts
@@ -149,7 +150,7 @@
         const onOff = (on) => (on ? 'On' : 'Off');
         const rows = [
             ['Domain controller:', status.isReady ? 'Ready' : `Starting (${status.stageMessage || 'please wait'})`],
-            ['Server uptime:', formatDuration(status.uptime)],
+            ['Server uptime:', formatDuration(status === lastStatus && statusAt && !statusError ? status.uptime + (Date.now() - statusAt) : status.uptime)],
             ['Session service:', onOff(caps.websocket)],
             ['Image generation:', onOff(caps.generation)],
             ['Static content:', onOff(caps.staticAssets)]
@@ -208,9 +209,14 @@
                 if (server.innerHTML !== b) server.innerHTML = b;
             };
             paint();
+            const linkUp = () => { const c = ws(); return !!(c && typeof c.isConnected === 'function' && c.isConnected()); };
+            let wasUp = linkUp();
             liveTick(el, () => {
                 paint();
-                if (Date.now() - statusAt >= STATUS_POLL_MS) pollStatus().then(() => { if (el.isConnected) paint(); });
+                const up = linkUp();
+                const changed = up !== wasUp;
+                wasUp = up;
+                if (changed || (!document.hidden && Date.now() - statusAt >= STATUS_POLL_MS)) pollStatus().then(() => { if (el.isConnected) paint(); });
             });
             if (Date.now() - statusAt >= STATUS_POLL_MS) pollStatus().then(() => { if (el.isConnected) paint(); });
         }

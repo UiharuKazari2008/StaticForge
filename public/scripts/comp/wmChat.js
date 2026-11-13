@@ -1717,12 +1717,9 @@
         } catch (_) { /* not connected yet: the next event tries again */ }
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
         tmTodayChanged();
-        // nothing read yet (not connected, or the server still starting): try again shortly
-        clearTimeout(tmRetry);
-        if (!tmState.accounts.length && tmRetries < 24) { tmRetries += 1; tmRetry = setTimeout(tmRefresh, 5000); } else if (tmState.accounts.length) tmRetries = 0;
+        // nothing read yet (not connected, or the server still starting): no timer; the next connect
+        // (tmBind) and the server's 'account' push when an account comes up read again (Yukimi, Nov 13)
     }
-    let tmRetry = 0;
-    let tmRetries = 0;
 
     // Today drew its Text panel before the accounts arrived: draw it again when what it shows changed
     let tmTodayKey = '';

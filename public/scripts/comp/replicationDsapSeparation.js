@@ -284,40 +284,58 @@ async function replicationSepApplyBundle(root) {
     }
 }
 
+/**
+ * Wait for a separation job: the server pushes replication_separation_done (modules/
+ * replicationSeparation.js broadcastJobDone) when it ends. The status is asked once at the start
+ * (a job that already ended), on a reconnect (a push missed while down) and once a minute as a
+ * safety net, not every second (Yukimi, Nov 13).
+ */
 function replicationSepPollJob(jobId) {
     return new Promise((resolve, reject) => {
-        let attempts = 0;
-        const poll = async () => {
-            attempts += 1;
-            if (!wsClient?.isConnected()) {
-                reject(new Error('WebSocket disconnected'));
-                return;
+        let settled = false;
+        let timer = null;
+        const startedAt = Date.now();
+        const finish = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (wsClient && typeof wsClient.off === 'function') {
+                wsClient.off('replication_separation_done', onDone);
+                wsClient.off('connected', check);
             }
-            try {
-                const response = await wsClient.sendMessage('replication_separation_status', { jobId }, true);
-                const job = response?.data?.job || response?.job;
-                if (!job) {
-                    reject(new Error('Separation job not found'));
-                    return;
-                }
-                if (job.status === 'complete') {
-                    resolve(job);
-                    return;
-                }
-                if (job.status === 'error') {
-                    reject(new Error(job.error || 'Separation failed'));
-                    return;
-                }
-                if (attempts > 600) {
-                    reject(new Error('Separation timed out'));
-                    return;
-                }
-                setTimeout(poll, 1000);
-            } catch (err) {
-                reject(err);
-            }
+            fn(value);
         };
-        poll();
+        const settle = (job) => {
+            if (!job) { finish(reject, new Error('Separation job not found')); return true; }
+            if (job.status === 'complete') { finish(resolve, job); return true; }
+            if (job.status === 'error') { finish(reject, new Error(job.error || 'Separation failed')); return true; }
+            return false;
+        };
+        function onDone(message) {
+            const data = (message && message.data) || message || {};
+            if (data.jobId === jobId) settle(data.job);
+        }
+        async function check() {
+            if (settled) return;
+            clearTimeout(timer);
+            if (Date.now() - startedAt > 600000) { finish(reject, new Error('Separation timed out')); return; }
+            if (wsClient?.isConnected()) {
+                try {
+                    const response = await wsClient.sendMessage('replication_separation_status', { jobId }, true);
+                    if (settle(response?.data?.job || response?.job)) return;
+                } catch (err) {
+                    if (err && err.message === 'Job not found') { finish(reject, new Error('Separation job not found')); return; }
+                }
+            }
+            if (!settled) timer = setTimeout(check, 60000);
+        }
+        if (!wsClient?.isConnected()) {
+            reject(new Error('WebSocket disconnected'));
+            return;
+        }
+        wsClient.on('replication_separation_done', onDone);
+        wsClient.on('connected', check);
+        check();
     });
 }
 

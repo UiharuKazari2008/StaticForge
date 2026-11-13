@@ -948,8 +948,10 @@ class WebSocketClient {
         'replication_delegation_status',
         // Sidebar live feed (Yozora #653): resubscribed on gadget changes, not user work
         'sidebar_live_subscribe',
-        // QuickCast (#734): polled several times a second while its window is open
+        // QuickCast (#734): its status feed (pushed since Nov 13) and the reads around it
         'quickcast_status',
+        'quickcast_subscribe',
+        'quickcast_unsubscribe',
         'quickcast_preview',
         'quickcast_cabinet',
         'quickcast_chat',

@@ -345,8 +345,12 @@
         } catch (_) { samples = null; }
         if (gen !== loadGen || !shown) return;
         if (!samples) {
-            // not connected (a server restart, the phone's link), slow or failed: ask again while open
-            retryTimer = setTimeout(() => { if (shown && gen === loadGen) loadSamples(); }, 3000);
+            // not connected (a server restart, the phone's link), slow or failed: ask again when the
+            // socket is back, or after a minute while open (no 3 s polling, Yukimi Nov 13)
+            const c = window.wsClient;
+            const again = () => { clearTimeout(retryTimer); if (c && typeof c.off === 'function') c.off('connected', again); if (shown && gen === loadGen) loadSamples(); };
+            if (c && typeof c.on === 'function' && !(typeof c.isConnected === 'function' && c.isConnected())) c.on('connected', again);
+            retryTimer = setTimeout(again, 60000);
             if (!sampleCache.size) applySamples({}, false);
             return;
         }

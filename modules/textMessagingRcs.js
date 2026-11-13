@@ -521,6 +521,11 @@ class RcsProvider {
                     await pause(900);
                 }
                 this.syncProgress.done += 1;
+                // msgbridge's counters by push, at most every 2 s (no status polling)
+                if (this.hooks.emit && Date.now() - (this.syncPushedAt || 0) >= 2000) {
+                    this.syncPushedAt = Date.now();
+                    this.hooks.emit('syncprogress', { accountId: this.id, running: true, done: this.syncProgress.done, total: this.syncProgress.total });
+                }
                 await pause(150);
             }
         };

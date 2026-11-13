@@ -127,7 +127,18 @@ async function signInStart() {
     return { userCode: p.userCode, url: p.url, expiresAt: p.expiresAt };
 }
 
+// a device-code sign-in ended (done, failed, expired): 300-quickcastHandler.js tells the window
+// that started it (quickcast_yt_signin_push), so it does not poll quickcast_yt_signin_state
+const signInListeners = new Set();
+function onSignIn(fn) { signInListeners.add(fn); return () => signInListeners.delete(fn); }
+
 async function pollSignIn(p, o) {
+    await pollSignInLoop(p, o);
+    if (pendingSignIn !== p || p.state === 'waiting') return;
+    for (const fn of signInListeners) { try { fn(); } catch (_) { /* the listener's own problem */ } }
+}
+
+async function pollSignInLoop(p, o) {
     while (pendingSignIn === p && p.state === 'waiting') {
         await new Promise((r) => setTimeout(r, p.interval));
         if (pendingSignIn !== p) return;
@@ -459,6 +470,12 @@ function mapMessage(it) {
     };
 }
 
+// the reader got something (messages, a state change): 300-quickcastHandler.js pushes it to the
+// Live Chat windows (quickcast_chat_push), so they do not poll quickcast_chat
+const chatListeners = new Set();
+function onChat(fn) { chatListeners.add(fn); return () => chatListeners.delete(fn); }
+function notifyChat() { for (const fn of chatListeners) { try { fn(); } catch (_) { /* the listener's own problem */ } } }
+
 async function chatTick() {
     chat.timer = null;
     if (Date.now() - chat.leaseAt > CHAT_LEASE_MS) { chat.running = false; return; }
@@ -491,6 +508,7 @@ async function chatTick() {
     chat.nextAt = Date.now() + wait;
     chat.timer = setTimeout(() => void chatTick(), wait);
     if (chat.timer.unref) chat.timer.unref();
+    notifyChat();
 }
 
 /** Messages after `since` (a seq); keeps the reader running while a Live Chat window polls. */
@@ -522,6 +540,7 @@ async function chatSend(text) {
         if (!r.authorDetails) { m.author = account().channel || 'You'; m.owner = true; }
         m.seq = ++chat.seq;
         chat.messages.push(m);
+        notifyChat();
     }
     return { ok: true };
 }
@@ -529,5 +548,5 @@ async function chatSend(text) {
 module.exports = {
     init, account, setCredentials, signInStart, signInState, signOut, refreshProfile, selectAccount,
     lastSettings, saveSettings, prepareBroadcast, endBroadcast, broadcastInfo, viewers, streamHealth,
-    chatRead, chatSend, PRIVACY, LATENCY, _chat: chat
+    chatRead, chatSend, onChat, onSignIn, PRIVACY, LATENCY, _chat: chat
 };
