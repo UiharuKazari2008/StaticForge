@@ -8,6 +8,14 @@
  * per session (Menu > Update Library... scans again): My Music / My Videos list the playable audio and
  * video files; Album groups music by its folder; Artist and Genre read "Unknown" (no tags are read).
  *
+ * In the Android app (#801) the Library drop-down lists the phone's own libraries first: My Device (internal
+ * storage) and Storage Card (each SD card), read from Android's media library (MediaStore through
+ * window.AndroidMediaLibrary: tags, album art, Android's playlists; songs stream from the phone with
+ * seeking), then the workspace's library on the server ("<workspace> on Dreamscape"). What Melaton Media
+ * plays is Android's media session too (lock screen, notification shade, headset and car buttons). When
+ * Melaton Media is not playing, Now Playing shows and controls whatever else Android plays
+ * (window.AndroidMediaSession).
+ *
  * Built from the ROM's own skin files (~/.cache/wm61/dump/win/wmp_WPC_player_480x640.skn and
  * _640x480.skn; art in public/static_images/wm61/wmp, the VGA files and their halves):
  *   Now Playing   the skin: album art / video 10,74 460x310, title marquee, status, rating, time,
@@ -32,6 +40,8 @@
     const VIDEO = /\.(mp4|webm|ogv|m4v|mov)$/i;
     const MAX_DIRS = 160;
     const SKIP_DIRS = new Set(['Trash', 'Calendars', 'Contacts', 'Notes']);
+    const SOURCE_KEY = 'wmMediaSource';
+    const OWN_PACKAGE = /^jp\.net\.seventhreeseven\.dreamscape/;
 
     // skin layouts in VGA pixels (x, y, w, h) and their sprite offsets in the pushed / disabled strips
     const LAYOUT = {
@@ -78,11 +88,12 @@
         v.playsInline = true;
         v.preload = 'metadata';
         v.addEventListener('timeupdate', paintTime);
-        v.addEventListener('durationchange', paintTime);
-        v.addEventListener('play', () => { media.status = 'Playing'; paintSkin(); });
-        v.addEventListener('pause', () => { if (!v.ended) media.status = 'Paused'; paintSkin(); });
+        v.addEventListener('durationchange', () => { paintTime(); tellAndroid(); });
+        v.addEventListener('play', () => { media.status = 'Playing'; paintSkin(); tellAndroid(); });
+        v.addEventListener('pause', () => { if (!v.ended) media.status = 'Paused'; paintSkin(); tellAndroid(); });
         v.addEventListener('waiting', () => { media.status = 'Buffering...'; paintSkin(); });
-        v.addEventListener('playing', () => { media.status = 'Playing'; paintSkin(); });
+        v.addEventListener('playing', () => { media.status = 'Playing'; paintSkin(); tellAndroid(); });
+        v.addEventListener('seeked', tellAndroid);
         v.addEventListener('ended', () => { media.status = 'Stopped'; next(true); });
         v.addEventListener('error', () => {
             if (!v.getAttribute('src')) return;
@@ -122,6 +133,7 @@
         try {
             const url = it.url || await ws.busy(vfsUrl(it), { timeout: 15000 });
             if (!url) throw new Error('no url');
+            v.poster = it.poster || '';
             v.src = url;
             await v.play();
         } catch (err) {
@@ -148,6 +160,128 @@
         try { media.el.currentTime = 0; } catch (_) { /* not seekable */ }
         media.status = 'Stopped';
         paintSkin();
+        tellAndroid();
+    }
+
+    // ---------------------------------------------------------------- Android's media session (#801)
+
+    const library = () => window.AndroidMediaLibrary || null;
+
+    /** What Melaton Media plays, as Android's media session (lock screen, shade, headset buttons). */
+    let tellTimer = 0;
+    function tellAndroid() {
+        const L = library();
+        if (!L || typeof L.setNowPlaying !== 'function') return;
+        clearTimeout(tellTimer);
+        tellTimer = setTimeout(() => {
+            const it = current();
+            const v = media.el;
+            if (!it || !v || !v.getAttribute('src')) { try { L.setNowPlaying(''); } catch (_) { /* bridge gone */ } return; }
+            const playing = !v.paused && !v.ended;
+            try {
+                L.setNowPlaying(JSON.stringify({
+                    title: it.title || it.name,
+                    artist: it.artist || (it.kind === 'audio' && it.src !== 'android' ? it.folder || '' : ''),
+                    album: it.album || '',
+                    art: it.art || it.poster || '',
+                    duration: Number.isFinite(v.duration) ? Math.round(v.duration * 1000) : Math.round((it.duration || 0) * 1000),
+                    position: Math.round((v.currentTime || 0) * 1000),
+                    playing,
+                    canNext: media.queue.length > 1 || media.repeat,
+                    canPrev: media.queue.length > 0
+                }));
+            } catch (_) { /* bridge gone */ }
+        }, 80);
+    }
+
+    // the notification's / lock screen's / headset's buttons
+    window.addEventListener('dreamscape:mediacontrol', (e) => {
+        const d = (e && e.detail) || {};
+        const v = media.el;
+        switch (d.action) {
+            case 'play': if (v && v.getAttribute('src')) v.play().catch(() => {}); else playPause(); break;
+            case 'pause': if (v) v.pause(); break;
+            case 'toggle': playPause(); break;
+            case 'next': next(false); break;
+            case 'previous': prev(); break;
+            case 'stop': stop(); break;
+            case 'seek': if (v && Number.isFinite(d.position)) { try { v.currentTime = d.position / 1000; } catch (_) { /* not seekable */ } } break;
+            default: break;
+        }
+    });
+    window.addEventListener('melatonopenapp', (e) => { if (e && e.detail === APP_ID && ws) { layer = 'skin'; ws.open(APP_ID); render(); } });
+
+    // ---------------------------------------------------------------- what else Android plays (#801)
+
+    let androidState = null; // AndroidMediaSession.getState(), from its events
+    const artCache = new Map(); // artKey -> data URL
+    let androidTick = 0;
+
+    function readAndroidState() {
+        const S = window.AndroidMediaSession;
+        if (!S || typeof S.getState !== 'function') return null;
+        try { androidState = JSON.parse(S.getState() || 'null'); } catch (_) { androidState = null; }
+        return androidState;
+    }
+
+    window.addEventListener('dreamscape:media', (e) => {
+        androidState = (e && e.detail) || null;
+        if (page && layer === 'skin') paintSkin();
+    });
+
+    /** Android's active session that is not Dreamscape's own (else null). */
+    function androidSession() {
+        const st = androidState || readAndroidState();
+        const list = ((st && st.sessions) || []).filter((s) => !OWN_PACKAGE.test(s.package || ''));
+        if (!list.length) return null;
+        return list.find((s) => s.id === st.active) || list.find((s) => s.state === 'playing') || list[0];
+    }
+
+    /** Now Playing shows Android's session while Melaton Media itself plays nothing (or Android plays). */
+    function androidMode() {
+        const v = media.el;
+        if (v && v.getAttribute('src') && !v.paused && !v.ended) return null;
+        const s = androidSession();
+        if (!s || s.state === 'none' || s.state === 'stopped' && !s.title) return null;
+        if (s.state === 'playing' || s.state === 'buffering' || !current()) return s;
+        return null;
+    }
+
+    function androidPosition(s) {
+        if (!s) return 0;
+        let p = Number(s.position) || 0;
+        if (s.state === 'playing' && s.positionAt) p += (Date.now() - s.positionAt) * (Number(s.speed) || 1);
+        return Math.max(0, s.duration ? Math.min(p, s.duration) : p) / 1000;
+    }
+
+    function androidArt(s) {
+        if (!s || !s.artKey) return '';
+        if (artCache.has(s.artKey)) return artCache.get(s.artKey);
+        let url = '';
+        try { url = window.AndroidMediaSession.getArt(s.id) || ''; } catch (_) { url = ''; }
+        if (artCache.size > 8) artCache.delete(artCache.keys().next().value);
+        artCache.set(s.artKey, url);
+        return url;
+    }
+
+    function androidCommand(k) {
+        const S = window.AndroidMediaSession;
+        const s = androidSession();
+        if (!S || !s) return false;
+        const can = (a) => !s.actions || s.actions.includes(a);
+        try {
+            if (k === 'play') S.toggle(s.id);
+            else if (k === 'prev' && can('previous')) S.previous(s.id);
+            else if (k === 'next' && can('next')) S.next(s.id);
+            else return false;
+        } catch (_) { return false; }
+        return true;
+    }
+
+    // the clock of Android's playing item moves on the skin while it is on screen (local, no requests)
+    function androidClock(on) {
+        if (on && !androidTick) androidTick = setInterval(() => { if (page && layer === 'skin' && document.documentElement.dataset.wmApp === APP_ID) paintTime(); }, 1000);
+        else if (!on && androidTick) { clearInterval(androidTick); androidTick = 0; }
     }
 
     function next(auto) {
@@ -181,10 +315,13 @@
         } else render();
     }
 
-    // ---------------------------------------------------------------- the library (VFS scan)
+    // ---------------------------------------------------------------- the libraries
+    // sources: the workspace's library on the server (VFS scan), and in the Android app the phone's own
+    // media library per storage volume (#801): { id, label, icon, kind: 'vfs' | 'android', volume }
 
-    let lib = null; // { audio: [], video: [] }
-    let scanning = null;
+    const libs = new Map(); // source id -> { audio, video, playlists, error? }
+    const scans = new Map(); // source id -> promise
+    let source = null;
 
     function workspaceRoot() {
         let w = 'Default';
@@ -192,10 +329,54 @@
         return `/Workspaces/${w}`;
     }
 
-    async function scan() {
+    function sources() {
+        const out = [];
+        const L = library();
+        if (L && typeof L.volumes === 'function') {
+            let vols = [];
+            try { vols = JSON.parse(L.volumes() || '[]'); } catch (_) { vols = []; }
+            let cards = 0;
+            const removable = vols.filter((v) => v.removable).length;
+            vols.forEach((v) => {
+                if (v.state && !/^mounted/.test(v.state)) return;
+                if (v.primary) out.push({ id: `android:${v.id}`, label: 'My Device', icon: 'wmp-home', kind: 'android', volume: v.id });
+                else {
+                    cards += 1;
+                    out.push({ id: `android:${v.id}`, label: removable > 1 ? `Storage Card ${cards}` : 'Storage Card', icon: 'fe-storage-card', kind: 'android', volume: v.id });
+                }
+            });
+        }
+        const ws0 = workspaceRoot().split('/').pop();
+        out.push({ id: 'vfs', label: out.length ? `${ws0} on Dreamscape` : 'My Device', icon: out.length ? 'wmp-folder' : 'wmp-home', kind: 'vfs' });
+        return out;
+    }
+
+    function currentSource() {
+        const all = sources();
+        if (!source) { try { source = localStorage.getItem(SOURCE_KEY); } catch (_) { source = null; } }
+        let s = all.find((x) => x.id === source);
+        if (!s) { s = all[0]; source = s.id; }
+        return s;
+    }
+
+    function setSource(id) {
+        source = id;
+        try { localStorage.setItem(SOURCE_KEY, id); } catch (_) { /* storage off */ }
+        libPath = [];
+        libSel = 0;
+        render();
+        ensureLibrary(false).then(() => { if (layer === 'library') render(); });
+    }
+
+    function sourceMenu() {
+        const cur = currentSource();
+        return sources().map((s) => ({ label: s.label, radio: s.id === cur.id, action: () => setSource(s.id) }));
+    }
+
+    async function scanVfs() {
         const V = (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; // eslint-disable-line no-undef
         if (!V) throw new Error('Files are not available.');
-        const out = { audio: [], video: [] };
+        const out = { audio: [], video: [], playlists: [] };
         const queue = [workspaceRoot()];
         let dirs = 0;
         while (queue.length && dirs < MAX_DIRS) {
@@ -213,7 +394,8 @@
                 const kind = AUDIO.test(name) ? 'audio' : VIDEO.test(name) ? 'video' : null;
                 if (!kind) continue;
                 const folder = dir.split('/').filter(Boolean).pop() || '';
-                out[kind].push({ name: name.replace(/\.[^.]+$/, ''), file: name, path: `${dir.replace(/\/+$/, '')}/${name}`, fileId: i.targetKind === 'user-file' ? i.targetId || i.id : null, folder, kind });
+                // no tags are read from the server's files: the folder stands in for the album
+                out[kind].push({ name: name.replace(/\.[^.]+$/, ''), file: name, path: `${dir.replace(/\/+$/, '')}/${name}`, fileId: i.targetKind === 'user-file' ? i.targetId || i.id : null, folder, album: folder, kind, src: 'vfs' });
             }
         }
         const coll = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
@@ -222,22 +404,95 @@
         return out;
     }
 
-    function ensureLibrary(force) {
-        if (lib && !force) return Promise.resolve(lib);
-        if (scanning) return scanning;
-        scanning = ws.busy(scan(), { paint: true, timeout: 60000 }).then((r) => { lib = r; return r; }).catch((err) => {
-            ws.notify({ title: 'Melaton Media', icon: 'error', text: (err && err.message) || 'The library could not be updated.' });
-            lib = lib || { audio: [], video: [] };
-            return lib;
-        }).finally(() => { scanning = null; });
-        return scanning;
+    /** The phone's media library for one volume (MediaStore, served by the app). */
+    async function scanAndroid(s) {
+        const L = library();
+        let acc = {};
+        try { acc = JSON.parse(L.access() || '{}'); } catch (_) { acc = {}; }
+        if (!acc.granted) return { audio: [], video: [], playlists: [], needsAccess: true };
+        const base = L.baseUrl();
+        const vol = encodeURIComponent(s.volume);
+        const r = await fetch(`${base}/library/${vol}`, { cache: 'no-store' });
+        if (!r.ok) throw new Error(r.status === 403 ? 'Melaton Media is not allowed to read your music and videos.' : 'The library could not be read.');
+        const d = await r.json();
+        const byId = new Map();
+        const audio = (d.songs || []).map((x) => {
+            const it = {
+                kind: 'audio', src: 'android', id: x.id, volume: s.volume,
+                name: x.title || 'Unknown', title: x.title || 'Unknown',
+                artist: x.artist || '', albumArtist: x.albumArtist || '', album: x.album || '', albumId: x.albumId,
+                genre: x.genre || '', track: x.track || 0, disc: x.disc || 0, year: x.year || 0, composer: x.composer || '',
+                duration: (x.duration || 0) / 1000, size: x.size || 0, mime: x.mime || '', path: x.path || '',
+                url: `${base}/audio/${vol}/${x.id}`, art: `${base}/cover/${vol}/${x.id}?px=512`, albumArt: x.albumId ? `${base}/album/${vol}/${x.albumId}?px=512` : ''
+            };
+            byId.set(x.id, it);
+            return it;
+        });
+        const video = (d.videos || []).map((x) => ({
+            kind: 'video', src: 'android', id: x.id, volume: s.volume, name: x.title || 'Video', title: x.title || 'Video',
+            artist: x.artist || '', folder: x.folder || '', duration: (x.duration || 0) / 1000, size: x.size || 0, mime: x.mime || '',
+            path: x.path || '', width: x.width || 0, height: x.height || 0,
+            url: `${base}/video/${vol}/${x.id}`, poster: `${base}/video/${vol}/${x.id}?thumb=480`
+        }));
+        const playlists = (d.playlists || []).map((p) => ({ name: p.name || 'Playlist', items: (p.songs || []).map((id) => byId.get(id)).filter(Boolean) }));
+        return { audio, video, playlists };
     }
 
-    /** The rows of the open Library level: { label, icon, open?, item?, items? }. */
+    function ensureLibrary(force) {
+        const s = currentSource();
+        if (libs.has(s.id) && !force) return Promise.resolve(libs.get(s.id));
+        if (scans.has(s.id)) return scans.get(s.id);
+        const run = ws.busy(s.kind === 'android' ? scanAndroid(s) : scanVfs(), { paint: true, timeout: 60000 }).then((r) => { libs.set(s.id, r); return r; }).catch((err) => {
+            ws.notify({ title: 'Melaton Media', icon: 'error', text: (err && err.message) || 'The library could not be updated.' });
+            const r = libs.get(s.id) || { audio: [], video: [], playlists: [] };
+            libs.set(s.id, r);
+            return r;
+        }).finally(() => { scans.delete(s.id); });
+        scans.set(s.id, run);
+        return run;
+    }
+
+    // the answer to Android's "Allow Melaton Media to access music and audio?"
+    window.addEventListener('dreamscape:medialib', (e) => {
+        const d = (e && e.detail) || {};
+        if (d.type !== 'access') return;
+        sources().filter((s) => s.kind === 'android').forEach((s) => libs.delete(s.id));
+        if (d.granted && page) ensureLibrary(true).then(() => { if (layer === 'library') render(); });
+        else if (!d.granted) ws.notify({ title: 'Melaton Media', icon: 'info', text: 'Melaton Media cannot show your music and videos without permission. Allow it in Android Settings > Apps > Dreamscape > Permissions.' });
+    });
+
+    function askAccess() {
+        const L = library();
+        if (L && typeof L.requestAccess === 'function') { try { L.requestAccess(); } catch (_) { /* bridge gone */ } }
+    }
+
+    const coll = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+    const UNKNOWN = { artist: 'Unknown Artist', album: 'Unknown Album', genre: 'Unknown Genre' };
+    const GROUP_ICON = { artist: 'wmp-artist', album: 'wmp-disc', genre: 'wmp-genre' };
+    const keyOf = (it, by) => (by === 'artist' ? it.artist || it.albumArtist : by === 'album' ? it.album : it.genre) || '';
+    const byTrack = (a, b) => ((a.disc || 0) - (b.disc || 0)) || ((a.track || 0) - (b.track || 0)) || coll.compare(a.name, b.name);
+
+    /** Songs grouped by artist / album / genre: [{ key, label, items }] sorted, unknown last. */
+    function groups(audio, by) {
+        const m = new Map();
+        audio.forEach((it) => {
+            const k = keyOf(it, by);
+            if (!m.has(k)) m.set(k, []);
+            m.get(k).push(it);
+        });
+        return [...m.entries()].map(([k, items]) => ({ key: k, label: k || UNKNOWN[by], items: by === 'album' ? items.slice().sort(byTrack) : items }))
+            .sort((a, b) => (a.key ? 0 : 1) - (b.key ? 0 : 1) || coll.compare(a.label, b.label));
+    }
+
+    /** The rows of the open Library level: { label, icon, open?, item?, items?, ask? }. */
     function libRows() {
         const [cat, sub, arg] = libPath;
-        const L = lib || { audio: [], video: [] };
+        const s = currentSource();
+        const L = libs.get(s.id) || { audio: [], video: [], playlists: [] };
         const file = (it) => ({ label: it.name, icon: it.kind === 'video' ? 'wmp-video' : 'wmp-music', item: it });
+        if (L.needsAccess && cat && cat !== 'tv') {
+            return [{ label: 'Allow access to music and videos...', icon: 'wmp-properties', ask: true }];
+        }
         if (!cat) {
             return [
                 { label: 'My Music', icon: 'wmp-music', open: ['music'] },
@@ -256,33 +511,37 @@
             ];
         }
         if (cat === 'music' && sub === 'all') return L.audio.map(file);
-        if (cat === 'music' && (sub === 'artist' || sub === 'genre')) {
-            if (!arg) return L.audio.length ? [{ label: sub === 'artist' ? 'Unknown Artist' : 'Unknown Genre', icon: sub === 'artist' ? 'wmp-artist' : 'wmp-genre', open: ['music', sub, 'unknown'], items: L.audio }] : [];
-            return L.audio.map(file);
-        }
-        if (cat === 'music' && sub === 'album') {
-            if (!arg) {
-                const folders = [...new Set(L.audio.map((a) => a.folder))];
-                return folders.map((f) => ({ label: f, icon: 'wmp-disc', open: ['music', 'album', f], items: L.audio.filter((a) => a.folder === f) }));
-            }
-            return L.audio.filter((a) => a.folder === arg).map(file);
+        if (cat === 'music' && GROUP_ICON[sub]) {
+            const g = groups(L.audio, sub);
+            if (arg == null) return g.map((x) => ({ label: x.label, icon: GROUP_ICON[sub], open: ['music', sub, x.key], items: x.items }));
+            const hit = g.find((x) => x.key === arg);
+            return hit ? hit.items.map(file) : [];
         }
         if (cat === 'video') return L.video.map(file);
+        if (cat === 'playlists') {
+            if (sub == null) return (L.playlists || []).map((p, i) => ({ label: p.name, icon: 'wmp-playlist', open: ['playlists', String(i)], items: p.items }));
+            const p = (L.playlists || [])[Number(sub)];
+            return p ? p.items.map(file) : [];
+        }
         return [];
     }
 
     function libTitle() {
         const [cat, sub, arg] = libPath;
-        if (!cat) return { label: 'Library', icon: 'wmp-search' };
+        if (!cat) { const s = currentSource(); return { label: s.label, icon: s.icon }; }
         if (cat === 'music') {
             if (!sub) return { label: 'My Music', icon: 'wmp-music' };
             if (sub === 'all') return { label: 'All Music', icon: 'wmp-music' };
-            if (sub === 'album') return { label: arg || 'Album', icon: 'wmp-disc' };
-            if (sub === 'artist') return { label: arg ? 'Unknown Artist' : 'Artist', icon: 'wmp-artist' };
-            return { label: arg ? 'Unknown Genre' : 'Genre', icon: 'wmp-genre' };
+            const label = sub === 'artist' ? 'Artist' : sub === 'album' ? 'Album' : 'Genre';
+            return { label: arg == null ? label : arg || UNKNOWN[sub], icon: GROUP_ICON[sub] };
         }
         if (cat === 'video') return { label: 'My Videos', icon: 'wmp-video' };
         if (cat === 'tv') return { label: 'My TV', icon: 'wmp-tv' };
+        if (sub != null) {
+            const L = libs.get(currentSource().id);
+            const p = L && L.playlists && L.playlists[Number(sub)];
+            return { label: p ? p.name : 'My Playlists', icon: 'wmp-playlist' };
+        }
         return { label: 'My Playlists', icon: 'wmp-playlist' };
     }
 
@@ -358,11 +617,39 @@
         if (!skin) return;
         const it = current();
         const v = media.el;
-        skin.querySelector('.wmp-marquee').textContent = it ? it.name : '';
-        skin.querySelector('.wmp-status').textContent = it ? media.status : '';
         const art = skin.querySelector('.wmp-art');
-        // video plays in the album-art rectangle; music shows nothing there (no art is read)
-        if (v && it && it.kind === 'video') { if (v.parentNode !== art) art.appendChild(v); } else if (v && v.parentNode) v.remove();
+        const a = androidMode();
+        androidClock(!!(a && a.state === 'playing'));
+        skin.classList.toggle('is-android', !!a);
+        if (a) {
+            // something else plays on the phone: Now Playing is its remote (#801)
+            skin.querySelector('.wmp-marquee').textContent = [a.title, a.artist].filter(Boolean).join(' - ') || a.app || '';
+            const st = { playing: 'Playing', paused: 'Paused', buffering: 'Buffering...', stopped: 'Stopped', error: 'Error' }[a.state] || 'Ready';
+            skin.querySelector('.wmp-status').textContent = a.app ? `${st} (${a.app})` : st;
+            if (v && v.parentNode) v.remove();
+            setCover(art, androidArt(a), '');
+            const can = (x) => !a.actions || a.actions.includes(x);
+            const playingA = a.state === 'playing' || a.state === 'buffering';
+            skin.querySelectorAll('.wmp-btn').forEach((b) => {
+                const k = b.dataset.b;
+                const dis = k === 'full' || (k === 'prev' && !can('previous')) || (k === 'next' && !can('next')) || (k === 'play' && !(can('play') || can('pause')));
+                b.disabled = dis;
+                b.classList.toggle('is-disabled', dis);
+                b.classList.toggle('is-pause', k === 'play' && playingA);
+                b.classList.toggle('is-on', k === 'mute' && media.muted);
+            });
+            skin.querySelector('.wmp-vol').textContent = `${media.volume}%`;
+            skin.querySelector('.wmp-ratings').hidden = ws.version === '6.5';
+            paintTime();
+            return;
+        }
+        skin.querySelector('.wmp-marquee').textContent = it ? (it.artist && it.src === 'android' ? `${it.name} - ${it.artist}` : it.name) : '';
+        skin.querySelector('.wmp-status').textContent = it ? media.status : '';
+        // video plays in the album-art rectangle; music shows its album art there (the phone's library)
+        if (v && it && it.kind === 'video') { setCover(art, '', ''); if (v.parentNode !== art) art.appendChild(v); } else {
+            if (v && v.parentNode) v.remove();
+            setCover(art, it && it.kind === 'audio' ? it.art || '' : '', it && it.albumArt || '');
+        }
         const empty = !media.queue.length;
         const playing = !!(v && !v.paused && !v.ended);
         skin.querySelectorAll('.wmp-btn').forEach((b) => {
@@ -379,13 +666,33 @@
         paintTime();
     }
 
+    /** The album art picture in the art rectangle: url, then fallback, else empty. */
+    function setCover(art, url, fallback) {
+        let img = art.querySelector('.wmp-cover');
+        if (!url) { if (img) img.remove(); return; }
+        if (!img) {
+            img = document.createElement('img');
+            img.className = 'wmp-cover';
+            img.alt = '';
+            img.decoding = 'async';
+            img.addEventListener('error', () => {
+                const fb = img.dataset.fallback;
+                if (fb && img.getAttribute('src') !== fb) img.src = fb; else img.hidden = true;
+            });
+            art.prepend(img);
+        }
+        img.dataset.fallback = fallback || '';
+        if (img.getAttribute('src') !== url && img.dataset.want !== url) { img.dataset.want = url; img.hidden = false; img.src = url; }
+    }
+
     function paintTime() {
         if (!page) return;
         const skin = page.querySelector('.wmp-skin');
         if (!skin) return;
         const v = media.el;
-        const t = v ? v.currentTime : 0;
-        const d = v && Number.isFinite(v.duration) ? v.duration : 0;
+        const a = androidMode();
+        const t = a ? androidPosition(a) : v ? v.currentTime : 0;
+        const d = a ? (a.duration || 0) / 1000 : v && Number.isFinite(v.duration) ? v.duration : 0;
         skin.querySelector('.wmp-time').textContent = fmtTime(t);
         const seek = skin.querySelector('.wmp-seek');
         seek.style.setProperty('--p', d ? Math.min(1, t / d) : 0);
@@ -444,6 +751,7 @@
         const r = libRows()[i];
         if (!r) return;
         if (r.queue) { openQueue(); return; }
+        if (r.ask) { askAccess(); return; }
         if (r.open) { libPath = r.open; libSel = 0; render(); ws.syncHistory(); return; }
         if (r.item) playFrom(i);
     }
@@ -520,11 +828,20 @@
     function properties(it) {
         if (!it) return;
         const v = media.el;
-        const d = it === current() && v && Number.isFinite(v.duration) ? fmtTime(v.duration) : '';
-        ws.notify({ title: 'Properties', icon: 'info', text: `${it.name}\n${it.path || it.url || ''}${d ? `\nLength: ${d}` : ''}` });
+        const d = it === current() && v && Number.isFinite(v.duration) ? fmtTime(v.duration) : it.duration ? fmtTime(it.duration) : '';
+        const lines = [it.name];
+        if (it.artist) lines.push(`Artist: ${it.artist}`);
+        if (it.album && it.src === 'android') lines.push(`Album: ${it.album}${it.track ? ` (track ${it.track})` : ''}`);
+        if (it.genre) lines.push(`Genre: ${it.genre}`);
+        if (it.year) lines.push(`Year: ${it.year}`);
+        if (d) lines.push(`Length: ${d}`);
+        if (it.size) lines.push(`Size: ${it.size >= 1048576 ? `${(it.size / 1048576).toFixed(1)} MB` : `${Math.ceil(it.size / 1024)} KB`}`);
+        lines.push(it.src === 'android' ? `${it.volume === 'external_primary' ? 'My Device' : 'Storage Card'}: ${it.path}` : it.path || it.url || '');
+        ws.notify({ title: 'Properties', icon: 'info', text: lines.join('\n') });
     }
 
     function pressButton(k) {
+        if ((k === 'play' || k === 'prev' || k === 'next') && androidMode() && androidCommand(k)) return;
         if (k === 'play') playPause();
         else if (k === 'prev') prev();
         else if (k === 'next') next(false);
@@ -560,6 +877,7 @@
         media.queue = [];
         media.index = -1;
         render();
+        tellAndroid();
     }
 
     // ---------------------------------------------------------------- the app
@@ -597,6 +915,14 @@
             const b = t.closest('.wmp-btn');
             if (b) { if (!b.disabled) pressButton(b.dataset.b); return; }
             const seek = t.closest('.wmp-seek');
+            const a = seek && androidMode();
+            if (a) {
+                if (a.duration && (!a.actions || a.actions.includes('seek'))) {
+                    const r = seek.getBoundingClientRect();
+                    try { window.AndroidMediaSession.seekTo(a.id, Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * a.duration); } catch (_) { /* bridge gone */ }
+                }
+                return;
+            }
             if (seek && media.el && Number.isFinite(media.el.duration)) {
                 const r = seek.getBoundingClientRect();
                 media.el.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * media.el.duration;
@@ -604,7 +930,7 @@
             }
             if (t.closest('.wmp-lback')) { ws.back(); return; }
             const sel = t.closest('.wmp-lsel:not(.is-static)');
-            if (sel) { ws.dropdown(sel, [{ label: 'My Device', radio: true, action: () => { libPath = []; render(); } }], 'left'); return; }
+            if (sel) { ws.dropdown(sel, sourceMenu(), 'left'); return; }
             const tool = t.closest('.wmp-qtool');
             if (tool) {
                 const k = tool.dataset.t;
@@ -644,7 +970,7 @@
             mount,
             show() {
                 // the first open with nothing to play starts in the Library, as the device's first run
-                if (!media.queue.length && layer === 'skin' && !lib) { openLibrary(); return; }
+                if (!media.queue.length && layer === 'skin' && !libs.has(currentSource().id) && !androidMode()) { openLibrary(); return; }
                 render();
             },
             titleKind: () => (layer === 'skin' ? 'close' : 'ok'),
@@ -696,7 +1022,7 @@
                         { label: 'Queue Up', action: queueUp, disabled: !playable },
                         { label: 'Delete from Library', disabled: true }, '-',
                         { label: 'Now Playing', action: openQueue },
-                        { label: 'Library', submenu: [{ label: 'My Device', radio: true, action: () => { libPath = []; render(); } }] },
+                        { label: 'Library', submenu: sourceMenu() },
                         { label: 'Update Library...', action: () => ensureLibrary(true).then(render) },
                         { label: 'Open File...', action: openFile },
                         { label: 'Open URL...', action: openUrl }, '-',
@@ -720,12 +1046,12 @@
     window.wmMedia = {
         enqueue: (items, play) => enqueue(items, play),
         state: () => ({ layer, libPath, queue: media.queue.length, index: media.index, status: media.status, orient }),
-        // what plays, for the Music panel: null with nothing queued; artist = the song's folder (no tags are read)
+        // what plays, for the Music panel: null with nothing queued; artist = the tag (phone library) or the song's folder (server files)
         now: () => {
             const it = current();
             if (!it) return null;
             const v = media.el;
-            return { title: it.name, artist: it.kind === 'audio' ? it.folder : '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
+            return { title: it.name, artist: it.artist || (it.kind === 'audio' ? it.folder || '' : ''), art: it.art || '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
         },
         playPause: () => playPause(),
         next: () => next(false),

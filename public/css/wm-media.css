@@ -62,6 +62,14 @@
     overflow: hidden;
 }
 
+/* album art from the phone's library (#801), as the device showed the album's folder.jpg */
+.wm-media .wmp-cover {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
 .wm-media .wmp-video {
     display: block;
     width: 100%;
