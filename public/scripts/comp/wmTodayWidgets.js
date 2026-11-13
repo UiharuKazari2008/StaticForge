@@ -41,6 +41,10 @@
  *   server          block: Details (state, host uptime, version, CPU, RAM, disk, workers) or One
  *                   line; server_status, get_system_info, sidebar_host_metrics (admin only, never sent
  *                   otherwise), remote_workers_status (Details, 15 min); tap opens Server Manager in IE
+ *   music           6.5 only: the Windows Media panel (ti-2401): what plays (the phone's active media
+ *                   session, AndroidMediaSession, or Melaton Media) with play / pause on tap and
+ *                   Previous / Next on tap-and-hold, else Play All Songs in the default app; a page
+ *                   per favourite program; Options... Default app, Favorites (wmTodayMusic)
  * Accounts (balances incl. NovelAI Anlas) is wmAccounts.js's own block. Styles:
  * public/css/wm-today-widgets.css. Only on phones.
  */
@@ -1754,6 +1758,312 @@
         return true;
     }
 
+    // ================================================================ Music (6.5)
+
+    /**
+     * Music (Yukimi, Nov 13 2026, #796): 6.5's Windows Media panel. ROM: CMusic, panel icon 2401,
+     * Play All Songs 2402, no album art 2403; layout MusicExpanded of Titanium_480x640.cpr: the
+     * picture 86 x 86 at 20,34 with no frame, the title bold at 118,52, the artist at 118,86; strings
+     * cmhomeres 1805-1813. Seen on the 6.5 emulator: with nothing playing one page "Play All Songs",
+     * soft key Library, and a tap starts every song in the background (Today stays); while a song
+     * plays the page is its art, title and artist and the soft key names the player ("Windows
+     * Media"); a page that is not the playing one has "Go To Playing".
+     *
+     * Here the playing page follows the phone's active media session (window.AndroidMediaSession,
+     * DSApp MediaSessionBridge.kt, window event 'dreamscape:media'), else Melaton Media
+     * (wmMedia.now(), document event 'wmMediaChange'); the one that plays wins. Tap on it = play /
+     * pause; tap-and-hold = Pause / Play, Next, Previous, Go To Playing, Options...; the soft key
+     * opens the player. The device's left / right went through its play list; ours go through the
+     * favourite programs picked in Options... (a page each, its own icon in the note's place; tap
+     * starts it). Without notification access a page asks for it (Android's own switch).
+     * Options...: Default app = what Play All Songs and Library start (Melaton Media, a Melaton
+     * program, or one of the phone's music players: AndroidMediaSession.musicApps()); Favorites =
+     * any program, in order, kept in wmTodayMusic (too long for a Today option, as the Favorites
+     * item's list).
+     */
+    const MUSIC_KEY = 'wmTodayMusic';
+    const MUSIC_DEFAULT = 'a:windows-media';
+    const MUSIC_ART = '/static_images/wm65/';
+    const music = { state: null, artKey: '', art: '', wired: false, players: null, playersAt: 0, raw: null, list: [], repaint: 0, onPage: null };
+    const mediaBridge = () => { const b = window.AndroidMediaSession; return b && typeof b.getState === 'function' ? b : null; };
+    const musicCall = (fn, ...args) => { const b = mediaBridge(); if (!b || typeof b[fn] !== 'function') return false; try { return b[fn](...args); } catch (_) { return false; } };
+
+    function musicRepaint() {
+        clearTimeout(music.repaint);
+        music.repaint = setTimeout(() => { if (sh.current === 'today' && typeof sh.refreshToday === 'function') sh.refreshToday(); }, 40);
+    }
+
+    function musicWire() {
+        if (music.wired) return;
+        music.wired = true;
+        window.addEventListener('dreamscape:media', (e) => {
+            const d = e.detail;
+            music.state = d && typeof d === 'object' ? d : (() => { try { return JSON.parse(d); } catch (_) { return null; } })();
+            musicRepaint();
+        });
+        document.addEventListener('wmMediaChange', musicRepaint);
+        const b = mediaBridge();
+        if (b) { try { music.state = JSON.parse(b.getState()); } catch (_) { music.state = null; } }
+    }
+
+    /** The Android programs by package: { package -> catalog key } (Start's list, a:android:<package>/<activity>). */
+    function androidKeys() {
+        const out = new Map();
+        for (const k of favCatalog().keys()) {
+            const m = /^a:android:([^/]+)\//.exec(k);
+            if (m && !out.has(m[1])) out.set(m[1], k);
+        }
+        return out;
+    }
+
+    /** The phone's music players ({ package, app }), read at most every 5 min. */
+    function musicPlayers() {
+        if (music.players && Date.now() - music.playersAt < 300000) return music.players;
+        let list = [];
+        try { list = JSON.parse(musicCall('musicApps') || '[]'); } catch (_) { list = []; }
+        music.players = Array.isArray(list) ? list.filter((a) => a && a.package) : [];
+        music.playersAt = Date.now();
+        return music.players;
+    }
+
+    function musicOptionsAll() {
+        try { return JSON.parse(localStorage.getItem(sh.todayOptionsKey || 'wmTodayOptions') || 'null') || {}; } catch (_) { return {}; }
+    }
+
+    /** Options... > Default app: Melaton Media, Melaton's media programs, then the phone's players. */
+    function musicAppChoices() {
+        const map = favCatalog();
+        const out = [];
+        const add = (key, label) => { if (key && !out.some((c) => c[0] === key)) out.push([key, label]); };
+        add(MUSIC_DEFAULT, (map.get(MUSIC_DEFAULT) || {}).label || 'Melaton Media');
+        for (const it of map.values()) if (!it.key.startsWith('a:android:') && !it.folder && /media|music|radio|audio|player|podcast/i.test(`${it.key} ${it.label}`)) add(it.key, it.label);
+        const keys = androidKeys();
+        musicPlayers().forEach((p) => { const k = keys.get(p.package); if (k) add(k, (map.get(k) || {}).label || p.app); });
+        // the stored one stays on the list while the phone is not answering
+        const cur = musicDefault();
+        if (map.has(cur)) add(cur, map.get(cur).label);
+        return out;
+    }
+
+    function musicDefault() {
+        const v = (musicOptionsAll().music || {}).app;
+        return typeof v === 'string' && v ? v : MUSIC_DEFAULT;
+    }
+
+    /** The favourites' keys in order (Options...' answer is taken over into wmTodayMusic and removed there). */
+    function musicFavList() {
+        let raw = null;
+        try { raw = localStorage.getItem(MUSIC_KEY); } catch (_) { raw = null; }
+        if (raw !== music.raw) {
+            let s = null;
+            try { s = JSON.parse(raw || 'null'); } catch (_) { s = null; }
+            music.list = s && Array.isArray(s.favs) ? s.favs.filter((k) => typeof k === 'string') : [];
+            music.raw = raw;
+        }
+        const all = musicOptionsAll();
+        if (all.music && typeof all.music.favs === 'string') {
+            const map = favCatalog();
+            const want = all.music.favs.split(',').filter(Boolean);
+            // favourites Start no longer lists keep their place after the chosen ones (the program may come back)
+            music.list = want.concat(music.list.filter((k) => !map.has(k) && !want.includes(k))).slice(0, 40);
+            music.raw = JSON.stringify({ v: 1, favs: music.list });
+            try { localStorage.setItem(MUSIC_KEY, music.raw); } catch (_) { /* this load only */ }
+            delete all.music.favs;
+            try { localStorage.setItem(sh.todayOptionsKey || 'wmTodayOptions', JSON.stringify(all)); } catch (_) { /* storage off */ }
+        }
+        return music.list;
+    }
+
+    const MUSIC_OPTIONS = [
+        { key: 'app', label: 'Default app', value: MUSIC_DEFAULT, get choices() { return musicAppChoices(); } },
+        {
+            key: 'favs', label: 'Favorites', type: 'orderedChecks',
+            // the music players first, then every other program (Start's, then the Android ones)
+            get choices() {
+                const players = new Set(musicAppChoices().map((c) => c[0]));
+                const rank = (it) => (players.has(it.key) ? 0 : favGroup(it.key) === 'favandroid' ? 2 : 1);
+                return [...favCatalog().values()].sort((a, b) => rank(a) - rank(b) || favColl.compare(a.label, b.label)).map((it) => [it.key, it.label, it.small && it.small.src]);
+            },
+            get value() { const map = favCatalog(); return musicFavList().filter((k) => map.has(k)).join(','); }
+        }
+    ];
+
+    /** What plays: { kind: 'android' | 'melaton', id, title, artist, app, playing, key (catalog), actions } or null. */
+    function musicNow() {
+        let droid = null;
+        const st = music.state;
+        if (st && Array.isArray(st.sessions)) {
+            const live = st.sessions.filter((s) => s && (s.title || s.artist) && ['playing', 'buffering', 'paused'].includes(s.state));
+            const s = live.find((x) => x.id === st.active) || live.find((x) => x.state !== 'paused') || live[0];
+            if (s) {
+                const acts = Array.isArray(s.actions) ? s.actions : [];
+                droid = { kind: 'android', id: s.id, pkg: s.package, title: s.title || s.artist, artist: s.title ? s.artist || s.album || '' : '', app: s.app || s.package, playing: s.state !== 'paused', key: androidKeys().get(s.package) || '', artKey: s.artKey || '', next: acts.includes('next'), previous: acts.includes('previous') };
+            }
+        }
+        let mel = null;
+        const M = window.wmMedia;
+        const m = M && typeof M.now === 'function' ? M.now() : null;
+        if (m && m.title && !/^(Stopped|Ready|Error)$/.test(m.status || '')) {
+            mel = { kind: 'melaton', id: '', title: m.title, artist: m.artist || '', app: (favCatalog().get(MUSIC_DEFAULT) || {}).label || 'Melaton Media', playing: !!m.playing || /^(Opening|Buffering)/.test(m.status || ''), key: MUSIC_DEFAULT, next: m.index < m.count - 1, previous: true };
+        }
+        if (droid && mel) return mel.playing && !droid.playing ? mel : droid;
+        return droid || mel;
+    }
+
+    function musicArt(now) {
+        if (now && now.kind === 'android' && now.artKey) {
+            if (now.artKey !== music.artKey) {
+                music.artKey = now.artKey;
+                music.art = String(musicCall('getArt', now.id) || '');
+            }
+            if (music.art) return music.art;
+        }
+        return `${MUSIC_ART}ti-2403@4x.png`;
+    }
+
+    function musicToggle(now) {
+        if (!now) return;
+        if (now.kind === 'melaton') { window.wmMedia.playPause(); return; }
+        if (musicCall('toggle', now.id)) {
+            // shown at once; the session's own word follows
+            const s = music.state && music.state.sessions && music.state.sessions.find((x) => x.id === now.id);
+            if (s) s.state = now.playing ? 'paused' : 'playing';
+            musicRepaint();
+        }
+    }
+
+    function musicSkip(now, dir) {
+        if (!now) return;
+        if (now.kind === 'melaton') { if (dir > 0) window.wmMedia.next(); else window.wmMedia.previous(); return; }
+        musicCall(dir > 0 ? 'next' : 'previous', now.id);
+    }
+
+    /** Start a program by its catalog key (Start's list), or an Android package that Start does not list. */
+    function musicStart(key) {
+        const it = favCatalog().get(key);
+        if (it) { favStart(it); return true; }
+        if (key && key.startsWith('a:')) { open(key.slice(2)); return true; }
+        return false;
+    }
+
+    function musicOpenPlayer(now) {
+        if (now && now.key && musicStart(now.key)) return;
+        if (now && now.pkg) {
+            const A = window.AndroidApps;
+            try {
+                const list = JSON.parse(A.list());
+                const a = list.find((x) => x && x.package === now.pkg);
+                if (a && A.launch(a.id)) return;
+            } catch (_) { /* not a launcher program */ }
+        }
+        musicStart(musicDefault());
+    }
+
+    /** Play All Songs: the default app plays from its library, Today stays (as on the device). */
+    async function musicPlayAll() {
+        const key = musicDefault();
+        if (key === MUSIC_DEFAULT) {
+            const M = window.wmMedia;
+            let ok = false;
+            try { ok = !!(M && typeof M.playAll === 'function' && await M.playAll()); } catch (_) { ok = false; }
+            // an empty library: the player's Library, to add music (the device: "Select Library to add music")
+            if (!ok) open('windows-media');
+            return;
+        }
+        const m = /^a:android:([^/]+)\//.exec(key);
+        if (m && mediaBridge()) {
+            // a Play key to the player: most start their last list from it in the background; one that
+            // has not started playing in 3 s is opened instead
+            musicCall('play', m[1]);
+            const at = Date.now();
+            setTimeout(() => {
+                const st = music.state;
+                const ok = st && Array.isArray(st.sessions) && st.sessions.some((s) => s.package === m[1] && s.state === 'playing');
+                if (!ok && Date.now() - at < 10000) musicStart(key);
+            }, 3000);
+            return;
+        }
+        musicStart(key);
+    }
+
+    function musicMenu(now) {
+        const items = [];
+        if (now) {
+            items.push({ label: now.playing ? 'Pause' : 'Play', action: () => musicToggle(now) });
+            items.push({ label: 'Next', disabled: !now.next, action: () => musicSkip(now, 1) });
+            items.push({ label: 'Previous', disabled: !now.previous, action: () => musicSkip(now, -1) });
+            items.push('-');
+            items.push({ label: 'Go To Playing', action: () => musicOpenPlayer(now) });
+        } else {
+            items.push({ label: 'Play All Songs', action: () => { void musicPlayAll(); } });
+            items.push({ label: 'Library', action: () => musicStart(musicDefault()) });
+        }
+        items.push('-');
+        items.push({ label: 'Options...', action: () => openItemOptions('music') });
+        return items;
+    }
+
+    /** Settings > Today > Items > <item> > Options... (as favOptions does for Favorites). */
+    function openItemOptions(id) {
+        const S = window.wmSettings;
+        if (!S) return;
+        if (typeof S.openTodayOptions === 'function') { S.openTodayOptions(id); return; }
+        if (typeof S.open !== 'function') return;
+        S.open('today', 'items');
+        let tries = 0;
+        const press = () => {
+            const pg = [...document.querySelectorAll('#wmShell .wm-page')].find((p) => !p.hidden && p.querySelector(`.wm-listbox-row input[name="it-${id}"]`));
+            const box = pg && pg.querySelector(`input[name="it-${id}"]`);
+            const row = box && box.closest('.wm-listbox-row');
+            if (!row) { if (++tries < 20) setTimeout(press, 100); return; }
+            if (!row.classList.contains('is-selected')) row.click();
+            const btn = pg.querySelector('.wm-button[data-act="options"]');
+            if (btn && !btn.disabled) btn.click();
+        };
+        setTimeout(press, 0);
+    }
+
+    function musicTitanium() {
+        musicWire();
+        const now = musicNow();
+        const library = { label: 'Library', action: () => musicStart(musicDefault()) };
+        const pages = [];
+        if (now) {
+            const art = musicArt(now);
+            pages.push({
+                image: art, bare: true, title: now.title,
+                line2: now.playing ? now.artist : (now.artist ? `Paused: ${now.artist}` : 'Paused'),
+                softKey: { label: now.app, action: () => musicOpenPlayer(now) },
+                onTap: () => musicToggle(now),
+                menu: () => musicMenu(musicNow())
+            });
+        } else {
+            pages.push({ image: `${MUSIC_ART}ti-2402@4x.png`, bare: true, title: 'Play All Songs', softKey: library, onTap: afterTap(() => { void musicPlayAll(); }), menu: () => musicMenu(null) });
+        }
+        const st = music.state;
+        if (mediaBridge() && st && st.access === false) {
+            pages.push({ smallIcon: 'ti-2401', title: 'Show what the phone plays', line2: 'Turn on notification access', softKey: library, onTap: afterTap(() => musicCall('requestAccess')) });
+        }
+        // a page is not the playing one: its key goes back to it (the device's "Go To Playing")
+        const back = now ? { label: 'Go To Playing', action: () => { const T = window.wmTitanium; if (T && typeof T.showPage === 'function') T.showPage('music', 0); } } : library;
+        const one = (ic) => { const set = String(ic.srcset || '').split(',').map((s) => s.trim().split(' ')[0]).filter(Boolean); return set[set.length - 1] || ic.src; };
+        const map = favCatalog();
+        musicFavList().map((k) => map.get(k)).filter(Boolean).forEach((it) => {
+            pages.push({ icon: one(it.img), smallIcon: one(it.small), title: it.label, softKey: back, onTap: afterTap(() => favStart(it)), menu: () => [{ label: 'Open', action: () => favStart(it) }, '-', { label: 'Options...', action: () => openItemOptions('music') }] });
+        });
+        panelChanged('music', pages);
+        return { label: 'music', icon: 'ti-2401', pages, softKey: pages[0].softKey, onTap: (pg) => (pg && typeof pg.onTap === 'function' ? pg.onTap() : null) };
+    }
+
+    /** 6.5 with the home screen off: one row, the device's "Playing: %s" / "Paused: %s". */
+    function musicText() {
+        musicWire();
+        const now = musicNow();
+        if (!now) return '';
+        const what = now.artist ? `${now.title} - ${now.artist}` : now.title;
+        return `${now.playing ? 'Playing' : 'Paused'}: ${what}`;
+    }
+
     // ================================================================ registration
 
     function register() {
@@ -1803,6 +2113,11 @@
         // Internet Explorer and Favorites: off until switched on, as Files is
         sh.registerTodayItem({ id: 'ie', label: 'Internet Explorer', icon: 'app-ie', after: 'files', defaultOn: false, render: renderIe, titanium: ieTitanium, options: IE_OPTIONS });
         sh.registerTodayItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });
+        // Music (#796): 6.5's Windows Media panel, on by default as on the device
+        if (v65) {
+            sh.registerTodayItem({ id: 'music', label: 'Music', icon: 'app-windows-media', after: 'favorites', text: musicText, titanium: musicTitanium, options: MUSIC_OPTIONS, onTap: () => musicToggle(musicNow()) });
+            musicWire();
+        }
         // the order the Options' boxes are checked in is the order the new favourites take
         document.addEventListener('change', (e) => {
             const t = e.target;

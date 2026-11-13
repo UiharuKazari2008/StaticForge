@@ -344,7 +344,15 @@
 
     function current() { return media.queue[media.index] || null; }
 
+    // the 6.5 home screen's Music panel follows what plays (wmTodayWidgets.js, #796)
+    let changeTimer = 0;
+    function changed() {
+        clearTimeout(changeTimer);
+        changeTimer = setTimeout(() => document.dispatchEvent(new CustomEvent('wmMediaChange')), 60);
+    }
+
     function paintSkin() {
+        changed();
         if (!page) return;
         const skin = page.querySelector('.wmp-skin');
         if (!skin) return;
@@ -699,7 +707,31 @@
         });
     }
 
-    window.wmMedia = { enqueue: (items, play) => enqueue(items, play), state: () => ({ layer, libPath, queue: media.queue.length, index: media.index, status: media.status, orient }) };
+    /** Play All Songs (the 6.5 Music panel): every song of the library from the first, in the background. */
+    async function playAll() {
+        const L = await ensureLibrary(false);
+        if (!L.audio.length) return false;
+        media.queue = [];
+        media.index = -1;
+        enqueue(L.audio, true);
+        return true;
+    }
+
+    window.wmMedia = {
+        enqueue: (items, play) => enqueue(items, play),
+        state: () => ({ layer, libPath, queue: media.queue.length, index: media.index, status: media.status, orient }),
+        // what plays, for the Music panel: null with nothing queued; artist = the song's folder (no tags are read)
+        now: () => {
+            const it = current();
+            if (!it) return null;
+            const v = media.el;
+            return { title: it.name, artist: it.kind === 'audio' ? it.folder : '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
+        },
+        playPause: () => playPause(),
+        next: () => next(false),
+        previous: () => prev(),
+        playAll
+    };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
