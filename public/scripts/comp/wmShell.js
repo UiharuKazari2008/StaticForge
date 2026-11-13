@@ -2223,6 +2223,31 @@
     const tip = (el, v) => { if (el.title !== v) el.title = v; };
     const hide = (el, h) => { h = !!h; if (el.hidden !== h) el.hidden = h; };
 
+    /*
+     * The domain controller out of reach for a while (a restart, the phone's link): one plain
+     * notification instead of the server's start-up progress (Yukimi, Nov 13). It goes by itself
+     * when the connection is back; short drops (under DC_NOTICE_MS) never raise it.
+     */
+    const DC_NOTICE_MS = 10000;
+    const DC_NOTICE_TEXT = 'Domain Controller is not ready, any remote data that has not been synced to this mobile device will not be available until the connection resumes.';
+    let dcWasUp = false;
+    let dcDownSince = 0;
+    let dcNote = null;
+    function dcNoticeCheck(ws, connected) {
+        if (connected) {
+            dcWasUp = true;
+            dcDownSince = 0;
+            if (dcNote) { dcNote.close(); dcNote = null; }
+            return;
+        }
+        // only for a lost connection after this device was up, never during its own start-up
+        if (!dcWasUp || !bootDoneAt || !ws) return;
+        if (!dcDownSince) dcDownSince = Date.now();
+        if (!dcNote && Date.now() - dcDownSince >= DC_NOTICE_MS) {
+            dcNote = appNote({ title: 'Domain Controller', html: escapeHtml(DC_NOTICE_TEXT), event: 'disconnect', icon: 'status-data-off' });
+        }
+    }
+
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
@@ -2230,6 +2255,7 @@
         // invalidates the [data-icon] rules and lays the title bar out again)
         const ws = window.wsClient;
         const connected = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected());
+        dcNoticeCheck(ws, connected);
         const data = shell.querySelector('[data-role="data"]');
         const dev = deviceView();
         watchDataUse();
@@ -3322,7 +3348,8 @@
                 const starting = bootDoneAt && Date.now() - bootDoneAt < 20000;
                 // up and running, a dropped or restored connection is the connectivity icon and its
                 // bubble, not a Connection box (Yukimi, Nov 13); a workspace switch keeps its box
-                if (isStatus && bootDoneAt && !switchingWorkspace && !t.querySelector('.toast-buttons')) continue;
+                // (marked busy: readToasts must not turn it into a notification either)
+                if (isStatus && bootDoneAt && !switchingWorkspace && !t.querySelector('.toast-buttons')) { t.dataset.wmBusy = '1'; continue; }
                 if (!t.querySelector('.toast-buttons') && ((isStatus && !starting) || switchingWorkspace)) {
                     const txt = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
                     t.dataset.wmBusy = '1';
