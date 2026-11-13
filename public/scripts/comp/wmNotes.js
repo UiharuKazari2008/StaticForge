@@ -200,6 +200,11 @@
         const SORTS = [['name', 'Name'], ['date', 'Date'], ['size', 'Size'], ['type', 'Type']];
         const TEMPLATE_KEY = 'wmNotesTemplate';
         const SAVE_TO_KEY = 'wmNotesSaveTo';
+        // #785: Writing (ink) / Typing as a new note's mode, the recording toolbar shown or not
+        const MODE_KEY = 'wmNotesMode';
+        const VOICEBAR_KEY = 'wmNotesVoiceBar';
+        const RULE = 36.5; // units between the writing page's rules (device: 73 px at VGA)
+        const PEN = 1.5; // the pen's width in units (device: 3 px at VGA)
         // notes.exe's templates in typing form: the device draws them as ink layouts; here the same
         // headings as text (Options > Default template)
         const TEMPLATES = [
@@ -260,9 +265,14 @@
         async function listWorkspace(id) {
             const res = await vfs().listDirectory(`/Workspaces/${id}/Notes`, { offset: 0, limit: 1000, sortField: 'name', sortDirection: 'asc', search: '' });
             return ((res && res.items) || []).filter((i) => i.targetKind === 'note').map((i) => ({
-                id: i.id, noteId: i.targetId, name: i.name, size: Number(i.size) || 0, modifiedAt: i.modifiedAt, workspaceId: i.workspaceId || id, vfs: i
+                id: i.id, noteId: i.targetId, name: i.name, size: Number(i.size) || 0, modifiedAt: i.modifiedAt, workspaceId: i.workspaceId || id, vfs: i,
+                kind: i.noteKind || 'note', ink: Number(i.noteInk) || 0, audio: Array.isArray(i.noteAudio) ? i.noteAudio : []
             }));
         }
+
+        // a voice note (Record from the list): its own icon, its length in the size column ("6.3s")
+        const isVoice = (i) => !!i && i.kind === 'voice';
+        const fmtDur = (ms) => `${(Math.max(0, Number(ms) || 0) / 1000).toFixed(1)}s`;
 
         function sortItems() {
             const by = {
@@ -306,6 +316,7 @@
             selected = new Set([...selected].filter((id) => items.some((i) => i.id === id)));
             render(failed);
             if (isCurrent()) ws.refreshSoftKeys();
+            renderVoicebar();
         }
 
         // ---- drawing
@@ -323,10 +334,10 @@
             const list = page.querySelector('.nt-list');
             list.setAttribute('aria-multiselectable', 'true');
             list.innerHTML = items.map((i) => `<div class="nt-row${selected.has(i.id) ? ' is-selected' : ''}" role="option" aria-selected="${selected.has(i.id)}" data-id="${esc(i.id)}">`
-                + `<span class="nt-ico">${icon('notes-note')}</span>`
+                + `<span class="nt-ico">${icon(isVoice(i) ? 'notes-recording' : 'notes-note')}</span>`
                 + `<span class="nt-name">${esc(i.name)}</span>`
                 + `<span class="nt-date">${esc(fmtWhen(i.modifiedAt))}</span>`
-                + `<span class="nt-size">${esc(fmtSize(i.size))}</span></div>`).join('');
+                + `<span class="nt-size">${esc(isVoice(i) ? fmtDur((i.audio[0] || {}).ms) : fmtSize(i.size))}</span></div>`).join('');
             const empty = page.querySelector('.nt-empty');
             empty.textContent = failed || '';
             empty.hidden = !failed;
@@ -340,6 +351,7 @@
                 r.setAttribute('aria-selected', String(on));
             });
             if (isCurrent()) ws.refreshSoftKeys();
+            renderVoicebar();
         }
 
         function selectRow(id) {
@@ -364,7 +376,17 @@
             page.querySelector('.nt-listview').hidden = view !== 'list';
             page.querySelector('.nt-noteview').hidden = view !== 'note';
             page.querySelector('.nt-formview').hidden = view !== 'form';
+            const was = page.dataset.view;
             page.dataset.view = view;
+            // another page: a playback ends and Play picks its target again (a form keeps both)
+            if (was !== view && view !== 'form' && was !== 'form') {
+                if (vb.mode === 'playing' || vb.mode === 'paused') vbHalt();
+                vb.src = null;
+                vb.latched = null;
+                vb.pos = 0;
+            }
+            renderVoicebar();
+            if (view === 'note') requestAnimationFrame(() => { fitPage(); paintInk(); });
             if (isCurrent()) {
                 refreshTitleKind();
                 ws.refreshSoftKeys();
@@ -374,9 +396,17 @@
         async function openNote(noteId, workspaceId, name) {
             const area = page.querySelector('.nt-text');
             const tpl = noteId ? '' : templateText();
-            editing = { noteId: noteId || null, workspaceId: workspaceId || folderWs(), name: name || '', original: '', template: tpl };
+            editing = {
+                noteId: noteId || null, workspaceId: workspaceId || folderWs(), name: name || '', original: '', template: tpl,
+                // #785: the page's strokes (page units), the redo stack, its recordings, Writing / Typing
+                ink: { strokes: [] }, redo: [], inkChanged: false, audio: [], mode: noteId ? 'typing' : defaultMode()
+            };
             area.value = tpl;
             area.readOnly = !!noteId;
+            page.querySelector('.nt-pagewrap').scrollTop = 0;
+            applyMode();
+            paintInk();
+            renderClips();
             showView('note');
             ws.syncHistory();
             if (noteId) {
@@ -389,6 +419,15 @@
                     editing.workspaceId = note.workspace_id || note.workspaceId || editing.workspaceId;
                     editing.original = note.content || '';
                     area.value = editing.original;
+                    let ink = null;
+                    try { ink = note.ink ? (typeof note.ink === 'string' ? JSON.parse(note.ink) : note.ink) : null; } catch (_) { ink = null; }
+                    editing.ink = { strokes: (ink && Array.isArray(ink.strokes)) ? ink.strokes : [] };
+                    editing.audio = (note.metadata && Array.isArray(note.metadata.audio)) ? note.metadata.audio : [];
+                    // a page of ink with no typing opens in Writing, as it was made
+                    editing.mode = editing.ink.strokes.length && !editing.original.trim() ? 'writing' : 'typing';
+                    applyMode();
+                    paintInk();
+                    renderClips();
                 } catch (err) {
                     editing = null;
                     showView('list');
@@ -399,9 +438,179 @@
                     area.readOnly = readOnly();
                 }
             }
-            area.readOnly = readOnly();
+            area.readOnly = readOnly() || editing.mode === 'writing';
+            if (editing.mode === 'writing') return;
             area.setSelectionRange(area.value.length, area.value.length);
             area.focus({ preventScroll: true });
+        }
+
+        // ---- Writing mode: ink on the ruled page (#785) ----
+
+        const defaultMode = () => (stored(MODE_KEY) === 'typing' ? 'typing' : 'writing');
+        const zoomOf = () => Number(stored('wmNotesZoom')) || 1;
+
+        /** Writing: the rules, the pen on the page (no caret, no keyboard); Typing: the text box. */
+        function applyMode() {
+            if (!page) return;
+            const writing = !!(editing && editing.mode === 'writing');
+            page.classList.toggle('is-writing', writing);
+            const area = page.querySelector('.nt-text');
+            area.readOnly = readOnly() || writing;
+            if (writing) area.blur();
+            fitPage();
+        }
+
+        /**
+         * The page (.nt-pagewrap) scrolls; the text box is as tall as its text, the screen, and in
+         * Writing a screen past the lowest stroke, so there is always room to write further down.
+         */
+        function fitPage() {
+            if (!page) return;
+            const wrap = page.querySelector('.nt-pagewrap');
+            const area = page.querySelector('.nt-text');
+            const strokes = (editing && editing.ink.strokes) || [];
+            let low = 0;
+            strokes.forEach((st) => st.pts.forEach((pt) => { if (pt[1] > low) low = pt[1]; }));
+            const writing = !!(editing && editing.mode === 'writing');
+            const view = wrap.clientHeight;
+            const top = wrap.scrollTop;
+            area.style.height = '0px';
+            const text = area.scrollHeight;
+            const ink = low ? low * px() * zoomOf() + (writing ? view : view * 0.25) : 0;
+            area.style.height = `${Math.ceil(Math.max(view, text, ink))}px`;
+            wrap.scrollTop = top;
+        }
+
+        function drawStroke(ctx, st) {
+            const pts = st.pts;
+            if (!pts.length) return;
+            ctx.strokeStyle = st.color || '#000';
+            ctx.lineWidth = Number(st.width) || PEN;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            if (pts.length === 1) ctx.lineTo(pts[0][0] + 0.01, pts[0][1]);
+            for (let k = 1; k < pts.length; k++) ctx.lineTo(pts[k][0], pts[k][1]);
+            ctx.stroke();
+        }
+
+        /** Redraws the strokes over the page as it is scrolled (page units * --wm-px * zoom). */
+        function paintInk(live) {
+            if (!page) return;
+            const area = page.querySelector('.nt-text');
+            const cv = page.querySelector('.nt-ink');
+            const dpr = window.devicePixelRatio || 1;
+            const w = area.offsetWidth;
+            const h = area.offsetHeight;
+            if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+                cv.width = Math.round(w * dpr);
+                cv.height = Math.round(h * dpr);
+                cv.style.width = `${w}px`;
+                cv.style.height = `${h}px`;
+            }
+            const ctx = cv.getContext('2d');
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, cv.width, cv.height);
+            const k = px() * zoomOf();
+            ctx.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ((editing && editing.ink.strokes) || []).forEach((st) => drawStroke(ctx, st));
+            if (live) drawStroke(ctx, live);
+        }
+
+        function inkPoint(e) {
+            const area = page.querySelector('.nt-text');
+            const r = area.getBoundingClientRect();
+            const k = px() * zoomOf();
+            return [Math.round(((e.clientX - r.left) / k) * 10) / 10, Math.round(((e.clientY - r.top) / k) * 10) / 10];
+        }
+
+        function bindInk(cv) {
+            let live = null;
+            cv.addEventListener('pointerdown', (e) => {
+                if (!editing || editing.mode !== 'writing' || readOnly()) return;
+                if (e.pointerType === 'mouse' && e.button !== 0) return;
+                e.preventDefault();
+                try { cv.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
+                live = { tool: 'pen', color: '#000000', width: PEN, pts: [inkPoint(e)] };
+                paintInk(live);
+            });
+            cv.addEventListener('pointermove', (e) => {
+                if (!live) return;
+                const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [e];
+                (events.length ? events : [e]).forEach((ev) => {
+                    const pt = inkPoint(ev);
+                    const last = live.pts[live.pts.length - 1];
+                    if (Math.hypot(pt[0] - last[0], pt[1] - last[1]) >= 0.4) live.pts.push(pt);
+                });
+                paintInk(live);
+            });
+            const end = () => {
+                if (!live) return;
+                if (editing) {
+                    editing.ink.strokes.push(live);
+                    editing.redo = [];
+                    editing.inkChanged = true;
+                }
+                live = null;
+                fitPage();
+                paintInk();
+            };
+            cv.addEventListener('pointerup', end);
+            cv.addEventListener('pointercancel', end);
+        }
+
+        function undoInk() {
+            if (!editing || !editing.ink.strokes.length) return;
+            editing.redo.push(editing.ink.strokes.pop());
+            editing.inkChanged = true;
+            fitPage();
+            paintInk();
+        }
+
+        function redoInk() {
+            if (!editing || !editing.redo.length) return;
+            editing.ink.strokes.push(editing.redo.pop());
+            editing.inkChanged = true;
+            fitPage();
+            paintInk();
+        }
+
+        /** Menu > Draw: Writing <-> Typing for this page. */
+        function toggleDraw() {
+            if (!editing) return;
+            editing.mode = editing.mode === 'writing' ? 'typing' : 'writing';
+            applyMode();
+            paintInk();
+            if (editing.mode === 'typing' && !readOnly()) page.querySelector('.nt-text').focus({ preventScroll: true });
+        }
+
+        /** The note's recordings as speaker icons along the top of the page; a tap plays one. */
+        function renderClips() {
+            if (!page) return;
+            const box = page.querySelector('.nt-clips-in');
+            const list = (editing && editing.audio) || [];
+            box.innerHTML = list.map((a, n) => `<button type="button" class="nt-clip" data-audio="${esc(a.id)}" style="left:calc(${4 + n * 30} * var(--wm-px))" aria-label="${esc(a.name || 'Recording')}">${icon('notes-speaker')}</button>`).join('');
+            paintInk();
+        }
+
+        async function deleteClip(audioId) {
+            if (!editing || !editing.noteId || readOnly()) return;
+            const yes = await ws.messageBox({
+                title: 'Notes', icon: 'warning', text: 'Selected item(s) will be deleted. Do you want to continue?',
+                buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false
+            });
+            if (!yes || !editing) return;
+            if (vb.src && vb.src.audioId === audioId) { vbHalt(); vb.src = null; }
+            try {
+                const res = await busyOf(() => wsc().deleteNoteAudio(editing.noteId, audioId));
+                const data = res && (res.note ? res : res.data);
+                editing.audio = (data && data.note && data.note.metadata && data.note.metadata.audio) || editing.audio.filter((a) => a.id !== audioId);
+            } catch (err) {
+                await errorBox('Notes', 'The recording could not be deleted.', err);
+            }
+            renderClips();
+            renderVoicebar();
         }
 
         function nameFromText(text) {
@@ -440,22 +649,33 @@
          * Saves of one page run one after another (ed.saving): leaving the app starts a save without
          * waiting, and an ok right after must see the note that save created, not create it again.
          */
-        function saveEditing() {
+        function saveEditing(force) {
             if (!editing) return Promise.resolve(null);
             const ed = editing;
             const text = page.querySelector('.nt-text').value;
             if (readOnly()) return Promise.resolve(ed.noteId);
-            const run = (ed.saving || Promise.resolve()).catch(() => {}).then(() => writeNote(ed, text));
+            const run = (ed.saving || Promise.resolve()).catch(() => {}).then(() => writeNote(ed, text, force));
             ed.saving = run;
             run.then(() => { if (ed.saving === run) ed.saving = null; }, () => { if (ed.saving === run) ed.saving = null; });
             return run;
         }
 
-        async function writeNote(ed, text) {
+        /** The page's strokes as stored (notes.ink), or null for none. */
+        function inkOf(ed) {
+            const strokes = (ed && ed.ink && ed.ink.strokes) || [];
+            if (!strokes.length) return null;
+            let h = 0;
+            strokes.forEach((st) => st.pts.forEach((pt) => { if (pt[1] > h) h = pt[1]; }));
+            return { v: 1, w: 240, h: Math.ceil(h), strokes };
+        }
+
+        /** force: keep a new page even untouched (a recording made on it needs the note). */
+        async function writeNote(ed, text, force) {
             try {
                 if (!ed.noteId) {
+                    const ink = inkOf(ed);
                     // an untouched new note is not kept (WM drops an empty note, and a template left as it was)
-                    if (!text.trim() || (ed.template && text === ed.template)) return null;
+                    if (!force && !ink && (!text.trim() || (ed.template && text === ed.template))) return null;
                     // one id per new page: a create whose answer was lost (the server restarting under
                     // it) may still have landed, so a retry looks for that note before creating another
                     if (!ed.newId) ed.newId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
@@ -471,12 +691,18 @@
                         ed.original = landed.content || '';
                     } else {
                         ed.createTried = true;
-                        const res = await wsc().createNote({ id: ed.newId, name: newName(text, ed.workspaceId), workspaceId: ed.workspaceId, content: text, icon: 'fas fa-file-lines', color: '#ffc107' });
+                        const res = await wsc().createNote({ id: ed.newId, name: newName(text, ed.workspaceId), workspaceId: ed.workspaceId, content: text, icon: 'fas fa-file-lines', color: '#ffc107', ink });
                         if (!res || res.success === false) throw new Error('The note could not be created.');
                         ed.noteId = (res.note && res.note.id) || ed.newId;
                         ed.original = text;
+                        ed.inkChanged = false;
                         return ed.noteId;
                     }
+                }
+                if (ed.inkChanged) {
+                    const res = await wsc().saveNoteInk(ed.noteId, inkOf(ed));
+                    if (res && res.success === false) throw new Error('The drawing could not be saved.');
+                    ed.inkChanged = false;
                 }
                 if (text !== ed.original) {
                     const res = await wsc().saveNoteContent(ed.noteId, text);
@@ -491,6 +717,7 @@
         }
 
         async function closeNote() {
+            if (vb.mode === 'recording') await vbStop();
             let id = null;
             try { id = await busyOf(() => saveEditing()); } catch (_) { return false; }
             editing = null;
@@ -568,7 +795,12 @@
                 const taken = new Set(items.map((x) => x.name.toLowerCase()));
                 let name = `Copy of ${note.name}`;
                 for (let n = 2; taken.has(name.toLowerCase()); n++) name = `Copy (${n}) of ${note.name}`;
-                await busyOf(() => wsc().createNote({ id, name, workspaceId: note.workspace_id || i.workspaceId, content: note.content || '', icon: note.icon || 'fas fa-file-lines', color: note.color || '#ffc107' }));
+                // the copy keeps the strokes and gets its own copies of the recordings (#785)
+                const audio = (note.metadata && Array.isArray(note.metadata.audio)) ? note.metadata.audio : [];
+                await busyOf(async () => {
+                    await wsc().createNote({ id, name, workspaceId: note.workspace_id || i.workspaceId, content: note.content || '', icon: note.icon || 'fas fa-file-lines', color: note.color || '#ffc107', note_kind: note.note_kind === 'voice' ? 'voice' : undefined, ink: note.ink || null, metadata: audio.length ? { audio } : undefined });
+                    if (audio.length) await wsc().copyNoteAudio(i.noteId, id);
+                });
                 await load({ keep: true, select: id });
             } catch (err) {
                 await errorBox('Notes', 'The note could not be copied.', err);
@@ -600,21 +832,63 @@
             await load({ keep: true });
         }
 
-        /** Send...: Messaging's new e-mail with the note attached as <name>.txt (the saved text). */
+        /** A page's strokes as a picture to send (white, at 2x). */
+        function inkPng(strokes) {
+            let w = 240;
+            let h = 40;
+            strokes.forEach((st) => st.pts.forEach((pt) => { if (pt[0] + 4 > w) w = pt[0] + 4; if (pt[1] + 4 > h) h = pt[1] + 4; }));
+            const cv = document.createElement('canvas');
+            cv.width = Math.ceil(w * 2);
+            cv.height = Math.ceil(h * 2);
+            const ctx = cv.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, cv.width, cv.height);
+            ctx.scale(2, 2);
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            strokes.forEach((st) => drawStroke(ctx, st));
+            return new Promise((resolve) => cv.toBlob(resolve, 'image/png'));
+        }
+
+        /**
+         * Send...: Messaging's new e-mail with the note: its typing as <name>.txt, its drawing as
+         * <name>.png, each recording as its own file (#785); a voice note sends its recording.
+         */
         async function sendNote(i) {
             if (!i || typeof window.wmMessagingCompose !== 'function') return;
             try {
-                let text = null;
-                if (editing && editing.noteId === i.noteId) text = page.querySelector('.nt-text').value;
-                if (text == null) {
-                    const res = await busyOf(() => wsc().getNote(i.noteId));
-                    const note = res && (res.note || (res.data && res.data.note));
-                    if (!note) throw new Error('The note was not found.');
-                    text = note.content || '';
+                const own = editing && editing.noteId === i.noteId;
+                const res = await busyOf(() => wsc().getNote(i.noteId));
+                const note = res && (res.note || (res.data && res.data.note));
+                if (!note) throw new Error('The note was not found.');
+                const text = own ? page.querySelector('.nt-text').value : (note.content || '');
+                let strokes = [];
+                if (own) strokes = editing.ink.strokes;
+                else {
+                    try { const k = note.ink ? JSON.parse(note.ink) : null; strokes = (k && k.strokes) || []; } catch (_) { strokes = []; }
                 }
-                const blob = new Blob([text], { type: 'text/plain' });
-                const base64 = await blobToBase64(blob);
-                window.wmMessagingCompose({ subject: i.name, attachments: [{ name: `${i.name}.txt`, mimeType: 'text/plain', size: blob.size, base64 }] });
+                const audio = (note.metadata && Array.isArray(note.metadata.audio)) ? note.metadata.audio : [];
+                const files = [];
+                if (text.trim()) {
+                    const blob = new Blob([text], { type: 'text/plain' });
+                    files.push({ name: `${i.name}.txt`, mimeType: 'text/plain', size: blob.size, base64: await blobToBase64(blob) });
+                }
+                if (strokes.length) {
+                    const png = await inkPng(strokes);
+                    if (png) files.push({ name: `${i.name}.png`, mimeType: 'image/png', size: png.size, base64: await blobToBase64(png) });
+                }
+                for (const a of audio) {
+                    const got = await busyOf(() => wsc().getNoteAudio(i.noteId, a.id));
+                    const data = got && (got.base64 != null ? got : got.data);
+                    if (!data || !data.base64) continue;
+                    const ext = { 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'audio/aac': 'aac' }[data.mime] || 'webm';
+                    files.push({ name: `${audio.length === 1 && isVoice(i) ? i.name : (a.name || 'Recording')}.${ext}`, mimeType: data.mime, size: Math.floor(data.base64.length * 3 / 4), base64: data.base64 });
+                }
+                if (!files.length) {
+                    const blob = new Blob([''], { type: 'text/plain' });
+                    files.push({ name: `${i.name}.txt`, mimeType: 'text/plain', size: 0, base64: await blobToBase64(blob) });
+                }
+                window.wmMessagingCompose({ subject: i.name, attachments: files });
             } catch (err) {
                 await errorBox('Notes', 'The note could not be sent.', err);
             }
@@ -652,7 +926,7 @@
         }
 
         function listMenu() {
-            return [{ label: 'View Recording Toolbar', disabled: true }, '-'].concat(itemRows(selectedItems()), ['-', { label: 'Options...', action: () => openForm('options') }]);
+            return [{ label: 'View Recording Toolbar', checked: vbShown(), action: toggleVoicebar }, '-'].concat(itemRows(selectedItems()), ['-', { label: 'Options...', action: () => openForm('options') }]);
         }
 
         function editCmd(cmd) {
@@ -672,31 +946,341 @@
 
         function zoom(scale) {
             page.querySelector('.nt-text').style.setProperty('--nt-zoom', String(scale));
+            page.querySelector('.nt-clips').style.setProperty('--nt-zoom', String(scale));
             store('wmNotesZoom', String(scale));
+            fitPage();
+            paintInk();
+        }
+
+        /** Edit > Clear All: the typing and the strokes. */
+        function clearAll() {
+            page.querySelector('.nt-text').value = '';
+            if (editing && editing.ink.strokes.length) {
+                editing.redo = editing.ink.strokes.slice().reverse();
+                editing.ink.strokes = [];
+                editing.inkChanged = true;
+                fitPage();
+                paintInk();
+            }
         }
 
         function noteMenu() {
             const z = Number(stored('wmNotesZoom')) || 1;
             const ro = readOnly();
             const cur = editing && editing.noteId ? items.find((x) => x.noteId === editing.noteId) : null;
+            // Writing (device 03.png): Draw ticked, Undo Ink, the clipboard rows greyed; Tools as on the
+            // device (Rename/Move..., Delete | Send..., Beam...)
+            const writing = !!(editing && editing.mode === 'writing');
+            const ink = editing ? editing.ink.strokes.length : 0;
             return [
-                { label: 'View Recording Toolbar', disabled: true },
-                { label: 'Draw', disabled: true },
+                { label: 'View Recording Toolbar', checked: vbShown(), action: toggleVoicebar },
+                { label: 'Draw', checked: writing, disabled: ro, action: toggleDraw },
                 '-',
-                { label: 'Undo', disabled: ro, action: () => editCmd('undo') },
-                { label: 'Redo', disabled: ro, action: () => editCmd('redo') },
+                writing
+                    ? { label: 'Undo Ink', disabled: ro || !ink, action: undoInk }
+                    : { label: 'Undo', disabled: ro, action: () => editCmd('undo') },
+                writing
+                    ? { label: 'Redo', disabled: ro || !(editing && editing.redo.length), action: redoInk }
+                    : { label: 'Redo', disabled: ro, action: () => editCmd('redo') },
                 '-',
-                { label: 'Cut', disabled: ro, action: () => editCmd('cut') },
-                { label: 'Copy', action: () => editCmd('copy') },
-                { label: 'Paste', disabled: ro, action: paste },
-                { label: 'Edit', submenu: [{ label: 'Select All', action: () => { const a = page.querySelector('.nt-text'); a.focus(); a.select(); } }, { label: 'Clear All', disabled: ro, action: () => { page.querySelector('.nt-text').value = ''; } }] },
+                { label: 'Cut', disabled: ro || writing, action: () => editCmd('cut') },
+                { label: 'Copy', disabled: writing, action: () => editCmd('copy') },
+                { label: 'Paste', disabled: ro || writing, action: paste },
+                { label: 'Edit', submenu: [
+                    { label: 'Select All', disabled: writing, action: () => { const a = page.querySelector('.nt-text'); a.focus(); a.select(); } },
+                    { label: 'Clear All', disabled: ro, action: clearAll }
+                ] },
                 '-',
                 { label: 'Zoom', submenu: [[0.75, '75%'], [1, '100%'], [1.5, '150%'], [2, '200%'], [3, '300%']].map(([s, l]) => ({ label: l, radio: z === s, action: () => zoom(s) })) },
                 { label: 'Tools', submenu: [
                     { label: 'Rename/Move...', disabled: !cur || ro, action: () => renameNote(cur) },
-                    { label: 'Delete', disabled: !cur || ro, action: () => deleteNote(cur) }
+                    { label: 'Delete', disabled: !cur || ro, action: () => deleteNote(cur) },
+                    '-',
+                    { label: 'Send...', disabled: !cur || typeof window.wmMessagingCompose !== 'function', action: () => sendNote(cur) },
+                    { label: 'Beam...', disabled: true }
                 ] }
             ];
+        }
+
+        // ---- the recording toolbar (#785): View Recording Toolbar; notes.exe's voice bar ----
+        // Record, Stop, Play (Pause while playing), the position slider, Previous / Next, volume.
+        // Recording on a note's page attaches the recording to that note (a speaker on the page);
+        // recording from the list makes a voice note ("Recording1"). Art: ~/.cache/wm61/ref-notes/ink.
+
+        const vb = { mode: 'idle', latched: null, rec: null, audio: null, src: null, pos: 0, timer: null };
+        const audioUrls = new Map(); // noteId/audioId -> object URL
+        const vbShown = () => stored(VOICEBAR_KEY) === '1';
+
+        function toggleVoicebar() {
+            store(VOICEBAR_KEY, vbShown() ? '0' : '1');
+            renderVoicebar();
+        }
+
+        function newAudioId() {
+            return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+        }
+
+        /** What Play plays: the speaker last tapped on the page, the page's first, the voice note picked. */
+        function vbTarget() {
+            if (vb.src) return vb.src;
+            if (page && page.dataset.view === 'note' && editing && editing.noteId && editing.audio.length) {
+                const a = editing.audio[0];
+                return { noteId: editing.noteId, audioId: a.id, ms: a.ms };
+            }
+            if (page && page.dataset.view === 'list') {
+                const i = selectedItems().length === 1 ? selectedItems()[0] : null;
+                if (isVoice(i) && i.audio.length) return { noteId: i.noteId, audioId: i.audio[0].id, ms: i.audio[0].ms };
+            }
+            return null;
+        }
+
+        /** The recordings Next steps through: the page's speakers, or the voice notes of the list. */
+        function vbQueue() {
+            if (page && page.dataset.view === 'note' && editing && editing.noteId) return editing.audio.map((a) => ({ noteId: editing.noteId, audioId: a.id, ms: a.ms }));
+            return items.filter((i) => isVoice(i) && i.audio.length).map((i) => ({ noteId: i.noteId, audioId: i.audio[0].id, ms: i.audio[0].ms }));
+        }
+
+        function vbImg(name) {
+            return `<img src="${ART}${name}.png" srcset="${ART}${name}.png 1x, ${ART}${name}@2x.png 2x" alt="" draggable="false">`;
+        }
+
+        function renderVoicebar() {
+            if (!page) return;
+            const bar = page.querySelector('.nt-voicebar');
+            const view = page.dataset.view;
+            const show = (vbShown() || vb.mode === 'recording' || vb.mode === 'playing') && view !== 'form';
+            bar.hidden = !show;
+            if (!show) return;
+            const recOn = vb.mode === 'recording';
+            const playing = vb.mode === 'playing';
+            const paused = vb.mode === 'paused';
+            const target = vbTarget();
+            const canPlay = !recOn && !!target;
+            const set = (key, art, { on = false, disabled = false } = {}) => {
+                const b = bar.querySelector(`[data-vb="${key}"]`);
+                b.innerHTML = vbImg(art);
+                b.classList.toggle('is-latched', on);
+                b.disabled = disabled;
+            };
+            set('rec', recOn ? 'notes-vb-rec-on' : 'notes-vb-rec', { on: recOn, disabled: readOnly() || playing });
+            const stopOn = recOn || playing || paused;
+            set('stop', vb.latched === 'stop' && !stopOn ? 'notes-vb-stop-latched' : (stopOn ? 'notes-vb-stop-on' : 'notes-vb-stop'), { on: vb.latched === 'stop' && !stopOn, disabled: !stopOn });
+            set('play', playing ? 'notes-vb-pause' : (canPlay ? 'notes-vb-play-on' : 'notes-vb-play'), { disabled: !canPlay && !playing });
+            const atStart = vb.pos <= 0.001;
+            set('prev', !atStart && !recOn && (playing || paused || vb.latched === 'stop') ? 'notes-vb-prev-on' : 'notes-vb-prev', { disabled: atStart || recOn });
+            set('next', playing || paused ? 'notes-vb-next-on' : 'notes-vb-next', { disabled: !(playing || paused) });
+            set('vol', 'notes-vb-vol');
+            bar.querySelector('.nt-vb-slider').style.setProperty('--nt-vb-pos', String(Math.max(0, Math.min(1, vb.pos))));
+        }
+
+        function vbTick(fn) {
+            clearInterval(vb.timer);
+            vb.timer = fn ? setInterval(fn, 100) : null;
+        }
+
+        async function audioUrl(src) {
+            const key = `${src.noteId}/${src.audioId}`;
+            if (audioUrls.has(key)) return audioUrls.get(key);
+            const res = await busyOf(() => wsc().getNoteAudio(src.noteId, src.audioId));
+            const data = res && (res.base64 != null ? res : res.data);
+            if (!data || !data.base64) throw new Error('The recording was not found.');
+            const bin = atob(data.base64);
+            const bytes = new Uint8Array(bin.length);
+            for (let n = 0; n < bin.length; n++) bytes[n] = bin.charCodeAt(n);
+            const url = URL.createObjectURL(new Blob([bytes], { type: data.mime || 'audio/webm' }));
+            audioUrls.set(key, url);
+            return url;
+        }
+
+        async function vbRecord() {
+            if (vb.mode === 'recording' || readOnly()) return;
+            vbHalt();
+            const md = navigator.mediaDevices;
+            if (!md || typeof md.getUserMedia !== 'function' || typeof MediaRecorder === 'undefined') {
+                await ws.messageBox({ title: 'Notes', icon: 'error', text: 'Cannot record. This device has no microphone available.' });
+                return;
+            }
+            let stream;
+            try {
+                stream = await md.getUserMedia({ audio: true });
+            } catch (err) {
+                await ws.messageBox({ title: 'Notes', icon: 'error', text: 'Cannot record. Access to the microphone was refused.' });
+                return;
+            }
+            const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find((m) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '';
+            let rec;
+            try {
+                rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+            } catch (err) {
+                stream.getTracks().forEach((t) => t.stop());
+                await errorBox('Notes', 'Cannot record.', err);
+                return;
+            }
+            const chunks = [];
+            rec.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+            rec.start(250);
+            vb.rec = { rec, stream, chunks, t0: Date.now(), mime: rec.mimeType || mime || 'audio/webm', where: page.dataset.view === 'note' ? 'note' : 'list' };
+            vb.mode = 'recording';
+            vb.latched = null;
+            vb.pos = 0;
+            vbTick(() => { vb.pos = Math.min(1, (Date.now() - vb.rec.t0) / 60000); renderVoicebar(); });
+            renderVoicebar();
+        }
+
+        /** Stop: ends a recording (and saves it) or the playback. */
+        async function vbStop() {
+            if (vb.mode === 'recording' && vb.rec) {
+                const r = vb.rec;
+                vb.rec = null;
+                vbTick(null);
+                await new Promise((resolve) => { r.rec.onstop = resolve; try { r.rec.stop(); } catch (_) { resolve(); } });
+                r.stream.getTracks().forEach((t) => t.stop());
+                vb.mode = 'idle';
+                vb.pos = 0;
+                renderVoicebar();
+                const blob = new Blob(r.chunks, { type: r.mime });
+                if (blob.size) await saveRecording(blob, Date.now() - r.t0, r.where);
+                return;
+            }
+            if (vb.audio && (vb.mode === 'playing' || vb.mode === 'paused')) {
+                vb.audio.pause();
+                vb.audio.currentTime = 0;
+                vb.mode = 'idle';
+                vb.latched = 'stop';
+                vb.pos = 0;
+                vbTick(null);
+                renderVoicebar();
+            }
+        }
+
+        /** Leaving the app or the page: a recording is kept, a playback ends. */
+        function vbHalt() {
+            if (vb.mode === 'recording') { void vbStop(); return; }
+            if (vb.audio) { vb.audio.pause(); vb.audio = null; }
+            vb.mode = 'idle';
+            vbTick(null);
+        }
+
+        function freeRecordingName(names) {
+            const taken = new Set(names.map((n) => String(n).toLowerCase()));
+            let n = 1;
+            while (taken.has(`recording${n}`)) n++;
+            return `Recording${n}`;
+        }
+
+        async function saveRecording(blob, ms, where) {
+            const audioId = newAudioId();
+            const done = busyHold();
+            try {
+                const base64 = await blobToBase64(blob);
+                if (where === 'note' && editing) {
+                    // the page becomes a note if it was not one yet (WM keeps a page with a recording)
+                    const noteId = editing.noteId || await saveEditing(true);
+                    if (!noteId || !editing) return;
+                    const res = await wsc().putNoteAudio(noteId, { audioId, name: freeRecordingName(editing.audio.map((a) => a.name)), mime: blob.type, ms, base64 });
+                    const data = res && (res.audio ? res : res.data);
+                    editing.audio = (data && data.note && data.note.metadata && data.note.metadata.audio) || editing.audio.concat([{ id: audioId, ms }]);
+                    vb.src = { noteId, audioId, ms };
+                    renderClips();
+                } else {
+                    const wsId = saveToWs() || (folder === '*' ? activeWs() : folderWs());
+                    const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+                    const name = freeRecordingName(items.filter((i) => i.workspaceId === wsId).map((i) => i.name));
+                    const res = await wsc().createNote({ id, name, workspaceId: wsId, content: '', note_kind: 'voice', icon: 'fas fa-microphone', color: '#ffc107' });
+                    if (!res || res.success === false) throw new Error('');
+                    await wsc().putNoteAudio(id, { audioId, name, mime: blob.type, ms, base64 });
+                    vb.src = { noteId: id, audioId, ms };
+                    await load({ keep: true, select: id });
+                }
+            } catch (err) {
+                await errorBox('Notes', 'The recording could not be saved.', err);
+            } finally {
+                done();
+                renderVoicebar();
+            }
+        }
+
+        async function vbPlay(src) {
+            if (vb.mode === 'recording') return;
+            if (!src && vb.audio && vb.mode === 'playing') { vb.audio.pause(); vb.mode = 'paused'; vbTick(null); renderVoicebar(); return; }
+            if (!src && vb.audio && vb.mode === 'paused') { void vb.audio.play(); vb.mode = 'playing'; vbWatch(); renderVoicebar(); return; }
+            const target = src || vbTarget();
+            if (!target) return;
+            if (vb.audio) { vb.audio.pause(); vb.audio = null; }
+            vb.src = target;
+            let url;
+            try { url = await audioUrl(target); } catch (err) { await errorBox('Notes', 'Cannot play the recording.', err); return; }
+            const a = new Audio(url);
+            a.volume = 1;
+            vb.audio = a;
+            a.onended = () => {
+                if (vb.audio !== a) return;
+                vb.mode = 'idle';
+                vb.latched = 'stop';
+                vb.pos = 1;
+                vbTick(null);
+                renderVoicebar();
+            };
+            try { await a.play(); } catch (err) { vb.audio = null; await errorBox('Notes', 'Cannot play the recording.', err); return; }
+            vb.mode = 'playing';
+            vb.latched = null;
+            vbWatch();
+            renderVoicebar();
+        }
+
+        function vbWatch() {
+            const a = vb.audio;
+            const len = () => (isFinite(a.duration) && a.duration > 0 ? a.duration : ((vb.src && vb.src.ms) || 1) / 1000);
+            vbTick(() => { if (vb.audio === a) { vb.pos = a.currentTime / len(); renderVoicebar(); } });
+        }
+
+        function vbPrev() {
+            if (vb.audio) vb.audio.currentTime = 0;
+            vb.pos = 0;
+            if (vb.mode === 'idle') vb.latched = null;
+            renderVoicebar();
+        }
+
+        function vbNext() {
+            if (!vb.audio || !vb.src) return;
+            const q = vbQueue();
+            const at = q.findIndex((x) => x.noteId === vb.src.noteId && x.audioId === vb.src.audioId);
+            if (at >= 0 && at < q.length - 1) { void vbPlay(q[at + 1]); return; }
+            if (isFinite(vb.audio.duration)) vb.audio.currentTime = vb.audio.duration;
+        }
+
+        function vbSeek(e) {
+            if (!vb.audio || !isFinite(vb.audio.duration)) return;
+            const track = page.querySelector('.nt-vb-track').getBoundingClientRect();
+            const f = Math.max(0, Math.min(1, (e.clientX - track.left) / track.width));
+            vb.audio.currentTime = f * vb.audio.duration;
+            vb.pos = f;
+            renderVoicebar();
+        }
+
+        function bindVoicebar(bar) {
+            bar.addEventListener('click', (e) => {
+                const b = e.target.closest('button[data-vb]');
+                if (!b || b.disabled) return;
+                const k = b.dataset.vb;
+                if (k === 'rec') void vbRecord();
+                else if (k === 'stop') void vbStop();
+                else if (k === 'play') void vbPlay();
+                else if (k === 'prev') vbPrev();
+                else if (k === 'next') vbNext();
+                else if (k === 'vol' && ws && typeof ws.volumeBubble === 'function') ws.volumeBubble(b);
+            });
+            const slider = bar.querySelector('.nt-vb-slider');
+            slider.addEventListener('pointerdown', (e) => {
+                if (!vb.audio) return;
+                e.preventDefault();
+                try { slider.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
+                vbSeek(e);
+                const move = (ev) => vbSeek(ev);
+                const up = () => { slider.removeEventListener('pointermove', move); slider.removeEventListener('pointerup', up); };
+                slider.addEventListener('pointermove', move);
+                slider.addEventListener('pointerup', up);
+            });
         }
 
         // ---- forms: Rename/Move..., Options... (#784)
@@ -710,7 +1294,7 @@
                     kind, items: list, from: page.dataset.view, resolve,
                     values: kind === 'move'
                         ? { name: list.length === 1 ? list[0].name : '', folder: wsOf.size === 1 ? [...wsOf][0] : '' }
-                        : { template: templateKey(), saveTo: saveToWs() }
+                        : { mode: defaultMode(), template: templateKey(), saveTo: saveToWs() }
                 };
                 renderForm();
                 if (form.from === 'note') page.querySelector('.nt-text').blur();
@@ -721,31 +1305,49 @@
             });
         }
 
+        /**
+         * The device's forms (~/.cache/wm61/ref-notes/ink 17-options.png, 19-rename.png): labels at
+         * the left, the fields in a column at their right, 24.5- / 25-unit rows; Rename/Move lists
+         * the item's Size, Modified and Format under its fields. Location and Record button action
+         * are the device's (one memory, no record button here): shown, greyed.
+         */
         function renderForm() {
             const f = form;
             const box = page.querySelector('.nt-formview');
             const combo = (act, label, disabled) => `<button type="button" class="wm-combo" data-act="${act}"${disabled ? ' disabled' : ''}><span>${esc(label)}</span></button>`;
+            const row = (label, field, cls = '') => `<div class="nt-frow${cls}"><span class="nt-flabel">${label}</span>${field}</div>`;
             if (f.kind === 'move') {
-                const one = f.items.length === 1;
-                box.innerHTML = `<div class="wm-form-hdr">Rename/Move</div><div class="wm-set-scroll"><div class="wm-form nt-form">`
-                    + (one ? `<div class="wm-form-row"><label for="ntFormName">Name:</label><input id="ntFormName" class="wm-edit" type="text" data-f="name" maxlength="60" autocomplete="off" spellcheck="false" value="${esc(f.values.name)}"></div>` : '')
-                    + `<div class="wm-form-row"><span class="wm-form-label">Folder:</span>${combo('folder', f.values.folder ? workspaceName(f.values.folder) : '')}</div>`
+                const one = f.items.length === 1 ? f.items[0] : null;
+                const fmt = one && isVoice(one) ? 'Recording' : 'Note';
+                box.innerHTML = `<div class="wm-form-hdr">Rename/Move</div><div class="wm-set-scroll"><div class="nt-form is-move">`
+                    + (one ? row('<label for="ntFormName">Name:</label>', `<input id="ntFormName" class="wm-edit" type="text" data-f="name" maxlength="60" autocomplete="off" spellcheck="false" value="${esc(f.values.name)}">`) : '')
+                    + row('Folder:', combo('folder', f.values.folder ? workspaceName(f.values.folder) : ''))
+                    + row('Location:', combo('location', 'Main memory'))
+                    + (one ? `<div class="nt-facts">${row('Size:', `<span>${esc(isVoice(one) ? fmtDur((one.audio[0] || {}).ms) : fmtSize(one.size))}</span>`)}${row('Modified:', `<span>${esc(fmtWhen(one.modifiedAt))}</span>`)}${row('Format:', `<span>${fmt}</span>`)}</div>` : '')
                     + `</div></div>`;
             } else {
                 const tpl = (TEMPLATES.find(([k]) => k === f.values.template) || TEMPLATES[0])[1];
-                box.innerHTML = `<div class="wm-form-hdr">Options</div><div class="wm-set-scroll"><div class="wm-form nt-form">`
-                    + `<div class="wm-form-row is-wide"><span class="wm-form-label">Default template:</span>${combo('template', tpl)}</div>`
-                    + `<div class="wm-form-row is-wide"><span class="wm-form-label">Save to:</span>${combo('saveTo', f.values.saveTo ? workspaceName(f.values.saveTo) : 'Current folder')}</div>`
+                box.innerHTML = `<div class="wm-form-hdr">Options</div><div class="wm-set-scroll"><div class="nt-form is-options">`
+                    + row('Default mode:', combo('mode', f.values.mode === 'typing' ? 'Typing' : 'Writing'))
+                    + row('Default template:', combo('template', tpl))
+                    + row('Save to:', combo('saveTo', f.values.saveTo ? workspaceName(f.values.saveTo) : 'Current folder'))
+                    + `<div class="nt-fblock"><span class="nt-flabel">Record button action:</span>${combo('record', 'Switch to Notes', true)}</div>`
+                    + `<a href="#" class="nt-flink" data-act="input">Global Input Options</a>`
                     + `</div></div>`;
             }
             const name = box.querySelector('[data-f="name"]');
             if (name) name.addEventListener('input', () => { f.values.name = name.value; });
+            const link = box.querySelector('[data-act="input"]');
+            if (link) link.addEventListener('click', (e) => { e.preventDefault(); if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('input'); });
             box.querySelectorAll('.wm-combo').forEach((b) => b.addEventListener('click', (e) => {
                 e.stopPropagation();
+                if (b.disabled) return;
                 const act = b.dataset.act;
                 const pick = (v) => { f.values[act] = v; renderForm(); };
                 let rows;
                 if (act === 'folder') rows = workspaceList().map((w) => ({ label: w.name, radio: f.values.folder === w.id, action: () => pick(w.id) }));
+                else if (act === 'location') rows = [{ label: 'Main memory', radio: true, action: () => {} }];
+                else if (act === 'mode') rows = [['writing', 'Writing'], ['typing', 'Typing']].map(([k, l]) => ({ label: l, radio: f.values.mode === k, action: () => pick(k) }));
                 else if (act === 'template') rows = TEMPLATES.map(([k, l]) => ({ label: l, radio: f.values.template === k, action: () => pick(k) }));
                 else rows = [{ label: 'Current folder', radio: !f.values.saveTo, action: () => pick('') }].concat(workspaceList().map((w) => ({ label: w.name, radio: f.values.saveTo === w.id, action: () => pick(w.id) })));
                 ws.dropdown(b, rows, 'left');
@@ -763,6 +1365,7 @@
                     const ok = await applyMove(f.items, f.values).finally(() => { f.busy = false; });
                     if (!ok || form !== f) return;
                 } else {
+                    store(MODE_KEY, f.values.mode);
                     store(TEMPLATE_KEY, f.values.template);
                     store(SAVE_TO_KEY, f.values.saveTo || '');
                 }
@@ -818,11 +1421,47 @@
                     <div class="nt-scroll"><div class="nt-list" role="listbox" aria-label="Notes"></div><p class="nt-empty" hidden></p></div>
                 </div>
                 <div class="nt-noteview" hidden>
-                    <textarea class="nt-text" spellcheck="false" autocapitalize="sentences" aria-label="Note"></textarea>
+                    <div class="nt-pagewrap">
+                        <textarea class="nt-text" spellcheck="false" autocapitalize="sentences" aria-label="Note"></textarea>
+                        <canvas class="nt-ink" aria-hidden="true"></canvas>
+                        <div class="nt-clips"><div class="nt-clips-in"></div></div>
+                    </div>
                 </div>
-                <div class="nt-formview" hidden></div>`;
+                <div class="nt-formview" hidden></div>
+                <div class="nt-voicebar" role="toolbar" aria-label="Recording" hidden>
+                    <button type="button" class="nt-vb" data-vb="rec" aria-label="Record"></button>
+                    <button type="button" class="nt-vb" data-vb="stop" aria-label="Stop"></button>
+                    <button type="button" class="nt-vb" data-vb="play" aria-label="Play"></button>
+                    <div class="nt-vb-slider" role="slider" aria-label="Position"><span class="nt-vb-track"></span>${vbImg('notes-vb-thumb').replace('<img ', '<img class="nt-vb-thumb" ')}</div>
+                    <button type="button" class="nt-vb" data-vb="prev" aria-label="Previous"></button>
+                    <button type="button" class="nt-vb" data-vb="next" aria-label="Next"></button>
+                    <button type="button" class="nt-vb" data-vb="vol" aria-label="Volume"></button>
+                </div>`;
             const z = Number(stored('wmNotesZoom'));
-            if (z) p.querySelector('.nt-text').style.setProperty('--nt-zoom', String(z));
+            if (z) {
+                p.querySelector('.nt-text').style.setProperty('--nt-zoom', String(z));
+                p.querySelector('.nt-clips').style.setProperty('--nt-zoom', String(z));
+            }
+            // #785: the ink over the page follows its scrolling and size; the speakers play
+            const area = p.querySelector('.nt-text');
+            area.addEventListener('input', () => { fitPage(); paintInk(); });
+            if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (p.dataset.view === 'note') { fitPage(); paintInk(); } }).observe(p.querySelector('.nt-pagewrap'));
+            bindInk(p.querySelector('.nt-ink'));
+            const clips = p.querySelector('.nt-clips');
+            onHold(clips, '.nt-clip', (b, x, y) => {
+                const id = b.dataset.audio;
+                ws.menuAt(x, y, [
+                    { label: 'Play', action: () => editing && editing.noteId && vbPlay({ noteId: editing.noteId, audioId: id, ms: ((editing.audio.find((a) => a.id === id)) || {}).ms }) },
+                    { label: 'Delete', disabled: readOnly(), action: () => deleteClip(id) }
+                ]);
+            });
+            clips.addEventListener('click', (e) => {
+                const b = e.target.closest('.nt-clip');
+                if (!b || !editing || !editing.noteId) return;
+                const a = editing.audio.find((x) => x.id === b.dataset.audio);
+                if (a) void vbPlay({ noteId: editing.noteId, audioId: a.id, ms: a.ms });
+            });
+            bindVoicebar(p.querySelector('.nt-voicebar'));
 
             const list = p.querySelector('.nt-scroll');
             onHold(list, '.nt-row', (row, x, y) => {
@@ -835,6 +1474,8 @@
                 if (!row) return;
                 selectRow(row.dataset.id);
                 const i = itemById(row.dataset.id);
+                // a voice note plays where it is (the toolbar comes up for it), as on the device
+                if (isVoice(i)) { if (i.audio.length) void vbPlay({ noteId: i.noteId, audioId: i.audio[0].id, ms: i.audio[0].ms }); return; }
                 if (i) openNote(i.noteId, i.workspaceId, i.name);
             });
 
@@ -882,6 +1523,8 @@
                         } else if (!editing) load({ keep: items.length > 0 });
                     },
                     hide() {
+                        // leaving the app keeps a recording and ends a playback
+                        vbHalt();
                         // leaving the app keeps what was typed (WM saves on deactivate)
                         if (editing) saveEditing().catch(() => {});
                     },
@@ -901,7 +1544,8 @@
                         return true;
                     },
                     softKeys() {
-                        if (page && page.dataset.view === 'form') return { left: null, right: { label: 'Cancel', action: () => closeForm(false) } };
+                        // the device's Options and Rename/Move have no soft keys: ok saves, back leaves
+                        if (page && page.dataset.view === 'form') return { left: null, right: null };
                         if (page && page.dataset.view === 'note') return { left: { label: 'New', action: newNote }, right: { label: 'Menu', menu: noteMenu } };
                         return { left: { label: 'New', disabled: readOnly(), action: newNote }, right: { label: 'Menu', menu: listMenu } };
                     }

@@ -132,11 +132,6 @@
     background: #fff;
 }
 
-.wm-notes .nt-form .wm-combo {
-    width: 100%;
-    min-width: 0;
-}
-
 /* ---- Contacts: list ---- */
 
 /* "Enter a name..." box: 20 px, 1 px black frame, 3 px in, on the tab-strip tint (26 px band) */
@@ -762,17 +757,17 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notes .nt-text {
 
 /* ---- scroll bars: the 6.5 bar (13 px, grey track, the theme's thumb and arrow buttons), as the
  * shell's lists have it ---- */
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar {
     width: calc(13 * var(--wm-px));
     height: calc(13 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-track {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-track {
     background: #e6e6e6;
     border: 0;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-thumb {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-thumb {
     min-height: calc(35 * var(--wm-px));
     border-style: solid;
     border-color: transparent;
@@ -782,7 +777,7 @@ html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scrol
     background: none;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button {
     display: block;
     width: calc(13 * var(--wm-px));
     height: calc(19.5 * var(--wm-px));
@@ -790,19 +785,19 @@ html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scrol
     background: #e6e6e6 center / 100% 100% no-repeat;
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:decrement {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:decrement {
     background-image: image-set(url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbaruparrowbutton@4x.png') 4x);
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:increment {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:increment {
     background-image: image-set(url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbardownarrowbutton@4x.png') 4x);
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
     background-image: image-set(var(--wm65-art-scrollbaruparrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbaruparrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@4x.png')) 4x);
 }
 
-html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+html.ui-mobile[data-wm-version="6.5"] :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes)::-webkit-scrollbar-button:single-button:vertical:increment:active {
     background-image: image-set(var(--wm65-art-scrollbardownarrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbardownarrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@4x.png')) 4x);
 }
 
@@ -814,4 +809,251 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-form {
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-field input,
 html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic {
     border-bottom-color: #848284;
+}
+
+/* ======================================================================
+ * Notes: Writing mode, recordings, the device's forms (#785). Device captures:
+ * ~/.cache/wm61/ref-notes/ink (WM 6.1 VGA: one unit = 2 device px)
+ * ====================================================================== */
+
+.wm-notes .nt-pagewrap {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #fff;
+}
+
+/* the page scrolls, not the text box: it is as tall as its text, the screen, and the ink
+ * (wmNotes.js fitPage), so the strokes and speakers ride on the page in page coordinates */
+.wm-notes .nt-pagewrap > .nt-text {
+    display: block;
+    flex: none;
+    overflow: hidden;
+}
+
+/* the strokes: a canvas over the page's visible part (wmNotes.js paintInk follows the scrolling) */
+.wm-notes .nt-ink {
+    position: absolute;
+    left: 0;
+    top: 0;
+    pointer-events: none;
+    touch-action: none;
+}
+
+.wm-notes.is-writing .nt-ink {
+    pointer-events: auto;
+}
+
+/* Writing: the ruled page (01.png: 1-px #848284 rules every 73 px from 73 px down, x 8 to 450 of
+ * the 456-px page); no caret */
+.wm-notes.is-writing .nt-text {
+    caret-color: transparent;
+    background-color: #fff;
+    background-image: linear-gradient(to bottom, transparent calc(36.5 * var(--nt-zoom, 1) * var(--wm-px) - 0.5 * var(--wm-px)), #848284 0);
+    background-size: calc(100% - 6.5 * var(--wm-px)) calc(36.5 * var(--nt-zoom, 1) * var(--wm-px));
+    background-position: calc(4 * var(--wm-px)) 0;
+    background-repeat: repeat-y;
+}
+
+/* the note's recordings: the Rich Ink speaker (riresdll 200 / 202 / 204) along the top (09-stop.png:
+ * x 8, y 56 at VGA), scrolled with the page */
+.wm-notes .nt-clips {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    height: 0;
+    pointer-events: none;
+}
+
+.wm-notes .nt-clips-in {
+    position: relative;
+}
+
+.wm-notes .nt-clip {
+    position: absolute;
+    top: calc(2 * var(--wm-px));
+    width: calc(26 * var(--wm-px));
+    height: calc(25 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    pointer-events: auto;
+}
+
+.wm-notes .nt-clip img {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ---- the recording toolbar (06-rectb.png ... 22-played.png): a 22-unit white band under a 1-unit
+ * black rule; cells Record 22.5 | Stop 22 | Play 22 | the slider | Previous 21.5 : Next 22.5 |
+ * volume 22.5, black 1-unit dividers (a short grey one between Previous and Next); a latched
+ * button (Record while recording, Stop after a playback ends) is a black cell ---- */
+.wm-notes .nt-voicebar {
+    flex: 0 0 auto;
+    display: flex;
+    height: calc(23 * var(--wm-px));
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-notes .nt-vb {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(23.5 * var(--wm-px));
+    height: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-right: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+}
+
+.wm-notes .nt-vb:disabled {
+    opacity: 1;
+}
+
+.wm-notes .nt-vb.is-latched {
+    background: #000;
+}
+
+.wm-notes .nt-vb img {
+    display: block;
+    width: calc(18 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+}
+
+.wm-notes .nt-vb[data-vb="rec"] {
+    width: calc(23.5 * var(--wm-px));
+}
+
+.wm-notes .nt-vb[data-vb="prev"] {
+    position: relative;
+    width: calc(21.5 * var(--wm-px));
+    border-right: 0;
+}
+
+.wm-notes .nt-vb[data-vb="prev"]::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: calc(5 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    width: calc(0.5 * var(--wm-px));
+    background: #848284;
+}
+
+.wm-notes .nt-vb[data-vb="next"] {
+    width: calc(23.5 * var(--wm-px));
+}
+
+.wm-notes .nt-vb[data-vb="vol"] {
+    width: calc(22.5 * var(--wm-px));
+    border-right: 0;
+}
+
+/* the position slider: a 3.5-unit framed track 6.5 units in, the pentagon thumb (8 x 18) */
+.wm-notes .nt-vb-slider {
+    --nt-vb-pos: 0;
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    border-right: calc(1 * var(--wm-px)) solid #000;
+    touch-action: none;
+}
+
+.wm-notes .nt-vb-track {
+    position: absolute;
+    left: calc(6.5 * var(--wm-px));
+    right: calc(7 * var(--wm-px));
+    top: calc(7.5 * var(--wm-px));
+    height: calc(3.5 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-notes .nt-vb-thumb {
+    position: absolute;
+    top: calc(1.5 * var(--wm-px));
+    left: calc(6 * var(--wm-px) + var(--nt-vb-pos) * (100% - 21 * var(--wm-px)));
+    width: calc(8 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+}
+
+/* ---- the device's forms: labels at the left, the fields in a column at their right ----
+ * Options (17-options.png): labels x 8, fields x 105 to 230.5, 20-unit fields every 25 units from
+ * 58; "Record button action:" over a full-width field; the Global Input Options link.
+ * Rename/Move (19-rename.png): labels x 11, fields x 69 to 231.5 every 24.5 units from 59; Size,
+ * Modified, Format below on 21-unit rows. Both on the shell's form header. */
+.wm-notes .nt-form {
+    box-sizing: border-box;
+    font-size: var(--wm-fs);
+}
+
+.wm-notes .nt-form.is-options {
+    padding: calc(8 * var(--wm-px)) calc(9.5 * var(--wm-px)) calc(6 * var(--wm-px)) calc(8 * var(--wm-px));
+    --nt-fcol: calc(97 * var(--wm-px));
+    --nt-fgap: calc(5 * var(--wm-px));
+}
+
+.wm-notes .nt-form.is-move {
+    padding: calc(9 * var(--wm-px)) calc(8.5 * var(--wm-px)) calc(6 * var(--wm-px)) calc(11 * var(--wm-px));
+    --nt-fcol: calc(58 * var(--wm-px));
+    --nt-fgap: calc(4.5 * var(--wm-px));
+}
+
+.wm-notes .nt-frow {
+    display: grid;
+    grid-template-columns: var(--nt-fcol) minmax(0, 1fr);
+    align-items: center;
+    height: calc(20 * var(--wm-px));
+    margin-bottom: var(--nt-fgap);
+}
+
+.wm-notes .nt-flabel,
+.wm-notes .nt-flabel label {
+    white-space: nowrap;
+}
+
+.wm-notes .nt-form .wm-combo,
+.wm-notes .nt-form .wm-edit {
+    width: 100%;
+    min-width: 0;
+}
+
+.wm-notes .nt-facts {
+    margin-top: calc(9.5 * var(--wm-px));
+}
+
+.wm-notes .nt-facts .nt-frow {
+    height: calc(21 * var(--wm-px));
+    margin: 0;
+}
+
+.wm-notes .nt-fblock {
+    margin-top: calc(17 * var(--wm-px));
+}
+
+.wm-notes .nt-fblock .nt-flabel {
+    display: block;
+    margin-bottom: calc(4 * var(--wm-px));
+}
+
+.wm-notes .nt-flink {
+    display: inline-block;
+    margin: calc(10.5 * var(--wm-px)) 0 0 calc(4 * var(--wm-px));
+    color: #0000ff;
+    text-decoration: underline;
 }
