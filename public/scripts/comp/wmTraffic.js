@@ -371,7 +371,7 @@
     // phone is locked, so in the way-home window the app gets the route and its cameras and alerts at
     // 1 mi natively (a location service started while the page is on screen). Without the bridge (a
     // browser, an older app build) or when it refuses (no location / notifications), the page alerts.
-    const nativeDrive = { sig: '', key: '', active: false, alerted: new Set() };
+    const nativeDrive = { sig: '', key: '', active: false, reason: '', alerted: new Set() };
 
     function nativeBridge() { const b = window.AndroidDriveWatch; return b && typeof b.start === 'function' ? b : null; }
 
@@ -380,6 +380,7 @@
             const d = typeof st === 'string' ? JSON.parse(st) : st;
             if (!d) return;
             nativeDrive.active = !!d.active;
+            nativeDrive.reason = d.reason || '';
             if (d.key) {
                 if (d.key !== nativeDrive.key) nativeDrive.alerted.clear();
                 nativeDrive.key = d.key;
@@ -425,7 +426,12 @@
         const plan = drivePlan(win);
         if (!plan) return;
         const sig = `${plan.key}|${plan.reportAt}`;
-        if (sig === nativeDrive.sig) return;
+        if (sig === nativeDrive.sig) {
+            // Android refuses the location service unless the app is in front: try again now the page is on screen
+            const b2 = nativeBridge();
+            if (b2 && typeof b2.status === 'function') nativeStatus(b2.status());
+            if (nativeDrive.active || !/^(not allowed|no location access)$/.test(nativeDrive.reason)) return;
+        }
         nativeDrive.sig = sig;
         let res = null;
         try { res = JSON.parse(b.start(JSON.stringify(plan)) || 'null'); } catch (_) { res = null; }
