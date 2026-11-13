@@ -54,6 +54,9 @@
     const readThemed = () => localStorage.getItem(THEMED_KEY) !== '0';
     const START_MENU_KEY = 'wmStartMenu'; // Settings > Menus' own list (wmPrograms.js)
     const FOLDER = 'android';
+    // a work profile's programs (DSApp: profile 'work', id ...@u<serial>) in a folder of their own (#777)
+    const WORK_FOLDER = 'work';
+    let workFolderAdded = false;
     const API = '/api/wm-program-icons';
     const PAGE_ID = 'program-icons';
     // linked out of the folder under the device's names and with Windows Mobile's own pictures
@@ -149,7 +152,7 @@
                 refresh();
             }
         }];
-        if (!role) {
+        if (!role && a.profile !== 'work') {
             const games = inGames(a);
             rows.push({
                 label: games ? 'Remove from Games' : 'Move to Games',
@@ -185,7 +188,8 @@
             action: () => { let ok = false; try { ok = bridge.info(a.id) === true; } catch (_) { ok = false; } if (!ok) void sh.messageBox({ title: labelOf(a), icon: 'warning', text: `There is no information for ${labelOf(a)}. It may have been removed from the device.` }); }
         }, {
             label: 'End Task',
-            disabled: !has('forceStop'),
+            // another profile's processes (a work program) are not this app's to stop
+            disabled: !has('forceStop') || a.profile === 'work',
             action: () => { let ok = false; try { ok = bridge.forceStop(a.id) === true; } catch (_) { ok = false; } if (!ok) void sh.messageBox({ title: 'End Task', icon: 'warning', text: `${labelOf(a)} could not be ended.` }); }
         }, '-', {
             label: 'Remove program',
@@ -204,6 +208,11 @@
         const hidden = readSet(HIDDEN_KEY);
         const onStart = readSet(START_KEY);
         const want = new Set();
+        // the Work folder once the phone has a work profile with programs (wmSettings.addProgramFolder)
+        if (!workFolderAdded && apps.some((a) => a.profile === 'work') && window.wmSettings && typeof window.wmSettings.addProgramFolder === 'function') {
+            window.wmSettings.addProgramFolder(WORK_FOLDER, { label: 'Work', icon: 'app-folder-work' });
+            workFolderAdded = true;
+        }
         for (const a of apps) {
             const role = ROLES[a.role] ? a.role : null;
             // the phone's own Settings is "Android" in Settings, never a program of Programs
@@ -224,7 +233,7 @@
                 art65: role ? ROLES[role].art65 : undefined,
                 // 'bottom': on Start under the pinned programs; 'programs': in Programs only
                 inStart: onStart.has(a.id) ? 'bottom' : 'programs',
-                programsFolder: role ? undefined : (inGames(a) ? 'games' : FOLDER),
+                programsFolder: role ? undefined : a.profile === 'work' ? WORK_FOLDER : (inGames(a) ? 'games' : FOLDER),
                 launch: () => start(a),
                 holdMenu: () => holdRows(a, role)
             });

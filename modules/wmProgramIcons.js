@@ -650,7 +650,8 @@ async function createJob(body) {
     const seen = new Set();
     for (const raw of list) {
         const appId = collapse(raw && raw.id);
-        if (!/^[A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+$/.test(appId) || seen.has(appId)) continue;
+        // a work profile's program carries its profile: "package/activity@u10" (#777)
+        if (!/^[A-Za-z0-9_.]+\/[A-Za-z0-9_.$]+(@u\d{1,6})?$/.test(appId) || seen.has(appId)) continue;
         seen.add(appId);
         const item = {
             key: crypto.createHash('sha1').update(appId).digest('hex').slice(0, 12),

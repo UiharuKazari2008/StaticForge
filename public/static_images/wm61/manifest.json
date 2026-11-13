@@ -7456,6 +7456,61 @@
         "generated"
       ],
       "notes": "Large (Programs grid) version of app-android-bridge. Not ROM art."
+    },
+    "app-folder-work": {
+      "1x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-work-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-work.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-work.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md). For Work (the programs of the phone's work profile). Subject: the same amber Windows Mobile program folder as reference 1, with a small blue-grey office building (a simple tower block with rows of lit windows) as the badge in its lower left corner where reference 1 has the Android robot."
+    },
+    "app-folder-work-lg": {
+      "1x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-work.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-work.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (gpt-image-2.5-sunburst, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-folder-work.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-folder-work. Not ROM art."
     }
   },
   "notDelivered": {
