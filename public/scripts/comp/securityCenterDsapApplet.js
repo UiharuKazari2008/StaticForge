@@ -384,6 +384,7 @@ ${dsapSmfBuildHeader({
       <label id="secKeychainEditSecondaryWrap" class="hidden"><span id="secKeychainEditSecondaryLabel">Second key</span><input type="password" id="secKeychainEditSecondary" class="sec-input" autocomplete="new-password" placeholder="Leave blank to keep current value"></label>
       <label id="secKeychainEditSecondaryClearWrap" class="sec-check hidden"><input type="checkbox" id="secKeychainEditSecondaryClear"> <span id="secKeychainEditSecondaryClearLabel">Remove it</span></label>
       <div id="secKeychainEditSecondaryHint" class="sec-dsap-setting-hint hidden"></div>
+      <div id="secKeychainEditHowTo" class="sec-keychain-howto hidden"></div>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secKeychainEditSave" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-save"></i> Save Key</button>
       </div>
@@ -402,6 +403,7 @@ ${dsapSmfBuildHeader({
       <div id="secKeychainAddFileWrap" class="sec-keychain-file hidden"><button type="button" class="sec-dsap-action-btn sec-btn-small" data-sec-action="keychain-key-file" data-sec-panel="Add">Choose file…</button><input type="file" id="secKeychainAddFile" class="hidden" hidden></div>
       <label id="secKeychainAddSecondaryWrap" class="hidden"><span id="secKeychainAddSecondaryLabel">Second key</span><input type="password" id="secKeychainAddSecondary" class="sec-input" autocomplete="new-password" placeholder="Optional"></label>
       <div id="secKeychainAddSecondaryHint" class="sec-dsap-setting-hint hidden"></div>
+      <div id="secKeychainAddHowTo" class="sec-keychain-howto hidden"></div>
       <div class="sec-appkeys-form-actions">
         <button type="button" id="secKeychainAddSubmit" class="sec-dsap-action-btn sec-btn-primary"><i class="fas fa-plus"></i> Add Key</button>
       </div>
@@ -3845,6 +3847,22 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
         if (file) { file.value = ''; file.accept = (service && service.keyFileAccept) || ''; }
         const value = root.querySelector(`#secKeychain${panel}Value`);
         if (value && service && service.keyFileAccept && panel === 'Add') value.placeholder = 'Paste the key, or choose its file';
+        this._setKeychainHowTo(root, panel, service);
+    },
+
+    // How to obtain the service's key (SERVICE_METADATA.howTo: title, steps, links), Yozora #795
+    _setKeychainHowTo(root, panel, service) {
+        const box = root.querySelector(`#secKeychain${panel}HowTo`);
+        if (!box) return;
+        const h = service && service.howTo;
+        box.classList.toggle('hidden', !h);
+        if (!h) { box.innerHTML = ''; return; }
+        const esc = securityDsapEscapeHtml;
+        const steps = Array.isArray(h.steps) ? h.steps : [];
+        const links = (Array.isArray(h.links) ? h.links : []).filter(([, url]) => /^https:\/\//.test(String(url || '')));
+        box.innerHTML = `<div class="sec-keychain-howto-title">${esc(h.title || 'How to get this key')}</div>`
+            + (steps.length ? `<ol>${steps.map((t) => `<li>${esc(t)}</li>`).join('')}</ol>` : '')
+            + (links.length ? `<div class="sec-keychain-howto-links">${links.map(([label, url]) => `<a href="${securityDsapEscapeAttr(esc(url))}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`).join('')}</div>` : '');
     },
 
     _keychainExtraFieldValues(root, panel) {

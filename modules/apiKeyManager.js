@@ -79,7 +79,23 @@ class ApiKeyManager {
                 label: 'Google Maps',
                 description: 'Routes API drive times, alternatives and slowdowns for Melaton Traffic (enable the Routes API on the key)',
                 icon: 'fas fa-map-location-dot',
-                requiresRestart: false
+                requiresRestart: false,
+                howTo: {
+                    title: 'How to get a Google Maps key',
+                    steps: [
+                        'Sign in to the Google Cloud console and create a project (or pick one you have).',
+                        'Link a billing account to the project. Google asks for one even for free use; the Routes API has a free monthly allowance, and Melaton Traffic stops at 4,500 calls a month (its budget in Settings).',
+                        'In APIs & Services > Library, find "Routes API" and click Enable.',
+                        'In APIs & Services > Credentials, click Create credentials > API key, and copy the key.',
+                        'Recommended: edit the key, choose Restrict key under API restrictions and tick only Routes API. A budget alert (Billing > Budgets & alerts) warns you before any charge.',
+                        'Paste the key in Key value below.'
+                    ],
+                    links: [
+                        ['Enable the Routes API', 'https://console.cloud.google.com/apis/library/routes.googleapis.com'],
+                        ['Credentials (create the key)', 'https://console.cloud.google.com/apis/credentials'],
+                        ['Routes API pricing and free use', 'https://developers.google.com/maps/documentation/routes/usage-and-billing']
+                    ]
+                }
             },
             // OpenWeb Ninja's Waze API: alerts (speed traps, accidents, closures) and jams on the commute.
             // Through RapidAPI by default; Host api.openwebninja.com uses the direct API. Free plan: 100 a month.
@@ -91,7 +107,21 @@ class ApiKeyManager {
                 keyLabel: 'API key',
                 fields: [
                     { field: 'host', label: 'Host', placeholder: 'waze.p.rapidapi.com (or api.openwebninja.com)', pattern: '^[a-z0-9.-]{0,80}$', optional: true }
-                ]
+                ],
+                howTo: {
+                    title: 'How to get a Waze key',
+                    steps: [
+                        'Waze has no public API of its own; Melaton Traffic uses OpenWeb Ninja\'s Waze API, sold on RapidAPI and directly.',
+                        'Through RapidAPI: sign in at rapidapi.com, search for "Waze" and open the one by OpenWeb Ninja. On its Pricing tab subscribe to the free Basic plan (100 requests a month).',
+                        'On the API\'s Endpoints tab, copy the X-RapidAPI-Key value from the code sample, paste it in Key value below and leave Host blank.',
+                        'Directly instead: create an account at openwebninja.com, open the Waze API, pick the free plan and copy your API key from the dashboard. Paste it below and set Host to api.openwebninja.com.',
+                        'Melaton Traffic asks Waze at most once every 10 minutes per direction and stops at 90 requests a month, inside the free plan.'
+                    ],
+                    links: [
+                        ['RapidAPI', 'https://rapidapi.com/'],
+                        ['OpenWeb Ninja Waze API', 'https://www.openwebninja.com/api/waze']
+                    ]
+                }
             },
             // Yozora #781: Claude accounts for the Director's Claude engine (Wren, Xi, Rentan). The key is
             // a `claude setup-token` OAuth token; syncClaudeTokenFile() keeps the selected one in
@@ -465,6 +495,8 @@ class ApiKeyManager {
                 fields: meta.fields ? meta.fields.map((f) => ({ field: f.field, label: f.label, placeholder: f.placeholder || '', upper: f.upper === true })) : null,
                 keyLabel: meta.keyLabel || null,
                 keyFileAccept: meta.keyFileAccept || null,
+                // how to obtain the key (Yozora #795): CardSpace shows it in the Add / Edit key panel
+                howTo: meta.howTo || null,
                 selectedIndex,
                 selectedName: selectedKey?.name || (keys.length ? `Key ${selectedIndex + 1}` : null),
                 selectedFingerprint: selectedKey ? this.keyFingerprint(service, selectedKey) : null,

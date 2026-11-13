@@ -1029,3 +1029,57 @@
 #dreamscapeCardSpaceModal .cs-form-side .cs-card {
     display: block;
 }
+
+/* ---- how to obtain a service's key (apiKeyManager SERVICE_METADATA.howTo, Yozora #795): the Add /
+ * Edit key panel's instructions, plain Vista body text with numbered steps and blue task links */
+.sec-keychain-howto {
+    margin: 6px 0 2px;
+    padding: 7px 9px 8px;
+    border: 1px solid #d5dfe5;
+    background: #f7fafc;
+    color: #1e1e1e;
+    font: 9pt 'Segoe UI', Tahoma, sans-serif;
+    line-height: 1.4;
+    user-select: text;
+}
+
+.sec-keychain-howto.hidden {
+    display: none;
+}
+
+.sec-keychain-howto-title {
+    color: #1e3287;
+    font-weight: normal;
+    font-size: 10pt;
+    margin-bottom: 3px;
+}
+
+.sec-keychain-howto ol {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.sec-keychain-howto li + li {
+    margin-top: 2px;
+}
+
+.sec-keychain-howto-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+    margin-top: 6px;
+}
+
+.sec-keychain-howto-links a {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+.sec-keychain-howto-links a:hover {
+    color: #3399ff;
+    text-decoration: underline;
+}
+
+#dreamscapeCardSpaceModal[data-cs-form-side="1"] .cs-host .sec-appkeys-form > .sec-keychain-howto {
+    margin-left: 18px;
+}
