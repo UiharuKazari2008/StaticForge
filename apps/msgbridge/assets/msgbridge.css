@@ -212,6 +212,14 @@
     margin: 0 2px 0 0;
 }
 
+/* an e-mail folder's icon: Windows Mail's folder bitmap (msoeres.dll 16 / 20; 6 a folder, 7 Inbox,
+   9 Sent Items, 10 Deleted Items, 11 Drafts, 12 Junk E-mail) */
+.mb-window .mb-row-icon.mb-mail-folder {
+    background: image-set(url('/static_images/vista-mail/folders-16.png') 1x, url('/static_images/vista-mail/folders-32.png') 2x) no-repeat;
+    background-size: 544px 16px;
+    background-position: calc(var(--f, 6) * -16px) 0;
+}
+
 .mb-window .mb-node-name {
     position: relative;
     top: -1px;

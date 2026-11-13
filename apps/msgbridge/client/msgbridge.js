@@ -12,9 +12,14 @@
  *       Conversations  the server's copy, conversation by conversation (sortable list view)
  *       Synchronization   progress, the last reconcile against the source, the drift log, what is
  *                      not synchronized yet
- *     Storage          the message database and the attachment cache on the server
+ *     <e-mail account> (#789) an IMAP account the server is the mail client for (mailAccounts.syncStatus)
+ *       Status         connection, the IDLE push channel on the Inbox, the servers
+ *       Folders        the server's copy, folder by folder (special use, messages, unread, synced)
+ *       Synchronization   progress while the sync worker runs, the last sync, the folders synchronized
+ *     Storage          the message database and the attachment cache on the server, and the mail
+ *                      database and its attachment cache
  *
- * The source (the Mac, the phone) always wins: Resync Now catches up and reconciles against it,
+ * The source (the Mac, the phone, the mail server) always wins: Resync Now catches up and reconciles against it,
  * Rebuild from Source drops the server's copy and pulls everything again.
  *
  *   melatonApps.define('msgbridge', start)
@@ -33,6 +38,14 @@
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const tm = () => root.textMessaging || null;
+    const ma = () => root.mailAccounts || null;
+    const MAIL_16 = '/static_images/vista-cmdbar/mail.png';
+    const MAIL_32 = '/static_images/app_icons/vista-mail.png';
+    // IMAP special-use folders: Windows Mail's names and its folder bitmap (vista-mail/folders-16.png)
+    const SPECIAL = {
+        '\\Inbox': ['Inbox', 7], '\\Drafts': ['Drafts', 11], '\\Sent': ['Sent Items', 9], '\\Trash': ['Deleted Items', 10],
+        '\\Junk': ['Junk E-mail', 12], '\\Archive': ['Archive', 6]
+    };
     const num = (n) => Math.round(Number(n) || 0).toLocaleString('en-US');
     // the server pushes sync progress (tm_event syncprogress) and every account / sync change: the
     // timer is only a once-a-minute safety net (no polling under 60 s, Yukimi Nov 13)
@@ -64,6 +77,8 @@
     const statusText = (a) => STATUS_TEXT[a.status] || (a.status ? String(a.status).replace(/^./, (c) => c.toUpperCase()) : 'Not connected');
     const sourceName = (a) => (a.kind === 'rcs' ? 'the phone' : 'the Mac');
     const isRcs = (a) => a.kind === 'rcs';
+    const MAIL_STATUS = { connected: 'Connected', connecting: 'Connecting', disabled: 'Turned off', error: 'Not connected' };
+    const mailStatusText = (a) => (a.enabled === false ? 'Turned off' : MAIL_STATUS[a.status] || 'Not connected');
 
     class Bridge {
         constructor(app) {
@@ -79,11 +94,17 @@
             this.accounts = [];
             this.chats = new Map();
             this.error = '';
+            this.mail = [];
+            this.mailStorage = null;
+            this.mailError = '';
+            this.folders = new Map();
+            this.fsort = Object.assign({ key: '', dir: 1 }, reg('FolderSort', {}));
             this.sort = Object.assign({ key: 'lastDate', dir: -1 }, reg('Sort', {}));
             this.sel = null;
             this.note = '';
             this.build();
             this.listen();
+            this.listenMail();
             this.select('root', false);
             void this.refresh();
         }
@@ -238,12 +259,27 @@
             this.tmListened = t;
         }
 
+        /** The e-mail accounts' events: a sync ended, an account or its folders changed. */
+        listenMail() {
+            const m = ma();
+            if (!m || typeof m.on !== 'function') return;
+            this.onMailEvent = (d) => {
+                if (d && d.accountId) this.folders.delete(d.accountId);
+                clearTimeout(this.eventTimer);
+                this.eventTimer = setTimeout(() => void this.refresh(), 400);
+            };
+            this.mailEvents = ['sync', 'account', 'folders', 'progress'];
+            this.mailEvents.forEach((e) => m.on(e, this.onMailEvent));
+            this.maListened = m;
+        }
+
         // ---- data ---------------------------------------------------------------------------------
 
         async refresh() {
             if (this.refreshing) { this.again = true; return; }
             this.refreshing = true;
             clearTimeout(this.pollTimer);
+            const mailJob = this.refreshMail();
             try {
                 const t = tm();
                 if (!t || typeof t.syncStatus !== 'function') throw new Error('Text Messaging is not available in this session.');
@@ -256,9 +292,8 @@
                 if (a && /^(convs|sync):/.test(this.node)) await this.loadChats(a.id);
             } catch (err) {
                 this.error = (err && err.message) || String(err);
-            } finally {
-                this.refreshing = false;
             }
+            try { await mailJob; } finally { this.refreshing = false; }
             if (!this.find(this.node)) this.node = 'root';
             this.lastRefresh = Date.now();
             this.renderTree();
@@ -266,8 +301,41 @@
             this.renderActions();
             this.render();
             if (this.again) { this.again = false; void this.refresh(); return; }
-            const running = this.accounts.some((a) => a.sync && a.sync.running);
+            const running = this.accounts.concat(this.mail).some((a) => a.sync && a.sync.running);
             this.pollTimer = setTimeout(() => void this.refresh(), running ? POLL_RUNNING_MS : POLL_IDLE_MS);
+        }
+
+        /** The e-mail accounts (mailAccounts.syncStatus) and the open account's folders. */
+        async refreshMail() {
+            const m = ma();
+            if (!m || typeof m.syncStatus !== 'function') { this.mail = []; this.mailStorage = null; return; }
+            try {
+                const st = await m.syncStatus();
+                this.mail = (st && st.accounts) || [];
+                this.mailStorage = (st && st.storage) || null;
+                this.mailError = '';
+                const a = this.mailOf(this.node);
+                if (a && /^(mfold|msync):/.test(this.node)) await this.loadFolders(a.id, true);
+            } catch (err) {
+                this.mailError = (err && err.message) || String(err);
+            }
+        }
+
+        async loadFolders(id, force) {
+            if (!force && this.folders.has(id)) return this.folders.get(id);
+            const m = ma();
+            try {
+                const list = m && typeof m.folders === 'function' ? await m.folders(id) : [];
+                this.folders.set(id, Array.isArray(list) ? list : []);
+            } catch (err) {
+                this.folders.set(id, { error: (err && err.message) || String(err) });
+            }
+            return this.folders.get(id);
+        }
+
+        mailOf(nodeId) {
+            const m = /^(?:macct|mstatus|mfold|msync):(.+)$/.exec(nodeId || '');
+            return m ? this.mail.find((a) => a.id === m[1]) || null : null;
         }
 
         async loadChats(id, force) {
@@ -308,7 +376,17 @@
                 id: 'root',
                 name: `${TITLE} (Local)`,
                 icon: this.icon('msgbridge-16.png'),
-                children: this.accounts.map(acct).concat([{ id: 'storage', name: 'Storage', icon: '/static_images/vista-devmgr/disk-drives-16.png', desc: 'The message database and the attachment cache' }])
+                children: this.accounts.map(acct).concat(this.mail.map((a) => ({
+                    id: `macct:${a.id}`,
+                    name: a.email || a.name || 'E-mail',
+                    icon: MAIL_16,
+                    desc: 'E-mail through the IMAP and SMTP servers of the mail provider',
+                    children: [
+                        { id: `mstatus:${a.id}`, name: 'Status', icon: `${ITEMS}/performance-information-and-tools-16.png`, desc: 'Connection, the push channel and the mail servers' },
+                        { id: `mfold:${a.id}`, name: 'Folders', icon: '/static_images/vista-icons/explorer/folder-16.png', desc: 'The server\'s copy, folder by folder' },
+                        { id: `msync:${a.id}`, name: 'Synchronization', icon: `${ITEMS}/sync-center-16.png`, desc: 'Progress, the last sync and the folders synchronized' }
+                    ]
+                })), [{ id: 'storage', name: 'Storage', icon: '/static_images/vista-devmgr/disk-drives-16.png', desc: 'The message database and the attachment cache' }])
             }];
         }
 
@@ -398,6 +476,10 @@
             if (a && /^(convs|sync):/.test(id) && !this.chats.has(a.id)) {
                 void this.loadChats(a.id).then(() => { if (this.node === id) this.render(); });
             }
+            const ma0 = this.mailOf(id);
+            if (ma0 && /^(mfold|msync):/.test(id) && !this.folders.has(ma0.id)) {
+                void this.loadFolders(ma0.id).then(() => { if (this.node === id) this.render(); });
+            }
         }
 
         // ---- menus, toolbar, Action pane ------------------------------------------------------------
@@ -415,9 +497,16 @@
                 if (isRcs(a) && a.status !== 'unpaired') out.push({ text: 'Unpair Phone...', action: 'unpair' });
                 out.push({ separator: true });
             }
+            const m = this.mailOf(id);
+            if (m) {
+                const off = m.status === 'disabled' || m.enabled === false;
+                out.push({ text: 'Resync Now', action: 'resync', icon: 13, disabled: off || (m.sync && m.sync.running) });
+                out.push({ text: 'Rebuild from Source...', action: 'rebuild', disabled: off || (m.sync && m.sync.running) });
+                out.push({ separator: true });
+            }
             if (id.startsWith('convs:')) out.push({ text: 'Export List...', action: 'export', icon: 16 });
             out.push({ text: 'Refresh', action: 'refresh', icon: 3 });
-            if (a) out.push({ separator: true }, { text: 'Properties', action: 'properties', icon: 8 });
+            if (a || m) out.push({ separator: true }, { text: 'Properties', action: 'properties', icon: 8 });
             out.push({ separator: true }, { text: 'Help', action: 'help', icon: 15 });
             return out;
         }
@@ -438,7 +527,7 @@
                     return strip(s ? s.items.concat([{ separator: true }], this.commands()) : this.commands());
                 }
                 case 'view': {
-                    const list = this.node.startsWith('convs:') || this.isFolder();
+                    const list = /^(convs|mfold):/.test(this.node) || this.isFolder();
                     return (list ? [
                         { text: 'Large Icons', action: 'none', disabled: true },
                         { text: 'Small Icons', action: 'none', disabled: true },
@@ -452,7 +541,7 @@
             }
         }
 
-        isFolder() { return this.node.startsWith('acct:'); }
+        isFolder() { return /^m?acct:/.test(this.node); }
 
         /**
          * The toolbar as Computer Management's: Back, Forward | Up One Level, Show/Hide Console Tree |
@@ -467,7 +556,7 @@
             let own = '';
             if (this.node.startsWith('convs:')) own += b('export', 16, 'Export List');
             if (this.node !== 'root' && !this.isFolder()) own += b('refresh', 3, 'Refresh');
-            if (a) own += b('properties', 8, 'Properties');
+            if (a || this.mailOf(this.node)) own += b('properties', 8, 'Properties');
             const html = b('back', 0, 'Back', { disabled: !this.history.length }) + b('forward', 1, 'Forward', { disabled: !this.future.length }) + sep
                 + (this.node !== 'root' ? b('up', 9, 'Up One Level') : '') + b('tree', 10, 'Show/Hide Console Tree', { pressed: !this.modal.classList.contains('no-tree') }) + sep
                 + (own ? own + sep : '')
@@ -500,11 +589,12 @@
                 case 'actions': this.modal.classList.toggle('has-actions'); setReg({ ActionPane: this.modal.classList.contains('has-actions') }); this.renderToolbar(); return;
                 case 'refresh':
                     if (acct) this.chats.delete(acct.id);
+                    if (this.mailOf(this.node)) this.folders.delete(this.mailOf(this.node).id);
                     await this.refresh();
                     return;
-                case 'resync': return this.resync(acct, false);
-                case 'rebuild': return this.resync(acct, true);
-                case 'pair': case 'properties': this.cardSpace(); return;
+                case 'resync': return this.mailOf(this.node) ? this.resyncMail(this.mailOf(this.node), false) : this.resync(acct, false);
+                case 'rebuild': return this.mailOf(this.node) ? this.resyncMail(this.mailOf(this.node), true) : this.resync(acct, true);
+                case 'pair': case 'properties': this.cardSpace(this.mailOf(this.node) ? 'mail' : 'text-messaging'); return;
                 case 'unpair': return this.unpair(acct);
                 case 'export': this.exportList(); return;
                 case 'open-chat': this.openChat(); return;
@@ -515,8 +605,8 @@
             }
         }
 
-        cardSpace() {
-            if (root.cplAuthentication && typeof root.cplAuthentication.open === 'function') root.cplAuthentication.open('text-messaging');
+        cardSpace(section) {
+            if (root.cplAuthentication && typeof root.cplAuthentication.open === 'function') root.cplAuthentication.open(section || 'text-messaging');
         }
 
         async box(html, kind, buttons) {
@@ -540,6 +630,29 @@
             } catch (err) {
                 this.note = '';
                 await this.box(`<p>${esc(rebuild ? 'The copy could not be rebuilt.' : 'The account could not be resynchronized.')}</p><p>${esc((err && err.message) || err)}</p>`, 'error');
+            }
+            await this.refresh();
+            setTimeout(() => { this.note = ''; this.renderStatus(); }, 4000);
+        }
+
+        /** Resync Now / Rebuild from Source for an e-mail account: the mail server is the source. */
+        async resyncMail(a, rebuild) {
+            const m = ma();
+            if (!a || !m || typeof m.resync !== 'function') return;
+            const name = a.email || a.name;
+            if (rebuild) {
+                const ok = await this.box(`<p>Rebuild the server's copy of ${esc(name)} from the mail server?</p><p>Every message the server holds for this account is dropped and downloaded again from the mail server. This can take a long time for a large mailbox; folders come back as they are downloaded.</p>`,
+                    'warning', [{ text: 'Yes', value: true, className: 'btn-standard' }, { text: 'No', value: false, className: 'btn-standard primary' }]);
+                if (ok !== true) return;
+            }
+            this.note = rebuild ? `Rebuilding ${name} from the mail server...` : `Synchronizing ${name}...`;
+            this.renderStatus();
+            try {
+                await m.resync(a.id, !!rebuild);
+                this.folders.delete(a.id);
+            } catch (err) {
+                this.note = '';
+                await this.box(`<p>${esc(rebuild ? 'The copy could not be rebuilt.' : 'The account could not be synchronized.')}</p><p>${esc((err && err.message) || err)}</p>`, 'error');
             }
             await this.refresh();
             setTimeout(() => { this.note = ''; this.renderStatus(); }, 4000);
@@ -599,7 +712,7 @@
         }
 
         async about() {
-            await call('showConfirmationDialog', `<div class="mb-about"><img src="${this.icon('msgbridge-32.png')}" alt="" width="32" height="32"><div><p><b>${TITLE}</b><br>Xyridian Management Console snap-in<br>Version ${VERSION}</p><p>Copyright &copy; 2007 Xyridian Corporation. All rights reserved.</p><p>Text Messaging accounts are provided by their own services.</p></div></div>`,
+            await call('showConfirmationDialog', `<div class="mb-about"><img src="${this.icon('msgbridge-32.png')}" alt="" width="32" height="32"><div><p><b>${TITLE}</b><br>Xyridian Management Console snap-in<br>Version ${VERSION}</p><p>Copyright &copy; 2007 Xyridian Corporation. All rights reserved.</p><p>Text Messaging and e-mail accounts are provided by their own services.</p></div></div>`,
                 [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: `About ${TITLE}`, width: 400 });
         }
 
@@ -613,7 +726,14 @@
             let list = false;
             if (this.node === 'root') html = this.rootPage();
             else if (this.node === 'storage') html = this.storagePage();
-            else if (!a) html = this.page('Messaging Bridge', '', [{ id: 'gone', title: 'Not available', body: '<p>This account is no longer set up.</p>' }]);
+            else if (/^m(acct|status|fold|sync):/.test(this.node)) {
+                const m = this.mailOf(this.node);
+                if (!m) html = this.page('Messaging Bridge', '', [{ id: 'gone', title: 'Not available', body: '<p>This account is no longer set up.</p>' }]);
+                else if (this.node.startsWith('macct:')) { html = this.folderPage(); list = true; }
+                else if (this.node.startsWith('mstatus:')) html = this.mailStatusPage(m);
+                else if (this.node.startsWith('mfold:')) { html = this.mailFoldersPage(m); list = true; }
+                else html = this.mailSyncPage(m);
+            } else if (!a) html = this.page('Messaging Bridge', '', [{ id: 'gone', title: 'Not available', body: '<p>This account is no longer set up.</p>' }]);
             else if (this.node.startsWith('acct:')) { html = this.folderPage(); list = true; }
             else if (this.node.startsWith('status:')) html = this.statusPage(a);
             else if (this.node.startsWith('convs:')) { html = this.chatsPage(a); list = true; }
@@ -647,6 +767,15 @@
                 }
             }
             if (!text && a && a.sync && a.sync.running) text = this.progressText(a);
+            const m = this.mailOf(this.node);
+            if (!text && m && this.node.startsWith('mfold:')) {
+                const list = this.folders.get(m.id);
+                if (Array.isArray(list)) {
+                    const out = list.filter((f) => !f.synced).length;
+                    text = `${num(list.length)} folder${list.length === 1 ? '' : 's'}${out ? `, ${num(out)} not synchronized` : ''}`;
+                }
+            }
+            if (!text && m && m.sync && m.sync.running) text = this.mailProgressText(m);
             spans[0].textContent = text || '';
         }
 
@@ -682,56 +811,75 @@
             // the result pane's list keeps MMC's fixed widths and scrolls sideways
             const tpl = opts.fit ? cols.map((c) => `minmax(${Math.min(c.w, c.min || 56)}px, ${c.w}fr)`).join(' ') + ' 0px'
                 : cols.map((c) => `${c.w}px`).join(' ') + ' minmax(0, 1fr)';
-            const sort = opts.sortable ? this.sort : null;
+            const sort = opts.sortable ? (opts.sort || this.sort) : null;
             const head = cols.map((c) => {
                 const sorted = sort && sort.key === c.key;
                 return `<span class="mb-col${c.num ? ' is-num' : ''}${sorted ? ' is-sorted' : ''}"${opts.sortable ? ` data-sort="${c.key}"` : ''}>${sorted ? `<span class="mb-arrow${sort.dir < 0 ? ' is-down' : ''}"></span>` : ''}${esc(c.t)}</span>`;
             }).join('') + '<span class="mb-col mb-col-rest"></span>';
-            const body = rows.length ? rows.map((r) => `<div class="mb-row${r.cls ? ` ${r.cls}` : ''}${r.key && r.key === this.sel ? ' is-selected' : ''}"${r.key ? ` data-key="${esc(r.key)}"` : ''}${r.open ? ` data-open="${esc(r.open)}"` : ''}>${cols.map((c, i) => `<span${c.num ? ' class="is-num"' : ''}>${i === 0 && r.icon ? `<img class="mb-row-icon" src="${esc(r.icon)}" alt="">` : ''}<i>${esc(c.text(r.data))}</i></span>`).join('')}<span></span></div>`).join('')
+            const body = rows.length ? rows.map((r) => `<div class="mb-row${r.cls ? ` ${r.cls}` : ''}${r.key && r.key === this.sel ? ' is-selected' : ''}"${r.key ? ` data-key="${esc(r.key)}"` : ''}${r.open ? ` data-open="${esc(r.open)}"` : ''}>${cols.map((c, i) => `<span${c.num ? ' class="is-num"' : ''}>${i === 0 && r.sprite != null ? `<span class="mb-row-icon mb-mail-folder" style="--f:${Number(r.sprite) || 0}"></span>` : ''}${i === 0 && r.icon ? `<img class="mb-row-icon" src="${esc(r.icon)}" alt="">` : ''}<i>${esc(c.text(r.data))}</i></span>`).join('')}<span></span></div>`).join('')
                 : `<div class="mb-empty">${esc(opts.empty || 'There are no items to show in this view.')}</div>`;
             return `<div class="mb-list${opts.fit ? ' is-fit' : ''}" tabindex="0" style="--cols:${tpl}"><div class="mb-lhead">${head}</div><div class="mb-lbody">${body}</div></div>`;
         }
 
         // Messaging Bridge (Local): the accounts at a glance, storage, what needs attention
         rootPage() {
-            const side = this.error ? '' : (this.lastRefresh ? `Last refreshed: ${when(this.lastRefresh)}` : 'Reading data, please wait...');
+            const side = this.error && this.mailError ? '' : (this.lastRefresh ? `Last refreshed: ${when(this.lastRefresh)}` : 'Reading data, please wait...');
             const intro = this.overview(this.icon('msgbridge-32.png'), [
-                'The Messaging Bridge connects Melaton to your text messages: Apple iMessage through the BlueBubbles server on your Mac, and text messages through Google Messages on a paired phone.',
-                'The server keeps a copy of each account so conversations open at once. The source always wins: the copy is checked against your Mac or phone and repaired when they differ. Select an account in the console tree to see how far its copy is.'
+                'The Messaging Bridge connects Melaton to your messages: Apple iMessage through the BlueBubbles server on your Mac, text messages through Google Messages on a paired phone, and your e-mail accounts through their mail servers.',
+                'The server keeps a copy of each account so conversations and mail open at once. The source always wins: the copy is checked against your Mac, phone or mail server and repaired when they differ. Select an account in the console tree to see how far its copy is.'
             ]);
             const sections = [{ id: 'overview', title: 'Overview', body: intro }];
-            if (!this.status && !this.error) return this.page(TITLE, side, sections);
+            if (!this.status && !this.error && !this.lastRefresh) return this.page(TITLE, side, sections);
             if (this.error) {
                 sections.push({ id: 'error', title: 'Messaging Bridge Not Available', body: this.props([['Status', this.state(false, 'The bridge could not be read')], ['Reason', esc(this.error)]]) });
-                return this.page(TITLE, side, sections);
             }
-            const accts = this.accounts.map((a) => ({
-                key: null,
+            if (this.mailError) {
+                sections.push({ id: 'mail-error', title: 'E-mail Accounts Not Available', body: this.props([['Status', this.state(false, 'The e-mail accounts could not be read')], ['Reason', esc(this.mailError)]]) });
+            }
+            const tmAccts = this.error ? [] : this.accounts;
+            const inSync = (a) => (a.sync && a.sync.running ? 'Synchronizing' : a.reconcile ? (a.reconcile.inSync ? 'Yes' : 'No') : 'Not checked yet');
+            const mailInSync = (a) => (a.sync && a.sync.running ? 'Synchronizing' : a.sync && a.sync.complete ? 'Yes' : 'Not yet');
+            const rows = tmAccts.map((a) => ({
                 open: `acct:${a.id}`,
                 icon: isRcs(a) ? `${ITEMS}/phone-and-modem-options-16.png` : `${ITEMS}/network-and-sharing-center-16.png`,
-                data: a
-            }));
-            const inSync = (a) => (a.sync && a.sync.running ? 'Synchronizing' : a.reconcile ? (a.reconcile.inSync ? 'Yes' : 'No') : 'Not checked yet');
+                data: { name: a.name, status: statusText(a), sync: inSync(a) }
+            })).concat(this.mail.map((a) => ({
+                open: `macct:${a.id}`,
+                icon: MAIL_16,
+                data: { name: a.email || a.name, status: mailStatusText(a), sync: mailInSync(a) }
+            })));
             sections.push({
                 id: 'accounts',
                 title: 'Summary of Accounts',
                 body: this.listView([
-                    { t: 'Account', w: 130, min: 100, text: (a) => a.name },
-                    { t: 'Status', w: 96, min: 80, text: (a) => statusText(a) },
-                    { t: 'In Sync', w: 100, min: 80, text: inSync }
-                ], accts, { fit: true, empty: 'No Text Messaging account is set up. Add one in Dreamscape CardSpace.' })
-                    + (this.accounts.length ? '' : '<p class="mb-note"><span class="mb-link" data-link="cardspace">Open Dreamscape CardSpace</span></p>')
+                    { t: 'Account', w: 130, min: 100, text: (x) => x.name },
+                    { t: 'Status', w: 96, min: 80, text: (x) => x.status },
+                    { t: 'In Sync', w: 100, min: 80, text: (x) => x.sync }
+                ], rows, { fit: true, empty: 'No Text Messaging or e-mail account is set up. Add one in Dreamscape CardSpace.' })
+                    + (rows.length ? '' : '<p class="mb-note"><span class="mb-link" data-link="cardspace">Open Dreamscape CardSpace</span></p>')
             });
             const issues = [];
-            this.accounts.forEach((a) => {
+            tmAccts.forEach((a) => {
                 if (a.status !== 'connected') issues.push([a.name, this.state(false, `${statusText(a)}${a.error ? `: ${a.error}` : ''}`, a.status === 'disabled' || a.status === 'unpaired')]);
                 else if (!a.push) issues.push([a.name, this.state(false, 'The push channel is down: new messages arrive only when the copy is checked', true)]);
                 else if (a.reconcile && !a.reconcile.inSync) issues.push([a.name, this.state(false, `The copy differs from ${sourceName(a)} (${this.behindText(a)})`, true)]);
                 else if (a.sync && !a.sync.complete && !a.sync.running) issues.push([a.name, this.state(false, 'The first synchronization has not finished', true)]);
             });
-            sections.push({ id: 'attention', title: 'Needs Attention', body: issues.length ? this.props(issues) : `<p>${this.accounts.length ? 'Every account is connected and its copy matches the source.' : 'Nothing to report.'}</p>` });
+            this.mail.forEach((a) => {
+                const name = a.email || a.name;
+                if (a.status !== 'connected') issues.push([name, this.state(false, `${mailStatusText(a)}${a.error ? `: ${a.error}` : ''}`, a.status === 'disabled' || a.status === 'connecting')]);
+                else if (!a.push) issues.push([name, this.state(false, 'The push channel is down: new mail arrives only with the next sync', true)]);
+                else if (a.sync && !a.sync.complete && !a.sync.running) issues.push([name, this.state(false, 'The first synchronization has not finished', true)]);
+            });
+            const total = tmAccts.length + this.mail.length;
+            sections.push({ id: 'attention', title: 'Needs Attention', body: issues.length ? this.props(issues) : `<p>${total ? 'Every account is connected and its copy matches the source.' : 'Nothing to report.'}</p>` });
             const st = (this.status && this.status.storage) || {};
-            sections.push({ id: 'storage-sum', title: 'Storage', body: this.props([['Message database', size(st.database)], ['Attachment cache', size(st.attachments)], ['Total', size((Number(st.database) || 0) + (Number(st.attachments) || 0))]]) });
+            const ms = this.mailStorage || {};
+            const all = [st.database, st.attachments, ms.database, ms.attachments].reduce((t, v) => t + (Number(v) || 0), 0);
+            sections.push({ id: 'storage-sum', title: 'Storage', body: this.props([
+                ['Message database', size(st.database)], ['Attachment cache', size(st.attachments)],
+                ['Mail database', size(ms.database)], ['Mail attachment cache', size(ms.attachments)], ['Total', size(all)]
+            ]) });
             return this.page(TITLE, side, sections);
         }
 
@@ -884,25 +1032,140 @@
 
         storagePage() {
             const st = (this.status && this.status.storage) || {};
-            const db = Number(st.database) || 0;
-            const att = Number(st.attachments) || 0;
+            const ms = this.mailStorage || {};
+            const parts = [
+                { item: 'Message database', bytes: Number(st.database) || 0 },
+                { item: 'Attachment cache', bytes: Number(st.attachments) || 0 },
+                { item: 'Mail database', bytes: Number(ms.database) || 0 },
+                { item: 'Mail attachment cache', bytes: Number(ms.attachments) || 0 }
+            ];
+            const all = parts.reduce((t, x) => t + x.bytes, 0);
             const intro = this.overview('/static_images/vista-devmgr/disk-drives-32.png', [
-                'The server keeps its copy of every account in one message database, and the pictures, videos and files of messages in an attachment cache. Attachments are fetched from the source the first time they are opened and kept after that.'
+                'The server keeps its copy of every Text Messaging account in one message database, and the pictures, videos and files of messages in an attachment cache. Attachments are fetched from the source the first time they are opened and kept after that.',
+                'E-mail accounts have a mail database of their own (headers, text and HTML bodies, the search index) and a mail attachment cache, filled the same way from the mail server.'
             ]);
             const usage = this.listView([
                 { t: 'Item', w: 170, text: (x) => x.item },
                 { t: 'Size', w: 90, num: true, text: (x) => size(x.bytes) },
-                { t: 'Share', w: 70, num: true, text: (x) => (db + att ? `${Math.round((x.bytes / (db + att)) * 100)}%` : '') }
-            ], [{ data: { item: 'Message database', bytes: db } }, { data: { item: 'Attachment cache', bytes: att } }, { data: { item: 'Total', bytes: db + att } }], { fit: true });
+                { t: 'Share', w: 70, num: true, text: (x) => (all ? `${Math.round((x.bytes / all) * 100)}%` : '') }
+            ], parts.concat([{ item: 'Total', bytes: all }]).map((x) => ({ data: x })), { fit: true });
+            const tmAccts = this.error ? [] : this.accounts;
             const byAcct = this.listView([
                 { t: 'Account', w: 150, min: 100, text: (a) => a.name },
-                { t: 'Conversations', w: 96, min: 90, num: true, text: (a) => (a.sync ? num(a.sync.chats) : '') },
-                { t: 'Messages', w: 90, min: 70, num: true, text: (a) => (a.sync ? num(a.sync.messages) : '') }
-            ], this.accounts.map((a) => ({ icon: isRcs(a) ? `${ITEMS}/phone-and-modem-options-16.png` : `${ITEMS}/network-and-sharing-center-16.png`, data: a })), { fit: true, empty: 'No Text Messaging account is set up.' });
+                { t: 'Conversations', w: 96, min: 90, num: true, text: (a) => (a.chats == null ? '' : num(a.chats)) },
+                { t: 'Folders', w: 64, min: 56, num: true, text: (a) => (a.folders == null ? '' : num(a.folders)) },
+                { t: 'Messages', w: 90, min: 70, num: true, text: (a) => (a.messages == null ? '' : num(a.messages)) }
+            ], tmAccts.map((a) => ({
+                icon: isRcs(a) ? `${ITEMS}/phone-and-modem-options-16.png` : `${ITEMS}/network-and-sharing-center-16.png`,
+                data: { name: a.name, chats: a.sync ? a.sync.chats : null, folders: null, messages: a.sync ? a.sync.messages : null }
+            })).concat(this.mail.map((a) => ({
+                icon: MAIL_16,
+                data: { name: a.email || a.name, chats: null, folders: a.sync ? a.sync.folders : null, messages: a.sync ? a.sync.messages : null }
+            }))), { fit: true, empty: 'No Text Messaging or e-mail account is set up.' });
             return this.page('Storage', this.lastRefresh ? `Last refreshed: ${when(this.lastRefresh)}` : '', [
                 { id: 'sg-overview', title: 'Overview', body: intro },
                 { id: 'sg-usage', title: 'Disk Usage', body: usage },
                 { id: 'sg-accounts', title: 'Copies by Account', body: byAcct }
+            ]);
+        }
+
+        // ---- e-mail accounts (#789) ------------------------------------------------------------------
+
+        mailProgressText(a) {
+            const p = (a.sync && a.sync.progress) || null;
+            const name = a.email || a.name;
+            if (!p || !p.folder) return `Synchronizing ${name}...`;
+            return p.total ? `Synchronizing ${name}: ${p.folder}, ${num(p.done)} of ${num(p.total)}` : `Synchronizing ${name}: ${p.folder}`;
+        }
+
+        mailStatusPage(a) {
+            const name = a.email || a.name;
+            const intro = this.overview(MAIL_32, [
+                `The server is the mail client for ${esc(name)}: it keeps a copy of every folder, sends with the account's SMTP server and hears new Inbox mail at once over IMAP IDLE. The address, password and servers are set up in Dreamscape CardSpace.`
+            ]);
+            const sec = { tls: 'SSL/TLS', starttls: 'STARTTLS', none: 'None' };
+            const server = (s) => (s && s.host ? `${esc(s.host)}:${esc(s.port || '')} (${esc(sec[s.security] || s.security || 'SSL/TLS')})` : 'Not set');
+            const conn = [
+                ['Status', this.state(a.status === 'connected' && a.enabled !== false, mailStatusText(a), a.status === 'connecting' || a.status === 'disabled' || a.enabled === false)],
+                a.error && a.status !== 'connected' ? ['Error', esc(a.error)] : null,
+                ['E-mail address', esc(a.email || 'Unknown')],
+                a.displayName ? ['Name', esc(a.displayName)] : null,
+                a.imap ? ['Incoming mail (IMAP)', server(a.imap)] : null,
+                a.smtp ? ['Outgoing mail (SMTP)', server(a.smtp)] : null,
+                a.unread != null ? ['Unread in the Inbox', num(a.unread)] : null
+            ];
+            const push = this.props([
+                ['Push channel', this.state(!!a.push, a.push ? 'Connected (IMAP IDLE on the Inbox)' : 'Not connected', a.status !== 'connected')],
+                ['Last pushed message', esc(a.lastPush ? when(a.lastPush) : 'None since the server started')]
+            ]) + `<p class="mb-note">${a.push ? 'New mail in the Inbox arrives the moment the mail server has it.' : 'Without the push channel new mail is found only by the next sync (every 10 minutes).'}</p>`;
+            return this.page('Status', this.lastRefresh ? `Last refreshed: ${when(this.lastRefresh)}` : '', [
+                { id: 'ms-overview', title: 'Overview', body: intro },
+                { id: 'ms-conn', title: 'Connection', body: this.props(conn) },
+                { id: 'ms-push', title: 'Push Channel', body: push }
+            ]);
+        }
+
+        folderCols() {
+            return [
+                { t: 'Folder', w: 170, key: 'name', text: (f) => f.path || f.name },
+                { t: 'Special Use', w: 100, key: 'special', text: (f) => (SPECIAL[f.special] ? SPECIAL[f.special][0] : '') },
+                { t: 'Messages', w: 76, key: 'total', num: true, text: (f) => num(f.total) },
+                { t: 'Unread', w: 64, key: 'unseen', num: true, text: (f) => num(f.unseen) },
+                { t: 'Synchronized', w: 86, key: 'synced', text: (f) => (f.synced ? 'Yes' : 'No') }
+            ];
+        }
+
+        /** Folders in the server's order (Inbox, Drafts, Sent, ... Trash), or by the clicked column. */
+        sortedFolders(list) {
+            const { key, dir } = this.fsort;
+            if (!key) return list.slice();
+            const v = (f) => (key === 'total' || key === 'unseen' ? Number(f[key]) || 0 : key === 'synced' ? (f.synced ? 1 : 0)
+                : key === 'special' ? (SPECIAL[f.special] ? SPECIAL[f.special][0] : '').toLowerCase() : String(f.path || f.name || '').toLowerCase());
+            return list.slice().sort((x, y) => { const a = v(x); const b = v(y); return (a < b ? -1 : a > b ? 1 : 0) * dir || String(x.path).localeCompare(String(y.path)); });
+        }
+
+        folderRows(list) {
+            return list.map((f) => ({ sprite: SPECIAL[f.special] ? SPECIAL[f.special][1] : 6, data: f }));
+        }
+
+        mailFoldersPage(a) {
+            const list = this.folders.get(a.id);
+            if (!list) return '<div class="mb-list"><div class="mb-empty">Reading data, please wait...</div></div>';
+            if (!Array.isArray(list)) return `<div class="mb-list"><div class="mb-empty">${esc(`The folders could not be read: ${list.error}`)}</div></div>`;
+            return this.listView(this.folderCols(), this.folderRows(this.sortedFolders(list)), { sortable: true, sort: this.fsort, empty: 'The server holds no folders for this account yet.' });
+        }
+
+        mailSyncPage(a) {
+            const s = a.sync || {};
+            const p = s.progress || null;
+            const list = this.folders.get(a.id);
+            let prog = '';
+            if (s.running) {
+                // the folder bar: where the worker is in the folder list; the line under it, the folder itself
+                const pct = p && p.folders ? Math.min(100, ((p.folderIndex + (p.total ? Math.min(1, p.done / p.total) : 0)) / p.folders) * 100) : 0;
+                const label = p && p.folder ? `${p.folder}${p.total ? `: ${num(p.done)} of ${num(p.total)}` : ''}${p.folders ? ` (folder ${num(p.folderIndex + 1)} of ${num(p.folders)})` : ''}` : 'Starting...';
+                prog = `<div class="mb-progress"><div role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(pct)}"><div style="width:${pct.toFixed(1)}%"></div></div><span>${esc(label)}</span></div>`;
+            }
+            const progress = prog + this.props([
+                ['State', s.running ? this.state(true, 'Synchronizing') : s.complete ? this.state(true, 'Complete') : this.state(false, a.status === 'connected' ? 'Incomplete: the first synchronization has not finished' : 'Waiting for the account to connect', true)],
+                ['Last synchronized', esc(s.lastSync ? when(s.lastSync) : 'Never')],
+                ['Folders synchronized', `${num(s.syncedFolders)} of ${num(s.folders)}`],
+                ['Messages held', num(s.messages)],
+                ['Messages with bodies', num(s.bodies)]
+            ]) + '<p class="mb-note">The server synchronizes every 10 minutes and when Resync Now is chosen; new Inbox mail arrives in between over the push channel. The mail server always wins: flags, moves and deletions made elsewhere replace the copy\'s.</p>';
+            let pending;
+            if (!list) pending = '<p>Reading data, please wait...</p>';
+            else if (!Array.isArray(list)) pending = `<p>${esc(`The folders could not be read: ${list.error}`)}</p>`;
+            else {
+                const out = list.filter((f) => !f.synced);
+                pending = out.length
+                    ? `<p>${num(out.length)} of ${num(list.length)} folders are not synchronized yet.</p>`
+                        + this.listView([{ t: 'Folder', w: 200, text: (f) => f.path || f.name }, { t: 'Messages', w: 90, num: true, text: (f) => num(f.total) }], this.folderRows(out), { fit: true })
+                    : `<p>All ${num(list.length)} folders are synchronized.</p>`;
+            }
+            return this.page('Synchronization', s.running ? this.mailProgressText(a) : (this.lastRefresh ? `Last refreshed: ${when(this.lastRefresh)}` : ''), [
+                { id: 'msy-progress', title: 'Synchronization Progress', body: progress },
+                { id: 'msy-pending', title: 'Folders Not Synchronized', body: pending }
             ]);
         }
 
@@ -922,6 +1185,12 @@
             const col = ev.target.closest('[data-sort]');
             if (col) {
                 const k = col.dataset.sort;
+                if (this.node.startsWith('mfold:')) {
+                    this.fsort = this.fsort.key === k ? { key: k, dir: -this.fsort.dir } : { key: k, dir: k === 'total' || k === 'unseen' ? -1 : 1 };
+                    setReg({ FolderSort: this.fsort });
+                    this.render();
+                    return;
+                }
                 this.sort = this.sort.key === k ? { key: k, dir: -this.sort.dir } : { key: k, dir: k === 'lastDate' || k === 'messages' ? -1 : 1 };
                 setReg({ Sort: this.sort });
                 this.render();
@@ -969,6 +1238,8 @@
             const t = this.tmListened;
             if (t && typeof t.off === 'function' && this.onEvent) this.events.forEach((e) => t.off(e, this.onEvent));
             if (t && typeof t.off === 'function' && this.onProgress) t.off('syncprogress', this.onProgress);
+            const ml = this.maListened;
+            if (ml && typeof ml.off === 'function' && this.onMailEvent) this.mailEvents.forEach((e) => ml.off(e, this.onMailEvent));
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
             setTimeout(() => m.remove(), 300);

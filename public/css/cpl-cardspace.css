@@ -845,3 +845,56 @@
     border: 1px solid #abadb3;
     background: #fff;
 }
+
+/* E-mail account cards (Yozora #789): a server line is host, port and security side by side;
+   "Save sent mail:" is a label and its drop-down on one line */
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ma-server {
+    display: flex;
+    gap: 4px;
+    max-width: 320px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ma-server > .cpl-ua-input.cpl-ma-host {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ma-server > .cpl-ua-input.cpl-ma-port {
+    flex: none;
+    width: 46px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ma-server > .cpl-ua-input.cpl-ma-security {
+    flex: none;
+    width: 84px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ma-line {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-ma-line > .cpl-ua-input {
+    width: 96px;
+}
+
+#dreamscapeCardSpaceModal .cs-details-fields .cpl-vault-field[hidden] {
+    display: none;
+}
+
+/* a card's status dots (cs-card-dots, the vault rows' makeGlance): drawn as Control Panel's
+   (melaton-network.css), whose rules stopped reaching them when CardSpace got its own window */
+#dreamscapeCardSpaceModal .sec-key-dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background: #b8b8b8;
+    border: 1px solid rgba(0, 0, 0, 0.35);
+    border-radius: 50%;
+}
+
+#dreamscapeCardSpaceModal .sec-key-dot-ok { background: #2e9e44; }
+#dreamscapeCardSpaceModal .sec-key-dot-fail { background: #c62828; }
+#dreamscapeCardSpaceModal .sec-key-dot-warn { background: #e0a020; }
+#dreamscapeCardSpaceModal .sec-key-dot-none { background: transparent; border-style: dashed; }

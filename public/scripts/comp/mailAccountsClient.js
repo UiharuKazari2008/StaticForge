@@ -19,9 +19,9 @@
  *   upload(file, { onProgress }) -> { uploadId }      (attachments for send; kept an hour)
  *   send(accountId, { to, cc, bcc, subject, text, html, attachments: [uploadId], reply: { folder, uid, kind: 'reply'|'forward' } })
  *   search(q, { accountId, limit }) -> [item]
- *   testAccount / saveAccount / deleteAccount, syncStatus(), resync(accountId, rebuild)
+ *   testAccount / saveAccount / deleteAccount (saveAccount { sameSmtpPassword: true } drops a separate SMTP password; account.hasSmtpPassword), syncStatus(), resync(accountId, rebuild)
  *   unread() -> { total, byAccount: { id: n } }   (Inbox unread)
- *   on(event, fn) / off: 'new' (detail: { accountId, folder, uids, message, notify }) | 'flags' | 'removed' | 'folders'
+ *   on(event, fn) / off: 'new' (detail: { accountId, folder, uids, message, notify }) | 'flags' | 'removed' | 'folders' | 'progress' (sync progress, every ~2 s)
  *       | 'account' | 'sync' | 'unread'
  * New mail notifies in the 'mail' class when detail.notify is true.
  */

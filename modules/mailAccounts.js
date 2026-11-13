@@ -171,7 +171,11 @@ function runSync(rt, folders) {
     rt.syncing = true;
     child.on('message', (m) => {
         if (!m) return;
-        if (m.progress) rt.syncProgress = m.progress;
+        if (m.progress) {
+            rt.syncProgress = m.progress;
+            // live progress for CardSpace / Messaging Bridge, at most every 2 s
+            if (Date.now() - (rt.progressAt || 0) > 2000) { rt.progressAt = Date.now(); broadcast({ event: 'progress', accountId: rt.account.id, progress: m.progress }); }
+        }
         if (m.log) log(`${rt.account.id} sync: ${m.log}`);
         if (m.error) { log(`${rt.account.id} sync failed: ${m.error}`); rt.syncError = m.error; }
         if (m.done) {
@@ -249,7 +253,7 @@ function accountOut(a) {
     return {
         id: a.id, email: a.email, displayName: a.displayName || '', name: a.displayName || a.email, kind: 'imap',
         imap: Object.assign({}, a.imap), smtp: Object.assign({}, a.smtp), enabled: a.enabled !== false, settings: Object.assign({ notify: true, saveSent: 'auto' }, a.settings || {}),
-        hasPassword: !!secretFor(a.id).password, status: r ? r.status : (a.enabled === false ? 'disabled' : 'error'), error: r ? (r.error || r.syncError || '') : '',
+        hasPassword: !!secretFor(a.id).password, hasSmtpPassword: !!secretFor(a.id).smtpPassword, status: r ? r.status : (a.enabled === false ? 'disabled' : 'error'), error: r ? (r.error || r.syncError || '') : '',
         unread: inbox ? inbox.unseen : null,
         sync: st ? Object.assign(st, { running: !!(r && r.syncing), progress: r ? r.syncProgress || null : null, lastSync: Number(store.getState(a.id, 'lastSync')) || null, complete: store.getState(a.id, 'complete') === '1' }) : null,
         push: !!(r && r.watch && r.watch.usable), lastPush: r ? r.lastPush || null : null
@@ -287,7 +291,8 @@ async function testAccount(body) {
         throw fail('IMAP_FAILED', error.authenticationFailed ? 'The mail server refused the user name or password.' : `IMAP: ${error.message}`);
     } finally { c.logout().catch(() => {}); }
     const nodemailer = require('nodemailer');
-    const t = nodemailer.createTransport(smtpOptions(a, body.smtpPassword || password));
+    const storedSmtp = prev && body.sameSmtpPassword !== true ? secretFor(prev.id).smtpPassword : '';
+    const t = nodemailer.createTransport(smtpOptions(a, body.smtpPassword || storedSmtp || password));
     try { await t.verify(); } catch (error) { throw fail('SMTP_FAILED', `SMTP: ${error.message}`); } finally { t.close(); }
     return { folders: folders.length, inbox: (folders.find((f) => f.special === '\\Inbox') || {}).total || 0 };
 }
@@ -313,6 +318,8 @@ function saveAccount(body) {
     writeConfig(cfg);
     if (body.password) writeSecret(id, { password: String(body.password) });
     if (body.smtpPassword) writeSecret(id, { smtpPassword: String(body.smtpPassword) });
+    // "Use the same password" again: the separate SMTP password goes
+    else if (body.sameSmtpPassword === true && secretFor(id).smtpPassword) { const k = Object.assign({}, secretFor(id)); delete k.smtpPassword; delete k.name; writeSecret(id, null); writeSecret(id, k); }
     if (!secretFor(id).password) throw fail('NO_PASSWORD', 'Type the password (or app password).');
     startAccount(row);
     broadcast({ event: 'account', accountId: id });

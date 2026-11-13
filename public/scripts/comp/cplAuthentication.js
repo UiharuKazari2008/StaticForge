@@ -1175,6 +1175,348 @@
         Object.keys(tmUi).forEach((k) => { delete tmUi[k]; });
     }
 
+    // ---- E-mail Accounts (Yozora #789): the IMAP accounts the server keeps a copy of and sends with ----
+    //
+    // An account is its address, password (or app password) and its IMAP / SMTP servers; a known
+    // provider's servers fill in from the address (mailAccounts.presetFor). window.mailAccounts
+    // (mailAccountsClient.js) is read at call time. A new or removed account repaints the list;
+    // status and sync changes only rewrite the card's status lines, so typing in a card survives them.
+
+    const MA_PICTURE = '/static_images/app_icons/vista-mail.png';
+    const MA_STATE = {
+        connected: ['ok', 'Connected'], connecting: ['warn', 'Connecting'], error: ['fail', 'Error'], disabled: ['unchecked', 'Turned off']
+    };
+    const MA_SECURITY = [['tls', 'SSL/TLS'], ['starttls', 'STARTTLS'], ['none', 'None']];
+    const MA_SAVE_SENT = [['auto', 'Automatic'], ['always', 'Always'], ['never', 'Never']];
+    let maRows = [];
+    let maLoadError = '';
+    const maUi = {};          // id -> { open, test, testError, live: { summary, status, sync, glance } }
+    let maOff = null;
+    let maPaintNext = false;  // the next load repaints (after Save: fresh placeholders, no typed passwords)
+    const maApi = () => root.mailAccounts || null;
+
+    function maUiOf(id) {
+        if (!maUi[id]) maUi[id] = {};
+        return maUi[id];
+    }
+
+    function maStatus(row) {
+        if (!row.id) return { state: 'none', text: 'Not saved' };
+        const key = row.enabled === false ? 'disabled' : row.status;
+        const [state, word] = MA_STATE[key] || ['unchecked', 'Not connected'];
+        const text = key === 'error' && row.error ? `Error: ${row.error}` : (key === 'connecting' && row.error ? row.error : word);
+        return { state, text };
+    }
+
+    /** The server's copy: "Synced 1,234 messages in 12 folders", or how far a running sync is. */
+    function maSyncText(row) {
+        const y = row && row.sync;
+        const n = (v) => Number(v || 0).toLocaleString();
+        const plural = (v, one, many) => `${n(v)} ${Number(v) === 1 ? one : many}`;
+        if (y && y.running) {
+            const p = y.progress;
+            if (!p || !p.folder) return 'Syncing...';
+            return p.total ? `Syncing: ${p.folder} ${n(p.done)} of ${n(p.total)}` : `Syncing: ${p.folder}`;
+        }
+        if (!y || (!y.messages && !y.folders)) return 'Not synced yet';
+        return `Synced ${plural(y.messages, 'message', 'messages')} in ${plural(y.folders, 'folder', 'folders')}`;
+    }
+
+    async function loadMailAccounts(force) {
+        const m = maApi();
+        if (!m) { maLoadError = 'E-mail accounts are not available.'; maPaint(); return; }
+        const before = maRows.filter((r) => r.id).map((r) => r.id).join('|');
+        try {
+            const d = await m.accounts(force !== false);
+            const drafts = maRows.filter((r) => !r.id);
+            maRows = ((d && d.accounts) || []).concat(drafts);
+            maLoadError = '';
+        } catch (err) {
+            maLoadError = (err && err.message) || 'The e-mail accounts could not be read.';
+        }
+        if (!hostEl || !hostEl.isConnected) return;
+        // the same accounts: rewrite their status lines only (a card being edited keeps its input)
+        const after = maRows.filter((r) => r.id).map((r) => r.id).join('|');
+        if (!maPaintNext && before === after && !maLoadError && hostEl.querySelector('#cplMailAccountsList .cpl-vault-row') && maRows.every((r) => !r.id || (maUi[r.id] && maUi[r.id].live))) maLive();
+        else maPaint();
+    }
+
+    function maLive() {
+        maRows.forEach((row) => {
+            const live = row.id && maUi[row.id] && maUi[row.id].live;
+            if (!live || !live.summary.isConnected) return;
+            const status = maStatus(row);
+            live.summary.textContent = `${status.text} \u00b7 ${maSyncText(row)}`;
+            live.status.textContent = status.text;
+            live.status.className = status.state === 'fail' ? 'cpl-tm-error' : '';
+            live.sync.textContent = maSyncText(row);
+            const glance = makeGlance([{ state: status.state, label: status.text }]);
+            live.glance.replaceWith(glance);
+            live.glance = glance;
+        });
+        csRefresh();
+    }
+
+    function maSelect(options, value) {
+        const sel = document.createElement('select');
+        sel.className = 'cpl-ua-input';
+        options.forEach(([v, text]) => {
+            const o = document.createElement('option');
+            o.value = v;
+            o.textContent = text;
+            sel.appendChild(o);
+        });
+        sel.value = options.some(([v]) => v === value) ? value : options[0][0];
+        return sel;
+    }
+
+    /** A server line: host, port and security side by side. */
+    function maServer(side, placeholder) {
+        const s = side || {};
+        const host = customInput(s.host, placeholder);
+        host.classList.add('cpl-ma-host');
+        const port = customInput(s.port ? String(s.port) : '', 'Port');
+        port.classList.add('cpl-ma-port');
+        port.inputMode = 'numeric';
+        port.title = 'Port';
+        const security = maSelect(MA_SECURITY, s.security || 'tls');
+        security.classList.add('cpl-ma-security');
+        security.title = 'This server requires a secure connection';
+        const box = document.createElement('div');
+        box.className = 'cpl-ma-server';
+        box.append(host, port, security);
+        const fill = (p) => { host.value = p.host || ''; port.value = p.port ? String(p.port) : ''; security.value = p.security || 'tls'; };
+        const read = () => ({ host: host.value.trim(), port: Number(port.value) || undefined, security: security.value });
+        return { box, host, port, security, fill, read };
+    }
+
+    /** What Test account settings learned: the folders and the Inbox, or the error. */
+    function maTestText(ui) {
+        if (ui.testError) return `Could not connect: ${ui.testError}`;
+        if (!ui.test) return 'Not tested yet';
+        const n = (v) => Number(v || 0).toLocaleString();
+        const f = Number(ui.test.folders) || 0;
+        const i = Number(ui.test.inbox) || 0;
+        return `Connected: ${n(f)} ${f === 1 ? 'folder' : 'folders'}, ${n(i)} ${i === 1 ? 'message' : 'messages'} in the Inbox`;
+    }
+
+    function maDetails(row, details, actions) {
+        const ui = maUiOf(row.id || '');
+        const email = customInput(row.email, 'someone@example.com');
+        email.type = 'email';
+        email.autocomplete = 'off';
+        const name = customInput(row.displayName, 'The name people see on your messages');
+        const pass = tmPassword(row.hasPassword ? 'Leave blank to keep the current password' : 'The password or app password');
+        const note = tmText('', 'cpl-tm-hint');
+        const noteField = customField('Note', note);
+        const imap = maServer(row.imap, 'imap.example.com');
+        const imapUser = customInput(row.imap && row.imap.user, 'The e-mail address');
+        const smtp = maServer(row.smtp, 'smtp.example.com');
+        const smtpUser = customInput(row.smtp && row.smtp.user, 'The e-mail address');
+        // checked unless a separate SMTP password is saved (mailAccounts: hasSmtpPassword)
+        const same = customCheck('Use the same password', !(row && row.hasSmtpPassword));
+        const smtpPass = tmPassword(row.id ? 'Leave blank to keep the current SMTP password' : 'The SMTP password');
+        const smtpPassField = customField('SMTP password', smtpPass);
+        smtpPassField.hidden = true;
+        same.input.addEventListener('change', () => { smtpPassField.hidden = same.input.checked; });
+        const st = row.settings || {};
+        const notify = customCheck('Notify me about new mail', st.notify !== false);
+        const saveSent = maSelect(MA_SAVE_SENT, st.saveSent || 'auto');
+        const saveSentLine = document.createElement('label');
+        saveSentLine.className = 'cpl-ma-line';
+        saveSentLine.append(tmText('Save sent mail:'), saveSent);
+        const optBox = document.createElement('div');
+        optBox.className = 'cpl-tm-options';
+        optBox.append(notify.wrap, saveSentLine);
+        const enabled = customCheck('Use this account', row.enabled !== false);
+        const status = maStatus(row);
+        const statusOut = tmText(status.text, status.state === 'fail' ? 'cpl-tm-error' : '');
+        const syncOut = tmText(maSyncText(row));
+        const testOut = tmText(maTestText(ui), ui.testError ? 'cpl-tm-error' : '');
+
+        // a known provider's servers follow the address (until the servers are typed over)
+        let filled = null;
+        const showNote = (p) => { note.textContent = p && p.note ? `${p.name}: ${p.note}` : ''; noteField.hidden = !note.textContent; };
+        const applyPreset = () => {
+            const m = maApi();
+            const p = m && typeof m.presetFor === 'function' ? m.presetFor(email.value.trim()) : null;
+            showNote(p);
+            if (!p) return;
+            const untouched = (srv, key) => !srv.host.value.trim() || (filled && srv.host.value.trim() === filled[key].host);
+            if (untouched(imap, 'imap')) imap.fill(p.imap || {});
+            if (untouched(smtp, 'smtp')) smtp.fill(p.smtp || {});
+            filled = p;
+        };
+        email.addEventListener('input', applyPreset);
+        {
+            const m = maApi();
+            const p = m && typeof m.presetFor === 'function' ? m.presetFor(row.email || '') : null;
+            showNote(p);
+            if (p && row.imap && row.imap.host === (p.imap || {}).host) filled = p;
+        }
+
+        const payload = () => {
+            const body = {
+                id: row.id || undefined,
+                email: email.value.trim(),
+                displayName: name.value.trim(),
+                imap: Object.assign(imap.read(), { user: imapUser.value.trim() || undefined }),
+                smtp: Object.assign(smtp.read(), { user: smtpUser.value.trim() || undefined })
+            };
+            if (pass.value) body.password = pass.value;
+            if (!same.input.checked && smtpPass.value) body.smtpPassword = smtpPass.value;
+            // checked again: the server drops a separate SMTP password it kept
+            if (same.input.checked) body.sameSmtpPassword = true;
+            return body;
+        };
+
+        details.append(
+            customField('E-mail address', email),
+            customField('Your name', name),
+            customField('Password', pass),
+            noteField,
+            customField('Incoming (IMAP)', imap.box),
+            customField('User name', imapUser),
+            customField('Outgoing (SMTP)', smtp.box),
+            customField('User name', smtpUser),
+            customField('Sign-in', same.wrap),
+            smtpPassField,
+            customField('Options', optBox),
+            customField('Enabled', enabled.wrap),
+            customField('Status', statusOut),
+            customField('Copy on this server', syncOut),
+            customField('Test result', testOut)
+        );
+        if (row.id) ui.liveDetails = { status: statusOut, sync: syncOut };
+        actions.append(
+            tmButton('Test account settings', async () => {
+                testOut.textContent = 'Connecting...';
+                testOut.className = '';
+                try {
+                    ui.test = await maApi().testAccount(payload());
+                    ui.testError = '';
+                } catch (err) {
+                    ui.test = null;
+                    ui.testError = (err && err.message) || 'No answer';
+                }
+                testOut.textContent = maTestText(ui);
+                testOut.className = ui.testError ? 'cpl-tm-error' : '';
+            }),
+            tmButton('Save', async () => {
+                const body = Object.assign(payload(), { enabled: enabled.input.checked, settings: { notify: notify.input.checked, saveSent: saveSent.value } });
+                const saved = await maApi().saveAccount(body);
+                maRows = maRows.filter((r) => r.id);
+                if (saved && saved.id) { maUiOf(saved.id).open = true; csSel = `mail:${saved.id}`; }
+                maPaintNext = true;
+                await loadMailAccounts(true);
+            })
+        );
+    }
+
+    function maPaint() {
+        maPaintNext = false;
+        const list = hostEl && hostEl.querySelector('#cplMailAccountsList');
+        if (!list) return;
+        list.textContent = '';
+        if (!maRows.length) {
+            const empty = document.createElement('div');
+            empty.className = 'cpl-vault-empty';
+            empty.textContent = maLoadError || 'No e-mail accounts.';
+            list.appendChild(empty);
+            csRefresh();
+            return;
+        }
+        maRows.forEach((row) => {
+            const ui = maUiOf(row.id || '');
+            const block = document.createElement('div');
+            block.className = 'cpl-vault-row' + (ui.open ? ' is-open' : '');
+            block.dataset.cplVaultKey = `mail:${row.id || ''}`;
+            block.dataset.cplCardPicture = MA_PICTURE;
+            const line = document.createElement('button');
+            line.type = 'button';
+            line.className = 'cpl-vault-line';
+            const name = document.createElement('span');
+            name.className = 'cpl-vault-name';
+            name.textContent = row.email || 'New e-mail account';
+            const sub = document.createElement('span');
+            sub.className = 'cpl-vault-sub';
+            const host = row.imap && row.imap.host;
+            sub.textContent = [row.displayName, host ? `IMAP \u00b7 ${host}` : 'IMAP e-mail'].filter(Boolean).join(' \u00b7 ');
+            name.appendChild(sub);
+            const status = maStatus(row);
+            const summary = document.createElement('span');
+            summary.className = 'cpl-vault-summary';
+            summary.textContent = row.id ? `${status.text} \u00b7 ${maSyncText(row)}` : 'Not saved';
+            const chevron = document.createElement('span');
+            chevron.className = 'cpl-vault-chevron';
+            line.append(name, summary);
+            let glance = null;
+            if (row.id) { glance = makeGlance([{ state: status.state, label: status.text }]); line.append(glance); }
+            line.append(chevron);
+            line.addEventListener('click', () => { ui.open = !ui.open; maPaint(); });
+            const details = document.createElement('div');
+            details.className = 'cpl-vault-details';
+            const actions = document.createElement('div');
+            actions.className = 'cpl-vault-actions';
+            maDetails(row, details, actions);
+            if (row.id) {
+                ui.live = { summary, glance, status: ui.liveDetails.status, sync: ui.liveDetails.sync };
+                actions.append(tmButton('Delete', async () => {
+                    const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog(`<p>Delete the e-mail account ${esc(row.email || row.id)}? The server's copy of its mail is removed; the mail stays on the mail server.</p>`,
+                        [{ text: 'Delete', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
+                    if (ok !== true) return;
+                    await maApi().deleteAccount(row.id);
+                    delete maUi[row.id];
+                    await loadMailAccounts(true);
+                }));
+            }
+            details.appendChild(actions);
+            block.append(line, details);
+            list.appendChild(block);
+        });
+        csRefresh();
+    }
+
+    function maAdd() {
+        if (!maRows.some((r) => !r.id)) maRows.push({ id: '', email: '', displayName: '', enabled: true, hasPassword: false, settings: { notify: true, saveSent: 'auto' } });
+        maUiOf('').open = true;
+        maPaint();
+    }
+
+    function mountMailAccounts() {
+        if (!hostEl || hostEl.querySelector('#cplVault-mail-accounts')) return;
+        const head = document.createElement('div');
+        head.className = 'cpl-vault-head';
+        head.id = 'cplVault-mail-accounts';
+        head.innerHTML = '<img src="/static_images/vista-cmdbar/mail.png" alt=""><span class="cpl-vault-title">E-mail Accounts</span><span class="cpl-vault-links"></span>';
+        const add = document.createElement('button');
+        add.type = 'button';
+        add.className = 'cpl-vault-link';
+        add.id = 'cplMaAdd';
+        add.textContent = 'Add an e-mail account';
+        add.addEventListener('click', maAdd);
+        head.querySelector('.cpl-vault-links').appendChild(add);
+        const list = document.createElement('div');
+        list.className = 'cpl-vault-list';
+        list.id = 'cplMailAccountsList';
+        hostEl.append(head, list);
+        maPaint();
+        const m = maApi();
+        if (m && typeof m.on === 'function' && !maOff) {
+            let timer = 0;
+            const onChange = () => { clearTimeout(timer); timer = setTimeout(() => void loadMailAccounts(true), 400); };
+            ['account', 'sync', 'folders', 'progress'].forEach((e) => m.on(e, onChange));
+            maOff = () => { clearTimeout(timer); if (typeof m.off === 'function') ['account', 'sync', 'folders', 'progress'].forEach((e) => m.off(e, onChange)); };
+        }
+        void loadMailAccounts(true);
+    }
+
+    function unmountMailAccounts() {
+        if (maOff) { maOff(); maOff = null; }
+        maRows = [];
+        Object.keys(maUi).forEach((k) => { delete maUi[k]; });
+    }
+
     // ---- the window: Vista's Windows CardSpace (icardagt.exe, icardres.dll; measured on the VM) ----
     //
     // Windows CardSpace is a window of its own (Control Panel only starts it). Its three views:
@@ -1191,7 +1533,8 @@
     const CARD_KINDS = {
         service: ['Service keys', 'Service Key'],
         application: ['Application keys', 'Application Key'],
-        'text-messaging': ['Text Messaging accounts', 'Text Messaging Account']
+        'text-messaging': ['Text Messaging accounts', 'Text Messaging Account'],
+        mail: ['E-mail accounts', 'E-mail Account']
     };
     // the driver's forms and the request log: shown in the window's form view while open
     const CS_FORMS = ['secCursorAccountPanel', 'secKeychainEditPanel', 'secKeychainAddPanel', 'secAppkeysCreatePanel', 'secAppkeysEditPanel', 'secAppkeysLogPage'];
@@ -1218,6 +1561,7 @@
         if (!list) return 'service';
         if (list.id === 'cplCustomProviderList' || list.id === 'cplCardExtraList') return 'service';
         if (list.id === 'cplTextMessagingList') return 'text-messaging';
+        if (list.id === 'cplMailAccountsList') return 'mail';
         const body = list.dataset.cplVaultFor || '';
         if (/Cursor/.test(body)) return 'cursor-profile';
         if (/Keychain/.test(body)) return 'service';
@@ -1461,6 +1805,11 @@
             tmRows = tmRows.filter((row) => row.id);
             if (csSel === 'sms:') csSel = null;
             paintTextMessaging();
+        }
+        if (maRows.some((row) => !row.id)) {
+            maRows = maRows.filter((row) => row.id);
+            if (csSel === 'mail:') csSel = null;
+            maPaint();
         }
         if (!customProviderRows.some((row) => !row.id)) return false;
         customProviderRows = customProviderRows.filter((row) => row.id);
@@ -1794,7 +2143,8 @@
         ['custom-provider', 'Add a custom model provider', 'Another model host for the Director: its address, its key and the model it uses by default.'],
         ['secAppkeysCreateBtn', 'Create an application key', 'Application keys let programs reach Dreamscape on your behalf. Each key has its own name and can be revoked at any time.'],
         ['tm-bluebubbles', 'Add a BlueBubbles server', 'A BlueBubbles server on a Mac brings your iMessage conversations to Melaton Messenger and the phone. Type its address and password.'],
-        ['tm-rcs', 'Add an RCS account (Google Messages)', 'Pair Google Messages on your Android phone by scanning a QR code, and its RCS and SMS conversations join Melaton Messenger.']
+        ['tm-rcs', 'Add an RCS account (Google Messages)', 'Pair Google Messages on your Android phone by scanning a QR code, and its RCS and SMS conversations join Melaton Messenger.'],
+        ['ma-add', 'Add an e-mail account', 'An IMAP e-mail account (Gmail, iCloud Mail, Outlook.com, Yahoo Mail or your own provider). The server keeps a copy of its mail and sends with it, for the phone and Dovecote Express.']
     ];
 
     function csRenderAdd() {
@@ -1820,6 +2170,14 @@
             tmAddBlueBubbles();
             setTimeout(() => {
                 const fresh = csRow('sms:');
+                if (fresh) { csSel = fresh.dataset.cplVaultKey; csGo('details'); } else csGo('home');
+            }, 0);
+            return;
+        }
+        if (id === 'ma-add') {
+            maAdd();
+            setTimeout(() => {
+                const fresh = csRow('mail:');
                 if (fresh) { csSel = fresh.dataset.cplVaultKey; csGo('details'); } else csGo('home');
             }, 0);
             return;
@@ -2018,6 +2376,7 @@
         mountCursorCard();
         mountCustomProviders();
         mountTextMessaging();
+        mountMailAccounts();
     }
 
     function unmount() {
@@ -2029,6 +2388,7 @@
         driver = null;
         customProviderRows = [];
         unmountTextMessaging();
+        unmountMailAccounts();
         if (hostEl) hostEl.innerHTML = '';
         hostEl = null;
     }
