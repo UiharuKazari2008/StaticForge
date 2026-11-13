@@ -412,7 +412,7 @@
             const title = s.chat_name || s.character_name || 'Unnamed Chat';
             const rk = rank(q, title, [s.character_name]);
             if (rk < 0) continue;
-            out.push({ kind: 'Messenger', title, img: artImg('app-chat'), rank: rk, date: toDate(s.updated_at || s.created_at), open: () => window.wmChatApp.openChat(s.id) });
+            out.push({ kind: 'Messenger', title, img: artImg(document.documentElement.dataset.wmVersion === '6.5' ? 'app-messenger' : 'app-chat'), rank: rk, date: toDate(s.updated_at || s.created_at), open: () => window.wmChatApp.openChat(s.id) });
         }
         return out.sort(byRank);
     }

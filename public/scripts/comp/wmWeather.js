@@ -436,7 +436,8 @@
 
     /** The phone's own position (Android app): { lat, lon } or null. */
     function devicePosition() {
-        if (!inApp() || deviceDenied || !navigator.geolocation) return Promise.resolve(null);
+        // Settings > System > External GPS can keep programs off the phone's GPS (#805)
+        if (!inApp() || deviceDenied || !navigator.geolocation || (window.wmGps && !window.wmGps.allowed())) return Promise.resolve(null);
         return new Promise((resolve) => {
             navigator.geolocation.getCurrentPosition(
                 (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),

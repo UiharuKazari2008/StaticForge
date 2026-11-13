@@ -222,7 +222,8 @@
                 else geoBusy = false;
             }).catch(() => { geoBusy = false; });
         };
-        if (!inApp() || geoDenied || !navigator.geolocation) { byIp(); return; }
+        // Settings > System > External GPS can keep programs off the phone's GPS (#805)
+        if (!inApp() || geoDenied || !navigator.geolocation || (window.wmGps && !window.wmGps.allowed())) { byIp(); return; }
         navigator.geolocation.getCurrentPosition((pos) => {
             found({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracyKm: Math.min(5, (pos.coords.accuracy || 0) / 1000), source: 'device' });
         }, (err) => {

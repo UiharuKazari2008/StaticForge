@@ -1,5 +1,6 @@
 /**
- * Melaton Mobile Settings: System pages (Clock & Alarms, Regional Settings, Power, Backlight, Melaton Update, Remove Programs, About) (Yozora #709).
+ * Melaton Mobile Settings: System pages (Clock & Alarms, Regional Settings, Power, Backlight, Melaton Update, Remove Programs, About;
+ * in 6.5 also Contrast, Encryption, Certificates, External GPS and Managed Programs, #805) (Yozora #709).
  * Pages for the Settings app (wmPrograms.js), added through window.wmSettings.registerPage /
  * extendPage and drawn with window.wmSettings.ui so they look like WM 6.1's own pages. Every
  * value is read and saved through the desktop's own store (one source of truth).
@@ -1934,5 +1935,390 @@
         after: 'device',
         init: aboutInit,
         render: aboutRender
+    });
+
+    // ================================================================ WM 6.5 System applets (#805)
+    // Contrast, Encryption, Certificates, External GPS and Managed Programs: the 6.5 device's System
+    // folder (HKLM\Security\Shell\StartInfo\Start\Settings\System: cplmain.cpl 0, 27, 22, 25 and
+    // historyui.cpl 0), laid out as the emulator shows them. Listed in 6.5 only (their Start icons
+    // are 6.5 art: wmStart65.js SETTINGS_ART65).
+
+    const is65 = () => document.documentElement.dataset.wmVersion === '6.5';
+    const lsSet = (k, v) => { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, String(v)); } catch (_) { /* storage off */ } };
+
+    // WM's short date: M/d/yy inside 1930..2029, the full year outside it (Manage Certificates)
+    function shortDate(iso) {
+        const t = new Date(iso);
+        if (!Number.isFinite(t.getTime())) return '';
+        const y = t.getFullYear();
+        return t.toLocaleDateString(undefined, { year: y >= 1930 && y < 2030 ? '2-digit' : 'numeric', month: 'numeric', day: 'numeric' });
+    }
+
+    /** WM's report list view (SysListView32, LVS_REPORT): a header band and rows of columns. */
+    function listView(cols, rows, sel) {
+        const tpl = cols.map((c) => c.width || '1fr').join(' ');
+        return `<div class="wm-sys-lv" style="--lv-cols:${esc(tpl)}">
+            <div class="wm-sys-lv-head">${cols.map((c) => `<span>${esc(c.label)}</span>`).join('')}</div>
+            <div class="wm-sys-lv-body">${rows.map((r) => `<button type="button" class="wm-sys-lv-row${r.key === sel ? ' is-selected' : ''}" data-key="${esc(r.key)}">${r.cells.map((c) => `<span>${esc(c)}</span>`).join('')}</button>`).join('')}</div>
+        </div>`;
+    }
+
+    // ---------------------------------------------------------------- Contrast (cplmain.cpl,0)
+    // A trackbar of 16 steps (0..15, device: Light at 0 = its default) over the colour sample; the
+    // whole screen takes the contrast (html filter: the root element's filter makes no containing
+    // block, so fixed layers stay put). 0 is the screen as drawn: no filter, no cost.
+    const CONTRAST_KEY = 'wmContrast';
+    const CONTRAST_STEPS = Array.from({ length: 16 }, (_, i) => i);
+    const contrastStored = () => { const n = parseInt(lsGet(CONTRAST_KEY), 10); return Number.isFinite(n) && n >= 0 && n <= 15 ? n : 0; };
+    const contrastRatio = (v) => 1 + v * 0.03;
+    function applyContrast(v = contrastStored()) {
+        const r = document.documentElement;
+        if (v > 0) { r.style.setProperty('--wm-contrast', contrastRatio(v).toFixed(2)); r.dataset.wmContrast = String(v); }
+        else { r.style.removeProperty('--wm-contrast'); delete r.dataset.wmContrast; }
+    }
+    applyContrast();
+
+    wmSettings.registerPage({
+        id: 'contrast', tab: 'system', label: 'Contrast', icon: 'set-contrast',
+        available: is65,
+        init: () => ({ v: contrastStored() }),
+        render(el, tab, d) {
+            el.classList.add('wm-sys-contrast');
+            el.innerHTML = `${ui.text('To adjust the contrast, drag the slider.')}
+                <div class="wm-sys-contrast-sample" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+                <div class="wm-sys-contrast-bar"></div>
+                <div class="wm-sys-footlink">Customize <a href="#" data-act="backlight">backlight</a> settings.</div>`;
+            const sample = el.querySelector('.wm-sys-contrast-sample');
+            // the sample shows the step picked; the screen around it keeps the saved one until ok
+            const preview = () => { const k = contrastRatio(d.v) / contrastRatio(contrastStored()); sample.style.filter = Math.abs(k - 1) < 0.001 ? '' : `contrast(${k.toFixed(3)})`; };
+            ui.trackbar(el.querySelector('.wm-sys-contrast-bar'), { steps: CONTRAST_STEPS, value: d.v, lo: 'Light', hi: 'Dark', label: 'Contrast', onChange: (v) => { d.v = v; preview(); } });
+            preview();
+            el.querySelector('[data-act="backlight"]').addEventListener('click', (e) => {
+                e.preventDefault();
+                lsSet(CONTRAST_KEY, d.v || null);
+                applyContrast(d.v);
+                wmSettings.open('backlight');
+            });
+        },
+        commit(d) {
+            lsSet(CONTRAST_KEY, d.v || null);
+            applyContrast(d.v);
+            return [CONTRAST_KEY];
+        }
+    });
+
+    // ---------------------------------------------------------------- Encryption (cplmain.cpl,27)
+    // The device's one choice. Melaton's storage cards are the phone's own storage (D: / E:, #798):
+    // the choice is kept for the programs that place files there (window.wmEncryption.cardFiles()).
+    const ENCRYPT_KEY = 'wmEncryptCard';
+    window.wmEncryption = { cardFiles: () => lsGet(ENCRYPT_KEY) === '1' };
+
+    wmSettings.registerPage({
+        id: 'encryption', tab: 'system', label: 'Encryption', icon: 'set-encryption',
+        available: is65,
+        init: () => ({ on: lsGet(ENCRYPT_KEY) === '1' }),
+        render(el, tab, d) {
+            el.classList.add('wm-sys-encrypt');
+            el.innerHTML = `${ui.check('enc', 'Encrypt files when placed on a storage card.', d.on)}
+                ${ui.text('Encrypted files can be read only by this device. WARNING: Encrypted files cannot be recovered after hard reset or clearing storage. To help prevent data loss, back up data from storage cards to another location.')}`;
+            el.querySelector('input[name="enc"]').addEventListener('change', (e) => { d.on = e.target.checked; });
+        },
+        commit(d) {
+            lsSet(ENCRYPT_KEY, d.on ? '1' : null);
+            return [ENCRYPT_KEY];
+        }
+    });
+
+    // ---------------------------------------------------------------- Certificates (cplmain.cpl,22)
+    // Manage Certificates: Personal | Intermediate | Root, each an "Issued By | Expires" list; a tap
+    // shows the certificate. The lists are what this server really holds (modules/wmCertificates.js):
+    // its CA store as Root, the chain the phone's host serves as Intermediate; no personal ones.
+    const CERT_TEXT = {
+        personal: 'Use personal certificates to positively identify yourself to others.',
+        intermediate: 'Use intermediate certificates to positively identify intermediate certification authorities.',
+        root: 'Use root certificates to positively identify root certification authorities.'
+    };
+    let certCache = null; // { at, data }
+
+    function certInit() {
+        const d = { data: certCache && Date.now() - certCache.at < 10 * 60 * 1000 ? certCache.data : null, sel: null, view: null };
+        if (!d.data) {
+            const p = fetch('/api/wm-certificates', { credentials: 'same-origin', cache: 'no-store' })
+                .then((r) => (r.ok ? r.json() : null))
+                .then((j) => {
+                    d.data = j && j.success ? j : { personal: [], intermediate: [], root: [], failed: true };
+                    if (j && j.success) certCache = { at: Date.now(), data: j };
+                    if (d.rerender) d.rerender();
+                })
+                .catch(() => { d.data = { personal: [], intermediate: [], root: [], failed: true }; if (d.rerender) d.rerender(); });
+            const s = sh();
+            if (s && typeof s.busy === 'function') s.busy(p).catch(() => {});
+        }
+        return d;
+    }
+
+    function certRender(el, tab, d, api) {
+        d.rerender = api.rerender;
+        d.tab = tab;
+        const list = (d.data && d.data[tab]) || [];
+        if (d.view && d.view.tab === tab && list[d.view.i]) {
+            const c = list[d.view.i];
+            el.innerHTML = `${ui.sub(c.subject || 'Certificate')}
+                <div class="wm-sys-facts">${ui.facts([
+                    ['Issued to:', c.subject || ''],
+                    ['Issued by:', c.issuer || ''],
+                    ['Valid from:', shortDate(c.validFrom)],
+                    ['Valid to:', shortDate(c.validTo)],
+                    ['Serial number:', c.serial || ''],
+                    ['Thumbprint:', (c.fingerprint || '').replace(/:/g, '').toLowerCase()]
+                ])}</div>`;
+            return;
+        }
+        d.view = null;
+        const rows = list.map((c, i) => ({ key: String(i), cells: [c.subject || c.issuer || '', shortDate(c.validTo)] }));
+        el.classList.add('wm-sys-certs');
+        el.innerHTML = `${ui.text(CERT_TEXT[tab] || '')}${listView([{ label: 'Issued By', width: '62%' }, { label: 'Expires', width: '1fr' }], rows, d.sel)}`;
+        el.querySelectorAll('.wm-sys-lv-row').forEach((row) => row.addEventListener('click', () => {
+            d.sel = row.dataset.key;
+            d.view = { tab, i: Number(row.dataset.key) };
+            api.rerender();
+        }));
+    }
+
+    wmSettings.registerPage({
+        id: 'certificates', tab: 'system', label: 'Certificates', icon: 'set-certificates',
+        tabs: [['personal', 'Personal'], ['intermediate', 'Intermediate'], ['root', 'Root']],
+        available: is65,
+        init: certInit,
+        render(el, tab, d, api) {
+            // the device's heading on the page is "Manage Certificates"
+            const hdr = el.closest('.wm-set') && el.closest('.wm-set').querySelector('.wm-form-hdr');
+            if (hdr) hdr.textContent = 'Manage Certificates';
+            certRender(el, tab, d, api);
+        },
+        // a certificate shown: ok goes back to its list
+        commit(d) {
+            if (d.view) { d.view = null; if (d.rerender) d.rerender(); return false; }
+            return [];
+        }
+    });
+
+    // ---------------------------------------------------------------- External GPS (cplmain.cpl,25)
+    // GPS Settings: Programs (the port programs read), Hardware (the GPS device's port and baud
+    // rate), Access (Manage GPS automatically). Melaton's GPS is the phone's own location
+    // (navigator.geolocation in the app): Weather and Traffic ask for it only while
+    // window.wmGps.allowed() (a program port, a hardware port and automatic management all set);
+    // otherwise they place the phone by its IP, as on a device without GPS. The Hardware tab shows
+    // the position the phone reports while it is open.
+    const GPS_KEY = 'wmGps';
+    const GPS_PORTS = [['phone', 'Phone GPS'], ['none', '(None)']];
+    const GPS_BAUD = ['4800', '9600', '19200', '38400', '57600', '115200'];
+    function gpsStored() {
+        let v = null;
+        try { v = JSON.parse(lsGet(GPS_KEY) || 'null'); } catch (_) { v = null; }
+        v = v && typeof v === 'object' ? v : {};
+        return {
+            program: v.program === 'none' ? 'none' : 'phone',
+            hardware: v.hardware === 'none' ? 'none' : 'phone',
+            baud: GPS_BAUD.includes(String(v.baud)) ? String(v.baud) : '4800',
+            manage: v.manage !== false
+        };
+    }
+    window.wmGps = {
+        allowed() { const g = gpsStored(); return g.program !== 'none' && g.hardware !== 'none' && g.manage; },
+        settings: gpsStored
+    };
+
+    function gpsWatch(d, el) {
+        if (d.watchId != null || !navigator.geolocation) return;
+        d.fix = d.fix || { state: 'wait' };
+        try {
+            d.watchId = navigator.geolocation.watchPosition((pos) => {
+                if (!el.isConnected) { gpsStop(d); return; }
+                d.fix = { state: 'ok', lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy, alt: pos.coords.altitude, at: pos.timestamp };
+                gpsFacts(d, el);
+            }, (err) => {
+                if (!el.isConnected) { gpsStop(d); return; }
+                d.fix = { state: err && err.code === 1 ? 'denied' : 'none' };
+                gpsFacts(d, el);
+            }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 30000 });
+        } catch (_) { d.fix = { state: 'none' }; }
+    }
+
+    function gpsStop(d) {
+        if (d.watchId != null && navigator.geolocation) { try { navigator.geolocation.clearWatch(d.watchId); } catch (_) { /* gone */ } }
+        d.watchId = null;
+    }
+
+    function gpsFacts(d, el) {
+        const box = el.querySelector('.wm-sys-gps-fix');
+        if (!box) return;
+        const f = d.fix || {};
+        const deg = (v, pos, neg) => `${Math.abs(v).toFixed(5)}° ${v >= 0 ? pos : neg}`;
+        const status = d.hardware === 'none' ? 'No GPS hardware port is selected.'
+            : !navigator.geolocation ? 'This phone has no GPS.'
+            : f.state === 'ok' ? 'Position fixed'
+            : f.state === 'denied' ? 'The phone did not allow its location.'
+            : f.state === 'none' ? 'No position'
+            : 'Searching...';
+        box.innerHTML = ui.facts([
+            ['Status:', status],
+            ['Latitude:', f.state === 'ok' ? deg(f.lat, 'N', 'S') : ''],
+            ['Longitude:', f.state === 'ok' ? deg(f.lon, 'E', 'W') : ''],
+            ['Accuracy:', f.state === 'ok' && Number.isFinite(f.acc) ? `${Math.round(f.acc)} m` : ''],
+            ['Updated:', f.state === 'ok' ? new Date(f.at).toLocaleTimeString() : '']
+        ]);
+    }
+
+    wmSettings.registerPage({
+        id: 'gps', tab: 'system', label: 'External GPS', icon: 'set-gps',
+        tabs: [['programs', 'Programs'], ['hardware', 'Hardware'], ['access', 'Access']],
+        available: is65,
+        init: () => ({ ...gpsStored(), watchId: null, fix: null }),
+        render(el, tab, d) {
+            const hdr = el.closest('.wm-set') && el.closest('.wm-set').querySelector('.wm-form-hdr');
+            if (hdr) hdr.textContent = 'GPS Settings';
+            const label = (opts, v) => (opts.find(([k]) => k === v) || opts[opts.length - 1])[1];
+            if (tab === 'programs') {
+                gpsStop(d);
+                el.innerHTML = `${ui.text('Choose the port that programs will use to obtain GPS data. Any program that uses GPS will need to communicate with this port.')}
+                    <div class="wm-sys-gps-label">GPS program port:</div>${ui.comboHtml('program', label(GPS_PORTS, d.program))}`;
+                ui.bindCombo(el.querySelector('[data-act="program"]'), GPS_PORTS, d.program, (v) => { d.program = v; });
+                return;
+            }
+            if (tab === 'access') {
+                gpsStop(d);
+                el.innerHTML = `${ui.text('Melaton Mobile manages access to your GPS device and allows multiple programs to obtain GPS data simultaneously. If you clear this check box, some programs may not be able to obtain GPS data.')}
+                    ${ui.check('manage', 'Manage GPS automatically (recommended)', d.manage)}`;
+                el.querySelector('input[name="manage"]').addEventListener('change', (e) => { d.manage = e.target.checked; });
+                return;
+            }
+            el.innerHTML = `${ui.text('Specify the hardware port to which your GPS device is connected. For more information, see the GPS device manufacturer’s documentation.')}
+                <div class="wm-sys-gps-label">GPS hardware port:</div>${ui.comboHtml('hardware', label(GPS_PORTS, d.hardware))}
+                <div class="wm-sys-gps-baud"><span>Baud rate:</span>${ui.comboHtml('baud', d.baud)}</div>
+                <div class="wm-sys-facts wm-sys-gps-fix"></div>`;
+            ui.bindCombo(el.querySelector('[data-act="hardware"]'), GPS_PORTS, d.hardware, (v) => {
+                d.hardware = v;
+                if (v === 'none') gpsStop(d); else gpsWatch(d, el);
+                gpsFacts(d, el);
+            });
+            ui.bindCombo(el.querySelector('[data-act="baud"]'), GPS_BAUD.map((b) => [b, b]), d.baud, (v) => { d.baud = v; }, 'right');
+            if (d.hardware !== 'none') gpsWatch(d, el);
+            gpsFacts(d, el);
+        },
+        commit(d) {
+            gpsStop(d);
+            lsSet(GPS_KEY, JSON.stringify({ program: d.program, hardware: d.hardware, baud: d.baud, manage: d.manage }));
+            return [GPS_KEY];
+        }
+    });
+
+    // ---------------------------------------------------------------- Managed Programs (historyui.cpl,0)
+    // The device's Installation History (title "Managed Programs", soft keys Done | Details) lists the
+    // programs installed on it; here, the phone's Android programs (window.AndroidApps through
+    // wmAndroidApps.js, whose list is cached until the app says programs changed). Details shows one
+    // program; its Menu opens, ends or removes it, or shows Android's App info.
+    const androidBridge = () => window.AndroidApps || null;
+    const canBridge = (fn) => { const b = androidBridge(); return !!(b && typeof b[fn] === 'function'); };
+
+    function managedList() {
+        let list = [];
+        try {
+            if (window.wmAndroidApps && typeof window.wmAndroidApps.list === 'function') list = window.wmAndroidApps.list();
+            if (!list.length && canBridge('list')) list = JSON.parse(androidBridge().list()) || [];
+        } catch (_) { list = []; }
+        const seen = new Set();
+        return list.filter((a) => a && typeof a.id === 'string' && a.label && !seen.has(a.id) && seen.add(a.id))
+            .sort((a, b) => String(a.label).localeCompare(String(b.label)));
+    }
+
+    const managedStatus = (a) => (a.paused ? 'Paused' : a.system ? (a.removable ? 'Updated' : 'Built-in') : 'Installed');
+    function managedUpdated(a) {
+        const m = String(a.icon || '').match(/[?&]v=(\d{10,})/);
+        return m ? new Date(Number(m[1])) : null;
+    }
+
+    function managedCall(fn, a, fail) {
+        let ok = false;
+        try { ok = androidBridge()[fn](a.id) === true; } catch (_) { ok = false; }
+        if (!ok && fail) void ui.messageBox({ title: 'Managed Programs', icon: 'warning', text: fail, buttons: [{ text: 'ok', value: true }] });
+        return ok;
+    }
+
+    let managedShown = null; // the draft on screen, redrawn when the phone's programs change
+    window.addEventListener('androidapps', () => {
+        if (!managedShown || !managedShown.rerender) return;
+        setTimeout(() => { if (managedShown && managedShown.rerender) managedShown.rerender(); }, 900);
+    });
+
+    wmSettings.registerPage({
+        id: 'managed', tab: 'system', label: 'Managed Programs', title: 'Managed Programs', icon: 'set-managed',
+        available: is65,
+        init: () => ({ sel: null, details: false }),
+        softKeys(d) {
+            const a = d.details ? managedList().find((x) => x.id === d.sel) : null;
+            if (a) {
+                return {
+                    left: { label: 'Done', action: () => { d.details = false; if (d.rerender) d.rerender(); } },
+                    right: {
+                        label: 'Menu',
+                        menu: () => [
+                            { label: 'Open', disabled: !canBridge('launch'), action: () => managedCall('launch', a, `${a.label} could not be started.`) },
+                            { label: 'Program Info', disabled: !canBridge('info'), action: () => managedCall('info', a, `There is no information for ${a.label}. It may have been removed from the device.`) },
+                            { label: 'End Task', disabled: !canBridge('forceStop') || a.profile === 'work', action: () => managedCall('forceStop', a, `${a.label} could not be ended.`) },
+                            '-',
+                            { label: 'Remove', disabled: !canBridge('uninstall') || a.removable === false, action: () => managedCall('uninstall', a, `${a.label} could not be removed.`) }
+                        ]
+                    }
+                };
+            }
+            return {
+                left: { label: 'Done', action: () => window.history.back() },
+                right: { label: 'Details', disabled: !d.sel, action: () => { if (!d.sel) return; d.details = true; if (d.rerender) d.rerender(); } }
+            };
+        },
+        render(el, tab, d, api) {
+            d.rerender = api.rerender;
+            managedShown = d;
+            el.classList.add('wm-sys-managed');
+            const hdr = el.closest('.wm-set') && el.closest('.wm-set').querySelector('.wm-form-hdr');
+            if (hdr) hdr.textContent = 'Installation History';
+            const list = managedList();
+            if (d.sel && !list.some((a) => a.id === d.sel)) { d.sel = null; d.details = false; }
+            const a = d.details ? list.find((x) => x.id === d.sel) : null;
+            if (a) {
+                const up = managedUpdated(a);
+                el.innerHTML = `${ui.sub(a.label)}
+                    <div class="wm-sys-facts">${ui.facts([
+                        ['Name:', a.label],
+                        ['Package:', a.package || a.id.split('/')[0]],
+                        ['Status:', managedStatus(a)],
+                        ['Type:', a.game ? 'Game' : (a.category ? a.category.replace(/^./, (c) => c.toUpperCase()) : 'Program')],
+                        ['Profile:', a.profile === 'work' ? 'Work' : 'Personal'],
+                        ['Installed:', up ? up.toLocaleDateString() : 'Unknown']
+                    ])}</div>`;
+                return;
+            }
+            d.details = false;
+            if (!list.length) {
+                el.innerHTML = `<p class="wm-sys-managed-none">No Managed Programs have been installed.</p>`;
+                return;
+            }
+            el.innerHTML = listView([{ label: 'Program', width: '68%' }, { label: 'Status', width: '1fr' }], list.map((x) => ({ key: x.id, cells: [x.label, managedStatus(x)] })), d.sel);
+            el.querySelectorAll('.wm-sys-lv-row').forEach((row) => row.addEventListener('click', () => {
+                const again = d.sel === row.dataset.key;
+                d.sel = row.dataset.key;
+                el.querySelectorAll('.wm-sys-lv-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+                row.classList.add('is-selected');
+                // a second tap on the selected program shows it, as Details does
+                if (again) d.details = true;
+                api.rerender();
+            }));
+        },
+        commit(d) {
+            if (d.details) { d.details = false; if (d.rerender) d.rerender(); return false; }
+            managedShown = null;
+            return [];
+        }
     });
 })();

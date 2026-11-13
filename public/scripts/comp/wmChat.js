@@ -1535,7 +1535,10 @@
         sh.registerApp({
             id: APP_ID,
             title: 'Chat',
-            icon: 'app-chat',
+            // 6.5: the Windows Live Messenger icon, as the device's Messenger (Start_Icon_Messenger on
+            // Start, WLMMessenger.exe's own icon elsewhere) (#805)
+            icon: sh.version === '6.5' ? 'app-messenger' : 'app-chat',
+            art65: 'messenger',
             inStart: 'programs',
             sip: true,
             mount,

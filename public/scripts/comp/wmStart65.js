@@ -181,17 +181,21 @@
     // from wmPrograms.js when it exports them (wmSettings.gridItems() -> [{ key, tab, label, icon,
     // app?, open? }]); until then the Settings item opens the Settings program as it is.
     // the phone's own Android Settings sits in Settings itself, not in System (Yukimi, Nov 12, #777)
-    const SETTINGS_TOP = new Set(['clock', 'lock', 'power', 'sounds', 'today', 'link-android']);
-    // the ROM's Start icon of the same applet; applets WM does not have keep their own art, and so
-    // do Buttons and About (Start_Icon_Buttons / _About show the Windows flag)
+    // Bluetooth is the folder's first item, as on the device (Yukimi, Nov 13 2026, #805)
+    const SETTINGS_TOP = new Set(['bluetooth', 'clock', 'lock', 'power', 'sounds', 'today', 'link-android']);
+    // the ROM's Start icon of the same applet (HKLM\Security\Shell\StartInfo\Start\Settings\...
+    // Icon); applets WM does not have keep their own art. About, Buttons and System carry the
+    // Melaton flower where the ROM art has the Windows flag; Melaton Update is the device's Windows
+    // Update icon (autoupdatecpl.cpl icon 101, no Start icon of its own) with the flower (#805)
     const SETTINGS_ART65 = {
-        backlight: 'backlight', clock: 'clock', connections: 'connections', input: 'input', lock: 'lock',
+        about: 'about', backlight: 'backlight', bluetooth: 'bluetooth', buttons: 'buttons', certificates: 'certificates', clock: 'clock',
+        connections: 'connections', contrast: 'contrast', encryption: 'encryption', gps: 'gps', input: 'input', lock: 'lock', managed: 'managed',
         memory: 'memory', owner: 'owner', power: 'power', regional: 'regional', 'remove-programs': 'removeprog', screen: 'screen',
         sounds: 'sounds', today: 'todayset', remote: 'pccon', wireless: 'wirelessmgr', domain: 'denroll', 'network-cards': 'wifi',
-        'error-reporting': 'watson', 'link-taskmgr': 'taskmgr'
+        'error-reporting': 'watson', 'link-taskmgr': 'taskmgr', update: 'update'
     };
-    // Start_Icon_SettingsS carries the Windows flag: the System folder shows the plain Settings gear
-    const SETTINGS_FOLDERS = [['connections', 'Connections', 'settingsc'], ['personal', 'Personal', 'settingsp'], ['system', 'System', 'settings']];
+    // Start_Icon_SettingsS: the folder with the OS logo (the Melaton flower in place of the flag)
+    const SETTINGS_FOLDERS = [['connections', 'Connections', 'settingsc'], ['personal', 'Personal', 'settingsp'], ['system', 'System', 'settingss']];
 
     function settingsGrid() {
         try {

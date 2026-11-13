@@ -2277,6 +2277,8 @@ require('./modules/textMessagingHttp').mount(app, authMiddleware, globalResource
 require('./modules/mailAccountsHttp').mount(app, authMiddleware, globalResources);
 // modules/wmProgramIcons.js — Melaton Mobile Program Icons: WM icons for Android programs, one shared store (Yozora #773)
 require('./modules/wmProgramIcons').mount(app, authMiddleware, globalResources);
+// modules/wmCertificates.js — Melaton Mobile Settings > Certificates: the CA store and the host's chain (Yozora #805)
+require('./modules/wmCertificates').mount(app, authMiddleware);
 
 app.use('/images/:filename', authMiddleware, async (req, res) => {
     const filename = req.params.filename;

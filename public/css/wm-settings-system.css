@@ -395,3 +395,131 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sys-clock .wm-check span {
     line-height: 1.2;
     padding-block: calc(3 * var(--wm-px));
 }
+
+/* ---- WM 6.5 System applets (#805), measured on the 6.5 emulator (VGA px / 2 = units) ---- */
+
+/* Contrast: the whole screen; the root element's filter makes no containing block */
+html.ui-mobile[data-wm-contrast] { filter: contrast(var(--wm-contrast, 1)); }
+
+/* the report list view (Manage Certificates, Managed Programs): 1 unit black frame, a 17 unit
+ * header band #CECFEF with #080431 text over a black rule, rows 25 units, Tahoma 11 */
+.wm-sys-lv {
+    display: flex;
+    flex-direction: column;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    min-height: calc(120 * var(--wm-px));
+    max-height: calc(181 * var(--wm-px));
+}
+.wm-sys-lv-head,
+.wm-sys-lv-row {
+    display: grid;
+    grid-template-columns: var(--lv-cols, 1fr 1fr);
+}
+.wm-sys-lv-head {
+    flex: 0 0 auto;
+    height: calc(18 * var(--wm-px));
+    background: #cecfef;
+    color: #080431;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+}
+.wm-sys-lv-head span {
+    display: flex;
+    align-items: center;
+    padding: 0 calc(6 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+}
+.wm-sys-lv-head span + span { border-left: calc(1 * var(--wm-px)) solid #000; }
+.wm-sys-lv-body { flex: 1 1 auto; overflow-y: auto; }
+.wm-sys-lv-row {
+    width: 100%;
+    height: calc(25 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    align-items: center;
+}
+.wm-sys-lv-row span {
+    padding: 0 calc(3 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.wm-sys-lv-row span + span { padding-left: calc(6 * var(--wm-px)); }
+.wm-sys-lv-row.is-selected { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+html.ui-mobile[data-wm-version="6.5"] .wm-sys-lv-row.is-selected { color: #fff; }
+
+/* Contrast: the colour sample (VGA 48,166 378 x 68: four fields in a black frame), the trackbar
+ * under it, and the link band at the foot ("Customize backlight settings.", a 1 unit black rule) */
+.wm-sys-contrast { display: flex; flex-direction: column; min-height: 100%; }
+.wm-sys-contrast-sample {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    height: calc(34 * var(--wm-px));
+    margin: calc(10 * var(--wm-px)) calc(16 * var(--wm-px)) calc(14 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+}
+.wm-sys-contrast-sample span:nth-child(1) { background: #1a1e1a; }
+.wm-sys-contrast-sample span:nth-child(2) { background: #c5c2c5; }
+.wm-sys-contrast-sample span:nth-child(3) { background: #c5dfc5; }
+.wm-sys-contrast-sample span:nth-child(4) { background: #000; }
+.wm-sys-footlink {
+    margin: auto calc(-8 * var(--wm-px)) calc(-8 * var(--wm-px));
+    padding: calc(5 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+.wm-sys-footlink a { color: #0000ff; text-decoration: underline; }
+
+/* External GPS: "GPS program port:" over a full-width combo; Baud rate beside its half-width combo */
+.wm-sys-gps-label { margin: calc(4 * var(--wm-px)) 0 calc(1 * var(--wm-px)); }
+.wm-sys-gps-baud {
+    display: grid;
+    grid-template-columns: 1fr calc(116 * var(--wm-px));
+    align-items: center;
+    margin-top: calc(11 * var(--wm-px));
+}
+.wm-sys-gps-fix { margin-top: calc(12 * var(--wm-px)); }
+
+/* Managed Programs: the heading "Installation History" is Tahoma bold 12 in #080431, 12 units in,
+ * over a 1 unit black rule; the empty text sits 40 units under it */
+.wm-set[data-set-page^="managed:"] .wm-form-hdr {
+    height: calc(32 * var(--wm-px)) !important;
+    padding-left: calc(12 * var(--wm-px)) !important;
+    color: #080431 !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+}
+.wm-sys-managed-none { margin-top: calc(40 * var(--wm-px)) !important; padding-left: calc(4 * var(--wm-px)); }
+/* the device's trackbar (VGA 72,264 318 x 70) has "Light" and "Dark" beside it, not over it */
+.wm-sys-contrast-bar {
+    display: grid;
+    grid-template-columns: calc(28 * var(--wm-px)) 1fr calc(28 * var(--wm-px));
+    align-items: start;
+    column-gap: calc(4 * var(--wm-px));
+}
+.wm-sys-contrast-bar .wm-slider-scale { display: contents; }
+.wm-sys-contrast-bar .wm-slider-scale span {
+    grid-row: 1;
+    font-weight: normal;
+    padding-top: calc(5 * var(--wm-px));
+}
+.wm-sys-contrast-bar .wm-slider-scale span:first-child { grid-column: 1; }
+.wm-sys-contrast-bar .wm-slider-scale span:last-child { grid-column: 3; text-align: right; }
+.wm-sys-contrast-bar .wm-slider { grid-row: 1; grid-column: 2; }
+/* the list takes the page's free height down to the tabs, so the page itself never scrolls */
+.wm-sys-certs,
+.wm-sys-managed:has(> .wm-sys-lv) {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    box-sizing: border-box;
+}
+.wm-sys-certs > p { flex: 0 0 auto; }
+.wm-sys-certs > .wm-sys-lv,
+.wm-sys-managed > .wm-sys-lv { flex: 1 1 auto; min-height: 0; max-height: none; }
+/* Encryption: the check box row (VGA 16,122 448 x 64) starts 11 units under the rule, 32 units tall */
+.wm-sys-encrypt > .wm-check { margin-top: calc(6 * var(--wm-px)); min-height: calc(32 * var(--wm-px)); align-items: flex-start; }
+.wm-sys-encrypt > p { margin-top: calc(2 * var(--wm-px)); }

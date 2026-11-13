@@ -7511,6 +7511,60 @@
         "generated"
       ],
       "notes": "Large (Programs grid) version of app-folder-work. Not ROM art."
+    },
+    "app-messenger": {
+      "1x": {
+        "source": "WLMMessenger.exe icon group 50 (WM 6.5 ROM, 8-bit with mask), 16x16 frame",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "WLMMessenger.exe icon group 50 (WM 6.5 ROM, 8-bit with mask), 32x32 frame",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "WLMMessenger.exe icon group 50 (WM 6.5 ROM, 8-bit with mask), 64x64 frame",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "rom"
+      ],
+      "notes": "Windows Live Messenger program icon; Chat (Dreamscape Messenger) in 6.5 (#805)."
+    },
+    "app-messenger-lg": {
+      "1x": {
+        "source": "WLMMessenger.exe icon group 50 (WM 6.5 ROM, 8-bit with mask), 32x32 frame",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "WLMMessenger.exe icon group 50 (WM 6.5 ROM, 8-bit with mask), 64x64 frame",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "WLMMessenger.exe icon group 50 (WM 6.5 ROM, 8-bit with mask), 64x64 frame upscaled (4x-UltraSharp, Ruiko) to 128",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "rom"
+      ],
+      "notes": "Large version of app-messenger."
     }
   },
   "notDelivered": {
