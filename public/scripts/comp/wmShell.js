@@ -487,7 +487,7 @@
     // Traffic (#795): the commute ahead is more than 15 min late (scripts/generate-wm-traffic-status-icon.py)
     // Continuity (#798): this phone carries its DeX window's connection (scripts/generate-wm-continuity-status-icon.py)
     // ActiveSync Received Items (#803): something arrived while the phone was locked or away (the
-    // 1-bit white sync arrows like every title-bar glyph: scripts/generate-wm-activesync-status-icon.py)
+    // the ROM's own 1-bit glyph, syncres.dll group 124: scripts/extract-wm-activesync-status-icon.py)
     const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'continuity', 'received'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
