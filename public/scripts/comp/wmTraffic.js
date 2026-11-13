@@ -33,7 +33,7 @@
     const STALE_MS = 3 * 60 * 1000;
     const LS_PLACE = 'wmTrafficPlace'; // { place: 'home' | 'work', at } the last place the phone was found at
     const GEO_EVERY_MS = 5 * 60 * 1000; // the phone's position is read at most this often, while on screen
-    const DELAY_STATUS_SEC = 15 * 60; // the title bar's car: the commute ahead is this late or more
+    const DELAY_STATUS_SEC = 15 * 60; // near a leave time, a commute this late or more is the car's reason (bubble); it never shows the car alone
     const DRIVE_GEO_MS = 60 * 1000; // while driving the commute: the position every minute (the phone's own, no server)
     const ON_ROUTE_M = 300; // this close to the route's line counts as driving it
     const TODAY_CHECK_MS = 15 * 60 * 1000; // Today asks for a fresh report at most this often
@@ -1081,17 +1081,21 @@
     let todayCheckAt = 0;
 
     /**
-     * Within 30 minutes of a set leave time on a set day: { direction, leaveAt } (leaving Home = To Work,
-     * leaving Work = To Home), else null. Phone time (the leave times are the user's own clock).
+     * Near a set leave time on a set day: { direction, leaveAt } (leaving Home = To Work, leaving Work =
+     * To Home), else null. From 30 min before (or the Notify lead, when that is longer, so the car is up
+     * when the leave-time report arrives) to 30 min after. Phone time (the leave times are the user's own clock).
      */
     function leaveWindow(now = new Date()) {
         const s = settings || {};
         if (!Array.isArray(s.days) || !s.days.includes(now.getDay())) return null;
         const t = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60;
+        const before = Math.max(LEAVE_WINDOW_MIN, Number(s.leadMin) || 0);
         for (const [key, dir] of [['leaveHome', 'work'], ['leaveWork', 'home']]) {
             const m = minutesOf(s[key]);
             if (m == null) continue;
-            if (Math.abs(t - m) <= LEAVE_WINDOW_MIN) {
+            // minutes from the leave time, across midnight (a 00:10 leave time is near at 23:50)
+            const off = ((t - m + 720) % 1440 + 1440) % 1440 - 720;
+            if (off >= -before && off <= LEAVE_WINDOW_MIN) {
                 const at = new Date(now);
                 at.setHours(Math.floor(m / 60), m % 60, 0, 0);
                 return { direction: dir, leaveAt: at.getTime() };
@@ -1101,8 +1105,9 @@
     }
 
     /**
-     * The title bar's car (wmShell role 'traffic'): shown from 30 min before to 30 min after a leave time
-     * (that commute), and whenever the commute ahead is 15+ min late. { delayed (= show), reason, lines }.
+     * The title bar's car (wmShell role 'traffic'): shown only near a leave time (leaveWindow, that commute)
+     * or while driving the commute. A 15+ min delay then says so in the bubble; on its own, away from a
+     * leave time (at Work at noon), it never puts the car up (#807). { delayed (= show), reason, lines }.
      */
     function statusState() {
         if (!canUse() || !loaded || !configured()) return null;
@@ -1135,7 +1140,7 @@
         if (!fresh) lines.push(`Checked at ${clock(r.at)}.`);
         if (leaveLine) lines.unshift(leaveLine);
         const late = fresh && (r.delaySec || 0) >= DELAY_STATUS_SEC;
-        return { delayed: !!win || late, reason: late ? 'delay' : (win ? 'leave' : ''), direction: d, title: 'Traffic', lines };
+        return { delayed: !!win, reason: win ? (late ? 'delay' : 'leave') : '', direction: d, title: 'Traffic', lines };
     }
     function todayRender(el) {
         if (!canUse()) return false;
