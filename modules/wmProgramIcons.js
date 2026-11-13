@@ -60,6 +60,8 @@ const DEFAULT_QUALITY = 'high';
 const CONCURRENCY = 3;
 const MAX_ITEMS = 40;
 const MAX_ICON_BYTES = 3 * 1024 * 1024;
+const MAX_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_BYTES = 12 * 1024 * 1024;
 const PLAY_TTL_MS = 7 * 24 * 3600 * 1000;
 const MODELS_TTL_MS = 10 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 240000;
@@ -604,6 +606,17 @@ async function runItem(job, item) {
             if (item.briefs.detailed === undefined) item.briefs.detailed = await describeIcon(item.label, refs.slice().reverse(), 'detailed');
             brief = item.briefs.detailed;
         }
+        // the user's attached pictures come first, and the text says how to use them (#776)
+        const att = [];
+        for (let i = 0; i < (item.attachments || 0); i++) {
+            const f = path.join(dir, `${item.key}-att${i}.png`);
+            if (fs.existsSync(f)) att.push(fs.readFileSync(f));
+        }
+        if (att.length) {
+            brief = null;
+            useRefs = att.concat(useRefs);
+            useNames = att.map((_, i) => `picture ${i + 1} the user attached (use it as their direction says: a character or object to draw, an icon design to follow)`).concat(useNames);
+        }
         const style = settings().styleRefs === false ? [] : await styleRefs();
         const prompt = buildPrompt({ ...item, mode }, ctx, item.attempt, brief ? [] : useNames, brief, style.length);
         const master = await requestIcon(route, prompt, (brief ? [] : useRefs).concat(style));
@@ -661,6 +674,19 @@ async function createJob(body) {
                     item.hasRef = true;
                 } catch (_) { /* not an image: the store icon will do */ }
             }
+        }
+        // a custom request's pictures (a character to draw, another icon to follow; #776): up to 3
+        item.attachments = 0;
+        const atts = Array.isArray(raw.attachments) ? raw.attachments.slice(0, MAX_ATTACHMENTS) : [];
+        for (const att of atts) {
+            const a = /^data:image\/(png|webp|jpeg|gif|bmp);base64,([A-Za-z0-9+/=]+)$/.exec(String((att && att.data) || ''));
+            if (!a) continue;
+            const buf = Buffer.from(a[2], 'base64');
+            if (!buf.length || buf.length > MAX_ATTACHMENT_BYTES) continue;
+            try {
+                atomicWrite(path.join(dir, `${item.key}-att${item.attachments}.png`), await sharp(buf).rotate().resize(768, 768, { fit: 'inside', withoutEnlargement: true }).png().toBuffer());
+                item.attachments++;
+            } catch (_) { /* not a picture */ }
         }
         const t = /^data:image\/(png|webp|jpeg);base64,([A-Za-z0-9+/=]+)$/.exec(String(raw.themed || ''));
         if (t) {

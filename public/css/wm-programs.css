@@ -1014,3 +1014,10 @@ textarea.wm-edit.wm-pi-direction {
     resize: none;
     line-height: calc(13 * var(--wm-px));
 }
+
+.wm-pi-atts {
+    margin-bottom: calc(4 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

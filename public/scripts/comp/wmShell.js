@@ -69,6 +69,7 @@
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     const apps = new Map();
+    const replacements = new Map(); // system app id -> starter (replaceApp)
     const stack = [];
     let shell = null;
     let current = null;
@@ -1650,6 +1651,13 @@
     function open(id, opts = {}) {
         if (!apps.has(id)) return;
         closeMenus(true);
+        // a system program another program stands in for (Settings > System > Default Programs:
+        // an Android program as Calendar, Melaton Media ...; #776); opts.builtIn opens our own
+        const stand = replacements.get(id);
+        if (stand && !opts.builtIn) {
+            try { stand(); } catch (err) { console.warn('[wmShell] default program', id, err); }
+            return;
+        }
         // a program that is not a page of the shell (registerApp({ launch })): one of the phone's own
         // Android programs (wmAndroidApps.js). It starts, and the shell stays where it is.
         const starter = apps.get(id);
@@ -7421,6 +7429,8 @@
         /** An app's page, made (mounted) without bringing the app up. */
         pageOf: (id) => (apps.has(id) ? pageFor(apps.get(id)) : null),
         listApps: () => [...apps.values()].map((a) => ({ id: a.id, title: a.title, startLabel: a.startLabel, icon: a.icon, inStart: a.inStart, sip: !!a.sip, programsFolder: a.programsFolder || null, art65: a.art65 || null, hold: typeof a.holdMenu === 'function' })),
+        /** Another program stands in for a system app (fn starts it), or null for our own (#776). */
+        replaceApp: (id, fn) => { if (typeof fn === 'function') replacements.set(id, fn); else replacements.delete(id); },
         /** The rows an app gives its icon's tap-and-hold menu (registerApp holdMenu(); the Android programs, #773). */
         appHoldMenu: (id) => {
             const a = apps.get(id);
