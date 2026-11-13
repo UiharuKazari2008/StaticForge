@@ -2764,8 +2764,8 @@
             root.style.removeProperty('--wm-camera-extend');
         }
         const br0 = bar.getBoundingClientRect();
-        // the icons' row (below the grown part when extended)
-        const br = { top: br0.top + extend, bottom: br0.bottom, right: br0.right, left: br0.left };
+        // the icons' row: centred in the bar when extended (wm-shell.css: half the extra space above it, half below)
+        const br = { top: br0.top + extend / 2, bottom: br0.bottom - extend / 2, right: br0.right, left: br0.left };
         const tl = title.getBoundingClientRect().left;
         const pad = 3 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1);
         const inBar = !bezel && !cameraIgnoredNow() && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
