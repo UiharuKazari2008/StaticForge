@@ -294,7 +294,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
     var s = v.strip; // sent while INFO is on, or briefly after a scene switch
     $('strip').className = s ? 'hw on' : 'hw';
     if (s) {
-      $('striph').textContent = 'STATUS  ' + (bx.name || '');
+      $('striph').textContent = s.take ? 'SCENE TAKE' : 'STATUS  ' + (bx.name || '');
       $('stripb').innerHTML = (s.take ? [['SCENE', s.program], ['RESOLUTION', s.res || s.format], ['CLOCK', s.clock || '-']] : [['PROGRAM', s.program], ['FORMAT', s.format], ['RUNNING', s.fps + ' FPS'], ['FRAME TIME', s.frame + ' MS'], ['CPU', s.cpu + ' %']].concat(s.game ? [['GAME', s.game]] : []).concat(s.net ? [['NETWORK', s.net]] : []).concat([['ADDRESS', s.addr]]))
         .map(function (r) { return '<span>' + r[0] + '</span><b>' + esc(String(r[1] == null ? '-' : r[1]).toUpperCase()) + '</b>'; }).join('');
     }

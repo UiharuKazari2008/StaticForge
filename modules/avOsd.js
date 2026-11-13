@@ -543,6 +543,10 @@ const PAGES = {
         const r = await link.request('GetSceneList');
         const rows = (r.scenes || []).filter((s) => s.sceneName !== OVERLAY_SCENE).reverse()
             .map((s) => ({ id: `scene:${s.sceneName}`, label: s.sceneName, kind: 'action', value: s.sceneName === r.currentProgramSceneName ? '● PGM' : '', state: s.sceneName === r.currentProgramSceneName ? 'on' : '', hint: 'OK puts the scene on program' }));
+        if (b.kind === 'satellite') {
+            const off = bugsLoad(b.id).length > 0;
+            rows.unshift({ id: 'bugs', label: 'SCENE BUGS', kind: 'toggle', value: off ? 'OFF' : 'ON', state: off ? 'warn' : 'ok', hint: 'OK shows / hides the overlays over the NDI feed in every scene' });
+        }
         return { title: 'SCENE / LAYOUT', rows };
     },
 
@@ -1436,6 +1440,13 @@ async function onKey(b, key) {
     if (!row) return;
     const name = row.id.slice(row.id.indexOf(':') + 1);
     const dir = key === 'left' ? -1 : key === 'right' ? 1 : 0;
+    if (row.id === 'bugs' && key === 'ok') {
+        const { link } = await linkOf(b);
+        const off = await toggleBugs(b, link);
+        toast(b, off ? 'SCENE BUGS OFF' : 'SCENE BUGS ON', 'SCENE', off ? 'Overlays over the NDI feed hidden' : 'Overlays restored');
+        f.cache = null;
+        return;
+    }
     if (row.xl) {
         const path = row.id.slice(3).split('.').map(Number);
         if (row.xl === 'folder' && (key === 'ok' || key === 'right')) { b.stack.push({ page: 'xlink', path, cursor: 0, title: row.label }); return; }
@@ -1806,6 +1817,62 @@ async function hideOldOverlays(b) {
     }
     hiddenSave(b.id, b.standbyHidden);
 }
+/**
+ * SCENE BUGS (satellite): the overlays layered over the NDI feed in each scene (logos, text, image /
+ * browser bugs above the lowest NDI source, at the scene's own level) are switched off, or back on. A group
+ * holding an NDI feed is a video tile (e.g. Remote Player: feed + player) and is left alone. Other NDI feeds (a camera PiP),
+ * the unit's own OSD layer and the AV Live sources are never touched. What was hidden is remembered
+ * (bugs-hidden.json) so ON restores exactly those items, also after a restart.
+ */
+function bugsFile() { return path.join(deps.dataDir, 'bugs-hidden.json'); }
+function bugsLoad(id) { try { return (JSON.parse(fs.readFileSync(bugsFile(), 'utf8')) || {})[id] || []; } catch (_) { return []; } }
+function bugsSave(id, list) {
+    let all = {};
+    try { all = JSON.parse(fs.readFileSync(bugsFile(), 'utf8')) || {}; } catch (_) { all = {}; }
+    if (list.length) all[id] = list; else delete all[id];
+    try { fs.writeFileSync(bugsFile(), JSON.stringify(all, null, 2)); } catch (_) { /* best effort */ }
+}
+const BUG_KEEP_RE = /^AV /; // the unit's own layers (AV OSD, AV OSD Overlay, AV Live ...)
+async function findBugs(link, sceneName, isGroup, depth, out) {
+    if (depth > 3) return false;
+    const items = (await link.request(isGroup ? 'GetGroupSceneItemList' : 'GetSceneItemList', { sceneName }).catch(() => ({}))).sceneItems || [];
+    // OBS lists bottom -> top; find the lowest NDI source (inside a group counts), everything enabled above it is a bug
+    const hasNdi = async (it) => it.inputKind === 'ndi_source' || (it.isGroup && await groupHasNdi(link, it.sourceName, depth + 1));
+    let base = -1;
+    for (let i = 0; i < items.length; i++) { if (await hasNdi(items[i])) { base = i; break; } }
+    if (base < 0) return false;
+    for (let i = base; i < items.length; i++) {
+        const it = items[i];
+        if (!it.sceneItemEnabled || BUG_KEEP_RE.test(it.sourceName) || it.sourceName === OVERLAY_SCENE) continue;
+        if (it.inputKind === 'ndi_source') continue;
+        if (it.isGroup && await groupHasNdi(link, it.sourceName, depth + 1)) continue; // a video tile (feed + its player / frame): part of the picture
+        if (i === base) continue;
+        out.push({ scene: sceneName, id: it.sceneItemId, name: it.sourceName });
+    }
+    return true;
+}
+async function groupHasNdi(link, group, depth) {
+    if (depth > 3) return false;
+    const items = (await link.request('GetGroupSceneItemList', { sceneName: group }).catch(() => ({}))).sceneItems || [];
+    for (const it of items) if (it.inputKind === 'ndi_source' || (it.isGroup && await groupHasNdi(link, it.sourceName, depth + 1))) return true;
+    return false;
+}
+/** Flip SCENE BUGS; returns true when the bugs are now off. */
+async function toggleBugs(b, link) {
+    const hidden = bugsLoad(b.id);
+    if (hidden.length) {
+        for (const x of hidden) await link.request('SetSceneItemEnabled', { sceneName: x.scene, sceneItemId: x.id, sceneItemEnabled: true }).catch(() => {});
+        bugsSave(b.id, []);
+        return false;
+    }
+    const scenes = ((await link.request('GetSceneList')).scenes || []).filter((s) => s.sceneName !== OVERLAY_SCENE);
+    const out = [];
+    for (const s of scenes) await findBugs(link, s.sceneName, false, 0, out);
+    for (const x of out) await link.request('SetSceneItemEnabled', { sceneName: x.scene, sceneItemId: x.id, sceneItemEnabled: false }).catch(() => {});
+    bugsSave(b.id, out);
+    return out.length > 0;
+}
+
 async function restoreOldOverlays(b) {
     const list = b.standbyHidden && b.standbyHidden.length ? b.standbyHidden : hiddenLoad(b.id);
     b.standbyHidden = [];
