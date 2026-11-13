@@ -48,7 +48,7 @@
     const DM_COLS = 20;
     const DM_ROWS = 3;
     /** Draw up to 3 lines on a dot-matrix canvas: every character cell is 5x7 dots, unlit dots glow faintly. */
-    const drawDotMatrix = (cv, lines, color) => {
+    const drawDotMatrix = (cv, lines, color, dark) => {
         const P = 3; // dot pitch (px)
         const cw = 6;
         const ch = 9;
@@ -65,6 +65,7 @@
                 for (let y = 0; y < 7; y++) {
                     for (let x = 0; x < 5; x++) {
                         const on = (glyph[y] >> (4 - x)) & 1;
+                        if (!on && dark) continue; // an unpowered display: no dots at all
                         g.fillStyle = on ? color : 'rgba(255, 150, 30, 0.07)';
                         g.beginPath();
                         g.arc((c * cw + x) * P + P / 2, (r * ch + y + 1) * P + P / 2, P * 0.42, 0, Math.PI * 2);
@@ -1275,8 +1276,9 @@
             w.kind = 'remote';
             const m = w.modal;
             let target = this.remoteTarget || 'cab';
-            let dmColor = '#ffb02e';
+            const dmColor = '#ffb02e'; // a single-colour orange dot-matrix display: every message is this colour
             const dm = (l1, l2, l3) => drawDotMatrix(m.querySelector('.qc-fp-dm'), [l1, l2, l3], dmColor);
+            const blank = () => drawDotMatrix(m.querySelector('.qc-fp-dm'), ['', '', ''], dmColor, true); // unit off / nothing to show
             const lcd = (v, err) => {
                 const unit = v && v.box ? v.box.name : target === 'sat' ? this.satName() : (this.cabinet ? 'CABINET MIXER' : 'NO CABINET');
                 if (v && v.box) {
@@ -1289,16 +1291,44 @@
                     m.querySelector('.qc-fp-face').dataset.theme = v.box.theme || '';
                 }
                 if (resetting) return; // the panel is running its reset / lamp test
-                dmColor = '#ffb02e';
-                if (err) { dmColor = '#ff5a3a'; dm(unit, 'ERROR', err); return; }
+                if (err) { dm(unit, 'ERROR', err); return; }
+                const st0 = this.st || {};
+                const obsSt = st0.obs ? st0.obs.state : '';
+                // the satellite's engine is starting: what the start is doing, with its elapsed time
+                if (target === 'sat' && obsSt === 'launching') {
+                    const secs = Math.floor((st0.obs.launchingFor || 0) / 1000);
+                    dm(unit, 'ENGINE START', `${st0.obs.launchStep || 'STARTING'} ${secs}S`);
+                    return;
+                }
+                // the engine process is there but its control port is silent (stuck): an alarm, not a dark panel
+                if (target === 'sat' && st0.obs && st0.obs.hung && obsSt !== 'online') { dm(unit, 'ENGINE NO RESPONSE', 'PRESS PWR OR RESET'); return; }
+                if (v && v.shutdown) { const st = v.shutdown.steps || []; dm(unit, 'SHUTTING DOWN', st[st.length - 1] || ''); return; }
+                // a unit that is not on (satellite engine stopped, mixer powered off, no cabinet, unit unreachable)
+                // shows nothing: the display has no power
+                const unitOff = target === 'sat' ? (obsSt !== 'online' && obsSt !== 'stopping' && !(v && v.post)) : (!this.cabinet || (v && (v.powerOff || (v.offline && !v.post))));
+                if (unitOff) { blank(); return; }
                 if (v && v.toast) { dm(unit, v.toast.slice(0, 20), v.toast.slice(20, 40)); return; }
-                if (v && v.shutdown) { dmColor = '#ffc23a'; const st = v.shutdown.steps || []; dm(unit, 'SHUTTING DOWN', st[st.length - 1] || ''); return; }
-                if (v && v.powerOff) { dmColor = '#a03a2a'; dm(unit, 'POWER OFF', ''); return; }
-                if (v && v.nosig && !(v.open && v.page)) { dmColor = '#ff5a3a'; dm(unit, 'ALARM LOS FROZEN', `${v.nosig.input || ''}`.slice(0, 20)); return; }
-                if (v && v.standby && !(v.open && v.page)) { dmColor = '#ffb028'; dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY MODE', ''); return; }
-                if (v && v.post) { if (v.post.phase === 'fault') dmColor = '#ff5a3a'; dm(v.post.phase === 'fault' ? 'FAULT - DO NOT AIR' : 'SELF TEST', (v.post.text || '').slice(0, 20), (v.post.text || '').slice(20, 40)); return; }
+                if (v && v.nosig && !(v.open && v.page)) { dm(unit, 'ALARM LOS FROZEN', `${v.nosig.input || ''}`.slice(0, 20)); return; }
+                if (v && v.standby && !(v.open && v.page)) { dm(unit, v.standby.phase === 'boot' ? 'STANDBY BOOT...' : 'STANDBY MODE', ''); return; }
+                if (v && v.post) {
+                    const p = v.post;
+                    const text = p.text || '';
+                    if (p.phase === 'fault') { dm('CHECK ALARMS', text.slice(0, 20), text.slice(20, 40)); return; }
+                    if (p.phase === 'pass') { dm(unit, 'SELF TEST', 'PASSED'); return; }
+                    if (p.phase === 'test') {
+                        // the self test item by item: count checked so far, then the last one and its result
+                        const items = p.items || [];
+                        const last = items[items.length - 1];
+                        dm(`SELF TEST ${items.length ? items.length : ''}`.trim(), last ? `${last.label}`.slice(0, 20) : text.slice(0, 20), last ? `${last.state === 'alarm' ? '!' : ''}${last.detail}`.slice(0, 20) : text.slice(20, 40));
+                        return;
+                    }
+                    dm(unit, 'BOOT', text.slice(0, 20)); // boot: splash until its video reaches downstream
+                    return;
+                }
+                // the satellite engine is up but its boot self test has not started yet
+                if (target === 'sat' && Date.now() < bootHold) { dm(unit, 'ENGINE ONLINE', 'STARTING...'); return; }
                 if (v && v.open && v.page) {
-                    if (v.page.id === 'xlink') dmColor = '#5fd0ff';
+
                     const r = (v.page.rows || [])[v.page.cursor - (v.page.first || 0)] || {};
                     dm(v.page.title, `\u25ba${r.label || ''}`, r.value ? `  ${r.value}` : '');
                     return;
@@ -1309,26 +1339,51 @@
                 const mix = (row.stages || []).find((x) => x.id === (target === 'sat' ? 'render' : 'mixer'));
                 const pgm = target === 'sat' ? st.program : row.program;
                 const onAir = target === 'sat' && st.stream && st.stream.active;
-                dm(`${unit}${onAir ? ' ON AIR' : ''}`, pgm ? `PGM ${pgm}` : (v && v.info ? 'STATUS STRIP ON' : 'READY'), [clk && clk.value, mix && mix.value.replace(/\s*fps\s*\u00b7\s*/i, 'FPS ').replace(/\s*ms$/i, 'MS')].filter(Boolean).join(' '));
+                const meters = [clk && clk.value, mix && mix.value.replace(/\s*fps\s*\u00b7\s*/i, 'FPS ').replace(/\s*ms$/i, 'MS')].filter(Boolean).join(' ');
+                if (!pgm && !meters) { blank(); return; } // no data from the unit: nothing to show (never a made-up READY)
+                dm(`${unit}${onAir ? ' ON AIR' : ''}`, pgm ? `PGM ${pgm}` : (v && v.info ? 'STATUS STRIP ON' : ''), meters);
             };
             // POWER / ALARM leds from the window's status: power = control link to the unit; alarm = a latched
             // self-test fault (blinks), or a failing pipeline stage on that unit (steady)
             let resetting = false;
             let lastView = null;
+            let bootHold = 0;       // satellite: engine up, self test not started yet
+            let powerSeen = '';     // 'off' / 'on' for powerKey, to catch a power up
+            let powerKey = '';
             const leds = () => {
                 if (!m.isConnected) return;
                 if (resetting) { setTimeout(leds, 500); return; }
-                // follow the unit's own state (standby, self test, faults) even when no key is pressed
-                if (!inFlight && Date.now() - (this.fpViewAt || 0) > 3000 && (target === 'sat' || this.cabinet)) {
-                    this.fpViewAt = Date.now();
-                    void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { if (!inFlight) lastView = v; }).catch(() => {});
-                }
-                if (lastView === null || !(lastView.open || lastView.post || lastView.toast)) lcd(lastView);
                 const st = this.st || {};
                 const d = st.diag || {};
                 const sat = target === 'sat';
                 const rowSt = (sat ? d.output : d.input) || {};
                 const linkSt = sat ? (st.obs && st.obs.state) : ((rowSt.stages || []).some((x) => x.id === 'mixer') ? 'online' : (rowSt.stages || []).some((x) => x.id === 'link' && x.state === 'bad') ? 'offline' : 'unknown');
+                // follow the unit's own state (standby, boot, self test, faults) even when no key is pressed;
+                // once a second while it is starting up so the boot progress moves on the display
+                const booting = !!(lastView && (lastView.post || (lastView.standby && lastView.standby.phase === 'boot'))) || (sat && (linkSt === 'launching' || Date.now() < bootHold));
+                if (!inFlight && Date.now() - (this.fpViewAt || 0) > (booting ? 900 : 3000) && (sat || this.cabinet)) {
+                    this.fpViewAt = Date.now();
+                    const want = `${target}:${this.cabinet || ''}`;
+                    void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { if (!inFlight && want === `${target}:${this.cabinet || ''}`) lastView = v; }).catch(() => {});
+                }
+                if (sat && lastView && lastView.post) bootHold = 0;
+                // power up (off -> on): the panel runs its system test ("vegas": every lamp and dot) first
+                const key = `${target}:${this.cabinet || ''}`;
+                const pNow = sat ? (linkSt === 'launching' || linkSt === 'online' ? 'on' : linkSt === 'offline' && !(lastView && (lastView.post || lastView.shutdown)) ? 'off' : '')
+                    : (!this.cabinet || !lastView ? '' : lastView.powerOff ? 'off' : 'on');
+                if (key !== powerKey) { powerKey = key; powerSeen = pNow; }
+                else if (pNow) {
+                    const up = powerSeen === 'off' && pNow === 'on';
+                    powerSeen = pNow;
+                    if (up) {
+                        if (sat) bootHold = Date.now() + 90000; // until the engine's self test takes over (or 90 s)
+                        void lampTest(false);
+                        setTimeout(leds, 500);
+                        return;
+                    }
+                }
+                if (sat && linkSt !== 'online' && linkSt !== 'launching') bootHold = 0;
+                if (!inFlight) lcd(lastView);
                 const machine = rowSt.source;
                 const fault = (st.faults || []).find((f) => (sat ? f.kind === 'satellite' : f.machine === machine) && !f.overridden);
                 const bad = (rowSt.stages || []).some((x) => x.state === 'bad');
@@ -1337,7 +1392,8 @@
                 const al = m.querySelector('[data-led="alarm"]');
                 const inStandby = !!(lastView && (lastView.standby || lastView.powerOff) && !sat);
                 const noVideo = !!(lastView && lastView.nosig && sat);
-                al.className = `qc-led ${inStandby ? '' : fault ? 'is-red is-blink' : bad || noVideo ? 'is-red' : ''}`; // no alarm states in standby
+                const hung = sat && !!(st.obs && st.obs.hung) && linkSt !== 'online';
+                al.className = `qc-led ${inStandby ? '' : fault || hung ? 'is-red is-blink' : bad || noVideo ? 'is-red' : ''}`; // no alarm states in standby
                 m.classList.toggle('qc-fp-sat', sat);
                 // the unit's own indicators: each pipeline stage it owns, plus the satellite's air / uplink lamps
                 const stg = (id) => (rowSt.stages || []).find((x) => x.id === id);
@@ -1352,8 +1408,9 @@
                     ['SIGNAL', tone(stg('capture'))], ['CLOCK', tone(stg('clock'))], ['MIXER', tone(stg('mixer'))],
                     ['NDI OUT', tone(stg('ndiout'))], ['LINK', tone(stg('link'))], ['LOCK', tone(stg('lock'))]
                 ];
-                // standby: the low-power image runs no pipeline, so the unit's stage leds are dark
-                if (lastView && (lastView.standby || lastView.powerOff) && !sat) lamps.forEach((l) => { l[1] = ''; });
+                // standby: the low-power image runs no pipeline, so the unit's stage leds are dark; same for a
+                // satellite whose engine is not running
+                if ((lastView && (lastView.standby || lastView.powerOff) && !sat) || (sat && linkSt !== 'online')) lamps.forEach((l) => { l[1] = ''; });
                 const ind = m.querySelector('.qc-fp-ind');
                 const html = lamps.map(([n, c]) => `<span class="qc-led ${c}"><i></i>${n}</span>`).join('');
                 if (ind.dataset.html !== html) { ind.dataset.html = html; ind.innerHTML = html; }
@@ -1367,6 +1424,8 @@
             };
             const sel = () => {
                 m.querySelectorAll('.qc-rsel').forEach((b) => { b.classList.toggle('is-on', b.dataset.target === target); b.classList.toggle('k-orange', b.dataset.target === target); b.classList.toggle('k-white', b.dataset.target !== target); });
+                lastView = null;
+                bootHold = 0;
                 lcd(null);
                 void this.send('quickcast_osd_view', { target, cabinet: this.cabinet || '' }).then((v) => { lastView = v; lcd(v); }).catch((e) => lcd(null, e.message));
             };
@@ -1390,31 +1449,40 @@
                 else if (b.dataset.rk === 'power') void this.command(this.st && this.st.obs && this.st.obs.state === 'online' ? 'obsoff' : 'obson');
                 else void press(b.dataset.rk);
             }));
-            // a hardware reset of the panel itself: everything dark, then the lamp / display test, then boot
-            const panelReset = async () => {
+            // the panel's system test ("vegas mode"): every lamp and key lit, all dots on, a sweep through the
+            // matrix, the lamp colours, then the unit name. reset=true: a hardware reset (everything dark first,
+            // then BOOTING). At power up the live boot progress follows.
+            const lampTest = async (reset) => {
                 if (resetting) return;
                 resetting = true;
                 const face = m.querySelector('.qc-fp-face');
                 const cv = m.querySelector('.qc-fp-dm');
                 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-                face.classList.add('is-dark');
-                drawDotMatrix(cv, ['', '', ''], '#000');
-                await wait(1200);
-                face.classList.remove('is-dark');
+                if (reset) {
+                    face.classList.add('is-dark');
+                    drawDotMatrix(cv, ['', '', ''], '#000', true);
+                    await wait(1200);
+                    face.classList.remove('is-dark');
+                }
                 face.classList.add('is-lamptest');
                 const full = '\u2588'.repeat(DM_COLS);
                 drawDotMatrix(cv, [full, full, full], '#ffb02e');
-                await wait(900);
+                await wait(700);
+                // column sweep, then row by row
+                for (let c = 1; c <= DM_COLS; c += 2) { const l = '\u2588'.repeat(c); drawDotMatrix(cv, [l, l, l], '#ffb02e', true); await wait(35); }
+                for (let r = 0; r < 3; r++) { drawDotMatrix(cv, [0, 1, 2].map((i) => (i === r ? full : '')), '#ffb02e', true); await wait(220); }
                 for (const c of ['is-test-red', 'is-test-green', 'is-test-amber']) { face.classList.add(c); await wait(350); face.classList.remove(c); }
                 face.classList.remove('is-lamptest');
                 const u = lastView && lastView.box ? lastView.box : {};
-                drawDotMatrix(cv, [[u.maker, u.model].filter(Boolean).join(' ') || 'NETWORK VIDEO MIXER', 'BOOTING...', ''], '#ffb02e');
+                const name = [u.maker, u.model].filter(Boolean).join(' ') || (target === 'sat' ? this.satName() : 'NETWORK VIDEO MIXER');
+                const fw = u.sw ? `SW ${u.sw}${u.hw ? ` HW ${u.hw}` : ''}` : '';
+                drawDotMatrix(cv, [name, reset ? 'BOOTING...' : 'SYSTEM TEST OK', fw], '#ffb02e');
                 await wait(1500);
-                drawDotMatrix(cv, [[u.maker, u.model].filter(Boolean).join(' '), 'SELF TEST', ''], '#ffb02e');
-                await wait(1200);
+                if (reset) { drawDotMatrix(cv, [name, 'SELF TEST', ''], '#ffb02e'); await wait(1200); }
                 resetting = false;
                 lcd(lastView);
             };
+            const panelReset = () => lampTest(true);
             leds();
             const keymap = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'ok', Escape: 'exit', m: 'menu', d: 'diag', i: 'info', x: 'xlink' };
             m.addEventListener('keydown', (e) => {

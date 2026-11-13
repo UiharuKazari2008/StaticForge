@@ -481,7 +481,7 @@
 .qc-sr-tag.is-bad { color: #fff; background: #c41e1e; border-color: #c41e1e; animation: qc-blink 0.8s steps(1, end) infinite; }
 .qc-sb-h { font: bold 8px Arial, sans-serif; letter-spacing: 1.5px; }
 
-/* latched unit fault: DO NOT AIR */
+/* latched unit fault: CHECK ALARMS */
 .qc-fault { display: flex; align-items: center; gap: 12px; height: 26px; padding: 0 10px; background: #b80f14; color: #fff; animation: qc-fault 0.8s steps(1, end) infinite; }
 .qc-fault[hidden] { display: none; }
 .qc-fault b { font: 900 12px 'Arial Black', Arial, sans-serif; letter-spacing: 2px; white-space: nowrap; }

@@ -336,6 +336,10 @@ avOsd.init({
 let leaseTimer = null;
 let launching = null;        // Promise while OBS is being started
 let launchStartedAt = 0;
+let launchStep = '';         // what the engine start is doing (front panel boot progress)
+let engineHung = false;      // an OBS process on Ruiko whose control port does not answer (front panel ALARM)
+let hungCheckAt = 0;         // last process check while the control port is silent
+const STUCK_WAIT_MS = 20000; // an already running engine gets this long to answer before it is restarted
 let lastBytes = null;        // { bytes, at } for the bitrate
 let audioSet = { scene: '', at: 0, inputs: [] };
 let busy = null;             // a prepare / go-live / stop in progress (one at a time)
@@ -364,28 +368,81 @@ function sshRun(cmd, timeoutMs) {
     });
 }
 
-/** Start OBS with the Ruiko task, then wait until its websocket answers. */
+const ENGINE_RUNNING = async () => { const l = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH'); return l.ok ? /obs64\.exe/i.test(l.out) : null; };
+
+/**
+ * OBS 32 has no --disable-shutdown-check: after a crash or a forced close it finds its run_* sentinel files
+ * and asks "Run in Safe Mode?" on Ruiko's screen, which holds the start (and Safe Mode has no websocket).
+ * With no OBS running those files are only stale, so they are cleared before every start.
+ */
+async function clearCrashSentinel() {
+    await sshRun('Remove-Item -Force -ErrorAction SilentlyContinue "$env:APPDATA\\obs-studio\\.sentinel\\run_*"');
+}
+
+/** Close OBS on Ruiko with the stop task (graceful, forced after 12 s) and wait until it is gone. */
+async function runStopTask(waitMs) {
+    const task = readConfig().launch.stopTask;
+    if (!/^[\\\w .-]+$/.test(task)) throw fail('The stop task name is not valid', 'QUICKCAST_LAUNCH');
+    const r = await sshRun(`schtasks /Run /TN "${task}"`);
+    if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not shut down ${satelliteName()}'s encoder engine: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
+    const until = Date.now() + (waitMs || 40000);
+    for (;;) {
+        await new Promise((res) => setTimeout(res, 1500));
+        if (await ENGINE_RUNNING() === false) return;
+        if (Date.now() > until) throw fail(`${satelliteName()}'s encoder engine is still running after ${Math.round((waitMs || 40000) / 1000)} s`, 'QUICKCAST_LAUNCH');
+    }
+}
+
+/**
+ * Start OBS with the Ruiko task, then wait until its websocket answers. Turn it on and go: an OBS that
+ * is running but never answers (stuck on a prompt, hung) is closed and started fresh, never left for
+ * someone to fix at the machine.
+ */
 function launchObs() {
     if (launching) return launching;
     launching = (async () => {
         launchStartedAt = Date.now();
+        launchStep = 'CHECKING ENGINE';
         const task = readConfig().launch.task;
-        const list = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
-        const already = list.ok && /obs64\.exe/i.test(list.out);
-        if (!already) {
-            if (!/^[\\\w .-]+$/.test(task)) throw fail('The launch task name is not valid', 'QUICKCAST_LAUNCH');
+        if (!/^[\\\w .-]+$/.test(task)) throw fail('The launch task name is not valid', 'QUICKCAST_LAUNCH');
+        const start = async () => {
+            launchStep = 'CLEARING CRASH FLAGS';
+            await clearCrashSentinel();
+            launchStep = 'STARTING ENGINE';
             const r = await sshRun(`schtasks /Run /TN "${task}"`);
             if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not start ${satelliteName()}'s encoder engine: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
-        }
-        const until = Date.now() + LAUNCH_WAIT_MS;
-        for (;;) {
-            try { await link.connect(); if (!already) setTimeout(() => void avOsd.powerOn('sat', { reason: 'power' }).catch(() => {}), 1500); return true; } catch (e) {
-                if (e.code === 'QUICKCAST_OBS_AUTH') throw e;
-                if (Date.now() > until) throw fail(already ? `${satelliteName()}'s encoder engine is running but its control port does not answer` : `${satelliteName()}'s encoder engine did not come up within a minute`, 'QUICKCAST_LAUNCH');
+        };
+        const answer = async (ms) => {
+            const until = Date.now() + ms;
+            for (;;) {
+                try { await link.connect(); return true; } catch (e) {
+                    if (e.code === 'QUICKCAST_OBS_AUTH') throw e;
+                    if (Date.now() > until) return false;
+                }
+                await new Promise((r) => setTimeout(r, 1000));
             }
-            await new Promise((r) => setTimeout(r, 1000));
+        };
+        let already = await ENGINE_RUNNING() === true;
+        if (already) {
+            launchStep = 'WAITING FOR CONTROL';
+            if (await answer(STUCK_WAIT_MS)) { engineHung = false; return true; }
+            // running but silent: restart it
+            engineHung = true;
+            launchStep = 'ENGINE STUCK RESTART';
+            console.warn(`[visioncaster] ${satelliteName()}'s encoder engine runs but its control port does not answer: restarting it`);
+            await runStopTask(40000);
+            already = false;
         }
-    })().finally(() => { launching = null; });
+        await start();
+        launchStep = 'WAITING FOR CONTROL';
+        if (!await answer(LAUNCH_WAIT_MS)) {
+            engineHung = await ENGINE_RUNNING() === true;
+            throw fail(`${satelliteName()}'s encoder engine did not come up within a minute${engineHung ? ': it is running but does not answer (RESET restarts it)' : ''}`, 'QUICKCAST_LAUNCH');
+        }
+        engineHung = false;
+        setTimeout(() => void avOsd.powerOn('sat', { reason: 'power' }).catch(() => {}), 1500);
+        return true;
+    })().finally(() => { launching = null; launchStep = ''; });
     return launching;
 }
 
@@ -494,7 +551,7 @@ async function status(opts = {}) {
     const base = {
         busy,
         satellite: { name: satelliteName(), model: unitModel(satelliteName()), kind: unitInfo(satelliteName(), 'satellite').kind, host: `${cfg.obs.host}:${Number(cfg.obs.port) || 4455}` },
-        obs: { state: launching ? 'launching' : stopping ? 'stopping' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0 },
+        obs: { state: launching ? 'launching' : stopping ? 'stopping' : 'offline', version: link.version, error: link.lastError, launchingFor: launching ? Date.now() - launchStartedAt : 0, launchStep: launching ? launchStep : '', hung: engineHung },
         cabinets: cfg.cabinets.map((c) => ({ id: c.id, name: c.name, scene: c.scene, icon: c.icon, short: c.short, present: false })),
         key: { set: !!cfg.youtube.streamKey, hint: keyHint(cfg.youtube.streamKey) },
         watchUrl: cfg.youtube.watchUrl || '',
@@ -504,7 +561,16 @@ async function status(opts = {}) {
     if (!link.online) {
         if (launching || Date.now() - lastTry < 2000) return base;
         lastTry = Date.now();
-        try { await link.connect(); } catch (_) { base.obs.error = link.lastError; return base; }
+        try { await link.connect(); } catch (_) {
+            base.obs.error = link.lastError;
+            // silent control port: is an engine process there anyway (stuck)? checked every 20 s, off the poll
+            if (!stopping && Date.now() - hungCheckAt > 20000) {
+                hungCheckAt = Date.now();
+                void ENGINE_RUNNING().then((run) => { if (run !== null && !launching && !link.online) engineHung = run; }).catch(() => {});
+            }
+            return base;
+        }
+        engineHung = false;
     }
     base.obs.state = 'online';
     base.obs.version = link.version;
@@ -1025,19 +1091,9 @@ async function powerOff() {
                 step('POWERING DOWN');
                 await new Promise((res) => setTimeout(res, 1500)); // the last OSD frame reaches the outputs
             }
-            const list = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
-            if (list.ok && !/obs64\.exe/i.test(list.out)) { link.close(); return { ok: true, already: true }; }
-            const task = readConfig().launch.stopTask;
-            if (!/^[\\\w .-]+$/.test(task)) throw fail('The stop task name is not valid', 'QUICKCAST_LAUNCH');
-            const r = await sshRun(`schtasks /Run /TN "${task}"`);
-            if (!r.ok || !/SUCCESS/i.test(r.out)) throw fail(`Could not shut down ${satelliteName()}'s encoder engine: ${(r.err || r.out).trim().slice(0, 200)}`, 'QUICKCAST_LAUNCH');
-            const until = Date.now() + 40000;
-            for (;;) {
-                await new Promise((res) => setTimeout(res, 1500));
-                const l = await sshRun('tasklist /FI "IMAGENAME eq obs64.exe" /NH');
-                if (l.ok && !/obs64\.exe/i.test(l.out)) break;
-                if (Date.now() > until) throw fail(`${satelliteName()}'s encoder engine is still running after 40 s`, 'QUICKCAST_LAUNCH');
-            }
+            if (await ENGINE_RUNNING() === false) { link.close(); engineHung = false; return { ok: true, already: true }; }
+            await runStopTask(40000);
+            engineHung = false;
             link.close();
             lastTry = Date.now() + 3000; // no reconnect attempt while it winds down
             console.log(`[visioncaster] satellite ${satelliteName()} powered off`);

@@ -271,7 +271,7 @@ body.t-amuvision .drawin .bar { animation: wipe-up 0.2s steps(5, end) both; }
       var po = v.post;
       drawCard({ card: 'post', phase: po.phase, unit: { name: bx.name, maker: bx.maker, line: bx.line, model: bx.model, type: bx.type, theme: bx.theme, sw: bx.sw, hw: bx.hw, fw: bx.fw }, status: po.text + (po.holdLeft ? '  (' + po.holdLeft + ')' : ''), tiles: po.tiles || (po.items || []).filter(function (x) { return x.type !== 'AUDIO IN' && x.type !== 'AUDIO OUT'; }).map(function (x) { return { n: x.n, name: x.label, type: x.type, ok: x.state !== 'alarm', size: x.detail, alarm: x.state === 'alarm' ? x.detail : '' }; }) });
       $('card').className = 'on post ph-' + po.phase + ($('card').classList.contains('drawin') ? ' drawin' : '');
-      $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">DO NOT AIR</b><br>CALL A TECHNICIAN &mdash; press MENU to service this unit' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
+      $('cpress').innerHTML = po.phase === 'fault' ? '<b class="dna">CHECK ALARMS</b><br>press MENU and open ALARMS to review' : po.phase === 'boot' ? '' : po.phase === 'pass' ? 'All sources OK' : 'Checking every source...';
     } else if (!isCard) { $('card').className = ''; cardShown = ''; }
     if (!(v.standby && !v.post && !(v.open && p))) $('sby').className = 'hw';
     var sd = v.shutdown;
