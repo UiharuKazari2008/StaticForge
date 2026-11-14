@@ -223,6 +223,8 @@
     });
 
     // ---------------------------------------------------------------- Network Cards
+    // the Miniport's Idle timeout choices (minutes; 0 = never disconnect)
+    const IDLE_CHOICES = [[1, '1 minute'], [5, '5 minutes'], [10, '10 minutes'], [30, '30 minutes'], [60, '1 hour'], [240, '4 hours'], [0, 'Never']];
 
     wmSettings.registerPage({
         id: 'network-cards',
@@ -235,6 +237,26 @@
             el.classList.add('wm-setc');
             d.rerender = api.rerender;
             const i = info();
+            if (d.adapter && i.viaMiniport) {
+                // the Melaton Café Miniport (#815): its Idle timeout ("VPN timeout"), how long the link stays
+                // up once no program uses it; ActiveSync's own link stays up regardless
+                setHeader(el, miniport(i));
+                const mcx = root.melatonContinuity;
+                const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
+                if (d.idle == null) d.idle = cfg && cfg.config && cfg.config.idleMinutes != null ? Number(cfg.config.idleMinutes) : 10;
+                const cur = IDLE_CHOICES.find(([v]) => v === d.idle) || [d.idle, `${d.idle} minutes`];
+                el.innerHTML = `${ui.sub('Idle timeout')}
+                    <p>Disconnect the Melaton Caf\u00e9 Miniport when no program has used it for:</p>
+                    ${ui.comboHtml('idle', cur[1])}
+                    ${ui.note('ActiveSync stays connected and wakes the Miniport when a program needs it. Cached data (ActiveSync > Menu > Caf\u00e9 Cache) is kept while it is disconnected.')}
+                    ${ui.sub(`${i.connectionName} Status`)}<div data-f="facts"></div>`;
+                ui.bindCombo(el.querySelector('[data-act="idle"]'), IDLE_CHOICES, d.idle, (v) => { d.idle = v; });
+                const facts = el.querySelector('[data-f="facts"]');
+                const paint = () => { const h = ui.facts(connectionFacts()); if (facts.innerHTML !== h) facts.innerHTML = h; };
+                paint();
+                liveTick(el, paint);
+                return;
+            }
             if (d.adapter) {
                 setHeader(el, miniport(i));
                 el.innerHTML = `${ui.radio('ip', 'server', 'Use server-assigned IP address', true, 'disabled')}
@@ -259,6 +281,9 @@
         commit(d) {
             // ok on the adapter's page goes back to the list, as on the device
             if (d.adapter) {
+                const mcx = root.melatonContinuity;
+                if (d.idle != null && mcx && typeof mcx.setMiniportConfig === 'function' && info().viaMiniport) mcx.setMiniportConfig({ idleMinutes: d.idle });
+                d.idle = null;
                 d.adapter = false;
                 if (d.rerender) d.rerender();
                 return false;

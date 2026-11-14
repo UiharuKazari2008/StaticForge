@@ -80,3 +80,9 @@ html.ui-mobile .wm-activesync { background: #fff; color: #000; overflow-y: auto;
 .wm-activesync .was-rx-none {
     padding: calc(4 * var(--wm-px));
 }
+
+/* Café Cache (#815): one row per dataset - its Cache box, how many replies it keeps, its Keep updated box */
+.wm-activesync .was-cafe-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; column-gap: 8px; border-bottom: 1px solid #c6c6c6; }
+.wm-activesync .was-cafe-n { color: #555; font-size: .85em; min-width: 1.5em; text-align: right; }
+.wm-activesync .was-cafe-upd span { font-size: .85em; }
+.wm-activesync .was-cafe-stats { color: #555; font-size: .85em; margin-top: 8px; }

@@ -126,6 +126,58 @@
         }
     }
 
+    // ---------------------------------------------------------------- Menu > Café Cache... (#815)
+    // The Melaton Café Miniport's cache on this phone: which data it keeps (Cache) and fetches by itself
+    // so programs need not ask (Keep updated), and whether it keeps the current workspace or every
+    // workspace used. Its link's Idle timeout is under Settings > Connections > Network Cards.
+    const mc = () => window.melatonContinuity || null;
+    const cafeAvailable = () => { const m = mc(); return !!(m && typeof m.miniport === 'function' && m.miniport().available); };
+    let cafeDraft = null;
+    function cafeHtml() {
+        const m = mc();
+        const cfg = (m && m.miniportConfig()) || { config: {}, stats: {} };
+        const c = cfg.config || {};
+        const st = cfg.stats || {};
+        if (!cafeDraft) {
+            const ds = c.datasets || {};
+            cafeDraft = { scope: c.scope === 'all' ? 'all' : 'current', datasets: {} };
+            m.cacheDatasets().forEach((d) => { const v = ds[d.id] || {}; cafeDraft.datasets[d.id] = { cache: v.cache !== false, update: v.update !== false }; });
+        }
+        const by = st.byDataset || {};
+        const rows = m.cacheDatasets().map((d) => {
+            const v = cafeDraft.datasets[d.id];
+            return `<div class="was-cafe-row"><label class="wm-check"><input type="checkbox" data-cafe="${d.id}" data-k="cache"${v.cache ? ' checked' : ''}><span>${esc(d.label)}</span></label>
+                <span class="was-cafe-n">${by[d.id] ? esc(String(by[d.id])) : ''}</span>
+                <label class="wm-check was-cafe-upd"><input type="checkbox" data-cafe="${d.id}" data-k="update"${v.update ? ' checked' : ''}${v.cache ? '' : ' disabled'}><span>${d.refreshes ? 'Keep updated' : 'Refresh'}</span></label></div>`;
+        }).join('');
+        return `<div class="wm-form-hdr">Caf\u00e9 Cache</div>
+            <div class="was-form was-cafe"><p>Melaton Caf\u00e9 Miniport keeps this data on the phone, so programs start without waiting for the server. Keep updated: it fetches the data itself and tells programs when it changes.</p>
+            ${rows}
+            <div class="wm-form-gap"></div><p>Workspaces:</p>
+            <label class="wm-check"><input type="radio" name="cafe-scope" value="current"${cafeDraft.scope === 'current' ? ' checked' : ''}><span>Current workspace only</span></label>
+            <label class="wm-check"><input type="radio" name="cafe-scope" value="all"${cafeDraft.scope === 'all' ? ' checked' : ''}><span>All workspaces used</span></label>
+            <p class="was-cafe-stats">${esc(`${Number(st.entries) || 0} replies kept, ${Number(st.served) || 0} served from the cache`)}</p></div>`;
+    }
+    function wireCafe() {
+        page.querySelectorAll('input[data-cafe]').forEach((inp) => inp.addEventListener('change', () => {
+            const v = cafeDraft.datasets[inp.dataset.cafe];
+            v[inp.dataset.k] = inp.checked;
+            if (inp.dataset.k === 'cache') {
+                const upd = page.querySelector(`input[data-cafe="${inp.dataset.cafe}"][data-k="update"]`);
+                if (upd) upd.disabled = !inp.checked;
+            }
+        }));
+        page.querySelectorAll('input[name="cafe-scope"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) cafeDraft.scope = r.value; }));
+    }
+    function saveCafe() {
+        const m = mc();
+        if (m && cafeDraft) m.setMiniportConfig({ scope: cafeDraft.scope, datasets: cafeDraft.datasets });
+        cafeDraft = null;
+        view = 'main';
+        render();
+        ws.syncHistory();
+    }
+
     // ---------------------------------------------------------------- Received Items (#803)
     const RX = {
         link: { icon: 'ie-page', word: 'Link', act: 'Open' },
@@ -216,10 +268,11 @@
         if (!page) return;
         const st = as.state();
         if (view === 'options' && st.session !== 'partner') view = 'main';
-        const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
+        const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'cafe' ? cafeHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
         if (page.dataset.html !== html) {
             page.dataset.html = html;
             page.innerHTML = html;
+            if (view === 'cafe') wireCafe();
         }
         if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
     }
@@ -281,6 +334,7 @@
         return [
             { label: 'Options...', action: () => { view = 'options'; render(); ws.syncHistory(); }, disabled: st.session !== 'partner' },
             { label: 'Phone Data...', action: () => { view = 'phonedata'; render(); ws.syncHistory(); }, disabled: !(phoneData() && phoneData().available()) },
+            { label: 'Caf\u00e9 Cache...', action: () => { cafeDraft = null; const m = mc(); if (m) m.requestMiniportConfig(); view = 'cafe'; render(); ws.syncHistory(); }, disabled: !cafeAvailable() },
             { label: 'Status...', action: showStatus, disabled: !st.online },
             { label: `Received Items${as.receivedUnseen && as.receivedUnseen() ? ` (${as.receivedUnseen()})` : ''}...`, action: openReceived },
             '-',
@@ -312,10 +366,11 @@
             },
             show() { render(); },
             // Options is a form (ok saves); Status is a page over the main one
-            titleKind() { return view === 'options' || view === 'phonedata' ? 'ok' : 'close'; },
+            titleKind() { return view === 'options' || view === 'phonedata' || view === 'cafe' ? 'ok' : 'close'; },
             onTitleOk() {
                 if (view === 'options') { void saveOptions(); return true; }
                 if (view === 'phonedata') { void savePhoneData(); return true; }
+                if (view === 'cafe') { saveCafe(); return true; }
                 return false;
             },
             historyDepth() { return view === 'main' ? 0 : 1; },
@@ -329,6 +384,7 @@
                 if (view === 'options') return { left: { label: 'Delete', action: endPartnership }, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'status') return { left: { label: 'Done', action: () => { view = 'main'; render(); ws.syncHistory(); } }, right: null };
                 if (view === 'phonedata') return { left: null, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
+                if (view === 'cafe') return { left: null, right: { label: 'Cancel', action: () => { cafeDraft = null; view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'received') {
                     const items = rxItems();
                     const it = items[rxSel];
@@ -347,6 +403,8 @@
         });
         as.on('state', render);
         as.on('received', () => { if (view === 'received' || view === 'main') render(); });
+        // the Miniport's settings and figures came (Café Cache shows them; the draft keeps what was ticked)
+        try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'cafe') render(); }); } catch (_) { /* no Miniport */ }
         // the picture turns while the computer is being served
         as.on('request', () => {
             activity += 1;

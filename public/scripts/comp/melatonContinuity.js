@@ -450,6 +450,9 @@
             if (miniportSocket) miniportSocket._closed(m.code || 1006, m.reason || 'closed');
         } else if (m.op === 'data') {
             dataChanged(m);
+        } else if (m.op === 'config') {
+            miniportConfig = { config: m.config || {}, stats: m.stats || {} };
+            emit('miniport-config', miniportConfig, 'app');
         } else if (m.op === 'restart') {
             // the Miniport notification's Restart Devices: every window of the app cold boots
             restartForMiniport();
@@ -480,34 +483,60 @@
     // for replies that depend on the active workspace. Only read-only requests. A page's requests are
     // flagged for the cache during its boot, and always for types the Miniport refreshes itself (their
     // pollers then cost no server request); later requests go to the server and refresh the cache.
+    // dataset: the group ActiveSync > Café Cache turns on and off (cache / keep updated)
     const CACHE_POLICY = {
-        get_user_global_settings: { ttl: 30 },
-        desktop_get_settings: { ttl: 30 },
-        desktop_get_shortcuts: { ttl: 30, scope: 'workspace' },
-        start_menu_get_layout: { ttl: 60 },
-        get_app_options: { ttl: 60, scope: 'workspace' },
-        get_app_options_chunk: { ttl: 60, scope: 'workspace' },
-        workspace_list: { ttl: 30 },
-        tm_accounts: { ttl: 30 },
-        tm_summary: { ttl: 30 },
-        ma_accounts: { ttl: 30 },
-        director_settings_get: { ttl: 60 },
-        get_autofill_ranking: { ttl: 300 },
-        dovecote_list_mailboxes: { ttl: 60 },
+        get_user_global_settings: { ttl: 30, dataset: 'settings' },
+        desktop_get_settings: { ttl: 30, dataset: 'settings' },
+        start_menu_get_layout: { ttl: 60, dataset: 'settings' },
+        get_app_options: { ttl: 60, scope: 'workspace', dataset: 'options' },
+        get_app_options_chunk: { ttl: 60, scope: 'workspace', dataset: 'options' },
+        desktop_get_shortcuts: { ttl: 30, scope: 'workspace', dataset: 'desktop' },
+        workspace_list: { ttl: 30, dataset: 'desktop' },
+        tm_accounts: { ttl: 30, dataset: 'messaging' },
+        tm_summary: { ttl: 30, dataset: 'messaging' },
+        ma_accounts: { ttl: 30, dataset: 'messaging' },
+        dovecote_list_mailboxes: { ttl: 60, dataset: 'messaging' },
+        director_settings_get: { ttl: 60, dataset: 'director' },
+        get_autofill_ranking: { ttl: 300, dataset: 'smarttext' },
         // fetched by the Miniport once for every page, instead of each page polling
-        wallet_status: { ttl: 60, refresh: 300 },
-        server_status: { ttl: 30, refresh: 60 },
-        sidebar_host_metrics: { ttl: 20, refresh: 60 }
+        wallet_status: { ttl: 60, refresh: 300, dataset: 'status' },
+        server_status: { ttl: 30, refresh: 60, dataset: 'status' },
+        sidebar_host_metrics: { ttl: 20, refresh: 60, dataset: 'status' }
     };
+    /** ActiveSync > Café Cache's list, in its order. */
+    const CACHE_DATASETS = [
+        { id: 'settings', label: 'Settings' },
+        { id: 'options', label: 'Options data' },
+        { id: 'desktop', label: 'Desktop items' },
+        { id: 'messaging', label: 'Messaging and accounts' },
+        { id: 'director', label: 'Director' },
+        { id: 'smarttext', label: 'SmartText' },
+        { id: 'status', label: 'Wallet and server status' }
+    ];
+    api.cacheDatasets = () => CACHE_DATASETS.map((d) => Object.assign({ refreshes: Object.values(CACHE_POLICY).some((p) => p.dataset === d.id && (p.refresh || 0) > 0) }, d));
+    // the Miniport's settings and figures, as it last said them ({op:"config"})
+    let miniportConfig = null;
+    const datasetOn = (type, flag) => {
+        const p = CACHE_POLICY[type];
+        const ds = p && miniportConfig && miniportConfig.config && miniportConfig.config.datasets ? miniportConfig.config.datasets[p.dataset] : null;
+        if (!ds) return true;
+        return flag === 'update' ? ds.cache !== false && ds.update !== false : ds.cache !== false;
+    };
+    /** The Miniport's settings: { config: {idleMinutes, scope, datasets}, stats } (null before it said). */
+    api.miniportConfig = () => miniportConfig;
+    /** Ask the Miniport for its settings again (the answer comes as the 'miniport-config' event). */
+    api.requestMiniportConfig = () => miniport.available() && miniport.post({ op: 'config?' });
+    /** Change the Miniport's settings: { idleMinutes, scope: 'current'|'all', datasets: { id: { cache, update } } }. */
+    api.setMiniportConfig = (set) => miniport.available() && miniport.post({ op: 'config', set });
     /** websocket.js: flag this request for the Miniport's cache. */
     api.cacheFlag = (type) => {
         const p = CACHE_POLICY[type];
-        if (!p || lastTransport !== 'miniport' || !miniport.up) return false;
+        if (!p || lastTransport !== 'miniport' || !miniport.up || !datasetOn(type, 'cache')) return false;
         const c = root.wsClient;
         return !(c && c.initializationCompleted) || (p.refresh || 0) > 0;
     };
     /** True when the Miniport keeps this type current: the page's own poller for it stands down. */
-    api.miniportOwns = (type) => !!(CACHE_POLICY[type] && (CACHE_POLICY[type].refresh || 0) > 0 && lastTransport === 'miniport' && miniport.up);
+    api.miniportOwns = (type) => !!(CACHE_POLICY[type] && (CACHE_POLICY[type].refresh || 0) > 0 && lastTransport === 'miniport' && miniport.up && datasetOn(type, 'update'));
     /**
      * The data updater: the Miniport pushes a kept reply that changed ({op:"data"}); modules listen for
      * their type (miniportData.on) or for the window event 'miniportdata', and read again (answered at
@@ -685,6 +714,7 @@
         root.AndroidMiniport.onmessage = (e) => fromMiniport(e && e.data);
         miniport.post({ op: 'hello' });
         miniport.post({ op: 'policy', policy: CACHE_POLICY });
+        miniport.post({ op: 'config?' });
     }
 
     // the phone window: say when it is ready, and that it is going
