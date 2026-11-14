@@ -447,9 +447,11 @@
 
         /** A message box over the console (Vista's): icon 'info' | 'warning' | 'error' | 'question'. */
         async box(html, buttons, opts = {}) {
-            const icons = { info: 'fas fa-circle-info', warning: 'fas fa-triangle-exclamation', error: 'fas fa-circle-xmark', question: 'fas fa-circle-question' };
+            // the confirmation dialog's own icon classes (confirmationDialog.js defaults to fa-question-circle)
+            const icons = { info: 'fas fa-circle-info', warning: 'fas fa-triangle-exclamation', error: 'fas fa-circle-xmark', question: 'fas fa-question-circle' };
             const btns = buttons || [{ text: 'OK', value: true, className: 'btn-standard primary' }];
-            return call('showConfirmationDialog', html, btns, null, Object.assign({ title: this.def.title, width: 400, icon: icons[opts.icon || 'info'] || opts.icon }, opts, { icon: icons[opts.icon || 'info'] || opts.icon }));
+            const icon = icons[opts.icon || 'info'] || opts.icon;
+            return call('showConfirmationDialog', html, btns, null, Object.assign({ title: this.def.title, width: 400 }, opts, { icon }));
         }
 
         // ---- the result pane --------------------------------------------------------------------------
@@ -673,7 +675,7 @@
             consoles.delete(this.def.id);
             try { call('closeModal', this.modal); } catch (_) { /* gone */ }
             const m = this.modal;
-            setTimeout(() => m.remove(), 300);
+            setTimeout(() => { if (m.isConnected && !consoles.has(this.def.id)) m.remove(); }, 300);
         }
     }
 
@@ -687,6 +689,10 @@
             if (opts.node && have.find(opts.node)) have.select(opts.node, true);
             return have;
         }
+        // a window still fading out from close() (removed after 300 ms) has the same id: drop it now,
+        // or the new window loses its taskbar button
+        const stale = doc.getElementById(`mmcConsole_${def.id}`);
+        if (stale) stale.remove();
         const c = new Console(Object.assign({}, def, opts.node ? { node: opts.node } : {}));
         consoles.set(def.id, c);
         return c;

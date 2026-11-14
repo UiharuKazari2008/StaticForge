@@ -1,0 +1,201 @@
+/* Dynamic Quips and Autofill Ranking (Yozora #828; public/scripts/comp/mmcQuips.js,
+   public/scripts/comp/mmcAutofillRanking.js): their pages in the MMC console (mmc-console.css). */
+
+/* ---- Dynamic Quips ---- */
+
+.mmc-window .dq-status {
+    margin: 0 0 8px;
+}
+
+.mmc-window .dq-status.is-running .mmc-state {
+    font-weight: bold;
+}
+
+.mmc-window .dq-form select {
+    min-width: 90px;
+}
+
+.mmc-window .dq-form select#dq-schedule {
+    min-width: 200px;
+}
+
+.mmc-window .dq-form {
+    align-items: start;
+    row-gap: 10px;
+}
+
+.mmc-window .dq-form > label {
+    padding-top: 3px;
+}
+
+.mmc-window .dq-form .mmc-hint {
+    margin-top: 2px;
+}
+
+/* the phrase book: the server's wiki page set as an Event Viewer style document */
+.mmc-window .dq-book {
+    padding: 8px 10px 10px;
+    background: #fff;
+    line-height: 16px;
+    user-select: text;
+}
+
+.mmc-window .dq-book-msg {
+    margin: 4px 2px;
+    color: #6d6d6d;
+}
+
+.mmc-window .dq-book .quip-wiki-doc {
+    margin: 0;
+}
+
+.mmc-window .dq-book .quip-wiki-section {
+    margin: 0 0 10px;
+}
+
+/* a workspace's heading: the console's section band */
+.mmc-window .dq-book .quip-wiki-section > h2 {
+    height: 22px;
+    margin: 0 0 6px;
+    padding: 0 6px;
+    border: 1px solid #646464;
+    background: linear-gradient(#f0f0f0, #aaa);
+    font: 12px/21px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window .dq-book .quip-wiki-term {
+    margin: 0 0 8px 6px;
+    padding: 0;
+}
+
+.mmc-window .dq-book .quip-wiki-term-title {
+    display: inline-block;
+    margin: 0 0 2px;
+    padding: 0 2px;
+    font: bold 12px/16px "Segoe UI", Tahoma, sans-serif;
+    color: #1e3287;
+}
+
+.mmc-window .dq-book .quip-wiki-phrase-count {
+    margin-left: 4px;
+    font-weight: normal;
+    color: #6d6d6d;
+}
+
+.mmc-window .dq-book .quip-wiki-phrases {
+    margin: 0;
+    padding: 0 0 0 22px;
+    list-style: square;
+    color: #6d6d6d;
+}
+
+.mmc-window .dq-book .quip-wiki-phrases li {
+    margin: 0;
+    padding: 0 2px;
+    color: #000;
+}
+
+.mmc-window .dq-book .quip-wiki-empty {
+    margin: 0 0 0 6px;
+    font-style: italic;
+    color: #6d6d6d;
+}
+
+/* the desktop's light-window text rule outranks plain class selectors (:not(#_) as in mmc-console.css) */
+.mmc-window .dq-book .quip-wiki-term-title:not(#_) {
+    color: #1e3287;
+}
+
+.mmc-window .dq-book .quip-wiki-phrase-count:not(#_) {
+    color: #6d6d6d;
+}
+
+.mmc-window .dq-book .dq-picked:not(#_),
+.mmc-window .dq-book .dq-picked .quip-wiki-phrase-count:not(#_) {
+    color: #fff;
+}
+
+/* the picked phrase or term (Copy Phrase / Copy Term): the list view's selection */
+.mmc-window .dq-book .dq-picked {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* ---- Autofill Ranking ---- */
+
+/* Test: the query band over the result list */
+.mmc-window .afr-query {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-bottom: 1px solid #d5d5d5;
+    background: #f0f0f0;
+}
+
+.mmc-window .afr-query > input {
+    flex: 1;
+    min-width: 120px;
+    max-width: 420px;
+}
+
+.mmc-window .afr-query > button {
+    min-width: 75px;
+}
+
+.mmc-window .afr-top {
+    font-weight: bold;
+}
+
+.mmc-window .afr-bd .autofill-dsap-test-bd-part {
+    margin-right: 8px;
+}
+
+.mmc-window .afr-bd .autofill-dsap-test-bd-info,
+.mmc-window .afr-bd .autofill-dsap-test-bd-empty {
+    color: #6d6d6d;
+}
+
+.mmc-window .mmc-row.is-selected .afr-bd :is(.autofill-dsap-test-bd-info, .autofill-dsap-test-bd-empty) {
+    color: inherit;
+}
+
+/* Scoring: a property page per group, the description under each number */
+.mmc-window .afr-fields {
+    display: grid;
+    grid-template-columns: minmax(200px, max-content) 90px;
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 2px;
+}
+
+.mmc-window .afr-fields > label {
+    padding-top: 6px;
+}
+
+.mmc-window .afr-fields > input {
+    box-sizing: border-box;
+    width: 90px;
+    margin-top: 4px;
+    text-align: right;
+}
+
+.mmc-window .afr-fields > input.is-changed {
+    font-weight: bold;
+}
+
+.mmc-window .afr-fields > input.is-bad {
+    color: #c00;
+}
+
+.mmc-window .afr-desc {
+    grid-column: 1 / -1;
+    max-width: 520px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid #e3e3e3;
+    color: #6d6d6d;
+}
