@@ -882,19 +882,12 @@ class PromptTextareaToolbar {
                 openStudioVSliderTool();
                 break;
             case 'manage-director-rules':
-                // Rules now live inside the Memories DSAP (static rules)
-                if (typeof openDsapInGrimoire === 'function') {
-                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp/rules');
-                } else if (typeof showDirectorRulesManager === 'function') {
-                    showDirectorRulesManager(); // legacy fallback
-                }
+                // Enshutsuka's Director Rules: the MMC console on the desktop, the memories DSAP's /rules elsewhere
+                // openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js
+                openKnowledgeMemoriesModal('rules');
                 break;
             case 'enshutsuka-memories':
-                if (typeof openDsapInGrimoire === 'function') {
-                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp');
-                } else if (typeof openKnowledgeMemoriesModal === 'function') {
-                    openKnowledgeMemoriesModal();
-                }
+                openKnowledgeMemoriesModal('mem');
                 break;
             case 'phasewalker':
                 // openBracketGenerationApplet: public/scripts/comp/featureLoader.js

@@ -1,0 +1,465 @@
+/* Enshutsuka (Yozora #828; public/scripts/comp/mmcEnshutsuka.js): its pages in the MMC console
+   (mmc-console.css), the memory property sheet and the Delete Memories wizard
+   (vistaDialogTemplate). */
+
+/* ---- the memories page: the find bar, the list (or cards, or the mind map), the pager ---- */
+
+.mmc-window .ens-mem {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+}
+
+/* the find bar: a strip over the list, as Event Viewer's filter band sits over its log */
+.mmc-window .ens-bar,
+.mmc-window .ens-pager {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 6px;
+    background: linear-gradient(#fbfcfd, #eef1f6);
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+}
+
+.mmc-window .ens-bar {
+    border-bottom: 1px solid #d5dbe3;
+}
+
+.mmc-window .ens-pager {
+    border-top: 1px solid #d5dbe3;
+}
+
+.mmc-window .ens-pager:empty {
+    display: none;
+}
+
+.mmc-window .ens-bar label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.mmc-window .ens-find {
+    flex: 1;
+}
+
+.mmc-window .ens-find-box {
+    position: relative;
+    flex: 1;
+    min-width: 120px;
+}
+
+.mmc-window .ens-search {
+    box-sizing: border-box;
+    width: 100%;
+    height: 21px;
+}
+
+.mmc-window .ens-category {
+    max-width: 160px;
+    height: 21px;
+}
+
+/* the fast-search hits: an autocomplete drop-down under the box */
+.mmc-window .ens-hits {
+    position: absolute;
+    left: 0;
+    right: 0;
+    min-width: 340px;
+    top: 22px;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    max-height: 260px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid #646464;
+    background: #fff;
+    box-shadow: 2px 2px 3px rgba(0, 0, 0, 0.25);
+}
+
+.mmc-window .ens-hits[hidden] {
+    display: none;
+}
+
+.mmc-window .ens-hit {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 4px;
+    border: 1px solid transparent;
+    cursor: default;
+}
+
+.mmc-window .ens-hit > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.mmc-window .ens-hit > b {
+    flex: 1;
+    min-width: 0;
+    font-weight: normal;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window .ens-hit > small {
+    flex: none;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 8px;
+    color: #6d6d6d;
+    font-size: 11px;
+}
+
+.mmc-window .ens-hit.is-active,
+.mmc-window .ens-hit:hover {
+    border-color: #99defd;
+    border-radius: 2px;
+    background: linear-gradient(#f6fbfd, #d5effc);
+}
+
+.mmc-window .ens-body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.mmc-window .ens-body > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: visible;
+}
+
+.mmc-window .ens-body.is-busy {
+    cursor: progress;
+}
+
+.mmc-window .ens-body.is-busy > * {
+    opacity: 0.6;
+}
+
+.mmc-window .ens-list .mmc-col[data-act] {
+    cursor: default;
+}
+
+/* Cards: tiles of the page's memories (Explorer's Tiles view in a white pane) */
+.mmc-window .ens-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 6px;
+    padding: 8px;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mmc-window .ens-card {
+    min-width: 0;
+    padding: 5px 7px 6px;
+    border: 1px solid #e3e6ea;
+    border-radius: 3px;
+    outline: none;
+    cursor: default;
+}
+
+.mmc-window .ens-card:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+.mmc-window .ens-card.is-selected {
+    border-color: #d9d9d9;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.mmc-window .mmc-result:focus-within .ens-card.is-selected {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+.mmc-window .ens-card-head {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.mmc-window .ens-card-head > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.mmc-window .ens-card-head > b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #1e3287;
+    font-weight: normal;
+    font-size: 13px;
+}
+
+.mmc-window .ens-card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin: 3px 0 0 21px;
+}
+
+.mmc-window .ens-card-tags:empty {
+    display: none;
+}
+
+.mmc-window .ens-card-tags > span {
+    padding: 0 5px;
+    border: 1px solid #c5d2e3;
+    border-radius: 2px;
+    background: #f1f5fa;
+    color: #333;
+    font-size: 11px;
+}
+
+.mmc-window .ens-card-desc {
+    display: -webkit-box;
+    margin: 4px 0 0 21px;
+    overflow: hidden;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    color: #333;
+    line-height: 15px;
+}
+
+.mmc-window .ens-card-meta {
+    margin: 4px 0 0 21px;
+    color: #6d6d6d;
+    font-size: 11px;
+}
+
+/* the mind map: categories across, their memories under them, shared tags at the bottom */
+.mmc-window .ens-map {
+    padding: 4px;
+}
+
+.mmc-window .ens-map svg {
+    display: block;
+}
+
+.mmc-window .ens-map text {
+    font: 11px "Segoe UI", Tahoma, sans-serif;
+    fill: #000;
+    pointer-events: none;
+}
+
+.mmc-window .ens-map-node.is-memory {
+    cursor: default;
+}
+
+.mmc-window .ens-map-node.is-memory:hover rect {
+    stroke: #3c7fb1;
+}
+
+.mmc-window .ens-map-node.is-selected rect {
+    stroke: #3c7fb1;
+    stroke-width: 2;
+    fill: #dcecfc;
+}
+
+.mmc-window .ens-pager-text {
+    color: #333;
+}
+
+.mmc-window .ens-pager .ens-pg {
+    flex: none;
+    min-width: 0;
+    height: 21px;
+    padding: 0 7px;
+}
+
+.mmc-window .ens-pager .ens-pg + .ens-pg {
+    margin-left: -8px;
+}
+
+.mmc-window .ens-per {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 5px;
+    margin-left: auto;
+}
+
+/* ---- LinkXi Persona ---- */
+
+.mmc-window .ens-persona {
+    grid-template-columns: max-content minmax(0, 1fr);
+    max-width: 560px;
+    margin-top: 10px;
+}
+
+.mmc-window .ens-persona input[type="text"],
+.mmc-window .ens-persona select {
+    box-sizing: border-box;
+    width: 260px;
+    max-width: 100%;
+}
+
+.mmc-window .ens-persona textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 96px;
+    resize: vertical;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mmc-window .ens-persona .ens-top {
+    align-self: start;
+    padding-top: 3px;
+}
+
+.mmc-window .ens-photo-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+/* the user tile: User Accounts' 48 px picture in its frame */
+.mmc-window .ens-photo {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    padding: 4px;
+    background: url("/static_images/vista-cpl/usertile-frame-48.png") 0 0 / 100% 100% no-repeat;
+}
+
+.mmc-window .ens-photo > img {
+    display: block;
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+}
+
+.mmc-window .ens-photo-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+/* ---- the memory property sheet and its item dialogs ---- */
+
+.vdt-client .ens-lv-empty {
+    padding: 4px 6px;
+    color: #6d6d6d;
+}
+
+.vdt-client .ens-thumbs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    white-space: normal;
+}
+
+.vdt-client .ens-thumb {
+    width: 52px;
+    height: 52px;
+    padding: 1px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+    cursor: default;
+}
+
+.vdt-client .ens-thumb:hover {
+    border-color: #3c7fb1;
+}
+
+.vdt-client .ens-thumb > img {
+    display: block;
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+}
+
+.vdt-client .ens-hint {
+    color: #6d6d6d;
+}
+
+.vdt-client .ens-dlg-error,
+.vdt-wizard .ens-dlg-error {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 5px;
+    white-space: normal;
+}
+
+.vdt-client .ens-dlg-error > img,
+.vdt-wizard .ens-dlg-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.vdt-client .ens-dlg-details {
+    white-space: normal;
+    line-height: 14px;
+    color: #333;
+}
+
+.vdt-client .ens-dlg-details b {
+    font-weight: normal;
+    color: #6d6d6d;
+}
+
+/* ---- Delete Memories ---- */
+
+.vdt-wizard .ens-count {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    padding-top: 4px;
+    border-top: 1px solid #dfdfdf;
+}
+
+.vdt-wizard .ens-count > b {
+    font-size: 15px;
+    font-weight: normal;
+    color: #1e3287;
+}
+
+.vdt-wizard .ens-count > i {
+    flex-basis: 100%;
+    font-style: normal;
+    color: #6d6d6d;
+}
+
+.vdt-wizard .ens-wiz-text {
+    white-space: normal;
+    line-height: 15px;
+}
+
+.vdt-wizard .ens-wiz-text p {
+    margin: 0 0 9px;
+}
+
+/* the danger page: UAC's red band, as Front Gate's Turn Off page */
+.vdt-wizard .ens-wiz-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 6px 8px;
+    border: 1px solid #c42b1c;
+    background: linear-gradient(#e8483a, #b81c10);
+    color: #fff;
+}
+
+.vdt-wizard .ens-wiz-banner > img {
+    flex: none;
+}

@@ -872,12 +872,9 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'knowledge-memories':
-                // Open Knowledge Memories DSAP applet (2008 web 2.0 edition)
-                if (typeof openDsapInGrimoire === 'function') {
-                    openDsapInGrimoire('dsap://memories.dyna.dreamscape.jp');
-                } else if (typeof openKnowledgeMemoriesModal === 'function') {
-                    openKnowledgeMemoriesModal();
-                }
+                // Enshutsuka: the MMC console on the desktop, the memories DSAP elsewhere
+                // openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js
+                openKnowledgeMemoriesModal('mem');
                 break;
 
             case 'api-key-manager':
@@ -893,11 +890,8 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'linkxi-persona':
-                if (typeof openLinkXiPersonaDsap === 'function') {
-                    openLinkXiPersonaDsap();
-                } else if (typeof openDsapInGrimoire === 'function') {
-                    openDsapInGrimoire('dsap://xi.dyna.dreamscape.jp/persona');
-                }
+                // Enshutsuka's LinkXi Persona (openLinkXiPersonaDsap: public/scripts/comp/dsapManifests.js)
+                openLinkXiPersonaDsap();
                 break;
 
             case 'chat-manager':
