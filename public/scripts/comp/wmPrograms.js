@@ -1446,6 +1446,9 @@
                 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown';
                 const draw = () => {
                     if (!el.isConnected) { clearInterval(timer); return; }
+                    // Settings behind another app or the screen off: the next tick on screen draws it
+                    const sh = window.wmShell;
+                    if (el.innerHTML && sh && sh.onScreen && !sh.onScreen(el)) return;
                     const now = new Date();
                     el.innerHTML = `<div class="wm-form-sub">Home</div>
                         <div class="wm-form-row"><span class="wm-form-label">Time Zone:</span><span class="wm-form-value">${esc(zone)}</span></div>

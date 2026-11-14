@@ -242,10 +242,16 @@
     }
 
     function paint() {
+        // the lock screen is up while the screen is off: nothing draws then; screen on paints it at once
+        const sh = window.wmShell;
+        if (sh && sh.onScreen && !sh.onScreen()) return;
         paintWall();
         paintClock();
         paintMail();
     }
+    // screen on (or the page shown) while locked: drawn at once, not on the next second's tick
+    window.addEventListener('melatonscreen', (e) => { if (tick && e.detail && e.detail.on) paint(); });
+    document.addEventListener('visibilitychange', () => { if (tick && !document.hidden) paint(); });
 
     // ---------------------------------------------------------------- keys and the back button
 

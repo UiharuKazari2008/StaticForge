@@ -2430,7 +2430,8 @@
     let statusTimer = null;
     function statusDirty() {
         if (statusTimer || !shell) return;
-        statusTimer = setTimeout(() => { statusTimer = null; refreshStatus(); }, 250);
+        // screen off or page hidden: nothing paints; screen on and visibilitychange repaint at once
+        statusTimer = setTimeout(() => { statusTimer = null; if (onScreen()) refreshStatus(); }, 250);
     }
     function watchStatusSignals() {
         const ws = window.wsClient;
@@ -2446,7 +2447,7 @@
         // back on screen: paint now
         window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) refreshStatus(); });
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshStatus(); });
-        setInterval(refreshStatus, STATUS_SAFETY_MS);
+        setInterval(() => { if (onScreen()) refreshStatus(); }, STATUS_SAFETY_MS);
         // Today's clock: on the minute, while Today is up and the screen is on
         const minute = () => {
             setTimeout(() => {

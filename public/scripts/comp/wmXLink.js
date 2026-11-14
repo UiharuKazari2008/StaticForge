@@ -683,6 +683,7 @@
         const tod = () => { const e = page && page.querySelector('.wxl-tod'); if (e) e.textContent = clock(Date.now()); };
         tod();
         tick = setInterval(() => {
+            if (!shown || !(sh.onScreen ? sh.onScreen(page) : !document.hidden)) return;
             tod();
             if (!autoPoll || !shown || document.hidden || sending || (sh.isBusy && sh.isBusy())) return;
             if (--left > 0) return;

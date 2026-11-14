@@ -266,6 +266,8 @@
 
     function render() {
         if (!page) return;
+        // ActiveSync behind another app, the page hidden or the screen off: show() draws it anew
+        if (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page)) return;
         const st = as.state();
         if (view === 'options' && st.session !== 'partner') view = 'main';
         const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'cafe' ? cafeHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);

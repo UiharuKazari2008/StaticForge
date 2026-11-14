@@ -940,7 +940,7 @@
         clearInterval(printTimer);
         // a print that starts or ends changes the list
         printTimer = setInterval(() => {
-            if (view !== 'list' || !page) return;
+            if (view !== 'list' || !page || (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page))) return;
             if (prints().map((x) => x.uid).join('|') !== printKey) renderList();
         }, 2000);
     }

@@ -184,6 +184,10 @@
     function liveTick(el, paint, ms = LIVE_TICK_MS) {
         const timer = setInterval(() => {
             if (!el.isConnected) { clearInterval(timer); return; }
+            // Settings behind another app, the page hidden or the screen off: no paint (the page is
+            // drawn again when it shows)
+            const sh = window.wmShell;
+            if (sh && sh.onScreen && !sh.onScreen(el)) return;
             paint();
         }, ms);
         return timer;
