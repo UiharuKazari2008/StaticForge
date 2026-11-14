@@ -1,0 +1,558 @@
+/* Data Management (Yozora #828; public/scripts/comp/mmcDataManagement.js): its pages in the MMC console
+   (mmc-console.css). Workspaces is Disk Management, measured on the Vista VM (mmc-ref/dm.png): the volume
+   list, a 5 px splitter, the graphical view (100 px disk labels, 80 px rows, a 13 px partition strip,
+   the hatched selected volume) and the legend; the replication pages hosted from the DSAP. */
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-swatch {
+    flex: none;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    margin-right: 5px;
+    border: 1px solid rgba(0, 0, 0, 0.45);
+    box-sizing: border-box;
+    vertical-align: -1px;
+}
+
+/* ---- Workspaces: Disk Management ---- */
+
+.mmc-window[data-mmc-snapin="dataManagement"] .mmc-result.is-split {
+    border: 0;
+    box-shadow: none;
+    background: #f0f0f0;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-vol {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    height: 42%;
+    min-height: 60px;
+    box-sizing: border-box;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-vol > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-hsplit {
+    flex: none;
+    height: 5px;
+    cursor: row-resize;
+    background: #f0f0f0;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-graph {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #f0f0f0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-map {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 6px 4px 2px 3px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk {
+    display: flex;
+    min-width: 330px;
+    height: 80px;
+    margin-bottom: 2px;
+}
+
+/* the disk's label: a raised #f0f0f0 box, the disk icon, bold name */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-label {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    width: 100px;
+    box-sizing: border-box;
+    padding: 4px 4px 0 5px;
+    border: 1px solid;
+    border-color: #fff #a0a0a0 #a0a0a0 #fff;
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-label > b {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    margin-bottom: 1px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-label > b > img {
+    width: 16px;
+    height: 16px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-area {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    margin-left: 2px;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #fff #a0a0a0 #a0a0a0 #fff;
+    padding: 3px 3px 3px 3px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    cursor: default;
+}
+
+/* the kind's strip above the volume (Disk Management's partition colours) */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-strip {
+    flex: none;
+    height: 13px;
+    background: #0000ff;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part.is-active .dm-part-strip { background: #000080; }
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part.is-empty .dm-part-strip { background: #000; }
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 2px 4px 0 5px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* selected: the 5 px frame (#a0a0a0, #bcbcbc, #a0a0a0) and the #a0a0a0 hatching, 8 px apart */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part.is-selected .dm-part-body {
+    padding: 2px 4px 0 7px;
+    border: 2px solid #a0a0a0;
+    box-shadow: inset 0 0 0 3px #bcbcbc, inset 0 0 0 4px #a0a0a0;
+    background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Cpath d='M0 8L8 0M-1 1L1 -1M7 9L9 7' stroke='%23a0a0a0'/%3E%3C/svg%3E") 0 0 / 8px 8px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > b {
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > *,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > b {
+    background: transparent;
+}
+
+/* the legend: 10x12 sunken keys */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-legend {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 2px 14px;
+    padding: 3px 5px 4px;
+    line-height: 14px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-legend > span {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-key {
+    display: inline-block;
+    width: 12px;
+    height: 14px;
+    margin-right: 4px;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+}
+
+/* ---- Storage: the share bar in Generations by Workspace ---- */
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-share {
+    flex: none;
+    position: relative;
+    width: 80px;
+    height: 9px;
+    margin-right: 6px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-share > span {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+}
+
+/* ---- Account ---- */
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-usage {
+    margin: 8px 0 0;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-ban {
+    padding: 6px 8px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+/* ---- Replication: the DSAP's pages, in the console's look ---- */
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl {
+    padding-bottom: 10px;
+    line-height: 16px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .hidden {
+    display: none !important;
+}
+
+/* the tree is the navigation: no breadcrumb */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-breadcrumb {
+    display: none;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr {
+    position: relative;
+    height: 22px;
+    margin: 0;
+    padding: 0 6px;
+    border: 1px solid #646464;
+    background: linear-gradient(#f0f0f0, #aaa);
+    line-height: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr ~ * {
+    background-color: transparent;
+}
+
+/* a section's content sits on #f0f0f0 like .mmc-sec-body */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl > :not(.dsap-smf-section-hdr):not(.hidden):not(input),
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-panel-host > * {
+    box-sizing: border-box;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-layout,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplNavHost,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplChildrenHost:not(:empty),
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplChildSummaryHost table,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplProgressPageHost,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-panel-host,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sep-bundle-wizard {
+    margin: 0 0 10px;
+    padding: 8px 13px 10px;
+    background: #f0f0f0;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr + * {
+    margin-top: 0;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-lead,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-muted,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-nav-note,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sync-hint,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-clone-hint {
+    margin: 0 0 8px;
+    color: #6d6d6d;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-lead {
+    color: #000;
+    padding: 8px 13px 0;
+    margin: 0;
+    background: #f0f0f0;
+}
+
+/* stats tables and data tables: a framed white grid with Vista header items */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table {
+    width: 100%;
+    border: 1px solid #828790;
+    border-collapse: collapse;
+    background: #fff;
+    font: inherit;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table th,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table td {
+    padding: 2px 6px;
+    border: 0;
+    text-align: left;
+    font-weight: normal;
+    vertical-align: top;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table thead th {
+    height: 18px;
+    border-right: 1px solid #e3e8ef;
+    border-bottom: 1px solid #d5d5d5;
+    background: linear-gradient(#fff, #fff 50%, #f7f8fa 50%, #f1f2f4);
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stats td {
+    text-align: left;
+    border-right: 1px solid #e3e8ef;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stat-label,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stats-label {
+    color: #6d6d6d;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stat-value {
+    font-weight: normal;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl code {
+    font: 11px Consolas, "Lucida Console", monospace;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-avail.ok,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-val.ok { color: #000; }
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-avail.warn,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-val.warn { color: #8a6100; }
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-avail.error,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-val.error,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-maint-active { color: #c00; }
+
+/* the delegated services: label: value rows */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-services {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 4px 12px;
+    margin-top: 8px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service {
+    display: flex;
+    gap: 6px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-label::after {
+    content: ':';
+}
+
+/* toolbars and button rows: push buttons in a row */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-toolbar,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-nav-grid,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-cargo-toolbar,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sync-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin: 8px 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 8px 13px 10px;
+    margin: 0;
+    background: #f0f0f0;
+}
+
+/* Save defaults: on the section, under its menu buttons */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row + .dsap-smf-toolbar {
+    margin: 0 0 10px;
+    padding: 0 13px 10px;
+    background: #f0f0f0;
+}
+
+/* the embedded separation panel: no frame of its own */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sep-panel {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    font: inherit;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 75px;
+    min-height: 23px;
+    padding: 0 10px;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-btn:disabled,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-nav-disabled {
+    color: #838383;
+}
+
+/* a menu button's arrow */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dm-caret {
+    width: 0;
+    height: 0;
+    border: 3px solid transparent;
+    border-top: 4px solid #000;
+    border-bottom: 0;
+    margin-top: 1px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-crumb-link {
+    min-width: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: #0066cc;
+    padding: 0;
+    cursor: pointer;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-crumb-link::before {
+    display: none;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-crumb-link:hover {
+    text-decoration: underline;
+}
+
+/* status boxes: Vista's information band */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-status-box,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-statusbox,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-cta {
+    margin: 0 0 10px;
+    padding: 6px 8px;
+    border: 1px solid #a0a0a0;
+    background: #ffffe1;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-cta p {
+    margin: 0 0 8px;
+}
+
+/* inputs: Vista edit boxes */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl :is(input[type="text"], input[type="number"], input[type="password"], input:not([type]), textarea, .dsap-smf-input) {
+    box-sizing: border-box;
+    height: 21px;
+    padding: 1px 4px;
+    border: 1px solid #abadb3;
+    border-top-color: #707070;
+    border-radius: 0;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl textarea {
+    height: auto;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl pre {
+    padding: 6px 8px;
+    border: 1px solid #a0a0a0;
+    background: #fff;
+    font: 11px Consolas, "Lucida Console", monospace;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-dialog-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-clone-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 4px 12px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-clone-grid label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* operation progress: Vista's progress bar colours on a plain track */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-phase {
+    margin: 0 0 6px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-bar {
+    position: relative;
+    max-width: 300px;
+    height: 15px;
+    border: 1px solid #686868;
+    border-radius: 3px;
+    background: linear-gradient(#f3f3f3, #fcfcfc 50%, #dadada);
+    overflow: hidden;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-fill {
+    height: 100%;
+    background: linear-gradient(#c1f3a0, #37d33a 45%, #23b31f 55%, #6ce36c);
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-count,
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-path {
+    margin-top: 4px;
+    color: #6d6d6d;
+    overflow-wrap: anywhere;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl a {
+    color: #0066cc;
+}
+
+/* a panel's own headings inside a section: Vista's blue sub-headings, not a second band */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr {
+    font-weight: normal;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-panel-host .dsap-smf-section-hdr {
+    height: 20px;
+    margin: 4px 0 6px;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid #d5d5d5;
+    background: none;
+    color: #1e3287;
+    line-height: 19px;
+}

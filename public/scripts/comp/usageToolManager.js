@@ -295,6 +295,8 @@ class GenerationUsageToolManager {
     }
 
     fillDataMgmtAccountUsage(snap = null) {
+        // the Data Management MMC console's Account page (#828: public/scripts/comp/mmcDataManagement.js)
+        if (window.mmcDataManagement) window.mmcDataManagement.refresh('usage');
         const host = document.getElementById('dataMgmtOpusUsageHost');
         if (!host) return;
         if (!snap) snap = this.getSnapshot();
