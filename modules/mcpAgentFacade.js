@@ -1432,6 +1432,21 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'device_shell',
+        core: true,
+        description: 'Run one adb shell command on an ActiveSync phone through its own local ADB (127.0.0.1:5555 on the phone), relayed over ActiveSync. Needs the phone\'s Remote Commands feature (Android Bridge > Advanced Tools). device = ActiveSync device id or name; omit with one phone online. Returns { output, error, exitCode }.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['command'],
+            properties: {
+                device: { type: 'string', description: 'ActiveSync device id or name' },
+                command: { type: 'string', description: 'The shell command (as after adb shell)' }
+            }
+        }
+    },
+    {
         name: 'inspect_elements',
         core: true,
         description: 'Match CSS selectors in the bound Dreamscape tab and return tag/id/class/text/visible plus optional html, computed style, box, and attrs. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client; if appliedWithoutRestart skip restart_client; else restart_client; then inspect.',
@@ -7228,7 +7243,7 @@ const ADVANCED_CORE_HINTS = [
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] },
     { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] },
-    { test: (q) => /device_screenshot|screenshot|phone screen|device screen|\badb\b|cover screen|inner screen|\bdex\b/i.test(q), names: ['device_screenshot'] },
+    { test: (q) => /device_screenshot|device_shell|adb shell|screenshot|phone screen|device screen|\badb\b|cover screen|inner screen|\bdex\b/i.test(q), names: ['device_screenshot', 'device_shell'] },
     { test: (q) => /alchemy|owned tab|browser.?control|discord channel|channel.?history/i.test(q), names: ['alchemy_browser', 'read_discord_channel_history'] }
 ];
 
@@ -9579,6 +9594,15 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: `Character "${input.name}" not found` }, true);
         }
         return mcpTextResult({ success: true, deleted: true, name: input.name });
+    }
+
+    if (name === 'device_shell') {
+        try {
+            const r = await require('./deviceAdb').agentShell(globalResources, input || {});
+            return mcpTextResult(r, !r.success);
+        } catch (error) {
+            return mcpTextResult({ success: false, code: error.code || 'ERROR', error: error.message }, true);
+        }
     }
 
     if (name === 'device_screenshot') {

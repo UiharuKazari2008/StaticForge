@@ -94,7 +94,7 @@ function saveStore() {
     }
 }
 
-// Android Bridge > Debugging (#820): Allowed Features; the phone has the last word, the server checks
+// Android Bridge > Advanced Tools (#820): Allowed Features; the phone has the last word, the server checks
 // before it relays. Screenshots was its own switch before (#818): it is the screenshots feature now.
 const FEATURES = ['radioRead', 'radioModify', 'install', 'screenshots', 'castRead', 'castInteract', 'commands', 'portForward', 'filesRead', 'filesWrite'];
 const FEATURE_DEFAULTS = { radioRead: true, radioModify: false, install: true, screenshots: true, castRead: false, castInteract: false, commands: false, portForward: false, filesRead: false, filesWrite: false };
@@ -403,7 +403,7 @@ function pickDisplay(list, want) {
 
 /** One screen as PNG: { png, display }. */
 async function screenshot(globalResources, deviceId, display) {
-    if (!allowed(globalResources, deviceId, 'screenshots')) throw fail('SCREENSHOTS_OFF', 'Screenshots are not an allowed feature for this phone (Android Bridge > Debugging).');
+    if (!allowed(globalResources, deviceId, 'screenshots')) throw fail('SCREENSHOTS_OFF', 'Screenshots are not an allowed feature for this phone (Android Bridge > Advanced Tools).');
     const list = await displays(globalResources, deviceId);
     const d = pickDisplay(list, display);
     if (!d) throw fail('NO_DISPLAY', display ? `The phone has no ${display} screen right now.` : 'The phone reports no screen.');
@@ -461,6 +461,24 @@ async function installOnPhone(globalResources, deviceId, root, p) {
         const r = await adb(['-s', serial, 'shell', `pm install -r ${quoted}`], { timeout: INSTALL_TIMEOUT_MS });
         return installResult(`${r.stdout}\n${r.stderr}`);
     });
+}
+
+/** Remote Commands (#820): { output, error, exitCode } of one shell command on the phone. */
+async function shell(globalResources, deviceId, command) {
+    const cmd = String(command || '').trim();
+    if (!cmd) throw fail('BAD_REQUEST', 'No command.');
+    if (cmd.length > 8000) throw fail('BAD_REQUEST', 'The command is too long.');
+    if (!allowed(globalResources, deviceId, 'commands')) throw fail('NOT_ALLOWED', 'Remote Commands is not an allowed feature for this phone (Android Bridge > Advanced Tools).');
+    return phoneCall(globalResources, deviceId, 'device.adbShell', { command: cmd }, 60000);
+}
+
+/** device_shell for agents: { device?, command } -> the phone's answer (device as in device_screenshot). */
+async function agentShell(globalResources, input = {}) {
+    const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
+    const want = String(input.device || '').trim().toLowerCase();
+    const dev = want ? (all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want)) : (all.filter((d) => d.online).length === 1 ? all.find((d) => d.online) : null);
+    if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: all.map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online })) };
+    return { success: true, device: dev.name, ...(await shell(globalResources, dev.deviceId, input.command)) };
 }
 
 // ---------------------------------------------------------------- agents (MCP device_screenshot)
@@ -527,7 +545,7 @@ function mount(app, authMiddleware, globalResources) {
     };
     const isAdmin = (req) => req.userType === 'admin';
     const isPhone = (req, id) => as().isDeviceSession(globalResources, ws(), id, req.sessionId || (req.session && req.session.id));
-    const statusOf = (code) => ({ SCREENSHOTS_OFF: 409, ADB_OFF: 409, NO_ADB_DEVICE: 409, NO_DISPLAY: 404, SHOT_FAILED: 502, NO_ADB: 503, TIMEOUT: 504 })[code] || 500;
+    const statusOf = (code) => ({ NOT_ALLOWED: 409, BAD_REQUEST: 400, SCREENSHOTS_OFF: 409, ADB_OFF: 409, NO_ADB_DEVICE: 409, NO_DISPLAY: 404, SHOT_FAILED: 502, NO_ADB: 503, TIMEOUT: 504 })[code] || 500;
 
     app.get('/api/activesync/adb/:deviceId', auth, async (req, res) => {
         const id = idOf(req, res);
@@ -545,6 +563,22 @@ function mount(app, authMiddleware, globalResources) {
         const st = status(globalResources, id).allow ? await detect(globalResources, id, { force: true }) : status(globalResources, id);
         try { as().touchDevice(globalResources, ws(), id); } catch (_) { /* no broadcast */ }
         res.json({ success: true, adb: st });
+    });
+
+    // Check Now from a computer: the phone restores 5555 / starts Shizuku as Check Now on it does
+    app.post('/api/activesync/adb/:deviceId/check', auth, async (req, res) => {
+        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
+        const id = idOf(req, res);
+        if (!id) return;
+        try { res.json({ success: true, phone: await phoneCall(globalResources, id, 'device.adbRestore', { force: true }, 60000) }); } catch (err) { refuse(res, statusOf(err.code), err.code || 'ERROR', err.message); }
+    });
+
+    // Remote Commands (#820): one adb shell command on the phone, through its own local ADB
+    app.post('/api/activesync/adb/:deviceId/shell', auth, async (req, res) => {
+        if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
+        const id = idOf(req, res);
+        if (!id) return;
+        try { res.json({ success: true, ...(await shell(globalResources, id, req.body && req.body.command)) }); } catch (err) { refuse(res, statusOf(err.code), err.code || 'ERROR', err.message); }
     });
 
     app.get('/api/activesync/adb/:deviceId/displays', auth, async (req, res) => {
@@ -606,6 +640,8 @@ module.exports = {
     parseDisplays,
     pickDisplay,
     agentScreenshot,
+    agentShell,
+    shell,
     phoneStatus,
     takeShot,
     mount,

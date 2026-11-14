@@ -128,6 +128,7 @@ const TOOL_RATE_GROUPS = {
     delete_character_db_entry: 'write',
     run_client_js: 'studio',
     device_screenshot: 'studio',
+    device_shell: 'studio',
     inspect_elements: 'studio',
     alchemy_browser: 'studio',
     read_discord_channel_history: 'search',

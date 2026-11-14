@@ -84,7 +84,7 @@
         });
     }
 
-    // Shizuku lives in Android Bridge > Debugging (Yukimi, Nov 13 2026, #818), not on a page of its own
+    // Shizuku lives in Android Bridge > Advanced Tools (Yukimi, Nov 13 2026, #818), not on a page of its own
     const MERGED = new Set(['shizuku']);
 
     function register(a) {
@@ -104,7 +104,7 @@
 
     applets().forEach(register);
 
-    // ---------------------------------------------------------------- Android Bridge > Debugging (#818)
+    // ---------------------------------------------------------------- Android Bridge > Advanced Tools (#818, #820)
 
     /*
      * Shizuku's state and switches (the app's applet rows) and ADB on port 5555 as this server sees
@@ -161,7 +161,7 @@
 
     wmSettings.extendPage('default-programs', {
         id: 'dbg',
-        tabs: [['dbg-debugging', 'Debugging']],
+        tabs: [['dbg-debugging', 'Advanced Tools']],
         init: () => ({}),
         render(el, tab, d, api) {
             // the applet's own redraws (act, dreamscape:applets) come back to this tab
@@ -174,7 +174,8 @@
             const sub = (html) => `<div style="margin-left:calc(16 * var(--wm-px))">${html}</div>`;
             el.innerHTML = [
                 ui.sub('Shizuku'),
-                rows.length ? rows.map(rowHtml).join('') : ui.note('This version of the app has no Shizuku.'),
+                // the state, the switch and the buttons; the applet's explanations stay out (Yukimi: self-explanatory)
+                rows.length ? rows.filter((r) => r && r.type !== 'text' && r.type !== 'note').map(rowHtml).join('') : ui.value('Shizuku:', 'Not available'),
                 ui.gap(),
                 ui.sub('ADB (port 5555)'),
                 ...(localAvailable() ? (() => {
@@ -184,7 +185,8 @@
                         ui.value('Port 5555:', checking ? 'Checking...' : l.listening ? 'Listening' : 'Not listening'),
                         ui.value('Access:', access),
                         ui.value('Wi-Fi:', l.wifi ? 'Connected' : 'Not on Wi-Fi'),
-                        lastCheck && lastCheck.restored ? ui.value('Last restore:', String(lastCheck.restored)) : ''
+                        lastCheck && lastCheck.restored ? ui.value('Restore:', String(lastCheck.restored)) : '',
+                        lastCheck && lastCheck.shizukuStart ? ui.value('Shizuku start:', String(lastCheck.shizukuStart).split('\n')[0].slice(0, 60)) : ''
                     ];
                 })() : [ui.value('ADB:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync'), a && a.address ? ui.value('Address:', a.address) : '']),
                 ui.check('dbg-allow', 'Use ADB on port 5555', set.allow !== false, 'data-dbg="allow"'),
@@ -198,9 +200,7 @@
                 ui.gap(),
                 ui.sub('Allowed Features'),
                 ...FEATURE_ROWS.map(([k, label]) => ui.check(`dbg-f-${k}`, label, !!feat[k], `data-dbg-feature="${k}"${set.allow === false ? ' disabled' : ''}`)),
-                ui.note(localAvailable() && (localStatus() || {}).authorized === false ? 'Tap Always allow on the USB debugging question for Dreamscape.' : a && a.state === 'unauthorized'
-                    ? 'Tap Always allow on the USB debugging question for this server.'
-                    : 'Read lets screen sharing start without asking; Interact lets the viewer tap and type. Remote Commands opens a Command Prompt from Device Center.')
+                localAvailable() && (localStatus() || {}).authorized === false ? ui.value('', 'Tap Always allow on the phone.') : ''
             ].join('');
             ui.bindCombo(el.querySelector('[data-act="dbg-pref"]'), [['adb', 'ADB'], ['shizuku', 'Shizuku']], set.preferred === 'shizuku' ? 'shizuku' : 'adb', (v) => {
                 adbFetch('PUT', { preferred: v }).then((r) => { if (r) adbNow = r; pushToApp(); api.rerender(); });
