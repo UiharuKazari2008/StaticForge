@@ -3042,28 +3042,12 @@ const vsbMdevMount = function (inst) {
     const name = vsbEl('div', 'vsb-mdev-name', box);
     const rows = vsbEl('div', 'vsb-mdev-rows', box);
     inst.parts = { box, art, name, rows };
-    inst.walls = { deviceId: null, at: -1, urls: {} };
     art.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst)));
     name.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst), 'info'));
     vsbMobileWatch(inst, vsbMdevPaint);
     // featureLoader.loadFeature: public/scripts/comp/featureLoader.js (the art Device Center draws)
     featureLoader.loadFeature('activesync_device_art').then(() => { if (!inst.destroyed) vsbMdevPaint(inst); }, () => {});
     vsbMdevPaint(inst);
-};
-
-/** The phone's wallpapers as the server keeps them (modules/activeSyncWallpapers.js), again when they change. */
-const vsbMdevWalls = function (inst, dev) {
-    const w = inst.walls;
-    const at = dev.wallpapersAt || 0;
-    if (w.deviceId === dev.deviceId && w.at === at) return;
-    w.deviceId = dev.deviceId;
-    w.at = at;
-    fetch(`/api/activesync/wallpapers/${encodeURIComponent(dev.deviceId)}`, { credentials: 'same-origin', cache: 'no-store' })
-        .then((r) => r.json()).then((r) => {
-            if (inst.destroyed || w.deviceId !== dev.deviceId) return;
-            w.urls = (r && r.success && r.wallpapers) || {};
-            vsbMdevPaint(inst);
-        }).catch(() => {});
 };
 
 const vsbMdevPaint = function (inst) {
@@ -3077,13 +3061,18 @@ const vsbMdevPaint = function (inst) {
         p.rows.innerHTML = '<div class="vsb-mdev-row vsb-mdev-note">Connect a phone running Dreamscape.</div>';
         return;
     }
-    vsbMdevWalls(inst, dev);
     const st = dev.status || {};
     if (D) {
-        const u = inst.walls.deviceId === dev.deviceId ? inst.walls.urls : {};
+        // the kept wallpapers (activeSyncDeviceArt's cache, prefetched by the tray); locked: the lock screen's
+        let u = D.peekWallpapers(dev);
+        if (!u) { D.wallpapers(dev).then(() => { if (!inst.destroyed) vsbMdevPaint(inst); }); u = {}; }
+        const locked = dev.online && st.locked === true;
+        const pick = (k) => (locked ? u[`${k}Lock`] : null) || u[k] || u[`android${k[0].toUpperCase()}${k.slice(1)}`] || null;
         const fold = D.isFoldable(dev);
-        const screens = { inner: u.inner || null, cover: u.cover || null, external: null, screen: D.screenOf(dev) || u.screen || 'inner' };
-        const key = JSON.stringify([dev.deviceId, fold, screens]);
+        const screens = { inner: pick('inner'), cover: pick('cover') || pick('inner'), external: null, screen: D.screenOf(dev) || u.screen || 'inner' };
+        // a foldable folds and unfolds in place (activeSyncDeviceArt.setFold), animated
+        const key = JSON.stringify([dev.deviceId, fold, fold ? { ...screens, screen: null } : screens]);
+        if (p.art.dataset.key === key && fold) D.setFold(p.art, screens.screen === 'cover' ? 'closed' : 'open');
         if (p.art.dataset.key !== key) {
             const arrive = !p.art.dataset.key || p.art.dataset.key === 'none';
             p.art.dataset.key = key;
@@ -3095,6 +3084,7 @@ const vsbMdevPaint = function (inst) {
     const rows = [];
     const meter = (lv, kind) => (D && lv != null ? D.bars(lv, kind) : '');
     if (!dev.online) rows.push('<div class="vsb-mdev-row vsb-mdev-note">Not Connected</div>');
+    else if (st.locked === true) rows.push('<div class="vsb-mdev-row vsb-mdev-note"><img src="/static_images/activesync/status-locked-16.png" alt="">Locked</div>');
     const b = st.battery;
     if (b && b.level != null) {
         const lvl = b.level < 10 ? 0 : b.level < 35 ? 1 : b.level < 60 ? 2 : b.level < 85 ? 3 : 4;

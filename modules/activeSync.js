@@ -202,6 +202,11 @@ function sanitizeStatus(raw) {
     }
     if (raw.screen === 'inner' || raw.screen === 'cover') out.screen = raw.screen;
     if (raw.foldable != null) out.foldable = bool(raw.foldable);
+    // the lock screen is up (the app's service, #827): Device Center says "Locked (Connected)"
+    if (raw.locked != null) out.locked = bool(raw.locked);
+    // Melaton Mobile's edition as the phone works it out, and Continuity in use (kept: "used at least once")
+    if (['Classic', 'Standard', 'Professional', 'Enterprise'].includes(raw.edition)) out.edition = raw.edition;
+    if (raw.continuity === true) out.continuity = true;
     return out;
 }
 
@@ -346,8 +351,7 @@ function setDeviceSession(wsServer, deviceId, session, permissions) {
 function describeDevice(globalResources, wsServer, row) {
     const live = liveSockets(wsServer, 'device', row.device_id);
     const sess = live.length ? deviceSession(wsServer, row.device_id) : null;
-    const newest = live[0] || null;
-    const status = (newest && newest.info.as.status) || parseJson(row.last_status, null);
+    const status = mergedStatus(live) || parseJson(row.last_status, null);
     const queued = getDb(globalResources).prepare('SELECT COUNT(*) AS n FROM as_queue WHERE device_id = ?').get(row.device_id).n;
     return {
         deviceId: row.device_id,
@@ -376,6 +380,37 @@ function describeDevice(globalResources, wsServer, row) {
 
 function wallpapersStampOf(globalResources, deviceId) {
     try { return require('./activeSyncWallpapers').stampOf(globalResources, deviceId); } catch (_) { return 0; }
+}
+
+/**
+ * One status from all of a device's sockets (#827): the page's WebView and the app's service each
+ * report what they know; the fresher report wins field by field, so a paused WebView no longer hides
+ * the service's Wi-Fi or lock state, and the page's own facts (program, shell) stay.
+ */
+function mergedStatus(live) {
+    const reports = live.map((s) => s.info.as.status).filter(Boolean).sort((a, b) => (a.at || 0) - (b.at || 0));
+    if (!reports.length) return null;
+    const out = {};
+    for (const r of reports) for (const [k, v] of Object.entries(r)) if (v != null) out[k] = v;
+    // the page is on screen: its own word on what is in front wins over an older service report
+    const page = reports.filter((r) => r.foreground === true).pop();
+    if (page) { out.foreground = true; if (page.program) out.program = page.program; }
+    // the page on screen after the last lock report: the phone is unlocked
+    if (page && reports[reports.length - 1] === page) out.locked = false;
+    return out;
+}
+
+/** Continuity used at least once (#827, the Enterprise edition): a flag in the device's settings that stays. */
+function noteContinuity(globalResources, deviceId) {
+    try {
+        const d = getDb(globalResources);
+        const row = d.prepare('SELECT settings FROM as_devices WHERE device_id = ?').get(deviceId);
+        if (!row) return;
+        const set = parseJson(row.settings, {});
+        if (set.continuitySeen) return;
+        set.continuitySeen = Date.now();
+        d.prepare('UPDATE as_devices SET settings = ? WHERE device_id = ?').run(JSON.stringify(set), deviceId);
+    } catch (err) { console.warn('[activeSync] continuity note failed:', err.message); }
 }
 
 function adbStatusOf(globalResources, deviceId) {
@@ -471,7 +506,7 @@ function hello(globalResources, wsServer, clientInfo, data) {
         // the DeX window of the phone's own app (#794): the same phone as a device, linked as if by
         // USB (a cradle), not over the network
         const usbDevice = String(src.usbDevice || '').toLowerCase();
-        if (src.link === 'usb' && isPeerId(usbDevice)) { as.link = 'usb'; as.usbDevice = usbDevice; }
+        if (src.link === 'usb' && isPeerId(usbDevice)) { as.link = 'usb'; as.usbDevice = usbDevice; noteContinuity(globalResources, usbDevice); }
         clientInfo.as = as;
         scheduleUpdated(globalResources, server);
         return { success: true, kind, id, name, ...list(globalResources, server) };
@@ -508,6 +543,7 @@ function hello(globalResources, wsServer, clientInfo, data) {
     const wasOnline = !!existing;
     clientInfo.as = as;
     if (as.status) d.prepare('UPDATE as_devices SET last_status = ? WHERE device_id = ?').run(JSON.stringify(as.status), id);
+    if (as.status && as.status.continuity) noteContinuity(globalResources, id);
     if (!wasOnline) logEvent(globalResources, id, 'info', `Connected (${as.speaker})`);
     // ADB on 5555 (#818): look for the phone where this socket comes from
     try { require('./deviceAdb').noteOnline(globalResources, server, id); } catch (err) { console.warn('[activeSync] adb detect:', err.message); }
@@ -522,6 +558,7 @@ function status(globalResources, wsServer, clientInfo, data) {
     if (!st) return false;
     clientInfo.as.status = st;
     const id = clientInfo.as.id;
+    if (st.continuity) noteContinuity(globalResources, id);
     const last = statusWrites.get(id) || 0;
     if (st.at - last >= STATUS_WRITE_MS) {
         statusWrites.set(id, st.at);

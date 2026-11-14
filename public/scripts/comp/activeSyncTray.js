@@ -134,6 +134,20 @@
             seen.set(d.deviceId, { online: d.online, session: d.session });
         }
         first = false;
+        prefetch(st);
+    }
+
+    /**
+     * Device Center opens on a phone that is already drawn (#827): the picture's art and each known
+     * phone's wallpapers are loaded ahead, when the phone is known or its wallpapers change.
+     */
+    function prefetch(st) {
+        const devs = st.devices.filter((d) => d.online || d.partner);
+        if (!devs.length || !root.featureLoader) return;
+        root.featureLoader.loadFeature('activesync_device_art').then(() => {
+            const D = root.activeSyncDeviceArt;
+            if (D && typeof D.wallpapers === 'function') devs.forEach((d) => { void D.wallpapers(d); });
+        }, () => {});
     }
 
     a.on('state', onState);

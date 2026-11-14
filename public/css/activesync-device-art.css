@@ -81,6 +81,62 @@
     background: linear-gradient(#a7adb5, #6a7078);
 }
 
+/* ---------------------------------------------------------------- a foldable (#827): two hinged halves;
+   closing swings the left half over (the cover on its back), the body slides to stay centred */
+
+.asda-fold,
+.asda-fold-body,
+.asda-half {
+    position: absolute;
+    transform-style: preserve-3d;
+}
+
+.asda-fold { transform-origin: 50% 100%; }
+
+.asda-fold-body {
+    inset: 0;
+    transition: transform .9s cubic-bezier(.45, .05, .25, 1);
+}
+
+.asda-fold[data-fold="closed"] .asda-fold-body { transform: translateX(calc(-1 * var(--asda-shift))); }
+
+.asda-half { top: 0; }
+
+.asda-half--move {
+    transform-origin: 100% 50%;
+    /* the same functions as closed, so the angle animates (none -> rotateY(180deg) would flip at once) */
+    transform: translateZ(0) rotateY(0deg);
+    transition: transform .9s cubic-bezier(.45, .05, .25, 1);
+}
+
+/* the gap of the seam: the closed half lies 1.5 px off the other */
+.asda-fold[data-fold="closed"] .asda-half--move { transform: translateZ(1.5px) rotateY(180deg); }
+
+.asda-fold .asda-front,
+.asda-fold .asda-back {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    overflow: hidden; /* each half shows only its own half of the inner screen's drawing */
+    backface-visibility: hidden;
+}
+
+/* the dark seam between the halves, round the closed phone's sides */
+.asda-seam {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: #15181c;
+    opacity: 0;
+    transition: opacity .15s;
+}
+
+.asda-fold[data-fold="closed"] .asda-seam {
+    opacity: 1;
+    transition: opacity .15s .75s;
+}
+
 /* ---------------------------------------------------------------- DeX's laptop */
 
 .asda-laptop {
@@ -207,4 +263,186 @@
 .asda-bars i.is-on {
     background: linear-gradient(#7bd24f, #2f8a14);
     box-shadow: inset 0 0 0 .5px #23700d;
+}
+
+/* ---------------------------------------------------------------- Transfer DreamStudio Session (#827,
+   activeSyncStudio.js wizard()): an Aero wizard with the Import wizard's parts (vista-import-wizard.css):
+   the round Back orb in a 41 px caption, a white page, the 12 pt #003399 main instruction 38 px in,
+   green-arrow command links, the button row on Vista's grey footer */
+
+.modal.asw-window {
+    --modal-title-chrome-height: 40px;
+    padding: var(--modal-title-chrome-height) var(--window-frame-inset, 7px) var(--window-frame-inset, 7px);
+}
+
+.modal.asw-window > .modal-window-title {
+    height: 41px;
+    min-height: 41px;
+    padding-left: 6px;
+}
+
+.modal.asw-window > .modal-window-title > .modal-window-title-main { gap: 7px; }
+.modal.asw-window > .modal-window-title > .modal-window-title-main > span { margin-left: 3px; }
+.modal.asw-window > .modal-window-title .modal-window-title-main > .icon-image { display: inline-block; width: 16px; height: 16px; }
+body.desktop-mode .modal.asw-window > .modal-window-title .modal-window-title-main > .icon-fa { display: none; }
+
+.modal.asw-window .asw-back {
+    flex: 0 0 29px;
+    width: 29px;
+    min-width: 29px;
+    height: 27px;
+    min-height: 27px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: url('/static_images/vista-explorer/nav-back.png') no-repeat 0 0;
+    box-shadow: none;
+    opacity: 1;
+}
+
+.modal.asw-window .asw-back:hover:not(:disabled) { background-position: 0 -27px; }
+.modal.asw-window .asw-back:active:not(:disabled) { background-position: 0 -54px; }
+.modal.asw-window .asw-back:disabled { background-position: 0 -81px; opacity: 1; }
+
+.modal.asw-window > .asw-client {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    border-radius: 0;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+}
+
+.asw-page {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 20px;
+    padding: 18px 19px 11px 38px;
+    overflow: auto;
+}
+
+.modal.asw-window .asw-instruction {
+    margin: 0;
+    color: #003399;
+    font-size: 12pt;
+    font-weight: 400;
+    line-height: 21px;
+}
+
+.asw-text {
+    margin: 0;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+.asw-text.is-error { color: #000; }
+
+.asw-links {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-right: 40px;
+}
+
+.modal.asw-window .asw-link {
+    display: grid;
+    grid-template-columns: 25px minmax(0, 1fr);
+    gap: 0 3px;
+    align-items: start;
+    width: 100%;
+    margin: 0;
+    padding: 8px 8px 6px 3px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-shadow: none;
+    color: #151c55;
+    text-align: left;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    font-size: 12pt;
+    font-weight: 400;
+    line-height: 21px;
+    cursor: pointer;
+}
+
+.modal.asw-window .asw-link::before {
+    content: "";
+    grid-row: 1 / span 2;
+    width: 25px;
+    height: 25px;
+    margin-top: -2px;
+    background: url("data:image/png;base64,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") no-repeat 0 0;
+}
+
+.modal.asw-window .asw-link:hover:not(:disabled) { background: linear-gradient(#fff, #f6f6f6); border-color: #c6c6c6; color: #074ae5; }
+.modal.asw-window .asw-link:hover:not(:disabled)::before { background-position: 0 -25px; }
+.modal.asw-window .asw-link:active:not(:disabled) { background: linear-gradient(#f6f6f6, #eaeaea); border-color: #9e9e9e; color: #062073; }
+.modal.asw-window .asw-link:active:not(:disabled)::before { background-position: 0 -50px; }
+.modal.asw-window .asw-link:disabled { color: #8d8d8d; cursor: default; }
+.modal.asw-window .asw-link:disabled::before { background-position: 0 -75px; }
+.modal.asw-window .asw-link:focus-visible { outline: 1px dotted #000; outline-offset: -3px; }
+
+.asw-link-text { grid-column: 2; }
+
+.asw-link-note {
+    grid-column: 2;
+    margin-top: 1px;
+    font-size: 9pt;
+    line-height: 15px;
+}
+
+/* the marquee: the shared progress trough with a lit chunk running through it */
+.asw-bar {
+    position: relative;
+    width: 355px;
+    height: 15px;
+    overflow: hidden;
+    box-sizing: border-box;
+    border-style: solid;
+    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+}
+
+.asw-bar > i {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    left: -90px;
+    width: 90px;
+    border-image: url("/static_images/vista-controls/progress-fill.png") 0 8 fill / 0 8px stretch;
+    animation: asw-marquee 2s linear infinite;
+}
+
+@keyframes asw-marquee {
+    from { left: -90px; }
+    to { left: 355px; }
+}
+
+.asw-footer {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 12px 11px;
+    border-top: 1px solid #dfdfdf;
+    background: #f0f0f0;
+}
+
+.asw-footer .btn-standard { min-width: 73px; }
+
+/* the shared light-window rules (vista-dialogs.css: a grey client, black headings) give way to the
+   wizard's white page and blue main instruction */
+body:not(.windows-classic-theme) .modal.asw-window[data-window-client="light"] > .modal-content.asw-client {
+    background: #fff;
+}
+
+body.desktop-mode:not(.windows-classic-theme) .modal.asw-window[data-window-client="light"] .modal-content h1.asw-instruction {
+    margin: 0;
+    color: #003399;
+    font-size: 12pt;
+    font-weight: 400;
 }

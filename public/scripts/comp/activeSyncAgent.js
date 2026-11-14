@@ -196,12 +196,47 @@
         if (prog) out.program = prog;
         const scr = screenInfo();
         if (scr && scr.foldable) { out.foldable = true; out.screen = scr.screen === 'cover' ? 'cover' : 'inner'; }
+        // Melaton Mobile's edition (#827), as the phone's About shows it; Continuity once used stays known on the server
+        const ed = myEdition(out);
+        out.edition = ed.name;
+        if (ed.continuity) out.continuity = true;
         // the network's name: the app reads it only with precise location allowed (Wireless Manager asks)
         if (out.wifi && out.wifi.connected && !out.wifi.ssid) {
             const name = wifiName();
             if (name) out.wifi = Object.assign({}, out.wifi, { ssid: name });
         }
         return out;
+    }
+
+    /**
+     * Melaton Mobile's edition (Yukimi, Nov 14 2026, #827), as Windows Mobile names its editions:
+     *   Classic       no cellular modem, one screen
+     *   Standard      one screen, not a foldable, a cellular modem
+     *   Professional  a foldable or a phone with more than one screen
+     *   Enterprise    Continuity (DeX with Dreamscape as home), used at least once
+     * edition({ cellular, foldable, multiScreen, continuity }) -> 'Classic' | 'Standard' | 'Professional' | 'Enterprise'
+     */
+    function edition(f) {
+        if (f && f.continuity) return 'Enterprise';
+        if (f && (f.foldable || f.multiScreen)) return 'Professional';
+        if (f && f.cellular) return 'Standard';
+        return 'Classic';
+    }
+
+    /** This phone's own edition (the device side): its modem, its screens, Continuity. */
+    function myEdition(st) {
+        let cellular = !!(st && st.cellular && st.cellular.present);
+        if (!st || !st.cellular) {
+            try { const s2 = root.AndroidDeviceStatus ? JSON.parse(root.AndroidDeviceStatus.getState()) : null; cellular = !!(s2 && s2.cellular && s2.cellular.present); } catch (_) { /* no bridge */ }
+        }
+        const scr = screenInfo();
+        let h = null;
+        try { h = root.melatonContinuity && typeof root.melatonContinuity.hybrid === 'function' ? root.melatonContinuity.hybrid() : null; } catch (_) { h = null; }
+        let external = false;
+        try { external = !!(root.AndroidHome && typeof root.AndroidHome.isExternalDisplay === 'function' && root.AndroidHome.isExternalDisplay()); } catch (_) { external = false; }
+        const continuity = !!(h && h.hybrid);
+        const facts = { cellular, foldable: !!(scr && scr.foldable), multiScreen: external || !!(h && h.dexSeen), continuity };
+        return { name: edition(facts), continuity };
     }
 
     function screenInfo() {
@@ -719,6 +754,8 @@
         transferProgress: () => (remote ? Object.assign({}, remote, { active: remoteActive() }) : null),
         device: (id) => st.devices.find((d) => d.deviceId === id) || null,
         refresh: () => send('as_list', {}).then((res) => { takeLists(res); fire('state', state()); return state(); }),
+        edition,
+        myEdition: () => myEdition(null).name,
         propose: (deviceId, mode, opts) => partnershipCall(Object.assign({ action: 'propose', deviceId, mode }, opts || {})),
         update: (deviceId, changes) => partnershipCall(Object.assign({ action: 'update', deviceId }, changes || {})),
         // the phone a hybrid DeX window runs on (#798) keeps its partnership: it is this handheld

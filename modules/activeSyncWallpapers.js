@@ -2,8 +2,9 @@
  * The phones' wallpapers, kept on the server (Yozora #827): Device Center draws a phone with its own
  * wallpapers in it, so they are here before Device Center opens and while the phone is away.
  *
- *   POST /api/activesync/wallpapers/:deviceId          the phone, in its own page's session, when a
- *        { inner, cover, external, screen }             wallpaper changes and once per connection;
+ *   POST /api/activesync/wallpapers/:deviceId          the phone (its page or the app's service, in its
+ *        { inner, cover, external, innerLock, ... }     session), when a wallpaper changes and once per
+ *                                                       connection; only the kinds sent change (null clears one);
  *        each a same-site path or a JPEG / PNG / WebP data URL (at most 720 px, see activeSyncScreen.js)
  *   GET  /api/activesync/wallpapers/:deviceId          an admin desktop (or the phone): { inner, cover,
  *                                                       external, screen, at } as URLs, null when none
@@ -18,7 +19,9 @@ const fs = require('fs');
 const path = require('path');
 const activeSync = require('./activeSync');
 
-const KINDS = ['inner', 'cover', 'external'];
+// Melaton's home pictures (the page: Today on each screen, the DeX window's desktop), the lock screens and
+// Android's own home wallpapers (the app's service, #827: Samsung keeps one per screen)
+const KINDS = ['inner', 'cover', 'external', 'innerLock', 'coverLock', 'externalLock', 'androidInner', 'androidCover', 'androidExternal'];
 const MAX_PICTURE_BYTES = 2 * 1024 * 1024;
 const DATA_URL = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/=\s]+)$/;
 const EXT = { jpeg: 'jpg', png: 'png', webp: 'webp' };
@@ -72,6 +75,11 @@ function store(globalResources, deviceId, body) {
     const idx = { at: Date.now(), screen: src.screen === 'cover' || src.screen === 'inner' ? src.screen : (old.screen || null) };
     const keep = new Set(['index.json']);
     for (const k of KINDS) {
+        // a kind not sent keeps what it had (the page and the service each send their own)
+        if (!Object.prototype.hasOwnProperty.call(src, k)) {
+            if (old[k]) { idx[k] = old[k]; if (old[k].file) keep.add(old[k].file); }
+            continue;
+        }
         const v = typeof src[k] === 'string' ? src[k].trim() : '';
         if (!v) continue;
         if (/^\/[^/\\]/.test(v) && v.length <= 1024) { idx[k] = { path: v, at: old[k] && old[k].path === v ? old[k].at : idx.at }; continue; }

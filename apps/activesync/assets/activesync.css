@@ -27,6 +27,10 @@
 .asdc-status { position: absolute; left: 87px; top: 446px; height: 32px; display: flex; align-items: center; gap: 13px; letter-spacing: .25px; font-size: 15px; color: #1e1e1e; white-space: nowrap; }
 .asdc-status[data-status="notconnected"] { left: 70px; }
 .asdc-status img { width: 32px; height: 32px; flex: none; }
+/* a foldable's picture folds and unfolds on a click (#827) */
+.asdc-device.is-foldable { cursor: pointer; }
+/* WMDC's sync status line under the device status (#827): a partnership's last sync */
+.asdc-sync { position: absolute; left: 132px; top: 478px; font-size: 12px; color: #4a4a4a; white-space: nowrap; }
 
 /* ---- tiles (the right column, centred as a stack) ---- */
 .asdc-tiles { position: absolute; left: 302px; top: 3px; width: 436px; height: 534px; display: flex; flex-direction: column; justify-content: center; gap: 19px; }

@@ -59,6 +59,26 @@
         return d.toDateString() === today.toDateString() ? `Today at ${time}` : `${d.toLocaleDateString()} at ${time}`;
     }
 
+    /** Classic / Standard / Professional / Enterprise (activeSync.edition); Continuity once used is kept by the server. */
+    function editionOf(dev) {
+        const st = (dev && dev.status) || {};
+        const seen = !!(dev && dev.settings && dev.settings.continuitySeen);
+        if (seen) return 'Enterprise';
+        if (st.edition) return st.edition;
+        const a = as();
+        const D = art();
+        const facts = { cellular: !!(st.cellular && st.cellular.present), foldable: !!(D && D.isFoldable(dev)), multiScreen: false, continuity: false };
+        return a && typeof a.edition === 'function' ? a.edition(facts) : '';
+    }
+
+    /** WMDC's own sync line (ToastLastSyncTodayAtTime / ToastLastSyncDateAtTime); nothing before the first sync. */
+    function lastSyncLine(ms) {
+        if (!ms) return '';
+        const d = new Date(ms);
+        const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        return d.toDateString() === new Date().toDateString() ? `Last sync: Today at ${time}` : `Last sync: ${d.toLocaleDateString()} at ${time}`;
+    }
+
     function batteryArt(b) {
         if (!b || b.level == null) return 'battery-5';
         return `battery-${b.level < 10 ? 0 : b.level < 35 ? 1 : b.level < 60 ? 2 : b.level < 85 ? 3 : 4}`;
@@ -102,7 +122,7 @@
             // window is up (no faster: #811 no client polling under 60 s). Wallpapers come from the
             // server (#827) and change only when the phone sends new ones (the device's wallpapersAt).
             const shotTimer = setInterval(() => { if (!doc.hidden && showScreenshots()) this.loadScreens(true); }, 60000);
-            this.app.signal.addEventListener('abort', () => { clearInterval(shotTimer); this.screens.blobs.forEach((u) => URL.revokeObjectURL(u)); });
+            this.app.signal.addEventListener('abort', () => { clearInterval(shotTimer); clearTimeout(this.foldTimer); this.screens.blobs.forEach((u) => URL.revokeObjectURL(u)); });
             const a = as();
             if (a) {
                 const off = a.on('state', () => this.render());
@@ -153,6 +173,7 @@
                             <div class="asdc-logo"><img src="/static_images/wm61/boot-melaton.png" alt=""><b>Melaton</b><i>Mobile</i></div>
                             <div class="asdc-device" aria-hidden="true"></div>
                             <div class="asdc-status"><img alt=""><span></span></div>
+                            <div class="asdc-sync"></div>
                             <div class="asdc-body"></div>
                         </div>
                     </div>
@@ -176,6 +197,7 @@
                 if (tile) this.openTile(tile.dataset.tile);
             }, sig);
             q('.asdc-stage').addEventListener('mouseleave', () => this.openTile(null), sig);
+            q('.asdc-device').addEventListener('click', () => this.toggleFold(), sig);
             m.addEventListener('keydown', (ev) => {
                 if (ev.key === 'Enter' && ev.target.matches('.asdc-page input[type="text"]')) { ev.preventDefault(); void this.command('setup-go'); }
                 if ((ev.key === 'Backspace' && !ev.target.matches('input')) || (ev.altKey && ev.key === 'ArrowLeft')) { if (this.page && !this.busy) { ev.preventDefault(); void this.command('back'); } }
@@ -267,41 +289,58 @@
 
         /**
          * Not connected: the two phones; connected: the drawn phone with its screens in it. A device
-         * that appears (it connects, or Device Center opens on it) arrives: it turns in and its screen
-         * lights up (activesync-device-art.css); the picture waits up to 1.5 s for its screens first.
+         * that appears (it connects, or Device Center opens on it) arrives at once: it turns in and its
+         * screen lights up (activesync-device-art.css). Its wallpapers are already here (the tray
+         * prefetches them, activeSyncDeviceArt.wallpapers); locked, the screens show the lock screen's.
          */
         paintDevice(dev, connected) {
             const box = this.el('.asdc-device');
             const A = art();
-            if (!connected || !A) {
+            if (!connected) {
                 if (box.dataset.mode !== 'none') { box.dataset.mode = 'none'; box.dataset.key = ''; box.innerHTML = `<img src="${A_ASSETS}/devices-256.png" alt="" draggable="false">`; }
                 return;
             }
+            if (!A) { if (box.dataset.mode !== 'wait') { box.dataset.mode = 'wait'; box.innerHTML = ''; } return; }
             const sc = this.screens;
             if (sc.deviceId !== dev.deviceId) {
                 sc.blobs.forEach((u) => URL.revokeObjectURL(u));
-                Object.assign(sc, { deviceId: dev.deviceId, form: 'phone', urls: {}, blobs: [], at: 0, key: '', wallAt: 0, waitFrom: 0 });
+                Object.assign(sc, { deviceId: dev.deviceId, form: 'phone', urls: {}, blobs: [], at: 0, key: '', waitFrom: 0, asked: false });
             }
-            // new wallpapers on the server, the other mode chosen, or the foldable opened / closed
-            // while screenshots are shown: the screens again
-            const shots = showScreenshots();
+            const st = dev.status || {};
+            const locked = st.locked === true;
+            const shots = showScreenshots() && !locked;
             const live = A.screenOf(dev);
-            if (!sc.loading && (!sc.at || sc.shots !== shots || (!shots && (dev.wallpapersAt || 0) !== sc.wallAt) || (shots && live && sc.liveScreen && live !== sc.liveScreen))) this.loadScreens(false);
+            // screenshots (Connection settings): ADB pictures, again when chosen or when the foldable turns
+            if (shots && !sc.loading && !(sc.shotsFailed && Date.now() - sc.shotsFailed < 60000) && (!sc.at || !sc.shots || (live && sc.liveScreen && live !== sc.liveScreen))) this.loadScreens(false);
             sc.liveScreen = live;
-            if (!sc.at && box.dataset.mode !== 'device') {
-                if (!sc.waitFrom) { sc.waitFrom = Date.now(); setTimeout(() => this.render(), 1500); }
-                if (Date.now() - sc.waitFrom < 1500) {
-                    if (box.dataset.mode !== 'wait') { box.dataset.mode = 'wait'; box.innerHTML = ''; }
-                    return;
+            // wallpapers: the kept set, now; a short wait only when none was ever fetched for this phone
+            const w = A.peekWallpapers(dev);
+            if (!w) {
+                A.wallpapers(dev).then(() => this.render());
+                if (box.dataset.mode !== 'device') {
+                    if (!sc.waitFrom) { sc.waitFrom = Date.now(); setTimeout(() => this.render(), 350); }
+                    if (Date.now() - sc.waitFrom < 350) { if (box.dataset.mode !== 'wait') { box.dataset.mode = 'wait'; box.innerHTML = ''; } return; }
                 }
+            } else if (!w.inner && !w.androidInner && dev.online && !sc.asked) {
+                // nothing kept yet (an app page from before #827): ask the phone itself once
+                sc.asked = true;
+                this.askWallpapers(dev);
             }
+            const ww = w || {};
+            const pick = (k) => (locked ? (ww[`${k}Lock`] || null) : null) || ww[k] || ww[`android${k[0].toUpperCase()}${k.slice(1)}`] || (sc.live && sc.live[k]) || null;
+            const use = shots && sc.at ? sc.urls : { inner: pick('inner'), cover: pick('cover') || pick('inner'), external: pick('external') };
             const fold = A.isFoldable(dev) || sc.form === 'fold';
-            const dex = !!(dev.link === 'usb' || isContinuityDevice(dev) || sc.urls.externalOn);
-            // which screen is in use: ADB's display states with screenshots, else what the phone's page says, else the wallpapers' guess
-            const screen = (shots && sc.urls.screen) || live || sc.urls.screen || 'inner';
-            const screens = { inner: sc.urls.inner || null, cover: sc.urls.cover || null, external: dex ? (sc.urls.external || sc.urls.inner || null) : null, screen };
-            const key = JSON.stringify([fold, screens]);
-            if (box.dataset.mode === 'device' && box.dataset.key === key) return;
+            const dex = !!(dev.link === 'usb' || isContinuityDevice(dev) || (shots && sc.urls.externalOn));
+            // which screen is in use: ADB's display states with screenshots, else the phone's own word, else the wallpapers' guess
+            const actual = (shots && sc.urls.screen) || live || ww.screen || 'inner';
+            this.actualScreen = actual;
+            // a click on a foldable shows its other screen for a while (foldPreview, toggleFold)
+            const screen = fold && this.foldPreview ? this.foldPreview : actual;
+            const screens = { inner: use.inner || null, cover: use.cover || null, external: dex ? (use.external || use.inner || null) : null, screen };
+            // a foldable's state is not part of the picture: it folds and unfolds in place (animated)
+            const key = JSON.stringify([fold, fold ? { ...screens, screen: null } : screens]);
+            box.classList.toggle('is-foldable', fold);
+            if (box.dataset.mode === 'device' && box.dataset.key === key) { A.setFold(box, screen === 'cover' ? 'closed' : 'open'); return; }
             const arrive = box.dataset.mode !== 'device';
             // an arrival plays to its end before the picture changes again
             if (!arrive && Date.now() < this.arriveUntil) {
@@ -315,22 +354,42 @@
         }
 
         /**
-         * What the screens show: the phone's wallpapers as the server keeps them (#827, the default),
-         * or screenshots over ADB when Connection settings asks for them and the phone allows them.
+         * A click on a foldable's picture (Yukimi, Nov 14): it folds or unfolds to its other screen and
+         * shows that screen's wallpaper, then goes back to the phone's own state after 15 s.
          */
+        toggleFold() {
+            const box = this.el('.asdc-device');
+            if (box.dataset.mode !== 'device' || !box.classList.contains('is-foldable')) return;
+            const showing = this.foldPreview || this.actualScreen || 'inner';
+            this.foldPreview = showing === 'cover' ? 'inner' : 'cover';
+            clearTimeout(this.foldTimer);
+            this.foldTimer = setTimeout(() => { this.foldPreview = null; this.render(); }, 15000);
+            this.render();
+        }
+
+        /** An app page from before #827 keeps no wallpapers on the server: status.wallpapers, once. */
+        async askWallpapers(dev) {
+            const a = as();
+            const w = a ? await a.call(dev.deviceId, 'status.wallpapers', {}, { timeoutMs: 15000 }).catch(() => null) : null;
+            if (!w || this.app.signal.aborted || this.screens.deviceId !== dev.deviceId) return;
+            const live = {};
+            for (const k of ['inner', 'cover', 'external']) if (typeof w[k] === 'string' && /^(\/[^/]|data:image\/)/.test(w[k])) live[k] = w[k];
+            this.screens.live = live;
+            this.render();
+        }
+
+        /** Screenshots over ADB (Connection settings: wallpaper off), while the phone allows them. */
         async loadScreens(again) {
             const dev = this.device();
             const sc = this.screens;
             if (!dev || sc.loading || (again && !sc.at)) return;
             sc.loading = true;
             const id = dev.deviceId;
-            const shots = showScreenshots();
             const urls = {};
             const blobs = [];
-            let wallAt = dev.wallpapersAt || 0;
             try {
                 const adb = dev.adb || {};
-                if (shots && dev.online && adb.state === 'ready' && adb.screenshots !== false) {
+                if (dev.online && adb.state === 'ready' && adb.screenshots !== false) {
                     const r = await fetch(`/api/activesync/adb/${id}/displays`, { credentials: 'same-origin' }).then((x) => x.json()).catch(() => null);
                     const list = (r && r.success && r.displays) || [];
                     if (list.some((d) => d.kind === 'cover')) sc.form = 'fold';
@@ -347,35 +406,17 @@
                         if (d.kind === 'external') urls.externalOn = true;
                     }
                 }
-                if (!urls.inner) {
-                    // kept on the server: ready at once, even before the phone answers
-                    const r = await fetch(`/api/activesync/wallpapers/${id}`, { credentials: 'same-origin', cache: 'no-store' }).then((x) => x.json()).catch(() => null);
-                    const w = r && r.success ? r.wallpapers : null;
-                    if (w) {
-                        wallAt = w.at || wallAt;
-                        for (const k of ['inner', 'cover', 'external']) if (!urls[k] && w[k]) urls[k] = w[k];
-                        if (!urls.screen && (w.screen === 'cover' || w.screen === 'inner')) urls.screen = w.screen;
-                    }
-                }
-                if (!urls.inner && dev.online) {
-                    // nothing kept yet (an app page from before #827): ask the phone itself
-                    const a = as();
-                    const w = a ? await a.call(id, 'status.wallpapers', {}, { timeoutMs: 15000 }).catch(() => null) : null;
-                    if (w) {
-                        for (const k of ['inner', 'cover', 'external']) if (!urls[k] && typeof w[k] === 'string' && /^(\/[^/]|data:image\/)/.test(w[k])) urls[k] = w[k];
-                        if (!urls.screen && (w.screen === 'cover' || w.screen === 'inner')) urls.screen = w.screen;
-                    }
-                }
             } finally {
                 sc.loading = false;
             }
             if (this.app.signal.aborted || sc.deviceId !== id) { blobs.forEach((u) => URL.revokeObjectURL(u)); return; }
             sc.blobs.forEach((u) => URL.revokeObjectURL(u));
             sc.blobs = blobs;
-            sc.urls = urls;
-            sc.at = Date.now();
-            sc.shots = shots;
-            sc.wallAt = wallAt;
+            // no screenshot came: the wallpapers stay
+            sc.urls = urls.inner || urls.cover ? urls : {};
+            sc.at = urls.inner || urls.cover ? Date.now() : 0;
+            sc.shots = true;
+            if (!sc.at) sc.shotsFailed = Date.now();
             this.render();
         }
 
@@ -451,9 +492,21 @@
             // this handheld in continuity: being connected to itself is not news (#798)
             this.el('.asdc-status').hidden = isContinuityDevice(this.device());
             this.el('.asdc-status').dataset.status = this.status;
+            const dev = this.device();
+            // the lock screen is up on the phone (the app's service, #827): imageres' Aero padlock
+            const locked = this.status === 'connected' && !!(dev && dev.status && dev.status.locked === true);
+            this.el('.asdc-status').classList.toggle('is-locked', locked);
+            // WMDC's status area (UpdateDeviceStatusArea): under the device status, a partnership's sync line
+            const sync = this.el('.asdc-sync');
+            const syncText = this.status === 'connected' && dev && dev.partner && !isContinuityDevice(dev) ? lastSyncLine(dev.lastSync) : '';
+            if (sync.textContent !== syncText) sync.textContent = syncText;
+            sync.hidden = !syncText;
             if (this.status === 'connecting') {
                 img.src = `${A}/status-connecting-${(this.frame % 8) + 1}.png`;
                 text.textContent = 'Connecting';
+            } else if (locked) {
+                img.src = '/static_images/activesync/status-locked.png';
+                text.textContent = 'Connected (Locked)';
             } else {
                 img.src = `${A}/status-${this.status}.png`;
                 text.textContent = this.status === 'connected' ? 'Connected' : 'Not Connected';
@@ -512,6 +565,8 @@
             row('Device name:', esc(dev.name));
             // the maker and the model (#827): "Samsung Galaxy Z Fold7 (SM-F966U)"
             row('Model:', esc(D ? D.makeModel(dev.model) : dev.model));
+            // Melaton Mobile's edition (#827): the phone's own word, else worked out from what is known here
+            row('Edition:', esc(editionOf(dev)));
             // Melaton Mobile's version and Android's: "Melaton Mobile 6.5 (Android 16)"
             row('Operating system:', esc(D ? D.osText(dev) : dev.os));
             // the program in front: a Melaton Mobile program or an Android app Melaton started

@@ -1428,7 +1428,10 @@
                 }
                 const cores = navigator.hardwareConcurrency;
                 const mem = navigator.deviceMemory;
-                el.innerHTML = `<p>Melaton Mobile\u00ae ${esc(info.version)}</p>
+                // the edition after the version, as Windows Mobile's own About reads ("Windows Mobile 6.1 Professional", #827)
+                let edition = '';
+                try { edition = window.activeSync && typeof window.activeSync.myEdition === 'function' ? window.activeSync.myEdition() : ''; } catch (_) { edition = ''; }
+                el.innerHTML = `<p>Melaton Mobile\u00ae ${esc(info.version)}${edition ? ` ${esc(edition)}` : ''}</p>
                     <p>Melaton OS ${esc(info.version)}${esc(build)}<br>\u00a9 ${esc(info.copyrightYear)} ${esc(info.copyrightHolder)}.<br>All rights reserved.</p>
                     <p>This computer program is protected by U.S. and international copyright laws.</p>
                     <div class="wm-facts">
