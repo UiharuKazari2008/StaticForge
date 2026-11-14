@@ -1,0 +1,1523 @@
+/* Image Search (Yozora #828), Vista's Search window measured on the VM (Start > Search, Advanced
+   Search, 800x600; ~/.cache/vista-vm/search-ref): the title row is Control Panel's and the Games
+   folder's (vista-explorer.css lists #imageSearchModal with them); the Show only band (#fbfcfe to
+   #c9d9e2 over a #545a60 edge, 23 px inside, the picked filter a glossy #2c628b box); the Advanced
+   Search pane (#fcfcfc, Vista combos and edits, Search); the command bar (Explorer's band and faces,
+   public/static_images/vista-explorer/cmdbar-*); the navigation pane, column headers (aero HEADER,
+   vista-controls/header-item-*), the results and the details pane (70 px, Explorer's gradient and
+   swoosh). Script: public/scripts/comp/imageSearchApp.js. */
+
+.image-search-window {
+    --isx-font: 'Segoe UI', 'SegoeUI', 'Noto Sans', sans-serif;
+    --isx-link: #0066cc;
+}
+
+/* ---- the title row ---- */
+
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address-icon {
+    flex: none;
+    background: url('/static_images/vista-icons/search-folder-16.png') no-repeat center / 16px 16px;
+    background-image: image-set(url('/static_images/vista-icons/search-folder-16.png') 1x, url('/static_images/vista-icons/search-folder-32.png') 2x);
+}
+
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address {
+    position: relative;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .isx-crumbs {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar :is(.cpl-crumb-sep, .cpl-icon) {
+    flex: none;
+}
+
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .isx-crumb {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: transparent;
+    cursor: var(--c-default);
+}
+
+/* the history arrow at the box's right end, as on the VM */
+body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-title-toolbar .cpl-address::after {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 4px;
+    margin: 0 -19px 0 auto;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* searching: Explorer fills the address box green from the left (its search progress) */
+#imageSearchModal .isx-progress {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0;
+    background: linear-gradient(#d6f5c8, #b7eaa3 50%, #a5e28c 51%, #c6f0b4);
+    opacity: 0;
+    pointer-events: none;
+}
+
+#imageSearchModal.isx-busy .isx-progress {
+    opacity: 1;
+    animation: isx-progress 6s cubic-bezier(0.1, 0.6, 0.3, 1) forwards;
+}
+
+@keyframes isx-progress {
+    from { width: 0; }
+    to { width: 92%; }
+}
+
+/* ---- the client ---- */
+
+#imageSearchModal > .modal-content.isx-client {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #fcfcfc;
+    color: #000;
+    font: 12px var(--isx-font);
+    text-shadow: none;
+}
+
+/* ---- Show only and Search for: the band under the address (VM: a #545a60 top edge, 23 px of
+   #fbfcfe..#ecf5fd at the left fading to #c9d9e2 at the right) ---- */
+
+#imageSearchModal :is(.isx-band, .isx-terms) {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+    height: 25px;
+    padding: 0 4px 0 6px;
+    box-sizing: border-box;
+    background:
+        linear-gradient(to right, hsl(0 0% 100% / 70%), hsl(0 0% 100% / 0%) 60%),
+        linear-gradient(#fbfdff, #ecf5fd 8%, #e3edf7 45%, #d6e2eb 75%, #c9d9e2);
+    border-top: 1px solid #545a60;
+    border-bottom: 1px solid #a7b4c1;
+    box-shadow: inset 0 1px 0 #fbfcfe;
+}
+
+#imageSearchModal .isx-terms {
+    border-top: 0;
+    gap: 4px;
+}
+
+#imageSearchModal .isx-terms[hidden] {
+    display: none;
+}
+
+#imageSearchModal .isx-band-label {
+    flex: none;
+    margin-right: 2px;
+    color: #000;
+}
+
+#imageSearchModal .isx-band-btn {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    height: 19px;
+    padding: 0 6px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #000;
+    font: 12px var(--isx-font);
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-band-btn:hover {
+    background: linear-gradient(#f2f9fd, #e1f1fb 45%, #c8e6f8 50%, #b5ddf5);
+    border-color: #7da2ce;
+}
+
+/* the picked filter (VM "Picture": #2c628b edge, #e5f4fc over #68b3db) */
+#imageSearchModal .isx-band-btn.is-on {
+    background: linear-gradient(#e5f4fc, #d3ecf9 45%, #8dc1dd 50%, #68b3db);
+    border-color: #2c628b;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 50%);
+}
+
+#imageSearchModal .isx-advanced-toggle {
+    margin-left: auto;
+    gap: 3px;
+    padding-right: 1px;
+}
+
+/* the round chevron after Advanced Search: down while closed, up while the pane is open */
+#imageSearchModal .isx-chevron {
+    position: relative;
+    width: 15px;
+    height: 15px;
+    border: 1px solid #5d6d7e;
+    border-radius: 50%;
+    background: linear-gradient(#fff, #e9eef3 50%, #d4dde6);
+    box-sizing: border-box;
+}
+
+#imageSearchModal .isx-chevron::before {
+    content: '';
+    position: absolute;
+    left: 3px;
+    top: 4px;
+    width: 7px;
+    height: 4px;
+    background: #1e2c3a;
+    clip-path: polygon(0 0, 50% 100%, 100% 0, 86% 0, 50% 60%, 14% 0);
+}
+
+#imageSearchModal .isx-advanced-toggle.is-open .isx-chevron::before {
+    top: 5px;
+    transform: rotate(180deg);
+}
+
+/* ---- the search terms ---- */
+
+#imageSearchModal .isx-term-list {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+#imageSearchModal .isx-term-wrap {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+}
+
+#imageSearchModal .isx-term {
+    all: unset;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 19px;
+    padding: 0 4px 0 6px;
+    background: linear-gradient(#ffffff, #f1f6fb 50%, #e3ecf5 51%, #edf3f9);
+    border: 1px solid #8da4bb;
+    border-radius: 3px 0 0 3px;
+    color: #000;
+    font: 12px var(--isx-font);
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-term.is-or {
+    border-style: dashed;
+}
+
+#imageSearchModal .isx-term:hover,
+#imageSearchModal .isx-term[aria-expanded="true"],
+#imageSearchModal .isx-term.context-open {
+    background: linear-gradient(#f2f9fd, #e1f1fb 45%, #c8e6f8 50%, #b5ddf5);
+    border-color: #3c7fb1;
+}
+
+#imageSearchModal .isx-term-mode {
+    color: #4b6a88;
+}
+
+#imageSearchModal .isx-term-remove {
+    all: unset;
+    width: 15px;
+    height: 19px;
+    border: 1px solid #8da4bb;
+    border-left: 0;
+    border-radius: 0 3px 3px 0;
+    background: linear-gradient(#ffffff, #f1f6fb 50%, #e3ecf5 51%, #edf3f9);
+    cursor: var(--c-default);
+    position: relative;
+}
+
+#imageSearchModal .isx-term-remove::before {
+    content: '';
+    position: absolute;
+    inset: 6px 4px;
+    background: #4a5a6a;
+    clip-path: polygon(0 12%, 12% 0, 50% 38%, 88% 0, 100% 12%, 62% 50%, 100% 88%, 88% 100%, 50% 62%, 12% 100%, 0 88%, 38% 50%);
+}
+
+#imageSearchModal .isx-term-remove:hover {
+    background: linear-gradient(#fbe2dc, #f4b9ab 50%, #e98a76 51%, #f1a998);
+    border-color: #a8513f;
+}
+
+#imageSearchModal .isx-term-remove:hover::before {
+    background: #fff;
+}
+
+/* ---- Advanced Search (VM: #fcfcfc; labels right-aligned before Vista's combos and edits) ---- */
+
+#imageSearchModal .isx-advanced {
+    flex: none;
+    padding: 6px 10px 8px;
+    background: #fcfcfc;
+    border-bottom: 1px solid #c5d3dc;
+    overflow: auto;
+    max-height: 60%;
+}
+
+#imageSearchModal .isx-advanced[hidden] {
+    display: none;
+}
+
+#imageSearchModal .isx-adv-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 14px;
+}
+
+#imageSearchModal .isx-adv-col {
+    min-width: 0;
+}
+
+#imageSearchModal .isx-adv-row {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    min-width: 0;
+    font: 12px var(--isx-font);
+}
+
+#imageSearchModal .isx-adv-note {
+    height: 17px;
+    margin-top: -4px;
+}
+
+#imageSearchModal .isx-adv-label {
+    flex: 0 0 78px;
+    text-align: right;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#imageSearchModal .isx-adv-row select {
+    height: 23px;
+    min-width: 0;
+}
+
+#imageSearchModal .isx-adv-row .isx-wide {
+    flex: 1 1 auto;
+    width: 0;
+    min-width: 0;
+    height: 23px;
+    box-sizing: border-box;
+}
+
+#imageSearchModal :is(.isx-date-relative, .isx-date-exact)[hidden] {
+    display: none;
+}
+
+#imageSearchModal .isx-num {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+    max-width: 70px;
+    height: 23px;
+    box-sizing: border-box;
+}
+
+#imageSearchModal .isx-to {
+    color: #000;
+}
+
+#imageSearchModal .isx-corpus {
+    color: #6d6d6d;
+}
+
+#imageSearchModal .isx-check,
+.isx-props .isx-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+#imageSearchModal .isx-track {
+    flex: 1 1 auto;
+    width: 0;
+    min-width: 40px;
+}
+
+#imageSearchModal .isx-track-value {
+    flex: 0 0 52px;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#imageSearchModal .isx-adv-buttons {
+    justify-content: flex-end;
+    padding-top: 4px;
+}
+
+#imageSearchModal .isx-adv-buttons .btn-standard {
+    min-width: 75px;
+    height: 23px;
+}
+
+/* a multi-pick list on a combo's face (the models, the resolution tiers): COMBOBOX READONLY art */
+#imageSearchModal .isx-combo-btn {
+    all: unset;
+    box-sizing: border-box;
+    display: block;
+    height: 23px;
+    min-width: 0;
+    padding: 0 22px 0 5px;
+    line-height: 21px;
+    border: 3px solid transparent;
+    border-width: 1px;
+    position: relative;
+    border-image: url('/static_images/vista-controls/combo-normal.png') 3 fill / 3px stretch;
+    color: #000;
+    font: 9pt var(--isx-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: var(--c-default);
+}
+
+/* the glyph over the fill (a border-image fill paints over the element's own background) */
+#imageSearchModal .isx-combo-btn::after {
+    content: '';
+    position: absolute;
+    top: 1px;
+    right: 3px;
+    width: 10px;
+    height: 19px;
+    background: url('/static_images/vista-controls/combo-glyph-normal.png') center / 10px 19px no-repeat;
+}
+
+#imageSearchModal .isx-combo-btn:hover {
+    border-image-source: url('/static_images/vista-controls/combo-hot.png');
+}
+
+#imageSearchModal .isx-combo-btn:is(:active, .context-open, [aria-expanded="true"]) {
+    border-image-source: url('/static_images/vista-controls/combo-pressed.png');
+}
+
+/* ---- the command bar: Explorer's (vista-explorer.css, its art) ---- */
+
+#imageSearchModal .isx-commandbar {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: 0;
+    height: 31px;
+    padding: 3px 3px 0;
+    box-sizing: border-box;
+    background:
+        url('/static_images/vista-explorer/cmdbar-band-edge.png') left top / 1px 100% no-repeat,
+        url('/static_images/vista-explorer/cmdbar-band-edge.png') right top / 1px 100% no-repeat,
+        url('/static_images/vista-explorer/cmdbar-band.png') left top / 1px 100% repeat-x,
+        linear-gradient(to right, #045082, #116584, #1d7986);
+}
+
+#imageSearchModal :is(.isx-cmd, .isx-help) {
+    all: unset;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    height: 24px;
+    padding: 0 6px 2px;
+    box-sizing: border-box;
+    color: #fff;
+    font: 12px var(--isx-font);
+    text-shadow: 0 0 6px hsl(200 80% 10% / 90%), 0 1px 1px hsl(200 80% 10% / 70%);
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-cmd[hidden] {
+    display: none;
+}
+
+#imageSearchModal .isx-cmd-icon {
+    width: 16px;
+    height: 16px;
+    margin: 2px 5px 0 0;
+}
+
+#imageSearchModal .isx-cmd-glyph {
+    flex: none;
+    width: 13px;
+    height: 12px;
+    margin: 2px 0 0 4px;
+    background: url('/static_images/vista-explorer/cmdbar-glyph.png') no-repeat;
+}
+
+/* the glyph on a light face (a search term): the combo's black arrow */
+#imageSearchModal .isx-cmd-glyph.is-dark {
+    width: 7px;
+    height: 4px;
+    margin: 1px 0 0 2px;
+    background: #000;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+#imageSearchModal :is(.isx-cmd, .isx-help):is(:hover, .context-open, [aria-expanded="true"], .is-on):not(:disabled) {
+    border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
+}
+
+#imageSearchModal .isx-cmd:is(.context-open, [aria-expanded="true"]):not(:disabled) {
+    border-image-source: url('/static_images/vista-explorer/cmdbar-open.png');
+}
+
+#imageSearchModal :is(.isx-cmd, .isx-help):active:not(:disabled),
+#imageSearchModal .isx-cmd.is-on:not(:disabled) {
+    padding: 1px 5px 1px 7px;
+    border-image: url('/static_images/vista-explorer/cmdbar-pressed.png') 0 4 fill / 0 4px;
+}
+
+#imageSearchModal .isx-cmd:disabled {
+    color: #a1ccd2;
+    text-shadow: none;
+}
+
+#imageSearchModal .isx-cmd:disabled .isx-cmd-icon {
+    opacity: 0.5;
+}
+
+#imageSearchModal .isx-help {
+    width: 28px;
+    margin-left: auto;
+    justify-content: center;
+}
+
+#imageSearchModal .isx-help img {
+    display: block;
+    width: 16px;
+    height: 16px;
+}
+
+/* ---- the panes ---- */
+
+#imageSearchModal .isx-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    background: #fcfcfc;
+}
+
+#imageSearchModal .isx-nav {
+    display: flex;
+    flex: 0 0 158px;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: #fcfcfc;
+    border-right: 1px solid #a7bac5;
+    box-shadow: 1px 0 0 #fff;
+}
+
+#imageSearchModal.isx-no-nav .isx-nav {
+    display: none;
+}
+
+#imageSearchModal .isx-favorites {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 9px 4px 4px;
+}
+
+#imageSearchModal .isx-nav-heading {
+    margin: 0 0 6px 7px;
+    color: #6d6d6d;
+}
+
+#imageSearchModal :is(.isx-favorite-links, .isx-tree, .isx-tree-children) {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#imageSearchModal .isx-favorite-link {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 22px;
+    padding: 0 4px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: var(--isx-link);
+    font: 12px var(--isx-font);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-favorite-link img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#imageSearchModal .isx-favorite-link:is(:hover, .is-current) {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #e7f5fd);
+    border-color: #99defd;
+}
+
+#imageSearchModal .isx-folders {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    min-height: 0;
+}
+
+#imageSearchModal .isx-folders.is-open {
+    flex: 1 1 60%;
+}
+
+#imageSearchModal .isx-folders-bar {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    height: 25px;
+    padding: 0 10px;
+    background: #fcfcfc;
+    border-top: 1px solid #f0f0f0;
+    box-shadow: 0 -1px 0 #fff, inset 0 1px 0 #f0f0f0, inset 0 2px 0 #fff;
+    color: var(--isx-link);
+    font: 12px var(--isx-font);
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-folders-bar:hover {
+    background: linear-gradient(#e5f4fd, #d8effc 35%, #bce5fc 52%, #a6d9f4);
+    box-shadow: inset 0 -1px 0 #e8f5fc;
+}
+
+#imageSearchModal .isx-folders-chevron {
+    width: 11px;
+    height: 8px;
+    background: url('/static_images/vista-explorer/folders-up.png') no-repeat center;
+    transition: transform 0.2s;
+}
+
+#imageSearchModal .isx-folders.is-open .isx-folders-chevron {
+    transform: rotate(180deg);
+}
+
+#imageSearchModal .isx-folders-tree {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden auto;
+    padding: 3px 0 1px;
+}
+
+#imageSearchModal .isx-folders.is-open .isx-folders-tree {
+    display: block;
+}
+
+/* the tree (Explorer's: 19 px rows, 10 px a level, aero TREEVIEW glyphs) */
+#imageSearchModal .isx-tree {
+    outline: none;
+}
+
+#imageSearchModal .isx-tree-row > .isx-tree-label {
+    min-width: 0;
+    max-width: 100%;
+}
+
+#imageSearchModal .isx-tree-text {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+#imageSearchModal .isx-tree-children {
+    display: none;
+}
+
+#imageSearchModal .isx-tree-node.is-open > .isx-tree-children {
+    display: block;
+}
+
+#imageSearchModal .isx-tree-row {
+    display: flex;
+    align-items: center;
+    height: 19px;
+    padding: 0 6px 0 calc(1px + var(--depth, 0) * 10px);
+    white-space: nowrap;
+}
+
+#imageSearchModal .isx-tree-glyph {
+    flex: 0 0 16px;
+    align-self: stretch;
+    background: url('/static_images/vista-controls/tree-closed.png') no-repeat right 0 center;
+}
+
+#imageSearchModal .isx-tree-node.is-open > .isx-tree-row .isx-tree-glyph {
+    background-image: url('/static_images/vista-controls/tree-open.png');
+}
+
+#imageSearchModal .isx-tree-node.is-leaf > .isx-tree-row .isx-tree-glyph {
+    background: none;
+}
+
+#imageSearchModal .isx-tree-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 18px;
+    padding: 0 4px 0 1px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-sizing: border-box;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-tree-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#imageSearchModal .isx-tree-label:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+#imageSearchModal .isx-tree-node.is-selected > .isx-tree-row .isx-tree-label {
+    background: linear-gradient(#fafafb, #e7e7e7);
+    border-color: #d9d9d9;
+}
+
+#imageSearchModal .isx-tree:focus-within .isx-tree-node.is-selected > .isx-tree-row .isx-tree-label {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+/* ---- the results ---- */
+
+#imageSearchModal .isx-view {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* column headers in every view (aero HEADER items, 23 px) */
+#imageSearchModal .isx-columns {
+    display: flex;
+    flex: none;
+    height: 23px;
+    padding-left: 1px;
+    background: #fff;
+    overflow: hidden;
+}
+
+#imageSearchModal .isx-column {
+    position: relative;
+    flex: none;
+    box-sizing: border-box;
+    height: 23px;
+    padding: 3px 6px 0;
+    line-height: 16px;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-column[data-sort]:hover {
+    border-image-source: url('/static_images/vista-controls/header-item-hot.png');
+}
+
+#imageSearchModal .isx-column[data-sort]:active {
+    border-image-source: url('/static_images/vista-controls/header-item-pressed.png');
+}
+
+#imageSearchModal .isx-column.is-sorted {
+    border-image-source: url('/static_images/vista-controls/header-item-sorted.png');
+}
+
+#imageSearchModal .isx-column.is-sorted::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: calc(50% - 6px);
+    width: 13px;
+    height: 5px;
+    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+}
+
+#imageSearchModal .isx-column.is-sorted.is-desc::before {
+    background-position: 0 -5px;
+}
+
+#imageSearchModal .isx-column-rest {
+    flex: 1 1 auto;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch;
+}
+
+#imageSearchModal .isx-results {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    outline: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    padding: 4px 2px 6px 6px;
+    background: #fcfcfc;
+}
+
+#imageSearchModal .isx-item {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #000;
+    cursor: var(--c-default);
+    user-select: none;
+}
+
+#imageSearchModal .isx-item:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+/* selected: Vista's list selection (#99defd edge, the two-tone pale blue); grey while the list is not focused */
+#imageSearchModal .isx-item.is-selected,
+#imageSearchModal .isx-usage.is-selected > .isx-usage-row {
+    background: linear-gradient(#fafafb, #e7e7e7);
+    border-color: #d9d9d9;
+}
+
+#imageSearchModal .isx-results:focus-within .isx-item.is-selected,
+#imageSearchModal .isx-results:focus-within .isx-usage.is-selected > .isx-usage-row {
+    background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
+    border-color: #99defd;
+}
+
+#imageSearchModal .isx-label {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    word-break: break-word;
+    text-align: center;
+    line-height: 15px;
+}
+
+/* a picture thumbnail: Vista's white mat with a soft shadow, scaled to fit the square */
+#imageSearchModal .isx-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+}
+
+#imageSearchModal .isx-thumb img {
+    display: block;
+    max-width: calc(100% - 8px);
+    max-height: calc(100% - 8px);
+    object-fit: contain;
+    background: #fff;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 1px hsl(210 10% 70% / 70%), 1px 2px 3px hsl(0 0% 0% / 28%);
+}
+
+/* Large Icons (VM: 96 px thumbnails, 105 px across, 148 px down) */
+#imageSearchModal .isx-results[data-view="icons-lg"] .isx-item {
+    width: 105px;
+    height: 144px;
+    margin: 0 0 4px;
+    padding-top: 2px;
+}
+
+#imageSearchModal .isx-results[data-view="icons-lg"] .isx-thumb {
+    width: 100px;
+    height: 100px;
+}
+
+#imageSearchModal .isx-results[data-view="icons-xl"] .isx-item {
+    width: 268px;
+    height: 296px;
+    margin: 0 0 6px;
+    padding-top: 2px;
+}
+
+#imageSearchModal .isx-results[data-view="icons-xl"] .isx-thumb {
+    width: 262px;
+    height: 262px;
+}
+
+#imageSearchModal .isx-results[data-view="icons-md"] .isx-item {
+    width: 84px;
+    height: 84px;
+    margin: 0 0 2px;
+    padding-top: 2px;
+}
+
+#imageSearchModal .isx-results[data-view="icons-md"] .isx-thumb {
+    width: 54px;
+    height: 54px;
+}
+
+#imageSearchModal .isx-results[data-view="icons-md"] .isx-thumb img {
+    border-width: 1px;
+}
+
+/* Small Icons, List, Details: the type icon and the name in a row */
+#imageSearchModal .isx-results:is([data-view="icons-sm"], [data-view="list"], [data-view="details"]) .isx-item {
+    flex-direction: row;
+    gap: 4px;
+    height: 20px;
+    padding: 0 4px 0 3px;
+}
+
+#imageSearchModal .isx-type-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+#imageSearchModal .isx-results:is([data-view="icons-sm"], [data-view="list"], [data-view="details"]) .isx-label {
+    display: block;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#imageSearchModal .isx-results[data-view="icons-sm"] .isx-item {
+    width: 160px;
+    margin: 0 4px 1px 0;
+}
+
+#imageSearchModal .isx-results[data-view="list"] {
+    flex-direction: column;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+#imageSearchModal .isx-results[data-view="list"] .isx-item {
+    width: 200px;
+    margin: 0 6px 1px 0;
+}
+
+#imageSearchModal .isx-results:is([data-view="details"], [data-view="usages"]) {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    padding: 0 0 6px 1px;
+}
+
+#imageSearchModal .isx-results[data-view="details"] .isx-item {
+    align-self: flex-start;
+    gap: 0;
+    padding: 0 0 0 3px;
+}
+
+#imageSearchModal .isx-cell {
+    flex: none;
+    box-sizing: border-box;
+    padding: 0 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 18px;
+}
+
+#imageSearchModal .isx-results[data-view="details"] .isx-c-name {
+    padding-left: 4px;
+}
+
+#imageSearchModal .isx-c-num {
+    text-align: right;
+}
+
+/* Tiles (VM: 48 px picture, the name, the type and the size beside it) */
+#imageSearchModal .isx-results[data-view="tiles"] .isx-item {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+    width: 250px;
+    height: 58px;
+    margin: 0 4px 4px 0;
+    padding: 0 4px;
+}
+
+#imageSearchModal .isx-results[data-view="tiles"] .isx-thumb {
+    width: 54px;
+    height: 54px;
+}
+
+#imageSearchModal .isx-tile-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+#imageSearchModal .isx-tile-text .isx-label {
+    display: block;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#imageSearchModal .isx-sub {
+    color: #6d6d6d;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Prompt Usages: a Details list; a row opens onto its full prompt */
+#imageSearchModal .isx-usage {
+    display: flex;
+    flex-direction: column;
+    align-self: stretch;
+}
+
+#imageSearchModal .isx-usage-row {
+    display: flex;
+    align-items: center;
+    align-self: flex-start;
+    height: 20px;
+    padding-left: 2px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: var(--c-default);
+}
+
+#imageSearchModal .isx-usage-row:hover {
+    background: linear-gradient(#fafbfd, #ebf3fd);
+    border-color: #b8d6fb;
+}
+
+#imageSearchModal .isx-usage-row .isx-tree-glyph {
+    display: inline-block;
+    width: 16px;
+    height: 18px;
+    margin: 0 2px -5px -6px;
+    vertical-align: baseline;
+    background-position: center;
+}
+
+#imageSearchModal .isx-usage.is-open .isx-usage-row .isx-tree-glyph {
+    background-image: url('/static_images/vista-controls/tree-open.png');
+}
+
+#imageSearchModal .isx-usage-full {
+    margin: 2px 12px 8px 28px;
+    padding: 6px 8px;
+    max-width: 640px;
+    background: #fff;
+    border: 1px solid #dfe6ec;
+    line-height: 17px;
+    word-break: break-word;
+    user-select: text;
+}
+
+#imageSearchModal mark,
+.isx-props mark {
+    background: #fff3a8;
+    color: inherit;
+}
+
+#imageSearchModal .isx-prompt-label,
+.isx-props .isx-prompt-label {
+    margin: 6px 0 2px;
+    color: #1e3287;
+}
+
+#imageSearchModal .isx-prompt-label:first-child,
+.isx-props .isx-prompt-label:first-child {
+    margin-top: 0;
+}
+
+#imageSearchModal .isx-muted,
+.isx-props .isx-muted {
+    color: #6d6d6d;
+}
+
+/* no results, searching: Vista's centred grey line */
+#imageSearchModal .isx-message {
+    width: 100%;
+    margin-top: 18px;
+    color: #6d6d6d;
+    text-align: center;
+}
+
+#imageSearchModal .isx-pager {
+    display: flex;
+    flex: 0 0 100%;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    margin: 10px 0 4px;
+    color: #6d6d6d;
+}
+
+#imageSearchModal .isx-link {
+    all: unset;
+    color: var(--isx-link);
+    font: 12px var(--isx-font);
+    cursor: var(--c-pointer, pointer);
+}
+
+#imageSearchModal .isx-link:hover:not(:disabled) {
+    text-decoration: underline;
+}
+
+#imageSearchModal .isx-link:disabled {
+    color: #a0a0a0;
+    cursor: var(--c-default);
+}
+
+/* ---- the landing (VM: "To begin, type in the search box", the rule and the grey line over
+   Explorer's pale gradient; no command bar, panes or details) ---- */
+
+#imageSearchModal .isx-landing {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: 30px 50px 0;
+}
+
+#imageSearchModal.is-landing .isx-landing {
+    display: flex;
+    flex: 1 1 auto;
+}
+
+#imageSearchModal.is-landing :is(.isx-commandbar, .isx-nav, .isx-columns, .isx-results, .isx-details) {
+    display: none;
+}
+
+#imageSearchModal.is-landing .isx-main {
+    background: linear-gradient(to right, #f0fbff, #eefbff 55%, #c8def0);
+}
+
+#imageSearchModal .isx-landing-title {
+    color: #1e5ebf;
+    font-size: 16px;
+}
+
+#imageSearchModal .isx-landing-rule {
+    width: 100%;
+    max-width: 536px;
+    height: 1px;
+    margin: 6px 0 12px;
+    background: #b6bcc6;
+}
+
+#imageSearchModal .isx-landing-text {
+    max-width: 536px;
+    color: #6d6d6d;
+    text-align: center;
+}
+
+#imageSearchModal .isx-restore {
+    margin-top: 14px;
+}
+
+#imageSearchModal .isx-restore[hidden] {
+    display: none;
+}
+
+/* ---- the details pane (Explorer's UIFILE gradient and swoosh) ---- */
+
+#imageSearchModal .isx-details {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 14px;
+    height: 70px;
+    padding: 3px 12px 3px 8px;
+    box-sizing: border-box;
+    background:
+        url('/static_images/vista-explorer/details-swoosh.png') no-repeat right 2px bottom 0,
+        linear-gradient(to right, #f4fcff, #ecfbfe 50%, #bbd9f0);
+    border-top: 1px solid #9db6c5;
+    box-shadow: inset 0 1px 0 hsl(0 0% 100% / 45%);
+    color: #000;
+    overflow: hidden;
+}
+
+#imageSearchModal.isx-no-details .isx-details {
+    display: none;
+}
+
+#imageSearchModal .isx-details-icon {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 64px;
+    height: 64px;
+}
+
+#imageSearchModal .isx-details-icon > img {
+    width: 64px;
+    height: 64px;
+}
+
+#imageSearchModal .isx-details-icon .isx-thumb {
+    width: 64px;
+    height: 64px;
+}
+
+#imageSearchModal .isx-details-icon .isx-thumb img {
+    border-width: 2px;
+}
+
+/* the name and type at the start, the label / value rows in columns beside them (VM) */
+#imageSearchModal .isx-details-info {
+    display: grid;
+    grid-template-columns: minmax(120px, 220px) minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    column-gap: 22px;
+    align-items: start;
+}
+
+#imageSearchModal .isx-details-name {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#imageSearchModal .isx-details-type {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+#imageSearchModal .isx-details-grid {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(4, 15px);
+    grid-auto-columns: minmax(0, 260px);
+    column-gap: 18px;
+    min-width: 0;
+}
+
+#imageSearchModal .isx-details-row {
+    display: flex;
+    gap: 4px;
+    min-width: 0;
+    white-space: nowrap;
+    line-height: 15px;
+}
+
+#imageSearchModal .isx-details-label {
+    flex: none;
+    min-width: 84px;
+    color: #5a6779;
+    text-align: right;
+}
+
+#imageSearchModal .isx-details-value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ---- Properties (a property sheet: the tabs, the white page, OK) ---- */
+
+.isx-props > .modal-content.isx-props-client {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-height: 0;
+    padding: 7px 7px 0;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px 'Segoe UI', 'SegoeUI', 'Noto Sans', sans-serif;
+    text-shadow: none;
+}
+
+.isx-props .isx-props-tabs {
+    flex: none;
+    margin: 0;
+    padding: 0;
+}
+
+.isx-props .isx-props-pane {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0;
+    padding: 10px 12px;
+    overflow: hidden;
+    background: #fff;
+}
+
+.isx-props .isx-props-page {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.isx-props .isx-props-page[hidden] {
+    display: none;
+}
+
+.isx-props .isx-props-head {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.isx-props .isx-props-thumb {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 120px;
+    height: 120px;
+}
+
+.isx-props .isx-props-thumb img {
+    max-width: 112px;
+    max-height: 112px;
+    object-fit: contain;
+    border: 3px solid #fff;
+    box-shadow: 0 0 0 1px hsl(210 10% 70% / 70%), 1px 2px 3px hsl(0 0% 0% / 28%);
+}
+
+.isx-props .isx-props-headtext {
+    min-width: 0;
+}
+
+.isx-props .isx-props-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.isx-props .isx-props-type {
+    color: #6d6d6d;
+}
+
+.isx-props .isx-props-rule {
+    flex: none;
+    width: 100%;
+    height: 0;
+    margin: 9px 0;
+    border: 0;
+    border-top: 1px solid #a0a0a0;
+    border-bottom: 1px solid #fff;
+}
+
+.isx-props .isx-props-meta {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 4px 8px;
+    min-height: 0;
+    overflow: auto;
+}
+
+.isx-props .isx-props-label {
+    color: #000;
+}
+
+.isx-props .isx-props-value {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.isx-props .isx-props-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    flex: none;
+}
+
+.isx-props .isx-props-actions .btn-standard {
+    height: 23px;
+}
+
+.isx-props .isx-props-modes {
+    display: flex;
+    flex: none;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.isx-props .isx-props-text {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 4px 6px;
+    overflow: auto;
+    background: #fff;
+    border: 1px solid transparent;
+    border-image: url('/static_images/vista-controls/edit-normal.png') 1 / 1px stretch;
+    line-height: 17px;
+    word-break: break-word;
+    user-select: text;
+    outline: none;
+}
+
+.isx-props .isx-prompt-body {
+    margin-bottom: 4px;
+}
+
+.isx-props .isx-expander {
+    margin-bottom: 6px;
+}
+
+.isx-props .isx-props-status {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 8px;
+    color: #6d6d6d;
+}
+
+.isx-props .isx-props-status[hidden] {
+    display: none;
+}
+
+.isx-props .isx-props-footer {
+    display: flex;
+    flex: none;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 8px 0;
+}
+
+.isx-props .isx-props-footer .btn-standard {
+    min-width: 75px;
+    height: 23px;
+}
+
+/* ---- Views: Explorer's slider menu (VM: 175 x 255, #f1f1f1, the 4 px track #b0b0b0 / #e7eaea /
+   #fdfdfd down the left, its thumb cut from the VM, rules between the last four rows) ---- */
+
+.isx-views-menu {
+    position: fixed;
+    width: 176px;
+    height: 256px;
+    box-sizing: border-box;
+    background: #f1f1f1;
+    border: 1px solid #979797;
+    box-shadow: 2px 2px 3px hsl(0 0% 0% / 30%);
+    font: 12px 'Segoe UI', 'SegoeUI', 'Noto Sans', sans-serif;
+    color: #000;
+    user-select: none;
+}
+
+.isx-views-menu[hidden] {
+    display: none;
+}
+
+.isx-views-menu .isx-vm-track {
+    position: absolute;
+    left: 13px;
+    top: 14px;
+    width: 4px;
+    height: 230px;
+    background: linear-gradient(to right, #b0b0b0 25%, #e7eaea 25% 75%, #fdfdfd 75%);
+    cursor: var(--c-default);
+}
+
+.isx-views-menu .isx-vm-track::before {
+    content: '';
+    position: absolute;
+    inset: -10px -10px;
+}
+
+.isx-views-menu .isx-vm-thumb {
+    position: absolute;
+    left: 7px;
+    width: 16px;
+    height: 9px;
+    background: url('/static_images/vista-explorer/views-slider-thumb.png') no-repeat;
+    cursor: var(--c-default);
+}
+
+.isx-views-menu .isx-vm-item {
+    all: unset;
+    position: absolute;
+    left: 33px;
+    right: 3px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 22px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    white-space: nowrap;
+    cursor: var(--c-default);
+}
+
+.isx-views-menu .isx-vm-item img {
+    width: 16px;
+    height: 16px;
+}
+
+.isx-views-menu .isx-vm-item:hover {
+    background: linear-gradient(#f2f8fd, #e5f0fb 50%, #d9e9f9 51%, #e3effa);
+    border-color: #a8cbef;
+}
+
+.isx-views-menu .isx-vm-rule {
+    position: absolute;
+    left: 36px;
+    right: 4px;
+    height: 0;
+    border-top: 1px solid #e0e0e0;
+    border-bottom: 1px solid #fdfdfd;
+}

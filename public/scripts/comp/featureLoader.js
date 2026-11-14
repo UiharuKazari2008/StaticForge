@@ -314,7 +314,7 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
             'css/taskbar-properties.css', 'css/remote-access-properties.css', 'css/cpl-personalization.css',
             'css/cpl-catalog.css', 'css/cpl-dialogs.css', 'css/cpl-pages.css', 'css/cpl-pages2.css',
-            'css/welcome-center.css', 'css/cpl-cardspace.css'],
+            'css/welcome-center.css', 'css/cpl-cardspace.css', 'css/cpl-indexing.css'],
         scripts: [
             // Vista's items, categories and task links (Yozora #632), read by melatonControlPanel.js
             'scripts/comp/cplCatalog.js',
@@ -345,13 +345,23 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplDeviceManager.js'
         ]
     },
+    // Image Search (Yozora #828), the desktop program that replaced the Global Search DSAP; its
+    // search helpers are omegasearchDsapApplet.js's, loaded first by openImageSearchWindow (dsapManifests.js)
+    image_search: {
+        styles: ['css/image-search.css'],
+        scripts: ['scripts/comp/imageSearchApp.js']
+    },
     // The MMC consoles that replaced the management DSAPs (Yozora #828): the shell, then the snap-ins
     mmc_snapins: {
         depends: ['vista_dialog_templates'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
-            'scripts/comp/mmcFrontGate.js'
+            'scripts/comp/mmcFrontGate.js',
+            'scripts/comp/mmcQuips.js',
+            'scripts/comp/mmcAutofillRanking.js',
+            'scripts/comp/mmcEnshutsuka.js',
+            'scripts/comp/mmcDataManagement.js'
         ]
     },
     // Director add-ons loaded on demand by director.js (setupMascot / openToolPayload); styles stay in director.css.

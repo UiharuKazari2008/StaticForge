@@ -67,6 +67,8 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },
     { aliases: ['atelier', 'naxt', 'naxt tag', 'tag lab'], launchIds: ['naxt'] },
     { aliases: ['agora', 'explore', 'explore gallery', 'image gallery', 'community gallery', 'novelai explore'], launchIds: ['explore-gallery'] },
+    // Image Search (#828): the desktop program that was the Global Search DSAP (I Spy, omegasearch)
+    { aliases: ['image search', 'search-ms', 'search-ms:', 'ispy', 'i spy', 'omegasearch', 'global search', 'prompt search', 'find images'], launchIds: ['ispy'] },
     { aliases: ['expanders', 'text replacement', 'expander', 'prefix', 'prefixes'], launchIds: ['expanders'] },
     { aliases: ['import', 'upload' ,'vibe', 'style'], launchIds: ['import'] },
     { aliases: ['phasewalker', 'phase', 'bracket', 'stages'], launchIds: ['bracket-generation'] },
@@ -78,10 +80,9 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['websocket', 'ws', 'network monitor', 'requests'], launchIds: ['websocket-requests'] },
     { aliases: ['data management'], launchIds: ['data-management'] },
     { aliases: ['planets', 'planet switcher', 'switch planet', 'switch workspace', 'orrery', 'ring'], launchIds: ['planet-switcher'] },
-    { aliases: ['favorites', 'favourite', 'stars'], launchIds: ['data-management'] },
-    { aliases: ['memories', 'knowledge', 'dna'], launchIds: ['memories'] },
-    { aliases: ['rules', 'director'], launchIds: ['rules'] },
-    { aliases: ['persona', 'character', 'linkxi'], launchIds: ['chat-persona'] },
+    { aliases: ['memories', 'knowledge', 'dna', 'enshutsuka', 'enshutsuka.msc'], launchIds: ['memories'] },
+    { aliases: ['rules', 'director', 'director rules'], launchIds: ['enshutsuka-rules'] },
+    { aliases: ['persona', 'character', 'linkxi'], launchIds: ['linkxi-persona'] },
     { aliases: ['api', 'keys', 'keychain', 'credentials'], launchIds: ['keychain'] },
     { aliases: ['preset manager', 'manage presets'], launchIds: ['presets'] },
     { aliases: ['mstsc', 'rdp', 'remote desktop connection', 'ssh', 'vnc', 'quick connect'], launchIds: ['remote-desktop-connection'] },
@@ -627,7 +628,10 @@ function buildRunSystemCommandEntries() {
     }];
 }
 
-/** Run: workspaces opens the Data Management DSAP on its Workspaces page (openDataManagementDsap in dsapManifests.js). */
+/**
+ * Run: workspaces / favorites open Data Management on that page (openDataManagementDsap in dsapManifests.js:
+ * the MMC console on the Vista desktop, #828; the DSAP elsewhere).
+ */
 function buildRunWorkspaceManagerEntries() {
     if (typeof openDataManagementDsap !== 'function') return [];
     return [{
@@ -638,6 +642,14 @@ function buildRunWorkspaceManagerEntries() {
         icon: 'fas fa-planet-ringed',
         keywords: ['workspaces', 'manage workspaces', 'solar system', 'new planet', 'planets'],
         execute: () => { openDataManagementDsap('workspaces'); }
+    }, {
+        id: 'system-favorites',
+        category: 'app',
+        label: 'Favorites',
+        subtitle: 'Data Management',
+        icon: 'fas fa-star',
+        keywords: ['favorites', 'favourite', 'favourites', 'stars'],
+        execute: () => { openDataManagementDsap('favorites'); }
     }];
 }
 

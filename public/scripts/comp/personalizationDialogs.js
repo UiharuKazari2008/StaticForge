@@ -612,20 +612,18 @@
 
     /** Search...: Image Search with a Save that hands its search back here (frame=screensaver). */
     async function openPhotoSearch() {
-        /* global loadDsapEntryAssets, resolveDsap, openIspyDsap, activeWorkspace */
-        if (typeof resolveDsap !== 'function' || typeof openIspyDsap !== 'function') {
+        /* global openImageSearchWindow, activeWorkspace */
+        if (typeof openImageSearchWindow !== 'function') {
             message('Image Search', 'Image Search is not available.', photosDlg && photosDlg.modal, 'warning');
             return;
         }
-        // resolveDsap, loadDsapEntryAssets: public/scripts/comp/dsapRegistry.js (Image Search loads on demand)
-        await loadDsapEntryAssets(resolveDsap('dsap://ispy.dreamscape.jp/').entry);
         const saved = photosDlg && photosDlg.pending.search;
         const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) || 'default';
-        // openIspyDsap: public/scripts/comp/omegasearchDsapApplet.js
-        openIspyDsap(saved ? { ...saved, view: 'gallery', frame: 'screensaver' } : { workspaceId: ws, view: 'search', frame: 'screensaver' });
+        // openImageSearchWindow: public/scripts/comp/dsapManifests.js (the Image Search program, #828; the DSAP off the desktop)
+        await openImageSearchWindow(saved ? { ...saved, view: 'gallery', frame: 'screensaver' } : { workspaceId: ws, view: 'search', frame: 'screensaver' });
     }
 
-    /** Image Search's Save (omegasearchDsapApplet.js) for frame=screensaver. */
+    /** Image Search's Save (imageSearchApp.js; omegasearchDsapApplet.js off the desktop) for frame=screensaver. */
     function setPhotoSearch(search, total) {
         if (!search) return false;
         const value = { ...search, total: Number(total) || 0 };

@@ -5527,6 +5527,7 @@ const MODAL_APPLICATION_ICONS = {
     desktopEmotionModal: 'emotion.png',
     startMenuOrganizerModal: 'vista-taskbar.png',
     remoteAccessPropertiesDialog: 'vista-remote-access.png',
+    mcpSystemMessageTemplateWindow: 'vista-remote-access.png',
     agentClientUpdateDialog: 'vista-windows-update.png',
     mainframeExceptionDialog: 'vista-system.png',
     vfsSystemTextViewerModal: 'vista-explorer.png',
@@ -6656,7 +6657,10 @@ function buildToolsSubmenuItems() {
         { launchId: 'import', icon: 'nai-import', imageIcon: 'vista-easy-transfer.png', text: 'Import', appMenuLocation: 'tools', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
-        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal(); } },
+        // Enshutsuka: the MMC console on the desktop, the memories DSAP elsewhere (openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js)
+        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('mem'); } },
+        { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('rules'); } },
+        { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'LinkXi Persona', fullName: 'Enshutsuka - LinkXi Persona', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'characters.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
@@ -9541,11 +9545,11 @@ async function persistRemoteAccessSettingsPatch(patch) {
 }
 
 /** Remote Access opens Remote Access Properties (remoteAccessProperties.js, in Control Panel's
- *  bundle), Vista's System Properties > Remote tab. */
-async function openRemoteAccessSettingsModal() {
+ *  bundle), Vista's System Properties > Remote tab; tab 'mcp' opens its MCP Connector tab (#828). */
+async function openRemoteAccessSettingsModal(tab) {
     await featureLoader.loadFeature('control_panel');
     if (window.remoteAccessProperties && typeof window.remoteAccessProperties.open === 'function') {
-        window.remoteAccessProperties.open();
+        window.remoteAccessProperties.open(typeof tab === 'string' ? tab : undefined);
     }
 }
 

@@ -20,7 +20,23 @@ const AUTOFILL_DSAP_MANIFEST_URL = 'autofill.dreamscape.jp';
 const EXPLORE_DSAP_MANIFEST_URL = 'explore.novelai.net';
 const WIKI_DSAP_MANIFEST_URL = 'wiki.dyna.dreamscape.jp';
 
+/** Melaton's Vista desktop (not Windows Classic, not the phone): the MMC consoles stand in for DSAP pages there. */
+function dsapIsVistaDesktop() {
+    const body = document.body;
+    return body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme');
+}
+
 function openDataManagementDsap(tabId) {
+    // the Data Management MMC snap-in on the desktop (#828: public/scripts/comp/mmcDataManagement.js);
+    // Search is the Image Search program's now
+    if (dsapIsVistaDesktop()) {
+        if (tabId === 'search') {
+            void openImageSearchWindow();
+            return;
+        }
+        void openDataManagementSnapin(tabId);
+        return;
+    }
     let target;
     if (!tabId || tabId === 'status') {
         target = `dsap://${DATA_DSAP_MANIFEST_URL}/`;
@@ -33,7 +49,34 @@ function openDataManagementDsap(tabId) {
     openDsapInGrimoire(target);
 }
 
+/**
+ * Image Search (#828): the desktop program (public/scripts/comp/imageSearchApp.js) on the Vista
+ * desktop, the DSAP elsewhere. opts: { url } (a dsap://ispy.dreamscape.jp/?... URL) or the
+ * DSAP's openIspyDsap params ({ blocks, view, viewType, workspaceId, filters, file, frame ... }).
+ * The DSAP's script loads first: the program uses its search helpers and sessions.
+ */
+async function openImageSearchWindow(opts) {
+    const entry = resolveDsap(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
+    // loadDsapEntryAssets: public/scripts/comp/dsapRegistry.js
+    if (entry) await loadDsapEntryAssets(entry.entry);
+    if (!dsapIsVistaDesktop()) {
+        // openIspyDsap: public/scripts/comp/omegasearchDsapApplet.js
+        if (opts && opts.url) openDsapInGrimoire(opts.url);
+        else openIspyDsap((opts && opts.params) || opts || {});
+        return null;
+    }
+    await featureLoader.loadFeature('image_search');
+    if (typeof window.openImageSearch !== 'function') return null;
+    if (opts && !opts.url && !opts.params && Object.keys(opts).length) return window.openImageSearch({ params: opts });
+    return window.openImageSearch(opts || {});
+}
+
 function openDynamicQuipsDsap(workspaceId) {
+    // the Dynamic Quips MMC snap-in on the desktop (#828: public/scripts/comp/mmcQuips.js)
+    if (dsapIsVistaDesktop()) {
+        void openDynamicQuipsSnapin(workspaceId);
+        return;
+    }
     const wsPart = workspaceId ? `${encodeURIComponent(workspaceId)}` : '';
     const path = wsPart
         ? `dsap://${QUIPS_DSAP_MANIFEST_URL}/${wsPart}`
@@ -42,12 +85,63 @@ function openDynamicQuipsDsap(workspaceId) {
     openDsapInGrimoire(path);
 }
 
+/** Dynamic Quips (#828), loading the MMC snap-ins first; view: 'status' | 'phrasebook' | 'settings'. */
+async function openDynamicQuipsSnapin(workspaceId, view) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openDynamicQuipsConsole: public/scripts/comp/mmcQuips.js
+    if (typeof openDynamicQuipsConsole === 'function') return openDynamicQuipsConsole(workspaceId, view);
+    return null;
+}
+
+/** Autofill Ranking (#828), loading the MMC snap-ins first. */
+async function openAutofillRankingSnapin(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openAutofillRankingConsole: public/scripts/comp/mmcAutofillRanking.js
+    if (typeof openAutofillRankingConsole === 'function') return openAutofillRankingConsole(node);
+    return null;
+}
+
+/** Data Management (#828), loading the MMC snap-ins first; node: a console node or an old tab id / dsap path. */
+async function openDataManagementSnapin(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openDataManagementConsole: public/scripts/comp/mmcDataManagement.js
+    if (typeof openDataManagementConsole === 'function') return openDataManagementConsole(node);
+    return null;
+}
+
 /** Front Gate (#828), loading the MMC snap-ins first (featureLoader 'mmc_snapins'). */
 async function openFrontGateConsole(node) {
     await featureLoader.loadFeature('mmc_snapins');
     // openFrontGate: public/scripts/comp/mmcFrontGate.js
     if (typeof openFrontGate === 'function') return openFrontGate(node);
     return null;
+}
+
+/** Enshutsuka (#828), loading the MMC snap-ins first; node: 'root' | 'mem' | 'obl' | 'rules' | 'feedback' | 'persona'. */
+async function openEnshutsukaSnapin(node, opts) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openEnshutsukaConsole: public/scripts/comp/mmcEnshutsuka.js
+    if (typeof openEnshutsukaConsole === 'function') return openEnshutsukaConsole(node, opts);
+    return null;
+}
+
+/** Enshutsuka's page off the desktop: the Knowledge Memories DSAP's address for a console node. */
+function enshutsukaDsapUrl(node) {
+    if (node === 'persona') return 'dsap://xi.dyna.dreamscape.jp/persona';
+    if (node === 'rules') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules`;
+    if (node === 'feedback') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules/feedback`;
+    if (node === 'obl') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/?store=obliterated`;
+    return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/`;
+}
+
+/** Enshutsuka: the MMC console on the desktop (#828), the Knowledge Memories DSAP elsewhere. */
+function openEnshutsuka(node) {
+    if (document.body.classList.contains('desktop-mode')) {
+        void openEnshutsukaSnapin(node || 'mem');
+        return;
+    }
+    // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
+    openDsapInGrimoire(enshutsukaDsapUrl(node));
 }
 
 function registerDsapManifests() {
@@ -65,6 +159,21 @@ function registerDsapManifests() {
         title: 'Dynamic Quips',
         assets: {
             scripts: ['scripts/comp/quipsDsapApplet.js']
+        },
+        // on the desktop every Dynamic Quips page is the MMC snap-in's (#828), on the same workspace and
+        // view (<workspace>[/phrasebook|/settings], ?workspace=); elsewhere the page stays
+        opensApp(match) {
+            if (!dsapIsVistaDesktop()) return false;
+            const [pathPart, query = ''] = String((match && match.displayPath) || '').split('?');
+            const base = QUIPS_DSAP_MANIFEST_URL;
+            const segs = pathPart.startsWith(base)
+                ? pathPart.slice(base.length).split('/').filter(Boolean).map((x) => { try { return decodeURIComponent(x); } catch (_) { return x; } })
+                : [];
+            const view = segs.includes('phrasebook') ? 'phrasebook' : segs.includes('settings') ? 'settings' : 'status';
+            const params = new URLSearchParams(query);
+            const wsId = segs[0] && segs[0] !== 'phrasebook' && segs[0] !== 'settings' ? segs[0] : (params.get('workspace') || params.get('ws') || null);
+            void openDynamicQuipsSnapin(wsId, view);
+            return true;
         },
         menuEntry: {
             launchId: 'dynamic-quips',
@@ -102,6 +211,36 @@ function registerDsapManifests() {
         title: 'Knowledge Memories',
         assets: {
             scripts: ['scripts/comp/memoriesDsapApplet.js']
+        },
+        // on the desktop every page is the Enshutsuka MMC snap-in's (#828): /rules[/feedback], /view/<name>,
+        // /delete[?filter=], the LinkXi persona, and the list's ?store= / search / category / page / perPage /
+        // sort / view; elsewhere the page stays
+        opensApp(match) {
+            if (!document.body.classList.contains('desktop-mode')) return false;
+            const [pathPart, query = ''] = String((match && match.displayPath) || '').split('?');
+            const params = new URLSearchParams(query);
+            const dec = (x) => { try { return decodeURIComponent(x); } catch (_) { return x; } };
+            const segs = pathPart.split('/').filter(Boolean).map(dec);
+            const host = segs.shift() || '';
+            // en.grimoire.jp/applets/memories/... and applet.grimoire.jp/memories/...
+            if (/grimoire\.jp$/.test(host) && segs.includes('memories')) segs.splice(0, segs.indexOf('memories') + 1);
+            const store = params.get('store') === 'obliterated' ? 'obl' : 'mem';
+            if (host.startsWith('xi.dyna') || segs[0] === 'persona' || segs.includes('linkxi')) {
+                void openEnshutsukaSnapin('persona');
+            } else if (segs[0] === 'rules' || segs[0] === 'static_rules') {
+                void openEnshutsukaSnapin(segs[1] === 'feedback' ? 'feedback' : 'rules');
+            } else if (segs[0] === 'view' && segs[1]) {
+                void openEnshutsukaSnapin(store, { memory: segs[1] });
+            } else if (segs[0] === 'delete' || segs[0] === 'bulk-delete') {
+                void openEnshutsukaSnapin(store, { bulk: params.get('filter') || params.get('type') || true });
+            } else {
+                const opts = {};
+                ['search', 'category', 'sort', 'view'].forEach((k) => { if (params.has(k)) opts[k] = params.get(k); });
+                if (params.get('page')) opts.page = Number(params.get('page')) || 1;
+                if (params.get('perPage')) opts.perPage = Number(params.get('perPage')) || 25;
+                void openEnshutsukaSnapin(store, Object.keys(opts).length ? opts : undefined);
+            }
+            return true;
         }
     });
 
@@ -205,6 +344,13 @@ function registerDsapManifests() {
             ],
             styles: ['css/replication-dsap.css']
         },
+        // On the Vista desktop Data Management is an MMC console (#828: mmcDataManagement.js): its
+        // addresses open the console on that page (/replication/progress: Operation Progress)
+        opensApp(match) {
+            if (!dsapIsVistaDesktop()) return false;
+            void openDataManagementSnapin(String((match && match.displayPath) || ''));
+            return true;
+        },
         menuEntry: {
             launchId: 'data-management',
             icon: 'fas fa-database',
@@ -213,8 +359,7 @@ function registerDsapManifests() {
             startMenuIndex: 0,
             appMenuLocation: 'tools',
             launch() {
-                const path = `dsap://${DATA_DSAP_MANIFEST_URL}/`;
-                openDsapInGrimoire(path);
+                openDataManagementDsap();
             }
         }
     });
@@ -231,16 +376,27 @@ function registerDsapManifests() {
         assets: {
             scripts: ['scripts/comp/autofillConfigDsapApplet.js']
         },
+        // on the desktop the ranking is the Autofill Ranking MMC snap-in (#828); elsewhere the page stays
+        opensApp() {
+            if (!dsapIsVistaDesktop()) return false;
+            void openAutofillRankingSnapin();
+            return true;
+        },
         menuEntry: {
             launchId: 'autofill-ranking',
             icon: 'fas fa-arrow-down-wide-short',
             imageIcon: 'slider.png',
-            text: 'SmartText Ranking',
+            text: 'Autofill Ranking',
             appMenu: false,
             startMenu: false,
             desktopOnly: true,
             adminOnly: true,
             launch() {
+                // the Autofill Ranking MMC snap-in on the desktop: public/scripts/comp/mmcAutofillRanking.js
+                if (dsapIsVistaDesktop()) {
+                    void openAutofillRankingSnapin();
+                    return;
+                }
                 // openAutofillRankingDsap: public/scripts/comp/autofillConfigDsapApplet.js
                 if (typeof openAutofillRankingDsap === 'function') {
                     openAutofillRankingDsap();
@@ -266,14 +422,27 @@ function registerDsapManifests() {
         assets: {
             scripts: ['scripts/comp/omegasearchDsapApplet.js']
         },
+        // the Image Search program on the Vista desktop (#828: public/scripts/comp/imageSearchApp.js):
+        // a link's search (blocks, filters, view, file, frame) opens in it; elsewhere the page stays
+        opensApp(match) {
+            if (!dsapIsVistaDesktop()) return false;
+            const path = String((match && match.displayPath) || '');
+            const q = path.indexOf('?');
+            void openImageSearchWindow({ url: `dsap://${ISPY_DSAP_MANIFEST_URL}/${q >= 0 ? path.slice(q) : ''}` });
+            return true;
+        },
         menuEntry: {
             launchId: 'ispy',
             icon: 'fas fa-search',
-            imageIcon: 'search.png',
+            imageIcon: 'vista-search.png',
             text: 'Image Search',
             appMenu: false,
             startMenuIndex: 1,
             launch() {
+                if (dsapIsVistaDesktop()) {
+                    void openImageSearchWindow();
+                    return;
+                }
                 openDsapInGrimoire(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
             }
         }
@@ -443,6 +612,15 @@ function registerDsapManifests() {
         title: 'MCP Connector',
         assets: {
             scripts: ['scripts/comp/mcpConnectorDsapApplet.js']
+        },
+        // the connector moved to Remote Access Properties' MCP Connector tab (#828:
+        // remoteAccessProperties.js); on the desktop its page opens that tab, elsewhere (the app) the page stays
+        opensApp() {
+            if (!document.body.classList.contains('desktop-mode')) return false;
+            // openRemoteAccessSettingsModal: public/scripts/comp/modalUtils.js
+            if (typeof openRemoteAccessSettingsModal !== 'function') return false;
+            void openRemoteAccessSettingsModal('mcp');
+            return true;
         }
     });
 
@@ -481,42 +659,15 @@ registerDsapManifests();
 
 // Global compatibility shims (runs at startup). The applet script also installs one when loaded.
 (function installMemoriesDsapShims() {
+    // node: an Enshutsuka console node ('mem' by default, 'rules', 'persona', ...): openEnshutsuka above
     if (typeof window.openKnowledgeMemoriesModal !== 'function') {
-        window.openKnowledgeMemoriesModal = function () {
-            const target = `dsap://${MEMORIES_DSAP_MANIFEST_URL}`;
-            if (typeof openDsapInGrimoire === 'function') {
-                openDsapInGrimoire(target);
-                return;
-            }
-            let tries = 0;
-            const t = setInterval(() => {
-                tries += 1;
-                if (typeof openDsapInGrimoire === 'function') {
-                    clearInterval(t);
-                    openDsapInGrimoire(target);
-                } else if (tries > 20) {
-                    clearInterval(t);
-                }
-            }, 60);
+        window.openKnowledgeMemoriesModal = function (node) {
+            openEnshutsuka(typeof node === 'string' ? node : 'mem');
         };
     }
     if (typeof window.openLinkXiPersonaDsap !== 'function') {
         window.openLinkXiPersonaDsap = function () {
-            const target = 'dsap://xi.dyna.dreamscape.jp/persona';
-            if (typeof openDsapInGrimoire === 'function') {
-                openDsapInGrimoire(target);
-                return;
-            }
-            let tries = 0;
-            const t = setInterval(() => {
-                tries += 1;
-                if (typeof openDsapInGrimoire === 'function') {
-                    clearInterval(t);
-                    openDsapInGrimoire(target);
-                } else if (tries > 20) {
-                    clearInterval(t);
-                }
-            }, 60);
+            openEnshutsuka('persona');
         };
     }
 })();

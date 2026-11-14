@@ -167,15 +167,16 @@ function dsapSmfSetActiveTab(root, dataAttr, activeTabId, tabClass) {
 function dsapSmfBuildDreamscapeHomeHtml() {
     const links = [
         { url: 'dsap://data.dreamscape.jp/', label: 'Data Management', icon: 'fas fa-database', desc: 'Manage workspaces, data, and files' },
-        { url: 'dsap://ispy.dreamscape.jp/', label: 'Global Search', icon: 'fas fa-search', desc: 'Search prompts and metadata across workspace corpora' },
+        { url: 'dsap://ispy.dreamscape.jp/', label: 'Image Search', icon: 'fas fa-search', desc: 'Search prompts and metadata across workspace corpora' },
         { url: 'dsap://security.dreamscape.jp/', label: 'Security Center', icon: 'fas fa-shield-halved', desc: 'Blocked clients, honeypot URLs, authentication, and telemetry', admin: true },
         { url: 'dsap://autofill.dreamscape.jp/', label: 'Autofill Ranking', icon: 'fas fa-arrow-down-wide-short', desc: 'Tune SmartText/autofill scoring weights, match tiers, and type priority', admin: true },
+        // opens the Enshutsuka MMC console on the desktop (the memories entry's opensApp, dsapManifests.js)
         { url: 'dsap://memories.dyna.dreamscape.jp/', label: 'Enshutsuka', icon: 'fas fa-lightbulb-on', desc: 'Director knowledge memories, static rules, and LinkXi persona' },
-        { url: 'dsap://quips.dyna.dreamscape.jp/', label: 'Generation Quips', icon: 'fas fa-comment-heart', desc: 'Generation quips dashboard, phrase book, and workspace settings' },
+        { url: 'dsap://quips.dyna.dreamscape.jp/', label: 'Dynamic Quips', icon: 'fas fa-comment-heart', desc: 'Quip status, phrase book, and workspace settings' },
         { url: 'dsap://wiki.dyna.dreamscape.jp/', label: 'Wiki Manager', icon: 'fas fa-books', desc: 'Import and browse Fandom, NovelAI, and MediaWiki caches' },
         { url: 'dsap://pantry.dyna.dreamscape.jp/status', label: 'Pantry', icon: 'fas fa-cake-candles', desc: 'Cake ledger, work pile, and breakfast before/after' },
         { url: 'dsap://zanzou.dyna.dreamscape.jp/', label: 'Zanzou', icon: 'fas fa-clone', desc: 'Afterimages. Keep the shot, scrap the ghosts.' },
-        { url: 'dsap://mcp.dreamscape.jp/', label: 'MCP Connector', icon: 'fas fa-plug', desc: 'Grok custom connector URLs, OAuth, and Enshutsuka project instructions' },
+        { url: 'dsap://mcp.dreamscape.jp/', label: 'MCP Connector', icon: 'fas fa-plug', desc: 'Grok custom connector URLs, OAuth, and the project instructions template, in Remote Access Properties' },
         { url: 'dsap://site.dreamscape.jp/', label: 'Site Homepage', icon: 'fas fa-globe', desc: 'Install the public cover site and access phrase for the gate', admin: true },
         { url: 'dsap://exchange.dreamscape.jp/', label: 'Exchange Server', icon: 'fas fa-building-columns', desc: 'Mailboxes, aliases, toggles, and the LANTIS relay for dream.737.jp.net', admin: true },
     ];

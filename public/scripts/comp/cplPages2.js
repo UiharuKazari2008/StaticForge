@@ -1690,10 +1690,9 @@
             const d = ssDevice(ss.deviceId);
             if (!d) return;
             const search = ssDraftSearch(d);
-            // resolveDsap, loadDsapEntryAssets: public/scripts/comp/dsapRegistry.js; openIspyDsap: omegasearchDsapApplet.js
-            if (typeof resolveDsap !== 'function' || typeof openIspyDsap !== 'function') return;
-            await loadDsapEntryAssets(resolveDsap('dsap://ispy.dreamscape.jp/').entry);
-            openIspyDsap(search ? { ...search, view: 'gallery', frame: `sideshow:${d.deviceId}` } : { workspaceId: '*', view: 'search', frame: `sideshow:${d.deviceId}` });
+            // openImageSearchWindow: public/scripts/comp/dsapManifests.js (the Image Search program, #828)
+            if (typeof openImageSearchWindow !== 'function') return;
+            await openImageSearchWindow(search ? { ...search, view: 'gallery', frame: `sideshow:${d.deviceId}` } : { workspaceId: '*', view: 'search', frame: `sideshow:${d.deviceId}` });
         },
         async cmd(t) {
             if (ss.busy) return;
@@ -1727,7 +1726,7 @@
     }
 
     /**
-     * Image Search's "Show on the SideShow device" (omegasearchDsapApplet.js, frame=sideshow:<deviceId>):
+     * Image Search's "Show on the SideShow device" (imageSearchApp.js / omegasearchDsapApplet.js, frame=sideshow:<deviceId>):
      * the open settings page takes the search; with the page closed it goes straight to the device.
      */
     async function setDeviceSearch(deviceId, search) {

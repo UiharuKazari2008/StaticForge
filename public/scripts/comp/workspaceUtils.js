@@ -2476,7 +2476,8 @@ function refreshWorkspaceManagementListsIfPresent() {
     }
 }
 
-// Workspace management lives in the Data Management DSAP's Workspaces page (the Solar System dialog is retired)
+// Workspace management lives in Data Management's Workspaces page: the MMC console's Disk Management-style
+// Workspaces node on the Vista desktop (#828, mmcDataManagement.js), the DSAP elsewhere (the Solar System dialog is retired)
 function showWorkspaceManagementModal() {
     // openDataManagementDsap: public/scripts/comp/dsapManifests.js
     openDataManagementDsap('workspaces');
