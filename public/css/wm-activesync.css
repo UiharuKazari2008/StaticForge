@@ -81,7 +81,7 @@ html.ui-mobile .wm-activesync { background: #fff; color: #000; overflow-y: auto;
     padding: calc(4 * var(--wm-px));
 }
 
-/* Café Cache (#815): one row per dataset - its Cache box, how many replies it keeps, its Keep updated box */
+/* Options > a Café item's Settings page (#815): the figures under it */
 .wm-activesync .was-cafe-stats { color: #555; font-size: .85em; margin-top: 8px; }
 
 /* Menu > Options... (#815): syncres.dll.0409.mui DIALOG 2603 in device pixels (dialog units x 2):
