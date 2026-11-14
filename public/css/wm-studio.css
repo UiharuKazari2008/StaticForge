@@ -207,21 +207,33 @@
     inset: auto !important;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal :is(.manual-modal-form-section, .prompt-options-container) {
-    display: block !important;
+/* the toolbar row (Prompt | Undesired, Director, Add) stays at the top while the form scrolls
+ * (Yukimi, Nov 14 #825: "toolbars need to always be visible"). Desktop code finds its buttons
+ * through .prompt-tabs, so it cannot move out of the form; instead the boxes between it and the
+ * scroller (#manualForm) go (display: contents: the elements and every selector stay), so its
+ * sticky top holds for the whole page, not just the prompt block. wmStudio.js marks the prompt's
+ * .form-group .wms-flat. The form's side padding moves to #manualForm. */
+.wm-studio[data-tab="prompt"] #manualModal :is(.manual-modal-split, .manual-modal-form-section, .prompt-options-container, .form-section-scroll, .form-section-scroll > .scrollable-content, .wms-flat, .prompt-tabs) {
+    display: contents !important;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal .form-section-scroll {
-    overflow: visible !important;
+.wm-studio[data-tab="prompt"] #manualForm {
+    padding: 0 calc(5 * var(--wm-px)) !important;
 }
 
-.wm-studio[data-tab="prompt"] #manualModal .form-section-scroll > .scrollable-content {
-    padding-bottom: 0 !important;
+.wm-studio[data-tab="prompt"] #manualModal .prompt-tabs .tab-header {
+    position: sticky !important;
+    top: 0;
+    z-index: 6;
+    margin: 0 calc(-5 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
+    padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) !important;
+    background: #fff !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #000 !important;
 }
 
 .wm-studio[data-tab="prompt"] #manualModal .model-control {
     overflow: visible !important;
-    padding-top: 0 !important;
+    padding: 0 0 calc(8 * var(--wm-px)) !important;
 }
 
 /* section heads: bold text over a rule, as WM's grouped forms */
@@ -1185,7 +1197,9 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac#characterAutocomplete
     border: calc(1 * var(--wm-px)) solid #000 !important;
     border-radius: 0 !important;
     background: #fff !important;
-    box-shadow: none !important;
+    /* autocompleteUtils.js leaves 4 px between the view bar and the list: the field's toolbar (always
+     * shown on the phone) read through it; a white band joins the two */
+    box-shadow: 0 -4px 0 0 #fff !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     color: #000 !important;

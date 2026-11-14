@@ -106,6 +106,9 @@
         const host = page && page.querySelector('.wms-host');
         if (!m || !host) return false;
         if (m.parentNode !== host) host.appendChild(m);
+        // the prompt's form group gives up its box so the toolbar row can stick (wm-studio.css)
+        const tabsGroup = m.querySelector('.scrollable-content > .form-group > .prompt-tabs');
+        if (tabsGroup) tabsGroup.parentElement.classList.add('wms-flat');
         ensureCharsSection();
         watchPromptEditors();
         lightOverlays();
