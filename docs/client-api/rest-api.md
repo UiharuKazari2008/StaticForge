@@ -1348,6 +1348,26 @@ The chunked `/api/activesync/file|transfer|upload/...` routes from `modules/acti
 
 A feed with no viewers and no frame for 20 s is forgotten.
 
+### ActiveSync ADB, installs and screenshots (#795, #818, #823)
+
+`modules/deviceAdb.js`: the Dreamscape server reaches a partnered phone's ADB on port 5555 (Android Bridge > Debugging), or the phone's own local ADB relayed over ActiveSync. Per-phone allowed features (Android Bridge > Advanced Tools) gate each use: `commands` (Remote Commands), `install` (Install Android Applications) and `screenshots`. Errors are `{ success: false, code, error }`: `400 BAD_REQUEST` (bad device id, empty or >8000-char command), `403 INSUFFICIENT_PERMISSIONS`, `409 NOT_ALLOWED | ADB_OFF | NO_ADB_DEVICE | SCREENSHOTS_OFF`, `404 NO_DISPLAY`, `502 SHOT_FAILED`, `503 NO_ADB`.
+
+| Route | Auth | Notes |
+|-------|------|-------|
+| `GET /api/activesync/adb/:deviceId` | Admin, or the phone's own session | → `{ success, adb }` status; `?detect=1` looks for the phone on 5555 now instead of the cached result |
+| `PUT /api/activesync/adb/:deviceId/settings` | Admin, or the phone's own session | Body `{ allow, autoRestore, screenshots }`. Re-detects when allowed and broadcasts the device change. → `{ success, adb }` |
+| `POST /api/activesync/adb/:deviceId/check` | Admin | Check Now: asks the phone to restore ADB on 5555 (`device.adbRestore`, force, 60 s). → `{ success, phone }` |
+| `POST /api/activesync/adb/:deviceId/shell` | Admin | Remote Commands one-shot. Body `{ command }` (as after `adb shell`); needs the `commands` feature; relayed to the phone as `device.adbShell` (60 s). → `{ success, ...phone answer }` |
+| `GET /api/activesync/adb/:deviceId/displays` | Admin | → `{ success, displays }` (kinds by name: inner / cover / external; "Built-in Screen" = the phone's own panels) |
+| `GET /api/activesync/screen/:deviceId/shot` | Admin | `image/png` of `?display=inner|cover|external|main|<id>`, `no-store`, headers `X-Display-Kind`, `X-Display-Id` |
+| `POST /api/activesync/install/:deviceId` | Admin | Body `{ root, path, queue? }`: install an `.apk` already on the phone (`400 NOT_APK` otherwise). Tries ADB first; else asks the phone (`apps.install`, the user confirms in Android's installer). An offline partner with `queue: true` → `{ success, queued: true }`. A transfer commit with `install: true` sends and installs in one go (see [ws/activeSync.md](./ws/activeSync.md)) |
+
+MCP (module `core_generation`): `device_screenshot { device?, display?, detect? }` (JPEG per screen, `display` = inner | cover | external | main | all | id), `device_shell { device?, command }` and `device_packages { device?, system?, filter?, package?, action? }` (list installed programs, or uninstall / disable / enable / stop / clear / open one; anything but `open` needs the `install` feature). `device` is the ActiveSync id or name; omit it with exactly one phone online, else `CHOOSE_DEVICE` lists the devices.
+
+### Melaton Mobile certificates (#805)
+
+`GET /api/wm-certificates` (any session, `no-store`, `modules/wmCertificates.js`) → `{ success, host, personal: [], intermediate: [cert], root: [cert] }`, `cert = { subject, issuer, validFrom, validTo, serial, fingerprint, selfSigned }`. `root` is Node's default outgoing CA store; `intermediate` is the chain the request's own Host serves on 443 (one handshake, cached 6 h per host); `personal` is always empty (no client certificates).
+
 ---
 
 ## Replication

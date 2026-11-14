@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-13T07:30:00-05:00",
+  "updated_at": "2026-11-14T07:15:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov13 7am loop on host dreamscape. Live tree 73e12977 = origin = GitHub; live Claude locks launcher794, music796 (07:00) and wm732 with fresh wmTitanium.js/wm-android edits: no snapshot; lands from detached worktree ~/wt/n13. Docs for 93a46d01..73e12977 (131 Yukimi commits): new ws/textMessaging.md (#779), ws/mailAccounts.md (#789), ws/traffic.md (#795), ws/taskmgr.md; perfmon subscribe/unsubscribe push (63563ab2); rest-api text messaging + IMAP attachment routes, Program Icons (#773), /install/packages (#774); README index. open=[].",
+  "cake_note": "Nov14 7am loop on host dreamscape. Live tree b6dd9d5c = origin = GitHub, clean; only lock .agent-claude-wm732 (Nov10). Lands from detached worktree ~/wt/n14. Docs for 9295a6f1..b6dd9d5c: rest-api ActiveSync ADB/shell/displays/shot/install routes (#795 #818 #823), MCP device_screenshot/device_shell/device_packages, /api/wm-certificates (#805). open=[].",
   "eaten": [
     {
       "id": "sf-22",
@@ -17,5 +17,5 @@
       "note": "Eaten 2026-08-30. Do not re-eat at 7am."
     }
   ],
-  "cake_note_7am_sep15": "87ec32d, a42511c, 4cf4015, dcd95dc, 1084eb7, 4d8f6a5, 1f07c41, 97e003e, 4476a50, 26a7b13, e4f0036, 6d3f87e, 652fd38 \u2014 already dry-listed Sep15 7am"
+  "cake_note_7am_sep15": "87ec32d, a42511c, 4cf4015, dcd95dc, 1084eb7, 4d8f6a5, 1f07c41, 97e003e, 4476a50, 26a7b13, e4f0036, 6d3f87e, 652fd38 — already dry-listed Sep15 7am"
 }
