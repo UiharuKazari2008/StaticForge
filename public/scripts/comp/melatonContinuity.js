@@ -25,8 +25,32 @@
     const handoffs = new Map();
     const bridge = () => root.AndroidContinuity || null;
 
+    // ---- lag journal (#798): a phone window froze ~3 s as its DeX window came up. Kept on both windows
+    // for the Continuity case only: long tasks (name "self" = this page's own work, else another page
+    // in the same renderer), Continuity events, and bus handlers over 50 ms. Read with lagReport().
+    const lagRows = [];
+    function lagNote(kind, text, ms) {
+        lagRows.push([new Date().toISOString().slice(11, 23), kind, text, ms == null ? null : Math.round(ms)]);
+        if (lagRows.length > 300) lagRows.splice(0, lagRows.length - 300);
+    }
+    if (root.AndroidContinuity && typeof root.PerformanceObserver === 'function') {
+        try {
+            new root.PerformanceObserver((list) => {
+                list.getEntries().forEach((e) => {
+                    const a = e.attribution && e.attribution[0];
+                    lagNote('longtask', e.name + (a && a.containerSrc ? ' ' + String(a.containerSrc).slice(-40) : ''), e.duration);
+                });
+            }).observe({ type: 'longtask', buffered: true });
+        } catch (_) { /* no long task timing in this WebView */ }
+    }
+
     function emit(type, msg, from) {
+        const t0 = root.performance ? root.performance.now() : 0;
         (listeners.get(type) || []).slice().forEach((fn) => { try { fn(msg, from); } catch (err) { console.warn('[continuity]', type, err); } });
+        if (root.performance && type !== 'packet') {
+            const ms = root.performance.now() - t0;
+            if (ms > 50 || /^(peer|dex-|restart|miniport)/.test(type)) lagNote('bus', type + (msg && msg.state ? ':' + msg.state : ''), ms);
+        }
     }
 
     const api = {
@@ -45,6 +69,8 @@
                 return { hybrid: !!(home && external), dexSeen: external, home, external, deviceId: A && typeof A.getDeviceId === 'function' ? A.getDeviceId() : '' };
             } catch (_) { return null; }
         },
+        /** The lag journal: [time, kind, text, ms] rows (long tasks, Continuity events, slow handlers). */
+        lagReport() { return lagRows.slice(); },
         post(msg) {
             try { return !!(bridge() && bridge().post(JSON.stringify(msg))); } catch (_) { return false; }
         },
