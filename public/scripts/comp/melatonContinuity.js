@@ -665,7 +665,7 @@
     // attachment); the app says when its display goes ({type:"dex-display", state:"removed"}). The phone
     // window's glyph: none without a DeX window; half opacity while it boots (presence) and after its
     // display was unplugged while the window still runs; solid once its desktop is up.
-    const dex = { present: false, state: null, displayGone: false, attach: null, width: 0, height: 0 };
+    const dex = { present: false, state: null, displayGone: false, attach: null, width: 0, height: 0, usbVersion: null };
     function dexScreen() {
         const D = root.AndroidDisplay;
         try { return D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; } catch (_) { return null; }
@@ -679,6 +679,7 @@
             type: 'dex-state',
             state: c && c.initializationCompleted ? 'ready' : 'booting',
             attach: info.attach || 'usb',
+            usbVersion: Number(info.usbVersion) || null,
             width: info.widthPx || Math.round((root.screen && root.screen.width || 0) * dpr),
             height: info.heightPx || Math.round((root.screen && root.screen.height || 0) * dpr)
         });
@@ -689,6 +690,7 @@
         dex.present = true;
         dex.state = m.state === 'ready' ? 'ready' : 'booting';
         dex.attach = m.attach || dex.attach;
+        dex.usbVersion = Number(m.usbVersion) || dex.usbVersion || null;
         dex.width = Number(m.width) || dex.width;
         dex.height = Number(m.height) || dex.height;
         if (m.state === 'ready') dex.displayGone = false;

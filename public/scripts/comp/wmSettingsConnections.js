@@ -269,15 +269,24 @@
         // Active: the other computer is connected on it; Connected: ActiveSync is up and ready for one;
         // Disconnected: it cannot connect at the moment
         const status = line.computer ? 'Active' : st.online ? 'Connected' : 'Disconnected';
-        // ActiveSync's data rate, not the server connection's: the Continuity PC is attached directly
-        // (USB-C or Wi-Fi Direct, their top rate); a computer's line runs at this phone's network link
+        // ActiveSync's data rate, not the server connection's, and just the rate. The Continuity PC is
+        // attached directly: its USB version's top rate (a USB-C dock is often USB 2.0), or Wi-Fi
+        // Direct's; a computer's line runs at the rate of this phone's active network
         let speed = '\u2014';
-        if (line.usb) speed = line.pc && line.pc.attach === 'wireless' ? '866 Mbps (Wi-Fi Direct)' : '10 Gbps (USB-C)';
-        else {
+        if (line.usb) {
+            const pc = line.pc || {};
+            const v = Number(pc.usbVersion) || 0;
+            if (pc.attach === 'wireless') speed = '866 Mbps';
+            else if (v >= 3.1) speed = '10 Gbps';
+            else if (v >= 3) speed = '5 Gbps';
+            else if (v >= 2) speed = '480 Mbps';
+            else if (v >= 1) speed = '12 Mbps';
+        } else {
             const dev = root.wmShell && typeof root.wmShell.deviceStatus === 'function' ? root.wmShell.deviceStatus() : null;
+            const kbps = dev ? Number(dev.activeDownKbps) || 0 : 0;
             const wifi = dev && dev.wifi;
-            if (wifi && wifi.connected && Number(wifi.linkMbps) > 0) speed = `${Number(wifi.linkMbps)} Mbps (Wi-Fi)`;
-            else if (dev && dev.active === 'cellular') speed = 'Cellular data';
+            if (kbps > 0) speed = kbps >= 10000 ? `${Math.round(kbps / 1000)} Mbps` : kbps >= 1000 ? `${(kbps / 1000).toFixed(1)} Mbps` : `${kbps} Kbps`;
+            else if (dev && dev.active === 'wifi' && wifi && Number(wifi.linkMbps) > 0) speed = `${Number(wifi.linkMbps)} Mbps`;
         }
         return [
             ['Line Status:', status],
