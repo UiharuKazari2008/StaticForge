@@ -685,6 +685,20 @@
         });
     }
     api.on('dex-state?', () => postDexState());
+    // the display coming back: the app reports only its removal (dex-display), and a DeX window that
+    // kept running never sent another "ready", so the phone's glyph stayed dim after a reconnect
+    // (Nov 14). The window shows, resizes or takes focus again on the new display: it says so.
+    if (root.addEventListener && root.document) {
+        let again = null;
+        const announce = () => {
+            if (!isDw() || root.document.visibilityState === 'hidden') return;
+            clearTimeout(again);
+            again = setTimeout(postDexState, 400);
+        };
+        root.document.addEventListener('visibilitychange', announce);
+        root.addEventListener('resize', announce);
+        root.addEventListener('focus', announce);
+    }
     api.on('dex-state', (m) => {
         if (!isPhone()) return;
         dex.present = true;
