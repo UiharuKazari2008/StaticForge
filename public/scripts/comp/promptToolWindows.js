@@ -24,6 +24,8 @@
     let refreshFrame = 0;
     // true while a window edits the field: its own input events must not become the user's selection
     let editing = false;
+    // true while inlineEdit runs: the field keeps focus (no hand-over to the Emphasis window)
+    let inline = false;
 
     function findWindow() { return document.getElementById('promptFindTool'); }
     function emphasisWindow() { return document.getElementById('promptEmphasisTool'); }
@@ -228,6 +230,8 @@
         restoreSelection(textarea);
         promptTextareaToolbar.updateEmphasisGroupChip(textarea, promptTextareaToolbar.getToolbarFromTextarea(textarea));
         refreshEmphasis();
+        // an edit from the field's own toolbar (the phone's editor, inlineEdit) keeps the field focused
+        if (inline) return;
         // the edit focused the field: keep working in this window
         const win = emphasisWindow();
         const keep = win && (win.contains(document.activeElement) ? document.activeElement : win.querySelector('#promptEmphasisValue'));
@@ -369,7 +373,29 @@
         }, { passive: false });
     }
 
-    window.promptToolWindows = { openFind, openEmphasis, wire, refresh: scheduleRefresh, field: contextField };
+    /**
+     * Emphasis edits from a toolbar beside the field (Melaton Mobile's prompt editor, #825): the same
+     * edits as the Emphasis window on the field's caret / selection, with the focus left in the field.
+     * op: 'adjust' (arg = delta), 'group', 'trim-start' | 'trim-end' | 'remove'. info(textarea): what the
+     * caret is in ({ kind, value, share } or null).
+     */
+    function inlineEdit(textarea, op, arg) {
+        if (!isStudioField(textarea)) return;
+        ctx.textarea = textarea;
+        ctx.start = textarea.selectionStart;
+        ctx.end = textarea.selectionEnd;
+        inline = true;
+        try {
+            if (op === 'adjust') adjustEmphasis(Number(arg) || 0);
+            else if (op === 'group') createEmphasisGroup();
+            else emphasisCommand(op);
+        } finally {
+            inline = false;
+        }
+        if (document.activeElement !== textarea) textarea.focus({ preventScroll: true });
+    }
+
+    window.promptToolWindows = { openFind, openEmphasis, wire, refresh: scheduleRefresh, field: contextField, inlineEdit, info: (ta) => emphasisInfo(ta) };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire);
     else wire();
 })();

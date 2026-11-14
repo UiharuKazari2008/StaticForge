@@ -1673,14 +1673,11 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     height: calc(22 * var(--wm-px)) !important;
 }
 
-/* the prompt's toolbar (token count, datasets, quality ...): a flat WM strip with black text. On the
- * phone it is always there (Yukimi, Nov 14 #825: "toolbars need to always be visible"); the desktop
- * shows it only while its field has focus (promptTextareaToolbar.js .hidden), so a tap made the page
- * jump by the strip's height under the finger as the keyboard came up */
-.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar.prompt-textarea-toolbar.hidden {
-    display: flex !important;
-    opacity: 1 !important;
-    visibility: visible !important;
+/* the desktop prompt toolbar (token count, datasets, quality ...) is not on the phone (Yukimi, Nov 14
+ * #825: "i cant use prompt toolbar unless i have the text area"): the prompt editor (wmStudio.js) has
+ * its own tool strips and the token count, Settings has Datasets / Quality / UC Preset / NSFW Bias */
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar.prompt-textarea-toolbar.prompt-textarea-toolbar {
+    display: none !important;
 }
 
 .wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar {
@@ -2128,7 +2125,6 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
 
 /* ---- the prompt toolbar keeps every button on the page: its rows wrap at 360 / 390 px ---- */
 .wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar.prompt-textarea-toolbar {
-    display: flex !important;
     flex-wrap: wrap !important;
     row-gap: calc(2 * var(--wm-px)) !important;
     height: auto !important;
@@ -2950,4 +2946,297 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge:is(.full-mode
 html.ui-mobile[data-wm-version="6.5"] .wm-studio .wms-wait {
     --wms-wait: 40;
     --strip: image-set(url('/static_images/wm65/wait-strip.png') 1x, url('/static_images/wm65/wait-strip@2x.png') 2x, url('/static_images/wm65/wait-strip@4x.png') 4x);
+}
+
+
+/* ======================================================================
+ * Prompt editor (wmStudio.js, Yukimi Nov 14 #825): a tap on a prompt field makes that same field a
+ * full-page editor between a tool strip at the top (Undo, Redo, Cut, Copy, Paste, Select All) and
+ * one at the bottom (weight - / value / +, Group, Find, SmartText, the token count). The field's box
+ * (.wms-edit-target) is fixed to #manualModal (layout containment: its containing block), so it
+ * covers the form; the page's tab strip and the print toggle go.
+ * ====================================================================== */
+.wm-studio > .wms-edbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: calc(2 * var(--wm-px));
+    min-height: calc(28 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    box-sizing: border-box;
+    background: var(--wm-tab-strip);
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    position: relative;
+    z-index: 4;
+}
+
+.wm-studio > .wms-edbar[hidden] {
+    display: none !important;
+}
+
+.wm-studio > .wms-edbar-top { border-bottom: calc(1 * var(--wm-px)) solid #000; }
+.wm-studio > .wms-edbar-bottom { border-top: calc(1 * var(--wm-px)) solid #000; order: 2; }
+.wm-studio.wms-editing > .wms-host { order: 1; }
+
+.wm-studio .wms-ed-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: calc(26 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    padding: 0;
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    touch-action: manipulation;
+}
+
+.wm-studio .wms-ed-btn:active:not(:disabled) {
+    border-color: #000;
+    background: var(--wm-highlight);
+}
+
+.wm-studio .wms-ed-icon {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-studio .wms-ed-btn:disabled .wms-ed-icon {
+    opacity: .35;
+    filter: grayscale(1);
+}
+
+.wm-studio .wms-ed-sep {
+    flex: 0 0 auto;
+    align-self: stretch;
+    width: calc(1 * var(--wm-px));
+    margin: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    background: #808080;
+}
+
+.wm-studio .wms-ed-weight {
+    flex: 0 0 auto;
+    min-width: calc(30 * var(--wm-px));
+    text-align: center;
+}
+
+.wm-studio .wms-ed-tokens {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #404040;
+}
+
+.wm-studio.wms-editing > :is(.wms-tabs, .wms-noprint, .wms-norefs) {
+    display: none !important;
+}
+
+.wm-studio.wms-editing #manualModal #manualPanelSection {
+    visibility: hidden !important;
+}
+
+.wm-studio.wms-editing #manualModal .wms-edit-target.wms-edit-target.wms-edit-target {
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 30 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    width: auto !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #fff !important;
+}
+
+.wm-studio.wms-editing #manualModal .wms-edit-target > .prompt-textarea-emphasis-wrap {
+    position: relative !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    height: auto !important;
+}
+
+.wm-studio.wms-editing #manualModal .wms-edit-target textarea:is(.prompt-textarea, .character-prompt-textarea):is(*, #manualPrompt, #manualUc) {
+    flex: 1 1 auto !important;
+    field-sizing: fixed !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: calc(5 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    border: 0 !important;
+    box-sizing: border-box !important;
+    resize: none !important;
+    overflow-y: auto !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    line-height: 1.45 !important;
+}
+
+.wm-studio.wms-editing #manualModal .wms-edit-target :is(.emphasis-highlight-overlay, .search-highlight-overlay) {
+    padding: calc(5 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    font-size: calc(12 * var(--wm-px)) !important;
+    line-height: 1.45 !important;
+}
+
+.wm-studio.wms-editing #manualModal .wms-edit-target :is(.prompt-status-icons, .prompt-textarea-toolbar) {
+    display: none !important;
+}
+
+/* the autofill list open in the editor: docked above the soft keys (the bottom strip gives way), the
+ * field ends above its view bar (wmStudio.js syncDock sets the sizes) */
+.wm-studio.wms-editing.wms-ac-open > .wms-edbar-bottom {
+    display: none !important;
+}
+
+.wm-studio.wms-editing.wms-ac-open > .wms-host {
+    margin-bottom: var(--wms-ac-pad, 0px);
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay:not(.hidden).wms-ac-dock {
+    position: fixed !important;
+    top: auto !important;
+    bottom: var(--wms-dock-b) !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: var(--wms-dock-h) !important;
+    max-height: var(--wms-dock-h) !important;
+    border-width: calc(1 * var(--wm-px)) 0 0 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar#characterAutocompleteViewBar:not(.hidden).wms-ac-dock {
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(var(--wms-dock-b) + var(--wms-dock-h)) !important;
+    left: 0 !important;
+    width: 100vw !important;
+    max-width: none !important;
+}
+
+/* ---- Settings: Datasets / Quality / UC Preset / NSFW Bias rows (wmStudio.js genRows) ---- */
+.wm-studio #manualModal .model-control .control-holder > .wms-gen-rows {
+    display: contents !important;
+}
+
+.wm-studio #manualModal .wms-gen-row > label {
+    color: #000 !important;
+}
+
+.wm-studio #manualModal .model-control .wms-gen-row > button.wms-combo.wms-combo {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: calc(20 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(4 * var(--wm-px)) !important;
+    box-sizing: border-box !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    font: var(--wm-fs) var(--wm-font) !important;
+    text-align: left !important;
+    box-shadow: none !important;
+}
+
+.wm-studio #manualModal .wms-gen-row .wms-combo-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-studio #manualModal .model-control .wms-gen-row > button.wms-combo.wms-combo::after {
+    /* the same arrow cell as the desktop combos on the phone (.custom-dropdown-btn::after) */
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip);
+}
+
+/* ---- the print pane's minimise toggle (beside / under the form only) ---- */
+.wm-studio .wms-print-toggle {
+    display: none;
+}
+
+@container wms ((min-width: 40em) and (aspect-ratio >= 3 / 4)) or ((min-width: 30em) and (min-height: 45em) and (aspect-ratio < 3 / 4)) {
+    .wm-studio #manualModal #manualPanelSection > .wms-print-toggle {
+        display: flex !important;
+        position: absolute;
+        z-index: 5;
+        top: 0;
+        right: 0;
+        width: calc(26 * var(--wm-px));
+        height: calc(20 * var(--wm-px));
+        align-items: center;
+        justify-content: center;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-left: calc(1 * var(--wm-px)) solid #000;
+        border-bottom: calc(1 * var(--wm-px)) solid #000;
+        border-radius: 0;
+        background: var(--wm-tab-strip);
+        box-shadow: none;
+    }
+
+    .wm-studio #manualModal #manualPanelSection > .wms-print-toggle > span {
+        width: calc(9 * var(--wm-px));
+        height: calc(5 * var(--wm-px));
+        background: #000;
+        clip-path: polygon(0 0, 100% 0, 50% 100%);
+    }
+
+    .wm-studio.wms-print-min #manualModal #manualPanelSection > .wms-print-toggle > span {
+        clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    }
+
+    .wm-studio.wms-print-min #manualModal #manualPanelSection > :not(.wms-print-toggle) {
+        visibility: hidden !important;
+    }
+
+    .wm-studio.wms-print-min > .wms-noprint {
+        display: none !important;
+    }
+}
+
+/* minimised: under the form the pane is a strip of the toggle's height; beside it, a column of its width */
+.wm-studio.wms-print-min > * {
+    --wms-print-h: calc(21 * var(--wm-px));
+    --wms-print-w: calc(26 * var(--wm-px));
+}
+
+@container wms (min-width: 40em) and (aspect-ratio >= 3 / 4) {
+    .wm-studio #manualModal #manualPanelSection > .wms-print-toggle > span {
+        width: calc(5 * var(--wm-px));
+        height: calc(9 * var(--wm-px));
+        clip-path: polygon(0 0, 100% 50%, 0 100%);
+    }
+
+    .wm-studio.wms-print-min #manualModal #manualPanelSection > .wms-print-toggle > span {
+        clip-path: polygon(100% 0, 100% 100%, 0 50%);
+    }
 }

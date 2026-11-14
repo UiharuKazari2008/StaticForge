@@ -109,6 +109,10 @@
         // the prompt's form group gives up its box so the toolbar row can stick (wm-studio.css)
         const tabsGroup = m.querySelector('.scrollable-content > .form-group > .prompt-tabs');
         if (tabsGroup) tabsGroup.parentElement.classList.add('wms-flat');
+        // the print pane's minimise toggle lives on the pane (wm-studio.css shows it beside / under the form)
+        const pane = document.getElementById('manualPanelSection');
+        const toggle = page.querySelector('.wms-print-toggle');
+        if (pane && toggle && toggle.parentNode !== pane) pane.appendChild(toggle);
         ensureCharsSection();
         watchPromptEditors();
         lightOverlays();
@@ -118,6 +122,7 @@
         foldSections();
         pairsLayout();
         diceBySeed();
+        genRows();
         resolutionDims();
         watchPopupDecor();
         return true;
@@ -734,6 +739,7 @@
         if (!ws || !isCurrent() || root.hasAttribute('data-wm-viewer')) return;
         const top = tools[tools.length - 1];
         if (top) { ws.setTitle(top.win.dataset.wmhTitle || windowTitle(top.win)); return; }
+        if (editTa) { ws.setTitle(fieldTitle(editTa)); return; }
         // a print running: its progress in the title (Generate stays free to queue another)
         if (generating()) {
             const p = progress();
@@ -1775,6 +1781,247 @@
         }).observe(shell, { childList: true, subtree: true });
     }
 
+    // ---------------------------------------------------------------- the prompt editor
+
+    /**
+     * Prompt editor (Yukimi, Nov 14 #825: "when we tap a text area we need to switch to a full screen
+     * text area with better smart text access and easier to touch"). A tap on a prompt field turns
+     * that same textarea into a full-page editor (wm-studio.css .wms-editing / .wms-edit-target): the
+     * element is not moved, so the keyboard stays up and every desktop handler (autofill, emphasis
+     * highlight, token count) keeps working. A tool strip at the top (Undo, Redo, Cut, Copy, Paste,
+     * Select All) and one at the bottom (weight - / value / +, Group, Find, SmartText, the token count);
+     * soft keys Done | Menu; back and the title's ok are Done. The autofill list docks above the soft
+     * keys and the field ends above it (syncDock).
+     */
+    const FIELD_SEL = 'textarea.prompt-textarea, textarea.character-prompt-textarea';
+    const ED_TOP = [
+        ['undo', 'Undo', 'studio-edit-undo'],
+        ['redo', 'Redo', 'studio-edit-redo'],
+        '|',
+        ['cut', 'Cut', 'studio-edit-cut'],
+        ['copy', 'Copy', 'studio-edit-copy'],
+        ['paste', 'Paste', 'studio-edit-paste'],
+        ['selectall', 'Select All', 'studio-edit-select-all']
+    ];
+    let editTa = null;
+
+    function edIcon(name) {
+        return `<img class="wms-ed-icon" alt="" src="/static_images/wm61/ed-${name}.png" srcset="/static_images/wm61/ed-${name}@2x.png 2x, /static_images/wm61/ed-${name}@4x.png 4x">`;
+    }
+
+    function edButton(id, label) {
+        return `<button type="button" class="wms-ed-btn" data-ed="${esc(id)}" aria-label="${esc(label)}" title="${esc(label)}">${edIcon(id)}</button>`;
+    }
+
+    function buildEditorBars() {
+        const top = page.querySelector('.wms-edbar-top');
+        const bottom = page.querySelector('.wms-edbar-bottom');
+        top.innerHTML = ED_TOP.map((b) => (b === '|' ? '<span class="wms-ed-sep"></span>' : edButton(b[0], b[1]))).join('');
+        bottom.innerHTML = `${edButton('weightdown', 'Less Weight')}<span class="wms-ed-weight" aria-live="polite"></span>${edButton('weightup', 'More Weight')}`
+            + `${edButton('group', 'Group the Selection')}<span class="wms-ed-sep"></span>${edButton('find', 'Find')}${edButton('smarttext', 'SmartText')}`
+            + '<span class="wms-ed-tokens"></span>';
+        // a tap on a strip keeps the focus (and the keyboard) in the field
+        [top, bottom].forEach((bar) => {
+            bar.addEventListener('mousedown', (e) => e.preventDefault());
+            bar.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') e.preventDefault(); });
+            bar.addEventListener('click', (e) => {
+                const b = e.target.closest && e.target.closest('.wms-ed-btn');
+                if (b && !b.disabled) edCommand(b.dataset.ed);
+            });
+        });
+    }
+
+    function edCommand(id) {
+        const ta = editTa;
+        if (!ta) return;
+        const top = ED_TOP.find((b) => b !== '|' && b[0] === id);
+        /* global handleStudioMenuBarAction */
+        if (top) { try { handleStudioMenuBarAction(top[2], ta, null); } catch (err) { console.warn('[wmStudio] edit', err); } paintEditor(); return; }
+        const ptw = window.promptToolWindows;
+        if (id === 'weightup' || id === 'weightdown') { if (ptw && ptw.inlineEdit) ptw.inlineEdit(ta, 'adjust', id === 'weightup' ? 0.1 : -0.1); }
+        else if (id === 'group') { if (ptw && ptw.inlineEdit) ptw.inlineEdit(ta, 'group'); }
+        else if (id === 'find') { if (ptw) ptw.openFind(ta); }
+        else if (id === 'smarttext') { try { handleStudioMenuBarAction('studio-autofill-window', ta, null); } catch (err) { console.warn('[wmStudio] smarttext', err); } }
+        paintEditor();
+    }
+
+    function fieldTitle(ta) {
+        const id = ta.id;
+        if (id === 'manualPrompt') return 'Prompt';
+        if (id === 'manualUc') return 'Undesired';
+        if (id === 'creativeDirectiveInput') return 'Creative Directive';
+        if (id === 'manualPromptNegative') return 'Inline Negative';
+        const item = ta.closest('.character-prompt-item');
+        const name = (item && item.dataset.charaName) || 'Character';
+        return /_uc$/.test(id) ? `${name} Undesired` : name;
+    }
+
+    let edFrame = 0;
+    function paintEditor() {
+        if (edFrame) return;
+        edFrame = requestAnimationFrame(() => {
+            edFrame = 0;
+            const ta = editTa;
+            if (!ta || !page) return;
+            const ptw = window.promptToolWindows;
+            let info = null;
+            try { info = ptw && ptw.info ? ptw.info(ta) : null; } catch (_) { info = null; }
+            const w = page.querySelector('.wms-ed-weight');
+            w.textContent = info ? (info.share ? `${Math.round(info.value)}%` : Number(info.value).toFixed(2)) : '1.00';
+            const sel = ta.selectionStart !== ta.selectionEnd;
+            const set = (id, on) => { const b = page.querySelector(`.wms-ed-btn[data-ed="${id}"]`); if (b) b.disabled = !on; };
+            set('weightdown', !!info || sel);
+            set('weightup', !!info || sel);
+            set('group', !info && sel);
+            set('cut', sel);
+            set('copy', sel);
+            // the desktop's token count for this field (its toolbar's own line)
+            const tk = ta.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+            const count = tk && tk.querySelector('.token-count');
+            page.querySelector('.wms-ed-tokens').textContent = count ? count.textContent.trim() : '';
+        });
+    }
+
+    function openEditor(ta) {
+        if (!page || editTa === ta) return;
+        if (editTa) closeEditor(true);
+        const box = ta.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+        if (!box) return;
+        editTa = ta;
+        box.classList.add('wms-edit-target');
+        page.classList.add('wms-editing');
+        page.querySelectorAll('.wms-edbar').forEach((b) => { b.hidden = false; });
+        paintEditor();
+        syncDock();
+        if (isCurrent()) { refreshTitle(); ws.refreshSoftKeys(); ws.syncHistory(); }
+    }
+
+    function closeEditor(quiet) {
+        const ta = editTa;
+        if (!ta) return;
+        editTa = null;
+        const box = ta.closest('.wms-edit-target');
+        if (box) box.classList.remove('wms-edit-target');
+        if (page) {
+            page.classList.remove('wms-editing', 'wms-ac-open');
+            page.querySelectorAll('.wms-edbar').forEach((b) => { b.hidden = true; });
+        }
+        syncDock();
+        if (!quiet) {
+            if (document.activeElement === ta) ta.blur();
+            if (isCurrent()) { refreshTitle(); ws.refreshSoftKeys(); ws.syncHistory(); }
+        }
+    }
+
+    function editorKeys() {
+        const rows = () => {
+            const edit = menuBarItems('Edit');
+            return [...edit, '-', { label: 'Prompt', submenu: () => menuBarItems('Prompt') }];
+        };
+        return { left: { label: 'Done', action: () => closeEditor() }, right: { label: 'Menu', menu: rows } };
+    }
+
+    /** The autofill list in the editor: docked above the soft keys; the field ends above its view bar. */
+    let dockWatched = false;
+    function syncDock() {
+        const ov = document.getElementById('characterAutocompleteOverlay');
+        const bar = document.getElementById('characterAutocompleteViewBar');
+        if (!ov || !page) return;
+        if (!dockWatched && typeof MutationObserver === 'function') {
+            dockWatched = true;
+            const mo = new MutationObserver(() => syncDock());
+            mo.observe(ov, { attributes: true, attributeFilter: ['class'] });
+            if (bar) mo.observe(bar, { attributes: true, attributeFilter: ['class'] });
+            document.addEventListener('wmSipChange', () => requestAnimationFrame(syncDock));
+        }
+        const open = !!editTa && shown && ov.classList.contains('wms-ac') && !ov.classList.contains('hidden') && getComputedStyle(ov).display !== 'none';
+        const want = open ? 'on' : '';
+        if (!open) {
+            if (ov.classList.contains('wms-ac-dock')) ov.classList.remove('wms-ac-dock');
+            if (bar && bar.classList.contains('wms-ac-dock')) bar.classList.remove('wms-ac-dock');
+            if (page.classList.contains('wms-ac-open')) page.classList.remove('wms-ac-open');
+            return;
+        }
+        const keys = document.querySelector('#wmShell > .wm-softkeys');
+        const keysTop = keys ? keys.getBoundingClientRect().top : window.innerHeight;
+        const pageTop = page.getBoundingClientRect().top;
+        const b = Math.max(0, Math.round(window.innerHeight - keysTop));
+        const h = Math.max(80, Math.round((keysTop - pageTop) * 0.5));
+        const barH = bar ? (bar.offsetHeight || 32) : 0;
+        const vars = [['--wms-dock-b', `${b}px`], ['--wms-dock-h', `${h}px`]];
+        vars.forEach(([k, v]) => { if (ov.style.getPropertyValue(k) !== v) ov.style.setProperty(k, v); if (bar && bar.style.getPropertyValue(k) !== v) bar.style.setProperty(k, v); });
+        if (!ov.classList.contains('wms-ac-dock')) ov.classList.add('wms-ac-dock');
+        if (bar && !bar.classList.contains('wms-ac-dock')) bar.classList.add('wms-ac-dock');
+        const pad = `${h + barH}px`;
+        if (page.style.getPropertyValue('--wms-ac-pad') !== pad) page.style.setProperty('--wms-ac-pad', pad);
+        if (!page.classList.contains('wms-ac-open')) page.classList.add('wms-ac-open');
+        void want;
+    }
+
+    // ---------------------------------------------------------------- prompt settings in Settings
+
+    /**
+     * Datasets, Adjustments, UC Preset and NSFW Bias were buttons on the prompt toolbar (Yukimi, Nov 14
+     * #825: "the dataset and stuff like that should go in the generation settings area"). Rows in
+     * Settings with a WM combo each: its list is the Prompt menu's own submenu (the same rows and
+     * actions), the combo shows what is on.
+     */
+    const GEN_ROWS = [['Datasets', 'Datasets'], ['Adjustments', 'Quality'], ['UC Preset', 'UC Preset'], ['NSFW Bias', 'NSFW Bias']];
+
+    function promptMenuRow(label) {
+        return menuBarItems('Prompt').find((r) => r && typeof r === 'object' && r.label === label) || null;
+    }
+
+    function genSummary(label) {
+        const row = promptMenuRow(label);
+        if (!row || typeof row.submenu !== 'function') return '';
+        let items = [];
+        try { items = row.submenu() || []; } catch (_) { items = []; }
+        const on = items.filter((i) => i && typeof i === 'object' && !i.heading && (i.checked || i.radio)).map((i) => String(i.label).replace(/\s+\S*\d.*$/, '').trim());
+        return on.length ? on.join(', ') : 'None';
+    }
+
+    function genRows() {
+        const holder = document.querySelector('#manualModal .model-control .control-holder');
+        if (!holder) return;
+        let box = holder.querySelector(':scope > .wms-gen-rows');
+        if (!box) {
+            box = document.createElement('div');
+            box.className = 'form-row wms-gen-rows';
+            box.innerHTML = GEN_ROWS.map(([key, label]) => `<div class="form-group wms-gen-row"><label>${esc(label)}</label><button type="button" class="wms-combo" data-gen="${esc(key)}"><span class="wms-combo-text"></span></button></div>`).join('');
+            holder.appendChild(box);
+            box.addEventListener('click', (e) => {
+                const btn = e.target.closest && e.target.closest('.wms-combo');
+                if (!btn) return;
+                const row = promptMenuRow(btn.dataset.gen);
+                if (!row || typeof row.submenu !== 'function' || !ws || typeof ws.dropdown !== 'function') return;
+                ws.dropdown(btn, row.submenu(), 'left', () => paintGenRows());
+            });
+        }
+        paintGenRows();
+    }
+
+    function paintGenRows() {
+        document.querySelectorAll('#manualModal .wms-gen-rows .wms-combo').forEach((btn) => {
+            btn.querySelector('.wms-combo-text').textContent = genSummary(btn.dataset.gen);
+        });
+    }
+
+    // ---------------------------------------------------------------- the print pane minimised
+
+    /**
+     * The Print beside / under the form folds to a strip with a toggle (Yukimi, Nov 14 #825: "the
+     * preview panel can get a minimise toggle"); remembered on this device.
+     */
+    const PRINT_MIN_KEY = 'wmsPrintMin';
+    function printMinimised() { try { return localStorage.getItem(PRINT_MIN_KEY) === '1'; } catch (_) { return false; } }
+    function setPrintMin(on) {
+        try { localStorage.setItem(PRINT_MIN_KEY, on ? '1' : '0'); } catch (_) { /* this session only */ }
+        if (page) page.classList.toggle('wms-print-min', on);
+        const t = page && page.querySelector('.wms-print-toggle');
+        if (t) { t.setAttribute('aria-expanded', String(!on)); t.title = on ? 'Show Print' : 'Hide Print'; }
+    }
+
     // ---------------------------------------------------------------- app
 
     /**
@@ -1800,7 +2047,15 @@
             <p class="wms-norefs" hidden>No images.<br>Tap Menu, Add, Base Image.</p>
             <div class="wms-wait" aria-hidden="true"></div>
             <div class="wms-tool" hidden><div class="wms-tool-host"></div></div>
+            <div class="wms-edbar wms-edbar-top" role="toolbar" hidden></div>
+            <div class="wms-edbar wms-edbar-bottom" role="toolbar" hidden></div>
+            <button type="button" class="wms-print-toggle" aria-label="Print" aria-expanded="true"><span></span></button>
             <div class="wm-tabs wms-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${esc(id)}" aria-selected="${id === tab}">${esc(label)}</button>`).join('')}</div>`;
+        buildEditorBars();
+        // the edit bars sit above and below the page's form (flex order: top bar, host, bottom bar)
+        page.insertBefore(page.querySelector('.wms-edbar-top'), page.querySelector('.wms-host'));
+        page.querySelector('.wms-print-toggle').addEventListener('click', () => setPrintMin(!printMinimised()));
+        setPrintMin(printMinimised());
         page.querySelector('.wms-tabs').addEventListener('click', (e) => {
             const b = e.target.closest('.wm-tab');
             if (b) setTab(b.dataset.tab);
@@ -1813,10 +2068,15 @@
             const on = e.type === 'focusin' && !!t && /^(TEXTAREA|INPUT)$/.test(t.tagName) && !!t.closest('#manualModal') && !/^(checkbox|radio|range|button|submit|file|color)$/.test(t.type || '');
             // a field of the form typed in: that form page is the tab, whatever layout the keyboard brings
             if (on && tab === 'print' && !t.closest('#manualPanelSection')) { tab = formTab; paintTab(); }
+            // a prompt field: the full-page editor (#825)
+            if (on && t.tagName === 'TEXTAREA' && t.matches(FIELD_SEL) && !tools.length) openEditor(t);
             if (page.classList.contains('wms-typing') !== on) page.classList.toggle('wms-typing', on);
         };
         page.addEventListener('focusin', typing);
         page.addEventListener('focusout', typing);
+        // the editor's weight / token line follows the caret and the text
+        ['input', 'keyup', 'pointerup', 'select'].forEach((t) => page.addEventListener(t, (e) => { if (editTa && e.target === editTa) paintEditor(); }));
+        document.addEventListener('selectionchange', () => { if (editTa && document.activeElement === editTa) paintEditor(); });
         // the Director button (Studio's docked Director, hidden here) opens the Director app
         page.addEventListener('click', (e) => {
             if (!e.target.closest || !e.target.closest('#directorBtn')) return;
@@ -1864,6 +2124,7 @@
             const k = toolKeys(tools[tools.length - 1].win);
             return { left: k.left, right: k.right };
         }
+        if (editTa) return editorKeys();
         return { left: generateKey(), right: { label: 'Menu', menu: mainMenu } };
     }
 
@@ -1903,6 +2164,7 @@
             },
             hide() {
                 shown = false;
+                closeEditor(true);
                 markAutocomplete(false);
                 if (page) page.classList.add('wms-prepaint');
                 // open tool pages stay hosted in the hidden page, as they were (switching apps closes nothing)
@@ -1911,7 +2173,7 @@
             },
             softKeys,
             // WM: X on Studio, ok on a tool page (as its Done soft key)
-            titleKind: () => (tools.length ? 'ok' : 'close'),
+            titleKind: () => (tools.length || editTa ? 'ok' : 'close'),
             // a print being made: X asks (it can be minimized instead and keep printing)
             closeQuestion: () => (generating() ? 'A print is still being made. Close Studio?' : null),
             // X closes Studio the desktop's way (File > Close: hideManualModal); its fields stay as they are
@@ -1921,15 +2183,17 @@
                 try { if (studioOpen() && typeof hideManualModal === 'function') hideManualModal(); } catch (err) { console.warn('[wmStudio] close', err); }
             },
             onTitleOk() {
+                if (!tools.length && editTa) { closeEditor(); return true; }
                 if (!tools.length) return false;
                 // ok = the page's left soft key (a form's Save, else Done)
                 const k = toolKeys(tools[tools.length - 1].win);
                 if (k.left && typeof k.left.action === 'function' && !k.left.disabled) k.left.action();
                 return true;
             },
-            historyDepth() { return tools.length; },
+            historyDepth() { return tools.length + (editTa ? 1 : 0); },
             onBack() {
                 if (tools.length) { closeTool(); return true; }
+                if (editTa) { closeEditor(); return true; }
                 return false;
             }
         });
