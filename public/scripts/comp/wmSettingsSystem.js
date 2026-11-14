@@ -960,7 +960,7 @@
      */
     // a Text Messaging account's options: the switches of its Dreamscape CardSpace card
     const TM_OPTS = [
-        ['notify', 'Notify me about new messages'],
+        ['notify', 'Receive notifications for new messages'],
         ['usePrivateApi', 'Use the Private API'],
         ['sendReadReceipts', 'Send read receipts'],
         ['sendTyping', 'Send typing indicators'],
@@ -990,6 +990,29 @@
                 const box = el.querySelector(`input[name="tmo-${k}"]`);
                 if (box) box.addEventListener('change', (e) => { d.tmOpts[k] = e.target.checked; });
             });
+            return;
+        }
+        if (String(d.sub).startsWith('imap:')) {
+            const id = String(d.sub).slice(5);
+            const ma = window.mailAccounts;
+            if (!d.maOpts) {
+                el.innerHTML = ui.note('Reading the account...');
+                if (ma && typeof ma.accounts === 'function') {
+                    ma.accounts().then((r) => {
+                        const a = ((r && r.accounts) || []).find((x) => x.id === id);
+                        d.maAcct = a || null;
+                        d.maOpts = { notify: !(a && a.settings && a.settings.notify === false) };
+                        d.maOptsInitial = JSON.stringify(d.maOpts);
+                        if (typeof d.rerender === 'function') d.rerender();
+                    }).catch(() => { el.innerHTML = ui.note('This account is not available right now.'); });
+                } else el.innerHTML = ui.note('This account is not available right now.');
+                return;
+            }
+            const a = d.maAcct;
+            if (!a) { el.innerHTML = ui.note('This account is not available right now.'); return; }
+            el.innerHTML = `${ui.text(`${a.displayName || a.email}${a.displayName ? ` (${a.email})` : ''}`)}
+                ${ui.check('mao-notify', 'Receive notifications for new messages', d.maOpts.notify)}`;
+            el.querySelector('input[name="mao-notify"]').addEventListener('change', (e) => { d.maOpts.notify = e.target.checked; });
             return;
         }
         if (d.sub === 'signatures') {
@@ -1023,7 +1046,7 @@
         d.rerender = api.rerender;
         if (tab === 'accounts' && d.sub) { messagingSubRender(el, d); return; }
         if (tab === 'accounts') {
-            const rows = messagingAccounts().map((a) => ({ key: a.key && String(a.key).startsWith('tm:') ? a.key : a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
+            const rows = messagingAccounts().map((a) => ({ key: a.key && /^(tm|imap):/.test(String(a.key)) ? a.key : a.label, label: `${a.radio ? '* ' : '\u2002 '}${a.label}`, selected: d.acctSel === a.label }));
             rows.push({ key: '__new', label: '\u2002 New Account...', selected: d.acctSel === '__new' });
             el.innerHTML = `${ui.text('Tap an account to change settings.')}
                 ${ui.listbox(rows, { maxHeight: 210 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-accts"')}
@@ -1035,6 +1058,8 @@
                 if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
                 // a Text Messaging account (Apple iMessage / RCS): its client options (#779)
                 if (String(key).startsWith('tm:')) { d.sub = key; d.tmOpts = null; api.rerender(); return; }
+                // a mail account (IMAP, #789): Receive notifications for new messages (Yukimi, Nov 14)
+                if (String(key).startsWith('imap:')) { d.sub = key; d.maOpts = null; api.rerender(); return; }
                 // the device opens a tapped account's settings: Dreamscape Messenger's own pages (#763,
                 // named Text Messages before #779); what was changed here is kept first (ok on those
                 // pages comes back to this tab)
@@ -1125,6 +1150,17 @@
                     if (a && t) await t.saveAccount({ id: a.id, kind: a.kind, url: a.url, enabled: a.enabled !== false, settings: d.tmOpts });
                     d.tmOptsInitial = JSON.stringify(d.tmOpts);
                     if (t && typeof t.preload === 'function') void t.preload();
+                } catch (err) {
+                    const s1 = sh();
+                    if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account settings could not be saved. ${(err && err.message) || ''}` });
+                    return false;
+                }
+            }
+            if (String(d.sub).startsWith('imap:') && d.maOpts && d.maAcct && JSON.stringify(d.maOpts) !== d.maOptsInitial) {
+                const ma = window.mailAccounts;
+                try {
+                    if (ma) await ma.saveAccount({ id: d.maAcct.id, enabled: d.maAcct.enabled !== false, settings: { notify: d.maOpts.notify } });
+                    d.maOptsInitial = JSON.stringify(d.maOpts);
                 } catch (err) {
                     const s1 = sh();
                     if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account settings could not be saved. ${(err && err.message) || ''}` });

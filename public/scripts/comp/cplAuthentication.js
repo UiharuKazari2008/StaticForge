@@ -887,7 +887,7 @@
         const priv = !!(row.server && row.server.privateApi);
         const opt = (key, text) => { const c = customCheck(text, st[key] !== false); c.key = key; return c; };
         const opts = [
-            opt('notify', 'Notify me about new messages'),
+            opt('notify', 'Receive notifications for new messages'),
             opt('usePrivateApi', 'Use the Private API (tapbacks, replies, edit and unsend, typing, read receipts)'),
             opt('sendReadReceipts', 'Send read receipts'),
             opt('sendTyping', 'Send typing indicators'),
@@ -941,6 +941,8 @@
         const ui = tmUiOf(row.id);
         const status = tmStatus(row);
         const enabled = customCheck('Use this account', row.enabled !== false);
+        // per account (Yukimi, Nov 14): new messages notify on this account
+        const notify = customCheck('Receive notifications for new messages', !(row.settings && row.settings.notify === false));
         // signed out by Google: the phone number is still known, but it needs pairing again
         const paired = row.status === 'connected' || (!!row.identity && row.status !== 'unpaired');
         details.append(
@@ -948,7 +950,8 @@
             customField('Phone number', tmText(row.identity || 'Unknown until paired')),
             customField('Status', tmText(ui.paired ? 'Paired' : status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
             customField('Copy on this server', tmText(tmSyncText(row))),
-            customField('Enabled', enabled.wrap)
+            customField('Enabled', enabled.wrap),
+            customField('Notifications', notify.wrap)
         );
         if (ui.google && !paired) {
             // Google account pairing (Google Messages without a QR scanner): sign in inside Alchemy,
@@ -1032,7 +1035,7 @@
             }));
         }
         actions.append(tmButton('Save', async () => {
-            await tmApi().saveAccount({ id: row.id, kind: 'rcs', enabled: enabled.input.checked });
+            await tmApi().saveAccount({ id: row.id, kind: 'rcs', enabled: enabled.input.checked, settings: { notify: notify.input.checked } });
             await loadTextMessaging(true);
         }));
     }
@@ -1322,7 +1325,7 @@
         smtpPassField.hidden = true;
         same.input.addEventListener('change', () => { smtpPassField.hidden = same.input.checked; });
         const st = row.settings || {};
-        const notify = customCheck('Notify me about new mail', st.notify !== false);
+        const notify = customCheck('Receive notifications for new messages', st.notify !== false);
         const saveSent = maSelect(MA_SAVE_SENT, st.saveSent || 'auto');
         const saveSentLine = document.createElement('label');
         saveSentLine.className = 'cpl-ma-line';
