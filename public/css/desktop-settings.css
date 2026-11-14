@@ -1,36 +1,36 @@
 /* The forms are hosted by Control Panel's Personalization / Global Settings pages too
    (modalUtils.js registerDesktopSettingsControlPanelPages): every rule reaches both. */
 /* Desktop settings modal */
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) {
     width: 550px;
     max-height: 90vh;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) {
     overflow: hidden;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .modal-content {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .modal-content {
     overflow: hidden;
     min-height: 0;
     flex: 1 1 auto;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-layout {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-layout {
     min-height: 0;
     overflow: hidden;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-controls {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-controls {
     flex: 1 1 auto;
     min-height: 0;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-controls:not(.has-custom-scrollbar) {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-controls:not(.has-custom-scrollbar) {
     overflow-y: auto;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host):has([data-desktop-settings-scope="global"]:not(.hidden)) {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host):has([data-desktop-settings-scope="global"]:not(.hidden)) {
     width: 680px;
 }
 
@@ -88,15 +88,15 @@
 }
 
 /* Wallpaper position menus use the Vista combo (cpl-db-combo in melaton-network.css). */
-#melatonControlPanelModal .wallpaper-controls .cpl-db-combo {
+:is(#melatonControlPanelModal, .cpl-instance) .wallpaper-controls .cpl-db-combo {
     width: 100%;
     min-width: 0;
 }
 
 /* 7.css paints a hover face on a .win7 button's ::before; the combos have no use for it (the
    push buttons' ::before is Vista's hot face, vista-glass-controls.css) */
-#melatonControlPanelModal .wallpaper-controls .cpl-db-combo::before,
-#melatonControlPanelModal .cpl-db-page .cpl-db-combo::before {
+:is(#melatonControlPanelModal, .cpl-instance) .wallpaper-controls .cpl-db-combo::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-page .cpl-db-combo::before {
     content: none;
 }
 
@@ -143,54 +143,54 @@
     border-radius: 0 0 var(--border-radius-lg) var(--border-radius-lg);
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-footer {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-footer {
     align-items: center;
     gap: var(--spacing-md);
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-scope-toggle {
     grid-template-columns: 1fr 1fr;
     min-width: 11rem;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle .gallery-toggle-slider {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-scope-toggle .gallery-toggle-slider {
     width: calc(50% - 2px);
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-scope-toggle[data-active="global"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-glass-mode-toggle {
     grid-template-columns: 1fr 1fr 1fr;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle .gallery-toggle-slider {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle .gallery-toggle-slider,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-glass-mode-toggle .gallery-toggle-slider {
     width: calc(calc(100% / 3) - 2px);
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="vista"] .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="live"] .gallery-toggle-slider {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="workspace"] .gallery-toggle-slider,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="vista"] .gallery-toggle-slider,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="live"] .gallery-toggle-slider {
     transform: translateX(calc(100% + 1px));
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="dreamscape"] .gallery-toggle-slider,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="basic"] .gallery-toggle-slider {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="orb"] .gallery-toggle-slider,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle[data-active="dreamscape"] .gallery-toggle-slider,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-glass-mode-toggle[data-active="basic"] .gallery-toggle-slider {
     transform: translateX(calc(200% + 2px));
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-start-menu-style-toggle .gallery-toggle-btn .tab-text,
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-glass-mode-toggle .gallery-toggle-btn .tab-text {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-start-menu-style-toggle .gallery-toggle-btn .tab-text,
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-glass-mode-toggle .gallery-toggle-btn .tab-text {
     font-size: 0.78rem;
     font-weight: 600;
     letter-spacing: 0.02em;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-scope-toggle .gallery-toggle-btn .tab-text {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-scope-toggle .gallery-toggle-btn .tab-text {
     font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0.02em;
@@ -223,7 +223,7 @@
     line-height: 1.3;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-global-toggle {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-global-toggle {
     min-width: 44px;
     width: 44px;
     height: 44px;
@@ -231,7 +231,7 @@
     flex-shrink: 0;
 }
 
-:is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host) .desktop-settings-hint {
+:is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host) .desktop-settings-hint {
     margin: var(--spacing-xs) 0 0;
     font-size: 0.78rem;
     line-height: 1.35;
@@ -357,14 +357,14 @@
 }
 
 /* 7.css button chrome must not restyle the preview (the real button rules live in desktop-shell.css) */
-#melatonControlPanelModal .taskbar-start-button {
+:is(#melatonControlPanelModal, .cpl-instance) .taskbar-start-button {
     min-height: 0;
     font: inherit;
     text-align: start;
 }
 
-#melatonControlPanelModal .taskbar-start-button:not(.luna)::before,
-#melatonControlPanelModal .taskbar-start-button::after {
+:is(#melatonControlPanelModal, .cpl-instance) .taskbar-start-button:not(.luna)::before,
+:is(#melatonControlPanelModal, .cpl-instance) .taskbar-start-button::after {
     content: none;
 }
 
@@ -410,7 +410,7 @@
         grid-template-columns: 1fr;
     }
 
-    :is(#desktopSettingsModal, #melatonControlPanelModal .cpl-settings-host):has([data-desktop-settings-scope="global"]:not(.hidden)) {
+    :is(#desktopSettingsModal, :is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host):has([data-desktop-settings-scope="global"]:not(.hidden)) {
         width: 550px;
     }
 }
@@ -489,7 +489,7 @@
    buttons (7.css), toggle groups as a light well with the pressed-blue slider. The forms flow
    with the page (the page scrolls, not a clipped inner box). */
 
-#melatonControlPanelModal .cpl-settings-host {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host {
     --text-primary: #000;
     --text-color: #000;
     --text-secondary: #333;
@@ -501,23 +501,23 @@
     text-shadow: none;
 }
 
-#melatonControlPanelModal .cpl-settings-page .cpl-intro {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-page .cpl-intro {
     margin: 0 0 12px;
     color: #333;
 }
 
-#melatonControlPanelModal .cpl-settings-host .desktop-settings-layout {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .desktop-settings-layout {
     padding: 0;
     overflow: visible;
     min-height: 0;
 }
 
-#melatonControlPanelModal .cpl-settings-host .desktop-settings-controls {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .desktop-settings-controls {
     overflow: visible;
     padding: 0;
 }
 
-#melatonControlPanelModal .cpl-settings-host .section-header {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .section-header {
     margin: 14px 0 8px;
     padding: 0 0 3px;
     border-bottom: 1px solid #d5dfe5;
@@ -531,13 +531,13 @@
     text-shadow: none;
 }
 
-#melatonControlPanelModal .cpl-settings-host .section-header i {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .section-header i {
     color: #4a6d96;
     font-size: 12px;
 }
 
-#melatonControlPanelModal .cpl-settings-host label,
-#melatonControlPanelModal .cpl-settings-host .desktop-settings-option-label {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host label,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .desktop-settings-option-label {
     color: #000;
     font-family: var(--cpl-font, 'Segoe UI', sans-serif);
     font-size: 12px;
@@ -548,57 +548,57 @@
     opacity: 1;
 }
 
-#melatonControlPanelModal .cpl-settings-host .desktop-settings-hint {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .desktop-settings-hint {
     color: #555;
     font-size: 12px;
 }
 
 /* text boxes, buttons and combo boxes: Vista's own faces from the shared rules in
    vista-glass-controls.css ("Vista common controls"); this host only sets their font and sizes */
-#melatonControlPanelModal .cpl-settings-host :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host :is(input[type="text"], input[type="number"], input:not([type]), textarea, .form-control) {
     font-family: var(--cpl-font, 'Segoe UI', sans-serif);
     font-size: 12px;
     opacity: 1;
 }
 
-#melatonControlPanelModal .cpl-settings-host ::placeholder {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host ::placeholder {
     color: #6d6d6d;
     font-style: italic;
 }
 
 /* combo boxes keep the text on the left, the glyph on the right (Vista's 23 px) */
-#melatonControlPanelModal .cpl-settings-host .custom-dropdown-btn {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .custom-dropdown-btn {
     justify-content: space-between;
     min-height: 23px;
     padding: 2px 6px;
 }
 
 /* toggle groups: a light well, the selected segment Vista's pressed blue */
-#melatonControlPanelModal .cpl-settings-host .gallery-toggle-group {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .gallery-toggle-group {
     background: #f0f0f0;
     border: 1px solid #8e8f8f;
     border-radius: 3px;
     box-shadow: inset 0 1px 2px hsl(0 0% 0% / 12%);
 }
 
-#melatonControlPanelModal .cpl-settings-host .gallery-toggle-group .gallery-toggle-btn,
-#melatonControlPanelModal .cpl-settings-host .gallery-toggle-group .gallery-toggle-btn:not(.active) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .gallery-toggle-group .gallery-toggle-btn,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .gallery-toggle-group .gallery-toggle-btn:not(.active) {
     color: #222;
     opacity: 1;
 }
 
-#melatonControlPanelModal .cpl-settings-host .gallery-toggle-group .gallery-toggle-slider {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .gallery-toggle-group .gallery-toggle-slider {
     background: linear-gradient(#e5f4fc, #c4e5f6 30% 50%, #98d1ef 50%, #68b3db);
     border: 1px solid #6d91ab;
     box-shadow: inset 1px 1px 0 #0003;
 }
 
-#melatonControlPanelModal .cpl-settings-host .gallery-toggle-group .gallery-toggle-slider::before {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .gallery-toggle-group .gallery-toggle-slider::before {
     content: none;
 }
 
 /* the page's buttons: right-aligned under a separator, like Vista's Control Panel pages */
-#melatonControlPanelModal .cpl-settings-actions {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-actions {
     display: flex;
     justify-content: flex-end;
     gap: 8px;
@@ -607,13 +607,13 @@
     border-top: 1px solid #d5dfe5;
 }
 
-#melatonControlPanelModal .cpl-settings-actions .cpl-settings-save {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-actions .cpl-settings-save {
     min-width: 90px;
     min-height: 23px;
     padding: 0 14px;
 }
 
-#melatonControlPanelModal .cpl-settings-host .custom-dropdown-btn {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-settings-host .custom-dropdown-btn {
     position: relative;
     padding-right: 20px;
 }

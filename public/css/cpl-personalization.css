@@ -12,18 +12,18 @@
 
 /* ---- the hub ---- */
 
-#melatonControlPanelModal .cpl-pers-hub h1.cpl-page-title {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-hub h1.cpl-page-title {
     margin-bottom: 14px;
 }
 
-#melatonControlPanelModal .cpl-pers-task {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-task {
     display: flex;
     align-items: flex-start;
     gap: 10px;
     margin: 0 0 14px;
 }
 
-#melatonControlPanelModal .cpl-pers-task-icon {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-task-icon {
     flex: none;
     width: 24px;
     height: 24px;
@@ -37,33 +37,33 @@
     cursor: var(--c-pointer, pointer);
 }
 
-#melatonControlPanelModal .cpl-pers-task-icon::before,
-#melatonControlPanelModal .cpl-pers-task-icon::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-task-icon::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-task-icon::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-pers-icon {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-icon {
     display: block;
     width: 24px;
     height: 24px;
 }
 
-#melatonControlPanelModal .cpl-pers-task-text {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-task-text {
     min-width: 0;
 }
 
-#melatonControlPanelModal .cpl-pers-task-link {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-task-link {
     font-size: 12px;
     line-height: 15px;
 }
 
-#melatonControlPanelModal .cpl-content p.cpl-pers-task-desc {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-content p.cpl-pers-task-desc {
     margin: 5px 0 0;
     font-size: 12px;
     line-height: 15px;
 }
 
-#melatonControlPanelModal .cpl-pers-shield {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-shield {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -72,24 +72,24 @@
 /* ---- Window Color and Appearance ---- */
 
 /* a spoke page without the task pane (outranks vista-explorer.css's task pane rule) */
-body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks,
-#melatonControlPanelModal[data-page="window-color"] .cpl-tasks {
+body.desktop-mode :is(#melatonControlPanelModal, .cpl-instance)[data-page="window-color"] .cpl-tasks,
+:is(#melatonControlPanelModal, .cpl-instance)[data-page="window-color"] .cpl-tasks {
     display: none;
 }
 
-#melatonControlPanelModal[data-page="window-color"] .cpl-main {
+:is(#melatonControlPanelModal, .cpl-instance)[data-page="window-color"] .cpl-main {
     padding: 0;
     overflow: hidden;
 }
 
-#melatonControlPanelModal .cpl-pers-page {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-page {
     display: flex;
     flex-direction: column;
     height: 100%;
     min-height: 0;
 }
 
-#melatonControlPanelModal .cpl-pers-scroll {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-scroll {
     flex: 1 1 auto;
     min-height: 0;
     overflow: auto;
@@ -97,7 +97,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
 
 /* Vista's 612 px column holds its eight swatches; ours has ten (Clear, Workspace), so it is two
    swatches wider */
-#melatonControlPanelModal .cpl-pers-pane {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-pane {
     box-sizing: border-box;
     width: 756px;
     max-width: 100%;
@@ -105,16 +105,16 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     padding: 20px 4px 16px 10px;
 }
 
-#melatonControlPanelModal .cpl-pers-pane h1.cpl-page-title {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-pane h1.cpl-page-title {
     margin: 0 0 8px;
 }
 
-#melatonControlPanelModal .cpl-pers-pane p.cpl-intro {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-pane p.cpl-intro {
     margin: 0 0 12px;
     line-height: 15px;
 }
 
-#melatonControlPanelModal .cpl-pers-swatches {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatches {
     display: flex;
     flex-wrap: wrap;
     padding: 0 5px;
@@ -122,7 +122,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     background: #fff;
 }
 
-#melatonControlPanelModal .cpl-pers-swatch {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch {
     position: relative;
     box-sizing: border-box;
     display: flex;
@@ -143,35 +143,35 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     cursor: var(--c-default, default);
 }
 
-#melatonControlPanelModal .cpl-pers-swatch::before,
-#melatonControlPanelModal .cpl-pers-swatch::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch::after {
     content: none;
 }
 
 /* Explorer's list view item: hot, selected, hot + selected */
 @media (hover: hover) {
-    #melatonControlPanelModal .cpl-pers-swatch:hover {
+    :is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch:hover {
         border-color: #b8d6fb;
         background: linear-gradient(#fafbfd, #ebf3fd);
     }
 }
 
-#melatonControlPanelModal .cpl-pers-swatch.is-selected {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch.is-selected {
     border-color: #84acdd;
     background: linear-gradient(#f2f9fd, #d9effc);
 }
 
-#melatonControlPanelModal .cpl-pers-swatch.is-selected:hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch.is-selected:hover {
     border-color: #7da2ce;
     background: linear-gradient(#e7f3fd, #c4e3fb);
 }
 
-#melatonControlPanelModal .cpl-pers-swatch:focus-visible {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch:focus-visible {
     outline: 1px dotted #000;
     outline-offset: -3px;
 }
 
-#melatonControlPanelModal .cpl-pers-swatch-art {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch-art {
     display: block;
     flex: none;
     width: 64px;
@@ -180,44 +180,44 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
 }
 
 /* Workspace: the Frost tile multiplied by the workspace's colour, in its shape */
-#melatonControlPanelModal .cpl-pers-swatch-art--workspace {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch-art--workspace {
     background: url("/static_images/vista-personalization/swatch-frost.png"), var(--cpl-pers-ws, #0a1a2a);
     background-blend-mode: multiply;
     -webkit-mask: url("/static_images/vista-personalization/swatch-frost.png") 0 0 / 64px 64px;
     mask: url("/static_images/vista-personalization/swatch-frost.png") 0 0 / 64px 64px;
 }
 
-#melatonControlPanelModal .cpl-pers-swatch-label {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-swatch-label {
     padding-top: 6px;
     line-height: 15px;
     white-space: nowrap;
 }
 
-#melatonControlPanelModal .cpl-pers-check {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-check {
     position: relative;
     margin: 0 0 6px;
     line-height: 15px;
 }
 
-#melatonControlPanelModal .cpl-pers-check u {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-check u {
     text-decoration: none;
 }
 
-#melatonControlPanelModal .cpl-pers-perf {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-perf {
     display: flex;
     align-items: center;
     gap: 5px;
     margin: 0 0 16px;
 }
 
-#melatonControlPanelModal .cpl-pers-slider-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-slider-row {
     display: flex;
     align-items: center;
     height: 22px;
     margin: 0 0 13px;
 }
 
-#melatonControlPanelModal .cpl-pers-slider-label {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-slider-label {
     flex: none;
     width: 95px;
     color: #000;
@@ -225,7 +225,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     line-height: 15px;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-slider {
     flex: none;
     width: 261px;
     height: 22px;
@@ -236,7 +236,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
 /* Window Color's sliders draw the rectangular thumb, measured on the VM: 10x21, a #707070 edge
    with rounded corners, a 1 px light inner line, the face #f2f2f2 to #ebebeb, then #dbdbdb to
    #d0d0d0 below the middle (hot: Vista's blue button face) */
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider::-webkit-slider-thumb {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-slider::-webkit-slider-thumb {
     box-sizing: border-box;
     width: 10px;
     height: 21px;
@@ -247,18 +247,18 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     box-shadow: inset 0 0 0 1px #f6f6f6, 1px 1px 0 hsl(0 0% 0% / 12%);
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider::-webkit-slider-thumb:hover {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-slider::-webkit-slider-thumb:hover {
     background: linear-gradient(#eaf6fd 1px, #d9f0fc 8px, #bee6fd 8px, #a7d9f5 18px);
     border-color: #3c7fb1;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-slider:active::-webkit-slider-thumb {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-slider:active::-webkit-slider-thumb {
     background: linear-gradient(#e5f4fc 1px, #c4e5f6 8px, #98d1ef 8px, #68b3db 18px);
     border-color: #2c628b;
 }
 
 /* the colour mixer's channels: Vista's 3 px gradient lines (hue: themecpl bitmap 102) */
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="h"]::-webkit-slider-runnable-track {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-hsb[data-hsb="h"]::-webkit-slider-runnable-track {
     height: 3px;
     border: 0;
     border-image: none;
@@ -266,7 +266,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     box-shadow: none;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="s"]::-webkit-slider-runnable-track {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-hsb[data-hsb="s"]::-webkit-slider-runnable-track {
     height: 3px;
     border: 0;
     border-image: none;
@@ -274,7 +274,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     box-shadow: none;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="b"]::-webkit-slider-runnable-track {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-hsb[data-hsb="b"]::-webkit-slider-runnable-track {
     height: 3px;
     border: 0;
     border-image: none;
@@ -282,7 +282,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     box-shadow: none;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="h"]::-moz-range-track {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-hsb[data-hsb="h"]::-moz-range-track {
     height: 3px;
     border: 0;
     border-image: none;
@@ -290,7 +290,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     box-shadow: none;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="s"]::-moz-range-track {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-hsb[data-hsb="s"]::-moz-range-track {
     height: 3px;
     border: 0;
     border-image: none;
@@ -298,7 +298,7 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     box-shadow: none;
 }
 
-#melatonControlPanelModal .win7 input[type="range"].cpl-pers-hsb[data-hsb="b"]::-moz-range-track {
+:is(#melatonControlPanelModal, .cpl-instance) .win7 input[type="range"].cpl-pers-hsb[data-hsb="b"]::-moz-range-track {
     height: 3px;
     border: 0;
     border-image: none;
@@ -307,11 +307,11 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
 }
 
 /* Show / Hide color mixer: the task dialog's expando button (aero.msstyles) */
-#melatonControlPanelModal .cpl-pers-mixer {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer {
     margin: 14px 0 0;
 }
 
-#melatonControlPanelModal .cpl-pers-expando {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando {
     display: flex;
     align-items: center;
     gap: 5px;
@@ -328,56 +328,56 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     cursor: var(--c-default, default);
 }
 
-#melatonControlPanelModal .cpl-pers-expando::before,
-#melatonControlPanelModal .cpl-pers-expando::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-pers-expando-image {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando-image {
     flex: none;
     width: 19px;
     height: 21px;
     background: url("/static_images/vista-personalization/expando-down.png") no-repeat;
 }
 
-#melatonControlPanelModal .cpl-pers-expando:hover .cpl-pers-expando-image {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando:hover .cpl-pers-expando-image {
     background-image: url("/static_images/vista-personalization/expando-down-hot.png");
 }
 
-#melatonControlPanelModal .cpl-pers-expando:active .cpl-pers-expando-image {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando:active .cpl-pers-expando-image {
     background-image: url("/static_images/vista-personalization/expando-down-pressed.png");
 }
 
-#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-expando-image {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-expando-image {
     background-image: url("/static_images/vista-personalization/expando-up.png");
 }
 
-#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-expando:hover .cpl-pers-expando-image {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-expando:hover .cpl-pers-expando-image {
     background-image: url("/static_images/vista-personalization/expando-up-hot.png");
 }
 
-#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-expando:active .cpl-pers-expando-image {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-expando:active .cpl-pers-expando-image {
     background-image: url("/static_images/vista-personalization/expando-up-pressed.png");
 }
 
-#melatonControlPanelModal .cpl-pers-expando:focus-visible .cpl-pers-expando-text {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-expando:focus-visible .cpl-pers-expando-text {
     outline: 1px dotted #000;
 }
 
-#melatonControlPanelModal .cpl-pers-mixer-body {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer-body {
     display: none;
 }
 
-#melatonControlPanelModal .cpl-pers-mixer.is-open .cpl-pers-mixer-body {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-mixer.is-open .cpl-pers-mixer-body {
     display: block;
 }
 
-#melatonControlPanelModal .cpl-content p.cpl-pers-classic {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-content p.cpl-pers-classic {
     margin: 19px 0 0;
 }
 
 /* OK / Cancel: the grey command bar across the page (Desktop Background's) */
-#melatonControlPanelModal .cpl-pers-footer {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-footer {
     display: flex;
     flex: none;
     justify-content: flex-end;
@@ -387,53 +387,53 @@ body.desktop-mode #melatonControlPanelModal[data-page="window-color"] .cpl-tasks
     border-top: 1px solid #dfdfdf;
 }
 
-#melatonControlPanelModal .cpl-pers-footer .cpl-wu-button {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-footer .cpl-wu-button {
     min-width: 75px;
 }
 
 /* ---- Desktop Background: How should the picture be positioned? ---- */
 
-#melatonControlPanelModal .cpl-db-position {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-position {
     flex: none;
     margin: 12px 22px 0;
 }
 
-#melatonControlPanelModal .cpl-db-position-title {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-position-title {
     margin: 0 0 8px;
 }
 
-#melatonControlPanelModal .cpl-db-position-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-position-row {
     display: flex;
     flex-wrap: wrap;
     gap: 8px 28px;
 }
 
-#melatonControlPanelModal .cpl-db-align {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-align {
     display: flex;
     align-items: center;
     gap: 8px;
 }
 
-#melatonControlPanelModal .cpl-db-align .cpl-db-align-combo {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-align .cpl-db-align-combo {
     width: 120px;
 }
 
-#melatonControlPanelModal .cpl-db-align-manual {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-align-manual {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-#melatonControlPanelModal .cpl-db-align-manual.hidden {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-align-manual.hidden {
     display: none;
 }
 
-#melatonControlPanelModal .cpl-db-align-manual input[type="range"] {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-align-manual input[type="range"] {
     width: 120px;
     padding: 6px 1px;
 }
 
-#melatonControlPanelModal .cpl-db-align-pct {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-db-align-pct {
     min-width: 32px;
     color: #000;
 }
@@ -769,16 +769,16 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
 
 /* ---- Window Color and Appearance: the glass and live dragging (were Appearance Settings) ---- */
 
-#melatonControlPanelModal .cpl-pers-glass-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-glass-row {
     margin-top: 14px;
 }
 
-#melatonControlPanelModal .cpl-pers-glass-row .cpl-db-combo {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-glass-row .cpl-db-combo {
     width: 261px;
     margin-left: 7px;
 }
 
-#melatonControlPanelModal .cpl-pers-glass-row .cpl-db-combo::before {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pers-glass-row .cpl-db-combo::before {
     content: none;
 }
 

@@ -5702,6 +5702,11 @@ function getModalType(modal) {
         return modal.id;
     }
 
+    // more Control Panel windows (melatonControlPanel.js, #828) group with the first
+    if (modal.id && modal.id.startsWith('melatonControlPanelModal_')) {
+        return 'melatonControlPanelModal';
+    }
+
     // Check for specific modal classes
     if (modal.classList.contains('image-viewer-modal')) {
         return 'imageViewer';

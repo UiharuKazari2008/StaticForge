@@ -821,7 +821,7 @@
     gap: 3px;
 }
 
-/* the details' edit boxes as Control Panel's (melaton-network.css #melatonControlPanelModal .cpl-ua-input):
+/* the details' edit boxes as Control Panel's (melaton-network.css :is(#melatonControlPanelModal, .cpl-instance) .cpl-ua-input):
    outside Control Panel they fell back to the browser's 16 px text */
 #dreamscapeCardSpaceModal .cs-details-fields .cpl-ua-input {
     box-sizing: border-box;

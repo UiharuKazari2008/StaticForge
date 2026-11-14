@@ -13,7 +13,12 @@
  *                               the domain network and the VPN connection, Connect or disconnect,
  *                               Network and Server Center; right-click = the tray menu
  *
- *   melatonControlPanel.open(page = 'home')    'home' | 'network'
+ *   melatonControlPanel.open(page = 'home', { standalone }?)    'home' | 'network' | any page id
+ *       Several Control Panel windows can be open (Yozora #828). A call from inside a window (a
+ *       link, an item that is a page) navigates that window. A call from outside (Start, Run, a
+ *       dialog) raises a window already on that page, restoring it if minimised, or else opens a
+ *       new window. { standalone: 'welcome-center' } is Welcome Center opened on its own: its own
+ *       800x600 window (Vista's size, measured on the VM) that saves no size or position.
  *   melatonControlPanel.registerItem({ id, name, icon, image, description, open })
  *   melatonControlPanel.registerPage(id, { title(), tasks(), body(), mount(main)?, unmount()?, parent? })
  *       parent: the page a subpage sits under, shown between Control Panel and it in the address
@@ -37,11 +42,17 @@
 
     const items = [];
     const pages = {};
+    // The window the code below works on. Each Control Panel window keeps its own copy of these
+    // (an instance, see use()); use(inst) swaps them in before anything runs for that window.
     let modal = null;
     let current = null;
     let mountedPage = null; // the page whose mount() ran last (unmount before the next render)
-    const back = [];
-    const forward = [];
+    let back = [];
+    let forward = [];
+    const instances = [];
+    let active = null;
+    let windowSeq = 0;
+    let inWindowCall = null; // the window whose link / item is running (open() navigates it)
     let liveTimer = null;
     let statusTimer = null;
     let lastStatus = null;   // last OPTIONS /status JSON
@@ -193,18 +204,99 @@
         return modal ? modal.querySelector(selector) : null;
     }
 
+    /** Save the working window's state into its instance. */
+    function snapshot() {
+        if (!active) return;
+        active.modal = modal;
+        active.current = current;
+        active.back = back;
+        active.forward = forward;
+        active.mountedPage = mountedPage;
+    }
+
+    /** Make inst the window the code works on (and the one page code finds as .cpl-current). */
+    function use(inst) {
+        if (!inst) return null;
+        if (inst !== active) {
+            snapshot();
+            active = inst;
+            modal = inst.modal;
+            current = inst.current;
+            back = inst.back;
+            forward = inst.forward;
+            mountedPage = inst.mountedPage;
+        }
+        instances.forEach((i) => i.modal && i.modal.classList.toggle('cpl-current', i === inst));
+        return inst;
+    }
+
+    function isShown(inst) {
+        return !!(inst && inst.modal && inst.modal.isConnected && !inst.modal.classList.contains('hidden'));
+    }
+
+    /** Run fn for every open window, then go back to the window that was working. */
+    function eachOpen(fn) {
+        const was = active;
+        instances.slice().forEach((inst) => {
+            if (!isShown(inst)) return;
+            use(inst);
+            fn(inst);
+        });
+        if (was && instances.includes(was)) use(was);
+    }
+
+    /** Bring a window forward (restoring it from the taskbar when minimised). */
+    function raise(inst) {
+        const m = inst.modal;
+        if (m.classList.contains('minimised') && typeof root.restoreMinimizedModal === 'function') {
+            root.restoreMinimizedModal(m);
+        }
+        if (typeof root.openModal === 'function') root.openModal(m);
+        if (typeof root.bringModalToFront === 'function') root.bringModalToFront(m);
+    }
+
     function ensureModal() {
         if (modal || !doc) return modal;
+        return createWindow('cpl');
+    }
+
+    /**
+     * A new Control Panel window. The first keeps the id #melatonControlPanelModal (and its saved
+     * size); more windows cascade from the window under them at its size and save nothing. A
+     * standalone Welcome Center is its own 800x600 window that saves nothing either.
+     */
+    function createWindow(kind, from) {
+        if (!doc) return null;
+        const welcome = kind === 'welcome-center';
+        const first = !welcome && !doc.getElementById('melatonControlPanelModal');
+        windowSeq += 1;
+        const inst = { kind, modal: null, current: null, back: [], forward: [], mountedPage: null };
+        snapshot();
+        active = null;
         modal = doc.createElement('div');
-        modal.id = 'melatonControlPanelModal';
-        modal.className = 'modal hidden resizeable-window toolbar-visible control-panel-window';
-        modal.dataset.windowIdentifier = 'melatonControlPanel';
+        inst.modal = modal;
+        modal.id = welcome ? 'welcomeCenterModal' : (first ? 'melatonControlPanelModal' : `melatonControlPanelModal_${windowSeq}`);
+        modal.className = 'modal hidden resizeable-window toolbar-visible control-panel-window cpl-instance';
+        modal.dataset.windowIdentifier = welcome ? 'welcomeCenter' : 'melatonControlPanel';
         modal.dataset.windowMinWidth = '640';
         modal.dataset.windowMinHeight = '420';
-        modal.dataset.windowDefaultWidth = '880';
+        modal.dataset.windowDefaultWidth = welcome ? '800' : '880';
         modal.dataset.windowDefaultHeight = '600';
         modal.dataset.windowMaxWidth = '1600';
         modal.dataset.windowMaxHeight = '1100';
+        if (welcome || !first) {
+            modal.dataset.windowRestorePosition = 'false';
+            modal.dataset.windowRestoreSize = 'false';
+        }
+        if (!welcome && !first && from && from.modal && from.modal.isConnected) {
+            const r = from.modal.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+                modal.dataset.windowDefaultWidth = String(Math.round(r.width));
+                modal.dataset.windowDefaultHeight = String(Math.round(r.height));
+                inst.cascadeFrom = from.modal;
+            }
+        }
+        if (welcome) modal.classList.add('cpl-standalone-welcome');
         modal.innerHTML = `
             <div class="modal-window-title">
                 <div class="modal-window-title-main">
@@ -239,34 +331,43 @@
                 <section class="cpl-main"></section>
             </div>`;
         doc.body.appendChild(modal);
-        el('.cpl-back').addEventListener('click', goBack);
-        el('.cpl-forward').addEventListener('click', goForward);
-        el('.cpl-recent').addEventListener('mousedown', (ev) => recentPagesMenu(ev));
-        el('.cpl-refresh').addEventListener('click', () => {
+        instances.push(inst);
+        use(inst);
+        // every handler works on its own window
+        const on = (fn) => (ev) => { use(inst); return fn(ev); };
+        el('.cpl-back').addEventListener('click', on(goBack));
+        el('.cpl-forward').addEventListener('click', on(goForward));
+        el('.cpl-recent').addEventListener('mousedown', on((ev) => recentPagesMenu(ev)));
+        el('.cpl-refresh').addEventListener('click', on(() => {
             if (current === 'network') pollStatus();
             render();
-        });
-        el('.cpl-close').addEventListener('click', close);
-        el('.cpl-search').addEventListener('input', () => {
+        }));
+        el('.cpl-close').addEventListener('click', on(close));
+        el('.cpl-search').addEventListener('input', on(() => {
             if (current !== 'home') navigate('home');
             else render();
-        });
+        }));
+        // page code that looks up "the" window (.cpl-instance.cpl-current) finds the one in use
+        modal.addEventListener('pointerdown', () => use(inst), true);
+        modal.addEventListener('focusin', () => use(inst), true);
         // One delegated click for links in the task pane, the address bar and the page
-        modal.addEventListener('click', (ev) => {
+        modal.addEventListener('click', on((ev) => {
             const target = ev.target.closest('[data-cpl-action]');
             if (!target || !modal.contains(target)) return;
             ev.preventDefault();
-            runAction(target.dataset.cplAction, target.dataset.cplArg);
-        });
-        modal.addEventListener('keydown', (ev) => {
+            inWindowCall = inst;
+            try { runAction(target.dataset.cplAction, target.dataset.cplArg); } finally { inWindowCall = null; }
+        }));
+        modal.addEventListener('keydown', on((ev) => {
             const item = ev.target.closest && ev.target.closest('[data-cpl-item]');
             if (item && ev.key === 'Enter') {
                 ev.preventDefault();
-                openItem(item.dataset.cplItem);
+                inWindowCall = inst;
+                try { openItem(item.dataset.cplItem); } finally { inWindowCall = null; }
             }
             if (ev.altKey && ev.key === 'ArrowLeft') { ev.preventDefault(); goBack(); }
             if (ev.altKey && ev.key === 'ArrowRight') { ev.preventDefault(); goForward(); }
-        });
+        }));
         return modal;
     }
 
@@ -326,15 +427,57 @@
         }
     }
 
-    function open(page = 'home') {
-        if (!ensureModal()) return;
-        const wasHidden = modal.classList.contains('hidden');
-        if (wasHidden) {
-            back.length = 0;
-            forward.length = 0;
-            current = null;
+    function open(page = 'home', opts = {}) {
+        if (!doc) return;
+        // a link or item inside a window (or a caller that kept callerWindow()): that window goes there
+        const into = (opts && opts.window) || inWindowCall;
+        if (into && isShown(into)) {
+            use(into);
+            navigate(page);
+            return;
         }
-        navigate(page, { replace: wasHidden });
+        const kind = opts && opts.standalone === 'welcome-center' ? 'welcome-center' : 'cpl';
+        const want = pages[page] ? page : 'home';
+        snapshot();
+        const shown = instances.filter((i) => i.kind === kind && isShown(i));
+        // already open on that page: bring it to the top
+        const same = shown.find((i) => i.current === want);
+        if (same) {
+            use(same);
+            if (pageArgs[want] !== undefined) render(); // a tab / section to show
+            raise(same);
+            return;
+        }
+        // the standalone Welcome Center is one window
+        if (kind === 'welcome-center' && shown.length) {
+            use(shown[0]);
+            navigate(want);
+            raise(shown[0]);
+            return;
+        }
+        const under = shown.length ? (shown.includes(active) ? active : shown[shown.length - 1]) : null;
+        const spare = instances.find((i) => i.kind === kind && i.modal.isConnected && !isShown(i));
+        let inst = spare;
+        if (!inst) {
+            createWindow(kind, under);
+            inst = active;
+        }
+        use(inst);
+        back.length = 0;
+        forward.length = 0;
+        current = null;
+        navigate(want, { replace: true });
+        // a second window steps down-right from the one under it (Explorer's cascade), placed
+        // before it opens so the open animation plays where it lands
+        const parent = inst.cascadeFrom;
+        inst.cascadeFrom = null;
+        if (parent && parent.isConnected && !parent.classList.contains('hidden')
+            && typeof root.setModalOffsetsFromViewportTopLeft === 'function') {
+            const r = parent.getBoundingClientRect();
+            modal.style.width = `${modal.dataset.windowDefaultWidth}px`;
+            modal.style.height = `${modal.dataset.windowDefaultHeight}px`;
+            root.setModalOffsetsFromViewportTopLeft(modal, r.left + 28, r.top + 28);
+        }
         if (typeof root.openModal === 'function') root.openModal(modal);
         else modal.classList.remove('hidden');
         startTimers();
@@ -348,11 +491,28 @@
     }
 
     function close() {
-        stopTimers();
         unmountPage();
         if (!modal) return;
+        const inst = active;
         if (typeof root.closeModal === 'function') root.closeModal(modal);
         else modal.classList.add('hidden');
+        // the first window stays in the page (hidden) for the next open; the others go
+        if (inst && modal.id !== 'melatonControlPanelModal') {
+            const gone = modal;
+            setTimeout(() => {
+                if (!gone.classList.contains('hidden')) return;
+                gone.remove();
+                const at = instances.indexOf(inst);
+                if (at >= 0) instances.splice(at, 1);
+                if (active === inst) {
+                    active = null;
+                    modal = null; current = null; mountedPage = null; back = []; forward = [];
+                    const next = instances.find(isShown) || instances[0];
+                    if (next) use(next);
+                }
+            }, 600);
+        }
+        if (!instances.some(isShown)) stopTimers();
     }
 
     function navigate(page, { replace = false, fromHistory = false } = {}) {
@@ -1011,7 +1171,7 @@
         } catch (_) {
             statusError = true;
         }
-        if (modal && current === 'network' && !modal.classList.contains('hidden')) render();
+        eachOpen(() => { if (current === 'network') render(); });
     }
 
     async function diagnose() {
@@ -1052,7 +1212,7 @@
         const client = ws();
         if (!client || typeof client.on !== 'function' || linkWired === client) return;
         linkWired = client;
-        const again = () => { if (current === 'network' && modal && !modal.classList.contains('hidden')) pollStatus(); };
+        const again = () => { if (instances.some((i) => isShown(i) && (i === active ? current : i.current) === 'network')) pollStatus(); };
         client.on('connected', again);
         client.on('disconnected', again);
     }
@@ -1061,8 +1221,9 @@
         stopTimers();
         wireLinkEvents();
         liveTimer = setInterval(() => {
-            if (!modal || modal.classList.contains('hidden')) { stopTimers(); return; }
-            if (current === 'network') {
+            if (!instances.some(isShown)) { stopTimers(); return; }
+            eachOpen(() => {
+                if (current !== 'network') return;
                 // Only the parts that change; keep the selection / focus elsewhere intact
                 const tasks = pages.network.tasks();
                 const body = pages.network.body();
@@ -1070,10 +1231,11 @@
                 const mainEl = el('.cpl-main');
                 if (tasksEl.innerHTML !== tasks) tasksEl.innerHTML = tasks;
                 if (mainEl.innerHTML !== body) mainEl.innerHTML = body;
-            }
+            });
         }, LIVE_TICK_MS);
         statusTimer = setInterval(() => {
-            if (current === 'network' && modal && !modal.classList.contains('hidden')) pollStatus();
+            snapshot();
+            if (instances.some((i) => isShown(i) && i.current === 'network')) pollStatus();
         }, STATUS_POLL_MS);
     }
 
@@ -1517,14 +1679,26 @@
         toggleTrayFlyout,
         hideTrayFlyout: hideFlyout,
         attachTrayMenu,
-        isOpen: () => !!(modal && !modal.classList.contains('hidden')),
+        isOpen: () => instances.some(isShown),
         goBack,
         currentPage: () => current,
         // a catalog action (cplCatalog.js) or an item, from outside the window (dialogs, Run)
         doAction: (action) => {
-            if (!modal || modal.classList.contains('hidden')) open('home');
+            // a page or category from outside the windows: raise the window on it, or a new one
+            const m = /^(page|cat):([^:]+)(?::(.*))?$/.exec(String(action || ''));
+            if (m && !inWindowCall) {
+                const id = m[1] === 'cat' ? `cat-${m[2]}` : m[2];
+                if (m[1] === 'page' && pages[id]) pageArgs[id] = m[3];
+                open(id);
+                return;
+            }
+            if (!isShown(active)) open('home');
             doAction(action);
         },
+        /** The window whose link is running right now; an async opener keeps it for open(page, { window }). */
+        callerWindow: () => inWindowCall,
+        /** The window in use (page code: its .cpl-main, its modal). */
+        currentWindow: () => (isShown(active) ? modal : null),
         openItem: (id) => openItem(id),
         pageArg: (id) => takePageArg(id),
         _test: { pages, items, linkState, accessText, serverRows, formatDuration, setStatus: (s, e = false) => { lastStatus = s; statusError = e; } }

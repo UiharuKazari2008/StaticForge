@@ -414,7 +414,10 @@
     }
 
     function wireWindow() {
-        const modal = document.getElementById('melatonControlPanelModal');
+        // the Control Panel window this page is mounting in (several can be open, #828)
+        const c = cpl();
+        const modal = (c && typeof c.currentWindow === 'function' && c.currentWindow())
+            || document.getElementById('melatonControlPanelModal');
         if (!modal || modal.dataset.cplPersWired) return;
         modal.dataset.cplPersWired = '1';
         modal.addEventListener('click', onWindowClick);

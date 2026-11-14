@@ -2011,7 +2011,7 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     padding: 7px 0 8px;
 }
 
-#melatonControlPanelModal .tray-customize-list {
+:is(#melatonControlPanelModal, .cpl-instance) .tray-customize-list {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -2019,6 +2019,6 @@ body.desktop-mode:not(.windows-classic-theme) .modal:where(.window-has-caption):
     margin-top: 8px;
 }
 
-#melatonControlPanelModal .tray-customize-page .cpl-link {
+:is(#melatonControlPanelModal, .cpl-instance) .tray-customize-page .cpl-link {
     margin-bottom: 8px;
 }

@@ -197,7 +197,8 @@
 
     function showWindow(modal, ownerEl) {
         // the taskbar button shows Control Panel's icon (ensureModalApplicationIcon)
-        const owner = ownerEl || doc.getElementById('melatonControlPanelModal');
+        const cpw = root.melatonControlPanel && root.melatonControlPanel.currentWindow ? root.melatonControlPanel.currentWindow() : null;
+        const owner = ownerEl || cpw || doc.getElementById('melatonControlPanelModal');
         if (owner && !owner.classList.contains('hidden')) modal.dataset.iconOwnerId = owner.id;
         callGlobal('openModal', modal);
         if (modal.classList.contains('hidden')) modal.classList.remove('hidden');

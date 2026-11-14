@@ -433,7 +433,7 @@
     function wire() {
         if (!doc || wire.done) return;
         wire.done = true;
-        const inPage = (ev, sel) => ev.target.closest && ev.target.closest(`#melatonControlPanelModal .wc-page ${sel}`);
+        const inPage = (ev, sel) => ev.target.closest && ev.target.closest(`.cpl-instance .wc-page ${sel}`);
         doc.addEventListener('click', (ev) => {
             if (!inPage(ev, '')) return;
             const t = inPage(ev, '[data-wc]');
@@ -487,11 +487,17 @@
         return true;
     }
 
+    /**
+     * From inside Control Panel it is that window's page; anywhere else (Start, startup, Run) it
+     * opens its own 800x600 window that saves no size (melatonControlPanel.open standalone, #828).
+     */
     async function openWelcomeCenter() {
+        const c0 = cp();
+        const caller = c0 && typeof c0.callerWindow === 'function' ? c0.callerWindow() : null;
         if (root.featureLoader) await root.featureLoader.loadFeature('control_panel');
         register();
         selected = null;
-        cp().open('welcome-center');
+        cp().open('welcome-center', caller ? { window: caller } : { standalone: 'welcome-center' });
     }
 
     /** Run at startup: once per logon, after the desktop is ready. */

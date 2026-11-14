@@ -67,7 +67,7 @@
     function wire() {
         if (wired || !doc) return;
         wired = true;
-        const inWindow = (t) => t && t.closest('#melatonControlPanelModal');
+        const inWindow = (t) => t && t.closest('.cpl-instance');
         doc.addEventListener('click', (ev) => {
             const t = ev.target.closest && ev.target.closest('[data-cpl-vpage]');
             if (!t || !inWindow(t)) return;
@@ -199,7 +199,7 @@
         plan: null,
         async save() {
             const plan = handlers['power-plan'].plan || activePlan();
-            const main = doc.querySelector('#melatonControlPanelModal .cpl-main');
+            const main = doc.querySelector('.cpl-instance.cpl-current .cpl-main');
             const values = {};
             main.querySelectorAll('[data-power]').forEach((s) => { values[s.dataset.power] = Number(s.value); });
             if (R()) await R().set(`${POWER}\\${plan}`, values);
@@ -248,7 +248,7 @@
     };
     handlers['power-system'] = {
         async save() {
-            const main = doc.querySelector('#melatonControlPanelModal .cpl-main');
+            const main = doc.querySelector('.cpl-instance.cpl-current .cpl-main');
             const values = {};
             main.querySelectorAll('[data-power-sys]').forEach((s) => { values[s.dataset.powerSys] = s.value; });
             const pw = main.querySelector('input[name="cpl-pw"]:checked');
@@ -275,7 +275,7 @@
     };
     handlers['power-create'] = {
         async next() {
-            const main = doc.querySelector('#melatonControlPanelModal .cpl-main');
+            const main = doc.querySelector('.cpl-instance.cpl-current .cpl-main');
             const base = main.querySelector('input[name="cpl-newplan"]:checked').value;
             const name = main.querySelector('[data-newplan-name]').value.trim() || 'My Custom Plan 1';
             if (R()) await R().set(POWER, { CustomPlanName: name, CustomPlanBase: base, ActivePowerScheme: base });
@@ -417,7 +417,7 @@
     };
     handlers['default-programs-access'] = {
         async ok() {
-            const v = doc.querySelector('#melatonControlPanelModal input[name="cpl-spad"]:checked');
+            const v = doc.querySelector('.cpl-instance.cpl-current input[name="cpl-spad"]:checked');
             if (v && R()) await R().set(ASSOC, { Configuration: v.value });
             nav('default-programs');
         }

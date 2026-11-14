@@ -28,7 +28,7 @@ body.desktop-mode :is(
     #studioSaveFolderModal,
     #pinModal,
     #virtualKeyboardModal,
-    #melatonControlPanelModal,
+    :is(#melatonControlPanelModal, .cpl-instance),
     .image-viewer-modal,
     #photoSwipeWindow
 ) {

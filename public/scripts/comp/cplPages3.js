@@ -107,7 +107,7 @@
     if (doc) {
         // the Organize buttons are drawn with the page: their menu is attached as the pointer comes
         doc.addEventListener('pointerdown', (ev) => {
-            const btn = ev.target.closest && ev.target.closest('#melatonControlPanelModal [data-cpl-vpage="organize"]');
+            const btn = ev.target.closest && ev.target.closest('.cpl-instance [data-cpl-vpage="organize"]');
             if (!btn || !root.contextMenu) return;
             const page = CP() && CP().currentPage();
             root.contextMenu.detachClickMenuFromElement(btn);
@@ -154,7 +154,7 @@
     // double-click opens, as in Explorer (the folder's own handler 'open')
     if (doc) {
         doc.addEventListener('dblclick', (ev) => {
-            const row = ev.target.closest && ev.target.closest('#melatonControlPanelModal [data-cpl-vpage="pick"]');
+            const row = ev.target.closest && ev.target.closest('.cpl-instance [data-cpl-vpage="pick"]');
             if (!row) return;
             const page = CP() && CP().currentPage();
             const h = handlers[page];
@@ -642,7 +642,7 @@
             rerender();
         },
         chatphoto() {
-            const f = doc.querySelector('#melatonControlPanelModal .cpl-chat-file');
+            const f = doc.querySelector('.cpl-instance.cpl-current .cpl-chat-file');
             if (f) { f.value = ''; f.click(); }
         },
         chatnophoto() {

@@ -29,7 +29,7 @@
     }
 
     function main() {
-        return doc.querySelector('#melatonControlPanelModal .cpl-main');
+        return doc.querySelector('.cpl-instance.cpl-current .cpl-main');
     }
 
     function rerender() {
@@ -1223,7 +1223,7 @@
     };
     if (doc) {
         doc.addEventListener('input', (ev) => {
-            if (ev.target && ev.target.closest && ev.target.closest('#melatonControlPanelModal [data-ss-scope]')) ssCfg.dirty = true;
+            if (ev.target && ev.target.closest && ev.target.closest('.cpl-instance [data-ss-scope]')) ssCfg.dirty = true;
         });
     }
 
@@ -1722,7 +1722,7 @@
     // the form's text and number fields refresh the preview as you type
     if (doc) {
         doc.addEventListener('input', (ev) => {
-            if (ev.target && ev.target.closest && ev.target.closest('#melatonControlPanelModal .cpl-ss-gadget-page') && /^cpl-ss-(age|pool|mix)$/.test(ev.target.id)) ssPreviewSoon();
+            if (ev.target && ev.target.closest && ev.target.closest('.cpl-instance .cpl-ss-gadget-page') && /^cpl-ss-(age|pool|mix)$/.test(ev.target.id)) ssPreviewSoon();
         });
     }
 

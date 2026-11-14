@@ -1,49 +1,49 @@
 /* Control Panel's pages, second and third sets (cplPages2.js, cplPages3.js), the Add Hardware
    wizard (cplDialogs2.js) and Device Manager (cplDeviceManager.js); Yozora #632. */
 
-#melatonControlPanelModal .cpl-vpage.cpl-vwide {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vpage.cpl-vwide {
     max-width: none;
 }
 
-#melatonControlPanelModal .cpl-vbuttons.is-left {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vbuttons.is-left {
     justify-content: flex-start;
 }
 
-#melatonControlPanelModal .cpl-vbutton img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vbutton img {
     width: 16px;
     height: 16px;
     vertical-align: -3px;
 }
 
-#melatonControlPanelModal .cpl-vcheck {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vcheck {
     margin: 8px 0 0;
 }
 
-#melatonControlPanelModal .cpl-vtable {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable {
     width: 100%;
     margin-top: 10px;
     border-collapse: collapse;
 }
 
-#melatonControlPanelModal .cpl-vtable td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable td {
     height: 20px;
     padding: 0 8px;
     white-space: nowrap;
     border-bottom: 1px solid transparent;
 }
 
-#melatonControlPanelModal .cpl-vtable tr.is-head td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable tr.is-head td {
     height: 23px;
     border-bottom: 1px solid #d5d5d5;
     background: linear-gradient(#fff 0 40%, #f7f8fa 40%);
     border-right: 1px solid #e3e8ee;
 }
 
-#melatonControlPanelModal .cpl-vtable tr.is-selected td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable tr.is-selected td {
     background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
 }
 
-#melatonControlPanelModal .cpl-vtable td img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable td img {
     width: 16px;
     height: 16px;
     vertical-align: -4px;
@@ -51,36 +51,36 @@
 }
 
 /* Performance Information and Tools: the Experience Index table */
-#melatonControlPanelModal .cpl-wei-table {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-table {
     margin: 14px 0 6px;
     border-collapse: collapse;
 }
 
-#melatonControlPanelModal .cpl-wei-table td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-table td {
     padding: 5px 10px;
     border-bottom: 1px solid #e5e5e5;
 }
 
-#melatonControlPanelModal .cpl-wei-head td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-head td {
     color: #003399;
     border-bottom-color: #bcc8da;
 }
 
-#melatonControlPanelModal .cpl-wei-table tr.is-lowest td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-table tr.is-lowest td {
     font-weight: bold;
 }
 
-#melatonControlPanelModal .cpl-wei-sub {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-sub {
     text-align: center;
 }
 
-#melatonControlPanelModal .cpl-wei-base {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-base {
     text-align: center;
     vertical-align: middle;
     border-bottom: 0 !important;
 }
 
-#melatonControlPanelModal .cpl-wei-badge {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-badge {
     display: block;
     width: 64px;
     height: 64px;
@@ -91,13 +91,13 @@
     text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.6);
 }
 
-#melatonControlPanelModal .cpl-wei-links {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-wei-links {
     display: flex;
     gap: 24px;
 }
 
 /* Problem Reports */
-#melatonControlPanelModal .cpl-pr-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pr-row {
     display: grid;
     grid-template-columns: 22px 1fr auto;
     gap: 6px;
@@ -105,8 +105,8 @@
 }
 
 /* Programs and Features */
-#melatonControlPanelModal .cpl-pf-bar,
-#melatonControlPanelModal .cpl-fbar {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-bar,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar {
     display: flex;
     align-items: flex-start;
     height: 31px;
@@ -120,7 +120,7 @@
         linear-gradient(to right, #045082, #116584, #1d7986);
 }
 
-#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help) {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help) {
     display: inline-flex;
     align-items: center;
     height: 24px;
@@ -137,41 +137,41 @@
     white-space: nowrap;
 }
 
-#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::before,
-#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::after {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::before,
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help)::after {
     content: none;
 }
 
-#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):hover {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):hover {
     border-image: url('/static_images/vista-explorer/cmdbar-hot.png') 0 4 fill / 0 4px;
 }
 
-#melatonControlPanelModal :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):active {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-pf-cmd, .cpl-fbar-btn, .cpl-fbar-help):active {
     padding: 1px 5px 1px 7px;
     border-image: url('/static_images/vista-explorer/cmdbar-pressed.png') 0 4 fill / 0 4px;
 }
 
-#melatonControlPanelModal .cpl-fbar-btn img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-btn img {
     width: 16px;
     height: 16px;
     margin: 2px 5px 0 0;
 }
 
-#melatonControlPanelModal .cpl-fbar-glyph {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-glyph {
     width: 13px;
     height: 12px;
     margin: 2px 0 0 4px;
     background: url('/static_images/vista-explorer/cmdbar-glyph.png') no-repeat;
 }
 
-#melatonControlPanelModal .cpl-fbar-help {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fbar-help {
     margin-left: auto;
 }
 
 /* Programs and Features as the VM draws it (1000 x 700): the title 33 px in, the light command bar
    from 88 px down across the pane, the list view under it to the pane's edges (rows of 19, its
    column lines and the sorted column's white running to the bottom) */
-#melatonControlPanelModal .cpl-vpage.cpl-pf {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vpage.cpl-pf {
     display: flex;
     flex-direction: column;
     width: 100%;
@@ -181,18 +181,18 @@
     padding: 0;
 }
 
-#melatonControlPanelModal .cpl-pf-head {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-head {
     flex: none;
     height: 88px;
     box-sizing: border-box;
     padding: 19px 40px 0 33px;
 }
 
-#melatonControlPanelModal .cpl-pf-head .cpl-vtext {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-head .cpl-vtext {
     margin-top: 17px;
 }
 
-#melatonControlPanelModal .cpl-pf .cpl-pf-bar {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf .cpl-pf-bar {
     flex: none;
     align-items: center;
     height: 31px;
@@ -202,58 +202,58 @@
     box-shadow: inset 1px 0 #e8ecf6, inset -1px 0 #e8ecf6;
 }
 
-#melatonControlPanelModal .cpl-pf .cpl-pf-cmd {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf .cpl-pf-cmd {
     height: 22px;
     padding: 0 5px 0 5px;
     color: #000;
 }
 
-#melatonControlPanelModal .cpl-pf .cpl-pf-cmd > img:first-child {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf .cpl-pf-cmd > img:first-child {
     width: 16px;
     height: 16px;
     margin-right: 6px;
 }
 
-#melatonControlPanelModal .cpl-pf .cpl-pf-cmd > img.cpl-pf-drop {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf .cpl-pf-cmd > img.cpl-pf-drop {
     width: 12px;
     height: 9px;
     margin: 0 0 0 6px;
 }
 
-#melatonControlPanelModal .cpl-pf .cpl-pf-help {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf .cpl-pf-help {
     margin-left: auto;
     margin-right: 6px;
     padding: 0 1px;
 }
 
-#melatonControlPanelModal .cpl-pf .cpl-pf-help > img:first-child {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf .cpl-pf-help > img:first-child {
     width: 18px;
     height: 18px;
     margin: 0;
 }
 
-#melatonControlPanelModal .cpl-pf-list {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-list {
     flex: 1;
     min-height: 0;
     overflow: auto;
     background-repeat: no-repeat;
 }
 
-#melatonControlPanelModal .cpl-pf-list .cpl-frow {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-list .cpl-frow {
     height: 19px;
     margin: 0;
     border-radius: 0;
 }
 
-#melatonControlPanelModal .cpl-pf-list .cpl-frow img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-list .cpl-frow img {
     margin-right: 3px;
 }
 
-#melatonControlPanelModal .cpl-pf-list .cpl-frow > span.is-num {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pf-list .cpl-frow > span.is-num {
     text-align: right;
 }
 
-#melatonControlPanelModal .cpl-feat-list,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-feat-list,
 .cpl-feat-list {
     max-height: 260px;
     overflow: auto;
@@ -269,21 +269,21 @@
 }
 
 /* Ease of Access Center */
-#melatonControlPanelModal .cpl-ea-quick {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-quick {
     margin: 10px 0 14px;
     padding: 10px 12px;
     border: 1px solid #c9d7e8;
     background: linear-gradient(#fafcfe, #eef3fa);
 }
 
-#melatonControlPanelModal .cpl-ea-tools {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tools {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px 24px;
     margin-top: 10px;
 }
 
-#melatonControlPanelModal .cpl-ea-tool {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -297,65 +297,65 @@
     font: inherit;
 }
 
-#melatonControlPanelModal .cpl-ea-tool::before,
-#melatonControlPanelModal .cpl-ea-tool::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-ea-tool-icon {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool-icon {
     width: 32px;
     height: 32px;
     background: url('/static_images/vista-cpl/items/ease-of-access-center-32.png') no-repeat center / 32px;
 }
 
-#melatonControlPanelModal .cpl-ea-tool-icon.is-osk { background-image: url('/static_images/vista-cpl/items/keyboard-32.png'); }
-#melatonControlPanelModal .cpl-ea-tool-icon.is-narrator { background-image: url('/static_images/vista-cpl/items/text-to-speech-32.png'); }
-#melatonControlPanelModal .cpl-ea-tool-icon.is-contrast { background-image: url('/static_images/vista-cpl/items/personalization-32.png'); }
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool-icon.is-osk { background-image: url('/static_images/vista-cpl/items/keyboard-32.png'); }
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool-icon.is-narrator { background-image: url('/static_images/vista-cpl/items/text-to-speech-32.png'); }
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-tool-icon.is-contrast { background-image: url('/static_images/vista-cpl/items/personalization-32.png'); }
 
-#melatonControlPanelModal .cpl-ea-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ea-row {
     margin: 8px 0 0;
 }
 
 /* AutoPlay */
-#melatonControlPanelModal .cpl-ap td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ap td {
     padding: 3px 12px 3px 0;
     white-space: nowrap;
 }
 
-#melatonControlPanelModal .cpl-ap img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ap img {
     width: 16px;
     height: 16px;
     vertical-align: -4px;
 }
 
-#melatonControlPanelModal .cpl-ap select {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ap select {
     min-width: 320px;
 }
 
 /* Melaton Firewall */
-#melatonControlPanelModal .cpl-fw-box {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fw-box {
     margin-top: 14px;
     border: 1px solid #c9d7e8;
 }
 
-#melatonControlPanelModal .cpl-fw-status {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fw-status {
     padding: 8px 10px 8px 34px;
     font-size: 13px;
     background: no-repeat 10px center / 16px;
 }
 
-#melatonControlPanelModal .cpl-fw-status.is-on {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fw-status.is-on {
     background-color: #e3f6d9;
     background-image: url('/static_images/vista-cpl/shield-ok.png');
 }
 
-#melatonControlPanelModal .cpl-fw-status.is-off {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fw-status.is-off {
     background-color: #f8dada;
     background-image: url('/static_images/vista-cpl/shield-error.png');
     color: #9c0000;
 }
 
-#melatonControlPanelModal .cpl-fw-grid {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fw-grid {
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 6px 18px;
@@ -388,7 +388,7 @@
 }
 
 /* BitLocker, Parental Controls */
-#melatonControlPanelModal .cpl-bl-vol {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-bl-vol {
     display: grid;
     grid-template-columns: 52px 1fr auto;
     align-items: center;
@@ -396,19 +396,19 @@
     margin-top: 10px;
 }
 
-#melatonControlPanelModal .cpl-bl-vol img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-bl-vol img {
     width: 48px;
     height: 48px;
 }
 
-#melatonControlPanelModal .cpl-pc-users {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pc-users {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     margin-top: 10px;
 }
 
-#melatonControlPanelModal .cpl-pc-user {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pc-user {
     display: flex;
     gap: 8px;
     align-items: center;
@@ -422,31 +422,31 @@
     font: inherit;
 }
 
-#melatonControlPanelModal .cpl-pc-user::before,
-#melatonControlPanelModal .cpl-pc-user::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pc-user::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pc-user::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-pc-user:hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pc-user:hover {
     border-color: #b8d6fb;
     background: linear-gradient(#fafbfd, #ebf3fd);
 }
 
-#melatonControlPanelModal .cpl-pc-user img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-pc-user img {
     width: 48px;
     height: 48px;
 }
 
 /* ---- folder pages: Explorer's panes inside Control Panel ---- */
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-content {
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance)[data-page-kind="folder"] .cpl-content {
     display: grid;
     grid-template-columns: 200px 1fr;
     grid-template-rows: 31px 1fr 22px;
     grid-template-areas: "bar bar" "nav list" "status status";
 }
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-tasks {
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance)[data-page-kind="folder"] .cpl-tasks {
     grid-area: nav;
     padding: 0;
     background: #fff;
@@ -454,22 +454,22 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     color: #000;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-main {
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance)[data-page-kind="folder"] .cpl-main {
     display: contents;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-fbar {
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance)[data-page-kind="folder"] .cpl-fbar {
     grid-area: bar;
     margin: 0;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-flist {
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance)[data-page-kind="folder"] .cpl-flist {
     grid-area: list;
     overflow: auto;
     background: #fff;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-page-kind="folder"] .cpl-fstatus {
+body.desktop-mode:not(.windows-classic-theme) :is(#melatonControlPanelModal, .cpl-instance)[data-page-kind="folder"] .cpl-fstatus {
     grid-area: status;
     display: flex;
     align-items: center;
@@ -479,20 +479,20 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     font: 12px var(--cpl-font);
 }
 
-#melatonControlPanelModal .cpl-fav {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav {
     display: flex;
     flex-direction: column;
     height: 100%;
     padding: 6px 0 0;
 }
 
-#melatonControlPanelModal .cpl-fav-head {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-head {
     padding: 3px 12px 6px;
     color: #6d6d6d;
     font: 12px var(--cpl-font);
 }
 
-#melatonControlPanelModal .cpl-fav-link {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-link {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -509,22 +509,22 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     text-align: left;
 }
 
-#melatonControlPanelModal .cpl-fav-link::before,
-#melatonControlPanelModal .cpl-fav-link::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-link::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-link::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-fav-link:hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-link:hover {
     border-color: #b8d6fb;
     background: linear-gradient(#fafbfd, #ebf3fd);
 }
 
-#melatonControlPanelModal .cpl-fav-link img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-link img {
     width: 16px;
     height: 16px;
 }
 
-#melatonControlPanelModal .cpl-fav-folders {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-fav-folders {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -534,7 +534,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     color: #0033bc;
 }
 
-#melatonControlPanelModal .cpl-flist-head {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-head {
     display: flex;
     position: sticky;
     top: 0;
@@ -543,18 +543,18 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     font: 12px var(--cpl-font);
 }
 
-#melatonControlPanelModal .cpl-flist-head > span {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-head > span {
     flex: 0 0 auto;
     box-sizing: border-box;
     padding: 3px 6px 0;
     border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
 }
 
-#melatonControlPanelModal .cpl-flist-head > .cpl-flist-rest {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-head > .cpl-flist-rest {
     flex: 1;
 }
 
-#melatonControlPanelModal .cpl-frow {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-frow {
     display: flex;
     height: 20px;
     align-items: center;
@@ -566,7 +566,7 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     outline: none;
 }
 
-#melatonControlPanelModal .cpl-frow > span {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-frow > span {
     flex: 0 0 auto;
     box-sizing: border-box;
     padding: 0 6px;
@@ -575,25 +575,25 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     text-overflow: ellipsis;
 }
 
-#melatonControlPanelModal .cpl-frow img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-frow img {
     width: 16px;
     height: 16px;
     margin-right: 5px;
     vertical-align: -4px;
 }
 
-#melatonControlPanelModal :is(.cpl-frow, .cpl-ficon):hover {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-frow, .cpl-ficon):hover {
     background: linear-gradient(#fafbfd, #ebf3fd);
     border-color: #b8d6fb;
 }
 
-#melatonControlPanelModal :is(.cpl-frow, .cpl-ficon).is-selected {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-frow, .cpl-ficon).is-selected {
     background: linear-gradient(#f6fbfd, #eff8fd 45%, #d7effc 55%, #d5effc 92%, #e7f5fd);
     border-color: #99defd;
 }
 
-#melatonControlPanelModal .cpl-flist-icons,
-#melatonControlPanelModal .cpl-sc-list {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-icons,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sc-list {
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
@@ -601,12 +601,12 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     padding: 6px;
 }
 
-#melatonControlPanelModal .cpl-sc-list {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sc-list {
     min-height: 180px;
     margin-top: 10px;
 }
 
-#melatonControlPanelModal .cpl-ficon {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon {
     position: relative;
     display: flex;
     align-items: center;
@@ -620,16 +620,16 @@ body.desktop-mode:not(.windows-classic-theme) #melatonControlPanelModal[data-pag
     outline: none;
 }
 
-#melatonControlPanelModal .cpl-ficon img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon img {
     width: 32px;
     height: 32px;
 }
 
-#melatonControlPanelModal .cpl-ficon b {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon b {
     font-weight: normal;
 }
 
-#melatonControlPanelModal .cpl-ficon-check {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ficon-check {
     position: absolute;
     left: 24px;
     top: 26px;
@@ -946,25 +946,25 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 }
 
 /* Sort By (cplPages3.js cplSort): the sorted column uses Vista's sorted header face and arrow */
-#melatonControlPanelModal .cpl-flist-head > .cpl-flist-col,
-#melatonControlPanelModal .cpl-vtable tr.is-head td.cpl-flist-col {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-head > .cpl-flist-col,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable tr.is-head td.cpl-flist-col {
     position: relative;
     cursor: var(--c-default, default);
 }
 
-#melatonControlPanelModal .cpl-flist-head > .cpl-flist-col:hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-head > .cpl-flist-col:hover {
     border-image-source: url('/static_images/vista-controls/header-item-hot.png');
 }
 
-#melatonControlPanelModal .cpl-flist-head > .cpl-flist-col.is-sorted {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-flist-head > .cpl-flist-col.is-sorted {
     border-image-source: url('/static_images/vista-controls/header-item-sorted.png');
 }
 
-#melatonControlPanelModal .cpl-vtable tr.is-head td.cpl-flist-col.is-sorted {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vtable tr.is-head td.cpl-flist-col.is-sorted {
     background: linear-gradient(#f2f9fc, #f2f9fc 50%, #e1f1f9 51%, #d8ecf6);
 }
 
-#melatonControlPanelModal :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted::before {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted::before {
     content: '';
     position: absolute;
     top: 0;
@@ -974,7 +974,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
 }
 
-#melatonControlPanelModal :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted.is-desc::before {
+:is(#melatonControlPanelModal, .cpl-instance) :is(.cpl-flist-head > .cpl-flist-col, .cpl-vtable tr.is-head td.cpl-flist-col).is-sorted.is-desc::before {
     background-position: 0 -5px;
 }
 
@@ -986,12 +986,12 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
    8 px in. A device column (wss_grid_device_header): the device's icon over its name, 5 px either
    side; its check box centred in a 25 px box. The pane's Devices block follows a divider line. ---- */
 
-#melatonControlPanelModal .cpl-vpage.cpl-ss-page {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vpage.cpl-ss-page {
     max-width: 584px;
     padding-right: 11px;
 }
 
-#melatonControlPanelModal .cpl-ss-grid {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid {
     width: 550px;
     margin-top: 22px;
     border: 0;
@@ -999,7 +999,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     table-layout: fixed;
 }
 
-#melatonControlPanelModal .cpl-ss-grid td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid td {
     padding: 0;
     border: 0;
     border-bottom: 1px solid #cccccc;
@@ -1008,28 +1008,28 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     text-overflow: ellipsis;
 }
 
-#melatonControlPanelModal .cpl-ss-grid tr.is-head td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid tr.is-head td {
     height: 15px;
     padding-bottom: 6px;
     vertical-align: bottom;
 }
 
-#melatonControlPanelModal .cpl-ss-grid tr.is-head td:first-child {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid tr.is-head td:first-child {
     width: 366px;
 }
 
-#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-col {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid td.cpl-ss-col {
     width: 92px;
     text-align: center;
 }
 
-#melatonControlPanelModal .cpl-ss-grid tr.is-head td.cpl-ss-col,
-#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-none {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid tr.is-head td.cpl-ss-col,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid td.cpl-ss-none {
     text-align: left;
 }
 
-#melatonControlPanelModal .cpl-ss-devhead,
-#melatonControlPanelModal .cpl-ss-gadget-link {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-gadget-link {
     max-width: 100%;
     padding: 0;
     border: 0;
@@ -1046,52 +1046,52 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     text-align: left;
 }
 
-#melatonControlPanelModal .cpl-ss-devhead::before,
-#melatonControlPanelModal .cpl-ss-devhead::after,
-#melatonControlPanelModal .cpl-ss-gadget-link::before,
-#melatonControlPanelModal .cpl-ss-gadget-link::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead::after,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-gadget-link::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-gadget-link::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-ss-devhead:hover,
-#melatonControlPanelModal .cpl-ss-gadget-link:hover {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead:hover,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-gadget-link:hover {
     color: #3399ff;
     text-decoration: underline;
 }
 
-#melatonControlPanelModal .cpl-ss-grid tr.cpl-ss-row td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid tr.cpl-ss-row td {
     height: 38px;
 }
 
-#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-gadget {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid td.cpl-ss-gadget {
     background: linear-gradient(90deg, #fff 0, #f0f0f0 130px, #fff 237px) no-repeat;
     background-size: 237px 100%;
 }
 
-#melatonControlPanelModal .cpl-ss-grid td.cpl-ss-gadget img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid td.cpl-ss-gadget img {
     width: 32px;
     height: 32px;
     margin: 0 7px 0 2px;
     vertical-align: middle;
 }
 
-#melatonControlPanelModal .cpl-vcheck.cpl-ss-check {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-vcheck.cpl-ss-check {
     margin: 9px 0 0 11px;
 }
 
-#melatonControlPanelModal .cpl-ss-link {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-link {
     display: flex;
     align-items: center;
     gap: 5px;
     margin: 13px 0 0 1px;
 }
 
-#melatonControlPanelModal .cpl-ss-link img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-link img {
     width: 16px;
     height: 16px;
 }
 
-#melatonControlPanelModal .cpl-ss-info {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-info {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1104,17 +1104,17 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     background: #ffffc6;
 }
 
-#melatonControlPanelModal .cpl-ss-info img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-info img {
     width: 16px;
     height: 16px;
 }
 
 /* View gadgets by name / by date installed: the current sort carries a bullet 19 px left of its text */
-#melatonControlPanelModal .cpl-tasks .cpl-vtask.cpl-ss-current {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-tasks .cpl-vtask.cpl-ss-current {
     position: relative;
 }
 
-#melatonControlPanelModal .cpl-tasks .cpl-vtask.cpl-ss-current::before {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-tasks .cpl-vtask.cpl-ss-current::before {
     content: '\2022';
     position: absolute;
     left: -19px;
@@ -1122,26 +1122,26 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 }
 
 /* Change Device Settings: the device's logo, then the Gadgets and More options sections */
-#melatonControlPanelModal .cpl-ss-logo {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-logo {
     display: flex;
     align-items: center;
     gap: 6px;
     padding-bottom: 11px;
 }
 
-#melatonControlPanelModal .cpl-ss-logo img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-logo img {
     width: 48px;
     height: 48px;
 }
 
 /* The device as it looks (client_device_preview): its capture inside a layer masked to the screen
    opening, the device photo (transparent where the screen is) on top; positions are % of the photo */
-#melatonControlPanelModal .cpl-ss-phys {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-phys {
     position: relative;
     flex: none;
 }
 
-#melatonControlPanelModal .cpl-ss-phys-screen {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-phys-screen {
     position: absolute;
     inset: 0;
     overflow: hidden;
@@ -1152,12 +1152,12 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     mask-repeat: no-repeat;
 }
 
-#melatonControlPanelModal .cpl-ss-phys img.cpl-ss-phys-shot {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-phys img.cpl-ss-phys-shot {
     position: absolute;
     max-width: none;
 }
 
-#melatonControlPanelModal .cpl-ss-phys img.cpl-ss-phys-frame {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-phys img.cpl-ss-phys-frame {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -1165,39 +1165,39 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     pointer-events: none;
 }
 
-#melatonControlPanelModal .cpl-ss-phys.is-off .cpl-ss-phys-shot {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-phys.is-off .cpl-ss-phys-shot {
     filter: grayscale(1) brightness(0.45);
 }
 
 /* the 32 / 48 px icon sizes of the column heads and the logo do not apply to the photo */
-#melatonControlPanelModal .cpl-ss-devhead .cpl-ss-phys img.cpl-ss-phys-frame,
-#melatonControlPanelModal .cpl-ss-logo .cpl-ss-phys img.cpl-ss-phys-frame {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead .cpl-ss-phys img.cpl-ss-phys-frame,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-logo .cpl-ss-phys img.cpl-ss-phys-frame {
     width: 100%;
     height: 100%;
 }
 
-#melatonControlPanelModal .cpl-ss-logo [data-ss-live="phys"] {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-logo [data-ss-live="phys"] {
     display: block;
     margin-right: 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-para {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-para {
     margin-bottom: 7px;
 }
 
-#melatonControlPanelModal .cpl-ss-dim {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-dim {
     color: #6d6d6d;
 }
 
-#melatonControlPanelModal .cpl-ss-field {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-field {
     margin: 6px 0 0 14px;
 }
 
-#melatonControlPanelModal .cpl-ss-settings input.cpl-ss-num {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-settings input.cpl-ss-num {
     width: 60px;
 }
 
-#melatonControlPanelModal .cpl-ss-devhead {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1208,23 +1208,23 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     text-align: center;
 }
 
-#melatonControlPanelModal .cpl-ss-devhead img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead img {
     width: 32px;
     height: 32px;
 }
 
-#melatonControlPanelModal .cpl-ss-devhead span {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-devhead span {
     max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-#melatonControlPanelModal .cpl-ss-grid tr.is-head td.cpl-ss-col {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-grid tr.is-head td.cpl-ss-col {
     text-align: center;
 }
 
-#melatonControlPanelModal .cpl-ss-cell {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-cell {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -1235,12 +1235,12 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 
 /* no padding on the empty label: the box (::before) sits in the flow while the hot/pressed layer
    (::after) is pinned at left 0, so a padding split them into two boxes on hover */
-#melatonControlPanelModal .cpl-ss-cell label {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-cell label {
     padding-left: 0;
 }
 
 /* the pane's Devices block (cp_nav_line, then 7 px above and below the label) */
-#melatonControlPanelModal .cpl-tasks .cpl-task-group.cpl-ss-devices {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-tasks .cpl-task-group.cpl-ss-devices {
     margin-top: 10px;
     padding-top: 7px;
     border-top: 1px solid rgba(255, 255, 255, 0.35);
@@ -1248,20 +1248,20 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 
 /* Dreamscape Slideshow settings: the device drawn as a glossy black SideShow display (the Device
    Simulator's bezel colours), its screen at the device's own aspect, the remote centred under it */
-#melatonControlPanelModal .cpl-ss-stage {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-stage {
     display: flex;
     justify-content: center;
     margin: 14px 0 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-device {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-device {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-bezel {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-bezel {
     padding: 18px 22px;
     border: 1px solid #000;
     border-radius: 14px;
@@ -1269,11 +1269,11 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     box-shadow: inset 0 1px rgba(255, 255, 255, 0.45), 0 3px 8px rgba(0, 0, 0, 0.35);
 }
 
-#melatonControlPanelModal .cpl-ss-device.is-portrait .cpl-ss-bezel {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-device.is-portrait .cpl-ss-bezel {
     padding: 22px 16px 34px;
 }
 
-#melatonControlPanelModal .cpl-ss-screen {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen {
     position: relative;
     overflow: hidden;
     border: 1px solid #3c3c3c;
@@ -1281,11 +1281,11 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     color: #fff;
 }
 
-#melatonControlPanelModal .cpl-ss-device.is-off .cpl-ss-screen {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-device.is-off .cpl-ss-screen {
     background: linear-gradient(160deg, #1b1b1b, #000);
 }
 
-#melatonControlPanelModal .cpl-ss-screen-pics {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-pics {
     position: absolute;
     inset: 0;
     display: flex;
@@ -1294,32 +1294,32 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     gap: 2px;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-pics img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-pics img {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-pics.is-pair img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-pics.is-pair img {
     max-width: calc(50% - 1px);
 }
 
 /* three or four pictures on one slide: two across and two down */
-#melatonControlPanelModal .cpl-ss-screen-pics:has(img:nth-child(3)) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-pics:has(img:nth-child(3)) {
     flex-wrap: wrap;
     align-content: center;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-pics:has(img:nth-child(3)) img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-pics:has(img:nth-child(3)) img {
     max-width: calc(50% - 1px);
     max-height: calc(50% - 1px);
 }
 
-#melatonControlPanelModal #cpl-ss-mix {
+:is(#melatonControlPanelModal, .cpl-instance) #cpl-ss-mix {
     width: 180px;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-msg {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-msg {
     position: absolute;
     inset: 0;
     display: flex;
@@ -1328,8 +1328,8 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     color: #9a9a9a;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-info,
-#melatonControlPanelModal .cpl-ss-screen-badge {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-info,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-badge {
     position: absolute;
     padding: 1px 5px;
     border-radius: 3px;
@@ -1337,7 +1337,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     font-size: 11px;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-info {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-info {
     left: 4px;
     right: 4px;
     bottom: 3px;
@@ -1346,21 +1346,21 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     text-overflow: ellipsis;
 }
 
-#melatonControlPanelModal .cpl-ss-screen-badge {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-screen-badge {
     left: 4px;
     top: 3px;
 }
 
-#melatonControlPanelModal .cpl-ss-device-name {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-device-name {
     color: #333;
 }
 
 /* beats .cpl-content p { text-align: left } */
-#melatonControlPanelModal .cpl-content p.cpl-ss-center {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-content p.cpl-ss-center {
     text-align: center;
 }
 
-#melatonControlPanelModal .cpl-ss-remote {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-remote {
     display: flex;
     justify-content: center;
     gap: 6px;
@@ -1368,23 +1368,23 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 }
 
 /* Pictures: workspaces or an Image Search, the age limit, how many, and the first of them */
-#melatonControlPanelModal .cpl-ss-source {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-source {
     margin-left: 14px;
 }
 
-#melatonControlPanelModal .cpl-ss-radio {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-radio {
     margin-top: 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-indent {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-indent {
     margin: 4px 0 6px 20px;
 }
 
-#melatonControlPanelModal .cpl-ss-indent .cpl-ss-field {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-indent .cpl-ss-field {
     margin: 0 0 4px;
 }
 
-#melatonControlPanelModal .cpl-ss-wslist {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-wslist {
     width: 300px;
     max-height: 110px;
     overflow-y: auto;
@@ -1393,32 +1393,32 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     background: #fff;
 }
 
-#melatonControlPanelModal .cpl-ss-wslist .cpl-vcheck {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-wslist .cpl-vcheck {
     margin: 2px 0;
 }
 
-#melatonControlPanelModal .cpl-ss-searchrow {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-searchrow {
     display: flex;
     align-items: center;
     gap: 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-searchrow input {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-searchrow input {
     width: 220px;
 }
 
-#melatonControlPanelModal .cpl-ss-source .cpl-vcheck.cpl-ss-check {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-source .cpl-vcheck.cpl-ss-check {
     display: flex;
     align-items: center;
     gap: 4px;
     margin: 8px 0 0;
 }
 
-#melatonControlPanelModal .cpl-ss-rotation {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-rotation {
     margin-top: 8px;
 }
 
-#melatonControlPanelModal .cpl-ss-strip {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-strip {
     display: flex;
     gap: 4px;
     min-height: 0;
@@ -1426,24 +1426,24 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     overflow: hidden;
 }
 
-#melatonControlPanelModal .cpl-ss-strip img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-strip img {
     width: 48px;
     height: 48px;
     object-fit: cover;
     border: 1px solid #ccc;
 }
 
-#melatonControlPanelModal .cpl-ss-page input.cpl-ss-num {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-page input.cpl-ss-num {
     width: 60px;
 }
 
-#melatonControlPanelModal .cpl-ss-source .cpl-ss-poolrow {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-source .cpl-ss-poolrow {
     margin-left: 20px;
 }
 
 /* Device-specific settings and the Clock gadget, drawn from each device's own schema: one Vista group
    box per group, the settings grid inside, hints and errors under their fields */
-#melatonControlPanelModal .cpl-ss-group {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-group {
     min-width: 0;
     margin: 0 0 10px;
     padding: 4px 10px 6px;
@@ -1452,97 +1452,97 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
 }
 
 /* 7.css .win7 table draws a list-view frame and column rules; these are plain label/field grids */
-#melatonControlPanelModal .cpl-ss-page table.cpl-ss-settings {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-page table.cpl-ss-settings {
     border: 0;
     background: none;
 }
 
-#melatonControlPanelModal .cpl-ss-page table.cpl-ss-settings > tbody > tr > td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-page table.cpl-ss-settings > tbody > tr > td {
     border: 0;
 }
 
-#melatonControlPanelModal .cpl-ss-group > table.cpl-ss-settings {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-group > table.cpl-ss-settings {
     margin: 6px 0 2px 4px;
 }
 
 /* a field's help line wraps instead of widening the page */
-#melatonControlPanelModal .cpl-ss-page table.cpl-ss-settings > tbody > tr > td:last-child {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-page table.cpl-ss-settings > tbody > tr > td:last-child {
     white-space: normal;
 }
 
-#melatonControlPanelModal .cpl-ss-group legend {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-group legend {
     padding: 0 3px;
     color: #1e395b;
 }
 
-#melatonControlPanelModal .cpl-ss-cfg .cpl-ss-settings > tbody > tr > td:first-child {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-cfg .cpl-ss-settings > tbody > tr > td:first-child {
     width: 150px;
     vertical-align: top;
     padding-top: 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-cfg .cpl-ss-settings td.cpl-ss-top {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-cfg .cpl-ss-settings td.cpl-ss-top {
     padding-top: 6px;
 }
 
-#melatonControlPanelModal .cpl-ss-cfg input.cpl-ss-text {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-cfg input.cpl-ss-text {
     width: 260px;
 }
 
-#melatonControlPanelModal .cpl-ss-cfg input.cpl-ss-num {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-cfg input.cpl-ss-num {
     width: 80px;
 }
 
-#melatonControlPanelModal .cpl-ss-hint {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-hint {
     margin-top: 2px;
 }
 
-#melatonControlPanelModal .cpl-ss-error {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-error {
     margin-top: 2px;
     color: #c00;
 }
 
-#melatonControlPanelModal .cpl-ss-pending {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-pending {
     color: #6d6d6d;
     font-style: italic;
 }
 
-#melatonControlPanelModal .cpl-ss-ro {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-ro {
     font-family: Consolas, monospace;
 }
 
-#melatonControlPanelModal .cpl-ss-note {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-note {
     color: #1e395b;
 }
 
-#melatonControlPanelModal .cpl-ss-items {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-items {
     width: auto;
     min-width: 320px;
     margin-bottom: 4px;
 }
 
 /* list-view cells keep the header's text inset */
-#melatonControlPanelModal .cpl-ss-items td {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-items td {
     padding: 2px 6px;
     white-space: nowrap;
 }
 
-#melatonControlPanelModal .cpl-ss-items input.cpl-ss-time {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-items input.cpl-ss-time {
     width: 84px;
 }
 
-#melatonControlPanelModal .cpl-ss-days {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-days {
     display: inline-flex;
     gap: 2px;
 }
 
-#melatonControlPanelModal .cpl-ss-day input {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-day input {
     position: absolute;
     opacity: 0;
     pointer-events: none;
 }
 
-#melatonControlPanelModal .cpl-ss-day span {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-day span {
     display: inline-block;
     width: 18px;
     height: 18px;
@@ -1554,28 +1554,28 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     cursor: default;
 }
 
-#melatonControlPanelModal .cpl-ss-day input:checked + span {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-day input:checked + span {
     border-color: #3c7fb1;
     background: linear-gradient(#e5f4fc, #c4e5f6 50%, #98d1ef 50%, #68b3db);
     font-weight: bold;
 }
 
-#melatonControlPanelModal .cpl-ss-day input:focus-visible + span {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-day input:focus-visible + span {
     outline: 1px dotted #000;
 }
 
-#melatonControlPanelModal .cpl-ss-faces {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-faces {
     display: flex;
     gap: 40px;
     margin: 4px 0 8px 20px;
 }
 
-#melatonControlPanelModal .cpl-ss-facegroup b {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-facegroup b {
     display: block;
     margin-bottom: 3px;
 }
 
-#melatonControlPanelModal .cpl-ss-remote.cpl-ss-left {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-remote.cpl-ss-left {
     justify-content: flex-start;
     margin-left: 20px;
 }

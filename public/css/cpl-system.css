@@ -5,11 +5,11 @@
    150 px; edition rows 15 + 8 px, System rows 15 + 7 px (Rating is 24 px for the badge), name rows
    15 + 8 px, 10 px after each group; the edition logo 157 x 151 on the right of the edition rows. */
 
-#melatonControlPanelModal .cpl-main:has(> .cpl-sys-page) {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-main:has(> .cpl-sys-page) {
     padding: 0;
 }
 
-#melatonControlPanelModal .cpl-sys-page {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-page {
     position: relative;
     min-width: 560px;
     padding: 19px 11px 10px 23px;
@@ -17,16 +17,16 @@
     font: 12px/15px var(--cpl-font);
 }
 
-#melatonControlPanelModal .cpl-sys-page p {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-page p {
     margin: 0;
 }
 
 /* Vista's two spaces after a sentence ("Corporation.  All rights reserved.") */
-#melatonControlPanelModal .cpl-sys-line {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-line {
     white-space: pre-wrap;
 }
 
-#melatonControlPanelModal .cpl-sys-help {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-help {
     position: absolute;
     top: 1px;
     right: 1px;
@@ -42,28 +42,28 @@
     cursor: var(--c-pointer);
 }
 
-#melatonControlPanelModal .cpl-sys-help::before,
-#melatonControlPanelModal .cpl-sys-help::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-help::before,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-help::after {
     content: none;
 }
 
-#melatonControlPanelModal .cpl-sys-help img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-help img {
     display: block;
     width: 18px;
     height: 18px;
 }
 
-#melatonControlPanelModal .cpl-content h1.cpl-sys-title {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-content h1.cpl-sys-title {
     margin: 0 0 14px;
     color: #003399;
     font: 16px/21px var(--cpl-font);
 }
 
-#melatonControlPanelModal .cpl-sys-section {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-section {
     padding-bottom: 10px;
 }
 
-#melatonControlPanelModal .cpl-content h2.cpl-sys-head {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-content h2.cpl-sys-head {
     display: flex;
     align-items: center;
     margin: 0 0 10px;
@@ -71,7 +71,7 @@
     font: 12px/15px var(--cpl-font);
 }
 
-#melatonControlPanelModal .cpl-sys-head::after {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-head::after {
     content: '';
     flex: 1 1 auto;
     height: 1px;
@@ -79,54 +79,54 @@
     background: #cccccc;
 }
 
-#melatonControlPanelModal .cpl-sys-edition {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-edition {
     display: flex;
     flex-direction: row-reverse;
     align-items: flex-start;
     padding-left: 20px;
 }
 
-#melatonControlPanelModal .cpl-sys-logo {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-logo {
     flex: none;
     width: 157px;
     height: 151px;
 }
 
-#melatonControlPanelModal .cpl-sys-edition-text {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-edition-text {
     flex: 1 1 auto;
     min-width: 0;
 }
 
-#melatonControlPanelModal .cpl-sys-edition-text .cpl-sys-line {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-edition-text .cpl-sys-line {
     padding-bottom: 8px;
 }
 
-#melatonControlPanelModal .cpl-sys-edition-text .cpl-sys-line--last {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-edition-text .cpl-sys-line--last {
     padding-bottom: 2px;
 }
 
-#melatonControlPanelModal .cpl-sys-rows {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-rows {
     position: relative;
     padding-left: 20px;
 }
 
-#melatonControlPanelModal .cpl-sys-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-row {
     display: flex;
     align-items: center;
     padding-bottom: 8px;
 }
 
-#melatonControlPanelModal .cpl-sys-rows--system .cpl-sys-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-rows--system .cpl-sys-row {
     padding-bottom: 7px;
 }
 
 /* the OEM's rows (VM with OEMInformation set): the support rows step 15 + 7 like System's */
-#melatonControlPanelModal .cpl-sys-rows--support .cpl-sys-row {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-rows--support .cpl-sys-row {
     padding-bottom: 7px;
 }
 
 /* the OEM logo: 120 x 120, flush with the content's right edge, its top on the first System row */
-#melatonControlPanelModal .cpl-sys-oem-logo {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-oem-logo {
     position: absolute;
     top: 0;
     right: 0;
@@ -135,33 +135,33 @@
     object-fit: contain;
 }
 
-#melatonControlPanelModal .cpl-sys-label {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-label {
     flex: 0 0 150px;
 }
 
-#melatonControlPanelModal .cpl-sys-value {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-value {
     display: flex;
     align-items: center;
     min-width: 0;
     overflow-wrap: anywhere;
 }
 
-#melatonControlPanelModal .cpl-sys-row--rating {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-row--rating {
     align-items: flex-start;
 }
 
-#melatonControlPanelModal .cpl-sys-row--rating .cpl-sys-label {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-row--rating .cpl-sys-label {
     padding-top: 1px;
 }
 
 /* the rating row is 24 px with or without the badge */
-#melatonControlPanelModal .cpl-sys-rating {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-rating {
     min-height: 24px;
 }
 
 /* the Experience Index badge: Vista's tile (the VM's grey one, its digits taken out, in the rated
    blue) with the base score drawn on it as Vista does, white Tahoma Bold over a dark shadow */
-#melatonControlPanelModal .cpl-sys-wei {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-wei {
     position: relative;
     flex: none;
     width: 32px;
@@ -169,13 +169,13 @@
     margin-right: 3px;
 }
 
-#melatonControlPanelModal .cpl-sys-wei img {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-wei img {
     display: block;
     width: 32px;
     height: 24px;
 }
 
-#melatonControlPanelModal .cpl-sys-wei-num {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-wei-num {
     position: absolute;
     inset: 0;
     color: #fff;
@@ -186,23 +186,23 @@
 }
 
 /* Vista's link colour; the subscores are in the badge's tooltip (there is no Performance page) */
-#melatonControlPanelModal .cpl-sys-wei-text {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-wei-text {
     color: #0066cc;
 }
 
-#melatonControlPanelModal .cpl-sys-wei-text--none {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-wei-text--none {
     color: #6d6d6d;
 }
 
-#melatonControlPanelModal .cpl-sys-clock {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-clock {
     margin-left: 3em;
 }
 
-#melatonControlPanelModal .cpl-sys-na {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-na {
     color: #6d6d6d;
 }
 
-#melatonControlPanelModal .cpl-sys-change {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-change {
     position: absolute;
     top: 0;
     right: 14px;
@@ -211,34 +211,34 @@
     line-height: 16px;
 }
 
-#melatonControlPanelModal .cpl-sys-change img,
-#melatonControlPanelModal .cpl-sys-task img,
-#melatonControlPanelModal .cpl-sys-task-pad {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-change img,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-task img,
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-task-pad {
     flex: none;
     width: 16px;
     height: 16px;
 }
 
-#melatonControlPanelModal .cpl-sys-rows--activation .cpl-sys-line {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-rows--activation .cpl-sys-line {
     padding-bottom: 8px;
 }
 
-#melatonControlPanelModal .cpl-sys-pid {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-pid {
     display: flex;
     align-items: baseline;
 }
 
-#melatonControlPanelModal .cpl-sys-pid-value {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-pid-value {
     margin: 0 20px 0 5px;
 }
 
 /* the task pane's links carry Vista's shields (the text lines up past a 16 px icon + 6 px) */
-#melatonControlPanelModal .cpl-sys-task {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-task {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-#melatonControlPanelModal .cpl-sys-tasks h3.cpl-task-heading {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-sys-tasks h3.cpl-task-heading {
     padding-left: 22px;
 }

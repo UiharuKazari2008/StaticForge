@@ -133,7 +133,8 @@
     }
 
     function showWindow(modal, owner) {
-        const anchor = owner && !owner.classList.contains('hidden') ? owner : doc.getElementById('melatonControlPanelModal');
+        const cpw = root.melatonControlPanel && root.melatonControlPanel.currentWindow ? root.melatonControlPanel.currentWindow() : null;
+        const anchor = owner && !owner.classList.contains('hidden') ? owner : (cpw || doc.getElementById('melatonControlPanelModal'));
         if (anchor && !anchor.classList.contains('hidden')) modal.dataset.iconOwnerId = anchor.id;
         callGlobal('openModal', modal);
         if (modal.classList.contains('hidden')) modal.classList.remove('hidden');

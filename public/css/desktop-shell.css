@@ -327,7 +327,7 @@ body:not(.desktop-mode) .desktop-taskbar {
     max-height: 100%;
 }
 
-#melatonControlPanelModal .taskbar-start-button,
+:is(#melatonControlPanelModal, .cpl-instance) .taskbar-start-button,
 .taskbar-start-button {
     height: 100%;
     border-radius: 0 14px 14px 0;
