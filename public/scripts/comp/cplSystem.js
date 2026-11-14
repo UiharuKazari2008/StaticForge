@@ -244,6 +244,51 @@
         };
     }
 
+    /*
+     * The phone this desktop runs on (#829): in the DeX desktop of a phone with the Android app,
+     * System describes that device (window.AndroidHardware) and its Device ID; the server moves down
+     * to a "Domain controller" section of its own.
+     */
+    const PHONE_ARCH = { arm64: 'arm64', arm: 'arm', x86_64: 'x64', x86: 'ia32' };
+    function phoneFacts() {
+        if (!root.AndroidHardware) return null;
+        const id = root.melatonDeviceIdentity;
+        let hw = null;
+        try { hw = id && typeof id.hardware === 'function' ? id.hardware() : JSON.parse(root.AndroidHardware.getInfo() || 'null'); } catch (_) { hw = null; }
+        if (!hw || typeof hw !== 'object') return null;
+        const dev = hw.device || {};
+        const soc = hw.soc || {};
+        const cpu = hw.cpu || {};
+        const dm = root.melatonDeviceManager;
+        const arch = (dm && typeof dm.archOf === 'function' ? dm.archOf(hw) : soc.arch) || '';
+        let me = null;
+        try { me = id && typeof id.get === 'function' ? id.get() : null; } catch (_) { me = null; }
+        const maker = String(dev.manufacturer || '').replace(/^\w/, (c) => c.toUpperCase());
+        let model = dev.marketName || '';
+        if (!model && dev.model) {
+            const art = root.activeSyncDeviceArt;
+            try { model = art && typeof art.makeModel === 'function' ? art.makeModel(dev.model) : ''; } catch (_) { model = ''; }
+            model = model || [maker, dev.model].filter(Boolean).join(' ');
+        }
+        const cores = cpu.cores || (Array.isArray(cpu.clusters) ? cpu.clusters.reduce((n, c) => n + (c.cores || 0), 0) : 0);
+        const top = cpu.maxMHz || (Array.isArray(cpu.clusters) ? Math.max(0, ...cpu.clusters.map((c) => c.maxMHz || 0)) : 0);
+        const procName = soc.name || soc.model || '';
+        const vols = Array.isArray(hw.storage) ? hw.storage : [];
+        const internal = vols.find((v) => v && v.kind === 'internal');
+        return {
+            manufacturer: maker,
+            model,
+            processor: procName ? `${procName}${cores ? ` (${cores} cores)` : ''}` : '',
+            clock: formatClock(top),
+            memory: formatMemory(hw.memory && hw.memory.totalBytes),
+            type: systemType(PHONE_ARCH[arch] || arch),
+            storage: internal && internal.totalBytes ? formatMemory(internal.totalBytes) : '',
+            android: dev.androidRelease ? `Android ${dev.androidRelease}${dev.securityPatch ? ` (security patch ${dev.securityPatch})` : ''}` : '',
+            name: (me && me.name) || '',
+            description: (me && me.description) || ''
+        };
+    }
+
     // ---- data -------------------------------------------------------------------------------
 
     async function load() {
@@ -303,6 +348,35 @@
                 </div>
             </div>`;
 
+        const phone = phoneFacts();
+        const serverRows = `
+                ${row('Processor:', host.processor ? `${esc(host.processor)}${host.clock ? `<span class="cpl-sys-clock">${esc(host.clock)}</span>` : ''}` : value(''))}
+                ${row('Memory (RAM):', value(host.memory))}
+                ${row('System type:', value(host.type))}`;
+        // the phone's own System section (#829): its maker, model, processor and memory; the server is further down
+        const phoneBody = phone ? `
+            <div class="cpl-sys-rows cpl-sys-rows--system">
+                ${row('Manufacturer:', value(phone.manufacturer))}
+                ${row('Model:', value(phone.model))}
+                <div class="cpl-sys-row cpl-sys-row--rating">
+                    <span class="cpl-sys-label">Rating:</span>
+                    <span class="cpl-sys-value cpl-sys-rating">${ratingHtml()}</span>
+                </div>
+                ${row('Processor:', phone.processor ? `${esc(phone.processor)}${phone.clock ? `<span class="cpl-sys-clock">${esc(phone.clock)}</span>` : ''}` : value(''))}
+                ${row('Memory (RAM):', value(phone.memory))}
+                ${phone.storage ? row('Storage:', esc(phone.storage)) : ''}
+                ${row('System type:', value(phone.type))}
+                ${phone.android ? row('Android:', esc(phone.android)) : ''}
+            </div>` : '';
+        const serverBody = `
+            <div class="cpl-sys-rows cpl-sys-rows--system">
+                <img class="cpl-sys-oem-logo" src="${OEM.logo}" alt="${esc(OEM.manufacturer)}" draggable="false">
+                ${row('Manufacturer:', esc(OEM.manufacturer))}
+                ${row('Model:', esc(OEM.model))}
+                ${serverRows}
+                ${row('Server name:', value(computer))}
+                ${row('Full name:', value(net.fqdn))}
+            </div>`;
         const systemBody = `
             <div class="cpl-sys-rows cpl-sys-rows--system">
                 <img class="cpl-sys-oem-logo" src="${OEM.logo}" alt="${esc(OEM.manufacturer)}" draggable="false">
@@ -327,9 +401,9 @@
         const computerBody = `
             <div class="cpl-sys-rows cpl-sys-rows--computer">
                 <button type="button" class="cpl-link cpl-sys-change" data-cpl-action="customize"><img src="${ART}/shield-uac-16.png" alt="">Change settings</button>
-                ${row('Computer name:', value(computer))}
-                ${row('Full computer name:', value(net.fqdn))}
-                ${row('Computer description:', esc(workspaceName()))}
+                ${row('Computer name:', value(phone ? phone.name : computer))}
+                ${row('Full computer name:', value(phone ? (phone.name && net.domain ? `${phone.name}.${String(net.domain).toLowerCase()}` : phone.name) : net.fqdn))}
+                ${row('Computer description:', esc(phone ? phone.description : workspaceName()))}
                 ${row('Domain:', esc(net.domain))}
             </div>`;
 
@@ -358,10 +432,12 @@
             <button type="button" class="cpl-sys-help" data-cpl-sys="help" title="Get help with this page"><img src="/static_images/vista-explorer/help.png" alt="Help"></button>
             <h1 class="cpl-sys-title">View basic information about your computer</h1>
             ${section('Melaton edition', editionBody, 'cpl-sys-section--edition')}
-            ${section('System', systemBody)}
-            ${section(`${OEM.manufacturer} support`, supportBody)}
+            ${section('System', phone ? phoneBody : systemBody)}
+            ${phone ? '' : section(`${OEM.manufacturer} support`, supportBody)}
             ${section('Computer name, domain, and workgroup settings', computerBody)}
             ${section('Session', sessionBody)}
+            ${phone ? section('Domain controller', serverBody) : ''}
+            ${phone ? section(`${OEM.manufacturer} support`, supportBody) : ''}
             ${section('Melaton activation', activationBody)}`;
     }
 
@@ -456,6 +532,7 @@
         register,
         open: () => register() && cpl().open('system'),
         _test: {
+            phoneFacts,
             formatMemory,
             formatClock,
             systemType,

@@ -45,7 +45,322 @@
         }
     }
 
+    // ---------------------------------------------------------------- the phone's own hardware (#829)
+    // On a phone, and in the DeX desktop of that phone, the Android app reports the device
+    // (window.AndroidHardware.getInfo): Device Manager lists that hardware by Vista's device classes.
+    // Classes Vista did not have yet (Biometric devices, Proximity devices, Sensors) take Windows 7/8's
+    // names. Every fact is optional: a class with nothing known is left out.
+
+    function deviceHardware() {
+        const id = root.melatonDeviceIdentity;
+        if (id && typeof id.hardware === 'function') return id.hardware();
+        const b = root.AndroidHardware;
+        if (!b || typeof b.getInfo !== 'function') return null;
+        try { return JSON.parse(b.getInfo() || 'null'); } catch (_) { return null; }
+    }
+
+    /** Vista's disk sizes in Device Manager style: "128 GB", "1.5 TB" (decimal, as drive makers print them). */
+    function sizeText(bytes) {
+        const n = Number(bytes);
+        if (!Number.isFinite(n) || n <= 0) return '';
+        if (n >= 1e12) return `${(n / 1e12).toFixed(n >= 1e13 ? 0 : 1).replace(/\.0$/, '')} TB`;
+        if (n >= 1e9) return `${Math.round(n / 1e9)} GB`;
+        return `${Math.round(n / 1e6)} MB`;
+    }
+
+    const ARCH_PC = { arm64: 'ACPI ARM64-based PC', arm: 'ACPI ARM-based PC', x86_64: 'ACPI x64-based PC', x86: 'ACPI x86-based PC' };
+    function archOf(hw) {
+        const soc = (hw && hw.soc) || {};
+        if (soc.arch) return soc.arch;
+        const abi = Array.isArray(soc.abis) ? soc.abis[0] : '';
+        return /arm64|aarch64/.test(abi) ? 'arm64' : /^armeabi/.test(abi) ? 'arm' : /x86_64/.test(abi) ? 'x86_64' : /x86/.test(abi) ? 'x86' : '';
+    }
+
+    function clockText(mhz) {
+        const n = Number(mhz);
+        return Number.isFinite(n) && n > 0 ? `${(n / 1000).toFixed(2)}GHz` : '';
+    }
+
+    /** The processor as Vista names one: "<SoC> (Cortex-X4) @ 3.30GHz", one row per core. */
+    function processorRows(hw) {
+        const soc = (hw && hw.soc) || {};
+        const cpu = (hw && hw.cpu) || {};
+        const name = soc.name || soc.model || [soc.manufacturer, 'Processor'].filter(Boolean).join(' ') || 'ARM Processor';
+        const rows = [];
+        const clusters = Array.isArray(cpu.clusters) ? cpu.clusters.filter((c) => c && c.cores > 0) : [];
+        // fastest cores first, as the CPU numbers run on most phones' big.LITTLE layouts in reverse
+        clusters.slice().sort((a, b) => (b.maxMHz || 0) - (a.maxMHz || 0)).forEach((c) => {
+            const label = `${name}${c.part ? ` (${c.part})` : ''}${c.maxMHz ? ` @ ${clockText(c.maxMHz)}` : ''}`;
+            for (let i = 0; i < c.cores; i++) rows.push(label);
+        });
+        if (!rows.length) {
+            const n = cpu.cores || (root.navigator && root.navigator.hardwareConcurrency) || 1;
+            for (let i = 0; i < n; i++) rows.push(`${name}${cpu.maxMHz ? ` @ ${clockText(cpu.maxMHz)}` : ''}`);
+        }
+        return rows;
+    }
+
+    const AUDIO_NAMES = {
+        builtin_speaker: 'Speakers (Built-in Audio)', builtin_earpiece: 'Earpiece (Built-in Audio)', builtin_mic: 'Microphone (Built-in Audio)',
+        telephony: 'Telephony Audio Device', wired_headset: 'Headset (Wired)', wired_headphones: 'Headphones (Wired)', line_analog: 'Line Out',
+        line_digital: 'Digital Audio (S/PDIF)', hdmi: 'HDMI Audio Device', hdmi_arc: 'HDMI Audio Device (ARC)', usb_device: 'USB Audio Device',
+        usb_headset: 'USB Audio Headset', usb_accessory: 'USB Audio Accessory', bluetooth_a2dp: 'Bluetooth Audio (Stereo)', bluetooth_sco: 'Bluetooth Audio (Hands-Free)',
+        ble_headset: 'Bluetooth LE Audio Headset', ble_speaker: 'Bluetooth LE Audio Speaker', hearing_aid: 'Hearing Aid', dock: 'Dock Audio', fm_tuner: 'FM Radio Tuner',
+        remote_submix: null, bus: null, ip: null, echo_reference: null, unknown: null
+    };
+
+    const SENSOR_NAMES = {
+        accelerometer: 'Accelerometer', gyroscope: 'Gyroscope', magnetic_field: 'Magnetometer (Compass)', light: 'Ambient Light Sensor',
+        proximity: 'Proximity Sensor', pressure: 'Barometer', gravity: 'Gravity Sensor', linear_acceleration: 'Linear Acceleration Sensor',
+        rotation_vector: 'Orientation Sensor', ambient_temperature: 'Temperature Sensor', relative_humidity: 'Humidity Sensor',
+        step_counter: 'Step Counter', step_detector: 'Step Detector', significant_motion: 'Motion Detector', heart_rate: 'Heart Rate Sensor',
+        hinge_angle: 'Hinge Angle Sensor', game_rotation_vector: 'Game Orientation Sensor', geomagnetic_rotation_vector: 'Geomagnetic Orientation Sensor'
+    };
+
+    const SENSOR_UNITS = {
+        accelerometer: 'm/s\u00b2', gravity: 'm/s\u00b2', linear_acceleration: 'm/s\u00b2', gyroscope: 'rad/s', magnetic_field: '\u00b5T', light: 'lx', proximity: 'cm',
+        pressure: 'hPa', ambient_temperature: '\u00b0C', relative_humidity: '%', heart_rate: 'bpm', hinge_angle: '\u00b0', step_counter: 'steps'
+    };
+    const AXES = { accelerometer: 'XYZ', gravity: 'XYZ', linear_acceleration: 'XYZ', gyroscope: 'XYZ', magnetic_field: 'XYZ', rotation_vector: 'XYZW', game_rotation_vector: 'XYZW', geomagnetic_rotation_vector: 'XYZW' };
+
+    /** The kernel's cpu number for processorRows' i-th row: clusters are numbered in report order, rows run fastest first. */
+    function processorCpuIndex(hw, i) {
+        const clusters = hw && hw.cpu && Array.isArray(hw.cpu.clusters) ? hw.cpu.clusters.filter((c) => c && c.cores > 0) : [];
+        if (!clusters.length) return i;
+        let n = 0;
+        const numbered = clusters.map((c) => { const first = n; n += c.cores; return { c, first }; });
+        const rows = [];
+        numbered.slice().sort((a, b) => (b.c.maxMHz || 0) - (a.c.maxMHz || 0)).forEach(({ c, first }) => { for (let k = 0; k < c.cores; k++) rows.push(first + k); });
+        return rows[i] != null ? rows[i] : i;
+    }
+
+    // ---- Current Values (#829): what a device reads now, from the Android app's bridge
+    function bridgeJson(fn, ...args) {
+        const b = root.AndroidHardware;
+        if (!b || typeof b[fn] !== 'function') return null;
+        try { return JSON.parse(b[fn](...args) || 'null'); } catch (_) { return null; }
+    }
+    const cap1 = (t) => String(t || '').replace(/^\w/, (c) => c.toUpperCase());
+    const num = (v, d = 0) => (v == null || !Number.isFinite(Number(v)) ? '' : Number(v).toFixed(d));
+    const dur = (ms) => { const m = Math.round(Number(ms) / 60000); return !Number.isFinite(m) || m <= 0 ? '' : m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m} min`; };
+
+    /** [[label, value]] for a live source; sensors are started on first read (stopLive ends them). */
+    function liveValues(live) {
+        if (!live) return [];
+        const na = 'Not available';
+        if (live.kind === 'battery' || live.kind === 'charger') {
+            let b = bridgeJson('getBattery');
+            if (!b) { try { const s = JSON.parse(root.AndroidDeviceStatus.getState()); b = s && s.battery; } catch (_) { b = null; } }
+            if (!b) return [['Status', na]];
+            const plug = { ac: 'AC charger', usb: 'USB', wireless: 'Wireless charger', dock: 'Dock' }[b.plugged] || 'Not plugged in';
+            if (live.kind === 'charger') {
+                return [['Power source', plug], ['Charging', b.charging ? 'Yes' : 'No'],
+                    ['Charge rate', b.charging && b.powerMw > 0 ? `${(b.powerMw / 1000).toFixed(1)} W` : ''], ['Time to full', b.charging ? dur(b.chargeTimeRemainingMs) : '']].filter((r) => r[1]);
+            }
+            return [['Charge remaining', b.level != null ? `${Math.round(b.level)}%` : ''], ['State', cap1((b.status || '').replace(/_/g, ' '))], ['Power source', plug],
+                ['Voltage', b.voltageMv ? `${(b.voltageMv / 1000).toFixed(3)} V` : ''], ['Current', b.currentUa != null ? `${Math.round(b.currentUa / 1000)} mA` : ''],
+                ['Average current', b.currentAvgUa != null ? `${Math.round(b.currentAvgUa / 1000)} mA` : ''], ['Power', b.powerMw != null ? `${(b.powerMw / 1000).toFixed(2)} W` : ''],
+                ['Temperature', b.temperatureC != null ? `${num(b.temperatureC, 1)} \u00b0C` : ''], ['Health', cap1((b.health || '').replace(/_/g, ' '))], ['Charge counter', b.chargeCounterUah ? `${Math.round(b.chargeCounterUah / 1000)} mAh` : ''],
+                ['Full charge capacity', b.fullCapacityMah ? `${Math.round(b.fullCapacityMah)} mAh` : ''], ['Design capacity', b.designCapacityMah ? `${Math.round(b.designCapacityMah)} mAh` : ''],
+                ['Wear level', b.fullCapacityMah && b.designCapacityMah ? `${Math.max(0, Math.round(100 - b.fullCapacityMah * 100 / b.designCapacityMah))}%` : ''],
+                ['Charge cycles', b.cycleCount != null ? String(b.cycleCount) : ''], ['Battery saver', b.saver ? 'On' : 'Off']].filter((r) => r[1]);
+        }
+        if (live.kind === 'cpu') {
+            const f = bridgeJson('getCpuFrequencies');
+            const core = f && Array.isArray(f.cores) ? f.cores.find((c) => c.cpu === live.index) : null;
+            if (!core) return [['Current speed', na]];
+            return [['Current speed', core.online === false ? 'Parked (offline)' : core.curMHz ? `${Math.round(core.curMHz)} MHz` : na],
+                ['Minimum speed', core.minMHz ? `${Math.round(core.minMHz)} MHz` : ''], ['Maximum speed', core.maxMHz ? `${Math.round(core.maxMHz)} MHz` : ''],
+                ['Load', core.curMHz && core.maxMHz ? `${Math.round(core.curMHz * 100 / core.maxMHz)}% of maximum speed` : ''], ['CPU number', String(live.index)]].filter((r) => r[1]);
+        }
+        if (live.kind === 'system') {
+            const hw = bridgeJson('getInfo');
+            const m = hw && hw.memory;
+            const t = bridgeJson('getThermal');
+            const gb = (b) => (b ? `${(b / 1073741824).toFixed(2)} GB` : '');
+            return [['Memory (RAM)', gb(m && m.totalBytes)], ['Memory available', gb(m && m.availBytes)],
+                ['Memory in use', m && m.totalBytes ? `${Math.round((m.totalBytes - m.availBytes) * 100 / m.totalBytes)}%` : ''], ['Low memory', m ? (m.lowMemory ? 'Yes' : 'No') : ''],
+                ['Thermal status', t && t.status ? t.status.replace(/^\w/, (c) => c.toUpperCase()) : ''], ['Thermal headroom', t && t.headroom != null ? `${Math.round(t.headroom * 100)}%` : '']].filter((r) => r[1]);
+        }
+        if (live.kind === 'storage') {
+            const hw = bridgeJson('getInfo');
+            const v = hw && Array.isArray(hw.storage) ? hw.storage.find((x) => x.id === live.id) : null;
+            if (!v) return [['State', 'Not present']];
+            return [['State', v.state || ''], ['Capacity', sizeText(v.totalBytes)], ['Free space', sizeText(v.freeBytes)],
+                ['Used', v.totalBytes ? `${Math.round((v.totalBytes - v.freeBytes) * 100 / v.totalBytes)}%` : '']].filter((r) => r[1]);
+        }
+        if (live.kind === 'quota') return [['Capacity', liveQuota.quota ? sizeText(liveQuota.quota) : ''], ['Used', liveQuota.usage != null ? sizeText(liveQuota.usage) || '0 MB' : '']].filter((r) => r[1]);
+        if (live.kind === 'sensor') {
+            const b = root.AndroidHardware;
+            if (!b || typeof b.readSensor !== 'function') return [['Reading', 'This version of the Melaton app cannot read sensors']];
+            if (!liveSensors.has(live.typeId)) { try { b.startSensor(live.typeId); } catch (_) { /* below */ } liveSensors.add(live.typeId); }
+            const r = bridgeJson('readSensor', live.typeId);
+            if (!r || !Array.isArray(r.values)) return [['Reading', 'Waiting for the sensor...']];
+            const unit = SENSOR_UNITS[live.type] || '';
+            const axes = AXES[live.type];
+            const rows = axes ? r.values.slice(0, axes.length).map((v, i) => [`${axes[i]}`, `${num(v, 3)} ${i < 3 ? unit : ''}`.trim()])
+                : [['Value', `${num(r.values[0], Math.abs(r.values[0]) >= 100 ? 0 : 2)} ${unit}`.trim()]].concat(r.values.slice(1).map((v, i) => [`Value ${i + 2}`, num(v, 3)]));
+            if (axes && axes.startsWith('XYZ') && r.values.length >= 3 && unit) rows.push(['Magnitude', `${num(Math.hypot(r.values[0], r.values[1], r.values[2]), 3)} ${unit}`]);
+            rows.push(['Accuracy', ['Unreliable', 'Low', 'Medium', 'High'][r.accuracy] || '']);
+            rows.push(['Last reading', r.at ? new Date(r.at).toLocaleTimeString() : '']);
+            return rows.filter((x) => x[1]);
+        }
+        return [];
+    }
+    const liveSensors = new Set();
+    const liveQuota = { quota: 0, usage: null };
+    function stopLive() {
+        const b = root.AndroidHardware;
+        liveSensors.forEach((t) => { try { if (b && typeof b.stopSensor === 'function') b.stopSensor(t); } catch (_) { /* gone */ } });
+        liveSensors.clear();
+    }
+
+    function deviceCategories(hw, extra) {
+        const list = (v) => (Array.isArray(v) ? v.filter(Boolean) : []);
+        const dev = Object.assign({}, hw.device || {});
+        // Android reports some makers in lower case ("samsung")
+        if (dev.manufacturer) dev.manufacturer = String(dev.manufacturer).replace(/^\w/, (c) => c.toUpperCase());
+        const bat = extra.battery || {};
+        const cats = [];
+        // a device is its name, or { name, info: { manufacturer, location, props [[k, v]], live } }:
+        // Properties shows info, and a live source gets a Current Values tab (#829)
+        const add = (name, icon, devices) => {
+            const d = devices.filter(Boolean).map((x) => (typeof x === 'string' ? { name: x } : x));
+            if (d.length) cats.push({ name, icon: `${DEV}/${icon}-16.png`, devices: d.map((x) => x.name), info: d.map((x) => x.info || null) });
+        };
+        const uniq = (a) => Array.from(new Set(a.filter(Boolean)));
+        const maker = dev.manufacturer || '';
+
+        // Batteries: the charger and the cell
+        const cap = bat.designCapacityMah ? `${Math.round(bat.designCapacityMah).toLocaleString()} mAh` : '';
+        add('Batteries', 'batteries', [
+            { name: 'Microsoft AC Adapter', info: { manufacturer: 'Microsoft', location: 'Charging port', live: { kind: 'charger' } } },
+            { name: `${[dev.manufacturer, bat.technology || 'Li-ion'].filter(Boolean).join(' ')} Battery${cap ? ` (${cap})` : ''}`, info: { manufacturer: maker, location: 'Internal battery', props: [['Chemistry', bat.technology || 'Li-ion'], ['Design capacity', cap]], live: { kind: 'battery' } } }
+        ]);
+        const bio = hw.biometrics || {};
+        add('Biometric devices', 'biometric', [bio.fingerprint && 'Fingerprint Sensor', bio.face && 'Face Recognition Sensor', bio.iris && 'Iris Scanner']);
+        const bt = hw.bluetooth || {};
+        if (bt.present) add('Bluetooth Radios', 'bluetooth', [bt.le ? 'Generic Bluetooth Radio (Bluetooth Low Energy)' : 'Generic Bluetooth Radio', 'Microsoft Bluetooth Enumerator']);
+        const soc = hw.soc || {};
+        add('Computer', 'computer', [{ name: ARCH_PC[archOf(hw)] || 'ACPI ARM64-based PC', info: {
+            manufacturer: maker, location: 'on System board',
+            props: [['Model', [maker, dev.marketName || dev.model].filter(Boolean).join(' ')], ['Model number', dev.model], ['Board', dev.board], ['System on chip', [soc.manufacturer, soc.model].filter(Boolean).join(' ')], ['Instruction sets', list(soc.abis).join(', ')],
+                ['Android', dev.androidRelease ? `${dev.androidRelease} (API ${dev.sdk || '?'})` : ''], ['Security patch', dev.securityPatch], ['Build', dev.buildId], ['Kernel', dev.kernel]],
+            live: { kind: 'system' } } }]);
+
+        // Disk drives: Dreamscape's virtual disk, then the phone's own storage
+        const vols = list(hw.storage);
+        const disk = (v) => {
+            const size = sizeText(v.totalBytes);
+            if (v.kind === 'internal') return `${maker ? `${maker} ` : ''}Internal Storage${size ? ` (${size})` : ''}`;
+            if (v.kind === 'sd' || v.kind === 'adopted') return `SD Memory Card${v.label ? ` ${v.label}` : ''}${size ? ` (${size})` : ''}`;
+            if (v.kind === 'usb') return `${v.label || 'USB Mass Storage'} USB Device${size ? ` (${size})` : ''}`;
+            return `${v.label || 'Storage'}${size ? ` (${size})` : ''}`;
+        };
+        add('Disk drives', 'disk-drives', [{ name: `Dreamscape Virtual Disk${extra.quota ? ` (${sizeText(extra.quota)})` : ''}`, info: { manufacturer: 'Xyridian Corporation', location: 'Dreamscape server', live: { kind: 'quota' } } }]
+            .concat(vols.filter((v) => !v.emulated || v.kind === 'internal').map((v) => ({ name: disk(v), info: {
+                manufacturer: v.kind === 'internal' ? maker : '(Standard disk drives)', location: v.kind === 'internal' ? 'Internal' : v.kind === 'usb' ? 'USB port' : 'Storage card slot',
+                props: [['Volume label', v.label], ['Volume ID', v.uuid || v.id], ['Kind', v.kind], ['Removable', v.removable ? 'Yes' : 'No'], ['Emulated', v.emulated ? 'Yes' : 'No']],
+                live: { kind: 'storage', id: v.id } } }))));
+        add('Display adapters', 'display-adapters', [gpuName()]);
+
+        // input: Windows puts touch screens and pens under Human Interface Devices
+        const input = list(hw.input);
+        const has = (d, k) => Array.isArray(d.sources) && d.sources.includes(k);
+        const hid = [];
+        input.forEach((d) => {
+            if (has(d, 'touchscreen')) hid.push(`HID-compliant touch screen${d.name ? ` (${d.name})` : ''}`);
+            if (has(d, 'stylus')) hid.push(`HID-compliant pen${d.name ? ` (${d.name})` : ''}`);
+            if (has(d, 'gamepad')) hid.push(`HID-compliant game controller${d.name ? ` (${d.name})` : ''}`);
+            if (has(d, 'keyboard') && d.keyboardType !== 'alphabetic' && !has(d, 'gamepad')) hid.push(`HID-compliant consumer control device${d.name ? ` (${d.name})` : ''}`);
+        });
+        add('Human Interface Devices', 'hid', uniq(hid));
+        add('Imaging devices', 'imaging', list(hw.cameras).map((c) => {
+            const where = c.facing === 'front' ? 'Front Camera' : c.facing === 'external' ? 'USB Video Device' : 'Rear Camera';
+            return { name: `${where}${c.megapixels ? ` (${Math.round(c.megapixels)} MP)` : ''}`, info: { manufacturer: maker || '(Standard imaging devices)', location: `Camera ${c.id}`,
+                props: [['Facing', c.facing], ['Resolution', c.megapixels ? `${Number(c.megapixels).toFixed(1)} megapixels` : ''], ['Flash', c.flash == null ? '' : c.flash ? 'Yes' : 'No'], ['Camera ID', c.id]] } };
+        }));
+        const kb = input.filter((d) => has(d, 'keyboard') && d.keyboardType === 'alphabetic').map((d) => (d.external ? `HID Keyboard Device (${d.name || 'USB'})` : d.name || 'Standard Keyboard'));
+        // the phone's on-screen keyboard is Windows Mobile's Soft Input Panel
+        add('Keyboards', 'keyboards', ['Melaton Soft Input Panel'].concat(kb));
+        const tel = hw.telephony || {};
+        if (tel.present) add('Modems', 'modems', [`Mobile Broadband Modem${tel.phoneType && tel.phoneType !== 'none' ? ` (${tel.phoneType.toUpperCase()})` : ''}${tel.simSlots > 1 ? `, ${tel.simSlots} SIM slots` : ''}`]);
+        add('Mice and other pointing devices', 'mice', uniq(input.filter((d) => has(d, 'mouse') || has(d, 'touchpad') || has(d, 'trackball'))
+            .map((d) => (has(d, 'touchpad') ? `HID-compliant touch pad${d.name ? ` (${d.name})` : ''}` : `HID-compliant mouse${d.name ? ` (${d.name})` : ''}`))));
+        // Monitors: each display, built-in panels first
+        const shows = list(hw.displays).slice().sort((a, b) => (b.builtIn ? 1 : 0) - (a.builtIn ? 1 : 0));
+        let panel = 0;
+        add('Monitors', 'monitors', shows.map((m) => {
+            const mode = m.width && m.height ? ` (${m.width} x ${m.height}${m.refreshHz ? `, ${Math.round(m.refreshHz)} Hz` : ''})` : '';
+            let name;
+            if (m.builtIn) { panel += 1; name = `Built-in Display${shows.filter((x) => x.builtIn).length > 1 ? ` ${panel}` : ''}${mode}`; } else name = `Generic PnP Monitor${mode}`;
+            return { name, info: { manufacturer: m.builtIn ? maker : '(Standard monitor types)', location: m.builtIn ? 'Internal panel' : 'External display port', props: [
+                ['Display name', m.name], ['Resolution', m.width && m.height ? `${m.width} x ${m.height}` : ''], ['Refresh rate', m.refreshHz ? `${Math.round(m.refreshHz)} Hz` : ''],
+                ['Density', m.densityDpi ? `${m.densityDpi} dpi` : ''], ['Physical dpi', m.xdpi ? `${Math.round(m.xdpi)} x ${Math.round(m.ydpi || m.xdpi)}` : ''], ['HDR', list(m.hdr).join(', ') || (m.hdr ? 'None' : '')], ['Display ID', m.id]
+            ] } };
+        }));
+        const wifi = hw.wifi || {};
+        const std = list(wifi.standards);
+        const best = std.length ? std[std.length - 1] : '';
+        add('Network adapters', 'network-adapters', [
+            wifi.present && `Wireless Network Adapter${best ? ` (${best})` : ''}`,
+            tel.present && 'Mobile Broadband Adapter',
+            bt.present && 'Bluetooth Device (Personal Area Network)',
+            extra.conn.miniport || `${extra.conn.connectionType || 'WAN'} Miniport (${extra.conn.device || 'L-PPoP'})`
+        ]);
+        // Vista lists removable media again under Portable Devices, by drive
+        add('Portable Devices', 'portable', vols.filter((v) => v.removable && v.kind !== 'internal').map((v) => v.label || (v.kind === 'usb' ? 'USB Drive' : 'Storage Card')));
+        add('Processors', 'processors', processorRows(hw).map((name, i) => ({ name, info: { manufacturer: soc.manufacturer || maker, location: `Core ${i}`,
+            props: [['Processor', soc.name || soc.model], ['Model', soc.model]], live: { kind: 'cpu', index: processorCpuIndex(hw, i) } } })));
+        const nfc = hw.nfc || {};
+        if (nfc.present) add('Proximity devices', 'proximity', [`NFC Controller${nfc.enabled === false ? ' (turned off)' : ''}`, nfc.hce && 'NFC Host Card Emulation', nfc.secureNfc && 'NFC Secure Element']);
+        const sec = hw.security || {};
+        add('Security Devices', 'security', [
+            sec.hardwareKeystore && 'Trusted Execution Environment (Hardware Keystore)',
+            sec.strongBox && 'StrongBox Secure Element',
+            sec.encryption && /^active/.test(sec.encryption) && `Storage Encryption${sec.fileBased ? ' (File-Based)' : ''}`
+        ]);
+        const seen = new Set();
+        add('Sensors', 'sensors', list(hw.sensors).filter((x) => !x.wakeUp || !list(hw.sensors).some((y) => y !== x && y.type === x.type && !y.wakeUp))
+            .map((x) => {
+                const kindName = SENSOR_NAMES[x.type] || (x.type ? x.type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) : 'Sensor');
+                const raw = String(x.name || '').trim();
+                // "LSM6DSV Accelerometer" says what it is; "TCS3701" alone does not
+                const word = kindName.split(/[\s(]/)[0].toLowerCase();
+                const name = !raw ? kindName : raw.toLowerCase().includes(word) ? raw : `${kindName} (${raw})`;
+                if (seen.has(name)) return null;
+                seen.add(name);
+                return { name, info: { manufacturer: x.vendor || '(Standard sensors)', location: 'Sensor hub', props: [
+                    ['Sensor type', x.type], ['Type ID', x.typeId], ['Version', x.version], ['Power', x.powerMa != null ? `${x.powerMa} mA` : ''],
+                    ['Maximum range', x.maxRange != null ? `${x.maxRange} ${SENSOR_UNITS[x.type] || ''}`.trim() : ''], ['Resolution', x.resolution != null ? String(x.resolution) : ''], ['Wake-up sensor', x.wakeUp ? 'Yes' : 'No']
+                ], live: x.typeId != null ? { kind: 'sensor', typeId: x.typeId, type: x.type } : null } };
+            }));
+        const audio = hw.audio || {};
+        const snd = list(audio.outputs).concat(list(audio.inputs)).map((a) => (a.type in AUDIO_NAMES ? AUDIO_NAMES[a.type] : (a.name || null)));
+        add('Sound, video and game controllers', 'sound', uniq(snd).length ? uniq(snd) : ['High Definition Audio Device']);
+        add('Storage volumes', 'volumes', vols.map(() => 'Generic volume'));
+        add('System devices', 'system-devices', [
+            'Microsoft ACPI-Compliant System', 'ACPI Fixed Feature Button', 'ACPI Power Button', 'ACPI Thermal Zone',
+            hw.vibrator && hw.vibrator.present && 'Vibration Motor', 'System timer', dev.board && `${dev.board.toUpperCase()} System Board`
+        ]);
+        const usb = hw.usb || {};
+        add('Universal Serial Bus controllers', 'usb', [
+            'USB Root Hub', usb.host ? 'USB Host Controller (OTG)' : 'USB Device Controller',
+            ...list(usb.devices).map((u) => u.product || u.name || 'USB Composite Device')
+        ]);
+        return cats;
+    }
+
     async function categories() {
+        const hw = deviceHardware();
+        if (hw && typeof hw === 'object') {
+            let quota = 0;
+            try { const e = root.navigator.storage && await root.navigator.storage.estimate(); quota = (e && e.quota) || 0; } catch (_) { /* none */ }
+            let battery = null;
+            try { const b = root.AndroidDeviceStatus; const s = b && typeof b.getState === 'function' ? JSON.parse(b.getState()) : null; battery = s && s.battery; } catch (_) { battery = null; }
+            const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : { connectionName: 'VPN Connection', connectionType: 'WAN', device: 'L-PPoP' };
+            return deviceCategories(hw, { quota, battery: battery || {}, conn });
+        }
         const n = (root.navigator && root.navigator.hardwareConcurrency) || 1;
         const s = root.screen || {};
         let media = [];
@@ -83,6 +398,9 @@
     const expanded = new Set();
 
     function computerName() {
+        // the phone (or its DeX desktop): the name its owner gave it in Device ID (#829)
+        const id = root.melatonDeviceIdentity;
+        if (id && root.AndroidHardware) { try { const me = id.get(); if (me && me.name) return me.name; } catch (_) { /* host name */ } }
         const n = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : null;
         const host = (root.location && root.location.hostname) || 'melaton';
         return `${(n && n.domain) || 'DREAMSCAPE'}-${host.split('.')[0].toUpperCase()}`.slice(0, 15);
@@ -127,33 +445,53 @@
         callGlobal('showConfirmationDialog', `<p>The best driver software for ${esc(sel ? sel.textContent : 'this device')} is already installed.</p><p>Melaton has determined the driver software for your device is up to date.</p>`, [{ text: 'Close', value: true, className: 'btn-standard primary' }], null, { title: 'Update Driver Software', width: 420 });
     }
 
+    // Current Values (#829): devmgr's Details page laid out again for live readings - the device's icon
+    // and name, then a list that refreshes each second while the sheet is open
+    function valuesTemplate() {
+        const T = root.vistaDialogTemplates || {};
+        const base = T['devmgr:372'];
+        if (!base) return null;
+        return Object.assign({}, base, {
+            t: 'Current Values',
+            c: [base.c[0], base.c[1], [65535, 'S', 7, 35, 239, 8, 1342308352, 'Current &values (updated every second)', 0], [376, 'SysListView32', 7, 46, 239, 167, 1350680641, 'List1', 0]]
+        });
+    }
+
     function openProperties(ci, di) {
         const c = tree[ci];
         const name = c.devices[di];
+        const info = (c.info && c.info[di]) || {};
         const V = root.vistaDialogTemplate;
         if (!V) return;
         const sheet = root.cplDialogs && root.cplDialogs.sheet;
         const open = sheet || ((def) => V.openSheet(def));
+        const big = c.icon.replace('-16.png', '-32.png');
+        const valuesTpl = info.live ? valuesTemplate() : null;
+        const pages = [{ key: 'devmgr:103', overrides: { 218: { image: big } } }, { key: 'devmgr:106', overrides: { 226: { image: big } } }, { key: 'devmgr:372', overrides: { 373: { image: big } } }];
+        if (valuesTpl) pages.push({ key: 'devmgr:values', tpl: valuesTpl, overrides: { 373: { image: big } } });
+        const manufacturer = info.manufacturer || (/Melaton|Dreamscape/.test(name) ? 'Xyridian Corporation' : '(Standard system devices)');
+        let timer = 0;
         open({
             windowId: 'dmDeviceProperties',
             title: `${name} Properties`,
             icon: c.icon,
             noApply: true,
-            pages: [{ key: 'devmgr:103', overrides: { 218: { image: c.icon.replace('-16.png', '-32.png') } } }, { key: 'devmgr:106', overrides: { 226: { image: c.icon.replace('-16.png', '-32.png') } } }, { key: 'devmgr:372', overrides: { 373: { image: c.icon.replace('-16.png', '-32.png') } } }],
+            pages,
             init(ctx) {
-                ['devmgr:103', 'devmgr:106', 'devmgr:372'].forEach((p) => ctx.text(p === 'devmgr:103' ? 219 : p === 'devmgr:106' ? 227 : 374, name, p));
+                pages.forEach((p) => ctx.text(p.key === 'devmgr:103' ? 219 : p.key === 'devmgr:106' ? 227 : 374, name, p.key));
                 ctx.set(220, c.name, 'devmgr:103');
-                ctx.set(221, /Melaton|Dreamscape/.test(name) ? 'Xyridian Corporation' : '(Standard system devices)', 'devmgr:103');
-                ctx.set(357, 'PCI bus 0, device 1, function 0', 'devmgr:103');
+                ctx.set(221, manufacturer, 'devmgr:103');
+                ctx.set(357, info.location || 'PCI bus 0, device 1, function 0', 'devmgr:103');
                 ctx.set(223, 'This device is working properly.', 'devmgr:103');
-                ctx.set(385, 'Xyridian', 'devmgr:106');
+                ctx.set(385, info.manufacturer || 'Xyridian', 'devmgr:106');
                 ctx.set(387, '6/21/2006', 'devmgr:106');
                 ctx.set(389, '6.0.6002.18005', 'devmgr:106');
                 ctx.set(393, 'Xyridian Melaton', 'devmgr:106');
                 ['devmgr:103', 'devmgr:106', 'devmgr:372'].forEach((p) => {
                     ctx.content.querySelectorAll(`[data-vdt-page="${p}"] input.vdt-edit`).forEach((i) => { i.readOnly = true; });
                 });
-                const props = [['Device description', name], ['Hardware Ids', `ROOT\\${c.name.replace(/\W+/g, '').toUpperCase()}\\0000`], ['Class', c.name], ['Driver', 'Xyridian'], ['Manufacturer', ctx.get(221, 'devmgr:103')]];
+                const props = [['Device description', name], ['Hardware Ids', `ROOT\\${c.name.replace(/\W+/g, '').toUpperCase()}\\0000`], ['Class', c.name], ['Driver', 'Xyridian'], ['Manufacturer', manufacturer]]
+                    .concat((info.props || []).filter((p) => p && p[1] != null && p[1] !== ''));
                 ctx.options(375, props.map((p, i) => ({ value: String(i), text: p[0] })), '0', 'devmgr:372');
                 const lv = ctx.holder(376, 'devmgr:372');
                 const showProp = () => { lv.querySelector('.vdt-lv-body').innerHTML = `<div class="vdt-lv-row is-selected"><span>${esc(props[Number(ctx.get(375, 'devmgr:372'))][1])}</span></div>`; };
@@ -162,6 +500,26 @@
                 ctx.enable(309, false, 'devmgr:103');
                 ctx.enable(217, false, 'devmgr:103');
                 [380, 394, 378, 382].forEach((id) => ctx.enable(id, false, 'devmgr:106'));
+                if (!valuesTpl) return;
+                const vlv = ctx.holder(376, 'devmgr:values');
+                const body = vlv && vlv.querySelector('.vdt-lv-body');
+                if (!body) return;
+                body.classList.add('dm-values');
+                const draw = () => {
+                    // the sheet closed: stop the sensors it started
+                    if (!ctx.content.isConnected || ctx.content.closest('.hidden')) { clearInterval(timer); stopLive(); return; }
+                    const page = ctx.content.querySelector('[data-vdt-page="devmgr:values"]');
+                    if (page && page.hidden) return;
+                    const rows = liveValues(info.live);
+                    body.innerHTML = rows.map(([k, v]) => `<div class="vdt-lv-row dm-value-row"><span class="dm-value-key">${esc(k)}</span><span class="dm-value-val">${esc(v)}</span></div>`).join('')
+                        || '<div class="vdt-lv-row"><span>No values</span></div>';
+                };
+                if (info.live.kind === 'quota' && root.navigator.storage) {
+                    root.navigator.storage.estimate().then((e) => { liveQuota.quota = e.quota || 0; liveQuota.usage = e.usage || 0; }).catch(() => {});
+                }
+                ctx.content.querySelectorAll('[data-vdt-tab]').forEach((t) => t.addEventListener('click', () => setTimeout(draw, 0)));
+                timer = setInterval(draw, 1000);
+                draw();
             }
         }, null, win);
     }
@@ -289,5 +647,5 @@
     }
 
     root.openDeviceManager = openDeviceManager;
-    root.melatonDeviceManager = { open: openDeviceManager, categories, gpuName };
+    root.melatonDeviceManager = { open: openDeviceManager, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf };
 })(typeof window !== 'undefined' ? window : globalThis);

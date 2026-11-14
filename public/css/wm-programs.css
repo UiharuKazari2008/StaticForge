@@ -1166,3 +1166,44 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     background: radial-gradient(circle at 40% 40%, #2a3340 0 18%, #05070a 30%);
     box-shadow: 0 0 0 calc(1 * var(--wm-px)) #1a1a1a;
 }
+
+/* About > Version (#829): "Powered by CafeReady" - a black case-badge sticker on the left; the
+ * logo's CafeReady lettering is white, so it sits on the dark face, and its grey "Melaton" is
+ * inverted for that face (cafe-ready-dark.png) */
+.wm-cafe-badge {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: calc(92 * var(--wm-px));
+    margin: calc(10 * var(--wm-px)) auto calc(4 * var(--wm-px)) 0;
+    padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px));
+    border: 1px solid #000;
+    border-radius: calc(3 * var(--wm-px));
+    background: linear-gradient(#4a4d52 0%, #26282b 48%, #101113 52%, #1d1f22 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28), 0 1px 2px rgba(0, 0, 0, .35);
+    color: #fff;
+}
+
+.wm-cafe-badge .wm-cafe-by {
+    align-self: flex-start;
+    font-size: calc(8 * var(--wm-px));
+    line-height: 1.1;
+    letter-spacing: .02em;
+    opacity: .85;
+}
+
+.wm-cafe-badge img {
+    display: block;
+    width: 100%;
+    height: auto;
+    margin-top: calc(1 * var(--wm-px));
+}
+
+.wm-cafe-badge .wm-cafe-tm {
+    position: absolute;
+    right: calc(3 * var(--wm-px));
+    bottom: calc(3 * var(--wm-px));
+    font-size: calc(7 * var(--wm-px));
+    line-height: 1;
+}

@@ -13,6 +13,11 @@
  *              (the flyout's own sessionStorage list), else Status.
  *   soft keys  Refresh | Menu (Alerts, Status, the selected item's action: Log In, Unlock, Open
  *              NovelAI). Service keys stay on the desktop (Control Panel has no phone page).
+ *   Options... Menu > Options... (hidden Settings page accounts-options, #829): which account events
+ *              raise a WM notification (renewal, daily usage against the refill, low fixed / paid
+ *              Anlas, a low balance of another account, NovelAI API down); see "notifications" below.
+ *   icons      each account shows its service's icon on Today (6.1 rows: wm61 svc-*, 6.5 panel pages:
+ *              ti-x-svc-*-lg; scripts/generate-wm-account-art.js).
  *   Today      registerTodayItem 'accounts' block after Calendar: a table Account | Balance | Status
  *              (NovelAI Anlas included); option Show: 'all' = every account, 'notices' = only the
  *              accounts with alerts or warnings, hidden without any, 'balances' = just the figures,
@@ -98,6 +103,7 @@
                 todayCache.at = 0;
                 rowsCache.at = 0;
                 render();
+                checkSoon();
             });
         return fetching;
     }
@@ -254,6 +260,7 @@
             { label: 'Status', checked: tab === 'status', action: () => setTab('status') }
         ];
         if (act) items.push('-', { label: ACTION_LABELS[act.name], action: () => runAction(act) });
+        items.push('-', { label: 'Options...', disabled: !(window.wmSettings && typeof window.wmSettings.open === 'function'), action: openOptions });
         return items;
     }
 
@@ -421,6 +428,44 @@
         return [{ id: row.key, label: row.name, caption: row.name, value }];
     }
 
+    // ---- service icons (#829): wm61 svc-<name> (16 / -lg 32, @2x @4x) and the 6.5 panels ti-x-svc-<name>-lg,
+    // scripts/generate-wm-account-art.js; a Director engine without its own art shows the Director's
+    const SVC_ART = new Set(['novelai', 'cursor', 'claude', 'tokenrouter', 'runpod', 'deepseek', 'gemini']);
+    const KIND_ART = { deepseek: 'deepseek', google: 'gemini', tokenrouter: 'tokenrouter' };
+    const KIND_LABEL = { tokenrouter: 'TokenRouter', openrouter: 'OpenRouter', openai: 'OpenAI', google: 'Google AI', nvidia: 'NVIDIA NIM', deepseek: 'DeepSeek', deepinfra: 'DeepInfra' };
+
+    /** A Director engine's host kind (customRows' title: "host, kind"; generic hosts name none). */
+    function engineKind(row) {
+        const last = String(row.title || '').split(', ').pop();
+        return KIND_LABEL[last] ? last : '';
+    }
+
+    /** { small, panel } art names for an account row (or an alert's own line: the wallet). */
+    function serviceArt(row) {
+        let svc = row && row.service;
+        if (svc === 'custom') svc = KIND_ART[engineKind(row)] || '';
+        if (SVC_ART.has(svc)) return { small: `svc-${svc}`, panel: `x:svc-${svc}-lg` };
+        if (row && row.service === 'custom') return { small: 'app-director', panel: 'x:app-director-lg' };
+        return { small: 'app-accounts', panel: 'x:app-accounts-lg' };
+    }
+
+    /** The service / account type a row stands for (the sub-line), and its own name when it has one. */
+    function serviceLabel(row) {
+        if (row.service === 'cursor') return 'Cursor';
+        if (row.service === 'custom') return KIND_LABEL[engineKind(row)] && KIND_LABEL[engineKind(row)] !== row.name ? `${row.name} (${KIND_LABEL[engineKind(row)]})` : row.name;
+        return row.name;
+    }
+
+    function accountName(row) {
+        return row.service === 'cursor' ? String(row.name).replace(/^Cursor:\s*/, '') : '';
+    }
+
+    function smallIconHtml(name) {
+        if (!name) return '';
+        const base = `/static_images/wm61/${name}`;
+        return `<img class="wac-today-ico" src="${base}.png" srcset="${base}.png 1x, ${base}@2x.png 2x, ${base}@4x.png 4x" alt="" draggable="false">`;
+    }
+
     function todayHidden() {
         let v = '';
         try { v = (typeof sh.todayOption === 'function' && sh.todayOption(APP_ID, 'accounts')) || ''; } catch (_) { v = ''; }
@@ -445,27 +490,38 @@
             const anlasOff = parts.some((p) => p.caption === 'Anlas' && hidden.has(p.id));
             const usageOff = parts.some((p) => p.id !== row.key && p.caption !== 'Anlas' && hidden.has(p.id));
             const view = usageOff ? Object.assign({}, row, { sides: rowSides(row).filter((x) => !/usage/i.test(x.label)), side: null }) : row;
-            return { name: row.name, balance: anlasOff ? '' : todayBalance(row), status: todayStatus(view, alerts), level: row.dot || 'ok', key: row.key };
+            const art = serviceArt(row);
+            return { name: row.name, balance: anlasOff ? '' : todayBalance(row), status: todayStatus(view, alerts), level: row.dot || 'ok', key: row.key,
+                service: serviceLabel(row), account: accountName(row), small: art.small, panel: art.panel };
         });
         if (show === 'notices') {
             out = out.filter((r) => r.level === 'warn' || r.level === 'bad' || alerts.some((a) => String(a.id || '').startsWith(`${r.key}:`)));
             // alerts no row carries (service keys ...): their own line
             alerts.filter((a) => !rows.some((row) => String(a.id || '').startsWith(`${row.key}:`)))
-                .forEach((a) => out.push({ name: a.service || 'Accounts', balance: '', status: a.title, level: a.level === 'critical' ? 'bad' : 'warn', key: a.id }));
+                .forEach((a) => out.push({ name: a.service || 'Accounts', balance: '', status: a.title, level: a.level === 'critical' ? 'bad' : 'warn', key: a.id,
+                    service: a.service || 'Accounts', account: '', small: 'app-accounts', panel: 'x:app-accounts-lg' }));
         }
         return out;
     }
 
-    /** The 6.5 home screen panel (wmTitanium.js): an account a page, its balance and status under its name. */
+    /**
+     * The 6.5 home screen panel (wmTitanium.js): an account a page with its service's icon (#829); the
+     * account's own name or its figure is the main line, the service / account type the line under it,
+     * then the status.
+     */
     function todayTitanium() {
-        const rows = todayShow() === 'balances'
-            ? todayBalanceCols().map((c) => ({ name: c.caption, balance: c.value, status: '' }))
-            : todayRows();
-        if (!rows.length) return null;
+        const pages = todayShow() === 'balances'
+            ? todayBalanceCols().map((c) => ({ icon: c.panel, title: c.value, line2: c.label }))
+            : todayRows().map((r) => {
+                const main = r.account || r.balance || r.status || r.service;
+                const third = [r.account && r.balance, main === r.status ? '' : r.status].filter(Boolean).join(', ');
+                return { icon: r.panel, title: main, line2: main === r.service ? '' : r.service, line3: third };
+            });
+        if (!pages.length) return null;
         const go = () => { if (current.alerts.length) tab = 'alerts'; sh.open(APP_ID, { fromStart: true }); };
         return {
             label: 'accounts', icon: 'x:app-accounts-lg',
-            pages: rows.map((r) => ({ title: r.name, line2: r.balance, line3: r.status })),
+            pages,
             softKey: { label: 'Accounts', action: go }, onTap: go
         };
     }
@@ -476,7 +532,7 @@
         const hidden = todayHidden();
         const out = [];
         readModel().rows.forEach((row) => accountParts(row).forEach((p) => {
-            if (!hidden.has(p.id) && p.value) out.push({ caption: p.caption, value: p.value, level: row.dot || 'ok' });
+            if (!hidden.has(p.id) && p.value) out.push({ caption: p.caption, value: p.value, level: row.dot || 'ok', label: p.label, panel: serviceArt(row).panel, small: serviceArt(row).small });
         }));
         return out;
     }
@@ -502,7 +558,7 @@
                     sh.open(APP_ID, { fromStart: true });
                 });
             }
-            const html = rows.map((c) => `<div class="wac-today-col"><span class="wac-today-cap">${esc(c.caption)}</span><span class="wac-today-fig">${esc(c.value.replace(/\s+Anlas$/, ''))}</span></div>`).join('');
+            const html = rows.map((c) => `<div class="wac-today-col"><span class="wac-today-cap">${smallIconHtml(c.small)}${esc(c.caption)}</span><span class="wac-today-fig">${esc(c.value.replace(/\s+Anlas$/, ''))}</span></div>`).join('');
             if (html !== todayKey) { todayKey = html; el.innerHTML = html; }
             return true;
         }
@@ -517,11 +573,266 @@
             });
         }
         const html = '<div class="wac-today-head"><span>Account</span><span>Balance</span><span>Status</span></div>'
-            + rows.map((r) => `<div class="wac-today-row"><span class="wac-today-name">${esc(r.name)}</span>`
+            + rows.map((r) => `<div class="wac-today-row"><span class="wac-today-name">${smallIconHtml(r.small)}${esc(r.name)}</span>`
                 + `<span class="wac-today-bal">${esc(r.balance)}</span>`
                 + `<span class="wac-today-st"><i class="wac-today-light is-${esc(r.level)}" title="${esc(DOT_TITLES[r.level] || '')}"></i>${esc(r.status)}</span></div>`).join('');
         if (html !== todayKey) { todayKey = html; el.innerHTML = html; }
         return true;
+    }
+
+    // ---------------------------------------------------------------- notifications (#829)
+    // Menu > Options... (a hidden Settings page, accounts-options): which account events raise a WM
+    // notification (class "Other notifications"), each once until its condition clears. Checked on
+    // every server ping (balance, V5 usage, account health, subscription and status.novelai.net ride on
+    // it, web_server.js) and after each wallet_status read (the other accounts' balances): no polling.
+    //   renewal  the subscription renews within N days / has renewed (expiresAt moved on) / renewal failed
+    //   daily    today's spend nears the subscription's daily refill: the month's fixed Anlas
+    //            (perks.moduleTrainingSteps, else the tier's) over 30 days; Opus V5 usage against its
+    //            refill per day (opusUsage.timeUntilNextPercent). Counted by this phone from local midnight.
+    //   fixed / paid  fixed or paid Anlas under a threshold (fixed: subscribers only)
+    //   balance  a Balance figure of another account (TokenRouter, RunPod, a Director engine host) under $N
+    //   api      the NovelAI API is not answering (account health upstreamUnavailable) or
+    //            status.novelai.net reports an incident
+
+    const NOTIFY_KEY = 'wmAccountNotify';
+    const NOTIFIED_KEY = 'wmAccountNotified';
+    const DAY_KEY = 'wmAccountUsageDay';
+    const SUB_KEY = 'wmAccountSubSeen';
+    const NOTIFY_DEFAULTS = { renewal: true, renewalDays: 3, daily: true, dailyPct: 80, fixed: true, fixedBelow: 250, paid: false, paidBelow: 250, balance: true, balanceBelow: 5, api: true };
+    const MONTHLY_ANLAS = { 1: 1000, 2: 1000, 3: 10000 }; // Tablet, Scroll, Opus
+    const TIERS = { 0: 'Free', 1: 'Tablet', 2: 'Scroll', 3: 'Opus' };
+    const CHOICES = {
+        renewalDays: [[1, '1 day'], [3, '3 days'], [7, '7 days']],
+        dailyPct: [[50, 'at 50%'], [75, 'at 75%'], [80, 'at 80%'], [90, 'at 90%']],
+        fixedBelow: [[100, '100'], [250, '250'], [500, '500'], [1000, '1,000']],
+        paidBelow: [[100, '100'], [250, '250'], [500, '500'], [1000, '1,000']],
+        balanceBelow: [[1, '$1'], [5, '$5'], [10, '$10'], [25, '$25']]
+    };
+
+    const lsRead = (key, fallback) => { try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v && typeof v === 'object' ? v : fallback; } catch (_) { return fallback; } };
+    const lsWrite = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch (_) { /* private mode */ } };
+    const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));
+    const fmt = (n) => Math.round(n).toLocaleString();
+
+    function notifySettings() {
+        return Object.assign({}, NOTIFY_DEFAULTS, lsRead(NOTIFY_KEY, {}));
+    }
+
+    const openNotes = new Map(); // condition key -> appNote handle
+
+    function raise(key, title, text, icon) {
+        const note = sh && typeof sh.appNote === 'function'
+            ? sh.appNote({
+                title,
+                html: esc(text),
+                event: 'notification',
+                icon: icon || null,
+                softKeys: () => ({
+                    left: { label: 'View', action: () => { if (note) note.close(); openNotes.delete(key); sh.open(APP_ID, { fromStart: true }); } },
+                    right: { label: 'Dismiss', action: () => { if (note) note.close(); openNotes.delete(key); } }
+                })
+            })
+            : null;
+        if (note) openNotes.set(key, note);
+        else if (sh && typeof sh.notify === 'function') sh.notify({ title, text, icon: 'warning', asNote: true, timeout: false });
+    }
+
+    /** conds: [{ key, title, text }] that hold now; each is raised once until it is gone from the list. */
+    function settle(conds, scope) {
+        const done = lsRead(NOTIFIED_KEY, {});
+        const now = new Set(conds.map((c) => c.key));
+        let changed = false;
+        conds.forEach((c) => {
+            if (done[c.key]) return;
+            done[c.key] = Date.now();
+            changed = true;
+            raise(c.key, c.title, c.text, c.icon);
+        });
+        // cleared: notify again next time; a notification still up for it goes (the API answers again ...)
+        Object.keys(done).forEach((k) => {
+            if (!k.startsWith(`${scope}:`) || now.has(k)) return;
+            delete done[k];
+            changed = true;
+            const n = openNotes.get(k);
+            if (n && !k.startsWith('nai:renewed')) { n.close(); openNotes.delete(k); }
+        });
+        if (changed) lsWrite(NOTIFIED_KEY, done);
+    }
+
+    function localDay(t = Date.now()) {
+        const d = new Date(t);
+        return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    }
+
+    /** Today's spend (Anlas, V5 percent) as this phone saw it fall since local midnight. */
+    function trackDay(total, v5Remaining) {
+        const today = localDay();
+        let d = lsRead(DAY_KEY, null);
+        const was = JSON.stringify(d);
+        if (!d || d.day !== today) d = { day: today, lastTotal: total, spent: 0, lastV5: v5Remaining, v5Drop: 0 };
+        if (total != null) {
+            if (d.lastTotal != null && total < d.lastTotal) d.spent += d.lastTotal - total;
+            d.lastTotal = total; // a rise (renewal, a purchase) only moves the mark
+        }
+        if (v5Remaining != null) {
+            if (d.lastV5 != null && v5Remaining < d.lastV5) d.v5Drop = Math.round((d.v5Drop + d.lastV5 - v5Remaining) * 10) / 10;
+            d.lastV5 = v5Remaining;
+        }
+        if (JSON.stringify(d) !== was) lsWrite(DAY_KEY, d);
+        return d;
+    }
+
+    function novelAiConds(cfg) {
+        const opts = window.optionsData;
+        if (!opts) return null;
+        const deferred = typeof window.isAccountDataDeferred === 'function' && window.isAccountDataDeferred();
+        const out = [];
+        // the API first: it holds while account data is missing
+        if (cfg.api) {
+            const incident = typeof window.getActiveUpstreamIncident === 'function' ? window.getActiveUpstreamIncident({ respectInhibit: false }) : null;
+            if (opts.upstreamUnavailable === true && opts.userDataError !== 'No NovelAI API key configured') {
+                out.push({ key: 'nai:api:down', icon: 'status-error', title: 'NovelAI', text: `The NovelAI API is not responding.${opts.userDataError ? ` ${String(opts.userDataError).replace(/\.?$/, '.')}` : ''}` });
+            } else if (incident) {
+                out.push({ key: `nai:api:incident:${incident.key || incident.component}`, icon: 'status-warning', title: 'NovelAI', text: `NovelAI ${incident.component}: ${incident.status}.` });
+            }
+        }
+        if (deferred || !opts.balance) return out;
+        const b = opts.balance;
+        const fixed = num(b.fixedTrainingStepsLeft) || 0;
+        const paid = num(b.purchasedTrainingSteps) || 0;
+        const total = num(b.totalCredits);
+        const sub = opts.user && opts.user.subscription && typeof opts.user.subscription === 'object' ? opts.user.subscription : null;
+        const tier = sub ? num(sub.tier) : null;
+        const tierName = TIERS[tier] || 'NovelAI';
+        const expiresMs = sub && num(sub.expiresAt) ? num(sub.expiresAt) * 1000 : null;
+        // V5 usage (Opus): remaining percent and its refill per day
+        const usage = opts.opusUsage || (sub && sub.usage) || null;
+        let v5 = null;
+        if (tier === 3 && usage && num(usage.percent) != null) {
+            const secs = num(usage.timeUntilNextPercent);
+            v5 = { remaining: usage.isNegative ? 0 : Math.max(0, num(usage.percent)), refill: secs && secs > 0 ? 86400 / secs : 0 };
+        }
+        const day = trackDay(total != null && total >= 0 ? total : null, v5 ? v5.remaining : null);
+
+        if (cfg.renewal && sub) {
+            const seen = lsRead(SUB_KEY, {});
+            if (expiresMs && seen.expiresAt && expiresMs > seen.expiresAt + 86400000 && seen.expiresAt <= Date.now() + 3600000) {
+                // the old renewal date came and the date moved on: renewed (kept until the next cycle's own notices)
+                out.push({ key: `nai:renewed:${expiresMs}`, icon: null, title: 'NovelAI', text: `Your ${tierName} subscription renewed. It next renews on ${new Date(expiresMs).toLocaleDateString()}.` });
+            }
+            if (expiresMs && expiresMs !== seen.expiresAt) lsWrite(SUB_KEY, { expiresAt: expiresMs });
+            if (opts.subscriptionRenewalFailed) {
+                out.push({ key: 'nai:renewal-failed', icon: 'status-error', title: 'NovelAI', text: `Your ${tierName} subscription could not renew. Renew it or update billing on novelai.net.` });
+            } else if (tier > 0 && expiresMs && expiresMs > Date.now() && expiresMs - Date.now() <= cfg.renewalDays * 86400000) {
+                const hours = Math.max(1, Math.round((expiresMs - Date.now()) / 3600000));
+                const when = hours < 48 ? `${hours} hour${hours === 1 ? '' : 's'}` : `${Math.round(hours / 24)} days`;
+                out.push({ key: `nai:renewal:${expiresMs}`, icon: null, title: 'NovelAI', text: `Your ${tierName} subscription renews in ${when} (${new Date(expiresMs).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}). Unused fixed Anlas (${fmt(fixed)}) expire then.` });
+            } else {
+                // the renewed notice stays one until the cycle after
+                const done = lsRead(NOTIFIED_KEY, {});
+                Object.keys(done).filter((k) => k.startsWith('nai:renewed:')).forEach((k) => out.push({ key: k }));
+            }
+        }
+        if (cfg.daily && tier > 0) {
+            const monthly = num(sub && sub.perks && sub.perks.moduleTrainingSteps) || MONTHLY_ANLAS[tier] || 0;
+            const budget = monthly / 30;
+            if (budget > 0 && day.spent >= budget * (cfg.dailyPct / 100)) {
+                out.push({ key: `nai:daily:anlas:${day.day}`, icon: 'status-warning', title: 'NovelAI', text: `${fmt(day.spent)} Anlas used today, ${Math.round((day.spent / budget) * 100)}% of the daily refill (about ${fmt(budget)} a day from ${fmt(monthly)} fixed Anlas a month).` });
+            }
+            if (v5 && v5.refill > 0 && day.v5Drop >= v5.refill * (cfg.dailyPct / 100)) {
+                out.push({ key: `nai:daily:v5:${day.day}`, icon: 'status-warning', title: 'NovelAI', text: `V5 usage down ${day.v5Drop}% today, ${Math.round((day.v5Drop / v5.refill) * 100)}% of what it refills in a day (${Math.round(v5.refill * 10) / 10}%).` });
+            }
+        }
+        if (cfg.fixed && tier > 0 && total !== -1 && fixed < cfg.fixedBelow) {
+            out.push({ key: 'nai:fixed-low', icon: 'status-warning', title: 'NovelAI', text: `Fixed Anlas are low: ${fmt(fixed)} left.${expiresMs && expiresMs > Date.now() ? ` They refill on ${new Date(expiresMs).toLocaleDateString()}.` : ''}` });
+        }
+        if (cfg.paid && total !== -1 && paid < cfg.paidBelow) {
+            out.push({ key: 'nai:paid-low', icon: 'status-warning', title: 'NovelAI', text: `Paid Anlas are low: ${fmt(paid)} left.` });
+        }
+        return out;
+    }
+
+    /** A Balance figure as dollars ("$4.20", "4.20 USD"); other currencies are left alone. */
+    function dollars(text) {
+        const s = String(text || '');
+        if (!/\$|USD/i.test(s)) return null;
+        return num(s.replace(/[^0-9.-]/g, ''));
+    }
+
+    function balanceConds(cfg) {
+        if (!cfg.balance) return [];
+        const out = [];
+        readModel().rows.forEach((row) => {
+            if (row.service === 'novelai') return;
+            rowSides(row).forEach((side) => {
+                if (side.label !== 'Balance') return;
+                const v = dollars(side.value);
+                if (v == null || v >= cfg.balanceBelow) return;
+                out.push({ key: `acct:low:${row.key}`, icon: 'status-warning', title: serviceLabel(row), text: `${serviceLabel(row)} balance is low: ${side.value} left.` });
+            });
+        });
+        return out;
+    }
+
+    let checkTimer = null;
+    function checkSoon() {
+        clearTimeout(checkTimer);
+        // after the ping's own handlers stored what it brought
+        checkTimer = setTimeout(checkNow, 50);
+    }
+
+    function checkNow() {
+        const cfg = notifySettings();
+        try {
+            const nai = novelAiConds(cfg);
+            if (nai) settle(nai, 'nai');
+            // the other accounts only once wallet_status answered (admins)
+            if (state().hasServer) settle(balanceConds(cfg), 'acct');
+        } catch (err) { console.warn('[wmAccounts] notifications', err); }
+    }
+
+    function optionsPage() {
+        const ws = window.wmSettings;
+        if (!ws || typeof ws.registerPage !== 'function') return;
+        const ui = ws.ui;
+        const row = (k, label, d, thr) => {
+            const cur = thr ? (CHOICES[thr].find(([v]) => v === d[thr]) || CHOICES[thr][0]) : null;
+            return `<div class="wac-opt">${ui.check(`wac-${k}`, label, d[k], `data-k="${k}"`)}${thr ? ui.comboHtml(thr, cur[1], !d[k]) : ''}</div>`;
+        };
+        ws.registerPage({
+            id: 'accounts-options', tab: 'personal', label: 'Options', icon: 'app-accounts', hidden: true,
+            title: 'Accounts',
+            tabs: [['notifications', 'Notifications']],
+            init: () => notifySettings(),
+            render(el, _tab, d) {
+                el.innerHTML = `${ui.text('Show a notification when:')}
+                    ${ui.sub('NovelAI')}
+                    ${row('renewal', 'Renewal is within', d, 'renewalDays')}
+                    ${row('daily', 'Usage nears the daily refill', d, 'dailyPct')}
+                    ${row('fixed', 'Fixed Anlas fall below', d, 'fixedBelow')}
+                    ${row('paid', 'Paid Anlas fall below', d, 'paidBelow')}
+                    ${row('api', 'The NovelAI API is not responding', d)}
+                    ${ui.sub('Other accounts')}
+                    ${row('balance', 'A balance falls below', d, 'balanceBelow')}`;
+                el.querySelectorAll('input[type="checkbox"][data-k]').forEach((cb) => cb.addEventListener('change', () => {
+                    d[cb.dataset.k] = cb.checked;
+                    const combo = cb.closest('.wac-opt').querySelector('.wm-combo');
+                    if (combo) combo.disabled = !cb.checked;
+                }));
+                el.querySelectorAll('.wm-combo[data-act]').forEach((btn) => ui.bindCombo(btn, CHOICES[btn.dataset.act], d[btn.dataset.act], (v) => { d[btn.dataset.act] = v; }, 'right'));
+            },
+            commit(d) {
+                const out = {};
+                Object.keys(NOTIFY_DEFAULTS).forEach((k) => { out[k] = d[k]; });
+                lsWrite(NOTIFY_KEY, out);
+                checkSoon();
+                return [];
+            }
+        });
+    }
+
+    function openOptions() {
+        if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('accounts-options', null, { direct: true });
     }
 
     // ---------------------------------------------------------------- wiring
@@ -535,6 +846,8 @@
         // key tripwire and Security Center key checks (the desktop tray listens the same way)
         ws.on('api_service_lock_changed', () => refresh({ force: true }));
         ws.on('api_key_status_changed', () => refresh({ force: true }));
+        // #829: balance, usage, account health, subscription and NovelAI status arrive with every ping
+        ws.on('ping', checkSoon);
     }
 
     function startPolling() {
@@ -585,10 +898,12 @@
                 titanium: todayTitanium
             });
         }
+        optionsPage();
         startPolling();
+        checkSoon();
     }
 
-    window.wmAccounts = { open: (t) => { if (t) tab = t; sh.open(APP_ID, { fromStart: true }); }, refresh: () => refresh({ force: true }), todayText: () => { todayCache.at = 0; return todayText(); } };
+    window.wmAccounts = { open: (t) => { if (t) tab = t; sh.open(APP_ID, { fromStart: true }); }, refresh: () => refresh({ force: true }), todayText: () => { todayCache.at = 0; return todayText(); }, options: openOptions, checkNotifications: checkNow };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

@@ -238,6 +238,15 @@
         let gpu = '';
         try { gpu = root.melatonDeviceManager ? root.melatonDeviceManager.gpuName() : ''; } catch (_) { /* none */ }
         facts = { edition: ed.name, processor: host.processor || '', memory: formatMemory(host.memory), graphics: gpu, computer: String(host.hostname || '').toUpperCase() };
+        // the DeX desktop of a phone (#829): the phone itself, as System shows it (cplSystem phoneFacts)
+        let phone = null;
+        try { phone = T && typeof T.phoneFacts === 'function' ? T.phoneFacts() : null; } catch (_) { phone = null; }
+        if (phone) {
+            facts.model = [phone.manufacturer && !String(phone.model || '').startsWith(phone.manufacturer) ? phone.manufacturer : '', phone.model].filter(Boolean).join(' ');
+            facts.processor = [phone.processor, phone.clock].filter(Boolean).join(' ');
+            facts.memory = formatMemory(phone.memory);
+            facts.computer = phone.name || facts.computer;
+        }
         factsLoading = false;
         if (mounted && !selected) {
             const box = mounted.main.querySelector('.wc-facts');
@@ -247,8 +256,8 @@
 
     function factsHtml() {
         const f = facts || {};
-        const lines = [f.edition || 'Melaton', f.processor, f.memory, f.graphics, f.computer ? `Computer Name: ${f.computer}` : ''];
-        return lines.map((l) => `<div class="wc-fact">${esc(l || '')}</div>`).join('');
+        const lines = [f.edition || 'Melaton', f.model, f.processor, f.memory, f.graphics, f.computer ? `Computer Name: ${f.computer}` : ''];
+        return lines.filter((l, i) => l || (i !== 1)).map((l) => `<div class="wc-fact">${esc(l || '')}</div>`).join('');
     }
 
     function accountName() {

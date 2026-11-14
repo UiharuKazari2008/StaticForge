@@ -15,8 +15,10 @@
  *                    International LocaleName and ...\Geo Nation, the lists from cplDialogs.js's own
  *                    Regional and Language Options fields; the other tabs show the locale's formats
  *                    (Melaton stores the locale and the time style; app.html regionalFormats applies them).
- *   power            Power (Battery, Advanced): the Battery API, and Power Options' registry (cplPages.js:
- *                    ...\Power\User\PowerSchemes ActivePowerScheme, <plan> display / sleep minutes).
+ *   power            Power (Battery, Advanced): the Android app's battery (wmShell deviceView / readBattery:
+ *                    details and the live Power use graph, #829) or the Battery API, and Power Options'
+ *                    registry (cplPages.js: ...\Power\User\PowerSchemes ActivePowerScheme, <plan> display /
+ *                    sleep minutes); Advanced ends with Restart (a cold boot).
  *   backlight        Backlight (Battery Power, External Power): the active plan's display minutes.
  *   update           Melaton Update (Update, Schedule, Version): the service worker's own check /
  *                    install / restart calls (serviceWorkerManager.js) with cplUpdate.js's state
@@ -696,13 +698,25 @@
         const plans = {};
         PLANS.forEach((p) => { plans[p.id] = { display: planValue(p.id, 'display'), sleep: planValue(p.id, 'sleep') }; });
         const sh0 = sh();
-        const d = { plan: activePlan(), plans, battery: null, low: sh0 && typeof sh0.batteryLowLevel === 'function' ? sh0.batteryLowLevel() : 25 };
+        const d = { plan: activePlan(), plans, battery: null, low: sh0 && typeof sh0.batteryLowLevel === 'function' ? sh0.batteryLowLevel() : 25, hist: [] };
         d.initial = { plan: d.plan, plans: JSON.parse(JSON.stringify(plans)), low: d.low };
-        if (navigator.getBattery) {
+        // the battery as the title bar knows it (wmShell deviceView: the app's numbers, else the
+        // browser's); false = nothing reports one. The app's bridge answers at once; a browser's
+        // Battery API first (null = "Checking the battery..." until it has)
+        d.take = () => {
+            const s1 = sh();
+            const v = s1 && typeof s1.deviceView === 'function' ? s1.deviceView().battery : null;
+            d.battery = v || false;
+        };
+        const s1 = sh();
+        if (window.AndroidHardware || window.AndroidDeviceStatus) {
+            if (s1 && typeof s1.readBattery === 'function') s1.readBattery();
+            d.take();
+        } else if (navigator.getBattery) {
             navigator.getBattery().then((b) => {
-                d.battery = b;
-                const redraw = () => { if (d.rerender && d.tab === 'battery') d.rerender(); };
-                ['levelchange', 'chargingchange'].forEach((ev) => b.addEventListener(ev, redraw));
+                const redraw = () => { d.take(); if (d.rerender && d.tab === 'battery') d.rerender(); };
+                ['levelchange', 'chargingchange', 'chargingtimechange', 'dischargingtimechange'].forEach((ev) => b.addEventListener(ev, redraw));
+                d.take();
                 if (d.rerender) d.rerender();
             }).catch(() => { d.battery = false; if (d.rerender) d.rerender(); });
         } else {
@@ -747,15 +761,134 @@
         ui.bindCombo(btn, list.map((n) => [n, `${n}%`]), d.low, (v) => { d.low = Number(v); btn.textContent = `${d.low}%`; });
     }
 
+    // ---- Battery (#829): the device's level and state, then what the Android app reports of the
+    // cell (each row only when known: never guessed), and the live power graph while the page shows.
+
+    const bt = () => { const s1 = sh(); return (s1 && s1.batteryText) || { watts: (mw) => `${Math.round(Math.abs(mw))} mW`, duration: (ms) => `${Math.round(ms / 60000)} min`, temp: (c) => `${c} °C` }; };
+    const VIA = { ac: 'AC', usb: 'USB', wireless: 'Wireless', dock: 'Dock' };
+    const HEALTH = { good: 'Good', overheat: 'Overheat', dead: 'Dead', over_voltage: 'Over voltage', cold: 'Cold', failure: 'Failure' };
+
+    function batteryStatus(b) {
+        if (!b) return 'Unknown';
+        if ((b.charging || b.plugged) && (b.level >= 100 || b.status === 'full')) return 'Charged';
+        if (b.charging) return 'Charging';
+        if (b.status === 'not_charging' || b.plugged) return 'Not charging';
+        return 'On battery';
+    }
+
+    /** [label, value] rows of the cell's details, only what is known (6.5 leads with its Status row). */
+    function batteryRows(b, d) {
+        if (!b) return [];
+        const t = bt();
+        const rows = d && d.statusRow ? [['Status:', batteryStatus(b)]] : [];
+        const num = (n) => Number(n).toLocaleString();
+        if (b.charging && b.plugged) rows.push(['Charger:', VIA[b.plugged] || b.plugged]);
+        if (b.charging && b.powerMw != null && b.powerMw > 0) rows.push(['Charge rate:', t.watts(b.powerMw)]);
+        if (b.charging && b.toFullMs && b.level < 100) rows.push(['Time to full:', t.duration(b.toFullMs)]);
+        if (!b.charging && b.remainingMs) rows.push(['Time left:', t.duration(b.remainingMs)]);
+        if (b.health && b.health !== 'unknown') rows.push(['Health:', HEALTH[b.health] || b.health]);
+        if (b.temperatureC != null) rows.push(['Temperature:', t.temp(b.temperatureC)]);
+        if (b.voltageMv != null) rows.push(['Voltage:', `${(b.voltageMv / 1000).toFixed(2)} V`]);
+        if (b.technology) rows.push(['Technology:', b.technology]);
+        if (b.fullCapacityMah != null) rows.push(['Full capacity:', `${num(Math.round(b.fullCapacityMah))} mAh${b.designCapacityMah ? ` (${Math.round(b.fullCapacityMah / b.designCapacityMah * 100)}%)` : ''}`]);
+        if (b.designCapacityMah != null) rows.push(['Design capacity:', `${num(Math.round(b.designCapacityMah))} mAh`]);
+        if (b.cycleCount != null) rows.push(['Charge cycles:', num(b.cycleCount)]);
+        return rows;
+    }
+
+    const detailsHtml = (b, d) => {
+        const rows = batteryRows(b, d);
+        return rows.length ? `<div class="wm-sys-facts wm-sys-batrows" data-f="rows">${ui.facts(rows)}</div>` : '';
+    };
+
+    /*
+     * Power use: the battery's current power, + into the cell (charging) over the middle line, -
+     * out of it under, one bar per read (POWER_BARS, newest at the right), scaled to the largest
+     * |W| in view. Only with the app's live read (AndroidHardware.getBattery); a browser has none.
+     */
+    const POWER_BARS = 48;
+    const POWER_MS = 1500;
+    const hasLiveBattery = () => !!(window.AndroidHardware && typeof window.AndroidHardware.getBattery === 'function');
+
+    function powerGraphHtml() {
+        if (!hasLiveBattery()) return '';
+        return `<div class="wm-sys-pgraph-head"><span>Power use:</span><span data-f="pnow"></span></div>
+            <div class="wm-sys-pgraph-wrap">
+                <div class="wm-sys-pgraph-scale"><span data-f="ptop"></span><span>0</span><span data-f="pbot"></span></div>
+                <div class="wm-sys-pgraph" data-f="graph" role="img" aria-label="Battery power over the last minute"><div class="wm-sys-pgraph-bars">${'<i></i>'.repeat(POWER_BARS)}</div></div>
+            </div>`;
+    }
+
+    function paintPowerGraph(el, d) {
+        const g = el.querySelector('[data-f="graph"]');
+        if (!g) return;
+        const t = bt();
+        const h = d.hist;
+        const last = h.length ? h[h.length - 1] : null;
+        const now = el.querySelector('[data-f="pnow"]');
+        if (now) now.textContent = last == null ? '' : last > 0 ? `Charging, ${t.watts(last)}` : last < 0 ? `Using ${t.watts(last)}` : '0 mW';
+        // a round number of watts at the scale's ends, so the bars keep still between small changes
+        const peak = h.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+        const top = [1, 2, 3, 5, 10, 15, 20, 30, 45, 60, 100, 150].map((w) => w * 1000).find((w) => w >= peak) || Math.ceil(peak / 50000) * 50000;
+        el.querySelector('[data-f="ptop"]').textContent = `+${top / 1000} W`;
+        el.querySelector('[data-f="pbot"]').textContent = `−${top / 1000} W`;
+        const bars = g.querySelectorAll('.wm-sys-pgraph-bars > i');
+        const off = POWER_BARS - h.length;
+        bars.forEach((bar, i) => {
+            const v = i >= off ? h[i - off] : null;
+            const cls = v == null || v === 0 ? '' : v > 0 ? 'is-in' : 'is-out';
+            if (bar.className !== cls) bar.className = cls;
+            bar.style.setProperty('--h', cls ? `${Math.max(2, Math.round(Math.abs(v) / top * 50))}%` : '0');
+        });
+    }
+
+    /**
+     * The live read while the Battery tab is on screen: every POWER_MS a fresh bridge read (local,
+     * not network), its power into the graph and the rows redrawn in place. Reads pause while the
+     * page is not visible (another program in front, the screen off) and the timer ends once the
+     * page is gone or shows another tab.
+     */
+    function sampleBattery(el, d) {
+        clearInterval(d.sampler);
+        d.sampler = null;
+        if (!hasLiveBattery()) return;
+        const s1 = sh();
+        const tick = () => {
+            if (!el.isConnected || d.tab !== 'battery') { clearInterval(d.sampler); d.sampler = null; return; }
+            if (document.hidden || !el.getClientRects().length) return;
+            const raw = s1 && typeof s1.readBattery === 'function' ? s1.readBattery() : null;
+            if (!raw) return;
+            d.take();
+            const b = d.battery;
+            if (b && b.powerMw != null) {
+                d.hist.push(b.powerMw);
+                if (d.hist.length > POWER_BARS) d.hist.splice(0, d.hist.length - POWER_BARS);
+            }
+            // the rows: in place while the same ones show, else the page again (a charger came or went)
+            const sig = JSON.stringify([batteryStatus(b), b && b.level, batteryRows(b, d).map((r) => r[0])]);
+            if (sig !== d.batSig) { d.batSig = sig; if (d.rerender) d.rerender(); return; }
+            const rowsEl = el.querySelector('[data-f="rows"]');
+            if (rowsEl) {
+                const vals = batteryRows(b, d).map((r) => r[1]);
+                rowsEl.querySelectorAll('.wm-facts > span:nth-child(2n)').forEach((sp, i) => { if (sp.textContent !== vals[i]) sp.textContent = vals[i]; });
+            }
+            paintPowerGraph(el, d);
+        };
+        d.batSig = JSON.stringify([batteryStatus(d.battery), d.battery && d.battery.level, batteryRows(d.battery, d).map((r) => r[0])]);
+        paintPowerGraph(el, d);
+        d.sampler = setInterval(tick, POWER_MS);
+        if (!d.hist.length) tick();
+    }
+
     function batteryHtml(d) {
         const b = d.battery;
         if (b === null) return ui.text('Checking the battery...');
-        const level = b ? Math.round(b.level * 100) : null;
-        const status = !b ? 'Unknown' : b.charging ? (level >= 100 ? 'Charged' : 'Charging') : 'On battery';
+        const level = b ? b.level : null;
         const bar = level == null ? '' : `<div class="wm-sys-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${level}"><div style="width:${level}%"></div></div>`;
         return `${ui.sub('Main battery:')}
             <div class="wm-sys-battery">${bar}<span>${level == null ? 'Unknown' : `Battery remaining: ${level}%`}</span></div>
-            ${ui.value('Status:', status)}
+            ${b ? detailsHtml(b, d) : ui.value('Status:', batteryStatus(b))}
+            ${powerGraphHtml()}
             ${ui.gap()}
             ${lowHtml(d)}
             ${b ? '' : ui.note('This browser does not report the battery.')}`;
@@ -765,20 +898,29 @@
     // state where the device names the cell type, "Battery power remaining:" over the 0..100 bar.
     // Advanced: "On battery power:" and "On external power:", each a check box beside its combo;
     // Melaton has one sleep time per plan, so both groups show and set that one value (as
-    // Backlight's two tabs do), and the desktop's power plans follow under them.
+    // Backlight's two tabs do), and the desktop's power plans follow under them, then Restart.
 
     function batteryHtml61(d) {
         const b = d.battery;
         if (b === null) return ui.text('Checking the battery...');
-        const level = b ? Math.round(b.level * 100) : null;
-        const status = !b ? 'Unknown' : b.charging ? (level >= 100 ? 'Charged' : 'Charging') : 'On battery';
+        const level = b ? b.level : null;
         return `<div class="wm-sys-pow">
-            <div class="wm-sys-pow-main"><b>Main battery:</b><b>${esc(status)}</b></div>
+            <div class="wm-sys-pow-main"><b>Main battery:</b><b>${esc(batteryStatus(b))}</b></div>
             <div class="wm-sys-pow-rem">Battery power remaining:${level == null ? '' : ` ${level}%`}</div>
             <div class="wm-sys-pow-bar"><span>0</span><div class="wm-sys-pow-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100"${level == null ? '' : ` aria-valuenow="${level}"`}><div style="width:${level == null ? 0 : level}%"></div></div><span>100</span></div>
             ${b ? '' : `<div class="wm-sys-pow-plan">${ui.note('This browser does not report the battery.')}</div>`}
+            ${b && (batteryRows(b, d).length || hasLiveBattery()) ? `<div class="wm-sys-pow-plan">${detailsHtml(b, d)}${powerGraphHtml()}</div>` : ''}
             <div class="wm-sys-pow-plan">${lowHtml(d)}</div>
         </div>`;
+    }
+
+    /** Restart's part of Advanced (#829: it was a tab of its own). */
+    const restartHtml = () => `${ui.sub('Restart:')}
+        ${ui.text('Restart Melaton Mobile. It starts again from the beginning, as when the device is turned on. Programs that are open will close.')}
+        ${ui.buttons([['restart', 'Restart']], false)}`;
+    function bindRestart(el) {
+        const btn = el.querySelector('[data-act="restart"]');
+        if (btn) btn.addEventListener('click', () => { void askColdBoot(); });
     }
 
     function powerAdvanced61(el, d, api) {
@@ -796,7 +938,9 @@
                 ${PLANS.map((p) => ui.radio('plan', p.id, p.name, p.id === d.plan)).join('')}
                 ${ui.gap()}
                 ${ui.note('The plans and this time are the desktop\'s Power Options values.')}</div>
+            <div class="wm-sys-pow-plan">${restartHtml()}</div>
         </div>`;
+        bindRestart(el);
         ['battery', 'external'].forEach((key) => {
             ui.bindCombo(el.querySelector(`[data-act="min-${key}"]`), list.map((m) => [m, minuteText(m)]), remember, (v) => {
                 d.plans[d.plan].sleep = v;
@@ -849,19 +993,14 @@
     function powerRender(el, tab, d, api) {
         d.rerender = api.rerender;
         d.tab = tab;
-        if (tab === 'restart') {
-            el.innerHTML = `${ui.text('Restart Melaton Mobile. It starts again from the beginning, as when the device is turned on. Programs that are open will close.')}
-                ${ui.gap()}
-                ${ui.buttons([['restart', 'Restart']], false)}`;
-            el.querySelector('[data-act="restart"]').addEventListener('click', () => { void askColdBoot(); });
-            return;
-        }
+        if (tab === 'battery' && d.battery !== null) d.take();
+        d.statusRow = !!(window.wmShell && window.wmShell.version === '6.5');
         if (!(window.wmShell && window.wmShell.version === '6.5')) {
-            if (tab === 'battery') { el.innerHTML = batteryHtml61(d); bindLow(el, d); }
+            if (tab === 'battery') { el.innerHTML = batteryHtml61(d); bindLow(el, d); sampleBattery(el, d); }
             else powerAdvanced61(el, d, api);
             return;
         }
-        if (tab === 'battery') { el.innerHTML = batteryHtml(d); bindLow(el, d); return; }
+        if (tab === 'battery') { el.innerHTML = batteryHtml(d); bindLow(el, d); sampleBattery(el, d); return; }
         el.innerHTML = `${ui.sub('Power plan:')}
             ${PLANS.map((p) => ui.radio('plan', p.id, p.name, p.id === d.plan)).join('')}
             ${ui.gap()}
@@ -873,6 +1012,8 @@
             api.rerender();
         }));
         minutesControl(el.querySelector('[data-f="min"]'), d, 'sleep', 'Turn off device if not used for');
+        el.insertAdjacentHTML('beforeend', `${ui.gap()}${restartHtml()}`);
+        bindRestart(el);
     }
 
     /** Power Options' own writes: the active plan (handlers['power-options'].change), then the plan's minutes (power-plan save). */
@@ -1502,7 +1643,7 @@
 
     wmSettings.registerPage({
         id: 'power', tab: 'system', label: 'Power', icon: 'set-power',
-        tabs: [['battery', 'Battery'], ['advanced', 'Advanced'], ['restart', 'Restart']],
+        tabs: [['battery', 'Battery'], ['advanced', 'Advanced']],
         init: powerInit,
         render: powerRender,
         commit: powerCommit
@@ -1917,20 +2058,55 @@
         });
     }
 
+    /*
+     * Hardware (#829): Device Manager's tree on the phone - the computer at the root, Vista's device
+     * classes with their class icons and +/- boxes on dotted lines, a class opens on a tap and a device
+     * shows its properties. On a phone with the Android app this is the phone's own hardware
+     * (cplDeviceManager.js deviceCategories); in a browser, what the browser can see.
+     */
+    function hardwareTree(el, d, api) {
+        const dm = window.melatonDeviceManager;
+        const root = dm && typeof dm.computerName === 'function' ? dm.computerName() : 'Melaton';
+        if (!d.open) d.open = new Set();
+        const last = d.cats.length - 1;
+        el.innerHTML = `${ui.text(window.AndroidHardware ? 'The hardware in this device (Device Manager):' : 'Devices this browser can see (Device Manager):')}
+            <div class="wm-sys-dm" role="tree">
+                <div class="wm-sys-dm-row is-root" role="treeitem" aria-expanded="true"><span class="wm-sys-dm-box is-open"></span><img src="/static_images/vista-devmgr/root-16.png" alt=""><span>${esc(root)}</span></div>
+                ${d.cats.map((c, i) => {
+                    const open = d.open.has(c.name);
+                    return `<div class="wm-sys-dm-row is-cat${i === last ? ' is-last' : ''}" role="treeitem" aria-expanded="${open}" data-cat="${i}"><span class="wm-sys-dm-box${open ? ' is-open' : ''}"></span><img src="${esc(c.icon)}" alt=""><span>${esc(c.name)}</span></div>
+                        ${open ? c.devices.map((dev, k) => `<div class="wm-sys-dm-row is-dev${i === last ? ' in-last' : ''}${k === c.devices.length - 1 ? ' is-last' : ''}" role="treeitem" data-cat="${i}" data-dev="${k}"><img src="${esc(c.icon)}" alt=""><span>${esc(dev)}</span></div>`).join('') : ''}`;
+                }).join('')}
+            </div>`;
+        const tree = el.querySelector('.wm-sys-dm');
+        tree.addEventListener('click', (e) => {
+            const row = e.target.closest('.wm-sys-dm-row');
+            if (!row || row.classList.contains('is-root')) return;
+            tree.querySelectorAll('.is-selected').forEach((r) => r.classList.remove('is-selected'));
+            row.classList.add('is-selected');
+            const c = d.cats[Number(row.dataset.cat)];
+            if (row.classList.contains('is-cat')) {
+                if (d.open.has(c.name)) d.open.delete(c.name); else d.open.add(c.name);
+                const top = el.scrollTop;
+                api.rerender();
+                el.scrollTop = top;
+                return;
+            }
+            const name = c.devices[Number(row.dataset.dev)];
+            void ui.messageBox({
+                title: 'Device Manager', icon: 'info',
+                text: `${name}\n\nDevice type: ${c.name}\nManufacturer: ${/Melaton|Dreamscape|Microsoft/.test(name) ? 'Xyridian Corporation' : '(Standard system devices)'}\n\nThis device is working properly.`
+            });
+        });
+    }
+
     function aboutRender(el, tab, d, api) {
         d.rerender = api.rerender;
         if (!d.started) aboutStart(d);
         if (!d.ready) { el.innerHTML = loadingHtml(d); return; }
         if (tab === 'sys-hardware') {
             if (!d.cats) { el.innerHTML = ui.text('Looking for devices...'); return; }
-            const rows = [];
-            d.cats.forEach((c, i) => {
-                rows.push({ key: `c${i}`, label: c.name, img: c.icon });
-                c.devices.forEach((dev, k) => rows.push({ key: `c${i}-${k}`, label: dev, indent: true }));
-            });
-            el.innerHTML = `${ui.text('Devices this browser can see (Device Manager):')}
-                <div class="wm-sys-devices">${ui.listbox(rows, { maxHeight: 240 })}</div>`;
-            ui.bindListbox(el.querySelector('.wm-listbox'));
+            hardwareTree(el, d, api);
             return;
         }
         const T = window.cplSystem && window.cplSystem._test;
@@ -1948,7 +2124,7 @@
         const net = window.melatonNetworkDialogs && typeof window.melatonNetworkDialogs.connectionInfo === 'function'
             ? window.melatonNetworkDialogs.connectionInfo() : { domain: 'DREAMSCAPE', fqdn: location.hostname };
         el.innerHTML = `<p>${esc(ed.name)}${ed.servicePack ? `<br>${esc(ed.servicePack)}` : ''}</p>
-            ${ui.sub('Server')}
+            ${ui.sub('Domain controller')}
             <div class="wm-sys-facts">${ui.facts([
                 ['Manufacturer:', T.OEM.manufacturer],
                 ['Model:', T.OEM.model],
@@ -1969,7 +2145,7 @@
 
     wmSettings.extendPage('about', {
         id: 'sys',
-        tabs: [['sys-server', 'Server'], ['sys-hardware', 'Hardware']],
+        tabs: [['sys-server', 'Domain Controller'], ['sys-hardware', 'Hardware']],
         after: 'device',
         init: aboutInit,
         render: aboutRender
@@ -2048,20 +2224,33 @@
     // ---------------------------------------------------------------- Encryption (cplmain.cpl,27)
     // The device's one choice. Melaton's storage cards are the phone's own storage (D: / E:, #798):
     // the choice is kept for the programs that place files there (window.wmEncryption.cardFiles()).
+    // The phone's own encryption (#829, Android: DevicePolicyManager via window.AndroidHardware): when
+    // the phone encrypts its storage, the box is checked and cannot be cleared.
     const ENCRYPT_KEY = 'wmEncryptCard';
-    window.wmEncryption = { cardFiles: () => lsGet(ENCRYPT_KEY) === '1' };
+    function phoneEncrypted() {
+        const id = window.melatonDeviceIdentity;
+        let hw = null;
+        try { hw = id && typeof id.hardware === 'function' ? id.hardware() : null; } catch (_) { hw = null; }
+        const e = hw && hw.security ? hw.security.encryption : null;
+        return typeof e === 'string' && /^active/.test(e);
+    }
+    window.wmEncryption = { cardFiles: () => phoneEncrypted() || lsGet(ENCRYPT_KEY) === '1', phoneEncrypted };
 
     wmSettings.registerPage({
         id: 'encryption', tab: 'system', label: 'Encryption', icon: 'set-encryption',
         available: is65,
-        init: () => ({ on: lsGet(ENCRYPT_KEY) === '1' }),
+        init: () => { const forced = phoneEncrypted(); return { forced, on: forced || lsGet(ENCRYPT_KEY) === '1' }; },
         render(el, tab, d) {
             el.classList.add('wm-sys-encrypt');
-            el.innerHTML = `${ui.check('enc', 'Encrypt files when placed on a storage card.', d.on)}
-                ${ui.text('Encrypted files can be read only by this device. WARNING: Encrypted files cannot be recovered after hard reset or clearing storage. To help prevent data loss, back up data from storage cards to another location.')}`;
-            el.querySelector('input[name="enc"]').addEventListener('change', (e) => { d.on = e.target.checked; });
+            el.innerHTML = `${ui.check('enc', 'Encrypt files when placed on a storage card.', d.on, d.forced ? 'disabled' : '')}
+                ${ui.text('Encrypted files can be read only by this device. WARNING: Encrypted files cannot be recovered after hard reset or clearing storage. To help prevent data loss, back up data from storage cards to another location.')}
+                ${d.forced ? ui.note('This device encrypts its storage. Encryption is turned on by the device and cannot be turned off here.') : ''}`;
+            const box = el.querySelector('input[name="enc"]');
+            if (d.forced) box.disabled = true;
+            box.addEventListener('change', (e) => { if (d.forced) { e.target.checked = true; return; } d.on = e.target.checked; });
         },
         commit(d) {
+            if (d.forced) return [];
             lsSet(ENCRYPT_KEY, d.on ? '1' : null);
             return [ENCRYPT_KEY];
         }

@@ -173,3 +173,22 @@
     margin: calc(40 * var(--wm-px)) calc(8 * var(--wm-px)) 0;
     text-align: center;
 }
+
+/* ---- Menu > Options... (Settings page accounts-options, #829): a check box, its threshold combo on
+ * the right of the same line */
+.wac-opt {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(22 * var(--wm-px));
+}
+
+.wac-opt > .wm-check {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wac-opt > .wm-combo {
+    flex: 0 0 auto;
+    width: calc(64 * var(--wm-px));
+}

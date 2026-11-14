@@ -2308,6 +2308,68 @@ div.wm-today-row {
     background-position: 100% 0 !important;
 }
 
+/* Today's Search item (#829): the box (the Live Search frame) between Calendar's blue arrows, which
+ * go round Search Internet / Grimoire / Files / Pictures; the scope's program icon at the box's
+ * right where the search button was; a tap opens Search there with the keyboard up */
+.wm-today-search-row {
+    display: flex;
+    align-items: center;
+    margin: calc(2 * var(--wm-px)) calc(1 * var(--wm-px));
+}
+
+.wm-today-search-row .wm-today-search {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: 0 calc(1 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+    align-items: center;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.75);
+    font: var(--wm-fs) var(--wm-font);
+    text-align: left;
+}
+
+.wm-today-search-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.wm-today-search-icon {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-left: calc(2 * var(--wm-px));
+}
+
+.wm-today-search-step {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(15 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.wm-today-search-step[hidden],
+.wm-today-search-icon[hidden] {
+    display: none;
+}
+
+.wm-today-search-step img {
+    width: calc(13 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-today-search-step:active img {
+    opacity: 0.6;
+}
+
 /* newest prints: one row of square tiles under the items */
 .wm-today-prints {
     display: grid;
@@ -4145,3 +4207,10 @@ html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
 .wm-status-icon[data-role="continuity"].is-presence { opacity: .5; }
 .wm-bubble .wm-cty-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
 .wm-bubble .wm-cty-bat { display: inline-flex; align-items: center; gap: calc(2 * var(--wm-px)); }
+
+/* the Power bubble's level (#829): WM's block bar (wm-settings-dreamscape.css .wm-ds-progress) under "Main battery: n%" */
+.wm-bubble-section .wm-bat-bar {
+    width: 100%;
+    max-width: calc(164 * var(--wm-px));
+    margin: calc(3 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+}

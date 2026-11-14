@@ -151,13 +151,71 @@
 
     // ---------------------------------------------------------------- device facts
 
+    /** The app's hardware report (window.AndroidHardware.getInfo, #829), parsed once a minute at most. */
+    let hwCache = { at: 0, info: null };
+    function hardware() {
+        const b = root.AndroidHardware;
+        if (!b || typeof b.getInfo !== 'function') return null;
+        if (hwCache.info && Date.now() - hwCache.at < 60000) return hwCache.info;
+        try { hwCache = { at: Date.now(), info: JSON.parse(b.getInfo() || 'null') }; } catch (_) { hwCache = { at: Date.now(), info: null }; }
+        return hwCache.info;
+    }
+
+    /*
+     * Device ID (#829): Settings > System > About > Device ID on the phone. The owner's name and
+     * description are what the phone presents to Device Center, and what its own DeX desktop calls the
+     * computer. Unset, the name is the phone's own (Settings > About phone), else the model.
+     *   melatonDeviceIdentity.get()  -> { name, description, nameSet, defaultName, defaultDescription }
+     *   melatonDeviceIdentity.set({ name, description }) saves and says hello again
+     */
+    const NAME_KEY = 'activeSyncDeviceName';
+    const DESC_KEY = 'activeSyncDeviceDesc';
+    function lsRead(k) { try { return root.localStorage.getItem(k) || ''; } catch (_) { return ''; } }
+    function lsWrite(k, v) { try { if (v) root.localStorage.setItem(k, v); else root.localStorage.removeItem(k); } catch (_) { /* storage off */ } }
+    function friendlyModel() {
+        const hw = hardware();
+        const dev = hw && hw.device ? hw.device : null;
+        if (dev && dev.marketName) return String(dev.marketName);
+        const model = (dev && dev.model) || deviceFacts().model;
+        const art = root.activeSyncDeviceArt;
+        try { if (art && typeof art.makeModel === 'function' && model) return art.makeModel(model); } catch (_) { /* plain model */ }
+        return model ? [dev && dev.manufacturer, model].filter(Boolean).join(' ') : '';
+    }
+    function identity() {
+        let phoneName = '';
+        try {
+            const app = root.AndroidActiveSync;
+            if (app && typeof app.getDeviceName === 'function') phoneName = String(app.getDeviceName() || '').slice(0, 64);
+        } catch (_) { /* older app */ }
+        const model = friendlyModel();
+        const defaultName = phoneName || model || 'Melaton_Mobile';
+        const defaultDescription = model ? `${model}, Melaton Mobile` : 'Melaton Mobile';
+        const name = lsRead(NAME_KEY);
+        const description = lsRead(DESC_KEY);
+        return { name: name || defaultName, description: description || defaultDescription, nameSet: !!name, defaultName, defaultDescription };
+    }
+    function setIdentity(v) {
+        const cur = identity();
+        const name = String((v && v.name) || '').trim().slice(0, 64);
+        const description = String((v && v.description) || '').trim().slice(0, 128);
+        lsWrite(NAME_KEY, name && name !== cur.defaultName ? name : '');
+        lsWrite(DESC_KEY, description && description !== cur.defaultDescription ? description : '');
+        root.dispatchEvent(new CustomEvent('melaton-device-identity', { detail: identity() }));
+        if (kind) scheduleHello(100);
+        return identity();
+    }
+    root.melatonDeviceIdentity = { get: identity, set: setIdentity, hardware };
+
     function deviceFacts() {
         const ua = String((root.navigator && root.navigator.userAgent) || '');
         const m = /Android ([\d.]+);\s*([^;)]+?)(?:\s+Build\/[^;)]*)?[;)]/.exec(ua);
         const app = /\b(Dreamscape|DSApp)\/([\w.]+)/.exec(ua);
+        const hw = hwCache.info || (root.AndroidHardware ? hardware() : null);
+        const dev = hw && hw.device ? hw.device : null;
         return {
-            os: m ? `Android ${m[1]}` : 'Android',
-            model: m ? m[2].trim() : '',
+            os: dev && dev.androidRelease ? `Android ${dev.androidRelease}` : m ? `Android ${m[1]}` : 'Android',
+            // Chrome's reduced user agent says "K" for the model: the app's report knows it
+            model: (dev && dev.model) || (m && m[2].trim() !== 'K' ? m[2].trim() : ''),
             app: app ? `${app[1]}/${app[2]}` : 'Dreamscape'
         };
     }
@@ -180,6 +238,8 @@
         if (b && typeof b.getState === 'function') {
             try { s = JSON.parse(b.getState()); } catch (_) { s = null; }
         }
+        // the owner's description of the phone (Device ID, #829)
+        out.description = identity().description;
         if (s) {
             if (s.battery) out.battery = s.battery;
             if (s.wifi) out.wifi = s.wifi;
@@ -305,19 +365,15 @@
         const data = { kind, id: st.id, ops: [...ops.keys()], speaker: 'webview' };
         if (kind === 'computer' && inAndroidApp()) {
             const dev = ownDeviceId();
-            if (dev) Object.assign(data, { link: 'usb', usbDevice: dev, name: 'DeX' });
+            // the DeX desktop is the phone itself: it goes by the phone's Device ID name (#829)
+            if (dev) Object.assign(data, { link: 'usb', usbDevice: dev, name: identity().name || 'DeX' });
         }
         if (kind === 'device') {
             await refreshStorageRoots();
             const f = deviceFacts();
-            let name = '';
-            try { name = root.localStorage.getItem('activeSyncDeviceName') || ''; } catch (_) { /* none */ }
-            // the phone's own name (Settings > About phone), when the app tells it
-            try {
-                const app = root.AndroidActiveSync;
-                if (!name && app && typeof app.getDeviceName === 'function') name = String(app.getDeviceName() || '').slice(0, 64);
-            } catch (_) { /* older app */ }
-            Object.assign(data, f, { name: name || f.model || 'Mobile Device', status: deviceStatus() });
+            // Device ID (#829): the owner's name wins over a partnership's; else the phone's own name
+            const id = identity();
+            Object.assign(data, f, { name: id.name || f.model || 'Mobile Device', nameSet: id.nameSet, status: deviceStatus() });
         }
         try {
             const res = await send('as_hello', data);

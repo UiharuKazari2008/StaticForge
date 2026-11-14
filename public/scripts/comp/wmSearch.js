@@ -50,7 +50,15 @@
  *                  workspace's images), as rows with the picture's thumbnail; a tap opens the viewer
  * The quick sources answer under the wait cursor; the slow ones (server searches, file walks) are
  * added to the list in their place as they come in, so the first rows are never held up by them.
- * "No items found." only once every source has answered. Only on phones. Styles:
+ * "No items found." only once every source has answered.
+ * Instant results (#829): while typing (90 ms debounce) the list shows what the phone already holds
+ * (each source's now(): programs, settings, Android, presets, the notes Notes holds, Calendar once
+ * loaded, and the contacts, file tree, mail headers and conversations an earlier search read; picture
+ * names in the gallery); nothing asks the server per key. Enter / Search runs the full search above
+ * under the wait cursor. Internet and Grimoire are Types too (Today's Search item's pages): Enter
+ * searches in Internet Explorer, typing offers the earlier searches. Opened from Today, the field
+ * has the focus and the keyboard is up (open(null, type, { focus: true }) inside the tap). Only on
+ * phones. Styles:
  * public/css/wm-search.css.
  */
 (function () {
@@ -102,6 +110,8 @@
 
     /** A read kept for CACHE_MS (one at a time per key; a failed read is not kept). */
     const cache = new Map();
+    /** What the cache holds for key, however old (the instant results never ask the server); null when nothing. */
+    const peek = (key) => { const c = cache.get(key); return c && 'data' in c ? c.data : null; };
     function cached(key, load) {
         const c = cache.get(key);
         if (c && c.p) return c.p;
@@ -293,7 +303,16 @@
 
     async function contacts(q) {
         if (!vfs() || !window.wmContactsApp) return [];
-        const list = (await contactCards(workspaceId())).slice();
+        return contactRows(q, (await contactCards(workspaceId())).slice());
+    }
+
+    /** Instant: the cards read by an earlier search (and the phone's live contacts). */
+    function contactsNow(q) {
+        if (!window.wmContactsApp) return [];
+        return contactRows(q, (peek(`contacts:${workspaceId()}`) || []).slice());
+    }
+
+    function contactRows(q, list) {
         const VC = window.melatonVCard;
         if (!VC) return [];
         const pdm = window.wmPhoneData;
@@ -324,7 +343,18 @@
         if (!c || typeof c.getNotesByWorkspace !== 'function') return [];
         const wsId = workspaceId();
         const res = await c.getNotesByWorkspace(wsId);
-        const list = (res && (res.notes || (res.data && res.data.notes))) || [];
+        return noteRows(q, (res && (res.notes || (res.data && res.data.notes))) || [], wsId);
+    }
+
+    /** Instant: the notes Notes and Today's Notes item already hold (wmNotesApp.list, null before its first answer). */
+    function notesNow(q) {
+        const N = window.wmNotesApp;
+        let list = null;
+        try { list = N && typeof N.list === 'function' ? N.list() : null; } catch (_) { list = null; }
+        return Array.isArray(list) ? noteRows(q, list, workspaceId()) : [];
+    }
+
+    function noteRows(q, list, wsId) {
         const out = [];
         for (const n of list) {
             const r = rankIn(q, n.name, [], n.content);
@@ -356,6 +386,16 @@
         // what marks a message read). No server-side mail search exists: the newest 200 are looked at.
         const res = await c.sendMessage('dovecote_list_mail', { limit: 200 }, true);
         const list = (res && (res.mail || (res.data && res.data.mail))) || [];
+        cache.set('mail', { at: Date.now(), data: list }); // for the instant results only (every full search asks again)
+        return mailRows(q, list);
+    }
+
+    /** Instant: the headers the last full search read. */
+    function emailNow(q) {
+        return window.wmMessaging ? mailRows(q, peek('mail') || []) : [];
+    }
+
+    function mailRows(q, list) {
         const out = [];
         for (const m of list) {
             if (m.folder === 'spam') continue;
@@ -409,6 +449,16 @@
         if (!c || typeof c.getChatSessions !== 'function' || !window.wmChatApp) return [];
         const r = await c.getChatSessions();
         const list = (r && r.success && Array.isArray(r.sessions)) ? r.sessions : [];
+        cache.set('chats', { at: Date.now(), data: list });
+        return chatRows(q, list);
+    }
+
+    /** Instant: the conversations the last full search read. */
+    function chatsNow(q) {
+        return window.wmChatApp ? chatRows(q, peek('chats') || []) : [];
+    }
+
+    function chatRows(q, list) {
         const out = [];
         for (const s of list) {
             const title = s.chat_name || s.character_name || 'Unnamed Chat';
@@ -458,6 +508,17 @@
         const C = window.wmCalendar;
         if (!C || typeof C.occurrences !== 'function') return [];
         if (typeof C.loaded === 'function' && !C.loaded()) await C.reload();
+        return calendarRows(q, C);
+    }
+
+    /** Instant: only once Calendar has its appointments. */
+    function calendarNow(q) {
+        const C = window.wmCalendar;
+        if (!C || typeof C.occurrences !== 'function' || (typeof C.loaded === 'function' && !C.loaded())) return [];
+        return calendarRows(q, C);
+    }
+
+    function calendarRows(q, C) {
         const now = new Date();
         const day = 86400000;
         const occs = C.occurrences(new Date(+now - 365 * day), new Date(+now + 365 * day)) || [];
@@ -539,9 +600,18 @@
 
     async function files(q) {
         if (!vfs() || !window.wmFileExplorer) return [];
+        return fileRows(q, await fileTree(workspaceId()));
+    }
+
+    /** Instant: the file tree as the last walk left it (Search in the Files type starts a walk as it opens). */
+    function filesNow(q) {
+        return window.wmFileExplorer ? fileRows(q, peek(`files:${workspaceId()}`) || []) : [];
+    }
+
+    function fileRows(q, tree) {
         const FE = window.wmFileExplorer;
         const out = [];
-        for (const { item: i } of await fileTree(workspaceId())) {
+        for (const { item: i } of tree) {
             const r = rankIn(q, i.name, [], ''); // "calendar.ics" finds "Yukimi's Calendar.ics"
             if (r < 0) continue;
             const folder = i.kind === 'folder';
@@ -581,10 +651,45 @@
         // the gallery's search: comma-separated terms must all match the tags / prompt text
         const res = await c.searchFiles(q, 'images');
         const list = (res && res.results) || [];
-        return list.map((r, i) => {
+        const rows = list.map((r, i) => {
             const m = r.metadata || {};
             return { kind: 'Pictures', title: r.filename, thumb: thumbOf(r.filename), rank: i, date: toDate(m.mtime), size: Number(m.size) || 0, open: () => viewPicture(r.filename) };
         });
+        picSearches.delete(q);
+        picSearches.set(q, rows);
+        if (picSearches.size > 20) picSearches.delete(picSearches.keys().next().value);
+        return rows;
+    }
+
+    // the gallery searches of this load (newest last), for the instant results
+    const picSearches = new Map();
+    const PIC_INSTANT_MAX = 60;
+
+    /**
+     * Instant: the answer of the same search made before, else the pictures the gallery holds whose
+     * names (made from the prompt: "1794663280999_scarlet black shadow ..._2949129896") hold the
+     * words, newest first. The tags and prompt text are searched on Enter.
+     */
+    function picturesNow(q) {
+        if (picSearches.has(q)) return picSearches.get(q);
+        let list = [];
+        try {
+            if (Array.isArray(window.originalAllImages) && window.originalAllImages.length) list = window.originalAllImages;
+            else if (typeof allImages !== 'undefined' && Array.isArray(allImages)) list = allImages; // eslint-disable-line no-undef
+        } catch (_) { list = []; }
+        const terms = q.split(/\s+/).filter(Boolean);
+        if (!terms.length) return [];
+        const out = [];
+        for (const img of list) {
+            if (!img || !img.filename) continue;
+            const name = String(img.base || img.filename).replace(/^\d{10,}_/, '').replace(/_\d+$/, '').replace(/\.[a-z0-9]+$/i, '').toLowerCase();
+            if (!terms.every((t) => name.includes(t))) continue;
+            out.push(img);
+            if (out.length >= PIC_INSTANT_MAX * 4) break;
+        }
+        return out.sort((a, b) => (Number(b.mtime) || 0) - (Number(a.mtime) || 0)).slice(0, PIC_INSTANT_MAX).map((img, i) => ({
+            kind: 'Pictures', title: img.filename, thumb: thumbOf(img.preview || img.filename), rank: i, date: toDate(img.mtime), size: Number(img.size) || 0, open: () => viewPicture(img.filename)
+        }));
     }
 
     async function help(q) {
@@ -594,29 +699,59 @@
         return list.map((h, i) => ({ kind: 'Help', title: h.title, img: artImg('app-help'), rank: i, date: toDate(h.date), size: Number(h.size) || 0, open: h.open }));
     }
 
+    /**
+     * Internet and Grimoire (Today's Search item, #829): the search runs in Internet Explorer (the
+     * web's search, or the Grimoire's own search page: wmBrowser.search); while typing, the earlier
+     * searches that hold the words are offered (a tap searches that again).
+     */
+    const ieOk = () => !!(window.wmBrowser && typeof window.wmBrowser.search === 'function');
+    function webSearch(engine, raw) {
+        const b = window.wmBrowser;
+        try { if (b && typeof b.search === 'function' && b.search(engine, raw)) return; } catch (err) { console.warn('wmSearch: Internet Explorer', err); }
+        ws.open('browser');
+    }
+    function earlierSearches(q) {
+        return history().filter((h) => holdsAll(q, h)).map((h, i) => ({
+            kind: 'Earlier search', title: h, img: artImg('app-search'), rank: i,
+            open: () => { if (page) { field().value = h; ws.refreshSoftKeys(); search(); } }
+        }));
+    }
+
     // the Type list, in the device's order (alphabetical after "All data"); slow: answers after the
-    // first rows are up (a server search or a walk of many folders)
+    // first rows are up (a server search or a walk of many folders); now: the instant results while
+    // typing, from what the phone already holds (never the server); web: searched in IE, not here
     const SOURCES = [
-        { id: 'android', label: 'Android', run: android, available: () => !!(window.wmAndroidApps && typeof window.wmAndroidApps.list === 'function') },
-        { id: 'calendar', label: 'Calendar', run: calendar, slow: true, available: () => !!(window.wmCalendar && typeof window.wmCalendar.occurrences === 'function') },
-        { id: 'contacts', label: 'Contacts', run: contacts, slow: true, available: () => !!window.wmContactsApp },
+        { id: 'android', label: 'Android', run: android, now: android, available: () => !!(window.wmAndroidApps && typeof window.wmAndroidApps.list === 'function') },
+        { id: 'calendar', label: 'Calendar', run: calendar, now: calendarNow, slow: true, available: () => !!(window.wmCalendar && typeof window.wmCalendar.occurrences === 'function') },
+        { id: 'contacts', label: 'Contacts', run: contacts, now: contactsNow, slow: true, available: () => !!window.wmContactsApp },
         { id: 'director', label: 'Director', run: director, slow: true, available: () => !!(window.wmDirectorApp || window.directorInstance) },
-        { id: 'messages', label: 'E-mail', run: email, available: () => !!window.wmMessaging },
+        { id: 'messages', label: 'E-mail', run: email, now: emailNow, available: () => !!window.wmMessaging },
         // the IMAP accounts are more E-mail (group: the same Type entry, not one of their own)
         { id: 'mailaccounts', label: 'E-mail', group: 'messages', run: imapMail, slow: true, available: () => !!(window.mailAccounts && typeof window.mailAccounts.search === 'function' && window.wmMessaging) },
-        { id: 'files', label: 'Files', run: files, slow: true, available: () => !!window.wmFileExplorer },
+        { id: 'files', label: 'Files', run: files, now: filesNow, slow: true, available: () => !!window.wmFileExplorer },
+        { id: 'grimoire', label: 'Grimoire', web: 'grimoire', now: earlierSearches, available: ieOk },
         { id: 'help', label: 'Help', run: help, available: () => !!(window.wmHelp && typeof window.wmHelp.search === 'function') },
-        { id: 'chats', label: 'Messenger', run: chats, slow: true, available: () => !!window.wmChatApp },
-        { id: 'notes', label: 'Notes', run: notes },
-        { id: 'pictures', label: 'Pictures', run: pictures, slow: true },
-        { id: 'presets', label: 'Presets', run: presets },
-        { id: 'programs', label: 'Programs', run: programs },
+        { id: 'web', label: 'Internet', web: 'web', now: earlierSearches, available: ieOk },
+        { id: 'chats', label: 'Messenger', run: chats, now: chatsNow, slow: true, available: () => !!window.wmChatApp },
+        { id: 'notes', label: 'Notes', run: notes, now: notesNow },
+        { id: 'pictures', label: 'Pictures', run: pictures, now: picturesNow, slow: true },
+        { id: 'presets', label: 'Presets', run: presets, now: presets },
+        { id: 'programs', label: 'Programs', run: programs, now: programs },
         { id: 'tasks', label: 'Tasks', run: tasks, available: () => !!(window.wmTasks && typeof window.wmTasks.search === 'function') },
         { id: 'texts', label: 'Text Messages', run: texts, slow: true, available: () => !!(window.textMessaging && typeof window.textMessaging.search === 'function' && window.wmTextMessaging) }
     ];
     // "All data": Programs lead (the Start menu's order), the people and messages next, the
     // workspace's things after, the pictures last
     const ALL_ORDER = ['programs', 'android', 'contacts', 'messages', 'mailaccounts', 'texts', 'chats', 'director', 'calendar', 'tasks', 'notes', 'presets', 'files', 'help', 'pictures'];
+    // Today's Search item (#829): Search Internet | Search Grimoire | Search Files | Search Pictures,
+    // each with its program's icon (6.1 set art; 6.5 panel art: s: = from the 6.5 Start icon, x: =
+    // from a 6.1 icon in the panels' frame, wmTitanium.js)
+    const SCOPES = [
+        { type: 'web', title: 'Search Internet', icon: 'app-ie', panelIcon: 's:ie' },
+        { type: 'grimoire', title: 'Search Grimoire', icon: 'app-grimoire', panelIcon: 'x:app-grimoire-lg' },
+        { type: 'files', title: 'Search Files', icon: 'app-file-explorer', panelIcon: 's:fileexp' },
+        { type: 'pictures', title: 'Search Pictures', icon: 'app-pictures', panelIcon: 's:photos' }
+    ];
     const sources = () => SOURCES.filter((s) => { try { return !s.available || s.available(); } catch (_) { return false; } });
 
     // ---------------------------------------------------------------- history
@@ -651,7 +786,8 @@
     function renderResults(keep) {
         const box = page.querySelector('.wsr-results');
         if (results == null) { box.innerHTML = ''; return; }
-        if (!results.length) { box.innerHTML = '<div class="wsr-none">No items found.</div>'; return; }
+        // instant results are only what the phone holds: nothing there is not "No items found." yet
+        if (!results.length) { box.innerHTML = instant ? '' : '<div class="wsr-none">No items found.</div>'; return; }
         const top = box.scrollTop;
         shown = Math.min(results.length, keep ? Math.max(shown, PAGE_ROWS) : PAGE_ROWS);
         box.innerHTML = results.slice(0, shown).map(rowHtml).join('');
@@ -685,20 +821,68 @@
         return out;
     }
 
+    /** The sources the Type picked asks ("All data": ALL_ORDER, never Internet / Grimoire). */
+    function typeSources() {
+        return type === 'all' ? ALL_ORDER.map((k) => sources().find((s) => s.id === k)).filter(Boolean) : sources().filter((s) => s.id === type || s.group === type);
+    }
+
+    // ---------------------------------------------------------------- instant results (#829)
+
+    const INSTANT_MS = 90; // a light debounce: a fast typist's keys are drawn once
+    let instantTimer = 0;
+    let instant = false; // the list shows instant results (no "No items found.", no selected row)
+    let endWait = null; // ends the wait cursor of the full search on its way
+
+    function queueInstant() {
+        clearTimeout(instantTimer);
+        instantTimer = setTimeout(showInstant, INSTANT_MS);
+    }
+
+    /** What the phone already holds that matches the text, drawn at once; Enter / Search asks every source. */
+    function showInstant() {
+        clearTimeout(instantTimer);
+        if (!page) return;
+        const raw = field().value.trim();
+        runId++; // a full search still on its way no longer draws, and its wait cursor ends
+        if (endWait) { endWait(); endWait = null; }
+        if (!raw) { results = null; instant = false; sel = -1; renderResults(); return; }
+        const ql = raw.toLowerCase();
+        results = merge(typeSources().filter((s) => typeof s.now === 'function').map((s) => {
+            try { const rows = s.now(ql, raw); return Array.isArray(rows) ? rows : []; } catch (err) { console.warn('wmSearch: instant', s.id, err); return []; }
+        }));
+        instant = true;
+        sel = -1;
+        renderResults();
+    }
+
+    /** The Files type lists from the file tree: it is walked (once a minute at most) as Search opens on it. */
+    function warmType() {
+        if (type === 'files' && vfs() && window.wmFileExplorer) fileTree(workspaceId()).then(() => { if (page && instant && type === 'files') showInstant(); }, () => {});
+    }
+
     async function search() {
         const raw = field().value.trim();
         if (!raw) return;
+        clearTimeout(instantTimer);
         field().blur();
         remember(raw);
         const id = ++runId;
         const ql = raw.toLowerCase();
-        const list = type === 'all' ? ALL_ORDER.map((k) => sources().find((s) => s.id === k)).filter(Boolean) : sources().filter((s) => s.id === type || s.group === type);
+        const web = sources().find((s) => s.id === type && s.web);
+        if (web) {
+            // Internet / Grimoire: Internet Explorer shows the answer, under the wait cursor while it comes up
+            await ws.busy(() => webSearch(web.web, raw), { paint: true, timeout: 15000 }).catch(() => {});
+            return;
+        }
+        instant = false;
+        const list = typeSources();
         const parts = list.map(() => null); // null = still asking
         let drawn = false;
         picked = false;
         let ready = null;
         let patience = false; // QUICK_WAIT_MS has passed: draw what has come
         const first = new Promise((resolve) => { ready = resolve; });
+        endWait = ready;
         // the first drawing waits for the quick sources (at most QUICK_WAIT_MS while the server is
         // busy), and for the slow ones too while nothing is found
         const check = () => {
@@ -710,7 +894,8 @@
         list.forEach((s, i) => {
             // one source that fails (no connection, no mailbox, refused) leaves the others' answers
             Promise.resolve().then(() => s.run(ql, raw)).catch((err) => { console.warn('wmSearch:', s.id, err); return []; }).then((rows) => {
-                if (id !== runId) return;
+                // a newer search or typing took over: the wait cursor of this one ends
+                if (id !== runId) { ready(); return; }
                 parts[i] = Array.isArray(rows) ? rows : [];
                 if (drawn) {
                     // in its place in the list, the list where it was; the first row stays the selected
@@ -759,15 +944,15 @@
             + '<div class="wsr-row"><span class="wsr-label">Type:</span><button type="button" class="wsr-type" aria-label="Type"><span>All data</span></button></div>'
             + '</div><div class="wsr-head">Results</div><div class="wsr-results wm-pg-scroll" role="listbox" aria-label="Results"></div>';
         const q = field();
-        q.addEventListener('input', () => ws.refreshSoftKeys());
+        q.addEventListener('input', () => { ws.refreshSoftKeys(); queueInstant(); });
         q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
         p.querySelector('.wsr-drop').addEventListener('click', (e) => {
             const list = history();
             if (!list.length) { q.focus(); return; }
-            ws.dropdown(e.currentTarget.parentElement, list.map((h) => ({ label: h, action: () => { q.value = h; ws.refreshSoftKeys(); } })), 'left');
+            ws.dropdown(e.currentTarget.parentElement, list.map((h) => ({ label: h, action: () => { q.value = h; ws.refreshSoftKeys(); showInstant(); } })), 'left');
         });
         p.querySelector('.wsr-type').addEventListener('click', (e) => {
-            const items = [{ id: 'all', label: 'All data' }].concat(sources().filter((s) => !s.group)).map((s) => ({ label: s.label, radio: type === s.id, action: () => { type = s.id; renderType(); } }));
+            const items = [{ id: 'all', label: 'All data' }].concat(sources().filter((s) => !s.group)).map((s) => ({ label: s.label, radio: type === s.id, action: () => { type = s.id; renderType(); warmType(); if (field().value.trim()) showInstant(); } }));
             ws.dropdown(e.currentTarget, items, 'left');
         });
         const box = p.querySelector('.wsr-results');
@@ -790,7 +975,7 @@
             sip: true,
             mount,
             show() { renderType(); ws.refreshSoftKeys(); },
-            onEnd() { results = null; sel = -1; runId++; if (page) { field().value = ''; renderResults(); } },
+            onEnd() { clearTimeout(instantTimer); results = null; instant = false; sel = -1; runId++; if (page) { field().value = ''; renderResults(); } },
             softKeys() {
                 const empty = !page || !field().value.trim();
                 return { left: { label: 'Search', disabled: empty, action: search }, right: { label: 'Advanced', disabled: true } };
@@ -798,14 +983,41 @@
         });
     }
 
-    /** search.open(text, typeId): the program with that text searched (Today's search box, other programs). */
+    /**
+     * The field with the focus and the phone's keyboard up (Today's Search item, #829). Called inside
+     * the tap: Android's WebView raises the keyboard only for a focus the user's tap brought. The
+     * shell's switch picture is cut short (it keeps a first launch's page invisible for 80 ms, and an
+     * invisible field cannot take the focus), and the rest of the tap (its mousedown and click land on
+     * the page that has just come up) does not take the focus away again.
+     */
+    function focusField() {
+        if (!page || ws.current !== APP_ID) return;
+        if (typeof ws.stageFlush === 'function' && getComputedStyle(page).visibility === 'hidden') ws.stageFlush();
+        const q = field();
+        q.focus({ preventScroll: true });
+        try { q.setSelectionRange(0, q.value.length); } catch (_) { /* not a text field */ }
+        const keep = (e) => { if (e.target !== q && document.activeElement === q) e.preventDefault(); };
+        const back = () => { if (page && ws.current === APP_ID && document.activeElement !== q) q.focus({ preventScroll: true }); };
+        window.addEventListener('mousedown', keep, true);
+        window.addEventListener('click', back, true);
+        setTimeout(() => { window.removeEventListener('mousedown', keep, true); window.removeEventListener('click', back, true); }, 500);
+    }
+
+    /**
+     * search.open(text, typeId, { focus }): the program with that text searched (other programs), or
+     * with the field focused for typing (focus: Today's Search item; call it inside the tap).
+     */
     window.wmSearch = {
-        open(text, typeId) {
+        open(text, typeId, opts) {
             if (!ws) return;
             ws.open(APP_ID, { fromStart: true });
-            if (typeId && (typeId === 'all' || sources().some((s) => s.id === typeId))) { type = typeId; renderType(); }
-            if (text != null && page) { field().value = String(text); ws.refreshSoftKeys(); if (String(text).trim()) search(); }
+            if (typeId && (typeId === 'all' || sources().some((s) => s.id === typeId))) { type = typeId; renderType(); warmType(); }
+            if (text != null && page) { field().value = String(text); ws.refreshSoftKeys(); if (String(text).trim()) search(); else showInstant(); }
+            else if (page && field().value.trim()) showInstant(); // the text left in the field, listed for the Type now picked
+            if (opts && opts.focus && text == null) focusField();
         },
+        /** Today's Search item's scopes (#829): its pages, in order, with the Type each opens. */
+        scopes: () => SCOPES.filter((sc) => sources().some((s) => s.id === sc.type)),
         types: () => ['all'].concat(sources().filter((s) => !s.group).map((s) => s.id)),
         _state: () => ({ type, results, sel })
     };

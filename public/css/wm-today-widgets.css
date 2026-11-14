@@ -180,6 +180,14 @@
     font-weight: bold;
 }
 
+/* the service's 16 px icon before the account (#829) */
+.wac-today-ico {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin-right: calc(3 * var(--wm-px));
+    vertical-align: top;
+}
+
 /* the status light: small (Yukimi: no huge dots), framed so it reads on any wallpaper */
 .wac-today-light {
     display: inline-block;
@@ -224,7 +232,8 @@
 
 .wac-today-cap {
     font-size: calc(11 * var(--wm-px));
-    line-height: calc(14 * var(--wm-px));
+    /* 16: the service icon's height (#829) */
+    line-height: calc(16 * var(--wm-px));
 }
 
 .wac-today-fig {

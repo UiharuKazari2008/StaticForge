@@ -140,6 +140,26 @@ function handleServerPing(data) {
             });
         }
     }
+    // #829: renewal date / tier and status.novelai.net's verdict, pushed with every ping (boot-only before)
+    if (data.subscription && window.optionsData && window.optionsData.user && window.optionsData.user.subscription
+        && typeof window.optionsData.user.subscription === 'object') {
+        const cur = window.optionsData.user.subscription;
+        const s = data.subscription;
+        if (s.tier != null) cur.tier = s.tier;
+        if (s.active != null) cur.active = s.active;
+        if (s.expiresAt != null) cur.expiresAt = s.expiresAt;
+        if (s.monthlyAnlas != null) cur.perks = Object.assign({}, cur.perks || {}, { moduleTrainingSteps: s.monthlyAnlas });
+    }
+    if (data.novelaiStatus && window.optionsData) {
+        const prev = window.optionsData.novelaiStatus || {};
+        const impaired = new Map((data.novelaiStatus.impaired || []).map((c) => [c.name, c]));
+        window.optionsData.novelaiStatus = Object.assign({}, prev, {
+            fetchedAt: data.novelaiStatus.fetchedAt,
+            activeIncident: data.novelaiStatus.activeIncident,
+            imageGenerationBlocked: data.novelaiStatus.imageGenerationBlocked,
+            components: (prev.components || []).map((c) => (impaired.has(c.name) ? Object.assign({}, c, impaired.get(c.name)) : Object.assign({}, c, { impaired: false })))
+        });
+    }
     if (data.opusUsage !== undefined) {
         if (window.optionsData) {
             window.optionsData.opusUsage = data.opusUsage;

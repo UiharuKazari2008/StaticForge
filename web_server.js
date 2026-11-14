@@ -4608,10 +4608,21 @@ async function handleAdminUnixSocketMessage(message, socket) {
 
         // Start ping interval with server data callback
         wsServer.startPingInterval(() => {
+            // #829: the subscription's renewal date / tier and status.novelai.net's verdict ride along,
+            // so clients learn a renewal or an API incident without asking (they were boot-only)
+            const sub = globalResources.accountData && globalResources.accountData.subscription;
+            const statusMonitor = globalResources.getNovelAiStatusMonitor();
+            const nai = statusMonitor ? statusMonitor.getClientPayload() : null;
             return {
                 balance: globalResources.getAccountBalance(),
                 opusUsage: globalResources.getOpusUsage(),
                 accountHealth: globalResources.getAccountClientFields(),
+                subscription: sub && typeof sub === 'object' && Number.isFinite(Number(sub.tier))
+                    ? { tier: sub.tier, active: sub.active, expiresAt: sub.expiresAt, monthlyAnlas: sub.perks && sub.perks.moduleTrainingSteps != null ? sub.perks.moduleTrainingSteps : null }
+                    : null,
+                novelaiStatus: nai && nai.fetchedAt
+                    ? { fetchedAt: nai.fetchedAt, activeIncident: nai.activeIncident || null, imageGenerationBlocked: !!nai.imageGenerationBlocked, impaired: (nai.components || []).filter((c) => c && c.impaired) }
+                    : null,
                 queue_status: globalResources.getQueue().getStatus(),
                 image_count: globalResources.getImageCounter().getCount(),
                 server_time: Date.now().valueOf()

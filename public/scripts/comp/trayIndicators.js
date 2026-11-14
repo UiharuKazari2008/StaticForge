@@ -50,6 +50,8 @@ function revealTrayIconById(id, animate = true) {
 
 async function checkSubscriptionExpiration(options = {}) {
     if (!window.optionsData?.user?.subscription?.expiresAt) return;
+    // Melaton Mobile: the Accounts program's Options (renewal notice on / off, days before) own it (#829)
+    if (window.uiShell === 'mobile' && window.wmAccounts) return;
 
     const renewalData = getSubscriptionRenewalDisplayData(window.optionsData.user.subscription.expiresAt);
     const subTier = window.optionsData.user.subscription.tier;

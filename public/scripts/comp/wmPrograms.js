@@ -478,6 +478,38 @@
         return bytes >= 10 * 1073741824 ? `${(bytes / 1073741824).toFixed(2)} GB` : `${(bytes / 1048576).toFixed(2)} MB`;
     };
 
+    // ---- About > Version (#829): the phone's real processor, cores, RAM and storage cards (the Android
+    // app's window.AndroidHardware report), else what the browser knows
+    function aboutHardware() {
+        const id = window.melatonDeviceIdentity;
+        try { if (id && typeof id.hardware === 'function') return id.hardware(); } catch (_) { /* browser */ }
+        return null;
+    }
+
+    /** Storage cards: the phone's storage that is not its internal memory (SD, USB, adopted). */
+    function storageCards(hw) {
+        const vols = hw && Array.isArray(hw.storage) ? hw.storage : [];
+        return vols.filter((v) => v && v.kind !== 'internal' && !v.primary && (v.removable || v.kind === 'sd' || v.kind === 'usb' || v.kind === 'adopted') && (!v.state || /^mounted/.test(v.state)));
+    }
+
+    function aboutFacts(hw) {
+        const soc = (hw && hw.soc) || {};
+        const cpu = (hw && hw.cpu) || {};
+        const mem = (hw && hw.memory) || {};
+        const uad = navigator.userAgentData;
+        const cores = cpu.cores || navigator.hardwareConcurrency || 0;
+        const processor = soc.name || soc.model || (cores ? `${(uad && uad.platform) || navigator.platform || 'ARM'} processor` : 'Unknown');
+        // "8 (1 + 3 + 4)": the clusters, fastest first, as the phone's makers count them
+        const clusters = Array.isArray(cpu.clusters) ? cpu.clusters.filter((c) => c && c.cores > 0).sort((a, b) => (b.maxMHz || 0) - (a.maxMHz || 0)) : [];
+        const top = cpu.maxMHz || (clusters[0] && clusters[0].maxMHz) || 0;
+        let coreText = cores ? String(cores) : '';
+        if (coreText && clusters.length > 1) coreText += ` (${clusters.map((c) => c.cores).join(' + ')})`;
+        if (coreText && top) coreText += `, ${(top / 1000).toFixed(2)} GHz`;
+        // WM's two decimals; a phone's gigabytes read as GB
+        const memory = mem.totalBytes ? (mem.totalBytes >= 1073741824 ? `${(mem.totalBytes / 1073741824).toFixed(2)} GB` : fmtMB(mem.totalBytes)) : (navigator.deviceMemory ? `${navigator.deviceMemory} GB` : 'Unknown');
+        return { processor, cores: hw ? coreText : (cores ? String(cores) : ''), memory, slot: storageCards(hw).length ? 'In use' : 'Not in use' };
+    }
+
     function previewPath(item) {
         try {
             if (!item || !item.preview) return '';
@@ -1432,6 +1464,11 @@
                 if (typeof window.loadMeletonVersionInfo === 'function') {
                     window.loadMeletonVersionInfo().then((info) => { d.info = info; if (d.rerender) d.rerender(); }).catch(() => {});
                 }
+                // Device ID (#829): the name and description the phone presents to Device Center and its own DeX desktop
+                const id = window.melatonDeviceIdentity && typeof window.melatonDeviceIdentity.get === 'function' ? window.melatonDeviceIdentity.get() : null;
+                d.id = id ? { name: id.name, description: id.description } : { name: 'Melaton_Mobile', description: '' };
+                d.id0 = Object.assign({}, d.id);
+                d.hw = aboutHardware();
                 return d;
             },
             render(el, tab, d, api) {
@@ -1439,31 +1476,50 @@
                 const info = d.info || { version: '2026 R7', build: 'Unknown', copyrightYear: '2026', copyrightHolder: 'Xyridian Corporation' };
                 const build = info.build && info.build !== 'Unknown' ? ` (Build ${info.build})` : '';
                 if (tab === 'device') {
-                    const uad = navigator.userAgentData;
-                    el.innerHTML = `<p>Your device uses this information to identify itself to other computers.</p>
-                        <div class="wm-form-row is-wide"><label>Device name:</label><input class="wm-edit" readonly value="${esc((uad && uad.platform) ? `${uad.platform}${uad.mobile ? ' phone' : ''}` : 'Melaton_Mobile')}"></div>
-                        <div class="wm-form-row is-wide"><label>Description:</label><input class="wm-edit" readonly value="${esc(navigator.userAgent)}"></div>`;
+                    // the device's own words and boxes (WM 6.1 Settings > About > Device ID)
+                    const editable = !!window.melatonDeviceIdentity;
+                    el.innerHTML = `<p>Your device uses this information to identify itself to other computers. Enter a name that starts with a letter and contains the characters _, A-Z, or 0-9.</p>
+                        <div class="wm-form-row is-wide"><label for="wmDevName">Device name:</label><input id="wmDevName" class="wm-edit" type="text" maxlength="64" autocomplete="off" spellcheck="false" value="${esc(d.id.name)}"${editable ? '' : ' readonly'}></div>
+                        <div class="wm-form-row is-wide"><label for="wmDevDesc">Description:</label><input id="wmDevDesc" class="wm-edit" type="text" maxlength="128" autocomplete="off" value="${esc(d.id.description)}"${editable ? '' : ' readonly'}></div>`;
+                    el.querySelector('#wmDevName').addEventListener('input', (e) => { d.id.name = e.target.value; });
+                    el.querySelector('#wmDevDesc').addEventListener('input', (e) => { d.id.description = e.target.value; });
                     return;
                 }
                 if (tab === 'copyrights') {
-                    el.innerHTML = `<p>Melaton Mobile ${esc(info.version)}<br>\u00a9 ${esc(info.copyrightYear)} ${esc(info.copyrightHolder)}. All rights reserved.</p>
+                    el.innerHTML = `<p>Melaton Mobile ${esc(info.version)}<br>© ${esc(info.copyrightYear)} ${esc(info.copyrightHolder)}. All rights reserved.</p>
                         <p>Dreamscape, Melaton and the Melaton logo are trademarks of ${esc(info.copyrightHolder)}.</p>
                         <p>Portions of this software use icons and artwork from Windows Mobile 6.1 Professional.</p>`;
                     return;
                 }
-                const cores = navigator.hardwareConcurrency;
-                const mem = navigator.deviceMemory;
                 // the edition after the version, as Windows Mobile's own About reads ("Windows Mobile 6.1 Professional", #827)
                 let edition = '';
                 try { edition = window.activeSync && typeof window.activeSync.myEdition === 'function' ? window.activeSync.myEdition() : ''; } catch (_) { edition = ''; }
-                el.innerHTML = `<p>Melaton Mobile\u00ae ${esc(info.version)}${edition ? ` ${esc(edition)}` : ''}</p>
-                    <p>Melaton OS ${esc(info.version)}${esc(build)}<br>\u00a9 ${esc(info.copyrightYear)} ${esc(info.copyrightHolder)}.<br>All rights reserved.</p>
+                const f = aboutFacts(d.hw);
+                el.innerHTML = `<p>Melaton Mobile® ${esc(info.version)}${edition ? ` ${esc(edition)}` : ''}</p>
+                    <p>Melaton OS ${esc(info.version)}${esc(build)}<br>© ${esc(info.copyrightYear)} ${esc(info.copyrightHolder)}.<br>All rights reserved.</p>
                     <p>This computer program is protected by U.S. and international copyright laws.</p>
                     <div class="wm-facts">
-                        <span>Processor:</span><span>${esc(cores ? `${cores}-core ${(navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ''}`.trim() : 'Unknown')}</span>
-                        <span>Memory:</span><span>${esc(mem ? `${mem} GB` : 'Unknown')}</span>
-                        <span>Expansion slot:</span><span>Not in use</span>
-                    </div>`;
+                        <span>Processor:</span><span title="${esc(f.processor)}">${esc(f.processor)}</span>
+                        ${f.cores ? `<span>Cores:</span><span title="${esc(f.cores)}">${esc(f.cores)}</span>` : ''}
+                        <span>Memory:</span><span>${esc(f.memory)}</span>
+                        <span>Expansion slot:</span><span>${esc(f.slot)}</span>
+                    </div>
+                    <div class="wm-cafe-badge" role="img" aria-label="Powered by CafeReady"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span></div>`;
+            },
+            async commit(d) {
+                const idApi = window.melatonDeviceIdentity;
+                if (!idApi || (d.id.name === d.id0.name && d.id.description === d.id0.description)) return [];
+                const name = String(d.id.name || '').trim();
+                // the device's rule: a letter first, then letters, digits and _ (WM rejects anything else);
+                // a name left as it came (the phone's own, which may have spaces) is not checked
+                if (name !== d.id0.name && !/^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(name)) {
+                    await sh.messageBox({ title: 'About', icon: 'error', text: 'Enter a device name that starts with a letter and contains only the characters _, A-Z, or 0-9.' });
+                    return false;
+                }
+                const now = idApi.set({ name, description: d.id.description });
+                d.id = { name: now.name, description: now.description };
+                d.id0 = Object.assign({}, d.id);
+                return [];
             }
         },
         {
@@ -1490,9 +1546,10 @@
         },
         {
             id: 'memory', tab: 'system', label: 'Memory', icon: 'set-memory',
-            tabs: [['main', 'Main']],
+            // WM 6.1's Memory: Main | Storage Card (#829: the phone's SD / USB storage)
+            tabs: [['main', 'Main'], ['card', 'Storage Card']],
             init() {
-                const d = { est: null };
+                const d = { est: null, hw: aboutHardware(), card: 0 };
                 if (navigator.storage && typeof navigator.storage.estimate === 'function') {
                     navigator.storage.estimate().then((e) => { d.est = e; if (d.rerender) d.rerender(); }).catch(() => {});
                 }
@@ -1500,15 +1557,29 @@
             },
             render(el, tab, d, api) {
                 d.rerender = api.rerender;
-                const e = d.est;
-                const pm = performance.memory;
-                let lsBytes = 0;
-                try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); lsBytes += (k.length + (localStorage.getItem(k) || '').length) * 2; } } catch (_) { /* storage off */ }
                 const col = (title, total, used) => `<div class="wm-mem-col"><b>${esc(title)}</b>
                     <span>Total:</span><span>${esc(fmtMB(total))}</span>
                     <span>In use:</span><span>${esc(fmtMB(used))}</span>
                     <span class="is-free">Free:</span><span class="is-free">${esc(fmtMB(total - used))}</span></div>`;
-                el.innerHTML = `<div class="wm-mem">${col('Storage', e ? e.quota : NaN, e ? e.usage : NaN)}${pm ? col('Program', pm.jsHeapSizeLimit, pm.usedJSHeapSize) : ''}</div>
+                if (tab === 'card') {
+                    const cards = storageCards(d.hw);
+                    if (!cards.length) { el.innerHTML = '<p>No storage card is inserted.</p>'; return; }
+                    const c = cards[Math.min(d.card, cards.length - 1)];
+                    const label = (v) => v.label || (v.kind === 'usb' ? 'USB Storage' : 'Storage Card');
+                    el.innerHTML = `${cards.length > 1 ? `<div class="wm-form-row"><span class="wm-form-label">Storage card:</span>${ui.comboHtml('card', label(c))}</div>` : `<p>${esc(label(c))}</p>`}
+                        <div class="wm-mem">${col('Storage card', c.totalBytes, c.totalBytes - c.freeBytes)}</div>`;
+                    const btn = el.querySelector('.wm-combo[data-act="card"]');
+                    if (btn) ui.bindCombo(btn, cards.map((v, i) => [i, label(v)]), d.card, (v) => { d.card = Number(v); api.rerender(); });
+                    return;
+                }
+                const e = d.est;
+                const pm = performance.memory;
+                const mem = d.hw && d.hw.memory;
+                let lsBytes = 0;
+                try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); lsBytes += (k.length + (localStorage.getItem(k) || '').length) * 2; } } catch (_) { /* storage off */ }
+                // Program: the phone's RAM when the app reports it, else this page's script heap
+                const program = mem && mem.totalBytes ? col('Program', mem.totalBytes, mem.totalBytes - (mem.availBytes || 0)) : pm ? col('Program', pm.jsHeapSizeLimit, pm.usedJSHeapSize) : '';
+                el.innerHTML = `<div class="wm-mem">${col('Storage', e ? e.quota : NaN, e ? e.usage : NaN)}${program}</div>
                     <div class="wm-form-gap"></div>
                     <p>Settings: ${esc(fmtMB(lsBytes))}</p>`;
             }

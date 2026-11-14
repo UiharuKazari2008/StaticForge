@@ -523,3 +523,175 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sys-lv-row.is-selected { color: #fff; 
 /* Encryption: the check box row (VGA 16,122 448 x 64) starts 11 units under the rule, 32 units tall */
 .wm-sys-encrypt > .wm-check { margin-top: calc(6 * var(--wm-px)); min-height: calc(32 * var(--wm-px)); align-items: flex-start; }
 .wm-sys-encrypt > p { margin-top: calc(2 * var(--wm-px)); }
+
+/* About > Hardware (#829): Device Manager's tree (cpl-pages2.css .dm-client) at the phone's scale:
+ * class icons, +/- boxes and TVS_HASLINES dots; rows are tall enough to tap */
+html.ui-mobile .wm-sys-dm {
+    --u: var(--wm-px);
+    margin-top: calc(4 * var(--u));
+    padding: calc(2 * var(--u)) 0;
+    border: 1px solid #7a7a7a;
+    background: #fff;
+    color: #000;
+    font-size: var(--wm-fs);
+}
+
+html.ui-mobile .wm-sys-dm-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: calc(18 * var(--u));
+    padding-left: calc(41 * var(--u));
+    white-space: nowrap;
+}
+
+html.ui-mobile .wm-sys-dm-row.is-root { padding-left: calc(21 * var(--u)); }
+html.ui-mobile .wm-sys-dm-row.is-dev { padding-left: calc(60 * var(--u)); }
+
+html.ui-mobile .wm-sys-dm-row img {
+    flex: none;
+    width: calc(16 * var(--u));
+    height: calc(16 * var(--u));
+    margin-right: calc(4 * var(--u));
+}
+
+html.ui-mobile .wm-sys-dm-row > span:last-child {
+    overflow: hidden;
+    min-width: 0;
+    padding: 0 calc(2 * var(--u));
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile .wm-sys-dm-row.is-selected > span:last-child {
+    background: var(--wm-highlight, #3399ff);
+    color: #fff;
+}
+
+html.ui-mobile .wm-sys-dm-box {
+    position: absolute;
+    z-index: 1;
+    left: calc(27 * var(--u));
+    top: calc(4.5 * var(--u));
+    width: calc(9 * var(--u));
+    height: calc(9 * var(--u));
+    background: url('/static_images/vista-devmgr/plus.png') center / 100% 100% no-repeat;
+    image-rendering: pixelated;
+}
+
+html.ui-mobile .wm-sys-dm-box.is-open { background-image: url('/static_images/vista-devmgr/minus.png'); }
+html.ui-mobile .wm-sys-dm-row.is-root .wm-sys-dm-box { left: calc(8 * var(--u)); }
+
+html.ui-mobile .wm-sys-dm-row::before,
+html.ui-mobile .wm-sys-dm-row::after {
+    content: '';
+    position: absolute;
+    pointer-events: none;
+}
+
+html.ui-mobile .wm-sys-dm-row::before {
+    top: calc(9 * var(--u));
+    height: 1px;
+    background: repeating-linear-gradient(to right, #a0a0a0 0 1px, transparent 1px 2px);
+}
+
+html.ui-mobile .wm-sys-dm-row.is-root::before { left: calc(18 * var(--u)); width: calc(3 * var(--u)); }
+html.ui-mobile .wm-sys-dm-row.is-cat::before { left: calc(37 * var(--u)); width: calc(4 * var(--u)); }
+html.ui-mobile .wm-sys-dm-row.is-dev::before { left: calc(51 * var(--u)); width: calc(9 * var(--u)); }
+
+html.ui-mobile .wm-sys-dm-row:is(.is-cat, .is-dev)::after {
+    left: calc(31 * var(--u));
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px);
+}
+
+html.ui-mobile .wm-sys-dm-row.is-cat.is-last::after { bottom: calc(9 * var(--u)); }
+html.ui-mobile .wm-sys-dm-row.is-dev.in-last::after { content: none; }
+
+/* a class's devices: their own line down from the class icon */
+html.ui-mobile .wm-sys-dm-row.is-dev {
+    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px) calc(50 * var(--u)) 0 / 1px 100% no-repeat;
+}
+
+html.ui-mobile .wm-sys-dm-row.is-dev.is-last {
+    background-size: 1px calc(9 * var(--u));
+}
+
+/* ---- Power > Battery (#829): the cell's details (.wm-sys-facts rows) and Power use: a box like the battery meter (1 unit black frame, white), a dotted
+ * middle line, one highlight bar per read, + (charging) up from it and - (in use) down, the
+ * scale's ends in watts at the left. ---- */
+html.ui-mobile .wm-sys-batrows {
+    margin: calc(4 * var(--wm-px)) 0 0;
+}
+
+html.ui-mobile .wm-sys-pgraph-head {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(6 * var(--wm-px));
+    margin-top: calc(8 * var(--wm-px));
+    font-weight: bold;
+}
+
+html.ui-mobile .wm-sys-pgraph-head > span:last-child {
+    font-weight: normal;
+    white-space: nowrap;
+}
+
+html.ui-mobile .wm-sys-pgraph-wrap {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: calc(3 * var(--wm-px));
+    margin-top: calc(3 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pgraph-scale {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile .wm-sys-pgraph {
+    position: relative;
+    box-sizing: border-box;
+    height: calc(64 * var(--wm-px));
+    padding: calc(1 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+html.ui-mobile .wm-sys-pgraph::before {
+    content: '';
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    right: calc(1 * var(--wm-px));
+    top: calc(50% - 0.5 * var(--wm-px));
+    height: calc(1 * var(--wm-px));
+    background: repeating-linear-gradient(to right, #808080 0 calc(1 * var(--wm-px)), transparent calc(1 * var(--wm-px)) calc(2 * var(--wm-px)));
+}
+
+html.ui-mobile .wm-sys-pgraph-bars {
+    display: grid;
+    grid-template-columns: repeat(48, minmax(0, 1fr));
+    column-gap: calc(1 * var(--wm-px));
+    height: 100%;
+}
+
+html.ui-mobile .wm-sys-pgraph-bars > i {
+    position: relative;
+    align-self: start;
+    height: var(--h, 0);
+}
+
+html.ui-mobile .wm-sys-pgraph-bars > i.is-in {
+    top: calc(50% - var(--h, 0));
+    background: var(--wm-highlight);
+}
+
+html.ui-mobile .wm-sys-pgraph-bars > i.is-out {
+    top: 50%;
+    background: var(--wm-highlight);
+}

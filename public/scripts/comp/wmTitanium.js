@@ -173,6 +173,20 @@
             return { label: 'tasks', icon: 's:tasks', pages: [{ title: lines[0], line2: lines.slice(1).join(', ') }], softKey: { label: 'Tasks', action: go }, onTap: go };
         }
         if (id === 'search') {
+            // a page each for Search Internet / Grimoire / Files / Pictures, its program's icon at the
+            // top right (#829); the tap opens Search there with the field focused, in the tap itself
+            // (Android raises the keyboard only for a tap's focus)
+            const scopes = window.wmSearch && typeof window.wmSearch.scopes === 'function' ? window.wmSearch.scopes() : [];
+            if (scopes.length) {
+                return {
+                    label: 'search', icon: 's:search',
+                    pages: scopes.map((sc) => {
+                        // Search Internet goes where Today's Search options say (#830, wmShell todayWebSearch)
+                        const go = () => (sc.type === 'web' && typeof window.wmTodayWebSearch === 'function' && window.wmTodayWebSearch()) || window.wmSearch.open(null, sc.type, { focus: true });
+                        return { title: sc.title, icon: sc.panelIcon, softKey: { label: 'Search', action: go }, onTap: go };
+                    })
+                };
+            }
             return { label: 'search', icon: 's:search', pages: [{ title: window.wmSearch ? 'Search Phone' : 'Search pictures' }], softKey: { label: 'Search', action: () => searchPictures() }, onTap: () => searchPictures() };
         }
         if (id === 'workspace') {

@@ -63,7 +63,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -493,7 +493,7 @@
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
     const DIRECTOR_CLAP_FRAMES = 6;
     // 6.5's own drawing of a glyph where its ROM differs (outres.192 32508 is anti-aliased there)
-    const ART65 = new Set(['status-sms']);
+    const ART65 = new Set(['status-sms', 'status-battery-low']);
     const artImageSet = (name) => (WM65 && ART65.has(name)
         ? `image-set(url("/static_images/wm65/${name}.png") 1x, url("/static_images/wm65/${name}@2x.png") 2x, url("/static_images/wm65/${name}@4x.png") 4x)`
         : `image-set(url("${art(name)}") 1x, url("${art2x(name)}") 2x${HD_ART.has(name) ? `, url("${ART}${name}@4x.png") 4x` : ''})`);
@@ -2220,16 +2220,67 @@
         return Number.isFinite(n) ? Math.max(5, Math.min(50, n)) : BATTERY_LOW_DEFAULT;
     }
 
+    /*
+     * Two stages, as WM's own (the ROM's "Main Battery low" / "Main Battery very low"): low at the
+     * user's level, very low at 40 % of it (10 % as shipped, never under 3). Each comes up once
+     * with the ROM's low battery glyph (shellres.192.dll 5078: scripts/extract-wm-battery-low-icon.py)
+     * and its own sound class (battery-low / battery-very-low: WM's class plays lowbatt.wma, which
+     * the ROM images lack; the files are the desktop's Battery Low / Critical sounds). The charger
+     * takes the notification away and arms both again.
+     */
+    let batteryLowNote = null;
+    let batteryVeryWarned = false;
+    const batteryVeryLowLevel = () => Math.max(3, Math.round(batteryLowLevel() * 0.4));
+    const BATTERY_LOW_TEXT = 'To prevent possible data loss, replace or recharge your batteries according to the owner\'s manual.';
+
+    function closeBatteryLowNote() {
+        if (batteryLowNote) { try { batteryLowNote.close(); } catch (_) { /* gone */ } batteryLowNote = null; }
+    }
+
     function batteryLowCheck(b) {
-        if (!b || !b.low) { if (!b || b.charging || b.level > batteryLowLevel()) batteryWarned = false; return; }
-        if (batteryWarned) return;
+        if (!b || !b.low) {
+            if (!b || b.charging || b.level > batteryLowLevel()) { batteryWarned = false; batteryVeryWarned = false; }
+            if (b && b.charging) closeBatteryLowNote();
+            return;
+        }
+        const very = b.level <= batteryVeryLowLevel();
+        if (batteryWarned && (!very || batteryVeryWarned)) return;
         // not over the boot: the warning waits for Today
         if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
         batteryWarned = true;
-        notify({
-            title: 'Main Battery Low',
-            text: 'To prevent possible data loss, replace or recharge your batteries according to the owner\'s manual.',
-            icon: 'warning', asNote: true
+        if (very) batteryVeryWarned = true;
+        const title = very ? 'Main Battery Very Low' : 'Main Battery Low';
+        const event = very ? 'battery-very-low' : 'battery-low';
+        // the very low stage replaces the low one (one battery notification, as WM keeps)
+        closeBatteryLowNote();
+        batteryLowNote = appNote({ title, html: escapeHtml(BATTERY_LOW_TEXT), icon: 'status-battery-low', event });
+        if (!batteryLowNote) notify({ title, text: BATTERY_LOW_TEXT, icon: 'warning', asNote: true });
+    }
+
+    /*
+     * "Battery Fully Charged" (#829): once per charge, when the level reaches 100 % (or Android says
+     * full) while the charger is in. Armed by charging under 100 %, so a phone that starts up full on
+     * the charger stays quiet and trickle charging (99 / 100) does not repeat it; unplugging takes the
+     * notification away and ends the cycle. The glyph is the full battery's own (title-bar art).
+     */
+    let batteryFullCycle = 'idle'; // idle -> armed (charging under 100) -> done (told)
+    let batteryFullNote = null;
+    function batteryFullCheck(b) {
+        const plugged = !!(b && (b.charging || b.plugged));
+        if (!plugged) {
+            batteryFullCycle = 'idle';
+            if (batteryFullNote) { try { batteryFullNote.close(); } catch (_) { /* gone */ } batteryFullNote = null; }
+            return;
+        }
+        const full = b.level >= 100 || b.status === 'full';
+        if (!full) { if (batteryFullCycle === 'idle') batteryFullCycle = 'armed'; return; }
+        if (batteryFullCycle !== 'armed') return;
+        if (root.dataset.wmBoot && root.dataset.wmBoot !== 'done') return;
+        batteryFullCycle = 'done';
+        batteryFullNote = appNote({
+            title: 'Battery Fully Charged',
+            html: escapeHtml('The main battery is fully charged. You can disconnect the charger.'),
+            icon: 'status-battery-full', event: 'battery-full'
         });
     }
 
@@ -2525,6 +2576,7 @@
         hide(bat, !dev.battery);
         if (dev.battery) { put(bat, 'icon', dev.battery.icon); tip(bat, dev.battery.text); }
         batteryLowCheck(dev.battery);
+        batteryFullCheck(dev.battery);
         const vol = shell.querySelector('[data-role="volume"]');
         const mode = soundMode();
         put(vol, 'icon', mode === 'off' ? 'volume-off' : mode === 'vibrate' ? 'vibrate' : 'volume');
@@ -3263,7 +3315,9 @@
                 const upd = () => {
                     // a machine without a battery reports a full one on charge that never ends
                     const none = b.charging && b.level >= 1 && (b.chargingTime === 0 || b.chargingTime === Infinity) && b.dischargingTime === Infinity;
-                    webBattery = none ? null : { level: Math.round(b.level * 100), charging: !!b.charging };
+                    // the browser's own estimates in seconds (Infinity / 0 = unknown or not this state)
+                    const secs = (v) => (Number.isFinite(v) && v > 0 ? v : null);
+                    webBattery = none ? null : { level: Math.round(b.level * 100), charging: !!b.charging, chargingTime: b.charging ? secs(b.chargingTime) : null, dischargingTime: b.charging ? null : secs(b.dischargingTime) };
                     refreshStatus();
                 };
                 upd();
@@ -3276,6 +3330,83 @@
 
     const objOr = (o) => (o && typeof o === 'object' ? o : null);
     const bars = (n) => `${n} of 4 ${n === 1 ? 'bar' : 'bars'}`;
+
+    /*
+     * The battery's further numbers (contract v2, #829), each only when the app knows it: status,
+     * health, technology, temperatureC, voltageMv, currentUa (+ into the battery), powerMw (same
+     * sign), designCapacityMah, fullCapacityMah, cycleCount, toFullMs (Android's estimate). Without
+     * the app the browser's estimates stand in: toFullMs / remainingMs from navigator.getBattery().
+     */
+    const finiteOr = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+    function batteryExtras(bat) {
+        const x = {};
+        if (bat) {
+            ['status', 'health', 'technology'].forEach((k) => { if (typeof bat[k] === 'string' && bat[k]) x[k] = bat[k]; });
+            ['temperatureC', 'voltageMv', 'currentUa', 'currentAvgUa', 'powerMw', 'designCapacityMah', 'fullCapacityMah', 'cycleCount'].forEach((k) => { const v = finiteOr(bat[k]); if (v != null) x[k] = v; });
+            if (x.powerMw == null && x.voltageMv != null && x.currentUa != null) x.powerMw = Math.round(x.voltageMv * x.currentUa / 1e6);
+            const t = finiteOr(bat.chargeTimeRemainingMs);
+            if (t != null && t > 0) x.toFullMs = t;
+        } else if (webBattery) {
+            if (webBattery.chargingTime) x.toFullMs = webBattery.chargingTime * 1000;
+            if (webBattery.dischargingTime) x.remainingMs = webBattery.dischargingTime * 1000;
+        }
+        return x;
+    }
+
+    /**
+     * A fresh battery read for live views (Settings > Power, #829): AndroidHardware.getBattery(),
+     * a local bridge call (no network), safe every 1-2 s while a page shows it. The answer also
+     * becomes the title bar's battery (its icon only redraws when the level or the charger changed).
+     * null without the bridge (a browser, an older app).
+     */
+    function readBattery() {
+        const hw = window.AndroidHardware;
+        if (!hw || typeof hw.getBattery !== 'function') return null;
+        let b = null;
+        try { b = JSON.parse(hw.getBattery()); } catch (_) { b = null; }
+        if (!b || typeof b !== 'object') return null;
+        // (only into a status the app has pushed: a status of the battery alone would hide navigator.connection's link)
+        if (!deviceStatus) return b;
+        const was = objOr(deviceStatus.battery);
+        deviceStatus.battery = b;
+        if (!was || was.level !== b.level || was.charging !== b.charging || was.plugged !== b.plugged || was.status !== b.status) refreshStatus();
+        return b;
+    }
+
+    // battery wording shared by the Power bubble and Settings > Power (wmShell.batteryText)
+    function batteryWatts(mw) {
+        const a = Math.abs(mw);
+        return a >= 1000 ? `${(a / 1000).toFixed(a >= 10000 ? 0 : 1)} W` : `${Math.round(a)} mW`;
+    }
+    function batteryDuration(ms) {
+        const m = Math.max(1, Math.round(ms / 60000));
+        if (m < 60) return `${m} min`;
+        const h = Math.floor(m / 60);
+        return m % 60 ? `${h} h ${m % 60} min` : `${h} h`;
+    }
+    // Fahrenheit where the locale measures in U.S. units (Regional Settings' rule), else Celsius
+    function batteryTemp(c) {
+        let us = false;
+        try { us = ['US', 'LR', 'MM'].includes(new Intl.Locale(navigator.language || 'en-US').maximize().region); } catch (_) { us = false; }
+        return us ? `${Math.round(c * 9 / 5 + 32)} \u00b0F` : `${(Math.round(c * 10) / 10).toFixed(1)} \u00b0C`;
+    }
+
+    /*
+     * The Power bubble stays current while it is up: a fresh bridge read every 2 s (local, the
+     * app's AndroidHardware; nothing without it), redrawn in place; it stops when the bubble closes
+     * or shows something else.
+     */
+    let batteryBubbleTimer = null;
+    function watchBatteryBubble(anchor) {
+        if (batteryBubbleTimer || !(window.AndroidHardware && typeof window.AndroidHardware.getBattery === 'function')) return;
+        batteryBubbleTimer = setInterval(() => {
+            const el = shell && shell.querySelector('.wm-bubble');
+            if (!el || el.hidden || el.dataset.role !== 'battery') { clearInterval(batteryBubbleTimer); batteryBubbleTimer = null; return; }
+            if (document.hidden) return;
+            readBattery();
+            statusBubble('battery', anchor, true);
+        }, 2000);
+    }
 
     /** What the title bar shows for the phone: { cell, wifi, active, link, signal, battery }. */
     function deviceView() {
@@ -3327,7 +3458,7 @@
             const low = !charging && level <= batteryLowLevel();
             // the cell's stages (Yukimi, Nov 13): 4 bars over 80 %, 3 over 60, 2 over 40, 1 over 20, 20 and under the "!"
             const icon = charging ? 'battery-charging' : level <= 20 ? 'battery-empty' : level > 80 ? 'battery-full' : level > 60 ? 'battery-3' : level > 40 ? 'battery-2' : 'battery-1';
-            battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
+            battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}`, ...batteryExtras(bat) };
         }
         return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
     }
@@ -5037,18 +5168,28 @@
             lines.push({ links: [{ label: 'Wireless Manager', action: openWirelessManager }] });
             bubble({ title: 'Bluetooth', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: openBluetoothSettings }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
+            // #829: the level over WM's block bar, then the charger and its watts, the time to full
+            // (or left), the cell's temperature; each line only when it is known
             const b = deviceView().battery;
             const lines = [];
             if (!b) lines.push('Main battery: unknown');
             else {
-                lines.push(b.level != null ? `Main battery: ${b.level}%` : 'Main battery: unknown');
                 const via = { ac: 'external power', usb: 'USB', wireless: 'wireless charger', dock: 'dock' }[b.plugged];
-                if (b.charging) lines.push(`Charging${via ? ` from ${via}` : ''}.`);
-                else if (via) lines.push(`On ${via}, not charging.`);
-                else if (b.charging === false) lines.push('On battery.');
-                if (b.saver) lines.push('Battery saver is on.');
+                const w = b.powerMw != null && Math.abs(b.powerMw) >= 1 ? `, ${batteryWatts(b.powerMw)}` : '';
+                const more = [];
+                if ((b.charging || via) && (b.level >= 100 || b.status === 'full')) more.push(`Fully charged${via ? `, on ${via}` : ''}.`);
+                else if (b.charging) more.push(`Charging${via ? ` from ${via}` : ''}${w}.`);
+                else if (via) more.push(`On ${via}, not charging.`);
+                else if (b.charging === false) more.push(`On battery${w}.`);
+                if (b.charging && b.toFullMs && b.level < 100) more.push(`Full in ${batteryDuration(b.toFullMs)}.`);
+                else if (!b.charging && b.remainingMs) more.push(`About ${batteryDuration(b.remainingMs)} left.`);
+                if (b.temperatureC != null) more.push(`Temperature: ${batteryTemp(b.temperatureC)}`);
+                if (b.saver) more.push('Battery saver is on.');
+                lines.push({ html: `<div>Main battery: ${b.level}%</div><div class="wm-ds-progress wm-bat-bar" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><span style="--wm-ds-blocks:${Math.round(b.level / 100 * 18)}"></span></div>${more.map((t) => `<div>${escapeHtml(t)}</div>`).join('')}` });
             }
-            bubble({ title: 'Power', role, anchor, sections: lines, buttons: [{ text: 'Hide' }] });
+            const powerSettings = () => { const st = window.wmSettings; if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings'); };
+            bubble({ title: 'Power', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: powerSettings }], buttons: [{ text: 'Hide' }] });
+            watchBatteryBubble(anchor);
         } else if (role === 'director') {
             const d = directorState();
             const text = !d ? 'The Director has not reported yet.'
@@ -5388,7 +5529,10 @@
         // the emulator images lack: Windows Live Messenger's new instant message sound (archive.org, #779)
         'online.mp3',
         // Traffic's speed camera alert: our own sound (scripts/generate-traffic-camera-sound.py, #810)
-        'TrafficCamera.wav'
+        'TrafficCamera.wav',
+        // the low battery class's Wave (HKCU ControlPanel\Notifications {A877D663}: lowbatt.wma) is
+        // missing from the ROM images: the desktop's Battery Low / Battery Critical sounds (#829)
+        'lowbatt.wav', 'critbatt.wav'
     ];
     // WM's Sound list names a file without its extension, first letter capital ("Notify", "Type")
     const wmSoundLabel = (file) => {
@@ -5407,6 +5551,10 @@
         { id: 'as-start', label: 'ActiveSync: Start', kind: 'event', sound: 'Infbeg.wav', desktop: 'balloon' },
         { id: 'connect', label: 'Connection established', kind: 'note', sound: 'Infbeg.wav', play: false, desktop: 'balloon' },
         { id: 'disconnect', label: 'Connection disconnected', kind: 'note', sound: 'Infend.wav', play: false, desktop: 'balloon' },
+        // #829: the main battery low / very low (WM's low battery class) and fully charged
+        { id: 'battery-full', label: 'Battery: Fully charged', kind: 'note', sound: 'Alarm2.wav', desktop: 'balloon' },
+        { id: 'battery-low', label: 'Battery: Main battery low', kind: 'note', sound: 'lowbatt.wav', desktop: 'balloon' },
+        { id: 'battery-very-low', label: 'Battery: Main battery very low', kind: 'note', sound: 'critbatt.wav', desktop: 'warning' },
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
         { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: false, desktop: 'balloon' },
         // #779: Dreamscape Messenger (the chat personas) and Text Messaging notify in classes of their own
@@ -6865,6 +7013,40 @@
         }
 
 
+        // ---- Today's Search item (6.1; 6.5 draws it as a panel, wmTitanium.js): the scope shown,
+        // kept across loads; without the Search program, the old picture search's words
+        const TODAY_SEARCH_KEY = 'wmTodaySearchScope';
+        function todaySearchScope(step) {
+            let list = [];
+            try { list = (window.wmSearch && typeof window.wmSearch.scopes === 'function' && window.wmSearch.scopes()) || []; } catch (_) { list = []; }
+            if (!list.length) return null;
+            let kept = null;
+            try { kept = localStorage.getItem(TODAY_SEARCH_KEY); } catch (_) { kept = null; }
+            let at = Math.max(0, list.findIndex((sc) => sc.type === kept));
+            if (step) {
+                at = (at + step + list.length) % list.length;
+                try { localStorage.setItem(TODAY_SEARCH_KEY, list[at].type); } catch (_) { /* private mode */ }
+            }
+            return Object.assign({ count: list.length }, list[at]);
+        }
+        function drawTodaySearch(page) {
+            const row = page && page.querySelector('[data-row="search"]');
+            if (!row) return;
+            const sc = todaySearchScope(0);
+            const label = row.querySelector('.wm-today-search-label');
+            const text = sc ? sc.title : 'Search pictures';
+            if (label.textContent !== text) { label.textContent = text; row.querySelector('.wm-today-search-open').setAttribute('aria-label', text); }
+            // the scope's program icon at the right of the box (each of the four has a 4x file)
+            const icon = row.querySelector('.wm-today-search-icon');
+            const src = sc ? `${ART}${sc.icon}.png` : '';
+            if (icon.getAttribute('src') !== src) {
+                if (src) { icon.src = src; icon.srcset = `${src} 1x, ${ART}${sc.icon}@2x.png 2x, ${ART}${sc.icon}@4x.png 4x`; } else { icon.removeAttribute('src'); icon.removeAttribute('srcset'); }
+                icon.hidden = !src;
+            }
+            const many = !!sc && sc.count > 1;
+            row.querySelectorAll('.wm-today-search-step').forEach((b) => { if (b.hidden === many) b.hidden = !many; });
+        }
+
         const today = {
             id: 'today',
             title: 'Today',
@@ -6890,10 +7072,11 @@
                     <div class="wm-today-row is-plain" data-row="tasks">
                         ${imgTag('today-tasks')}<span class="wm-today-text" data-f="tasks"></span>
                     </div>
-                    <form class="wm-today-search" data-row="search" role="search">
-                        <input type="search" enterkeyhint="search" autocomplete="off" placeholder="Search pictures" aria-label="Search pictures">
-                        <button type="submit" class="wm-today-search-go" aria-label="Search"></button>
-                    </form>
+                    <div class="wm-today-search-row" data-row="search" role="search">
+                        <button type="button" class="wm-today-search-step" data-dir="-1" aria-label="Previous search">${imgTag('cal-prev')}</button>
+                        <button type="button" class="wm-today-search wm-today-search-open"><span class="wm-today-search-label">Search pictures</span><img class="wm-today-search-icon" alt="" draggable="false" hidden></button>
+                        <button type="button" class="wm-today-search-step" data-dir="1" aria-label="Next search">${imgTag('cal-next')}</button>
+                    </div>
                     <button type="button" class="wm-today-row" data-row="workspace">
                         ${imgTag('app-file-explorer')}<span class="wm-today-text workspace-name" data-f="workspace"></span>
                     </button>
@@ -6928,20 +7111,21 @@
                     if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open();
                 }, { paint: true, timeout: 15000 }));
                 document.addEventListener('wmTasksChange', () => { if (current === 'today') this.refresh(); });
-                page.querySelector('[data-row="search"]').addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    const input = e.currentTarget.querySelector('input');
-                    const q = input.value.trim();
-                    input.value = '';
-                    input.blur();
-                    busy(() => {
-                        open('gallery');
-                        if (q) {
-                            const gallery = apps.get('gallery');
-                            if (gallery && typeof gallery.search === 'function') gallery.search(q);
-                        }
-                    }, { paint: true, timeout: 15000 });
+                // the Search item (#829): left / right go round Search Internet, Grimoire, Files and
+                // Pictures (wmSearch.scopes); the box opens Search on that Type with its field focused
+                // and the keyboard up (in the tap itself: Android raises it only for a tap's focus)
+                const searchRow = page.querySelector('[data-row="search"]');
+                searchRow.addEventListener('click', (e) => {
+                    const step = e.target.closest('.wm-today-search-step');
+                    if (step) { todaySearchScope(Number(step.dataset.dir) || 1); drawTodaySearch(page); return; }
+                    if (!e.target.closest('.wm-today-search-open')) return;
+                    const sc = todaySearchScope(0);
+                    // Search Internet goes where Today's Search options say (#830)
+                    if (sc && sc.type === 'web' && todayWebSearch()) return;
+                    if (sc && window.wmSearch && typeof window.wmSearch.open === 'function') window.wmSearch.open(null, sc.type, { focus: true });
+                    else busy(() => open('gallery'), { paint: true, timeout: 15000 });
                 });
+                drawTodaySearch(page);
                 page.querySelector('[data-row="prints"]').addEventListener('click', (e) => {
                     const tile = e.target.closest('[data-filename]');
                     if (!tile) return;
@@ -7028,6 +7212,7 @@
                 }
                 strip.hidden = !prints.length;
                 paintTodayWidgets(page);
+                drawTodaySearch(page);
                 applyTodayItems(page);
                 markTodayLast(page);
                 // 6.5: the Melaton Default home screen draws from the rows above (wmTitanium.js)
@@ -9324,6 +9509,9 @@
         radios: () => radiosNow || readRadios(),
         typeName: (t) => typeName(t),
         batteryLowKey: BATTERY_LOW_KEY,
+        /** #829: a fresh battery read from the app's bridge (null without it), and the shared battery wording. */
+        readBattery: () => readBattery(),
+        batteryText: { watts: (mw) => batteryWatts(mw), duration: (ms) => batteryDuration(ms), temp: (c) => batteryTemp(c) },
         /** Tap-and-hold: ms from pen down to the menu, when the ring of dots is whole (bindHoldRing). */
         holdMs: HOLD_FIRST_MS + 8 * HOLD_STEP_MS + HOLD_MENU_MS,
         /**
@@ -9381,6 +9569,8 @@
         volumeBubble: () => { const v = shell && shell.querySelector('[data-role="volume"]'); if (v) toggleVolume(v); },
         /** Resolves once the next frame has painted (yield before heavy synchronous work). */
         afterPaint: () => afterPaint(),
+        /** Ends the switch picture on its way at once (a field on the page that came up must take the focus inside the tap: wmSearch). */
+        stageFlush: () => stageFlush(),
         isBusy: () => busyCount > 0,
         /** WM 6.1 system sounds: play('SystemHand' | 'SystemExclamation' | 'Notification' ...), log (what played). */
         /** Settings > Buttons: the Today soft keys ({ left, right } values, the actions, the programs). */
