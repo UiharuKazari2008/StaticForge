@@ -45,7 +45,20 @@
         return (conn && conn.domain) || DEFAULT_DOMAIN;
     }
 
+    /**
+     * Continuity (#798): a hybrid phone's DeX window reaches the server through the phone (its data
+     * connection, over the app's in-process bus): the interface is the phone, as Windows Mobile Device
+     * Center's connection shows a cradled Pocket PC.
+     */
+    const CONTINUITY_NAME = 'Pocket PC (via DMA)';
+    const CONTINUITY_MINIPORT = 'Windows Mobile-based Device Connectivity';
+    function viaPhone() {
+        const mc = root.melatonContinuity;
+        try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+    }
+
     function connectionName() {
+        if (viaPhone()) return CONTINUITY_NAME;
         if (typeof root.melatonConnectionName === 'function') return root.melatonConnectionName();
         const conn = root.wsClient && root.wsClient.melatonConnection;
         return (conn && conn.connectionName) || DEFAULT_CONNECTION_NAME;
@@ -69,6 +82,9 @@
     function connectionInfo() {
         const conn = (root.wsClient && root.wsClient.melatonConnection) || {};
         const fqdn = (root.location && root.location.hostname) || 'localhost';
+        if (viaPhone()) {
+            return { domain: domainName(), connectionName: CONTINUITY_NAME, fqdn, connectionType: 'DMA', device: 'Pocket PC', miniport: CONTINUITY_MINIPORT, viaPhone: true };
+        }
         return {
             domain: domainName(),
             connectionName: connectionName(),
@@ -82,6 +98,7 @@
 
     function miniportLabel(info) {
         const i = info || connectionInfo();
+        if (i.miniport) return i.miniport;
         return `${i.connectionType} Miniport (${i.device})`;
     }
 

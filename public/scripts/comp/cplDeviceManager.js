@@ -67,7 +67,7 @@
             { name: 'Keyboards', icon: `${DEV}/keyboards-16.png`, devices: ['Standard PS/2 Keyboard'] },
             { name: 'Mice and other pointing devices', icon: `${DEV}/mice-16.png`, devices: ['HID-compliant mouse'].concat(root.matchMedia && root.matchMedia('(any-pointer: coarse)').matches ? ['HID-compliant touch screen'] : []) },
             { name: 'Monitors', icon: `${DEV}/monitors-16.png`, devices: [`Generic PnP Monitor (${s.width || 0} x ${s.height || 0})`] },
-            { name: 'Network adapters', icon: `${DEV}/network-adapters-16.png`, devices: [`${conn.connectionType || 'WAN'} Miniport (${conn.device || 'L-PPoP'})`] },
+            { name: 'Network adapters', icon: `${DEV}/network-adapters-16.png`, devices: [conn.miniport || `${conn.connectionType || 'WAN'} Miniport (${conn.device || 'L-PPoP'})`] },
             { name: 'Processors', icon: `${DEV}/processors-16.png`, devices: Array.from({ length: n }, () => 'Melaton Virtual Processor') },
             { name: 'Sound, video and game controllers', icon: `${DEV}/sound-16.png`, devices: (audioOut.length ? audioOut.map((d, i) => label(d, 'High Definition Audio Device', i)) : ['High Definition Audio Device']).concat(video.map((d, i) => label(d, 'USB Video Device', i))) },
             { name: 'System devices', icon: `${DEV}/system-devices-16.png`, devices: ['ACPI Fixed Feature Button', 'High precision event timer', 'Programmable interrupt controller', 'System CMOS/real time clock', 'System timer'] },

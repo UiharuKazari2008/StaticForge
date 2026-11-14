@@ -435,22 +435,26 @@
          * weight) and stands still while a task runs. It never finishes before splashMs so it
          * can be read.
          */
-        async function splash(run, work) {
+        async function splash(run, work, link) {
             bios.state = 'splash';
             screen.mode = 'splash';
             const started = env.now();
             screen.splash = { progress: 0, prompt: postPrompt() };
             render();
+            // Continuity (#798): the bar stops at 90 % for the phone link (linkStep)
+            const cap = link ? LINK_AT : 1;
             for (;;) {
                 if (run && run.cancelled && run.cancelled()) return false;
                 const elapsed = env.now() - started;
-                const progress = work ? work.progress(elapsed) : Math.min(1, elapsed / config.splashMs);
+                const progress = Math.min(cap, work ? work.progress(elapsed) : Math.min(1, elapsed / config.splashMs));
                 screen.splash = { progress, prompt: postPrompt() };
                 render();
-                if (elapsed >= config.splashMs && (!work || (work.done() && progress >= 1))) break;
+                if (elapsed >= config.splashMs * cap && (!work || (work.done() && progress >= cap))) break;
                 await env.sleep(50);
             }
-            screen.splash = { progress: 1, prompt: postPrompt() };
+            if (link && !(await linkStep(run, link, (text) => { screen.splash = { progress: LINK_AT, prompt: text }; render(); }))) return false;
+            // past the link the hot keys are gone; a key pressed before it still enters what it asked for
+            screen.splash = { progress: 1, prompt: link ? (bios.request ? postPrompt() : '') : postPrompt() };
             render();
             await env.sleep(bios.request ? config.enteringMs : config.splashHoldMs);
             return !(run && run.cancelled && run.cancelled());
@@ -500,7 +504,7 @@
         }
 
         /** Boot-time Diagnostic Screen: the text POST, memory counted up (work runs underneath). */
-        async function diagnostic(run, work) {
+        async function diagnostic(run, work, link) {
             void work;
             bios.state = 'diag';
             screen.mode = 'text';
@@ -548,6 +552,20 @@
                 await env.sleep(config.diagStepMs);
             }
             const promptRow = row;
+            // Continuity (#798): the phone link in place of the prompt line, keys off while it waits
+            if (link) {
+                const lineAt = (text) => { screen.put(0, promptRow, ' '.repeat(COLS)); screen.put(0, promptRow, text); render(); };
+                const t0l = env.now();
+                while (env.now() - t0l < config.splashMs * 0.4) {
+                    lineAt(postPrompt());
+                    await env.sleep(80);
+                    if (run && run.cancelled && run.cancelled()) return false;
+                }
+                if (!(await linkStep(run, link, lineAt))) return false;
+                lineAt(bios.request ? postPrompt() : '');
+                await env.sleep(bios.request ? config.enteringMs : config.splashHoldMs);
+                return true;
+            }
             const t1 = env.now();
             while (env.now() - t1 < config.splashMs * 0.6) {
                 screen.put(0, promptRow, ' '.repeat(COLS));
@@ -799,36 +817,46 @@
                 cmos = Object.assign({}, saved);   // a working copy Setup did not save is gone on reboot
                 if (!first) work = startWork(opts.tasks);
                 first = false;
-                const ok = cmos.diag === 'Enabled' ? await diagnostic(run, work) : await splash(run, work);
+                // Continuity (#798): a hybrid phone's DeX window links to the phone at 90 % of the bar
+                const link = opts.continuity && typeof opts.continuity.ready === 'function' ? opts.continuity : null;
+                const ok = cmos.diag === 'Enabled' ? await diagnostic(run, work, link) : await splash(run, work, link);
                 if (!ok) return 'cancelled';
                 while (!work.done()) {
                     if (run && run.cancelled && run.cancelled()) return 'cancelled';
                     await env.sleep(50);
                 }
                 bios.work = work.results();
-                // Continuity (#798): a hybrid phone's DeX window waits for the phone past the bar
-                if (typeof opts.phoneWait === 'function') {
-                    const reached = await connectingToPhone(run, opts.phoneWait);
-                    if (reached === 'cancelled') return 'cancelled';
+                if (link) {
+                    // the phone checked the server, its gate and the session: no network card verdict, no
+                    // Gateway Password, no boot PIN here. One look that the session lets this window in;
+                    // refused, the disk "does not read"
+                    const auth = typeof link.auth === 'function' ? await link.auth() : 'ok';
+                    if (run && run.cancelled && run.cancelled()) return 'cancelled';
+                    if (auth !== 'ok') {
+                        await diskReadError();
+                        bios.request = null;
+                        continue;
+                    }
+                    opts.hasOs = true;
                 }
                 // The network card found no server (opts.serverDown → a pxe() reason): no gate or
                 // PIN to ask it, nothing any device can boot; Setup and the Boot Menu still open
-                const down = typeof opts.serverDown === 'function' ? await opts.serverDown(bios.work) : null;
+                const down = !link && typeof opts.serverDown === 'function' ? await opts.serverDown(bios.work) : null;
                 if (run && run.cancelled && run.cancelled()) return 'cancelled';
                 // Gate 1 before the PIN: the Gateway Password when the key is stale or missing
-                if (!down && typeof opts.requireGateway === 'function' && await opts.requireGateway()) {
+                if (!link && !down && typeof opts.requireGateway === 'function' && await opts.requireGateway()) {
                     const gatewayOk = await promptGatewayPassword();
                     if (gatewayOk === 'cancelled') return 'cancelled';
                     if (typeof opts.onGateway === 'function') await opts.onGateway();
                 }
-                const needBootPin = !down && (cmos.pwBoot === 'Enabled'
+                const needBootPin = !link && !down && (cmos.pwBoot === 'Enabled'
                     || (typeof opts.requireBootPin === 'function' && !!(await opts.requireBootPin())));
                 if (needBootPin) {
                     const bootPinOk = await promptBootPinLogin();
                     if (bootPinOk === 'cancelled') return 'cancelled';
                     if (!bootPinOk) continue;
                 }
-                opts.hasOs = typeof opts.hasOsAfter === 'function' ? !!(await opts.hasOsAfter(work.results())) : opts.hasOs;
+                if (!link) opts.hasOs = typeof opts.hasOsAfter === 'function' ? !!(await opts.hasOsAfter(work.results())) : opts.hasOs;
                 if (bios.request === 'setup') {
                     const outcome = await runSetup();
                     bios.request = null;
@@ -877,25 +905,37 @@
         }
 
         /**
-         * Continuity (Yozora #798): the DeX window of a hybrid phone shares the phone's connection, so
-         * past the POST bar it waits on a text screen until the phone has reached Today and the shared
-         * channel is ready: "Connecting to Phone... " and an ASCII spinner turning clockwise through a
-         * full turn (| / - \, as the DHCP spinner), 80 ms a step. ready() is cheap.
+         * Continuity (Yozora #798, hybrid phone's DeX window only): the POST bar runs to 90 %, then the
+         * hot keys go (no prompt, no keys: bios.state 'link') and "Waiting for IOMMU to initialize..."
+         * stands until the phone window is ready (link.ready(), cheap), as a board waits for its
+         * IOMMU / NUMA path before it hands over. show(text) puts the line where the prompt was.
          */
-        async function connectingToPhone(run, ready) {
-            const spin = '|/-\\';
-            let i = 0;
-            bios.state = 'phone';
+        const LINK_AT = 0.9;
+        async function linkStep(run, link, show) {
+            const before = bios.state;
+            bios.state = 'link';
             for (;;) {
-                if (run && run.cancelled && run.cancelled()) return 'cancelled';
-                if (await ready()) return true;
-                screen.mode = 'text';
-                screen.clear(C.black, C.grey);
-                screen.put(0, 0, 'Melaton Mobile Continuity');
-                screen.put(0, 1, `Connecting to Phone... ${spin[i++ % spin.length]}`);
-                render();
-                await env.sleep(80);
+                if (run && run.cancelled && run.cancelled()) return false;
+                if (await link.ready()) break;
+                show('Waiting for IOMMU to initialize...');
+                await env.sleep(100);
             }
+            bios.state = before;
+            return true;
+        }
+
+        /**
+         * The disk would not read (Continuity: the phone's session did not let this window in). The
+         * boot sector's own words, as Vista's MBR prints them; any key restarts.
+         */
+        async function diskReadError() {
+            bios.state = 'halt';
+            screen.mode = 'text';
+            screen.clear(C.black, C.grey);
+            screen.put(0, 0, 'A disk read error occurred');
+            screen.put(0, 1, 'Press Ctrl+Alt+Del to restart');
+            render();
+            await waitKey(null);
         }
 
         // ---- the Boot Menu (ESC) ----

@@ -531,6 +531,10 @@
             // a hybrid phone's DeX window boots the disk: an install mark it read during the POST is the
             // phone's own install under way (shared storage), which it waits out at "Connecting to Phone"
             const hasOsAfter = (results) => isHybridDw() || (!!results.os && !results.resume);
+            // Continuity (#798): the phone checked the disk, the install, the server and updates; the
+            // DeX window's POST has no work under its bar (it runs on its clock) and links to the phone
+            const hybrid = isHybridDw();
+            if (hybrid) tasks.length = 0;
             const bios = ensureBios();
             if (!bios) {
                 const results = {};
@@ -597,9 +601,17 @@
             };
             // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
             const mc = root.melatonContinuity;
-            const hybridDw = isHybridDw();
             const outcome = await bios.post({
-                phoneWait: hybridDw ? () => mc.phoneReady() : undefined,
+                // ready: the phone window says it is ready; auth: the session lets this window in (the
+                // phone's session cookie; a refusal is "A disk read error occurred")
+                continuity: hybrid ? {
+                    ready: () => mc.phoneReady(),
+                    auth: async () => {
+                        let r = await checkSession(env);
+                        if (r === 'error') { await env.sleep(1000); r = await checkSession(env); }
+                        return r;
+                    }
+                } : undefined,
                 tasks,
                 hasOsAfter,
                 serverDown,
@@ -678,6 +690,15 @@
             let failures = 0;
             let busySince = null;
             show('boot');
+            // Continuity (#798): the phone is past its own boot (server up, session good, BIOS checked
+            // the session): the boot screen for its time, then the desktop. No /status, no updates
+            if (isHybridDw() && ctl.bootMode !== 'restore') {
+                const left = startedAt + config.minBootMs - env.now();
+                if (left > 0) await env.sleep(left);
+                if (run !== ctl.runId) return 'cancelled';
+                await handOff();
+                return run === ctl.runId ? 'teal' : 'cancelled';
+            }
             for (;;) {
                 const probe = await probeStatus(env);
                 if (run !== ctl.runId) return 'cancelled';

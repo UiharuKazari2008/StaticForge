@@ -1414,8 +1414,12 @@ class ServiceWorkerManager {
             this._scheduleWorkerMaintenance();
             try {
                 this._kickApplicationBootEarly();
-                this._showBootUiEarly('Checking server status…');
-                await this._waitForServerReady();
+                // Continuity (#798): a hybrid phone's DeX window booted past the phone's ready (its BIOS
+                // links to it): the server is up, no readiness wait here
+                if (!this._isContinuityDexWindow()) {
+                    this._showBootUiEarly('Checking server status…');
+                    await this._waitForServerReady();
+                }
 
                 this.bootPhase = 'waiting_sw';
                 this._showBootUiEarly('Loading offline cache…');

@@ -396,6 +396,45 @@ function harness(opts = {}) {
         delete global.localStorage;
     }
 
+    // ---------- Continuity (#798): the DeX window links to the phone at 90 %, keys off while it waits ----------
+    {
+        let ready = false;
+        let auths = 0;
+        h = harness();
+        p = h.bios.post({ hasOs: false, serverDown: async () => 'dhcp', requireBootPin: async () => true,
+            continuity: { ready: () => ready, auth: async () => { auths++; return 'ok'; } } });
+        await h.until(() => h.bios.state === 'link');
+        assert.strictEqual(h.bios.screen.splash.progress, 0.9, 'the bar waits at 90 %');
+        assert.strictEqual(h.bios.screen.splash.prompt, 'Waiting for IOMMU to initialize...');
+        assert.strictEqual(h.bios.handleKey('F2', ''), false, 'no hot keys while it links');
+        ready = true;
+        assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' }, 'linked: the disk boots (no network verdict, no PIN, has an OS)');
+        assert.strictEqual(h.bios.screen.splash.prompt, '', 'the hot keys stay hidden after the link');
+        assert.strictEqual(auths, 1);
+
+        // a key pressed before the link still enters what it asked for
+        h = harness();
+        ready = false;
+        p = h.bios.post({ hasOs: true, continuity: { ready: () => ready, auth: async () => 'ok' } });
+        await h.flush();
+        assert.strictEqual(h.bios.handleKey('Escape', ''), true, 'the keys work before the link');
+        await h.until(() => h.bios.state === 'link');
+        ready = true;
+        await h.until(() => h.bios.state === 'bootmenu');
+        h.bios.handleKey('Escape', '');
+        await p;
+
+        // the session refused: "A disk read error occurred", a key restarts the POST
+        h = harness();
+        let answer = 'login';
+        p = h.bios.post({ hasOs: true, continuity: { ready: () => true, auth: async () => answer } });
+        await h.until(() => h.bios.state === 'halt');
+        assert.strictEqual(h.row(0), 'A disk read error occurred');
+        answer = 'ok';
+        h.bios.handleKey('Enter', '');
+        assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' });
+    }
+
     console.log('test-phoenix-bios passed');
 })().catch((err) => {
     console.error('❌ test-phoenix-bios failed:', err);
