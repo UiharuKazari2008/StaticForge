@@ -1,0 +1,172 @@
+/*
+ * Key Manager (Yozora #831, mmcAppKeys.js): the dialogs' own parts. The Certificate dialog's
+ * General page (cryptui.dll.mui 130, measured on the Vista VM): a white panel with a black edge,
+ * the 32 px certificate icon, two 1 px rules, bold labels; Certification Path's tree rows; the
+ * purpose check lists of Certificate Properties and the New Key wizard.
+ */
+
+.vdt-client .akm-cert-box {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    background: #fff;
+    border: 1px solid #a0a0a0;
+    border-right-color: #fff;
+    border-bottom-color: #fff;
+    box-shadow: inset 1px 1px 0 #696969, 1px 1px 0 #e3e3e3;
+}
+
+.vdt-client .akm-cert-icon {
+    position: absolute;
+    left: 6px;
+    top: 11px;
+    width: 32px;
+    height: 32px;
+}
+
+.vdt-client .akm-cert-rule {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    height: 1px;
+    background: #000;
+}
+
+/* the texts sit on the white panel (borderless rich edits, as cryptui draws them) */
+.vdt-client [data-vdt-page="akm:general"] .vdt-richedit {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    white-space: normal;
+    overflow: hidden;
+    line-height: 13px;
+}
+
+.vdt-client [data-vdt-page="akm:general"] .vdt-richedit b {
+    font-weight: bold;
+}
+
+.vdt-client .akm-purposes {
+    margin: 0;
+    padding: 0 0 0 14px;
+    list-style: disc;
+}
+
+.vdt-client .akm-purposes li {
+    line-height: 13px;
+}
+
+.vdt-client [data-vdt-page="akm:general"] [data-vdt-id="118"] {
+    overflow: visible;
+}
+
+.vdt-client .akm-privkey {
+    width: 16px;
+    height: 16px;
+    margin: -2px 3px 0 -19px;
+    vertical-align: middle;
+}
+
+/* Certification Path */
+.vdt-client .vdt-tree .akm-path-row {
+    display: flex;
+    align-items: center;
+    height: 16px;
+    margin-top: 1px;
+    white-space: nowrap;
+}
+
+.vdt-client .vdt-tree .akm-path-row img {
+    width: 16px;
+    height: 16px;
+    margin-right: 3px;
+}
+
+.vdt-client .vdt-tree .akm-path-row.is-selected span {
+    padding: 0 2px;
+    background: #3399ff;
+    color: #fff;
+}
+
+.vdt-client .vdt-tree:not(:focus) .akm-path-row.is-selected span {
+    background: #f0f0f0;
+    color: #000;
+}
+
+/* purpose check lists */
+.vdt-client .vdt-html > .akm-checklist,
+.vdt-client .vdt-static > .akm-checklist {
+    box-sizing: border-box;
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    background: #fff;
+}
+
+.vdt-client .akm-checklist .vdt-lv-body {
+    position: static;
+}
+
+.vdt-client .akm-check-row {
+    display: flex;
+    align-items: center;
+    height: 17px;
+    padding: 0 3px;
+    cursor: default;
+}
+
+.vdt-client .akm-check-row .tbp-check {
+    position: relative;
+    width: 100%;
+}
+
+.vdt-client .akm-checklist.is-disabled .akm-check-row label {
+    color: #6d6d6d;
+}
+
+.vdt-client .akm-lv-empty {
+    padding: 4px 6px;
+    color: #6d6d6d;
+}
+
+/* inline errors (a wizard page's, a dialog's) */
+.vdt-client .akm-wiz-error {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 4px;
+    color: #c00;
+}
+
+.vdt-client .akm-wiz-error img {
+    width: 16px;
+    height: 16px;
+    flex: 0 0 auto;
+}
+
+/* how to get a service's key */
+.vdt-client .akm-howto {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    white-space: normal;
+}
+
+.vdt-client .akm-howto ol {
+    margin: 2px 0 4px;
+    padding-left: 18px;
+}
+
+.vdt-client .akm-howto a {
+    margin-right: 10px;
+    color: #0066cc;
+}
+
+/* a request's details in its message box */
+.akm-req-props td {
+    padding: 1px 8px 1px 0;
+    vertical-align: top;
+}
+
+.akm-req-props td:first-child {
+    white-space: nowrap;
+}

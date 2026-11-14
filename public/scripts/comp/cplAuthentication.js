@@ -5,8 +5,8 @@
  *
  *   Director Accounts   Cursor profiles for Wren and Xi (Add a Director account)
  *   Service Keys        the keys Dreamscape uses for outside services (Save changes)
- *   Application Keys    keys programs use to reach Dreamscape, requests waiting for approval,
- *                       the request log (Create an application key, View the request log)
+ *   (Application Keys moved to Key Manager, an MMC console: mmcAppKeys.js, Yozora #831. Tasks has
+ *    Manage application keys..., which opens it.)
  *   Custom Model Providers (Director)   URL, key, default model, Obliterated Memories, age tool
  *   Text Messaging      BlueBubbles servers (address, password, Test connection) and the RCS
  *                       account (Google Messages, paired with a QR code), Yozora #779
@@ -41,14 +41,6 @@
             links: [['secKeychainSave', 'Save changes']],
             tables: [{ body: 'secKeychainTableBody', summary: [1], empty: 'No service keys.' }]
         },
-        {
-            id: 'application', title: 'Application Keys', icon: 'app-16.png', status: 'secAppkeysStatus',
-            links: [['secAppkeysCreateBtn', 'Create an application key'], ['secAppkeysLogBtn', 'View the request log']],
-            tables: [
-                { body: 'secAppkeysPendingBody', summary: [1], caption: 'Waiting for your approval' },
-                { body: 'secAppkeysTableBody', summary: [3, 4], empty: 'No application keys.' }
-            ]
-        }
     ];
 
     let driver = null;
@@ -1535,15 +1527,15 @@
     const CS = '/static_images/vista-cardspace';
     // #781: one Service keys group holds the keychain services (Claude among them), Cursor (the
     // Director's profiles, no longer its only accounts) and each custom model provider.
-    // The home page's groups: one card per account (Yukimi, #781). Application keys have a page
-    // of their own (Tasks > Application keys), as a table.
+    // The home page's groups: one card per account (Yukimi, #781). Application keys live in Key
+    // Manager (mmcAppKeys.js, #831): Tasks > Manage application keys... opens it.
     const CARD_KINDS = {
         service: ['Managed service accounts', 'Managed Service Account'],
         provider: ['Custom model providers', 'Custom Model Provider'],
         messaging: ['Messaging services', 'Messaging Service']
     };
     // the driver's forms and the request log: shown in the window's form view while open
-    const CS_FORMS = ['secCursorAccountPanel', 'secKeychainEditPanel', 'secKeychainAddPanel', 'secAppkeysCreatePanel', 'secAppkeysEditPanel', 'secAppkeysLogPage'];
+    const CS_FORMS = ['secCursorAccountPanel', 'secKeychainEditPanel', 'secKeychainAddPanel'];
     const SECURE_PREF = 'cardspace.secureDesktop';
     let win = null;
     let csView = 'home';
@@ -1753,24 +1745,11 @@
             list.innerHTML = csTask('Help', 'data-cs-task="help"');
             return;
         }
-        if (csView === 'appkeys') {
-            const sel = csAppSelected();
-            list.innerHTML = csTask('Edit key', 'data-cs-app="edit"', !!(sel && sel.key))
-                + csTask('Delete key', 'data-cs-app="delete"', !!(sel && sel.key))
-                + (sel && sel.req ? csTask('Approve request', 'data-cs-app="approve"') + csTask('Deny request', 'data-cs-app="deny"') : '')
-                + '<li class="cs-sep"></li>'
-                + csTask('Create an application key', 'data-cs-click="secAppkeysCreateBtn"')
-                + csTask('View the request log', 'data-cs-click="secAppkeysLogBtn"')
-                + '<li class="cs-sep"></li>'
-                + csTask('Help', 'data-cs-task="help"');
-            return;
-        }
         const del = row && csFind(row, /delete|revoke|deny/i);
-        const has = (id) => !!(hostEl && hostEl.querySelector(`#${id}`));
         list.innerHTML = csTask('Duplicate card', '', false) + csTask('Delete card', 'data-cs-task="delete"', !!del)
             + '<li class="cs-sep"></li>'
             + csTask('Add a card', 'data-cs-go="add"')
-            + csTask('Application keys', 'data-cs-go="appkeys"', has('secAppkeysTableBody'))
+            + csTask('Manage application keys...', 'data-cs-task="appkeys"')
             + csTask('Preferences', 'data-cs-go="prefs"')
             + '<li class="cs-sep"></li>'
             + csTask('Delete all cards', '', false)
@@ -1796,9 +1775,6 @@
             foot.innerHTML = submit
                 ? '<button type="button" class="tbp-button cs-foot-btn cs-foot-save" data-dialog-primary="1" data-cs-task="form-save">Save</button><button type="button" class="tbp-button cs-foot-btn" data-cs-task="form-close">Cancel</button>'
                 : '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-task="form-close">Close</button>';
-        } else if (csView === 'appkeys') {
-            const sel = csAppSelected();
-            foot.innerHTML = `<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-app="edit"${sel && sel.key ? '' : ' disabled'}>Edit</button>`;
         } else if (csView === 'prefs') {
             foot.innerHTML = '<button type="button" class="tbp-button cs-foot-btn" data-dialog-primary="1" data-cs-go="home">OK</button>';
         } else foot.innerHTML = '';
@@ -1831,7 +1807,6 @@
 
     const CS_TEXT = {
         home: ['Select a card to open', 'To see or edit a card\'s data, select the card, and then click Open. To add an account, click Add a card.'],
-        appkeys: ['Application keys', 'Programs reach Dreamscape with these keys. Select a key, and then click Edit, or use the tasks on the right. Requests waiting for your approval are listed first.'],
         details: ['Card Details', 'This card is kept on the Dreamscape server. To change the card data, use the tasks on the right or click Edit.'],
         add: ['Add a card', 'Select the type of card you want to add.'],
         form: ['', 'Fill in the card data, and then click Save. To leave the card as it was, click Back.'],
@@ -1853,7 +1828,6 @@
         if (csView === 'details') csRenderDetails();
         if (csView === 'add') csRenderAdd();
         if (csView === 'prefs') csRenderPrefs();
-        if (csView === 'appkeys') csRenderAppkeys();
         if (csView === 'form') csRenderFormSide();
         if (csView === 'add') {
             const step = CS_ADD_STEPS[csAddStep];
@@ -1951,7 +1925,7 @@
         const target = csFormTarget();
         if (target) {
             if (csForm === target && csView === 'form') return;
-            if (csView !== 'form') csFormReturn = csView === 'details' || csView === 'appkeys' ? csView : 'home';
+            if (csView !== 'form') csFormReturn = csView === 'details' ? csView : 'home';
             csForm = target;
             csMarkForm(target);
             csView = 'form';
@@ -1965,7 +1939,7 @@
         if (csView !== 'form') return;
         csForm = null;
         csUnmarkForm();
-        csView = csFormReturn === 'details' && csSel && csRow(csSel) ? 'details' : (csFormReturn === 'appkeys' ? 'appkeys' : 'home');
+        csView = csFormReturn === 'details' && csSel && csRow(csSel) ? 'details' : 'home';
         if (csView === 'home') csPutBack();
         csRender();
     }
@@ -2265,70 +2239,6 @@
         }
     }
 
-    // ---- the Application keys page: the keys as a Vista list, pending requests first ----
-    let csAppSel = null;
-
-    function csAppState() {
-        const st = driver && driver._state && driver._state.appkeys;
-        if (!st) return { keys: [], pending: [] };
-        /* global securityDsapAppkeyIsInactive */
-        const inactive = typeof securityDsapAppkeyIsInactive === 'function' ? securityDsapAppkeyIsInactive : (k) => /expired|replaced|revoked/.test(k.status || '');
-        return { keys: (st.keys || []).filter((k) => !inactive(k)), pending: st.pending || [] };
-    }
-
-    function csAppSelected() {
-        if (!csAppSel) return null;
-        const { keys, pending } = csAppState();
-        if (csAppSel.startsWith('req:')) {
-            const req = pending.find((r) => `req:${r.id}` === csAppSel);
-            return req ? { req } : null;
-        }
-        const key = keys.find((k) => k.id === csAppSel);
-        return key ? { key } : null;
-    }
-
-    function csAppDate(value, fallback) {
-        if (!value) return fallback;
-        const d = new Date(typeof value === 'number' && value < 1e12 ? value * 1000 : value);
-        return Number.isNaN(d.getTime()) ? fallback : d.toLocaleDateString();
-    }
-
-    function csRenderAppkeys() {
-        const pane = csEl('.cs-appkeys');
-        if (!pane) return;
-        const { keys, pending } = csAppState();
-        if (csAppSel && !csAppSelected()) csAppSel = null;
-        const tr = (id, cells, extra) => `<tr data-cs-app-id="${esc(id)}" class="${csAppSel === id ? 'is-selected' : ''}${extra || ''}">${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
-        const dot = (g) => `<span class="sec-key-dot sec-key-dot-${g.state}" title="${esc(g.label)}"></span> ${esc(g.label)}`;
-        const rows = pending.map((r) => tr(`req:${r.id}`, [
-            `${esc(r.appName || 'Program')}<br><span class="cs-app-ua">${esc(r.userAgent || '')}</span>`,
-            esc(r.requestCode || ''), dot({ state: 'warn', label: 'Waiting for approval' }), '—', '—'
-        ], ' is-pending')).concat(keys.map((k) => tr(k.id, [
-            `${esc(k.appName || k.label || 'Program')}<br><span class="cs-app-ua">${esc(k.userAgent || '')}</span>`,
-            esc(k.keyPrefix ? `${k.keyPrefix}…` : ''),
-            dot(appKeyGlance(k.status)),
-            esc(k.persistent || k.isPerpetual ? 'Never' : csAppDate(k.expiresAt, '—')),
-            esc(k.persistent ? '—' : csAppDate(k.refreshBeforeAt, '—'))
-        ])));
-        pane.innerHTML = `<table class="cs-app-table"><thead><tr><th>Program</th><th>Key</th><th>Status</th><th>Expires</th><th>Refresh by</th></tr></thead>
-            <tbody>${rows.join('') || '<tr class="cs-app-empty"><td colspan="5">No application keys.</td></tr>'}</tbody></table>`;
-    }
-
-    function csAppAction(what) {
-        const sel = csAppSelected();
-        if (!sel || !driver) return;
-        const fake = (action, attr, value) => {
-            const b = document.createElement('button');
-            b.dataset.secAction = action;
-            b.dataset[attr] = value;
-            driver._onClick({ target: b });
-        };
-        if (sel.key && what === 'edit') { driver._openAppkeyEdit(hostEl, sel.key.id); return; }
-        if (sel.key && what === 'delete') fake('revoke-appkey', 'secAppkeyId', sel.key.id);
-        if (sel.req && what === 'approve') fake('approve-appkey-req', 'secAppkeyReq', sel.req.id);
-        if (sel.req && what === 'deny') fake('deny-appkey-req', 'secAppkeyReq', sel.req.id);
-    }
-
     // ---- the form view's left column: the card being made or edited, as Edit a new card ----
 
     function csFormSubmit() {
@@ -2360,8 +2270,6 @@
             logo = !!l;
             kind = `${label} Account`;
             name = label;
-        } else if (csForm.id === 'secAppkeysEditPanel') {
-            name = (csForm.querySelector('#secAppkeyEditNameInput') || {}).value || '';
         }
         side.innerHTML = `<div class="cs-details-card"><span class="cs-card is-details"><span class="cs-card-pic${logo ? ' is-logo' : ''}"><img src="${esc(src)}" alt="" draggable="false"></span><span class="cs-card-name">${esc(name)}</span></span><div class="cs-details-kind">${esc(kind)}</div></div>`;
         // "Personalize this card:" over the fields, as the VM's Edit a new card
@@ -2379,7 +2287,6 @@
     const CS_ADD_STEPS = {
         root: {
             items: [
-                ['secAppkeysCreateBtn', 'Create a Personal Application Key', 'Application keys let your programs reach Dreamscape on your behalf. Each key has its own name and access, and you can revoke it at any time.'],
                 ['step:managed', 'Install a Managed Service Account', 'Accounts at the services Dreamscape works with: Claude and Cursor for the Director, NovelAI, OpenAI, Google and the others. To learn which one to choose, click What type of card should I add?'],
                 ['custom-provider', 'Install a Custom Model Provider', 'Another model host for the Director: its address, its key and the model it uses by default.'],
                 ['step:messaging', 'Install a Messaging Service', 'iMessage through a BlueBubbles server, RCS through Google Messages, or an e-mail account, for Melaton Messenger, the phone and Dovecote Express.']
@@ -2485,10 +2392,6 @@
             }
             const keyop = t.closest('[data-cs-keyop]');
             if (keyop && !keyop.disabled) { csKeyOp(keyop.dataset.csKeyop, keyop.dataset.csService, Number(keyop.dataset.csIndex)); return; }
-            const appRow = t.closest('.cs-app-table tbody tr[data-cs-app-id]');
-            if (appRow) { csAppSel = appRow.dataset.csAppId; csRenderAppkeys(); csRenderTasks(); csRenderFoot(); return; }
-            const app = t.closest('[data-cs-app]');
-            if (app && !app.disabled) { csAppAction(app.dataset.csApp); return; }
             const add = t.closest('[data-cs-add]');
             if (add) { csAdd(add.dataset.csAdd); return; }
             const click = t.closest('[data-cs-click]');
@@ -2498,6 +2401,8 @@
                 const row = csSel && csRow(csSel);
                 const which = task.dataset.csTask;
                 if (which === 'help') { if (typeof root.openHelpAndSupport === 'function') root.openHelpAndSupport('cardspace'); return; }
+                // the application keys' home: Key Manager (openKeyManagerConsole: dsapManifests.js)
+                if (which === 'appkeys') { if (typeof root.openKeyManagerConsole === 'function') void root.openKeyManagerConsole('issued'); return; }
                 if (which === 'form-close') { csCloseForm(); return; }
                 if (which === 'form-save') { const b = csFormSubmit(); if (b) b.click(); return; }
                 const btn = row && (which === 'delete' ? csFind(row, /delete|revoke|deny/i) : which === 'save' ? csFind(row, /^\s*save\s*$/i) : csFind(row, /edit/i));
@@ -2511,8 +2416,6 @@
             if (pref.checked) void csSecureOn(); else void csSecureOff();
         });
         win.addEventListener('dblclick', (ev) => {
-            const appRow = ev.target.closest('.cs-app-table tbody tr[data-cs-app-id]');
-            if (appRow) { csAppSel = appRow.dataset.csAppId; csAppAction('edit'); return; }
             const card = ev.target.closest('.cs-home .cs-card[data-cs-key]');
             if (card) { csSel = card.dataset.csKey; csGo('details'); }
         });
@@ -2553,7 +2456,6 @@
                     <div class="cs-details"></div>
                     <div class="cs-add"></div>
                     <div class="cs-prefs"></div>
-                    <div class="cs-appkeys"></div>
                     <div class="cs-form-side"></div>
                     <div class="cs-host cpl-auth-host"></div>
                 </div>
@@ -2671,7 +2573,7 @@
             id: 'authentication',
             name: 'Dreamscape CardSpace',
             image: '/static_images/vista-cpl/cardspace-32.png',
-            description: 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it.',
+            description: 'The accounts and keys Dreamscape signs in with.',
             // as Windows CardSpace: Control Panel starts its own window
             open: () => { void openCardSpace(); }
         });

@@ -901,17 +901,9 @@
 #dreamscapeCardSpaceModal .sec-key-dot-warn { background: #e0a020; }
 #dreamscapeCardSpaceModal .sec-key-dot-none { background: transparent; border-style: dashed; }
 
-/* ---- #781 the Application keys page and the form view's card column ---- */
-#dreamscapeCardSpaceModal .cs-panel > :is(.cs-appkeys, .cs-form-side) {
+/* ---- #781 the form view's card column (the Application keys page moved to Key Manager, #831) ---- */
+#dreamscapeCardSpaceModal .cs-panel > .cs-form-side {
     display: none;
-}
-
-#dreamscapeCardSpaceModal[data-cs-view="appkeys"] .cs-panel > :not(.cs-appkeys) {
-    display: none;
-}
-
-#dreamscapeCardSpaceModal[data-cs-view="appkeys"] .cs-panel > .cs-appkeys {
-    display: block;
 }
 
 /* Edit a new card (VM edit-new.png): the card at the left, the fields from 120 px */
@@ -953,60 +945,6 @@
 /* the window's Save does the panel's submit */
 #dreamscapeCardSpaceModal .cs-host .sec-appkeys-form-actions {
     display: none !important;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: fixed;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table th {
-    position: sticky;
-    top: 0;
-    height: 24px;
-    padding: 0 6px;
-    border-right: 1px solid #e5e5e5;
-    border-bottom: 1px solid #d5d5d5;
-    background: linear-gradient(#fff, #f3f4f6);
-    color: #4c607a;
-    font-weight: normal;
-    text-align: left;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table th:nth-child(1) { width: 38%; }
-#dreamscapeCardSpaceModal .cs-app-table th:nth-child(2) { width: 18%; }
-#dreamscapeCardSpaceModal .cs-app-table th:nth-child(3) { width: 18%; }
-
-#dreamscapeCardSpaceModal .cs-app-table td {
-    padding: 3px 6px;
-    border: 1px solid transparent;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: top;
-    color: #000;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table .cs-app-ua {
-    color: #6d6d6d;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table tbody tr:hover td {
-    background: #e8f4fd;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table tbody tr.is-selected td {
-    border-color: #84acdd transparent;
-    background: #cce4f7;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table tbody tr.is-pending td:first-child {
-    font-weight: bold;
-}
-
-#dreamscapeCardSpaceModal .cs-app-table .sec-key-dot {
-    vertical-align: -1px;
 }
 
 /* Add a card's second step: the services as a shorter list */

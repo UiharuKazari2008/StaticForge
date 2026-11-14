@@ -158,6 +158,8 @@
         if (what === 'user-accounts' && root.cplUserAccounts) root.cplUserAccounts.open();
         // Front Gate's MMC console (openFrontGateConsole: public/scripts/comp/dsapManifests.js)
         if (what === 'front-gate' && typeof root.openFrontGateConsole === 'function') void root.openFrontGateConsole();
+        // Key Manager's MMC console: application and service keys (openKeyManagerConsole: dsapManifests.js)
+        if (what === 'key-manager' && typeof root.openKeyManagerConsole === 'function') void root.openKeyManagerConsole();
     }
 
     // ---- pages ----
@@ -229,7 +231,7 @@
                 <h1>Tools and Settings</h1>
                 <div class="defender-group"><span>Settings</span></div>
                 <div class="defender-items">
-                    ${toolItem('authentication', 'cardspace-48.png', 'Dreamscape CardSpace', 'The accounts and keys Dreamscape signs in with, and the keys programs use to reach it')}
+                    ${toolItem('authentication', 'cardspace-48.png', 'Dreamscape CardSpace', 'The accounts and keys Dreamscape signs in with')}
                     ${toolItem('user-accounts', 'users-48.png', 'User Accounts', 'Change the Administrator and Guest passwords and pictures, and turn the guest account on or off')}
                 </div>
                 <div class="defender-group"><span>Tools</span></div>
@@ -237,6 +239,7 @@
                     ${toolItem('quarantine', 'quarantine-48.png', 'Quarantined items', 'Unblock or remove clients that Melaton Defender has kept from reaching Dreamscape')}
                     ${toolItem('honeypot', 'explorer-48.png', 'Honeypot traps', 'View the paths that only scanners ask for, and the clients that asked')}
                     ${toolItem('allowed', 'allowed-48.png', 'Authentication Bypass', 'View and change the addresses that are signed in without a PIN')}
+                    ${toolItem('key-manager', '../vista-certmgr/keymgr-48.png', 'Key Manager', 'Issue, approve and revoke the keys programs use to reach Dreamscape, and manage the service keys')}
                     ${toolItem('front-gate', '../vista-cpl/items/firewall-48.png', 'Front Gate\u2122', 'Put a cover site in front of Dreamscape, and change the access phrase that lets you past it')}
                 </div>
             </div>`;
