@@ -1336,6 +1336,17 @@
 
     // ---------------------------------------------------------------- apps
 
+    /**
+     * Whether something is on screen now: the page visible, the screen on, and (given an element) it
+     * attached and not inside a hidden page. Timers that draw check it and skip the tick otherwise;
+     * the view draws in full when it shows again (Yukimi, Nov 14: nothing draws what is not visible).
+     */
+    function onScreen(el) {
+        if (document.hidden || root.dataset.screenOff !== undefined) return false;
+        if (!el) return true;
+        return el.isConnected && !el.closest('[hidden]');
+    }
+
     function registerApp(app) {
         if (!app || !app.id) return;
         apps.set(app.id, Object.assign({ inStart: false, icon: 'app-programs', title: app.id }, app));
@@ -7338,8 +7349,8 @@
         }
 
         /*
-         * Multi-select (Yukimi, Nov 14): Menu > Select Multiple (or a picture's hold menu) ticks
-         * pictures with taps; Done | Menu with Delete, Move To, Move to Scraps / Restore, Select All
+         * Multi-select (Yukimi, Nov 14): Menu > Select Pictures (or a picture's hold menu) ticks
+         * pictures with taps (drawn as a storage card's Select Pictures, wm-shell.css .is-picked); Done | Menu with Delete, Move To, Move to Scraps / Restore, Select All
          * and Clear Selection, run by the desktop gallery's own bulk code (bulkOperationsManager.js:
          * its selectedImages, its questions, which are WM message boxes here). A cancelled question
          * keeps the selection.
@@ -7457,7 +7468,7 @@
             const gp = apps.get('gallery') && apps.get('gallery').page;
             return [
                 { label: 'View', action: () => viewPicture(name) },
-                { label: 'Select Multiple', disabled: !gp, action: () => startPick(gp, name) },
+                { label: 'Select Pictures', disabled: !gp, action: () => startPick(gp, name) },
                 '-',
                 { label: 'Recast Spell', disabled: !item || !fn('rerollImage'), action: () => run('rerollImage', item) },
                 // an upscaled picture is not upscaled again (the desktop's gallery menu refuses it too)
@@ -7868,7 +7879,7 @@
                 // the desktop gallery keeps loading, paging and searching underneath (allImages):
                 // follow it while Pictures is on screen
                 clearInterval(gridTimer);
-                gridTimer = setInterval(() => renderGrid(page, false), 700);
+                gridTimer = setInterval(() => { if (onScreen(page)) renderGrid(page, false); }, 700);
             },
             hide() {
                 clearInterval(gridTimer);
@@ -7903,7 +7914,7 @@
                         // WM: Camera, Send..., Beam..., Save to Contact... | Delete, Edit, Play Slide
                         // Show, Set as Today Background..., Go To, Tools; here what Dreamscape has
                         menu: () => [
-                            { label: 'Select Multiple', action: () => startPick(page, null) },
+                            { label: 'Select Pictures', action: () => startPick(page, null) },
                             '-',
                             { label: 'Search...', action: () => setSearch(true) },
                             ...(searchResults ? [{ label: 'Clear Search', action: () => setSearch(false) }] : []),
@@ -8975,6 +8986,7 @@
     window.wmShell = {
         registerApp,
         registerLazyApp,
+        onScreen,
         loadLazyApp,
         /** Take a registered program out again (an Android program that was hidden or uninstalled). */
         removeApp: (id) => { const a = apps.get(id); if (a && typeof a.launch === 'function') apps.delete(id); },
