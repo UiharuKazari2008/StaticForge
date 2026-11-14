@@ -168,18 +168,37 @@
         return on(K.homeRotate, false);
     }
 
+    // Yukimi, Nov 14 (#827): the setting covers the home screen's company too, the Start menu (6.1),
+    // the Start screen (6.5) and Settings; and the phone stays upright until Melaton Mobile has fully
+    // started (the app locks it from its first frame; the boot's end, data-wm-boot="done", lets it go)
+    const HOME_ROTATION_APPS = new Set(['today', 'start', 'settings']);
+    let shellReadySeen = !!(window.wmShell && document.querySelector('.wm-titlebar'));
+    document.addEventListener('wmShellReady', () => { shellReadySeen = true; }, { once: true });
     let rotationLocked = null;
     function applyHomeRotation() {
         const D = window.AndroidDisplay;
         if (!D || typeof D.setRotationLock !== 'function') return;
-        const lock = root.dataset.wmApp === 'today' && !homeRotateAllowed();
+        // no boot state yet (this file loads before the shell starts): still starting, until the shell is ready
+        const booting = root.dataset.wmBoot ? root.dataset.wmBoot !== 'done' : !shellReadySeen;
+        const startOpen = !!document.querySelector('.wm-titlebar.is-start-open');
+        const home = HOME_ROTATION_APPS.has(root.dataset.wmApp) || startOpen;
+        const lock = booting || (home && !homeRotateAllowed());
         if (lock === rotationLocked) return;
         rotationLocked = lock;
         try { D.setRotationLock(lock); } catch (_) { /* older app */ }
     }
-    // the app on screen (wmShell sets data-wm-app) and folding / unfolding (the page resizes)
-    new MutationObserver(applyHomeRotation).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
+    // the app on screen (wmShell sets data-wm-app), the boot's end, the Start menu opening, and
+    // folding / unfolding (the page resizes)
+    new MutationObserver(applyHomeRotation).observe(root, { attributes: true, attributeFilter: ['data-wm-app', 'data-wm-boot'] });
+    const watchStartMenu = () => {
+        const bar = document.querySelector('.wm-titlebar');
+        if (!bar) return false;
+        new MutationObserver(applyHomeRotation).observe(bar, { attributes: true, attributeFilter: ['class'] });
+        return true;
+    };
+    if (!watchStartMenu()) document.addEventListener('wmShellReady', () => { watchStartMenu(); applyHomeRotation(); }, { once: true });
     window.addEventListener('resize', () => { rotationLocked = null; applyHomeRotation(); });
+    applyHomeRotation();
 
     // Settings > Screen > Bezel: Extend softkey background under gesture bar (wm-shell.css data-wm-softkey-extend)
     function applySoftkeyExtend() {
@@ -1259,10 +1278,10 @@
                 const fold = !!(d.screen && d.screen.foldable);
                 el.insertAdjacentHTML('beforeend', `<div class="wm-form-gap"></div><div class="wm-form-sub">Rotation</div>
                     ${fold
-                        ? `${check('wmHomeRotateCover', 'Rotate Today on the cover screen', d.rotateCover)}${check('wmHomeRotateMain', 'Rotate Today on the main screen', d.rotateMain)}`
-                        : check('wmHomeRotate', 'Rotate Today with the phone', d.rotate)}
+                        ? `${check('wmHomeRotateCover', 'Rotate Today, Start and Settings on the cover screen', d.rotateCover)}${check('wmHomeRotateMain', 'Rotate Today, Start and Settings on the main screen', d.rotateMain)}`
+                        : check('wmHomeRotate', 'Rotate Today, Start and Settings with the phone', d.rotate)}
                     <p class="wm-form-note">${canLock
-                        ? `When off, Today stays upright however the phone is held. Programs still turn as the phone's auto-rotate setting decides.${fold ? ` This phone is on ${d.screen.screen === 'main' ? 'the main screen' : 'the cover screen'} now.` : ''}`
+                        ? `When off, Today, Start and Settings stay upright however the phone is held. Programs still turn as the phone's auto-rotate setting decides.${fold ? ` This phone is on ${d.screen.screen === 'main' ? 'the main screen' : 'the cover screen'} now.` : ''}`
                         : 'Rotation of Today needs the Dreamscape app.'}</p>`);
                 const bindR = (name, fn) => { const i = el.querySelector(`input[name="${name}"]`); if (i) { i.disabled = !canLock; i.addEventListener('change', () => fn(i.checked)); } };
                 bindR('wmHomeRotate', (v) => { d.rotate = v; });
