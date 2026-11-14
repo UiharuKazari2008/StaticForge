@@ -43,7 +43,7 @@
     ];
     let ws = null;
     let page = null;
-    let view = 'main'; // 'main' | 'options' | 'status'
+    let view = 'main'; // 'main' | 'options' | 'optset' | 'status' | 'received'
     let busy = 0;
     let logEntries = [];
     let rxSel = 0;
@@ -91,93 +91,17 @@
             <ul class="was-rows">${allowed.map(([, label]) => `<li><span>${esc(label)}</span><span>Allowed</span></li>`).join('')}</ul>`;
     }
 
-    function optionsHtml(st) {
-        return `<div class="wm-form-hdr">Options</div>
-            <div class="was-form"><p>${esc(computerName(st))} may use:</p>
-            ${PERMISSIONS.map(([id, label]) => `<label class="wm-check"><input type="checkbox" name="${id}"${st.permissions.includes(id) ? ' checked' : ''}><span>${esc(label)}</span></label>`).join('')}</div>`;
-    }
-
     // Menu > Phone Data... (Yukimi, Nov 12, #777): the phone's own calendar and contacts in Calendar
     // and Contacts: shown on this phone only, or synchronized to Melaton (wmAndroidApps.js wmPhoneData)
     const PHONE_DATA_KEY = 'wmPhoneData';
     const PHONE_DATA = [['off', 'Off'], ['show', 'Show on this phone'], ['sync', 'Synchronize to Melaton']];
     const phoneData = () => window.wmPhoneData || null;
-    function phoneDataHtml() {
-        let cur = {};
-        try { cur = JSON.parse(localStorage.getItem(PHONE_DATA_KEY) || '{}') || {}; } catch (_) { cur = {}; }
-        const group = (kind, label) => `<p>${esc(label)}:</p>${PHONE_DATA.map(([v, l]) => `<label class="wm-check"><input type="radio" name="pd-${kind}" value="${v}"${(cur[kind] || 'off') === v ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}`;
-        return `<div class="wm-form-hdr">Phone Data</div>
-            <div class="was-form was-phonedata"><p>The phone's own calendar and contacts in Calendar and Contacts. Synchronize copies them to Melaton, so every computer and phone sees them (read-only there; this phone stays the source).</p>
-            ${group('calendar', 'Calendar')}<div class="wm-form-gap"></div>${group('contacts', 'Contacts')}</div>`;
-    }
-
-    async function savePhoneData() {
-        const pick = (kind) => { const r = page.querySelector(`input[name="pd-${kind}"]:checked`); return r ? r.value : 'off'; };
-        const next = { calendar: pick('calendar'), contacts: pick('contacts') };
-        let before = {};
-        try { before = JSON.parse(localStorage.getItem(PHONE_DATA_KEY) || '{}') || {}; } catch (_) { before = {}; }
-        try { localStorage.setItem(PHONE_DATA_KEY, JSON.stringify(next)); } catch (_) { /* this session only */ }
-        view = 'main';
-        render();
-        ws.syncHistory();
-        // Android asks for access the first time; the mirror is written at once in Synchronize
-        if (before.calendar !== next.calendar || before.contacts !== next.contacts) {
-            document.dispatchEvent(new CustomEvent('wmPhoneDataChange', { detail: Object.assign({}, next) }));
-        }
-    }
-
-    // ---------------------------------------------------------------- Menu > Café Cache... (#815)
-    // The Melaton Café Miniport's cache on this phone: which data it keeps (Cache) and fetches by itself
-    // so programs need not ask (Keep updated), and whether it keeps the current workspace or every
-    // workspace used. Its link's Idle timeout is under Settings > Connections > Network Cards.
+    // the phone's own calendar and contacts (Menu > Options... > This phone): off, shown on this phone,
+    // or synchronized to Melaton (wmAndroidApps.js wmPhoneData)
+    // the Melaton Café Miniport (Options > Melaton Café Miniport); its link's Idle timeout is under
+    // Settings > Connections > Network Cards
     const mc = () => window.melatonContinuity || null;
     const cafeAvailable = () => { const m = mc(); return !!(m && typeof m.miniport === 'function' && m.miniport().available); };
-    let cafeDraft = null;
-    function cafeHtml() {
-        const m = mc();
-        const cfg = (m && m.miniportConfig()) || { config: {}, stats: {} };
-        const c = cfg.config || {};
-        const st = cfg.stats || {};
-        if (!cafeDraft) {
-            const ds = c.datasets || {};
-            cafeDraft = { scope: c.scope === 'all' ? 'all' : 'current', datasets: {} };
-            m.cacheDatasets().forEach((d) => { const v = ds[d.id] || {}; cafeDraft.datasets[d.id] = { cache: v.cache !== false, update: v.update !== false }; });
-        }
-        const by = st.byDataset || {};
-        const rows = m.cacheDatasets().map((d) => {
-            const v = cafeDraft.datasets[d.id];
-            return `<div class="was-cafe-row"><label class="wm-check"><input type="checkbox" data-cafe="${d.id}" data-k="cache"${v.cache ? ' checked' : ''}><span>${esc(d.label)}</span></label>
-                <span class="was-cafe-n">${by[d.id] ? esc(String(by[d.id])) : ''}</span>
-                <label class="wm-check was-cafe-upd"><input type="checkbox" data-cafe="${d.id}" data-k="update"${v.update ? ' checked' : ''}${v.cache ? '' : ' disabled'}><span>${d.refreshes ? 'Keep updated' : 'Refresh'}</span></label></div>`;
-        }).join('');
-        return `<div class="wm-form-hdr">Caf\u00e9 Cache</div>
-            <div class="was-form was-cafe"><p>Melaton Caf\u00e9 Miniport keeps this data on the phone, so programs start without waiting for the server. Keep updated: it fetches the data itself and tells programs when it changes.</p>
-            ${rows}
-            <div class="wm-form-gap"></div><p>Workspaces:</p>
-            <label class="wm-check"><input type="radio" name="cafe-scope" value="current"${cafeDraft.scope === 'current' ? ' checked' : ''}><span>Current workspace only</span></label>
-            <label class="wm-check"><input type="radio" name="cafe-scope" value="all"${cafeDraft.scope === 'all' ? ' checked' : ''}><span>All workspaces used</span></label>
-            <p class="was-cafe-stats">${esc(`${Number(st.entries) || 0} replies kept, ${Number(st.served) || 0} served from the cache`)}</p></div>`;
-    }
-    function wireCafe() {
-        page.querySelectorAll('input[data-cafe]').forEach((inp) => inp.addEventListener('change', () => {
-            const v = cafeDraft.datasets[inp.dataset.cafe];
-            v[inp.dataset.k] = inp.checked;
-            if (inp.dataset.k === 'cache') {
-                const upd = page.querySelector(`input[data-cafe="${inp.dataset.cafe}"][data-k="update"]`);
-                if (upd) upd.disabled = !inp.checked;
-            }
-        }));
-        page.querySelectorAll('input[name="cafe-scope"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) cafeDraft.scope = r.value; }));
-    }
-    function saveCafe() {
-        const m = mc();
-        if (m && cafeDraft) m.setMiniportConfig({ scope: cafeDraft.scope, datasets: cafeDraft.datasets });
-        cafeDraft = null;
-        view = 'main';
-        render();
-        ws.syncHistory();
-    }
-
     // ---------------------------------------------------------------- Menu > Options... (#815)
     // ActiveSync's own Options (syncres.dll.0409.mui DIALOG 2603: "Choose the data you want to sync:",
     // a check-box tree, Delete and Settings... under it) holds what used to be three pages: what the
@@ -458,11 +382,10 @@
         if (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page)) return;
         const st = as.state();
         if ((view === 'options' || view === 'optset') && !opts) view = 'main';
-        const html = view === 'options' ? optsHtml(st) : view === 'optset' ? optsSettingsHtml() : view === 'phonedata' ? phoneDataHtml() : view === 'cafe' ? cafeHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
+        const html = view === 'options' ? optsHtml(st) : view === 'optset' ? optsSettingsHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
         if (page.dataset.html !== html) {
             page.dataset.html = html;
             page.innerHTML = html;
-            if (view === 'cafe') wireCafe();
             if (view === 'options') wireOpts();
             if (view === 'optset') wireOptsSettings();
         }
@@ -481,14 +404,6 @@
             busy -= 1;
             render();
         }
-    }
-
-    async function saveOptions() {
-        const picked = [...page.querySelectorAll('.was-form input[type="checkbox"]')].filter((c) => c.checked).map((c) => c.name);
-        await run(() => as.update(as.state().id, { permissions: picked }));
-        view = 'main';
-        render();
-        ws.syncHistory();
     }
 
     async function endPartnership() {
@@ -557,12 +472,10 @@
             },
             show() { render(); },
             // Options is a form (ok saves); Status is a page over the main one
-            titleKind() { return view === 'options' || view === 'optset' || view === 'phonedata' || view === 'cafe' ? 'ok' : 'close'; },
+            titleKind() { return view === 'options' || view === 'optset' ? 'ok' : 'close'; },
             onTitleOk() {
                 if (view === 'options') { void optsSave(); return true; }
                 if (view === 'optset') { optsSettingsDone(true); return true; }
-                if (view === 'phonedata') { void savePhoneData(); return true; }
-                if (view === 'cafe') { saveCafe(); return true; }
                 return false;
             },
             historyDepth() { return view === 'main' ? 0 : view === 'optset' ? 2 : 1; },
@@ -579,8 +492,6 @@
                 if (view === 'options') return { left: null, right: { label: 'Cancel', action: () => { opts = null; view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'optset') return { left: null, right: { label: 'Cancel', action: () => optsSettingsDone(false) } };
                 if (view === 'status') return { left: { label: 'Done', action: () => { view = 'main'; render(); ws.syncHistory(); } }, right: null };
-                if (view === 'phonedata') return { left: null, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
-                if (view === 'cafe') return { left: null, right: { label: 'Cancel', action: () => { cafeDraft = null; view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'received') {
                     const items = rxItems();
                     const it = items[rxSel];
@@ -600,7 +511,7 @@
         as.on('state', render);
         as.on('received', () => { if (view === 'received' || view === 'main') render(); });
         // the Miniport's settings and figures came (Café Cache shows them; the draft keeps what was ticked)
-        try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'options' && opts && opts.cafe && !opts.cafeTouched) optsCafeFromConfig(); if (view === 'cafe' || view === 'options' || view === 'optset') render(); }); } catch (_) { /* no Miniport */ }
+        try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'options' && opts && opts.cafe && !opts.cafeTouched) optsCafeFromConfig(); if (view === 'options' || view === 'optset') render(); }); } catch (_) { /* no Miniport */ }
         // the picture turns while the computer is being served
         as.on('request', () => {
             activity += 1;
