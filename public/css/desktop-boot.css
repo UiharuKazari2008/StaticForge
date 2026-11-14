@@ -508,6 +508,17 @@ body:not(.boot-welcome) #desktopPreStartupModal #desktopPreStartupSkipStepBtn {
     display: none;
 }
 
+/* Continuity (#798): Cancel under "Restarting your Pocket PC..." (closes the DeX window) */
+body.vista-logon #desktopPreStartupModal #desktopPreStartupCancelBtn {
+    left: 50%;
+    transform: translateX(-50%);
+}
+body:not(.vista-logon) #desktopPreStartupModal #desktopPreStartupCancelBtn {
+    display: block;
+    margin: 12px auto 0;
+    min-width: 75px;
+}
+
 /* Icon 32 px, 10 px, the text in white 9 pt; the right padding keeps Vista's group 8 px left of centre */
 body.vista-logon #desktopPreStartupAuthError {
     position: absolute;

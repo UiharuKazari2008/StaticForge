@@ -3,6 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
+    <!-- boot trace (#798): the boot loads more than the default 250 resource-timing entries -->
+    <script>try { performance.setResourceTimingBufferSize(2000); } catch (_) {}</script>
     <meta name="viewport"
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
@@ -1011,6 +1013,9 @@
                     <!-- Use Vista Logon boots under the Welcome screen: the startup window's Skip this
                          step for a stalled step (desktopBoot.js showSkipButton) -->
                     <button type="button" id="desktopPreStartupSkipStepBtn" class="desktop-prestartup-vista desktop-prestartup-vista-button hidden">Skip this step</button>
+                    <!-- Continuity (#798): "Restarting your Pocket PC..." in a hybrid phone's DeX window;
+                         Cancel closes the DeX window (melatonContinuity.js pocketPcRestart) -->
+                    <button type="button" id="desktopPreStartupCancelBtn" class="desktop-prestartup-vista-button desktop-prestartup-cancel hidden">Cancel</button>
                 </div>
                 <div id="desktopPreStartupAuth" class="desktop-prestartup-auth hidden">
                     <!-- body.vista-logon only (User Accounts "Use Vista Logon", desktop-boot.css): the

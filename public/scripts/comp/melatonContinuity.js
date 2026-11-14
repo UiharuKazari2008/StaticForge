@@ -250,8 +250,69 @@
     api.on('phone-ready', (m) => {
         const was = phoneReadyNow;
         phoneReadyNow = !!m.ready;
+        if (phoneReadyNow && pocketPc) pocketPcBack();
         if (phoneReadyNow && (!was || waitingForPhone)) followPhone();
     });
+
+    // ---- updates that only one window needs (#798)
+    //
+    // The phone installs every update. A phone restart leaves the DeX window running unless it installs
+    // files both windows use (restartScope; only Melaton Mobile's wm* scripts and styles and its art
+    // packages are the phone's alone). The DeX window then it drops to its logon screen, "Restarting your Pocket PC..." with Cancel
+    // (closes the DeX window), then "Please wait..." while it reconnects and pulls its data again, the way
+    // the desktop comes back from a server restart (wsClient._suspendSession). Anything else: both restart.
+    const PHONE_ONLY = /^\/(?:scripts\/comp\/wm[A-Z0-9][^/]*\.js|css\/wm[0-9-][^/]*\.css|static_images\/(?:wm61|wm65|wmc|wm-android)\/)/;
+    /** 'mobile' when every file is one only Melaton Mobile uses, else 'both'. */
+    api.updateScope = (urls) => {
+        const list = (Array.isArray(urls) ? urls : []).map((u) => { try { return new URL(u, root.location.origin).pathname; } catch (_) { return String(u); } });
+        if (!list.length) return 'both';
+        const P = root.melatonPackages;
+        const phoneOnly = (p) => PHONE_ONLY.test(p) || !!(P && typeof P.packageOf === 'function' && P.packageOf(p) && P.packageOf(p) !== 'source');
+        return list.every(phoneOnly) ? 'mobile' : 'both';
+    };
+    // a phone restart (Settings > Power > Restart, an update only it needs) leaves the DeX window up;
+    // only installing files both windows use restarts it too
+    let keepDexOnRestart = true;
+    /** serviceWorkerManager.forceRestart (phone window): what the coming restart installs. */
+    api.restartScope = (scope) => { keepDexOnRestart = scope !== 'both'; };
+    /** serviceWorkerManager.applyStaticCacheUpdate (phone window): CSS and safe files applied live go to the DeX window too. */
+    api.relayApply = (files) => {
+        if (!isPhone() || !api.peers().includes('desktop')) return;
+        api.post({ type: 'apply-update', files: files.map((f) => ({ url: f.url, hash: f.hash })) });
+    };
+    api.on('apply-update', (m) => {
+        const sw = root.serviceWorkerManager;
+        if (isDw() && sw && Array.isArray(m.files) && typeof sw.applyStaticCacheUpdate === 'function') sw.applyStaticCacheUpdate(m.files, { silent: true, fromPhone: true });
+    });
+
+    let pocketPc = false;
+    const cancelBtn = () => document.getElementById('desktopPreStartupCancelBtn');
+    function pocketPcRestart() {
+        const c = root.wsClient;
+        if (pocketPc || !c || typeof c._suspendSession !== 'function') { if (!c) coldBootDw(); return; }
+        pocketPc = true;
+        c.continuityStatusText = 'Restarting your Pocket PC...';
+        c._suspendSession('pocketpc-restart');
+        if (typeof c._renderPreStartupDialog === 'function') c._renderPreStartupDialog();
+        const b = cancelBtn();
+        const B = bridge();
+        if (b && B && typeof B.closeWindow === 'function') {
+            b.onclick = () => { try { B.closeWindow(); } catch (_) { /* the app closes it */ } };
+            b.classList.remove('hidden');
+        }
+        // back on the desktop (desktopBoot resume after the reconnect's refresh): the mode ends
+        document.addEventListener('desktopSessionResumed', () => { pocketPc = false; }, { once: true });
+    }
+    /** The phone is ready again: "Please wait..." while this window reconnects and pulls its data. */
+    function pocketPcBack() {
+        const c = root.wsClient;
+        const b = cancelBtn();
+        if (b) b.classList.add('hidden');
+        if (!c) return;
+        c.continuityStatusText = '';
+        if (typeof c._renderPreStartupDialog === 'function') c._renderPreStartupDialog();
+    }
+    api.pocketPcRestarting = () => pocketPc;
     api.on('ws-closed', (m) => { if (typeof m.phoneReady === 'boolean') phoneReadyNow = m.phoneReady; });
     /**
      * websocket.js (DeX window): its bus socket closed. True when the phone is not ready to carry a new one:
@@ -273,11 +334,18 @@
         if (m.role === 'phone' && m.state === 'joined' && isDw()) api.post({ type: 'phone-ready?' });
         if (m.role === 'phone' && m.state === 'left') {
             phoneReadyNow = false;
-            // past its boot, the DeX window starts again with the phone (Yukimi: restarting the phone restarts DeX)
-            if (isDw() && inApp()) coldBootDw();
+            // past its boot, the DeX window starts again with the phone (Yukimi: restarting the phone restarts DeX),
+            // unless the phone said this window can stay (pocketPcRestart)
+            if (isDw() && inApp() && !pocketPc) coldBootDw();
         }
     });
-    api.on('phone-restarting', () => { phoneReadyNow = false; if (isDw() && inApp()) coldBootDw(); });
+    api.on('phone-restarting', (m) => {
+        phoneReadyNow = false;
+        if (!isDw() || !inApp()) return;
+        // an update only Melaton Mobile uses: this window stays up and waits for its Pocket PC
+        if (m && m.keepDex && root.wsClient && root.wsClient.initializationCompleted) pocketPcRestart();
+        else coldBootDw();
+    });
     let rebooting = false;
     function coldBootDw() {
         if (rebooting) return;
@@ -426,7 +494,7 @@
             announceReady(true);
         };
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(watch, 0)); else setTimeout(watch, 0);
-        root.addEventListener('pagehide', () => { if (isPhone()) api.post({ type: 'phone-restarting' }); });
+        root.addEventListener('pagehide', () => { if (isPhone()) api.post({ type: 'phone-restarting', keepDex: keepDexOnRestart }); });
         // the DeX window asks once it is up (the answer may already be waiting)
         setTimeout(() => { if (isDw()) api.post({ type: 'phone-ready?' }); }, 0);
     }

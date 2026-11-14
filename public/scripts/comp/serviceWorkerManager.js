@@ -287,6 +287,7 @@ class ServiceWorkerManager {
     }
 
     resetPendingUpdateFuse() {
+        if (this.pendingUpdateUrls) this.pendingUpdateUrls.clear();
         this.pendingUpdateFuse = false;
         this.updateAvailable = false;
         this.pendingUpdateFilesTotal = 0;
@@ -2296,6 +2297,9 @@ class ServiceWorkerManager {
         if (!Array.isArray(list) || list.length === 0) {
             return;
         }
+        // Continuity (#798): the DeX window shares the cache but not this page: it applies the same files
+        const mc = window.melatonContinuity;
+        if (!options.fromPhone && mc && typeof mc.relayApply === 'function') mc.relayApply(list);
 
         const workspaceUpdates = [];
         const cssUpdates = [];
@@ -2365,6 +2369,9 @@ class ServiceWorkerManager {
 
         const silent = data.silent === true;
         const updatedFiles = this._resolveUpdatedFilesFromCacheComplete(data);
+        // Continuity (#798): what this restart brings, so a hybrid phone knows whether its DeX window needs it
+        if (!this.pendingUpdateUrls) this.pendingUpdateUrls = new Set();
+        updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.add(u); });
         // A restart already pending (scripts waiting to load) takes later batches with it: applying a
         // CSS-only batch live would run the old scripts on new CSS (seen on phones, #709), and the
         // apply resets the fuse, so the pending script restart would be forgotten
@@ -4220,6 +4227,12 @@ class ServiceWorkerManager {
             console.log('🔄 Restart for updates: the phone restarts, this DeX window follows it');
             this.resetPendingUpdateFuse();
             return;
+        }
+        // Continuity (#798): the phone window restarting for updates. Files only Melaton Mobile uses: the
+        // DeX window stays up ("Restarting your Pocket PC..." on its logon screen); anything else: it restarts too
+        const mc = window.melatonContinuity;
+        if (mc && typeof mc.restartScope === 'function' && this.pendingUpdateFuse) {
+            mc.restartScope(mc.updateScope(Array.from(this.pendingUpdateUrls || [])));
         }
         console.log('🔄 Force restarting application...');
         if (this.pendingUpdateFuse) {

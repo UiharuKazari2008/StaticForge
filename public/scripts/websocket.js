@@ -2217,6 +2217,8 @@ class WebSocketClient {
      */
     _preStartupDisplayText(phase, statusMessage) {
         if (this.winlogonPowerText) return this.winlogonPowerText;
+        // Continuity (#798): "Restarting your Pocket PC..." while the DeX window waits for its phone
+        if (this.continuityStatusText) return this.continuityStatusText;
         // A connection failure is the "Error Connecting to domain controller" dialog on top
         if (phase === 'failed' && window.isDesktop && window.melatonNetworkDialogs) return 'Please wait...';
         // Use Vista Logon: Vista's Welcome screen says "Welcome" from the password check to the desktop
@@ -2548,7 +2550,9 @@ class WebSocketClient {
                 if (step._logonPhase && !step.runOnReconnect) continue;
                 this._setLogonInitStatus(step.message, i / steps.length);
                 try {
+                    const t0 = performance.now();
                     await step.stepFunction();
+                    this._traceBoot('logon', step.message, t0);
                 } catch (error) {
                     if (this.connectionPhase === 'auth' || !this.isConnected()) return false;
                     console.error(`❌ Logon init step "${step.message}" failed:`, error);
@@ -4270,6 +4274,7 @@ class WebSocketClient {
         // Safety check for empty init steps
         if (!this.initSteps || this.initSteps.length === 0) {
             this.initializationCompleted = true;
+            this._desktopReadyAt = this._desktopReadyAt || Math.round(performance.now());
             this.initializationLock = false; // Release initialization lock
             // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
             if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
@@ -4342,10 +4347,12 @@ class WebSocketClient {
                     : null;
                 try {
                     if (watch) {
+                        const t0 = performance.now();
                         const outcome = await Promise.race([
                             Promise.resolve().then(() => step.stepFunction()).then(() => ({ skipped: false })),
                             watch.promise
                         ]);
+                        this._traceBoot('init', step.message, t0);
                         if (outcome && outcome.skipped) {
                             console.warn(`⏭️ Init step skipped by user: ${step.message}`);
                             if (step.critical && window.isDesktop && !this.initializationCompleted) {
@@ -4355,7 +4362,9 @@ class WebSocketClient {
                             }
                         }
                     } else {
+                        const t0 = performance.now();
                         await step.stepFunction();   // run the step
+                        if (!this.initializationCompleted) this._traceBoot('init', step.message, t0);
                     }
                     step._bootCompleted = true;
                     if (window.desktopBoot && !this.initializationCompleted) {
@@ -4387,6 +4396,7 @@ class WebSocketClient {
 
             // Mark initialization as completed
             this.initializationCompleted = true;
+            this._desktopReadyAt = this._desktopReadyAt || Math.round(performance.now());
             this.initializationLock = false; // Release initialization lock
             // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
             if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
@@ -8966,10 +8976,52 @@ class WebSocketClient {
      * @returns {Promise<Object>} Response data from the server
      * @throws {Error} If WebSocket is not connected or request times out
      */
+    /**
+     * Boot trace (#798, why a DeX window's logon is slow): every logon and init step's time and every
+     * request's round trip until the desktop is up. wsClient.bootReport() reads it (run_client_js).
+     */
+    _traceBoot(kind, name, t0) {
+        if (this.initializationCompleted && kind === 'req') return;
+        if (!this._bootTrace) this._bootTrace = [];
+        if (this._bootTrace.length < 1500) this._bootTrace.push({ kind, name, at: Math.round(t0), ms: Math.round(performance.now() - t0) });
+    }
+
+    bootReport(top = 40) {
+        const list = this._bootTrace || [];
+        const steps = list.filter((e) => e.kind !== 'req').sort((a, b) => b.ms - a.ms).slice(0, top);
+        const byType = new Map();
+        list.filter((e) => e.kind === 'req').forEach((e) => {
+            const r = byType.get(e.name) || { type: e.name, n: 0, ms: 0, max: 0 };
+            r.n += 1; r.ms += e.ms; r.max = Math.max(r.max, e.ms);
+            byType.set(e.name, r);
+        });
+        const nav = performance.getEntriesByType('navigation')[0];
+        return {
+            dex: !!(window.melatonContinuity && window.melatonContinuity.isDexWindow && window.melatonContinuity.isDexWindow()),
+            domReady: nav ? Math.round(nav.domContentLoadedEventEnd) : null,
+            loadEnd: nav ? Math.round(nav.loadEventEnd) : null,
+            desktopAt: this._desktopReadyAt || null,
+            steps,
+            requests: Array.from(byType.values()).sort((a, b) => b.ms - a.ms).slice(0, top),
+            requestCount: list.filter((e) => e.kind === 'req').length
+        };
+    }
+
     sendMessage(type, data = {}, showBanner = true) {
         if (type !== 'ping') {
             this.recordUserActivity();
         }
+        // boot trace: the round trip of each request before the desktop is up
+        if (!this.initializationCompleted && type !== 'ping') {
+            const t0 = performance.now();
+            const p = this._sendMessageInner(type, data, showBanner);
+            p.then(() => this._traceBoot('req', type, t0), () => this._traceBoot('req', type + ' (failed)', t0));
+            return p;
+        }
+        return this._sendMessageInner(type, data, showBanner);
+    }
+
+    _sendMessageInner(type, data = {}, showBanner = true) {
         const silentTicker = this.isSilentTickerRequest(type);
         const effectiveShowBanner = silentTicker ? false : showBanner;
 
