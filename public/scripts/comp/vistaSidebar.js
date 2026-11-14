@@ -3092,8 +3092,8 @@ const vsbMdevPaint = function (inst) {
     }
     if (dev.online && st.cellular && st.cellular.present) {
         const c = st.cellular;
-        const text = c.airplane ? 'Flight mode' : [c.operator, c.dataType].filter(Boolean).join(' ') || 'No service';
-        rows.push(`<div class="vsb-mdev-row" title="Cellular">${c.airplane ? '' : meter(c.level, 'cell')}<span>${escapeHtml(text)}</span></div>`);
+        // "<bars> [data type] <carrier>" (activeSyncDeviceArt.cellLine)
+        rows.push(`<div class="vsb-mdev-row" title="Cellular"><span>${D ? D.cellLine(c) : escapeHtml(c.airplane ? 'Flight mode' : c.operator || 'No service')}</span></div>`);
     }
     if (dev.online && st.wifi) {
         const w = st.wifi;

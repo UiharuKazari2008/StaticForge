@@ -267,5 +267,17 @@
         return entry.promise;
     }
 
-    root.activeSyncDeviceArt = { html, setFold, isFoldable, screenOf, makeModel, osText, bars, wallpapers, peekWallpapers };
+    /**
+     * The cellular line (#827): the bars, the data type in a small Vista badge, the carrier:
+     * "<bars> [5G-A] Verizon". Markup; text escaped.
+     */
+    function cellLine(c) {
+        if (!c) return '';
+        if (c.airplane) return esc('Flight mode');
+        const badge = c.dataType ? `<span class="asda-badge">${esc(c.dataType)}</span>` : '';
+        const name = [c.operator, c.roaming ? 'roaming' : ''].filter(Boolean).join(', ') || 'No service';
+        return `${c.level != null ? bars(c.level, 'cell') : ''}${badge}${esc(name)}`;
+    }
+
+    root.activeSyncDeviceArt = { cellLine, html, setFold, isFoldable, screenOf, makeModel, osText, bars, wallpapers, peekWallpapers };
 })(typeof window !== 'undefined' ? window : globalThis);

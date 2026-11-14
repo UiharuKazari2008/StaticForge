@@ -184,7 +184,9 @@ function sanitizeStatus(raw) {
         const c = raw.cellular;
         out.cellular = {
             present: bool(c.present), operator: c.operator == null ? null : clampString(c.operator, 64), level: num(c.level, 0, 4),
-            dataType: c.dataType == null ? null : clampString(c.dataType, 16), roaming: bool(c.roaming), airplane: bool(c.airplane)
+            dataType: c.dataType == null ? null : clampString(c.dataType, 16), roaming: bool(c.roaming), airplane: bool(c.airplane),
+            // the phone's own number (Device information, #827)
+            phoneNumber: c.phoneNumber == null ? null : clampString(c.phoneNumber, 32)
         };
     }
     if (raw.active != null) out.active = clampString(raw.active, 16);
@@ -207,6 +209,8 @@ function sanitizeStatus(raw) {
     // Melaton Mobile's edition as the phone works it out, and Continuity in use (kept: "used at least once")
     if (['Classic', 'Standard', 'Professional', 'Enterprise'].includes(raw.edition)) out.edition = raw.edition;
     if (raw.continuity === true) out.continuity = true;
+    // the owner's description of the phone (Settings > About > Device ID, #829)
+    if (typeof raw.description === 'string' && raw.description.trim()) out.description = clampString(raw.description.trim(), 128);
     return out;
 }
 
@@ -519,9 +523,10 @@ function hello(globalResources, wsServer, clientInfo, data) {
     const os = clampString(src.os, 64);
     const app = clampString(src.app, 64);
     if (prev) {
-        // a partner keeps the name its partnership gave it; a guest's own name follows the phone
+        // a partner keeps the name its partnership gave it; a guest's own name follows the phone, and
+        // so does a partner's once its owner names it in Settings > About > Device ID (#829)
         d.prepare('UPDATE as_devices SET name = ?, model = ?, os = ?, app = ?, last_seen = ? WHERE device_id = ?')
-            .run(prev.partner ? prev.name : name, model || prev.model, os || prev.os, app || prev.app, now, id);
+            .run(prev.partner && src.nameSet !== true ? prev.name : name, model || prev.model, os || prev.os, app || prev.app, now, id);
     } else {
         d.prepare('INSERT INTO as_devices (device_id, name, model, os, app, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?)')
             .run(id, name, model, os, app, now, now);

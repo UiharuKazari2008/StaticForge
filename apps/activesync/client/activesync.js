@@ -563,6 +563,8 @@
             const row = (k, v) => { if (v) rows.push(`<dt>${esc(k)}</dt><dd>${v}</dd>`); };
             const D = art();
             row('Device name:', esc(dev.name));
+            // the owner's words for it (the phone's Settings > About > Device ID, #829)
+            if (st.description) row('Description:', esc(st.description));
             // the maker and the model (#827): "Samsung Galaxy Z Fold7 (SM-F966U)"
             row('Model:', esc(D ? D.makeModel(dev.model) : dev.model));
             // Melaton Mobile's edition (#827): the phone's own word, else worked out from what is known here
@@ -591,8 +593,11 @@
             }
             if (dev.online && st.cellular && st.cellular.present) {
                 const c = st.cellular;
-                row('Cellular:', c.airplane ? esc('Flight mode') : `${meter(c.level, 'cell')}${esc([c.operator, c.dataType, c.roaming ? 'roaming' : ''].filter(Boolean).join(', ') || 'No service')}`);
+                // "<bars> [data type] <carrier>": the data type in a Vista badge (activeSyncDeviceArt.cellLine)
+                row('Cellular:', D ? D.cellLine(c) : esc(c.airplane ? 'Flight mode' : [c.operator, c.dataType].filter(Boolean).join(', ') || 'No service'));
             }
+            // the phone's own number (the app reads it once Developer Bridge granted READ_PHONE_NUMBERS)
+            if (st.cellular && st.cellular.phoneNumber) row('Phone number:', esc(st.cellular.phoneNumber));
             for (const s of (dev.online && st.storage) || []) {
                 if (s.total == null || s.free == null || !(s.total > 0)) continue;
                 const used = Math.max(0, Math.min(1, 1 - s.free / s.total));
