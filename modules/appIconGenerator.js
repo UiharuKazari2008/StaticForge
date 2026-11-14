@@ -372,7 +372,8 @@ async function generateAppIcon(options = {}) {
         };
         if (files.length) {
             request.image = files;
-            request.input_fidelity = 'high';
+            // the 2.x models reject input_fidelity (400 "does not support the 'input_fidelity' parameter")
+            if (!/^gpt-image-2\./.test(model)) request.input_fidelity = 'high';
             result = await client.images.edit(request);
         } else {
             result = await client.images.generate(request);
