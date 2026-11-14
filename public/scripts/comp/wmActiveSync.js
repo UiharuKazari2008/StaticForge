@@ -178,6 +178,194 @@
         ws.syncHistory();
     }
 
+    // ---------------------------------------------------------------- Menu > Options... (#815)
+    // ActiveSync's own Options (syncres.dll.0409.mui DIALOG 2603: "Choose the data you want to sync:",
+    // a check-box tree, Delete and Settings... under it) holds what used to be three pages: what the
+    // partnered computer may use, the Café Miniport's data, and the phone's own calendar and contacts.
+    // Settings... is the selected item's page (DIALOG 1011's "Settings - <name>").
+    let opts = null; // { perms: Set, cafe: { scope, datasets }, phone: { calendar, contacts }, sel, sub, subDraft }
+    function optsBegin() {
+        const st = as.state();
+        const m = mc();
+        let phone = {};
+        try { phone = JSON.parse(localStorage.getItem(PHONE_DATA_KEY) || '{}') || {}; } catch (_) { phone = {}; }
+        let cafe = null;
+        if (cafeAvailable() && m) {
+            const c = ((m.miniportConfig() || {}).config) || {};
+            const ds = c.datasets || {};
+            cafe = { scope: c.scope === 'all' ? 'all' : 'current', datasets: {} };
+            m.cacheDatasets().forEach((d) => { const v = ds[d.id] || {}; cafe.datasets[d.id] = { cache: v.cache !== false, update: v.update !== false }; });
+            m.requestMiniportConfig();
+        }
+        opts = {
+            perms: new Set(st.permissions || []),
+            cafe,
+            phone: phoneData() && phoneData().available() ? { calendar: phone.calendar || 'off', contacts: phone.contacts || 'off' } : null,
+            sel: st.session === 'partner' ? 'pc' : cafe ? 'cafe' : 'phone',
+            sub: null,
+            subDraft: null
+        };
+    }
+    /** The Miniport's settings came after Options opened (nothing of the Café part edited yet). */
+    function optsCafeFromConfig() {
+        const m = mc();
+        const c = ((m && m.miniportConfig()) || {}).config || {};
+        const ds = c.datasets || {};
+        opts.cafe.scope = c.scope === 'all' ? 'all' : 'current';
+        m.cacheDatasets().forEach((d) => { const v = ds[d.id] || {}; opts.cafe.datasets[d.id] = { cache: v.cache !== false, update: v.update !== false }; });
+    }
+    const optsAvailable = (st) => st.session === 'partner' || cafeAvailable() || !!(phoneData() && phoneData().available());
+    const PHONE_KINDS = [['calendar', 'Calendar'], ['contacts', 'Contacts']];
+
+    function optsRoots(st) {
+        const roots = [];
+        if (st.session === 'partner') {
+            roots.push({ key: 'pc', label: computerName(st), kids: PERMISSIONS.map(([id, label]) => ({ key: `perm:${id}`, label, on: opts.perms.has(id) })) });
+        }
+        if (opts.cafe) {
+            const m = mc();
+            roots.push({ key: 'cafe', label: 'Melaton Caf\u00e9 Miniport', kids: m.cacheDatasets().map((d) => ({ key: `cafe:${d.id}`, label: d.label, on: opts.cafe.datasets[d.id].cache })) });
+        }
+        if (opts.phone) {
+            roots.push({ key: 'phone', label: 'This phone', kids: PHONE_KINDS.map(([k, label]) => ({ key: `phone:${k}`, label, on: opts.phone[k] !== 'off' })) });
+        }
+        return roots;
+    }
+
+    function optsHtml(st) {
+        const roots = optsRoots(st);
+        let rows = '';
+        roots.forEach((r, ri) => {
+            const lastRoot = ri === roots.length - 1;
+            rows += `<div class="mt-row no-ico${opts.sel === r.key ? ' is-current' : ''}" role="treeitem" aria-expanded="true" data-key="${esc(r.key)}" style="--depth:0">`
+                + `<i class="mt-c${ri === 0 ? ' is-first' : ''}${lastRoot ? ' is-last' : ''}" style="--d:0"></i><i class="mt-h" style="--d:0"></i>`
+                + `<span class="mt-box is-open" style="--d:0"></span><span class="mt-label">${esc(r.label)}</span></div>`;
+            r.kids.forEach((k, ki) => {
+                rows += `<div class="mt-row has-check no-ico${opts.sel === k.key ? ' is-current' : ''}" role="treeitem" data-key="${esc(k.key)}" style="--depth:1">`
+                    + `${lastRoot ? '' : '<i class="mt-v" style="--d:0"></i>'}<i class="mt-c${ki === r.kids.length - 1 ? ' is-last' : ''}" style="--d:1"></i><i class="mt-h" style="--d:1"></i>`
+                    + `<input type="checkbox" class="mt-check" data-key="${esc(k.key)}" aria-label="${esc(k.label)}"${k.on ? ' checked' : ''}><span class="mt-label">${esc(k.label)}</span></div>`;
+            });
+        });
+        const canSettings = /^(cafe|cafe:|phone:)/.test(opts.sel || '');
+        return `<div class="wm-form-hdr">Options</div>
+            <div class="was-opts"><p class="was-opts-lead">Choose the data you want to sync:</p>
+            <div class="was-tree mt-tree" role="tree" aria-label="Data">${rows}</div>
+            <div class="was-opts-btns"><button type="button" class="wm-button" data-act="delete"${opts.sel === 'pc' ? '' : ' disabled'}>Delete</button><button type="button" class="wm-button" data-act="settings"${canSettings ? '' : ' disabled'}>Settings...</button></div></div>`;
+    }
+
+    function wireOpts() {
+        const tree = page.querySelector('.was-tree');
+        if (!tree) return;
+        tree.addEventListener('click', (e) => {
+            const row = e.target.closest('.mt-row');
+            if (!row) return;
+            const key = row.dataset.key;
+            const box = e.target.closest('.mt-check');
+            if (box) {
+                const on = box.checked;
+                if (key.startsWith('perm:')) { if (on) opts.perms.add(key.slice(5)); else opts.perms.delete(key.slice(5)); }
+                else if (key.startsWith('cafe:')) { const d = opts.cafe.datasets[key.slice(5)]; d.cache = on; if (!on) d.update = false; opts.cafeTouched = true; }
+                else if (key.startsWith('phone:')) { const k = key.slice(6); opts.phone[k] = on ? (opts.phone[k] !== 'off' ? opts.phone[k] : 'show') : 'off'; }
+            }
+            opts.sel = key;
+            render();
+        });
+        page.querySelector('[data-act="delete"]').addEventListener('click', () => { void endPartnership(); });
+        page.querySelector('[data-act="settings"]').addEventListener('click', optsOpenSettings);
+    }
+
+    function optsOpenSettings() {
+        const key = opts.sel || '';
+        if (key === 'cafe') opts.subDraft = { scope: opts.cafe.scope };
+        else if (key.startsWith('cafe:')) opts.subDraft = Object.assign({}, opts.cafe.datasets[key.slice(5)]);
+        else if (key.startsWith('phone:')) opts.subDraft = { v: opts.phone[key.slice(6)] };
+        else return;
+        opts.sub = key;
+        view = 'optset';
+        render();
+        ws.syncHistory();
+    }
+
+    function optsSubLabel(key) {
+        if (key === 'cafe') return 'Melaton Caf\u00e9 Miniport';
+        if (key.startsWith('cafe:')) { const d = mc().cacheDatasets().find((x) => x.id === key.slice(5)); return d ? d.label : key; }
+        const k = PHONE_KINDS.find(([id]) => id === key.slice(6));
+        return k ? k[1] : key;
+    }
+
+    function optsSettingsHtml() {
+        const key = opts.sub;
+        const d = opts.subDraft;
+        let body = '';
+        if (key === 'cafe') {
+            const stats = ((mc().miniportConfig() || {}).stats) || {};
+            body = `<p>Keep the data of:</p>
+                <label class="wm-check"><input type="radio" name="os-scope" value="current"${d.scope === 'current' ? ' checked' : ''}><span>Current workspace only</span></label>
+                <label class="wm-check"><input type="radio" name="os-scope" value="all"${d.scope === 'all' ? ' checked' : ''}><span>All workspaces used</span></label>
+                <div class="wm-form-gap"></div><p class="was-cafe-stats">${esc(`${Number(stats.entries) || 0} replies kept, ${Number(stats.served) || 0} served from the cache`)}</p>
+                <p class="was-cafe-stats">The link's Idle timeout is under Settings &gt; Connections &gt; Network Cards.</p>`;
+        } else if (key.startsWith('cafe:')) {
+            const ds = mc().cacheDatasets().find((x) => x.id === key.slice(5)) || {};
+            const n = ((((mc().miniportConfig() || {}).stats) || {}).byDataset || {})[key.slice(5)];
+            body = `<label class="wm-check"><input type="checkbox" name="os-cache"${d.cache ? ' checked' : ''}><span>Keep this data on the phone</span></label>
+                <label class="wm-check"><input type="checkbox" name="os-update"${d.update ? ' checked' : ''}${d.cache ? '' : ' disabled'}><span>${ds.refreshes ? 'Keep it up to date' : 'Update it when the server changes it'}</span></label>
+                ${n ? `<div class="wm-form-gap"></div><p class="was-cafe-stats">${esc(`${n} kept`)}</p>` : ''}`;
+        } else {
+            body = `<p>The phone's own ${esc(optsSubLabel(key).toLowerCase())} in Melaton Mobile:</p>
+                ${PHONE_DATA.map(([v, l]) => `<label class="wm-check"><input type="radio" name="os-phone" value="${v}"${d.v === v ? ' checked' : ''}><span>${esc(l)}</span></label>`).join('')}`;
+        }
+        return `<div class="wm-form-hdr">Settings - ${esc(optsSubLabel(key))}</div><div class="was-form was-optset">${body}</div>`;
+    }
+
+    function wireOptsSettings() {
+        page.querySelectorAll('.was-optset input').forEach((inp) => inp.addEventListener('change', () => {
+            const d = opts.subDraft;
+            if (inp.name === 'os-scope') d.scope = inp.value;
+            else if (inp.name === 'os-phone') d.v = inp.value;
+            else if (inp.name === 'os-cache') { d.cache = inp.checked; if (!d.cache) d.update = false; render(); }
+            else if (inp.name === 'os-update') d.update = inp.checked;
+        }));
+    }
+
+    function optsSettingsDone(keep) {
+        const key = opts.sub;
+        const d = opts.subDraft;
+        if (keep && d) {
+            if (key === 'cafe' || key.startsWith('cafe:')) opts.cafeTouched = true;
+            if (key === 'cafe') opts.cafe.scope = d.scope;
+            else if (key.startsWith('cafe:')) opts.cafe.datasets[key.slice(5)] = { cache: !!d.cache, update: !!(d.cache && d.update) };
+            else if (key.startsWith('phone:')) opts.phone[key.slice(6)] = d.v;
+        }
+        opts.sub = null;
+        opts.subDraft = null;
+        view = 'options';
+        render();
+        ws.syncHistory();
+    }
+
+    async function optsSave() {
+        const st = as.state();
+        const o = opts;
+        opts = null;
+        view = 'main';
+        render();
+        ws.syncHistory();
+        if (o.cafe) { const m = mc(); if (m) m.setMiniportConfig({ scope: o.cafe.scope, datasets: o.cafe.datasets }); }
+        if (o.phone) {
+            let before = {};
+            try { before = JSON.parse(localStorage.getItem(PHONE_DATA_KEY) || '{}') || {}; } catch (_) { before = {}; }
+            try { localStorage.setItem(PHONE_DATA_KEY, JSON.stringify(o.phone)); } catch (_) { /* this session only */ }
+            if (before.calendar !== o.phone.calendar || before.contacts !== o.phone.contacts) {
+                document.dispatchEvent(new CustomEvent('wmPhoneDataChange', { detail: Object.assign({}, o.phone) }));
+            }
+        }
+        if (st.session === 'partner') {
+            const picked = PERMISSIONS.map(([id]) => id).filter((id) => o.perms.has(id));
+            const was = PERMISSIONS.map(([id]) => id).filter((id) => (st.permissions || []).includes(id));
+            if (picked.join() !== was.join()) await run(() => as.update(st.id, { permissions: picked }));
+        }
+    }
+
     // ---------------------------------------------------------------- Received Items (#803)
     const RX = {
         link: { icon: 'ie-page', word: 'Link', act: 'Open' },
@@ -269,12 +457,14 @@
         // ActiveSync behind another app, the page hidden or the screen off: show() draws it anew
         if (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page)) return;
         const st = as.state();
-        if (view === 'options' && st.session !== 'partner') view = 'main';
-        const html = view === 'options' ? optionsHtml(st) : view === 'phonedata' ? phoneDataHtml() : view === 'cafe' ? cafeHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
+        if ((view === 'options' || view === 'optset') && !opts) view = 'main';
+        const html = view === 'options' ? optsHtml(st) : view === 'optset' ? optsSettingsHtml() : view === 'phonedata' ? phoneDataHtml() : view === 'cafe' ? cafeHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
         if (page.dataset.html !== html) {
             page.dataset.html = html;
             page.innerHTML = html;
             if (view === 'cafe') wireCafe();
+            if (view === 'options') wireOpts();
+            if (view === 'optset') wireOptsSettings();
         }
         if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); }
     }
@@ -334,9 +524,8 @@
     function menuItems() {
         const st = as.state();
         return [
-            { label: 'Options...', action: () => { view = 'options'; render(); ws.syncHistory(); }, disabled: st.session !== 'partner' },
-            { label: 'Phone Data...', action: () => { view = 'phonedata'; render(); ws.syncHistory(); }, disabled: !(phoneData() && phoneData().available()) },
-            { label: 'Caf\u00e9 Cache...', action: () => { cafeDraft = null; const m = mc(); if (m) m.requestMiniportConfig(); view = 'cafe'; render(); ws.syncHistory(); }, disabled: !cafeAvailable() },
+            // ActiveSync's menu order (syncres): Options... (the computer, the Café Miniport, the phone's data), Status...
+            { label: 'Options...', action: () => { optsBegin(); view = 'options'; render(); ws.syncHistory(); }, disabled: !optsAvailable(st) },
             { label: 'Status...', action: showStatus, disabled: !st.online },
             { label: `Received Items${as.receivedUnseen && as.receivedUnseen() ? ` (${as.receivedUnseen()})` : ''}...`, action: openReceived },
             '-',
@@ -368,22 +557,27 @@
             },
             show() { render(); },
             // Options is a form (ok saves); Status is a page over the main one
-            titleKind() { return view === 'options' || view === 'phonedata' || view === 'cafe' ? 'ok' : 'close'; },
+            titleKind() { return view === 'options' || view === 'optset' || view === 'phonedata' || view === 'cafe' ? 'ok' : 'close'; },
             onTitleOk() {
-                if (view === 'options') { void saveOptions(); return true; }
+                if (view === 'options') { void optsSave(); return true; }
+                if (view === 'optset') { optsSettingsDone(true); return true; }
                 if (view === 'phonedata') { void savePhoneData(); return true; }
                 if (view === 'cafe') { saveCafe(); return true; }
                 return false;
             },
-            historyDepth() { return view === 'main' ? 0 : 1; },
+            historyDepth() { return view === 'main' ? 0 : view === 'optset' ? 2 : 1; },
             onBack() {
                 if (view === 'main') return false;
+                // a Settings page goes back to Options with its changes (WM's back keeps a settings page)
+                if (view === 'optset') { optsSettingsDone(true); return true; }
+                if (view === 'options') opts = null;
                 view = 'main';
                 render();
                 return true;
             },
             softKeys() {
-                if (view === 'options') return { left: { label: 'Delete', action: endPartnership }, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
+                if (view === 'options') return { left: null, right: { label: 'Cancel', action: () => { opts = null; view = 'main'; render(); ws.syncHistory(); } } };
+                if (view === 'optset') return { left: null, right: { label: 'Cancel', action: () => optsSettingsDone(false) } };
                 if (view === 'status') return { left: { label: 'Done', action: () => { view = 'main'; render(); ws.syncHistory(); } }, right: null };
                 if (view === 'phonedata') return { left: null, right: { label: 'Cancel', action: () => { view = 'main'; render(); ws.syncHistory(); } } };
                 if (view === 'cafe') return { left: null, right: { label: 'Cancel', action: () => { cafeDraft = null; view = 'main'; render(); ws.syncHistory(); } } };
@@ -406,7 +600,7 @@
         as.on('state', render);
         as.on('received', () => { if (view === 'received' || view === 'main') render(); });
         // the Miniport's settings and figures came (Café Cache shows them; the draft keeps what was ticked)
-        try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'cafe') render(); }); } catch (_) { /* no Miniport */ }
+        try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'options' && opts && opts.cafe && !opts.cafeTouched) optsCafeFromConfig(); if (view === 'cafe' || view === 'options' || view === 'optset') render(); }); } catch (_) { /* no Miniport */ }
         // the picture turns while the computer is being served
         as.on('request', () => {
             activity += 1;

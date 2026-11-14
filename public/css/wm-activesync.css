@@ -86,3 +86,25 @@ html.ui-mobile .wm-activesync { background: #fff; color: #000; overflow-y: auto;
 .wm-activesync .was-cafe-n { color: #555; font-size: .85em; min-width: 1.5em; text-align: right; }
 .wm-activesync .was-cafe-upd span { font-size: .85em; }
 .wm-activesync .was-cafe-stats { color: #555; font-size: .85em; margin-top: 8px; }
+
+/* Menu > Options... (#815): syncres.dll.0409.mui DIALOG 2603 in device pixels (dialog units x 2):
+   "Choose the data you want to sync:" at 8,32 (224 x 16), the tree at 8,48 (224 x 109, WS_BORDER),
+   Delete at 84,160 and Settings... at 160,160 (72 x 20) */
+.wm-activesync .was-opts { padding: 0 calc(16 * var(--wm-px)); }
+/* a static's text sits at the top of its 16-unit box */
+.wm-activesync .was-opts-lead { margin: calc(12 * var(--wm-px)) 0 0; height: calc(32 * var(--wm-px)); line-height: calc(18 * var(--wm-px)); white-space: nowrap; }
+.wm-activesync .was-tree {
+    height: calc(218 * var(--wm-px));
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    box-sizing: border-box;
+}
+.wm-activesync .was-tree .mt-row.has-check.no-ico { padding-left: calc((38.5 + 19.5 * var(--depth, 0)) * var(--wm-px)); }
+/* a source (no icon, no check box): its name right after the expander */
+.wm-activesync .was-tree .mt-row.no-ico:not(.has-check) { padding-left: calc((19 + 19.5 * var(--depth, 0)) * var(--wm-px)); }
+.wm-activesync .was-tree .mt-box { pointer-events: none; }
+.wm-activesync .was-opts-btns { display: flex; justify-content: flex-end; gap: calc(8 * var(--wm-px)); margin-top: calc(6 * var(--wm-px)); }
+.wm-activesync .was-opts-btns .wm-button { width: calc(144 * var(--wm-px)); height: calc(40 * var(--wm-px)); min-width: 0; }
