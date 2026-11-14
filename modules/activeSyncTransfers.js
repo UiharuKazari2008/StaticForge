@@ -64,7 +64,8 @@ function isId(v) {
 async function adbInstall(globalResources, deviceId, run) {
     let deviceAdb;
     try { deviceAdb = require('./deviceAdb'); } catch (_) { return null; }
-    const st = await deviceAdb.detect(globalResources, deviceId).catch(() => null);
+    let st = null;
+    try { st = await deviceAdb.detect(globalResources, deviceId); } catch (_) { st = null; }
     if (!st || st.state !== 'ready') return null;
     try {
         return await run(deviceAdb);

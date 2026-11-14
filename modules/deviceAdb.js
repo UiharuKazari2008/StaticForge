@@ -187,7 +187,8 @@ async function detectNow(globalResources, wsServer, deviceId) {
 
 function wsServerOf(globalResources, wsServer) {
     if (wsServer) return wsServer;
-    return globalResources && typeof globalResources.getWebSocketServer === 'function' ? globalResources.getWebSocketServer() : null;
+    // getWebSocketServer throws until the socket server is set (the first seconds after a start)
+    try { return globalResources && typeof globalResources.getWebSocketServer === 'function' ? globalResources.getWebSocketServer() : null; } catch (_) { return null; }
 }
 
 /** Connects (once a minute at most unless forced) and returns status(). */
