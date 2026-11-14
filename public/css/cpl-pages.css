@@ -355,11 +355,22 @@
     background: linear-gradient(#fafbfd, #ebf3fd);
 }
 
+/* Set Default Programs' command links: aero.msstyles COMMANDLINKGLYPH (20x100: normal, hot,
+   pressed, disabled, default), the strip Games already ships; arrow-green-16.png never existed */
 #melatonControlPanelModal .cpl-dp-arrow {
-    flex: 0 0 16px;
-    width: 16px;
-    height: 16px;
-    background: url('/static_images/vista-cpl/pages/arrow-green-16.png') no-repeat;
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    background: url('/static_images/vista-games/ui/commandlink-glyph.png') no-repeat 0 0 / 20px 100px;
+    background-image: image-set(url('/static_images/vista-games/ui/commandlink-glyph.png') 1x, url('/static_images/vista-games/ui/commandlink-glyph@2x.png') 2x);
+}
+
+#melatonControlPanelModal .cpl-dp-action:hover .cpl-dp-arrow {
+    background-position: 0 -20px;
+}
+
+#melatonControlPanelModal .cpl-dp-action:active .cpl-dp-arrow {
+    background-position: 0 -40px;
 }
 
 #melatonControlPanelModal .cpl-assoc-head {
