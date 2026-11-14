@@ -1,6 +1,6 @@
 {
-  "version": 14,
-  "updatedAt": "2026-11-13T13:23:17.720Z",
+  "version": 15,
+  "updatedAt": "2026-11-14T00:48:26.765Z",
   "icons": {
     "com.google.android.youtube": {
       "name": "com-google-android-youtube-ea08c8-mwe848kg",
@@ -225,6 +225,188 @@
       "label": "Eden Optimized",
       "model": "gpt-image-2.5-sunburst",
       "updatedAt": "2026-11-13T13:23:17.720Z"
+    },
+    "com.chickfila.cfaflagship/com.chickfila.cfaflagship.StandardTheme": {
+      "name": "com-chickfila-cfaflagship-fc63b0-mwfosp5z",
+      "package": "com.chickfila.cfaflagship",
+      "label": "Chick-fil-A",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:07.697Z"
+    },
+    "dev.dexwp.backdrop/dev.dexwp.backdrop.ui.MainActivity": {
+      "name": "dev-dexwp-backdrop-e64b1f-mwfospro",
+      "package": "dev.dexwp.backdrop",
+      "label": "Deskmat",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:08.454Z"
+    },
+    "com.audioaddict.di/md5256881233f05e1a12873c405322115cb.SplashActivity": {
+      "name": "com-audioaddict-di-686941-mwfosqct",
+      "package": "com.audioaddict.di",
+      "label": "DI.FM Radio",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:09.246Z"
+    },
+    "com.google.android.apps.docs.editors.docs/com.google.android.apps.docs.app.NewMainProxyActivity": {
+      "name": "com-google-android-apps-docs-editors-docs-752e61-mwfosqy0",
+      "package": "com.google.android.apps.docs.editors.docs",
+      "label": "Docs",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:09.998Z"
+    },
+    "eu.depau.etchdroid/eu.depau.etchdroid.ui.MainActivity": {
+      "name": "eu-depau-etchdroid-692906-mwfosrkq",
+      "package": "eu.depau.etchdroid",
+      "label": "EtchDroid",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:10.815Z"
+    },
+    "com.etsy.android/com.etsy.android.ui.homescreen.HomescreenTabsActivity": {
+      "name": "com-etsy-android-fc0384-mwfoss46",
+      "package": "com.etsy.android",
+      "label": "Etsy",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:11.618Z"
+    },
+    "co.tapcart.app.id_nGDFF1I9N0/co.tapcart.app.id_nGDFF1I9N0.MainActivity": {
+      "name": "co-tapcart-app-id-ngdff1i9n0-66d5d3-mwfossrj",
+      "package": "co.tapcart.app.id_nGDFF1I9N0",
+      "label": "Gamer Supps",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:12.373Z"
+    },
+    "com.google.android.googlequicksearchbox/com.google.android.googlequicksearchbox.SearchActivity": {
+      "name": "com-google-android-googlequicksearchbox-5b8912-mwfostcc",
+      "package": "com.google.android.googlequicksearchbox",
+      "label": "Google",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:13.165Z"
+    },
+    "com.google.android.videos/com.google.android.videos.GoogleTvEntryPoint": {
+      "name": "com-google-android-videos-cd4845-mwfostv8",
+      "package": "com.google.android.videos",
+      "label": "Google TV",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:13.770Z"
+    },
+    "ai.x.grok/ai.x.grok.main.GrokActivity": {
+      "name": "ai-x-grok-c0bb91-mwfosuec",
+      "package": "ai.x.grok",
+      "label": "Grok",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:14.447Z"
+    },
+    "ai.x.grok.bot/ai.x.grok.bot.MainActivity": {
+      "name": "ai-x-grok-bot-c901cf-mwfosuyp",
+      "package": "ai.x.grok.bot",
+      "label": "Grok Bot",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:15.244Z"
+    },
+    "com.guidebook.android/com.guidebook.android.app.activity.LaunchActivity": {
+      "name": "com-guidebook-android-fa7004-mwfosvkq",
+      "package": "com.guidebook.android",
+      "label": "Guidebook",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:16.035Z"
+    },
+    "com.hidive.android/com.imggaming.dicemobile.MainActivity": {
+      "name": "com-hidive-android-73fd5b-mwfosw3x",
+      "package": "com.hidive.android",
+      "label": "HIDIVE",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:16.727Z"
+    },
+    "com.google.android.apps.chromecast.app/com.google.android.apps.chromecast.app.DiscoveryActivity": {
+      "name": "com-google-android-apps-chromecast-app-11cc5e-mwfoswon",
+      "package": "com.google.android.apps.chromecast.app",
+      "label": "Home",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:17.457Z"
+    },
+    "com.hulu.plus/com.hulu.features.splash.SplashActivity": {
+      "name": "com-hulu-plus-199dfc-mwfosxa4",
+      "package": "com.hulu.plus",
+      "label": "Hulu",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:18.177Z"
+    },
+    "com.vzw.hss.myverizon/com.vzw.mobilefirst.setup.views.activity.SetUpActivity": {
+      "name": "com-vzw-hss-myverizon-9cc01e-mwfosxur",
+      "package": "com.vzw.hss.myverizon",
+      "label": "My Verizon",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:18.949Z"
+    },
+    "com.netflix.mediaclient/com.netflix.mediaclient.ui.launch.UIWebViewActivity": {
+      "name": "com-netflix-mediaclient-ae1fb4-mwfosyfm",
+      "package": "com.netflix.mediaclient",
+      "label": "Netflix",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:19.780Z"
+    },
+    "psplay.grill.com/com.grill.psplay.MainActivity": {
+      "name": "psplay-grill-com-216fe7-mwfosz36",
+      "package": "psplay.grill.com",
+      "label": "PSPlay",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:20.544Z"
+    },
+    "com.tda.satpointer/com.tda.satpointer.activities.SplashActivity": {
+      "name": "com-tda-satpointer-b5eb4c-mwfosznp",
+      "package": "com.tda.satpointer",
+      "label": "Satellite Pointer",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:21.316Z"
+    },
+    "com.shazam.android/com.shazam.android.activities.SplashActivity": {
+      "name": "com-shazam-android-1561bb-mwfot0ac",
+      "package": "com.shazam.android",
+      "label": "Shazam",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:22.171Z"
+    },
+    "com.ust.sheetzretapp/com.sheetz.consumermobile.login.ui.SplashActivity": {
+      "name": "com-ust-sheetzretapp-123951-mwfot0xd",
+      "package": "com.ust.sheetzretapp",
+      "label": "Sheetz",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:22.989Z"
+    },
+    "net.typeblog.shelter/net.typeblog.shelter.ui.MainActivity": {
+      "name": "net-typeblog-shelter-545263-mwfot1hv",
+      "package": "net.typeblog.shelter",
+      "label": "Shelter",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:23.657Z"
+    },
+    "org.thoughtcrime.securesms/org.thoughtcrime.securesms.RoutingActivity@u10": {
+      "name": "org-thoughtcrime-securesms-aa8aaa-mwfot20i",
+      "package": "org.thoughtcrime.securesms",
+      "label": "Signal",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:24.419Z"
+    },
+    "com.punchh.slimchickens/com.punchh.slimchickens.MainActivity": {
+      "name": "com-punchh-slimchickens-d2a094-mwfot2p6",
+      "package": "com.punchh.slimchickens",
+      "label": "Slim Chickens",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:25.278Z"
+    },
+    "com.q2e.nrlfederalcreditunion5072.mobile.production/com.q2.app.core.ui.LauncherActivity@u10": {
+      "name": "com-q2e-nrlfederalcreditunion5072-mobile-product-0618c6-mwfot3b5",
+      "package": "com.q2e.nrlfederalcreditunion5072.mobile.production",
+      "label": "Spectra CU",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:26.035Z"
+    },
+    "com.radioswitch.app/com.radioswitch.app.MainActivity": {
+      "name": "com-radioswitch-app-9e0d14-mwfot3va",
+      "package": "com.radioswitch.app",
+      "label": "Traffic Cone",
+      "model": "gpt-image-2.5-sunburst",
+      "updatedAt": "2026-11-14T00:48:26.765Z"
     }
   }
 }
