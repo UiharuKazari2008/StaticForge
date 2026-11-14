@@ -229,7 +229,27 @@
         const list = [];
         if (mp && mp.present) list.push({ key: 'cafe', label: CAFE_ADAPTER, selected: !!i.viaMiniport });
         if (!i.viaMiniport) list.push({ key: 'vpn', label: miniport(i), selected: true });
+        // ActiveSync's own line, as WM names a serial ActiveSync link: always up, it rings the Miniport awake
+        const as = root.activeSync;
+        if (as && as.kind === 'device') list.push({ key: 'com1', label: COM1_NAME });
         return list;
+    }
+    const COM1_NAME = 'Serial Cable on COM1:';
+    function activeSyncFacts() {
+        const as = root.activeSync;
+        let st = null;
+        try { st = as && typeof as.state === 'function' ? as.state() : null; } catch (_) { st = null; }
+        const mcx = root.melatonContinuity;
+        const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
+        const stats = (cfg && cfg.stats) || {};
+        const comp = st && Array.isArray(st.computers) && st.computers[0] ? (st.computers[0].name || '') : '';
+        const rows = [
+            ['Line:', stats.activeSync || (st && st.online ? 'Connected' : 'Not connected')],
+            ['Partnership:', st ? (st.session === 'partner' ? 'Partner' : st.session === 'guest' ? 'Guest' : 'None') : '\u2014']
+        ];
+        if (comp) rows.push(['Computer:', comp]);
+        if (stats.lastRing) rows.push(['Last ring:', stats.lastRing]);
+        return rows;
     }
     // the Miniport's Idle timeout choices (minutes; 0 = never disconnect)
     const IDLE_CHOICES = [[1, '1 minute'], [5, '5 minutes'], [10, '10 minutes'], [30, '30 minutes'], [60, '1 hour'], [240, '4 hours'], [0, 'Never']];
@@ -247,6 +267,22 @@
             const i = info();
             const mcx = root.melatonContinuity;
             const mp = mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null;
+            if (d.adapter === 'com1') {
+                // ActiveSync's line (#815): the always-ready link; its ring wakes the Miniport
+                setHeader(el, COM1_NAME);
+                const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
+                if (d.ring == null) d.ring = !(cfg && cfg.config && cfg.config.wakeOnRing === false);
+                el.innerHTML = `<p>ActiveSync keeps this line open to the computer at all times. When the server rings it (updates are ready, a workspace changed), the Melaton Caf\u00e9 Miniport connects.</p>
+                    ${ui.check('ring', 'Wake on ring', d.ring, 'data-k="ring"')}
+                    ${ui.sub(`${COM1_NAME} Status`)}<div data-f="facts"></div>`;
+                const box = el.querySelector('input[data-k="ring"]');
+                if (box) box.addEventListener('change', () => { d.ring = box.checked; });
+                const facts = el.querySelector('[data-f="facts"]');
+                const paint = () => { const h = ui.facts(activeSyncFacts()); if (facts.innerHTML !== h) facts.innerHTML = h; };
+                paint();
+                liveTick(el, paint);
+                return;
+            }
             if (d.adapter === 'cafe') {
                 // the Melaton Café Miniport (#815): its Idle timeout ("VPN timeout"), how long the link stays
                 // up once no program uses it; ActiveSync's own link stays up regardless
@@ -296,6 +332,7 @@
             // ok on the adapter's page goes back to the list, as on the device
             if (d.adapter) {
                 const mcx = root.melatonContinuity;
+                if (d.adapter === 'com1' && d.ring != null && mcx && typeof mcx.setMiniportConfig === 'function') mcx.setMiniportConfig({ wakeOnRing: d.ring });
                 if (d.adapter === 'cafe' && mcx && typeof mcx.setMiniportConfig === 'function') {
                     const set = {};
                     if (d.idle != null) set.idleMinutes = d.idle;
@@ -304,6 +341,7 @@
                 }
                 d.idle = null;
                 d.cafeOn = null;
+                d.ring = null;
                 d.adapter = false;
                 if (d.rerender) d.rerender();
                 return false;

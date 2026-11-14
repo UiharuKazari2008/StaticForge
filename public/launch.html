@@ -841,9 +841,8 @@
         <canvas class="melaton-boot-pixels" id="melatonBiosCanvas" width="640" height="480" aria-label="PhoenixBIOS" tabindex="-1"></canvas>
         <!-- the OEM logo the BIOS splash paints (never shown itself): Xyridian, not the Enso -->
         <img class="melaton-bios-oem" src="/static_images/xyridian/xyridian-oem.png" alt="" hidden>
-        <!-- a CafeReady PC's badge (#815, the app's Melaton Café Miniport): BIOS splash top right, boot screen bottom right -->
+        <!-- a CafeReady PC's logo (#815, the app's Melaton Café Miniport): the BIOS splash, top right -->
         <img class="melaton-bios-cafe" src="/static_images/melaton/cafe-ready-bios.png" alt="" hidden>
-        <img class="melaton-boot-cafe" src="/static_images/melaton/cafe-ready-boot.png" alt="" hidden>
         <div class="melaton-vga">
         <!-- 640x480 stage scaled to fit: Vista's boot screen geometry (launch-boot.css) -->
         <div class="melaton-boot-screen">
@@ -1086,12 +1085,6 @@
             // the first frame of this boot screen, so a busy main thread holds them together.
             var FADE_MS = 1000;
             var shownAt = null;
-            // a CafeReady PC (#815: the Android app's Melaton Café Miniport): its badge in the bottom right
-            var cafe = document.querySelector('.melaton-boot-cafe');
-            function cafeReady() {
-                var mc = window.melatonContinuity;
-                try { return !!(mc && typeof mc.miniport === 'function' && mc.miniport().present); } catch (e) { return false; }
-            }
             // no logo: Vista's boot screen is the bar and the copyright on black
             function paint(now) {
                 paintId = 0;
@@ -1135,11 +1128,6 @@
                 sx.textAlign = 'center';
                 sx.textBaseline = 'top';
                 sx.fillText('\u00A9 Xyridian Corporation', 320, 389);
-                if (cafe && cafe.complete && cafe.naturalWidth && cafeReady()) {
-                    sx.imageSmoothingEnabled = true;
-                    sx.drawImage(cafe, 640 - 12 - cafe.naturalWidth, 480 - 12 - cafe.naturalHeight);
-                    sx.imageSmoothingEnabled = false;
-                }
                 // the fade (ease-out); the marquee is not drawn until it is done
                 var fade = Math.min(1, elapsed / FADE_MS);
                 if (fade < 1) {
