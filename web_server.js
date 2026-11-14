@@ -2271,6 +2271,8 @@ require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, gl
 require('./modules/activeSyncTransfers').mount(app, authMiddleware, globalResources);
 // modules/activeSyncScreen.js — ActiveSync remote viewer: a phone's screen frames for the desktop (Yozora #747)
 require('./modules/activeSyncScreen').mount(app, authMiddleware, globalResources);
+// modules/deviceAdb.js — ADB on 5555 from this server: phone screenshots, displays, installs (Yozora #818)
+require('./modules/deviceAdb').mount(app, authMiddleware, globalResources);
 // modules/textMessagingHttp.js — Text Messaging attachments (BlueBubbles / RCS, Yozora #779)
 require('./modules/textMessagingHttp').mount(app, authMiddleware, globalResources);
 // modules/mailAccountsHttp.js — IMAP e-mail accounts: attachments and uploads (Yozora #789)

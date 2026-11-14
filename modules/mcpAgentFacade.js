@@ -1417,6 +1417,21 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'device_screenshot',
+        core: true,
+        description: 'Screenshot an ActiveSync phone over ADB (port 5555, from the Dreamscape server): its inner, cover or DeX / external screen, or all of them. device = ActiveSync device id or name (e.g. "Galaxy Fold"); omit with one phone online. display = inner | cover | external | main | all | a display id; default the inner / main screen. Returns JPEGs (max 1600 px) plus the display list. When ADB is not ready (unauthorized = the phone must tap Always allow; unreachable = 5555 not listening) or no device is named, returns the phones and their ADB states instead.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                device: { type: 'string', description: 'ActiveSync device id or name' },
+                display: { type: 'string', description: 'inner | cover | external | main | all | display id' },
+                detect: { type: 'boolean', description: 'Look for the phone on 5555 again now (default: cached for a minute)' }
+            }
+        }
+    },
+    {
         name: 'inspect_elements',
         core: true,
         description: 'Match CSS selectors in the bound Dreamscape tab and return tag/id/class/text/visible plus optional html, computed style, box, and attrs. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client; if appliedWithoutRestart skip restart_client; else restart_client; then inspect.',
@@ -7213,6 +7228,7 @@ const ADVANCED_CORE_HINTS = [
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] },
     { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] },
+    { test: (q) => /device_screenshot|screenshot|phone screen|device screen|\badb\b|cover screen|inner screen|\bdex\b/i.test(q), names: ['device_screenshot'] },
     { test: (q) => /alchemy|owned tab|browser.?control|discord channel|channel.?history/i.test(q), names: ['alchemy_browser', 'read_discord_channel_history'] }
 ];
 
@@ -9563,6 +9579,15 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: `Character "${input.name}" not found` }, true);
         }
         return mcpTextResult({ success: true, deleted: true, name: input.name });
+    }
+
+    if (name === 'device_screenshot') {
+        try {
+            const r = await require('./deviceAdb').agentScreenshot(globalResources, input || {});
+            return r.images.length ? mcpImageResult(r.meta, r.images) : mcpTextResult(r.meta, !r.meta.success);
+        } catch (error) {
+            return mcpTextResult({ success: false, code: error.code || 'ERROR', error: error.message }, true);
+        }
     }
 
     if (name === 'run_client_js' || name === 'inspect_elements') {

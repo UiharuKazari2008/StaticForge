@@ -358,8 +358,32 @@ function describeDevice(globalResources, wsServer, row) {
         queued,
         firstSeen: row.first_seen,
         lastSeen: live.length ? Date.now() : row.last_seen,
-        lastSync: row.last_sync || null
+        lastSync: row.last_sync || null,
+        // ADB on port 5555 from this server (#818): state ready / unauthorized / unreachable / off ...
+        adb: adbStatusOf(globalResources, row.device_id)
     };
+}
+
+function adbStatusOf(globalResources, deviceId) {
+    try { return require('./deviceAdb').status(globalResources, deviceId); } catch (_) { return null; }
+}
+
+/** The addresses a device's open sockets come from, newest first (deviceAdb #818). */
+function deviceAddresses(globalResources, wsServer, deviceId) {
+    const out = [];
+    for (const s of liveSockets(wsServerOf(globalResources, wsServer), 'device', deviceId)) {
+        if (s.info.clientIP && !out.includes(s.info.clientIP)) out.push(s.info.clientIP);
+    }
+    return out;
+}
+
+function deviceRow(globalResources, deviceId) {
+    return rowOf(globalResources, deviceId) || null;
+}
+
+/** Something about a device changed outside a socket (its ADB state): computers hear of it. */
+function touchDevice(globalResources, wsServer, deviceId) {
+    scheduleUpdated(globalResources, wsServerOf(globalResources, wsServer));
 }
 
 function describeComputer(s) {
@@ -471,6 +495,8 @@ function hello(globalResources, wsServer, clientInfo, data) {
     clientInfo.as = as;
     if (as.status) d.prepare('UPDATE as_devices SET last_status = ? WHERE device_id = ?').run(JSON.stringify(as.status), id);
     if (!wasOnline) logEvent(globalResources, id, 'info', `Connected (${as.speaker})`);
+    // ADB on 5555 (#818): look for the phone where this socket comes from
+    try { require('./deviceAdb').noteOnline(globalResources, server, id); } catch (err) { console.warn('[activeSync] adb detect:', err.message); }
     scheduleUpdated(globalResources, server);
     return { success: true, kind, id, name: as.name, session: as.session, permissions: as.permissions, device: describeDevice(globalResources, server, row), ...list(globalResources, server) };
 }
@@ -1049,6 +1075,9 @@ module.exports = {
     receivedUnseen,
     __test: { noteReceived, receivedOf },
     deviceOnline,
+    deviceAddresses,
+    deviceRow,
+    touchDevice,
     isDeviceSession,
     devicePermits,
     onQueueItemDone,

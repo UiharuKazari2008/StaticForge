@@ -56,6 +56,25 @@ function isId(v) {
     return /^[0-9a-f]{32}$/.test(String(v || ''));
 }
 
+/**
+ * ADB first (#818, Yukimi: installs go over 5555 when it is detected): null when ADB is not ready
+ * for the phone or the link failed (the caller goes on to Android's installer); an install error
+ * from the package manager is the answer (the installer would refuse the same file).
+ */
+async function adbInstall(globalResources, deviceId, run) {
+    let deviceAdb;
+    try { deviceAdb = require('./deviceAdb'); } catch (_) { return null; }
+    const st = await deviceAdb.detect(globalResources, deviceId).catch(() => null);
+    if (!st || st.state !== 'ready') return null;
+    try {
+        return await run(deviceAdb);
+    } catch (error) {
+        if (error.code && String(error.code).startsWith('INSTALL_')) return { state: 'failed', via: 'adb', code: error.code, error: error.message };
+        console.warn(`[activeSync] adb install fell back to the phone's installer: ${error.message}`);
+        return null;
+    }
+}
+
 function transfersDir(globalResources) {
     if (dir) return dir;
     const base = globalResources && typeof globalResources.getPath === 'function' ? globalResources.getPath('databases') : path.resolve(__dirname, '..', '.cache');
@@ -338,6 +357,21 @@ function mount(app, authMiddleware, globalResources) {
         // a program lands under its own name (a newer build replaces the last one sent), so the queued
         // install finds it where the queued copy put it
         if (wantInstall) args.conflict = 'replace';
+        if (wantInstall) {
+            // the program straight from here over ADB; adb install wants a name ending in .apk
+            const src = dataPath(globalResources, meta.id);
+            const apk = `${src}.apk`;
+            const viaAdb = await adbInstall(globalResources, meta.deviceId, async (deviceAdb) => {
+                try { fs.unlinkSync(apk); } catch (_) { /* none */ }
+                fs.linkSync(src, apk);
+                try { return await deviceAdb.install(globalResources, meta.deviceId, apk); } finally { try { fs.unlinkSync(apk); } catch (_) { /* gone */ } }
+            });
+            if (viaAdb) {
+                removeUpload(globalResources, meta.id);
+                res.json({ success: true, entry: null, install: viaAdb });
+                return;
+            }
+        }
         const online = activeSync.deviceOnline(globalResources, wsServer(), meta.deviceId);
         const filePath = `${String(meta.dir || '/').replace(/\/+$/, '')}/${meta.name}`;
         try {
@@ -374,6 +408,8 @@ function mount(app, authMiddleware, globalResources) {
         const root = String((req.body && req.body.root) || 'internal');
         const p = String((req.body && req.body.path) || '');
         if (!/\.apk$/i.test(p)) { refuse(res, 400, 'NOT_APK', 'Only an .apk can be installed'); return; }
+        const viaAdb = await adbInstall(globalResources, deviceId, (deviceAdb) => deviceAdb.installOnPhone(globalResources, deviceId, root, p));
+        if (viaAdb) { res.json({ success: true, install: viaAdb }); return; }
         try {
             const online = activeSync.deviceOnline(globalResources, wsServer(), deviceId);
             if (!online && req.body && req.body.queue) {
