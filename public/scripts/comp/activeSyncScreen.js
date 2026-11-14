@@ -73,17 +73,58 @@
                 im.src = url;
             });
         }
-        as.registerOp('status.wallpapers', async () => {
+        const sources = () => {
             const w = root.wmShell && root.wmShell.wallpaper;
-            const today = w && typeof w.picture === 'function' ? w.picture() : null;
-            const desk = w && typeof w.desktop === 'function' ? w.desktop() : null;
+            return { today: w && typeof w.picture === 'function' ? w.picture() : null, desk: w && typeof w.desktop === 'function' ? w.desktop() : null };
+        };
+        async function wallpapers() {
+            const { today, desk } = sources();
             const [phone, dex] = await Promise.all([shrink(today), shrink(desk)]);
             // the cover and the inner screen run the same Today (one picture for both)
             // which screen is on: a foldable's cover is narrow (about 9:21), its inner screen near square
             const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
             const screen = vw && vh && Math.min(vw, vh) / Math.max(vw, vh) < 0.56 && /^SM-F9/i.test((root.AndroidActiveSync && typeof root.AndroidActiveSync.getModel === 'function' && root.AndroidActiveSync.getModel()) || navigator.userAgent) ? 'cover' : 'inner';
             return { inner: phone, cover: phone, external: dex || phone, screen };
+        }
+        as.registerOp('status.wallpapers', wallpapers);
+
+        /*
+         * The server keeps the wallpapers for Device Center (#827, modules/activeSyncWallpapers.js):
+         * sent once per connection and again when a wallpaper changes (Settings, a workspace switch,
+         * Android's own wallpaper), never on a timer.
+         */
+        let sentKey = '';
+        let sendTimer = null;
+        let sending = false;
+        async function sendWallpapers(force) {
+            const st = as.state();
+            if (!st.online || !st.id || !st.session || st.session === 'pending' || sending) return;
+            const src = sources();
+            const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
+            const key = JSON.stringify([src.today, src.desk, vw > vh]);
+            if (!force && key === sentKey) return;
+            sending = true;
+            try {
+                const body = await wallpapers();
+                if (!body.inner && !body.external) return;
+                const r = await fetch(`/api/activesync/wallpapers/${encodeURIComponent(st.id)}`, {
+                    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+                });
+                if (r.ok) sentKey = key;
+            } catch (_) { /* the next change tries again */ } finally { sending = false; }
+        }
+        const soon = (force) => { clearTimeout(sendTimer); sendTimer = setTimeout(() => { void sendWallpapers(force); }, 2500); };
+        let wasOnline = false;
+        as.on('state', () => {
+            const st = as.state();
+            const now = !!(st.online && st.session && st.session !== 'pending');
+            if (now && !wasOnline) soon(true);
+            wasOnline = now;
         });
+        document.addEventListener('wmSettingsChange', () => soon(false));
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') soon(false); });
+        root.addEventListener('androidwallpaper', () => soon(false));
+        ['workspaceSwitchComplete', 'workspaceUpdated'].forEach((n) => { document.addEventListener(n, () => soon(false)); root.addEventListener(n, () => soon(false)); });
 
         as.registerOp('screen.start', () => {
             if (!usable) throw err('UNSUPPORTED', 'This device cannot share its screen.');

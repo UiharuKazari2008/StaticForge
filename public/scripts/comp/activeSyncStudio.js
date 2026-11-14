@@ -167,12 +167,13 @@
 
     root.activeSyncStudio = { snapshot, open, sendTo, getFrom, targets, menuItems, handleMenuAction };
 
-    // Device Center's Programs and Services (apps/activesync; tasks queue until it loads)
+    // Device Center's Pictures, Music and Video (apps/activesync; tasks queue until it loads): a
+    // Studio session is a picture's recipe (#827), with WMDC's own import / add-media art
     if (as.kind === 'computer') {
         const mas = (root.melatonActiveSync = root.melatonActiveSync || {});
         const add = (tile, task) => (typeof mas.addTask === 'function' ? mas.addTask(tile, task) : (mas.pending = mas.pending || []).push([tile, task]));
         const allowed = (d) => d.permissions.includes('session');
-        add('programs', { id: 'studio-send', text: 'Send the Studio session to your device', icon: 'add-programs-32.png', when: allowed, run: (d) => sendTo(d.deviceId) });
-        add('programs', { id: 'studio-get', text: 'Get the Studio session from your device', icon: 'explore-32.png', when: (d) => allowed(d) && d.online, run: (d) => getFrom(d.deviceId) });
+        add('media', { id: 'studio-get', text: 'Get the Studio session from your device', icon: 'import-pictures-32.png', when: (d) => allowed(d) && d.online, run: (d) => getFrom(d.deviceId) });
+        add('media', { id: 'studio-send', text: 'Send the Studio session to your device', icon: 'add-media-32.png', when: allowed, run: (d) => sendTo(d.deviceId) });
     }
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -1449,7 +1449,7 @@ const TOOL_DEFS = [
     {
         name: 'device_packages',
         core: true,
-        description: 'An ActiveSync phone\'s installed Android programs (Package Management). Without action: the list (label, package, version, size, system, enabled); system=true adds system programs, filter narrows by name or package. With action (uninstall | disable | enable | stop | clear | open) and package: does it over the phone\'s Localhost ADB (needs Install Android Applications in Android Bridge > Advanced Tools; open does not). device = ActiveSync device id or name.',
+        description: 'An ActiveSync phone\'s installed Android programs (Package Management). Without action: the list (label, package, version, size, system, enabled); system=true adds system programs, filter narrows by name or package. With action (uninstall | disable | enable | stop | clear | open) and package: does it over the phone\'s Developer Bridge (its own local ADB) (needs Install Android Applications in Android Bridge > Advanced Tools; open does not). device = ActiveSync device id or name.',
         scope: 'generation',
         inputSchema: {
             type: 'object',

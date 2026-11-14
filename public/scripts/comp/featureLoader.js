@@ -4,6 +4,11 @@
  */
 
 const FEATURE_MANIFEST = {
+    // the phone Device Center draws (#827): Device Center and the Sidebar's Mobile Device gadgets
+    activesync_device_art: {
+        styles: ['css/activesync-device-art.css'],
+        scripts: ['scripts/comp/activeSyncDeviceArt.js']
+    },
     spellbook: {
         styles: ['css/spellbook.css'],
         scripts: ['scripts/comp/spellbookModal.js']

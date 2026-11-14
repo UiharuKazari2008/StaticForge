@@ -2240,3 +2240,168 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 .vsb-wx-attribution.is-apple a { display: inline-block; opacity: 0.85; }
 .vsb-wx-attribution.is-apple a:hover { opacity: 1; }
 .vsb-wx-attribution.is-apple img { display: block; width: 66px; height: 12px; }
+
+/* ---------------------------------------------------------------- Mobile Device (Yozora #827): the phone
+   as Device Center draws it (activesync-device-art.css), its top running past the gadget's top, over
+   battery, cellular, Wi-Fi and storage rows on the Feed Headlines glass */
+
+.vsb-mdev {
+    position: relative;
+    box-sizing: border-box;
+    width: 130px;
+    padding: 90px 0 12px;
+    color: #fff;
+    font-size: 11px;
+    line-height: 16px;
+}
+
+.vsb-mdev-glass {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    border-style: solid;
+    border-width: 22px 4px 34px 4px;
+    border-image: url('/static_images/vista-sidebar/mail/rssBackBlue_docked.png') 22 4 34 4 fill stretch;
+    pointer-events: none;
+}
+
+.vsb .vsb-mdev-art {
+    position: absolute;
+    top: -30px;
+    left: 1px;
+    z-index: 1;
+    width: 128px;
+    height: 128px;
+    padding: 0;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.vsb-mdev-art .asda {
+    transform: scale(.5);
+    transform-origin: 0 0;
+}
+
+.vsb-mdev-none {
+    width: 128px;
+    height: 128px;
+}
+
+.vsb-mdev.is-offline .vsb-mdev-art {
+    opacity: .6;
+}
+
+.vsb-mdev-name,
+.vsb-mdev-rows {
+    position: relative;
+    z-index: 1;
+}
+
+.vsb-mdev-name {
+    overflow: hidden;
+    padding: 0 8px 2px;
+    font-weight: 600;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, .6);
+    cursor: pointer;
+}
+
+.vsb-mdev-rows {
+    padding: 0 9px;
+}
+
+.vsb-mdev-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 16px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.vsb-mdev-row > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vsb-mdev-row small {
+    color: #a9c7e6;
+    font-size: 10px;
+}
+
+.vsb-mdev-note {
+    justify-content: center;
+    color: #a9c7e6;
+}
+
+.vsb-mdev .asda-bars {
+    flex: none;
+    margin-right: 2px;
+}
+
+.vsb-mdev .asda-bars i {
+    background: rgba(255, 255, 255, .22);
+    box-shadow: none;
+}
+
+.vsb-mdev .asda-bars i.is-on {
+    background: linear-gradient(#a6ec7c, #48a821);
+    box-shadow: none;
+}
+
+.vsb-mdev-bar {
+    flex: 1;
+    height: 5px;
+    border: 1px solid rgba(255, 255, 255, .45);
+    background: rgba(0, 0, 0, .3);
+}
+
+.vsb-mdev-bar i {
+    display: block;
+    height: 100%;
+    background: linear-gradient(#9fe07a, #3d9a1d);
+}
+
+.vsb-mdev-bar.is-full i {
+    background: linear-gradient(#ff9a8a, #c42a14);
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mdev {
+    zoom: 1.5;
+}
+
+/* Mobile Notifications: Mail's glass and rows, an app icon before each */
+
+.vsb .vsb-mnot-item {
+    position: relative;
+    padding-left: 24px;
+}
+
+.vsb-mnot-icon {
+    position: absolute;
+    top: 5px;
+    left: 4px;
+    width: 16px;
+    height: 16px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb .vsb-mnot-item,
+.vsb-gadget[data-docked="0"] .vsb-mnot-item {
+    padding-left: 30px;
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mnot-icon {
+    top: 7px;
+    left: 6px;
+    width: 20px;
+    height: 20px;
+}
+
+.vsb-mnot-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

@@ -41,7 +41,7 @@ Signed-in sessions (read-only PIN included):
 | Request type | Response | Notes |
 | --- | --- | --- |
 | `as_hello` | `as_hello_response` | `{ kind, id, name?, ops[], speaker: 'webview' \| 'service', model?, os?, app?, status? }`. `ops` are the operations this socket answers (`storage.list`, or `storage.*`). Returns `{ success, kind, id, name, session, permissions, device, devices, computers }`; a refusal is `{ success: false, code, error }`. A computer without a `name` is named after the host. Only administrators get other peers in the lists. A partner's queue goes out after its hello |
-| `as_status` | none | Device only, fire-and-forget: `{ status: { battery { level, charging, plugged, saver }, wifi { enabled, connected, level 0-4, ssid }, cellular { present, operator, level, dataType, roaming, airplane }, active, storage [{ id, name, total, free }], foreground } }`. Unknown fields stay null |
+| `as_status` | none | Device only, fire-and-forget: `{ status: { battery { level, charging, plugged, saver }, wifi { enabled, connected, level 0-4, ssid }, cellular { present, operator, level, dataType, roaming, airplane }, active, storage [{ id, name, total, free }], foreground, shell '6.1' \| '6.5', program { name, kind melaton \| android }, screen inner \| cover, foldable } }`. Unknown fields stay null. Device descriptions also carry `lastSync` (a partner's data relayed or its queue delivered, at most once a minute) and `wallpapersAt` (#827) |
 | `as_reply` | none | The answer to an `as_request`: `{ callId, ok, result }` or `{ callId, ok: false, error: { code, message } }` |
 | `as_event` | none | A peer's news for the other kind: `{ event: 'group.name', detail }` (the payload is `detail`, never `data`). A device's events need the group's permission and reach administrators' computers |
 | `as_synced` | `as_synced_response` | `{ deviceId?, summary? }`: stamps the device's last sync (a device stamps itself) |
@@ -101,3 +101,14 @@ Computer: `studio.getSession`, `studio.setSession { session }`.
 On a desktop `window.phoneStorage` is `public/scripts/comp/activeSyncRemoteStorage.js`: the bridge's interface over these
 operations and the file endpoints, so Explorer's phone drive (`explorerPhoneDrive.js`) shows a connected device's
 storage unchanged, and Send To copies files into its Download folder.
+
+## Wallpapers kept for Device Center (#827)
+
+`modules/activeSyncWallpapers.js`. The phone's page posts its wallpapers once per connection and when they change; Device Center and the Sidebar's Mobile Device gadget read them, also while the phone is away.
+
+| Route | Who | Body / answer |
+| --- | --- | --- |
+| `POST /api/activesync/wallpapers/:deviceId` | the phone (its own session) | `{ inner, cover, external, screen }`, each a same-site path or an image data URL (2 MB max) -> `{ success, wallpapers }` |
+| `GET /api/activesync/wallpapers/:deviceId` | admin or the phone | `{ success, wallpapers: { inner, cover, external, screen, at } }` (URLs, null when none) |
+| `GET /api/activesync/wallpapers/:deviceId/:kind` | admin or the phone | the stored picture (immutable; the URL carries its stamp) |
+

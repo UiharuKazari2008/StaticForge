@@ -352,6 +352,8 @@ const VSB_GADGETS = {
     deskcalc: { title: 'Desktop Calculator', icon: 'deskcalc/icon.png', desc: 'A calculator for the Sidebar. Undock it for scientific keys.', author: 'Home Cooked Gadgets', options: true },
     feed: { title: 'Feed Headlines', icon: 'feed/icon.png', desc: 'See headlines from a web feed. Click a headline to open it.', author: 'Xyridian Corporation', options: true },
     hero: { title: 'HTC Hero Clock', icon: 'hero/icon.png', desc: 'Twelve clock faces based on the HTC Hero and Vista Orb clocks.', author: 'Marc22', options: true },
+    mobiledevice: { title: 'Mobile Device', icon: 'mobiledevice/icon.png', desc: 'See your phone as Melaton Mobile Device Center does: its battery, signal, Wi-Fi network and storage.', author: 'Xyridian Corporation', options: true },
+    mobilenotify: { title: 'Mobile Notifications', icon: 'mobilenotify/icon.png', desc: 'See the notifications on your phone. Click one to open it in Melaton Mobile Device Center.', author: 'Xyridian Corporation', options: true },
     mail: { title: 'Mail', iconUrl: '/static_images/app_icons/vista-mail.webp', desc: 'See your latest Dovecote Inbox messages and how many are unread. Click a message to read it.', author: 'Dreamscape', options: true },
     outlook: { title: 'Sidebar Outlook', icon: 'outlook/icon.png', desc: 'Watch your Dovecote Inbox from the desktop. Click a message to read it.', author: 'Edward J. Boelzner', options: true },
     notes: { title: 'Notes', icon: 'notes/icon.png', desc: 'Capture ideas, notes, and reminders in a quick and easy way.', author: 'Xyridian Corporation', options: true },
@@ -2979,6 +2981,193 @@ Object.assign(VSB_GADGETS.slideshow, {
 Object.assign(VSB_GADGETS.weather, { mount: vsbWeatherMount, apply: vsbWeatherApply, form: vsbWeatherOptions });
 Object.assign(VSB_GADGETS.timer, { mount: vsbTimerMount, apply: vsbTimerApply });
 
+// ---------------------------------------------------------------- Mobile Device / Mobile Notifications (Yozora #827)
+// An ActiveSync phone on the Sidebar (desktop tabs: window.activeSync, kind computer). Mobile Device
+// draws the phone as Device Center does (activeSyncDeviceArt.js, its top running a little past the
+// gadget's top) over its battery, cellular and Wi-Fi meters and storage; Mobile Notifications lists the
+// phone's notifications (activeSyncNotifications.js). Both follow the phone's pushes, no timers.
+
+const VSB_AS_ASSETS = '/static_images/activesync/';
+
+/** The phone a gadget shows: the one chosen in its options, else a connected partner, else any known one. */
+const vsbMobileDevice = function (inst) {
+    const as = window.activeSync;
+    const list = as && as.kind === 'computer' ? as.state().devices : [];
+    const want = inst.g.settings.deviceId;
+    return (want && list.find((d) => d.deviceId === want))
+        || list.find((d) => d.online && d.partner) || list.find((d) => d.online) || list.find((d) => d.partner) || null;
+};
+
+const vsbMobileOpenCenter = function (dev, page) {
+    if (!window.melatonApps) return;
+    void melatonApps.launch({ packageId: 'activesync', args: dev ? { deviceId: dev.deviceId, ...(page ? { page } : {}) } : {} });
+};
+
+const vsbMobileWatch = function (inst, paint) {
+    const offs = [];
+    const as = window.activeSync;
+    if (as && typeof as.on === 'function') offs.push(as.on('state', () => { if (!inst.destroyed) paint(inst); }));
+    if (window.activeSyncNotifications) offs.push(window.activeSyncNotifications.on(() => { if (!inst.destroyed) paint(inst); }));
+    inst.liveRelease = () => offs.forEach((off) => { try { off(); } catch (_) { /* gone */ } });
+};
+
+const vsbMobileOptions = {
+    html(set, inst) {
+        const as = window.activeSync;
+        const list = as && as.kind === 'computer' ? as.state().devices.filter((d) => d.partner || d.online) : [];
+        const opts = [['', 'The connected phone']].concat(list.map((d) => [d.deviceId, d.online ? d.name : `${d.name} (not connected)`]));
+        const count = inst && inst.g.type === 'mobilenotify'
+            ? `<div class="group"><label for="vsbMobileCount">Notifications to show:</label><select id="vsbMobileCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), set.count || 3)}</select></div>` : '';
+        return `<div class="vsb-options"><div class="group"><label for="vsbMobileDevice">Device:</label><select id="vsbMobileDevice">${vsbOptions(opts, set.deviceId || '')}</select></div>${count}</div>`;
+    },
+    read(dialog, set) {
+        const out = { ...set, deviceId: dialog.querySelector('#vsbMobileDevice').value || '' };
+        const c = dialog.querySelector('#vsbMobileCount');
+        if (c) out.count = Math.min(6, Math.max(3, Number(c.value) || 3));
+        return out;
+    }
+};
+
+const vsbMdevMount = function (inst) {
+    const box = vsbEl('div', 'vsb-mdev', inst.body);
+    vsbEl('div', 'vsb-mdev-glass', box);
+    const art = vsbButton('vsb-mdev-art', 'Open Melaton Mobile Device Center', box);
+    const name = vsbEl('div', 'vsb-mdev-name', box);
+    const rows = vsbEl('div', 'vsb-mdev-rows', box);
+    inst.parts = { box, art, name, rows };
+    inst.walls = { deviceId: null, at: -1, urls: {} };
+    art.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst)));
+    name.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst), 'info'));
+    vsbMobileWatch(inst, vsbMdevPaint);
+    // featureLoader.loadFeature: public/scripts/comp/featureLoader.js (the art Device Center draws)
+    featureLoader.loadFeature('activesync_device_art').then(() => { if (!inst.destroyed) vsbMdevPaint(inst); }, () => {});
+    vsbMdevPaint(inst);
+};
+
+/** The phone's wallpapers as the server keeps them (modules/activeSyncWallpapers.js), again when they change. */
+const vsbMdevWalls = function (inst, dev) {
+    const w = inst.walls;
+    const at = dev.wallpapersAt || 0;
+    if (w.deviceId === dev.deviceId && w.at === at) return;
+    w.deviceId = dev.deviceId;
+    w.at = at;
+    fetch(`/api/activesync/wallpapers/${encodeURIComponent(dev.deviceId)}`, { credentials: 'same-origin', cache: 'no-store' })
+        .then((r) => r.json()).then((r) => {
+            if (inst.destroyed || w.deviceId !== dev.deviceId) return;
+            w.urls = (r && r.success && r.wallpapers) || {};
+            vsbMdevPaint(inst);
+        }).catch(() => {});
+};
+
+const vsbMdevPaint = function (inst) {
+    const p = inst.parts;
+    const D = window.activeSyncDeviceArt;
+    const dev = vsbMobileDevice(inst);
+    p.box.classList.toggle('is-offline', !dev || !dev.online);
+    if (!dev) {
+        if (p.art.dataset.key !== 'none') { p.art.dataset.key = 'none'; p.art.innerHTML = `<img class="vsb-mdev-none" src="/melaton-apps/activesync/assets/devices-256.png" alt="">`; }
+        vsbSetText(p.name, 'No device');
+        p.rows.innerHTML = '<div class="vsb-mdev-row vsb-mdev-note">Connect a phone running Dreamscape.</div>';
+        return;
+    }
+    vsbMdevWalls(inst, dev);
+    const st = dev.status || {};
+    if (D) {
+        const u = inst.walls.deviceId === dev.deviceId ? inst.walls.urls : {};
+        const fold = D.isFoldable(dev);
+        const screens = { inner: u.inner || null, cover: u.cover || null, external: null, screen: D.screenOf(dev) || u.screen || 'inner' };
+        const key = JSON.stringify([dev.deviceId, fold, screens]);
+        if (p.art.dataset.key !== key) {
+            const arrive = !p.art.dataset.key || p.art.dataset.key === 'none';
+            p.art.dataset.key = key;
+            p.art.innerHTML = D.html({ form: fold ? 'fold' : 'phone', screens, uid: `vsbmd-${inst.g.id}`, arrive });
+        }
+    }
+    vsbSetText(p.name, dev.name || 'Phone');
+    p.name.title = dev.online ? `${dev.name}: Connected` : `${dev.name}: Not Connected`;
+    const rows = [];
+    const meter = (lv, kind) => (D && lv != null ? D.bars(lv, kind) : '');
+    if (!dev.online) rows.push('<div class="vsb-mdev-row vsb-mdev-note">Not Connected</div>');
+    const b = st.battery;
+    if (b && b.level != null) {
+        const lvl = b.level < 10 ? 0 : b.level < 35 ? 1 : b.level < 60 ? 2 : b.level < 85 ? 3 : 4;
+        rows.push(`<div class="vsb-mdev-row" title="Battery"><img src="${VSB_AS_ASSETS}battery-${lvl}-16.png" alt=""><span>${Math.round(b.level)}%${b.charging ? ' <small>charging</small>' : ''}</span></div>`);
+    }
+    if (dev.online && st.cellular && st.cellular.present) {
+        const c = st.cellular;
+        const text = c.airplane ? 'Flight mode' : [c.operator, c.dataType].filter(Boolean).join(' ') || 'No service';
+        rows.push(`<div class="vsb-mdev-row" title="Cellular">${c.airplane ? '' : meter(c.level, 'cell')}<span>${escapeHtml(text)}</span></div>`);
+    }
+    if (dev.online && st.wifi) {
+        const w = st.wifi;
+        const text = w.connected ? (w.ssid || 'Wi-Fi') : (w.enabled === false ? 'Wi-Fi off' : 'Wi-Fi: not connected');
+        rows.push(`<div class="vsb-mdev-row" title="Wi-Fi">${w.connected ? meter(w.level, 'wifi') : ''}<span>${escapeHtml(text)}</span></div>`);
+    }
+    for (const s of (st.storage || []).slice(0, 2)) {
+        if (!(s.total > 0) || s.free == null) continue;
+        const used = Math.max(0, Math.min(1, 1 - s.free / s.total));
+        const gb = (n) => `${(n / 1073741824).toFixed(n >= 1e11 ? 0 : 1)} GB`;
+        rows.push(`<div class="vsb-mdev-row vsb-mdev-store" title="${escapeHtmlAttribute(`${s.name || 'Storage'}: ${gb(s.free)} free of ${gb(s.total)}`)}"><span class="vsb-mdev-bar${used > 0.9 ? ' is-full' : ''}"><i style="width:${(used * 100).toFixed(1)}%"></i></span><small>${escapeHtml(gb(s.free))} free</small></div>`);
+    }
+    const html = rows.join('');
+    if (p.rows.dataset.html !== html) { p.rows.dataset.html = html; p.rows.innerHTML = html; }
+};
+
+const vsbMnotMount = function (inst) {
+    const box = vsbEl('div', 'vsb-mail vsb-mnot', inst.body);
+    vsbEl('div', 'vsb-mail-glass', box);
+    const head = vsbButton('vsb-mail-head', 'Open Melaton Mobile Device Center', box);
+    head.innerHTML = '<span class="vsb-mnot-name"></span><span class="vsb-mail-unread"></span>';
+    const list = vsbEl('div', 'vsb-mail-list', box);
+    const message = vsbEl('div', 'vsb-mail-message hidden', box);
+    const nav = vsbEl('div', 'vsb-mail-nav', box);
+    const up = vsbButton('vsb-mail-btn vsb-mail-up', 'Previous', nav);
+    const pos = vsbEl('span', 'vsb-mail-pos', nav);
+    const down = vsbButton('vsb-mail-btn vsb-mail-down', 'Next', nav);
+    inst.parts = { box, head, list, message, nav, up, down, pos, name: head.querySelector('.vsb-mnot-name'), unread: head.querySelector('.vsb-mail-unread') };
+    inst.offset = 0;
+    const size = () => Math.min(6, Math.max(3, Number(inst.g.settings.count) || 3));
+    inst.pageSize = size;
+    head.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst), 'notifications'));
+    list.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst), 'notifications'));
+    up.addEventListener('click', () => { inst.offset = Math.max(0, inst.offset - size()); vsbMnotPaint(inst); });
+    down.addEventListener('click', () => { inst.offset += size(); vsbMnotPaint(inst); });
+    vsbMobileWatch(inst, vsbMnotPaint);
+    vsbMnotPaint(inst);
+};
+
+const vsbMnotPaint = function (inst) {
+    const p = inst.parts;
+    const size = inst.pageSize();
+    p.box.style.setProperty('--vsb-mail-n', String(size));
+    const dev = vsbMobileDevice(inst);
+    const N = window.activeSyncNotifications;
+    const items = dev && N ? N.list(dev.deviceId) : [];
+    const total = items.length;
+    inst.offset = Math.max(0, Math.min(inst.offset, Math.max(0, total - 1) - (Math.max(0, total - 1) % size)));
+    vsbSetText(p.name, dev ? dev.name : 'Notifications');
+    p.unread.textContent = total ? String(total) : '';
+    if (!dev || !dev.online || !total) {
+        p.list.innerHTML = '';
+        p.message.textContent = !dev ? 'No device' : !dev.online ? 'Not Connected' : 'No notifications';
+        p.message.classList.remove('hidden');
+    } else {
+        p.message.classList.add('hidden');
+        p.list.innerHTML = items.slice(inst.offset, inst.offset + size).map((n) => `
+            <button type="button" class="vsb-mail-item vsb-mnot-item" title="${escapeHtmlAttribute([n.title || n.app, n.text].filter(Boolean).join('\n'))}">
+                ${n.icon ? `<img class="vsb-mnot-icon" src="${escapeHtmlAttribute(n.icon)}" alt="">` : ''}
+                <span class="vsb-mail-subject">${escapeHtml(n.title || n.app || '')}</span>
+                <span class="vsb-mail-meta"><span class="vsb-mail-from">${escapeHtml(n.text || n.app || '')}</span></span>
+            </button>`).join('');
+    }
+    p.pos.textContent = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)}/${total}` : '0';
+    p.up.disabled = inst.offset === 0;
+    p.down.disabled = inst.offset + size >= total;
+};
+
+Object.assign(VSB_GADGETS.mobiledevice, { mount: vsbMdevMount, apply: vsbMdevPaint, form: vsbMobileOptions });
+Object.assign(VSB_GADGETS.mobilenotify, { mount: vsbMnotMount, apply: vsbMnotPaint, form: vsbMobileOptions });
+
 // ---------------------------------------------------------------- instances
 
 const vsbIsShown = function (inst) {
@@ -3334,6 +3523,8 @@ const vsbDefaultSettings = function (type) {
         case 'slideshow': return { source: 'images', seconds: 15, transition: 'none', shuffle: true, scale: 1, search: null, shape: 'landscape' };
         case 'weather': return { unit: 'F', feelsLike: false, hidePlace: false, placeAlt: 'none' };
         case 'mail': return { unreadOnly: false, count: 3 };
+        case 'mobiledevice': return { deviceId: '' };
+        case 'mobilenotify': return { deviceId: '', count: 3 };
         default: return VSB_GADGETS[type] && VSB_GADGETS[type].hosted ? { store: {} } : {};
     }
 };

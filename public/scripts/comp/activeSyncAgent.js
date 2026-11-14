@@ -189,7 +189,53 @@
             out.battery = { level: Math.round(webBattery.level * 100), charging: !!webBattery.charging };
         }
         if (storageRoots) out.storage = storageRoots;
+        // Device Center's facts (#827): Melaton Mobile's version, the program in front, the screen in use
+        const de = doc && doc.documentElement;
+        if (de && de.dataset.wmVersion) out.shell = de.dataset.wmVersion;
+        const prog = frontProgram();
+        if (prog) out.program = prog;
+        const scr = screenInfo();
+        if (scr && scr.foldable) { out.foldable = true; out.screen = scr.screen === 'cover' ? 'cover' : 'inner'; }
+        // the network's name: the app reads it only with precise location allowed (Wireless Manager asks)
+        if (out.wifi && out.wifi.connected && !out.wifi.ssid) {
+            const name = wifiName();
+            if (name) out.wifi = Object.assign({}, out.wifi, { ssid: name });
+        }
         return out;
+    }
+
+    function screenInfo() {
+        const D = root.AndroidDisplay;
+        try { return D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; } catch (_) { return null; }
+    }
+
+    let wifiNameCache = { at: 0, name: null };
+    function wifiName() {
+        const dv = root.AndroidDevice;
+        if (!dv || typeof dv.getWifiName !== 'function') return null;
+        if (Date.now() - wifiNameCache.at < 30000) return wifiNameCache.name;
+        let name = null;
+        try { name = dv.getWifiName() || null; } catch (_) { name = null; }
+        if (name) name = String(name).replace(/^"|"$/g, '');
+        if (name === '<unknown ssid>') name = null;
+        wifiNameCache = { at: Date.now(), name };
+        return name;
+    }
+
+    /**
+     * The program in front: an Android app Melaton started while this page is out of sight
+     * (wmAndroidApps notes it), else the Melaton program on the shell's stage.
+     */
+    function frontProgram() {
+        const a = root.__wmAndroidForeground;
+        if (doc && doc.visibilityState === 'hidden' && a && a.label) return { name: String(a.label), kind: 'android' };
+        const sh = root.wmShell;
+        const id = sh && sh.current;
+        if (!id) return null;
+        let title = '';
+        try { const app = sh.listApps().find((x) => x.id === id); title = app ? (app.startLabel || app.title || '') : ''; } catch (_) { title = ''; }
+        if (id === 'today') title = doc.documentElement.dataset.wmVersion === '6.5' ? 'Start' : 'Today';
+        return title ? { name: String(title), kind: 'melaton' } : null;
     }
 
     let webBattery = null;
@@ -633,6 +679,16 @@
             }, () => { /* no battery API */ });
         }
         if (doc) doc.addEventListener('visibilitychange', pushStatus);
+        // a program changed on the shell's stage, or a foldable was opened / closed (#827)
+        if (doc && root.MutationObserver) {
+            new MutationObserver(pushStatus).observe(doc.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
+        }
+        let lastScreen = '';
+        root.addEventListener('resize', () => {
+            const s = screenInfo();
+            const now = s && s.foldable ? s.screen : '';
+            if (now !== lastScreen) { lastScreen = now; pushStatus(); }
+        });
         setInterval(() => { refreshStorageRoots().then(pushStatus); }, STATUS_BEAT_MS);
     }
 

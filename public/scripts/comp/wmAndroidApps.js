@@ -253,6 +253,12 @@
     /** Starts an Android program (Programs, Start, Search) with the wait cursor; a failed start says so. */
     async function launchProgram(id, label) {
         const ok = await startWithCursor(() => bridge.launch(id));
+        // ActiveSync's "Program" (#827): the Android app in front until this page is back
+        if (ok === true) {
+            window.__wmAndroidForeground = { id, label, at: Date.now() };
+            const back = () => { if (document.visibilityState === 'visible') { window.__wmAndroidForeground = null; document.removeEventListener('visibilitychange', back); } };
+            setTimeout(() => document.addEventListener('visibilitychange', back), 0);
+        }
         if (ok === false) void sh.messageBox({ title: label, text: `${label} could not be started. It may have been removed from the device.`, icon: 'warning' });
         return ok === true;
     }

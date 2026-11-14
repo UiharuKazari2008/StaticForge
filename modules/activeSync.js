@@ -194,6 +194,14 @@ function sanitizeStatus(raw) {
         }));
     }
     if (raw.foreground != null) out.foreground = bool(raw.foreground);
+    // Device Center's facts (#827): the Melaton Mobile version, the program in front (a Melaton
+    // program or an Android app) and which screen of a foldable is in use
+    if (raw.shell != null) out.shell = clampString(raw.shell, 16);
+    if (isPlainObject(raw.program) && raw.program.name) {
+        out.program = { name: clampString(raw.program.name, 64), kind: raw.program.kind === 'android' ? 'android' : 'melaton' };
+    }
+    if (raw.screen === 'inner' || raw.screen === 'cover') out.screen = raw.screen;
+    if (raw.foldable != null) out.foldable = bool(raw.foldable);
     return out;
 }
 
@@ -360,8 +368,14 @@ function describeDevice(globalResources, wsServer, row) {
         lastSeen: live.length ? Date.now() : row.last_seen,
         lastSync: row.last_sync || null,
         // ADB on port 5555 from this server (#818): state ready / unauthorized / unreachable / off ...
-        adb: adbStatusOf(globalResources, row.device_id)
+        adb: adbStatusOf(globalResources, row.device_id),
+        // the wallpapers kept for Device Center (#827): a new stamp means new pictures
+        wallpapersAt: wallpapersStampOf(globalResources, row.device_id)
     };
+}
+
+function wallpapersStampOf(globalResources, deviceId) {
+    try { return require('./activeSyncWallpapers').stampOf(globalResources, deviceId); } catch (_) { return 0; }
 }
 
 function adbStatusOf(globalResources, deviceId) {
@@ -633,6 +647,7 @@ async function call(globalResources, wsServer, clientInfo, data) {
         const res = await sendRequest(server, target, fromOf(clientInfo), op, args, timeoutMs);
         if (!res.ok) throw fail(res.error.code, res.error.message);
         if (target.info.as.speaker === 'service') { try { noteReceivedLive(globalResources, server, to, op, args, me.name); } catch (e) { console.warn('[activeSync] received note failed:', e.message); } }
+        noteSynced(globalResources, server, to, op);
         return { success: true, result: res.result };
     }
 
@@ -645,6 +660,7 @@ async function call(globalResources, wsServer, clientInfo, data) {
     if (target.info.userType !== 'admin') throw fail('NOT_PERMITTED', 'The computer does not allow this.');
     const res = await sendRequest(server, target, fromOf(clientInfo), op, args, timeoutMs);
     if (!res.ok) throw fail(res.error.code, res.error.message);
+    noteSynced(globalResources, server, me.id, op);
     return { success: true, result: res.result };
 }
 
@@ -824,6 +840,9 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
         sent += 1;
     }
     if (sent) scheduleUpdated(globalResources, server);
+    // a partner that connected and took what waited for it has synced (WMDC's Last Synchronized)
+    const after = deviceSession(server, deviceId);
+    if (after && after.session === 'partner' && !d.prepare('SELECT 1 FROM as_queue WHERE device_id = ? LIMIT 1').get(deviceId)) noteSynced(globalResources, server, deviceId, null);
     return sent;
 }
 
@@ -1039,6 +1058,25 @@ function sendServerEvent(globalResources, wsServer, socket, name, detail) {
 }
 
 /** A device's sync ran (the client tells the server what it finished). */
+/**
+ * Last sync (#827): a partner's data went across (a relayed data op, its queue delivered on
+ * connect). Written at most once a minute per device.
+ */
+const SYNC_GROUPS = new Set(['storage', 'stream', 'studio', 'clipboard', 'open', 'notify', 'apps', 'sync']);
+const syncWrites = new Map();
+function noteSynced(globalResources, wsServer, deviceId, op) {
+    if (op && !SYNC_GROUPS.has(opGroupName(op))) return;
+    const now = Date.now();
+    if (now - (syncWrites.get(deviceId) || 0) < 60000) return;
+    try {
+        const row = rowOf(globalResources, deviceId);
+        if (!row || !row.partner) return;
+        syncWrites.set(deviceId, now);
+        getDb(globalResources).prepare('UPDATE as_devices SET last_sync = ? WHERE device_id = ?').run(now, deviceId);
+        scheduleUpdated(globalResources, wsServer);
+    } catch (err) { console.warn('[activeSync] last sync write failed:', err.message); }
+}
+
 function markSynced(globalResources, wsServer, deviceId, summary) {
     if (!isPeerId(deviceId) || !rowOf(globalResources, deviceId)) return false;
     getDb(globalResources).prepare('UPDATE as_devices SET last_sync = ? WHERE device_id = ?').run(Date.now(), deviceId);

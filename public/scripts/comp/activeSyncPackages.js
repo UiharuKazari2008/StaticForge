@@ -6,7 +6,7 @@
  *   apps.packages { system }   the programs (label, package, version, size, system, enabled, protected)
  *   apps.icon { package, size } a PNG data URL
  *   apps.manage { package, action }  uninstall | disable | enable | stop | clear | open, over the phone's
- *                              Localhost ADB (Android Bridge > Advanced Tools: Install Android Applications)
+ *                              Developer Bridge, the phone's own ADB (Android Bridge > Advanced Tools: Install Android Applications)
  *
  * A Vista window: the shared title toolbar (Open, Stop, Clear Data, Disable / Enable, Uninstall,
  * Refresh), a details list (Name, Version, Size, Type, Status) sorted by column, Show system

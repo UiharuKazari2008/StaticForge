@@ -1,0 +1,210 @@
+/*
+ * The phone Device Center draws (public/scripts/comp/activeSyncDeviceArt.js, Yozora #827): a 256 x 256
+ * box with its own perspective; the world turns so the device's right side shows (the Vista device
+ * icons' three-quarter view) and the camera looks down a little; the phone leans back on its own so
+ * its bottom edge shows too. Opacity only ever on .asda (a preserve-3d box with opacity goes flat).
+ */
+.asda {
+    position: relative;
+    width: 256px;
+    height: 256px;
+    perspective: 760px;
+    perspective-origin: 46% 38%;
+    pointer-events: none;
+}
+
+.asda-world,
+.asda-slab,
+.asda-laptop,
+.asda-lid {
+    transform-style: preserve-3d;
+}
+
+.asda-world {
+    position: absolute;
+    inset: 0;
+    transform-origin: 128px 160px;
+    transform: rotateX(-9deg) rotateY(-26deg);
+}
+
+.asda-shadow {
+    position: absolute;
+    transform-origin: 50% 0;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, .34), rgba(0, 0, 0, 0));
+}
+
+/* ---------------------------------------------------------------- the phone */
+
+.asda-slab {
+    position: absolute;
+    transform-origin: 50% 100%;
+}
+
+.asda-layer {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+}
+
+.asda-front {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: block;
+    overflow: visible;
+}
+
+/* the right side: a plane hinged on the face's right edge, swung back */
+.asda-side {
+    position: absolute;
+    right: 0;
+    transform-origin: 100% 50%;
+    transform: rotateY(-90deg);
+    background: linear-gradient(90deg, #8d939b, #b3b9c0 45%, #767c84);
+}
+
+.asda-side b {
+    position: absolute;
+    left: 28%;
+    width: 44%;
+    border-radius: 1px;
+    background: #5e646c;
+    box-shadow: 0 0 0 .5px rgba(255, 255, 255, .35);
+}
+
+.asda-bottom {
+    position: absolute;
+    bottom: 0;
+    transform-origin: 50% 100%;
+    transform: rotateX(90deg);
+    background: linear-gradient(#a7adb5, #6a7078);
+}
+
+/* ---------------------------------------------------------------- DeX's laptop */
+
+.asda-laptop {
+    position: absolute;
+}
+
+.asda-lid {
+    position: absolute;
+    top: 0;
+    left: 0;
+    transform-origin: 50% 100%;
+    transform: rotateX(13deg);
+}
+
+.asda-lid-back {
+    position: absolute;
+    inset: 0;
+    border-radius: 4px;
+    background: linear-gradient(135deg, #d6dbe0, #9aa1aa);
+    transform: translateZ(-2.5px);
+}
+
+.asda-deck {
+    position: absolute;
+    left: 0;
+    transform-origin: 50% 0;
+    transform: rotateX(90deg);
+    border-radius: 0 0 5px 5px;
+    background: linear-gradient(170deg, #f3f5f7, #cdd2d8 40%, #aab0b8);
+    box-shadow: inset 0 0 0 .6px #8d939b;
+}
+
+.asda-deck-keys {
+    position: absolute;
+    top: 9%;
+    left: 9%;
+    width: 82%;
+    height: 44%;
+    border-radius: 2px;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 9px, rgba(205, 210, 216, .55) 9px 10px),
+        repeating-linear-gradient(0deg, transparent 0 7px, rgba(205, 210, 216, .55) 7px 8px),
+        #3a3f46;
+}
+
+.asda-deck-pad {
+    position: absolute;
+    top: 60%;
+    left: 37%;
+    width: 26%;
+    height: 30%;
+    border-radius: 2px;
+    background: #d4d9de;
+    box-shadow: inset 0 0 0 .5px #a7adb5;
+}
+
+.asda-deck-edge {
+    position: absolute;
+    left: 0;
+    height: 3px;
+    border-radius: 0 0 3px 3px;
+    background: linear-gradient(#a7adb5, #5e646c);
+}
+
+/* ---------------------------------------------------------------- the arrival (a device connects,
+   Device Center opens on a connected device): the phone turns in from the side as it rises into
+   place, then its screen lights up */
+
+.asda-off {
+    opacity: 0;
+}
+
+.asda.is-arriving {
+    animation: asda-fade .5s ease-out both;
+}
+
+.asda.is-arriving .asda-world {
+    animation: asda-turn .8s cubic-bezier(.2, .75, .25, 1) both;
+}
+
+.asda.is-arriving .asda-off {
+    animation: asda-light 1.3s ease-in both;
+}
+
+@keyframes asda-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes asda-turn {
+    from { transform: translateY(22px) rotateX(-9deg) rotateY(-78deg); }
+    to { transform: rotateX(-9deg) rotateY(-26deg); }
+}
+
+@keyframes asda-light {
+    0%, 50% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .asda.is-arriving,
+    .asda.is-arriving .asda-world,
+    .asda.is-arriving .asda-off { animation: none; }
+}
+
+/* ---------------------------------------------------------------- signal meters (Device information,
+   the gadget): four rising bars, Vista's green for the lit ones */
+
+.asda-bars {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 1px;
+    height: 13px;
+    margin-right: 6px;
+    vertical-align: -2px;
+}
+
+.asda-bars i {
+    width: 3px;
+    background: rgba(0, 0, 0, .16);
+    box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .12);
+}
+
+.asda-bars i.is-on {
+    background: linear-gradient(#7bd24f, #2f8a14);
+    box-shadow: inset 0 0 0 .5px #23700d;
+}

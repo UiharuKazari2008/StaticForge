@@ -193,7 +193,7 @@
                 // the state, the switch and the buttons; the applet's explanations stay out (Yukimi: self-explanatory)
                 rows.length ? rows.filter((r) => r && r.type !== 'text' && r.type !== 'note').map(shizukuRow).join('') : dotRow('Shizuku:', 'Not available', 'bad'),
                 ui.gap(),
-                ui.sub('Localhost ADB'),
+                ui.sub('Developer Bridge'),
                 ...(localAvailable() ? (() => {
                     const l = localStatus() || {};
                     const access = !l.listening ? '-' : l.authorized === true ? 'Allowed' : l.authorized === false ? 'Waiting for "Always allow"' : 'Not checked yet';
@@ -207,7 +207,7 @@
                         lastCheck && lastCheck.shizukuStart ? dotRow('Shizuku start:', String(lastCheck.shizukuStart).split('\n')[0].slice(0, 60), lastCheck.shizukuStart === 'started' ? 'ok' : 'warn') : ''
                     ];
                 })() : [dotRow('Status:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync', a && a.state === 'ready' ? 'ok' : a && a.state === 'unauthorized' ? 'warn' : 'bad'), a && a.address ? ui.value('Address:', a.address) : '']),
-                ui.check('dbg-allow', 'Use Localhost ADB', set.allow !== false, 'data-dbg="allow"'),
+                ui.check('dbg-allow', 'Use Developer Bridge', set.allow !== false, 'data-dbg="allow"'),
                 `<div class="wm-form-row"><span class="wm-form-label">Port:</span>${ui.edit('dbg-port', String(set.port || 5555), `inputmode="numeric" maxlength="5" data-dbg-port style="width:calc(56 * var(--wm-px))"${set.allow === false ? ' disabled' : ''}`)}</div>`,
                 sub([
                     ui.check('dbg-shz-start', 'Start Shizuku automatically', !!set.shizukuAutoStart, `data-dbg="shizukuAutoStart"${set.allow === false ? ' disabled' : ''}`),
