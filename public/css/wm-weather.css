@@ -1657,6 +1657,12 @@
 #melatonWeatherModal .wxd-settings { background: #fff; color: #000; font: 12px 'Segoe UI', Tahoma, sans-serif; }
 #melatonWeatherModal .wxd-settings .wm-form-hdr { height: auto; padding: 14px 18px 10px; border: 0; color: #1e3287; font-size: 15px; font-weight: normal; }
 #melatonWeatherModal .wxd-settings .wm-form { max-width: 560px; padding: 0 18px 18px; }
+/* what the window took from the phone sheets (wm-shell.css .wm-page, wm-programs.css .wm-form), which
+   load only on phones now (#817) */
+#melatonWeatherModal .wm-page[hidden] { display: none !important; }
+#melatonWeatherModal .wm-form-hdr { flex: 0 0 auto; display: flex; align-items: center; white-space: nowrap; overflow: hidden; }
+#melatonWeatherModal .wm-form { line-height: calc(13 * var(--wm-px)); }
+#melatonWeatherModal .wm-form p { margin: 0 0 calc(8 * var(--wm-px)); }
 #melatonWeatherModal .wxd-sub { margin: 10px 0 6px; color: #1e3287; font-size: 12px; }
 #melatonWeatherModal .wxd-field { display: flex; align-items: center; gap: 6px; min-height: 22px; }
 #melatonWeatherModal .wxd-row { display: grid; grid-template-columns: 120px minmax(0, 220px); align-items: center; gap: 8px; min-height: 28px; padding-left: 22px; }

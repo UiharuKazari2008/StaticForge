@@ -80,6 +80,15 @@
         const desktopPwaWindow = !!(window.matchMedia && matchMedia('(display-mode: window-controls-overlay)').matches);
         globalThis.uiShell = (isWideScreen || desktopPwaWindow) ? 'desktop' : 'mobile';
         if (globalThis.uiShell === 'mobile') document.documentElement.classList.add('ui-mobile');
+        // Each shell loads only what it runs (#817). Tags only one shell runs sit in a
+        // <template data-shell="desktop|mobile">; the inline writeShellTags() right after it writes them
+        // into the page while it parses, so they load and run there, in order and blocking as before.
+        // The server still puts ?sha= on the tags inside (runtimeAssetService rewrites by pattern) and
+        // the service worker still precaches every file, so both windows of the Android app share one cache.
+        globalThis.writeShellTags = function () {
+            const tpl = document.currentScript && document.currentScript.previousElementSibling;
+            if (tpl && tpl.tagName === 'TEMPLATE' && tpl.dataset.shell === globalThis.uiShell) document.write(tpl.innerHTML);
+        };
         // Settings > Screen > Camera before the first paint (#735): the black bezel band and its logo
         // are there from the boot logo on, from what wmShell syncBezel cached for this screen size,
         // instead of appearing once the shell's scripts run
@@ -462,6 +471,9 @@
     <link rel="stylesheet" href="/css/fonts.css">
     <link rel="stylesheet" href="/dist/fontawesome/css/all.subset.css">
     <link rel="stylesheet" href="/css/app.css">
+    <!-- Melaton Mobile only (#817), but for wm-director.css (the Director's VN kits, desktop too, #750) and
+         wm-weather.css (the desktop Melaton Weather window) -->
+    <template data-shell="mobile">
     <link rel="stylesheet" href="/css/wm-shell.css">
     <link rel="stylesheet" href="/css/wm-file-explorer.css">
     <link rel="stylesheet" href="/css/wm-messaging.css">
@@ -469,7 +481,9 @@
     <link rel="stylesheet" href="/css/wm-browser.css">
     <link rel="stylesheet" href="/css/wm-dsap.css">
     <link rel="stylesheet" href="/css/wm-notes.css">
+    </template><script>writeShellTags()</script>
     <link rel="stylesheet" href="/css/wm-director.css">
+    <template data-shell="mobile">
     <link rel="stylesheet" href="/css/wm-studio.css">
     <link rel="stylesheet" href="/css/wm-studio-tools.css">
     <link rel="stylesheet" href="/css/wm-host.css">
@@ -514,8 +528,9 @@
     <link rel="stylesheet" href="/css/wm-lock65.css">
     <link rel="stylesheet" href="/css/wm-titanium.css">
     <link rel="stylesheet" href="/css/wm-stage.css">
+    </template><script>writeShellTags()</script>
     <link rel="stylesheet" href="/css/wm-weather.css">
-    <link rel="stylesheet" href="/css/wm-traffic.css">
+    <template data-shell="mobile"><link rel="stylesheet" href="/css/wm-traffic.css"></template><script>writeShellTags()</script>
     <link rel="stylesheet" id="workspace-styles"
         href="/css/workspaces.css">
     <link rel="stylesheet"
@@ -8458,7 +8473,8 @@ Examples:
     <!-- Ease of Access Center: High Contrast, focus, animations, access keys, Narrator -->
     <script src="scripts/comp/melatonAccessibility.js"></script>
     <!-- Welcome Center (#632): opened from Control Panel and Accessories; Run at startup -->
-    <script src="scripts/comp/welcomeCenter.js"></script>
+    <!-- desktop only (#817): a Control Panel page the phone never opens (its Toolbox skips welcome-center) -->
+    <template data-shell="desktop"><script src="scripts/comp/welcomeCenter.js"></script></template><script>writeShellTags()</script>
     <script src="scripts/comp/modalUtils.js"></script>
     <!-- Taskbar and Start Menu Properties settings, Quick Launch, taskbar menus; the clock tooltip and flyout -->
     <!-- The two accounts' names and pictures (User Accounts), for every place that shows them -->
@@ -8572,9 +8588,11 @@ Examples:
     <script src="scripts/comp/melatonApps.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
     <!-- Vista's desktop icon view: sizes, Auto Arrange / Align to Grid, Sort By, the desktop menu (desktop-icon-view.css) -->
-    <script src="scripts/comp/desktopIconView.js"></script>
+    <!-- desktop only (#817): the desktop icon grid; desktopShortcuts and modalUtils check window.desktopIconView -->
+    <template data-shell="desktop"><script src="scripts/comp/desktopIconView.js"></script></template><script>writeShellTags()</script>
     <script src="scripts/comp/desktop-apps/dovecote.js"></script>
-    <script src="scripts/comp/vistaSidebar.js"></script>
+    <!-- desktop only (#817): Windows Sidebar starts when the taskbar shows; the phone skips vista-sidebar -->
+    <template data-shell="desktop"><script src="scripts/comp/vistaSidebar.js"></script></template><script>writeShellTags()</script>
     <script src="scripts/comp/fileSearch.js"></script>
     <script src="scripts/comp/director.js"></script>
     <script src="scripts/comp/keyboardPromptChars.js"></script>
@@ -8664,6 +8682,8 @@ Examples:
     <script src="scripts/appInitSteps.js"></script>
     <script src="scripts/comp/telemetryClient.js"></script>
     <script src="scripts/app.js"></script>
+    <!-- Melaton Mobile only (#817): every wm*.js returns at once unless uiShell is mobile; wmWeather.js below also runs the desktop Melaton Weather window (Start menu, Sidebar, Continuity, weather alerts) -->
+    <template data-shell="mobile">
     <script src="scripts/comp/wmShell.js"></script>
     <script src="scripts/comp/wmFileExplorer.js"></script>
     <script src="scripts/comp/wmPhoneGallery.js"></script>
@@ -8718,8 +8738,9 @@ Examples:
     <script src="scripts/comp/wmStart65.js"></script>
     <script src="scripts/comp/wmLock65.js"></script>
     <script src="scripts/comp/wmTitanium.js"></script>
+    </template><script>writeShellTags()</script>
     <script src="scripts/comp/wmWeather.js"></script>
-    <script src="scripts/comp/wmTraffic.js"></script>
+    <template data-shell="mobile"><script src="scripts/comp/wmTraffic.js"></script></template><script>writeShellTags()</script>
 </body>
 
 </html>
