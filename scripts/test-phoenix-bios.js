@@ -435,6 +435,21 @@ function harness(opts = {}) {
         assert.deepStrictEqual(await p, { device: 'hdd', via: 'order' });
     }
 
+    // ---------- fast boot (#815, the DeX window over the Melaton Café Miniport): the POST takes 1.2 s at least ----------
+    {
+        h = harness();
+        const tasks = [{ id: 'miniport', weight: 1, run: async () => ({ available: true, up: true }) }];
+        const res = await h.bios.post({ hasOs: true, fastBootMs: 1200, tasks, continuity: { ready: () => true, auth: async () => 'ok' } });
+        assert.deepStrictEqual(res, { device: 'hdd', via: 'order' });
+        assert.ok(h.t.now >= 1200, `fast boot takes at least 1.2 s (${h.t.now})`);
+        assert.ok(h.t.now < B.config.splashMs + B.config.splashHoldMs, `and less than the usual POST (${h.t.now})`);
+        assert.strictEqual(h.bios.work.miniport.up, true, 'the POST checked the Miniport');
+        // the usual pace again on the next POST without it
+        h = harness();
+        await h.bios.post({ hasOs: true });
+        assert.ok(h.t.now >= B.config.splashMs + B.config.splashHoldMs);
+    }
+
     console.log('test-phoenix-bios passed');
 })().catch((err) => {
     console.error('❌ test-phoenix-bios failed:', err);

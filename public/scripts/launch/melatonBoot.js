@@ -535,6 +535,22 @@
             // DeX window's POST has no work under its bar (it runs on its clock) and links to the phone
             const hybrid = isHybridDw();
             if (hybrid) tasks.length = 0;
+            // over the Melaton Café Miniport (#815) the DeX window fast boots: its one POST check is the
+            // Miniport interface (there, and its link's state; an idle link is woken), 1.2 s at least
+            const mcMini = root.melatonContinuity && typeof root.melatonContinuity.miniport === 'function' ? root.melatonContinuity : null;
+            const onMiniport = hybrid && !!(mcMini && mcMini.miniport().available);
+            if (onMiniport) {
+                tasks.push({ id: 'miniport', weight: 1, run: async () => {
+                    const t0 = env.now();
+                    mcMini.phoneReady(); // wakes the link
+                    while (env.now() - t0 < 600) {
+                        const m = mcMini.miniport();
+                        if (m.up || m.authFailed) return m;
+                        await env.sleep(50);
+                    }
+                    return mcMini.miniport();
+                } });
+            }
             const bios = ensureBios();
             if (!bios) {
                 const results = {};
@@ -602,6 +618,7 @@
             // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
             const mc = root.melatonContinuity;
             const outcome = await bios.post({
+                fastBootMs: onMiniport ? 1200 : 0,
                 // ready: the phone window says it is ready; auth: the session lets this window in (the
                 // phone's session cookie; a refusal is "A disk read error occurred")
                 continuity: hybrid ? {

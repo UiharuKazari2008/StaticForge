@@ -443,22 +443,32 @@
             render();
             // Continuity (#798): the bar stops at 90 % for the phone link (linkStep)
             const cap = link ? LINK_AT : 1;
+            const total = splashTotal();
             for (;;) {
                 if (run && run.cancelled && run.cancelled()) return false;
                 const elapsed = env.now() - started;
-                const progress = Math.min(cap, work ? work.progress(elapsed) : Math.min(1, elapsed / config.splashMs));
+                const progress = Math.min(cap, work ? work.progress(elapsed) : Math.min(1, elapsed / total));
                 screen.splash = { progress, prompt: postPrompt() };
                 render();
-                if (elapsed >= config.splashMs * cap && (!work || (work.done() && progress >= cap))) break;
+                if (elapsed >= total * cap && (!work || (work.done() && progress >= cap))) break;
                 await env.sleep(50);
             }
             if (link && !(await linkStep(run, link, (text) => { screen.splash = { progress: LINK_AT, prompt: text }; render(); }))) return false;
+            // the bar's last tenth still takes its share of the time (fast boot's 1.2 s is a minimum)
+            if (link) { const left = total - (env.now() - started); if (left > 0) await env.sleep(left); }
             // past the link the hot keys are gone; a key pressed before it still enters what it asked for
             screen.splash = { progress: 1, prompt: link ? (bios.request ? postPrompt() : '') : postPrompt() };
             render();
             await env.sleep(bios.request ? config.enteringMs : config.splashHoldMs);
             return !(run && run.cancelled && run.cancelled());
         }
+
+        /**
+         * Fast boot (#815: the DeX window over the Melaton Café Miniport): the whole POST, bar and hold,
+         * takes bios.fastMs (at least) instead of the usual pace; its steps and the text POST shrink with it.
+         */
+        const fastFactor = () => (bios.fastMs > 0 ? bios.fastMs / (config.splashMs + config.splashHoldMs) : 1);
+        const splashTotal = () => (bios.fastMs > 0 ? Math.max(300, bios.fastMs - config.splashHoldMs) : config.splashMs);
 
         /** Runs opts.tasks ({ id, run }) in order; progress(elapsed) is what the bar shows. */
         function startWork(tasks) {
@@ -476,7 +486,7 @@
                 }
                 state.finished = true;
             })();
-            const gaps = config.barStepGapsMs;
+            const gaps = config.barStepGapsMs.map((g) => Math.round(g * fastFactor()));
             const weights = list.map((task) => (Number(task.weight) > 0 ? Number(task.weight) : 1));
             const totalWeight = weights.reduce((a, b) => a + b, 0);
             return {
@@ -488,7 +498,7 @@
                         let at = 0;
                         let steps = 0;
                         while (steps < gaps.length && elapsed >= (at += gaps[steps])) steps += 1;
-                        return elapsed >= config.splashMs ? 1 : steps / (gaps.length + 1);
+                        return elapsed >= splashTotal() ? 1 : steps / (gaps.length + 1);
                     }
                     // one jump per finished task, each at least its gap after the last; a slow
                     // task holds the bar where it is
@@ -506,6 +516,8 @@
         /** Boot-time Diagnostic Screen: the text POST, memory counted up (work runs underneath). */
         async function diagnostic(run, work, link) {
             void work;
+            const pace = fastFactor();
+            const stepMs = Math.round(config.diagStepMs * pace);
             bios.state = 'diag';
             screen.mode = 'text';
             screen.clear(C.black, C.grey);
@@ -523,12 +535,12 @@
                 screen.put(0, row++, line);
                 render();
                 if (run && run.cancelled && run.cancelled()) return false;
-                await env.sleep(config.diagStepMs);
+                await env.sleep(stepMs);
             }
             const totalM = Math.round(F.extendedKb / 1024);
             const t0 = env.now();
             for (;;) {
-                const f = Math.min(1, (env.now() - t0) / config.diagMemoryMs);
+                const f = Math.min(1, (env.now() - t0) / (config.diagMemoryMs * pace));
                 screen.put(0, row, `${String(Math.round(totalM * f)).padStart(4)}M Extended RAM Passed`);
                 render();
                 if (f >= 1) break;
@@ -549,14 +561,14 @@
                 screen.put(0, row++, line);
                 render();
                 if (run && run.cancelled && run.cancelled()) return false;
-                await env.sleep(config.diagStepMs);
+                await env.sleep(stepMs);
             }
             const promptRow = row;
             // Continuity (#798): the phone link in place of the prompt line, keys off while it waits
             if (link) {
                 const lineAt = (text) => { screen.put(0, promptRow, ' '.repeat(COLS)); screen.put(0, promptRow, text); render(); };
                 const t0l = env.now();
-                while (env.now() - t0l < config.splashMs * 0.4) {
+                while (env.now() - t0l < config.splashMs * 0.4 * pace) {
                     lineAt(postPrompt());
                     await env.sleep(80);
                     if (run && run.cancelled && run.cancelled()) return false;
@@ -567,7 +579,7 @@
                 return true;
             }
             const t1 = env.now();
-            while (env.now() - t1 < config.splashMs * 0.6) {
+            while (env.now() - t1 < config.splashMs * 0.6 * pace) {
                 screen.put(0, promptRow, ' '.repeat(COLS));
                 screen.put(0, promptRow, postPrompt());
                 render();
@@ -811,6 +823,7 @@
         async function post(opts = {}) {
             const run = opts.run || null;
             bios.request = null;
+            bios.fastMs = Number(opts.fastBootMs) > 0 ? Number(opts.fastBootMs) : 0;
             let work = startWork(opts.tasks);
             let first = true;
             for (;;) {
