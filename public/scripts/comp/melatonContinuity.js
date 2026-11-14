@@ -697,6 +697,14 @@
         statusChanged();
     });
     api.on('dex-display', (m) => { if (isPhone() && m.state === 'removed') { dex.displayGone = true; statusChanged(); } });
+    // a phone page that starts while the DeX window is already up (a phone restart, an app update) hears
+    // no "joined": it looks for it and asks how it is doing
+    setTimeout(() => {
+        if (!isPhone() || !api.peers().includes('desktop')) return;
+        Object.assign(dex, { present: true, state: dex.state || 'booting' });
+        api.post({ type: 'dex-state?' });
+        statusChanged();
+    }, 0);
     api.on('peer', (m) => {
         if (!isPhone() || m.role !== 'desktop') return;
         if (m.state === 'joined') { Object.assign(dex, { present: true, state: 'booting', displayGone: false }); api.post({ type: 'dex-state?' }); }
