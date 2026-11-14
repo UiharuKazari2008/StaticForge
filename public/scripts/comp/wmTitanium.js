@@ -644,7 +644,7 @@
         const e = (pos - a) * ROW; // where the finger left the list: units past a's place, + toward later items
         // the clock starts when the finger left the glass, not when the event got here
         const back = (o && o.backMs) || BACK_MS;
-        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: back, back, t0: (o && o.at) || performance.now(), open: false, nv: n };
+        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: back, back, ease: (o && o.ease) || null, t0: (o && o.at) || performance.now(), open: false, nv: n };
         if (n) {
             const nv = Math.max(n, (o && o.nv) || n);
             tw.D = b > a ? BAND + ROW * (n - 1) : ROW * n;                 // b's row to the band top, from a's rest layout
@@ -665,6 +665,7 @@
         const t = Math.max(0, now - tw.t0);
         let p;
         if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
+        else if (tw.ease) p = tw.ease(Math.min(1, t / (tw.back || BACK_MS)));
         else { const k = Math.pow(Math.min(1, t / (tw.back || BACK_MS)), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
         if (t >= tw.end || p >= 1) { arrive(); return; }
         tw.p = p;
@@ -1031,6 +1032,12 @@
         select(at, false);
     }
 
+    // the entrance's run is logarithmic, not even (Yukimi, Nov 14): fast off the bottom, then a long
+    // settle into the clock (exponential ease-out, scaled so it ends at exactly 1); 78 %, 95 %, 99 % of
+    // the way at a quarter, half and three quarters of the run
+    const ENTER_K = 6;
+    const enterEase = (x) => (1 - Math.exp(-ENTER_K * x)) / (1 - Math.exp(-ENTER_K));
+
     /** Today comes back (#800): the empty band, the list running up from below into the clock as it fades and grows in. */
     function entrance() {
         if (!host || host.hidden || !panels.length || dragging) return;
@@ -1055,7 +1062,7 @@
         const below = screenUnits - (focusTop() - ROW * at) + ROW;
         pos = at - below / ROW;
         enterLockUntil = performance.now() + ENTER_MS + ENTER_ZOOM_MS + KEY_MS;
-        startTween(at, at, { backMs: ENTER_MS });
+        startTween(at, at, { backMs: ENTER_MS, ease: enterEase });
         sh.refreshSoftKeys();
     }
 
