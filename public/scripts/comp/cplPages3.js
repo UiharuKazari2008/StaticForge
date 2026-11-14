@@ -168,9 +168,10 @@
 
     const TOOLS = [
         { id: 'autofill-ranking', name: 'Autofill Ranking', icon: '/static_images/app_icons/16/slider.webp', open: () => callGlobal('openAutofillRankingSnapin') },
-        { id: 'computer-management', name: 'Computer Management', icon: `${ITEMS}/device-manager-16.png`, open: () => callGlobal('openDeviceManager') },
-        { id: 'data-management', name: 'Data Management', icon: '/static_images/app_icons/16/planet.webp', open: () => callGlobal('openDataManagementSnapin') },
+        // Data Management stands in for Computer Management (#828); Device Manager has its own shortcut
+        { id: 'computer-management', name: 'Computer Management', icon: '/static_images/app_icons/16/planet.webp', open: () => callGlobal('openDataManagementSnapin') },
         { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator') },
+        { id: 'device-manager', name: 'Device Manager', icon: `${ITEMS}/device-manager-16.png`, open: () => callGlobal('openDeviceManager') },
         { id: 'dynamic-quips', name: 'Dynamic Quips', icon: '/static_images/app_icons/16/quips.webp', open: () => callGlobal('openDynamicQuipsSnapin') },
         { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/dna.webp', open: () => callGlobal('openEnshutsukaSnapin') },
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },

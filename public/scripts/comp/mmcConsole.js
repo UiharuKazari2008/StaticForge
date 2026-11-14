@@ -30,6 +30,8 @@
  *   c.listView(cols, rows, { sortId, sort, sortable, empty, fit }), c.sorted(rows, cols, sortId),
  *   c.box(html, buttons, opts), c.reg(name, def), c.setReg(values), c.close(), c.data (snap-in state)
  *
+ * mmcConsole.compose(hostDef, [{ key, def }]): a console that hosts other snap-ins' trees (see below).
+ *
  * Shell commands: exit, back, forward, up, tree, actions, refresh (F5), customize, help, about,
  * nav:<node id> (a link in a page: <span class="mmc-link" data-act="nav:<id>">).
  */
@@ -679,6 +681,148 @@
         }
     }
 
+    // ---- snap-ins inside a console (Computer Management's way: one tree, several snap-ins) ----------
+    //
+    // mmcConsole.compose(hostDef, [{ key, def }]) returns a def for open(). A host node { embed: key }
+    // (optional name / icon) is replaced by that snap-in's whole tree; the snap-in's node ids become
+    // '<key>::<id>' in the host, and every callback of the snap-in's def gets its own node objects and
+    // an embed console (below), so a def written for its own window runs unchanged inside the host.
+    // In the snap-in's page HTML, data-open="<id>" and data-act="nav:<id>" are rewritten to the host ids.
+    //
+    // The embed console: node, sel, data (its own), modal, el, select(id), find(id), refresh, render,
+    // renderActions, note, selectRow, page / overview / props / state / listView / sorted / sortOf, box,
+    // reg / setReg (the snap-in's own registry key), action, close, isActive() (a node of this snap-in
+    // is selected: listeners a snap-in adds to the shared result pane check it), host (the console).
+
+    function makeEmbedConsole(host, entry) {
+        const P = `${entry.key}::`;
+        const strip = (id) => (typeof id === 'string' && id.startsWith(P) ? id.slice(P.length) : id);
+        const key = `HKCU\\Software\\Xyridian\\Melaton\\CurrentVersion\\MMC\\${entry.def.title}`;
+        const reg = (name, d) => (root.melatonRegistry ? root.melatonRegistry.get(key, name, d) : d);
+        const ec = {
+            host,
+            def: entry.def,
+            data: {},
+            get node() { return strip(host.node); },
+            get sel() { return host.sel; },
+            set sel(v) { host.sel = v; },
+            get modal() { return host.modal; },
+            isActive: () => typeof host.node === 'string' && host.node.startsWith(P),
+            el: (q) => host.el(q),
+            select: (id, record = true) => host.select(P + id, record),
+            find: (id) => entry.map.get(P + id) || null,
+            refresh: () => host.refresh(),
+            render: () => host.render(),
+            renderActions: () => host.renderActions(),
+            note: (t) => host.note(t),
+            selectRow: (k) => host.selectRow(k),
+            reg,
+            setReg: (values) => { if (root.melatonRegistry) void root.melatonRegistry.set(key, values); },
+            action: (a, arg) => host.action(typeof a === 'string' && a.startsWith('nav:') ? `nav:${P}${a.slice(4)}` : a, arg),
+            close: () => host.close()
+        };
+        ['page', 'overview', 'props', 'state', 'listView', 'sorted', 'sortOf', 'box'].forEach((m) => { ec[m] = host[m].bind(host); });
+        return ec;
+    }
+
+    function compose(hostDef, embeds) {
+        const entries = (embeds || []).filter((e) => e && e.key && e.def).map((e) => ({ key: e.key, def: e.def, map: new Map(), ec: null }));
+        const P = (e) => `${e.key}::`;
+        const owner = (id) => (typeof id === 'string' ? entries.find((e) => id.startsWith(P(e))) || null : null);
+        const fixHtml = (e, html) => String(html || '')
+            .replace(/data-open="([^"]*)"/g, (m, id) => `data-open="${P(e)}${id}"`)
+            .replace(/data-act="nav:([^"]*)"/g, (m, id) => `data-act="nav:${P(e)}${id}"`);
+        const ensureEc = (e, c) => { if (!e.ec || e.ec.host !== c) e.ec = makeEmbedConsole(c, e); return e.ec; };
+        const call = (e, name, c, ...args) => {
+            const fn = e.def[name];
+            return typeof fn === 'function' ? fn(...args, ensureEc(e, c)) : undefined;
+        };
+        const orig = (e, node) => (node && e.map.get(node.id)) || node;
+        const def = Object.assign({}, hostDef, {
+            nodes(c) {
+                const clone = (e, n) => {
+                    const id = P(e) + n.id;
+                    const copy = Object.assign({}, n, { id, children: n.children ? n.children.map((k) => clone(e, k)) : undefined });
+                    e.map.set(id, n);
+                    return copy;
+                };
+                const swap = (list) => list.map((n) => {
+                    const e = n.embed ? entries.find((x) => x.key === n.embed) : null;
+                    if (e) {
+                        e.map.clear();
+                        let roots = [];
+                        try { roots = e.def.nodes(ensureEc(e, c)) || []; } catch (err) { console.error(`${e.def.title}: nodes`, err); }
+                        const r = roots[0];
+                        if (!r) return null;
+                        const copy = clone(e, r);
+                        if (n.name) copy.name = n.name;
+                        if (n.icon) copy.icon = n.icon;
+                        return copy;
+                    }
+                    return n.children ? Object.assign({}, n, { children: swap(n.children) }) : n;
+                }).filter(Boolean);
+                return swap(hostDef.nodes(c) || []);
+            },
+            page(node, c) {
+                const e = owner(node.id);
+                if (!e) return hostDef.page(node, c);
+                const out = e.def.page(orig(e, node), ensureEc(e, c));
+                if (typeof out === 'string') return fixHtml(e, out);
+                if (!out) return '';
+                return Object.assign({}, out, {
+                    html: fixHtml(e, out.html),
+                    mount: typeof out.mount === 'function' ? (pane) => out.mount(pane, ensureEc(e, c)) : undefined,
+                    unmount: typeof out.unmount === 'function' ? () => out.unmount() : undefined
+                });
+            }
+        });
+        ['commands', 'toolbar', 'viewMenu', 'status', 'help'].forEach((name) => {
+            def[name] = (node, c) => {
+                const e = owner(node && node.id);
+                if (e) return call(e, name, c, orig(e, node));
+                return typeof hostDef[name] === 'function' ? hostDef[name](node, c) : undefined;
+            };
+        });
+        def.selCommands = (node, key, c) => {
+            const e = owner(node && node.id);
+            if (e) return call(e, 'selCommands', c, orig(e, node), key);
+            return typeof hostDef.selCommands === 'function' ? hostDef.selCommands(node, key, c) : null;
+        };
+        def.rowOpen = (key, node, c) => {
+            const e = owner(node && node.id);
+            if (e) return call(e, 'rowOpen', c, key, orig(e, node));
+            return typeof hostDef.rowOpen === 'function' ? hostDef.rowOpen(key, node, c) : undefined;
+        };
+        def.onSelectRow = (key, node, c) => {
+            const e = owner(node && node.id);
+            if (e) return call(e, 'onSelectRow', c, key, orig(e, node));
+            return typeof hostDef.onSelectRow === 'function' ? hostDef.onSelectRow(key, node, c) : undefined;
+        };
+        def.action = async (a, c, arg) => {
+            const e = owner(c.node);
+            if (e) {
+                if (typeof e.def.action !== 'function') return false;
+                return e.def.action(a, ensureEc(e, c), arg);
+            }
+            return typeof hostDef.action === 'function' ? hostDef.action(a, c, arg) : false;
+        };
+        def.onOpen = (c) => {
+            if (typeof hostDef.onOpen === 'function') hostDef.onOpen(c);
+            entries.forEach((e) => {
+                if (typeof e.def.onOpen !== 'function') return;
+                try { e.def.onOpen(ensureEc(e, c)); } catch (err) { console.error(`${e.def.title}: onOpen`, err); }
+            });
+        };
+        def.onClose = (c) => {
+            entries.forEach((e) => {
+                if (typeof e.def.onClose !== 'function') return;
+                try { e.def.onClose(ensureEc(e, c)); } catch (err) { console.error(`${e.def.title}: onClose`, err); }
+            });
+            if (typeof hostDef.onClose === 'function') hostDef.onClose(c);
+        };
+        return def;
+    }
+
     function open(def, opts = {}) {
         if (!doc || !def || !def.id) return null;
         const have = consoles.get(def.id);
@@ -700,6 +844,7 @@
 
     root.mmcConsole = {
         open,
+        compose,
         get: (id) => consoles.get(id) || null,
         esc,
         size,

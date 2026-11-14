@@ -6661,7 +6661,8 @@ function buildToolsSubmenuItems() {
         { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openKnowledgeMemoriesModal('mem'); } },
         // the other MMC consoles (#828), listed under Administrative Tools (START_MENU_SYSTEM_PLACES);
         // loaders in public/scripts/comp/dsapManifests.js
-        { launchId: 'mmc-data-management', icon: 'fas fa-database', imageIcon: 'planet.png', text: 'Data Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDataManagementSnapin(); } },
+        { launchId: 'mmc-data-management', icon: 'fas fa-database', imageIcon: 'planet.png', text: 'Computer Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDataManagementSnapin(); } },
+        { launchId: 'mmc-device-manager', icon: 'fas fa-microchip', imageIcon: '/static_images/vista-cpl/items/device-manager-32.png', text: 'Device Manager', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: async () => { await featureLoader.loadFeature('control_panel'); openDeviceManager(); } },
         { launchId: 'mmc-dynamic-quips', icon: 'fas fa-comment-heart', imageIcon: 'quips.png', text: 'Dynamic Quips', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDynamicQuipsSnapin(); } },
         { launchId: 'mmc-autofill-ranking', icon: 'fas fa-arrow-down-wide-short', imageIcon: 'slider.png', text: 'Autofill Ranking', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openAutofillRankingSnapin(); } },
         { launchId: 'mmc-front-gate', icon: 'fas fa-globe', imageIcon: '/static_images/vista-cpl/items/firewall-32.png', text: 'Front Gate', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openFrontGateConsole(); } },
@@ -7902,7 +7903,8 @@ const START_MENU_SYSTEM_PLACES = {
     perfmon: { at: 'administrative-tools' },       // Administrative Tools > Reliability and Performance Monitor
     // the MMC consoles (#828): Administrative Tools, as Vista's snap-ins are
     memories: { at: 'administrative-tools' },
-    'mmc-data-management': { at: 'administrative-tools' },
+    'mmc-data-management': { at: 'administrative-tools' },   // "Computer Management"
+    'mmc-device-manager': { at: 'administrative-tools' },
     'mmc-dynamic-quips': { at: 'administrative-tools' },
     'mmc-autofill-ranking': { at: 'administrative-tools' },
     'mmc-front-gate': { at: 'administrative-tools' },
