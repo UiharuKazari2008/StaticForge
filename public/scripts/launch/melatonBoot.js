@@ -552,6 +552,8 @@
                 } });
             }
             const bios = ensureBios();
+            // a CafeReady PC (the app's Melaton Café Miniport, #815): the BIOS splash shows its badge
+            if (bios && bios.screen) bios.screen.cafeReady = !!(mcMini && mcMini.miniport().present);
             if (!bios) {
                 const results = {};
                 for (const task of tasks) results[task.id] = await task.run();
@@ -2050,7 +2052,7 @@
             // the Phoenix BIOS (phoenixBios.js) painted into its own 640 x 480 canvas
             bios: biosModule,
             paintBios: biosModule && biosCanvas && biosFont
-                ? biosModule.createCanvasPainter(biosCanvas, biosFont, doc.querySelector('.melaton-bios-oem'))
+                ? biosModule.createCanvasPainter(biosCanvas, biosFont, doc.querySelector('.melaton-bios-oem'), doc.querySelector('.melaton-bios-cafe'))
                 : null,
             location: win.location,
             readProductKey: () => {

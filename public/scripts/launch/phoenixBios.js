@@ -1729,7 +1729,7 @@
      * 1-16 (box-drawing and block glyphs extend over the padding rows so lines join). The
      * splash is the POST logo (the Xyridian OEM logo, where VMware draws its own) over the Starting bar.
      */
-    function createCanvasPainter(canvas, font, logo) {
+    function createCanvasPainter(canvas, font, logo, cafe) {
         const ctx = canvas.getContext('2d');
         const cache = new Map();
         const JOIN = new Set(['│', '┌', '┐', '└', '┘', '├', '┤', '┬', '┴', '┼', '║', '╔', '╗', '╚', '╝', '╠', '╣', '╦', '╩', '╬', '█', '░', '▒', '▓']);
@@ -1789,6 +1789,10 @@
                     ctx.imageSmoothingQuality = 'high';
                     ctx.drawImage(logo, Math.round(320 - w / 2), Math.round(238 - h / 2), w, h);
                     ctx.imageSmoothingEnabled = false;
+                }
+                // a CafeReady PC (#815: the app's Melaton Café Miniport): its badge where boards put Energy Star
+                if (screen.cafeReady && cafe && cafe.complete && cafe.naturalWidth) {
+                    ctx.drawImage(cafe, 640 - 16 - cafe.naturalWidth, 16);
                 }
                 textAt(16, 442, 'Starting', C.grey, 9);
                 // the Starting bar is 43 character cells (8 px each) and fills a whole cell at a time
