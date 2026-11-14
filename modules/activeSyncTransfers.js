@@ -64,6 +64,8 @@ function isId(v) {
 async function adbInstall(globalResources, deviceId, run) {
     let deviceAdb;
     try { deviceAdb = require('./deviceAdb'); } catch (_) { return null; }
+    // Allowed Features (#820): installs over ADB only when the phone allows them
+    if (typeof deviceAdb.allowed === 'function' && !deviceAdb.allowed(globalResources, deviceId, 'install')) return null;
     let st = null;
     try { st = await deviceAdb.detect(globalResources, deviceId); } catch (_) { st = null; }
     if (!st || st.state !== 'ready') return null;

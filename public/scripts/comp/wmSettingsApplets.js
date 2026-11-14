@@ -148,6 +148,17 @@
         adbFetch('GET', null, detect).then((s) => { adbNow = s; if (api && typeof api.rerender === 'function') api.rerender(); });
     }
 
+    // Allowed Features (#820), in Yukimi's order
+    const FEATURE_ROWS = [
+        ['radioRead', 'Radio Data (Read)'], ['radioModify', 'Radio Data (Modify)'], ['install', 'Install Android Applications'],
+        ['screenshots', 'Screenshots'], ['castRead', 'Screencasting (Read)'], ['castInteract', 'Screencasting (Interact)'],
+        ['commands', 'Remote Commands'], ['portForward', 'Port Forwarding'], ['filesRead', 'File Transfer (Read)'], ['filesWrite', 'File Transfer (Write)']
+    ];
+    /** The phone has the last word: the app keeps the same settings (DSApp AndroidActiveSync.setAdbSettings). */
+    function pushToApp() {
+        try { const A = bridgeAs(); if (adbNow && A && typeof A.setAdbSettings === 'function') A.setAdbSettings(JSON.stringify(adbNow)); } catch (_) { /* older app */ }
+    }
+
     wmSettings.extendPage('default-programs', {
         id: 'dbg',
         tabs: [['dbg-debugging', 'Debugging']],
@@ -158,7 +169,9 @@
             const sh = applets().find((x) => x.id === 'shizuku');
             const rows = sh && Array.isArray(sh.rows) ? sh.rows : [];
             const a = adbNow;
-            const set = a || { allow: true, autoRestore: false, screenshots: true };
+            const set = a || { allow: true, autoRestore: false, shizukuAutoStart: false, shizukuRecover: false, preferred: 'adb', features: {} };
+            const feat = set.features || {};
+            const sub = (html) => `<div style="margin-left:calc(16 * var(--wm-px))">${html}</div>`;
             el.innerHTML = [
                 ui.sub('Shizuku'),
                 rows.length ? rows.map(rowHtml).join('') : ui.note('This version of the app has no Shizuku.'),
@@ -174,14 +187,27 @@
                         lastCheck && lastCheck.restored ? ui.value('Last restore:', String(lastCheck.restored)) : ''
                     ];
                 })() : [ui.value('ADB:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync'), a && a.address ? ui.value('Address:', a.address) : '']),
-                ui.check('dbg-allow', 'Allow Melaton to use ADB', set.allow !== false, 'data-dbg="allow"'),
-                ui.check('dbg-restore', 'Restore ADB on port 5555 when it stops (on Wi-Fi)', !!set.autoRestore, 'data-dbg="autoRestore"'),
-                ui.check('dbg-shots', 'Send screenshots to Device Center', set.screenshots !== false, 'data-dbg="screenshots"'),
+                ui.check('dbg-allow', 'Use ADB on port 5555', set.allow !== false, 'data-dbg="allow"'),
+                sub([
+                    ui.check('dbg-shz-start', 'Start Shizuku automatically', !!set.shizukuAutoStart, `data-dbg="shizukuAutoStart"${set.allow === false ? ' disabled' : ''}`),
+                    ui.check('dbg-shz-recover', 'Recover Shizuku when the ADB port is open', !!set.shizukuRecover, `data-dbg="shizukuRecover"${set.allow === false ? ' disabled' : ''}`),
+                    ui.check('dbg-restore', 'Restore port 5555 when it stops (on Wi-Fi)', !!set.autoRestore, `data-dbg="autoRestore"${set.allow === false ? ' disabled' : ''}`)
+                ].join('')),
+                `<div class="wm-form-row is-wide"><span class="wm-form-label">Preferred interface:</span>${ui.comboHtml('dbg-pref', set.preferred === 'shizuku' ? 'Shizuku' : 'ADB')}</div>`,
                 ui.buttons([['dbg-check', 'Check Now', checking || (!selfId() && !localAvailable())]]),
+                ui.gap(),
+                ui.sub('Allowed Features'),
+                ...FEATURE_ROWS.map(([k, label]) => ui.check(`dbg-f-${k}`, label, !!feat[k], `data-dbg-feature="${k}"${set.allow === false ? ' disabled' : ''}`)),
                 ui.note(localAvailable() && (localStatus() || {}).authorized === false ? 'Tap Always allow on the USB debugging question for Dreamscape.' : a && a.state === 'unauthorized'
                     ? 'Tap Always allow on the USB debugging question for this server.'
-                    : 'With Restore on, the phone turns on wireless debugging by itself when ADB stops on Wi-Fi. Without screenshots, Device Center shows your wallpapers.')
+                    : 'Read lets screen sharing start without asking; Interact lets the viewer tap and type. Remote Commands opens a Command Prompt from Device Center.')
             ].join('');
+            ui.bindCombo(el.querySelector('[data-act="dbg-pref"]'), [['adb', 'ADB'], ['shizuku', 'Shizuku']], set.preferred === 'shizuku' ? 'shizuku' : 'adb', (v) => {
+                adbFetch('PUT', { preferred: v }).then((r) => { if (r) adbNow = r; pushToApp(); api.rerender(); });
+            });
+            el.querySelectorAll('[data-dbg-feature]').forEach((c) => c.addEventListener('change', () => {
+                adbFetch('PUT', { features: { [c.dataset.dbgFeature]: c.checked } }).then((r) => { if (r) adbNow = r; pushToApp(); api.rerender(); });
+            }));
             el.querySelectorAll('[data-applet-check]').forEach((c) => c.addEventListener('change', () => act('shizuku', c.dataset.appletCheck, c.checked)));
             el.querySelectorAll('.wm-buttons [data-act]').forEach((b) => {
                 const act2 = b.dataset.act;
@@ -202,7 +228,7 @@
                 });
             });
             el.querySelectorAll('[data-dbg]').forEach((c) => c.addEventListener('change', () => {
-                adbFetch('PUT', { [c.dataset.dbg]: c.checked }).then((s) => { if (s) adbNow = s; api.rerender(); });
+                adbFetch('PUT', { [c.dataset.dbg]: c.checked }).then((s) => { if (s) adbNow = s; pushToApp(); api.rerender(); });
                 // the app restores 5555 itself: tell it when it can listen (DSApp AndroidActiveSync.setAdbRestore)
                 if (c.dataset.dbg === 'autoRestore') {
                     try { const A = window.AndroidActiveSync; if (A && typeof A.setAdbRestore === 'function') A.setAdbRestore(!!c.checked); } catch (_) { /* older app */ }

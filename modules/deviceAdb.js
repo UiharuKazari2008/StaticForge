@@ -18,8 +18,8 @@
  *   screenshot(gr, deviceId, display)      PNG Buffer; display = a kind, a display id, or omitted (main / inner)
  *   install(gr, deviceId, apkFile)         { state: 'installed', via: 'adb' } (adb install -r)
  *   installOnPhone(gr, deviceId, root, p)  the same for an .apk already on the phone (pm install)
- *   settings(gr, deviceId, patch)          { allow, autoRestore, screenshots } (Android Bridge / Device Center)
- *     screenshots false: no screenshot leaves the phone (Device Center shows its wallpapers instead)
+ *   settings(gr, deviceId, patch)          { allow, autoRestore, shizukuAutoStart, shizukuRecover, preferred, features } (Android Bridge / Device Center)
+ *     features: the Allowed Features (#820); screenshots off = Device Center shows the wallpapers
  *
  * adb: env DREAMSCAPE_ADB, else ~/.local/bin/adb (platform-tools in ~/.local/share), else PATH.
  */
@@ -94,23 +94,57 @@ function saveStore() {
     }
 }
 
+// Android Bridge > Debugging (#820): Allowed Features; the phone has the last word, the server checks
+// before it relays. Screenshots was its own switch before (#818): it is the screenshots feature now.
+const FEATURES = ['radioRead', 'radioModify', 'install', 'screenshots', 'castRead', 'castInteract', 'commands', 'portForward', 'filesRead', 'filesWrite'];
+const FEATURE_DEFAULTS = { radioRead: true, radioModify: false, install: true, screenshots: true, castRead: false, castInteract: false, commands: false, portForward: false, filesRead: false, filesWrite: false };
+
 function entry(globalResources, deviceId) {
     const s = loadStore(globalResources);
-    if (!s[deviceId]) s[deviceId] = { allow: true, autoRestore: false, screenshots: true };
+    if (!s[deviceId]) s[deviceId] = { allow: true, autoRestore: false };
     return s[deviceId];
+}
+
+function features(e) {
+    const f = Object.assign({}, FEATURE_DEFAULTS, e.features || {});
+    if (e.screenshots === false && !(e.features && 'screenshots' in e.features)) f.screenshots = false;
+    return f;
 }
 
 function settings(globalResources, deviceId, patch) {
     const e = entry(globalResources, deviceId);
     if (patch && typeof patch === 'object') {
-        if (typeof patch.allow === 'boolean') e.allow = patch.allow;
-        if (typeof patch.autoRestore === 'boolean') e.autoRestore = patch.autoRestore;
-        if (typeof patch.screenshots === 'boolean') e.screenshots = patch.screenshots;
+        for (const k of ['allow', 'autoRestore', 'shizukuAutoStart', 'shizukuRecover']) if (typeof patch[k] === 'boolean') e[k] = patch[k];
+        if (patch.preferred === 'adb' || patch.preferred === 'shizuku') e.preferred = patch.preferred;
+        // the older single switch
+        if (typeof patch.screenshots === 'boolean') e.features = Object.assign(features(e), { screenshots: patch.screenshots });
+        if (patch.features && typeof patch.features === 'object') {
+            const f = features(e);
+            for (const k of FEATURES) if (typeof patch.features[k] === 'boolean') f[k] = patch.features[k];
+            e.features = f;
+        }
+        delete e.screenshots;
         saveStore();
         if (e.allow === false) states.set(deviceId, { state: 'off', checkedAt: Date.now() });
         else if ((states.get(deviceId) || {}).state === 'off') states.delete(deviceId);
     }
-    return { allow: e.allow !== false, autoRestore: !!e.autoRestore, screenshots: e.screenshots !== false };
+    const f = features(e);
+    return {
+        allow: e.allow !== false,
+        autoRestore: !!e.autoRestore,
+        shizukuAutoStart: !!e.shizukuAutoStart,
+        shizukuRecover: !!e.shizukuRecover,
+        preferred: e.preferred === 'shizuku' ? 'shizuku' : 'adb',
+        features: f,
+        // kept for Device Center and older pages
+        screenshots: f.screenshots
+    };
+}
+
+/** May the server relay this feature for the phone? (Use ADB on, and the feature allowed.) */
+function allowed(globalResources, deviceId, feature) {
+    const s = settings(globalResources, deviceId);
+    return s.allow && !!s.features[feature];
 }
 
 // ---------------------------------------------------------------- detection
@@ -359,7 +393,7 @@ function pickDisplay(list, want) {
 
 /** One screen as PNG: { png, display }. */
 async function screenshot(globalResources, deviceId, display) {
-    if (!settings(globalResources, deviceId).screenshots) throw fail('SCREENSHOTS_OFF', 'Screenshots are turned off for this phone.');
+    if (!allowed(globalResources, deviceId, 'screenshots')) throw fail('SCREENSHOTS_OFF', 'Screenshots are not an allowed feature for this phone (Android Bridge > Debugging).');
     const list = await displays(globalResources, deviceId);
     const d = pickDisplay(list, display);
     if (!d) throw fail('NO_DISPLAY', display ? `The phone has no ${display} screen right now.` : 'The phone reports no screen.');
@@ -440,7 +474,7 @@ async function agentScreenshot(globalResources, input = {}) {
         if (online.length === 1) dev = online[0];
     }
     if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map(brief) }, images: [] };
-    if (!settings(globalResources, dev.deviceId).screenshots) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
+    if (!allowed(globalResources, dev.deviceId, 'screenshots')) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
     const local = dev.online ? await phoneStatus(globalResources, dev.deviceId) : null;
     const st = local && local.listening ? { state: 'phone' } : await detect(globalResources, dev.deviceId, { force: !!input.detect });
     if (st.state !== 'ready' && st.state !== 'phone') return { meta: { success: false, code: 'ADB_NOT_READY', device: brief(dev), hint: st.state === 'unauthorized' ? 'Tap Always allow for this server on the phone.' : st.state === 'unreachable' ? 'ADB is not listening on 5555 where the phone connects from (Wi-Fi or VPN).' : undefined }, images: [] };
@@ -557,6 +591,8 @@ module.exports = {
     install,
     installOnPhone,
     settings,
+    allowed,
+    FEATURES,
     parseDisplays,
     pickDisplay,
     agentScreenshot,
