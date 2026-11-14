@@ -304,17 +304,27 @@ function parseDisplays(sfText, dispText) {
         d.type = type;
         d.on = state ? state === 'ON' : null;
     }
-    // kinds: an external panel (DeX's monitor) by type; of the built-in ones the larger is the inner
-    // screen and the smaller the cover when there are two, else the one is "main"
-    const internal = out.filter((d) => d.type !== 'EXTERNAL' && d.hwc < 2 || d.type === 'INTERNAL');
-    for (const d of out) d.kind = internal.includes(d) ? null : 'external';
+    classify(out);
+    return out.map(({ id, kind, name, width, height, on }) => ({ id, kind, name, width, height, on }));
+}
+
+/**
+ * Kinds: the phone's own panels are "Built-in Screen" (Samsung prints no type in dumpsys display:
+ * the Fold's NexDock came out as its cover by HWC order), or type INTERNAL; anything else (DeX's
+ * monitor or dock) is external. Of two built-in panels the larger is the inner screen and the
+ * smaller the cover; one alone is "main". Also run on a phone's own list (its older parser).
+ */
+function classify(list) {
+    const builtIn = (d) => d.type === 'INTERNAL' || (d.type !== 'EXTERNAL' && /built-?in/i.test(d.name || '')) || (!d.type && !d.name && d.hwc === 0);
+    const internal = list.filter(builtIn);
+    for (const d of list) d.kind = internal.includes(d) ? null : 'external';
     if (internal.length >= 2) {
         const area = (d) => (d.width || 0) * (d.height || 0);
-        const sorted = internal.slice().sort((a, b) => area(b) - area(a) || a.hwc - b.hwc);
+        const sorted = internal.slice().sort((a, b) => area(b) - area(a) || (a.hwc || 0) - (b.hwc || 0));
         sorted[0].kind = 'inner';
         sorted.slice(1).forEach((d, i) => { d.kind = i === 0 ? 'cover' : 'internal'; });
     } else if (internal.length === 1) internal[0].kind = 'main';
-    return out.map(({ id, kind, name, width, height, on }) => ({ id, kind, name, width, height, on }));
+    return list;
 }
 
 // ---------------------------------------------------------------- from the phone's own side (#818)
@@ -345,7 +355,7 @@ async function phoneStatus(globalResources, deviceId) {
 async function displays(globalResources, deviceId) {
     try {
         const r = await phoneCall(globalResources, deviceId, 'screen.displays', {}, 20000);
-        if (r && Array.isArray(r.displays)) return r.displays;
+        if (r && Array.isArray(r.displays)) return classify(r.displays.map((d) => Object.assign({}, d)));
     } catch (err) {
         if (!PHONE_FALLBACK.has(err.code)) throw err;
     }
