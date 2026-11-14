@@ -749,7 +749,9 @@ function renderExplorerCards(rows) {
         const img = document.createElement('img');
         img.alt = '';
         img.decoding = 'async';
-        img.loading = index < 6 ? 'eager' : 'lazy';
+        // lazy for all: visible cards still load at once, and a hidden Studio (Melaton Mobile, where
+        // Studio is off) no longer pulls the first six full pictures on every boot
+        img.loading = 'lazy';
         index += 1;
         img.src = row.thumbnailUrl || '';
         card.appendChild(img);
@@ -846,7 +848,9 @@ async function renderManualQuickstartCards(rows) {
         const img = document.createElement('img');
         img.alt = '';
         img.decoding = 'async';
-        img.loading = index < 6 ? 'eager' : 'lazy';
+        // lazy for all: visible cards still load at once, and a hidden Studio (Melaton Mobile, where
+        // Studio is off) no longer pulls the first six full pictures on every boot
+        img.loading = 'lazy';
         img.referrerPolicy = 'no-referrer';
         if (cached[index]) {
             img.src = row.src;
