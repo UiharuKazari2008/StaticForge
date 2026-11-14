@@ -219,6 +219,9 @@
         })();
     </script>
 
+    <!-- the power-on self test behind the app's maker logo (#827): storage, IndexedDB, Cache Storage, the
+         service worker, free space; the start below waits for it (melatonSelfTest.gate) -->
+    <script src="/scripts/launch/selfTest.js"></script>
     <!-- the client's asset packages (#774): the cookie that picks its manifest and install pack -->
     <script src="/scripts/launch/assetPackages.js"></script>
     <!-- Melaton boot (desktop starts, PWA and tabs): Vista boot screen, boot menu, recovery.
@@ -1199,7 +1202,9 @@
                 sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
                 sessionStorage.setItem('melatonOfflineStart', String(Date.now()));
             } catch (e) { /* ignore */ }
-            window.location.replace('/app');
+            // the self test first (a failure inside the app stays for its recovery page)
+            const goOffline = () => window.location.replace('/app');
+            if (window.melatonSelfTest) window.melatonSelfTest.gate(goOffline); else goOffline();
             return true;
         }
 
@@ -1347,7 +1352,9 @@
                 sessionStorage.setItem('dreamscapeLaunchHandoff', '1');
             } catch (e) { /* ignore */ }
             var go = function () {
-                window.location.replace('/app');
+                // the self test behind the maker's logo has the last word (#827, selfTest.js)
+                if (window.melatonSelfTest) window.melatonSelfTest.gate(function () { window.location.replace('/app'); });
+                else window.location.replace('/app');
             };
             // A phone start installs here first (phoneUpdate.js, #760): Melaton Mobile then boots
             // with every file present. Any other narrow start never installs on this card, and an
