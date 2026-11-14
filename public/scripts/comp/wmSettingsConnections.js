@@ -762,8 +762,8 @@
         // Personal: how agents and prints reach this phone (Yukimi); set-usb went to Continuity
         tab: 'personal',
         label: 'Remote Access',
-        // Vista's Remote icon (remotepg.dll 0, from the Vista VM), as the desktop's Remote Access Settings
-        icon: 'set-remote-access',
+        // Remote Desktop Mobile's icon (tsclient); 6.5's ROM has no Start icon for it, so 6.5 shows this one too
+        icon: 'app-remote-desktop-mobile-lg',
         tabs: [['general', 'General'], ['generation', 'Generation'], ['openwith', 'Open With']],
         available: () => typeof root.setAgentPriorityClient === 'function' && typeof root.isAgentPriorityClient === 'function',
         init() {

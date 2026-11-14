@@ -1718,7 +1718,7 @@
             }
         },
         {
-            id: 'remote', tab: 'personal', label: 'Remote Access', icon: 'set-remote-access',
+            id: 'remote', tab: 'personal', label: 'Remote Access', icon: 'app-remote-desktop-mobile-lg',
             tabs: [['general', 'General']],
             available: () => typeof window.setAgentPriorityClient === 'function' && typeof window.isAgentPriorityClient === 'function',
             init: () => ({ on: !!window.isAgentPriorityClient() }),

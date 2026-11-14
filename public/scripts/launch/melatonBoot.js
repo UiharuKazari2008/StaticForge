@@ -660,7 +660,9 @@
             // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
             const mc = root.melatonContinuity;
             const outcome = await bios.post({
-                fastBootMs: onMiniport ? 1200 : 0,
+                // a CafeReady PC (the app's Melaton Café Miniport) holds its splash about 2.5 s so its logos read
+                // (the fast boot's 1.2 s was too short for them, Yukimi)
+                fastBootMs: (mcMini && mcMini.miniport().present) ? 2500 : (onMiniport ? 1200 : 0),
                 // ready: the phone window says it is ready; auth: the session lets this window in (the
                 // phone's session cookie; a refusal is "A disk read error occurred")
                 continuity: hybrid ? {
