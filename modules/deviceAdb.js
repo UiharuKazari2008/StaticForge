@@ -485,6 +485,22 @@ async function agentShell(globalResources, input = {}) {
     return { success: true, device: dev.name, ...(await shell(globalResources, dev.deviceId, input.command)) };
 }
 
+/** device_packages for agents (#823): list (system?) or manage { package, action } through the phone. */
+async function agentPackages(globalResources, input = {}) {
+    const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
+    const want = String(input.device || '').trim().toLowerCase();
+    const dev = want ? (all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want)) : (all.filter((d) => d.online).length === 1 ? all.find((d) => d.online) : null);
+    if (!dev) return { success: false, code: 'CHOOSE_DEVICE', devices: all.map((d) => ({ deviceId: d.deviceId, name: d.name, online: d.online })) };
+    if (input.action) {
+        if (input.action !== 'open' && !allowed(globalResources, dev.deviceId, 'install')) return { success: false, code: 'NOT_ALLOWED', error: 'Install Android Applications is not an allowed feature for this phone.' };
+        return { success: true, device: dev.name, ...(await phoneCall(globalResources, dev.deviceId, 'apps.manage', { package: String(input.package || ''), action: String(input.action) }, 60000)) };
+    }
+    const r = await phoneCall(globalResources, dev.deviceId, 'apps.packages', { system: !!input.system }, 30000);
+    const list = (r && r.packages) || [];
+    const q = String(input.filter || '').toLowerCase();
+    return { success: true, device: dev.name, count: list.length, packages: (q ? list.filter((p) => String(p.label).toLowerCase().includes(q) || String(p.package).toLowerCase().includes(q)) : list).slice(0, 400) };
+}
+
 // ---------------------------------------------------------------- agents (MCP device_screenshot)
 
 /**
@@ -645,6 +661,7 @@ module.exports = {
     pickDisplay,
     agentScreenshot,
     agentShell,
+    agentPackages,
     shell,
     phoneStatus,
     takeShot,

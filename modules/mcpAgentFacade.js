@@ -1447,6 +1447,23 @@ const TOOL_DEFS = [
         }
     },
     {
+        name: 'device_packages',
+        core: true,
+        description: 'An ActiveSync phone\'s installed Android programs (Package Management). Without action: the list (label, package, version, size, system, enabled); system=true adds system programs, filter narrows by name or package. With action (uninstall | disable | enable | stop | clear | open) and package: does it over the phone\'s Localhost ADB (needs Install Android Applications in Android Bridge > Advanced Tools; open does not). device = ActiveSync device id or name.',
+        scope: 'generation',
+        inputSchema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+                device: { type: 'string' },
+                system: { type: 'boolean' },
+                filter: { type: 'string' },
+                package: { type: 'string' },
+                action: { type: 'string', enum: ['uninstall', 'disable', 'enable', 'stop', 'clear', 'open'] }
+            }
+        }
+    },
+    {
         name: 'inspect_elements',
         core: true,
         description: 'Match CSS selectors in the bound Dreamscape tab and return tag/id/class/text/visible plus optional html, computed style, box, and attrs. Same auto-attach / needsClientChoice rules as apply_studio_changes. After client-asset edits: update_client; if appliedWithoutRestart skip restart_client; else restart_client; then inspect.',
@@ -7243,7 +7260,7 @@ const ADVANCED_CORE_HINTS = [
     { test: (q) => /prompt guide|docubase|nai-prompt/i.test(q), names: ['get_prompt_guide'] },
     { test: (q) => /session_state|session snapshot|what.?s on (screen|studio)/i.test(q), names: ['get_session_state'] },
     { test: (q) => /run_client_js|inspect_elements|update_client|restart_client|client browser|client js|html inspect|reattach/i.test(q), names: ['run_client_js', 'inspect_elements', 'update_client', 'restart_client'] },
-    { test: (q) => /device_screenshot|device_shell|adb shell|screenshot|phone screen|device screen|\badb\b|cover screen|inner screen|\bdex\b/i.test(q), names: ['device_screenshot', 'device_shell'] },
+    { test: (q) => /device_screenshot|device_shell|device_packages|installed apps|package|adb shell|screenshot|phone screen|device screen|\badb\b|cover screen|inner screen|\bdex\b/i.test(q), names: ['device_screenshot', 'device_shell', 'device_packages'] },
     { test: (q) => /alchemy|owned tab|browser.?control|discord channel|channel.?history/i.test(q), names: ['alchemy_browser', 'read_discord_channel_history'] }
 ];
 
@@ -9594,6 +9611,15 @@ async function callTool(globalResources, req, name, args) {
             return mcpTextResult({ success: false, error: `Character "${input.name}" not found` }, true);
         }
         return mcpTextResult({ success: true, deleted: true, name: input.name });
+    }
+
+    if (name === 'device_packages') {
+        try {
+            const r = await require('./deviceAdb').agentPackages(globalResources, input || {});
+            return mcpTextResult(r, !r.success);
+        } catch (error) {
+            return mcpTextResult({ success: false, code: error.code || 'ERROR', error: error.message }, true);
+        }
     }
 
     if (name === 'device_shell') {

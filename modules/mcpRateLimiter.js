@@ -129,6 +129,7 @@ const TOOL_RATE_GROUPS = {
     run_client_js: 'studio',
     device_screenshot: 'studio',
     device_shell: 'studio',
+    device_packages: 'studio',
     inspect_elements: 'studio',
     alchemy_browser: 'studio',
     read_discord_channel_history: 'search',
