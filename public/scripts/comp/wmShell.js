@@ -1228,6 +1228,9 @@
         // accounts list) still matched '.wm-popup:not([hidden])', and the 6.5 Start screen and
         // home screen took every tap for one that closes a menu (Fold7, Nov 12 2026)
         popEl.querySelectorAll(':scope > .wm-popup-sub').forEach((n) => n.remove());
+        // the control a drop-down hung from comes back up (showPopup marked it expanded; only the soft
+        // keys and Start were put back, so every combo and tool button stayed pushed in, #825)
+        if (dropdownAnchor && typeof dropdownAnchor.setAttribute === 'function') dropdownAnchor.setAttribute('aria-expanded', 'false');
         dropdownAnchor = null;
         if (popupOnClose) { const fn = popupOnClose; popupOnClose = null; fn(); }
         shell.querySelector('.wm-startmenu').hidden = true;
@@ -9095,7 +9098,29 @@
             id: 'fileexplorer', title: 'File Explorer', icon: 'app-file-explorer', inStart: 'top', script: 'scripts/comp/wmFileExplorer.js',
             globals: [{ name: 'wmFileExplorer', methods: ['list', 'volumes', 'openFolder', 'openFile', 'receive'], sync: lazyFileFormats() }]
         },
-        { id: 'pic-props', title: 'Pictures & Videos', icon: 'app-pictures', inStart: false, script: 'scripts/comp/wmFileExplorer.js', globals: [{ name: 'wmPictureProperties', methods: ['open'] }] }
+        { id: 'pic-props', title: 'Pictures & Videos', icon: 'app-pictures', inStart: false, script: 'scripts/comp/wmFileExplorer.js', globals: [{ name: 'wmPictureProperties', methods: ['open'] }] },
+        // Text Messages (6.5: Text): its live events only touch the conversation on screen, so nothing is
+        // missed before it loads. accounts() is the empty list it starts with and starts loading it (the
+        // next call has them); nothing is open (current / isOpen); the rest load it first
+        {
+            id: 'textmessaging',
+            get title() { return document.documentElement.dataset.wmVersion === '6.5' ? 'Text' : 'Text Messages'; },
+            icon: 'app-sms', inStart: 'top', script: 'scripts/comp/wmTextMessaging.js',
+            globals: [{
+                name: 'wmTextMessaging',
+                methods: ['showAccount', 'openChat', 'compose', 'composeWithFiles'],
+                sync: {
+                    accounts: () => { void loadLazyApp('textmessaging'); return []; },
+                    current: () => ({ accountId: null, folder: null }),
+                    isOpen: () => false,
+                    FOLDERS: [
+                        { id: 'inbox', label: 'Inbox', icon: 'msg-folder-inbox' },
+                        { id: 'sent', label: 'Sent Items', icon: 'msg-folder-outbox' },
+                        { id: 'unknown', label: 'Unknown Senders', icon: 'msg-folder-folder' }
+                    ]
+                }
+            }]
+        }
     ];
 
     /** wmFileExplorer.js's formats and My Documents path, for its callers before it loads. */
