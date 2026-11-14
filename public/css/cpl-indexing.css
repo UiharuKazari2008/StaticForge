@@ -1,0 +1,114 @@
+/* Control Panel > Indexing Options (cplSearch.js): what Vista's srchadmin.dll dialogs draw at run time
+   inside their templates (Indexing Options 105, Indexed Locations 102, Advanced Options), measured on
+   the Vista VM (~/.cache/vista-vm/srchadmin-ref/). */
+
+/* the 48 px drive with the magnifier (the template's SysAnimate32) */
+.vdt-client.cpl-idx .cpl-idx-drive {
+    display: block;
+    width: 48px;
+    height: 48px;
+}
+
+/* BCM_SETSHIELD: the UAC shield in front of the label (Advanced, Pause, Show all locations) */
+.vdt-client.cpl-idx .vdt-button {
+    white-space: nowrap;
+}
+
+.vdt-client.cpl-idx .vdt-button img.cpl-idx-shield {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin: 0 1px 0 -3px;
+    vertical-align: -4px;
+}
+
+.vdt-client.cpl-idx button:disabled .cpl-idx-shield {
+    opacity: 0.55;
+}
+
+/* the indexes list: Index | Status | Items, the light column line Vista draws down the body */
+.vdt-client.cpl-idx .cpl-idx-list .cpl-idx-c1 { width: 180px; }
+.vdt-client.cpl-idx .cpl-idx-list .cpl-idx-c2 { width: 150px; }
+.vdt-client.cpl-idx .cpl-idx-list .cpl-idx-c3 { flex: 1 1 auto; }
+
+.vdt-client.cpl-idx .cpl-idx-list .vdt-lv-body,
+.vdt-client.cpl-idx .cpl-idx-summary .vdt-lv-body {
+    background:
+        linear-gradient(#ededed, #ededed) no-repeat 179px 0 / 1px 100%,
+        linear-gradient(#ededed, #ededed) no-repeat 329px 0 / 1px 100%;
+}
+
+.vdt-client.cpl-idx .cpl-idx-summary .vdt-lv-body {
+    background: linear-gradient(#ededed, #ededed) no-repeat 171px 0 / 1px 100%;
+}
+
+.vdt-client.cpl-idx .cpl-idx-summary .cpl-idx-s1 { width: 172px; }
+
+/* a running index's progress and the prompt index's counts, under its row */
+.vdt-client.cpl-idx .cpl-idx-detail {
+    padding: 1px 8px 6px 26px;
+    color: #444;
+}
+
+.vdt-client.cpl-idx .cpl-idx-facts {
+    display: flex;
+    flex-wrap: wrap;
+    column-gap: 14px;
+    line-height: 15px;
+}
+
+.vdt-client.cpl-idx .cpl-idx-phase {
+    margin-top: 3px;
+    line-height: 15px;
+    color: #000;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vdt-client.cpl-idx .cpl-idx-bar {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 300px;
+    height: 15px;
+    margin: 3px 0 2px;
+}
+
+.vdt-client.cpl-idx .cpl-idx-count,
+.vdt-client.cpl-idx .cpl-idx-file {
+    line-height: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.vdt-client.cpl-idx .cpl-idx-file {
+    color: #6d6d6d;
+}
+
+/* Indexed Locations: the workspaces, checked and greyed (the server indexes them all) */
+.vdt-client.cpl-idx .cpl-idx-tree .tbp-tree-row {
+    height: 18px;
+    padding-left: 4px;
+}
+
+.vdt-client.cpl-idx .cpl-idx-tree .tbp-tree-row label {
+    display: flex;
+    align-items: center;
+}
+
+.vdt-client.cpl-idx .cpl-idx-tree .tbp-tree-row img {
+    margin-left: 19px;
+    margin-right: 4px;
+}
+
+/* a tree view does not grey its item text when the check box is locked */
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-client.cpl-idx .cpl-idx-tree .tbp-tree-row input:disabled + label {
+    color: #000;
+}
+
+/* the help page's heading */
+.vdt-client.cpl-idx-help .vdt-static:first-child {
+    font-weight: bold;
+    color: #1e3287;
+}

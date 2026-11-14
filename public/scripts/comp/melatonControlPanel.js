@@ -429,6 +429,12 @@
 
     function open(page = 'home', opts = {}) {
         if (!doc) return;
+        // a page that is a dialog in Vista (Indexing Options, cplSearch.js): open the dialog instead
+        if (pages[page] && typeof pages[page].dialog === 'function') {
+            const w = (opts && opts.window) || inWindowCall;
+            pages[page].dialog({ ...(opts || {}), owner: (opts && opts.owner) || (w && w.modal) || null });
+            return;
+        }
         // a link or item inside a window (or a caller that kept callerWindow()): that window goes there
         const into = (opts && opts.window) || inWindowCall;
         if (into && isShown(into)) {
@@ -517,6 +523,12 @@
 
     function navigate(page, { replace = false, fromHistory = false } = {}) {
         if (!pages[page]) page = 'home';
+        // a dialog page (open() above): the window stays where it is and owns the dialog
+        if (typeof pages[page].dialog === 'function') {
+            pages[page].dialog({ owner: modal });
+            if (current) return;
+            page = 'home';
+        }
         if (current && current !== page && !replace && !fromHistory) {
             back.push(current);
             forward.length = 0;

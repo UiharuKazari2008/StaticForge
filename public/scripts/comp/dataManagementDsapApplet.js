@@ -1,6 +1,9 @@
 /**
  * Data Management DSAP — data.dreamscape.jp
  * Status dashboard, workspaces, favorites, and stubs for spellbook / text expanders.
+ * On the Vista desktop the Data Management MMC console (mmcDataManagement.js, #828) replaced this page:
+ * data.dreamscape.jp opens the console there, which loads this script for its replication pages and
+ * account helpers. Phones and Windows Classic keep this page.
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js, workspaceUtils.js, textReplacementManager.js
  */
 
@@ -479,6 +482,8 @@ function dataMgmtDsapRenderAccountSection(root) {
 }
 
 function dataMgmtDsapRefreshAccountIfPresent() {
+    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
+    if (window.mmcDataManagement) window.mmcDataManagement.refresh('account');
     const host = document.getElementById('dataMgmtAccountHost');
     if (!host) return;
     const root = host.closest('[data-dsap="data-mgmt"]');
@@ -656,175 +661,8 @@ ${dsapSmfBuildSectionHdr('System Status')}
       <div class="data-mgmt-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading…</div>
     </div>
   </div>
-</div>
-${dsapSmfBuildSectionHdr('Search & Prompt Indexing')}
-<div id="dataMgmtIndexingHost" class="data-mgmt-indexing-host">
-  <div class="data-mgmt-loading"><i class="fas fa-spinner-third fa-spin"></i> Loading indexing status…</div>
 </div>`;
-}
-
-function dataMgmtDsapIndexingEscapeHtml(value) {
-    if (value == null) return '';
-    return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
-
-function dataMgmtDsapIndexingFormatNumber(value) {
-    const n = Number(value) || 0;
-    return n.toLocaleString();
-}
-
-function dataMgmtDsapIndexingBuildHtml(statusPayload) {
-    const stats = statusPayload?.stats || {};
-    const ftsPending = stats.ftsPending || 0;
-    const ftsDrift = stats.ftsDrift || 0;
-    const ftsDone = stats.ftsDone || 0;
-    const totalImages = stats.totalImages || 0;
-    const blobPending = stats.blobPending || 0;
-    const jobStatus = statusPayload?.status || 'idle';
-    const running = statusPayload?.running === true;
-    const paused = statusPayload?.paused === true;
-    const needsWork = ftsPending > 0 || ftsDrift > 0;
-    const current = statusPayload?.current || 0;
-    const total = statusPayload?.total || ftsPending || 0;
-    const percentage = statusPayload?.percentage != null
-        ? Math.max(0, Math.min(100, Number(statusPayload.percentage) || 0))
-        : (total > 0 ? Math.round((current / total) * 100) : (needsWork ? 0 : 100));
-
-    const statusLabel = (() => {
-        if (running) return 'Indexing';
-        if (paused) return 'Paused';
-        if (jobStatus === 'error') return 'Error';
-        if (needsWork) return 'Backlog';
-        return 'Up to date';
-    })();
-
-    const statusClass = running ? 'indexing' : paused ? 'paused' : needsWork ? 'pending' : 'ok';
-    const phaseMessage = dataMgmtDsapIndexingEscapeHtml(statusPayload?.message || statusLabel);
-    const filename = statusPayload?.filename ? dataMgmtDsapIndexingEscapeHtml(statusPayload.filename) : '';
-
-    const statsTable = dsapSmfBuildStatsTable([
-        { label: 'Prompt FTS', valueHtml: `<span class="data-mgmt-indexing-status ${statusClass}">${dataMgmtDsapIndexingEscapeHtml(statusLabel)}</span>`, width: '25%' },
-        { label: 'Indexed', valueHtml: dataMgmtDsapIndexingFormatNumber(ftsDone), width: '25%' },
-        { label: 'Pending FTS', valueHtml: dataMgmtDsapIndexingFormatNumber(ftsPending), width: '25%' },
-        { label: 'Flag drift', valueHtml: dataMgmtDsapIndexingFormatNumber(ftsDrift), width: '25%' }
-    ], 'dataMgmtIndexingStats');
-
-    const extraRows = [];
-    if (blobPending > 0) {
-        extraRows.push(`<tr><td class="data-mgmt-account-info-label">Blob extract pending</td><td>${dataMgmtDsapIndexingFormatNumber(blobPending)}</td></tr>`);
-    }
-    extraRows.push(`<tr><td class="data-mgmt-account-info-label">Total images</td><td>${dataMgmtDsapIndexingFormatNumber(totalImages)}</td></tr>`);
-    const extraTable = extraRows.length
-        ? `<table class="data-mgmt-account-info-table" cellspacing="0" cellpadding="4" width="100%" border="1"><tbody>${extraRows.join('')}</tbody></table>`
-        : '';
-
-    const showProgress = running || paused || (jobStatus === 'indexing' && total > 0);
-    const progressBlock = showProgress ? `
-<div class="data-mgmt-repl-progress" id="dataMgmtIndexingProgress">
-  <div class="data-mgmt-repl-progress-phase">${phaseMessage}</div>
-  <div class="data-mgmt-repl-progress-bar" aria-hidden="true"><div class="data-mgmt-repl-progress-fill" id="dataMgmtIndexingProgressFill" style="width:${percentage}%"></div></div>
-  <div class="data-mgmt-repl-progress-count" id="dataMgmtIndexingProgressCount">${dataMgmtDsapIndexingFormatNumber(current)} / ${dataMgmtDsapIndexingFormatNumber(total)} (${percentage}%)</div>
-  ${filename ? `<div class="data-mgmt-repl-progress-path" id="dataMgmtIndexingProgressPath">${filename}</div>` : '<div class="data-mgmt-repl-progress-path hidden" id="dataMgmtIndexingProgressPath"></div>'}
-</div>` : (needsWork ? `<p class="data-mgmt-muted" id="dataMgmtIndexingNotice">${phaseMessage}</p>` : `<p class="data-mgmt-muted" id="dataMgmtIndexingNotice">Prompt FTS and search tag indexes are current.</p>`);
-
-    const startDisabled = running || (!needsWork && !paused);
-    const pauseDisabled = !running;
-    const resumeDisabled = !paused;
-    const cancelDisabled = !running && !paused;
-
-    const controls = `
-<div class="data-mgmt-indexing-controls">
-  <button type="button" class="dsap-smf-btn dsap-smf-btn-primary" id="dataMgmtIndexingStartBtn" ${startDisabled ? 'disabled' : ''}><i class="fas fa-play"></i> Start</button>
-  <button type="button" class="dsap-smf-btn" id="dataMgmtIndexingPauseBtn" ${pauseDisabled ? 'disabled' : ''}><i class="fas fa-pause"></i> Pause</button>
-  <button type="button" class="dsap-smf-btn" id="dataMgmtIndexingResumeBtn" ${resumeDisabled ? 'disabled' : ''}><i class="fas fa-play"></i> Resume</button>
-  <button type="button" class="dsap-smf-btn" id="dataMgmtIndexingCancelBtn" ${cancelDisabled ? 'disabled' : ''}><i class="fas fa-stop"></i> Cancel</button>
-  <button type="button" class="dsap-smf-btn dsap-smf-btn-small" id="dataMgmtIndexingReconcileBtn"><i class="fas fa-wrench"></i> Reconcile</button>
-</div>`;
-
-    return `${statsTable}
-${extraTable}
-${progressBlock}
-${controls}`;
-}
-
-function dataMgmtDsapIndexingApplyStatus(host, statusPayload) {
-    if (!host) return;
-    host.innerHTML = dataMgmtDsapIndexingBuildHtml(statusPayload);
-    dataMgmtDsapIndexingWireControls(host.closest('[data-dsap="data-mgmt"]') || document);
-}
-
-function dataMgmtDsapIndexingGetLastBroadcast() {
-    const combined = window.wsClient?._lastSearchIndexingStatus;
-    const fromCombined = combined ? resolvePromptFtsPayloadFromMessage(combined) : null;
-    if (fromCombined) return fromCombined;
-    if (window.wsClient?._lastPromptFtsIndexingStatus) {
-        return window.wsClient._lastPromptFtsIndexingStatus;
-    }
-    const indicator = document.getElementById('searchIndexingIndicator');
-    return indicator?._indexJobs?.prompt_fts || null;
-}
-
-function dataMgmtDsapIndexingLoad(root) {
-    const host = root?.querySelector('#dataMgmtIndexingHost');
-    if (!host) return;
-
-    if (!window.wsClient?.isConnected()) {
-        host.innerHTML = '<p class="data-mgmt-muted">Indexing status unavailable (WebSocket not connected)</p>';
-        return;
-    }
-
-    const cached = dataMgmtDsapIndexingGetLastBroadcast();
-    if (cached) {
-        dataMgmtDsapIndexingApplyStatus(host, cached);
-        return;
-    }
-
-    host.innerHTML = '<div class="data-mgmt-loading"><i class="fas fa-spinner-third fa-spin"></i> Waiting for index status…</div>';
-}
-
-function dataMgmtDsapIndexingWireControls(root) {
-    if (!root || root.dataset.indexingControlsWired === '1') return;
-    root.dataset.indexingControlsWired = '1';
-
-    root.addEventListener('click', async (event) => {
-        const startBtn = event.target.closest('#dataMgmtIndexingStartBtn');
-        const pauseBtn = event.target.closest('#dataMgmtIndexingPauseBtn');
-        const resumeBtn = event.target.closest('#dataMgmtIndexingResumeBtn');
-        const cancelBtn = event.target.closest('#dataMgmtIndexingCancelBtn');
-        const reconcileBtn = event.target.closest('#dataMgmtIndexingReconcileBtn');
-        if (!startBtn && !pauseBtn && !resumeBtn && !cancelBtn && !reconcileBtn) return;
-        if (!window.wsClient?.isConnected()) return;
-
-        event.preventDefault();
-        try {
-            if (startBtn) await window.wsClient.sendMessage('prompt_index_start', {});
-            else if (pauseBtn) await window.wsClient.sendMessage('prompt_index_pause', {});
-            else if (resumeBtn) await window.wsClient.sendMessage('prompt_index_resume', {});
-            else if (cancelBtn) await window.wsClient.sendMessage('prompt_index_cancel', {});
-            else if (reconcileBtn) await window.wsClient.sendMessage('prompt_index_reconcile', {});
-        } catch (error) {
-            console.error('[data-mgmt] prompt index control failed:', error);
-        }
-    });
-}
-
-function dataMgmtDsapIndexingWireStatusListener(host, root) {
-    if (!host || !window.wsClient || host.dataset.indexingListenerWired === '1') return;
-    host.dataset.indexingListenerWired = '1';
-
-    window.wsClient.on('search_indexing_status', (message) => {
-        const payload = typeof resolvePromptFtsPayloadFromMessage === 'function'
-            ? resolvePromptFtsPayloadFromMessage(message)
-            : (message?.job === 'prompt_fts' ? message : (message?.promptFts ? { job: 'prompt_fts', ...message.promptFts } : null));
-        if (!payload) return;
-        const indexingHost = root.querySelector('#dataMgmtIndexingHost');
-        if (!indexingHost) return;
-        dataMgmtDsapIndexingApplyStatus(indexingHost, payload);
-    });
+// Search & Prompt Indexing moved to Control Panel > Indexing Options (cplSearch.js, #828)
 }
 
 function dataMgmtDsapBuildWorkspacesHtml() {
@@ -1187,6 +1025,8 @@ function dataMgmtDsapRenderFavoritesList(root) {
 }
 
 function dataMgmtDsapRefreshWorkspacesIfPresent() {
+    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
+    if (window.mmcDataManagement) window.mmcDataManagement.refresh('workspaces');
     const list = document.getElementById('dataMgmtWorkspaceList');
     if (!list) return;
     const root = list.closest('[data-dsap="data-mgmt"]');
@@ -1194,6 +1034,8 @@ function dataMgmtDsapRefreshWorkspacesIfPresent() {
 }
 
 function dataMgmtDsapRefreshFavoritesIfPresent() {
+    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
+    if (window.mmcDataManagement) window.mmcDataManagement.refresh('favorites');
     const list = document.getElementById('dataMgmtFavoritesList');
     if (!list) return;
     const root = list.closest('[data-dsap="data-mgmt"]');
@@ -1201,6 +1043,8 @@ function dataMgmtDsapRefreshFavoritesIfPresent() {
 }
 
 function dataMgmtDsapRefreshStatusIfPresent() {
+    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
+    if (window.mmcDataManagement) window.mmcDataManagement.refresh('status');
     const pieHost = document.getElementById('dataMgmtPieHost');
     if (!pieHost) return;
     const root = pieHost.closest('[data-dsap="data-mgmt"]');
@@ -2216,7 +2060,6 @@ const dataMgmtDsapDriver = {
     _host: null,
     _statusData: null,
     _accountListenersWired: false,
-    _indexingListenersWired: false,
     _replicationStatus: null,
     _replMenuTargets: [],
     _replWired: false,
@@ -2244,8 +2087,6 @@ const dataMgmtDsapDriver = {
             viewHost.innerHTML = dataMgmtDsapBuildStatusHtml();
             dataMgmtDsapRenderAccountSection(root);
             this._wireAccountListeners(host, root);
-            dataMgmtDsapIndexingWireControls(root);
-            this._wireIndexingListeners(host, root);
             void this._loadStatus(root);
         } else if (activeTab === 'workspaces') {
             viewHost.innerHTML = dataMgmtDsapBuildWorkspacesHtml();
@@ -2392,19 +2233,11 @@ const dataMgmtDsapDriver = {
         });
     },
 
-    _wireIndexingListeners(host, root) {
-        if (this._indexingListenersWired) return;
-        this._indexingListenersWired = true;
-        const indexingHost = root.querySelector('#dataMgmtIndexingHost');
-        dataMgmtDsapIndexingWireStatusListener(indexingHost, root);
-    },
-
     async _loadStatus(root) {
         const pieHost = root.querySelector('#dataMgmtPieHost');
         const wsHost = root.querySelector('#dataMgmtWorkspacesTableHost');
         const storageHost = root.querySelector('#dataMgmtStorageTableHost');
         void dataMgmtDsapReplicationLoadStatusSummary(root);
-        void dataMgmtDsapIndexingLoad(root);
         void dataMgmtDsapRemoteWorkersLoad(root);
         if (!pieHost || !wsHost || !storageHost) return;
 
@@ -2474,6 +2307,8 @@ const dataMgmtDsapDriver = {
             const status = await dataMgmtDsapReplicationFetchStatus();
             this._replicationStatus = status;
             dataMgmtDsapReplicationRenderStatus(root, status, route);
+            // the Data Management MMC console's Action pane follows the role (mmcDataManagement.js)
+            if (window.mmcDataManagement) window.mmcDataManagement.refresh('replication');
             const cargoHost = root.querySelector('#dataMgmtReplicationCargoHost');
             const syncHost = root.querySelector('#dataMgmtReplicationSyncHost');
             if (cargoHost && typeof replicationDsapCargoRefreshPanel === 'function') {
