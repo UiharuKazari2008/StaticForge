@@ -84,7 +84,13 @@
             // which screen is on: a foldable's cover is narrow (about 9:21), its inner screen near square
             const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
             const screen = vw && vh && Math.min(vw, vh) / Math.max(vw, vh) < 0.56 && /^SM-F9/i.test((root.AndroidActiveSync && typeof root.AndroidActiveSync.getModel === 'function' && root.AndroidActiveSync.getModel()) || navigator.userAgent) ? 'cover' : 'inner';
-            return { inner: phone, cover: phone, external: dex || phone, screen };
+            // Today on Android's own wallpaper (#827): each screen of a foldable shows its own picture,
+            // which the app's service sends from each screen's slot (androidInner / androidCover); the
+            // page's one picture would put the screen that is on into both
+            const sh = root.wmShell;
+            const androidSource = !!(sh && typeof sh.todayWallSource === 'function' && sh.todayWallSource() === 'android');
+            if (androidSource) return { inner: null, cover: null, external: dex || null, screen, homeSource: 'android' };
+            return { inner: phone, cover: phone, external: dex || phone, screen, homeSource: 'melaton' };
         }
         as.registerOp('status.wallpapers', wallpapers);
 
@@ -101,12 +107,12 @@
             if (!st.online || !st.id || !st.session || st.session === 'pending' || sending) return;
             const src = sources();
             const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
-            const key = JSON.stringify([src.today, src.desk, vw > vh]);
+            const key = JSON.stringify([src.today, src.desk, vw > vh, root.wmShell && typeof root.wmShell.todayWallSource === 'function' ? root.wmShell.todayWallSource() : '']);
             if (!force && key === sentKey) return;
             sending = true;
             try {
                 const body = await wallpapers();
-                if (!body.inner && !body.external) return;
+                if (!body.inner && !body.external && body.homeSource !== 'android') return;
                 const r = await fetch(`/api/activesync/wallpapers/${encodeURIComponent(st.id)}`, {
                     method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
                 });
