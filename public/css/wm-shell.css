@@ -77,8 +77,9 @@ html.ui-mobile.wm-touch {
     --wm-px: 1.5px;
 }
 
-/* ---- no crossover: only the shell and its hosted surfaces render ---- */
-html.ui-mobile body > *:not(#wmShell):not(script):not(style):not(link):not(template):not(.page-background):not(#galleryWindow):not(.pswp):not(#confirmationDialog):not(#bootMessageBox):not(#toastContainer):not(#pinModal):not(#dreamscapeFatalErrorRoot):not(#dreamscapeConnectivityErrorOverlay):not(#dreamscapeConnectivityErrorWindow):not(.dreamscape-app-error-window):not(#agentClientUpdateDialog):not(.dm-polaroid-fixed):not(#directorMascotLab) {
+/* ---- no crossover: only the shell and its hosted surfaces render (.wms-ac: the prompt editors'
+   autocomplete pop-ups while Studio is the current app, wm-studio.css draws them) ---- */
+html.ui-mobile body > *:not(#wmShell):not(script):not(style):not(link):not(template):not(.page-background):not(#galleryWindow):not(.pswp):not(#confirmationDialog):not(#bootMessageBox):not(#toastContainer):not(#pinModal):not(#dreamscapeFatalErrorRoot):not(#dreamscapeConnectivityErrorOverlay):not(#dreamscapeConnectivityErrorWindow):not(.dreamscape-app-error-window):not(#agentClientUpdateDialog):not(.dm-polaroid-fixed):not(#directorMascotLab):not(.wms-ac) {
     display: none !important;
 }
 
@@ -4015,15 +4016,20 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     min-width: 0;
 }
 
+/* the streaming preview in a fixed frame (Yukimi, Nov 14 #825): the box keeps its size from the
+ * first frame to the last and the frame never collapses to its border while a picture loads; the
+ * picture fits inside, letterboxed on white */
 .wm-progress-layer .wm-progress-preview {
     display: block;
-    width: auto !important;
-    height: auto !important;
-    max-width: 100%;
-    max-height: calc(220 * var(--wm-px));
-    margin: calc(6 * var(--wm-px)) auto 0;
+    width: 100% !important;
+    height: calc(180 * var(--wm-px)) !important;
+    max-width: none;
+    max-height: none;
+    margin: calc(6 * var(--wm-px)) 0 0;
     border: calc(1 * var(--wm-px)) solid #000;
     box-sizing: border-box;
+    object-fit: contain;
+    background: #fff;
 }
 
 .wm-progress-layer .wm-progress-preview[hidden] {

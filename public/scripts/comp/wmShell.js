@@ -3884,7 +3884,7 @@
         }
         if (withPreview) {
             const img = progressLayer.querySelector('.wm-progress-preview');
-            const src = box.preview ? (/^(data:|blob:|https?:\/\/|\/)/.test(String(box.preview)) ? String(box.preview) : `data:image/png;base64,${box.preview}`) : '';
+            const src = previewSrc(box.preview);
             if (!src) { img.removeAttribute('src'); img.hidden = true; } else if (img.getAttribute('src') !== src) { img.src = src; img.hidden = false; }
         }
         if (withButtons) {
@@ -3906,6 +3906,21 @@
                 row.appendChild(b);
             }
         }
+    }
+
+    /**
+     * A preview as an img src: a URL or data: URL as it is, raw base64 typed by its first bytes.
+     * Raw JPEG base64 starts with '/9j/': read as a path it loaded http://host/9j/4AAQ... and the
+     * box showed only the image's border, a line across the middle (#825).
+     */
+    function previewSrc(v) {
+        const s = v ? String(v) : '';
+        if (!s) return '';
+        if (/^(data:|blob:|https?:\/\/)/.test(s)) return s;
+        const raw = s.length > 64 && /^[A-Za-z0-9+/]+={0,2}$/.test(s.slice(0, 4096).replace(/\s+/g, '')) && !/^\/(images|previews|cache|static_images|fs|api)\//.test(s);
+        if (!raw) return s;
+        const type = s.startsWith('/9j/') ? 'jpeg' : s.startsWith('UklGR') ? 'webp' : s.startsWith('R0lGOD') ? 'gif' : 'png';
+        return `data:image/${type};base64,${s}`;
     }
 
     function hideProgress(box) {

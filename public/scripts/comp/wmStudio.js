@@ -442,7 +442,9 @@
         { id: 'manualRescale', wheel: true, field: '.percentage-input-container' },
         { id: 'manualPrintsCountAlt' },
         { id: 'manualStrengthValue', field: '.percentage-input-container' },
-        { id: 'manualNoiseValue', field: '.percentage-input-container' }
+        { id: 'manualNoiseValue', field: '.percentage-input-container' },
+        // the Emphasis page's weight (promptToolWindows.js: the wheel steps it by 0.1)
+        { id: 'promptEmphasisValue', wheel: true }
     ];
 
     function stepInput(input, cfg, dir) {
@@ -784,6 +786,11 @@
     function setTab(id) {
         if (SECTIONS[id]) { showSection(id); return; }
         if (!TABS.some(([t]) => t === id)) return;
+        // the Print already on screen beside / under the form: the form page stays the tab. Set to
+        // 'print' here, the keyboard coming up for a prompt shrank the page to the one-tab layout,
+        // the Print page replaced the form, the field was hidden and Android put the keyboard
+        // away again (#825: it showed briefly and closed)
+        if (id === 'print' && printBeside()) { paintTab(); return; }
         tab = id;
         if (id !== 'print') formTab = id;
         paintTab();
@@ -1010,7 +1017,8 @@
             let rows = [];
             if (section.type === 'icons' && Array.isArray(section.icons)) rows = section.icons.map((ic) => Object.assign(ic, { text: ic.text || ic.tooltip }));
             else if (Array.isArray(section.items) && section.type !== 'grid' && section.type !== 'custom') rows = section.items;
-            const items = wmItems(rows, target, run);
+            // the context menus too (the print's long press, the gallery's in wmHost): no rows for desktop-only features
+            const items = wmItems(phoneRows(rows, false), target, run);
             if (!items.length) continue;
             const title = resolve(section.title, target);
             if (title && flat) {
@@ -1093,13 +1101,55 @@
         return document.querySelector(`#manualModalMenuBar .naxt-menu-title[data-menu="${name}"]`) || modal();
     }
 
+    /**
+     * The desktop menu bar's rows that the phone has no feature for (Yukimi, Nov 14 #825: "menu items
+     * for features that are not added or work"): a desktop window of the print (the phone has View
+     * Print), Paint and desktop shortcuts (not on the phone), the Studio Activity log (a desktop list
+     * view), Comparison (the previous-print overlay the phone does not draw).
+     */
+    const PHONE_NO_ACTIONS = new Set(['open-in-window', 'edit-in-paint', 'create-desktop-shortcut', 'studio-activity']);
+    const PHONE_NO_LABELS = new Set(['Comparison']);
+    // rows of the print itself: grey while there is none (they raised "Load an image in Studio first")
+    const PRINT_ACTIONS = new Set(['studio-stage-results', 'create-animation']);
+
+    function phoneRows(rows, studioPrint = true) {
+        const hasPrint = !studioPrint || !!printName();
+        const out = [];
+        for (const r of rows || []) {
+            if (!r || typeof r !== 'object') { out.push(r); continue; }
+            if (r.action && PHONE_NO_ACTIONS.has(r.action)) continue;
+            const text = typeof r.text === 'string' ? r.text : (typeof r.label === 'string' ? r.label : '');
+            if (text && PHONE_NO_LABELS.has(text)) continue;
+            let row = r;
+            /* global studioIsPreviewMenuAction */
+            const needsPrint = r.action && (PRINT_ACTIONS.has(r.action) || (typeof studioIsPreviewMenuAction === 'function' && studioIsPreviewMenuAction(r.action)));
+            if (needsPrint && !hasPrint) row = { ...r, disabled: true };
+            if (Array.isArray(r.submenu)) row = { ...row, submenu: phoneRows(r.submenu, studioPrint) };
+            else if (typeof r.optionsfn === 'function') {
+                const fn = r.optionsfn;
+                row = { ...row, optionsfn: (t) => phoneRows(fn(t), studioPrint) };
+            }
+            if (Array.isArray(r.items)) row = { ...row, items: phoneRows(r.items, studioPrint) };
+            out.push(row);
+        }
+        return out;
+    }
+
+    /** Help > About: the desktop draws it on the Studio splash, which the phone does not show. */
+    function aboutBox() {
+        const lines = ['DreamStudio 2026 R7'];
+        const v = window.wsClient && window.wsClient.clientVersion;
+        if (v) lines.push(`Client ${v}`);
+        if (ws && typeof ws.messageBox === 'function') void ws.messageBox({ title: 'Studio', text: lines.join('\n'), icon: 'info', modal: true });
+    }
+
     function menuBarItems(name) {
         /* global studioMenuBarItems, handleStudioMenuBarAction */
         if (typeof studioMenuBarItems !== 'function' || typeof handleStudioMenuBarAction !== 'function') return [{ label: 'Not ready yet', disabled: true }];
         let rows = [];
-        try { rows = studioMenuBarItems(name); } catch (err) { console.warn('[wmStudio] menu', name, err); }
+        try { rows = phoneRows(studioMenuBarItems(name)); } catch (err) { console.warn('[wmStudio] menu', name, err); }
         const target = menuBarTitle(name);
-        const items = wmItems(rows, target, (action, t, item) => handleStudioMenuBarAction(action, t, item));
+        const items = wmItems(rows, target, (action, t, item) => (action === 'studio-about' ? aboutBox() : handleStudioMenuBarAction(action, t, item)));
         return items.length ? items : [{ label: '(empty)', disabled: true }];
     }
 
@@ -1313,7 +1363,9 @@
 
     // ---------------------------------------------------------------- a tool page's soft keys
 
-    const FOOTERS = '.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons';
+    // .ptw-buttons / .ptw-tools: Find's buttons and Emphasis's icon tools (promptToolWindows.js), whose
+    // labels are their titles; on the phone they are its soft keys and Menu (#825)
+    const FOOTERS = '.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons, .ptw-buttons, .ptw-tools';
 
     /** The buttons of the window's footer rows (hidden on the phone: they are its soft keys and Menu). */
     function toolButtons(win) {
@@ -1342,7 +1394,7 @@
     function toolKeys(win) {
         const btns = toolButtons(win);
         const cancel = btns.find((x) => /^(cancel|close)$/i.test(x.label));
-        const prim = btns.filter((x) => x !== cancel && x.b.classList.contains('btn-primary')).pop();
+        const prim = btns.filter((x) => x !== cancel && (x.b.classList.contains('btn-primary') || x.b.hasAttribute('data-dialog-primary'))).pop();
         const form = !!(prim && (cancel || /^(save|ok|update|write|process|combine|replace)/i.test(prim.label)));
         const press = (x) => () => { if (!x.b.disabled) { x.b.click(); afterAction(); } };
         const left = form
@@ -1393,6 +1445,8 @@
             watch.forEach((el) => entry.mo.observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'class', 'hidden'] }));
         }
         box.querySelector('.wms-tool-host').appendChild(win);
+        // a tool window built on first use (Emphasis) gets its - / + now
+        steppers();
         setUnder();
         box.hidden = false;
         page.classList.add('wms-has-tool');
@@ -1754,6 +1808,8 @@
         const typing = (e) => {
             const t = e.target;
             const on = e.type === 'focusin' && !!t && /^(TEXTAREA|INPUT)$/.test(t.tagName) && !!t.closest('#manualModal') && !/^(checkbox|radio|range|button|submit|file|color)$/.test(t.type || '');
+            // a field of the form typed in: that form page is the tab, whatever layout the keyboard brings
+            if (on && tab === 'print' && !t.closest('#manualPanelSection')) { tab = formTab; paintTab(); }
             if (page.classList.contains('wms-typing') !== on) page.classList.toggle('wms-typing', on);
         };
         page.addEventListener('focusin', typing);

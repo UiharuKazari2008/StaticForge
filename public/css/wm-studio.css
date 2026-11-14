@@ -1168,8 +1168,9 @@
 /* ======================================================================
  * Prompt editors' pop-ups (autocompleteUtils.js): the tag autocomplete with its spelling
  * suggestions and the view bar live at body level, which the ui-mobile allow-list hides
- * (wm-shell.css: :not() with ten ids). While Studio is the current app they show over the
- * page as a WM list: the id repeated eleven times outranks that rule.
+ * (wm-shell.css). While Studio is the current app (wmStudio.js markAutocomplete: .wms-ac) the
+ * allow-list lets them through and they show over the page as a WM list. The repeated ids were
+ * an arms race with that rule's growing :not() list, which it lost (#825: no autofill at all).
  * ====================================================================== */
 html.ui-mobile body > #characterAutocompleteOverlay.wms-ac#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay#characterAutocompleteOverlay:not(.hidden) {
     display: flex !important;
@@ -1178,7 +1179,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac#characterAutocomplete
     width: calc(100vw - 8px) !important;
     min-width: 0 !important;
     max-width: none !important;
-    max-height: 45vh !important;
+    /* the height is autocompleteUtils.js's: what is left between the field and the soft-key bar
+     * (on the keyboard while it is up) */
     z-index: 2100 !important;
     border: calc(1 * var(--wm-px)) solid #000 !important;
     border-radius: 0 !important;
@@ -1231,9 +1233,11 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomple
     background: #fff !important;
 }
 
-/* the results footer: a plain tab-strip row, black text */
+/* the results footer: a plain tab-strip row, black text, over the rows scrolling under it (the last
+ * row's badges and source names showed through it) */
 html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display {
-    background: var(--wm-tab-strip) !important;
+    background: linear-gradient(var(--wm-tab-strip), var(--wm-tab-strip)), #fff !important;
+    z-index: 5 !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     border: 0 !important;
@@ -1655,8 +1659,17 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     height: calc(22 * var(--wm-px)) !important;
 }
 
-/* the focused prompt's toolbar (token count, datasets, quality ...): a flat WM strip with black text */
-.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar:not(.hidden) {
+/* the prompt's toolbar (token count, datasets, quality ...): a flat WM strip with black text. On the
+ * phone it is always there (Yukimi, Nov 14 #825: "toolbars need to always be visible"); the desktop
+ * shows it only while its field has focus (promptTextareaToolbar.js .hidden), so a tap made the page
+ * jump by the strip's height under the finger as the keyboard came up */
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar.prompt-textarea-toolbar.hidden {
+    display: flex !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+}
+
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar {
     min-height: 0 !important;
     margin: calc(2 * var(--wm-px)) 0 0 !important;
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) !important;
@@ -1822,7 +1835,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 }
 
 /* ---- - / + steppers (wmStudio.js) ---- */
-.wm-studio #manualModal .wms-stepper {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper {
     display: flex !important;
     gap: 0 !important;
     align-items: stretch !important;
@@ -1831,7 +1844,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     height: calc(20 * var(--wm-px));
 }
 
-.wm-studio #manualModal .wms-stepper > :not(.wms-step) {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper > :not(.wms-step) {
     flex: 1 1 auto !important;
     width: auto !important;
     min-width: 0 !important;
@@ -1840,8 +1853,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     margin: 0 !important;
 }
 
-.wm-studio #manualModal .wms-stepper > input,
-.wm-studio #manualModal .wms-stepper > .percentage-input-container > input {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper > input,
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper > .percentage-input-container > input {
     display: block !important;
     width: 100% !important;
     height: 100% !important;
@@ -1849,8 +1862,8 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     -moz-appearance: textfield;
 }
 
-.wm-studio #manualModal .wms-stepper input::-webkit-inner-spin-button,
-.wm-studio #manualModal .wms-stepper input::-webkit-outer-spin-button {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper input::-webkit-inner-spin-button,
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper input::-webkit-outer-spin-button {
     -webkit-appearance: none;
     margin: 0;
 }
@@ -1861,7 +1874,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     padding: 0 !important;
 }
 
-.wm-studio #manualModal .wms-stepper > .percentage-input-container > input {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper > .percentage-input-container > input {
     max-width: none !important;
     min-width: 0 !important;
     padding: 0 calc(3 * var(--wm-px)) !important;
@@ -1875,7 +1888,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     text-align: center !important;
 }
 
-.wm-studio #manualModal .wms-step {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-step {
     flex: 0 0 auto;
     align-self: stretch !important;
     box-sizing: border-box;
@@ -1893,10 +1906,10 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     -webkit-user-select: none;
 }
 
-.wm-studio #manualModal .wms-step-down { border-right: 0; }
-.wm-studio #manualModal .wms-step-up { border-left: 0; }
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-step-down { border-right: 0; }
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-step-up { border-left: 0; }
 
-.wm-studio #manualModal .wms-step:active {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-step:active {
     background: var(--wm-highlight);
     color: var(--wm-highlight-text, #fff);
 }
@@ -1907,7 +1920,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
     min-width: 0;
 }
 
-.wm-studio #manualModal .wms-stepper > #manualPrintsCountAlt {
+.wm-studio :is(#manualModal, .wms-tool-host) .wms-stepper > #manualPrintsCountAlt {
     width: auto !important;
 }
 
@@ -2100,7 +2113,7 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
 }
 
 /* ---- the prompt toolbar keeps every button on the page: its rows wrap at 360 / 390 px ---- */
-.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar:not(.hidden) {
+.wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar.prompt-textarea-toolbar {
     display: flex !important;
     flex-wrap: wrap !important;
     row-gap: calc(2 * var(--wm-px)) !important;

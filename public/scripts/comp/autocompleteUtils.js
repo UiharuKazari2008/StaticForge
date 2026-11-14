@@ -1626,6 +1626,14 @@ function autofillWorkAreaBottom() {
         const area = getModalWorkAreaBounds();
         if (area && Number.isFinite(area.bottom)) return Math.min(window.innerHeight, area.bottom);
     }
+    // Melaton Mobile (#825): the soft-key bar's top. It sits on the keyboard while the keyboard is
+    // up (wmShell watchSip), which the layout viewport does not shrink for, so innerHeight put the
+    // list under the keyboard
+    if (document.documentElement.classList.contains('ui-mobile')) {
+        const keys = document.querySelector('#wmShell > .wm-softkeys');
+        const top = keys ? keys.getBoundingClientRect().top : 0;
+        if (top > 0) return Math.min(window.innerHeight, top);
+    }
     return window.innerHeight;
 }
 

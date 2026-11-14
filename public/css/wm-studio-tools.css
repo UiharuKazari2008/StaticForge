@@ -680,3 +680,87 @@
     white-space: nowrap;
     text-overflow: ellipsis;
 }
+
+/* ---- Find and Emphasis (promptToolWindows.js) as WM forms (Yukimi, Nov 14 #825: no lazy ports).
+ * The desktop's Vista dialogs (a field beside a column of push buttons; one strip of icon buttons
+ * named only by tooltips) landed scattered across the page. On the phone: a label over a full-width
+ * edit box, the status under it; the buttons are the soft keys (Find Next) and Menu (Find Previous,
+ * Select, Close; Trim Start, Trim End, Remove Emphasis, Group the Selection), as wmStudio.js
+ * toolKeys reads .ptw-buttons / .ptw-tools. ---- */
+.wm-studio .wms-tool-host > .prompt-tool-window > .modal-content.ptw-client {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    gap: calc(4 * var(--wm-px)) !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: calc(6 * var(--wm-px)) !important;
+}
+
+.wm-studio .wms-tool-host > .prompt-tool-window :is(.ptw-buttons, .ptw-tools) {
+    display: none !important;
+}
+
+.wm-studio .wms-tool-host > #promptFindTool .ptw-find-row {
+    display: grid !important;
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "label count" "field field";
+    row-gap: calc(2 * var(--wm-px));
+    align-items: end;
+    width: 100% !important;
+    margin: 0 !important;
+    position: static !important;
+}
+
+.wm-studio .wms-tool-host > #promptFindTool .ptw-find-row > .ptw-label { grid-area: label; margin: 0 !important; }
+.wm-studio .wms-tool-host > #promptFindTool .ptw-find-row > .ptw-count { grid-area: count; margin: 0 !important; color: #404040 !important; -webkit-text-fill-color: #404040 !important; }
+.wm-studio .wms-tool-host > #promptFindTool .ptw-find-row > .ptw-count::after { content: ' found'; }
+
+.wm-studio .wms-tool-host > #promptFindTool .ptw-find-row > input {
+    grid-area: field;
+    width: 100% !important;
+    max-width: none !important;
+    height: calc(20 * var(--wm-px)) !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+
+.wm-studio .wms-tool-host > .prompt-tool-window .ptw-context {
+    position: static !important;
+    margin: 0 !important;
+    text-align: left !important;
+    color: #404040 !important;
+    -webkit-text-fill-color: #404040 !important;
+}
+
+/* Emphasis: "Emphasis" and "Weight" rows, label at the left as WM forms do */
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-strip > :is(.ptw-kind, .ptw-value-row) {
+    display: grid !important;
+    grid-template-columns: calc(70 * var(--wm-px)) 1fr;
+    align-items: center;
+    width: 100% !important;
+    min-height: calc(20 * var(--wm-px));
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    text-align: left !important;
+}
+
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-strip > .ptw-kind::before { content: 'Emphasis:'; }
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-strip > .ptw-value-row::before { content: 'Weight:'; }
+
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-value-row > :is(.wms-stepper, input) {
+    width: calc(130 * var(--wm-px)) !important;
+}
+
+.wm-studio .wms-tool-host > #promptEmphasisTool .ptw-value-row > .ptw-unit:empty {
+    display: none !important;
+}
+
+/* WM labels carry no keyboard mnemonics (Fi_n_d what:) */
+.wm-studio .wms-tool-host > .prompt-tool-window u {
+    text-decoration: none !important;
+}
