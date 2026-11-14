@@ -170,6 +170,7 @@
         { id: 'computer-management', name: 'Computer Management', icon: `${ITEMS}/device-manager-16.png`, open: () => callGlobal('openDeviceManager') },
         { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator') },
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },
+        { id: 'front-gate', name: 'Front Gate', icon: `${ITEMS}/firewall-16.png`, open: () => callGlobal('openFrontGateConsole') },
         { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ITEMS}/iscsi-initiator-16.png`, open: () => root.cplDialogs && root.cplDialogs.open('iscsi') },
         { id: 'memory', name: 'Memory Diagnostics Tool', icon: `${ITEMS}/administrative-tools-16.png`, open: () => memoryDiagnostics() },
         { id: 'messaging-bridge', name: 'Messaging Bridge', icon: '/melaton-apps/msgbridge/assets/msgbridge-16.png', open: () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'msgbridge' }).catch(() => {}); } },

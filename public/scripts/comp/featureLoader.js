@@ -345,6 +345,15 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplDeviceManager.js'
         ]
     },
+    // The MMC consoles that replaced the management DSAPs (Yozora #828): the shell, then the snap-ins
+    mmc_snapins: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css'],
+        scripts: [
+            'scripts/comp/mmcConsole.js',
+            'scripts/comp/mmcFrontGate.js'
+        ]
+    },
     // Director add-ons loaded on demand by director.js (setupMascot / openToolPayload); styles stay in director.css.
     director_mascot: {
         scripts: ['scripts/comp/directorMascot.js']

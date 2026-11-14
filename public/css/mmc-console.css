@@ -1,0 +1,735 @@
+/* MMC console shell (Yozora #828; public/scripts/comp/mmcConsole.js): the MMC 3.0 window the management
+   snap-ins share, taken from Messaging Bridge (apps/msgbridge, #779), its frame measured on the Vista VM's
+   Computer Management at 800x600 (client 784 px: tree 190, 3 px gaps, result, Action pane 190; rebar
+   23 + 23, 6 px under it; status bar 23), its summary pages after Event Viewer's "Overview and Summary"
+   (title band, collapsible sections). */
+
+.mmc-window.mmc-window > .modal-content.mmc-client {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    background: #f0f0f0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* ---- the rebar: the menu band over the toolbar band, both the VM's pixels ---- */
+
+.mmc-window .mmc-rebar {
+    flex: none;
+}
+
+.mmc-window.mmc-window .mmc-menubar {
+    display: flex;
+    align-items: flex-start;
+    height: 23px;
+    padding: 0 0 0 2px;
+    border: 0;
+    background: url('/static_images/vista-mmc/menuband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
+}
+
+.mmc-window.mmc-window .win7 .mmc-menubar .naxt-menu-title:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 21px;
+    min-height: 0;
+    margin-top: 0;
+    padding: 0 4px 1px;
+    border: 4px solid transparent;
+    border-width: 0 4px;
+    border-image: none;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
+}
+
+.mmc-window.mmc-window .win7 .mmc-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-image: url('/static_images/vista-mmc/menu-hot.png') 0 4 fill / 0 4px stretch;
+    outline: none;
+}
+
+.mmc-window.mmc-window .win7 .mmc-menubar .naxt-menu-title.context-open:not(#_) {
+    border-image: url('/static_images/vista-mmc/menu-open.png') 0 4 fill / 0 4px stretch;
+}
+
+.mmc-window .mmc-menubar .naxt-menu-title::before,
+.mmc-window .mmc-menubar .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* the toolbar: 23 px buttons, mmc.exe bitmap 202 */
+.mmc-window .mmc-toolbar {
+    display: flex;
+    align-items: center;
+    height: 23px;
+    padding: 0 0 0 1px;
+    background: url('/static_images/vista-mmc/toolband.png') 0 0 / 1px 23px repeat-x;
+    box-sizing: border-box;
+}
+
+.mmc-window.mmc-window .mmc-tb:not(#_) {
+    position: relative;
+    width: 23px;
+    height: 22px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 2px;
+    background: none;
+    box-shadow: none;
+}
+
+.mmc-window.mmc-window .mmc-tb:hover:not(:disabled):not(#_) {
+    border-color: #3c7fb1;
+    background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+}
+
+.mmc-window.mmc-window .mmc-tb.is-pressed:not(#_) {
+    border-color: #2c628b;
+    background: linear-gradient(#e5f4fc, #c4e5f6 45%, #98d1ef 55%, #68b3db);
+}
+
+.mmc-window .mmc-tb::before,
+.mmc-window .mmc-tb::after {
+    content: none;
+}
+
+.mmc-window .mmc-tb-icon,
+.mmc-window .mmc-act-icon {
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-mmc/toolbar-mmc.png') calc(var(--i) * -16px) 0 no-repeat;
+}
+
+.mmc-window .mmc-tb-icon {
+    left: 2px;
+    top: 2px;
+}
+
+.mmc-window .mmc-tb:disabled .mmc-tb-icon {
+    filter: grayscale(1);
+    opacity: 0.4;
+}
+
+.mmc-window .mmc-tb-sep {
+    width: 1px;
+    height: 18px;
+    margin: 0 3px;
+    background: #a6b0be;
+    box-shadow: 1px 0 #fff;
+}
+
+/* ---- the body: tree 190, 3 px, result, 3 px, Action pane 190; 6 px under the rebar ---- */
+
+.mmc-window .mmc-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    padding-top: 6px;
+}
+
+.mmc-window .mmc-tree {
+    flex: none;
+    width: 190px;
+    box-sizing: border-box;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
+    padding-top: 1px;
+}
+
+.mmc-window.no-tree .mmc-tree,
+.mmc-window.no-tree .mmc-split {
+    display: none;
+}
+
+.mmc-window .mmc-split {
+    flex: none;
+    width: 3px;
+    cursor: col-resize;
+}
+
+.mmc-window .mmc-result {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+}
+
+/* a list view fills the pane with MMC's flat #828790 edge */
+.mmc-window .mmc-result.is-list {
+    border-color: #828790;
+    box-shadow: none;
+}
+
+/* tree rows: 18 px, 19 px a level, a Vista twisty, the 16 px icon, the selection */
+.mmc-window .mmc-node {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 18px;
+    box-sizing: border-box;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.mmc-window .mmc-twisty {
+    position: absolute;
+    top: 1px;
+    width: 16px;
+    height: 16px;
+    margin-left: -18px;
+}
+
+.mmc-window .mmc-twisty.is-closed { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M6 4l4 4-4 4z' fill='%23fff' stroke='%23a6a6a6'/%3E%3C/svg%3E") no-repeat; }
+.mmc-window .mmc-twisty.is-open { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' shape-rendering='crispEdges'%3E%3Cpath d='M10 6v5H5z' fill='%23595959' stroke='%23262626'/%3E%3C/svg%3E") no-repeat; }
+
+.mmc-window .mmc-node > img,
+.mmc-window .mmc-row-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    margin: 0 2px 0 0;
+}
+
+.mmc-window .mmc-node-name {
+    position: relative;
+    top: -1px;
+    padding: 0 2px;
+    border: 1px solid transparent;
+    line-height: 15px;
+}
+
+.mmc-window .mmc-node.is-selected .mmc-node-name {
+    border-color: #d9d9d9;
+    border-radius: 2px;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.mmc-window .mmc-tree:focus-within .mmc-node.is-selected .mmc-node-name {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+/* ---- the Action pane (MMC 3.0): sunken, "Actions" over the node's group, 24 px rows ---- */
+
+.mmc-window .mmc-actions {
+    flex: none;
+    width: 190px;
+    box-sizing: border-box;
+    margin-left: 3px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969, inset -1px -1px #e3e3e3;
+    background: #fff;
+    padding: 1px 1px 0;
+}
+
+.mmc-window:not(.has-actions) .mmc-actions {
+    display: none;
+}
+
+.mmc-window .mmc-act-head {
+    height: 15px;
+    padding: 0 0 0 4px;
+    border-top: 1px solid #a0a0a0;
+    border-bottom: 1px solid #a0a0a0;
+    box-shadow: inset 0 1px #fff, 0 1px #fff;
+    margin-bottom: 1px;
+    background: #f0f0f0;
+    font-weight: bold;
+    line-height: 15px;
+    cursor: default;
+}
+
+.mmc-window .mmc-act-group {
+    position: relative;
+    height: 25px;
+    padding: 0 18px 0 6px;
+    overflow: hidden;
+    background: #f0f0f0;
+    line-height: 25px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+/* the group's collapse arrow: a 7x4 black triangle, 6 px from the right */
+.mmc-window .mmc-act-group::after {
+    content: '';
+    position: absolute;
+    right: 5px;
+    top: 11px;
+    border: 4px solid transparent;
+    border-top: 0;
+    border-bottom-color: #000;
+    border-left-width: 3.5px;
+    border-right-width: 3.5px;
+}
+
+.mmc-window .mmc-act-group.is-collapsed::after {
+    transform: rotate(180deg);
+}
+
+.mmc-window .mmc-act-group.is-collapsed + .mmc-act-items {
+    display: none;
+}
+
+.mmc-window .mmc-act {
+    position: relative;
+    height: 24px;
+    padding-left: 30px;
+    line-height: 24px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+.mmc-window .mmc-act .mmc-act-icon {
+    left: 4px;
+    top: 4px;
+}
+
+/* hot: the text underlined, nothing else (the VM's) */
+.mmc-window .mmc-act:not(.is-disabled):hover {
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+.mmc-window .mmc-act.is-disabled {
+    color: #a0a0a0;
+}
+
+.mmc-window .mmc-act.is-disabled .mmc-act-icon {
+    filter: grayscale(1);
+    opacity: 0.4;
+}
+
+.mmc-window .mmc-act-sep {
+    height: 1px;
+    margin: 0 4px 0 5px;
+    background: #f0f0f0;
+}
+
+/* ---- Event Viewer's summary page: a #a0a0a0 title band, sections that collapse ---- */
+
+.mmc-window .mmc-page-title {
+    display: flex;
+    flex: none;
+    align-items: baseline;
+    justify-content: space-between;
+    height: 27px;
+    padding: 0 8px 0 17px;
+    background: #a0a0a0;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.mmc-window .mmc-page-title > b {
+    font: 19px/26px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mmc-window .mmc-page-title > span {
+    padding-left: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+}
+
+.mmc-window .mmc-page-body {
+    flex: 1;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px 10px 0;
+}
+
+.mmc-window .mmc-sec {
+    margin-bottom: 10px;
+}
+
+.mmc-window .mmc-sec-head {
+    position: relative;
+    height: 22px;
+    padding: 0 22px 0 6px;
+    border: 1px solid #646464;
+    background: linear-gradient(#f0f0f0, #aaa);
+    line-height: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+/* the section's arrow: a 5x3 black triangle, 10 px from the right */
+.mmc-window .mmc-sec-head::after {
+    content: '';
+    position: absolute;
+    right: 9px;
+    top: 9px;
+    border: 3px solid transparent;
+    border-top: 0;
+    border-bottom-color: #000;
+    border-left-width: 2.5px;
+    border-right-width: 2.5px;
+}
+
+.mmc-window .mmc-sec.is-collapsed .mmc-sec-head::after {
+    transform: rotate(180deg);
+}
+
+.mmc-window .mmc-sec.is-collapsed .mmc-sec-body {
+    display: none;
+}
+
+.mmc-window .mmc-sec-body {
+    padding: 8px 13px 10px;
+    background: #f0f0f0;
+    line-height: 16px;
+}
+
+.mmc-window .mmc-sec-body p {
+    margin: 0 0 8px;
+}
+
+.mmc-window .mmc-sec-body p:last-child {
+    margin-bottom: 0;
+}
+
+.mmc-window .mmc-overview {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+}
+
+.mmc-window .mmc-overview > img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    margin-right: 6px;
+}
+
+.mmc-window .mmc-overview p {
+    margin: 0 0 6px;
+}
+
+.mmc-window .mmc-overview p:last-child {
+    margin-bottom: 0;
+}
+
+/* label: value pairs (Event Viewer's log summaries) */
+.mmc-window .mmc-props {
+    display: grid;
+    grid-template-columns: minmax(150px, max-content) 1fr;
+    column-gap: 12px;
+    row-gap: 3px;
+}
+
+.mmc-window .mmc-props > dt {
+    color: #000;
+}
+
+.mmc-window .mmc-props > dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.mmc-window .mmc-props + .mmc-note,
+.mmc-window .mmc-note {
+    margin: 8px 0 0;
+    color: #000;
+}
+
+.mmc-window .mmc-props + .mmc-list {
+    margin-top: 10px;
+}
+
+.mmc-window .mmc-good { color: #000; }
+.mmc-window .mmc-bad { color: #c00; }
+
+.mmc-window .mmc-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.mmc-window .mmc-state > img {
+    width: 16px;
+    height: 16px;
+}
+
+.mmc-window .mmc-link {
+    color: #0066cc;
+    cursor: pointer;
+}
+
+.mmc-window .mmc-link:hover {
+    text-decoration: underline;
+}
+
+/* sync progress: Vista's PROGRESS bar (vista-glass-controls.css styles [role=progressbar] in .win7) */
+.mmc-window .mmc-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 2px 0 8px;
+}
+
+.mmc-window .mmc-progress > [role="progressbar"] {
+    flex: 1;
+    max-width: 260px;
+    height: 15px;
+}
+
+/* ---- list views: Vista header items, 19 px rows (MMC's), sortable ---- */
+
+.mmc-window .mmc-list {
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    outline: none;
+}
+
+.mmc-window .mmc-result > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* a list inside a section: framed, at most 10 rows before it scrolls */
+.mmc-window .mmc-sec-body .mmc-list {
+    max-height: 214px;
+    overflow: auto;
+    border: 1px solid #828790;
+}
+
+.mmc-window .mmc-lhead,
+.mmc-window .mmc-row {
+    display: grid;
+    grid-template-columns: var(--cols);
+    min-width: max-content;
+}
+
+.mmc-window .mmc-list.is-fit :is(.mmc-lhead, .mmc-row, .mmc-lbody) {
+    min-width: 0;
+}
+
+.mmc-window .mmc-list.is-fit {
+    overflow-x: hidden;
+}
+
+.mmc-window .mmc-lhead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+}
+
+.mmc-window.mmc-window .mmc-col:not(#_) {
+    position: relative;
+    box-sizing: border-box;
+    min-width: 0;
+    height: 23px;
+    min-height: 0;
+    margin: 0;
+    padding: 3px 0 0 6px;
+    overflow: hidden;
+    border: 0;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    text-align: left;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.mmc-window.mmc-window .mmc-col:hover:not(.mmc-col-rest):not(#_) { border-image-source: url('/static_images/vista-controls/header-item-hot.png'); }
+.mmc-window.mmc-window .mmc-col.is-num:not(#_) { text-align: right; padding-right: 6px; }
+.mmc-window.mmc-window .mmc-col.is-sorted:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted.png'); }
+.mmc-window.mmc-window .mmc-col.is-sorted:hover:not(#_) { border-image-source: url('/static_images/vista-controls/header-item-sorted-hot.png'); }
+.mmc-window.mmc-window .mmc-col.mmc-col-rest:not(#_) { border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch; }
+
+.mmc-window .mmc-col::before,
+.mmc-window .mmc-col::after {
+    content: none;
+}
+
+.mmc-window .mmc-arrow {
+    position: absolute;
+    left: calc(50% - 6px);
+    top: 0;
+    width: 13px;
+    height: 5px;
+    background: url('/static_images/vista-controls/header-sort-arrow.png') 0 0 no-repeat;
+}
+
+.mmc-window .mmc-arrow.is-down {
+    background-position: 0 -5px;
+}
+
+.mmc-window .mmc-lbody {
+    padding-top: 1px;
+    min-width: max-content;
+}
+
+.mmc-window .mmc-row {
+    height: 19px;
+    align-items: center;
+    cursor: default;
+}
+
+.mmc-window .mmc-row > span {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 6px;
+    white-space: nowrap;
+}
+
+.mmc-window .mmc-row > span > i {
+    overflow: hidden;
+    font-style: normal;
+    text-overflow: ellipsis;
+}
+
+.mmc-window .mmc-row > span:first-child {
+    padding-left: 4px;
+}
+
+.mmc-window .mmc-row > span.is-num {
+    justify-content: flex-end;
+}
+
+.mmc-window .mmc-row.is-selected > span:first-child > i {
+    margin-left: -2px;
+    padding: 0 1px;
+    border: 1px solid #d9d9d9;
+    border-radius: 2px;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.mmc-window .mmc-list:focus .mmc-row.is-selected > span:first-child > i {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+.mmc-window .mmc-empty {
+    padding: 8px 6px;
+    color: #6d6d6d;
+}
+
+/* ---- the status bar: an etched line, #f1eded panes with #d7d7d7 edges ---- */
+
+.mmc-window .mmc-status {
+    display: grid;
+    flex: none;
+    grid-template-columns: minmax(0, 1fr) 133px 85px;
+    box-sizing: border-box;
+    height: 23px;
+    border-top: 1px solid #919191;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 0 1px #fff;
+    padding-top: 1px;
+    background: #f1eded;
+}
+
+.mmc-window.no-status .mmc-status {
+    display: none;
+}
+
+.mmc-window .mmc-status > span {
+    overflow: hidden;
+    padding: 0 6px;
+    border-right: 1px solid #d7d7d7;
+    line-height: 20px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* ---- dialogs (Customize View, About) ---- */
+
+.mmc-dialog-checks {
+    display: grid;
+    row-gap: 6px;
+    margin: 4px 0 0;
+}
+
+.mmc-dialog-checks label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.mmc-about {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.mmc-about > img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+}
+
+.mmc-about p {
+    margin: 0 0 8px;
+}
+
+/* ---- forms on a page (a snap-in's settings): Vista's dialog controls in a section ---- */
+
+.mmc-window .mmc-form {
+    display: grid;
+    grid-template-columns: minmax(150px, max-content) minmax(0, 1fr);
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 6px;
+}
+
+.mmc-window .mmc-form > label {
+    white-space: nowrap;
+}
+
+.mmc-window .mmc-form > .mmc-form-wide {
+    grid-column: 1 / -1;
+}
+
+.mmc-window .mmc-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.mmc-window .mmc-hint {
+    color: #6d6d6d;
+}

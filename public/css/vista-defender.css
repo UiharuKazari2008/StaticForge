@@ -286,7 +286,7 @@
     display: none !important;
 }
 
-/* Allowed items: the approved IPs only, from the auth view */
+/* Authentication Bypass (was Allowed items): the approved IPs only, from the auth view */
 #defenderModal .defender-list--allowed #secAuthView > :not(#secApprovedView) {
     display: none !important;
 }

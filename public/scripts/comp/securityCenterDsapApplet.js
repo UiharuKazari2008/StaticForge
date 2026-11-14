@@ -572,7 +572,7 @@ ${dsapSmfBuildHeader({
     </div>
   </div>
   <div class="sec-approved-view" id="secApprovedView">
-    <div class="sec-dsap-section-hdr sec-sub-hdr"><i class="fas fa-shield-halved"></i> Approved IPs</div>
+    <div class="sec-dsap-section-hdr sec-sub-hdr"><i class="fas fa-shield-halved"></i> Authentication Bypass</div>
     <div class="sec-dsap-statusbox" id="secApprovedStatus">
       <span class="sec-dsap-status-message" id="secApprovedStatusMessage">Loading approved IPs…</span>
     </div>

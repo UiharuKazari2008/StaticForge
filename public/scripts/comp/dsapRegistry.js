@@ -328,6 +328,7 @@ function registerDsap(config) {
         if (typeof config.getContent === 'function') target.getContent = config.getContent;
         if (typeof config.shimActivate === 'function') target.shimActivate = config.shimActivate;
         if (typeof config.onScopeExit === 'function') target.onScopeExit = config.onScopeExit;
+        if (typeof config.opensApp === 'function') target.opensApp = config.opensApp;
     } else {
         dsapRegistryEntries.push(config);
     }
@@ -502,6 +503,7 @@ async function ensureDsapEntryReady(entry) {
 async function prepareAndActivateDsapOnShell(shell, url, options = {}) {
     const match = resolveDsap(url);
     if (!match) return false;
+    if (typeof match.entry.opensApp === 'function' && dsapOpensApp(url)) return true;
 
     const ready = await ensureDsapEntryReady(match.entry);
     if (!ready) return false;
@@ -1162,12 +1164,28 @@ function navigateDsapIfMatched(shell, url, options = {}) {
     return true;
 }
 
+/**
+ * A DSAP that became a desktop program (#828: the MMC snap-ins, Image Search) names it in
+ * opensApp(match): its dsap:// URLs open that window instead of a Grimoire page. true when it did.
+ */
+function dsapOpensApp(url) {
+    const match = resolveDsap(url);
+    if (!match || !match.entry || typeof match.entry.opensApp !== 'function') return false;
+    try {
+        return match.entry.opensApp(match) !== false;
+    } catch (err) {
+        console.error('DSAP opensApp', err);
+        return false;
+    }
+}
+
 async function openDsapInGrimoire(url, options = {}) {
     const targetUrl = String(url || '').trim();
     if (!targetUrl) {
         console.warn('openDsapInGrimoire: missing url');
         return;
     }
+    if (dsapOpensApp(targetUrl)) return;
 
     // public/scripts/comp/featureLoader.js — TagWikiSearchModal / wikiWindowManager
     await featureLoader.loadFeature('grimoire');

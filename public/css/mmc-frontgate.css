@@ -1,0 +1,204 @@
+/* Front Gate(TM) (Yozora #828; public/scripts/comp/mmcFrontGate.js): its pages in the MMC console
+   (mmc-console.css) and its Aero Wizards (vistaDialogTemplate.openWizard). */
+
+/* the status banner: Windows Defender's shield art, a pale band (Security Center's status rows) */
+.mmc-window .fg-banner {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    border: 1px solid;
+}
+
+.mmc-window .fg-banner > img {
+    flex: none;
+    width: 48px;
+    height: 48px;
+}
+
+.mmc-window .fg-banner b {
+    display: block;
+    margin: 2px 0 4px;
+    font-size: 15px;
+    font-weight: normal;
+    color: #1e3287;
+}
+
+.mmc-window .fg-banner p {
+    margin: 0;
+}
+
+.mmc-window .fg-banner p b {
+    display: inline;
+    margin: 0;
+    font-size: inherit;
+    font-weight: bold;
+    color: inherit;
+}
+
+.mmc-window .fg-banner.is-on {
+    border-color: #8fc98f;
+    background: #eef8ee;
+}
+
+.mmc-window .fg-banner.is-off {
+    border-color: #e19494;
+    background: #fbeeee;
+}
+
+.mmc-window .fg-banner.is-off > div > b {
+    color: #a50000;
+}
+
+.mmc-window .fg-phrase {
+    font-family: Consolas, "Lucida Console", monospace;
+    letter-spacing: 1px;
+}
+
+.mmc-window .fg-phrase.is-shown {
+    letter-spacing: 0;
+    user-select: text;
+}
+
+.mmc-window .fg-phrase-row {
+    margin-top: 10px;
+}
+
+/* ---- Cover Sites: a panel of live previews (1024x768 drawn at 160x120, two to a row at 800x600) ---- */
+
+.mmc-window .fg-covers {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 10px;
+    padding: 10px;
+    background: #fff;
+}
+
+.mmc-window .fg-cover {
+    width: 166px;
+    padding: 3px 3px 5px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    outline: none;
+    cursor: default;
+}
+
+.mmc-window .fg-cover:hover {
+    border-color: #b8d6fb;
+    background: linear-gradient(#fafbfd, #ebf3fd);
+}
+
+.mmc-window .fg-cover.is-selected {
+    border-color: #d9d9d9;
+    background: linear-gradient(#fafafa, #e5e5e5);
+}
+
+.mmc-window .mmc-result:focus-within .fg-cover.is-selected {
+    border-color: #84acdd;
+    background: linear-gradient(#f2f9fe, #d6effe);
+}
+
+.mmc-window .fg-cover-frame {
+    position: relative;
+    width: 160px;
+    height: 120px;
+    overflow: hidden;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.mmc-window .fg-cover-preview {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1024px;
+    height: 768px;
+    border: 0;
+    transform: scale(0.15625);
+    transform-origin: 0 0;
+    pointer-events: none;
+}
+
+/* the preview is a picture: clicks go to the tile */
+.mmc-window .fg-cover-shield {
+    position: absolute;
+    inset: 0;
+}
+
+.mmc-window .fg-cover.is-active .fg-cover-frame {
+    border-color: #3c7fb1;
+    box-shadow: 0 0 0 1px #3c7fb1;
+}
+
+.mmc-window .fg-cover-name {
+    margin-top: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmc-window .fg-cover-slug {
+    color: #6d6d6d;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.mmc-window .fg-cover-slug b {
+    color: #000;
+    font-weight: normal;
+}
+
+/* ---- the wizards ---- */
+
+.vdt-wizard .fg-wiz-text {
+    white-space: normal;
+    line-height: 15px;
+}
+
+.vdt-wizard .fg-wiz-text p {
+    margin: 0 0 9px;
+}
+
+.vdt-wizard .fg-wiz-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    padding: 6px 8px;
+    border: 1px solid;
+}
+
+.vdt-wizard .fg-wiz-banner > img {
+    flex: none;
+}
+
+/* the danger page: UAC's red band for a blocked program */
+.vdt-wizard .fg-wiz-banner.is-danger {
+    border-color: #c42b1c;
+    background: linear-gradient(#e8483a, #b81c10);
+    color: #fff;
+}
+
+.vdt-wizard .fg-wiz-banner.is-on {
+    border-color: #8fc98f;
+    background: #eef8ee;
+}
+
+.vdt-wizard .fg-wiz-error {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 5px;
+    white-space: normal;
+}
+
+.vdt-wizard .fg-wiz-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.vdt-wizard .fg-nowrap {
+    white-space: nowrap;
+}

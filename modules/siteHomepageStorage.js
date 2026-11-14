@@ -43,6 +43,17 @@ function resolvePreviewSiteDir(projectRoot, slug) {
     return { siteDir, resolved };
 }
 
+/** A cover site's <title> (Front Gate shows it under the preview), or null. */
+function coverTitle(projectRoot, slug) {
+    try {
+        const html = readPreviewHtml(projectRoot, slug);
+        const m = html && /<title[^>]*>([^<]{1,200})<\/title>/i.exec(html.slice(0, 16384));
+        return m ? m[1].replace(/\s+/g, ' ').trim() || null : null;
+    } catch (_err) {
+        return null;
+    }
+}
+
 function readPreviewHtml(projectRoot, slug) {
     const hit = resolvePreviewSiteDir(projectRoot, slug);
     if (!hit) return null;
@@ -336,5 +347,6 @@ module.exports = {
     resolveSiteFileAsync,
     contentTypeForRel,
     resolvePreviewSiteDir,
-    readPreviewHtml
+    readPreviewHtml,
+    coverTitle
 };

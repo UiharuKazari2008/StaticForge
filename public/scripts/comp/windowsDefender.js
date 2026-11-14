@@ -10,8 +10,10 @@
  *                     honeypot traps hit today) and the Status box
  *   Scan              runs the check again (blocked clients and honeypot hits)
  *   History           Security Center's telemetry
- *   Tools             Tools and Settings: Quarantined items (blocked clients), Allowed items (the
- *                     authorised / approved IPs), Honeypot traps; Settings: Dreamscape CardSpace, User Accounts
+ *   Tools             Tools and Settings: Quarantined items (blocked clients), Authentication Bypass
+ *                     (the approved IPs: signed in without a PIN; was Allowed items), Honeypot traps,
+ *                     Front Gate (the cover site, its MMC console, #828); Settings: Dreamscape
+ *                     CardSpace, User Accounts
  *
  * The list pages run Security Center's own driver (securityCenterDsapApplet.js
  * securityDsapDriver) on the applet markup with that view showing, so searching, paging,
@@ -24,7 +26,7 @@
     const SECURITY_URL = 'security.dreamscape.jp';
     const PAGES = {
         quarantine: { view: 'blocked', icon: 'quarantine-32.png', title: 'Quarantined items', text: 'Melaton Defender keeps these clients from reaching Dreamscape until you unblock them.' },
-        allowed: { view: 'auth', icon: 'allowed-32.png', title: 'Allowed items', text: 'These addresses are authorised to reach Dreamscape.' },
+        allowed: { view: 'auth', icon: 'allowed-32.png', title: 'Authentication Bypass', text: 'A browser whose address matches an enabled entry is signed in as that account without a PIN.' },
         honeypot: { view: 'honeypot', icon: 'explorer-32.png', title: 'Honeypot traps', text: 'Paths that only scanners ask for. A client that asks for one is blocked.' },
         history: { view: 'telemetry', icon: 'history-32.png', title: 'History', text: 'See all Melaton Defender activities: sign-ins, blocks and other security events.' }
     };
@@ -96,7 +98,7 @@
                     <span class="defender-bar-sep" aria-hidden="true"></span>
                     ${toolButton('history', 'history', 'History')}
                     ${toolButton('tools', 'tools', 'Tools')}
-                    <img class="defender-logo" src="${ART}/logo.png" alt="Melaton Defender">
+                    <img class="defender-logo" src="${ART}/logo-melaton.png" alt="Melaton Defender">
                 </div>
                 <div class="defender-sub">Protection against malicious and unwanted software</div>
                 <div class="defender-panel"></div>
@@ -154,6 +156,8 @@
         if (PAGES[what]) { go(what); return; }
         if (what === 'authentication' && root.cplAuthentication) root.cplAuthentication.open();
         if (what === 'user-accounts' && root.cplUserAccounts) root.cplUserAccounts.open();
+        // Front Gate's MMC console (openFrontGateConsole: public/scripts/comp/dsapManifests.js)
+        if (what === 'front-gate' && typeof root.openFrontGateConsole === 'function') void root.openFrontGateConsole();
     }
 
     // ---- pages ----
@@ -232,7 +236,8 @@
                 <div class="defender-items">
                     ${toolItem('quarantine', 'quarantine-48.png', 'Quarantined items', 'Unblock or remove clients that Melaton Defender has kept from reaching Dreamscape')}
                     ${toolItem('honeypot', 'explorer-48.png', 'Honeypot traps', 'View the paths that only scanners ask for, and the clients that asked')}
-                    ${toolItem('allowed', 'allowed-48.png', 'Allowed items', 'View and change the addresses authorised to reach Dreamscape')}
+                    ${toolItem('allowed', 'allowed-48.png', 'Authentication Bypass', 'View and change the addresses that are signed in without a PIN')}
+                    ${toolItem('front-gate', '../vista-cpl/items/firewall-48.png', 'Front Gate\u2122', 'Put a cover site in front of Dreamscape, and change the access phrase that lets you past it')}
                 </div>
             </div>`;
     }

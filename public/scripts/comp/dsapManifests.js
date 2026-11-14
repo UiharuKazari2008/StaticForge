@@ -42,6 +42,14 @@ function openDynamicQuipsDsap(workspaceId) {
     openDsapInGrimoire(path);
 }
 
+/** Front Gate (#828), loading the MMC snap-ins first (featureLoader 'mmc_snapins'). */
+async function openFrontGateConsole(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openFrontGate: public/scripts/comp/mmcFrontGate.js
+    if (typeof openFrontGate === 'function') return openFrontGate(node);
+    return null;
+}
+
 function registerDsapManifests() {
     // registerDsap: public/scripts/comp/dsapRegistry.js
     if (typeof registerDsap !== 'function') return;
@@ -136,6 +144,20 @@ function registerDsapManifests() {
         title: 'Security Center',
         assets: {
             scripts: ['scripts/comp/securityCenterDsapApplet.js']
+        },
+        // On the Vista desktop every Security Center page is Melaton Defender's now (#828): its links
+        // open Defender on that page (/auth: Dreamscape CardSpace). Elsewhere the page stays.
+        opensApp(match) {
+            const body = document.body;
+            if (!body.classList.contains('desktop-mode') || body.classList.contains('windows-classic-theme')) return false;
+            const path = String((match && match.displayPath) || '').split('?')[0].split('/').filter(Boolean);
+            const view = path[1] || 'home';
+            const page = { blocked: 'quarantine', honeypot: 'honeypot', telemetry: 'history', approved: 'allowed', home: 'home' }[view] || 'home';
+            void featureLoader.loadFeature('control_panel').then(() => {
+                if (view === 'auth' && window.cplAuthentication) window.cplAuthentication.open();
+                else if (window.windowsDefender) window.windowsDefender.open(page);
+            });
+            return true;
         },
         menuEntry: {
             launchId: 'security-center',
@@ -389,19 +411,21 @@ function registerDsapManifests() {
             `dsap://${SITE_HOMEPAGE_DSAP_URL}/`
         ],
         type: 'dsap',
-        title: 'Site Homepage',
-        assets: {
-            scripts: ['scripts/comp/siteHomepageDsapApplet.js']
+        title: 'Front Gate',
+        // Front Gate, an MMC console, replaced the page (#828: public/scripts/comp/mmcFrontGate.js)
+        opensApp() {
+            void openFrontGateConsole();
+            return true;
         },
         menuEntry: {
             launchId: 'site-homepage',
             icon: 'fas fa-globe',
-            text: 'Site Homepage',
+            text: 'Front Gate',
             appMenu: false,
             startMenu: false,
             adminOnly: true,
             launch() {
-                openDsapInGrimoire(`dsap://${SITE_HOMEPAGE_DSAP_URL}/`);
+                void openFrontGateConsole();
             }
         }
     });
