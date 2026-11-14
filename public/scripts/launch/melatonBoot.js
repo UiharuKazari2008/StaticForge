@@ -667,6 +667,8 @@
                 // phone's session cookie; a refusal is "A disk read error occurred")
                 continuity: hybrid ? {
                     ready: () => mc.phoneReady(),
+                    // the phone window finishing its updates: "Waiting for I/O message..." (Yukimi, Nov 14)
+                    text: () => (typeof mc.phoneWaitText === 'function' ? mc.phoneWaitText() : null),
                     auth: async () => {
                         let r = await checkSession(env);
                         if (r === 'error') { await env.sleep(1000); r = await checkSession(env); }

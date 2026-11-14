@@ -444,12 +444,25 @@
         try { if (D && typeof D.coldBoot === 'function') { D.coldBoot(); return; } } catch (_) { /* fall back */ }
         location.replace('/launch');
     }
+    /** The BIOS line while it waits: the phone window finishing (its updates), or the link itself. */
+    api.phoneWaitText = () => (phoneWindowPending() && (!miniport.available() || miniport.up) ? 'Waiting for I/O message...' : null);
     /** The DeX window: true once the phone said it is ready (the BIOS waits on this). */
     let lastAsk = 0;
+    // a phone window that is there but not up yet (its BIOS, an update installing, a restart): the DeX
+    // window waits for it at its BIOS, Miniport or not. Booting on, it reached the desktop and the
+    // phone's update restart then cut it off (Yukimi, Nov 14).
+    const phoneWindowPending = () => isDw() && !phoneReadyNow && api.peers().includes('phone');
+    const askPhone = () => { if (Date.now() - lastAsk > 2000) { lastAsk = Date.now(); api.post({ type: 'phone-ready?' }); } };
     api.phoneReady = () => {
-        // with the Miniport the DeX window needs its link, not the phone window (#815)
+        // with the Miniport the DeX window needs its link (#815), and the phone window when one is there
         // a refused Miniport goes on to the BIOS's own session check (its disk read error / the PIN)
-        if (miniport.available()) { if (miniport.authFailed) return true; miniport.wake(); return miniport.up; }
+        if (miniport.available()) {
+            if (miniport.authFailed) return true;
+            miniport.wake();
+            if (!miniport.up) return false;
+            if (phoneWindowPending()) { askPhone(); return false; }
+            return true;
+        }
         // the BIOS asks every 150 ms; the phone page is asked at most every 2 s (it answers on changes anyway)
         if (!phoneReadyNow && isDw() && Date.now() - lastAsk > 2000) { lastAsk = Date.now(); api.post({ type: 'phone-ready?' }); }
         return phoneReadyNow;

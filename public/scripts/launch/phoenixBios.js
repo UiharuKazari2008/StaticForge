@@ -930,7 +930,10 @@
             for (;;) {
                 if (run && run.cancelled && run.cancelled()) return false;
                 if (await link.ready()) break;
-                show('Waiting for IOMMU to initialize...');
+                // the phone window is there but not up (its updates installing): its own line
+                let text = null;
+                try { text = typeof link.text === 'function' ? link.text() : null; } catch (_) { text = null; }
+                show(text || 'Waiting for IOMMU to initialize...');
                 await env.sleep(100);
             }
             bios.state = before;
