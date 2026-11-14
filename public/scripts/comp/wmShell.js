@@ -1362,8 +1362,36 @@
         const entry = Object.assign({}, spec, { lazyScript: spec.script });
         delete entry.script;
         delete entry.globals;
+        delete entry.withFeatures;
         registerApp(entry);
         (spec.globals || []).forEach((g) => lazyGlobal(spec.id, g));
+        (spec.withFeatures || []).forEach((f) => {
+            if (!lazyByFeature.has(f)) lazyByFeature.set(f, []);
+            lazyByFeature.get(f).push(spec.id);
+        });
+        wrapFeatureLoaderForLazy();
+    }
+    /**
+     * Programs that patch a desktop feature as it loads (wmSuiteKit.afterFeature, Remote Desktop's
+     * hook): when featureLoader loads that feature, the program's script loads too, before the caller
+     * gets control back, so its patch is in place (withFeatures).
+     */
+    const lazyByFeature = new Map();
+    let lazyLoaderWrapped = false;
+    function wrapFeatureLoaderForLazy() {
+        const fl = window.featureLoader;
+        if (lazyLoaderWrapped || !lazyByFeature.size) return;
+        if (!fl || typeof fl.loadFeature !== 'function') { setTimeout(wrapFeatureLoaderForLazy, 500); return; }
+        lazyLoaderWrapped = true;
+        const orig = fl.loadFeature;
+        fl.loadFeature = async function (name, ...rest) {
+            const r = await orig.call(this, name, ...rest);
+            for (const id of lazyByFeature.get(name) || []) {
+                const app = apps.get(id);
+                if (app && app.lazyScript) await loadLazyApp(id);
+            }
+            return r;
+        };
     }
     /**
      * A global the program's script sets for other code (Spellbook's showPresetManager, Spellcaster's
@@ -8981,7 +9009,12 @@
         { id: 'spellbook', title: 'Spellbook', icon: 'app-spellbook', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmSpellbook.js', globals: ['showPresetManager'] },
         { id: 'reference', title: 'Reference', icon: 'app-reference', inStart: 'programs', script: 'scripts/comp/wmReference.js', globals: ['showCacheManagerModal'] },
         { id: 'expanders', title: 'Expanders', icon: 'app-expanders', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmExpanders.js', globals: ['showTextReplacementManager'] },
-        { id: 'spellcaster', title: 'Spellcaster', icon: 'app-spellcaster', inStart: 'programs', script: 'scripts/comp/wmSpellcaster.js', globals: ['openSpellbookApplet', { name: 'wmSpellcaster', methods: ['openSpell'] }] }
+        { id: 'spellcaster', title: 'Spellcaster', icon: 'app-spellcaster', inStart: 'programs', script: 'scripts/comp/wmSpellcaster.js', globals: ['openSpellbookApplet', { name: 'wmSpellcaster', methods: ['openSpell'] }] },
+        // programs that patch a desktop feature as it loads: loaded with it (withFeatures)
+        { id: 'atelier', title: 'Atelier', icon: 'app-atelier', inStart: 'programs', script: 'scripts/comp/wmAtelier.js', globals: ['openNaxtApplet'], withFeatures: ['naxt'] },
+        { id: 'emotion', title: 'eMotion LIVE', icon: 'app-emotion', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmEmotion.js', globals: ['openEmotion', 'openDesktopEmotion'], withFeatures: ['emotion'] },
+        { id: 'phasewalker', title: 'Phasewalker', icon: 'app-phasewalker', inStart: 'programs', script: 'scripts/comp/wmPhasewalker.js', globals: ['openBracketGenerationApplet'], withFeatures: ['bracket_gen'] },
+        { id: 'characters', title: 'Characters', icon: 'app-characters', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmCharacters.js', withFeatures: ['character_db'] }
     ];
 
     window.wmShell = {
