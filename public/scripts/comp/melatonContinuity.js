@@ -425,7 +425,11 @@
     let miniportSocket = null;
     const miniport = {
         up: false,
-        available: () => !!(root.AndroidMiniport && typeof root.AndroidMiniport.postMessage === 'function'),
+        enabled: true,
+        // the app has it (its settings can be read and changed even while it is turned off)
+        present: () => !!(root.AndroidMiniport && typeof root.AndroidMiniport.postMessage === 'function'),
+        // the app has it and it is turned on (Settings > Network Cards): the pages use it
+        available: () => miniport.present() && miniport.enabled !== false,
         post: (msg) => { try { root.AndroidMiniport.postMessage(JSON.stringify(msg)); return true; } catch (_) { return false; } },
         lastWake: 0,
         // the BIOS asks every 80 ms: the app hears it at most every 2 s
@@ -442,6 +446,10 @@
             miniport.up = !!m.connected;
             // the server refused the Miniport (site gate or session): it waits for this app to sign in
             miniport.authFailed = m.auth === 'failed';
+            const wasOn = miniport.enabled;
+            miniport.enabled = m.enabled !== false;
+            // turned off or on: this page's connection moves to its own socket / back to the Miniport
+            if (wasOn !== miniport.enabled) setTimeout(() => { const c = root.wsClient; if (c && inApp() && typeof c.manualReconnect === 'function') c.manualReconnect(); }, 0);
             emit('miniport', { connected: miniport.up }, 'app');
             if (miniport.up && !was) followMiniport();
         } else if (m.op === 'opened') {
@@ -525,9 +533,9 @@
     /** The Miniport's settings: { config: {idleMinutes, scope, datasets}, stats } (null before it said). */
     api.miniportConfig = () => miniportConfig;
     /** Ask the Miniport for its settings again (the answer comes as the 'miniport-config' event). */
-    api.requestMiniportConfig = () => miniport.available() && miniport.post({ op: 'config?' });
+    api.requestMiniportConfig = () => miniport.present() && miniport.post({ op: 'config?' });
     /** Change the Miniport's settings: { idleMinutes, scope: 'current'|'all', datasets: { id: { cache, update } } }. */
-    api.setMiniportConfig = (set) => miniport.available() && miniport.post({ op: 'config', set });
+    api.setMiniportConfig = (set) => miniport.present() && miniport.post({ op: 'config', set });
     /** websocket.js: flag this request for the Miniport's cache. */
     api.cacheFlag = (type) => {
         const p = CACHE_POLICY[type];
@@ -561,7 +569,7 @@
 
     /** Cold boot / Restart from the phone: the Miniport ("the driver") clears and starts fresh too. */
     api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
-    api.miniport = () => ({ available: miniport.available(), up: miniport.up, authFailed: !!miniport.authFailed, transport: lastTransport });
+    api.miniport = () => ({ present: miniport.present(), available: miniport.available(), enabled: miniport.enabled !== false, up: miniport.up, authFailed: !!miniport.authFailed, transport: lastTransport });
 
     /** A WebSocket stand-in over the Miniport: what websocket.js uses instead of new WebSocket(). */
     class MiniportSocket {
@@ -710,7 +718,7 @@
     api.checkPower = checkPower;
 
     // the Miniport's messages, and its state now
-    if (miniport.available()) {
+    if (miniport.present()) {
         root.AndroidMiniport.onmessage = (e) => fromMiniport(e && e.data);
         miniport.post({ op: 'hello' });
         miniport.post({ op: 'policy', policy: CACHE_POLICY });

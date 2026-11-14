@@ -223,6 +223,14 @@
     });
 
     // ---------------------------------------------------------------- Network Cards
+    // the app's Melaton Café Miniport adapter (#815): listed whenever the app has it, on or off
+    const CAFE_ADAPTER = 'WAN Miniport (Melaton Caf\u00e9)';
+    function adapters(i, mp) {
+        const list = [];
+        if (mp && mp.present) list.push({ key: 'cafe', label: CAFE_ADAPTER, selected: !!i.viaMiniport });
+        if (!i.viaMiniport) list.push({ key: 'vpn', label: miniport(i), selected: true });
+        return list;
+    }
     // the Miniport's Idle timeout choices (minutes; 0 = never disconnect)
     const IDLE_CHOICES = [[1, '1 minute'], [5, '5 minutes'], [10, '10 minutes'], [30, '30 minutes'], [60, '1 hour'], [240, '4 hours'], [0, 'Never']];
 
@@ -237,20 +245,26 @@
             el.classList.add('wm-setc');
             d.rerender = api.rerender;
             const i = info();
-            if (d.adapter && i.viaMiniport) {
+            const mcx = root.melatonContinuity;
+            const mp = mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null;
+            if (d.adapter === 'cafe') {
                 // the Melaton Café Miniport (#815): its Idle timeout ("VPN timeout"), how long the link stays
                 // up once no program uses it; ActiveSync's own link stays up regardless
-                setHeader(el, miniport(i));
-                const mcx = root.melatonContinuity;
+                setHeader(el, CAFE_ADAPTER);
                 const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
                 if (d.idle == null) d.idle = cfg && cfg.config && cfg.config.idleMinutes != null ? Number(cfg.config.idleMinutes) : 10;
+                if (d.cafeOn == null) d.cafeOn = !(mp && mp.enabled === false);
                 const cur = IDLE_CHOICES.find(([v]) => v === d.idle) || [d.idle, `${d.idle} minutes`];
-                el.innerHTML = `${ui.sub('Idle timeout')}
+                el.innerHTML = `${ui.check('cafe-on', 'Use Melaton Caf\u00e9 Miniport', d.cafeOn, 'data-k="cafe-on"')}
+                    <p>Every window of Dreamscape on this phone reaches the server through it, keeps its data in the Caf\u00e9 Cache and stays connected while a window restarts.</p>
+                    ${ui.sub('Idle timeout')}
                     <p>Disconnect the Melaton Caf\u00e9 Miniport when no program has used it for:</p>
                     ${ui.comboHtml('idle', cur[1])}
                     ${ui.note('ActiveSync stays connected and wakes the Miniport when a program needs it. Cached data (ActiveSync > Menu > Caf\u00e9 Cache) is kept while it is disconnected.')}
                     ${ui.sub(`${i.connectionName} Status`)}<div data-f="facts"></div>`;
                 ui.bindCombo(el.querySelector('[data-act="idle"]'), IDLE_CHOICES, d.idle, (v) => { d.idle = v; });
+                const on = el.querySelector('input[data-k="cafe-on"]');
+                if (on) on.addEventListener('change', () => { d.cafeOn = on.checked; });
                 const facts = el.querySelector('[data-f="facts"]');
                 const paint = () => { const h = ui.facts(connectionFacts()); if (facts.innerHTML !== h) facts.innerHTML = h; };
                 paint();
@@ -274,16 +288,22 @@
             el.innerHTML = `<p>My network card connects to:</p>
                 ${ui.comboHtml('to', i.domain, true)}
                 <p class="wm-setc-gap-top">Tap an adapter to modify settings:</p>
-                ${ui.listbox([{ key: 'vpn', label: miniport(i), selected: true }], { maxHeight: 238 })}`;
+                ${ui.listbox(adapters(i, mp), { maxHeight: 238 })}`;
             el.querySelector('.wm-listbox').classList.add('wm-setc-adapters');
-            ui.bindListbox(el.querySelector('.wm-listbox'), () => { d.adapter = true; api.rerender(); });
+            ui.bindListbox(el.querySelector('.wm-listbox'), (key) => { d.adapter = key || 'vpn'; api.rerender(); });
         },
         commit(d) {
             // ok on the adapter's page goes back to the list, as on the device
             if (d.adapter) {
                 const mcx = root.melatonContinuity;
-                if (d.idle != null && mcx && typeof mcx.setMiniportConfig === 'function' && info().viaMiniport) mcx.setMiniportConfig({ idleMinutes: d.idle });
+                if (d.adapter === 'cafe' && mcx && typeof mcx.setMiniportConfig === 'function') {
+                    const set = {};
+                    if (d.idle != null) set.idleMinutes = d.idle;
+                    if (d.cafeOn != null) set.enabled = d.cafeOn;
+                    mcx.setMiniportConfig(set);
+                }
                 d.idle = null;
+                d.cafeOn = null;
                 d.adapter = false;
                 if (d.rerender) d.rerender();
                 return false;
