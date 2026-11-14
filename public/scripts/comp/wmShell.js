@@ -1336,6 +1336,49 @@
         apps.set(app.id, Object.assign({ inStart: false, icon: 'app-programs', title: app.id }, app));
     }
 
+    // ---- programs loaded on demand (#817 slice 2): the boot registers only what the Start menu and
+    // Programs need to show them (title, icon, folder); the program's script loads when it first
+    // opens, its registerApp replaces the entry, and the open goes on. Nothing else may call into
+    // such a program before then (see LAZY_APPS at the end of this file).
+    const lazyLoads = new Map();
+    function registerLazyApp(spec) {
+        if (!spec || !spec.id || !spec.script || apps.has(spec.id)) return;
+        const entry = Object.assign({}, spec, { lazyScript: spec.script });
+        delete entry.script;
+        registerApp(entry);
+    }
+    function loadScriptOnce(src) {
+        if (window.featureLoader && typeof window.featureLoader._loadScript === 'function') return window.featureLoader._loadScript(src);
+        return new Promise((resolve, reject) => {
+            const el = document.createElement('script');
+            el.src = src;
+            el.async = false;
+            el.onload = () => resolve();
+            el.onerror = () => reject(new Error('Failed to load ' + src));
+            document.body.appendChild(el);
+        });
+    }
+    /** Loads a lazy program's script once; true when its real registration replaced the entry. */
+    function loadLazyApp(id) {
+        const app = apps.get(id);
+        if (!app || !app.lazyScript) return Promise.resolve(!!app);
+        if (!lazyLoads.has(id)) {
+            const run = loadScriptOnce(app.lazyScript)
+                .then(() => { const now = apps.get(id); return !!(now && !now.lazyScript); })
+                .catch((err) => { console.warn('[wmShell] load', id, err); return false; })
+                .then((ok) => { if (!ok) lazyLoads.delete(id); return ok; });
+            lazyLoads.set(id, run);
+        }
+        return lazyLoads.get(id);
+    }
+    function openLazy(id, opts) {
+        void busy(loadLazyApp(id)).then((ok) => {
+            if (ok) { open(id, opts); return; }
+            // the script did not come (no connection and not cached yet): the program stays closed
+            void messageBox({ title: apps.get(id) ? apps.get(id).title : id, icon: 'error', text: 'The program could not be opened. Try again when the connection is back.' });
+        });
+    }
+
     function pageFor(app) {
         if (app.page) return app.page;
         const page = document.createElement('section');
@@ -1628,6 +1671,8 @@
     function activate(id) {
         const app = apps.get(id);
         if (!app) return;
+        // a lazy program reached without open() (the back history after a restart): load it, then show it
+        if (app.lazyScript) { void busy(loadLazyApp(id)).then((ok) => { if (ok && current !== id) activate(id); }); return; }
         stageFlush();
         const before = stageSnapshot();
         const firstMount = !app.page;
@@ -1693,6 +1738,8 @@
             try { stand(); } catch (err) { console.warn('[wmShell] default program', id, err); }
             return;
         }
+        // a program loaded on demand (#817): its script first, then this open again
+        if (apps.get(id).lazyScript) { openLazy(id, opts); return; }
         // a program that is not a page of the shell (registerApp({ launch })): one of the phone's own
         // Android programs (wmAndroidApps.js). It starts, and the shell stays where it is.
         const starter = apps.get(id);
@@ -8710,11 +8757,33 @@
             if (asx && typeof asx.on === 'function') { asx.on('received', () => refreshStatus()); refreshStatus(); return; }
             if (tries < 60) setTimeout(() => wireReceived(tries + 1), 1000);
         })(0);
+        // programs loaded on demand (#817): their Start menu entries, before anything lists programs
+        LAZY_APPS.forEach(registerLazyApp);
         document.dispatchEvent(new CustomEvent('wmShellReady'));
     }
 
+    /**
+     * Programs whose scripts load when first opened (#817 slice 2). Each entry carries only what the
+     * Start menu and Programs show (title, startLabel, icon, art65, inStart, programsFolder); the
+     * script's own registerApp replaces it. Only programs nothing else calls into at boot belong here
+     * (no window.* used by other files, no Today items, applets or handoffs registered at load).
+     * Their scripts are out of app.html; keep a new program's fields in step with its registerApp.
+     */
+    const LAZY_APPS = [
+        { id: 'calculator', title: 'Calculator', icon: 'app-calculator', inStart: 'programs', script: 'scripts/comp/wmCalculator.js' },
+        { id: 'solitaire', title: 'Solitaire', icon: 'app-solitaire', art65: 'solitaire', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmSolitaire.js' },
+        { id: 'minesweeper', title: 'Minesweeper', icon: 'app-minesweeper', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmMinesweeper.js' },
+        { id: 'blockdrop', title: 'Block Drop', icon: 'app-blockdrop', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmBlockDrop.js' },
+        { id: 'brickbreaker', title: 'Brick Breaker', icon: 'app-brickbreaker', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmBrickBreaker.js' },
+        { id: 'inkball', title: 'InkBall', icon: 'app-inkball', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmInkBall.js' },
+        { id: 'gems', title: 'Gems', icon: 'app-gems', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmGems.js' },
+        { id: 'paypass-mobile', title: 'PayPass', startLabel: 'PayPass Operator', icon: 'app-paypass', inStart: 'programs', script: 'scripts/comp/wmPayPass.js' }
+    ];
+
     window.wmShell = {
         registerApp,
+        registerLazyApp,
+        loadLazyApp,
         /** Take a registered program out again (an Android program that was hidden or uninstalled). */
         removeApp: (id) => { const a = apps.get(id); if (a && typeof a.launch === 'function') apps.delete(id); },
         open,
