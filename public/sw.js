@@ -893,8 +893,18 @@ async function enforceImageCachePolicyNow({ reconcile }) {
   const lockedPreviewSet = new Set(metadata.rules.lockedPreviewUrls || []);
   const pinnedUrl = (url) => favoriteSet.has(url) || lockedPreviewSet.has(url);
 
+  // Chromium refuses to list a cache this large in one call ("Operation too large": the Fold's
+  // 20000 previews, ~1.2 GB). Maintenance then failed before recording its run, so it ran in
+  // full on every boot. Without the listing the metadata-only pass below still evicts.
+  let keys = null;
   if (reconcile) {
-    const keys = await cache.keys();
+    try {
+      keys = await cache.keys();
+    } catch (error) {
+      perfLog(`imagePolicy reconcile skipped: ${error && error.message}`);
+    }
+  }
+  if (keys) {
     const keySet = new Set();
     for (const key of keys) {
       const url = getCanonicalUrl(key.url);
