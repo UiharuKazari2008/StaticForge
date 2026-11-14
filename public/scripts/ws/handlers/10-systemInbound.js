@@ -11,6 +11,11 @@ registerWsInboundHandler({
         const cacheOptions = {
             runtimeAssetsRecompiled: message.data && message.data.runtimeAssetsRecompiled === true
         };
+        // sw.js itself is only re-read on a navigation; a page that stays open (the phone) kept the
+        // old worker after every notify until it was reloaded (Nov 14)
+        if (window.serviceWorkerManager && typeof window.serviceWorkerManager.recheckWorkerScript === 'function') {
+            window.serviceWorkerManager.recheckWorkerScript();
+        }
 
         // Queue until boot gate completes — public/scripts/comp/serviceWorkerManager.js
         if (window.serviceWorkerManager && !window.serviceWorkerManager.isBootComplete()) {

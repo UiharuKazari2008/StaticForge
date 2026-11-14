@@ -3692,6 +3692,20 @@ class ServiceWorkerManager {
         }
     }
     
+    /**
+     * Ask the browser to compare sw.js with the server's (a byte check; an unchanged worker costs
+     * one request). The worker installs and claims on its own (skipWaiting, cheap activate).
+     * Continuity (#798): one registration for both windows; the phone asks.
+     */
+    recheckWorkerScript() {
+        if (!this.swRegistration || this._isContinuityDexWindow()) return;
+        clearTimeout(this._workerRecheckTimer);
+        // after the notify's own manifest work has started; several notifies in a row ask once
+        this._workerRecheckTimer = setTimeout(() => {
+            this.swRegistration.update().catch(() => { /* next notify or navigation */ });
+        }, 3000);
+    }
+
     // Public method to manually trigger update check
     async checkForUpdates() {
         if (this.swRegistration) {
