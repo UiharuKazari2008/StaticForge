@@ -173,8 +173,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-title {
     align-self: stretch;
 }
 
-/* status icons: 16 px cells (shellres.192.dll 32 px icons) at y 5 on a 21 px pitch; the battery
- * sits one more 5 px gap to the right; the corner cell (X / ok) is 16 px, 5.5 px after the
+/* status icons: 16 px cells (shellres.192.dll 32 px icons) at y 5 on a 21 px pitch, the battery
+ * too (Yukimi, Nov 13: the device's extra 5 px before it read as a hole; #811); the corner cell (X / ok) is 16 px, 5.5 px after the
  * battery and 0.5 px from the edge, and keeps its place when an app has none (device, 2x: cells
  * at x 268 / 310 / 352, battery 404, corner 447, y 10) */
 html.ui-mobile[data-wm-version="6.5"] .wm-status,
@@ -191,15 +191,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status {
 html.ui-mobile[data-wm-version="6.5"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status,
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
     padding-right: calc(22 * var(--wm-px));
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-role="battery"] {
-    margin-left: calc(5 * var(--wm-px));
-}
-
-/* a full title bar gives up the battery's extra gap first (#811, wmShell fitStatusNow) */
-html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.wm-status-tight .wm-status-icon[data-role="battery"] {
-    margin-left: 0;
 }
 
 /* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UW, 5G and 5G+ (data types WM 6.5

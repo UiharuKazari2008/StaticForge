@@ -2932,12 +2932,10 @@
             return right <= box.right + 1;
         };
         ['roaming', 'volume', 'battery', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
-        bar.classList.remove('wm-status-tight');
         statusFolded = [];
         // WM 6.1's notification area (#811, Yukimi Nov 13). Room for a few icons is kept left of
         // the device icons, so the title ends at the same place whatever is pending. When the bar
-        // runs short, what is not needed steps aside first: the kept room, 6.5's extra gap before
-        // the battery, the volume icon, the battery while it charges. Never: data, signal / roaming,
+        // runs short, what is not needed steps aside first: the kept room, the volume icon, the battery while it charges. Never: data, signal / roaming,
         // Continuity, the battery on battery power. Then the app icons fold into the one group
         // icon (its tap opens the tray of them): the ongoing and the newest stay out of it, and
         // more stay out while the icons keep to the bar's right half (the 50 % mark)
@@ -2986,7 +2984,6 @@
         relayout();
         if (ok()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
-        if (WM65 && step(() => bar.classList.add('wm-status-tight'))) return;
         if (!el('volume').hidden && step(() => el('volume').classList.add('wm-shed'))) return;
         const bat = el('battery');
         if (!bat.hidden && bat.dataset.icon === 'battery-charging' && step(() => bat.classList.add('wm-shed'))) return;
