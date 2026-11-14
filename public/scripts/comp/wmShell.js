@@ -4735,7 +4735,9 @@
                 const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || c.level === 0;
                 const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
                 const lv = noService || !Number.isFinite(c.level) ? null : Math.max(0, Math.min(4, Math.round(c.level)));
-                const right = `${!noService && dev.type ? `<b>${pe(typeName(dev.type))}</b>` : ''}${signalBars(lv)}`;
+                // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
+                const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
+                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv)}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
