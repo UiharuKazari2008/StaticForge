@@ -1345,7 +1345,33 @@
         if (!spec || !spec.id || !spec.script || apps.has(spec.id)) return;
         const entry = Object.assign({}, spec, { lazyScript: spec.script });
         delete entry.script;
+        delete entry.globals;
         registerApp(entry);
+        (spec.globals || []).forEach((g) => lazyGlobal(spec.id, g));
+    }
+    /**
+     * A global the program's script sets for other code (Spellbook's showPresetManager, Spellcaster's
+     * wmSpellcaster.openSpell ...): until the script loads, a stand-in that loads it and then calls
+     * the real one ('name' for a function, { name, methods } for an object). The script replaces it.
+     */
+    function lazyGlobal(id, g) {
+        const name = typeof g === 'string' ? g : g && g.name;
+        if (!name) return;
+        const methods = typeof g === 'object' && Array.isArray(g.methods) ? g.methods : null;
+        let stub = null;
+        const call = (method, args) => loadLazyApp(id).then((ok) => {
+            const real = window[name];
+            if (!ok || !real || real === stub) { open(id); return undefined; }
+            const fn = method ? real[method] : real;
+            return typeof fn === 'function' ? fn.apply(method ? real : window, args) : undefined;
+        });
+        if (methods) {
+            stub = {};
+            methods.forEach((m) => { stub[m] = (...args) => call(m, args); });
+        } else {
+            stub = (...args) => call(null, args);
+        }
+        window[name] = stub;
     }
     function loadScriptOnce(src) {
         if (window.featureLoader && typeof window.featureLoader._loadScript === 'function') return window.featureLoader._loadScript(src);
@@ -8777,7 +8803,13 @@
         { id: 'brickbreaker', title: 'Brick Breaker', icon: 'app-brickbreaker', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmBrickBreaker.js' },
         { id: 'inkball', title: 'InkBall', icon: 'app-inkball', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmInkBall.js' },
         { id: 'gems', title: 'Gems', icon: 'app-gems', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmGems.js' },
-        { id: 'paypass-mobile', title: 'PayPass', startLabel: 'PayPass Operator', icon: 'app-paypass', inStart: 'programs', script: 'scripts/comp/wmPayPass.js' }
+        { id: 'paypass-mobile', title: 'PayPass', startLabel: 'PayPass Operator', icon: 'app-paypass', inStart: 'programs', script: 'scripts/comp/wmPayPass.js' },
+        // Dreamscape suite programs that stand in for a desktop window through a global (globals: the
+        // stand-ins until their script loads)
+        { id: 'spellbook', title: 'Spellbook', icon: 'app-spellbook', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmSpellbook.js', globals: ['showPresetManager'] },
+        { id: 'reference', title: 'Reference', icon: 'app-reference', inStart: 'programs', script: 'scripts/comp/wmReference.js', globals: ['showCacheManagerModal'] },
+        { id: 'expanders', title: 'Expanders', icon: 'app-expanders', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmExpanders.js', globals: ['showTextReplacementManager'] },
+        { id: 'spellcaster', title: 'Spellcaster', icon: 'app-spellcaster', inStart: 'programs', script: 'scripts/comp/wmSpellcaster.js', globals: ['openSpellbookApplet', { name: 'wmSpellcaster', methods: ['openSpell'] }] }
     ];
 
     window.wmShell = {
