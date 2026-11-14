@@ -6856,14 +6856,23 @@
                     refreshStatus();
                 });
                 window.addEventListener('meletonaccountschange', () => today.refresh());
+                const back = () => { if (today.stale && current === 'today') today.refresh(); };
+                document.addEventListener('visibilitychange', back);
+                window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) back(); });
             },
             show() {
                 if (mailUnread == null) loadMail();
+                this.stale = false;
                 this.refresh();
             },
             refresh() {
                 const page = this.page;
                 if (!page) return;
+                // nothing draws Today while it is not on screen (another app in front, the page hidden,
+                // the screen off): it is marked stale and drawn in full when it shows again (Yukimi,
+                // Nov 14: Traffic's minute tick laid it out behind the Pictures app)
+                if (current !== 'today' || document.hidden || root.dataset.screenOff !== undefined) { this.stale = true; return; }
+                this.stale = false;
                 applyTodayBackground();
                 const now = new Date();
                 setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
