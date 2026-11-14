@@ -759,10 +759,11 @@
 
     wmSettings.registerPage({
         id: 'remote',
-        tab: 'connections',
+        // Personal: how agents and prints reach this phone (Yukimi); set-usb went to Continuity
+        tab: 'personal',
         label: 'Remote Access',
-        // Remote Desktop Mobile's icon (tsclient); set-usb went to Continuity
-        icon: 'app-remote-desktop-mobile-lg',
+        // Vista's Remote icon (remotepg.dll 0, from the Vista VM), as the desktop's Remote Access Settings
+        icon: 'set-remote-access',
         tabs: [['general', 'General'], ['generation', 'Generation'], ['openwith', 'Open With']],
         available: () => typeof root.setAgentPriorityClient === 'function' && typeof root.isAgentPriorityClient === 'function',
         init() {

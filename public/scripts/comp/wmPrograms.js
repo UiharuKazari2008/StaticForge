@@ -1718,7 +1718,7 @@
             }
         },
         {
-            id: 'remote', tab: 'connections', label: 'Remote Access', icon: 'set-usb',
+            id: 'remote', tab: 'personal', label: 'Remote Access', icon: 'set-remote-access',
             tabs: [['general', 'General']],
             available: () => typeof window.setAgentPriorityClient === 'function' && typeof window.isAgentPriorityClient === 'function',
             init: () => ({ on: !!window.isAgentPriorityClient() }),

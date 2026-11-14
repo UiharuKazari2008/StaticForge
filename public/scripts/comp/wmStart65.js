@@ -193,7 +193,8 @@
         about: 'about', backlight: 'backlight', bluetooth: 'bluetooth', buttons: 'buttons', certificates: 'certificates', clock: 'clock',
         connections: 'connections', contrast: 'contrast', encryption: 'encryption', gps: 'gps', input: 'input', lock: 'lock', managed: 'managed',
         memory: 'memory', owner: 'owner', power: 'power', regional: 'regional', 'remove-programs': 'removeprog', screen: 'screen',
-        sounds: 'sounds', today: 'todayset', remote: 'pccon', wireless: 'wirelessmgr', domain: 'denroll', 'network-cards': 'wifi',
+        // continuity: the ROM's USB to PC (pccon); Remote Access keeps its Vista icon (no 6.5 art)
+        sounds: 'sounds', today: 'todayset', continuity: 'pccon', wireless: 'wirelessmgr', domain: 'denroll', 'network-cards': 'wifi',
         'error-reporting': 'watson', 'link-taskmgr': 'taskmgr', update: 'update'
     };
     // Start_Icon_SettingsS: the folder with the OS logo (the Melaton flower in place of the flag)
