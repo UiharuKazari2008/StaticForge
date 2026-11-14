@@ -171,8 +171,8 @@
     const dur = (ms) => { const m = Math.round(Number(ms) / 60000); return !Number.isFinite(m) || m <= 0 ? '' : m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m} min`; };
 
     /*
-     * Shizuku (#829): the app reads dumpsys battery / thermalservice through Shizuku when it is running
-     * and allowed (AndroidHardware.getPrivileged, refreshed at most every 30 s by requestPrivileged).
+     * Shizuku or ADB (#829): the app reads dumpsys battery / thermalservice through the elevated path its
+     * bridge settings prefer (Shizuku or its local ADB) when that is running and allowed (AndroidHardware.getPrivileged, refreshed at most every 30 s by requestPrivileged).
      */
     let privAsked = 0;
     function privileged() {
@@ -182,7 +182,7 @@
         return bridgeJson('getPrivileged');
     }
     const THERMAL_NAMES = { AP: 'Application processor', CPU: 'Processor', GPU: 'Graphics', BAT: 'Battery', MAINBATRAW: 'Battery (raw)', SUBBAT: 'Second battery', SKIN: 'Device surface',
-        USB: 'USB port', PA: 'Power amplifier', NPU: 'Neural processor', MODEM: 'Modem' };
+        USB: 'USB port', PA: 'Power amplifier', NPU: 'Neural processor', MODEM: 'Modem', CP: 'Modem' };
     const dateText = (d) => { const t = d ? new Date(`${d}T00:00:00`) : null; return t && Number.isFinite(t.getTime()) ? t.toLocaleDateString() : ''; };
 
     /** [[label, value]] for a live source; sensors are started on first read (stopLive ends them). */
@@ -212,7 +212,7 @@
                 ['Battery health', pb.healthPct != null ? `${Math.round(pb.healthPct)}% of original capacity` : ''],
                 ['Charge cycles', b.cycleCount != null ? String(b.cycleCount) : pb.cycleCount != null ? `${pb.cycleCount}${pb.usagePct != null ? ` (${Number(pb.usagePct).toLocaleString()}% charged in total)` : ''}` : ''],
                 ['First used', dateText(pb.firstUseDate)], ['Manufactured', dateText(pb.manufactureDate)], ['Battery saver', b.saver ? 'On' : 'Off'],
-                ['Extra details', pv ? '' : (root.AndroidHardware && typeof root.AndroidHardware.getPrivilegedState === 'function' && root.AndroidHardware.getPrivilegedState() !== 'ready' ? 'Turn on Shizuku for battery health and cycles' : '')]].filter((r) => r[1]);
+                ['Extra details', pv ? '' : (root.AndroidHardware && typeof root.AndroidHardware.getPrivilegedState === 'function' && root.AndroidHardware.getPrivilegedState() !== 'ready' ? 'Allow Shizuku or ADB in the Android Bridge settings for battery health and cycles' : '')]].filter((r) => r[1]);
         }
         if (live.kind === 'cpu') {
             const f = bridgeJson('getCpuFrequencies');
@@ -312,7 +312,7 @@
         if (bt.present) add('Bluetooth Radios', 'bluetooth', [
             { name: bt.le ? 'Generic Bluetooth Radio (Bluetooth Low Energy)' : 'Generic Bluetooth Radio', info: { manufacturer: maker || '(Generic Bluetooth Radio)', location: 'Internal radio',
                 props: [['Bluetooth version', bt.version ? `${bt.version}${bt.versionSource === 'features' ? ' or later (from the radio\'s features)' : bt.versionSource === 'spec' && (soc.name || soc.model) ? ` (${soc.name || soc.model} specification)` : ''}` : ''],
-                ['Bluetooth chip', bt.chip && typeof bt.chip === 'object' ? (bt.chip.name || bt.chip.raw) : bt.chip], ['Firmware', bt.chip && typeof bt.chip === 'object' && bt.chip.raw && bt.chip.raw !== bt.chip.name ? bt.chip.raw : ''], ['Low Energy', bt.le == null ? '' : bt.le ? 'Supported' : 'Not supported']].concat(BT_FEATURES.filter(([k]) => btf[k] != null).map(([k, l]) => [l, btf[k] ? 'Supported' : 'Not supported'])) } },
+                ['Bluetooth chip', bt.chip && typeof bt.chip === 'object' ? bt.chip.name : bt.chip], ['Bluetooth firmware', bt.chip && typeof bt.chip === 'object' && bt.chip.raw !== bt.chip.name ? bt.chip.raw : ''], ['Low Energy', bt.le == null ? '' : bt.le ? 'Supported' : 'Not supported']].concat(BT_FEATURES.filter(([k]) => btf[k] != null).map(([k, l]) => [l, btf[k] ? 'Supported' : 'Not supported'])) } },
             'Microsoft Bluetooth Enumerator']);
         add('Computer', 'computer', [{ name: ARCH_PC[archOf(hw)] || 'ACPI ARM64-based PC', info: {
             manufacturer: maker, location: 'on System board',
