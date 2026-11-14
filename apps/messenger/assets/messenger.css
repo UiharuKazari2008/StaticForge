@@ -672,6 +672,11 @@
     background: linear-gradient(#cdf5c0, #6bd352 45%, #2fb51d 55%, #4ec93a);
 }
 
+/* "... is typing a message": only while someone types (kept open it left an empty 18 px band under the thread) */
+#melatonMessengerModal .mm-typing:not(.is-on) {
+    display: none;
+}
+
 #melatonMessengerModal .mm-typing {
     flex: none;
     height: 18px;
