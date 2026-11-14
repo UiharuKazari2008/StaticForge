@@ -211,11 +211,15 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
     align-items: center;
     position: relative;
     z-index: 3;
+    /* how far Start and the X / ok stand in from the screen's sides (Yukimi, Nov 13: the device's
+       2-3 px read as touching the edge on a phone's rounded glass); in units, so it scales */
+    --wm-bar-edge: calc(6 * var(--wm-px));
 }
 
 .wm-start {
     flex: 0 0 auto;
-    width: calc(22 * var(--wm-px));
+    /* the picture centred 2 units in from its old cell's left, now --wm-bar-edge in (img margin) */
+    width: calc(20 * var(--wm-px) + var(--wm-bar-edge));
     height: 100%;
     display: flex;
     align-items: center;
@@ -226,6 +230,7 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
 .wm-start img {
     width: calc(18 * var(--wm-px));
     height: calc(18 * var(--wm-px));
+    margin-left: calc(var(--wm-bar-edge) - 2 * var(--wm-px));
     pointer-events: none;
 }
 
@@ -233,7 +238,7 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
  * flag (shellres icon 4609, 41 x 36 at 2x) at x 2, y 4 of a 25 px cell, then a 1 px rule that
  * fades from the title colour at its ends to the light green (#84C35A) in the middle, y 3.5..23 */
 .wm-start.is-flag {
-    width: calc(25 * var(--wm-px));
+    width: calc(23 * var(--wm-px) + var(--wm-bar-edge));
     align-items: flex-start;
     justify-content: flex-start;
     border-right: 0;
@@ -243,7 +248,7 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
 .wm-start.is-flag img {
     width: calc(21 * var(--wm-px));
     height: calc(18 * var(--wm-px));
-    margin: calc(4 * var(--wm-px)) 0 0 calc(2 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0 0 var(--wm-bar-edge);
 }
 
 .wm-start.is-flag::after {
@@ -287,7 +292,7 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
  * is at x 50. The emblem is square: 19 units (between the flag's height and width) on the flag's
  * centre (12.5, 13 units). 6.5 keeps the white emblem and its own cell. */
 .wm-start.is-melaton {
-    width: calc(25 * var(--wm-px));
+    width: calc(22 * var(--wm-px) + var(--wm-bar-edge));
     align-items: flex-start;
     justify-content: flex-start;
     border-right: 0;
@@ -297,7 +302,7 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
 .wm-start.is-melaton img {
     width: calc(19 * var(--wm-px));
     height: calc(19 * var(--wm-px));
-    margin: calc(3.5 * var(--wm-px)) 0 0 calc(3 * var(--wm-px));
+    margin: calc(3.5 * var(--wm-px)) 0 0 var(--wm-bar-edge);
 }
 
 .wm-start.is-melaton::after {
@@ -332,7 +337,7 @@ html.ui-mobile[data-wm-sip][data-wm-sip-overlay] #wmShell > .wm-content {
 .wm-titlebar.is-start-open > .wm-start:not(.is-flag):has(> img[src="/static_images/melaton/melaton-white-256.png"])::before {
     content: '';
     position: absolute;
-    left: 50%;
+    left: calc(50% + var(--wm-bar-edge) / 2 - 1 * var(--wm-px));
     top: 50%;
     width: calc(18 * var(--wm-px));
     height: calc(18 * var(--wm-px));
@@ -608,11 +613,11 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="right"]::before { rig
 }
 
 .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
-    padding-right: calc(28 * var(--wm-px));
+    padding-right: calc(25 * var(--wm-px) + var(--wm-bar-edge));
 }
 
 html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
-    padding-right: calc(31 * var(--wm-px));
+    padding-right: calc(28 * var(--wm-px) + var(--wm-bar-edge));
 }
 
 .wm-status-icon {
@@ -835,6 +840,10 @@ html.wm-art-4x .wm-title-action[data-kind="ok"] { --wm-title-glyph: var(--wm-art
 
 .wm-title-action:active::after {
     background: var(--wm-button-pressed-glyph);
+}
+
+.wm-titlebar > .wm-title-action {
+    margin-right: round(var(--wm-bar-edge), var(--wm-dpx-step));
 }
 
 .wm-title-action[hidden] {

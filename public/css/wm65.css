@@ -101,10 +101,11 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] .wm-softkeys {
     background: var(--wm65-bar-glass);
 }
 
-/* Start cell: the picture in a 16 px cell at x 3, y 5 (the device's flag icon cell), no rule */
+/* Start cell: the picture in a 16 px cell at y 5 (the device's flag icon cell; x 3 there, --wm-bar-edge
+ * here so it clears a phone's rounded glass), no rule */
 html.ui-mobile[data-wm-version="6.5"] .wm-start,
 html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag {
-    width: calc(22 * var(--wm-px));
+    width: calc(19 * var(--wm-px) + var(--wm-bar-edge));
     align-items: flex-start;
     justify-content: flex-start;
     border-right: 0;
@@ -115,7 +116,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-start img,
 html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag img {
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
-    margin: calc(5 * var(--wm-px)) 0 0 calc(3 * var(--wm-px));
+    margin: calc(5 * var(--wm-px)) 0 0 var(--wm-bar-edge);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag::after {
@@ -126,7 +127,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-start.is-flag::after {
 html.ui-mobile[data-wm-version="6.5"] .wm-start::before {
     content: '';
     position: absolute;
-    left: calc(-19 * var(--wm-px));
+    left: calc(var(--wm-bar-edge) - 22 * var(--wm-px));
     top: 0;
     width: calc(60 * var(--wm-px));
     height: calc(26 * var(--wm-px));
@@ -154,7 +155,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-start:not
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.is-start-open > .wm-start:not(.is-flag):has(> img[src="/static_images/melaton/melaton-white-256.png"])::before {
-    left: calc(-19 * var(--wm-px));
+    left: calc(var(--wm-bar-edge) - 22 * var(--wm-px));
     top: 0;
     width: calc(60 * var(--wm-px));
     height: calc(26 * var(--wm-px));
@@ -173,9 +174,21 @@ html.ui-mobile[data-wm-version="6.5"] .wm-title {
     align-self: stretch;
 }
 
+/* the capitals centred on the Start icon's row (device: caps y 9 .. 16.5 around the icons' y 13),
+ * whatever font the phone draws Tahoma with: the line trimmed to cap height and centred in the
+ * bar's content box, so the extended bar (#777, padding shared above and below) keeps them level.
+ * The 23.5 line-height stays as the fallback; Android's Tahoma stand-in sat 1.8 units high on it. */
+@supports (text-box: trim-both cap alphabetic) {
+    html.ui-mobile[data-wm-version="6.5"] .wm-title {
+        line-height: normal;
+        text-box: trim-both cap alphabetic;
+        align-content: center;
+    }
+}
+
 /* status icons: 16 px cells (shellres.192.dll 32 px icons) at y 5 on a 21 px pitch, the battery
  * too (Yukimi, Nov 13: the device's extra 5 px before it read as a hole; #811); the corner cell (X / ok) is 16 px, 5.5 px after the
- * battery and 0.5 px from the edge, and keeps its place when an app has none (device, 2x: cells
+ * battery and 0.5 px from the edge (--wm-bar-edge here, as Start), and keeps its place when an app has none (device, 2x: cells
  * at x 268 / 310 / 352, battery 404, corner 447, y 10) */
 html.ui-mobile[data-wm-version="6.5"] .wm-status,
 html.ui-mobile[data-wm-version="6.5"] .wm-status-left {
@@ -190,7 +203,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status,
 html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden]) > .wm-status {
-    padding-right: calc(22 * var(--wm-px));
+    padding-right: calc(21.5 * var(--wm-px) + var(--wm-bar-edge));
 }
 
 /* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UW, 5G and 5G+ (data types WM 6.5
@@ -294,6 +307,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-title-action {
     margin: calc(5 * var(--wm-px)) calc(0.5 * var(--wm-px)) 0 0;
     background: none !important;
     overflow: visible;
+}
+
+/* the title bar's own corner cell stands --wm-bar-edge in from the screen's side (wm-shell.css) */
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar > .wm-title-action {
+    margin-right: var(--wm-bar-edge);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-title-action::before {
