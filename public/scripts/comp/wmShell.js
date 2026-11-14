@@ -9062,8 +9062,47 @@
             id: 'windows-media', title: 'Melaton Media', startLabel: 'Melaton Media', icon: 'app-windows-media', inStart: 'programs',
             script: 'scripts/comp/wmMedia.js',
             globals: [{ name: 'wmMedia', methods: ['enqueue', 'playPause', 'next', 'previous', 'playAll'], sync: { now: () => null, state: () => null } }]
-        }
+        },
+        // Notes and Contacts (one script): Today's Notes item lists the workspace's notes through the
+        // stand-in (the program's own newest()/list(): the Notes folder, kept 2 minutes, null before
+        // the first answer); opening a note or a card loads the program
+        { id: 'notes', title: 'Notes', icon: 'app-notes', inStart: 'bottom', script: 'scripts/comp/wmNotes.js', globals: [{ name: 'wmNotesApp', methods: ['openNote'], sync: lazyNotesList() }] },
+        { id: 'contacts', title: 'Contacts', icon: 'app-contacts', inStart: 'top', script: 'scripts/comp/wmNotes.js', globals: [{ name: 'wmContactsApp', methods: ['openFile', 'newContact'], sync: { reload: () => {} } }] }
     ];
+
+    /** wmNotes.js's Notes.newest()/list() for Today before the program loads (same folder, same cache rules). */
+    function lazyNotesList() {
+        const cache = { at: 0, ws: null, value: null, list: null, busy: false };
+        const activeWs = () => {
+            try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) return activeWorkspace; } catch (_) { /* not loaded */ } // eslint-disable-line no-undef
+            return 'default';
+        };
+        const vfs = () => { try { return (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; } catch (_) { return null; } }; // eslint-disable-line no-undef
+        function newest() {
+            const wsId = activeWs();
+            const v = vfs();
+            if (!cache.busy && v && (cache.ws !== wsId || Date.now() - cache.at > 120000)) {
+                cache.busy = true;
+                let ok = false;
+                v.listDirectory(`/Workspaces/${wsId}/Notes`, { offset: 0, limit: 1000, sortField: 'name', sortDirection: 'asc', search: '' }).then((res) => {
+                    ok = true;
+                    const slim = ((res && res.items) || []).filter((i) => i.targetKind === 'note')
+                        .map((i) => ({ name: i.name, noteId: i.targetId, workspaceId: i.workspaceId || wsId, modifiedAt: i.modifiedAt }));
+                    cache.value = slim.reduce((a, b) => ((Number(b.modifiedAt) || 0) > (Number(a && a.modifiedAt) || 0) ? b : a), null) || false;
+                    cache.list = slim;
+                }).catch(() => { if (cache.ws !== wsId) { cache.value = null; cache.list = null; } })
+                    // a failure (early in boot) retries in 15 s, as the program's own
+                    .finally(() => {
+                        cache.busy = false;
+                        cache.at = ok ? Date.now() : Date.now() - 105000;
+                        cache.ws = wsId;
+                        if (ok && window.wmShell && window.wmShell.refreshToday) window.wmShell.refreshToday();
+                    });
+            }
+            return cache.ws === wsId ? cache.value : null;
+        }
+        return { newest, list() { const v = newest(); return v == null ? null : (cache.list || []); } };
+    }
 
     window.wmShell = {
         registerApp,
