@@ -3582,7 +3582,10 @@
             const msgEl = t.querySelector('.toast-message');
             const title = titleEl ? titleEl.textContent.trim() : '';
             if (LATENCY_TOAST.test(title)) continue;
-            if (UPDATE_QUIET.test(title)) { t.dataset.wmBusy = '1'; continue; }
+            // checking / downloading: quiet while it says so. The same toast turns into the result
+            // ("Updates Complete"): that is the notification (Yukimi, Nov 14: the sound played, no
+            // bubble, because a busy mark set here hid the result for good)
+            if (UPDATE_QUIET.test(title)) continue;
             // a notification: toastManager's timer leaves it until the user dismisses it (WM
             // notifications never close by themselves, Yukimi Nov 13)
             t.dataset.wmNote = '1';
@@ -4188,6 +4191,12 @@
             // during the boot screens a toast waits: it is sorted when Today comes up (still the loading phase)
             if (!notesMayPop()) continue;
             toastSeen.add(t);
+            // the service worker's update toasts are the update icon's (readToasts, UPDATE_TOAST): never a wait
+            // cursor or a busy mark here, or the same toast's result ("Updates Complete") stays hidden for good
+            {
+                const ut = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
+                if (UPDATE_TOAST.test(ut) || UPDATE_QUIET.test(ut)) continue;
+            }
             // connection status, and everything a workspace switch raises: the status box (above)
             {
                 const ttl = ((t.querySelector('.toast-title') || {}).textContent || '').trim();
