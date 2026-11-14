@@ -33,7 +33,7 @@
     'use strict';
 
     const ID = 'dataManagement';
-    const TITLE = 'Data Management';
+    const TITLE = 'Computer Management'; // Data Management stands in for Computer Management (#828)
     const EXP = '/static_images/vista-explorer';
     const CPL = '/static_images/vista-cpl';
     const ITEMS = `${CPL}/items`;
