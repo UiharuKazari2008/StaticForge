@@ -117,13 +117,13 @@
             // the right edge and the bottom lip, seen past the turn
             parts.push(`<rect x="${x + depth}" y="${y + depth * 0.55}" width="${w}" height="${h}" rx="${r}" fill="url(#${id('edge')})"/>`);
             // side keys on the visible edge
-            parts.push(`<rect x="${x + w + depth - 1.6}" y="${y + h * 0.2}" width="2.2" height="${h * 0.13}" rx="1.1" fill="#6a7078"/>`);
-            parts.push(`<rect x="${x + w + depth - 1.6}" y="${y + h * 0.37}" width="2.2" height="${h * 0.07}" rx="1.1" fill="#6a7078"/>`);
+            parts.push(`<rect x="${x + w + depth - 1.6}" y="${y + h * 0.2}" width="1.4" height="${h * 0.11}" rx=".7" fill="#7d838b"/>`);
+            parts.push(`<rect x="${x + w + depth - 1.6}" y="${y + h * 0.37}" width="1.4" height="${h * 0.06}" rx=".7" fill="#7d838b"/>`);
             // the body: brushed silver with a light rim
             parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="url(#${id('metal')})" stroke="#7b8189" stroke-width=".9"/>`);
             parts.push(`<rect x="${x + 1.2}" y="${y + 1.2}" width="${w - 2.4}" height="${h - 2.4}" rx="${r - 1.2}" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1"/>`);
             // the black front
-            const rim = Math.max(3, w * 0.045); const bx = x + rim; const by = y + rim; const bw = w - 2 * rim; const bh = h - 2 * rim; const br = Math.max(3, r - rim * 0.8);
+            const rim = Math.max(1.4, w * 0.014); const bx = x + rim; const by = y + rim; const bw = w - 2 * rim; const bh = h - 2 * rim; const br = Math.max(2, r - rim);
             parts.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${br}" fill="url(#${id('bezel')})"/>`);
             const sx = bx + bezel; const sy = by + bezel; const sw = bw - 2 * bezel; const sh = bh - 2 * bezel;
             const crease = hinge ? `<rect x="${sx + sw / 2 - 9}" y="${sy}" width="18" height="${sh}" fill="url(#${id('crease')})"/>` : '';
@@ -142,44 +142,41 @@
          */
         const poly = (pts) => pts.map((p) => p.join(' ')).join(' ');
         function laptop(url) {
+            // a slim laptop behind the phone, seen a little from above: the lid (16:10, a hairline
+            // aluminium edge, a narrow bezel) on a short base whose front edge comes towards us
+            const L = 92; const R = 246; const T = 40; const B = 138;
             const parts = [];
-            // the deck: silver top, a darker front lip, the keys and the touchpad set in it
-            const deck = [[94, 128], [242, 128], [166, 210], [12, 200]];
-            parts.push(`<polygon points="${poly([[12, 200], [166, 210], [166, 214], [12, 204]])}" fill="url(#${id('edge')})"/>`);
-            parts.push(`<polygon points="${poly([[166, 210], [242, 128], [242, 132], [166, 214]])}" fill="#7d838b"/>`);
-            parts.push(`<polygon points="${poly(deck)}" fill="url(#${id('metal')})" stroke="#7b8189" stroke-width=".8"/>`);
+            const base = [[L + 2, B], [R - 2, B], [R + 8, B + 20], [L - 8, B + 20]];
+            parts.push(`<polygon points="${poly([[L - 8, B + 20], [R + 8, B + 20], [R + 7, B + 22.5], [L - 7, B + 22.5]])}" fill="url(#${id('edge')})"/>`);
+            parts.push(`<polygon points="${poly(base)}" fill="url(#${id('metal')})" stroke="#8d939b" stroke-width=".6"/>`);
             const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-            const at = (u, v) => lerp(lerp(deck[0], deck[1], u), lerp(deck[3], deck[2], u), v);
-            const keys = [at(.08, .08), at(.92, .08), at(.92, .55), at(.08, .55)];
-            parts.push(`<polygon points="${poly(keys)}" fill="#24282e" stroke="#4d535b" stroke-width=".6"/>`);
-            for (let r = 1; r < 5; r++) parts.push(`<line x1="${at(.08, .08 + .094 * r)[0]}" y1="${at(.08, .08 + .094 * r)[1]}" x2="${at(.92, .08 + .094 * r)[0]}" y2="${at(.92, .08 + .094 * r)[1]}" stroke="#4a5058" stroke-width=".5"/>`);
-            for (let c = 1; c < 12; c++) parts.push(`<line x1="${at(.08 + .07 * c, .08)[0]}" y1="${at(.08 + .07 * c, .08)[1]}" x2="${at(.08 + .07 * c, .55)[0]}" y2="${at(.08 + .07 * c, .55)[1]}" stroke="#4a5058" stroke-width=".5"/>`);
-            parts.push(`<polygon points="${poly([at(.36, .64), at(.64, .64), at(.64, .9), at(.36, .9)])}" fill="#c3c8ce" stroke="#9aa0a8" stroke-width=".6"/>`);
-            // the lid: silver back edge, black bezel, the screen
-            parts.push(`<rect x="114" y="16" width="134" height="114" rx="6" fill="url(#${id('edge')})"/>`);
-            parts.push(`<rect x="110" y="14" width="134" height="114" rx="6" fill="url(#${id('bezel')})" stroke="#9aa0a8" stroke-width="1.4"/>`);
-            parts.push(glass('external', 116, 20, 122, 100, 2, url));
-            parts.push(`<circle cx="177" cy="17.2" r="1" fill="#3a4048"/>`);
+            const at = (u, v) => lerp(lerp(base[0], base[1], u), lerp(base[3], base[2], u), v);
+            parts.push(`<polygon points="${poly([at(.1, .12), at(.9, .12), at(.9, .52), at(.1, .52)])}" fill="#3a3f46"/>`);
+            parts.push(`<polygon points="${poly([at(.39, .62), at(.61, .62), at(.61, .9), at(.39, .9)])}" fill="#cdd2d8" stroke="#a7adb5" stroke-width=".4"/>`);
+            parts.push(`<rect x="${L}" y="${T}" width="${R - L}" height="${B - T}" rx="4" fill="#1a1d21" stroke="#a9afb7" stroke-width="1"/>`);
+            parts.push(glass('external', L + 3, T + 3, R - L - 6, B - T - 7, 1.5, url));
+            parts.push(`<rect x="${L + 1}" y="${B - 2.6}" width="${R - L - 2}" height="2" fill="#2a2e34"/>`);
             return parts.join('');
         }
 
         const body = [];
         const shadow = (cx, cy, rx, ry) => body.push(`<ellipse cx="${cx + rx * 0.18}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#${id('shadow')})"/>`);
         // the turn: a slight shear, as the icon family looks a little from the right
-        const turn = (inner, ox, oy) => `<g transform="translate(${ox} ${oy}) matrix(0.97 -0.07 0 1 0 0) translate(${-ox} ${-oy})">${inner}</g>`;
+        const turn = (inner, ox, oy) => `<g transform="translate(${ox} ${oy}) matrix(0.985 -0.035 0 1 0 0) translate(${-ox} ${-oy})">${inner}</g>`;
         // only the phone as it is now: a foldable open (its inner screen) or closed (its cover)
         const open = form === 'fold' && screens.screen !== 'cover';
         const url = form === 'fold' ? (open ? screens.inner : (screens.cover || screens.inner)) : (screens.inner || screens.cover);
         const ratio = open ? 0.9 : form === 'fold' ? 0.43 : 0.47;
-        const opts = open ? { r: 14, bezel: 3.5, depth: 7, hinge: true } : { r: form === 'fold' ? 14 : 19, bezel: 3.5, depth: 7 };
+        // slim: a hairline rim, a narrow black border, a shallow edge (Yukimi: not chunky)
+        const opts = open ? { r: 8, bezel: 2, depth: 2.5, hinge: true } : { r: form === 'fold' ? 9 : 13, bezel: 2, depth: 2.5 };
         let box;
         if (screens.external) {
-            shadow(130, 212, 100, 8);
+            shadow(172, 176, 84, 6);
             body.push(laptop(screens.external));
             // in front, on the left (the sketch): as tall as the space allows
-            box = open ? { x: 4, w: 104, bottom: 192 } : { x: 6, w: Math.round(150 * ratio), bottom: 196 };
+            box = open ? { x: 10, w: 112, bottom: 206 } : { x: 18, w: Math.round(164 * ratio), bottom: 210 };
         } else {
-            box = open ? { x: 20, w: 206, bottom: 240 } : { x: Math.round((256 - 232 * ratio) / 2) - 3, w: Math.round(232 * ratio), bottom: 242 };
+            box = open ? { x: 26, w: 196, bottom: 236 } : { x: Math.round((256 - 222 * ratio) / 2), w: Math.round(222 * ratio), bottom: 238 };
         }
         const h = Math.round(box.w / ratio);
         const y = box.bottom - h;
