@@ -170,6 +170,21 @@
     const num = (v, d = 0) => (v == null || !Number.isFinite(Number(v)) ? '' : Number(v).toFixed(d));
     const dur = (ms) => { const m = Math.round(Number(ms) / 60000); return !Number.isFinite(m) || m <= 0 ? '' : m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m} min`; };
 
+    /*
+     * Shizuku (#829): the app reads dumpsys battery / thermalservice through Shizuku when it is running
+     * and allowed (AndroidHardware.getPrivileged, refreshed at most every 30 s by requestPrivileged).
+     */
+    let privAsked = 0;
+    function privileged() {
+        const b = root.AndroidHardware;
+        if (!b || typeof b.getPrivileged !== 'function') return null;
+        if (Date.now() - privAsked > 30000 && typeof b.requestPrivileged === 'function') { privAsked = Date.now(); try { b.requestPrivileged(); } catch (_) { /* not allowed */ } }
+        return bridgeJson('getPrivileged');
+    }
+    const THERMAL_NAMES = { AP: 'Application processor', CPU: 'Processor', GPU: 'Graphics', BAT: 'Battery', MAINBATRAW: 'Battery (raw)', SUBBAT: 'Second battery', SKIN: 'Device surface',
+        USB: 'USB port', PA: 'Power amplifier', NPU: 'Neural processor', MODEM: 'Modem' };
+    const dateText = (d) => { const t = d ? new Date(`${d}T00:00:00`) : null; return t && Number.isFinite(t.getTime()) ? t.toLocaleDateString() : ''; };
+
     /** [[label, value]] for a live source; sensors are started on first read (stopLive ends them). */
     function liveValues(live) {
         if (!live) return [];
@@ -179,9 +194,14 @@
             if (!b) { try { const s = JSON.parse(root.AndroidDeviceStatus.getState()); b = s && s.battery; } catch (_) { b = null; } }
             if (!b) return [['Status', na]];
             const plug = { ac: 'AC charger', usb: 'USB', wireless: 'Wireless charger', dock: 'Dock' }[b.plugged] || 'Not plugged in';
+            const pv = privileged();
+            const pb = (pv && pv.battery) || {};
             if (live.kind === 'charger') {
                 return [['Power source', plug], ['Charging', b.charging ? 'Yes' : 'No'],
-                    ['Charge rate', b.charging && b.powerMw > 0 ? `${(b.powerMw / 1000).toFixed(1)} W` : ''], ['Time to full', b.charging ? dur(b.chargeTimeRemainingMs) : '']].filter((r) => r[1]);
+                    ['Charge rate', b.charging && b.powerMw > 0 ? `${(b.powerMw / 1000).toFixed(1)} W` : ''], ['Time to full', b.charging ? dur(b.chargeTimeRemainingMs) : ''],
+                    ['Charger maximum', pb.maxChargingCurrentMa > 0 ? `${Math.round(pb.maxChargingCurrentMa)} mA${pb.maxChargingVoltageMv > 0 ? ` at ${(pb.maxChargingVoltageMv / 1000).toFixed(1)} V` : ''}` : ''],
+                    ['Fast charging', pb.adaptiveFastCharging == null ? '' : pb.superFastCharging ? 'Super fast charging on' : pb.adaptiveFastCharging ? 'Adaptive fast charging on' : 'Off'],
+                    ['Charge limit', pb.protectThreshold ? `${pb.protectThreshold}% (battery protection)` : '']].filter((r) => r[1]);
             }
             return [['Charge remaining', b.level != null ? `${Math.round(b.level)}%` : ''], ['State', cap1((b.status || '').replace(/_/g, ' '))], ['Power source', plug],
                 ['Voltage', b.voltageMv ? `${(b.voltageMv / 1000).toFixed(3)} V` : ''], ['Current', b.currentUa != null ? `${Math.round(b.currentUa / 1000)} mA` : ''],
@@ -189,7 +209,10 @@
                 ['Temperature', b.temperatureC != null ? `${num(b.temperatureC, 1)} \u00b0C` : ''], ['Health', cap1((b.health || '').replace(/_/g, ' '))], ['Charge counter', b.chargeCounterUah ? `${Math.round(b.chargeCounterUah / 1000)} mAh` : ''],
                 ['Full charge capacity', b.fullCapacityMah ? `${Math.round(b.fullCapacityMah)} mAh` : ''], ['Design capacity', b.designCapacityMah ? `${Math.round(b.designCapacityMah)} mAh` : ''],
                 ['Wear level', b.fullCapacityMah && b.designCapacityMah ? `${Math.max(0, Math.round(100 - b.fullCapacityMah * 100 / b.designCapacityMah))}%` : ''],
-                ['Charge cycles', b.cycleCount != null ? String(b.cycleCount) : ''], ['Battery saver', b.saver ? 'On' : 'Off']].filter((r) => r[1]);
+                ['Battery health', pb.healthPct != null ? `${Math.round(pb.healthPct)}% of original capacity` : ''],
+                ['Charge cycles', b.cycleCount != null ? String(b.cycleCount) : pb.cycleCount != null ? `${pb.cycleCount}${pb.usagePct != null ? ` (${Number(pb.usagePct).toLocaleString()}% charged in total)` : ''}` : ''],
+                ['First used', dateText(pb.firstUseDate)], ['Manufactured', dateText(pb.manufactureDate)], ['Battery saver', b.saver ? 'On' : 'Off'],
+                ['Extra details', pv ? '' : (root.AndroidHardware && typeof root.AndroidHardware.getPrivilegedState === 'function' && root.AndroidHardware.getPrivilegedState() !== 'ready' ? 'Turn on Shizuku for battery health and cycles' : '')]].filter((r) => r[1]);
         }
         if (live.kind === 'cpu') {
             const f = bridgeJson('getCpuFrequencies');
@@ -219,6 +242,9 @@
                 ['Processor utilization', (() => { const f = bridgeJson('getCpuFrequencies'); return f && f.loadPct != null ? `${Math.round(f.loadPct)}%` : ''; })()],
                 ['Thermal status', t && t.status ? t.status.replace(/^\w/, (c) => c.toUpperCase()) : ''], ['Thermal headroom', t && t.headroom != null ? `${Math.round(t.headroom * 100)}%` : '']]
                 .concat(t && Array.isArray(t.sensors) ? t.sensors.filter((x) => x && x.name && x.tempC != null && Number(x.tempC) >= 10).map((x) => [`${x.name} temperature`, `${num(x.tempC, 1)} \u00b0C`]) : [])
+                // the thermal service's own sensors (Shizuku): skip probes that read 0 (not fitted)
+                .concat((() => { const pv = privileged(); const ts = pv && pv.thermal && Array.isArray(pv.thermal.sensors) ? pv.thermal.sensors : [];
+                    return ts.filter((x) => x && x.name && Number(x.tempC) >= 1).map((x) => [`${THERMAL_NAMES[x.name] || x.name} (thermal service)`, `${num(x.tempC, 1)} \u00b0C`]); })())
                 .filter((r) => r[1]);
         }
         if (live.kind === 'storage') {
