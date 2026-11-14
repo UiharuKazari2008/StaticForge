@@ -1,0 +1,127 @@
+/*
+ * Melaton Mobile: Internet Search (Yozora #830), wmInternetSearch.js. Windows Mobile 6.1's own
+ * search programs: a white page, the program's mark and name in a band at the top, the search box
+ * under it across the page, then a bold heading and a list box of past searches or predictions.
+ * Lengths N * --wm-px; 1 px black frames, the theme's highlight for the selected row.
+ */
+
+.wm-page.wm-internet-search {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: var(--wm-font);
+}
+
+.wm-internet-search .wis-band {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    padding: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) calc(4 * var(--wm-px));
+}
+
+.wm-internet-search .wis-icon {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}
+
+.wm-internet-search .wis-engine {
+    font-size: calc(16 * var(--wm-px));
+    font-weight: bold;
+}
+
+/* the engines' own colours on their names */
+.wm-internet-search .wis-engine[data-engine="google"] { color: #3367d6; }
+.wm-internet-search .wis-engine[data-engine="bing"] { color: #00809d; }
+
+.wm-internet-search .wis-bar {
+    flex: 0 0 auto;
+    margin: 0 calc(6 * var(--wm-px));
+}
+
+.wm-internet-search .wis-field {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+/* the browser's own clear button and search decorations stay out of the WM box */
+.wm-internet-search .wis-field::-webkit-search-cancel-button,
+.wm-internet-search .wis-field::-webkit-search-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.wm-internet-search .wis-heading {
+    flex: 0 0 auto;
+    margin: calc(8 * var(--wm-px)) calc(6 * var(--wm-px)) calc(2 * var(--wm-px));
+    font-weight: bold;
+}
+
+.wm-internet-search .wis-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    margin: 0 calc(6 * var(--wm-px)) calc(6 * var(--wm-px));
+}
+
+.wm-internet-search .wis-row {
+    min-height: calc(22 * var(--wm-px));
+    border: 0;
+    background: none;
+    color: #000;
+    font: inherit;
+}
+
+.wm-internet-search .wis-row.is-selected { color: var(--wm-highlight-text); }
+
+.wm-internet-search .wis-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* a small glyph before each row: a magnifier for a prediction, a clock for a past search (drawn) */
+.wm-internet-search .wis-glyph {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(11 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1.5 * var(--wm-px)) solid currentColor;
+    border-radius: 50%;
+    opacity: .7;
+}
+
+.wm-internet-search .wis-row.is-suggest .wis-glyph {
+    width: calc(9 * var(--wm-px));
+    height: calc(9 * var(--wm-px));
+    margin-right: calc(2 * var(--wm-px));
+}
+
+.wm-internet-search .wis-row.is-suggest .wis-glyph::after {
+    content: "";
+    position: absolute;
+    right: calc(-4 * var(--wm-px));
+    bottom: calc(-4 * var(--wm-px));
+    width: calc(5 * var(--wm-px));
+    height: calc(1.5 * var(--wm-px));
+    background: currentColor;
+    transform: rotate(45deg);
+    transform-origin: 0 50%;
+}
+
+.wm-internet-search .wis-row.is-history .wis-glyph::after {
+    content: "";
+    position: absolute;
+    left: 45%;
+    top: 18%;
+    width: 32%;
+    height: 36%;
+    border-left: calc(1.2 * var(--wm-px)) solid currentColor;
+    border-bottom: calc(1.2 * var(--wm-px)) solid currentColor;
+}
+
+.wm-internet-search .wis-empty {
+    padding: calc(4 * var(--wm-px));
+    color: #808080;
+}

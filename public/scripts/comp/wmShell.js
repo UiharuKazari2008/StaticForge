@@ -6657,6 +6657,17 @@
             { key: 'level', label: 'Level', value: '50', choices: Array.from({ length: 21 }, (_, i) => [String(i * 5), `${i * 5}%`]) }
         ],
         tasks: [{ key: 'empty', label: 'With no tasks', value: 'show', choices: [['show', 'Show the row'], ['hide', 'Hide the row']] }],
+        // the Search item's Search Internet (Yukimi, Nov 14, #830): what it opens; an Android program or
+        // pinned shortcut is picked from a drop-down (type 'combo', Settings > Today > Items > Options...)
+        search: [
+            { key: 'web', label: 'Search Internet opens', value: 'view', choices: [
+                ['view', 'Internet Search'], ['bing', 'Bing in Internet Explorer'], ['google', 'Google in Internet Explorer'],
+                ['app', 'An Android program'], ['shortcut', 'An Android shortcut']] },
+            { key: 'app', label: 'Android program', type: 'combo', value: '',
+                get choices() { return [['', '(None)']].concat(androidPrograms()); } },
+            { key: 'shortcut', label: 'Android shortcut', type: 'combo', value: '',
+                get choices() { return [['', '(None)']].concat([...apps.values()].filter((a) => String(a.id).startsWith('android:shortcut:')).map((a) => [a.id, a.startLabel || a.title || a.id])); } }
+        ],
         // 6.5 home screen: the workspaces that get a page of their own after the current one. A
         // 'checks' option stores the unchecked ids; unset, none is a favourite (value = every id)
         workspace: [{
@@ -6665,6 +6676,41 @@
             get value() { return workspaceList().map((w) => w.id).join(','); }
         }]
     };
+
+    function androidPrograms() {
+        try { return (window.wmAndroidApps ? window.wmAndroidApps.list() : []).map((a) => [a.id, a.label]).sort((x, y) => String(x[1]).localeCompare(String(y[1]))); } catch (_) { return []; }
+    }
+
+    /**
+     * Today's Search Internet (#830): what Settings > Today > Items > Search > Options chose. true when
+     * it was handled here; false leaves it to Search (wmSearch). An Android program or shortcut that
+     * is gone falls back to Internet Search.
+     */
+    function todayWebSearch() {
+        const how = todayOption('search', 'web') || 'view';
+        const ie = (url) => {
+            const go = () => window.wmBrowser && typeof window.wmBrowser.open === 'function' && window.wmBrowser.open(url) !== false;
+            if (go()) return;
+            open('browser');
+            let tries = 0;
+            const wait = setInterval(() => { tries += 1; if (go() || tries > 50) clearInterval(wait); }, 100);
+        };
+        if (how === 'bing') { ie('https://www.bing.com/'); return true; }
+        if (how === 'google') { ie('https://www.google.com/'); return true; }
+        if (how === 'app') {
+            const id = todayOption('search', 'app');
+            const a = id && androidPrograms().find(([v]) => v === id);
+            if (a && typeof window.wmAndroidLaunch === 'function') { void window.wmAndroidLaunch(a[0], a[1]); return true; }
+        }
+        if (how === 'shortcut') {
+            const id = todayOption('search', 'shortcut');
+            if (id && apps.has(id)) { open(id); return true; }
+        }
+        if (!apps.has('internetsearch')) return false;
+        open('internetsearch');
+        return true;
+    }
+    window.wmTodayWebSearch = todayWebSearch;
 
     function workspaceList() {
         try {
@@ -9038,6 +9084,8 @@
      */
     const LAZY_APPS = [
         { id: 'calculator', title: 'Calculator', icon: 'app-calculator', inStart: 'programs', script: 'scripts/comp/wmCalculator.js' },
+        // Today's Search Internet opens it (#830): search bar, past searches, live predictions, Google / Bing
+        { id: 'internetsearch', title: 'Internet Search', icon: 'app-search', inStart: 'programs', script: 'scripts/comp/wmInternetSearch.js' },
         { id: 'solitaire', title: 'Solitaire', icon: 'app-solitaire', art65: 'solitaire', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmSolitaire.js' },
         { id: 'minesweeper', title: 'Minesweeper', icon: 'app-minesweeper', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmMinesweeper.js' },
         { id: 'blockdrop', title: 'Block Drop', icon: 'app-blockdrop', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmBlockDrop.js' },

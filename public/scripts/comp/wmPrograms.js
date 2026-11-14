@@ -1186,7 +1186,10 @@
                             <div class="wm-buttons"><button type="button" class="wm-button" data-act="opt-up" data-opt="${esc(o.key)}"${at > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="opt-down" data-opt="${esc(o.key)}"${at >= 0 && at < on.length - 1 ? '' : ' disabled'}>Move Down</button></div>`;
                     };
                     // a long check list is a list box that scrolls inside the page (the page itself never scrolls)
+                    // 'combo' (#830, Search's Android program / shortcut): one WM drop-down for a long list
+                    const comboLabel = (o) => { const v = cur[o.key] != null ? cur[o.key] : o.value; const c = o.choices.find(([x]) => x === v); return c ? c[1] : (o.choices[0] ? o.choices[0][1] : ''); };
                     const field = (o) => (o.type === 'orderedChecks' ? ordered(o)
+                        : o.type === 'combo' ? ui.comboHtml(`opt-${o.key}`, comboLabel(o))
                         : o.type === 'checks'
                             ? `<div class="wm-listbox wm-opt-list">${o.choices.map(([v, l]) => `<div class="wm-listbox-row">${check(`opt-${o.key}`, l, !offList(o).includes(v), `value="${esc(v)}"`)}</div>`).join('')}</div>`
                             : o.choices.map(([v, l]) => radio(`opt-${o.key}`, v, l, (cur[o.key] != null ? cur[o.key] : o.value) === v)).join(''));
@@ -1221,7 +1224,10 @@
                         el.querySelector(`[data-act="opt-up"][data-opt="${o.key}"]`).addEventListener('click', () => move(-1));
                         el.querySelector(`[data-act="opt-down"][data-opt="${o.key}"]`).addEventListener('click', () => move(1));
                     });
-                    defs.filter((o) => o.type !== 'orderedChecks').forEach((o) => el.querySelectorAll(`input[name="opt-${o.key}"]`).forEach((r) => r.addEventListener('change', () => {
+                    defs.filter((o) => o.type === 'combo').forEach((o) => {
+                        ui.bindCombo(el.querySelector(`.wm-combo[data-act="opt-${o.key}"]`), o.choices, cur[o.key] != null ? cur[o.key] : o.value, (v) => { d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: v }); });
+                    });
+                    defs.filter((o) => o.type !== 'orderedChecks' && o.type !== 'combo').forEach((o) => el.querySelectorAll(`input[name="opt-${o.key}"]`).forEach((r) => r.addEventListener('change', () => {
                         if (o.type === 'checks') {
                             const off = [...el.querySelectorAll(`input[name="opt-${o.key}"]`)].filter((x) => !x.checked).map((x) => x.value);
                             d.opts[id] = Object.assign({}, d.opts[id], { [o.key]: off.join(',') });
