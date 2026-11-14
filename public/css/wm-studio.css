@@ -1168,14 +1168,8 @@
     animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
 }
 
-/* the tab strip fits a 360 px phone: tabs share the width */
-.wm-studio > .wms-tabs .wm-tab {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding: 0 calc(3 * var(--wm-px)) !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
+/* the tabs are the device's: as wide as their words from the left, the rest of the strip bare
+ * (Yukimi, Nov 14 #825: no WM tab strip stretches its tabs; wm-programs.css .wm-tab) */
 
 /* ======================================================================
  * Prompt editors' pop-ups (autocompleteUtils.js): the tag autocomplete with its spelling
@@ -2951,89 +2945,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-studio .wms-wait {
 
 /* ======================================================================
  * Prompt editor (wmStudio.js, Yukimi Nov 14 #825): a tap on a prompt field makes that same field a
- * full-page editor between a tool strip at the top (Undo, Redo, Cut, Copy, Paste, Select All) and
- * one at the bottom (weight - / value / +, Group, Find, SmartText, the token count). The field's box
- * (.wms-edit-target) is fixed to #manualModal (layout containment: its containing block), so it
- * covers the form; the page's tab strip and the print toggle go.
+ * full-page editor between a tool bar at the top (Undo, Redo | Cut, Copy, Paste, Select All) and one
+ * at the bottom (weight - value + | Group | Find, SmartText, the token count); the bars' metrics are
+ * the WM tool bar's above. The field's box (.wms-edit-target) is fixed to #manualModal.
  * ====================================================================== */
-.wm-studio > .wms-edbar {
-    display: flex;
-    flex: 0 0 auto;
-    align-items: center;
-    gap: calc(2 * var(--wm-px));
-    min-height: calc(28 * var(--wm-px));
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    box-sizing: border-box;
-    background: var(--wm-tab-strip);
-    color: #000;
-    font: var(--wm-fs) var(--wm-font);
-    position: relative;
-    z-index: 4;
-}
-
-.wm-studio > .wms-edbar[hidden] {
-    display: none !important;
-}
-
-.wm-studio > .wms-edbar-top { border-bottom: calc(1 * var(--wm-px)) solid #000; }
-.wm-studio > .wms-edbar-bottom { border-top: calc(1 * var(--wm-px)) solid #000; order: 2; }
+.wm-studio > .wms-edbar-bottom { order: 2; }
 .wm-studio.wms-editing > .wms-host { order: 1; }
-
-.wm-studio .wms-ed-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    flex: 0 0 auto;
-    width: calc(26 * var(--wm-px));
-    height: calc(24 * var(--wm-px));
-    padding: 0;
-    margin: 0;
-    border: calc(1 * var(--wm-px)) solid transparent;
-    border-radius: 0;
-    background: none;
-    box-shadow: none;
-    touch-action: manipulation;
-}
-
-.wm-studio .wms-ed-btn:active:not(:disabled) {
-    border-color: #000;
-    background: var(--wm-highlight);
-}
-
-.wm-studio .wms-ed-icon {
-    width: calc(16 * var(--wm-px));
-    height: calc(16 * var(--wm-px));
-    pointer-events: none;
-}
-
-.wm-studio .wms-ed-btn:disabled .wms-ed-icon {
-    opacity: .35;
-    filter: grayscale(1);
-}
-
-.wm-studio .wms-ed-sep {
-    flex: 0 0 auto;
-    align-self: stretch;
-    width: calc(1 * var(--wm-px));
-    margin: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    background: #808080;
-}
-
-.wm-studio .wms-ed-weight {
-    flex: 0 0 auto;
-    min-width: calc(30 * var(--wm-px));
-    text-align: center;
-}
-
-.wm-studio .wms-ed-tokens {
-    flex: 1 1 auto;
-    min-width: 0;
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    color: #404040;
-}
 
 .wm-studio.wms-editing > :is(.wms-tabs, .wms-noprint, .wms-norefs) {
     display: none !important;
@@ -3190,19 +3107,6 @@ html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocomplete
     }
 }
 
-
-/* the editor's weight: plain - / + in the WM font */
-.wm-studio .wms-ed-btn.wms-ed-step {
-    font: bold calc(14 * var(--wm-px)) / 1 var(--wm-font);
-    color: #000;
-    border-color: #000;
-    background: #fff;
-}
-
-.wm-studio .wms-ed-btn.wms-ed-step:disabled {
-    color: #a0a0a0;
-    border-color: #a0a0a0;
-}
 
 /* the editor field and its strips: a drag scrolls the text and nothing else (wmStudio.js guardDrag) */
 .wm-studio.wms-editing #manualModal .wms-edit-target textarea {
@@ -3398,60 +3302,166 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     display: none !important;
 }
 
-/* ---- the Prompt page's tool bar (wmStudio.js PROMPT_TOOLS): icon buttons over the tab strip, a
- * pressed one (Lock Seed on) sunk in the highlight; only on the Prompt page, not in the editor ---- */
-.wm-studio > .wms-ptools {
+/* ======================================================================
+ * WM tool bars (the Prompt page's, the editor's two): measured on the WM 6.1 device (Word Mobile's
+ * bar, VGA, 1 unit = 2 px): a 1-unit black rule over 24 units of the tab tint; buttons in fixed
+ * 23-unit cells from the left (1 unit in), each a 22 x 21 box 2 units below the rule with a 1-unit
+ * frame that is drawn only when the button is checked or pressed (black frame, white face); groups
+ * split by an etched divider: a 1-unit #848284 line 18 units tall in a 5-unit gap; 16-unit glyphs;
+ * a disabled glyph is CE's grey with a white emboss. (Yukimi, Nov 14 #825: dividers, frames, state,
+ * fixed size and padding, not spread apart.)
+ * ====================================================================== */
+.wm-studio > :is(.wms-ptools, .wms-edbar) {
     display: none;
     flex: 0 0 auto;
-    align-items: center;
-    justify-content: space-between;
-    gap: calc(2 * var(--wm-px));
-    min-height: calc(28 * var(--wm-px));
-    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0;
+    height: calc(25 * var(--wm-px));
+    min-height: 0;
+    padding: calc(2 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
     box-sizing: border-box;
     border-top: calc(1 * var(--wm-px)) solid #000;
+    border-bottom: 0;
     background: var(--wm-tab-strip);
     position: relative;
     z-index: 3;
     touch-action: none;
+    overflow: hidden;
 }
 
-.wm-studio[data-tab="prompt"]:not(.wms-editing) > .wms-ptools {
+.wm-studio[data-tab="prompt"]:not(.wms-editing) > .wms-ptools,
+.wm-studio.wms-editing > .wms-edbar:not([hidden]) {
     display: flex;
 }
 
+/* the editor's top bar sits under the title: its rule is at the bottom */
+.wm-studio > .wms-edbar.wms-edbar-top {
+    border-top: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    height: calc(25 * var(--wm-px));
+}
+
+.wm-studio :is(.wms-pt-btn, .wms-ed-btn).wms-ed-btn,
 .wm-studio .wms-pt-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    width: calc(28 * var(--wm-px));
-    height: calc(24 * var(--wm-px));
+    width: calc(22 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 0;
     padding: 0;
-    margin: 0;
     border: calc(1 * var(--wm-px)) solid transparent;
     border-radius: 0;
-    background: none;
+    background: transparent;
     box-shadow: none;
+    box-sizing: border-box;
+    color: #000;
     touch-action: manipulation;
 }
 
-.wm-studio .wms-pt-btn > img {
+.wm-studio :is(.wms-pt-btn, .wms-ed-btn) > img {
     width: calc(16 * var(--wm-px));
     height: calc(16 * var(--wm-px));
     pointer-events: none;
 }
 
-.wm-studio .wms-pt-btn[aria-pressed="true"],
-.wm-studio .wms-pt-btn:active:not(:disabled) {
+.wm-studio .wms-pt-btn[aria-expanded="true"],
+.wm-studio :is(.wms-pt-btn, .wms-ed-btn)[aria-pressed="true"],
+.wm-studio :is(.wms-pt-btn, .wms-ed-btn):active:not(:disabled) {
     border-color: #000;
     background: #fff;
-    box-shadow: inset calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #808080;
 }
 
-.wm-studio .wms-pt-btn:disabled > img {
-    opacity: .35;
-    filter: grayscale(1);
+.wm-studio :is(.wms-pt-btn, .wms-ed-btn):disabled > img {
+    filter: brightness(0) invert(52%) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff);
+    opacity: 1;
+}
+
+.wm-studio :is(.wms-ptools, .wms-edbar) .wms-ed-sep,
+.wm-studio .wms-pt-sep {
+    flex: 0 0 auto;
+    align-self: flex-start;
+    width: calc(1 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    background: #848284;
+}
+
+/* the weight's - and +: the same cells, the sign in bold WM type */
+.wm-studio .wms-ed-btn.wms-ed-step {
+    font: bold calc(13 * var(--wm-px)) / 1 var(--wm-font);
+}
+
+.wm-studio .wms-ed-btn.wms-ed-step:disabled {
+    color: #848284;
+    text-shadow: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff;
+}
+
+.wm-studio .wms-ed-weight {
+    flex: 0 0 auto;
+    width: calc(30 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    line-height: calc(21 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 0;
+    text-align: center;
+    font: var(--wm-fs) / calc(21 * var(--wm-px)) var(--wm-font);
+}
+
+.wm-studio .wms-ed-tokens {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: calc(21 * var(--wm-px));
+    line-height: calc(21 * var(--wm-px));
+    padding-right: calc(3 * var(--wm-px));
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #000;
+    font: var(--wm-fs) / calc(21 * var(--wm-px)) var(--wm-font);
+}
+
+/* Model: a WM combo box in the bar (the desktop's Model combo), taking what the buttons leave */
+.wm-studio .wms-pt-combo {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: calc(60 * var(--wm-px));
+    max-width: calc(120 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 calc(1 * var(--wm-px));
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) / calc(19 * var(--wm-px)) var(--wm-font);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: none;
+}
+
+.wm-studio .wms-pt-combo::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip);
+}
+
+.wm-studio .wms-pt-combo:active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text, #fff);
 }
 
 /* the print pane has no glass: the desktop's diagonal shine over the preview goes (Yukimi, Nov 14) */

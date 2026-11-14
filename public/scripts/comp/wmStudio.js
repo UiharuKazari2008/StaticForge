@@ -1829,7 +1829,7 @@
         // the weight: a plain - and + around its value (Yukimi, Nov 14: the A-arrow icons were confusing)
         const step = (id, sign, label) => `<button type="button" class="wms-ed-btn wms-ed-step" data-ed="${id}" aria-label="${label}" title="${label}">${sign}</button>`;
         bottom.innerHTML = `${step('weightdown', '\u2212', 'Less Weight')}<span class="wms-ed-weight" aria-live="polite"></span>${step('weightup', '+', 'More Weight')}`
-            + `${edButton('group', 'Group the Selection')}<span class="wms-ed-sep"></span>${edButton('find', 'Find')}${edButton('smarttext', 'SmartText')}`
+            + `<span class="wms-ed-sep"></span>${edButton('group', 'Group the Selection')}<span class="wms-ed-sep"></span>${edButton('find', 'Find')}${edButton('smarttext', 'SmartText')}`
             + '<span class="wms-ed-tokens"></span>';
         // a tap on a strip keeps the focus (and the keyboard) in the field; a drag on a strip moves nothing
         [top, bottom].forEach((bar) => {
@@ -2035,16 +2035,29 @@
      * WM drop-down, or its command). The icons keep the desktop toolbar's motifs (sakura, half diamond,
      * pencil, seedling, glasses) drawn in Word Mobile's toolbar style (tb-*.png).
      */
+    // kind: combo (the desktop combo it stands for), toggle (clicks the desktop toggle; checked from
+    // its data-state), list (the Studio menu row's list as a WM drop-down; checked when the desktop
+    // control reports something on), command (the menu row's command); '|' = an etched divider
     const PROMPT_TOOLS = [
-        ['model', 'Model', 'Model', 'Model'],
-        ['effort', 'Effort', 'Model', 'Effort'],
-        ['dataset', 'Datasets', 'Prompt', 'Datasets'],
-        ['subtoggle', 'Adjustments', 'Prompt', 'Adjustments'],
-        ['uc', 'UC Preset', 'Prompt', 'UC Preset'],
-        ['nsfw', 'NSFW Bias', 'Prompt', 'NSFW Bias'],
-        ['lockseed', 'Lock Seed', 'Generate', 'Lock Seed'],
-        ['inspect', 'Inspector', null, 'Inspector']
+        { id: 'model', label: 'Model', kind: 'combo', menu: 'Model', row: 'Model' },
+        '|',
+        { id: 'effort', label: 'Drafting (Medium Effort)', kind: 'toggle', btn: 'manualEffortBtn' },
+        '|',
+        { id: 'dataset', label: 'Datasets', kind: 'list', menu: 'Prompt', row: 'Datasets', on: () => stateOn('datasetDropdownBtn') },
+        { id: 'subtoggle', label: 'Adjustments', kind: 'list', menu: 'Prompt', row: 'Adjustments', on: () => stateOn('subTogglesBtn') },
+        { id: 'uc', label: 'UC Preset', kind: 'list', menu: 'Prompt', row: 'UC Preset', on: () => stateOn('ucPresetsDropdownBtn') },
+        { id: 'nsfw', label: 'NSFW Bias', kind: 'list', menu: 'Prompt', row: 'NSFW Bias', on: () => { const b = document.getElementById('nsfwToggleBtn'); const v = b && b.getAttribute('data-state'); return !!v && v !== 'neutral' && v !== 'off'; } },
+        '|',
+        { id: 'lockseed', label: 'Lock Seed', kind: 'list', menu: 'Generate', row: 'Lock Seed', on: () => stateOn('sproutSeedBtn') },
+        '|',
+        { id: 'inspect', label: 'Inspector', kind: 'list', menu: null, row: 'Inspector' }
     ];
+
+    function stateOn(id) {
+        const b = document.getElementById(id);
+        const v = b && b.getAttribute('data-state');
+        return !!v && v !== 'off' && v !== 'false';
+    }
 
     function findMenuRow(menu, label) {
         const names = menu ? [menu] : MENUS;
@@ -2058,30 +2071,79 @@
 
     function buildPromptTools() {
         const bar = page.querySelector('.wms-ptools');
-        bar.innerHTML = PROMPT_TOOLS.map(([id, label]) => `<button type="button" class="wms-pt-btn" data-pt="${id}" aria-label="${esc(label)}" title="${esc(label)}"><img alt="" src="/static_images/wm61/tb-${id}.png" srcset="/static_images/wm61/tb-${id}@2x.png 2x, /static_images/wm61/tb-${id}@4x.png 4x"></button>`).join('');
+        bar.innerHTML = PROMPT_TOOLS.map((t) => {
+            if (t === '|') return '<span class="wms-pt-sep" aria-hidden="true"></span>';
+            if (t.kind === 'combo') return `<button type="button" class="wms-pt-combo" data-pt="${t.id}" aria-label="${esc(t.label)}" aria-haspopup="listbox"></button>`;
+            return `<button type="button" class="wms-pt-btn" data-pt="${t.id}" aria-label="${esc(t.label)}" title="${esc(t.label)}" aria-pressed="false"><img alt="" src="/static_images/wm61/tb-${t.id}.png" srcset="/static_images/wm61/tb-${t.id}@2x.png 2x, /static_images/wm61/tb-${t.id}@4x.png 4x"></button>`;
+        }).join('');
         bar.addEventListener('click', (e) => {
-            const b = e.target.closest && e.target.closest('.wms-pt-btn');
+            const b = e.target.closest && e.target.closest('[data-pt]');
             if (!b || b.disabled) return;
-            const def = PROMPT_TOOLS.find((t) => t[0] === b.dataset.pt);
-            const row = def && findMenuRow(def[2], def[3]);
+            const t = PROMPT_TOOLS.find((x) => x !== '|' && x.id === b.dataset.pt);
+            if (!t) return;
+            if (t.kind === 'combo') {
+                // a WM combo: its list drops from it (the Studio menu's Model list: the desktop's rows,
+                // badges and action)
+                const row = findMenuRow(t.menu, t.row);
+                if (row && typeof row.submenu === 'function') {
+                    ws.dropdown(b, row.submenu(), 'left', () => paintPromptTools());
+                    const pop = shellPopup();
+                    if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(b.getBoundingClientRect().width)}px`;
+                }
+                return;
+            }
+            if (t.kind === 'toggle') {
+                const desk = document.getElementById(t.btn);
+                if (desk && !desk.disabled) desk.click();
+                paintPromptTools();
+                return;
+            }
+            const row = findMenuRow(t.menu, t.row);
             if (!row || row.disabled) return;
             if (typeof row.submenu === 'function') {
-                const r = b.getBoundingClientRect();
-                ws.dropdown(b, row.submenu(), r.left > window.innerWidth / 2 ? 'right' : 'left', () => paintPromptTools());
+                // as on the device, the button stays pushed in while its list is down
+                b.setAttribute('aria-expanded', 'true');
+                ws.dropdown(b, row.submenu(), b.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left', () => { b.setAttribute('aria-expanded', 'false'); paintPromptTools(); });
             } else if (typeof row.action === 'function') {
                 row.action();
                 paintPromptTools();
             }
         });
+        // the desktop controls change from anywhere (menus, MCP, presets): the bar follows them
+        if (typeof MutationObserver === 'function') {
+            let queued = false;
+            const mo = new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; paintPromptTools(); }); });
+            ['manualEffortBtn', 'datasetDropdownBtn', 'subTogglesBtn', 'ucPresetsDropdownBtn', 'nsfwToggleBtn', 'sproutSeedBtn'].forEach((id) => {
+                const el = document.getElementById(id);
+                if (el) mo.observe(el, { attributes: true, attributeFilter: ['data-state', 'class', 'disabled'] });
+            });
+            const sel = document.getElementById('manualModelSelected');
+            if (sel) mo.observe(sel, { childList: true, subtree: true, characterData: true });
+        }
     }
 
     function paintPromptTools() {
         if (!page) return;
-        page.querySelectorAll('.wms-pt-btn').forEach((b) => {
-            const def = PROMPT_TOOLS.find((t) => t[0] === b.dataset.pt);
-            const row = def && findMenuRow(def[2], def[3]);
+        PROMPT_TOOLS.forEach((t) => {
+            if (t === '|') return;
+            const b = page.querySelector(`.wms-ptools [data-pt="${t.id}"]`);
+            if (!b) return;
+            if (t.kind === 'combo') {
+                modelName();
+                b.textContent = ((document.querySelector('#manualModelDropdownBtn > .wms-model-name') || {}).textContent || '').trim() || 'Model';
+                return;
+            }
+            if (t.kind === 'toggle') {
+                const desk = document.getElementById(t.btn);
+                const off = !desk || desk.classList.contains('hidden') || desk.disabled;
+                b.disabled = off;
+                b.setAttribute('aria-pressed', String(!off && stateOn(t.btn)));
+                return;
+            }
+            const row = findMenuRow(t.menu, t.row);
             b.disabled = !row || !!row.disabled;
-            b.setAttribute('aria-pressed', String(!!(row && row.checked)));
+            const on = t.on ? t.on() : false;
+            b.setAttribute('aria-pressed', String(!b.disabled && on));
         });
     }
 
