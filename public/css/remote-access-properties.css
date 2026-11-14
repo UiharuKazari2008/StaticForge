@@ -5,7 +5,11 @@
      the sheet's client 404x436 (System Properties' 256 x 226 DLU pages): the pane 390x372 at 6,27,
        OK / Cancel / Apply 75x23 at y 406, x 161 / 242 / 323
      Remote Access Settings (racpldlg.dll.mui 503, 277 x 181 DLU): client 416x294
-     Open Generated Images (remotepg.dll.mui 513's frame, 250 x 172 DLU): client 375x280 */
+     Open Generated Images (remotepg.dll.mui 513's frame, 250 x 172 DLU): client 375x280
+     the MCP Connector tab (#828): the Remote tab's grid; read-only edits 20 px tall on the dialog face
+     System Message Template (#828): client 560x440, a Notepad-style edit (Lucida Console 10 pt)
+       538x318 at 11,44, Copy / Restore Default at the left and OK / Cancel / Apply 75x23 at the
+       right of y 405 */
 
 body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-sheet {
     width: 404px;
@@ -160,4 +164,97 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-open
 .rap-window .tbp-client .tbp-check input:focus-visible + label span {
     outline: 1px dotted #000;
     outline-offset: 0;
+}
+
+/* ---- MCP Connector tab ---- */
+
+/* a read-only edit is drawn on the dialog face (WM_CTLCOLORSTATIC): the Vista edit frame without
+   its white fill (vista-glass-controls.css paints the fill from the frame art, at a specificity
+   no class here can reach, hence !important) */
+.tbp-client input.tbp-edit.rap-readonly,
+.tbp-client.rap-template textarea.rap-tpl-edit:read-only {
+    border-image: var(--vista-edit-face, url("/static_images/vista-controls/edit-normal.png")) 2 / 2px stretch !important;
+    background: #f0f0f0 !important;
+}
+
+.tbp-client input.tbp-edit.rap-readonly {
+    padding: 1px 2px;
+    color: #000;
+    user-select: text;
+    cursor: text;
+}
+
+.tbp-client input.tbp-edit.rap-readonly::placeholder {
+    color: #6d6d6d;
+}
+
+.tbp-client label.tbp-static {
+    cursor: default;
+}
+
+/* ---- System Message Template ---- */
+
+body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.rap-template {
+    width: 560px;
+    height: 440px;
+}
+
+.rap-template .rap-tpl-intro {
+    position: absolute;
+    left: 11px;
+    top: 11px;
+    width: 538px;
+    line-height: 13px;
+}
+
+.tbp-client.rap-template textarea.rap-tpl-edit {
+    position: absolute;
+    left: 11px;
+    top: 44px;
+    box-sizing: border-box;
+    width: 538px;
+    height: 318px;
+    min-height: 0;
+    margin: 0;
+    padding: 1px 2px;
+    border: 1px solid #abadb3;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: 13px "Lucida Console", Consolas, "Courier New", monospace;
+    line-height: 15px;
+    tab-size: 8;
+    white-space: pre-wrap;
+    resize: none;
+    overflow-y: scroll;
+    user-select: text;
+    outline: none;
+}
+
+.rap-template .rap-tpl-status {
+    position: absolute;
+    left: 11px;
+    top: 370px;
+    width: 538px;
+    height: 13px;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+/* Copy / Restore Default at the left, OK / Cancel / Apply at the right: 75x23 rectangles 6 px
+   apart, their faces 1 px inside (.tbp-footer, .tbp-footer-button) */
+.rap-template .tbp-footer.rap-tpl-left {
+    left: 12px;
+    top: 406px;
+}
+
+.rap-template .tbp-footer.rap-tpl-right {
+    left: 313px;
+    top: 406px;
+}
+
+.tbp-client.rap-template .tbp-footer-button.rap-tpl-default {
+    width: 98px;
+    min-width: 98px;
 }

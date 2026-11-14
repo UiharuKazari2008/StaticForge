@@ -1,5 +1,7 @@
 /**
  * MCP connector setup DSAP — grok.com Custom Connector URLs + Enshutsuka project paste-block.
+ * On the desktop dsap://mcp.dreamscape.jp/ opens Remote Access Properties' MCP Connector tab
+ * instead (#828, dsapManifests.js opensApp); this page stays for the app (no desktop).
  * Domain: mcp.dreamscape.jp
  * Depends on: dsapRegistry.js, dsapSmfMarkup.js
  * Server getPage: modules/mcpServerInfo.js buildMcpConnectorGrimPage (live UUID, not hardcoded here)
@@ -48,10 +50,10 @@ ${mcpConnectorCopyBlock('mcpConnectorAuthorize', 'Authorization endpoint', 2)}
 ${mcpConnectorCopyBlock('mcpConnectorToken', 'Token endpoint', 2)}
 ${mcpConnectorCopyBlock('mcpConnectorScopes', 'Scopes (Enshutsuka minimum)', 2)}
 ${dsapSmfBuildSectionHdr('Project instructions')}
-${dsapSmfBuildStatusBox('Paste into the grok.com project instructions field only. Do not attach nai-prompt-guide, Docubase, or other Dreamscape markdown — Grok will trust the stale file instead of MCP. Re-paste after each DreamScape r######## tools revision. Same text as MCP initialize plus the MCP-only preamble.')}
+${dsapSmfBuildStatusBox('Paste into the grok.com project instructions field only. Do not attach nai-prompt-guide, Docubase, or other Dreamscape markdown — Grok will trust the stale file instead of MCP. Re-paste after each DreamScape r######## tools revision. On the desktop, an administrator edits this template in Remote Access Properties (MCP Connector tab, Template...).')}
 ${mcpConnectorCopyBlock('mcpConnectorInstructions', 'Enshutsuka project paste-block', 8)}
 ${dsapSmfBuildSectionHdr('LinkXi')}
-<p>Persona is MCP <code>get_linkxi_persona</code> / <code>save_linkxi_persona</code>. The in-app editor stays at <a href="dsap://xi.dyna.dreamscape.jp/persona" class="dsap-smf-home-link" data-dsap-smf-home-link="dsap://xi.dyna.dreamscape.jp/persona">xi.dyna.dreamscape.jp/persona</a>.</p>
+<p>Persona is MCP <code>get_linkxi_persona</code> / <code>save_linkxi_persona</code>. The in-app editor is LinkXi Persona in Enshutsuka: <a href="dsap://xi.dyna.dreamscape.jp/persona" class="dsap-smf-home-link" data-dsap-smf-home-link="dsap://xi.dyna.dreamscape.jp/persona">xi.dyna.dreamscape.jp/persona</a> (the Enshutsuka console on the desktop).</p>
 ${dsapSmfBuildRootClose()}`;
 }
 

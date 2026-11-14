@@ -12,6 +12,7 @@ const {
 
 const ADMIN_DESTRUCTIVE = { destructive: true };
 const { registerSiteHomepagePackets } = require('../../siteHomepageAdmin');
+const { registerMcpProjectInstructionsPackets } = require('../../mcpProjectInstructions');
 
 async function handleGetRateLimitingStats(handlersCtx, ws, message, clientInfo, wsServer) {
     try {
@@ -1795,6 +1796,7 @@ function registerPackets(handlersCtx) {
     reg('set_cursor_account_api_key', handleSetCursorAccountApiKey, ADMIN_DESTRUCTIVE);
 
     registerSiteHomepagePackets(handlersCtx, reg, ADMIN_DESTRUCTIVE);
+    registerMcpProjectInstructionsPackets(handlersCtx, reg, ADMIN_DESTRUCTIVE);
 }
 
 module.exports = {

@@ -16,6 +16,14 @@
  * openRemoteAccessSettingsModal() caller (Start menu, desktop menu, Run). Changes go to a pending
  * copy; Apply / OK save them (persistRemoteAccessSettingsPatch, modalUtils.js), Cancel drops them.
  *
+ * MCP Connector tab (#828, Yukimi: "MCP Connector is moved as a tab in Remote Access, system
+ * message template is in a separate window via a button on that tab"): what the MCP Connector DSAP
+ * (dsap://mcp.dreamscape.jp/, which now opens this tab) showed - the live connector URLs and scopes
+ * from resolve_grimoire_url (modules/mcpServerInfo.js buildMcpConnectorGrimPage), each read-only
+ * with Copy, and the LinkXi persona link. Template... opens System Message Template, the Grok
+ * project instructions in a Notepad-like edit; administrators can change or restore them
+ * (get_ / save_mcp_project_instructions, modules/mcpProjectInstructions.js).
+ *
  * The sheet uses Taskbar Properties' Vista controls (public/css/taskbar-properties.css, tbp-*);
  * its own sizes are in public/css/remote-access-properties.css.
  */
@@ -32,6 +40,21 @@
         { id: 'disabled', name: 'Do not open', icon: '', text: 'Prints are saved to the gallery and nothing opens.' }
     ];
     const PRINTS = [1, 2, 3, 4, 5, 6, 7, 8];
+    const TABS = [
+        { id: 'remote', label: 'Remote' },
+        { id: 'mcp', label: 'MCP Connector' }
+    ];
+    const MCP_DSAP_URL = 'dsap://mcp.dreamscape.jp/';
+    // the MCP Connector tab's read-only fields: [id, label, page data key]
+    const MCP_FIELDS = [
+        ['url', 'Connector <u>U</u>RL:', 'connectorUrl'],
+        ['mcp', '<u>M</u>CP path:', 'mcpUrl'],
+        ['authorize', '<u>A</u>uthorize URL:', 'oauthAuthorize'],
+        ['token', 'To<u>k</u>en URL:', 'oauthToken'],
+        ['scopes', '<u>S</u>copes:', 'scopes'],
+        ['recommended', '<u>R</u>ecommended:', 'recommendedScopes']
+    ];
+    const MCP_DEFAULT_SCOPES = 'generation gallery workspace chat';
 
     // dialog units -> px (MS Shell Dlg 8 at 96 dpi: x * 6/4, y * 13/8), as the VM places them:
     // edges round, except a bottom edge, which drops its fraction (the Remote tab's Remote Desktop
@@ -86,7 +109,8 @@
         };
     }
 
-    let dlg = null; // { modal, content, saved, pending, dirty, sub }
+    let dlg = null; // { modal, content, saved, pending, dirty, sub, tab, mcp }
+    let tpl = null; // the System Message Template window: { modal, content, data, admin, dirty }
 
     // ---- markup --------------------------------------------------------------------------------
 
@@ -141,6 +165,26 @@
             ${button(181, 196, 62, 14, '<u>O</u>pen With...', 'open-with')}`;
     }
 
+    /** A read-only edit (ES_READONLY: the dialog face behind the text) and its Copy button. */
+    function copyRow(id, label, y) {
+        return `
+            <label class="tbp-ctl tbp-static" for="rap-mcp-${id}" style="${dlu(12, y + 2, 58, 8)}">${label}</label>
+            <input type="text" class="tbp-ctl tbp-edit rap-readonly" id="rap-mcp-${id}" readonly spellcheck="false" style="${dlu(72, y, 132, 12)}">
+            ${button(208, y - 1, 36, 14, 'Copy', `copy:${id}`)}`;
+    }
+
+    /** The MCP Connector tab, on the Remote tab's grid (256 x 226 DLU). */
+    function pageMcp() {
+        return `
+            ${group(6, 6, 244, 148, 'Grok Custom Connector')}
+            ${text(12, 18, 232, 16, 'In Grok, add a custom connector with these addresses. The path is unlisted; do not share it.')}
+            ${MCP_FIELDS.map(([id, label], i) => copyRow(id, label, 38 + i * 18)).join('')}
+            ${group(6, 160, 244, 44, 'Project Instructions')}
+            ${text(12, 173, 165, 24, 'The system message for a Grok project that uses this connector.')}
+            ${button(181, 182, 62, 14, '<u>T</u>emplate...', 'template')}
+            ${link(6, 211, 200, 10, 'Edit the LinkXi persona that agents read', 'linkxi')}`;
+    }
+
     // ---- the window ----------------------------------------------------------------------------
 
     function el(tag, className, textContent) {
@@ -151,7 +195,7 @@
     }
 
     /** A Vista dialog window (light client, 7.css controls) with only the close box. */
-    function makeWindow(id, title, clientClass) {
+    function makeWindow(id, title, clientClass, iconSrc = '') {
         const modal = el('div', `modal hidden on-top tbp-window rap-window ${clientClass}-window`);
         modal.id = id;
         modal.dataset.windowIdentifier = id;
@@ -159,13 +203,19 @@
         modal.dataset.windowRestoreSize = 'false';
         modal.dataset.windowFixedSize = 'true';
         modal.dataset.vistaDialog = 'form';
-        // as in Vista, no caption icon; the taskbar button still gets one (modalUtils.js)
-        modal.dataset.captionIcon = 'none';
+        // as in Vista, a property sheet has no caption icon; the taskbar button still gets one (modalUtils.js)
+        if (!iconSrc) modal.dataset.captionIcon = 'none';
         modal.dataset.windowClient = 'light';
         modal.setAttribute('role', 'dialog');
         modal.setAttribute('aria-label', title);
         const cap = el('div', 'modal-window-title');
         const main = el('div', 'modal-window-title-main');
+        if (iconSrc) {
+            const img = el('img', 'icon-image');
+            img.alt = '';
+            img.src = iconSrc;
+            main.appendChild(img);
+        }
         main.appendChild(el('span', '', title));
         cap.appendChild(main);
         const controls = el('div', 'modal-window-controls');
@@ -215,10 +265,11 @@
         const { modal, content, close } = makeWindow('remoteAccessPropertiesDialog', 'Remote Access Properties', 'rap-sheet');
         content.innerHTML = `
             <div class="tbp-tabs" role="tablist">
-                <button type="button" class="tbp-tab is-selected" role="tab" aria-selected="true" tabindex="0">Remote</button>
+                ${TABS.map((t) => `<button type="button" class="tbp-tab" role="tab" data-tab="${t.id}" aria-selected="false">${t.label}</button>`).join('')}
             </div>
             <div class="tbp-pane">
-                <div class="tbp-page" role="tabpanel">${pageRemote()}</div>
+                <div class="tbp-page" data-page="remote" role="tabpanel">${pageRemote()}</div>
+                <div class="tbp-page" data-page="mcp" role="tabpanel" hidden>${pageMcp()}</div>
             </div>
             <div class="tbp-footer">
                 <button type="button" class="tbp-button tbp-footer-button" data-action="ok" data-dialog-primary="1">OK</button>
@@ -237,6 +288,92 @@
         const p = dlg.pending;
         c.querySelector('#rap-priority').checked = p.priority;
         c.querySelectorAll('input[name="rap-method"]').forEach((r) => { r.checked = r.value === p.method; });
+    }
+
+    function selectTab(tab) {
+        if (!TABS.some((t) => t.id === tab)) tab = 'remote';
+        dlg.tab = tab;
+        dlg.content.querySelectorAll('.tbp-tab').forEach((b) => {
+            const on = b.dataset.tab === tab;
+            b.classList.toggle('is-selected', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+        });
+        dlg.content.querySelectorAll('.tbp-page').forEach((p) => { p.hidden = p.dataset.page !== tab; });
+        dlg.modal.dataset.tab = tab;
+        if (tab === 'mcp' && !dlg.mcp) void loadMcp();
+    }
+
+    // ---- MCP Connector -------------------------------------------------------------------------
+
+    /** The connector page as the server builds it (the DSAP's data), or null. */
+    async function fetchConnectorPage() {
+        if (typeof wsClient === 'undefined' || !wsClient || typeof wsClient.sendMessage !== 'function') return null;
+        // sendMessage: public/scripts/websocket.js; the page: modules/mcpServerInfo.js
+        const result = await wsClient.sendMessage('resolve_grimoire_url', { url: MCP_DSAP_URL }, false);
+        return result && result.page && result.page.data ? result.page.data : null;
+    }
+
+    function fillMcp(page) {
+        if (!dlg) return;
+        const data = page || {};
+        MCP_FIELDS.forEach(([id, , key]) => {
+            const input = dlg.content.querySelector(`#rap-mcp-${id}`);
+            if (!input) return;
+            let value = data[key] || '';
+            if (!value && key === 'scopes') value = MCP_DEFAULT_SCOPES;
+            input.value = value;
+            input.placeholder = page ? 'Not set up on this server' : 'Unavailable';
+            const copy = dlg.content.querySelector(`[data-action="copy:${id}"]`);
+            if (copy) copy.disabled = !value;
+        });
+    }
+
+    async function loadMcp() {
+        if (!dlg) return;
+        dlg.mcp = { loading: true };
+        fillMcp({});
+        let page = null;
+        try {
+            page = await fetchConnectorPage();
+        } catch (err) {
+            console.warn('Remote Access Properties: could not load the connector addresses', err);
+        }
+        if (!dlg) return;
+        dlg.mcp = { page };
+        fillMcp(page);
+    }
+
+    async function copyText(textValue, input) {
+        if (!textValue) return false;
+        if (input) {
+            input.focus();
+            input.select();
+        }
+        try {
+            // writeClipboard: public/scripts/utils/dreamscapeClipboard.js
+            if (typeof writeClipboard === 'function') await writeClipboard({ text: textValue });
+            else await root.navigator.clipboard.writeText(textValue);
+            return true;
+        } catch (err) {
+            console.warn('Remote Access Properties: copy failed', err);
+            return false;
+        }
+    }
+
+    function copyField(id) {
+        const input = dlg && dlg.content.querySelector(`#rap-mcp-${id}`);
+        if (input) void copyText(input.value, input);
+    }
+
+    function openLinkXi() {
+        // Enshutsuka's persona page (enshutsukaConsole), else the old DSAP page
+        if (typeof root.openEnshutsukaConsole === 'function') {
+            root.openEnshutsukaConsole('persona');
+            return;
+        }
+        // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js (follows the page's opensApp)
+        callGlobal('openDsapInGrimoire', 'dsap://xi.dyna.dreamscape.jp/persona');
     }
 
     function setDirty(on) {
@@ -259,9 +396,20 @@
     }
 
     function onClick(ev) {
+        const tab = ev.target.closest('.tbp-tab');
+        if (tab) {
+            selectTab(tab.dataset.tab);
+            return;
+        }
         const b = ev.target.closest('[data-action]');
         if (!b || b.disabled) return;
+        if (b.dataset.action.startsWith('copy:')) {
+            copyField(b.dataset.action.slice(5));
+            return;
+        }
         switch (b.dataset.action) {
+            case 'template': void openTemplate(); break;
+            case 'linkxi': openLinkXi(); break;
             case 'ok': void ok(); break;
             case 'cancel': finish(); break;
             case 'apply': void applyPending(); break;
@@ -281,6 +429,20 @@
         } else if (ev.key === 'Enter' && !ev.target.matches('button, select, textarea')) {
             ev.preventDefault();
             void ok();
+        } else if (ev.ctrlKey && (ev.key === 'Tab' || ev.key === 'PageDown' || ev.key === 'PageUp')) {
+            // Ctrl+Tab / Ctrl+PageDown walk the tabs, as in Vista (on the desktop Ctrl+Tab is also
+            // the window switcher, keyboardShortcuts.js, which takes it first)
+            ev.preventDefault();
+            ev.stopPropagation();
+            const back = ev.key === 'PageUp' || (ev.key === 'Tab' && ev.shiftKey);
+            const i = TABS.findIndex((t) => t.id === dlg.tab);
+            selectTab(TABS[(i + (back ? TABS.length - 1 : 1)) % TABS.length].id);
+        } else if (ev.target.matches('.tbp-tab') && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+            ev.preventDefault();
+            const i = TABS.findIndex((t) => t.id === dlg.tab);
+            selectTab(TABS[(i + (ev.key === 'ArrowLeft' ? TABS.length - 1 : 1)) % TABS.length].id);
+            const on = dlg.content.querySelector('.tbp-tab.is-selected');
+            if (on) on.focus();
         }
     }
 
@@ -337,16 +499,19 @@
         syncControls();
     }
 
-    function open() {
+    /** Opens the sheet on a tab: 'remote' (the default) or 'mcp'. */
+    function open(tab = 'remote') {
         if (!doc) return;
         if (dlg) {
+            if (!dlg.sub) selectTab(tab);
             callGlobal('openModal', dlg.modal);
             return;
         }
         const saved = readState();
         const { modal, content } = buildSheet();
-        dlg = { modal, content, saved, pending: { ...saved }, dirty: false, sub: null };
+        dlg = { modal, content, saved, pending: { ...saved }, dirty: false, sub: null, tab, mcp: null };
         syncControls();
+        selectTab(tab);
         showWindow(modal, null);
         void refreshFromServer();
     }
@@ -477,10 +642,179 @@
         });
     }
 
+    // ---- System Message Template (a window of its own) -----------------------------------------
+
+    const TEMPLATE_ID = 'mcpSystemMessageTemplateWindow';
+
+    function setTemplateStatus(message) {
+        const st = tpl && tpl.content.querySelector('.rap-tpl-status');
+        if (st) st.textContent = message;
+    }
+
+    function describeTemplate() {
+        if (!tpl || !tpl.data) return '';
+        if (!tpl.admin) return 'Only an administrator can change the template.';
+        if (tpl.dirty) return 'Changed. Click OK or Apply to save the template.';
+        if (!tpl.data.custom) return 'This is the built-in template.';
+        let when = '';
+        try {
+            if (tpl.data.updatedAt) when = ` on ${new Date(tpl.data.updatedAt).toLocaleString()}`;
+        } catch (_) { /* no date */ }
+        return `An administrator changed this template${when}.`;
+    }
+
+    function syncTemplate() {
+        if (!tpl) return;
+        const c = tpl.content;
+        const edit = c.querySelector('.rap-tpl-edit');
+        const data = tpl.data;
+        edit.readOnly = !tpl.admin || !data;
+        c.querySelector('[data-action="tpl-copy"]').disabled = !edit.value;
+        c.querySelector('[data-action="tpl-default"]').disabled = !tpl.admin || !data || edit.value === data.defaultText;
+        c.querySelector('[data-action="tpl-apply"]').disabled = !tpl.dirty;
+        setTemplateStatus(data ? describeTemplate() : 'Loading the template...');
+    }
+
+    /** The template from the server: the admin call, else (not an administrator) the connector page's copy. */
+    async function loadTemplate() {
+        let data = null;
+        let admin = false;
+        try {
+            const r = await wsClient.sendMessage('get_mcp_project_instructions', {}, false);
+            if (r && typeof r.text === 'string') {
+                data = r;
+                admin = true;
+            }
+        } catch (_) { /* not an administrator, or the server predates the template */ }
+        if (!data) {
+            try {
+                const page = (dlg && dlg.mcp && dlg.mcp.page) || await fetchConnectorPage();
+                if (page && page.projectInstructions) data = { text: page.projectInstructions, defaultText: '', custom: false };
+            } catch (_) { /* offline */ }
+        }
+        if (!tpl) return;
+        if (!data) {
+            setTemplateStatus('The template could not be loaded.');
+            return;
+        }
+        tpl.data = data;
+        tpl.admin = admin;
+        tpl.dirty = false;
+        tpl.content.querySelector('.rap-tpl-edit').value = data.text;
+        syncTemplate();
+    }
+
+    async function saveTemplate(restoreDefault = false) {
+        if (!tpl || !tpl.admin) return false;
+        const edit = tpl.content.querySelector('.rap-tpl-edit');
+        const payload = restoreDefault ? { restoreDefault: true } : { text: edit.value };
+        setTemplateStatus('Saving...');
+        try {
+            const r = await wsClient.sendMessage('save_mcp_project_instructions', payload, false);
+            if (!tpl) return true;
+            if (r && typeof r.text === 'string') {
+                tpl.data = r;
+                tpl.dirty = false;
+                edit.value = r.text;
+                syncTemplate();
+                return true;
+            }
+            throw new Error('The server did not answer.');
+        } catch (err) {
+            if (tpl) setTemplateStatus(`The template could not be saved. ${err && err.message ? err.message : ''}`.trim());
+            return false;
+        }
+    }
+
+    function closeTemplate() {
+        if (!tpl) return;
+        const modal = tpl.modal;
+        tpl = null;
+        closeWindow(modal);
+    }
+
+    function onTemplateClick(ev) {
+        const b = ev.target.closest('[data-action]');
+        if (!b || b.disabled || !tpl) return;
+        const edit = tpl.content.querySelector('.rap-tpl-edit');
+        switch (b.dataset.action) {
+            case 'tpl-copy':
+                void copyText(edit.value, null);
+                break;
+            case 'tpl-default':
+                // into the edit, as a change OK or Apply saves (Cancel keeps the saved text)
+                edit.value = tpl.data.defaultText;
+                tpl.dirty = edit.value !== tpl.data.text;
+                syncTemplate();
+                break;
+            case 'tpl-ok':
+                if (!tpl.dirty) closeTemplate();
+                else void saveTemplate(edit.value === tpl.data.defaultText).then((ok) => { if (ok) closeTemplate(); });
+                break;
+            case 'tpl-cancel':
+                closeTemplate();
+                break;
+            case 'tpl-apply':
+                void saveTemplate(edit.value === tpl.data.defaultText);
+                break;
+            default: break;
+        }
+    }
+
+    /** Template...: System Message Template, the Grok project instructions in a Notepad-like edit. */
+    async function openTemplate() {
+        if (!doc) return;
+        if (tpl) {
+            callGlobal('openModal', tpl.modal);
+            return;
+        }
+        const { modal, content, close } = makeWindow(TEMPLATE_ID, 'System Message Template', 'rap-template', `${ICONS}/vista-remote-access.webp`);
+        content.innerHTML = `
+            <div class="rap-tpl-intro">Paste this into the instructions of a Grok project that uses the DreamScape connector. Paste it again after each tools revision. Agents that connect get the same MCP rules.</div>
+            <textarea class="rap-tpl-edit" spellcheck="false" wrap="soft" aria-label="System message template" readonly></textarea>
+            <div class="rap-tpl-status" role="status"></div>
+            <div class="tbp-footer rap-tpl-left">
+                <button type="button" class="tbp-button tbp-footer-button" data-action="tpl-copy">Cop<u>y</u></button>
+                <button type="button" class="tbp-button tbp-footer-button rap-tpl-default" data-action="tpl-default">Restore <u>D</u>efault</button>
+            </div>
+            <div class="tbp-footer rap-tpl-right">
+                <button type="button" class="tbp-button tbp-footer-button" data-action="tpl-ok" data-dialog-primary="1">OK</button>
+                <button type="button" class="tbp-button tbp-footer-button" data-action="tpl-cancel">Cancel</button>
+                <button type="button" class="tbp-button tbp-footer-button" data-action="tpl-apply" disabled>Apply</button>
+            </div>`;
+        tpl = { modal, content, data: null, admin: false, dirty: false };
+        close.addEventListener('click', () => closeTemplate());
+        content.addEventListener('click', onTemplateClick);
+        const edit = content.querySelector('.rap-tpl-edit');
+        edit.addEventListener('input', () => {
+            if (!tpl || !tpl.data) return;
+            tpl.dirty = edit.value !== tpl.data.text;
+            syncTemplate();
+        });
+        modal.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape') {
+                ev.preventDefault();
+                ev.stopPropagation();
+                closeTemplate();
+            } else if (ev.key === 'Tab' && ev.target === edit && !edit.readOnly && !ev.ctrlKey && !ev.altKey) {
+                // a tab character, as Notepad types one (Ctrl+Tab still moves on)
+                ev.preventDefault();
+                ev.stopPropagation();
+                const start = edit.selectionStart;
+                edit.setRangeText('\t', start, edit.selectionEnd, 'end');
+                edit.dispatchEvent(new Event('input'));
+            }
+        });
+        syncTemplate();
+        showWindow(modal, dlg ? dlg.modal : null);
+        await loadTemplate();
+    }
+
     const api = {
         open,
+        openTemplate,
         isOpen: () => !!dlg,
-        _test: { readState, pageRemote, dlu, checkStyle, OPEN_WITH }
+        _test: { readState, pageRemote, pageMcp, dlu, checkStyle, OPEN_WITH, MCP_FIELDS }
     };
     root.remoteAccessProperties = api;
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

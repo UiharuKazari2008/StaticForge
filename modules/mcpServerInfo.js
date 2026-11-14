@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const { ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS } = require('./mcpInstructions');
+const { resolveProjectInstructions } = require('./mcpProjectInstructions');
 
 const MCP_SERVER_TITLE = 'DreamScape';
 const MCP_SERVER_PUBLISHER = 'Academy City Research P.S.R.';
@@ -58,7 +59,8 @@ function buildMcpConnectorGrimPage(globalResources) {
             oauthToken,
             scopes: 'generation gallery workspace chat',
             recommendedScopes: 'generation gallery workspace autofill wiki presets references search notes chat',
-            projectInstructions: ENSHUTSUKA_GROK_PROJECT_INSTRUCTIONS
+            // an administrator's edited copy when there is one (Remote Access > MCP Connector > Template...)
+            projectInstructions: resolveProjectInstructions(globalResources)
         }
     };
 }
