@@ -293,3 +293,76 @@ html.ui-mobile[data-wm-version="6.5"] .wm-search .wsr-item::after {
 .wm-search .wsr-item.is-selected {
     color: #fff;
 }
+
+/* ---- Search Pictures (Yozora #831, wmSearchPictures.js): Search's form and Results band over
+ * Pictures & Videos' thumbnail grid (wm-shell.css .wm-pv-cell), Search's rows (View > Details) or
+ * the prompt usages; the Properties page is a WM settings page (wm-programs.css .wm-form-hdr,
+ * .wm-form, .wm-facts, .wm-tabs, textarea.wm-edit). ---- */
+.wm-spx .wsp-main,
+.wm-spx .wsp-detail {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-spx .wsp-main[hidden],
+.wm-spx .wsp-detail[hidden] {
+    display: none;
+}
+
+.wm-spx .wsp-results {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+}
+
+/* one grid for the whole list: pages of 60 appended to it never leave a gap in a row */
+.wm-spx .wsp-grid {
+    content-visibility: visible;
+    contain-intrinsic-size: none;
+}
+
+.wm-spx .wsp-usage .wsp-where {
+    color: #808080;
+}
+
+.wm-spx .wsp-usage.is-selected .wsp-where {
+    color: inherit;
+}
+
+.wm-spx .wsp-detail .wm-form-sub {
+    margin-top: calc(6 * var(--wm-px));
+}
+
+.wm-spx textarea.wsp-text {
+    height: calc(120 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
+}
+
+.wm-spx textarea.wsp-text.is-short {
+    height: calc(54 * var(--wm-px));
+}
+
+.wm-spx .wsp-detail .wm-facts > :nth-child(even) {
+    overflow-wrap: anywhere;
+}
+
+/* Options (wmSettings page search-pictures-options): its rows live in the Settings program's page */
+.wm-set .wsp-indent,
+.wm-page .wsp-indent {
+    padding-left: calc(16 * var(--wm-px));
+}
+
+.wm-page .wsp-pair {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-width: 0;
+}
+
+.wm-page .wsp-pair .wm-edit {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+}

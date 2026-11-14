@@ -567,6 +567,9 @@
         reference: ['reference'],
         calculator: ['calculator'],
         calendar: ['calendar'],
+        // Image Search (the desktop program and its old DSAP): the phone's Search Pictures (#831)
+        ispy: ['search-pictures'],
+        'image-search': ['search-pictures'],
         taskmgr: ['taskmgr'],
         'media-player': ['windows-media'],
         'remote-desktop': ['remote-desktop-mobile'],
@@ -596,7 +599,7 @@
     // folders inside another folder (#805: the ones made in Android / Work): id -> parent id
     const FOLDER_PARENT = new Map();
     const FOLDER_GROUPS = new Map(); // setProgramFolders group -> its ids
-    const DREAMSCAPE_APPS = new Set(['studio', 'director', 'spellcaster', 'phasewalker', 'atelier', 'reference', 'characters', 'expanders', 'spellbook', 'emotion', 'teleport', 'chat']);
+    const DREAMSCAPE_APPS = new Set(['studio', 'director', 'spellcaster', 'phasewalker', 'atelier', 'reference', 'characters', 'expanders', 'spellbook', 'emotion', 'teleport', 'chat', 'search-pictures']);
     const DREAMSCAPE_DESKTOP = new Set(['explore-gallery', 'novels', 'ispy', 'image-search']);
     // WM 6.1 art for desktop entries the phone lists as they are (the dsap apps)
     const DESKTOP_WM_ART = { 'explore-gallery': 'app-agora', novels: 'app-novels', ispy: 'app-image-search', 'image-search': 'app-image-search', 'data-management': 'app-data-management', 'control-panel': 'app-control-panel', import: 'app-import' };

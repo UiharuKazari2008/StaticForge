@@ -750,7 +750,7 @@
         { type: 'web', title: 'Search Internet', icon: 'app-ie', panelIcon: 's:ie' },
         { type: 'grimoire', title: 'Search Grimoire', icon: 'app-grimoire', panelIcon: 'x:app-grimoire-lg' },
         { type: 'files', title: 'Search Files', icon: 'app-file-explorer', panelIcon: 's:fileexp' },
-        { type: 'pictures', title: 'Search Pictures', icon: 'app-pictures', panelIcon: 's:photos' }
+        { type: 'pictures', title: 'Search Pictures', icon: 'app-image-search', panelIcon: 's:image-search' }
     ];
     const sources = () => SOURCES.filter((s) => { try { return !s.available || s.available(); } catch (_) { return false; } });
 
@@ -1010,6 +1010,11 @@
     window.wmSearch = {
         open(text, typeId, opts) {
             if (!ws) return;
+            // Search Pictures is a program of its own (#831: wmSearchPictures.js, the phone's Image Search)
+            if (typeId === 'pictures' && window.wmSearchPictures && typeof window.wmSearchPictures.open === 'function') {
+                void window.wmSearchPictures.open(text != null ? { text: String(text) } : { focus: !!(opts && opts.focus) });
+                return;
+            }
             ws.open(APP_ID, { fromStart: true });
             if (typeId && (typeId === 'all' || sources().some((s) => s.id === typeId))) { type = typeId; renderType(); warmType(); }
             if (text != null && page) { field().value = String(text); ws.refreshSoftKeys(); if (String(text).trim()) search(); else showInstant(); }

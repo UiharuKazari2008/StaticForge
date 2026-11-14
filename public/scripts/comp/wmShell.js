@@ -8336,10 +8336,18 @@
         } catch (_) { return null; }
     }
 
+    /** A slide another program shows (data.wmKit names its global: Search Pictures, #831): its own keys, Menu and strip. */
+    function viewerKit(item) {
+        const k = item && typeof item.wmKit === 'string' ? window[item.wmKit] : null;
+        return k && typeof k.viewerSoftKeys === 'function' ? k : null;
+    }
+
     function viewbarState(act, title) {
         const item = viewerItem();
         const pic = item && (item.filename || item.original);
         if (act === 'prev' || act === 'next') return { enabled: viewerSlides() > 1 };
+        const kit = viewerKit(item);
+        if (kit) return typeof kit.viewbarState === 'function' ? kit.viewbarState(act, item) : { enabled: false };
         // a storage card's picture (wmPhoneGallery.js): Director and Delete act on the phone's file
         if (item && item.phoneMedia) {
             if (act === 'director') return { enabled: !item.phoneMedia.video && !!window.wmDirectorApp };
@@ -8390,6 +8398,12 @@
         const pic = item && (item.filename || item.original);
         if (act === 'prev') { if (p && p.prev) p.prev(); return; }
         if (act === 'next') { if (p && p.next) p.next(); return; }
+        const kit = viewerKit(item);
+        if (kit) {
+            if (typeof kit.viewbarPress === 'function') kit.viewbarPress(act, item);
+            [400, 1200, 2500].forEach((ms) => setTimeout(renderViewbar, ms));
+            return;
+        }
         if (item && item.phoneMedia && window.wmPhoneGallery) {
             if (act === 'director') { window.wmPhoneGallery.viewerDirector(item.phoneMedia); return; }
             if (act === 'delete') { void window.wmPhoneGallery.viewerDelete(item.phoneMedia); return; }
@@ -8578,6 +8592,8 @@
     function viewerSoftKeys() {
         const shownItem = viewerItem();
         if (shownItem && shownItem.phoneMedia && window.wmPhoneGallery) return window.wmPhoneGallery.viewerSoftKeys(shownItem.phoneMedia);
+        const kit = viewerKit(shownItem);
+        if (kit) return kit.viewerSoftKeys(shownItem);
         return {
             left: { label: 'Save', disabled: !viewerButton('Download image') && !viewerSlideFile(), action: viewerSave },
             right: {
@@ -9280,6 +9296,9 @@
      */
     const LAZY_APPS = [
         { id: 'calculator', title: 'Calculator', icon: 'app-calculator', inStart: 'programs', script: 'scripts/comp/wmCalculator.js' },
+        // Search Pictures (#831): the phone's Image Search; the ispy / Image Search entries, dsap://ispy
+        // links and Today's Search Pictures open it (wmSearchPictures.open; a stand-in until it loads)
+        { id: 'search-pictures', title: 'Search Pictures', startLabel: 'Search Pictures', icon: 'app-image-search', art65: 'image-search', inStart: 'programs', script: 'scripts/comp/wmSearchPictures.js', globals: [{ name: 'wmSearchPictures', methods: ['open'] }] },
         // Today's Search Internet opens it (#830): search bar, past searches, live predictions, Google / Bing
         { id: 'internetsearch', title: 'Internet Search', icon: 'app-search', inStart: 'programs', script: 'scripts/comp/wmInternetSearch.js' },
         { id: 'solitaire', title: 'Solitaire', icon: 'app-solitaire', art65: 'solitaire', inStart: 'programs', programsFolder: 'games', script: 'scripts/comp/wmSolitaire.js' },
