@@ -667,17 +667,33 @@
      * scrolls, so the overlay is sized to the textarea (--wms-ta-*) and follows its scrolling.
      */
     let editorsWatched = false;
+    let fitEditorOverlays = () => {};
     function watchPromptEditors() {
         const m = modal();
         if (editorsWatched || !m) return;
         editorsWatched = true;
+        // the overlays are drawn over the field: their box and type must be the field's to the
+        // pixel, or the highlight wraps at other words and drifts further down every line (#825: a
+        // 1 px overlay border against a borderless editor field); copied from the field each fit
+        const SYNC = ['borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+            'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'wordSpacing', 'tabSize', 'whiteSpace', 'overflowWrap', 'wordBreak', 'boxSizing'];
         const fit = (ta) => {
             const host = ta.parentElement;
             if (!host || ta.offsetParent === null) return;
             host.style.setProperty('--wms-ta-top', `${ta.offsetTop}px`);
             host.style.setProperty('--wms-ta-h', `${ta.offsetHeight}px`);
+            const cs = getComputedStyle(ta);
+            host.querySelectorAll(':scope > .emphasis-highlight-overlay, :scope > .search-highlight-overlay').forEach((ov) => {
+                SYNC.forEach((k) => { if (ov.style[k] !== cs[k]) ov.style.setProperty(k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`), cs[k], 'important'); });
+                ov.style.setProperty('border-color', 'transparent', 'important');
+                ov.style.setProperty('width', `${ta.offsetWidth}px`, 'important');
+                // the field's scroll bar (if any) takes width from its text: the overlay's text box matches
+                const bar = ta.offsetWidth - ta.clientWidth - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0);
+                ov.style.setProperty('padding-right', `${(parseFloat(cs.paddingRight) || 0) + Math.max(0, bar)}px`, 'important');
+            });
             syncOverlayScroll(ta);
         };
+        fitEditorOverlays = () => { m.querySelectorAll('textarea.prompt-textarea, textarea.character-prompt-textarea').forEach((ta) => fit(ta)); };
         const ro = typeof ResizeObserver === 'function' ? new ResizeObserver((entries) => entries.forEach((e) => fit(e.target))) : null;
         const seen = new WeakSet();
         const scan = () => {
@@ -738,7 +754,7 @@
     function refreshTitle() {
         if (!ws || !isCurrent() || root.hasAttribute('data-wm-viewer')) return;
         const top = tools[tools.length - 1];
-        if (top) { ws.setTitle(top.win.dataset.wmhTitle || windowTitle(top.win)); return; }
+        if (top && !isDialogTool(top.win)) { ws.setTitle(top.win.dataset.wmhTitle || windowTitle(top.win)); return; }
         if (editTa) { ws.setTitle(fieldTitle(editTa)); return; }
         // a print running: its progress in the title (Generate stays free to queue another)
         if (generating()) {
@@ -824,6 +840,9 @@
             strip.innerHTML = list.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${esc(id)}" aria-selected="false">${esc(label)}</button>`).join('');
         }
         strip.querySelectorAll('.wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === cur)));
+        // measured only when it is on screen: fitted while the editor hid it, every tab was 0 wide and
+        // came back as a one-letter stub (#825)
+        if (!strip.getClientRects().length) return;
         if (window.wmSettings && typeof window.wmSettings.fitTabs === 'function') window.wmSettings.fitTabs(strip, tabFit);
     }
 
@@ -969,10 +988,16 @@
             // rows drawn by a content() function (Datasets, Adjustments: a name and, when on, a bias
             // stepper): the name is the label; the bias steps are a submenu
             let node = null;
-            if (!label && typeof item.content === 'function') {
-                try { node = item.content(target); } catch (_) { node = null; }
+            if (!label && item.content != null) {
+                // a function that builds the row, or the row's HTML as a string (Quick Access's
+                // levels: datasetTagRowContent; their 13 categories were dropped as label-less, #825)
+                if (typeof item.content === 'function') { try { node = item.content(target); } catch (_) { node = null; } } else if (typeof item.content === 'string') {
+                    const tpl = document.createElement('template');
+                    tpl.innerHTML = item.content;
+                    node = tpl.content.firstElementChild;
+                }
                 if (node && node.nodeType === 1) {
-                    const name = node.querySelector('.dataset-name');
+                    const name = node.querySelector('.dataset-name, .dataset-tag-name');
                     label = (name || node).textContent;
                 }
             }
@@ -1263,7 +1288,8 @@
                 ? (this.clickMenuConfigs && this.clickMenuConfigs[target.dataset.clickMenu])
                 : (this.configs && this.configs[target.dataset.contextMenu]);
             if (!config) return undefined;
-            const combo = trigger === 'click' && target.closest && target.closest('.custom-dropdown');
+            // a desktop combo; Quick Access's path levels are combos too (one flat list under the box)
+            const combo = trigger === 'click' && target.closest && target.closest('.custom-dropdown, .dataset-tag-dropdown-wrapper');
             let items = [];
             try { items = wmItemsFromConfig(config, target, !!combo); } catch (err) { console.warn('[wmStudio] context menu', err); }
             if (!items.length) return undefined;
@@ -1313,6 +1339,7 @@
      * headings, .selected as the dot) as a WM drop-down; a pick clicks the desktop row, so its handler
      * does the work. Lists without plain rows (sliders, custom content) stay the desktop's.
      */
+    let dropAnchor = null; // a phone button the next proxied desktop list drops from
     function proxyDropdown(btn) {
         const box = btn.closest('.custom-dropdown');
         const menu = box && box.querySelector(':scope > .custom-dropdown-menu');
@@ -1336,9 +1363,12 @@
             });
         }
         let picked = false;
-        // the desktop list leaves the layout first, so the combo is measured where it sits
+        // the desktop list leaves the layout first, so the combo is measured where it sits; a phone
+        // button that stands in for a hidden desktop one (the editor's Prompt Tools) is the anchor
+        const at = dropAnchor && dropAnchor.isConnected ? dropAnchor : box;
+        dropAnchor = null;
         menu.classList.add('wms-dd-proxied');
-        ws.dropdown(box, dropLoneHeading(items), sideOf(box), () => {
+        ws.dropdown(at, dropLoneHeading(items), sideOf(at), () => {
             menu.classList.remove('wms-dd-proxied');
             // closed without a pick: the desktop list closes too
             setTimeout(() => {
@@ -1350,8 +1380,8 @@
             }, 0);
         });
         const pop = shellPopup();
-        if (pop && !pop.hidden) pop.style.minWidth = `${Math.round(box.getBoundingClientRect().width)}px`;
-        fitDropdown(box);
+        if (pop && !pop.hidden && at === box) pop.style.minWidth = `${Math.round(box.getBoundingClientRect().width)}px`;
+        if (at === box) fitDropdown(box);
     }
 
     // ---------------------------------------------------------------- the print
@@ -1404,7 +1434,8 @@
 
     // .ptw-buttons / .ptw-tools: Find's buttons and Emphasis's icon tools (promptToolWindows.js), whose
     // labels are their titles; on the phone they are its soft keys and Menu (#825)
-    const FOOTERS = '.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons, .ptw-buttons, .ptw-tools';
+    // .dataset-tag-controls: Quick Access's Reset / Close (datasetTagToolbar.js)
+    const FOOTERS = '.modal-footer, .modal-footer-colored, .character-position-footer, .modal-actions, .dialog-buttons, .ptw-buttons, .ptw-tools, .dataset-tag-controls';
 
     /** The buttons of the window's footer rows (hidden on the phone: they are its soft keys and Menu). */
     function toolButtons(win) {
@@ -1449,6 +1480,27 @@
         return { left, right: rows.length ? { label: 'Menu', menu: () => toolKeys(win).rows } : null, rows, form, prim };
     }
 
+    /** The tool layer as a dialog (its caption bar with the corner button) when the top window is one. */
+    function paintToolLayer() {
+        const box = page && page.querySelector('.wms-tool');
+        if (!box) return;
+        const top = tools[tools.length - 1];
+        const dlg = !!(top && isDialogTool(top.win));
+        box.classList.toggle('wms-tool-dialog', dlg);
+        page.classList.toggle('wms-has-dialog', dlg);
+        let cap = box.querySelector(':scope > .wms-tool-host > .wm-msgbox-title');
+        if (dlg) {
+            if (!cap) {
+                cap = document.createElement('div');
+                cap.className = 'wm-msgbox-title';
+                cap.innerHTML = '<span></span><button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button>';
+                cap.querySelector('button').addEventListener('click', () => closeTool());
+                box.querySelector('.wms-tool-host').prepend(cap);
+            }
+            cap.querySelector('span').textContent = top.win.dataset.wmhTitle || windowTitle(top.win);
+        } else if (cap) cap.remove();
+    }
+
     function setUnder() {
         tools.forEach((t, i) => {
             if (i === tools.length - 1) t.win.removeAttribute('data-wms-under');
@@ -1460,8 +1512,45 @@
      * A desktop window that opens over Studio is pushed as a sub-page over the one before it (the
      * vSlider editor over vSlider): nothing under it closes; Done or back pops back down.
      */
+    /** Desktop windows with no caption of their own, or icon-only buttons: their phone page names them. */
+    // desktop windows shown as a WM dialog over the page (a framed box with its own caption and
+    // corner button) instead of a full-screen sub-page (Yukimi, Nov 14 #825: Quick Access)
+    const DIALOG_TOOLS = new Set(['datasetTagToolbar']);
+    const isDialogTool = (win) => DIALOG_TOOLS.has(win.id);
+
+    function nameTool(win) {
+        if (win.id === 'datasetTagToolbar') {
+            win.dataset.wmhTitle = 'Quick Access';
+            const reset = win.querySelector('.dataset-tag-reset-btn');
+            const close = win.querySelector('.dataset-tag-close');
+            if (reset && !reset.title) reset.title = 'Reset';
+            if (close && !close.title) close.title = 'Close';
+        }
+    }
+
+    /**
+     * The editor's caret while a tool page or dialog is over it: what the tool puts in (Quick Access's
+     * tag, a SmartText pick) goes where the caret was. The field lost its caret to the dialog (a tag
+     * landed at the start, #825); it gets it back the moment it takes focus again.
+     */
+    let heldCaret = null;
+    function holdCaret() {
+        const ta = editTa;
+        if (!ta || heldCaret) return;
+        heldCaret = { ta, start: ta.selectionStart, end: ta.selectionEnd };
+        ta.addEventListener('focus', () => {
+            const h = heldCaret;
+            heldCaret = null;
+            if (!h || h.ta !== ta) return;
+            const n = ta.value.length;
+            ta.setSelectionRange(Math.min(h.start, n), Math.min(h.end, n));
+        }, { once: true, capture: true });
+    }
+
     function hostTool(win) {
         if (!page || tools.some((t) => t.win === win)) return;
+        holdCaret();
+        nameTool(win);
         const box = page.querySelector('.wms-tool');
         // a window with a WM form of its own (the image Properties: wmHost.js adaptWindow)
         if (window.wmHost && typeof window.wmHost.adapt === 'function') window.wmHost.adapt(win);
@@ -1487,6 +1576,7 @@
         // a tool window built on first use (Emphasis) gets its - / + now
         steppers();
         setUnder();
+        paintToolLayer();
         box.hidden = false;
         page.classList.add('wms-has-tool');
         refreshTitle();
@@ -1506,6 +1596,14 @@
             else (parent || document.body).appendChild(win);
         } catch (_) { document.body.appendChild(win); }
         setUnder();
+        // the last page over the editor went: its caret is back where it was
+        if (!tools.length && heldCaret) {
+            const h = heldCaret;
+            heldCaret = null;
+            const n = h.ta.value.length;
+            try { h.ta.setSelectionRange(Math.min(h.start, n), Math.min(h.end, n)); } catch (_) { /* gone */ }
+        }
+        paintToolLayer();
         if (page && !tools.length) {
             page.querySelector('.wms-tool').hidden = true;
             page.classList.remove('wms-has-tool');
@@ -1831,7 +1929,10 @@
         ['cut', 'Cut', 'studio-edit-cut'],
         ['copy', 'Copy', 'studio-edit-copy'],
         ['paste', 'Paste', 'studio-edit-paste'],
-        ['selectall', 'Select All', 'studio-edit-select-all']
+        ['selectall', 'Select All', 'studio-edit-select-all'],
+        '|',
+        ['quickaccess', 'Quick Access', null],
+        ['toolbox', 'Prompt Tools', null]
     ];
     let editTa = null;
 
@@ -1850,8 +1951,8 @@
         // the weight: a plain - and + around its value (Yukimi, Nov 14: the A-arrow icons were confusing)
         const step = (id, sign, label) => `<button type="button" class="wms-ed-btn wms-ed-step" data-ed="${id}" aria-label="${label}" title="${label}">${sign}</button>`;
         bottom.innerHTML = `${step('weightdown', '\u2212', 'Less Weight')}<span class="wms-ed-weight" aria-live="polite"></span>${step('weightup', '+', 'More Weight')}`
-            + `<span class="wms-ed-sep"></span>${edButton('group', 'Group the Selection')}<span class="wms-ed-sep"></span>${edButton('find', 'Find')}${edButton('smarttext', 'SmartText')}`
-            + '<span class="wms-ed-tokens"></span>';
+            + `<span class="wms-ed-sep"></span>${edButton('group', 'New Emphasis Group')}${edButton('trimstart', 'Trim Start')}${edButton('trimend', 'Trim End')}${edButton('emremove', 'Remove Emphasis')}`
+            + `<span class="wms-ed-sep"></span>${edButton('find', 'Find')}${edButton('smarttext', 'SmartText')}`;
         // a tap on a strip keeps the focus (and the keyboard) in the field; a drag on a strip moves nothing
         [top, bottom].forEach((bar) => {
             bar.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
@@ -1869,10 +1970,27 @@
         if (!ta) return;
         const top = ED_TOP.find((b) => b !== '|' && b[0] === id);
         /* global handleStudioMenuBarAction */
-        if (top) { try { handleStudioMenuBarAction(top[2], ta, null); } catch (err) { console.warn('[wmStudio] edit', err); } paintEditor(); return; }
+        if (top && top[2]) { try { handleStudioMenuBarAction(top[2], ta, null); } catch (err) { console.warn('[wmStudio] edit', err); } paintEditor(); return; }
+        const box = ta.closest('.prompt-textarea-container, .character-prompt-textarea-container');
+        const deskBtn = (sel) => box && box.querySelector(`.prompt-textarea-toolbar ${sel}`);
+        const anchor = page.querySelector(`.wms-ed-btn[data-ed="${id}"]`);
+        if (id === 'quickaccess') {
+            // the field's own Quick Access (its toolbar button: the desktop's window, hosted as a page)
+            const b = deskBtn('.toolbar-wide-btn .fa-book-atlas');
+            if (b) b.closest('button').click();
+            return;
+        }
+        if (id === 'toolbox') {
+            // the field's Prompt Tools list (promptActionsDropdownBtn), dropped from this button
+            const b = box && box.querySelector('#promptActionsDropdownBtn, .prompt-textarea-toolbar .fa-toolbox');
+            const btn = b && (b.tagName === 'BUTTON' ? b : b.closest('button'));
+            if (btn) { dropAnchor = anchor; btn.click(); }
+            return;
+        }
         const ptw = window.promptToolWindows;
         if (id === 'weightup' || id === 'weightdown') { if (ptw && ptw.inlineEdit) stepWeight(ta, id === 'weightup' ? 1 : -1); }
-        else if (id === 'group') { if (ptw && ptw.inlineEdit) ptw.inlineEdit(ta, 'group'); }
+        else if (id === 'group') { if (ptw && ptw.inlineEdit) newGroup(ta); }
+        else if (id === 'trimstart' || id === 'trimend' || id === 'emremove') { if (ptw && ptw.inlineEdit) ptw.inlineEdit(ta, id === 'emremove' ? 'emphasis-remove' : (id === 'trimstart' ? 'emphasis-trim-start' : 'emphasis-trim-end')); }
         else if (id === 'find') { if (ptw) ptw.openFind(ta); }
         else if (id === 'smarttext') { try { handleStudioMenuBarAction('studio-autofill-window', ta, null); } catch (err) { console.warn('[wmStudio] smarttext', err); } }
         paintEditor();
@@ -1907,6 +2025,24 @@
         }
     }
 
+    /**
+     * A new emphasis group: from the selection, or (no selection) from the tag under the caret, as the
+     * desktop's emphasis editor picks it (startEmphasisEditing's tag bounds); made at 1.0, its - / +
+     * then weight it. The caret stays inside it.
+     */
+    function newGroup(ta) {
+        const ptw = window.promptToolWindows;
+        if (ta.selectionStart !== ta.selectionEnd) { ptw.inlineEdit(ta, 'group'); paintEditor(); return; }
+        const at = ta.selectionStart;
+        ptw.inlineEdit(ta, 'adjust', 0.1);
+        let blocks = [];
+        try { blocks = listManagedEmphasisBlocks(ta.value) || []; } catch (_) { blocks = []; }
+        const hit = blocks.filter((b) => b.openEnd <= at + 24 && b.closeStart >= at - 24)
+            .sort((x, y) => Math.abs(x.openEnd - at) - Math.abs(y.openEnd - at))[0];
+        if (hit) ta.setSelectionRange(hit.openEnd, hit.openEnd);
+        paintEditor();
+    }
+
     function fieldTitle(ta) {
         const id = ta.id;
         if (id === 'manualPrompt') return 'Prompt';
@@ -1932,15 +2068,20 @@
             w.textContent = info ? (info.share ? `${Math.round(info.value)}%` : Number(info.value).toFixed(2)) : '1.00';
             const sel = ta.selectionStart !== ta.selectionEnd;
             const set = (id, on) => { const b = page.querySelector(`.wms-ed-btn[data-ed="${id}"]`); if (b) b.disabled = !on; };
-            set('weightdown', !!info || sel);
-            set('weightup', !!info || sel);
-            set('group', !info && sel);
+            // a tag under the caret (or a selection) can be weighted or made a group
+            const v = ta.value;
+            const p = ta.selectionStart;
+            const onTag = sel || /[^\s,]/.test(v.charAt(p) || '') || /[^\s,]/.test(v.charAt(p - 1) || '');
+            set('weightdown', !!info || onTag);
+            set('weightup', !!info || onTag);
+            set('group', !info && onTag);
+            set('trimstart', !!info);
+            set('trimend', !!info);
+            set('emremove', !!info);
             set('cut', sel);
             set('copy', sel);
             // the desktop's token count for this field (its toolbar's own line)
-            const tk = ta.closest('.prompt-textarea-container, .character-prompt-textarea-container');
-            const count = tk && tk.querySelector('.token-count');
-            page.querySelector('.wms-ed-tokens').textContent = count ? count.textContent.trim() : '';
+            // the token count and bar: the field's own (its status line and toolbar count, shown in the editor)
         });
     }
 
@@ -1982,6 +2123,7 @@
         page.querySelectorAll('.wms-edbar').forEach((b) => { b.hidden = false; });
         paintEditor();
         syncDock();
+        requestAnimationFrame(() => fitEditorOverlays());
         if (isCurrent()) { refreshTitle(); ws.refreshSoftKeys(); ws.syncHistory(); }
     }
 
@@ -1996,6 +2138,8 @@
             page.querySelectorAll('.wms-edbar').forEach((b) => { b.hidden = true; });
         }
         syncDock();
+        // the strip shows again: fitted now that it can be measured; the field's overlays follow its form box
+        requestAnimationFrame(() => { if (page) { paintTabStrip(shownTab()); fitEditorOverlays(); } });
         if (!quiet) {
             if (document.activeElement === ta) ta.blur();
             if (isCurrent()) { refreshTitle(); ws.refreshSoftKeys(); ws.syncHistory(); }
@@ -2063,6 +2207,7 @@
         { id: 'model', label: 'Model', kind: 'combo', menu: 'Model', row: 'Model' },
         '|',
         { id: 'effort', label: 'Drafting (Medium Effort)', kind: 'toggle', btn: 'manualEffortBtn' },
+        { id: 'dyngen', label: '\u6f14\u51fa\u5bb6 (Enshutsuka) Dynamic Generation', kind: 'toggle', btn: 'dynamicGenerationToggleBtn', states: ['open', 'on'] },
         '|',
         { id: 'dataset', label: 'Datasets', kind: 'list', menu: 'Prompt', row: 'Datasets', on: () => stateOn('datasetDropdownBtn'), face: 'count' },
         { id: 'subtoggle', label: 'Adjustments', kind: 'list', menu: 'Prompt', row: 'Adjustments', on: () => stateOn('subTogglesBtn') },
@@ -2151,7 +2296,7 @@
         if (typeof MutationObserver === 'function') {
             let queued = false;
             const mo = new MutationObserver(() => { if (queued) return; queued = true; requestAnimationFrame(() => { queued = false; paintPromptTools(); }); });
-            ['manualEffortBtn', 'datasetDropdownBtn', 'subTogglesBtn', 'ucPresetsDropdownBtn', 'nsfwToggleBtn', 'sproutSeedBtn'].forEach((id) => {
+            ['manualEffortBtn', 'dynamicGenerationToggleBtn', 'datasetDropdownBtn', 'subTogglesBtn', 'ucPresetsDropdownBtn', 'nsfwToggleBtn', 'sproutSeedBtn'].forEach((id) => {
                 const el = document.getElementById(id);
                 if (el) mo.observe(el, { attributes: true, attributeFilter: ['data-state', 'class', 'disabled'] });
             });
@@ -2171,15 +2316,28 @@
             const b = page.querySelector(`.wms-ptools [data-pt="${t.id}"]`);
             if (!b) return;
             if (t.kind === 'combo') {
+                // the version and its edition badge (Yukimi, Nov 14 #825: "removed NovelAI and added
+                // edition badge back"): v5 Full, v4.5 Cur ..., the badge as the drop-down rows draw it
                 modelName();
-                b.textContent = ((document.querySelector('#manualModelDropdownBtn > .wms-model-name') || {}).textContent || '').trim() || 'Model';
+                const full = ((document.querySelector('#manualModelDropdownBtn > .wms-model-name') || {}).textContent || '').trim();
+                const short = full.replace(/^NovelAI\s+/i, '').replace(/\s*\((Curated|Anime|Furry)\)\s*$/i, (m, w) => (/curated/i.test(w) ? '' : ` ${w}`)).trim() || 'Model';
+                const value = (document.getElementById('manualModel') || {}).value || '';
+                const d = modelBadge(value);
+                b.textContent = short;
+                if (d) {
+                    const badge = document.createElement('span');
+                    badge.className = `wms-badge ${d.cls}`;
+                    badge.textContent = d.badge;
+                    b.appendChild(badge);
+                }
                 return;
             }
             if (t.kind === 'toggle') {
                 const desk = document.getElementById(t.btn);
                 const off = !desk || desk.classList.contains('hidden') || desk.disabled;
                 b.disabled = off;
-                b.setAttribute('aria-pressed', String(!off && stateOn(t.btn)));
+                const st = desk ? desk.getAttribute('data-state') : '';
+                b.setAttribute('aria-pressed', String(!off && (t.states ? t.states.includes(st) : stateOn(t.btn))));
                 return;
             }
             const row = findMenuRow(t.menu, t.row);

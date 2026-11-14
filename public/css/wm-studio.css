@@ -1671,7 +1671,50 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
  * #825: "i cant use prompt toolbar unless i have the text area"): the prompt editor (wmStudio.js) has
  * its own tool strips and the token count, Settings has Datasets / Quality / UC Preset / NSFW Bias */
 .wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar.prompt-textarea-toolbar.prompt-textarea-toolbar {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+    box-shadow: none !important;
+}
+
+/* of the desktop toolbar only its token count stays (Yukimi, Nov 14 #825: "where is my token bar or
+ * token count"): one line under the field's token bar, right-aligned; the tools are the editor's */
+.wm-studio #manualModal .prompt-textarea-toolbar > :not(.toolbar-left),
+.wm-studio #manualModal .prompt-textarea-toolbar > .toolbar-left > :not(.token-info-container),
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-container > :not(.token-info-top),
+.wm-studio #manualModal .prompt-textarea-toolbar .token-info-top > :not(.token-count) {
     display: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar :is(.toolbar-left, .token-info-container, .token-info-top).wms-x,
+.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar :is(.toolbar-left, .token-info-container, .token-info-top) {
+    display: block !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: none !important;
+}
+
+.wm-studio #manualModal .prompt-textarea-toolbar.prompt-textarea-toolbar .token-count {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    text-align: right !important;
+    padding: calc(1 * var(--wm-px)) 0 0 !important;
+    font: var(--wm-fs) var(--wm-font) !important;
+    color: #404040 !important;
+    -webkit-text-fill-color: #404040 !important;
 }
 
 .wm-studio #manualModal :is(.prompt-textarea-container, .character-prompt-textarea-container) .prompt-textarea-toolbar {
@@ -2001,7 +2044,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 /* ---- WM badges (wmStudio.js): the desktop model badges F / C / L and the resolution group badges in
  * the closed combos and the drop-down rows; the desktop's colours, flat in a 1 px frame. Paid sizes
  * (LG, WP, XL) keep the plain face, free ones (SM, the Normal wallpapers) the desktop's green ---- */
-.wm-studio #manualModal .wms-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge {
     display: inline-block;
     flex: 0 0 auto;
@@ -2018,31 +2061,31 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge {
     vertical-align: middle;
 }
 
-.wm-studio #manualModal .wms-badge.full-model-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.full-model-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.full-model-badge {
     background: #d85a00;
     color: #fff;
 }
 
-.wm-studio #manualModal .wms-badge.curated-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.curated-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.curated-badge {
     background: #004fd8;
     color: #fff;
 }
 
-.wm-studio #manualModal .wms-badge.legacy-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.legacy-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.legacy-badge {
     background: #000;
     color: #fff;
 }
 
-.wm-studio #manualModal .wms-badge.legacy-furry-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.legacy-furry-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.legacy-furry-badge {
     background: #63004e;
     color: #fff;
 }
 
-.wm-studio #manualModal .wms-badge.free-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.free-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     background: #00b152;
     color: #fff;
@@ -2707,7 +2750,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 }
 
 .wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
-.wm-studio #manualModal .wms-badge {
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge {
     white-space: nowrap;
 }
 
@@ -2734,7 +2777,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 
 /* combo badges in their own case */
 .wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
-.wm-studio #manualModal .wms-badge {
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge {
     text-transform: none !important;
     letter-spacing: normal !important;
 }
@@ -2860,7 +2903,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 }
 
 /* coloured model badges keep their white text (the form's black-text rule won: "Full" read black on orange) */
-#wmShell .wm-studio #manualModal .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge),
+#wmShell :is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge),
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge) {
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
@@ -3006,8 +3049,15 @@ html.ui-mobile[data-wm-version="6.5"] .wm-studio .wms-wait {
     line-height: 1.45 !important;
 }
 
-.wm-studio.wms-editing #manualModal .wms-edit-target :is(.prompt-status-icons, .prompt-textarea-toolbar) {
-    display: none !important;
+/* the editor keeps the field's token bar and count under the text, inset as the text is */
+.wm-studio.wms-editing #manualModal .wms-edit-target > :is(.prompt-status-icons, .prompt-textarea-toolbar) {
+    flex: 0 0 auto !important;
+    padding-left: calc(6 * var(--wm-px)) !important;
+    padding-right: calc(6 * var(--wm-px)) !important;
+}
+
+.wm-studio.wms-editing #manualModal .wms-edit-target > .prompt-textarea-toolbar {
+    padding-bottom: calc(2 * var(--wm-px)) !important;
 }
 
 /* the autofill list open in the editor: docked above the soft keys (the bottom strip gives way), the
@@ -3421,12 +3471,15 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     font: var(--wm-fs) / calc(21 * var(--wm-px)) var(--wm-font);
 }
 
-/* Model: a WM combo box in the bar (the desktop's Model combo), taking what the buttons leave */
+/* Model: a WM combo box in the bar (the desktop's Model combo): the version and its edition badge
+ * (v5 Full), as wide as that and its arrow cell */
 .wm-studio .wms-pt-combo {
     position: relative;
-    flex: 1 1 auto;
-    min-width: calc(60 * var(--wm-px));
-    max-width: calc(120 * var(--wm-px));
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    min-width: 0;
+    max-width: calc(110 * var(--wm-px));
     height: calc(21 * var(--wm-px));
     margin: 0 calc(1 * var(--wm-px)) 0 calc(1 * var(--wm-px));
     padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px));
@@ -3525,4 +3578,45 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
 
 .wm-studio .wms-pt-count[hidden] {
     display: none;
+}
+
+/* ---- a desktop window as a WM dialog over the page (wmStudio.js DIALOG_TOOLS: Quick Access): the
+ * message box's frame (1-unit black, the caption band with its corner button) around the window,
+ * centred over what is under it, which stays on screen ---- */
+.wm-studio .wms-tool.wms-tool-dialog {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: calc(26 * var(--wm-px)) calc(8 * var(--wm-px));
+    box-sizing: border-box;
+    background: transparent;
+}
+
+.wm-studio.wms-has-dialog > .wms-tabs {
+    display: flex;
+}
+
+.wm-studio .wms-tool.wms-tool-dialog > .wms-tool-host {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    max-width: calc(224 * var(--wm-px));
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+}
+
+html.ui-mobile:not([data-wm-version="6.5"]) .wm-studio .wms-tool.wms-tool-dialog > .wms-tool-host {
+    max-width: calc(198 * var(--wm-px));
+}
+
+.wm-studio .wms-tool.wms-tool-dialog > .wms-tool-host > .modal {
+    position: relative !important;
+    inset: auto !important;
+    flex: 1 1 auto;
+    min-height: 0 !important;
+    overflow: auto !important;
 }

@@ -764,3 +764,90 @@
 .wm-studio .wms-tool-host > .prompt-tool-window u {
     text-decoration: none !important;
 }
+
+/* ---- Quick Access (datasetTagToolbar.js) as a WM form (Yukimi, Nov 14 #825): the desktop strip (a
+ * label, a breadcrumb of combos split by slashes, two icon buttons) ran off the page. On the phone
+ * the title bar names it; each level of the path is a full-width WM combo, one per row, top to
+ * bottom; Reset and Close are on Menu (wmStudio.js FOOTERS). The levels' lists are the desktop's
+ * click menus, which Studio shows as WM menus. ---- */
+.wm-studio .wms-tool-host > #datasetTagToolbar {
+    display: block !important;
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-toolbar-content {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    padding: calc(6 * var(--wm-px)) !important;
+    box-sizing: border-box !important;
+    overflow: visible !important;
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar :is(.dataset-tag-label, .dataset-tag-controls, .fa-slash-forward, .dataset-button-text > i) {
+    display: none !important;
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-dropdowns-container {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: calc(4 * var(--wm-px)) !important;
+    width: 100% !important;
+    overflow: visible !important;
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-dropdown-wrapper {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-dropdown-wrapper > button {
+    position: relative !important;
+    display: flex !important;
+    align-items: center !important;
+    width: 100% !important;
+    height: calc(20 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(4 * var(--wm-px)) !important;
+    box-sizing: border-box !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-align: left !important;
+    justify-content: flex-start !important;
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-dropdown-wrapper > button::after {
+    content: '' !important;
+    display: block !important;
+    position: absolute !important;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip);
+}
+
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-button-text,
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-dropdown-text {
+    display: block !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+/* the last level ("Select Tag"): the tag to put in the prompt */
+.wm-studio .wms-tool-host > #datasetTagToolbar .dataset-tag-dropdown-wrapper:last-child > button .dataset-tag-dropdown-text {
+    color: #505050 !important;
+    -webkit-text-fill-color: #505050 !important;
+}
