@@ -3205,8 +3205,8 @@
         if (level != null) {
             // on battery at or under the warning level (Settings > Power): the notification and the LED; the icon has its own stages
             const low = !charging && level <= batteryLowLevel();
-            // the cell's stages (Yukimi, Nov 11): 4 bars from 85 %, 3 from 75, 2 from 50, 1 from 25, under that the "!"
-            const icon = charging ? 'battery-charging' : level < 25 ? 'battery-empty' : level >= 85 ? 'battery-full' : level >= 75 ? 'battery-3' : level >= 50 ? 'battery-2' : 'battery-1';
+            // the cell's stages (Yukimi, Nov 13): 4 bars over 80 %, 3 over 60, 2 over 40, 1 over 20, 20 and under the "!"
+            const icon = charging ? 'battery-charging' : level <= 20 ? 'battery-empty' : level > 80 ? 'battery-full' : level > 60 ? 'battery-3' : level > 40 ? 'battery-2' : 'battery-1';
             battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}` };
         }
         return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
