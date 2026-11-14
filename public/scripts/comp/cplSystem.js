@@ -280,7 +280,17 @@
             model,
             processor: procName ? `${procName}${cores ? ` (${cores} cores)` : ''}` : '',
             clock: formatClock(top),
-            memory: formatMemory(hw.memory && hw.memory.totalBytes),
+            // Windows 7's wording: what is fitted, then what the system can use
+            memory: (() => {
+                const total = hw.memory && hw.memory.totalBytes;
+                const fitted = dm && typeof dm.installedRam === 'function' ? dm.installedRam(total) : 0;
+                return fitted ? `${fitted.toFixed(2)} GB (${formatMemory(total)} usable)` : formatMemory(total);
+            })(),
+            screen: (() => {
+                const d = Array.isArray(hw.displays) ? (hw.displays.find((x) => x && x.default) || hw.displays[0]) : null;
+                const sz = d && dm && typeof dm.screenSize === 'function' ? dm.screenSize(d) : null;
+                return sz ? `${sz.inches.toFixed(1)}-inch, ${d.width} x ${d.height}${d.refreshHz ? `, ${Math.round(d.refreshHz)} Hz` : ''}` : '';
+            })(),
             type: systemType(PHONE_ARCH[arch] || arch),
             storage: internal && internal.totalBytes ? formatMemory(internal.totalBytes) : '',
             android: dev.androidRelease ? `Android ${dev.androidRelease}${dev.securityPatch ? ` (security patch ${dev.securityPatch})` : ''}` : '',
@@ -365,6 +375,7 @@
                 ${row('Processor:', phone.processor ? `${esc(phone.processor)}${phone.clock ? `<span class="cpl-sys-clock">${esc(phone.clock)}</span>` : ''}` : value(''))}
                 ${row('Memory (RAM):', value(phone.memory))}
                 ${phone.storage ? row('Storage:', esc(phone.storage)) : ''}
+                ${phone.screen ? row('Screen:', esc(phone.screen)) : ''}
                 ${row('System type:', value(phone.type))}
                 ${phone.android ? row('Android:', esc(phone.android)) : ''}
             </div>` : '';

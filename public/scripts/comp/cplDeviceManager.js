@@ -117,6 +117,30 @@
         hinge_angle: 'Hinge Angle Sensor', game_rotation_vector: 'Game Orientation Sensor', geomagnetic_rotation_vector: 'Geomagnetic Orientation Sensor'
     };
 
+    /** The RAM fitted, as makers sell it (6 GB), from what Android can use (5.26 GB). */
+    const RAM_SIZES = [1, 1.5, 2, 3, 4, 6, 8, 10, 12, 16, 18, 20, 24, 32, 48, 64];
+    function installedRam(bytes) {
+        const gb = Number(bytes) / 1073741824;
+        if (!Number.isFinite(gb) || gb <= 0) return 0;
+        return RAM_SIZES.find((n) => n >= gb) || Math.ceil(gb);
+    }
+
+    /** The panel's diagonal in inches and its size in mm, from the physical dpi. */
+    function screenSize(m) {
+        if (!m || !m.width || !m.height || !m.xdpi || !m.ydpi) return null;
+        const w = m.width / m.xdpi;
+        const h = m.height / m.ydpi;
+        const inches = Math.hypot(w, h);
+        return inches > 1 && inches < 40 ? { inches, wmm: Math.round(w * 25.4), hmm: Math.round(h * 25.4) } : null;
+    }
+    function aspect(w, h) {
+        const g = (a, b) => (b ? g(b, a % b) : a);
+        const [a, b] = [Math.max(w, h), Math.min(w, h)];
+        const r = a / b;
+        const named = [[16 / 9, '16:9'], [16 / 10, '16:10'], [4 / 3, '4:3'], [18 / 9, '18:9'], [19.5 / 9, '19.5:9'], [20 / 9, '20:9'], [21 / 9, '21:9']].find(([x]) => Math.abs(x - r) < 0.02);
+        return named ? named[1] : `${a / g(a, b)}:${b / g(a, b)}`;
+    }
+
     const SENSOR_UNITS = {
         accelerometer: 'm/s\u00b2', gravity: 'm/s\u00b2', linear_acceleration: 'm/s\u00b2', gyroscope: 'rad/s', magnetic_field: '\u00b5T', light: 'lx', proximity: 'cm',
         pressure: 'hPa', ambient_temperature: '\u00b0C', relative_humidity: '%', heart_rate: 'bpm', hinge_angle: '\u00b0', step_counter: 'steps'
@@ -172,6 +196,15 @@
             return [['Current speed', core.online === false ? 'Parked (offline)' : core.curMHz ? `${Math.round(core.curMHz)} MHz` : na],
                 ['Minimum speed', core.minMHz ? `${Math.round(core.minMHz)} MHz` : ''], ['Maximum speed', core.maxMHz ? `${Math.round(core.maxMHz)} MHz` : ''],
                 ['Load', core.curMHz && core.maxMHz ? `${Math.round(core.curMHz * 100 / core.maxMHz)}% of maximum speed` : ''], ['CPU number', String(live.index)]].filter((r) => r[1]);
+        }
+        if (live.kind === 'gpu') {
+            const f = bridgeJson('getCpuFrequencies');
+            const g = f && f.gpu;
+            if (!g || (!g.curMHz && !g.maxMHz)) return [['Current clock', na]];
+            // the clock file reads 0 while the GPU sleeps
+            if (!g.curMHz) return [['Current clock', 'Idle'], ['Maximum clock', `${Math.round(g.maxMHz)} MHz`]];
+            return [['Current clock', `${Math.round(g.curMHz)} MHz`], ['Maximum clock', g.maxMHz ? `${Math.round(g.maxMHz)} MHz` : ''],
+                ['Load', g.maxMHz ? `${Math.round(g.curMHz * 100 / g.maxMHz)}% of maximum clock` : '']].filter((r) => r[1]);
         }
         if (live.kind === 'system') {
             const hw = bridgeJson('getInfo');
@@ -240,11 +273,17 @@
         const bio = hw.biometrics || {};
         add('Biometric devices', 'biometric', [bio.fingerprint && 'Fingerprint Sensor', bio.face && 'Face Recognition Sensor', bio.iris && 'Iris Scanner']);
         const bt = hw.bluetooth || {};
-        if (bt.present) add('Bluetooth Radios', 'bluetooth', [bt.le ? 'Generic Bluetooth Radio (Bluetooth Low Energy)' : 'Generic Bluetooth Radio', 'Microsoft Bluetooth Enumerator']);
+        const btf = bt.features || {};
+        const BT_FEATURES = [['le2MPhy', 'LE 2M PHY'], ['leCodedPhy', 'LE Coded PHY (long range)'], ['leExtendedAdvertising', 'LE Extended Advertising'], ['lePeriodicAdvertising', 'LE Periodic Advertising'],
+            ['multipleAdvertisement', 'Multiple advertisement'], ['offloadedFiltering', 'Offloaded filtering'], ['offloadedScanBatching', 'Offloaded scan batching'], ['leAudio', 'LE Audio']];
+        if (bt.present) add('Bluetooth Radios', 'bluetooth', [
+            { name: bt.le ? 'Generic Bluetooth Radio (Bluetooth Low Energy)' : 'Generic Bluetooth Radio', info: { manufacturer: maker || '(Generic Bluetooth Radio)', location: 'Internal radio',
+                props: [['Bluetooth version', bt.version], ['Low Energy', bt.le == null ? '' : bt.le ? 'Supported' : 'Not supported']].concat(BT_FEATURES.filter(([k]) => btf[k] != null).map(([k, l]) => [l, btf[k] ? 'Supported' : 'Not supported'])) } },
+            'Microsoft Bluetooth Enumerator']);
         const soc = hw.soc || {};
         add('Computer', 'computer', [{ name: ARCH_PC[archOf(hw)] || 'ACPI ARM64-based PC', info: {
             manufacturer: maker, location: 'on System board',
-            props: [['Model', [maker, dev.marketName || dev.model].filter(Boolean).join(' ')], ['Model number', dev.model], ['Board', dev.board], ['System on chip', [soc.manufacturer, soc.model].filter(Boolean).join(' ')], ['Instruction sets', list(soc.abis).join(', ')],
+            props: [['Model', [maker, dev.marketName || dev.model].filter(Boolean).join(' ')], ['Installed memory (RAM)', hw.memory && hw.memory.totalBytes ? `${installedRam(hw.memory.totalBytes)} GB (${(hw.memory.totalBytes / 1073741824).toFixed(2)} GB usable)` : ''], ['Model number', dev.model], ['Board', dev.board], ['System on chip', [soc.manufacturer, soc.model].filter(Boolean).join(' ')], ['Instruction sets', list(soc.abis).join(', ')],
                 ['Android', dev.androidRelease ? `${dev.androidRelease} (API ${dev.sdk || '?'})` : ''], ['Security patch', dev.securityPatch], ['Build', dev.buildId], ['Kernel', dev.kernel]],
             live: { kind: 'system' } } }]);
 
@@ -260,9 +299,12 @@
         add('Disk drives', 'disk-drives', [{ name: `Dreamscape Virtual Disk${extra.quota ? ` (${sizeText(extra.quota)})` : ''}`, info: { manufacturer: 'Xyridian Corporation', location: 'Dreamscape server', live: { kind: 'quota' } } }]
             .concat(vols.filter((v) => !v.emulated || v.kind === 'internal').map((v) => ({ name: disk(v), info: {
                 manufacturer: v.kind === 'internal' ? maker : '(Standard disk drives)', location: v.kind === 'internal' ? 'Internal' : v.kind === 'usb' ? 'USB port' : 'Storage card slot',
-                props: [['Volume label', v.label], ['Volume ID', v.uuid || v.id], ['Kind', v.kind], ['Removable', v.removable ? 'Yes' : 'No'], ['Emulated', v.emulated ? 'Yes' : 'No']],
+                props: [['Volume label', v.label], ['Volume ID', v.uuid || v.id], ['Kind', v.kind], ['File system', v.filesystem], ['Data partition', v.dataTotalBytes ? sizeText(v.dataTotalBytes) : ''],
+                    ['Removable', v.removable ? 'Yes' : 'No'], ['Emulated', v.emulated ? 'Yes' : 'No']],
                 live: { kind: 'storage', id: v.id } } }))));
-        add('Display adapters', 'display-adapters', [gpuName()]);
+        const gpu = hw.gpu || {};
+        add('Display adapters', 'display-adapters', [{ name: gpuName(), info: { manufacturer: soc.manufacturer || maker, location: 'on System on chip',
+            props: [['System on chip', soc.name || soc.model], ['Maximum clock', gpu.maxMHz ? `${Math.round(gpu.maxMHz)} MHz` : ''], ['Minimum clock', gpu.minMHz ? `${Math.round(gpu.minMHz)} MHz` : '']], live: { kind: 'gpu' } } }]);
 
         // input: Windows puts touch screens and pens under Human Interface Devices
         const input = list(hw.input);
@@ -275,10 +317,16 @@
             if (has(d, 'keyboard') && d.keyboardType !== 'alphabetic' && !has(d, 'gamepad')) hid.push(`HID-compliant consumer control device${d.name ? ` (${d.name})` : ''}`);
         });
         add('Human Interface Devices', 'hid', uniq(hid));
-        add('Imaging devices', 'imaging', list(hw.cameras).map((c) => {
+        // Samsung lists one front camera under two ids: one row per lens
+        const camSeen = new Set();
+        const cams = list(hw.cameras).filter((c) => { const k = `${c.facing}|${c.width || ''}x${c.height || ''}|${c.focalLengthMm || c.megapixels || c.id}`; if (camSeen.has(k)) return false; camSeen.add(k); return true; });
+        add('Imaging devices', 'imaging', cams.map((c) => {
             const where = c.facing === 'front' ? 'Front Camera' : c.facing === 'external' ? 'USB Video Device' : 'Rear Camera';
-            return { name: `${where}${c.megapixels ? ` (${Math.round(c.megapixels)} MP)` : ''}`, info: { manufacturer: maker || '(Standard imaging devices)', location: `Camera ${c.id}`,
-                props: [['Facing', c.facing], ['Resolution', c.megapixels ? `${Number(c.megapixels).toFixed(1)} megapixels` : ''], ['Flash', c.flash == null ? '' : c.flash ? 'Yes' : 'No'], ['Camera ID', c.id]] } };
+            const mp = c.width && c.height ? (c.width * c.height) / 1e6 : c.megapixels;
+            const yn = (v) => (v == null ? '' : v ? 'Yes' : 'No');
+            return { name: `${where}${mp ? ` (${Math.round(mp)} MP)` : ''}`, info: { manufacturer: maker || '(Standard imaging devices)', location: `Camera ${c.id}`,
+                props: [['Facing', c.facing], ['Resolution', mp ? `${Math.round(mp)} MP${c.width ? ` (${c.width} x ${c.height})` : ''}` : ''], ['Focal length', c.focalLengthMm ? `${Number(c.focalLengthMm).toFixed(2)} mm` : ''],
+                    ['Autofocus', yn(c.autofocus)], ['Optical stabilization', yn(c.ois)], ['Digital zoom', c.maxZoom ? `up to ${Number(c.maxZoom).toFixed(1)}x` : ''], ['Flash', yn(c.flash)], ['Camera ID', c.id]] } };
         }));
         const kb = input.filter((d) => has(d, 'keyboard') && d.keyboardType === 'alphabetic').map((d) => (d.external ? `HID Keyboard Device (${d.name || 'USB'})` : d.name || 'Standard Keyboard'));
         // the phone's on-screen keyboard is Windows Mobile's Soft Input Panel
@@ -291,11 +339,14 @@
         const shows = list(hw.displays).slice().sort((a, b) => (b.builtIn ? 1 : 0) - (a.builtIn ? 1 : 0));
         let panel = 0;
         add('Monitors', 'monitors', shows.map((m) => {
-            const mode = m.width && m.height ? ` (${m.width} x ${m.height}${m.refreshHz ? `, ${Math.round(m.refreshHz)} Hz` : ''})` : '';
+            const sz = screenSize(m);
+            const mode = m.width && m.height ? ` (${sz && m.builtIn ? `${sz.inches.toFixed(1)}", ` : ''}${m.width} x ${m.height}${m.refreshHz ? `, ${Math.round(m.refreshHz)} Hz` : ''})` : '';
             let name;
             if (m.builtIn) { panel += 1; name = `Built-in Display${shows.filter((x) => x.builtIn).length > 1 ? ` ${panel}` : ''}${mode}`; } else name = `Generic PnP Monitor${mode}`;
             return { name, info: { manufacturer: m.builtIn ? maker : '(Standard monitor types)', location: m.builtIn ? 'Internal panel' : 'External display port', props: [
-                ['Display name', m.name], ['Resolution', m.width && m.height ? `${m.width} x ${m.height}` : ''], ['Refresh rate', m.refreshHz ? `${Math.round(m.refreshHz)} Hz` : ''],
+                ['Display name', m.name], ['Resolution', m.width && m.height ? `${m.width} x ${m.height}` : ''], ['Aspect ratio', m.width && m.height ? aspect(m.width, m.height) : ''],
+                ['Screen size', sz ? `${sz.inches.toFixed(2)} in (${sz.wmm} x ${sz.hmm} mm)` : ''], ['Refresh rate', m.refreshHz ? `${Math.round(m.refreshHz)} Hz` : ''],
+                ['Supported modes', list(m.modes).map((x) => `${x.width} x ${x.height} @ ${Math.round(x.refreshHz)} Hz`).join(', ')], ['Wide color gamut', m.wideColorGamut == null ? '' : m.wideColorGamut ? 'Yes' : 'No'],
                 ['Density', m.densityDpi ? `${m.densityDpi} dpi` : ''], ['Physical dpi', m.xdpi ? `${Math.round(m.xdpi)} x ${Math.round(m.ydpi || m.xdpi)}` : ''], ['HDR', list(m.hdr).join(', ') || (m.hdr ? 'None' : '')], ['Display ID', m.id]
             ] } };
         }));
@@ -647,5 +698,5 @@
     }
 
     root.openDeviceManager = openDeviceManager;
-    root.melatonDeviceManager = { open: openDeviceManager, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf };
+    root.melatonDeviceManager = { open: openDeviceManager, categories, gpuName, computerName, deviceHardware, sizeText, processorRows, archOf, installedRam, screenSize };
 })(typeof window !== 'undefined' ? window : globalThis);
