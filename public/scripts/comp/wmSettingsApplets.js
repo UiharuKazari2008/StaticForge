@@ -136,9 +136,14 @@
     let checking = false;
     let lastCheck = null; // the androidadb event's detail
     let checkApi = null;
+    let testing = false;
+    let lastTest = null;
     window.addEventListener('androidadb', (e) => {
+        const det = (e && e.detail) || null;
+        // Test's answer ({ test }) leaves the last check as it was
+        if (det && det.test) { testing = false; lastTest = det.test; if (checkApi && typeof checkApi.rerender === 'function') checkApi.rerender(); return; }
         checking = false;
-        lastCheck = (e && e.detail) || null;
+        lastCheck = det;
         adbRefresh(null, false);
         if (checkApi && typeof checkApi.rerender === 'function') checkApi.rerender();
     });
@@ -147,6 +152,17 @@
         adbAsked = Date.now();
         adbFetch('GET', null, detect).then((s) => { adbNow = s; if (api && typeof api.rerender === 'function') api.rerender(); });
     }
+
+    /** A status line with its dot (Yukimi, Nov 13): ok green, warn yellow, bad red. */
+    const dotRow = (label, text, level) => `<div class="wm-form-row"><span class="wm-form-label">${ui.esc(label)}</span><span class="wm-form-value"><span class="wm-dot${level ? ` is-${level}` : ''}" aria-hidden="true"></span>${ui.esc(text)}</span></div>`;
+    const SHIZUKU_LEVEL = (label, v) => {
+        const t = String(v || '').toLowerCase();
+        if (/running|allowed|granted|^on$/.test(t) && !/not/.test(t)) return 'ok';
+        if (/not installed|stopped|denied/.test(t)) return 'bad';
+        if (/not running/.test(t)) return 'bad';
+        return 'warn';
+    };
+    const shizukuRow = (r) => (r && r.type === 'value' ? dotRow(r.label || '', r.value == null ? '' : String(r.value), SHIZUKU_LEVEL(r.label, r.value)) : rowHtml(r));
 
     // Allowed Features (#820), in Yukimi's order
     const FEATURE_ROWS = [
@@ -175,28 +191,32 @@
             el.innerHTML = [
                 ui.sub('Shizuku'),
                 // the state, the switch and the buttons; the applet's explanations stay out (Yukimi: self-explanatory)
-                rows.length ? rows.filter((r) => r && r.type !== 'text' && r.type !== 'note').map(rowHtml).join('') : ui.value('Shizuku:', 'Not available'),
+                rows.length ? rows.filter((r) => r && r.type !== 'text' && r.type !== 'note').map(shizukuRow).join('') : dotRow('Shizuku:', 'Not available', 'bad'),
                 ui.gap(),
-                ui.sub('ADB (port 5555)'),
+                ui.sub('Localhost ADB'),
                 ...(localAvailable() ? (() => {
                     const l = localStatus() || {};
                     const access = !l.listening ? '-' : l.authorized === true ? 'Allowed' : l.authorized === false ? 'Waiting for "Always allow"' : 'Not checked yet';
+                    const port = l.port || set.port || 5555;
                     return [
-                        ui.value('Port 5555:', checking ? 'Checking...' : l.listening ? 'Listening' : 'Not listening'),
-                        ui.value('Access:', access),
-                        ui.value('Wi-Fi:', l.wifi ? 'Connected' : 'Not on Wi-Fi'),
-                        lastCheck && lastCheck.restored ? ui.value('Restore:', String(lastCheck.restored)) : '',
-                        lastCheck && lastCheck.shizukuStart ? ui.value('Shizuku start:', String(lastCheck.shizukuStart).split('\n')[0].slice(0, 60)) : ''
+                        dotRow('Status:', checking ? 'Checking...' : l.listening ? `Listening on ${port}` : `Not listening on ${port}`, checking ? 'warn' : l.listening ? 'ok' : 'bad'),
+                        dotRow('Access:', access, l.authorized === true ? 'ok' : l.listening ? 'warn' : 'bad'),
+                        dotRow('Wi-Fi:', l.wifi ? 'Connected' : 'Not on Wi-Fi', l.wifi ? 'ok' : 'warn'),
+                        lastTest ? dotRow('Test:', lastTest.ok ? `${lastTest.model} (Android ${lastTest.android}), ${lastTest.ms} ms` : String(lastTest.error || 'Failed').slice(0, 60), lastTest.ok ? 'ok' : 'bad') : '',
+                        lastCheck && lastCheck.restored ? dotRow('Restore:', String(lastCheck.restored), lastCheck.restored === 'restored' ? 'ok' : 'warn') : '',
+                        lastCheck && lastCheck.shizukuStart ? dotRow('Shizuku start:', String(lastCheck.shizukuStart).split('\n')[0].slice(0, 60), lastCheck.shizukuStart === 'started' ? 'ok' : 'warn') : ''
                     ];
-                })() : [ui.value('ADB:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync'), a && a.address ? ui.value('Address:', a.address) : '']),
-                ui.check('dbg-allow', 'Use ADB on port 5555', set.allow !== false, 'data-dbg="allow"'),
+                })() : [dotRow('Status:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync', a && a.state === 'ready' ? 'ok' : a && a.state === 'unauthorized' ? 'warn' : 'bad'), a && a.address ? ui.value('Address:', a.address) : '']),
+                ui.check('dbg-allow', 'Use Localhost ADB', set.allow !== false, 'data-dbg="allow"'),
+                `<div class="wm-form-row"><span class="wm-form-label">Port:</span>${ui.edit('dbg-port', String(set.port || 5555), `inputmode="numeric" maxlength="5" data-dbg-port style="width:calc(56 * var(--wm-px))"${set.allow === false ? ' disabled' : ''}`)}</div>`,
                 sub([
                     ui.check('dbg-shz-start', 'Start Shizuku automatically', !!set.shizukuAutoStart, `data-dbg="shizukuAutoStart"${set.allow === false ? ' disabled' : ''}`),
                     ui.check('dbg-shz-recover', 'Recover Shizuku when the ADB port is open', !!set.shizukuRecover, `data-dbg="shizukuRecover"${set.allow === false ? ' disabled' : ''}`),
-                    ui.check('dbg-restore', 'Restore port 5555 when it stops (on Wi-Fi)', !!set.autoRestore, `data-dbg="autoRestore"${set.allow === false ? ' disabled' : ''}`)
+                    ui.check('dbg-restore', 'Restore the port when it stops (on Wi-Fi)', !!set.autoRestore, `data-dbg="autoRestore"${set.allow === false ? ' disabled' : ''}`),
+                    ui.check('dbg-wifioff', 'Turn off Wi-Fi Debugging when complete', !!set.wifiDebugOff, `data-dbg="wifiDebugOff"${set.allow === false ? ' disabled' : ''}`)
                 ].join('')),
                 `<div class="wm-form-row is-wide"><span class="wm-form-label">Preferred interface:</span>${ui.comboHtml('dbg-pref', set.preferred === 'shizuku' ? 'Shizuku' : 'ADB')}</div>`,
-                ui.buttons([['dbg-check', 'Check Now', checking || (!selfId() && !localAvailable())]]),
+                ui.buttons([['dbg-test', 'Test', !localAvailable() || testing], ['dbg-check', 'Check Now', checking || (!selfId() && !localAvailable())]]),
                 ui.gap(),
                 ui.sub('Allowed Features'),
                 ...FEATURE_ROWS.map(([k, label]) => ui.check(`dbg-f-${k}`, label, !!feat[k], `data-dbg-feature="${k}"${set.allow === false ? ' disabled' : ''}`)),
@@ -204,6 +224,12 @@
             ].join('');
             ui.bindCombo(el.querySelector('[data-act="dbg-pref"]'), [['adb', 'ADB'], ['shizuku', 'Shizuku']], set.preferred === 'shizuku' ? 'shizuku' : 'adb', (v) => {
                 adbFetch('PUT', { preferred: v }).then((r) => { if (r) adbNow = r; pushToApp(); api.rerender(); });
+            });
+            const portBox = el.querySelector('[data-dbg-port]');
+            if (portBox) portBox.addEventListener('change', () => {
+                const n = Math.round(Number(portBox.value));
+                if (!(n >= 1024 && n <= 65535)) { portBox.value = String(set.port || 5555); return; }
+                adbFetch('PUT', { port: n }).then((r) => { if (r) adbNow = r; pushToApp(); api.rerender(); });
             });
             el.querySelectorAll('[data-dbg-feature]').forEach((c) => c.addEventListener('change', () => {
                 adbFetch('PUT', { features: { [c.dataset.dbgFeature]: c.checked } }).then((r) => { if (r) adbNow = r; pushToApp(); api.rerender(); });
@@ -213,6 +239,10 @@
                 const act2 = b.dataset.act;
                 b.addEventListener('click', () => {
                     if (b.disabled) return;
+                    if (act2 === 'dbg-test') {
+                        if (localAvailable() && typeof bridgeAs().adbTest === 'function') { testing = true; checkApi = api; try { bridgeAs().adbTest(); } catch (_) { testing = false; } api.rerender(); }
+                        return;
+                    }
                     if (act2 === 'dbg-check') {
                         // the phone checks itself: restores 5555 on Wi-Fi if needed, then tests the link
                         if (localAvailable() && typeof bridgeAs().adbCheck === 'function') {

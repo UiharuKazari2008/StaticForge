@@ -603,6 +603,8 @@
                 const used = Math.max(0, Math.min(1, 1 - s.free / s.total));
                 row(`${s.name || 'Storage'}:`, `<span class="asdc-bar${used > 0.9 ? ' is-full' : ''}"><i style="width:${(used * 100).toFixed(1)}%"></i></span>${esc(`${bytes(s.free)} free of ${bytes(s.total)}`)}`);
             }
+            // Localhost ADB (#818/#820): the port it runs on, from Android Bridge > Advanced Tools
+            if (dev.adb) row('Localhost ADB:', esc(dev.adb.allow === false ? 'Off' : `Port ${dev.adb.port || 5555}`));
             if (dev.partner) row('Last sync:', esc(when(dev.lastSync)));
             if (dev.queued) row('Waiting for device:', esc(`${dev.queued} item${dev.queued === 1 ? '' : 's'}`));
             if (!dev.online) row('Last connected:', esc(when(dev.lastSeen)));

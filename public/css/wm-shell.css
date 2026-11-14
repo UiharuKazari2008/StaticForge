@@ -4030,6 +4030,21 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     display: none;
 }
 
+/* status dots (Android Bridge > Advanced Tools, #820): green ok, yellow waiting, red off / failed */
+.wm-dot {
+    display: inline-block;
+    width: calc(8 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    margin-right: calc(5 * var(--wm-px));
+    border-radius: 50%;
+    vertical-align: middle;
+    background: #9a9a9a;
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) rgba(0, 0, 0, .45);
+}
+.wm-dot.is-ok { background: #2fb344; }
+.wm-dot.is-warn { background: #f2c230; }
+.wm-dot.is-bad { background: #e0362c; }
+
 /* the Connectivity bubble's ActiveSync transfer (#822): the progress box's bar, the full width */
 .wm-bubble .wm-as-progress {
     position: relative;

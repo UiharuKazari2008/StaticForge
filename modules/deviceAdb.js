@@ -114,7 +114,8 @@ function features(e) {
 function settings(globalResources, deviceId, patch) {
     const e = entry(globalResources, deviceId);
     if (patch && typeof patch === 'object') {
-        for (const k of ['allow', 'autoRestore', 'shizukuAutoStart', 'shizukuRecover']) if (typeof patch[k] === 'boolean') e[k] = patch[k];
+        for (const k of ['allow', 'autoRestore', 'shizukuAutoStart', 'shizukuRecover', 'wifiDebugOff']) if (typeof patch[k] === 'boolean') e[k] = patch[k];
+        if (patch.port != null) { const n = Math.round(Number(patch.port)); if (n >= 1024 && n <= 65535) e.port = n; }
         if (patch.preferred === 'adb' || patch.preferred === 'shizuku') e.preferred = patch.preferred;
         // the older single switch
         if (typeof patch.screenshots === 'boolean') e.features = Object.assign(features(e), { screenshots: patch.screenshots });
@@ -134,6 +135,8 @@ function settings(globalResources, deviceId, patch) {
         autoRestore: !!e.autoRestore,
         shizukuAutoStart: !!e.shizukuAutoStart,
         shizukuRecover: !!e.shizukuRecover,
+        wifiDebugOff: !!e.wifiDebugOff,
+        port: Number.isInteger(e.port) ? e.port : PORT,
         preferred: e.preferred === 'shizuku' ? 'shizuku' : 'adb',
         features: f,
         // kept for Device Center and older pages
@@ -197,9 +200,10 @@ async function detectNow(globalResources, wsServer, deviceId) {
         wantModel = (d && d.model) || '';
     } catch (_) { wantModel = ''; }
     const list = candidates(globalResources, wsServer, deviceId);
-    let best = { state: list.length ? 'unreachable' : 'unknown', error: list.length ? 'Nothing answers on port 5555.' : 'No address known for this phone yet.' };
+    let best = { state: list.length ? 'unreachable' : 'unknown', error: list.length ? `Nothing answers on port ${settings(globalResources, deviceId).port}.` : 'No address known for this phone yet.' };
     for (const ip of list) {
-        const serial = ip.includes(':') ? `[${ip}]:${PORT}` : `${ip}:${PORT}`;
+        const port = settings(globalResources, deviceId).port;
+        const serial = ip.includes(':') ? `[${ip}]:${port}` : `${ip}:${port}`;
         try { await adb(['connect', serial], { timeout: CONNECT_TIMEOUT_MS }); } catch (_) { /* get-state says */ }
         const r = await probe(serial, wantModel);
         r.serial = serial;
