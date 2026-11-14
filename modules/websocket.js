@@ -224,7 +224,8 @@ class WebSocketServer {
                 const q = String(req.url || '').indexOf('?');
                 miniportQuery = q >= 0 && new URLSearchParams(String(req.url).slice(q + 1)).get('miniport') === '1';
             } catch (_) { /* no query */ }
-            if (miniportQuery) {
+            // (a sub-client it carries reuses its request, ?miniport=1 included: that one is a client)
+            if (miniportQuery && !ws.virtual) {
                 require('./ws/virtualSocket').acceptMiniport(ws, req, clientInfo, (vws, vreq) => this.wss.emit('connection', vws, vreq));
                 return;
             }
