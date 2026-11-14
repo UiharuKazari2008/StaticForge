@@ -1794,6 +1794,9 @@
                 if (screen.cafeReady && cafe && cafe.complete && cafe.naturalWidth) {
                     ctx.drawImage(cafe, 640 - 16 - cafe.naturalWidth, 16);
                 }
+                // the processor's case badge in the other corner (melatonBoot cpuBadge: from the graphics renderer)
+                const cpu = screen.cpuBadge;
+                if (cpu && cpu.complete && cpu.naturalWidth) ctx.drawImage(cpu, 16, 16);
                 textAt(16, 442, 'Starting', C.grey, 9);
                 // the Starting bar is 43 character cells (8 px each) and fills a whole cell at a time
                 ctx.fillStyle = PALETTE[C.dark];

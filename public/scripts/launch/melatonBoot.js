@@ -493,6 +493,36 @@
          * picks: 'hdd' (Melaton, the boot screen) or 'cdrom' (the installation media, the
          * loading bar and Setup). No BIOS module: the same work, no screen.
          */
+        /**
+         * The processor's maker, for the BIOS splash's case badge (#815): browsers do not name the CPU, so
+         * it is read from the graphics renderer, which comes with the chip on phones and on most PCs
+         * (Adreno: Snapdragon; Xclipse: Exynos; Mali: Tensor on a Pixel, Exynos on a Samsung, else
+         * MediaTek; PowerVR: MediaTek; Intel graphics: Intel; Radeon: AMD). Unknown or software
+         * rendering: no badge.
+         */
+        function cpuBadgeId(doc, nav) {
+            let r = '';
+            try {
+                const c = doc.createElement('canvas');
+                const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+                if (gl) {
+                    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                    r = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || '').toLowerCase();
+                    const lose = gl.getExtension('WEBGL_lose_context');
+                    if (lose) lose.loseContext();
+                }
+            } catch (_) { r = ''; }
+            const ua = String((nav && nav.userAgent) || '');
+            if (!r || /swiftshader|llvmpipe|software/.test(r)) return null;
+            if (/adreno|qualcomm/.test(r)) return 'snapdragon';
+            if (/xclipse|exynos/.test(r)) return 'exynos';
+            if (/mali/.test(r)) return /Pixel/.test(ua) ? 'tensor' : /SM-|Samsung/i.test(ua) ? 'exynos' : 'mediatek';
+            if (/powervr|imagination/.test(r)) return 'mediatek';
+            if (/intel/.test(r)) return 'intel';
+            if (/amd|radeon|ati /.test(r)) return 'amd';
+            return null;
+        }
+
         /** Continuity (#798): a hybrid phone's DeX window. It waits for the phone, and the phone installs. */
         function isHybridDw() {
             const mc = root.melatonContinuity;
@@ -554,6 +584,16 @@
             const bios = ensureBios();
             // a CafeReady PC (the app's Melaton Café Miniport, #815): the BIOS splash shows its badge
             if (bios && bios.screen) bios.screen.cafeReady = !!(mcMini && mcMini.miniport().present);
+            // and the processor's case badge, as a PC's splash shows its CPU (Intel / AMD, or the phone's chip)
+            const bootDoc = env.window && env.window.document;
+            if (bios && bios.screen && !bios.screen.cpuBadge && bootDoc) {
+                const id = cpuBadgeId(bootDoc, env.navigator);
+                if (id) {
+                    const img = bootDoc.createElement('img');
+                    img.src = `/static_images/cpu/${id}.png`;
+                    bios.screen.cpuBadge = img;
+                }
+            }
             if (!bios) {
                 const results = {};
                 for (const task of tasks) results[task.id] = await task.run();
