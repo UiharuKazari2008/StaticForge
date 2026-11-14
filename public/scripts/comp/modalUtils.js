@@ -6658,7 +6658,13 @@ function buildToolsSubmenuItems() {
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { showPresetManager(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { showTextReplacementManager(); } },
         // Enshutsuka: the MMC console on the desktop, the memories DSAP elsewhere (openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js)
-        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('mem'); } },
+        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Enshutsuka', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openKnowledgeMemoriesModal('mem'); } },
+        // the other MMC consoles (#828), listed under Administrative Tools (START_MENU_SYSTEM_PLACES);
+        // loaders in public/scripts/comp/dsapManifests.js
+        { launchId: 'mmc-data-management', icon: 'fas fa-database', imageIcon: 'planet.png', text: 'Data Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDataManagementSnapin(); } },
+        { launchId: 'mmc-dynamic-quips', icon: 'fas fa-comment-heart', imageIcon: 'quips.png', text: 'Dynamic Quips', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDynamicQuipsSnapin(); } },
+        { launchId: 'mmc-autofill-ranking', icon: 'fas fa-arrow-down-wide-short', imageIcon: 'slider.png', text: 'Autofill Ranking', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openAutofillRankingSnapin(); } },
+        { launchId: 'mmc-front-gate', icon: 'fas fa-globe', imageIcon: '/static_images/vista-cpl/items/firewall-32.png', text: 'Front Gate', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openFrontGateConsole(); } },
         { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('rules'); } },
         { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'dna.png', text: 'LinkXi Persona', fullName: 'Enshutsuka - LinkXi Persona', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
@@ -7894,6 +7900,12 @@ const START_MENU_SYSTEM_PLACES = {
     charmap: { at: 'system-tools' },               // Accessories > System Tools > Character Map
     taskmgr: { at: 'system-tools' },               // not listed on Vista; System Tools is its nearest home
     perfmon: { at: 'administrative-tools' },       // Administrative Tools > Reliability and Performance Monitor
+    // the MMC consoles (#828): Administrative Tools, as Vista's snap-ins are
+    memories: { at: 'administrative-tools' },
+    'mmc-data-management': { at: 'administrative-tools' },
+    'mmc-dynamic-quips': { at: 'administrative-tools' },
+    'mmc-autofill-ranking': { at: 'administrative-tools' },
+    'mmc-front-gate': { at: 'administrative-tools' },
     'sideshow-simulator-landscape': { at: 'sideshow-simulator', label: 'Device Simulator (Landscape)' },
     'sideshow-simulator-portrait': { at: 'sideshow-simulator', label: 'Device Simulator (Portrait)' }
 };
