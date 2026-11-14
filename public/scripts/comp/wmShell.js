@@ -4221,7 +4221,9 @@
         for (const k of [...noteSeen]) if (!live.has(k)) noteSeen.delete(k);
         soundNewNotes(live);
         if (!noteOf(noteShown)) noteShown = null;
-        if (!notes.length && !statusFolded.length) noteTrayOpen = false;
+        // the tray lists the bubble's notifications and the folded icons: with neither it closes (an update
+        // notice alone is the update icon's, Yukimi Nov 14: it left an empty tray open)
+        if (!notesForBubbleIcon().length && !statusFolded.length) noteTrayOpen = false;
         if (!noteShown && !noteTrayOpen && notesMayPop()) {
             // a class with Display message off stays in the title bar (seen, never popped)
             for (const n of notes) if (!noteDisplays(n)) n.ids.forEach((id) => noteSeen.add(seenKey(id, n)));
@@ -4360,7 +4362,9 @@
         // Today's left soft key follows whether a notification is waiting
         if ((notes.length > 0) !== (noteKeyCount > 0) && current === 'today' && shell) { noteKeyCount = notes.length; renderSoftKeys(); } else noteKeyCount = notes.length;
         // the tray's only entries may have unfolded (a print ended, the bar got wider): close it
-        if (!notes.length && !statusFolded.length) noteTrayOpen = false;
+        // the tray lists the bubble's notifications and the folded icons: with neither it closes (an update
+        // notice alone is the update icon's, Yukimi Nov 14: it left an empty tray open)
+        if (!notesForBubbleIcon().length && !statusFolded.length) noteTrayOpen = false;
         const tray = shell.querySelector('.wm-notify-tray');
         tray.hidden = !noteTrayOpen;
         // rebuilt only when its entries change: refreshStatus runs every 2 s, and a rebuild between
@@ -4624,6 +4628,15 @@
         }
         if (mine.length === 1 && !statusFolded.length) { showNote(mine[0].id); return; }
         if (!mine.length && statusFolded.length === 1) { statusBubble(statusFolded[0], shell.querySelector('[data-role="notify"]')); return; }
+        // nothing for the tray: an update notice is the update icon's popup; else WM's box
+        if (!mine.length && !statusFolded.length) {
+            noteTrayOpen = false;
+            renderNotes();
+            const up = shell.querySelector('.wm-status-icon[data-role="update"]');
+            if (notes.some(isUpdateNote) && up) statusBubble('update', up);
+            else messageBox({ title: 'Notifications', icon: 'info', text: 'There are no notifications.' });
+            return;
+        }
         noteTrayOpen = !noteTrayOpen;
         renderNotes();
     }
