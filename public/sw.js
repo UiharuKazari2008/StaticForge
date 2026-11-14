@@ -34,6 +34,11 @@ const WALLPAPER_CACHE = 'wallpaper-cache-v1';
 // a server restart or a slow answer never swaps the text to a fallback font (Yukimi, Nov 13)
 const PROTECTED_FONT_CACHE = 'protected-font-cache-v1';
 const PROTECTED_FONT_PREFIX = '/protected/fonts/';
+// Public data behind the logon that every boot reads (the T5 tokenizer is 2.4 MB): kept like the fonts
+const KEPT_PROTECTED_FILES = new Set(['/protected/t5_tokenizer.json', '/protected/qwen35_tokenizer.def']);
+function isKeptProtectedPath(pathname) {
+  return pathname.startsWith(PROTECTED_FONT_PREFIX) || KEPT_PROTECTED_FILES.has(pathname);
+}
 // Explorer file previews (Yozora #643): /<vfs uuid>/previews/<fileId>?v=<version> and
 // /cache/preview/<hash>.webp. Its own limits, apart from the Gallery's IMAGE_CACHE.
 const EXPLORER_PREVIEW_CACHE = 'explorer-preview-cache-v1';
@@ -1381,36 +1386,32 @@ workbox.routing.registerRoute(
   }
 );
 
-/** A real font from the server (not the site gate's cover page or a logon redirect). */
-function isFontResponse(response) {
+/** A real font (or kept tokenizer) from the server, not the site gate's cover page or a logon redirect. */
+function isFontResponse(response, pathname = '') {
   if (!response || response.status !== 200 || response.redirected) return false;
   const type = (response.headers.get('content-type') || '').toLowerCase();
+  if (KEPT_PROTECTED_FILES.has(pathname)) return !type.includes('text/html');
   return /^font\/|woff|truetype|opentype|application\/octet-stream|application\/x-font/.test(type);
 }
 
 async function fetchProtectedFont(pathname) {
   const response = await fetch(pathname, { credentials: 'same-origin', cache: 'no-store' });
-  if (!isFontResponse(response)) return null;
+  if (!isFontResponse(response, pathname)) return null;
   const cache = await caches.open(PROTECTED_FONT_CACHE);
   await cache.put(pathname, response.clone());
   return response;
 }
 
 /**
- * /protected/fonts/*: the kept copy first (fonts do not change between deploys of the same name;
- * a fresh copy is fetched behind it once per worker run), else the network, kept when it is a font.
+ * /protected/fonts/*: the kept copy, always, with no request behind it (Yukimi: fonts are cached,
+ * full stop). The old once-per-worker-run refresh fetched every Vista font again each time Android
+ * restarted the worker, i.e. on nearly every boot. Only a font the cache does not hold yet goes to
+ * the network, and is kept when it is a font.
  */
-const protectedFontRefreshed = new Set();
 async function handleProtectedFont(event, url) {
   const cache = await caches.open(PROTECTED_FONT_CACHE);
   const kept = await cache.match(url.pathname);
-  if (kept) {
-    if (!protectedFontRefreshed.has(url.pathname)) {
-      protectedFontRefreshed.add(url.pathname);
-      event.waitUntil(fetchProtectedFont(url.pathname).catch(() => null));
-    }
-    return kept;
-  }
+  if (kept) return kept;
   try {
     const fresh = await fetchProtectedFont(url.pathname);
     if (fresh) return fresh;
@@ -1454,7 +1455,7 @@ async function handleLogonPicture(request) {
 }
 
 workbox.routing.registerRoute(
-  ({ url, request }) => request.method === 'GET' && url.origin === self.location.origin && url.pathname.startsWith(PROTECTED_FONT_PREFIX),
+  ({ url, request }) => request.method === 'GET' && url.origin === self.location.origin && isKeptProtectedPath(url.pathname),
   ({ event, url }) => handleProtectedFont(event, url)
 );
 
