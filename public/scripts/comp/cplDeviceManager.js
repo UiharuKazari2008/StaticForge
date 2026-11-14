@@ -399,15 +399,19 @@
         add('Mice and other pointing devices', 'mice', uniq(input.filter((d) => has(d, 'mouse') || has(d, 'touchpad') || has(d, 'trackball'))
             .map((d) => (has(d, 'touchpad') ? `HID-compliant touch pad${d.name ? ` (${d.name})` : ''}` : `HID-compliant mouse${d.name ? ` (${d.name})` : ''}`))));
         // Monitors: each display, built-in panels first
-        const shows = list(hw.displays).slice().sort((a, b) => (b.builtIn ? 1 : 0) - (a.builtIn ? 1 : 0));
+        const rank = (d) => (d.panel === 'inner' ? 0 : d.panel === 'cover' ? 1 : d.builtIn ? 2 : 3);
+        const shows = list(hw.displays).slice().sort((a, b) => rank(a) - rank(b));
         let panel = 0;
         add('Monitors', 'monitors', shows.map((m) => {
             const sz = screenSize(m);
             const mode = m.width && m.height ? ` (${sz && m.builtIn ? `${sz.inches.toFixed(1)}", ` : ''}${m.width} x ${m.height}${m.refreshHz ? `, ${Math.round(m.refreshHz)} Hz` : ''})` : '';
             let name;
-            if (m.builtIn) { panel += 1; name = `Built-in Display${shows.filter((x) => x.builtIn).length > 1 ? ` ${panel}` : ''}${mode}`; } else name = `Generic PnP Monitor${mode}`;
+            // a foldable's panels by their place (#829: both, not only the one in use)
+            const place = m.panel === 'inner' ? 'Main Display' : m.panel === 'cover' ? 'Cover Display' : '';
+            if (place) name = `${place}${mode}`;
+            else if (m.builtIn) { panel += 1; name = `Built-in Display${shows.filter((x) => x.builtIn).length > 1 ? ` ${panel}` : ''}${mode}`; } else name = `Generic PnP Monitor${mode}`;
             return { name, info: { manufacturer: m.builtIn ? maker : '(Standard monitor types)', location: m.builtIn ? 'Internal panel' : 'External display port', props: [
-                ['Display name', m.name], ['Resolution', m.width && m.height ? `${m.width} x ${m.height}` : ''], ['Aspect ratio', m.width && m.height ? aspect(m.width, m.height) : ''],
+                ['Display name', m.name], ['State', m.active == null ? '' : m.active ? 'In use' : 'Off (not in use)'], ['Resolution', m.width && m.height ? `${m.width} x ${m.height}` : ''], ['Aspect ratio', m.width && m.height ? aspect(m.width, m.height) : ''],
                 ['Screen size', sz ? `${sz.inches.toFixed(2)} in (${sz.wmm} x ${sz.hmm} mm)` : ''], ['Refresh rate', m.refreshHz ? `${Math.round(m.refreshHz)} Hz` : ''],
                 ['Supported modes', list(m.modes).map((x) => `${x.width} x ${x.height} @ ${Math.round(x.refreshHz)} Hz`).join(', ')], ['Wide color gamut', m.wideColorGamut == null ? '' : m.wideColorGamut ? 'Yes' : 'No'],
                 ['Density', m.densityDpi ? `${m.densityDpi} dpi` : ''], ['Physical dpi', m.xdpi ? `${Math.round(m.xdpi)} x ${Math.round(m.ydpi || m.xdpi)}` : ''], ['HDR', list(m.hdr).join(', ') || (m.hdr ? 'None' : '')], ['Display ID', m.id]

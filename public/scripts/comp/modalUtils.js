@@ -7541,6 +7541,18 @@ function restartClientNavigate() {
     // synced its history right after "Restart now? Yes" (history.go), and the phone never
     // restarted. wmShell leaves history alone from here on.
     window.melatonRestarting = true;
+    // Melaton Mobile in the Android app (not its DeX window): the app's own cold boot, as Settings >
+    // Power > Restart does - the maker's logo with its CafeReady check, then /launch (#829: an update
+    // restart that only navigated never showed the CafeReady logo)
+    try {
+        const ad = window.AndroidDisplay;
+        const mc = window.melatonContinuity;
+        const dex = !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow());
+        if (ad && typeof ad.coldBoot === 'function' && !dex && document.documentElement.classList.contains('ui-mobile')) {
+            ad.coldBoot();
+            return;
+        }
+    } catch (_) { /* navigate below */ }
     location.replace(melatonHomeUrl());
 }
 window.restartClientNavigate = restartClientNavigate;
