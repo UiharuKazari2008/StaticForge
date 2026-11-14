@@ -87,7 +87,8 @@ function attachRequestBodyReplacementsModalListeners(signal) {
     if (manageBtn) {
         manageBtn.addEventListener('click', () => {
             hideRequestBodyReplacementsModal();
-            showTextReplacementManager();
+            // manageTextExpanders: public/scripts/comp/dsapManifests.js (the old window off the desktop)
+            manageTextExpanders();
         }, { signal });
     }
 

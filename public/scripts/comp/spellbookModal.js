@@ -528,8 +528,8 @@ class SpellbookModalManager {
 
         switch (action) {
             case 'spellcaster-open-spellbook':
-                // showPresetManager: public/scripts/comp/presetManager.js
-                showPresetManager();
+                // manageSpellbook: public/scripts/comp/dsapManifests.js (the old window off the desktop)
+                manageSpellbook();
                 break;
             case 'spellcaster-clear-results':
                 this.clearResults();

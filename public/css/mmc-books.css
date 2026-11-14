@@ -1,0 +1,146 @@
+/* Spellbook and Text Expanders (Yozora #828; public/scripts/comp/mmcSpellbook.js, mmcExpanders.js):
+   their pages in the MMC console (mmc-console.css), their property sheets and dialogs
+   (vistaDialogTemplate). */
+
+/* ---- a list page: the find bar over the list, as Event Viewer's filter band sits over its log ---- */
+
+.mmc-window .mbk-page {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    background: #fff;
+}
+
+.mmc-window .mbk-page > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.mmc-window .mbk-bar {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 12px;
+    padding: 4px 6px;
+    border-bottom: 1px solid #d5dbe3;
+    background: linear-gradient(#fbfcfd, #eef1f6);
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+}
+
+.mmc-window .mbk-bar label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.mmc-window .mbk-find {
+    flex: 1;
+}
+
+.mmc-window .mbk-search {
+    box-sizing: border-box;
+    flex: 1;
+    min-width: 120px;
+    height: 21px;
+}
+
+.mmc-window .mbk-filter {
+    max-width: 170px;
+    height: 21px;
+}
+
+/* the built-in Background preset reads as a system item */
+.mmc-window .mmc-row.mbk-builtin > span:first-child > i {
+    font-style: italic;
+}
+
+/* reading the server: the console's busy cursor */
+.mmc-window.mbk-busy .mmc-result,
+.mmc-window.mbk-busy .mmc-tree {
+    cursor: progress;
+}
+
+/* ---- dialogs ---- */
+
+.vdt-client .mbk-dlg-error {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 5px;
+    white-space: normal;
+}
+
+.vdt-client .mbk-dlg-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.vdt-client .mbk-lv-empty {
+    padding: 4px 6px;
+    color: #6d6d6d;
+    white-space: normal;
+}
+
+/* the Details page: label / value rows, wrapped */
+.vdt-client .mbk-details {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 3px 8px;
+    margin: 0 0 8px;
+    white-space: normal;
+    line-height: 13px;
+}
+
+.vdt-client .mbk-details dt,
+.vdt-client .mbk-details dd {
+    margin: 0;
+}
+
+.vdt-client .mbk-details dd {
+    overflow-wrap: anywhere;
+}
+
+.vdt-client .mbk-muted {
+    margin: 0;
+    color: #6d6d6d;
+    white-space: normal;
+    line-height: 13px;
+}
+
+/* a preset group's check list fills its frame */
+.vdt-client .vdt-static > .mbk-checklist {
+    box-sizing: border-box;
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    background: #fff;
+}
+
+.vdt-client .mbk-checklist .vdt-lv-body {
+    position: static;
+}
+
+.vdt-client .mbk-check-row {
+    display: flex;
+    align-items: center;
+    height: 17px;
+    padding: 0 3px;
+    cursor: default;
+}
+
+.vdt-client .mbk-check-row .tbp-check {
+    position: static;
+    display: flex;
+    align-items: center;
+}
+
+.vdt-client .mbk-check-row label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 13px;
+}

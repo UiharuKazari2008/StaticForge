@@ -2887,7 +2887,8 @@ function wireTextReplacementLockModalListeners() {
                 } else if (action === 'text-replacement-deselect-all') {
                     deselectAllTextReplacements();
                 } else if (action === 'text-replacement-open-global') {
-                    showTextReplacementManager();
+                    // manageTextExpanders: public/scripts/comp/dsapManifests.js (this window off the desktop)
+                    manageTextExpanders();
                 } else if (action === 'text-replacement-open-local') {
                     showRequestBodyReplacementsModal();
                 }
