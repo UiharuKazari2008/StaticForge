@@ -4679,6 +4679,22 @@
         openWirelessManager();
     }
 
+    // the Connectivity bubble's time connected ticks while the bubble is open (a local clock, no request)
+    let vpnClockTimer = null;
+    function vpnClock() {
+        if (vpnClockTimer) return;
+        vpnClockTimer = setInterval(() => {
+            const b = shell && shell.querySelector('.wm-bubble');
+            if (!b || b.hidden || b.dataset.role !== 'data' || document.hidden) { clearInterval(vpnClockTimer); vpnClockTimer = null; return; }
+            const ws = window.wsClient;
+            const since = ws && ws.connectionStats && ws.connectionStats.connectedAt;
+            const el = b.querySelector('.wm-vpn-time');
+            if (!el || !since) return;
+            const secs = Math.max(0, Math.floor((Date.now() - since) / 1000));
+            el.textContent = `${Math.floor(secs / 3600)}:${String(Math.floor(secs / 60) % 60).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+        }, 1000);
+    }
+
     function statusBubble(role, anchor, update) {
         if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
         closeVolume();
@@ -4709,13 +4725,23 @@
             let cafeReady = false;
             try { const mp = window.melatonContinuity && typeof window.melatonContinuity.miniport === 'function' ? window.melatonContinuity.miniport() : null; cafeReady = !!(mp && mp.up && mp.transport === 'miniport'); } catch (_) { cafeReady = false; }
             const vpn = connected
-                ? `Connected (${host}${cafeReady ? ' - CafeReady' : ''})${rtt != null ? ` RTT: ${rtt} ms` : ''}`
+                ? 'Connected'
                 : dcBooting ? 'Waiting for domain controller...'
                     : ws && ws.connectionPhase === 'auth' ? 'Logon required.'
                         : ws && (ws.isConnecting || ws.connectionPhase === 'dialing') ? 'Connecting...'
                             : `Not connected to ${host}.`;
-            sections.push(connected ? `VPN: ${vpn}`
-                : { text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
+            // connected: two lines (Yukimi, Nov 14) - "VPN: Connected (with CafeReady)" with the time
+            // connected at the right, then "<host> - RTT: ## ms"
+            if (connected) {
+                const since = ws && ws.connectionStats && ws.connectionStats.connectedAt;
+                const secs = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : null;
+                const dur = secs == null ? '' : `${Math.floor(secs / 3600)}:${String(Math.floor(secs / 60) % 60).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
+                const e = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected${cafeReady ? ' (with CafeReady)' : ''}</span><span class="wm-vpn-time">${e(dur)}</span></div><div>${e(host)}${rtt != null ? ` - RTT: ${rtt} ms` : ''}</div>` });
+                vpnClock();
+            } else {
+                sections.push({ text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
+            }
             // ActiveSync moving data (#822): what goes each way against this transfer's totals, a bar
             const asx = window.activeSync && typeof window.activeSync.transferProgress === 'function' ? window.activeSync.transferProgress() : null;
             const syncing = !!(asx && (asx.active || (asx.done && Date.now() - asx.at < 8000)));
@@ -4723,7 +4749,7 @@
             if (!syncing && window.activeSync && window.activeSync.kind === 'device') {
                 const st = window.activeSync.state();
                 const txt = !st.online ? 'Not connected' : st.session === 'partner' ? 'Connected (partnership)' : st.session === 'guest' ? 'Connected (guest)' : st.session === 'pending' ? 'Waiting for the computer' : 'Available';
-                sections.push(`ActiveSync: ${txt}.`);
+                sections.push(`ActiveSync: ${txt}`);
             }
             if (syncing) {
                 const size = (n) => { const v = Math.max(0, Number(n) || 0); return v < 1024 ? `${v} B` : v < 1048576 ? `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB` : v < 1073741824 ? `${(v / 1048576).toFixed(1)} MB` : `${(v / 1073741824).toFixed(2)} GB`; };
