@@ -12,7 +12,8 @@
  *                   under your last message; a right click on a message gives Reply, the
  *                   reactions, Edit, Unsend and Copy (only what the account's features{} allow)
  *   compose         Enter sends (Shift+Enter is a new line); Attach, drag and drop and pasted
- *                   pictures go through sendFile with the upload's progress in the status bar
+ *                   pictures wait on the reply (Attach: over the box, each with a remove button)
+ *                   and go with Send, through sendFile with the upload's progress in the status bar
  *   New Message     To: (addresses split by ; or ,) and the text; the new chat opens after
  *
  *   melatonApps.launch({ packageId: 'messenger', args: { accountId, chatGuid } })   open a chat
@@ -135,6 +136,7 @@
             this.typingTimers = new Map();
             this.typingWho = new Map(); // chatGuid -> true
             this.pendingN = 0;
+            this.attachQueue = [];     // files attached to the reply, sent with it (Send)
             this.statusBar = true;
             this.upload = null;        // { name, pct }
             this.error = '';
@@ -185,6 +187,7 @@
                             <div class="mm-thread" tabindex="0"></div>
                             <div class="mm-typing"></div>
                             <div class="mm-reply hidden"><span class="mm-reply-text"></span><button type="button" class="mm-reply-x" title="Cancel reply" aria-label="Cancel reply"></button></div>
+                            <div class="mm-atts hidden"><span class="mm-atts-label">Attach:</span><span class="mm-atts-list"></span></div>
                             <div class="mm-compose">
                                 <textarea class="mm-input" rows="3" placeholder="Type a message" aria-label="Message"></textarea>
                                 <div class="mm-compose-buttons">
@@ -192,7 +195,7 @@
                                     <button type="button" class="btn-standard mm-attach-btn" data-mm="attach">Attach...</button>
                                 </div>
                             </div>
-                            <div class="mm-drop hidden"><span>Drop the file here to send it</span></div>
+                            <div class="mm-drop hidden"><span>Drop the file here to attach it</span></div>
                         </div>
                     </div>
                     <div class="mm-status"><span class="mm-status-text"></span><span class="mm-status-progress hidden"><span class="mm-progress"><span class="mm-progress-fill"></span></span></span><span class="mm-status-online"><span class="mm-status-online-icon"></span><span class="mm-status-online-text"></span></span></div>
@@ -238,6 +241,16 @@
                 const msg = ev.target.closest('.mm-msg[data-guid]');
                 if (msg && !ev.target.closest('a')) { this.select(msg.dataset.guid); return; }
                 if (ev.target.closest('.mm-reply-x')) { this.setReply(null); return; }
+                const attX = ev.target.closest('.mm-att-x');
+                if (attX) { this.attachQueue.splice(Number(attX.dataset.n), 1); this.renderAttachments(); return; }
+                // a link Android gives to an app of its own (inside the Android app, DeX): that app; the rest
+                // go on to the desktop's own link handling (Alchemy)
+                const link = ev.target.closest('a.mm-link, a.tm-card');
+                if (link && root.AndroidLinks && typeof root.AndroidLinks.resolve === 'function') {
+                    let r = null;
+                    try { r = JSON.parse(root.AndroidLinks.resolve(link.href)); } catch (_) { r = null; }
+                    if (r && r.native) { try { if (root.AndroidLinks.openNative(link.href)) { ev.preventDefault(); return; } } catch (_) { /* Alchemy */ } }
+                }
                 if (ev.target.closest('[data-mm-cardspace]')) { ev.preventDefault(); this.openAccounts(); }
             }, sig);
             m.addEventListener('keydown', (ev) => this.keydown(ev), sig);
@@ -256,13 +269,13 @@
                 const files = [...((ev.clipboardData && ev.clipboardData.files) || [])];
                 if (!files.length) return;
                 ev.preventDefault();
-                void this.sendFiles(files);
+                this.addAttachments(files);
             }, sig);
             const fileInput = q('.mm-file');
             fileInput.addEventListener('change', () => {
                 const files = [...(fileInput.files || [])];
                 fileInput.value = '';
-                if (files.length) void this.sendFiles(files);
+                if (files.length) this.addAttachments(files);
             }, sig);
             // drag and drop onto the conversation
             const conv = q('.mm-conv');
@@ -277,7 +290,7 @@
                 if (!canDrop(ev)) return;
                 ev.preventDefault();
                 const files = [...(ev.dataTransfer.files || [])];
-                if (files.length) void this.sendFiles(files);
+                if (files.length) this.addAttachments(files);
             }, sig);
             // older messages when the thread is scrolled to its top
             q('.mm-thread').addEventListener('scroll', () => {
@@ -480,6 +493,8 @@
             this.cursor = null;
             this.selected = null;
             this.setReply(null, true);
+            this.attachQueue = [];
+            this.renderAttachments();
             this.q('.mm-input').value = '';
             this.threadNote = 'Loading...';
             this.renderList();
@@ -870,6 +885,8 @@
             this.chatGuid = null;
             this.messages = [];
             this.setReply(null, true);
+            this.attachQueue = [];
+            this.renderAttachments();
             this.selected = null;
             this.renderAll();
             setTimeout(() => {
@@ -883,7 +900,17 @@
             const a = this.account();
             const input = this.q('.mm-input');
             const text = input.value.replace(/\s+$/, '');
-            if (!t || !a || !text.trim()) return;
+            if (!t || !a) return;
+            // the files attached to this reply go after its text (or alone)
+            if (!this.compose && this.chatGuid && this.attachQueue.length && !text.trim()) {
+                const files = this.attachQueue.splice(0);
+                const reply = this.replyTo;
+                this.renderAttachments();
+                this.setReply(null, true);
+                await this.sendFiles(files, reply);
+                return;
+            }
+            if (!text.trim()) return;
             if (this.compose) {
                 const to = (this.q('.mm-to') ? this.q('.mm-to').value : this.compose.to).split(/[;,]/).map((s) => s.trim()).filter(Boolean);
                 const from = this.q('.mm-from');
@@ -907,6 +934,8 @@
             if (!this.chatGuid) return;
             const guid = this.chatGuid;
             const reply = this.replyTo;
+            const files = this.attachQueue.splice(0);
+            this.renderAttachments();
             const pending = { guid: `pending-${(this.pendingN += 1)}`, chatGuid: guid, text, fromMe: true, sender: { me: true, name: 'Me' }, date: Date.now(), reactions: [], attachments: [], replyTo: reply ? reply.guid : null, pending: true };
             this.messages.push(pending);
             input.value = '';
@@ -927,10 +956,28 @@
                 pending.error = (err && err.message) || 'Not Delivered';
                 if (this.chatGuid === guid) this.renderThread();
             }
+            if (files.length && this.chatGuid === guid) await this.sendFiles(files, reply);
             this.syncCommands();
         }
 
-        async sendFiles(files) {
+        /** Attach (button, drop, paste): the files wait on the reply, over the text box, until Send. */
+        addAttachments(files) {
+            if (!this.chatGuid || this.compose || this.features().attachments === false) return;
+            this.attachQueue.push(...files.filter(Boolean));
+            this.renderAttachments();
+            this.q('.mm-input').focus({ preventScroll: true });
+        }
+
+        renderAttachments() {
+            const bar = this.q('.mm-atts');
+            if (!bar) return;
+            const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+            this.q('.mm-atts-list').innerHTML = this.attachQueue.map((f, n) => `<span class="mm-att"><span class="mm-att-icon"></span><span class="mm-att-name">${esc(f.name || 'attachment')}</span> <span class="mm-att-size">(${kb(f.size || 0)})</span><button type="button" class="mm-att-x" data-n="${n}" title="Remove" aria-label="Remove ${esc(f.name || 'attachment')}"></button></span>`).join('');
+            bar.classList.toggle('hidden', !this.attachQueue.length);
+            this.syncCommands();
+        }
+
+        async sendFiles(files, reply = null) {
             const t = tm();
             const a = this.account();
             if (!t || !a || !this.chatGuid || this.compose || this.features().attachments === false) return;
@@ -946,7 +993,7 @@
                 this.renderStatus();
                 try {
                     const res = await t.sendFile(a.id, guid, file, {
-                        replyTo: this.replyTo ? this.replyTo.guid : undefined,
+                        replyTo: reply ? reply.guid : undefined,
                         onProgress: (p) => {
                             this.upload = { name: file.name || 'attachment', pct: Math.round(p * 100) };
                             pending.progress = p;
@@ -970,7 +1017,6 @@
                 this.renderStatus();
                 if (this.chatGuid === guid) this.renderThread();
             }
-            this.setReply(null, true);
         }
 
         async react(m, type) {
@@ -1172,6 +1218,7 @@
                     if (m.text) inner.push(`<div class="mm-text">${t && typeof t.linkify === 'function' ? t.linkify(m.text, 'mm-link') : esc(m.text)}</div>`);
                     // the first link's card (title, picture), filled after the draw
                     const firstLink = m.text && t && typeof t.links === 'function' && !(m.attachments || []).length ? t.links(m.text)[0] : null;
+                    if (firstLink && m.linkPreview && typeof t.primeLinkPreview === 'function') t.primeLinkPreview(firstLink, m.linkPreview);
                     if (firstLink) inner.push(`<div class="mm-linkcard" data-tm-link="${esc(firstLink)}" hidden></div>`);
                     const reacts = new Map();
                     for (const r of m.reactions || []) {
@@ -1275,7 +1322,7 @@
             enable('[data-mm="attach"]', inChat);
             enable('[data-mm-react]', !!(sel && !sel.retracted && !sel.pending));
             enable('[data-mm="reply"]', !!(sel && !sel.retracted && !sel.pending));
-            enable('.mm-send', has && (inChat || !!this.compose) && !this.isBusy && !!this.q('.mm-input').value.trim());
+            enable('.mm-send', has && (inChat || !!this.compose) && !this.isBusy && (!!this.q('.mm-input').value.trim() || (inChat && this.attachQueue.length > 0)));
             this.q('.mm-input').disabled = !has || (!inChat && !this.compose);
             this.renderStatus();
         }
@@ -1334,7 +1381,7 @@
         }
 
         async help() {
-            await this.message_('Melaton Messenger sends and receives text messages through your Text Messaging accounts.\n\nSelect a conversation to read it, type in the box at the bottom and press Enter to send. Shift+Enter starts a new line. Drop a file on the conversation, paste a picture or click Attach to send a file. Right-click a message to reply, react, edit or unsend it.\n\nAccounts are set up in Control Panel > Dreamscape CardSpace.');
+            await this.message_('Melaton Messenger sends and receives text messages through your Text Messaging accounts.\n\nSelect a conversation to read it, type in the box at the bottom and press Enter to send. Shift+Enter starts a new line. Drop a file on the conversation, paste a picture or click Attach: the files wait over the box until you send. Right-click a message to reply, react, edit or unsend it.\n\nAccounts are set up in Control Panel > Dreamscape CardSpace.');
         }
 
         async about() {

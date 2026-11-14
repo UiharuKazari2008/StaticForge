@@ -739,6 +739,75 @@
     min-width: 75px;
 }
 
+/* the reply's attachments, sent with it (Windows Mail's Attach: line: the file's icon, name and size) */
+#melatonMessengerModal .mm-atts {
+    display: flex;
+    flex: none;
+    align-items: flex-start;
+    gap: 8px;
+    max-height: 58px;
+    overflow-y: auto;
+    padding: 3px 6px 3px 10px;
+    background: #fff;
+    border-top: 1px solid #a0a0a0;
+}
+
+#melatonMessengerModal .mm-atts.hidden { display: none; }
+
+#melatonMessengerModal .mm-atts-label {
+    flex: none;
+    line-height: 18px;
+    color: #4c607a;
+}
+
+#melatonMessengerModal .mm-atts-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px 12px;
+    min-width: 0;
+}
+
+#melatonMessengerModal .mm-att {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 100%;
+    line-height: 18px;
+    white-space: nowrap;
+}
+
+#melatonMessengerModal .mm-att-icon {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    background: image-set(url('/static_images/vista-mail/toolbar-16.png') 1x, url('/static_images/vista-mail/toolbar-24.png') 1.5x) no-repeat;
+    background-size: 1024px 16px;
+    background-position: calc(49 * -16px) 0;
+}
+
+#melatonMessengerModal .mm-att-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#melatonMessengerModal .mm-att-size { color: #6d6d6d; }
+
+#melatonMessengerModal .mm-atts button.mm-att-x {
+    flex: none;
+    width: 16px;
+    height: 16px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    background: url('/static_images/vista-mail/toolbar-16.png') no-repeat calc(5 * -16px) 0 / 1024px 16px;
+    border: 0;
+    box-shadow: none;
+}
+
+#melatonMessengerModal .mm-client button.mm-att-x::before,
+#melatonMessengerModal .mm-client button.mm-att-x::after { content: none; }
+
 #melatonMessengerModal .mm-drop {
     position: absolute;
     inset: 0;

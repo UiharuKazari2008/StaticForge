@@ -56,6 +56,41 @@ function reactionOf(type) {
     return REACTIONS.includes(bare) ? t : null;
 }
 
+const URL_BALLOON = 'com.apple.messages.URLBalloonProvider';
+
+/**
+ * The iPhone's own preview of a link (a URL balloon's payloadData: an NSKeyedArchiver plist with
+ * LPLinkMetadata) -> { url, title, description, site, imageIndex, iconIndex } or null. The picture and
+ * icon are the message's own (hidden) pluginPayloadAttachments, by position (richLinkImageAttachmentSubstituteIndex).
+ */
+function richLinkOf(payload) {
+    const arch = Array.isArray(payload) ? payload[0] : payload;
+    const objs = arch && Array.isArray(arch.$objects) ? arch.$objects : null;
+    if (!objs) return null;
+    const get = (ref) => (ref && typeof ref === 'object' && 'UID' in ref ? (ref.UID ? objs[ref.UID] : null) : ref);
+    const str = (ref, depth = 0) => {
+        const v = get(ref);
+        if (typeof v === 'string') return v === '$null' ? '' : v;
+        if (!v || typeof v !== 'object' || depth > 3) return '';
+        if ('NS.relative' in v) return str(v['NS.relative'], depth + 1);
+        if ('NS.string' in v) return str(v['NS.string'], depth + 1);
+        return '';
+    };
+    const holder = objs.find((o) => o && typeof o === 'object' && 'richLinkMetadata' in o);
+    const md = holder ? get(holder.richLinkMetadata) : objs.find((o) => o && typeof o === 'object' && 'title' in o && ('URL' in o || 'originalURL' in o));
+    if (!md || typeof md !== 'object') return null;
+    const index = (ref) => { const v = get(ref); const n = v && typeof v === 'object' ? v.richLinkImageAttachmentSubstituteIndex : null; return Number.isInteger(n) ? n : null; };
+    const out = {
+        url: str(md.URL) || str(md.originalURL),
+        title: str(md.title).slice(0, 300),
+        description: str(md.summary).slice(0, 500),
+        site: str(md.siteName).slice(0, 120),
+        imageIndex: index(md.image),
+        iconIndex: index(md.icon)
+    };
+    return out.url || out.title ? out : null;
+}
+
 /** "p:0/GUID" or "bp:GUID" -> GUID (tapback targets name the message part). */
 function targetGuid(value) {
     const s = String(value || '');
@@ -276,6 +311,28 @@ class BlueBubblesProvider {
         // the raw chat only when it is the conversation itself (a merged one is read again by guid)
         const rawChat = Array.isArray(raw.chats) && raw.chats[0] && raw.chats[0].guid === chatGuid ? raw.chats[0] : null;
         this.hooks.emit && this.hooks.emit(updated ? 'updated' : 'message', { accountId: this.id, chatGuid, message, chat: rawChat });
+        if (raw.balloonBundleId === URL_BALLOON && !raw._link && raw.payloadData == null) this.fetchLinkPreview(raw.guid, chatGuid);
+    }
+
+    /**
+     * A link pushed live comes without the iPhone's preview (the push carries no payloadData, and the
+     * phone may still be making it): read the message again, a few seconds on, and show it (updated).
+     */
+    fetchLinkPreview(guid, chatGuid) {
+        if (!this.linkTries) this.linkTries = new Map();
+        const n = this.linkTries.get(guid) || 0;
+        if (n >= 3) return;
+        this.linkTries.set(guid, n + 1);
+        if (this.linkTries.size > 200) this.linkTries.delete(this.linkTries.keys().next().value);
+        const t = setTimeout(async () => {
+            let raw = null;
+            try { raw = await this.call('GET', `message/${encodeURIComponent(guid)}`, { query: { with: 'chats,handle,attachment,attributedBody,messageSummaryInfo,payloadData' } }); } catch (_) { return; }
+            if (!raw || !raw.guid || !raw.payloadData) return;
+            this.storeLive(raw);
+            if (!raw._link) return;
+            this.hooks.emit && this.hooks.emit('updated', { accountId: this.id, chatGuid, message: this.normalizeMessage(raw, chatGuid) });
+        }, 4000 * (n + 1));
+        if (t.unref) t.unref();
     }
 
     // ---- the store (modules/textMessagingStore.js): every chat and message, synced from the Mac ----
@@ -288,6 +345,19 @@ class BlueBubblesProvider {
     storeRows(rows) {
         if (!this.store) return;
         const out = [];
+        // a link's preview is kept as _link (the plist itself is large); a row that came without it
+        // (a live push, an older query) keeps the one stored before
+        const keepLink = [];
+        for (const r of rows || []) {
+            if (!r || r.balloonBundleId !== URL_BALLOON) continue;
+            if (r.payloadData) { r._link = richLinkOf(r.payloadData); r.payloadData = null; } else if (r._link === undefined && r.guid) keepLink.push(r);
+        }
+        if (keepLink.length) {
+            try {
+                const before = this.store.getMessages(this.id, keepLink.map((r) => r.guid));
+                for (const r of keepLink) { try { const old = JSON.parse(before.get(r.guid) || 'null'); if (old && old._link) r._link = old._link; } catch (_) { /* none */ } }
+            } catch (_) { /* written without it */ }
+        }
         for (const r of rows || []) {
             const chatGuid = Array.isArray(r.chats) && r.chats[0] ? r.chats[0].guid : (r.chatGuid || '');
             if (!r || !r.guid || !chatGuid) continue;
@@ -386,7 +456,7 @@ class BlueBubblesProvider {
             let rows;
             try {
                 rows = await this.call('POST', 'message/query', { body: {
-                    limit: size, offset: 0, sort: 'ASC', after: after || undefined, with: ['chats', 'handle', 'attachment', 'messageSummaryInfo']
+                    limit: size, offset: 0, sort: 'ASC', after: after || undefined, with: ['chats', 'handle', 'attachment', 'messageSummaryInfo', 'payloadData']
                 }, timeoutMs: 180000 });
                 fails = 0;
             } catch (error) {
@@ -439,7 +509,7 @@ class BlueBubblesProvider {
         const guid = this.resolve(chatGuid);
         const members = this.members(guid);
         const pages = await Promise.all(members.map((g) => this.call('GET', `chat/${encodeURIComponent(g)}/message`, {
-            query: { limit, sort: 'DESC', with: 'attachment,handle,attributedBody,messageSummaryInfo' }
+            query: { limit, sort: 'DESC', with: 'attachment,handle,attributedBody,messageSummaryInfo,payloadData' }
         }).then((rows) => (Array.isArray(rows) ? rows.map((r) => (r.chats ? r : Object.assign({}, r, { chats: [{ guid: g }] }))) : []), () => null)));
         if (pages.some((p) => p == null)) return false; // no answer: nothing is judged
         const fresh = [].concat(...pages);
@@ -456,10 +526,18 @@ class BlueBubblesProvider {
             if (!oldRow || sig(oldRow) !== sig(r)) { changed = true; break; }
         }
         this.storeRows(fresh);
-        // the span the Mac answered for: everything stored in it that the Mac did not send is gone there
-        const from = Math.min(...fresh.map((r) => Number(r.dateCreated) || Infinity));
+        // the span the Mac answered for, chat by chat: everything stored in that chat's span that the Mac
+        // did not send is gone there. One span across a merged conversation's chats deleted real messages:
+        // a chat whose newest page reached back less far lost everything between (Nov 14: 4,376 rows)
         const have = new Set(fresh.map((r) => r.guid));
-        const stale = this.store.guidsBetween(this.id, members, from, Date.now() + 60000).filter((g) => !have.has(g));
+        const stale = [];
+        members.forEach((g, i) => {
+            const page = pages[i] || [];
+            if (!page.length) return;
+            const from = Math.min(...page.map((r) => Number(r.dateCreated) || Infinity));
+            if (!Number.isFinite(from)) return;
+            stale.push(...this.store.guidsBetween(this.id, [g], from, Date.now() + 60000).filter((x) => !have.has(x)));
+        });
         if (stale.length) { this.store.deleteMessages(this.id, stale); changed = true; }
         if (changed) this.noteDrift({ chatsRepaired: 1, lastChat: guid });
         return changed;
@@ -477,12 +555,26 @@ class BlueBubblesProvider {
         };
         let src = await count();
         let local = this.store.stats(this.id);
-        if (src.messages !== local.messages || (src.chats != null && src.chats !== local.chats)) {
-            const cur = Number(this.store.getState(this.id, 'cursor') || 0);
-            this.store.setState(this.id, 'cursor', Math.max(0, cur - 7 * 86400000));
+        const differs = () => src.messages !== local.messages || (src.chats != null && src.chats !== local.chats);
+        const pass = async (cursor) => {
+            this.store.setState(this.id, 'cursor', Math.max(0, cursor));
             await new Promise((resolve) => { this.startSync(); const t = setInterval(() => { if (!this.syncing) { clearInterval(t); resolve(); } }, 1000); });
             src = await count();
             local = this.store.stats(this.id);
+        };
+        if (differs()) {
+            const cur = Number(this.store.getState(this.id, 'cursor') || 0);
+            await pass(cur - 7 * 86400000);
+            // still short: what is missing is older than a week. The whole history again (in the sync
+            // worker, rows already here are rewritten in place), at most once a day
+            const lastFull = Number(this.store.getState(this.id, 'fullPassAt') || 0);
+            if (differs() && Date.now() - lastFull > 86400000) {
+                this.store.setState(this.id, 'fullPassAt', String(Date.now()));
+                this.log(`reconcile: ${src.messages - local.messages} messages short after the week's catch-up; reading the whole history again`);
+                const keep = Number(this.store.getState(this.id, 'cursor') || 0);
+                await pass(0);
+                if (Number(this.store.getState(this.id, 'cursor') || 0) < keep) this.store.setState(this.id, 'cursor', keep);
+            }
         }
         const report = { at: Date.now(), source: src, local: { messages: local.messages, chats: local.chats }, inSync: src.messages === local.messages && (src.chats == null || src.chats === local.chats) };
         this.store.setState(this.id, 'reconcile', JSON.stringify(report));
@@ -583,6 +675,18 @@ class BlueBubblesProvider {
         };
     }
 
+    /** The iPhone's preview of the message's link: { url, title, description, site, image } or null. */
+    linkPreviewOf(raw) {
+        let link = raw._link;
+        if (link === undefined && raw.payloadData) link = richLinkOf(raw.payloadData);
+        if (!link) return null;
+        const all = Array.isArray(raw.attachments) ? raw.attachments : [];
+        const att = (i) => (i != null && all[i] && all[i].guid ? `/api/textmessaging/${encodeURIComponent(this.id)}/attachment/${encodeURIComponent(all[i].guid)}` : '');
+        let site = link.site;
+        if (!site) { try { site = new URL(link.url).hostname.replace(/^www\./, ''); } catch (_) { site = ''; } }
+        return { url: link.url, title: link.title, description: link.description, site, image: att(link.imageIndex) || att(link.iconIndex) || '' };
+    }
+
     normalizeMessage(raw, chatGuid) {
         const attachments = (Array.isArray(raw.attachments) ? raw.attachments : [])
             .filter((a) => a && a.guid && !(a.hideAttachment || a.hide_attachment))
@@ -608,6 +712,7 @@ class BlueBubblesProvider {
             effect: raw.expressiveSendStyleId || null,
             groupEvent: raw.itemType && raw.itemType !== 0 ? { itemType: raw.itemType, groupTitle: raw.groupTitle || '', actionType: raw.groupActionType || 0 } : null,
             attachments,
+            linkPreview: raw.balloonBundleId === URL_BALLOON ? this.linkPreviewOf(raw) : null,
             reactions: []
         };
     }
@@ -705,7 +810,7 @@ class BlueBubblesProvider {
             return this.fold(rows.slice(0, limit), guid, limit, rows.length > limit, rows.length > limit);
         }
         const pages = await Promise.all(this.members(guid).map((g) => this.call('GET', `chat/${encodeURIComponent(g)}/message`, {
-            query: { limit, sort: 'DESC', before: before || undefined, with: 'attachment,handle,attributedBody,messageSummaryInfo' }
+            query: { limit, sort: 'DESC', before: before || undefined, with: 'attachment,handle,attributedBody,messageSummaryInfo,payloadData' }
         }).then((rows) => (Array.isArray(rows) ? rows : []), () => [])));
         const full = pages.some((p) => p.length >= limit);
         // a merged conversation: the newest `limit` across its chats
@@ -856,4 +961,4 @@ class BlueBubblesProvider {
     }
 }
 
-module.exports = { BlueBubblesProvider, handleKey, normalizeUrl, reactionOf, REACTIONS, DEFAULT_SETTINGS };
+module.exports = { BlueBubblesProvider, handleKey, normalizeUrl, reactionOf, richLinkOf, REACTIONS, DEFAULT_SETTINGS };

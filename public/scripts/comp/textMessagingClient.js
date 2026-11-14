@@ -36,6 +36,7 @@
  *   REACTIONS                       [{ type, label, glyph }]
  *   links(text) / linkify(text, cls) -> the links in a message / its text as HTML with <a> links
  *   linkPreview(url)                -> { title, description, image, site } or null (cached)
+ *   primeLinkPreview(url, preview)  a message's own preview (message.linkPreview: the iPhone's) for that link
  *
  * A 'message' event's detail carries known (false = Unknown Senders), folder and notify (the
  * server's rule: incoming, not a group event, known or notifyUnknown on). Text messages notify in
@@ -280,8 +281,14 @@
         return previewCache.get(url);
     }
 
+    /** A message's own preview of its link (the iPhone's, linkPreview on the message): no server read. */
+    function primeLinkPreview(url, p) {
+        if (!url || !p || !(p.title || p.image)) return;
+        previewCache.set(url, Promise.resolve(Object.assign({ url, title: '', description: '', image: '', site: '' }, p)));
+    }
+
     root.textMessaging = {
-        links, linkify, linkPreview,
+        links, linkify, linkPreview, primeLinkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
         markRead, markUnread, deleteChat, search, syncStatus, syncChats, resync, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS

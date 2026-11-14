@@ -621,6 +621,7 @@
             if (m.text) body += `<div class="wch-says">${said}${m.dateEdited ? ' <span class="wtm-edited">(Edited)</span>' : ''}</div>`;
             // the first link's card (title, picture), filled after the draw
             const firstLink = m.text && tmc && typeof tmc.links === 'function' && !(m.attachments || []).length ? tmc.links(m.text)[0] : null;
+            if (firstLink && m.linkPreview && typeof tmc.primeLinkPreview === 'function') tmc.primeLinkPreview(firstLink, m.linkPreview);
             if (firstLink) body += `<div class="wtm-linkcard" data-tm-link="${esc(firstLink)}" hidden></div>`;
             (m.attachments || []).forEach((a, i) => { body += attHtml(a, i, m); });
             if (m._upload) body += `<div class="wtm-progress"><i style="width:${Math.round((m._progress || 0) * 100)}%"></i></div>`;
@@ -916,12 +917,36 @@
         return m ? (m.attachments || [])[Number(el.dataset.att)] || null : null;
     }
 
-    /** A link in a message: the phone's Internet Explorer (wmBrowser), else the browser's own window. */
-    function openLink(href) {
+    /**
+     * A link in a message. Inside the Android app (DSApp AndroidLinks): a link Android gives to an app of
+     * its own (YouTube, Maps, an App Link the phone verified or you allowed) opens in that app; any other
+     * web link asks: Internet Explorer or Android Browser. Elsewhere: the phone's Internet Explorer.
+     */
+    async function openLink(href) {
         if (!href || !/^https?:/i.test(href)) return;
         engaged();
-        if (window.wmBrowser && typeof window.wmBrowser.open === 'function' && window.wmBrowser.open(href) !== false) return;
-        window.open(href, '_blank', 'noopener');
+        const L = window.AndroidLinks;
+        const ie = () => {
+            if (window.wmBrowser && typeof window.wmBrowser.open === 'function' && window.wmBrowser.open(href) !== false) return;
+            window.open(href, '_blank', 'noopener');
+        };
+        if (!L || typeof L.resolve !== 'function') { ie(); return; }
+        let r = null;
+        try { r = JSON.parse(L.resolve(href)); } catch (_) { r = null; }
+        if (r && r.native && typeof L.openNative === 'function') {
+            try { if (L.openNative(href)) return; } catch (_) { /* asked below */ }
+        }
+        let host = href;
+        try { host = new URL(href).hostname.replace(/^www\./, ''); } catch (_) { /* the whole link */ }
+        const pick = await sh.messageBox({
+            title: TITLE, icon: 'question', text: `Open the link to ${host} in:`, cancelValue: null,
+            titleAction: { kind: 'close', value: null },
+            buttons: [{ text: 'Internet Explorer', value: 'ie', default: true }, { text: 'Android Browser', value: 'android' }]
+        });
+        if (pick === 'android') {
+            try { if (typeof L.openBrowser === 'function' && L.openBrowser(href)) return; } catch (_) { /* IE then */ }
+            ie();
+        } else if (pick === 'ie') ie();
     }
 
     function download(a) {

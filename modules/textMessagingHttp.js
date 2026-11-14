@@ -37,6 +37,17 @@ function readBody(req, limit) {
     });
 }
 
+/** An image's MIME type from its first bytes (JPEG, PNG, GIF, WebP, HEIC) or ''. */
+function sniffImage(b) {
+    if (!b || b.length < 12) return '';
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'image/jpeg';
+    if (b.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return 'image/png';
+    if (b.slice(0, 4).toString('latin1') === 'GIF8') return 'image/gif';
+    if (b.slice(0, 4).toString('latin1') === 'RIFF' && b.slice(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+    if (b.slice(4, 8).toString('latin1') === 'ftyp' && /^(heic|heix|mif1|msf1)$/.test(b.slice(8, 12).toString('latin1'))) return 'image/heic';
+    return '';
+}
+
 // ---- link previews (a link in a message: title, description, picture), public hosts only ----
 const PREVIEW_TTL_MS = 6 * 60 * 60 * 1000;
 const PREVIEW_MAX_BYTES = 768 * 1024;
@@ -140,11 +151,13 @@ function mount(app, authMiddleware, globalResources) {
             refuse(res, error.status === 404 ? 404 : 502, error.code || 'ERROR', error.message);
             return;
         }
-        const type = upstream.headers.get('content-type') || 'application/octet-stream';
+        let type = upstream.headers.get('content-type') || 'application/octet-stream';
         const disp = upstream.headers.get('content-disposition') || '';
         const nameMatch = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disp);
         const name = nameMatch ? decodeURIComponent(nameMatch[1]) : '';
         const buf = Buffer.from(await upstream.arrayBuffer());
+        // iMessage link previews (pluginPayloadAttachment) come as application/octet-stream: name the picture
+        if (/^application\/octet-stream/i.test(type)) type = sniffImage(buf) || type;
         res.setHeader('Content-Type', type);
         if (name) res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(name)}`);
         res.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
