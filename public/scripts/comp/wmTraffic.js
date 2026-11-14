@@ -467,17 +467,29 @@
         camWatchId = null;
     }
 
+    /**
+     * A camera alert that shows (Yukimi, Nov 13, #810): with Dreamscape behind another app or the screen
+     * off, the Android app's heads-up notification (AndroidDriveWatch.alert: Traffic's own camera icon and
+     * sound, over the car's audio); on screen, Melaton Mobile's notification of its own class (Traffic:
+     * Speed camera, TrafficCamera.wav) with the camera glyph.
+     */
     function cameraNote(t, aheadM) {
         const title = `${t.label || 'Speed camera'} ahead`;
         const text = `${miles(aheadM)} ahead${t.street ? ` on ${t.street}` : ''}.${t.maxspeed ? ` Limit ${t.maxspeed}.` : ''}${t.count > 1 ? ` ${t.count} cameras.` : ''}`;
+        const D = window.AndroidDriveWatch;
+        if (document.visibilityState !== 'visible' && D && typeof D.alert === 'function') {
+            let posted = false;
+            try { posted = D.alert(JSON.stringify({ id: camKey(t), title, text })) === true; } catch (_) { posted = false; }
+            if (posted) return;
+        }
         const view = () => { if (note && note.close) note.close(); open('home'); openLayer('traps'); };
         let note = null;
         if (ws && typeof ws.appNote === 'function') {
             note = ws.appNote({
                 title,
                 html: esc(text),
-                icon: 'app-traffic',
-                event: 'warning',
+                icon: 'status-camera',
+                event: 'traffic-camera',
                 softKeys: () => ({ left: { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })
             });
             if (note) return;
