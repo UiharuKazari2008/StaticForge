@@ -9059,6 +9059,8 @@ class WebSocketClient {
             // The finished print is fetched over HTTP (/images/<filename>, contentLength drives
             // progress), so the reply needs no base64 copy: several MB of JSON parsed on this
             // thread per print (#649). generationReplyImage: modules/ws/handlers/generationImpl.js
+            // Melaton Miniport's cache (#815): a boot read (or one it keeps current) is answered from its copy
+            try { if (window.melatonContinuity && window.melatonContinuity.cacheFlag && window.melatonContinuity.cacheFlag(type)) message._mpCache = 1; } catch (_) { /* to the server */ }
             if (WebSocketClient.HTTP_IMAGE_TRANSPORT_REQUEST_TYPES.has(type) && message.imageTransport === undefined) {
                 message.imageTransport = 'http';
             }

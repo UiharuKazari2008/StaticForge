@@ -547,7 +547,10 @@
         if (!first()) {
             const t = setInterval(() => { if (first()) clearInterval(t); }, 3000);
         }
-        setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
+        // over the Melaton Miniport (#815) it keeps the wallet current for every window: no poll here,
+        // a read when it says the wallet changed (answered from its copy)
+        setInterval(() => { if (!document.hidden && !(window.melatonContinuity && window.melatonContinuity.miniportOwns && window.melatonContinuity.miniportOwns('wallet_status'))) refresh(); }, POLL_MS);
+        try { if (window.melatonContinuity && window.melatonContinuity.miniportData) window.melatonContinuity.miniportData.on('wallet_status', () => refresh()); } catch (_) { /* polls instead */ }
     }
 
     function register() {

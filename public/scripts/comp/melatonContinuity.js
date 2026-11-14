@@ -448,6 +448,8 @@
             if (miniportSocket) miniportSocket._opened();
         } else if (m.op === 'closed') {
             if (miniportSocket) miniportSocket._closed(m.code || 1006, m.reason || 'closed');
+        } else if (m.op === 'data') {
+            dataChanged(m);
         } else if (m.op === 'restart') {
             // the Miniport notification's Restart Devices: every window of the app cold boots
             restartForMiniport();
@@ -471,6 +473,63 @@
         try { if (D && typeof D.coldBoot === 'function') { D.coldBoot(); return; } } catch (_) { /* fall back */ }
         root.location.replace('/launch');
     }
+    // ---- Café cache (#815 M2a): what the Miniport keeps and keeps current for every page
+    //
+    // ttl: seconds a kept reply is answered without asking the server again; refresh: seconds between
+    // the Miniport's own fetches while a page uses it (0 = only when a page asks); scope: 'workspace'
+    // for replies that depend on the active workspace. Only read-only requests. A page's requests are
+    // flagged for the cache during its boot, and always for types the Miniport refreshes itself (their
+    // pollers then cost no server request); later requests go to the server and refresh the cache.
+    const CACHE_POLICY = {
+        get_user_global_settings: { ttl: 30 },
+        desktop_get_settings: { ttl: 30 },
+        desktop_get_shortcuts: { ttl: 30, scope: 'workspace' },
+        start_menu_get_layout: { ttl: 60 },
+        get_app_options: { ttl: 60, scope: 'workspace' },
+        get_app_options_chunk: { ttl: 60, scope: 'workspace' },
+        workspace_list: { ttl: 30 },
+        tm_accounts: { ttl: 30 },
+        tm_summary: { ttl: 30 },
+        ma_accounts: { ttl: 30 },
+        director_settings_get: { ttl: 60 },
+        get_autofill_ranking: { ttl: 300 },
+        dovecote_list_mailboxes: { ttl: 60 },
+        // fetched by the Miniport once for every page, instead of each page polling
+        wallet_status: { ttl: 60, refresh: 300 },
+        server_status: { ttl: 30, refresh: 60 },
+        sidebar_host_metrics: { ttl: 20, refresh: 60 }
+    };
+    /** websocket.js: flag this request for the Miniport's cache. */
+    api.cacheFlag = (type) => {
+        const p = CACHE_POLICY[type];
+        if (!p || lastTransport !== 'miniport' || !miniport.up) return false;
+        const c = root.wsClient;
+        return !(c && c.initializationCompleted) || (p.refresh || 0) > 0;
+    };
+    /** True when the Miniport keeps this type current: the page's own poller for it stands down. */
+    api.miniportOwns = (type) => !!(CACHE_POLICY[type] && (CACHE_POLICY[type].refresh || 0) > 0 && lastTransport === 'miniport' && miniport.up);
+    /**
+     * The data updater: the Miniport pushes a kept reply that changed ({op:"data"}); modules listen for
+     * their type (miniportData.on) or for the window event 'miniportdata', and read again (answered at
+     * once from the Miniport's copy). Settings apply directly.
+     */
+    const dataListeners = new Map();
+    const miniportData = {
+        on(type, fn) {
+            if (!dataListeners.has(type)) dataListeners.set(type, []);
+            dataListeners.get(type).push(fn);
+            return () => { const l = dataListeners.get(type) || []; const i = l.indexOf(fn); if (i >= 0) l.splice(i, 1); };
+        }
+    };
+    api.miniportData = miniportData;
+    function dataChanged(m) {
+        (dataListeners.get(m.type) || []).slice().forEach((fn) => { try { fn(m.data, m.payload); } catch (err) { console.warn('[miniport data]', m.type, err); } });
+        try {
+            if (m.type === 'get_user_global_settings' && typeof root.applyUserGlobalSettingsToClient === 'function') root.applyUserGlobalSettingsToClient(m.data && (m.data.settings || m.data));
+        } catch (_) { /* the listeners have it */ }
+        try { root.dispatchEvent(new CustomEvent('miniportdata', { detail: { type: m.type, payload: m.payload, data: m.data } })); } catch (_) { /* no events */ }
+    }
+
     /** Cold boot / Restart from the phone: the Miniport ("the driver") clears and starts fresh too. */
     api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
     api.miniport = () => ({ available: miniport.available(), up: miniport.up, authFailed: !!miniport.authFailed, transport: lastTransport });
@@ -625,6 +684,7 @@
     if (miniport.available()) {
         root.AndroidMiniport.onmessage = (e) => fromMiniport(e && e.data);
         miniport.post({ op: 'hello' });
+        miniport.post({ op: 'policy', policy: CACHE_POLICY });
     }
 
     // the phone window: say when it is ready, and that it is going
