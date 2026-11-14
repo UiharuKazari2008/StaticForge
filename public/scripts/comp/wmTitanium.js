@@ -180,13 +180,15 @@
             // (Android raises the keyboard only for a tap's focus)
             const scopes = window.wmSearch && typeof window.wmSearch.scopes === 'function' ? window.wmSearch.scopes() : [];
             if (scopes.length) {
+                // Search Phone first, as before #829 (Yukimi, Nov 14): Search on everything on the phone
+                const phone = { title: 'Search Phone', icon: 's:search', softKey: { label: 'Search', action: () => searchPictures() }, onTap: () => searchPictures() };
                 return {
                     label: 'search', icon: 's:search',
-                    pages: scopes.map((sc) => {
+                    pages: [phone].concat(scopes.map((sc) => {
                         // Search Internet goes where Today's Search options say (#830, wmShell todayWebSearch)
                         const go = () => (sc.type === 'web' && typeof window.wmTodayWebSearch === 'function' && window.wmTodayWebSearch()) || window.wmSearch.open(null, sc.type, { focus: true });
                         return { title: sc.title, icon: sc.panelIcon, softKey: { label: 'Search', action: go }, onTap: go };
-                    })
+                    }))
                 };
             }
             return { label: 'search', icon: 's:search', pages: [{ title: window.wmSearch ? 'Search Phone' : 'Search pictures' }], softKey: { label: 'Search', action: () => searchPictures() }, onTap: () => searchPictures() };
