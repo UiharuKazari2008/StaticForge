@@ -590,21 +590,6 @@ textarea {
     -webkit-tap-highlight-color: transparent;
 }
 
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    :where(html:not(.ui-mobile)) select:hover:not(:disabled),
-    :where(html:not(.ui-mobile)) select:focus,
-    :where(html:not(.ui-mobile)) textarea:hover:not(:disabled),
-    :where(html:not(.ui-mobile)) textarea:focus {
-        background: rgba(255, 255, 255, 0.25);
-        padding: 0.45em;
-        outline: none;
-        appearance: none;
-        -webkit-appearance: none;
-        -webkit-tap-highlight-color: transparent;
-        border: 1px solid rgba(255, 255, 255, 1);
-    }
-}
-
 /* Badge styles */
 .badge {
     display: inline-block;

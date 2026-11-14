@@ -690,7 +690,7 @@
     // In the snap-in's page HTML, data-open="<id>" and data-act="nav:<id>" are rewritten to the host ids.
     //
     // The embed console: node, sel, data (its own), modal, el, select(id), find(id), refresh, render,
-    // renderActions, note, selectRow, page / overview / props / state / listView / sorted / sortOf, box,
+    // renderActions, renderToolbar, renderStatus, note, selectRow, page / overview / props / state / listView / sorted / sortOf, box,
     // reg / setReg (the snap-in's own registry key), action, close, isActive() (a node of this snap-in
     // is selected: listeners a snap-in adds to the shared result pane check it), host (the console).
 
@@ -714,6 +714,8 @@
             refresh: () => host.refresh(),
             render: () => host.render(),
             renderActions: () => host.renderActions(),
+            renderToolbar: () => host.renderToolbar(),
+            renderStatus: () => host.renderStatus(),
             note: (t) => host.note(t),
             selectRow: (k) => host.selectRow(k),
             reg,

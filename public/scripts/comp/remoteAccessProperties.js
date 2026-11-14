@@ -369,7 +369,7 @@
     function openLinkXi() {
         // Enshutsuka's persona page (enshutsukaConsole), else the old DSAP page
         if (typeof root.openEnshutsukaConsole === 'function') {
-            root.openEnshutsukaConsole('persona');
+            root.openEnshutsukaConsole('profile');
             return;
         }
         // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js (follows the page's opensApp)

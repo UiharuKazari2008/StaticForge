@@ -884,10 +884,10 @@ class PromptTextareaToolbar {
             case 'manage-director-rules':
                 // Enshutsuka's Director Rules: the MMC console on the desktop, the memories DSAP's /rules elsewhere
                 // openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js
-                openKnowledgeMemoriesModal('rules');
+                openKnowledgeMemoriesModal('director');
                 break;
             case 'enshutsuka-memories':
-                openKnowledgeMemoriesModal('mem');
+                openKnowledgeMemoriesModal('default');
                 break;
             case 'phasewalker':
                 // openBracketGenerationApplet: public/scripts/comp/featureLoader.js

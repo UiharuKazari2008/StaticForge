@@ -330,20 +330,32 @@
     gap: 10px;
 }
 
-/* the user tile: User Accounts' 48 px picture in its frame */
+/* the user tile: User Accounts' 48 px picture inside its 60 x 64 frame (the frame is drawn over
+   the picture, as cplUserAccounts.js and the logon screen do) */
 .mmc-window .ens-photo {
     position: relative;
-    width: 48px;
-    height: 48px;
-    padding: 4px;
-    background: url("/static_images/vista-cpl/usertile-frame-48.png") 0 0 / 100% 100% no-repeat;
+    flex: none;
+    width: 60px;
+    height: 64px;
+    margin: -6px 0 -6px -6px;
 }
 
-.mmc-window .ens-photo > img {
-    display: block;
+.mmc-window .ens-photo > img:first-child {
+    position: absolute;
+    left: 6px;
+    top: 6px;
     width: 48px;
     height: 48px;
     object-fit: cover;
+}
+
+.mmc-window .ens-photo > .ens-photo-frame {
+    position: absolute;
+    inset: 0;
+    width: 60px;
+    height: 64px;
+    /* the frame art is flattened on Control Panel's white: multiply drops that white on the grey section */
+    mix-blend-mode: multiply;
 }
 
 .mmc-window .ens-photo-btns {

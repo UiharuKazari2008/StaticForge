@@ -874,7 +874,7 @@ function setupMainMenuContextMenus() {
             case 'knowledge-memories':
                 // Enshutsuka: the MMC console on the desktop, the memories DSAP elsewhere
                 // openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js
-                openKnowledgeMemoriesModal('mem');
+                openKnowledgeMemoriesModal('default');
                 break;
 
             case 'api-key-manager':
@@ -890,7 +890,7 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'linkxi-persona':
-                // Enshutsuka's LinkXi Persona (openLinkXiPersonaDsap: public/scripts/comp/dsapManifests.js)
+                // Enshutsuka's Profile (openLinkXiPersonaDsap: public/scripts/comp/dsapManifests.js)
                 openLinkXiPersonaDsap();
                 break;
 

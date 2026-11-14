@@ -3,12 +3,15 @@
  * (dsap://memories.dyna.dreamscape.jp/ and dsap://xi.dyna.dreamscape.jp/persona open it on the desktop).
  *
  *   Enshutsuka (Local)      the stores and the Director's data at a glance
- *     Studio Memories       the Director's knowledge memories: a find box (fast search; Enter opens the
- *     Obliterated Memories  top hit), a category filter, List / Cards / Mind map (View menu), sort and
- *                           items per page (View menu, or a column heading), paging under the list
- *     Director Rules        the static rules: New / Edit / Delete / Copy Rule Text
- *     Director Feedback     the SI feedback entries: Edit / Delete
- *     LinkXi Persona        My Name, Profile Photo, Backstory, Default Verbosity
+ *     Memories              the two stores
+ *       Default             the Director's knowledge memories (was Studio Memories): a find box (fast
+ *       Private             search; Enter opens the top hit), a category filter, List / Cards / Mind map
+ *                           (View menu), sort and items per page (View menu, or a column heading),
+ *                           paging under the list; Private was Obliterated Memories
+ *     Rules
+ *       Director            the static rules: New / Edit / Delete / Copy Rule Text
+ *       Saved Feedback      the SI feedback entries: Edit / Delete
+ *     Profile               the LinkXi persona: My Name, Profile Photo, Backstory, Default Verbosity
  *
  * A memory opens as a property sheet (General, Entities, Relations, Observations, Revisions); OK or
  * Apply saves it (update_knowledge_memory). Delete Memories... is an Aero Wizard: the filter with a
@@ -17,7 +20,8 @@
  * director_load / save_rules, director_load / save / delete_feedback, get / save_persona_settings.
  *
  *   window.openEnshutsukaConsole(node?, opts?)
- *       node: 'root' | 'mem' | 'obl' | 'rules' | 'feedback' | 'persona'
+ *       node: 'root' | 'memories' | 'default' | 'private' | 'ruleset' | 'director' | 'feedback' | 'profile'
+ *             (the old ids still work: mem, obl, rules, persona)
  *       opts: { memory (open its sheet), bulk (the Delete Memories wizard; bulk: filter preselects),
  *               search, category, page, perPage, sort, view }
  */
@@ -28,12 +32,13 @@
     const TITLE = 'Enshutsuka';
     const APP = '/static_images/app_icons';
     // the app icon's compiled sizes (modules/appIconRuntimeAssets.js: /app_icons/<size>/<master>)
-    const ICON16 = `${APP}/16/dna.png`;
-    const ICON32 = `${APP}/32/dna.png`;
-    const ICON48 = `${APP}/48/dna.png`;
+    const ICON16 = `${APP}/16/vista-enshutsuka.png`;
+    const ICON32 = `${APP}/32/vista-enshutsuka.png`;
+    const ICON48 = `${APP}/48/vista-enshutsuka.png`;
     const CMD = '/static_images/vista-cmdbar';
     const VI = '/static_images/vista-icons';
     const ROW_ICON = `${CMD}/note.png`;
+    const DRIVE16 = '/static_images/vista-explorer/drive-fixed-16.png';
     const PER_PAGE = [10, 25, 50, 100];
     const V5_EFFORT = 'V5 Medium effort testing';
 
@@ -80,26 +85,40 @@
     const EDGE = 0x200;
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-    const isMemNode = (id) => id === 'mem' || id === 'obl';
-    const storeOf = (id) => (id === 'obl' ? 'obliterated' : '');
-    const nodeOfStore = (store) => (store === 'obliterated' ? 'obl' : 'mem');
+    const isMemNode = (id) => id === 'default' || id === 'private';
+    const storeOf = (id) => (id === 'private' ? 'obliterated' : '');
+    const nodeOfStore = (store) => (store === 'obliterated' ? 'private' : 'default');
+    // the ids before the tree was regrouped (dsap:// links, Run, other apps)
+    const ALIASES = { mem: 'default', obl: 'private', rules: 'director', persona: 'profile' };
+    const NODE_IDS = ['root', 'memories', 'default', 'private', 'ruleset', 'director', 'feedback', 'profile'];
+    // one of this snap-in's nodes is showing (inside another console, the host may show its own)
+    const active = (c) => !!c && (typeof c.isActive !== 'function' || c.isActive());
+    const at = (c, ...ids) => active(c) && ids.includes(c.node);
+    // the toolbar and the status bar: the embed console has no renderToolbar / renderStatus of its own
+    const shell = (c) => (typeof c.renderToolbar === 'function' ? c : c.host);
+    const renderToolbar = (c) => { const h = shell(c); if (h && typeof h.renderToolbar === 'function') h.renderToolbar(); };
+    const renderStatus = (c) => { const h = shell(c); if (h && typeof h.renderStatus === 'function') h.renderStatus(); };
+    const nodeId = (id) => (ALIASES[id] || (NODE_IDS.includes(id) ? id : null));
     const plural = (n, one, many) => `${Number(n || 0).toLocaleString('en-US')} ${Number(n) === 1 ? one : many}`;
 
     function blank() {
         return { page: 1, search: '', category: '', total: 0, memories: [], stats: null, loaded: false, loading: false, error: '', map: null, seq: 0 };
     }
 
-    const state = {
-        lists: { '': blank(), obliterated: blank() },
-        rules: null,
-        feedback: null,
-        persona: null,      // the form's values, kept as they are typed
-        personaError: '',
-        hits: [],           // fast search hits
-        hitIndex: 0,
-        timers: {},
-        c: null
-    };
+    // Each console (its own window, or the snap-in inside another console) keeps its state in c.data.
+    function fresh() {
+        return {
+            lists: { '': blank(), obliterated: blank() },
+            rules: null,
+            feedback: null,
+            persona: null,      // the form's values, kept as they are typed
+            personaError: '',
+            hits: [],           // fast search hits
+            hitIndex: 0,
+            timers: {}
+        };
+    }
+    const S = (c) => c.data.ens || (c.data.ens = fresh());
 
     // ---- the server -------------------------------------------------------------------------------
 
@@ -126,7 +145,7 @@
     // ---- memories ---------------------------------------------------------------------------------
 
     async function loadList(c, store) {
-        const L = state.lists[store];
+        const L = S(c).lists[store];
         const seq = ++L.seq;
         L.loading = true;
         L.error = '';
@@ -160,13 +179,13 @@
             L.memories = [];
         }
         L.loading = false;
-        if (viewOf(c) === 'map' && c.node === nodeOfStore(store)) await loadMap(c, store, true);
+        if (viewOf(c) === 'map' && at(c, nodeOfStore(store))) await loadMap(c, store, true);
         paint(c);
-        if (c.node === 'root') c.refresh();
+        if (at(c, 'root')) c.refresh();
     }
 
     async function loadMap(c, store, quiet) {
-        const L = state.lists[store];
+        const L = S(c).lists[store];
         L.map = { loading: true };
         if (!quiet) paint(c);
         try {
@@ -180,14 +199,14 @@
     }
 
     function reload(c, store, opts = {}) {
-        const L = state.lists[store];
+        const L = S(c).lists[store];
         if (opts.page !== undefined) L.page = Math.max(1, opts.page);
         void loadList(c, store);
     }
 
     /** A memory on the list's page, or a box of the mind map (its name and category only). */
-    function memByName(store, name) {
-        const L = state.lists[store];
+    function memByName(c, store, name) {
+        const L = S(c).lists[store];
         const m = L.memories.find((x) => x.name === name);
         if (m) return m;
         const n = L.map && L.map.nodes && L.map.nodes.find((x) => x.kind === 'memory' && x.name === name);
@@ -212,17 +231,21 @@
             name: `${TITLE} (Local)`,
             icon: ICON16,
             children: [
-                { id: 'mem', name: 'Studio Memories', icon: '/static_images/vista-cpl/bulb-16.png' },
-                { id: 'obl', name: 'Obliterated Memories', icon: `${CMD}/recycle-bin.png` },
-                { id: 'rules', name: 'Director Rules', icon: `${CMD}/checklist.png` },
-                { id: 'feedback', name: 'Director Feedback', icon: `${CMD}/discuss.png` },
-                { id: 'persona', name: 'LinkXi Persona', icon: '/static_images/vista-contacts/contact-16.png' }
+                { id: 'memories', name: 'Memories', icon: DRIVE16, children: [
+                    { id: 'default', name: 'Default', icon: '/static_images/vista-cpl/bulb-16.png', desc: 'The Director\'s knowledge memories' },
+                    { id: 'private', name: 'Private', icon: `${CMD}/lock.png`, desc: 'Memories shared by custom models marked for it' }
+                ] },
+                { id: 'ruleset', name: 'Rules', icon: `${CMD}/folder.png`, children: [
+                    { id: 'director', name: 'Director', icon: `${CMD}/checklist.png`, desc: 'The static rules the Director always follows' },
+                    { id: 'feedback', name: 'Saved Feedback', icon: `${CMD}/discuss.png`, desc: 'Feedback entries from Studio Intelligence' }
+                ] },
+                { id: 'profile', name: 'Profile', icon: '/static_images/vista-contacts/contact-16.png' }
             ]
         }];
     }
 
-    function statsRows(store) {
-        const L = state.lists[store];
+    function statsRows(c, store) {
+        const L = S(c).lists[store];
         const s = L.stats;
         if (!s) return [['Memories', L.error ? esc(L.error) : 'Reading data, please wait...']];
         return [
@@ -238,15 +261,15 @@
         return c.page(TITLE, 'Director knowledge and persona', [
             { id: 'ens-overview', title: 'Overview', body: c.overview(ICON48, [
                 'Enshutsuka keeps what the Director has learned: knowledge memories with their entities, relations and observations, the static rules the Director always follows, the feedback entries from Studio Intelligence, and your LinkXi chat persona.',
-                `Open ${link('mem', 'Studio Memories')} to find, read and edit memories. Custom models marked for it share ${link('obl', 'Obliterated Memories')}.`
+                `Open ${link('default', 'Default')} under Memories to find, read and edit memories. Custom models marked for it share ${link('private', 'Private')}.`
             ]) },
-            { id: 'ens-studio', title: 'Studio Memories', body: c.props(statsRows('')) + `<div class="mmc-buttons"><button type="button" class="btn-standard" data-act="nav:mem">Open Studio Memories</button></div>` },
-            { id: 'ens-obl', title: 'Obliterated Memories', body: c.props(statsRows('obliterated')) },
+            { id: 'ens-studio', title: 'Default Memories', body: c.props(statsRows(c, '')) + `<div class="mmc-buttons"><button type="button" class="btn-standard" data-act="nav:default">Open Default Memories</button></div>` },
+            { id: 'ens-obl', title: 'Private Memories', body: c.props(statsRows(c, 'obliterated')) },
             { id: 'ens-director', title: 'Director', body: c.props([
-                ['Director rules', state.rules ? esc(String(state.rules.length)) : 'Reading data, please wait...'],
-                ['Feedback entries', state.feedback ? esc(String(state.feedback.length)) : 'Reading data, please wait...'],
-                ['LinkXi persona', state.persona ? esc(state.persona.user_name || '(no name set)') : 'Reading data, please wait...']
-            ]) + `<p>${link('rules', 'Director Rules')} &middot; ${link('feedback', 'Director Feedback')} &middot; ${link('persona', 'LinkXi Persona')}</p>` }
+                ['Director rules', S(c).rules ? esc(String(S(c).rules.length)) : 'Reading data, please wait...'],
+                ['Feedback entries', S(c).feedback ? esc(String(S(c).feedback.length)) : 'Reading data, please wait...'],
+                ['Profile', S(c).persona ? esc(S(c).persona.user_name || '(no name set)') : 'Reading data, please wait...']
+            ]) + `<p>${link('director', 'Director Rules')} &middot; ${link('feedback', 'Saved Feedback')} &middot; ${link('profile', 'Profile')}</p>` }
         ]);
     }
 
@@ -254,8 +277,8 @@
     // changes: loads repaint the body only, so typing in the find box never loses the caret.
     function memPage(node, c) {
         const store = storeOf(node.id);
-        const L = state.lists[store];
-        const cats = categories(store);
+        const L = S(c).lists[store];
+        const cats = categories(c, store);
         const html = `<div class="ens-mem" data-store="${esc(store)}">
             <div class="ens-bar">
                 <label class="ens-find"><span>F<u>i</u>nd:</span><span class="ens-find-box"><input type="text" class="ens-search" data-field="ens-search-${esc(node.id)}" value="${esc(L.search)}" placeholder="Search memories - Enter opens the top hit" autocomplete="off" spellcheck="false"><span class="ens-hits" hidden></span></span></label>
@@ -267,8 +290,8 @@
         return { html, list: true, mount: (pane) => { wireMemPage(pane, c, store); paintBody(pane, c, store); } };
     }
 
-    function categories(store) {
-        const s = state.lists[store].stats;
+    function categories(c, store) {
+        const s = S(c).lists[store].stats;
         return ((s && s.categories) || []).map((x) => (x && typeof x === 'object' ? x.category : x)).filter(Boolean).sort((a, b) => String(a).localeCompare(String(b)));
     }
 
@@ -280,16 +303,16 @@
 
     /** Repaint the memories page in place (or the root summary), and the Action pane / status bar. */
     function paint(c) {
-        if (!c || !c.modal || !c.modal.isConnected) return;
+        if (!c || !c.modal || !c.modal.isConnected || !active(c)) return;
         if (isMemNode(c.node)) {
             const pane = c.el('.mmc-result');
             const store = storeOf(c.node);
             if (pane && pane.querySelector(`.ens-mem[data-store="${store}"]`)) paintBody(pane, c, store);
             else c.render();
         }
-        c.renderToolbar();
+        renderToolbar(c);
         c.renderActions();
-        c.renderStatus();
+        renderStatus(c);
     }
 
     const COLS = [
@@ -375,12 +398,12 @@
     }
 
     function paintBody(pane, c, store) {
-        const L = state.lists[store];
+        const L = S(c).lists[store];
         const body = pane.querySelector('.ens-body');
         const pager = pane.querySelector('.ens-pager');
         const sel = pane.querySelector('.ens-category');
         if (sel && document.activeElement !== sel) {
-            const opts = catOptions(categories(store), L.category);
+            const opts = catOptions(categories(c, store), L.category);
             if (sel.dataset.opts !== opts) { sel.innerHTML = opts; sel.dataset.opts = opts; }
         }
         const view = viewOf(c);
@@ -414,16 +437,16 @@
     }
 
     function wireMemPage(pane, c, store) {
-        const L = state.lists[store];
+        const L = S(c).lists[store];
         const input = pane.querySelector('.ens-search');
         const hitsBox = pane.querySelector('.ens-hits');
         const cat = pane.querySelector('.ens-category');
         input.addEventListener('input', () => {
-            clearTimeout(state.timers.fast);
-            clearTimeout(state.timers.search);
+            clearTimeout(S(c).timers.fast);
+            clearTimeout(S(c).timers.search);
             const q = input.value;
-            state.timers.fast = setTimeout(() => { void fastSearch(c, store, q, hitsBox); }, 80);
-            state.timers.search = setTimeout(() => {
+            S(c).timers.fast = setTimeout(() => { void fastSearch(c, store, q, hitsBox); }, 80);
+            S(c).timers.search = setTimeout(() => {
                 if (L.search === input.value) return;
                 L.search = input.value;
                 L.page = 1;
@@ -431,29 +454,29 @@
             }, 280);
         });
         input.addEventListener('keydown', (ev) => {
-            const shown = !hitsBox.hidden && state.hits.length;
+            const shown = !hitsBox.hidden && S(c).hits.length;
             if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
                 if (!shown) return;
                 ev.preventDefault();
-                state.hitIndex = (state.hitIndex + (ev.key === 'ArrowDown' ? 1 : -1) + state.hits.length) % state.hits.length;
-                hitsBox.querySelectorAll('.ens-hit').forEach((h, i) => h.classList.toggle('is-active', i === state.hitIndex));
+                S(c).hitIndex = (S(c).hitIndex + (ev.key === 'ArrowDown' ? 1 : -1) + S(c).hits.length) % S(c).hits.length;
+                hitsBox.querySelectorAll('.ens-hit').forEach((h, i) => h.classList.toggle('is-active', i === S(c).hitIndex));
             } else if (ev.key === 'Enter') {
                 ev.preventDefault();
-                clearTimeout(state.timers.search);
-                const hit = shown ? state.hits[state.hitIndex] : null;
-                hideHits(hitsBox);
+                clearTimeout(S(c).timers.search);
+                const hit = shown ? S(c).hits[S(c).hitIndex] : null;
+                hideHits(c, hitsBox);
                 if (hit && hit.name) { void openMemory(c, store, hit.name); return; }
                 if (L.search !== input.value) { L.search = input.value; L.page = 1; void loadList(c, store); }
             } else if (ev.key === 'Escape') {
-                if (shown) { ev.preventDefault(); ev.stopPropagation(); hideHits(hitsBox); }
+                if (shown) { ev.preventDefault(); ev.stopPropagation(); hideHits(c, hitsBox); }
             }
         });
-        input.addEventListener('blur', () => setTimeout(() => hideHits(hitsBox), 150));
+        input.addEventListener('blur', () => setTimeout(() => hideHits(c, hitsBox), 150));
         hitsBox.addEventListener('mousedown', (ev) => {
             const h = ev.target.closest('.ens-hit');
             if (!h) return;
             ev.preventDefault();
-            hideHits(hitsBox);
+            hideHits(c, hitsBox);
             void openMemory(c, store, h.dataset.name);
         });
         cat.addEventListener('change', () => {
@@ -464,7 +487,7 @@
         pane.querySelector('.ens-pager').addEventListener('change', (ev) => {
             if (!ev.target.classList.contains('ens-perpage')) return;
             c.setReg({ PerPage: Number(ev.target.value) || 25 });
-            Object.values(state.lists).forEach((x) => { x.page = 1; });
+            Object.values(S(c).lists).forEach((x) => { x.page = 1; });
             void loadList(c, store);
         });
         // cards and mind-map boxes pick like rows; a double click opens the memory
@@ -486,28 +509,28 @@
         pane.querySelectorAll('[data-card]').forEach((el) => el.classList.toggle('is-selected', el.dataset.card === name));
     }
 
-    function hideHits(box) {
+    function hideHits(c, box) {
         if (!box) return;
         box.hidden = true;
         box.innerHTML = '';
-        state.hits = [];
+        S(c).hits = [];
     }
 
     async function fastSearch(c, store, query, box) {
         const q = String(query || '').trim();
-        if (q.length < 2) { hideHits(box); return; }
+        if (q.length < 2) { hideHits(c, box); return; }
         try {
             const r = await send('search_knowledge_memories_fast', { query: q, limit: 12, store: store || undefined });
             const input = box && box.parentElement && box.parentElement.querySelector('.ens-search');
             if (!input || input.value.trim() !== q) return;
             const hits = (r && r.success && Array.isArray(r.results)) ? r.results : [];
-            if (!hits.length) { hideHits(box); return; }
-            state.hits = hits;
-            state.hitIndex = 0;
+            if (!hits.length) { hideHits(c, box); return; }
+            S(c).hits = hits;
+            S(c).hitIndex = 0;
             box.innerHTML = hits.map((h, i) => `<span class="ens-hit${i === 0 ? ' is-active' : ''}" data-name="${esc(h.name)}"><img src="${ROW_ICON}" alt=""><b>${esc(h.name)}</b><small>${esc([h.category, h.model].filter(Boolean).join(' - '))}</small></span>`).join('');
             box.hidden = false;
         } catch (_) {
-            hideHits(box);
+            hideHits(c, box);
         }
     }
 
@@ -516,22 +539,22 @@
     async function loadRules(c) {
         try {
             const r = await send('director_load_rules', {});
-            state.rules = r && r.success ? (r.rules || []) : [];
-        } catch (_) { state.rules = state.rules || []; }
-        if (c && (c.node === 'rules' || c.node === 'root')) c.refresh();
+            S(c).rules = r && r.success ? (r.rules || []) : [];
+        } catch (_) { S(c).rules = S(c).rules || []; }
+        if (at(c, 'director', 'ruleset', 'root')) c.refresh();
     }
 
     async function loadFeedback(c) {
         try {
             const r = await send('director_load_feedback', {});
-            state.feedback = r && r.success ? (r.feedback || []) : [];
-        } catch (_) { state.feedback = state.feedback || []; }
-        if (c && (c.node === 'feedback' || c.node === 'root')) c.refresh();
+            S(c).feedback = r && r.success ? (r.feedback || []) : [];
+        } catch (_) { S(c).feedback = S(c).feedback || []; }
+        if (at(c, 'feedback', 'ruleset', 'root')) c.refresh();
     }
 
     async function saveRules(c) {
         try {
-            const r = await send('director_save_rules', { rules: state.rules || [] });
+            const r = await send('director_save_rules', { rules: S(c).rules || [] });
             if (r && r.success === false) throw new Error(r.error || r.message || 'The rules were not saved.');
             return true;
         } catch (err) {
@@ -541,17 +564,17 @@
     }
 
     function rulesPage(c) {
-        if (!state.rules) return { html: `<div class="mmc-empty">Reading data, please wait...</div>`, list: true };
+        if (!S(c).rules) return { html: `<div class="mmc-empty">Reading data, please wait...</div>`, list: true };
         const cols = [
             { key: 'text', t: 'Rule', w: 420, text: (r) => r.text || '' },
             { key: 'created', t: 'Created', w: 130, value: (r) => stamp(r.created), text: (r) => whenOrNever(r.created) }
         ];
-        const rows = state.rules.map((r) => ({ key: r.id, data: r, icon: `${CMD}/checklist.png` }));
+        const rows = S(c).rules.map((r) => ({ key: r.id, data: r, icon: `${CMD}/checklist.png` }));
         return { html: c.listView(cols, rows, { sortId: 'ens-rules', empty: 'No static rules are defined. Use New Rule... to add one.' }), list: true };
     }
 
     function feedbackPage(c) {
-        if (!state.feedback) return { html: `<div class="mmc-empty">Reading data, please wait...</div>`, list: true };
+        if (!S(c).feedback) return { html: `<div class="mmc-empty">Reading data, please wait...</div>`, list: true };
         const cols = [
             { key: 'date', t: 'Date', w: 120, value: (f) => stamp(f.timestamp), text: (f) => whenOrNever(f.timestamp) },
             { key: 'action', t: 'Action', w: 80, text: (f) => f.action || '' },
@@ -560,12 +583,12 @@
             { key: 'rep', t: 'Replaced With', w: 160, text: (f) => f.replace_text || '' },
             { key: 'why', t: 'SI Reason', w: 240, text: (f) => f.ai_reason || '' }
         ];
-        const rows = state.feedback.map((f) => ({ key: f.id, data: f, icon: `${CMD}/discuss.png` }));
+        const rows = S(c).feedback.map((f) => ({ key: f.id, data: f, icon: `${CMD}/discuss.png` }));
         return { html: c.listView(cols, rows, { sortId: 'ens-feedback', sort: { key: 'date', dir: -1 }, empty: 'There are no feedback entries.' }), list: true };
     }
 
-    const ruleById = (id) => (state.rules || []).find((r) => String(r.id) === String(id)) || null;
-    const fbById = (id) => (state.feedback || []).find((f) => String(f.id) === String(id)) || null;
+    const ruleById = (c, id) => (S(c).rules || []).find((r) => String(r.id) === String(id)) || null;
+    const fbById = (c, id) => (S(c).feedback || []).find((f) => String(f.id) === String(id)) || null;
 
     function ruleDialog(c, rule) {
         const api = dialogApi();
@@ -580,7 +603,7 @@
                 const text = String(ctx.get(102) || '').trim();
                 if (!text) { dlgError(ctx, 103, 'Type the rule.'); return false; }
                 if (rule) rule.text = text;
-                else (state.rules = state.rules || []).push({ id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`, text, created: new Date().toISOString() });
+                else (S(c).rules = S(c).rules || []).push({ id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`, text, created: new Date().toISOString() });
                 const ok = await saveRules(c);
                 if (ok) c.note(rule ? 'The rule was changed.' : 'The rule was added.');
                 c.refresh();
@@ -590,11 +613,11 @@
     }
 
     async function deleteRule(c, id) {
-        const rule = ruleById(id);
+        const rule = ruleById(c, id);
         if (!rule) return;
         const yes = await c.box('<p>Are you sure you want to delete this rule?</p>', [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], { icon: 'warning', title: 'Delete Rule' });
         if (yes !== true) return;
-        state.rules = state.rules.filter((r) => r !== rule);
+        S(c).rules = S(c).rules.filter((r) => r !== rule);
         c.sel = null;
         if (await saveRules(c)) c.note('The rule was deleted.');
         c.refresh();
@@ -616,7 +639,7 @@
             ok: async (ctx) => {
                 fb.user_feedback = String(ctx.get(102) || '').trim();
                 try {
-                    await send('director_save_feedback', { feedback: state.feedback });
+                    await send('director_save_feedback', { feedback: S(c).feedback });
                     c.note('The feedback entry was changed.');
                 } catch (err) {
                     await c.box(`<p>The feedback could not be saved.</p><p>${esc((err && err.message) || '')}</p>`, null, { icon: 'error' });
@@ -628,12 +651,12 @@
     }
 
     async function deleteFeedback(c, id) {
-        if (!fbById(id)) return;
+        if (!fbById(c, id)) return;
         const yes = await c.box('<p>Are you sure you want to delete this feedback entry?</p>', [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }], { icon: 'warning', title: 'Delete Feedback' });
         if (yes !== true) return;
         try {
             await send('director_delete_feedback', { feedbackId: id });
-            state.feedback = state.feedback.filter((f) => String(f.id) !== String(id));
+            S(c).feedback = S(c).feedback.filter((f) => String(f.id) !== String(id));
             c.sel = null;
             c.note('The feedback entry was deleted.');
         } catch (err) {
@@ -648,23 +671,23 @@
         try {
             const r = await send('get_persona_settings', {});
             const s = (r && r.success && r.settings) || {};
-            state.persona = {
+            S(c).persona = {
                 user_name: s.user_name || '',
                 backstory: s.backstory || '',
                 default_verbosity: s.default_verbosity != null && s.default_verbosity !== '' ? String(s.default_verbosity) : '3',
                 profile_photo_base64: s.profile_photo_base64 || ''
             };
-            state.personaError = '';
+            S(c).personaError = '';
         } catch (err) {
-            state.personaError = (err && err.message) || 'The persona settings could not be read.';
+            S(c).personaError = (err && err.message) || 'The persona settings could not be read.';
         }
-        if (c && (c.node === 'persona' || c.node === 'root')) c.refresh();
+        if (at(c, 'profile', 'root')) c.refresh();
     }
 
     function personaPage(c) {
-        const p = state.persona;
+        const p = S(c).persona;
         if (!p) {
-            return c.page('LinkXi Persona', '', [{ id: 'ens-persona', title: 'Chat Persona', body: state.personaError ? `<p>${c.state(false, state.personaError)}</p>` : '<p>Reading data, please wait...</p>' }]);
+            return c.page('Profile', '', [{ id: 'ens-persona', title: 'Chat Persona', body: S(c).personaError ? `<p>${c.state(false, S(c).personaError)}</p>` : '<p>Reading data, please wait...</p>' }]);
         }
         const photo = p.profile_photo_base64 ? `data:image/jpeg;base64,${p.profile_photo_base64}` : '/static_images/account-pictures/guest.png';
         const body = `${c.overview('', ['Your LinkXi chat persona for Director conversations: the name the Director calls you, your picture, a backstory it keeps in mind, and how much it says by default. The settings are saved to your account.'])}
@@ -672,7 +695,7 @@
                 <label for="ensPersonaName">My <u>n</u>ame:</label>
                 <input type="text" id="ensPersonaName" data-pfield="user_name" value="${esc(p.user_name)}" placeholder="Enter your name" autocomplete="off" spellcheck="false">
                 <label>Profile photo:</label>
-                <div class="ens-photo-row"><span class="ens-photo"><img src="${esc(photo)}" alt=""></span><span class="ens-photo-btns"><button type="button" class="btn-standard" data-act="photo">Browse...</button>${p.profile_photo_base64 ? '<button type="button" class="btn-standard" data-act="photo-clear">Remove</button>' : ''}</span></div>
+                <div class="ens-photo-row"><span class="ens-photo"><img src="${esc(photo)}" alt=""><img class="ens-photo-frame" src="/static_images/vista-cpl/usertile-frame-48.png" alt=""></span><span class="ens-photo-btns"><button type="button" class="btn-standard" data-act="photo">Browse...</button>${p.profile_photo_base64 ? '<button type="button" class="btn-standard" data-act="photo-clear">Remove</button>' : ''}</span></div>
                 <label for="ensPersonaBackstory" class="ens-top">My <u>b</u>ackstory:</label>
                 <textarea id="ensPersonaBackstory" data-pfield="backstory" rows="6" spellcheck="true">${esc(p.backstory)}</textarea>
                 <label for="ensPersonaVerbosity">Default <u>v</u>erbosity:</label>
@@ -680,10 +703,10 @@
             </div>
             <div class="mmc-buttons"><button type="button" class="btn-standard" data-act="persona-save">Save Persona</button><button type="button" class="btn-standard" data-act="refresh">Revert</button></div>`;
         return {
-            html: c.page('LinkXi Persona', p.user_name ? p.user_name : '', [{ id: 'ens-persona', title: 'Chat Persona', body }]),
+            html: c.page('Profile', p.user_name ? p.user_name : '', [{ id: 'ens-persona', title: 'Chat Persona', body }]),
             mount: (pane) => {
                 pane.querySelectorAll('[data-pfield]').forEach((el) => {
-                    const keep = () => { if (state.persona) state.persona[el.dataset.pfield] = el.value; };
+                    const keep = () => { if (S(c).persona) S(c).persona[el.dataset.pfield] = el.value; };
                     el.addEventListener('input', keep);
                     el.addEventListener('change', keep);
                 });
@@ -697,10 +720,10 @@
         input.accept = 'image/*';
         input.addEventListener('change', () => {
             const file = input.files && input.files[0];
-            if (!file || !state.persona) return;
+            if (!file || !S(c).persona) return;
             const reader = new FileReader();
             reader.onload = (e) => {
-                state.persona.profile_photo_base64 = String(e.target.result || '').split(',')[1] || '';
+                S(c).persona.profile_photo_base64 = String(e.target.result || '').split(',')[1] || '';
                 c.note('The photo is used when you save the persona.');
                 c.refresh();
             };
@@ -710,7 +733,7 @@
     }
 
     async function savePersona(c) {
-        const p = state.persona;
+        const p = S(c).persona;
         if (!p) return;
         const settings = {
             user_name: p.user_name || '',
@@ -895,7 +918,7 @@
         const original = mem.name;
         const work = JSON.parse(JSON.stringify(mem));
         // the list row has the dates get_knowledge_memory leaves out
-        const row = memByName(store, original);
+        const row = memByName(c, store, original);
         if (row) ['updated_at', 'last_used_at', 'usage_count', 'model'].forEach((k) => { if (work[k] == null && row[k] != null) work[k] = row[k]; });
         work.entities = Array.isArray(work.entities) ? work.entities : [];
         work.relations = Array.isArray(work.relations) ? work.relations : [];
@@ -1005,7 +1028,7 @@
             init: (ctx) => {
                 ctx.set(11, work.name || '', 'ens:general');
                 ctx.set(14, work.description || '', 'ens:general');
-                ctx.options(16, categories(store), undefined, 'ens:general');
+                ctx.options(16, categories(c, store), undefined, 'ens:general');
                 ctx.set(16, work.category || '', 'ens:general');
                 ctx.set(18, String(Math.round((Number(work.confidence) || 0) * 100)), 'ens:general');
                 ctx.text(22, plural(work.usage_count || 0, 'time', 'times'), 'ens:general');
@@ -1114,7 +1137,7 @@
 
     function bulkWizard(c, store, preset) {
         const api = dialogApi();
-        const storeName = store ? 'Obliterated Memories' : 'Studio Memories';
+        const storeName = store ? 'Private Memories' : 'Default Memories';
         let filter = null;
         let count = 0;
         let seq = 0;
@@ -1187,7 +1210,7 @@
                     }
                 }
             ],
-            finish: () => { state.lists[store].page = 1; reload(c, store); },
+            finish: () => { S(c).lists[store].page = 1; reload(c, store); },
             close: () => { if (deleted) { c.note(`${plural(deleted, 'memory was', 'memories were')} deleted.`); reload(c, store); } }
         });
     }
@@ -1211,11 +1234,11 @@
                 ...VIEWS.map((v) => ({ text: `View as ${v.label}`, action: `view:${v.id}`, disabled: viewOf(c) === v.id }))
             ];
         }
-        if (node.id === 'rules') return [{ text: 'New Rule...', action: 'rule-new', icon: `${CMD}/add.png` }];
-        if (node.id === 'persona') {
+        if (node.id === 'director') return [{ text: 'New Rule...', action: 'rule-new', icon: `${CMD}/add.png` }];
+        if (node.id === 'profile') {
             return [
-                { text: 'Save Persona', action: 'persona-save', icon: `${CMD}/save.png`, disabled: !state.persona },
-                { text: 'Change Photo...', action: 'photo', icon: `${CMD}/picture.png`, disabled: !state.persona }
+                { text: 'Save Persona', action: 'persona-save', icon: `${CMD}/save.png`, disabled: !S(c).persona },
+                { text: 'Change Photo...', action: 'photo', icon: `${CMD}/picture.png`, disabled: !S(c).persona }
             ];
         }
         return [];
@@ -1223,7 +1246,7 @@
 
     function selCommands(node, key, c) {
         if (isMemNode(node.id)) {
-            const m = memByName(storeOf(node.id), key);
+            const m = memByName(c, storeOf(node.id), key);
             if (!m) return null;
             return { title: m.name, items: [
                 { text: 'Open', action: 'open', icon: 8 },
@@ -1234,8 +1257,8 @@
                 { text: 'Delete', action: 'delete', icon: `${CMD}/delete.png` }
             ] };
         }
-        if (node.id === 'rules') {
-            const r = ruleById(key);
+        if (node.id === 'director') {
+            const r = ruleById(c, key);
             if (!r) return null;
             const t = String(r.text || '');
             return { title: t.length > 28 ? `${t.slice(0, 27)}...` : t, items: [
@@ -1246,7 +1269,7 @@
             ] };
         }
         if (node.id === 'feedback') {
-            const f = fbById(key);
+            const f = fbById(c, key);
             if (!f) return null;
             return { title: 'Feedback entry', items: [
                 { text: 'Edit Feedback...', action: 'open', icon: 8 },
@@ -1260,7 +1283,7 @@
 
     function toolbar(node, c) {
         const none = c.sel == null;
-        if (isMemNode(node.id) || node.id === 'rules' || node.id === 'feedback') {
+        if (isMemNode(node.id) || node.id === 'director' || node.id === 'feedback') {
             return [{ id: 'refresh', i: 3, title: 'Refresh' }, { id: 'open', i: 8, title: 'Properties', disabled: none }, { id: 'delete', i: 11, title: 'Delete', disabled: none }];
         }
         return node.id === 'root' ? [] : [{ id: 'refresh', i: 3, title: 'Refresh' }];
@@ -1290,18 +1313,18 @@
         }
         if (a.startsWith('sort:')) {
             c.setReg({ Sort: a.slice(5) });
-            Object.values(state.lists).forEach((x) => { x.page = 1; });
+            Object.values(S(c).lists).forEach((x) => { x.page = 1; });
             if (isMemNode(node)) void loadList(c, store);
             return true;
         }
         if (a.startsWith('per:')) {
             c.setReg({ PerPage: Number(a.slice(4)) || 25 });
-            Object.values(state.lists).forEach((x) => { x.page = 1; });
+            Object.values(S(c).lists).forEach((x) => { x.page = 1; });
             if (isMemNode(node)) void loadList(c, store);
             return true;
         }
         if (a === 'page:prev' || a === 'page:next') {
-            const L = state.lists[store];
+            const L = S(c).lists[store];
             L.page = Math.max(1, L.page + (a === 'page:next' ? 1 : -1));
             const body = c.el('.ens-body');
             if (body) body.scrollTop = 0;
@@ -1310,31 +1333,31 @@
         }
         switch (a) {
             case 'refresh':
-                if (isMemNode(node)) { state.lists[store].map = null; void loadList(c, store); } else if (node === 'rules') void loadRules(c);
+                if (isMemNode(node)) { S(c).lists[store].map = null; void loadList(c, store); } else if (node === 'director') void loadRules(c);
                 else if (node === 'feedback') void loadFeedback(c);
-                else if (node === 'persona') { state.persona = null; c.refresh(); void loadPersona(c); } else { void loadList(c, ''); void loadList(c, 'obliterated'); void loadRules(c); void loadFeedback(c); void loadPersona(c); }
+                else if (node === 'profile') { S(c).persona = null; c.refresh(); void loadPersona(c); } else { void loadList(c, ''); void loadList(c, 'obliterated'); void loadRules(c); void loadFeedback(c); void loadPersona(c); }
                 return true;
             case 'find': { const i = c.el('.ens-search'); if (i) { i.focus(); i.select(); } return true; }
             case 'bulk': if (isMemNode(node)) bulkWizard(c, store); return true;
             case 'open':
                 if (c.sel == null) return true;
                 if (isMemNode(node)) void openMemory(c, store, c.sel);
-                else if (node === 'rules') { const r = ruleById(c.sel); if (r) ruleDialog(c, r); } else if (node === 'feedback') { const f = fbById(c.sel); if (f) feedbackDialog(c, f); }
+                else if (node === 'director') { const r = ruleById(c, c.sel); if (r) ruleDialog(c, r); } else if (node === 'feedback') { const f = fbById(c, c.sel); if (f) feedbackDialog(c, f); }
                 return true;
             case 'delete':
                 if (c.sel == null) return true;
                 if (isMemNode(node)) await deleteMemory(c, store, c.sel);
-                else if (node === 'rules') await deleteRule(c, c.sel);
+                else if (node === 'director') await deleteRule(c, c.sel);
                 else if (node === 'feedback') await deleteFeedback(c, c.sel);
                 return true;
             case 'copy-name': copyText(c, c.sel); return true;
-            case 'copy-desc': { const m = memByName(store, c.sel); copyText(c, m && m.description); return true; }
-            case 'copy-rule': { const r = ruleById(c.sel); copyText(c, r && String(r.text || '').trim()); return true; }
-            case 'copy-fb': { const f = fbById(c.sel); copyText(c, f && f.user_feedback); return true; }
+            case 'copy-desc': { const m = memByName(c, store, c.sel); copyText(c, m && m.description); return true; }
+            case 'copy-rule': { const r = ruleById(c, c.sel); copyText(c, r && String(r.text || '').trim()); return true; }
+            case 'copy-fb': { const f = fbById(c, c.sel); copyText(c, f && f.user_feedback); return true; }
             case 'rule-new': ruleDialog(c, null); return true;
             case 'persona-save': await savePersona(c); return true;
             case 'photo': pickPhoto(c); return true;
-            case 'photo-clear': if (state.persona) { state.persona.profile_photo_base64 = ''; c.refresh(); } return true;
+            case 'photo-clear': if (S(c).persona) { S(c).persona.profile_photo_base64 = ''; c.refresh(); } return true;
             case 'help': if (typeof root.openHelpAndSupport === 'function') root.openHelpAndSupport('enshutsuka'); return true;
             default: return false;
         }
@@ -1342,28 +1365,38 @@
 
     function status(node, c) {
         if (isMemNode(node.id)) {
-            const L = state.lists[storeOf(node.id)];
+            const L = S(c).lists[storeOf(node.id)];
             if (L.error) return 'The server did not answer.';
             if (!L.loaded) return 'Reading data, please wait...';
             const s = L.stats || {};
             return `${plural(s.totalMemories != null ? s.totalMemories : L.total, 'memory', 'memories')}, ${plural(s.totalEntities || 0, 'entity', 'entities')}, ${plural(s.totalRelations || 0, 'relation', 'relations')}${L.search || L.category ? ` - ${plural(L.total, 'match', 'matches')}` : ''} - sorted by ${sortLabel(sortOf(c))}`;
         }
-        if (node.id === 'rules') return state.rules ? plural(state.rules.length, 'rule', 'rules') : 'Reading data, please wait...';
-        if (node.id === 'feedback') return state.feedback ? plural(state.feedback.length, 'feedback entry', 'feedback entries') : 'Reading data, please wait...';
-        if (node.id === 'persona') return state.persona ? '' : 'Reading data, please wait...';
+        if (node.id === 'director') return S(c).rules ? plural(S(c).rules.length, 'rule', 'rules') : 'Reading data, please wait...';
+        if (node.id === 'feedback') return S(c).feedback ? plural(S(c).feedback.length, 'feedback entry', 'feedback entries') : 'Reading data, please wait...';
+        if (node.id === 'profile') return S(c).persona ? '' : 'Reading data, please wait...';
         return '';
     }
 
     function page(node, c) {
         if (isMemNode(node.id)) return memPage(node, c);
-        if (node.id === 'rules') return rulesPage(c);
+        if (node.id === 'memories' || node.id === 'ruleset') return folderPage(node, c);
+        if (node.id === 'director') return rulesPage(c);
         if (node.id === 'feedback') return feedbackPage(c);
-        if (node.id === 'persona') return personaPage(c);
+        if (node.id === 'profile') return personaPage(c);
         return rootPage(c);
     }
 
+    /** A folder of the tree: its items, as Computer Management lists System Tools. */
+    function folderPage(node, c) {
+        const kids = node.children || [];
+        const cols = [
+            { t: 'Name', w: 180, key: 'name', text: (d) => d.name },
+            { t: 'Description', w: 320, key: 'desc', text: (d) => d.desc || '' }
+        ];
+        return { html: c.listView(cols, kids.map((n) => ({ data: n, icon: n.icon, open: n.id }))), list: true };
+    }
+
     function rowOpen(key, node, c) {
-        state.c = c;
         void action('open', c);
     }
 
@@ -1385,10 +1418,9 @@
             action,
             rowOpen,
             status,
-            onSelectRow: (key, node, c) => { c.renderToolbar(); },
+            onSelectRow: (key, node, c) => { renderToolbar(c); },
             about: { version: '1.0.0', lines: ['Enshutsuka keeps the Director\'s knowledge memories, static rules, feedback and your LinkXi persona.'] },
             onOpen: (c) => {
-                state.c = c;
                 // the first time: both stores' counts for the summary, then the rest
                 void loadList(c, '');
                 void loadList(c, 'obliterated');
@@ -1396,7 +1428,7 @@
                 void loadFeedback(c);
                 void loadPersona(c);
             },
-            onClose: () => { Object.values(state.timers).forEach((t) => clearTimeout(t)); state.c = null; }
+            onClose: (c) => { Object.values(S(c).timers).forEach((t) => clearTimeout(t)); }
         };
     }
 
@@ -1405,7 +1437,7 @@
         const o = opts || {};
         if (isMemNode(node)) {
             const store = storeOf(node);
-            const L = state.lists[store];
+            const L = S(c).lists[store];
             let changed = false;
             ['search', 'category'].forEach((k) => { if (o[k] !== undefined && L[k] !== String(o[k] || '')) { L[k] = String(o[k] || ''); changed = true; } });
             if (o.page) { L.page = Math.max(1, Number(o.page) || 1); changed = true; }
@@ -1423,15 +1455,14 @@
     async function openEnshutsukaConsole(node, opts) {
         if (root.featureLoader) await root.featureLoader.loadFeature('mmc_snapins');
         if (!root.mmcConsole) return null;
-        const valid = ['root', 'mem', 'obl', 'rules', 'feedback', 'persona'];
-        const target = valid.includes(node) ? node : (opts && (opts.memory || opts.bulk) ? 'mem' : null);
+        const target = nodeId(node) || (opts && (opts.memory || opts.bulk) ? 'default' : null);
         const had = !!root.mmcConsole.get(ID);
         const c = root.mmcConsole.open(def(), target ? { node: target } : {});
         if (c && opts) apply(c, target || c.node, opts);
-        if (c && had && target === 'persona' && !state.persona) void loadPersona(c);
+        if (c && had && target === 'profile' && !S(c).persona) void loadPersona(c);
         return c;
     }
 
     root.openEnshutsukaConsole = openEnshutsukaConsole;
-    root.mmcEnshutsuka = { open: openEnshutsukaConsole, _state: state };
+    root.mmcEnshutsuka = { open: openEnshutsukaConsole, def };
 })(typeof window !== 'undefined' ? window : globalThis);
