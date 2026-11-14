@@ -311,6 +311,14 @@ runtimeAssetService.init({
             runtimeAssetsRecompiled: options.runtimeAssetsRecompiled === true,
             timestamp: Date.now()
         });
+        // partnered phones with no Melaton window open fetch the update in the background (Yozora #815);
+        // not for the silent on-demand recompiles (ensureCompiledForRequest), only a real notify
+        if (!silent) try {
+            const rung = require('./modules/activeSync').ringPartners(globalResources, null, 'update');
+            if (rung) console.log(`📞 ActiveSync: rang ${rung} phone(s) for the update`);
+        } catch (err) {
+            console.warn('ActiveSync update ring failed:', err.message);
+        }
     }
 });
 

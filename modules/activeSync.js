@@ -1008,6 +1008,26 @@ function partnerLinks(globalResources, wsServer) {
     return out;
 }
 
+/**
+ * Ring ActiveSync's line on every partnered phone's background link (Yozora #815): DSApp's
+ * ActiveSyncLink hands it to the Melaton Café Miniport (wakes an idle link) and, for "update" with
+ * no Melaton window open, to its BackgroundUpdater (fills the cache from /updater.html).
+ * Returns how many phones were rung.
+ */
+function ringPartners(globalResources, wsServer, reason) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!server) return 0;
+    let rung = 0;
+    for (const link of partnerLinks(globalResources, server)) {
+        if (!link.service) continue;
+        try {
+            server.sendToClient(link.service.ws, { type: 'miniport_ring', data: { reason: String(reason || '') }, timestamp: new Date().toISOString() });
+            rung += 1;
+        } catch (_) { /* closing */ }
+    }
+    return rung;
+}
+
 /** An as_event from the server to one socket (a phone's background link). */
 function sendServerEvent(globalResources, wsServer, socket, name, detail) {
     const server = wsServerOf(globalResources, wsServer);
@@ -1093,6 +1113,7 @@ module.exports = {
     forget,
     logEvent,
     partnerLinks,
+    ringPartners,
     sendServerEvent,
     resetForTests
 };
