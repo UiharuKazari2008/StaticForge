@@ -122,7 +122,6 @@
         foldSections();
         pairsLayout();
         diceBySeed();
-        genRows();
         resolutionDims();
         watchPopupDecor();
         return true;
@@ -276,7 +275,8 @@
             if (String(item.value).startsWith('normal_wallpaper_')) text = String(item.value).endsWith('_portrait') ? 'Portrait' : 'Landscape';
             if (item.subtext) text += ` ${item.subtext}`;
             deco = resolutionBadge(item.value);
-        } else if (item.subtext) {
+        } else if (item.subtext && !/^(ctrl|alt|shift|win|cmd|f\d{1,2}\b|del|esc|enter|tab)\b|\+/i.test(String(item.subtext).trim())) {
+            // a value (a size, a count) stays; a keyboard shortcut does not: WM menus have none
             text += ` ${item.subtext}`;
         }
         if (deco) decor.set(text, deco);
@@ -809,6 +809,7 @@
     function paintTab() {
         if (!page) return;
         const cur = shownTab();
+        if (cur === 'prompt') paintPromptTools();
         page.dataset.tab = cur;
         page.querySelectorAll('.wms-tabs .wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === cur)));
         // each page starts at its top when it is switched to
@@ -880,6 +881,9 @@
             else if (p.phase === 'queued') text = 'Queued...';
             else text = p.status || text;
             if (!p.rentan && p.pct > 0 && p.pct <= 100) pct = p.pct;
+            // the sampler's steps when the socket sends no percent ("Step 23/25"): the bar fills, no marquee
+            const st = !p.rentan && pct == null ? /Step\s+(\d+)\s*\/\s*(\d+)/i.exec(String(p.status || '')) : null;
+            if (st && Number(st[2]) > 0) pct = Math.min(100, (Number(st[1]) / Number(st[2])) * 100);
             if (p.queued && p.phase !== 'queued') text += ` (+${p.queued} queued)`;
         }
         printBox.update({ text, pct, preview: p && p.preview ? p.preview : undefined });
@@ -1121,12 +1125,17 @@
     // rows of the print itself: grey while there is none (they raised "Load an image in Studio first")
     const PRINT_ACTIONS = new Set(['studio-stage-results', 'create-animation']);
 
+    // the text commands of Edit: the prompt editor's (its strips and Menu); from the form they had no
+    // field on screen to act on
+    const EDITOR_ONLY = new Set(['studio-edit-undo', 'studio-edit-redo', 'studio-edit-cut', 'studio-edit-copy', 'studio-edit-paste', 'studio-edit-select-all']);
+
     function phoneRows(rows, studioPrint = true) {
         const hasPrint = !studioPrint || !!printName();
         const out = [];
         for (const r of rows || []) {
             if (!r || typeof r !== 'object') { out.push(r); continue; }
             if (r.action && PHONE_NO_ACTIONS.has(r.action)) continue;
+            if (studioPrint && !editTa && r.action && EDITOR_ONLY.has(r.action)) continue;
             const text = typeof r.text === 'string' ? r.text : (typeof r.label === 'string' ? r.label : '');
             if (text && PHONE_NO_LABELS.has(text)) continue;
             let row = r;
@@ -1817,11 +1826,14 @@
         const top = page.querySelector('.wms-edbar-top');
         const bottom = page.querySelector('.wms-edbar-bottom');
         top.innerHTML = ED_TOP.map((b) => (b === '|' ? '<span class="wms-ed-sep"></span>' : edButton(b[0], b[1]))).join('');
-        bottom.innerHTML = `${edButton('weightdown', 'Less Weight')}<span class="wms-ed-weight" aria-live="polite"></span>${edButton('weightup', 'More Weight')}`
+        // the weight: a plain - and + around its value (Yukimi, Nov 14: the A-arrow icons were confusing)
+        const step = (id, sign, label) => `<button type="button" class="wms-ed-btn wms-ed-step" data-ed="${id}" aria-label="${label}" title="${label}">${sign}</button>`;
+        bottom.innerHTML = `${step('weightdown', '\u2212', 'Less Weight')}<span class="wms-ed-weight" aria-live="polite"></span>${step('weightup', '+', 'More Weight')}`
             + `${edButton('group', 'Group the Selection')}<span class="wms-ed-sep"></span>${edButton('find', 'Find')}${edButton('smarttext', 'SmartText')}`
             + '<span class="wms-ed-tokens"></span>';
-        // a tap on a strip keeps the focus (and the keyboard) in the field
+        // a tap on a strip keeps the focus (and the keyboard) in the field; a drag on a strip moves nothing
         [top, bottom].forEach((bar) => {
+            bar.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
             bar.addEventListener('mousedown', (e) => e.preventDefault());
             bar.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') e.preventDefault(); });
             bar.addEventListener('click', (e) => {
@@ -1838,11 +1850,40 @@
         /* global handleStudioMenuBarAction */
         if (top) { try { handleStudioMenuBarAction(top[2], ta, null); } catch (err) { console.warn('[wmStudio] edit', err); } paintEditor(); return; }
         const ptw = window.promptToolWindows;
-        if (id === 'weightup' || id === 'weightdown') { if (ptw && ptw.inlineEdit) ptw.inlineEdit(ta, 'adjust', id === 'weightup' ? 0.1 : -0.1); }
+        if (id === 'weightup' || id === 'weightdown') { if (ptw && ptw.inlineEdit) stepWeight(ta, id === 'weightup' ? 1 : -1); }
         else if (id === 'group') { if (ptw && ptw.inlineEdit) ptw.inlineEdit(ta, 'group'); }
         else if (id === 'find') { if (ptw) ptw.openFind(ta); }
         else if (id === 'smarttext') { try { handleStudioMenuBarAction('studio-autofill-window', ta, null); } catch (err) { console.warn('[wmStudio] smarttext', err); } }
         paintEditor();
+    }
+
+    /**
+     * - / + on the weight. Inside a group or brace run: one step. On a plain selection the desktop's
+     * first step only makes the group at 1.0 (its "---" start), which on the phone looked like a dead
+     * tap: + makes the group and steps it to 1.1 in one press (- goes straight to 0.9). Afterwards the
+     * caret sits inside the group, so the value between the buttons shows its weight.
+     */
+    function stepWeight(ta, dir) {
+        const ptw = window.promptToolWindows;
+        let info = null;
+        try { info = ptw.info(ta); } catch (_) { info = null; }
+        const selText = ta.value.slice(ta.selectionStart, ta.selectionEnd);
+        const selAt = ta.selectionStart;
+        ptw.inlineEdit(ta, 'adjust', dir * 0.1);
+        if (info || !selText.trim()) return;
+        // the group just made around the selection: caret inside it (and a second + step)
+        /* global listManagedEmphasisBlocks */
+        let blocks = [];
+        try { blocks = listManagedEmphasisBlocks(ta.value) || []; } catch (_) { blocks = []; }
+        const want = selText.trim();
+        const hit = blocks.filter((b) => String(b.innerText || '').trim() === want)
+            .sort((x, y) => Math.abs(x.openEnd - selAt) - Math.abs(y.openEnd - selAt))[0];
+        if (!hit) return;
+        ta.setSelectionRange(hit.openEnd, hit.openEnd);
+        if (dir > 0) {
+            ptw.inlineEdit(ta, 'adjust', 0.1);
+            ta.setSelectionRange(hit.openEnd, hit.openEnd);
+        }
     }
 
     function fieldTitle(ta) {
@@ -1882,12 +1923,39 @@
         });
     }
 
+    /**
+     * The page never pans while the editor is up (Yukimi, Nov 14: "your new prompt area can be dragged
+     * scrolled and causes lots of issues when the keyboard is open"). With the keyboard up neither
+     * Chrome nor the WebView shrinks the layout, so a drag the field cannot take (its text fits, or it
+     * is already at that end) panned the whole page under the bars. A drag inside the editor scrolls
+     * the field and nothing else.
+     */
+    let dragY = null;
+    function guardDrag() {
+        const host = page && page.querySelector('.wms-host');
+        if (!host || host.dataset.wmsDragGuard) return;
+        host.dataset.wmsDragGuard = '1';
+        host.addEventListener('touchstart', (e) => { dragY = editTa && e.touches.length === 1 ? e.touches[0].clientY : null; }, { passive: true });
+        host.addEventListener('touchmove', (e) => {
+            if (!editTa || dragY == null || !e.cancelable) return;
+            const y = e.touches[0].clientY;
+            const dy = y - dragY;
+            dragY = y;
+            const ta = editTa;
+            const inField = e.target === ta || (e.target.closest && e.target.closest('.wms-edit-target') && e.target.closest('.wms-edit-target').contains(ta));
+            const room = ta.scrollHeight - ta.clientHeight;
+            const canTake = inField && room > 1 && ((dy < 0 && ta.scrollTop < room - 1) || (dy > 0 && ta.scrollTop > 0));
+            if (!canTake) e.preventDefault();
+        }, { passive: false });
+    }
+
     function openEditor(ta) {
         if (!page || editTa === ta) return;
         if (editTa) closeEditor(true);
         const box = ta.closest('.prompt-textarea-container, .character-prompt-textarea-container');
         if (!box) return;
         editTa = ta;
+        guardDrag();
         box.classList.add('wms-edit-target');
         page.classList.add('wms-editing');
         page.querySelectorAll('.wms-edbar').forEach((b) => { b.hidden = false; });
@@ -1958,52 +2026,62 @@
         void want;
     }
 
-    // ---------------------------------------------------------------- prompt settings in Settings
+    // ---------------------------------------------------------------- the Prompt page's tool bar
 
     /**
-     * Datasets, Adjustments, UC Preset and NSFW Bias were buttons on the prompt toolbar (Yukimi, Nov 14
-     * #825: "the dataset and stuff like that should go in the generation settings area"). Rows in
-     * Settings with a WM combo each: its list is the Prompt menu's own submenu (the same rows and
-     * actions), the combo shows what is on.
+     * The Prompt page's tool bar (Yukimi, Nov 14 #825: "a toolbar at the bottom of the prompt area that
+     * has [Model] [Effort] [Dataset] [Subtoggle] [UC] [NSFW] [Lock Seed] [Inspect] ... icons like they
+     * originally were"): icon buttons over the tab strip, each the Studio menu's own row (its list as a
+     * WM drop-down, or its command). The icons keep the desktop toolbar's motifs (sakura, half diamond,
+     * pencil, seedling, glasses) drawn in Word Mobile's toolbar style (tb-*.png).
      */
-    const GEN_ROWS = [['Datasets', 'Datasets'], ['Adjustments', 'Quality'], ['UC Preset', 'UC Preset'], ['NSFW Bias', 'NSFW Bias']];
+    const PROMPT_TOOLS = [
+        ['model', 'Model', 'Model', 'Model'],
+        ['effort', 'Effort', 'Model', 'Effort'],
+        ['dataset', 'Datasets', 'Prompt', 'Datasets'],
+        ['subtoggle', 'Adjustments', 'Prompt', 'Adjustments'],
+        ['uc', 'UC Preset', 'Prompt', 'UC Preset'],
+        ['nsfw', 'NSFW Bias', 'Prompt', 'NSFW Bias'],
+        ['lockseed', 'Lock Seed', 'Generate', 'Lock Seed'],
+        ['inspect', 'Inspector', null, 'Inspector']
+    ];
 
-    function promptMenuRow(label) {
-        return menuBarItems('Prompt').find((r) => r && typeof r === 'object' && r.label === label) || null;
-    }
-
-    function genSummary(label) {
-        const row = promptMenuRow(label);
-        if (!row || typeof row.submenu !== 'function') return '';
-        let items = [];
-        try { items = row.submenu() || []; } catch (_) { items = []; }
-        const on = items.filter((i) => i && typeof i === 'object' && !i.heading && (i.checked || i.radio)).map((i) => String(i.label).replace(/\s+\S*\d.*$/, '').trim());
-        return on.length ? on.join(', ') : 'None';
-    }
-
-    function genRows() {
-        const holder = document.querySelector('#manualModal .model-control .control-holder');
-        if (!holder) return;
-        let box = holder.querySelector(':scope > .wms-gen-rows');
-        if (!box) {
-            box = document.createElement('div');
-            box.className = 'form-row wms-gen-rows';
-            box.innerHTML = GEN_ROWS.map(([key, label]) => `<div class="form-group wms-gen-row"><label>${esc(label)}</label><button type="button" class="wms-combo" data-gen="${esc(key)}"><span class="wms-combo-text"></span></button></div>`).join('');
-            holder.appendChild(box);
-            box.addEventListener('click', (e) => {
-                const btn = e.target.closest && e.target.closest('.wms-combo');
-                if (!btn) return;
-                const row = promptMenuRow(btn.dataset.gen);
-                if (!row || typeof row.submenu !== 'function' || !ws || typeof ws.dropdown !== 'function') return;
-                ws.dropdown(btn, row.submenu(), 'left', () => paintGenRows());
-            });
+    function findMenuRow(menu, label) {
+        const names = menu ? [menu] : MENUS;
+        for (const name of names) {
+            const rows = menuBarItems(name);
+            const hit = rows.find((r) => r && typeof r === 'object' && r.label === label);
+            if (hit) return hit;
         }
-        paintGenRows();
+        return null;
     }
 
-    function paintGenRows() {
-        document.querySelectorAll('#manualModal .wms-gen-rows .wms-combo').forEach((btn) => {
-            btn.querySelector('.wms-combo-text').textContent = genSummary(btn.dataset.gen);
+    function buildPromptTools() {
+        const bar = page.querySelector('.wms-ptools');
+        bar.innerHTML = PROMPT_TOOLS.map(([id, label]) => `<button type="button" class="wms-pt-btn" data-pt="${id}" aria-label="${esc(label)}" title="${esc(label)}"><img alt="" src="/static_images/wm61/tb-${id}.png" srcset="/static_images/wm61/tb-${id}@2x.png 2x, /static_images/wm61/tb-${id}@4x.png 4x"></button>`).join('');
+        bar.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('.wms-pt-btn');
+            if (!b || b.disabled) return;
+            const def = PROMPT_TOOLS.find((t) => t[0] === b.dataset.pt);
+            const row = def && findMenuRow(def[2], def[3]);
+            if (!row || row.disabled) return;
+            if (typeof row.submenu === 'function') {
+                const r = b.getBoundingClientRect();
+                ws.dropdown(b, row.submenu(), r.left > window.innerWidth / 2 ? 'right' : 'left', () => paintPromptTools());
+            } else if (typeof row.action === 'function') {
+                row.action();
+                paintPromptTools();
+            }
+        });
+    }
+
+    function paintPromptTools() {
+        if (!page) return;
+        page.querySelectorAll('.wms-pt-btn').forEach((b) => {
+            const def = PROMPT_TOOLS.find((t) => t[0] === b.dataset.pt);
+            const row = def && findMenuRow(def[2], def[3]);
+            b.disabled = !row || !!row.disabled;
+            b.setAttribute('aria-pressed', String(!!(row && row.checked)));
         });
     }
 
@@ -2050,8 +2128,10 @@
             <div class="wms-edbar wms-edbar-top" role="toolbar" hidden></div>
             <div class="wms-edbar wms-edbar-bottom" role="toolbar" hidden></div>
             <button type="button" class="wms-print-toggle" aria-label="Print" aria-expanded="true"><span></span></button>
+            <div class="wms-ptools" role="toolbar"></div>
             <div class="wm-tabs wms-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${esc(id)}" aria-selected="${id === tab}">${esc(label)}</button>`).join('')}</div>`;
         buildEditorBars();
+        buildPromptTools();
         // the edit bars sit above and below the page's form (flex order: top bar, host, bottom bar)
         page.insertBefore(page.querySelector('.wms-edbar-top'), page.querySelector('.wms-host'));
         page.querySelector('.wms-print-toggle').addEventListener('click', () => setPrintMin(!printMinimised()));

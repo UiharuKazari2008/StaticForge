@@ -3126,57 +3126,6 @@ html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocomplete
     max-width: none !important;
 }
 
-/* ---- Settings: Datasets / Quality / UC Preset / NSFW Bias rows (wmStudio.js genRows) ---- */
-.wm-studio #manualModal .model-control .control-holder > .wms-gen-rows {
-    display: contents !important;
-}
-
-.wm-studio #manualModal .wms-gen-row > label {
-    color: #000 !important;
-}
-
-.wm-studio #manualModal .model-control .wms-gen-row > button.wms-combo.wms-combo {
-    position: relative !important;
-    display: flex !important;
-    align-items: center !important;
-    width: 100% !important;
-    min-width: 0 !important;
-    height: calc(20 * var(--wm-px)) !important;
-    margin: 0 !important;
-    padding: 0 calc(16 * var(--wm-px)) 0 calc(4 * var(--wm-px)) !important;
-    box-sizing: border-box !important;
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-    border-radius: 0 !important;
-    background: #fff !important;
-    color: #000 !important;
-    font: var(--wm-fs) var(--wm-font) !important;
-    text-align: left !important;
-    box-shadow: none !important;
-}
-
-.wm-studio #manualModal .wms-gen-row .wms-combo-text {
-    flex: 1 1 auto;
-    min-width: 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.wm-studio #manualModal .model-control .wms-gen-row > button.wms-combo.wms-combo::after {
-    /* the same arrow cell as the desktop combos on the phone (.custom-dropdown-btn::after) */
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 0;
-    bottom: 0;
-    width: calc(13 * var(--wm-px));
-    border-left: calc(1 * var(--wm-px)) solid #000;
-    background:
-        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
-        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
-        var(--wm-tab-strip);
-}
-
 /* ---- the print pane's minimise toggle (beside / under the form only) ---- */
 .wm-studio .wms-print-toggle {
     display: none;
@@ -3239,4 +3188,275 @@ html.ui-mobile body > #characterAutocompleteViewBar.wms-ac#characterAutocomplete
     .wm-studio.wms-print-min #manualModal #manualPanelSection > .wms-print-toggle > span {
         clip-path: polygon(100% 0, 100% 100%, 0 50%);
     }
+}
+
+
+/* the editor's weight: plain - / + in the WM font */
+.wm-studio .wms-ed-btn.wms-ed-step {
+    font: bold calc(14 * var(--wm-px)) / 1 var(--wm-font);
+    color: #000;
+    border-color: #000;
+    background: #fff;
+}
+
+.wm-studio .wms-ed-btn.wms-ed-step:disabled {
+    color: #a0a0a0;
+    border-color: #a0a0a0;
+}
+
+/* the editor field and its strips: a drag scrolls the text and nothing else (wmStudio.js guardDrag) */
+.wm-studio.wms-editing #manualModal .wms-edit-target textarea {
+    overscroll-behavior: contain !important;
+}
+
+.wm-studio.wms-editing #manualForm {
+    overflow: hidden !important;
+}
+
+.wm-studio > .wms-edbar {
+    touch-action: none;
+}
+
+/* ======================================================================
+ * The autofill list's contents as a WM list (Yukimi, Nov 14 #825: "look at the autofill results
+ * window ... you didnt even address the content inside or the results"). The desktop rows carry
+ * dark-glass detail for a mouse: uppercase names, popularity dots, model badges, dataset and wiki
+ * icons, a coloured category plate. On the phone a row is the tag in the list font and, in grey at
+ * the right, where it comes from; rows are a finger high; Spell Check and Thesaurus are a grey
+ * heading over one sideways-scrolling line of suggestion buttons; the footer is the result count.
+ * ====================================================================== */
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item {
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    min-height: calc(26 * var(--wm-px)) !important;
+    flex: 0 0 auto !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #e4e4e4 !important;
+    border-left: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    box-sizing: border-box !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item :is(.selected, .keyboard-selected) ,
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item:is(.selected, .keyboard-selected, :active) {
+    background: var(--wm-highlight) !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item.character-autocomplete-item:is(.selected, .keyboard-selected, :active) * {
+    color: var(--wm-highlight-text, #fff) !important;
+    -webkit-text-fill-color: var(--wm-highlight-text, #fff) !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-info-row {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    align-items: baseline !important;
+    justify-content: space-between !important;
+    gap: calc(8 * var(--wm-px)) !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-name {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    font: calc(12 * var(--wm-px)) / 1.3 var(--wm-font) !important;
+    font-weight: normal !important;
+    text-transform: none !important;
+    letter-spacing: normal !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item .character-copyright {
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    max-width: 45% !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    font: var(--wm-fs) var(--wm-font) !important;
+    color: #707070 !important;
+    -webkit-text-fill-color: #707070 !important;
+    filter: none !important;
+}
+
+/* the desktop's extra marks go: popularity dots, model / Hidden badges, category plates, dataset and
+ * wiki icons, match-type badges */
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.tag-count-dots, .count-dot, .badge, .tag-meta-icons, .tag-meta-icon, .match-type-badge, .tag-category-badge, .tag-wiki-preview-text, i, img:not(.character-thumb)) {
+    display: none !important;
+}
+
+/* second lines (an expander's contents, a character's details): one grey line */
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .character-autocomplete-item :is(.placeholder-desc, .placeholder-desc-text, .character-detail-line, .expander-preview) {
+    display: block !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    text-overflow: ellipsis !important;
+    font: var(--wm-fs) / 1.35 var(--wm-font) !important;
+    color: #707070 !important;
+    -webkit-text-fill-color: #707070 !important;
+    position: static !important;
+    height: auto !important;
+    margin: calc(1 * var(--wm-px)) 0 0 !important;
+}
+
+/* Spell Check / Thesaurus: a grey heading, then one line of suggestions that scrolls sideways */
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-section, .word-lookup-section) {
+    flex: 0 0 auto !important;
+    margin: 0 !important;
+    padding: calc(3 * var(--wm-px)) calc(6 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
+    border: 0 !important;
+    border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0 !important;
+    background: #fff !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-header, .word-lookup-header) {
+    display: flex !important;
+    align-items: baseline !important;
+    gap: calc(6 * var(--wm-px)) !important;
+    margin: 0 0 calc(2 * var(--wm-px)) !important;
+    padding: 0 !important;
+    font: bold var(--wm-fs) var(--wm-font) !important;
+    color: #505050 !important;
+    -webkit-text-fill-color: #505050 !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-header, .word-lookup-header) :is(i, .original-text) {
+    display: none !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-compact, .word-lookup-row-compact) {
+    display: flex !important;
+    align-items: center !important;
+    gap: calc(4 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: none !important;
+    overscroll-behavior: contain !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-compact, .word-lookup-row-compact)::-webkit-scrollbar {
+    display: none !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-term-inline, .word-lookup-term-inline) {
+    flex: 0 0 auto !important;
+    font: var(--wm-fs) var(--wm-font) !important;
+    font-style: normal !important;
+    color: #707070 !important;
+    -webkit-text-fill-color: #707070 !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .suggestions-list {
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    gap: calc(4 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .suggestion-btn {
+    flex: 0 0 auto !important;
+    height: calc(22 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-radius: 0 !important;
+    background: var(--wm-tab-strip) !important;
+    box-shadow: none !important;
+    font: var(--wm-fs) var(--wm-font) !important;
+    color: #000 !important;
+    -webkit-text-fill-color: #000 !important;
+    white-space: nowrap !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac :is(.spell-check-row-expanded, .word-lookup-row-expanded) {
+    display: none !important;
+}
+
+/* the footer: the result count; the search-service lights are for the desktop */
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display .search-service-indicators {
+    display: none !important;
+}
+
+html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-display .search-status-header i {
+    display: none !important;
+}
+
+/* ---- the Prompt page's tool bar (wmStudio.js PROMPT_TOOLS): icon buttons over the tab strip, a
+ * pressed one (Lock Seed on) sunk in the highlight; only on the Prompt page, not in the editor ---- */
+.wm-studio > .wms-ptools {
+    display: none;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: space-between;
+    gap: calc(2 * var(--wm-px));
+    min-height: calc(28 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    position: relative;
+    z-index: 3;
+    touch-action: none;
+}
+
+.wm-studio[data-tab="prompt"]:not(.wms-editing) > .wms-ptools {
+    display: flex;
+}
+
+.wm-studio .wms-pt-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: calc(28 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    padding: 0;
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    touch-action: manipulation;
+}
+
+.wm-studio .wms-pt-btn > img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-studio .wms-pt-btn[aria-pressed="true"],
+.wm-studio .wms-pt-btn:active:not(:disabled) {
+    border-color: #000;
+    background: #fff;
+    box-shadow: inset calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #808080;
+}
+
+.wm-studio .wms-pt-btn:disabled > img {
+    opacity: .35;
+    filter: grayscale(1);
+}
+
+/* the print pane has no glass: the desktop's diagonal shine over the preview goes (Yukimi, Nov 14) */
+.wm-studio #manualModal #manualPreviewContainer::before,
+.wm-studio #manualModal #manualPreviewContainer::after {
+    content: none !important;
+    display: none !important;
 }
