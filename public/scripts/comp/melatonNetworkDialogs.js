@@ -52,12 +52,20 @@
      */
     const CONTINUITY_NAME = 'Pocket PC (via DMA)';
     const CONTINUITY_MINIPORT = 'Windows Mobile-based Device Connectivity';
+    // the app's own connection (DSApp MelatonMiniport, #815) carries this window: phone or DeX
+    const MINIPORT_NAME = 'Melaton Miniport';
+    const MINIPORT_ADAPTER = 'Melaton Cafe PC Miniport';
+    function viaMiniport() {
+        const mc = root.melatonContinuity;
+        try { return !!(mc && typeof mc.miniport === 'function' && mc.miniport().transport === 'miniport'); } catch (_) { return false; }
+    }
     function viaPhone() {
         const mc = root.melatonContinuity;
         try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
     }
 
     function connectionName() {
+        if (viaMiniport()) return MINIPORT_NAME;
         if (viaPhone()) return CONTINUITY_NAME;
         if (typeof root.melatonConnectionName === 'function') return root.melatonConnectionName();
         const conn = root.wsClient && root.wsClient.melatonConnection;
@@ -82,6 +90,9 @@
     function connectionInfo() {
         const conn = (root.wsClient && root.wsClient.melatonConnection) || {};
         const fqdn = (root.location && root.location.hostname) || 'localhost';
+        if (viaMiniport()) {
+            return { domain: domainName(), connectionName: MINIPORT_NAME, fqdn, connectionType: 'Miniport', device: 'Melaton Cafe PC', miniport: MINIPORT_ADAPTER, viaMiniport: true };
+        }
         if (viaPhone()) {
             return { domain: domainName(), connectionName: CONTINUITY_NAME, fqdn, connectionType: 'DMA', device: 'Pocket PC', miniport: CONTINUITY_MINIPORT, viaPhone: true };
         }

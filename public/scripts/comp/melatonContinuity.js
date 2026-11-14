@@ -408,7 +408,8 @@
     let lastAsk = 0;
     api.phoneReady = () => {
         // with the Miniport the DeX window needs its link, not the phone window (#815)
-        if (miniport.available()) { miniport.wake(); return miniport.up; }
+        // a refused Miniport goes on to the BIOS's own session check (its disk read error / the PIN)
+        if (miniport.available()) { if (miniport.authFailed) return true; miniport.wake(); return miniport.up; }
         // the BIOS asks every 150 ms; the phone page is asked at most every 2 s (it answers on changes anyway)
         if (!phoneReadyNow && isDw() && Date.now() - lastAsk > 2000) { lastAsk = Date.now(); api.post({ type: 'phone-ready?' }); }
         return phoneReadyNow;
@@ -439,6 +440,8 @@
         if (m.op === 'state') {
             const was = miniport.up;
             miniport.up = !!m.connected;
+            // the server refused the Miniport (site gate or session): it waits for this app to sign in
+            miniport.authFailed = m.auth === 'failed';
             emit('miniport', { connected: miniport.up }, 'app');
             if (miniport.up && !was) followMiniport();
         } else if (m.op === 'opened') {
@@ -470,7 +473,7 @@
     }
     /** Cold boot / Restart from the phone: the Miniport ("the driver") clears and starts fresh too. */
     api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
-    api.miniport = () => ({ available: miniport.available(), up: miniport.up, transport: lastTransport });
+    api.miniport = () => ({ available: miniport.available(), up: miniport.up, authFailed: !!miniport.authFailed, transport: lastTransport });
 
     /** A WebSocket stand-in over the Miniport: what websocket.js uses instead of new WebSocket(). */
     class MiniportSocket {
