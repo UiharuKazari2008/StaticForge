@@ -828,6 +828,8 @@
         window.bypassConfirmation = true;
         try { if (typeof bypassConfirmation !== 'undefined') bypassConfirmation = true; } catch (_) { /* window flag is enough */ }
         window.melatonRestarting = true;
+        // the app's connection (Melaton Miniport, #815) clears and starts fresh with a cold boot
+        try { if (window.melatonContinuity && window.melatonContinuity.resetMiniport) window.melatonContinuity.resetMiniport(); } catch (_) { /* restart anyway */ }
         const a = window.AndroidDisplay;
         if (a && typeof a.coldBoot === 'function') {
             try { a.coldBoot(); return; } catch (_) { /* fall back to /launch */ }

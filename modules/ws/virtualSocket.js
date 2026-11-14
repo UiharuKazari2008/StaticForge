@@ -82,10 +82,12 @@ function sendCoalesced(recipients, message, send) {
     const cc = new Map();
     for (const ws of recipients) {
         const c = ws && ws.virtual ? ws.carrier : null;
-        if (c && c._dsCc && all.has(c) && c.readyState === OPEN && ws.readyState === OPEN) {
+        // a Miniport carrier is never a recipient itself: its subs' copy goes to it once (#815)
+        if (c && c._dsCc && (all.has(c) || c._dsMiniport) && c.readyState === OPEN && ws.readyState === OPEN) {
             if (!cc.has(c)) cc.set(c, []);
             cc.get(c).push(ws.sub);
             all.delete(ws);
+            if (c._dsMiniport) all.add(c);
         }
     }
     let plain = null;
@@ -140,4 +142,38 @@ function closeAll(carrier) {
     subs.clear();
 }
 
-module.exports = { VirtualSocket, handle, closeAll, sendCoalesced };
+/**
+ * Melaton Miniport (#815): the Android app's native connection, opened with ?miniport=1 on the
+ * signed-in session. It carries the app's pages (sub 'phone', sub 'desktop') and nothing else: no
+ * client of its own. connect(vws, req) runs the server's connection handler for each sub-client.
+ * The server pings it (it has no client heartbeat entry) and ends it when two pings go unanswered.
+ */
+function acceptMiniport(ws, req, info, connect) {
+    if (!info || !info.authenticated) {
+        try { ws.close(1008, 'Authentication required'); } catch (_) { /* gone */ }
+        return;
+    }
+    ws._dsMiniport = true;
+    ws._dsReq = req;
+    ws._dsCc = true;
+    ws._dsRaw = true;
+    let alive = true;
+    ws.on('pong', () => { alive = true; });
+    const beat = setInterval(() => {
+        if (!alive) { try { ws.terminate(); } catch (_) { /* gone */ } return; }
+        alive = false;
+        try { ws.ping(); } catch (_) { /* closing */ }
+    }, 30000);
+    ws.on('message', (data) => {
+        let message = null;
+        try { message = JSON.parse(data); } catch (_) { return; }
+        if (message && message.type === 'ping') { try { ws.send(JSON.stringify({ type: 'pong', t: message.t || null })); } catch (_) { /* closing */ } return; }
+        handle(ws, message, connect);
+    });
+    ws.on('close', () => { clearInterval(beat); closeAll(ws); });
+    ws.on('error', () => { /* close follows */ });
+    console.log(`🔌 Melaton Miniport connected: session ${String(info.sessionId || '').slice(0, 8)}… (${info.clientIP || 'unknown'})`);
+    try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now() })); } catch (_) { /* gone */ }
+}
+
+module.exports = { VirtualSocket, handle, closeAll, sendCoalesced, acceptMiniport };

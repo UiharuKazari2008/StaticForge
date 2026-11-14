@@ -89,6 +89,36 @@ class FakeCarrier extends EventEmitter {
     vs.sendCoalesced([sub3], { type: 'c' }, (ws, p) => alone.push(ws));
     assert.deepStrictEqual(alone, [sub3]);
 
+    // Melaton Miniport (#815): no session -> refused; with one it carries subs, answers ping, one _cc copy
+    {
+        const EventEmitter = require('events');
+        const mk = () => { const e = new EventEmitter(); e.readyState = 1; e.sent = []; e.send = (d, cb) => { e.sent.push(d); if (cb) cb(); }; e.closed = null; e.close = (c) => { e.closed = c; }; e.ping = () => {}; e.terminate = () => {}; return e; };
+        const anon = mk();
+        vs.acceptMiniport(anon, { headers: {} }, { authenticated: false }, () => { throw new Error('no'); });
+        assert.strictEqual(anon.closed, 1008);
+        const mp = mk();
+        const subs = {};
+        vs.acceptMiniport(mp, { headers: {}, url: '/?miniport=1' }, { authenticated: true, sessionId: 's1' }, (v) => { subs[v.sub] = v; });
+        assert.strictEqual(JSON.parse(mp.sent.shift()).type, 'miniport_ready');
+        mp.emit('message', Buffer.from(JSON.stringify({ type: 'sub_open', sub: 'phone' })));
+        mp.emit('message', Buffer.from(JSON.stringify({ type: 'sub_open', sub: 'desktop' })));
+        assert.ok(subs.phone && subs.desktop, 'both pages are sub-clients');
+        mp.emit('message', Buffer.from(JSON.stringify({ type: 'ping', t: 5 })));
+        assert.deepStrictEqual(JSON.parse(mp.sent.pop()), { type: 'pong', t: 5 });
+        subs.desktop.send('{"type":"only-dex"}');
+        assert.strictEqual(mp.sent.pop(), '\u0001desktop\u0001{"type":"only-dex"}', 'targeted packets raw');
+        const out = [];
+        vs.sendCoalesced([subs.phone, subs.desktop], { type: 'bc' }, (ws, p) => out.push([ws, p]));
+        assert.strictEqual(out.length, 1, 'one copy for both pages');
+        assert.strictEqual(out[0][0], mp);
+        assert.deepStrictEqual(JSON.parse(out[0][1]), { type: 'bc', _cc: ['phone', 'desktop'] });
+        let gone = 0;
+        subs.phone.on('close', () => { gone++; });
+        mp.emit('close');
+        await tick();
+        assert.strictEqual(gone, 1, 'subs end with the Miniport');
+    }
+
     // bad sub ids are ignored
     assert.strictEqual(vs.handle(carrier, { type: 'sub_open', sub: '../x' }, () => { throw new Error('no'); }), true);
     console.log('virtualSocket: ok');

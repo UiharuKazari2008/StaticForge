@@ -361,6 +361,13 @@
      * (a minute's safety retry in case that message never comes).
      */
     api.waitForPhone = () => {
+        // over the Miniport: wait for the Miniport's link, not the phone window (it reconnects natively)
+        if (lastTransport === 'miniport') {
+            if (miniport.up) return false;
+            waitingForPhone = true;
+            miniport.wake();
+            return true;
+        }
         if (!isDw() || phoneReadyNow) return false;
         waitingForPhone = true;
         clearTimeout(waitSafety);
@@ -377,12 +384,14 @@
             phoneReadyNow = false;
             // past its boot, the DeX window starts again with the phone (Yukimi: restarting the phone restarts DeX),
             // unless the phone said this window can stay (pocketPcRestart)
-            if (isDw() && inApp() && !pocketPc) coldBootDw();
+            if (isDw() && inApp() && !pocketPc && !miniport.available()) coldBootDw();
         }
     });
     api.on('phone-restarting', (m) => {
         phoneReadyNow = false;
         if (!isDw() || !inApp()) return;
+        // over the Miniport the phone window going does not touch this window's connection (#815)
+        if (miniport.available() && m && m.keepDex) return;
         // an update only Melaton Mobile uses: this window stays up and waits for its Pocket PC
         if (m && m.keepDex && root.wsClient && root.wsClient.initializationCompleted) pocketPcRestart();
         else coldBootDw();
@@ -398,10 +407,93 @@
     /** The DeX window: true once the phone said it is ready (the BIOS waits on this). */
     let lastAsk = 0;
     api.phoneReady = () => {
+        // with the Miniport the DeX window needs its link, not the phone window (#815)
+        if (miniport.available()) { miniport.wake(); return miniport.up; }
         // the BIOS asks every 150 ms; the phone page is asked at most every 2 s (it answers on changes anyway)
         if (!phoneReadyNow && isDw() && Date.now() - lastAsk > 2000) { lastAsk = Date.now(); api.post({ type: 'phone-ready?' }); }
         return phoneReadyNow;
     };
+
+    // ================================================================ Melaton Miniport (#815)
+    //
+    // DSApp's MelatonMiniport is the app's own server connection, kept by the process: both windows'
+    // pages use it (phone = sub "phone", DeX = sub "desktop"), so a page restart or a killed WebView does
+    // not drop the link. window.AndroidMiniport (a WebMessageListener): {op} JSON to it; "\u0001<packet>"
+    // or {op:"state"|"opened"|"closed"} back. App builds without it keep the bus / own socket above.
+    let lastTransport = 'own';
+    let miniportSocket = null;
+    const miniport = {
+        up: false,
+        available: () => !!(root.AndroidMiniport && typeof root.AndroidMiniport.postMessage === 'function'),
+        post: (msg) => { try { root.AndroidMiniport.postMessage(JSON.stringify(msg)); return true; } catch (_) { return false; } },
+        lastWake: 0,
+        // the BIOS asks every 80 ms: the app hears it at most every 2 s
+        wake: () => { if (Date.now() - miniport.lastWake < 2000) return; miniport.lastWake = Date.now(); miniport.post({ op: 'wake' }); }
+    };
+    function fromMiniport(text) {
+        if (typeof text !== 'string' || !text) return;
+        if (text.charCodeAt(0) === 1) { if (miniportSocket) miniportSocket._down(text.slice(1)); return; }
+        let m = null;
+        try { m = JSON.parse(text); } catch (_) { return; }
+        if (!m) return;
+        if (m.op === 'state') {
+            const was = miniport.up;
+            miniport.up = !!m.connected;
+            emit('miniport', { connected: miniport.up }, 'app');
+            if (miniport.up && !was) followMiniport();
+        } else if (m.op === 'opened') {
+            if (miniportSocket) miniportSocket._opened();
+        } else if (m.op === 'closed') {
+            if (miniportSocket) miniportSocket._closed(m.code || 1006, m.reason || 'closed');
+        }
+    }
+    /** The link is (back) up: a page that lost its connection reconnects at once. */
+    function followMiniport() {
+        const c = root.wsClient;
+        if (!c || !inApp() || lastTransport !== 'miniport') return;
+        if ((c.isConnected() && c.ws && c.ws.miniport) || c.isConnecting || c.connectionLock || c.disconnectedDueToInactivity) return;
+        waitingForPhone = false;
+        if (typeof c._beginTrayOnlyReconnect === 'function') c._beginTrayOnlyReconnect('miniport');
+        if (typeof c.manualReconnect === 'function') c.manualReconnect();
+    }
+    /** Cold boot / Restart from the phone: the Miniport ("the driver") clears and starts fresh too. */
+    api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
+    api.miniport = () => ({ available: miniport.available(), up: miniport.up, transport: lastTransport });
+
+    /** A WebSocket stand-in over the Miniport: what websocket.js uses instead of new WebSocket(). */
+    class MiniportSocket {
+        constructor() {
+            this.miniport = true;
+            this.continuity = true;
+            this.readyState = 0;
+            this.binaryType = 'blob';
+            this.bufferedAmount = 0;
+            this.onopen = null;
+            this.onmessage = null;
+            this.onclose = null;
+            this.onerror = null;
+            if (miniportSocket && miniportSocket !== this) miniportSocket._closed(1000, 'replaced');
+            miniportSocket = this;
+            setTimeout(() => { if (!miniport.post({ op: 'open' })) this._closed(1006, 'No Miniport'); }, 0);
+        }
+        _opened() { if (this.readyState !== 0) return; this.readyState = 1; if (this.onopen) this.onopen({ type: 'open' }); }
+        _down(data) { if (this.readyState === 1 && this.onmessage) this.onmessage({ type: 'message', data }); }
+        send(data) {
+            if (this.readyState !== 1) throw new Error('The Miniport connection is not open');
+            if (!miniport.post({ op: 'send', data: String(data) })) this._closed(1006, 'The Miniport is gone');
+        }
+        close(code = 1000, reason = '') {
+            if (this.readyState >= 2) return;
+            miniport.post({ op: 'close' });
+            this._closed(code, reason);
+        }
+        _closed(code, reason) {
+            if (this.readyState === 3) return;
+            this.readyState = 3;
+            if (miniportSocket === this) miniportSocket = null;
+            if (this.onclose) this.onclose({ type: 'close', code, reason, wasClean: code === 1000 });
+        }
+    }
 
     /** A WebSocket stand-in over the bus (DeX window): what websocket.js uses instead of new WebSocket(). */
     class BusSocket {
@@ -440,7 +532,12 @@
     }
     /** websocket.js: a WebSocket stand-in when this is the DeX window of a hybrid phone that is ready, else null. */
     // (whenever the phone window is there: not yet ready, it answers ws-closed and websocket.js tries again)
-    api.transport = () => (isDw() && api.peers().includes('phone') ? new BusSocket() : null);
+    api.transport = () => {
+        // the app's own connection (DSApp MelatonMiniport, #815): every window of the app, phone or DeX
+        if (miniport.available()) { lastTransport = 'miniport'; return new MiniportSocket(); }
+        lastTransport = isDw() && api.peers().includes('phone') ? 'bus' : 'own';
+        return lastTransport === 'bus' ? new BusSocket() : null;
+    };
     /** The phone window: true while it carries the DeX window's connection (the title bar's glyph). */
     api.active = () => isPhone() && carryingNow;
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
@@ -450,7 +547,7 @@
      * disconnect (the person is working in DeX, not touching the phone) and no "wait until the screen
      * is on" before a reconnect.
      */
-    api.keepPhoneConnected = () => isPhone() && api.peers().includes('desktop');
+    api.keepPhoneConnected = () => isPhone() && !miniport.available() && api.peers().includes('desktop');
     /** The DeX window, while the phone window is there: its retries never stop at "Use Reconnect". */
     api.keepDexConnected = () => isDw() && api.peers().includes('phone');
     /**
@@ -508,6 +605,12 @@
         sh.notify({ title: 'Battery optimisation', text, icon: 'warning', asNote: true, timeout: false, buttons });
     }
     api.checkPower = checkPower;
+
+    // the Miniport's messages, and its state now
+    if (miniport.available()) {
+        root.AndroidMiniport.onmessage = (e) => fromMiniport(e && e.data);
+        miniport.post({ op: 'hello' });
+    }
 
     // the phone window: say when it is ready, and that it is going
     if (api.available) {

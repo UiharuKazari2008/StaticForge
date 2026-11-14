@@ -216,6 +216,18 @@ class WebSocketServer {
                 const q = String(req.url || '').indexOf('?');
                 queryApp = q < 0 ? '' : new URLSearchParams(String(req.url).slice(q + 1)).get('dreamscapeClient') || '';
             } catch (_) { /* no query */ }
+            // Melaton Miniport (#815): the Android app's native carrier. Not a client of its own: it only
+            // carries its pages' sub-clients (modules/ws/virtualSocket.js), so it never enters this.clients
+            // (no boot pushes, no broadcasts of its own, not in any client list)
+            let miniportQuery = false;
+            try {
+                const q = String(req.url || '').indexOf('?');
+                miniportQuery = q >= 0 && new URLSearchParams(String(req.url).slice(q + 1)).get('miniport') === '1';
+            } catch (_) { /* no query */ }
+            if (miniportQuery) {
+                require('./ws/virtualSocket').acceptMiniport(ws, req, clientInfo, (vws, vreq) => this.wss.emit('connection', vws, vreq));
+                return;
+            }
             const frameApp = [req.headers['x-dreamscape-client'], req.headers['user-agent'], queryApp]
                 .map((h) => String(h || '').trim().split(/\s+/)[0]).find((h) => /^(DreamscapeFrame|VirtualSideShow)\//.test(h));
             if (frameApp) clientInfo.deviceApp = frameApp.slice(0, 64);
@@ -400,7 +412,8 @@ class WebSocketServer {
      * modules/ws/virtualSocket.js), which wss.clients never holds; broadcasts and sendToUser reach them too.
      */
     forEachSocket(fn) {
-        this.wss.clients.forEach(fn);
+        // a Miniport carrier is no client (its subs are, below)
+        this.wss.clients.forEach((ws) => { if (!ws._dsMiniport) fn(ws); });
         for (const ws of this.clients.keys()) {
             if (ws && ws.virtual) fn(ws);
         }

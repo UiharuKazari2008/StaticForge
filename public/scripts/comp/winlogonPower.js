@@ -461,6 +461,10 @@ function commitWinlogonPower(kind, onCommit) {
             handleLogout();
             return;
         }
+        // Restart on the phone: the app's connection (Melaton Miniport, #815) starts fresh too
+        if (kind === 'restart' && window.melatonContinuity && window.melatonContinuity.resetMiniport) {
+            try { window.melatonContinuity.resetMiniport(); } catch (_) { /* restart anyway */ }
+        }
         // restartClientNavigate: public/scripts/comp/modalUtils.js
         restartClientNavigate();
     };
