@@ -79,7 +79,10 @@
             const desk = w && typeof w.desktop === 'function' ? w.desktop() : null;
             const [phone, dex] = await Promise.all([shrink(today), shrink(desk)]);
             // the cover and the inner screen run the same Today (one picture for both)
-            return { inner: phone, cover: phone, external: dex || phone };
+            // which screen is on: a foldable's cover is narrow (about 9:21), its inner screen near square
+            const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
+            const screen = vw && vh && Math.min(vw, vh) / Math.max(vw, vh) < 0.56 && /^SM-F9/i.test((root.AndroidActiveSync && typeof root.AndroidActiveSync.getModel === 'function' && root.AndroidActiveSync.getModel()) || navigator.userAgent) ? 'cover' : 'inner';
+            return { inner: phone, cover: phone, external: dex || phone, screen };
         });
 
         as.registerOp('screen.start', () => {

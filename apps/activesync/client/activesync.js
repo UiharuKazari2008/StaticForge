@@ -68,9 +68,9 @@
      * that shows the right edge, a soft shadow below), with the device's own screen in it.
      *
      *   deviceArt({ form, screens, uid })  -> SVG markup for a 256 x 256 box
-     *     form     'phone' | 'fold' (inner screen open + the cover phone in front)
+     *     form     'phone' | 'fold' (drawn open or closed, as screens.screen says: only its state now)
      *     screens  { inner, cover, external } image URLs (null: the glossy blue of an empty screen);
-     *              external draws a DeX monitor behind the phone
+     *              plus screen: 'inner' | 'cover'; external draws DeX's laptop, the phone in front on its left
      *     uid      a prefix for the SVG ids (several pictures on one page)
      */
     function deviceArt({ form = 'phone', screens = {}, uid = 'da' } = {}) {
@@ -136,16 +136,30 @@
             return parts.join('');
         }
 
-        /** DeX's monitor: a thin black panel on a silver stand. */
-        function monitor(x, y, w, h, url) {
+        /**
+         * DeX's laptop (Yukimi's sketch, Nov 13): the lid at the top right, its keyboard deck running
+         * down to the left under the phone. A polygon helper keeps the deck's slant.
+         */
+        const poly = (pts) => pts.map((p) => p.join(' ')).join(' ');
+        function laptop(url) {
             const parts = [];
-            const nx = x + w / 2;
-            parts.push(`<path d="M${nx - 7} ${y + h - 2} L${nx + 7} ${y + h - 2} L${nx + 5} ${y + h + 20} L${nx - 5} ${y + h + 20} Z" fill="url(#${id('edge')})"/>`);
-            parts.push(`<ellipse cx="${nx}" cy="${y + h + 22}" rx="${w * 0.24}" ry="4.5" fill="url(#${id('metal')})" stroke="#7b8189" stroke-width=".8"/>`);
-            parts.push(`<rect x="${x + 3}" y="${y + 2}" width="${w}" height="${h}" rx="5" fill="#3a3f46"/>`);
-            parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="url(#${id('bezel')})" stroke="#4a5058" stroke-width=".8"/>`);
-            parts.push(glass('external', x + 4, y + 4, w - 8, h - 10, 2, url));
-            parts.push(`<rect x="${nx - 6}" y="${y + h - 4.5}" width="12" height="1.6" rx=".8" fill="#5c626a"/>`);
+            // the deck: silver top, a darker front lip, the keys and the touchpad set in it
+            const deck = [[94, 128], [242, 128], [166, 210], [12, 200]];
+            parts.push(`<polygon points="${poly([[12, 200], [166, 210], [166, 214], [12, 204]])}" fill="url(#${id('edge')})"/>`);
+            parts.push(`<polygon points="${poly([[166, 210], [242, 128], [242, 132], [166, 214]])}" fill="#7d838b"/>`);
+            parts.push(`<polygon points="${poly(deck)}" fill="url(#${id('metal')})" stroke="#7b8189" stroke-width=".8"/>`);
+            const lerp = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+            const at = (u, v) => lerp(lerp(deck[0], deck[1], u), lerp(deck[3], deck[2], u), v);
+            const keys = [at(.08, .08), at(.92, .08), at(.92, .55), at(.08, .55)];
+            parts.push(`<polygon points="${poly(keys)}" fill="#24282e" stroke="#4d535b" stroke-width=".6"/>`);
+            for (let r = 1; r < 5; r++) parts.push(`<line x1="${at(.08, .08 + .094 * r)[0]}" y1="${at(.08, .08 + .094 * r)[1]}" x2="${at(.92, .08 + .094 * r)[0]}" y2="${at(.92, .08 + .094 * r)[1]}" stroke="#4a5058" stroke-width=".5"/>`);
+            for (let c = 1; c < 12; c++) parts.push(`<line x1="${at(.08 + .07 * c, .08)[0]}" y1="${at(.08 + .07 * c, .08)[1]}" x2="${at(.08 + .07 * c, .55)[0]}" y2="${at(.08 + .07 * c, .55)[1]}" stroke="#4a5058" stroke-width=".5"/>`);
+            parts.push(`<polygon points="${poly([at(.36, .64), at(.64, .64), at(.64, .9), at(.36, .9)])}" fill="#c3c8ce" stroke="#9aa0a8" stroke-width=".6"/>`);
+            // the lid: silver back edge, black bezel, the screen
+            parts.push(`<rect x="114" y="16" width="134" height="114" rx="6" fill="url(#${id('edge')})"/>`);
+            parts.push(`<rect x="110" y="14" width="134" height="114" rx="6" fill="url(#${id('bezel')})" stroke="#9aa0a8" stroke-width="1.4"/>`);
+            parts.push(glass('external', 116, 20, 122, 100, 2, url));
+            parts.push(`<circle cx="177" cy="17.2" r="1" fill="#3a4048"/>`);
             return parts.join('');
         }
 
@@ -153,26 +167,24 @@
         const shadow = (cx, cy, rx, ry) => body.push(`<ellipse cx="${cx + rx * 0.18}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#${id('shadow')})"/>`);
         // the turn: a slight shear, as the icon family looks a little from the right
         const turn = (inner, ox, oy) => `<g transform="translate(${ox} ${oy}) matrix(0.97 -0.07 0 1 0 0) translate(${-ox} ${-oy})">${inner}</g>`;
-        if (form === 'fold') {
-            const hasExt = !!screens.external;
-            if (hasExt) { shadow(88, 150, 70, 7); body.push(turn(monitor(14, 14, 148, 92, screens.external), 88, 60)); }
-            const fy = hasExt ? 60 : 28;
-            const fh = hasExt ? 178 : 206;
-            const fw = Math.round(fh * 0.93);
-            shadow(28 + fw / 2, fy + fh + 4, fw * 0.6, 9);
-            body.push(turn(slab('inner', 28, fy, fw, fh, { r: 14, bezel: 3.5, depth: 7, url: screens.inner, hinge: true }), 28 + fw / 2, fy + fh / 2));
-            const cw = 62; const ch = Math.round(cw * 2.3);
-            const cx = 256 - cw - 16; const cy = 256 - ch - 18;
-            shadow(cx + cw / 2 + 2, cy + ch + 4, cw * 0.65, 6);
-            body.push(turn(slab('cover', cx, cy, cw, ch, { r: 11, bezel: 2.5, depth: 5.5, url: screens.cover }), cx + cw / 2, cy + ch / 2));
+        // only the phone as it is now: a foldable open (its inner screen) or closed (its cover)
+        const open = form === 'fold' && screens.screen !== 'cover';
+        const url = form === 'fold' ? (open ? screens.inner : (screens.cover || screens.inner)) : (screens.inner || screens.cover);
+        const ratio = open ? 0.9 : form === 'fold' ? 0.43 : 0.47;
+        const opts = open ? { r: 14, bezel: 3.5, depth: 7, hinge: true } : { r: form === 'fold' ? 14 : 19, bezel: 3.5, depth: 7 };
+        let box;
+        if (screens.external) {
+            shadow(130, 212, 100, 8);
+            body.push(laptop(screens.external));
+            // in front, on the left (the sketch): as tall as the space allows
+            box = open ? { x: 4, w: 104, bottom: 192 } : { x: 6, w: Math.round(150 * ratio), bottom: 196 };
         } else {
-            const hasExt = !!screens.external;
-            if (hasExt) { shadow(96, 146, 76, 7); body.push(turn(monitor(10, 16, 160, 100, screens.external), 90, 66)); }
-            const w = hasExt ? 92 : 112; const h = hasExt ? 196 : 232;
-            const x = hasExt ? 256 - w - 30 : (256 - w) / 2 - 3; const y = 256 - h - 14;
-            shadow(x + w / 2 + 2, y + h + 4, w * 0.62, 8);
-            body.push(turn(slab('inner', x, y, w, h, { r: 19, bezel: 3.5, depth: 8, url: screens.inner || screens.cover }), x + w / 2, y + h / 2));
+            box = open ? { x: 20, w: 206, bottom: 240 } : { x: Math.round((256 - 232 * ratio) / 2) - 3, w: Math.round(232 * ratio), bottom: 242 };
         }
+        const h = Math.round(box.w / ratio);
+        const y = box.bottom - h;
+        shadow(box.x + box.w / 2, box.bottom + 4, box.w * 0.62, 7);
+        body.push(turn(slab('phone', box.x, y, box.w, h, { ...opts, url }), box.x + box.w / 2, y + h / 2));
         return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"><defs>${defs.join('')}</defs>${body.join('')}</svg>`;
     }
 
@@ -364,9 +376,9 @@
             }
             const sc = this.screens;
             // a foldable by its model (Galaxy Z Fold: SM-F9xx) or by a cover screen ADB reported
-            const fold = /^SM-F9/i.test(dev.model || '') || !!sc.urls.cover && sc.form === 'fold';
+            const fold = /^SM-F9/i.test(dev.model || '') || sc.form === 'fold';
             const dex = !!(dev.link === 'usb' || isContinuityDevice(dev) || sc.urls.externalOn);
-            const screens = { inner: sc.urls.inner || null, cover: sc.urls.cover || null, external: dex ? (sc.urls.external || sc.urls.inner || null) : null };
+            const screens = { inner: sc.urls.inner || null, cover: sc.urls.cover || null, external: dex ? (sc.urls.external || sc.urls.inner || null) : null, screen: sc.urls.screen || 'inner' };
             const key = JSON.stringify([fold, screens]);
             if (box.dataset.mode !== 'device' || box.dataset.key !== key) {
                 box.dataset.mode = 'device';
@@ -394,6 +406,9 @@
                     const r = await fetch(`/api/activesync/adb/${id}/displays`, { credentials: 'same-origin' }).then((x) => x.json()).catch(() => null);
                     const list = (r && r.success && r.displays) || [];
                     if (list.some((d) => d.kind === 'cover')) sc.form = 'fold';
+                    // closed: the cover is on and the inner screen off
+                    const on = (k) => list.some((d) => d.kind === k && d.on !== false);
+                    if (list.some((d) => d.kind === 'cover')) urls.screen = on('cover') && !on('inner') ? 'cover' : 'inner';
                     for (const d of list) {
                         if (d.on === false || !['inner', 'main', 'cover', 'external'].includes(d.kind)) continue;
                         const res = await fetch(`/api/activesync/screen/${id}/shot?display=${encodeURIComponent(d.id)}`, { credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
@@ -409,6 +424,7 @@
                     const w = a ? await a.call(id, 'status.wallpapers', {}, { timeoutMs: 15000 }).catch(() => null) : null;
                     if (w) {
                         for (const k of ['inner', 'cover', 'external']) if (!urls[k] && typeof w[k] === 'string' && /^(\/[^/]|data:image\/)/.test(w[k])) urls[k] = w[k];
+                        if (!urls.screen && (w.screen === 'cover' || w.screen === 'inner')) urls.screen = w.screen;
                     }
                 }
             } finally {
