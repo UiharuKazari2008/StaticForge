@@ -11,7 +11,7 @@
  * the ActiveSync device's, so a reused address never reaches another phone. The server's adb key
  * needs one "Always allow" on each phone: until then the state is "unauthorized".
  *
- *   status(deviceId)                       { state, serial, address, checkedAt, error, allow, autoRestore }
+ *   status(deviceId)                       { state, serial, address, tried, checkedAt, error, allow, autoRestore }
  *     state: off (Allow ADB unchecked) | unknown | ready | unauthorized | unreachable | mismatch | error
  *   detect(gr, deviceId, { force })        connects and refreshes status (at most once a minute unless forced)
  *   displays(gr, deviceId)                 [{ id, kind: inner | cover | main | external, name, width, height, on }]
@@ -132,7 +132,7 @@ function status(globalResources, deviceId) {
     const st = states.get(deviceId) || { state: 'unknown' };
     const set = settings(globalResources, deviceId);
     if (!set.allow) return { state: 'off', ...set };
-    return { state: st.state, serial: st.serial || null, address: st.address || null, checkedAt: st.checkedAt || null, error: st.error || null, ...set };
+    return { state: st.state, serial: st.serial || null, address: st.address || null, tried: st.tried || [], checkedAt: st.checkedAt || null, error: st.error || null, ...set };
 }
 
 async function probe(serial, wantModel) {
@@ -174,6 +174,7 @@ async function detectNow(globalResources, wsServer, deviceId) {
         else try { await adb(['disconnect', serial], { timeout: 4000 }); } catch (_) { /* gone already */ }
     }
     best.checkedAt = Date.now();
+    best.tried = list;
     states.set(deviceId, best);
     if (best.state === 'ready') {
         const e = entry(globalResources, deviceId);
