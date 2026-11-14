@@ -1963,6 +1963,9 @@
     };
 
     Object.assign(window.wmSettings, {
+        // the device's tab strip fitting (whole-pixel 6.5 tab widths, the spin button when they do
+        // not fit), for apps that draw their own .wm-tabs (Studio, #825)
+        fitTabs: (strip, state) => fitTabs(strip, state || {}),
         registerPage,
         extendPage,
         // opts.direct: opened from a program (the Director's Director Settings...): ok and back on the

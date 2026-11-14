@@ -2512,9 +2512,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
         box-sizing: border-box;
     }
 
-    .wm-studio > .wms-tabs .wm-tab[data-tab="print"] {
-        display: none !important;
-    }
+    /* (no Print tab: wmStudio.js leaves it out of the strip) */
 
     .wm-studio.wms-generating .wms-wait {
         display: block;
@@ -3469,4 +3467,62 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
 .wm-studio #manualModal #manualPreviewContainer::after {
     content: none !important;
     display: none !important;
+}
+
+/* Model and Effort are on the Prompt page's tool bar (Yukimi, Nov 14 #825): not again in Settings */
+.wm-studio[data-tab] #manualModal .model-control .control-holder > .form-row.control-row-model.control-row-model {
+    display: none !important;
+}
+
+/* UC: the desktop's level meter (ucPresetsDropdownBtn's four boxes) as WM pixels: four 3 x 7-unit
+ * boxes 1 unit apart, framed in black, filled up to the level */
+.wm-studio .wms-uc-meter {
+    display: inline-flex;
+    gap: calc(1 * var(--wm-px));
+    align-items: center;
+    pointer-events: none;
+}
+
+.wm-studio .wms-uc-meter > i {
+    display: block;
+    width: calc(3 * var(--wm-px));
+    height: calc(7 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+
+.wm-studio .wms-uc-meter[data-level="1"] > i:nth-child(-n+1),
+.wm-studio .wms-uc-meter[data-level="2"] > i:nth-child(-n+2),
+.wm-studio .wms-uc-meter[data-level="3"] > i:nth-child(-n+3),
+.wm-studio .wms-uc-meter[data-level="4"] > i {
+    background: #000;
+}
+
+.wm-studio .wms-pt-uc:disabled .wms-uc-meter > i {
+    border-color: #848284;
+    background: transparent;
+    box-shadow: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff;
+}
+
+/* Datasets: the desktop's count badge, small black type at the glyph's lower right */
+.wm-studio .wms-pt-btn {
+    position: relative;
+}
+
+.wm-studio .wms-pt-count {
+    position: absolute;
+    right: calc(1 * var(--wm-px));
+    bottom: 0;
+    min-width: calc(6 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px));
+    background: #000;
+    color: #fff;
+    font: bold calc(8 * var(--wm-px)) / calc(9 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+    pointer-events: none;
+}
+
+.wm-studio .wms-pt-count[hidden] {
+    display: none;
 }

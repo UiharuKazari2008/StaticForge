@@ -806,12 +806,33 @@
         if (isCurrent()) ws.refreshSoftKeys();
     }
 
+    /**
+     * The tab strip is the Settings program's (Yukimi, Nov 14 #825: "go to settings and copy their
+     * tabs"): only the tabs on screen are in it (with the Print beside / under the form there is no
+     * Print tab, so Images is the last tab and gets the strip's closing curve), and it is fitted by
+     * wmSettings.fitTabs (whole device-pixel widths on 6.5, the spin button when they do not fit).
+     */
+    const tabFit = {};
+    let tabsDrawn = '';
+    function paintTabStrip(cur) {
+        const strip = page.querySelector('.wms-tabs');
+        if (!strip) return;
+        const list = TABS.filter(([id]) => !(id === 'print' && printBeside()));
+        const key = list.map(([id]) => id).join(',');
+        if (key !== tabsDrawn) {
+            tabsDrawn = key;
+            strip.innerHTML = list.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${esc(id)}" aria-selected="false">${esc(label)}</button>`).join('');
+        }
+        strip.querySelectorAll('.wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === cur)));
+        if (window.wmSettings && typeof window.wmSettings.fitTabs === 'function') window.wmSettings.fitTabs(strip, tabFit);
+    }
+
     function paintTab() {
         if (!page) return;
         const cur = shownTab();
+        paintTabStrip(cur);
         if (cur === 'prompt') paintPromptTools();
         page.dataset.tab = cur;
-        page.querySelectorAll('.wms-tabs .wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === cur)));
         // each page starts at its top when it is switched to
         if (paintedTab !== cur) {
             paintedTab = cur;
@@ -2043,15 +2064,30 @@
         '|',
         { id: 'effort', label: 'Drafting (Medium Effort)', kind: 'toggle', btn: 'manualEffortBtn' },
         '|',
-        { id: 'dataset', label: 'Datasets', kind: 'list', menu: 'Prompt', row: 'Datasets', on: () => stateOn('datasetDropdownBtn') },
+        { id: 'dataset', label: 'Datasets', kind: 'list', menu: 'Prompt', row: 'Datasets', on: () => stateOn('datasetDropdownBtn'), face: 'count' },
         { id: 'subtoggle', label: 'Adjustments', kind: 'list', menu: 'Prompt', row: 'Adjustments', on: () => stateOn('subTogglesBtn') },
-        { id: 'uc', label: 'UC Preset', kind: 'list', menu: 'Prompt', row: 'UC Preset', on: () => stateOn('ucPresetsDropdownBtn') },
-        { id: 'nsfw', label: 'NSFW Bias', kind: 'list', menu: 'Prompt', row: 'NSFW Bias', on: () => { const b = document.getElementById('nsfwToggleBtn'); const v = b && b.getAttribute('data-state'); return !!v && v !== 'neutral' && v !== 'off'; } },
+        { id: 'uc', label: 'UC Preset', kind: 'list', menu: 'Prompt', row: 'UC Preset', on: () => stateOn('ucPresetsDropdownBtn'), face: 'uc' },
+        { id: 'nsfw', label: 'NSFW Bias', kind: 'list', menu: 'Prompt', row: 'NSFW Bias', on: () => nsfwState() !== 'neutral', face: 'nsfw' },
         '|',
         { id: 'lockseed', label: 'Lock Seed', kind: 'list', menu: 'Generate', row: 'Lock Seed', on: () => stateOn('sproutSeedBtn') },
         '|',
         { id: 'inspect', label: 'Inspector', kind: 'list', menu: null, row: 'Inspector' }
     ];
+
+    /** The desktop NSFW button's state: on (Nude / Allow), neutral, off (Remove / Clense). */
+    function nsfwState() {
+        const b = document.getElementById('nsfwToggleBtn');
+        const v = b && b.getAttribute('data-state');
+        return v === 'on' || v === 'off' ? v : 'neutral';
+    }
+
+    /** The desktop UC button's level (its four boxes, data-uc-level 0..4; 5 = one box). */
+    function ucLevel() {
+        const boxes = document.querySelector('#ucPresetsDropdownBtn .uc-boxes');
+        const n = boxes ? Number(boxes.getAttribute('data-uc-level')) : 0;
+        if (!Number.isFinite(n) || n <= 0) return 0;
+        return n === 5 ? 1 : Math.min(4, n);
+    }
 
     function stateOn(id) {
         const b = document.getElementById(id);
@@ -2074,7 +2110,10 @@
         bar.innerHTML = PROMPT_TOOLS.map((t) => {
             if (t === '|') return '<span class="wms-pt-sep" aria-hidden="true"></span>';
             if (t.kind === 'combo') return `<button type="button" class="wms-pt-combo" data-pt="${t.id}" aria-label="${esc(t.label)}" aria-haspopup="listbox"></button>`;
-            return `<button type="button" class="wms-pt-btn" data-pt="${t.id}" aria-label="${esc(t.label)}" title="${esc(t.label)}" aria-pressed="false"><img alt="" src="/static_images/wm61/tb-${t.id}.png" srcset="/static_images/wm61/tb-${t.id}@2x.png 2x, /static_images/wm61/tb-${t.id}@4x.png 4x"></button>`;
+            // UC is the desktop's level meter (four boxes), not a picture
+            if (t.face === 'uc') return `<button type="button" class="wms-pt-btn wms-pt-uc" data-pt="${t.id}" aria-label="${esc(t.label)}" title="${esc(t.label)}" aria-pressed="false"><span class="wms-uc-meter" data-level="0"><i></i><i></i><i></i><i></i></span></button>`;
+            const count = t.face === 'count' ? '<span class="wms-pt-count" hidden></span>' : '';
+            return `<button type="button" class="wms-pt-btn" data-pt="${t.id}" aria-label="${esc(t.label)}" title="${esc(t.label)}" aria-pressed="false"><img alt="" src="/static_images/wm61/tb-${t.id}.png" srcset="/static_images/wm61/tb-${t.id}@2x.png 2x, /static_images/wm61/tb-${t.id}@4x.png 4x">${count}</button>`;
         }).join('');
         bar.addEventListener('click', (e) => {
             const b = e.target.closest && e.target.closest('[data-pt]');
@@ -2101,9 +2140,8 @@
             const row = findMenuRow(t.menu, t.row);
             if (!row || row.disabled) return;
             if (typeof row.submenu === 'function') {
-                // as on the device, the button stays pushed in while its list is down
-                b.setAttribute('aria-expanded', 'true');
-                ws.dropdown(b, row.submenu(), b.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left', () => { b.setAttribute('aria-expanded', 'false'); paintPromptTools(); });
+                // the shell marks it expanded while its list is down (pushed in, as on the device)
+                ws.dropdown(b, row.submenu(), b.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left', () => paintPromptTools());
             } else if (typeof row.action === 'function') {
                 row.action();
                 paintPromptTools();
@@ -2119,6 +2157,10 @@
             });
             const sel = document.getElementById('manualModelSelected');
             if (sel) mo.observe(sel, { childList: true, subtree: true, characterData: true });
+            const boxes = document.querySelector('#ucPresetsDropdownBtn .uc-boxes');
+            if (boxes) mo.observe(boxes, { attributes: true, attributeFilter: ['data-uc-level'] });
+            const badge = document.getElementById('datasetSelected');
+            if (badge) mo.observe(badge, { attributes: true, attributeFilter: ['class'], childList: true, characterData: true, subtree: true });
         }
     }
 
@@ -2144,6 +2186,23 @@
             b.disabled = !row || !!row.disabled;
             const on = t.on ? t.on() : false;
             b.setAttribute('aria-pressed', String(!b.disabled && on));
+            // the faces follow the desktop buttons: UC's level boxes, NSFW's picture for its state,
+            // the dataset count badge
+            if (t.face === 'uc') b.querySelector('.wms-uc-meter').dataset.level = String(ucLevel());
+            if (t.face === 'nsfw') {
+                const st = nsfwState();
+                const name = st === 'neutral' ? 'nsfw' : `nsfw-${st}`;
+                const img = b.querySelector('img');
+                const src = `/static_images/wm61/tb-${name}.png`;
+                if (img.getAttribute('src') !== src) { img.src = src; img.srcset = `/static_images/wm61/tb-${name}@2x.png 2x, /static_images/wm61/tb-${name}@4x.png 4x`; }
+            }
+            if (t.face === 'count') {
+                const badge = document.getElementById('datasetSelected');
+                const n = badge && !badge.classList.contains('hidden') ? Number(badge.textContent) || 0 : 0;
+                const c = b.querySelector('.wms-pt-count');
+                c.hidden = n <= 0;
+                c.textContent = n > 0 ? String(n) : '';
+            }
         });
     }
 
