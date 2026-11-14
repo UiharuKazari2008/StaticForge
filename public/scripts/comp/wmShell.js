@@ -1412,6 +1412,8 @@
         if (methods) {
             stub = {};
             methods.forEach((m) => { stub[m] = (...args) => call(m, args); });
+            // answers that need no program (read from storage, a default): given at once, nothing loads
+            Object.assign(stub, g.sync || {});
         } else {
             stub = (...args) => call(null, args);
         }
@@ -8994,6 +8996,13 @@
         })(0);
         // programs loaded on demand (#817): their Start menu entries, before anything lists programs
         LAZY_APPS.forEach(registerLazyApp);
+        // the Android app opens a program (its notification, a launcher shortcut: melatonopenapp); a lazy
+        // one's own listener is not there yet, so the shell opens it (its script then listens itself)
+        window.addEventListener('melatonopenapp', (e) => {
+            const id = e && e.detail;
+            const app = typeof id === 'string' && apps.get(id);
+            if (app && app.lazyScript) open(id, { fromStart: true });
+        });
         document.dispatchEvent(new CustomEvent('wmShellReady'));
     }
 
@@ -9023,7 +9032,37 @@
         { id: 'atelier', title: 'Atelier', icon: 'app-atelier', inStart: 'programs', script: 'scripts/comp/wmAtelier.js', globals: ['openNaxtApplet'], withFeatures: ['naxt'] },
         { id: 'emotion', title: 'eMotion LIVE', icon: 'app-emotion', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmEmotion.js', globals: ['openEmotion', 'openDesktopEmotion'], withFeatures: ['emotion'] },
         { id: 'phasewalker', title: 'Phasewalker', icon: 'app-phasewalker', inStart: 'programs', script: 'scripts/comp/wmPhasewalker.js', globals: ['openBracketGenerationApplet'], withFeatures: ['bracket_gen'] },
-        { id: 'characters', title: 'Characters', icon: 'app-characters', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmCharacters.js', withFeatures: ['character_db'] }
+        { id: 'characters', title: 'Characters', icon: 'app-characters', inStart: 'programs', programsFolder: 'toolbox', script: 'scripts/comp/wmCharacters.js', withFeatures: ['character_db'] },
+        // Remote Desktop Mobile: Today's row reads the last computer (sync, from the same storage the
+        // program writes) and no session runs before it loads; the desktop's Remote Desktop features
+        // load it, as it wraps their windows for the phone
+        {
+            id: 'remote-desktop-mobile', title: 'Remote Desktop Mobile', icon: 'app-remote-desktop-mobile', inStart: 'programs',
+            script: 'scripts/comp/wmRemoteDesktop.js',
+            withFeatures: ['remote_desktop', 'remote_desktop_connection'],
+            globals: [{
+                name: 'wmRemoteDesktop',
+                methods: ['reconnectLast'],
+                sync: {
+                    lastComputer() {
+                        const read = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (_) { return d; } };
+                        const last = read('wmRemoteDesktopComputer', '');
+                        if (typeof last === 'string' && last) return last;
+                        const h = read('remoteDesktopConnectionHistory', []);
+                        return (Array.isArray(h) && h.find((v) => typeof v === 'string')) || '';
+                    },
+                    sessionName: () => ''
+                }
+            }]
+        },
+        // Melaton Media: until it loads nothing of Melaton's plays (Today's Music item and the 6.5 Music
+        // panel read now() as nothing; Android's own players come to Today directly); enqueue / play
+        // load it first (eMotion LIVE's Play in Melaton Media, Today's buttons)
+        {
+            id: 'windows-media', title: 'Melaton Media', startLabel: 'Melaton Media', icon: 'app-windows-media', inStart: 'programs',
+            script: 'scripts/comp/wmMedia.js',
+            globals: [{ name: 'wmMedia', methods: ['enqueue', 'playPause', 'next', 'previous', 'playAll'], sync: { now: () => null, state: () => null } }]
+        }
     ];
 
     window.wmShell = {
