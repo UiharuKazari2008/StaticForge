@@ -128,6 +128,7 @@ const SHELL_ASSET_CACHE_CONTROL = 'no-cache';
 // Debounce and rate-limit enforcement to keep the cache warm.
 const IMAGE_POLICY_ENFORCE_DEBOUNCE_MS = 2000;
 const IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS = 30000;
+const IMAGE_POLICY_DELETES_PER_RUN = 300;
 
 // Admin log viewer API — must bypass SW (SSE streams + live backlog)
 const LOG_VIEWER_API_RE = /\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/(?:stream|backlog|sources|pm2\/(?:status|flush|restart))$/i;
@@ -229,23 +230,30 @@ async function matchStaticShell(pathname) {
 }
 let imagePolicyEnforceTimer = null;
 let imagePolicyLastEnforcedAt = 0;
+// One run at a time. The interval used to start counting only when a run ended, so on a phone
+// where a run took 20-55 s every image hit started another: four ran at once, each deleting from
+// the image cache while previews queued behind them for 5-9 s (Fold7 Continuity boot, Nov 14).
+let imagePolicyRun = null;
 
-function scheduleImageCachePolicyEnforcement() {
+function scheduleImageCachePolicyEnforcement(delayMs = IMAGE_POLICY_ENFORCE_DEBOUNCE_MS) {
   const now = Date.now();
-  if (now - imagePolicyLastEnforcedAt < IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS) {
+  if (imagePolicyRun || now - imagePolicyLastEnforcedAt < IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS) {
     return;
   }
   if (imagePolicyEnforceTimer) {
     clearTimeout(imagePolicyEnforceTimer);
   }
-  imagePolicyEnforceTimer = setTimeout(async () => {
+  imagePolicyEnforceTimer = setTimeout(() => {
     imagePolicyEnforceTimer = null;
-    try {
-      await enforceImageCachePolicy();
-    } finally {
-      imagePolicyLastEnforcedAt = Date.now();
-    }
-  }, IMAGE_POLICY_ENFORCE_DEBOUNCE_MS);
+    if (imagePolicyRun) return;
+    imagePolicyLastEnforcedAt = Date.now();
+    imagePolicyRun = enforceImageCachePolicy()
+      .catch((error) => { console.warn('[sw] image cache policy failed:', error); })
+      .finally(() => {
+        imagePolicyRun = null;
+        imagePolicyLastEnforcedAt = Date.now();
+      });
+  }, delayMs);
 }
 
 // One file must not hold the installer. A 404 is absent and is not fetched again.
@@ -940,11 +948,22 @@ async function enforceImageCachePolicyNow({ reconcile }) {
     }
   }
 
+  // A bounded batch per run, handing the cache back between small groups: thousands of rows
+  // expire together after a week away, and one long delete loop kept every preview waiting
+  let deleted = 0;
   for (const url of evict.keys()) {
+    if (deleted >= IMAGE_POLICY_DELETES_PER_RUN) break;
     if (await cache.delete(url)) delete metadata.entries[url];
+    deleted += 1;
+    if (deleted % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
   await writeImageMetadata(metadata);
+  perfLog(`imagePolicy evict=${evict.size} deleted=${deleted} entries=${totalEntries}`);
+  // the rest goes in later runs (the interval keeps them apart)
+  if (evict.size > deleted) {
+    setTimeout(() => scheduleImageCachePolicyEnforcement(0), IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS);
+  }
 }
 
 async function handleImageRequest(event) {
@@ -2657,7 +2676,10 @@ function runCacheMaintenance(force = false) {
     if (!force && Date.now() - last < MAINTENANCE_INTERVAL_MS) return;
     await perfSpan('maintenance:dropMislabelledStaticRows', dropMislabelledStaticRows);
     await perfSpan('maintenance:tidyStaticRows', tidyStaticRows);
-    await perfSpan('maintenance:imagePolicy', () => enforceImageCachePolicyNow({ reconcile: true }));
+    // the same one-at-a-time slot as the hit-driven runs
+    if (imagePolicyRun) await imagePolicyRun;
+    imagePolicyRun = perfSpan('maintenance:imagePolicy', () => enforceImageCachePolicyNow({ reconcile: true }));
+    try { await imagePolicyRun; } finally { imagePolicyRun = null; imagePolicyLastEnforcedAt = Date.now(); }
     await internal.put(MAINTENANCE_KEY, new Response(String(Date.now())));
   })().catch((error) => {
     console.warn('[sw] cache maintenance failed:', error);

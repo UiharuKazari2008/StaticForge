@@ -532,6 +532,8 @@ class ServiceWorkerManager {
         try { due = localStorage.getItem('melatonPackagesTidy') === '1' || localStorage.getItem('melatonPackagesTidied') !== 'v1'; } catch (_) { due = false; }
         if (!due || !navigator.serviceWorker || !navigator.serviceWorker.controller) return;
         setTimeout(() => {
+            // Continuity (#798): the flag is in localStorage the phone shares; its window runs the tidy
+            if (this._isContinuityDexWindow()) return;
             try {
                 navigator.serviceWorker.controller.postMessage({ type: 'SW_MAINTENANCE', force: true });
                 localStorage.removeItem('melatonPackagesTidy');
@@ -1566,6 +1568,9 @@ class ServiceWorkerManager {
         const send = () => {
             const worker = navigator.serviceWorker && navigator.serviceWorker.controller;
             if (sent || !worker) return;
+            // asked again when it fires: early in boot the DeX window does not know it is one yet,
+            // and its forced upkeep held the phone's image cache for ~35 s (Fold7, Nov 14)
+            if (this._isContinuityDexWindow()) return;
             sent = true;
             worker.postMessage({ type: 'SW_MAINTENANCE' });
             // signed in by now: the worker keeps every Vista font the stylesheets name
