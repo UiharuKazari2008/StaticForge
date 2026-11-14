@@ -6613,6 +6613,17 @@
     }
     // a new Android wallpaper, or the other screen of a foldable: Today draws the matching picture
     window.addEventListener('androidwallpaper', () => { if (todayWallSource() === 'android') applyTodayBackground(true); });
+    // a wallpaper changed while Melaton was in the background (Yukimi, Nov 14): the app's event does
+    // not reach a page out of sight, so coming back on screen asks for the wallpaper's id itself (its
+    // URL carries it) and redraws when it moved on
+    const recheckAndroidWall = () => {
+        if (document.visibilityState !== 'visible' || todayWallSource() !== 'android') return;
+        // Today's drawn key starts with the picture's URL (applyTodayBackground)
+        const now = androidWallUrl();
+        if (now && !String(todayBgKey || '').startsWith(`${now}|`)) applyTodayBackground(true);
+    };
+    document.addEventListener('visibilitychange', recheckAndroidWall);
+    window.addEventListener('focus', recheckAndroidWall);
     let wallResize = 0;
     window.addEventListener('resize', () => {
         clearTimeout(wallResize);
