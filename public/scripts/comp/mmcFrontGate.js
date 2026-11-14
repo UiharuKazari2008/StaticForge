@@ -51,7 +51,18 @@
         return client.sendMessage(type, data || {}, false);
     }
 
+    function isAdmin() {
+        try { return localStorage.getItem('userType') === 'admin'; } catch (_) { return false; }
+    }
+
     async function load(c) {
+        // admin only: ask the server nothing without the Administrator (it refuses, loudly)
+        if (!isAdmin()) {
+            state.denied = true;
+            if (c) c.refresh();
+            return;
+        }
+        state.denied = false;
         try {
             const data = await send('get_site_homepage', {});
             state.gate = (data && data.frontGate) || {
@@ -109,6 +120,10 @@
         if (state.revealed) return `<span class="fg-phrase is-shown">${esc(state.revealed)}</span> <span class="mmc-link" data-act="hide">Hide</span>`;
         if (!g.phraseKnown) return '<span class="fg-phrase">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span> <span class="mmc-hint">(set before it could be shown; change it to see it here)</span>';
         return '<span class="fg-phrase">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</span> <span class="mmc-link" data-act="reveal">Reveal</span>';
+    }
+
+    function deniedPage(c) {
+        return c.page(TITLE, '', [{ id: 'fg-denied', title: 'Access is denied', body: `<p>${c.state(false, 'Front Gate needs the Administrator. Sign in as the Administrator to use it.')}</p>` }]);
     }
 
     function rootPage(c) {
@@ -177,6 +192,7 @@
 
     function commands(node) {
         const out = [];
+        if (state.denied) return out;
         const g = state.gate;
         if (node.id === 'root' || node.id === 'covers') {
             out.push(isOn()
@@ -460,7 +476,7 @@
             icon32: ICON32,
             taskbarIcon: ICON32,
             nodes,
-            page: (node, c) => (node.id === 'covers' ? coversPage(c) : node.id === 'phrase' ? phrasePage(c) : rootPage(c)),
+            page: (node, c) => (state.denied ? deniedPage(c) : node.id === 'covers' ? coversPage(c) : node.id === 'phrase' ? phrasePage(c) : rootPage(c)),
             commands,
             selCommands,
             toolbar: (node) => (node.id === 'root' ? [] : [{ id: 'refresh', i: 3, title: 'Refresh' }]),
@@ -468,6 +484,7 @@
             rowOpen: () => {},
             onSelectRow: (key) => { state.pick = key; },
             status: (node) => {
+                if (state.denied) return 'Access is denied';
                 if (state.error) return 'The server did not answer.';
                 if (!state.gate) return 'Reading data, please wait...';
                 if (node.id === 'covers') return `${covers().length} cover site${covers().length === 1 ? '' : 's'}`;
