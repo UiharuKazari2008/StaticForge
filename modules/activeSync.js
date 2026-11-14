@@ -1078,6 +1078,8 @@ module.exports = {
     deviceAddresses,
     deviceRow,
     touchDevice,
+    /** as_event from the server to a device's sockets (transfer progress, #822). */
+    tellDevice: (globalResources, wsServer, deviceId, name, detail) => notifyDevice(wsServerOf(globalResources, wsServer), deviceId, name, detail),
     isDeviceSession,
     devicePermits,
     onQueueItemDone,

@@ -9,7 +9,7 @@
  *
  *   activeSync.kind                    'device' | 'computer' | null
  *   activeSync.state()                 { kind, id, name, online, session, permissions, devices, computers }
- *   activeSync.on(event, fn)           'state' (anything in state() changed), 'event' ({ from, event, detail }),
+ *   activeSync.on(event, fn)           'state' (anything in state() changed), 'progress' (a transfer's numbers, #822), 'event' ({ from, event, detail }),
  *                                      'request' ({ from, op }), 'transfer' (true / false: data started /
  *                                      stopped moving) ; returns an off()
  *   activeSync.transferring()          true while requests or calls that move data run (and 1.5 s after)
@@ -300,7 +300,10 @@
         };
         return Promise.resolve(promise).then((v) => { done(); return v; }, (e) => { done(); throw e; });
     }
-    const transferring = () => moving > 0 || Date.now() < movingUntil;
+    // the server's view of this phone's transfers (#822); a report older than 30 s no longer counts
+    let remote = null;
+    const remoteActive = () => !!(remote && remote.active && Date.now() - remote.at < 30000);
+    const transferring = () => moving > 0 || remoteActive() || Date.now() < movingUntil;
 
     // ---------------------------------------------------------------- requests
 
@@ -383,6 +386,14 @@
             st.permissions = Array.isArray(d.detail.permissions) ? d.detail.permissions : [];
             if (d.detail.name) st.name = d.detail.name;
             fire('state', state());
+        }
+        // transfers the server sees for this phone (#822): files the app's service moves count too
+        if (kind === 'device' && d.from && d.from.kind === 'server' && (d.event === 'transfer.progress' || d.event === 'transfer.done') && d.detail) {
+            const was = transferring();
+            remote = Object.assign({}, d.detail, { active: d.event === 'transfer.progress' && !!d.detail.active, at: Date.now() });
+            if (!remote.active) { movingUntil = Math.max(movingUntil, Date.now() + TRANSFER_LINGER_MS); clearTimeout(movingTimer); movingTimer = setTimeout(() => { if (!transferring()) fire('transfer', false); }, TRANSFER_LINGER_MS); }
+            fire('progress', Object.assign({ done: d.event === 'transfer.done' }, remote));
+            if (!was && transferring()) fire('transfer', true);
         }
         fire('event', { from: d.from || {}, event: d.event, detail: d.detail == null ? null : d.detail });
     }
@@ -648,6 +659,8 @@
         call,
         emit,
         transferring,
+        /** The current transfer as the server sees it (#822): { active, files, filesDone, up, down, startedAt, done } or null. */
+        transferProgress: () => (remote ? Object.assign({}, remote, { active: remoteActive() }) : null),
         device: (id) => st.devices.find((d) => d.deviceId === id) || null,
         refresh: () => send('as_list', {}).then((res) => { takeLists(res); fire('state', state()); return state(); }),
         propose: (deviceId, mode, opts) => partnershipCall(Object.assign({ action: 'propose', deviceId, mode }, opts || {})),

@@ -3249,6 +3249,24 @@
         return { running: !!st.running, persona: 'Director', name: st.sessionName || '' };
     }
 
+    /**
+     * ActiveSync transfers (#822): ActiveSync: Start as data starts moving, ActiveSync: Complete when the
+     * last file is through; the icon's sync sequence and an open Connectivity bubble follow along.
+     */
+    function watchActiveSyncTransfers() {
+        const as = window.activeSync;
+        if (!as || typeof as.on !== 'function' || as.kind !== 'device') return;
+        let moving = false;
+        as.on('progress', (d) => {
+            if (!d) return;
+            if (d.active && !moving) { moving = true; playSystemSound('as-start'); }
+            if (d.done && moving) { moving = false; playSystemSound('as-done'); }
+            statusDirty();
+            const b = shell && shell.querySelector('.wm-bubble');
+            if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
+        });
+    }
+
     function watchDirector() {
         const ws = window.wsClient;
         if (!ws || typeof ws.on !== 'function') return;
@@ -4694,6 +4712,21 @@
                             : `Not connected to ${host}.`;
             sections.push(connected ? `VPN: ${vpn}`
                 : { text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
+            // ActiveSync moving data (#822): what goes each way against this transfer's totals, a bar
+            const asx = window.activeSync && typeof window.activeSync.transferProgress === 'function' ? window.activeSync.transferProgress() : null;
+            if (asx && (asx.active || (asx.done && Date.now() - asx.at < 8000))) {
+                const size = (n) => { const v = Math.max(0, Number(n) || 0); return v < 1024 ? `${v} B` : v < 1048576 ? `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB` : v < 1073741824 ? `${(v / 1048576).toFixed(1)} MB` : `${(v / 1073741824).toFixed(2)} GB`; };
+                const up = asx.up || { total: 0, done: 0 };
+                const down = asx.down || { total: 0, done: 0 };
+                const total = up.total + down.total;
+                const pct = total ? Math.min(100, Math.round(((up.done + down.done) / total) * 100)) : (asx.active ? 0 : 100);
+                const files = asx.files > 1 ? ` ${Math.min(asx.files, asx.filesDone + (asx.active ? 1 : 0))} of ${asx.files} files.` : '';
+                const lines = [`ActiveSync: ${asx.active ? 'Synchronizing...' : 'Complete.'}${files}`];
+                if (up.total) lines.push(`Sent ${size(up.done)} of ${size(up.total)}.`);
+                if (down.total) lines.push(`Received ${size(down.done)} of ${size(down.total)}.`);
+                const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+                sections.push({ html: `${lines.map((l) => `<div>${esc(l)}</div>`).join('')}<div class="wm-progress-bar wm-as-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:calc(${pct} * (100% - 2 * var(--wm-px)) / 100)"></span></div>` });
+            }
             // the install / update download the connecting icon also stands for
             const inst = swDownloading();
             if (inst != null) sections.push(`Installing Melaton Mobile... ${Math.round(inst)}%`);
@@ -5047,6 +5080,9 @@
      * workspace event whose settings it follows.
      */
     const SND_EVENTS = [
+        // #822: data moving over ActiveSync starts and ends (WM's own begin / end sounds)
+        { id: 'as-done', label: 'ActiveSync: Complete', kind: 'event', sound: 'Infend.wav', desktop: 'balloon' },
+        { id: 'as-start', label: 'ActiveSync: Start', kind: 'event', sound: 'Infbeg.wav', desktop: 'balloon' },
         { id: 'connect', label: 'Connection established', kind: 'note', sound: 'Infbeg.wav', play: false, desktop: 'balloon' },
         { id: 'disconnect', label: 'Connection disconnected', kind: 'note', sound: 'Infend.wav', play: false, desktop: 'balloon' },
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
@@ -8507,6 +8543,7 @@
         watchDevice();
         watchToasts();
         watchStatusIcons();
+        watchActiveSyncTransfers();
         watchSystemSounds();
         watchRequestBusy();
         routeAlert();

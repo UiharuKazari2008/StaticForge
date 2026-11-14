@@ -4021,6 +4021,24 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     display: none;
 }
 
+/* the Connectivity bubble's ActiveSync transfer (#822): the progress box's bar, the full width */
+.wm-bubble .wm-as-progress {
+    position: relative;
+    height: calc(13 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+    overflow: hidden;
+}
+.wm-bubble .wm-as-progress > span {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0, var(--wm-highlight) calc(7 * var(--wm-px)), transparent calc(7 * var(--wm-px)), transparent calc(9 * var(--wm-px)));
+}
+
 .wm-progress-layer .wm-progress-bar {
     position: relative;
     border-radius: 0 !important;

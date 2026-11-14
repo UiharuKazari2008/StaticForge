@@ -179,6 +179,86 @@ function readBody(req, limit) {
     });
 }
 
+
+// ---------------------------------------------------------------- what the phone sees moving (#822)
+
+/*
+ * Transfers to and from a phone, as the phone's page shows them (Yukimi, Nov 13): the title bar's
+ * data icon runs ActiveSync's sync sequence, the Connectivity popup shows files and bytes sent and
+ * received against this transfer's totals with a progress bar, and the Start / Complete sounds
+ * play. The bytes pass through here (the phone pulls files sent to it and pushes the ones it
+ * sends), so the server tells the phone: as_event 'transfer.progress' (at most 4 a second) and
+ * 'transfer.done' when the last one ends. Previews (thumbnails) do not count.
+ *   detail { active, files, filesDone, up: { total, done }, down: { total, done }, startedAt }
+ */
+const progress = new Map(); // deviceId -> { items: Map(id -> { dir, total, done }), files, filesDone, up, down, startedAt, timer, lastAt }
+
+function progOf(deviceId) {
+    let p = progress.get(deviceId);
+    if (!p) {
+        p = { items: new Map(), files: 0, filesDone: 0, up: { total: 0, done: 0 }, down: { total: 0, done: 0 }, startedAt: Date.now(), timer: null, lastAt: 0 };
+        progress.set(deviceId, p);
+    }
+    return p;
+}
+
+function progDetail(p) {
+    return { active: p.items.size > 0, files: p.files, filesDone: p.filesDone, up: { ...p.up }, down: { ...p.down }, startedAt: p.startedAt };
+}
+
+function progEmit(globalResources, deviceId, now) {
+    const p = progress.get(deviceId);
+    if (!p) return;
+    const send = () => {
+        p.timer = null;
+        p.lastAt = Date.now();
+        try { activeSync.tellDevice(globalResources, null, deviceId, 'transfer.progress', progDetail(p)); } catch (_) { /* no socket */ }
+    };
+    if (now) { clearTimeout(p.timer); send(); return; }
+    if (p.timer) return;
+    const wait = Math.max(0, 250 - (Date.now() - p.lastAt));
+    p.timer = setTimeout(send, wait);
+    if (p.timer.unref) p.timer.unref();
+}
+
+function progStart(globalResources, deviceId, id, dir, total) {
+    const p = progOf(deviceId);
+    if (!p.items.size && p.filesDone === p.files) {
+        // a new transfer: the totals start again
+        Object.assign(p, { files: 0, filesDone: 0, up: { total: 0, done: 0 }, down: { total: 0, done: 0 }, startedAt: Date.now() });
+    }
+    if (p.items.has(id)) return;
+    p.items.set(id, { dir, total: Math.max(0, Number(total) || 0), done: 0 });
+    p.files += 1;
+    p[dir].total += Math.max(0, Number(total) || 0);
+    progEmit(globalResources, deviceId, p.items.size === 1);
+}
+
+function progAdd(globalResources, deviceId, id, bytes) {
+    const p = progress.get(deviceId);
+    const it = p && p.items.get(id);
+    if (!it || !bytes) return;
+    it.done += bytes;
+    p[it.dir].done += bytes;
+    // a size the phone did not say up front grows with what arrives
+    if (it.done > it.total) { p[it.dir].total += it.done - it.total; it.total = it.done; }
+    progEmit(globalResources, deviceId, false);
+}
+
+function progEnd(globalResources, deviceId, id) {
+    const p = progress.get(deviceId);
+    const it = p && p.items.get(id);
+    if (!it) return;
+    p.items.delete(id);
+    p.filesDone += 1;
+    // what never arrived (a failed or cut file) leaves the totals
+    if (it.done < it.total) p[it.dir].total -= it.total - it.done;
+    if (p.items.size) { progEmit(globalResources, deviceId, false); return; }
+    clearTimeout(p.timer);
+    p.timer = null;
+    try { activeSync.tellDevice(globalResources, null, deviceId, 'transfer.done', progDetail(p)); } catch (_) { /* no socket */ }
+}
+
 function mount(app, authMiddleware, globalResources) {
     const auth = authMiddleware || ((req, res, next) => next());
     const wsServer = () => (typeof globalResources.getWebSocketServer === 'function' ? globalResources.getWebSocketServer() : null);
@@ -205,10 +285,12 @@ function mount(app, authMiddleware, globalResources) {
         const id = crypto.randomBytes(16).toString('hex');
         const release = await slot(deviceId);
         if (req.destroyed || res.destroyed) { release(); return; }
-        const st = { deviceId, res, nextSeq: 0, headed: false, done: false, timer: null, closed: false };
+        const st = { deviceId, res, nextSeq: 0, headed: false, done: false, timer: null, closed: false, counted: !thumb };
+        if (st.counted) progStart(globalResources, deviceId, id, 'up', 0);
         const finish = () => {
             if (st.done) return;
             st.done = true;
+            if (st.counted) progEnd(globalResources, deviceId, id);
             clearTimeout(st.timer);
             streams.delete(id);
             release();
@@ -266,6 +348,7 @@ function mount(app, authMiddleware, globalResources) {
             const status = Number(req.headers['x-as-status']) === 206 ? 206 : 200;
             const type = String(req.headers['x-as-type'] || 'application/octet-stream').slice(0, 120);
             const length = Number(req.headers['x-as-length']);
+            if (st.counted && Number.isFinite(length) && length > 0) { const p = progress.get(st.deviceId); const it = p && p.items.get(id); if (it && !it.total) { it.total = length; p.up.total += length; } }
             out.status(status);
             out.set('Content-Type', /^[\w.+-]+\/[\w.+-]+/.test(type) ? type : 'application/octet-stream');
             out.set('X-Content-Type-Options', 'nosniff');
@@ -287,6 +370,7 @@ function mount(app, authMiddleware, globalResources) {
             if (end) { out.end(); st.finish(); } else st.arm(IDLE_TIMEOUT_MS);
             res.json({ success: true });
         };
+        if (st.counted) progAdd(globalResources, st.deviceId, id, body.length);
         if (!body.length) { done(); return; }
         // answered once the desktop took it: the phone's next chunk waits for a slow reader
         if (out.write(body)) done(); else out.once('drain', done);
@@ -386,7 +470,13 @@ function mount(app, authMiddleware, globalResources) {
             }
             // the phone pulls at its own pace: an hour per GB is generous on any link
             const timeoutMs = Math.max(120000, Math.ceil(meta.size / (1024 * 1024 * 1024)) * 3600 * 1000);
-            const entry = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'stream.receive', args, { timeoutMs, maxTimeoutMs: SEND_CALL_TIMEOUT_MS });
+            progStart(globalResources, meta.deviceId, meta.id, 'down', meta.size);
+            let entry;
+            try {
+                entry = await activeSync.serverCall(globalResources, wsServer(), meta.deviceId, 'stream.receive', args, { timeoutMs, maxTimeoutMs: SEND_CALL_TIMEOUT_MS });
+            } finally {
+                progEnd(globalResources, meta.deviceId, meta.id);
+            }
             removeUpload(globalResources, meta.id);
             let install;
             if (wantInstall) {
@@ -448,6 +538,7 @@ function mount(app, authMiddleware, globalResources) {
         if (m) res.set('Content-Range', `bytes ${start}-${end}/${meta.size}`);
         res.set('Content-Length', String(end - start + 1));
         const stream = fs.createReadStream(dataPath(globalResources, meta.id), { start, end });
+        stream.on('data', (c) => progAdd(globalResources, meta.deviceId, meta.id, c.length));
         stream.on('error', () => res.destroy());
         stream.pipe(res);
     });
