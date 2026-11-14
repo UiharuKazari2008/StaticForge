@@ -941,7 +941,9 @@
         const pick = await sh.messageBox({
             title: TITLE, icon: 'question', text: `Open the link to ${host} in:`, cancelValue: null,
             titleAction: { kind: 'close', value: null },
-            buttons: [{ text: 'Internet Explorer', value: 'ie', default: true }, { text: 'Android Browser', value: 'android' }]
+            buttons: [{ text: 'Internet Explorer', value: 'ie', default: true }, { text: 'Android Browser', value: 'android' }],
+            // the two names do not fit side by side in the device's box: one over the other
+            onOpen: () => { const box = document.querySelector('.wm-msgbox-layer .wm-msgbox'); if (box) box.classList.add('wtm-openwith'); }
         });
         if (pick === 'android') {
             try { if (typeof L.openBrowser === 'function' && L.openBrowser(href)) return; } catch (_) { /* IE then */ }

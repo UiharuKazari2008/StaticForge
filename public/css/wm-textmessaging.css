@@ -353,3 +353,17 @@
 .wm-tm .wch-row.is-selected .wtm-tag {
     color: inherit;
 }
+
+/* Open the link in: Internet Explorer / Android Browser, one button over the other (the names do not
+   fit side by side in the device's message box) */
+html.ui-mobile .wm-msgbox.wtm-openwith .wm-msgbox-buttons {
+    flex-direction: column;
+    align-items: stretch;
+    padding-left: calc(10 * var(--wm-px));
+    padding-right: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile .wm-msgbox.wtm-openwith .wm-msgbox-buttons button {
+    width: 100%;
+    white-space: nowrap;
+}
