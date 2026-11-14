@@ -1,0 +1,135 @@
+/* Exchange Management Console (Yozora #831; public/scripts/comp/mmcExchange.js): its result pane tabs
+   (EMC's Organization Configuration pages), list states, and its Vista dialogs and Aero Wizards. */
+
+/* the result pane's tabs under the caption band (EMC's: Signatures | Mail Flow Settings ...), drawn
+   as the Vista tab control (taskbar-properties.css .tbp-tab) on the pane's #f0f0f0 band */
+.mmc-window .exm-tabs {
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    height: 25px;
+    padding: 0 6px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #898c95;
+    background: #f0f0f0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+}
+
+.mmc-window .exm-tab {
+    position: relative;
+    box-sizing: border-box;
+    height: 20px;
+    margin-right: -1px;
+    padding: 2px 8px 0;
+    border: 1px solid #898c95;
+    border-bottom: 0;
+    border-radius: 1px 1px 0 0;
+    background: linear-gradient(#fcfcfc 0 1px, #f2f2f2 1px, #ebebeb 45%, #dddddd 55%, #cfcfcf);
+    color: #000;
+    line-height: 16px;
+    white-space: nowrap;
+    cursor: default;
+}
+
+@media (hover: hover) {
+    .mmc-window .exm-tab:not(.is-selected):hover {
+        border-color: #3c7fb1;
+        background: linear-gradient(#eaf6fd 45%, #bee6fd 55%, #a7d9f5);
+    }
+}
+
+.mmc-window .exm-tab.is-selected {
+    z-index: 1;
+    height: 23px;
+    margin: 0 1px -1px -2px;
+    padding: 2px 10px 0;
+    border-radius: 0;
+    background: #fff;
+}
+
+.mmc-window .exm-tabs + .mmc-list {
+    border-top: 0;
+}
+
+/* a disabled or removed mailbox: its text greyed, as EMC draws a disabled account */
+.mmc-window .mmc-row.exm-off > span > i {
+    color: #6d6d6d;
+}
+
+/* dialogs and sheets */
+.vdt-client .exm-lv-empty {
+    padding: 4px 6px;
+    color: #6d6d6d;
+}
+
+.vdt-client .exm-hint {
+    color: #6d6d6d;
+}
+
+.vdt-client .exm-dlg-error,
+.vdt-wizard .exm-dlg-error {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 5px;
+    white-space: normal;
+}
+
+.vdt-client .exm-dlg-error > img,
+.vdt-wizard .exm-dlg-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+/* the wizards' summary and completion pages */
+.vdt-wizard .exm-wiz-text {
+    white-space: normal;
+    line-height: 15px;
+}
+
+.vdt-wizard .exm-wiz-text p {
+    margin: 0 0 9px;
+}
+
+.vdt-wizard .exm-wiz-summary {
+    margin: 0 0 12px;
+    padding: 6px 8px;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.vdt-wizard .exm-wiz-summary > div {
+    display: flex;
+    gap: 4px;
+    margin: 0 0 3px;
+    overflow-wrap: anywhere;
+}
+
+.vdt-wizard .exm-wiz-summary > div > span {
+    flex: none;
+    width: 110px;
+}
+
+.vdt-wizard .exm-wiz-summary b {
+    font-weight: normal;
+}
+
+.vdt-wizard .exm-wiz-result {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin: 0 0 10px;
+}
+
+.vdt-wizard .exm-wiz-result > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+/* the key: a fixed-width face, selectable */
+#exchangeKeyDialog input.vdt-edit[readonly],
+#exchangeNewMailboxWizard input.vdt-edit[readonly] {
+    font-family: Consolas, "Lucida Console", monospace;
+    user-select: text;
+}
