@@ -3016,14 +3016,21 @@ const vsbMobileOptions = {
         const as = window.activeSync;
         const list = as && as.kind === 'computer' ? as.state().devices.filter((d) => d.partner || d.online) : [];
         const opts = [['', 'The connected phone']].concat(list.map((d) => [d.deviceId, d.online ? d.name : `${d.name} (not connected)`]));
+        // Mobile Notifications: how many rows, the apps' icons, a Dismiss button on each row (#827)
         const count = inst && inst.g.type === 'mobilenotify'
-            ? `<div class="group"><label for="vsbMobileCount">Notifications to show:</label><select id="vsbMobileCount">${vsbOptions([3, 4, 5, 6].map((n) => [n, String(n)]), set.count || 3)}</select></div>` : '';
+            ? `<div class="group"><label for="vsbMobileCount">Notifications to show:</label><select id="vsbMobileCount">${vsbOptions(VSB_MNOT_COUNTS.map((n) => [n, String(n)]), vsbMnotCount(set))}</select></div>
+               <div class="group"><div><input type="checkbox" id="vsbMobileIcons"${set.icons !== false ? ' checked' : ''}><label for="vsbMobileIcons">Show notification icons</label></div>
+               <div><input type="checkbox" id="vsbMobileDismiss"${set.dismiss ? ' checked' : ''}><label for="vsbMobileDismiss">Show a delete button on each notification</label></div></div>` : '';
         return `<div class="vsb-options"><div class="group"><label for="vsbMobileDevice">Device:</label><select id="vsbMobileDevice">${vsbOptions(opts, set.deviceId || '')}</select></div>${count}</div>`;
     },
     read(dialog, set) {
         const out = { ...set, deviceId: dialog.querySelector('#vsbMobileDevice').value || '' };
         const c = dialog.querySelector('#vsbMobileCount');
-        if (c) out.count = Math.min(6, Math.max(3, Number(c.value) || 3));
+        if (c) {
+            out.count = vsbMnotCount({ count: Number(c.value) });
+            out.icons = dialog.querySelector('#vsbMobileIcons').checked;
+            out.dismiss = dialog.querySelector('#vsbMobileDismiss').checked;
+        }
         return out;
     }
 };
@@ -3113,6 +3120,14 @@ const vsbMdevPaint = function (inst) {
     if (p.rows.dataset.html !== html) { p.rows.dataset.html = html; p.rows.innerHTML = html; }
 };
 
+const VSB_MNOT_COUNTS = [1, 2, 3, 4, 5, 6, 7, 8];
+const vsbMnotCount = (set) => {
+    const n = Number(set && set.count);
+    return VSB_MNOT_COUNTS.includes(n) ? n : 3;
+};
+// a notification whose app sent no icon: the phone's own ActiveSync art
+const VSB_MNOT_ICON = '/static_images/activesync/activesync-16.png';
+
 const vsbMnotMount = function (inst) {
     const box = vsbEl('div', 'vsb-mail vsb-mnot', inst.body);
     vsbEl('div', 'vsb-mail-glass', box);
@@ -3126,10 +3141,21 @@ const vsbMnotMount = function (inst) {
     const down = vsbButton('vsb-mail-btn vsb-mail-down', 'Next', nav);
     inst.parts = { box, head, list, message, nav, up, down, pos, name: head.querySelector('.vsb-mnot-name'), unread: head.querySelector('.vsb-mail-unread') };
     inst.offset = 0;
-    const size = () => Math.min(6, Math.max(3, Number(inst.g.settings.count) || 3));
+    const size = () => vsbMnotCount(inst.g.settings);
     inst.pageSize = size;
     head.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst), 'notifications'));
-    list.addEventListener('click', () => vsbMobileOpenCenter(vsbMobileDevice(inst), 'notifications'));
+    list.addEventListener('click', (e) => {
+        const x = e.target.closest('[data-mnot-dismiss]');
+        const dev = vsbMobileDevice(inst);
+        if (x) {
+            // dismissing here dismisses it on the phone (activeSyncNotifications.js); the list repaints on its change
+            e.stopPropagation();
+            if (dev && window.activeSyncNotifications) window.activeSyncNotifications.dismiss(dev.deviceId, x.dataset.mnotDismiss).catch(() => {});
+            return;
+        }
+        if (e.target.closest('.vsb-mnot-item')) vsbMobileOpenCenter(dev, 'notifications');
+    });
+    list.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.vsb-mnot-item')) { e.preventDefault(); e.target.click(); } });
     up.addEventListener('click', () => { inst.offset = Math.max(0, inst.offset - size()); vsbMnotPaint(inst); });
     down.addEventListener('click', () => { inst.offset += size(); vsbMnotPaint(inst); });
     vsbMobileWatch(inst, vsbMnotPaint);
@@ -3153,12 +3179,18 @@ const vsbMnotPaint = function (inst) {
         p.message.classList.remove('hidden');
     } else {
         p.message.classList.add('hidden');
+        const icons = inst.g.settings.icons !== false;
+        const dismiss = !!inst.g.settings.dismiss;
+        p.box.classList.toggle('has-icons', icons);
+        p.box.classList.toggle('has-dismiss', dismiss);
+        // rows are divs: a Dismiss button cannot sit inside a button
         p.list.innerHTML = items.slice(inst.offset, inst.offset + size).map((n) => `
-            <button type="button" class="vsb-mail-item vsb-mnot-item" title="${escapeHtmlAttribute([n.title || n.app, n.text].filter(Boolean).join('\n'))}">
-                ${n.icon ? `<img class="vsb-mnot-icon" src="${escapeHtmlAttribute(n.icon)}" alt="">` : ''}
+            <div class="vsb-mail-item vsb-mnot-item" role="button" tabindex="0" title="${escapeHtmlAttribute([n.title || n.app, n.text].filter(Boolean).join('\n'))}">
+                ${icons ? `<img class="vsb-mnot-icon" src="${escapeHtmlAttribute(n.icon || VSB_MNOT_ICON)}" alt="" onerror="this.onerror=null;this.src='${VSB_MNOT_ICON}'">` : ''}
                 <span class="vsb-mail-subject">${escapeHtml(n.title || n.app || '')}</span>
                 <span class="vsb-mail-meta"><span class="vsb-mail-from">${escapeHtml(n.text || n.app || '')}</span></span>
-            </button>`).join('');
+                ${dismiss ? `<button type="button" class="vsb-mnot-dismiss" data-mnot-dismiss="${escapeHtmlAttribute(n.key)}" title="Delete"></button>` : ''}
+            </div>`).join('');
     }
     p.pos.textContent = total ? `${inst.offset + 1}-${Math.min(total, inst.offset + size)}/${total}` : '0';
     p.up.disabled = inst.offset === 0;
@@ -3524,7 +3556,7 @@ const vsbDefaultSettings = function (type) {
         case 'weather': return { unit: 'F', feelsLike: false, hidePlace: false, placeAlt: 'none' };
         case 'mail': return { unreadOnly: false, count: 3 };
         case 'mobiledevice': return { deviceId: '' };
-        case 'mobilenotify': return { deviceId: '', count: 3 };
+        case 'mobilenotify': return { deviceId: '', count: 3, icons: true, dismiss: false };
         default: return VSB_GADGETS[type] && VSB_GADGETS[type].hosted ? { store: {} } : {};
     }
 };

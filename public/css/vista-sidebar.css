@@ -2377,7 +2377,46 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 
 .vsb .vsb-mnot-item {
     position: relative;
+    cursor: pointer;
+}
+
+.vsb .has-icons .vsb-mnot-item {
     padding-left: 24px;
+}
+
+.vsb .has-dismiss .vsb-mnot-item {
+    padding-right: 15px;
+}
+
+/* Delete: the Sidebar's own close glyph (tb-close.png, normal / hot / pressed) */
+.vsb .vsb-mnot-dismiss {
+    position: absolute;
+    top: 4px;
+    right: 2px;
+    width: 11px;
+    height: 15px;
+    padding: 0;
+    border: 0;
+    background: url('/static_images/vista-sidebar/sidebar/tb-close.png') 0 0 no-repeat;
+    cursor: pointer;
+}
+
+.vsb .vsb-mnot-dismiss:hover { background-position: 0 -15px; }
+.vsb .vsb-mnot-dismiss:active { background-position: 0 -30px; }
+
+.vsb-gadget[data-docked="0"] .vsb-mnot-dismiss {
+    top: 7px;
+    right: 6px;
+    width: 15px;
+    height: 19px;
+    background-image: url('/static_images/vista-sidebar/sidebar/tb-close-lg.png');
+}
+
+.vsb-gadget[data-docked="0"] .vsb-mnot-dismiss:hover { background-position: 0 -19px; }
+.vsb-gadget[data-docked="0"] .vsb-mnot-dismiss:active { background-position: 0 -38px; }
+
+.vsb-gadget[data-docked="0"] .has-dismiss .vsb-mnot-item {
+    padding-right: 24px;
 }
 
 .vsb-mnot-icon {
@@ -2388,8 +2427,7 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     height: 16px;
 }
 
-.vsb-gadget[data-docked="0"] .vsb .vsb-mnot-item,
-.vsb-gadget[data-docked="0"] .vsb-mnot-item {
+.vsb-gadget[data-docked="0"] .has-icons .vsb-mnot-item {
     padding-left: 30px;
 }
 
