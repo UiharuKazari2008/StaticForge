@@ -32,9 +32,9 @@
     const TITLE = 'Enshutsuka';
     const APP = '/static_images/app_icons';
     // the app icon's compiled sizes (modules/appIconRuntimeAssets.js: /app_icons/<size>/<master>)
-    const ICON16 = `${APP}/16/vista-enshutsuka.png`;
-    const ICON32 = `${APP}/32/vista-enshutsuka.png`;
-    const ICON48 = `${APP}/48/vista-enshutsuka.png`;
+    const ICON16 = `${APP}/16/vista-enshutsuka-2.png`;
+    const ICON32 = `${APP}/32/vista-enshutsuka-2.png`;
+    const ICON48 = `${APP}/48/vista-enshutsuka-2.png`;
     const CMD = '/static_images/vista-cmdbar';
     const VI = '/static_images/vista-icons';
     const ROW_ICON = `${CMD}/note.png`;

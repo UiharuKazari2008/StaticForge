@@ -1,0 +1,87 @@
+/* Wiki Caches (Yozora #831, public/scripts/comp/mmcWikiManager.js): its New Import wizard and
+   Properties sheets. The progress bar is Vista's (PROGRESS BAR IMAGE_622 under FILL IMAGE_626, as
+   vista-glass-controls.css draws <progress>); with no page count yet it runs as a marquee: a 51 px
+   chunk of the fill sliding across, as comctl32's PBS_MARQUEE does. */
+
+.vdt-wizard .wkm-wiz-text {
+    white-space: normal;
+    line-height: 15px;
+}
+
+.vdt-wizard .wkm-wiz-text p {
+    margin: 0 0 9px;
+    overflow-wrap: anywhere;
+}
+
+.vdt-wizard .wkm-wiz-error {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 5px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.vdt-wizard .wkm-wiz-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.vdt-wizard .wkm-progress {
+    position: relative;
+    box-sizing: border-box;
+    width: 100%;
+    height: 15px;
+    overflow: hidden;
+    border: 1px solid transparent;
+    border-image: url("/static_images/vista-controls/progress-bar.png") 7 4 6 4 fill / 7px 4px 6px 4px stretch;
+}
+
+.vdt-wizard .wkm-progress > div {
+    position: absolute;
+    top: -1px;
+    bottom: -1px;
+    left: -1px;
+    box-sizing: border-box;
+    width: 0;
+    max-width: calc(100% + 2px);
+    border: 0 solid transparent;
+    border-width: 0 8px;
+    border-image: url("/static_images/vista-controls/progress-fill.png") 0 8 fill / 0 8px stretch;
+}
+
+.vdt-wizard .wkm-progress.is-marquee > div {
+    width: 51px;
+    animation: wkm-marquee 2s linear infinite;
+}
+
+@keyframes wkm-marquee {
+    from { left: -51px; }
+    to { left: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .vdt-wizard .wkm-progress.is-marquee > div {
+        animation-duration: 6s;
+    }
+}
+
+/* a source address in a Properties sheet: one line, cut with an ellipsis (the full address in its tip) */
+.vdt-window .wkm-url {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    line-height: 13px;
+}
+
+.vdt-window .wkm-url.is-wrap {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.wkm-delete-choice {
+    margin-top: 8px;
+}

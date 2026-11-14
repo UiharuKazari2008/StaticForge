@@ -12,6 +12,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 |---|---|---|---|
 | `character_db_delete` | `character_db_delete_response` | admin/destructive | Handler: handleCharacterDbDelete |
 | `character_db_delete_copyright` | `character_db_delete_copyright_response` | admin/destructive | Handler: handleCharacterDbDeleteCopyright |
+| `character_db_import` | `character_db_import_response` | admin/destructive | Handler: handleCharacterDbImport |
 | `character_db_rename_copyright` | `character_db_rename_copyright_response` | admin/destructive | Handler: handleCharacterDbRenameCopyright |
 | `character_db_upsert` | `character_db_upsert_response` | admin/destructive | Handler: handleCharacterDbUpsert |
 | `get_character_db` | `get_character_db_response` | session | Handler: handleGetCharacterDb |
@@ -86,6 +87,25 @@ Packets marked destructive in `modules/websocketHandlers.js` → `isDestructiveO
 | `copyright` | Optional |
 
 **Success response:** `character_db_delete_copyright_response`
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `character_db_import`
+
+**Auth:** Session required. Admin only (destructive — blocked for readonly)
+
+**Handler:** modules/ws/handlers/235-characterDbHandler.js → `handleCharacterDbImport`
+
+Merges characters into the database in one transaction (never clears it): an existing name (case-insensitive) is updated, its enhancers replaced; a new one is added. Used by the Character Database console's Import (`public/scripts/comp/mmcCharacterDb.js`).
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `characters` | Required. Array (1-50000) of `{ name, copyright?, prompt?, enhancers?: string[][] }` |
+
+**Success response:** `character_db_import_response` with `data: { success, stats: { characters, enhancerGroups, copyrights }, data }` (`data` = the whole database, as `get_character_db`)
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
 

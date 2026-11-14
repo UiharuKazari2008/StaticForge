@@ -50,8 +50,9 @@
     const EMBEDS = [
         ['spellbook', 'Spellbook', 'mmcSpellbook', `${APPS}/presetbook.png`, 'Presets and spells'],
         ['expanders', 'Text Expanders', 'mmcExpanders', `${APPS}/expanders.png`, 'Global text expanders'],
-        ['enshutsuka', 'Enshutsuka', 'mmcEnshutsuka', `${APPS}/16/dna.png`, 'Director\'s memories, rules and persona'],
-        ['quips', 'Dynamic Quips', 'mmcQuips', `${APPS}/16/vista-dynamic-quips.png`, 'The lines shown while pictures are generated']
+        ['enshutsuka', 'Enshutsuka', 'mmcEnshutsuka', `${APPS}/16/vista-enshutsuka-2.png`, 'Director\'s memories, rules and persona'],
+        ['quips', 'Dynamic Quips', 'mmcQuips', `${APPS}/16/vista-dynamic-quips.png`, 'The lines shown while pictures are generated'],
+        ['wiki', 'Wiki Caches', 'mmcWikiManager', `${APPS}/16/vista-wiki-caches.png`, 'Offline copies of Fandom, NovelAI and MediaWiki wikis']
     ];
     const embedded = new Set(); // the EMBEDS keys hosted in the open console
 
@@ -545,7 +546,8 @@
             spellbook: 'Spellbook keeps your presets: saved prompts, settings and their spells. Open it to add, change, sort and remove presets.',
             expanders: 'Text expanders are global: a short !placeholder in a prompt is replaced with its text when you generate. Open Text Expanders to add, change and remove them.',
             enshutsuka: 'Enshutsuka keeps Director\'s memories, static rules, feedback and persona.',
-            quips: 'Dynamic Quips writes the short lines Melaton shows while a picture is generated.'
+            quips: 'Dynamic Quips writes the short lines Melaton shows while a picture is generated.',
+            wiki: 'Wiki Caches keeps offline copies of wikis for Grimoire: Fandom wikis, NovelAI documentation and other MediaWiki sites.'
         }[node.id] || '';
         return c.page(node.name, '', [{
             id: `dm-${node.id}`, title: node.name, body: `${c.overview(e ? e[3] : ICON32, [about])}
@@ -764,6 +766,8 @@
         let t = String(target || '').trim();
         if (!t) return 'root';
         if (nodeIds().has(t)) return t;
+        // a hosted snap-in's own node ('wiki::imports')
+        if (/^[a-z]+::/.test(t) && embedded.has(t.split('::')[0])) return t;
         t = t.replace(/^dsap:\/\//i, '').replace(/^data\.dreamscape\.jp\/?/i, '').split('?')[0];
         const parts = t.split('/').filter(Boolean);
         const first = parts[0] || 'status';
@@ -771,7 +775,7 @@
             const sub = parts[1] === 'bundle' ? 'setup' : parts[1];
             return sub && REPL_SUBS.some((s) => s[0] === sub) ? `repl-${sub}` : 'replication';
         }
-        const map = { status: 'root', account: 'root', workspaces: 'workspaces', favorites: 'favorites', spellbook: itemId('spellbook'), expanders: itemId('expanders'), enshutsuka: itemId('enshutsuka'), quips: itemId('quips'), storage: 'storage', workers: 'workers' };
+        const map = { status: 'root', account: 'root', workspaces: 'workspaces', favorites: 'favorites', spellbook: itemId('spellbook'), expanders: itemId('expanders'), enshutsuka: itemId('enshutsuka'), quips: itemId('quips'), wiki: itemId('wiki'), storage: 'storage', workers: 'workers' };
         return map[first] || 'root';
     }
 

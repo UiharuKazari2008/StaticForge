@@ -173,7 +173,7 @@
         { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator') },
         { id: 'device-manager', name: 'Device Manager', icon: `${ITEMS}/device-manager-16.png`, open: () => callGlobal('openDeviceManager') },
         { id: 'dynamic-quips', name: 'Dynamic Quips', icon: '/static_images/app_icons/16/vista-dynamic-quips.webp', open: () => callGlobal('openDynamicQuipsSnapin') },
-        { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka.webp', open: () => callGlobal('openEnshutsukaSnapin') },
+        { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka-2.webp', open: () => callGlobal('openEnshutsukaSnapin') },
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },
         { id: 'front-gate', name: 'Front Gate', icon: `${ITEMS}/firewall-16.png`, open: () => callGlobal('openFrontGateConsole') },
         { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ITEMS}/iscsi-initiator-16.png`, open: () => root.cplDialogs && root.cplDialogs.open('iscsi') },

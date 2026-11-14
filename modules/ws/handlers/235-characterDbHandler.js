@@ -176,6 +176,43 @@ async function handleCharacterDbDeleteCopyright(handlers, ws, message, clientInf
     }
 }
 
+/** Bulk import (the Character Database console's Import): merges, never clears; one transaction. */
+async function handleCharacterDbImport(handlers, ws, message, clientInfo) {
+    if (!clientInfo || clientInfo.userType !== 'admin') { // JULES: character db admin check
+        handlers.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);
+        return;
+    }
+    try {
+        const list = message.characters;
+        if (!Array.isArray(list) || !list.length) {
+            handlers.sendError(ws, 'Invalid import', 'characters must be a non-empty array', message.requestId);
+            return;
+        }
+        if (list.length > 50000) {
+            handlers.sendError(ws, 'Invalid import', 'at most 50000 characters can be imported at once', message.requestId);
+            return;
+        }
+        for (const character of list) {
+            const err = validateCharacterPayload(character);
+            if (err) {
+                handlers.sendError(ws, 'Invalid character', `${err} (${character && character.name ? character.name : 'unnamed'})`, message.requestId);
+                return;
+            }
+        }
+        const stats = getDb(handlers).importFromJsonData(list, { replace: false });
+        const data = refreshCache(handlers);
+        handlers.sendToClient(ws, {
+            type: 'character_db_import_response',
+            requestId: message.requestId,
+            data: { success: true, stats, data },
+            timestamp: new Date().toISOString()
+        });
+    } catch (error) {
+        console.error('character_db_import:', error);
+        handlers.sendError(ws, 'Failed to import characters', error.message, message.requestId);
+    }
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[235-characterDbHandler] registerPackets: missing handlersCtx');
@@ -193,6 +230,7 @@ function registerPackets(handlersCtx) {
     reg('character_db_delete', handleCharacterDbDelete, CHARACTER_DB_DESTRUCTIVE);
     reg('character_db_rename_copyright', handleCharacterDbRenameCopyright, CHARACTER_DB_DESTRUCTIVE);
     reg('character_db_delete_copyright', handleCharacterDbDeleteCopyright, CHARACTER_DB_DESTRUCTIVE);
+    reg('character_db_import', handleCharacterDbImport, CHARACTER_DB_DESTRUCTIVE);
 }
 
 module.exports = {

@@ -361,7 +361,7 @@ const FEATURE_MANIFEST = {
     // The MMC consoles that replaced the management DSAPs (Yozora #828): the shell, then the snap-ins
     mmc_snapins: {
         depends: ['vista_dialog_templates', 'workspace_dialogs'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
             'scripts/comp/mmcFrontGate.js',
@@ -370,6 +370,7 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcEnshutsuka.js',
             'scripts/comp/mmcSpellbook.js',
             'scripts/comp/mmcExpanders.js',
+            'scripts/comp/mmcWikiManager.js',
             'scripts/comp/mmcDataManagement.js'
         ]
     },

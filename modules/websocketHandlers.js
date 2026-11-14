@@ -579,6 +579,7 @@ class WebSocketMessageHandlers {
             'character_db_delete',
             'character_db_rename_copyright',
             'character_db_delete_copyright',
+            'character_db_import',
             'import_fandom_wiki_page',
             'import_static_wiki',
             'update_wiki_import',
