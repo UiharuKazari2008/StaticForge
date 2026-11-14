@@ -445,6 +445,9 @@
             if (miniportSocket) miniportSocket._opened();
         } else if (m.op === 'closed') {
             if (miniportSocket) miniportSocket._closed(m.code || 1006, m.reason || 'closed');
+        } else if (m.op === 'restart') {
+            // the Miniport notification's Restart Devices: every window of the app cold boots
+            restartForMiniport();
         }
     }
     /** The link is (back) up: a page that lost its connection reconnects at once. */
@@ -455,6 +458,15 @@
         waitingForPhone = false;
         if (typeof c._beginTrayOnlyReconnect === 'function') c._beginTrayOnlyReconnect('miniport');
         if (typeof c.manualReconnect === 'function') c.manualReconnect();
+    }
+    function restartForMiniport() {
+        try { if (typeof root.suppressWebSocketReconnectForReload === 'function') root.suppressWebSocketReconnectForReload(); } catch (_) { /* restart anyway */ }
+        root.bypassConfirmation = true;
+        root.melatonRestarting = true;
+        if (isDw()) { coldBootDw(); return; }
+        const D = root.AndroidDisplay;
+        try { if (D && typeof D.coldBoot === 'function') { D.coldBoot(); return; } } catch (_) { /* fall back */ }
+        root.location.replace('/launch');
     }
     /** Cold boot / Restart from the phone: the Miniport ("the driver") clears and starts fresh too. */
     api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
