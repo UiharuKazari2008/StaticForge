@@ -2021,6 +2021,9 @@ class ServiceWorkerManager {
             // Check which files need updating before showing UI — avoids flashing
             // "checking" when we already know the outcome is pending-only or up to date.
             const filesToUpdate = await this.getFilesNeedingUpdate(files);
+            // nothing to download, but this page runs older copies than the cache holds (the
+            // background updater filled it while this window was paused, #815): a restart is pending
+            const loadedStale = filesToUpdate.length || this.pendingUpdateFuse ? [] : this._filesNewerThanLoaded(files);
 
             console.log(`Found ${filesToUpdate.length} files that need updating:`, filesToUpdate);
 
@@ -2053,6 +2056,14 @@ class ServiceWorkerManager {
                 // started would otherwise leave the page on "Downloading" with nothing running
                 this.isUpdating = true;
                 this.startPeriodicStateCheck();
+            } else if (loadedStale.length) {
+                this.servicePack = null;
+                if (this.checkingToastId && typeof removeGlassToast === 'function') {
+                    removeGlassToast(this.checkingToastId);
+                    this.checkingToastId = null;
+                }
+                console.log(`${loadedStale.length} file(s) already updated in the cache; this page runs older copies`);
+                this._processStaticCacheComplete({ files: loadedStale, updatedFiles: loadedStale, completed: loadedStale.length, total: loadedStale.length, silent: noToast });
             } else if (!noToast) {
                 this.servicePack = null;
                 this._clearScheduledUpdateCompleteToast();
@@ -2103,6 +2114,23 @@ class ServiceWorkerManager {
             }
         }
         return null;
+    }
+
+    /**
+     * Manifest rows whose file this page loaded with another hash (its script and stylesheet URLs
+     * carry ?sha=): the cache may already hold the new copy (the background updater, #815), but this
+     * page still runs the old one until it restarts.
+     */
+    _filesNewerThanLoaded(files) {
+        const loaded = new Map();
+        document.querySelectorAll('script[src], link[rel="stylesheet"][href]').forEach((el) => {
+            try {
+                const u = new URL(el.src || el.href, location.href);
+                const sha = u.searchParams.get('sha');
+                if (sha && u.origin === location.origin) loaded.set(u.pathname, sha);
+            } catch (_) { /* not a URL */ }
+        });
+        return (Array.isArray(files) ? files : []).filter((f) => f && f.url && f.hash && loaded.has(f.url) && loaded.get(f.url) !== f.hash);
     }
 
     async getFilesNeedingUpdate(files) {

@@ -2491,6 +2491,7 @@
         // the update icon also stands for a waiting update notice (stalled, applied ...) and, animated,
         // for updates downloading (its popup shows the progress)
         const updDl = updateProgressToast();
+        if (updDl && updDl.pct >= 100) void healFinishedUpdateNotice().then((changed) => { if (changed) statusDirty(); });
         const updEl = shell.querySelector('[data-role="update"]');
         hide(updEl, !(updateReady || updDl || notes.some(isUpdateNote)));
         paintUpdateIcon(updEl, !!updDl);
@@ -3490,9 +3491,39 @@
             const bar = t.querySelector('.toast-progress-bar');
             const w = bar ? parseFloat(bar.style.width) : NaN;
             const text = ((t.querySelector('.toast-message') || {}).textContent || '').replace(/\s+/g, ' ').trim();
-            return { title, text, pct: Number.isFinite(w) ? Math.max(0, Math.min(100, w)) : null };
+            return { id: t.id, title, text, pct: Number.isFinite(w) ? Math.max(0, Math.min(100, w)) : null };
         }
         return null;
+    }
+
+    /**
+     * An update notice left at "Downloading updates 100%" after the download ended (Yukimi, Nov 14:
+     * it never turned into Restart). Seen when the page missed or could not run its completion step
+     * (a download another page started, the background updater pausing timers again right after).
+     * When the service worker is not downloading, the notice finishes: the page's own notice gets its
+     * Restart / Apply step; another is removed, and the update icon offers Restart Now from the
+     * pending updates. Resolves true when it changed something.
+     */
+    let healingUpdate = null;
+    function healFinishedUpdateNotice() {
+        const dl = updateProgressToast();
+        const sw = window.serviceWorkerManager;
+        if (!dl || !sw || !(dl.pct >= 100) || /^checking/i.test(dl.title)) return Promise.resolve(false);
+        if (healingUpdate) return healingUpdate;
+        healingUpdate = (async () => {
+            let state = null;
+            try { state = typeof sw.checkDownloadState === 'function' ? await sw.checkDownloadState() : null; } catch (_) { state = null; }
+            if (state && state.isDownloading) return false;
+            sw.isUpdating = false;
+            if (sw.pendingUpdateFuse && sw.updateToastId === dl.id && typeof sw.showUpdateCompleteToast === 'function') {
+                sw.showUpdateCompleteToast(sw.pendingUpdateKind === 'restart' ? 'restart' : 'apply');
+            } else if (typeof window.removeGlassToast === 'function') {
+                window.removeGlassToast(dl.id);
+                if (sw.updateToastId === dl.id) sw.updateToastId = null;
+            }
+            return true;
+        })().finally(() => { healingUpdate = null; });
+        return healingUpdate;
     }
 
     function readToasts() {
@@ -5022,6 +5053,10 @@
         } else if (role === 'update') {
             // updates downloading: the progress lives here, in the icon's own popup
             const dl = updateProgressToast();
+            // a notice stuck at 100% after the download ended: finished, then this popup shows Restart Now
+            if (dl && dl.pct >= 100 && !update) {
+                void healFinishedUpdateNotice().then((changed) => { if (changed) statusBubble('update', anchor, true); });
+            }
             if (dl) {
                 const checking = /^checking/i.test(dl.title);
                 const bar = dl.pct == null || checking
@@ -5036,7 +5071,7 @@
             if (waiting) { closeBubble(); showNote(waiting.id); return; }
             const sw = window.serviceWorkerManager;
             const n = sw && Number(sw.pendingUpdateFilesTotal);
-            const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} files)` : ''}. Melaton restarts to install them.`;
+            const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} ${n === 1 ? 'file' : 'files'})` : ''}. Melaton restarts to install them.`;
             const links = sw && typeof sw.forceRestart === 'function' ? [{ label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }] : [];
             // Continuity connected (#798): the restart's warning here too, before Restart Now (Yukimi, Nov 14);
             // the same words as the restart's own question (melatonContinuity confirmUpdateRestart)
