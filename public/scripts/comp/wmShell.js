@@ -9067,8 +9067,46 @@
         // stand-in (the program's own newest()/list(): the Notes folder, kept 2 minutes, null before
         // the first answer); opening a note or a card loads the program
         { id: 'notes', title: 'Notes', icon: 'app-notes', inStart: 'bottom', script: 'scripts/comp/wmNotes.js', globals: [{ name: 'wmNotesApp', methods: ['openNote'], sync: lazyNotesList() }] },
-        { id: 'contacts', title: 'Contacts', icon: 'app-contacts', inStart: 'top', script: 'scripts/comp/wmNotes.js', globals: [{ name: 'wmContactsApp', methods: ['openFile', 'newContact'], sync: { reload: () => {} } }] }
+        { id: 'contacts', title: 'Contacts', icon: 'app-contacts', inStart: 'top', script: 'scripts/comp/wmNotes.js', globals: [{ name: 'wmContactsApp', methods: ['openFile', 'newContact'], sync: { reload: () => {} } }] },
+        // File Explorer and the picture Properties page (one script): Today's Files item formats with the
+        // stand-in's own fmtDate / fmtSize / myDocumentsPath (the program's rules); listing, volumes,
+        // opening and Receive load it first (Receive still within the tap's activation)
+        {
+            id: 'fileexplorer', title: 'File Explorer', icon: 'app-file-explorer', inStart: 'top', script: 'scripts/comp/wmFileExplorer.js',
+            globals: [{ name: 'wmFileExplorer', methods: ['list', 'volumes', 'openFolder', 'openFile', 'receive'], sync: lazyFileFormats() }]
+        },
+        { id: 'pic-props', title: 'Pictures & Videos', icon: 'app-pictures', inStart: false, script: 'scripts/comp/wmFileExplorer.js', globals: [{ name: 'wmPictureProperties', methods: ['open'] }] }
     ];
+
+    /** wmFileExplorer.js's formats and My Documents path, for its callers before it loads. */
+    function lazyFileFormats() {
+        return {
+            myDocumentsPath() {
+                let id = 'default';
+                try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) id = activeWorkspace; } catch (_) { /* not loaded */ } // eslint-disable-line no-undef
+                return `/Workspaces/${id}`;
+            },
+            /** WM's list date: M/D/YY (seconds; ms tolerated). */
+            fmtDate(t) {
+                let n = Number(t);
+                if (!n) return '';
+                if (n < 1e12) n *= 1000;
+                const d = new Date(n);
+                return `${d.getMonth() + 1}/${d.getDate()}/${String(d.getFullYear()).slice(-2)}`;
+            },
+            /** WM's list size: three significant digits, K / M / G. */
+            fmtSize(b) {
+                const n = Number(b);
+                if (!Number.isFinite(n) || n < 0) return '';
+                if (n < 1024) return `${n}B`;
+                const units = ['K', 'M', 'G', 'T'];
+                let v = n / 1024;
+                let u = 0;
+                while (v >= 1000 && u < units.length - 1) { v /= 1024; u++; }
+                return `${v < 10 ? v.toFixed(2) : v < 100 ? v.toFixed(1) : String(Math.round(v))}${units[u]}`;
+            }
+        };
+    }
 
     /** wmNotes.js's Notes.newest()/list() for Today before the program loads (same folder, same cache rules). */
     function lazyNotesList() {
