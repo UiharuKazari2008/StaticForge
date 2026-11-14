@@ -1494,8 +1494,14 @@ function listStoredSites(globalResources) {
     const base = getWikiBasePath(globalResources);
     const home = readJsonSafe(path.join(base, 'index.json'), { sites: [] });
     return (home.sites || []).map((s) => {
-        const siteIndex = readJsonSafe(path.join(base, s.id, 'index.json'), { pages: [] });
+        const indexPath = path.join(base, s.id, 'index.json');
+        const siteIndex = readJsonSafe(indexPath, { pages: [] });
         const pages = siteIndex.pages || [];
+        // Wiki Caches' Last Updated (#831): when the site's index was last written
+        let updatedAt = siteIndex.updatedAt || siteIndex.generatedAt || null;
+        if (!updatedAt) {
+            try { updatedAt = fs.statSync(indexPath).mtime.toISOString(); } catch (_) { updatedAt = null; }
+        }
         return {
             id: s.id,
             name: s.name || s.id,
@@ -1508,6 +1514,7 @@ function listStoredSites(globalResources) {
             scriptpath: s.scriptpath || null,
             apiBase: s.apiBase || null,
             pageCount: pages.length,
+            updatedAt,
             sourceUrls: pages.map((p) => p.sourceUrl).filter(Boolean).slice(0, 3)
         };
     });
