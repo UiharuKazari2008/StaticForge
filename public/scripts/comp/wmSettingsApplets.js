@@ -129,6 +129,20 @@
         return fetch(url, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined })
             .then((r) => r.json()).then((j) => (j && j.success ? j.adb : null)).catch(() => null);
     }
+    // the phone's own view (#818, DSApp LocalAdb.kt via AndroidActiveSync): 127.0.0.1:5555 from here
+    const bridgeAs = () => window.AndroidActiveSync || null;
+    const localAvailable = () => { const A = bridgeAs(); return !!(A && typeof A.adbStatus === 'function'); };
+    function localStatus() { try { return JSON.parse(bridgeAs().adbStatus()); } catch (_) { return null; } }
+    let checking = false;
+    let lastCheck = null; // the androidadb event's detail
+    let checkApi = null;
+    window.addEventListener('androidadb', (e) => {
+        checking = false;
+        lastCheck = (e && e.detail) || null;
+        adbRefresh(null, false);
+        if (checkApi && typeof checkApi.rerender === 'function') checkApi.rerender();
+    });
+
     function adbRefresh(api, detect) {
         adbAsked = Date.now();
         adbFetch('GET', null, detect).then((s) => { adbNow = s; if (api && typeof api.rerender === 'function') api.rerender(); });
@@ -150,13 +164,21 @@
                 rows.length ? rows.map(rowHtml).join('') : ui.note('This version of the app has no Shizuku.'),
                 ui.gap(),
                 ui.sub('ADB (port 5555)'),
-                ui.value('ADB:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync'),
-                a && a.address ? ui.value('Address:', a.address) : '',
+                ...(localAvailable() ? (() => {
+                    const l = localStatus() || {};
+                    const access = !l.listening ? '-' : l.authorized === true ? 'Allowed' : l.authorized === false ? 'Waiting for "Always allow"' : 'Not checked yet';
+                    return [
+                        ui.value('Port 5555:', checking ? 'Checking...' : l.listening ? 'Listening' : 'Not listening'),
+                        ui.value('Access:', access),
+                        ui.value('Wi-Fi:', l.wifi ? 'Connected' : 'Not on Wi-Fi'),
+                        lastCheck && lastCheck.restored ? ui.value('Last restore:', String(lastCheck.restored)) : ''
+                    ];
+                })() : [ui.value('ADB:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync'), a && a.address ? ui.value('Address:', a.address) : '']),
                 ui.check('dbg-allow', 'Allow Melaton to use ADB', set.allow !== false, 'data-dbg="allow"'),
                 ui.check('dbg-restore', 'Restore ADB on port 5555 when it stops (on Wi-Fi)', !!set.autoRestore, 'data-dbg="autoRestore"'),
                 ui.check('dbg-shots', 'Send screenshots to Device Center', set.screenshots !== false, 'data-dbg="screenshots"'),
-                ui.buttons([['dbg-check', 'Check Now', !selfId()]]),
-                ui.note(a && a.state === 'unauthorized'
+                ui.buttons([['dbg-check', 'Check Now', checking || (!selfId() && !localAvailable())]]),
+                ui.note(localAvailable() && (localStatus() || {}).authorized === false ? 'Tap Always allow on the USB debugging question for Dreamscape.' : a && a.state === 'unauthorized'
                     ? 'Tap Always allow on the USB debugging question for this server.'
                     : 'With Restore on, the phone turns on wireless debugging by itself when ADB stops on Wi-Fi. Without screenshots, Device Center shows your wallpapers.')
             ].join('');
@@ -165,7 +187,17 @@
                 const act2 = b.dataset.act;
                 b.addEventListener('click', () => {
                     if (b.disabled) return;
-                    if (act2 === 'dbg-check') { adbNow = adbNow ? Object.assign({}, adbNow, { state: 'unknown' }) : null; adbRefresh(api, true); api.rerender(); return; }
+                    if (act2 === 'dbg-check') {
+                        // the phone checks itself: restores 5555 on Wi-Fi if needed, then tests the link
+                        if (localAvailable() && typeof bridgeAs().adbCheck === 'function') {
+                            checking = true; checkApi = api;
+                            try { bridgeAs().adbCheck(true); } catch (_) { checking = false; }
+                        } else {
+                            adbNow = adbNow ? Object.assign({}, adbNow, { state: 'unknown' }) : null; adbRefresh(api, true);
+                        }
+                        api.rerender();
+                        return;
+                    }
                     act('shizuku', act2, null);
                 });
             });

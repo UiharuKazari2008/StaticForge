@@ -282,13 +282,70 @@ function parseDisplays(sfText, dispText) {
     return out.map(({ id, kind, name, width, height, on }) => ({ id, kind, name, width, height, on }));
 }
 
+// ---------------------------------------------------------------- from the phone's own side (#818)
+
+/*
+ * Yukimi (Nov 13): ADB runs from the phone's localhost. The app (DSApp LocalAdb.kt) is an ADB client
+ * of its own adbd at 127.0.0.1:5555 and answers screen.displays / screen.shot / status.adb over
+ * ActiveSync, wherever the phone is. A screenshot comes back as an upload: the server hands the
+ * phone a one-time token, the phone posts the PNG to /api/activesync/screen/<id>/shot/<token>.
+ * The server's own dial (above) is the fallback for a phone without those ops.
+ */
+const crypto = require('crypto');
+const shotWaits = new Map(); // token -> { deviceId, resolve, reject, timer }
+const PHONE_FALLBACK = new Set(['UNKNOWN_OP', 'NOT_CONNECTED', 'OFFLINE', 'NO_SOCKET', 'NOT_ANSWERED', 'UNSUPPORTED', 'NOT_ONLINE', 'NOT_LISTENING', 'UNAUTHORIZED']);
+
+function phoneCall(globalResources, deviceId, op, args, timeoutMs) {
+    const as = activeSync();
+    const ws = wsServerOf(globalResources, null);
+    if (!as.deviceOnline(globalResources, ws, deviceId)) return Promise.reject(fail('NOT_ONLINE', 'The phone is not connected.'));
+    return as.serverCall(globalResources, ws, deviceId, op, args || {}, { timeoutMs: timeoutMs || 20000 });
+}
+
+/** The phone's own ADB view: { listening, authorized, wifi, shizuku, restore, ... } or null. */
+async function phoneStatus(globalResources, deviceId) {
+    try { return await phoneCall(globalResources, deviceId, 'status.adb', {}, 6000); } catch (_) { return null; }
+}
+
 async function displays(globalResources, deviceId) {
+    try {
+        const r = await phoneCall(globalResources, deviceId, 'screen.displays', {}, 20000);
+        if (r && Array.isArray(r.displays)) return r.displays;
+    } catch (err) {
+        if (!PHONE_FALLBACK.has(err.code)) throw err;
+    }
     return onPhone(globalResources, deviceId, async (serial) => {
         const sf = await adb(['-s', serial, 'shell', 'dumpsys', 'SurfaceFlinger', '--display-id']);
         let disp = { stdout: '' };
         try { disp = await adb(['-s', serial, 'shell', 'dumpsys', 'display'], { maxBuffer: 16 * 1024 * 1024 }); } catch (_) { /* ids only */ }
         return parseDisplays(sf.stdout, disp.stdout);
     });
+}
+
+/** The phone posts a screenshot it was asked for (its own session, a token it was given). */
+function takeShot(deviceId, token, png) {
+    const w = shotWaits.get(token);
+    if (!w || w.deviceId !== deviceId) return false;
+    shotWaits.delete(token);
+    clearTimeout(w.timer);
+    w.resolve(png);
+    return true;
+}
+
+async function phoneShot(globalResources, deviceId, displayId) {
+    const token = crypto.randomBytes(16).toString('hex');
+    const got = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => { shotWaits.delete(token); reject(fail('TIMEOUT', 'The phone did not send the screenshot.')); }, 40000);
+        shotWaits.set(token, { deviceId, resolve, reject, timer });
+    });
+    try {
+        await phoneCall(globalResources, deviceId, 'screen.shot', { display: displayId, token }, 35000);
+    } catch (err) {
+        const w = shotWaits.get(token);
+        if (w) { clearTimeout(w.timer); shotWaits.delete(token); }
+        throw err;
+    }
+    return got;
 }
 
 function pickDisplay(list, want) {
@@ -305,13 +362,19 @@ async function screenshot(globalResources, deviceId, display) {
     const list = await displays(globalResources, deviceId);
     const d = pickDisplay(list, display);
     if (!d) throw fail('NO_DISPLAY', display ? `The phone has no ${display} screen right now.` : 'The phone reports no screen.');
-    const png = await onPhone(globalResources, deviceId, async (serial) => {
-        const args = ['-s', serial, 'exec-out', 'screencap'];
-        if (list.length > 1) args.push('-d', d.id);
-        args.push('-p');
-        const r = await adb(args, { binary: true, timeout: SHOT_TIMEOUT_MS, maxBuffer: MAX_SHOT_BYTES });
-        return r.stdout;
-    });
+    let png = null;
+    try {
+        png = await phoneShot(globalResources, deviceId, d.id);
+    } catch (err) {
+        if (!PHONE_FALLBACK.has(err.code)) throw err;
+        png = await onPhone(globalResources, deviceId, async (serial) => {
+            const args = ['-s', serial, 'exec-out', 'screencap'];
+            if (list.length > 1) args.push('-d', d.id);
+            args.push('-p');
+            const r = await adb(args, { binary: true, timeout: SHOT_TIMEOUT_MS, maxBuffer: MAX_SHOT_BYTES });
+            return r.stdout;
+        });
+    }
     if (!png || png.length < 8 || png[0] !== 0x89 || png[1] !== 0x50) {
         throw fail('SHOT_FAILED', d.on === false ? `The ${d.kind} screen is off.` : 'The phone sent no picture.');
     }
@@ -367,7 +430,7 @@ async function installOnPhone(globalResources, deviceId, root, p) {
  */
 async function agentScreenshot(globalResources, input = {}) {
     const all = activeSync().list(globalResources, wsServerOf(globalResources, null)).devices;
-    const brief = (d) => ({ deviceId: d.deviceId, name: d.name, model: d.model, online: d.online, partner: d.partner, adb: status(globalResources, d.deviceId) });
+    const brief = (d) => ({ deviceId: d.deviceId, name: d.name, model: d.model, online: d.online, partner: d.partner, adb: status(globalResources, d.deviceId), phoneAdb: d.phoneAdb || undefined });
     const want = String(input.device || input.deviceId || '').trim().toLowerCase();
     let dev = null;
     if (want) dev = all.find((d) => d.deviceId === want) || all.find((d) => String(d.name || '').toLowerCase() === want) || all.find((d) => String(d.model || '').toLowerCase() === want) || null;
@@ -377,8 +440,9 @@ async function agentScreenshot(globalResources, input = {}) {
     }
     if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map(brief) }, images: [] };
     if (!settings(globalResources, dev.deviceId).screenshots) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
-    const st = await detect(globalResources, dev.deviceId, { force: !!input.detect });
-    if (st.state !== 'ready') return { meta: { success: false, code: 'ADB_NOT_READY', device: brief(dev), hint: st.state === 'unauthorized' ? 'Tap Always allow for this server on the phone.' : st.state === 'unreachable' ? 'ADB is not listening on 5555 where the phone connects from (Wi-Fi or VPN).' : undefined }, images: [] };
+    const local = dev.online ? await phoneStatus(globalResources, dev.deviceId) : null;
+    const st = local && local.listening ? { state: 'phone' } : await detect(globalResources, dev.deviceId, { force: !!input.detect });
+    if (st.state !== 'ready' && st.state !== 'phone') return { meta: { success: false, code: 'ADB_NOT_READY', device: brief(dev), hint: st.state === 'unauthorized' ? 'Tap Always allow for this server on the phone.' : st.state === 'unreachable' ? 'ADB is not listening on 5555 where the phone connects from (Wi-Fi or VPN).' : undefined }, images: [] };
     const list = await displays(globalResources, dev.deviceId);
     const which = String(input.display || '').toLowerCase() === 'all' ? list.filter((d) => d.on !== false) : [pickDisplay(list, input.display)].filter(Boolean);
     if (!which.length) return { meta: { success: false, code: 'NO_DISPLAY', device: brief(dev), displays: list }, images: [] };
@@ -445,6 +509,21 @@ function mount(app, authMiddleware, globalResources) {
         try { res.json({ success: true, displays: await displays(globalResources, id) }); } catch (err) { refuse(res, statusOf(err.code), err.code || 'ERROR', err.message); }
     });
 
+    // the phone answers screen.shot: the PNG for the token it was given (its own session only)
+    app.post('/api/activesync/screen/:deviceId/shot/:token', auth, (req, res) => {
+        const id = idOf(req, res);
+        if (!id) return;
+        if (!isPhone(req, id)) { refuse(res, 403, 'NOT_DEVICE', 'Only the device itself sends its screen.'); return; }
+        const parts = [];
+        let size = 0;
+        req.on('data', (c) => { size += c.length; if (size > MAX_SHOT_BYTES) { req.destroy(); return; } parts.push(c); });
+        req.on('end', () => {
+            const png = Buffer.concat(parts);
+            if (!takeShot(id, String(req.params.token || ''), png)) { refuse(res, 410, 'GONE', 'Nobody is waiting for this screenshot.'); return; }
+            res.json({ success: true });
+        });
+    });
+
     app.get('/api/activesync/screen/:deviceId/shot', auth, async (req, res) => {
         if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const id = idOf(req, res);
@@ -480,6 +559,8 @@ module.exports = {
     parseDisplays,
     pickDisplay,
     agentScreenshot,
+    phoneStatus,
+    takeShot,
     mount,
     resetForTests
 };
