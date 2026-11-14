@@ -710,8 +710,26 @@
         if (dex.present && (dex.state !== 'ready' || dex.displayGone)) return 'dim';
         return 'solid';
     };
-    /** The Continuity PC for the glyph's popup: { attach: 'usb'|'wireless', width, height, state, displayGone }. */
-    api.continuityPc = () => (dex.present ? Object.assign({}, dex) : null);
+    // the dock (myNexDock's DockStatusProvider through the app, DSApp DockStatus.kt): its battery for the popup
+    function dockRow() {
+        const H = root.AndroidHome;
+        try { return H && typeof H.getDockStatus === 'function' ? JSON.parse(H.getDockStatus() || 'null') : null; } catch (_) { return null; }
+    }
+    if (root.addEventListener) root.addEventListener('androiddock', () => statusChanged());
+    /**
+     * The Continuity PC for the glyph's popup: { attach: 'usb'|'wireless', width, height, state, displayGone,
+     * dockName, dockBattery: { level, charging } } (the dock's, read fresh, while it is connected).
+     */
+    api.continuityPc = () => {
+        if (!dex.present) return null;
+        const out = Object.assign({}, dex);
+        const row = dockRow();
+        if (row && Number(row.connected) === 1 && Number.isFinite(Number(row.battery_percent))) {
+            out.dockName = row.name || '';
+            out.dockBattery = { level: Number(row.battery_percent), charging: String(row.charge_state || '') === 'charging' };
+        }
+        return out;
+    };
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
     api.isDexWindow = () => isDw();
     /**
