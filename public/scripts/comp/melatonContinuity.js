@@ -501,6 +501,12 @@
             miniport.authFailed = m.auth === 'failed';
             const wasOn = miniport.enabled;
             miniport.enabled = m.enabled !== false;
+            // a Miniport that keeps replies only while fresh: the file index too (#815)
+            if (!freshSent && Array.isArray(m.caps) && m.caps.includes('fresh')) {
+                freshSent = true;
+                Object.assign(CACHE_POLICY, FRESH_POLICY);
+                miniport.post({ op: 'policy', policy: FRESH_POLICY });
+            }
             // turned off or on: this page's connection moves to its own socket / back to the Miniport
             if (wasOn !== miniport.enabled) setTimeout(() => { const c = root.wsClient; if (c && inApp() && typeof c.manualReconnect === 'function') c.manualReconnect(); }, 0);
             emit('miniport', { connected: miniport.up }, 'app');
@@ -568,6 +574,15 @@
         server_status: { ttl: 30, refresh: 60, dataset: 'status' },
         sidebar_host_metrics: { ttl: 20, refresh: 60, dataset: 'status' }
     };
+    // the file index (Explorer's folders): kept while fresh only (a change missed while the link was idle
+    // must not show), dropped by the Miniport on vfs_updated and on any file change a page sends. Sent
+    // only to a Miniport that understands "fresh" (caps), else an older one would show stale folders.
+    const FRESH_POLICY = {
+        vfs_list_directory: { ttl: 300, scope: 'workspace', dataset: 'vfs', fresh: true },
+        vfs_get_path_stats: { ttl: 300, scope: 'workspace', dataset: 'vfs', fresh: true },
+        vfs_resolve_path: { ttl: 300, scope: 'workspace', dataset: 'vfs', fresh: true }
+    };
+    let freshSent = false;
     /** ActiveSync > Café Cache's list, in its order. */
     const CACHE_DATASETS = [
         { id: 'settings', label: 'Settings' },
@@ -577,6 +592,7 @@
         { id: 'director', label: 'Director' },
         { id: 'smarttext', label: 'SmartText' },
         { id: 'gallery', label: 'Gallery lists' },
+        { id: 'vfs', label: 'File index' },
         { id: 'status', label: 'Wallet and server status' }
     ];
     api.cacheDatasets = () => CACHE_DATASETS.map((d) => Object.assign({ refreshes: Object.values(CACHE_POLICY).some((p) => p.dataset === d.id && (p.refresh || 0) > 0) }, d));
@@ -601,7 +617,8 @@
         const p = CACHE_POLICY[type];
         if (!p || p.noFlag || lastTransport !== 'miniport' || !miniport.up || !datasetOn(type, 'cache')) return false;
         const c = root.wsClient;
-        return !(c && c.initializationCompleted) || (p.refresh || 0) > 0;
+        // a "fresh" type (the file index) is answered from the Miniport's copy whenever it is fresh
+        return !(c && c.initializationCompleted) || (p.refresh || 0) > 0 || p.fresh === true;
     };
     /** True when the Miniport keeps this type current: the page's own poller for it stands down. */
     api.miniportOwns = (type) => !!(CACHE_POLICY[type] && (CACHE_POLICY[type].refresh || 0) > 0 && lastTransport === 'miniport' && miniport.up && datasetOn(type, 'update'));
