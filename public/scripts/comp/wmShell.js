@@ -8985,8 +8985,28 @@
         // screen off (html[data-screen-off], the app's melatonscreen): nothing is on screen to take over, and
         // on a hybrid phone these ticks share the renderer with the DeX window (#798); one pass at screen on
         const screenOn = () => document.documentElement.dataset.screenOff === undefined;
-        setInterval(() => { if (screenOn()) checkTakeover(); }, 400);
-        setInterval(() => { if (screenOn()) checkViewer(); }, 150);
+        // the picture view and the layers that take the shell over are watched, not polled (400 ms and
+        // 150 ms ticks before; on a hybrid phone they ran in the renderer the DeX window shares, #798):
+        // PhotoSwipe's .pswp comes and goes as a child of <body> and opens with its pswp--open class,
+        // the takeover layers are known ids. A change runs both checks on the next frame; a 2 s pass
+        // still catches what changed without either (a layer nested elsewhere, an app's own view switch).
+        let layerQueued = false;
+        const layerCheck = () => { layerQueued = false; if (!screenOn()) return; checkViewer(); checkTakeover(); };
+        const layerSoon = () => { if (layerQueued) return; layerQueued = true; requestAnimationFrame(layerCheck); };
+        const layerAttrs = new MutationObserver(layerSoon);
+        const layerWatched = new WeakSet();
+        const layerWatch = (el) => {
+            if (!el || layerWatched.has(el)) return;
+            layerWatched.add(el);
+            layerAttrs.observe(el, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+        };
+        const layerScan = () => {
+            TAKEOVER.forEach((id) => layerWatch(document.getElementById(id)));
+            for (const el of document.body.children) if (el.classList.contains('pswp') || el.classList.contains('dreamscape-app-error-window')) layerWatch(el);
+        };
+        new MutationObserver(() => { layerScan(); layerSoon(); }).observe(document.body, { childList: true });
+        layerScan();
+        setInterval(() => { if (screenOn()) { layerScan(); checkTakeover(); checkViewer(); } }, 2000);
         window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) { checkTakeover(); checkViewer(); } });
         // ActiveSync Received Items (#803): the status icon follows the agent's list
         (function wireReceived(tries) {
