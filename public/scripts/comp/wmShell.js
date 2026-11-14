@@ -2455,7 +2455,12 @@
         hide(shell.querySelector('[data-role="traffic"]'), !(tr && tr.delayed));
         // Continuity (#798): while this phone carries its DeX window
         const mc = window.melatonContinuity;
-        hide(shell.querySelector('[data-role="continuity"]'), !(mc && typeof mc.active === 'function' && mc.active()));
+        // the Continuity PC (#798): from the moment its window opens, half opacity until its desktop is up
+        // (and again once its display is unplugged while it still runs), solid while it runs
+        const ctyIcon = mc && typeof mc.continuityIcon === 'function' ? mc.continuityIcon() : (mc && typeof mc.active === 'function' && mc.active() ? 'solid' : null);
+        const ctyEl = shell.querySelector('[data-role="continuity"]');
+        hide(ctyEl, !ctyIcon);
+        if (ctyEl) ctyEl.classList.toggle('is-presence', ctyIcon === 'dim');
         // ActiveSync Received Items (#803): unseen things that arrived while the phone was locked or away
         const asx = window.activeSync;
         hide(shell.querySelector('[data-role="received"]'), !(asx && typeof asx.receivedUnseen === 'function' && asx.receivedUnseen() > 0));
@@ -4847,8 +4852,22 @@
             };
             bubble({ title: 'ActiveSync', role, anchor, sections: [text, { links: [{ label: 'Open', action: openIt }] }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'continuity') {
-            // Continuity (#798): what the glyph stands for
-            bubble({ title: 'Melaton Mobile Continuity', role, anchor, sections: ['The desktop on the connected display is running from this phone and shares its connection.', 'Restarting the phone restarts the desktop too.'], buttons: [{ text: 'Hide' }] });
+            // Continuity (#798): the Continuity PC - how it is attached, then its display and its dock's battery
+            const mc = window.melatonContinuity;
+            const pc = mc && typeof mc.continuityPc === 'function' ? mc.continuityPc() : null;
+            const via = pc && pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C';
+            const lines = [];
+            if (!pc) lines.push('The desktop on the connected display runs from this phone.');
+            else if (pc.displayGone) lines.push('Disconnected. The desktop is still running.');
+            else if (pc.state !== 'ready') lines.push(`Connecting via ${via}...`);
+            else lines.push(`Connected via ${via}`);
+            const res = pc && pc.width && pc.height ? `${pc.width} \u00d7 ${pc.height}` : '';
+            // the dock's battery, when the dock reports one (pc.dockBattery: { level, charging })
+            const bat = pc && pc.dockBattery && Number.isFinite(Number(pc.dockBattery.level)) ? pc.dockBattery : null;
+            const batHtml = bat ? `<span class="wm-cty-bat">${imgTag(bat.charging ? 'status-battery-charging' : Number(bat.level) >= 80 ? 'status-battery-full' : Number(bat.level) >= 50 ? 'status-battery-3' : Number(bat.level) >= 25 ? 'status-battery-2' : 'status-battery-1')}<span>${Math.round(Number(bat.level))}%</span></span>` : '';
+            const sections = [lines.join(' ')];
+            if (res || batHtml) sections.push({ rule: true }, { html: `<div class="wm-cty-row"><span>${escapeHtml(res)}</span>${batHtml}</div>` });
+            bubble({ title: 'Continuity PC', role, anchor, sections, buttons: [{ text: 'Hide' }] });
         } else if (role === 'traffic') {
             // Traffic (#795): the commute time, the delay and when it gets there, and the way into the app
             const t = window.wmTraffic;
@@ -8655,6 +8674,8 @@
         /** The low battery warning level in percent, and its storage key (Settings > Power). */
         batteryLowLevel,
         refreshStatus: () => refreshStatus(),
+        // the Android app's device status as last pushed (androiddevicestatus): wifi / cellular / battery
+        deviceStatus: () => deviceStatus,
         packagesAdded: (change) => packagesAdded(change),
         deviceView: () => deviceView(),
         radios: () => radiosNow || readRadios(),

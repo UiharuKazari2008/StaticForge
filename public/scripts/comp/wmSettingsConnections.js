@@ -229,26 +229,74 @@
         const list = [];
         if (mp && mp.present) list.push({ key: 'cafe', label: CAFE_ADAPTER, selected: !!i.viaMiniport });
         if (!i.viaMiniport) list.push({ key: 'vpn', label: miniport(i), selected: true });
-        // ActiveSync's own line, as WM names a serial ActiveSync link: always up, it rings the Miniport awake
-        const as = root.activeSync;
-        if (as && as.kind === 'device') list.push({ key: 'com1', label: COM1_NAME });
+        // ActiveSync's lines (#815), as modems on serial ports: one per partnership, the DeX window on USB
+        serialLines().forEach((l) => list.push({ key: `as:${l.key}`, label: l.label }));
         return list;
     }
-    const COM1_NAME = 'Serial Cable on COM1:';
-    function activeSyncFacts() {
+    function asState() {
         const as = root.activeSync;
-        let st = null;
-        try { st = as && typeof as.state === 'function' ? as.state() : null; } catch (_) { st = null; }
+        if (!as || as.kind !== 'device') return null;
+        try { return typeof as.state === 'function' ? as.state() : null; } catch (_) { return null; }
+    }
+    /**
+     * ActiveSync's lines, as WM shows modems on serial ports: each partnered computer a "Hayes Compatible
+     * on COMn (ActiveSync #n)", the Continuity PC (the DeX window, attached by USB to this phone) a
+     * "Serial Cable on USB COM2". With no computer connected the first line is still listed (ready or not).
+     */
+    function serialLines() {
+        const st = asState();
+        if (!st) return [];
+        const comps = Array.isArray(st.computers) ? st.computers : [];
+        const dexPc = comps.find((c) => c.link === 'usb' && (!c.usbDevice || c.usbDevice === st.id));
+        const others = comps.filter((c) => c !== dexPc);
+        const lines = [];
+        const n = Math.max(1, others.length);
+        for (let i = 0; i < n; i++) {
+            const port = i === 0 ? 1 : i + 2; // COM2 is the USB serial line
+            lines.push({ key: `com${port}`, label: `Hayes Compatible on COM${port} (ActiveSync #${i + 1})`, computer: others[i] || null, usb: false });
+        }
+        const mcx = root.melatonContinuity;
+        const pc = mcx && typeof mcx.continuityPc === 'function' ? mcx.continuityPc() : null;
+        if (dexPc || pc) lines.push({ key: 'usbcom2', label: 'Serial Cable on USB COM2', computer: dexPc || null, usb: true, pc });
+        return lines;
+    }
+    /** A line's status rows: Line Status, Line Speed, Carrier Detect, Ring Indicator. */
+    function lineFacts(line) {
+        const st = asState() || {};
         const mcx = root.melatonContinuity;
         const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
-        const stats = (cfg && cfg.stats) || {};
-        const comp = st && Array.isArray(st.computers) && st.computers[0] ? (st.computers[0].name || '') : '';
-        const rows = [
-            ['Line:', stats.activeSync || (st && st.online ? 'Connected' : 'Not connected')],
-            ['Partnership:', st ? (st.session === 'partner' ? 'Partner' : st.session === 'guest' ? 'Guest' : 'None') : '\u2014']
+        const ring = !(cfg && cfg.config && cfg.config.wakeOnRing === false);
+        // Active: the other computer is connected on it; Connected: ActiveSync is up and ready for one;
+        // Disconnected: it cannot connect at the moment
+        const status = line.computer ? 'Active' : st.online ? 'Connected' : 'Disconnected';
+        // ActiveSync's data rate, not the server connection's: the Continuity PC is attached directly
+        // (USB-C or Wi-Fi Direct, their top rate); a computer's line runs at this phone's network link
+        let speed = '\u2014';
+        if (line.usb) speed = line.pc && line.pc.attach === 'wireless' ? '866 Mbps (Wi-Fi Direct)' : '10 Gbps (USB-C)';
+        else {
+            const dev = root.wmShell && typeof root.wmShell.deviceStatus === 'function' ? root.wmShell.deviceStatus() : null;
+            const wifi = dev && dev.wifi;
+            if (wifi && wifi.connected && Number(wifi.linkMbps) > 0) speed = `${Number(wifi.linkMbps)} Mbps (Wi-Fi)`;
+            else if (dev && dev.active === 'cellular') speed = 'Cellular data';
+        }
+        return [
+            ['Line Status:', status],
+            ['Line Speed:', speed],
+            ['Carrier Detect:', st.online ? 'Present' : 'Not present'],
+            ['Ring Indicator:', ring ? 'Enabled' : 'Disabled']
         ];
-        if (comp) rows.push(['Computer:', comp]);
-        if (stats.lastRing) rows.push(['Last ring:', stats.lastRing]);
+    }
+    /** What the line is partnered with. */
+    function partnerFacts(line) {
+        const st = asState() || {};
+        const c = line.computer;
+        const rows = [];
+        if (c) {
+            rows.push(['Computer:', c.name || (line.usb ? 'Continuity PC' : 'Computer')]);
+            if (c.since) rows.push(['Since:', new Date(c.since).toLocaleString()]);
+        } else rows.push(['Computer:', line.usb ? 'Continuity PC' : 'None connected']);
+        rows.push(['Partnership:', st.session === 'partner' ? 'Partner' : st.session === 'guest' ? 'Guest' : 'None']);
+        if (st.name) rows.push(['This device:', st.name]);
         return rows;
     }
     // the Miniport's Idle timeout choices (minutes; 0 = never disconnect)
@@ -267,18 +315,26 @@
             const i = info();
             const mcx = root.melatonContinuity;
             const mp = mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null;
-            if (d.adapter === 'com1') {
-                // ActiveSync's line (#815): the always-ready link; its ring wakes the Miniport
-                setHeader(el, COM1_NAME);
+            if (typeof d.adapter === 'string' && d.adapter.startsWith('as:')) {
+                // an ActiveSync line (#815): always up; its ring wakes the Melaton Café Miniport
+                const lineOf = () => serialLines().find((l) => `as:${l.key}` === d.adapter) || { label: 'ActiveSync', computer: null, usb: false };
+                const line = lineOf();
+                setHeader(el, line.label);
                 const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
                 if (d.ring == null) d.ring = !(cfg && cfg.config && cfg.config.wakeOnRing === false);
-                el.innerHTML = `<p>ActiveSync keeps this line open to the computer at all times. When the server rings it (updates are ready, a workspace changed), the Melaton Caf\u00e9 Miniport connects.</p>
+                el.innerHTML = `<div data-f="facts"></div>
                     ${ui.check('ring', 'Wake on ring', d.ring, 'data-k="ring"')}
-                    ${ui.sub(`${COM1_NAME} Status`)}<div data-f="facts"></div>`;
+                    ${ui.note('When the server rings this line (updates are ready, a workspace changed), the Melaton Caf\u00e9 Miniport connects.')}
+                    ${ui.sub('Partnered with')}<div data-f="partner"></div>`;
                 const box = el.querySelector('input[data-k="ring"]');
                 if (box) box.addEventListener('change', () => { d.ring = box.checked; });
                 const facts = el.querySelector('[data-f="facts"]');
-                const paint = () => { const h = ui.facts(activeSyncFacts()); if (facts.innerHTML !== h) facts.innerHTML = h; };
+                const partner = el.querySelector('[data-f="partner"]');
+                const paint = () => {
+                    const l = lineOf();
+                    const a = ui.facts(lineFacts(l)); if (facts.innerHTML !== a) facts.innerHTML = a;
+                    const b = ui.facts(partnerFacts(l)); if (partner.innerHTML !== b) partner.innerHTML = b;
+                };
                 paint();
                 liveTick(el, paint);
                 return;
@@ -332,7 +388,7 @@
             // ok on the adapter's page goes back to the list, as on the device
             if (d.adapter) {
                 const mcx = root.melatonContinuity;
-                if (d.adapter === 'com1' && d.ring != null && mcx && typeof mcx.setMiniportConfig === 'function') mcx.setMiniportConfig({ wakeOnRing: d.ring });
+                if (typeof d.adapter === 'string' && d.adapter.startsWith('as:') && d.ring != null && mcx && typeof mcx.setMiniportConfig === 'function') mcx.setMiniportConfig({ wakeOnRing: d.ring });
                 if (d.adapter === 'cafe' && mcx && typeof mcx.setMiniportConfig === 'function') {
                     const set = {};
                     if (d.idle != null) set.idleMinutes = d.idle;
@@ -346,6 +402,41 @@
                 if (d.rerender) d.rerender();
                 return false;
             }
+            return [];
+        }
+    });
+
+    // ---------------------------------------------------------------- Continuity (#798)
+    // The Continuity PC (this phone's DeX window): what happens when its display is unplugged.
+
+    wmSettings.registerPage({
+        id: 'continuity',
+        tab: 'connections',
+        label: 'Continuity',
+        icon: 'set-usb',
+        tabs: [],
+        available: () => !!(root.melatonContinuity && root.melatonContinuity.available),
+        init() {
+            const mcx = root.melatonContinuity;
+            const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
+            return { autoClose: !!(cfg && cfg.config && cfg.config.autoCloseDesktop) };
+        },
+        render(el, tab, d) {
+            el.classList.add('wm-setc');
+            setHeader(el, 'Continuity');
+            const mcx = root.melatonContinuity;
+            const pc = mcx && typeof mcx.continuityPc === 'function' ? mcx.continuityPc() : null;
+            const state = !pc ? 'Not connected' : pc.displayGone ? 'Disconnected (the desktop is still running)' : pc.state === 'ready' ? `Connected via ${pc.attach === 'wireless' ? 'Wi-Fi Direct' : 'USB-C'}` : 'Starting';
+            el.innerHTML = `<p>A display, dock or computer screen connected to this phone runs the Melaton desktop from it: the Continuity PC.</p>
+                ${ui.facts([['Continuity PC:', state], ...(pc && pc.width ? [['Display:', `${pc.width} \u00d7 ${pc.height}`]] : [])])}
+                ${ui.check('autoclose', 'Close the desktop when the display is disconnected', d.autoClose, 'data-k="autoclose"')}
+                ${ui.note('Otherwise the desktop keeps running until it is closed, and the Continuity icon stays dimmed in the title bar.')}`;
+            const box = el.querySelector('input[data-k="autoclose"]');
+            if (box) box.addEventListener('change', () => { d.autoClose = box.checked; });
+        },
+        commit(d) {
+            const mcx = root.melatonContinuity;
+            if (mcx && typeof mcx.setMiniportConfig === 'function') mcx.setMiniportConfig({ autoCloseDesktop: !!d.autoClose });
             return [];
         }
     });
@@ -661,7 +752,8 @@
         id: 'remote',
         tab: 'connections',
         label: 'Remote Access',
-        icon: 'set-usb',
+        // Remote Desktop Mobile's icon (tsclient); set-usb went to Continuity
+        icon: 'app-remote-desktop-mobile-lg',
         tabs: [['general', 'General'], ['generation', 'Generation'], ['openwith', 'Open With']],
         available: () => typeof root.setAgentPriorityClient === 'function' && typeof root.isAgentPriorityClient === 'function',
         init() {

@@ -658,6 +658,58 @@
     };
     /** The phone window: true while it carries the DeX window's connection (the title bar's glyph). */
     api.active = () => isPhone() && carryingNow;
+
+    // ---- the Continuity PC (the DeX window) as the phone sees it: its title bar glyph and popup
+    //
+    // The DeX window says how it is doing ({type:"dex-state"}: booting / ready, its display's size and
+    // attachment); the app says when its display goes ({type:"dex-display", state:"removed"}). The phone
+    // window's glyph: none without a DeX window; half opacity while it boots (presence) and after its
+    // display was unplugged while the window still runs; solid once its desktop is up.
+    const dex = { present: false, state: null, displayGone: false, attach: null, width: 0, height: 0 };
+    function dexScreen() {
+        const D = root.AndroidDisplay;
+        try { return D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; } catch (_) { return null; }
+    }
+    function postDexState() {
+        if (!isDw()) return;
+        const c = root.wsClient;
+        const info = dexScreen() || {};
+        const dpr = root.devicePixelRatio || 1;
+        api.post({
+            type: 'dex-state',
+            state: c && c.initializationCompleted ? 'ready' : 'booting',
+            attach: info.attach || 'usb',
+            width: info.widthPx || Math.round((root.screen && root.screen.width || 0) * dpr),
+            height: info.heightPx || Math.round((root.screen && root.screen.height || 0) * dpr)
+        });
+    }
+    api.on('dex-state?', () => postDexState());
+    api.on('dex-state', (m) => {
+        if (!isPhone()) return;
+        dex.present = true;
+        dex.state = m.state === 'ready' ? 'ready' : 'booting';
+        dex.attach = m.attach || dex.attach;
+        dex.width = Number(m.width) || dex.width;
+        dex.height = Number(m.height) || dex.height;
+        if (m.state === 'ready') dex.displayGone = false;
+        statusChanged();
+    });
+    api.on('dex-display', (m) => { if (isPhone() && m.state === 'removed') { dex.displayGone = true; statusChanged(); } });
+    api.on('peer', (m) => {
+        if (!isPhone() || m.role !== 'desktop') return;
+        if (m.state === 'joined') { Object.assign(dex, { present: true, state: 'booting', displayGone: false }); api.post({ type: 'dex-state?' }); }
+        else Object.assign(dex, { present: false, state: null, displayGone: false });
+        statusChanged();
+    });
+    /** The phone window's Continuity glyph: null (hidden) | 'dim' (presence, booting, unplugged) | 'solid'. */
+    api.continuityIcon = () => {
+        if (!isPhone()) return null;
+        if (!dex.present && !carryingNow) return null;
+        if (dex.present && (dex.state !== 'ready' || dex.displayGone)) return 'dim';
+        return 'solid';
+    };
+    /** The Continuity PC for the glyph's popup: { attach: 'usb'|'wireless', width, height, state, displayGone }. */
+    api.continuityPc = () => (dex.present ? Object.assign({}, dex) : null);
     /** The DeX window of a hybrid phone leaves updates to the phone (serviceWorkerManager.js). */
     api.isDexWindow = () => isDw();
     /**
@@ -723,6 +775,13 @@
         sh.notify({ title: 'Battery optimisation', text, icon: 'warning', asNote: true, timeout: false, buttons });
     }
     api.checkPower = checkPower;
+
+    // the DeX window: tell the phone it is here (booting), and again when its desktop is up
+    if (api.available) {
+        setTimeout(() => postDexState(), 0);
+        // desktopBootDone: public/scripts/comp/desktopBoot.js (the Vista boot is over)
+        if (!root.isLaunchPage && root.document) root.document.addEventListener('desktopBootDone', () => postDexState());
+    }
 
     // the Miniport's messages, and its state now
     if (miniport.present()) {

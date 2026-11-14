@@ -4105,3 +4105,9 @@ html.ui-mobile .wm-progress-layer .wm-msgbox-buttons {
 html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
     display: none !important;
 }
+
+/* Continuity (#798): the Continuity PC's glyph at half opacity while its window boots, and after its
+ * display was unplugged while it still runs (presence); its popup's display / dock battery row */
+.wm-status-icon[data-role="continuity"].is-presence { opacity: .5; }
+.wm-bubble .wm-cty-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
+.wm-bubble .wm-cty-bat { display: inline-flex; align-items: center; gap: calc(2 * var(--wm-px)); }
