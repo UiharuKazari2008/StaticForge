@@ -119,7 +119,9 @@
 
     /** The RAM fitted, as makers sell it (6 GB), from what Android can use (5.26 GB). */
     const RAM_SIZES = [1, 1.5, 2, 3, 4, 6, 8, 10, 12, 16, 18, 20, 24, 32, 48, 64];
-    function installedRam(bytes) {
+    function installedRam(bytes, mem) {
+        // the boot property the maker sets (ro.boot.ddr_size), when the app reads it
+        if (mem && Number(mem.installedBytes) > 0) return Math.round(Number(mem.installedBytes) / 1073741824 * 2) / 2;
         const gb = Number(bytes) / 1073741824;
         if (!Number.isFinite(gb) || gb <= 0) return 0;
         return RAM_SIZES.find((n) => n >= gb) || Math.ceil(gb);
@@ -194,17 +196,18 @@
             const core = f && Array.isArray(f.cores) ? f.cores.find((c) => c.cpu === live.index) : null;
             if (!core) return [['Current speed', na]];
             return [['Current speed', core.online === false ? 'Parked (offline)' : core.curMHz ? `${Math.round(core.curMHz)} MHz` : na],
+                ['Utilization', core.loadPct != null ? `${Math.round(core.loadPct)}%` : ''], ['All cores', f.loadPct != null ? `${Math.round(f.loadPct)}%` : ''],
                 ['Minimum speed', core.minMHz ? `${Math.round(core.minMHz)} MHz` : ''], ['Maximum speed', core.maxMHz ? `${Math.round(core.maxMHz)} MHz` : ''],
-                ['Load', core.curMHz && core.maxMHz ? `${Math.round(core.curMHz * 100 / core.maxMHz)}% of maximum speed` : ''], ['CPU number', String(live.index)]].filter((r) => r[1]);
+                ['Speed', core.curMHz && core.maxMHz ? `${Math.round(core.curMHz * 100 / core.maxMHz)}% of maximum` : ''], ['CPU number', String(live.index)]].filter((r) => r[1]);
         }
         if (live.kind === 'gpu') {
             const f = bridgeJson('getCpuFrequencies');
             const g = f && f.gpu;
             if (!g || (!g.curMHz && !g.maxMHz)) return [['Current clock', na]];
             // the clock file reads 0 while the GPU sleeps
-            if (!g.curMHz) return [['Current clock', 'Idle'], ['Maximum clock', `${Math.round(g.maxMHz)} MHz`]];
+            if (!g.curMHz) return [['Current clock', 'Idle'], ['Maximum clock', `${Math.round(g.maxMHz)} MHz`], ['Utilization', g.loadPct != null ? `${Math.round(g.loadPct)}%` : '']].filter((r) => r[1]);
             return [['Current clock', `${Math.round(g.curMHz)} MHz`], ['Maximum clock', g.maxMHz ? `${Math.round(g.maxMHz)} MHz` : ''],
-                ['Load', g.maxMHz ? `${Math.round(g.curMHz * 100 / g.maxMHz)}% of maximum clock` : '']].filter((r) => r[1]);
+                ['Utilization', g.loadPct != null ? `${Math.round(g.loadPct)}%` : ''], ['Clock', g.maxMHz ? `${Math.round(g.curMHz * 100 / g.maxMHz)}% of maximum` : '']].filter((r) => r[1]);
         }
         if (live.kind === 'system') {
             const hw = bridgeJson('getInfo');
@@ -213,7 +216,10 @@
             const gb = (b) => (b ? `${(b / 1073741824).toFixed(2)} GB` : '');
             return [['Memory (RAM)', gb(m && m.totalBytes)], ['Memory available', gb(m && m.availBytes)],
                 ['Memory in use', m && m.totalBytes ? `${Math.round((m.totalBytes - m.availBytes) * 100 / m.totalBytes)}%` : ''], ['Low memory', m ? (m.lowMemory ? 'Yes' : 'No') : ''],
-                ['Thermal status', t && t.status ? t.status.replace(/^\w/, (c) => c.toUpperCase()) : ''], ['Thermal headroom', t && t.headroom != null ? `${Math.round(t.headroom * 100)}%` : '']].filter((r) => r[1]);
+                ['Processor utilization', (() => { const f = bridgeJson('getCpuFrequencies'); return f && f.loadPct != null ? `${Math.round(f.loadPct)}%` : ''; })()],
+                ['Thermal status', t && t.status ? t.status.replace(/^\w/, (c) => c.toUpperCase()) : ''], ['Thermal headroom', t && t.headroom != null ? `${Math.round(t.headroom * 100)}%` : '']]
+                .concat(t && Array.isArray(t.sensors) ? t.sensors.filter((x) => x && x.name && x.tempC != null && Number(x.tempC) >= 10).map((x) => [`${x.name} temperature`, `${num(x.tempC, 1)} \u00b0C`]) : [])
+                .filter((r) => r[1]);
         }
         if (live.kind === 'storage') {
             const hw = bridgeJson('getInfo');
@@ -263,6 +269,7 @@
         };
         const uniq = (a) => Array.from(new Set(a.filter(Boolean)));
         const maker = dev.manufacturer || '';
+        const soc = hw.soc || {};
 
         // Batteries: the charger and the cell
         const cap = bat.designCapacityMah ? `${Math.round(bat.designCapacityMah).toLocaleString()} mAh` : '';
@@ -278,12 +285,13 @@
             ['multipleAdvertisement', 'Multiple advertisement'], ['offloadedFiltering', 'Offloaded filtering'], ['offloadedScanBatching', 'Offloaded scan batching'], ['leAudio', 'LE Audio']];
         if (bt.present) add('Bluetooth Radios', 'bluetooth', [
             { name: bt.le ? 'Generic Bluetooth Radio (Bluetooth Low Energy)' : 'Generic Bluetooth Radio', info: { manufacturer: maker || '(Generic Bluetooth Radio)', location: 'Internal radio',
-                props: [['Bluetooth version', bt.version], ['Low Energy', bt.le == null ? '' : bt.le ? 'Supported' : 'Not supported']].concat(BT_FEATURES.filter(([k]) => btf[k] != null).map(([k, l]) => [l, btf[k] ? 'Supported' : 'Not supported'])) } },
+                props: [['Bluetooth version', bt.version ? `${bt.version}${bt.versionSource === 'features' ? ' or later (from the radio\'s features)' : bt.versionSource === 'spec' && (soc.name || soc.model) ? ` (${soc.name || soc.model} specification)` : ''}` : ''],
+                ['Bluetooth chip', bt.chip && typeof bt.chip === 'object' ? (bt.chip.name || bt.chip.raw) : bt.chip], ['Firmware', bt.chip && typeof bt.chip === 'object' && bt.chip.raw && bt.chip.raw !== bt.chip.name ? bt.chip.raw : ''], ['Low Energy', bt.le == null ? '' : bt.le ? 'Supported' : 'Not supported']].concat(BT_FEATURES.filter(([k]) => btf[k] != null).map(([k, l]) => [l, btf[k] ? 'Supported' : 'Not supported'])) } },
             'Microsoft Bluetooth Enumerator']);
-        const soc = hw.soc || {};
         add('Computer', 'computer', [{ name: ARCH_PC[archOf(hw)] || 'ACPI ARM64-based PC', info: {
             manufacturer: maker, location: 'on System board',
-            props: [['Model', [maker, dev.marketName || dev.model].filter(Boolean).join(' ')], ['Installed memory (RAM)', hw.memory && hw.memory.totalBytes ? `${installedRam(hw.memory.totalBytes)} GB (${(hw.memory.totalBytes / 1073741824).toFixed(2)} GB usable)` : ''], ['Model number', dev.model], ['Board', dev.board], ['System on chip', [soc.manufacturer, soc.model].filter(Boolean).join(' ')], ['Instruction sets', list(soc.abis).join(', ')],
+            props: [['Model', [maker, dev.marketName || dev.model].filter(Boolean).join(' ')], ['Installed memory (RAM)', hw.memory && hw.memory.totalBytes ? `${installedRam(hw.memory.totalBytes, hw.memory)} GB${hw.memory.type || soc.ramType ? ` ${hw.memory.type || soc.ramType}` : ''} (${(hw.memory.totalBytes / 1073741824).toFixed(2)} GB usable)` : ''],
+                ['Manufacturing process', soc.processNm ? `${soc.processNm} nm` : ''], ['Model number', dev.model], ['Board', dev.board], ['System on chip', [soc.manufacturer, soc.model].filter(Boolean).join(' ')], ['Instruction sets', list(soc.abis).join(', ')],
                 ['Android', dev.androidRelease ? `${dev.androidRelease} (API ${dev.sdk || '?'})` : ''], ['Security patch', dev.securityPatch], ['Build', dev.buildId], ['Kernel', dev.kernel]],
             live: { kind: 'system' } } }]);
 
@@ -302,9 +310,14 @@
                 props: [['Volume label', v.label], ['Volume ID', v.uuid || v.id], ['Kind', v.kind], ['File system', v.filesystem], ['Data partition', v.dataTotalBytes ? sizeText(v.dataTotalBytes) : ''],
                     ['Removable', v.removable ? 'Yes' : 'No'], ['Emulated', v.emulated ? 'Yes' : 'No']],
                 live: { kind: 'storage', id: v.id } } }))));
-        const gpu = hw.gpu || {};
-        add('Display adapters', 'display-adapters', [{ name: gpuName(), info: { manufacturer: soc.manufacturer || maker, location: 'on System on chip',
-            props: [['System on chip', soc.name || soc.model], ['Maximum clock', gpu.maxMHz ? `${Math.round(gpu.maxMHz)} MHz` : ''], ['Minimum clock', gpu.minMHz ? `${Math.round(gpu.minMHz)} MHz` : '']], live: { kind: 'gpu' } } }]);
+        // the app reports gpu.model as { raw, name, cores } (an older build: a string)
+        const gpu0 = hw.gpu || {};
+        const gm = gpu0.model && typeof gpu0.model === 'object' ? gpu0.model : { raw: gpu0.model || '', name: gpu0.name || '', cores: gpu0.cores || 0 };
+        const gpu = Object.assign({}, gpu0, { name: gm.name || gpu0.name, cores: gm.cores || gpu0.cores, model: gm.raw || '' });
+        const gpuLabel = gpu.name ? `${/^Mali/i.test(gpu.name) ? 'ARM ' : /^Adreno/i.test(gpu.name) ? 'Qualcomm ' : ''}${gpu.name}${gpu.cores ? ` (${gpu.cores} cores)` : ''}` : gpuName();
+        add('Display adapters', 'display-adapters', [{ name: gpuLabel, info: { manufacturer: soc.manufacturer || maker, location: 'on System on chip',
+            props: [['System on chip', soc.name || soc.model], ['Graphics processor', gpu.model || gpuName()], ['Cores', gpu.cores ? String(gpu.cores) : ''],
+                ['Maximum clock', gpu.maxMHz ? `${Math.round(gpu.maxMHz)} MHz` : ''], ['Minimum clock', gpu.minMHz ? `${Math.round(gpu.minMHz)} MHz` : ''], ['Renderer (WebGL)', gpuName()]], live: { kind: 'gpu' } } }]);
 
         // input: Windows puts touch screens and pens under Human Interface Devices
         const input = list(hw.input);
@@ -362,7 +375,7 @@
         // Vista lists removable media again under Portable Devices, by drive
         add('Portable Devices', 'portable', vols.filter((v) => v.removable && v.kind !== 'internal').map((v) => v.label || (v.kind === 'usb' ? 'USB Drive' : 'Storage Card')));
         add('Processors', 'processors', processorRows(hw).map((name, i) => ({ name, info: { manufacturer: soc.manufacturer || maker, location: `Core ${i}`,
-            props: [['Processor', soc.name || soc.model], ['Model', soc.model]], live: { kind: 'cpu', index: processorCpuIndex(hw, i) } } })));
+            props: [['Processor', soc.name || soc.model], ['Model', soc.model], ['Manufacturing process', soc.processNm ? `${soc.processNm} nm` : '']], live: { kind: 'cpu', index: processorCpuIndex(hw, i) } } })));
         const nfc = hw.nfc || {};
         if (nfc.present) add('Proximity devices', 'proximity', [`NFC Controller${nfc.enabled === false ? ' (turned off)' : ''}`, nfc.hce && 'NFC Host Card Emulation', nfc.secureNfc && 'NFC Secure Element']);
         const sec = hw.security || {};

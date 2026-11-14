@@ -283,8 +283,9 @@
             // Windows 7's wording: what is fitted, then what the system can use
             memory: (() => {
                 const total = hw.memory && hw.memory.totalBytes;
-                const fitted = dm && typeof dm.installedRam === 'function' ? dm.installedRam(total) : 0;
-                return fitted ? `${fitted.toFixed(2)} GB (${formatMemory(total)} usable)` : formatMemory(total);
+                const fitted = dm && typeof dm.installedRam === 'function' ? dm.installedRam(total, hw.memory) : 0;
+                const type = (hw.memory && hw.memory.type) || soc.ramType || '';
+                return fitted ? `${fitted.toFixed(2)} GB${type ? ` ${type}` : ''} (${formatMemory(total)} usable)` : formatMemory(total);
             })(),
             screen: (() => {
                 const d = Array.isArray(hw.displays) ? (hw.displays.find((x) => x && x.default) || hw.displays[0]) : null;
