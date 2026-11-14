@@ -42,6 +42,20 @@
                 });
             }).observe({ type: 'longtask', buffered: true });
         } catch (_) { /* no long task timing in this WebView */ }
+        // frames over 200 ms with the scripts behind them (long tasks name no code): source file,
+        // function, what invoked it, and the forced style/layout inside it
+        try {
+            new root.PerformanceObserver((list) => {
+                list.getEntries().forEach((e) => {
+                    if (e.duration < 200) return;
+                    const scripts = (e.scripts || []).filter((x) => x.duration > 20).slice(0, 3).map((x) => {
+                        const file = String(x.sourceURL || '').split('/').pop().split('?')[0];
+                        return `${Math.round(x.duration)}ms ${file}${x.sourceFunctionName ? ':' + x.sourceFunctionName : ''} (${String(x.invoker || x.invokerType || '').slice(0, 50)}${x.forcedStyleAndLayoutDuration > 20 ? ', layout ' + Math.round(x.forcedStyleAndLayoutDuration) + 'ms' : ''})`;
+                    });
+                    lagNote('frame', scripts.join(' | ') || 'no script (style/layout/paint)', e.duration);
+                });
+            }).observe({ type: 'long-animation-frame', buffered: true });
+        } catch (_) { /* no long animation frame timing in this WebView */ }
     }
 
     function emit(type, msg, from) {
