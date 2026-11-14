@@ -197,6 +197,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-role="battery"] {
     margin-left: calc(5 * var(--wm-px));
 }
 
+/* a full title bar gives up the battery's extra gap first (#811, wmShell fitStatusNow) */
+html.ui-mobile[data-wm-version="6.5"] .wm-titlebar.wm-status-tight .wm-status-icon[data-role="battery"] {
+    margin-left: 0;
+}
+
 /* the art: shellres.192.dll icon frames. H+, 4G, 4G+, NR, NR-A, UW, 5G and 5G+ (data types WM 6.5
  * never had) are Melaton-drawn in the ROM's style: the G / E / 3G / H icons' rounded box with the
  * letters cut out. 2x is the ROM frame; the 1x art serves only a 1x scale. */

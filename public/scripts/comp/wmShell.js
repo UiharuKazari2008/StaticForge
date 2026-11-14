@@ -2931,17 +2931,29 @@
             }
             return right <= box.right + 1;
         };
-        ['roaming', 'volume', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
+        ['roaming', 'volume', 'battery', ...STATUS_APP_ROLES].forEach((r) => el(r).classList.remove('wm-shed'));
+        bar.classList.remove('wm-status-tight');
         statusFolded = [];
-        // WM 6.1's notification area (#811): room for a few icons is kept left of the device icons
-        // (the title ends at the same place whatever is pending). Every app icon shows while the
-        // bar has room; only when it does not, the last ones fold into the one group icon (whose
-        // tap opens the tray of them), as few as it takes; the first icons keep their own places
+        // WM 6.1's notification area (#811, Yukimi Nov 13). Room for a few icons is kept left of
+        // the device icons, so the title ends at the same place whatever is pending. When the bar
+        // runs short, what is not needed steps aside first: the kept room, 6.5's extra gap before
+        // the battery, the volume icon, the battery while it charges. Never: data, signal / roaming,
+        // Continuity, the battery on battery power. Then the app icons fold into the one group
+        // icon (its tap opens the tray of them): the ongoing and the newest stay out of it, and
+        // more stay out while the icons keep to the bar's right half (the 50 % mark)
         const slots = statusSlots();
         const apps = STATUS_APP_ROLES.filter((r) => !el(r).hidden);
+        const now = Date.now();
+        apps.forEach((r) => { if (!statusSeenAt.has(r)) statusSeenAt.set(r, now); });
+        STATUS_APP_ROLES.forEach((r) => { if (el(r).hidden) statusSeenAt.delete(r); });
+        const foldable = apps.filter((r) => !STATUS_NEVER_FOLD.has(r));
+        // who stays out of the group first: ongoing work, then the newest
+        const outOrder = foldable.slice().sort((x, y) => (statusOngoing(el(y)) - statusOngoing(el(x))) || (statusSeenAt.get(y) - statusSeenAt.get(x)));
         const fold = (keep) => {
-            apps.forEach((r, i) => el(r).classList.toggle('wm-shed', i >= keep));
-            statusFolded = apps.slice(keep);
+            const out = new Set(outOrder.slice(0, keep));
+            const folded = foldable.filter((r) => !out.has(r));
+            apps.forEach((r) => el(r).classList.toggle('wm-shed', folded.includes(r)));
+            statusFolded = folded;
             paintNotifyIcon();
         };
         paintNotifyIcon();
@@ -2960,22 +2972,66 @@
         const relayout = () => { if (cameraInBar) cameraInBar = applyCameraHole(bar); };
         // the kept room (not with the camera in the bar: its own layout decides there)
         if (!cameraInBar) setReserve(free);
+        // the 50 % mark: the leftmost icon starts in the bar's right half (the kept room aside)
+        const half = () => {
+            const box = bar.getBoundingClientRect();
+            const mid = box.left + box.width / 2;
+            return !Array.from(bar.querySelectorAll('.wm-status-icon')).some((i) => !i.hidden && !i.classList.contains('wm-shed') && i.getClientRects().length && i.getBoundingClientRect().left < mid);
+        };
+        const ok = () => fits() && half();
+        const step = (fn) => { fn(); relayout(); return ok(); };
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
         // status icons (Yukimi, Nov 13); Today keeps it
-        if (cameraInBar && current !== 'today' && !el('volume').hidden) { el('volume').classList.add('wm-shed'); relayout(); }
-        if (fits()) return;
-        // a bar too narrow for the kept room gives it up first
-        if (!reserve.hidden) { setReserve(0); if (fits()) return; }
-        if (!el('roaming').hidden) { el('roaming').classList.add('wm-shed'); relayout(); if (fits()) return; }
-        // fold from the end, one more each time: a group holds two or more (one app icon alone
-        // in it would take the same room as the icon itself)
+        if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
+        relayout();
+        if (ok()) return;
+        if (!reserve.hidden && step(() => setReserve(0))) return;
+        if (WM65 && step(() => bar.classList.add('wm-status-tight'))) return;
+        if (!el('volume').hidden && step(() => el('volume').classList.add('wm-shed'))) return;
+        const bat = el('battery');
+        if (!bat.hidden && bat.dataset.icon === 'battery-charging' && step(() => bat.classList.add('wm-shed'))) return;
+        // fold from the oldest, one more each time; a group holds two or more (one app icon
+        // alone in it takes the same room as the icon itself), and the ongoing or newest one stays
+        // out while the bar only passes the 50 % mark
         const notesInGroup = notesForBubbleIcon().length ? 1 : 0;
-        for (let keep = apps.length - (notesInGroup ? 1 : 2); keep >= 0; keep--) {
-            fold(keep);
-            relayout();
-            if (fits()) return;
-        }
-        if (!el('volume').hidden) { el('volume').classList.add('wm-shed'); relayout(); }
+        const first = foldable.length - (notesInGroup ? 1 : 2);
+        for (let keep = first; keep >= 1; keep--) if (step(() => fold(keep))) return;
+        if (fits()) return;
+        // a bar that is really full (a long title's floor, the X): all of them go in
+        if (foldable.length && foldable.length + notesInGroup >= 2) { fold(0); relayout(); }
+    }
+
+    // #811: app icons that always keep their place (Continuity: the phone carries the DeX window)
+    const STATUS_NEVER_FOLD = new Set(['continuity']);
+    // when each app icon came up (the newest stays out of the group)
+    const statusSeenAt = new Map();
+    /** Ongoing work on an icon: the Director's turn, prints, an update downloading. */
+    function statusOngoing(i) {
+        if (!i) return 0;
+        const r = i.dataset.role;
+        return (r === 'prints' || (r === 'director' && i.dataset.clap === 'working') || (r === 'update' && i.dataset.dl === '1')) ? 1 : 0;
+    }
+
+    /*
+     * The fold follows the icons at once (#811: "delayed, and not on an add / remove"): an icon
+     * shown or hidden, or the battery's glyph changing (charging), refits in the same task, before
+     * the frame is drawn. The fit's own writes (the group icon, the kept room) are dropped.
+     */
+    let statusFitting = false;
+    function watchStatusIcons() {
+        const status = shell && shell.querySelector('.wm-titlebar');
+        if (!status || status._wmFitWatch) return;
+        const mo = new MutationObserver((list) => {
+            if (statusFitting) return;
+            // data-icon: only the battery's (charging or not); the data arrows change it with every packet
+            const counts = (m) => m.target.classList && m.target.classList.contains('wm-status-icon') && m.target.dataset.role !== 'notify'
+                && (m.attributeName === 'hidden' || m.target.dataset.role === 'battery');
+            if (!list.some(counts)) return;
+            statusFitting = true;
+            try { fitStatusNow(); snapStatusIcons(); } finally { mo.takeRecords(); statusFitting = false; }
+        });
+        mo.observe(status, { subtree: true, attributes: true, attributeFilter: ['hidden', 'data-icon'] });
+        status._wmFitWatch = mo;
     }
 
     /** The title bar's kept room in icons (#811): Settings key wmStatusSlots, 1 to 4, 2 by default. */
@@ -8453,6 +8509,7 @@
         watchDirector();
         watchDevice();
         watchToasts();
+        watchStatusIcons();
         watchSystemSounds();
         watchRequestBusy();
         routeAlert();
