@@ -291,17 +291,24 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-exp {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom .wm-ti-exp { animation: none; }
 }
 
-/* Coming back to Today (#800, wmTitanium.js entrance): the band is up and empty, the list scales in
- * from the top left at half size (compositor-only: transform and opacity) while it runs down from above
- * the screen into the clock (550 ms, the lift-without-speed curve), then the clock panel grows in */
-@keyframes wm-ti-enter {
-    from { transform: scale(0.5); opacity: 0; }
-    to { transform: scale(1); opacity: 1; }
+/* Coming back to Today (#800, wmTitanium.js entrance): the band is up and empty, the list runs up from
+ * below the screen into the clock (550 ms, the lift-without-speed curve) while it fades in from nothing
+ * over the whole run and grows slightly, the grow done halfway (Yukimi, Nov 14; compositor-only:
+ * transform and opacity); then the clock panel grows in. No input until both are over (the script). */
+@keyframes wm-ti-enter-grow {
+    from { transform: scale(0.9); }
+    50%, to { transform: scale(1); }
+}
+
+@keyframes wm-ti-enter-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list {
-    transform-origin: 0 0;
-    animation: wm-ti-enter 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    transform-origin: 50% 50%;
+    animation: wm-ti-enter-grow 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) both,
+        wm-ti-enter-fade 0.55s ease-in-out both;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-exp {

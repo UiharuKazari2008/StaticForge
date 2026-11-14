@@ -63,6 +63,8 @@
     // the clock panel grows in as after any move. ENTER_ROWS: how far below its place the list starts.
     const ENTER_MS = 550;       // the entrance's run up into the clock (and its scale-in, wm-titanium.css)
     const ENTER_ZOOM_MS = 450;  // ... then the clock panel grows and fades in (wm-ti-zoom-enter), larger than a move's
+    let enterLockUntil = 0;     // touches and keys are held off until the entrance and its panel grow are over (#800)
+    const entryLocked = () => performance.now() < enterLockUntil;
     const ENTER_RECENT_MS = 1500; // a Home press this soon after the page came back belongs to that return
     // A Home press while Today is in front blinks the page hidden for a moment (Android pauses and
     // resumes the launcher: 16 ms on the Fold7); hidden longer, the user was in another app
@@ -594,6 +596,7 @@
     function select(i, animate) {
         i = Math.max(0, Math.min(panels.length - 1, i));
         if (!animate) {
+            enterLockUntil = 0;
             host.classList.remove('is-entering');
             cancelAnimationFrame(settle); settle = 0; tw = null;
             clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom', 'is-zoom-enter');
@@ -830,6 +833,10 @@
         let inBand = false;
         let trail = [];  // the finger's last points { t, y }, for its speed at the lift
         let downAt = 0;
+        // the entrance takes no input until it is over (Yukimi, Nov 14): touches on the list, the
+        // arrows and the panel are swallowed here, before any other handler sees them
+        const eatWhileEntering = (e) => { if (entryLocked()) { e.stopImmediatePropagation(); e.preventDefault(); } };
+        ['pointerdown', 'pointerup', 'click', 'contextmenu'].forEach((t) => host.addEventListener(t, eatWhileEntering, { capture: true }));
         host.addEventListener('pointerdown', (e) => {
             if (id != null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             if (e.target.closest('.wm-ti-arrow') || slide.active) return;
@@ -936,6 +943,7 @@
         const t = e.target;
         if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
         if (document.querySelector('#wmShell > .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
+        if (entryLocked()) { if (/^Arrow|^Enter$/.test(e.key)) e.preventDefault(); return; }
         const at = tw ? tw.b : sel; // a key while the list moves counts from the item it is going to
         if (e.key === 'ArrowDown') { select(at + 1, true); e.preventDefault(); }
         else if (e.key === 'ArrowUp') { select(at - 1, true); e.preventDefault(); }
@@ -1023,7 +1031,7 @@
         select(at, false);
     }
 
-    /** Today comes back (#800): the empty band, the list scaling in from the top left into the clock. */
+    /** Today comes back (#800): the empty band, the list running up from below into the clock as it fades and grows in. */
     function entrance() {
         if (!host || host.hidden || !panels.length || dragging) return;
         if ((root.dataset.wmBoot && root.dataset.wmBoot !== 'done') || root.dataset.screenOff !== undefined) return; // the boot reveal / a dark screen
@@ -1040,10 +1048,13 @@
         host.classList.remove('is-entering');
         void host.offsetWidth; // restart the scale-in
         host.classList.add('is-entering');
-        // the list starts all the way above the screen (its last item over the top edge) and runs down
-        // into the clock (Yukimi, Nov 13: from the top)
-        const lastBottom = focusTop() + BAND + ROW * (panels.length - 1 - at);
-        pos = at + (lastBottom + ROW) / ROW;
+        // the list starts all the way below the screen (its first item under the bottom edge) and runs
+        // up into the clock while it fades in (Yukimi, Nov 14: from below, fading in, a slight grow
+        // that is done halfway; wm-titanium.css); no input until the clock panel has grown in
+        const screenUnits = (host.clientHeight || window.innerHeight) / unit();
+        const below = screenUnits - (focusTop() - ROW * at) + ROW;
+        pos = at - below / ROW;
+        enterLockUntil = performance.now() + ENTER_MS + ENTER_ZOOM_MS + KEY_MS;
         startTween(at, at, { backMs: ENTER_MS });
         sh.refreshSoftKeys();
     }
