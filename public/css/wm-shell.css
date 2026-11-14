@@ -4030,6 +4030,11 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
     display: none;
 }
 
+/* a bubble line with a value at its right (Connectivity: Mobile Broadband ... LTE) and bold text (Phone: the number) */
+.wm-bubble-pair { display: flex; justify-content: space-between; align-items: baseline; gap: calc(8 * var(--wm-px)); }
+.wm-bubble-pair > b { font-weight: bold; white-space: nowrap; }
+.wm-bubble-text.is-bold { font-weight: bold; }
+
 /* status dots (Android Bridge > Advanced Tools, #820): green ok, yellow waiting, red off / failed */
 .wm-dot {
     display: inline-block;

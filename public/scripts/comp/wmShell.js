@@ -2273,21 +2273,15 @@
                 // a server message (or a request going out: prints in progress) may change an icon
                 statusDirty();
                 const after = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : before + 1;
-                if (after !== before && !(message && QUIET_WS.has(message.type))) dataUsed();
+                // CafeReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
+                // request nor its cached reply reaches the server (Yukimi, Nov 14: the arrows only for that)
+                const cafe = message && ((direction === 'out' && message._mpCache) || (direction === 'in' && message._mpCached));
+                if (after !== before && !cafe && !(message && QUIET_WS.has(message.type))) dataUsed();
             };
         }
-        if (!dataWatchFetch) {
-            dataWatchFetch = true;
-            // a request starting raises the call at once (resource timing only reports at the end)
-            if (typeof window.fetch === 'function') {
-                const f = window.fetch;
-                window.fetch = function (...args) { dataUsed(); return f.apply(this, args); };
-            }
-            if (window.XMLHttpRequest && XMLHttpRequest.prototype.send) {
-                const send = XMLHttpRequest.prototype.send;
-                XMLHttpRequest.prototype.send = function (...args) { dataUsed(); return send.apply(this, args); };
-            }
-        }
+        // requests count by the bytes that came over the network (resource timing): a service worker,
+        // HTTP cache or CafeReady answer has none, so it no longer raises the call (Yukimi, Nov 14)
+        if (!dataWatchFetch) dataWatchFetch = true;
         if (dataWatchFetch === true && typeof PerformanceObserver === 'function') {
             dataWatchFetch = 'observed';
             try {
@@ -3321,7 +3315,7 @@
                 if (sec.text) {
                     part.classList.add('has-text');
                     const t = document.createElement('span');
-                    t.className = 'wm-bubble-text';
+                    t.className = sec.bold ? 'wm-bubble-text is-bold' : 'wm-bubble-text';
                     t.textContent = sec.text;
                     part.appendChild(t);
                 }
@@ -4704,13 +4698,18 @@
                 const w = dev.wifi;
                 const wl = w && Number.isFinite(w.level) ? ` Signal: ${bars(Math.max(0, Math.min(4, Math.round(w.level))))}.` : '';
                 if (dev.active === 'wifi') sections.push(`Wi-Fi: ${dev.wifiName || 'Connected'}.${wl}`);
+                // the mobile network as WM's Connection Manager names it, its radio type in bold at the right (Yukimi, Nov 14)
+                else if (dev.active === 'cellular') sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: Connected</span>${dev.type ? `<b>${String(typeName(dev.type)).replace(/[&<>]/g, '')}</b>` : ''}</div>` });
                 else sections.push(`${dev.link.text}.`);
             }
             // the server still starting: no Mainframe Server box on the phone, this line instead (Yukimi, Nov 13)
             const dcBooting = !!(ws && ws.lastServerStartupStatus && ws.lastServerStartupStatus.isReady === false);
             // the Dreamscape link as one "VPN:" row like the Wi-Fi one, Reconnect at its right (Yukimi, Nov 13)
+            // CafeReady: the Miniport carries the link and its cache answers (#815)
+            let cafeReady = false;
+            try { const mp = window.melatonContinuity && typeof window.melatonContinuity.miniport === 'function' ? window.melatonContinuity.miniport() : null; cafeReady = !!(mp && mp.up && mp.transport === 'miniport'); } catch (_) { cafeReady = false; }
             const vpn = connected
-                ? `Connected to ${host}.${rtt != null ? ` Round trip ${rtt} ms.` : ''}`
+                ? `Connected (${host}${cafeReady ? ' - CafeReady' : ''})${rtt != null ? ` RTT: ${rtt} ms` : ''}`
                 : dcBooting ? 'Waiting for domain controller...'
                     : ws && ws.connectionPhase === 'auth' ? 'Logon required.'
                         : ws && (ws.isConnecting || ws.connectionPhase === 'dialing') ? 'Connecting...'
@@ -4719,7 +4718,14 @@
                 : { text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
             // ActiveSync moving data (#822): what goes each way against this transfer's totals, a bar
             const asx = window.activeSync && typeof window.activeSync.transferProgress === 'function' ? window.activeSync.transferProgress() : null;
-            if (asx && (asx.active || (asx.done && Date.now() - asx.at < 8000))) {
+            const syncing = !!(asx && (asx.active || (asx.done && Date.now() - asx.at < 8000)));
+            // not moving data: ActiveSync's row still says whether it is there (Yukimi, Nov 14)
+            if (!syncing && window.activeSync && window.activeSync.kind === 'device') {
+                const st = window.activeSync.state();
+                const txt = !st.online ? 'Not connected' : st.session === 'partner' ? 'Connected (partnership)' : st.session === 'guest' ? 'Connected (guest)' : st.session === 'pending' ? 'Waiting for the computer' : 'Available';
+                sections.push(`ActiveSync: ${txt}.`);
+            }
+            if (syncing) {
                 const size = (n) => { const v = Math.max(0, Number(n) || 0); return v < 1024 ? `${v} B` : v < 1048576 ? `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB` : v < 1073741824 ? `${(v / 1048576).toFixed(1)} MB` : `${(v / 1073741824).toFixed(2)} GB`; };
                 const up = asx.up || { total: 0, done: 0 };
                 const down = asx.down || { total: 0, done: 0 };
@@ -4775,7 +4781,8 @@
                 title: 'Phone',
                 role: 'signal',
                 anchor: shell.querySelector('[data-role="signal"]:not([hidden])') || anchor,
-                sections: [line, { links: [{ label: 'Wireless Manager', action: openWirelessManager }], align: 'right' }],
+                // the phone's own number in bold on the left of the second line (Yukimi, Nov 14)
+                sections: [line, c.phoneNumber ? { text: String(c.phoneNumber), bold: true, links: [{ label: 'Wireless Manager', action: openWirelessManager }] } : { links: [{ label: 'Wireless Manager', action: openWirelessManager }], align: 'right' }],
                 footLinks: [{ label: 'Settings', action: phoneSettings }],
                 buttons: [{ text: 'Hide' }]
             });

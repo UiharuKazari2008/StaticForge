@@ -983,12 +983,18 @@
                 list = page.querySelector('.wm-s65-list');
                 bindTouch();
             },
-            // Start always opens at its top with Today selected, back from a Settings applet too
-            // (Yukimi, Nov 12, #777: never where it was left; the device returned to the folder)
+            // Start opens at its top with Today selected; back from a Settings applet it is where it
+            // was left, in its folder (Yukimi, Nov 14: not all the way to the root; Nov 12 had it reset)
             show() {
                 stopMotion();
                 paintWallpaper();
-                resume = false;
+                if (resume) {
+                    resume = false;
+                    render();
+                    settle();
+                    sh.refreshSoftKeys();
+                    return;
+                }
                 path.length = 0;
                 render();
                 place(0);
