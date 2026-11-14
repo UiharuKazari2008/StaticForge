@@ -9,8 +9,9 @@
  *   the Anlas question  showCreditCostDialog's plain confirm (a print, Recast of an upscaled
  *                       picture, Paint, Spellbook) is the shell's WM message box: Generate resolves
  *                       true, Cancel / back false. The cost and output size are the desktop's.
- *   form dialogs        the upscale choices (#creditCostDialog with isUpscaling: Scale, Delivery) and
- *                       Expand Canvas (#imageExpansionDialog) are re-hosted in a full-screen WM form
+ *   upscale dialog      the upscale choices (#creditCostDialog with isUpscaling: Scale, Delivery) are a
+ *                       WM message box over the screen (hostBox: Upscale | Cancel, Yukimi Nov 14)
+ *   form dialogs        Expand Canvas (#imageExpansionDialog) is re-hosted in a full-screen WM form
  *                       (this file's app, not in Start): title bar = the dialog's title, the desktop's
  *                       own fields restyled WM (wm-dialogs.css), soft keys Cancel | Upscale / Expand.
  *                       The soft keys press the dialog's own buttons, so the operation's code (cost,
@@ -115,8 +116,82 @@
         ws.refreshSoftKeys();
     }
 
+    /**
+     * Upscale as a dialog (Yukimi, Nov 14: two choices do not justify taking over the whole app):
+     * #creditCostDialog's own fields inside the shell's WM message box, its confirm text ("Upscale",
+     * "Upscale (12 credits)") on the box's first button, Cancel beside it; the back key cancels. The
+     * buttons press the dialog's own, so the operation's code is the desktop's, unchanged. Expand
+     * Canvas and the Director's question keep the full-screen form.
+     */
+    let boxWin = null;
+    function hostBox(win) {
+        if (boxWin === win || typeof ws.messageBox !== 'function') return;
+        boxWin = win;
+        const form = FORMS[win.id];
+        const parent = win.parentNode;
+        const next = win.nextSibling;
+        let labelObs = null;
+        let closeObs = null;
+        root.setAttribute('data-wmo-box', '');
+        ws.messageBox({
+            title: windowTitle(win),
+            text: '',
+            modal: true,
+            cancelValue: 'cancel',
+            buttons: [{ text: form.label(form.ok(win)), value: 'ok', default: true }, { text: 'Cancel', value: 'cancel' }],
+            onOpen: (close) => {
+                const layer = document.querySelector('#wmShell .wm-msgbox-layer');
+                if (!layer) return;
+                const box = layer.querySelector('.wm-msgbox');
+                box.classList.add('wmo-box');
+                const text = layer.querySelector('.wm-msgbox-text');
+                text.textContent = '';
+                // the form's own styles (wm-dialogs.css) apply inside .wm-op .wmo-host
+                const outer = document.createElement('div');
+                outer.className = 'wm-op wmo-box-host';
+                const inner = document.createElement('div');
+                inner.className = 'wmo-host';
+                inner.appendChild(win);
+                outer.appendChild(inner);
+                text.appendChild(outer);
+                const okEl = layer.querySelector('.wm-msgbox-buttons button');
+                const sync = () => {
+                    const b = form.ok(win);
+                    if (okEl) { okEl.textContent = form.label(b); okEl.disabled = !(b && !b.disabled && !b.classList.contains('hidden')); }
+                };
+                sync();
+                const b = form.ok(win);
+                if (b) { labelObs = new MutationObserver(sync); labelObs.observe(b, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class', 'disabled'] }); }
+                // custom drop-downs inside it are WM drop-downs, as on the full-screen form
+                outer.addEventListener('click', (e) => {
+                    if (proxying || !e.target.closest) return;
+                    const dd = e.target.closest('.custom-dropdown > button, .custom-dropdown > .custom-dropdown-btn');
+                    if (!dd || dd.hasAttribute('data-click-menu')) return;
+                    setTimeout(() => proxyDropdown(dd), 0);
+                }, true);
+                // the dialog closed by its own code: the box goes with it
+                closeObs = new MutationObserver(() => { if (!isOpen(win)) close('closed'); });
+                closeObs.observe(win, { attributes: true, attributeFilter: ['class'] });
+            }
+        }).then((v) => {
+            if (labelObs) labelObs.disconnect();
+            if (closeObs) closeObs.disconnect();
+            root.removeAttribute('data-wmo-box');
+            try {
+                if (next && next.parentNode === parent) parent.insertBefore(win, next);
+                else (parent && parent.isConnected ? parent : document.body).appendChild(win);
+            } catch (_) { document.body.appendChild(win); }
+            boxWin = null;
+            if (v === 'ok') { const ok = form.ok(win); if (ok && !ok.disabled) ok.click(); return; }
+            if (v === 'closed') return;
+            const c = form.cancel(win);
+            if (c) c.click(); else if (typeof window.closeModal === 'function') { try { window.closeModal(win); } catch (_) { /* gone */ } }
+        });
+    }
+
     function host(win) {
         if (!ws || root.dataset.wmBoot !== 'done' || hosted(win) || !isOpen(win)) return;
+        if (win.id === 'creditCostDialog') { hostBox(win); return; }
         if (!layers.length && !isCurrent()) ws.open(APP_ID);
         if (!page) return;
         const layer = { win, parent: win.parentNode, next: win.nextSibling, form: FORMS[win.id] || null, obs: null };
@@ -376,7 +451,9 @@
         contextMenu._wmOpPatched = true;
         const prev = contextMenu._openMenu;
         contextMenu._openMenu = function (event, target, trigger) {
-            if (!isCurrent() || !page || !target || !page.contains(target)) return prev.apply(this, arguments);
+            // the full-screen form's page, or the Upscale box (hostBox)
+            const inBox = !!(boxWin && target && boxWin.contains(target));
+            if (!inBox && (!isCurrent() || !page || !target || !page.contains(target))) return prev.apply(this, arguments);
             const config = trigger === 'click'
                 ? (this.clickMenuConfigs && this.clickMenuConfigs[target.dataset.clickMenu])
                 : (this.configs && this.configs[target.dataset.contextMenu]);

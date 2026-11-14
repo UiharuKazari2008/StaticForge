@@ -571,3 +571,27 @@ html.ui-mobile[data-wmo-form="request"] .wm-popup .wm-popup-item {
     white-space: normal;
     overflow-wrap: anywhere;
 }
+
+/* ---- Upscale as a dialog (wmDialogs hostBox, Yukimi Nov 14): the form inside the WM message box ---- */
+.wm-msgbox.wmo-box .wm-op.wmo-box-host,
+.wm-msgbox.wmo-box .wm-op .wmo-host {
+    position: static;
+    inset: auto;
+    background: transparent;
+}
+.wm-msgbox.wmo-box .wm-op .wmo-host > .modal {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    overflow: visible !important;
+    background: transparent !important;
+    contain: none;
+}
+.wm-msgbox.wmo-box .wm-op .wmo-host > .modal > .modal-content,
+.wm-msgbox.wmo-box .wm-op .credit-cost-content {
+    padding: 0 !important;
+    background: transparent !important;
+}
+.wm-msgbox.wmo-box .wm-msgbox-text { width: 100%; }
+/* its drop-downs (Scale, Delivery) open over the box */
+html.ui-mobile[data-wmo-box] #wmShell .wm-popup { z-index: 21; }

@@ -1280,6 +1280,12 @@ function getLightboxDataSource() {
 }
 
 // Initialize PhotoSwipe lightbox
+/** PhotoSwipe's animations: off on the phone shell (Melaton Mobile), the zoom on the desktop. */
+function pswpAnimationOptions() {
+    if (window.uiShell === 'mobile') return { showHideAnimationType: 'none', showAnimationDuration: 0, hideAnimationDuration: 0, zoomAnimationDuration: 0 };
+    return { showHideAnimationType: 'zoom', showAnimationDuration: 300, hideAnimationDuration: 300 };
+}
+
 async function initializePhotoSwipe() {
     try {
         const PhotoSwipeLightbox = await import('/dist/photoswipe/photoswipe-lightbox.esm.js');
@@ -1287,9 +1293,8 @@ async function initializePhotoSwipe() {
         lightbox = new PhotoSwipeLightbox.default({
             dataSource: [],
             pswpModule: () => import('/dist/photoswipe/photoswipe.esm.js'),
-            showHideAnimationType: 'zoom', //'fade',
-            showAnimationDuration: 300,
-            hideAnimationDuration: 300,
+            // Melaton Mobile: no open / close / zoom animation (Yukimi, Nov 14); the desktop keeps its zoom
+            ...pswpAnimationOptions(),
             allowPanToNext: true,
             allowMouseDrag: true,
             allowTouchDrag: true,
@@ -1806,9 +1811,7 @@ async function openStandalonePhotoSwipe(dataSource, index, options) {
         const opts = {
             dataSource: dataSource,
             index: start,
-            showHideAnimationType: 'zoom',
-            showAnimationDuration: 300,
-            hideAnimationDuration: 300,
+            ...pswpAnimationOptions(),
             allowPanToNext: multi,
             allowMouseDrag: true,
             allowTouchDrag: true,

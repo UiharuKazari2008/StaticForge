@@ -659,8 +659,13 @@
             if (!bub.hidden && !bub.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeBubble();
             const vc = shell.querySelector('.wm-volume');
             if (!vc.hidden && !vc.contains(e.target) && !(e.target.closest && e.target.closest('#wmShell .wm-status-icon'))) closeVolume();
-            // the notification tray closes on a tap elsewhere (the bubble itself stays, as on the device)
+            // the notification tray closes on a tap elsewhere
             if (noteTrayOpen && !(e.target.closest && e.target.closest('#wmShell .wm-notify-tray, #wmShell [data-role="notify"]'))) { noteTrayOpen = false; renderNotes(); }
+            // a tap anywhere else hides a notification on screen, as on 6.1 (Yukimi, Nov 14): it waits in
+            // the title bar; its soft keys (Hide / Dismiss / Menu) and the title bar icons keep their own taps
+            const nb = shell.querySelector('.wm-notify');
+            if (nb && !nb.hidden && noteShown && !nb.contains(e.target)
+                && !(e.target.closest && e.target.closest('#wmShell .wm-softkeys, #wmShell .wm-titlebar, #wmShell .wm-popup, #wmShell .wm-msgbox-layer'))) hideNote();
             if (!openPopup || openPopup.contains(e.target)) return;
             // Start and the soft keys toggle their own menus: closing here first would let
             // their click handler open the menu again
@@ -4401,8 +4406,11 @@
         if (!n) {
             el.hidden = true;
             noteSnapshot = '';
+            root.removeAttribute('data-wm-note');
             return;
         }
+        // a notification on screen: the soft key bar is black (WM 6.1, Yukimi Nov 14; wm-shell.css)
+        root.setAttribute('data-wm-note', '');
         const at = notes.indexOf(n);
         const snap = `${n.id}\u0001${at}/${notes.length}\u0001${n.toast.innerHTML}`;
         const cameUp = el.hidden;
@@ -7266,7 +7274,7 @@
                 let html = `<div class="wm-pv-chunk" style="contain-intrinsic-size:auto ${est}px">`;
                 for (const item of part) {
                     const name = nameOf(item);
-                    const sel = name === selectedName ? ' is-selected' : '';
+                    const sel = (name === selectedName ? ' is-selected' : '') + (picked && picked.has(name) ? ' is-picked' : '');
                     // the print in its own proportions (@fit.webp, #788), the square preview if there is none
                     const square = previewUrl(item);
                     const fit = fitPreviewUrl(item) || square;
@@ -7329,6 +7337,75 @@
             if (current === 'gallery') renderSoftKeys();
         }
 
+        /*
+         * Multi-select (Yukimi, Nov 14): Menu > Select Multiple (or a picture's hold menu) ticks
+         * pictures with taps; Done | Menu with Delete, Move To, Move to Scraps / Restore, Select All
+         * and Clear Selection, run by the desktop gallery's own bulk code (bulkOperationsManager.js:
+         * its selectedImages, its questions, which are WM message boxes here). A cancelled question
+         * keeps the selection.
+         */
+        let picked = null; // Set of file names while selecting, else null
+        const pickName = (it) => (it && (it.filename || it.original)) || '';
+        function pickTitle() { setTitle(picked ? `${picked.size} selected` : 'Pictures & Videos'); }
+        function startPick(page, name) {
+            picked = new Set(name ? [name] : []);
+            page.classList.add('is-picking');
+            if (name) { const el = page.querySelector(`.wm-pv-cell[data-filename="${CSS.escape(name)}"]`); if (el) el.classList.add('is-picked'); }
+            pickTitle();
+            if (current === 'gallery') renderSoftKeys();
+        }
+        function togglePick(page, name) {
+            if (!picked || !name) return;
+            if (picked.has(name)) picked.delete(name); else picked.add(name);
+            const el = page.querySelector(`.wm-pv-cell[data-filename="${CSS.escape(name)}"]`);
+            if (el) el.classList.toggle('is-picked', picked.has(name));
+            pickTitle();
+            if (current === 'gallery') renderSoftKeys();
+        }
+        function endPick(page) {
+            picked = null;
+            page.classList.remove('is-picking');
+            page.querySelectorAll('.wm-pv-cell.is-picked').forEach((c) => c.classList.remove('is-picked'));
+            pickTitle();
+            if (current === 'gallery') renderSoftKeys();
+        }
+        function pickAll(page, on) {
+            if (!picked) return;
+            if (on) galleryList().forEach((it) => { const n = pickName(it); if (n) picked.add(n); }); else picked.clear();
+            page.querySelectorAll('.wm-pv-cell').forEach((c) => c.classList.toggle('is-picked', picked.has(c.dataset.filename)));
+            pickTitle();
+            if (current === 'gallery') renderSoftKeys();
+        }
+        async function runPicked(page, kind, arg) {
+            if (!picked || !picked.size || typeof selectedImages === 'undefined') return;
+            const names = [...picked];
+            try {
+                selectedImages.clear();
+                try { isAllSelected = false; } catch (_) { /* older gallery */ } // eslint-disable-line no-undef
+                names.forEach((n) => selectedImages.add(n));
+                if (kind === 'delete' && typeof handleBulkDelete === 'function') await handleBulkDelete();
+                else if (kind === 'scraps' && typeof handleBulkMoveToScraps === 'function') await handleBulkMoveToScraps();
+                else if (kind === 'unscrap' && typeof handleBulkUnscrap === 'function') await handleBulkUnscrap();
+                else if (kind === 'move' && typeof moveBulkImagesToWorkspace === 'function') await busy(() => moveBulkImagesToWorkspace(arg), { paint: true, timeout: 60000 });
+            } catch (err) {
+                console.warn('[wmShell] pictures bulk', kind, err);
+            } finally {
+                try { selectedImages.clear(); } catch (_) { /* gone */ }
+            }
+            // done: the pictures left the list; cancelled: all of them are still there and stay ticked
+            const left = new Set(galleryList().map(pickName));
+            if (picked && names.every((n) => left.has(n)) && kind !== 'move') return;
+            endPick(page);
+        }
+        function pickedMoveItems(page) {
+            let list = [];
+            try { if (typeof workspaces !== 'undefined') list = Object.values(workspaces).filter(Boolean).sort((a, b) => (Number(a.sort) || 0) - (Number(b.sort) || 0) || String(a.name).localeCompare(String(b.name))); } catch (_) { list = []; }
+            const active = typeof activeWorkspace !== 'undefined' ? activeWorkspace : null;
+            const others = list.filter((w) => w.id !== active);
+            if (!others.length) return [{ label: 'No other workspaces', disabled: true }];
+            return others.map((w) => ({ label: w.name || w.id, action: () => runPicked(page, 'move', w.id) }));
+        }
+
         /**
          * Menu > Set as Today Background: this phone's Today shows the picture (WM 6.1 does the same)
          * and Settings > Today's "Use desktop wallpaper" goes off, else the stored picture would
@@ -7377,8 +7454,10 @@
             const fn = (f) => (typeof window[f] === 'function' ? window[f] : null);
             const run = (f, arg) => { const g = fn(f); if (g && arg) { try { g(arg); } catch (err) { console.warn('[wmShell] picture menu', f, err); } } };
             const scraps = typeof currentGalleryView !== 'undefined' && currentGalleryView === 'scraps';
+            const gp = apps.get('gallery') && apps.get('gallery').page;
             return [
                 { label: 'View', action: () => viewPicture(name) },
+                { label: 'Select Multiple', disabled: !gp, action: () => startPick(gp, name) },
                 '-',
                 { label: 'Recast Spell', disabled: !item || !fn('rerollImage'), action: () => run('rerollImage', item) },
                 // an upscaled picture is not upscaled again (the desktop's gallery menu refuses it too)
@@ -7729,6 +7808,8 @@
                 page.querySelector('.wm-pv-grid').addEventListener('click', (e) => {
                     const cell = e.target.closest('.wm-pv-cell');
                     if (!cell) return;
+                    // selecting several: a tap ticks or unticks
+                    if (picked) { togglePick(page, cell.dataset.filename); return; }
                     // WM: a tap selects the picture and opens it
                     selectCell(page, cell.dataset.filename);
                     viewPicture(cell.dataset.filename);
@@ -7739,6 +7820,7 @@
                     const cell = e.target.closest('.wm-pv-cell');
                     if (!cell) return;
                     e.preventDefault();
+                    if (picked) { togglePick(page, cell.dataset.filename); return; }
                     selectCell(page, cell.dataset.filename);
                     window.wmShell.menuAt(e.clientX, e.clientY, pictureMenu(cell.dataset.filename));
                 });
@@ -7791,10 +7873,29 @@
             hide() {
                 clearInterval(gridTimer);
                 gridTimer = null;
+                if (picked && this.page) endPick(this.page);
             },
             softKeys() {
                 const page = this.page;
                 if (phoneOn()) return phoneGallery().softKeys(page);
+                if (picked) {
+                    const n = picked.size;
+                    const scrapsView = typeof currentGalleryView !== 'undefined' && currentGalleryView === 'scraps';
+                    return {
+                        left: { label: 'Done', action: () => endPick(page) },
+                        right: {
+                            label: 'Menu',
+                            menu: () => [
+                                { label: n === 1 ? 'Delete' : `Delete ${n} Pictures`, disabled: !n, action: () => runPicked(page, 'delete') },
+                                { label: 'Move To', disabled: !n, submenu: () => pickedMoveItems(page) },
+                                { label: scrapsView ? 'Restore from Scraps' : 'Move to Scraps', disabled: !n, action: () => runPicked(page, scrapsView ? 'unscrap' : 'scraps') },
+                                '-',
+                                { label: 'Select All', action: () => pickAll(page, true) },
+                                { label: 'Clear Selection', disabled: !n, action: () => pickAll(page, false) }
+                            ]
+                        }
+                    };
+                }
                 return {
                     left: { label: 'View', disabled: !selectedName, action: () => viewPicture(selectedName) },
                     right: {
@@ -7802,6 +7903,8 @@
                         // WM: Camera, Send..., Beam..., Save to Contact... | Delete, Edit, Play Slide
                         // Show, Set as Today Background..., Go To, Tools; here what Dreamscape has
                         menu: () => [
+                            { label: 'Select Multiple', action: () => startPick(page, null) },
+                            '-',
                             { label: 'Search...', action: () => setSearch(true) },
                             ...(searchResults ? [{ label: 'Clear Search', action: () => setSearch(false) }] : []),
                             { label: 'Jump to Top', action: () => { page.querySelector('.wm-pv-scroll').scrollTop = 0; } },
