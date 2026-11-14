@@ -41,6 +41,47 @@
             }
         });
 
+        /*
+         * status.wallpapers (#818): what each screen shows behind the shell, for Device Center's
+         * picture of the phone when screenshots are off: { inner, cover, external } (null = none).
+         * The phone's screens draw Today's picture (its own, the workspace's or Android's), the DeX
+         * window the workspace's desktop wallpaper. A same-site path goes as it is; anything the
+         * desktop cannot load (Android's wallpaper, a data or blob URL) goes as a JPEG data URL at
+         * most 720 px on the long side.
+         */
+        const wallCache = new Map(); // url -> data URL
+        function shrink(url) {
+            if (!url) return Promise.resolve(null);
+            if (/^\/[^/]/.test(url)) return Promise.resolve(url);
+            if (wallCache.has(url)) return Promise.resolve(wallCache.get(url));
+            return new Promise((resolve) => {
+                const im = new Image();
+                im.crossOrigin = 'anonymous';
+                im.onload = () => {
+                    try {
+                        const k = Math.min(1, 720 / Math.max(im.naturalWidth, im.naturalHeight));
+                        const c = document.createElement('canvas');
+                        c.width = Math.max(1, Math.round(im.naturalWidth * k));
+                        c.height = Math.max(1, Math.round(im.naturalHeight * k));
+                        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+                        const data = c.toDataURL('image/jpeg', 0.8);
+                        wallCache.set(url, data);
+                        resolve(data);
+                    } catch (_) { resolve(null); }
+                };
+                im.onerror = () => resolve(null);
+                im.src = url;
+            });
+        }
+        as.registerOp('status.wallpapers', async () => {
+            const w = root.wmShell && root.wmShell.wallpaper;
+            const today = w && typeof w.picture === 'function' ? w.picture() : null;
+            const desk = w && typeof w.desktop === 'function' ? w.desktop() : null;
+            const [phone, dex] = await Promise.all([shrink(today), shrink(desk)]);
+            // the cover and the inner screen run the same Today (one picture for both)
+            return { inner: phone, cover: phone, external: dex || phone };
+        });
+
         as.registerOp('screen.start', () => {
             if (!usable) throw err('UNSUPPORTED', 'This device cannot share its screen.');
             if (bridge.isRunning()) return { started: true };

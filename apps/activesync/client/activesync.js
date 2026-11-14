@@ -62,6 +62,120 @@
         return `battery-${b.level < 10 ? 0 : b.level < 35 ? 1 : b.level < 60 ? 2 : b.level < 85 ? 3 : 4}`;
     }
 
+    /*
+     * Device Center's picture of the device (#818): a modern phone drawn in the style of Windows'
+     * device icons (device-pda-256.png: brushed silver body, black bezel, glossy glass, a slight turn
+     * that shows the right edge, a soft shadow below), with the device's own screen in it.
+     *
+     *   deviceArt({ form, screens, uid })  -> SVG markup for a 256 x 256 box
+     *     form     'phone' | 'fold' (inner screen open + the cover phone in front)
+     *     screens  { inner, cover, external } image URLs (null: the glossy blue of an empty screen);
+     *              external draws a DeX monitor behind the phone
+     *     uid      a prefix for the SVG ids (several pictures on one page)
+     */
+    function deviceArt({ form = 'phone', screens = {}, uid = 'da' } = {}) {
+        const id = (n) => `${uid}-${n}`;
+        const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const defs = [];
+        const add = (s) => defs.push(s);
+        // shared paints
+        add(`<linearGradient id="${id('metal')}" x1="0" y1="0" x2="1" y2=".35">
+                <stop offset="0" stop-color="#c9ced5"/><stop offset=".08" stop-color="#ffffff"/><stop offset=".22" stop-color="#e4e8ec"/>
+                <stop offset=".6" stop-color="#bcc2ca"/><stop offset=".86" stop-color="#9aa1aa"/><stop offset="1" stop-color="#cfd4da"/></linearGradient>`);
+        add(`<linearGradient id="${id('rays')}" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/></linearGradient>`);
+        add(`<linearGradient id="${id('edge')}" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#a7adb5"/><stop offset=".5" stop-color="#7d838b"/><stop offset="1" stop-color="#5e646c"/></linearGradient>`);
+        add(`<linearGradient id="${id('bezel')}" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#2a2e34"/><stop offset=".5" stop-color="#0c0e11"/><stop offset="1" stop-color="#1b1e22"/></linearGradient>`);
+        add(`<linearGradient id="${id('blank')}" x1="0" y1="0" x2=".6" y2="1">
+                <stop offset="0" stop-color="#6d9cf4"/><stop offset=".45" stop-color="#2a5fdc"/><stop offset="1" stop-color="#173f9e"/></linearGradient>`);
+        add(`<linearGradient id="${id('gloss')}" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".48" stop-color="#fff" stop-opacity=".08"/>
+                <stop offset=".49" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>`);
+        add(`<radialGradient id="${id('shadow')}" cx=".5" cy=".5" r=".5">
+                <stop offset="0" stop-color="#000" stop-opacity=".32"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>`);
+        add(`<linearGradient id="${id('crease')}" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".42" stop-color="#000" stop-opacity=".10"/>
+                <stop offset=".5" stop-color="#fff" stop-opacity=".16"/><stop offset=".58" stop-color="#000" stop-opacity=".10"/>
+                <stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>`);
+
+        /** A screen: the picture (or the empty glass), clipped to its rounded rectangle, gloss on top. */
+        function glass(key, x, y, w, h, r, url, extra = '') {
+            add(`<clipPath id="${id(`clip-${key}`)}"><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/></clipPath>`);
+            const pic = url
+                ? `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#000"/><image href="${esc(url)}" x="${x}" y="${y}" width="${w}" height="${h}" preserveAspectRatio="xMidYMid slice"/>`
+                : `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${id('blank')})"/>`
+                  + `<path d="M${x + w * .5} ${y + h * 1.05} C${x + w * .2} ${y + h * .6} ${x + w * .25} ${y + h * .25} ${x + w * .42} ${y - 2} L${x + w * .55} ${y - 2} C${x + w * .42} ${y + h * .3} ${x + w * .45} ${y + h * .65} ${x + w * .62} ${y + h * 1.05} Z" fill="url(#${id('rays')})" opacity=".55"/>`
+                  + `<path d="M${x + w * .62} ${y + h * 1.05} C${x + w * .55} ${y + h * .6} ${x + w * .62} ${y + h * .3} ${x + w * .78} ${y - 2} L${x + w * .86} ${y - 2} C${x + w * .72} ${y + h * .35} ${x + w * .7} ${y + h * .65} ${x + w * .74} ${y + h * 1.05} Z" fill="url(#${id('rays')})" opacity=".35"/>`;
+            return `<g clip-path="url(#${id(`clip-${key}`)})">${pic}${extra}<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="url(#${id('gloss')})"/></g>`;
+        }
+
+        /** A slab of metal: right edge (thickness), body, bezel, screen; returns markup. */
+        function slab(key, x, y, w, h, { r = 18, bezel = 4.5, depth = 5, url = null, camera = true, hinge = false } = {}) {
+            const parts = [];
+            // the right edge and the bottom lip, seen past the turn
+            parts.push(`<rect x="${x + depth}" y="${y + depth * 0.55}" width="${w}" height="${h}" rx="${r}" fill="url(#${id('edge')})"/>`);
+            // side keys on the visible edge
+            parts.push(`<rect x="${x + w + depth - 1.6}" y="${y + h * 0.2}" width="2.2" height="${h * 0.13}" rx="1.1" fill="#6a7078"/>`);
+            parts.push(`<rect x="${x + w + depth - 1.6}" y="${y + h * 0.37}" width="2.2" height="${h * 0.07}" rx="1.1" fill="#6a7078"/>`);
+            // the body: brushed silver with a light rim
+            parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="url(#${id('metal')})" stroke="#7b8189" stroke-width=".9"/>`);
+            parts.push(`<rect x="${x + 1.2}" y="${y + 1.2}" width="${w - 2.4}" height="${h - 2.4}" rx="${r - 1.2}" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="1"/>`);
+            // the black front
+            const rim = Math.max(3, w * 0.045); const bx = x + rim; const by = y + rim; const bw = w - 2 * rim; const bh = h - 2 * rim; const br = Math.max(3, r - rim * 0.8);
+            parts.push(`<rect x="${bx}" y="${by}" width="${bw}" height="${bh}" rx="${br}" fill="url(#${id('bezel')})"/>`);
+            const sx = bx + bezel; const sy = by + bezel; const sw = bw - 2 * bezel; const sh = bh - 2 * bezel;
+            const crease = hinge ? `<rect x="${sx + sw / 2 - 9}" y="${sy}" width="18" height="${sh}" fill="url(#${id('crease')})"/>` : '';
+            parts.push(glass(key, sx, sy, sw, sh, Math.max(2, br - bezel), url, crease));
+            if (camera) {
+                const cx = hinge ? sx + sw * 0.78 : sx + sw / 2;
+                parts.push(`<circle cx="${cx}" cy="${sy + 5.5}" r="2.3" fill="#05070a" stroke="#2c3138" stroke-width=".8"/><circle cx="${cx - .6}" cy="${sy + 4.9}" r=".6" fill="#5a7ab8" fill-opacity=".8"/>`);
+            }
+            if (hinge) parts.push(`<line x1="${x + w / 2}" y1="${y + .8}" x2="${x + w / 2}" y2="${y + 2.6}" stroke="#6f757d" stroke-width="1.2"/><line x1="${x + w / 2}" y1="${y + h - 2.6}" x2="${x + w / 2}" y2="${y + h - .8}" stroke="#6f757d" stroke-width="1.2"/>`);
+            return parts.join('');
+        }
+
+        /** DeX's monitor: a thin black panel on a silver stand. */
+        function monitor(x, y, w, h, url) {
+            const parts = [];
+            const nx = x + w / 2;
+            parts.push(`<path d="M${nx - 7} ${y + h - 2} L${nx + 7} ${y + h - 2} L${nx + 5} ${y + h + 20} L${nx - 5} ${y + h + 20} Z" fill="url(#${id('edge')})"/>`);
+            parts.push(`<ellipse cx="${nx}" cy="${y + h + 22}" rx="${w * 0.24}" ry="4.5" fill="url(#${id('metal')})" stroke="#7b8189" stroke-width=".8"/>`);
+            parts.push(`<rect x="${x + 3}" y="${y + 2}" width="${w}" height="${h}" rx="5" fill="#3a3f46"/>`);
+            parts.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="5" fill="url(#${id('bezel')})" stroke="#4a5058" stroke-width=".8"/>`);
+            parts.push(glass('external', x + 4, y + 4, w - 8, h - 10, 2, url));
+            parts.push(`<rect x="${nx - 6}" y="${y + h - 4.5}" width="12" height="1.6" rx=".8" fill="#5c626a"/>`);
+            return parts.join('');
+        }
+
+        const body = [];
+        const shadow = (cx, cy, rx, ry) => body.push(`<ellipse cx="${cx + rx * 0.18}" cy="${cy}" rx="${rx}" ry="${ry}" fill="url(#${id('shadow')})"/>`);
+        // the turn: a slight shear, as the icon family looks a little from the right
+        const turn = (inner, ox, oy) => `<g transform="translate(${ox} ${oy}) matrix(0.97 -0.07 0 1 0 0) translate(${-ox} ${-oy})">${inner}</g>`;
+        if (form === 'fold') {
+            const hasExt = !!screens.external;
+            if (hasExt) { shadow(88, 150, 70, 7); body.push(turn(monitor(14, 14, 148, 92, screens.external), 88, 60)); }
+            const fy = hasExt ? 60 : 28;
+            const fh = hasExt ? 178 : 206;
+            const fw = Math.round(fh * 0.93);
+            shadow(28 + fw / 2, fy + fh + 4, fw * 0.6, 9);
+            body.push(turn(slab('inner', 28, fy, fw, fh, { r: 14, bezel: 3.5, depth: 7, url: screens.inner, hinge: true }), 28 + fw / 2, fy + fh / 2));
+            const cw = 62; const ch = Math.round(cw * 2.3);
+            const cx = 256 - cw - 16; const cy = 256 - ch - 18;
+            shadow(cx + cw / 2 + 2, cy + ch + 4, cw * 0.65, 6);
+            body.push(turn(slab('cover', cx, cy, cw, ch, { r: 11, bezel: 2.5, depth: 5.5, url: screens.cover }), cx + cw / 2, cy + ch / 2));
+        } else {
+            const hasExt = !!screens.external;
+            if (hasExt) { shadow(96, 146, 76, 7); body.push(turn(monitor(10, 16, 160, 100, screens.external), 90, 66)); }
+            const w = hasExt ? 92 : 112; const h = hasExt ? 196 : 232;
+            const x = hasExt ? 256 - w - 30 : (256 - w) / 2 - 3; const y = 256 - h - 14;
+            shadow(x + w / 2 + 2, y + h + 4, w * 0.62, 8);
+            body.push(turn(slab('inner', x, y, w, h, { r: 19, bezel: 3.5, depth: 8, url: screens.inner || screens.cover }), x + w / 2, y + h / 2));
+        }
+        return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256"><defs>${defs.join('')}</defs>${body.join('')}</svg>`;
+    }
+
     class Center {
         constructor(app) {
             this.app = app;
@@ -70,7 +184,12 @@
             this.open = null;       // the open tile
             this.busy = false;      // waiting for the phone's answer
             this.frame = 0;
+            this.screens = { deviceId: null, form: 'phone', urls: {}, blobs: [], at: 0, loading: false, key: '' };
             this.build();
+            // the device's screens in its picture: on opening, on a new device, then once a minute
+            // while the window is up (no faster: #811 no client polling under 60 s)
+            const shotTimer = setInterval(() => { if (!doc.hidden) this.loadScreens(true); }, 60000);
+            this.app.signal.addEventListener('abort', () => { clearInterval(shotTimer); this.screens.blobs.forEach((u) => URL.revokeObjectURL(u)); });
             const a = as();
             if (a) {
                 const off = a.on('state', () => this.render());
@@ -119,7 +238,7 @@
                     <div class="asdc-root">
                         <div class="asdc-stage">
                             <div class="asdc-logo"><img src="/static_images/wm61/boot-melaton.png" alt=""><b>Melaton</b><i>Mobile</i></div>
-                            <img class="asdc-device" alt="" draggable="false">
+                            <div class="asdc-device" aria-hidden="true"></div>
                             <div class="asdc-status"><img alt=""><span></span></div>
                             <div class="asdc-body"></div>
                         </div>
@@ -214,6 +333,7 @@
                 if (dev && dev.online && !dev.partner && !local) out.push({ id: 'setup', text: 'Set up your device', icon: 'setup-32.png' });
                 if (!local) out.push({ id: 'connection', text: 'Connection settings', icon: 'connection-32.png' });
                 if (dev) out.push({ id: 'info', text: 'Device information', icon: 'item-32.png' });
+                if (dev && dev.online) out.push({ id: 'screens', text: dev.adb && dev.adb.screenshots === false ? 'Show screenshots of your device' : "Show your device's wallpapers, not screenshots", icon: 'item-32.png' });
                 if (dev && dev.partner && !local) out.push({ id: 'end', text: 'End a partnership', icon: 'end-partnership-32.png' });
             }
             if (tile === 'programs' && dev && dev.online && dev.permissions.includes('notify') && root.activeSyncNotifications) {
@@ -227,6 +347,94 @@
                 out.push({ id: `x:${tile}:${t.id}`, text: typeof t.text === 'function' ? t.text(dev) : t.text, icon: t.icon || 'item-32.png', extra: t });
             }
             return out;
+        }
+
+        // ---------------------------------------------------------------- the device's picture (#818)
+
+        /** Not connected: the two phones; connected: the drawn phone with its screens in it. */
+        paintDevice(dev, connected) {
+            const box = this.el('.asdc-device');
+            if (!connected) {
+                if (box.dataset.mode !== 'none') { box.dataset.mode = 'none'; box.innerHTML = `<img src="${A}/devices-256.png" alt="" draggable="false">`; }
+                return;
+            }
+            if (this.screens.deviceId !== dev.deviceId) {
+                this.screens.blobs.forEach((u) => URL.revokeObjectURL(u));
+                Object.assign(this.screens, { deviceId: dev.deviceId, urls: {}, blobs: [], at: 0, key: '' });
+            }
+            const sc = this.screens;
+            // a foldable by its model (Galaxy Z Fold: SM-F9xx) or by a cover screen ADB reported
+            const fold = /^SM-F9/i.test(dev.model || '') || !!sc.urls.cover && sc.form === 'fold';
+            const dex = !!(dev.link === 'usb' || isContinuityDevice(dev) || sc.urls.externalOn);
+            const screens = { inner: sc.urls.inner || null, cover: sc.urls.cover || null, external: dex ? (sc.urls.external || sc.urls.inner || null) : null };
+            const key = JSON.stringify([fold, screens]);
+            if (box.dataset.mode !== 'device' || box.dataset.key !== key) {
+                box.dataset.mode = 'device';
+                box.dataset.key = key;
+                box.innerHTML = deviceArt({ form: fold ? 'fold' : 'phone', screens, uid: 'asdc' });
+            }
+            if (!sc.at && !sc.loading) this.loadScreens(false);
+        }
+
+        /**
+         * What the screens show: screenshots over ADB while the phone allows them (Android Bridge /
+         * this window's Mobile Device Settings), else its wallpapers (status.wallpapers).
+         */
+        async loadScreens(again) {
+            const dev = this.device();
+            const sc = this.screens;
+            if (!dev || !dev.online || sc.loading || (again && !sc.at)) return;
+            sc.loading = true;
+            const id = dev.deviceId;
+            const urls = {};
+            const blobs = [];
+            try {
+                const adb = dev.adb || {};
+                if (adb.state === 'ready' && adb.screenshots !== false) {
+                    const r = await fetch(`/api/activesync/adb/${id}/displays`, { credentials: 'same-origin' }).then((x) => x.json()).catch(() => null);
+                    const list = (r && r.success && r.displays) || [];
+                    if (list.some((d) => d.kind === 'cover')) sc.form = 'fold';
+                    for (const d of list) {
+                        if (d.on === false || !['inner', 'main', 'cover', 'external'].includes(d.kind)) continue;
+                        const res = await fetch(`/api/activesync/screen/${id}/shot?display=${encodeURIComponent(d.id)}`, { credentials: 'same-origin', cache: 'no-store' }).catch(() => null);
+                        if (!res || !res.ok) continue;
+                        const u = URL.createObjectURL(await res.blob());
+                        blobs.push(u);
+                        urls[d.kind === 'main' ? 'inner' : d.kind] = u;
+                        if (d.kind === 'external') urls.externalOn = true;
+                    }
+                }
+                if (!urls.inner) {
+                    const a = as();
+                    const w = a ? await a.call(id, 'status.wallpapers', {}, { timeoutMs: 15000 }).catch(() => null) : null;
+                    if (w) {
+                        for (const k of ['inner', 'cover', 'external']) if (!urls[k] && typeof w[k] === 'string' && /^(\/[^/]|data:image\/)/.test(w[k])) urls[k] = w[k];
+                    }
+                }
+            } finally {
+                sc.loading = false;
+            }
+            if (this.app.signal.aborted || sc.deviceId !== id) { blobs.forEach((u) => URL.revokeObjectURL(u)); return; }
+            sc.blobs.forEach((u) => URL.revokeObjectURL(u));
+            sc.blobs = blobs;
+            sc.urls = urls;
+            sc.at = Date.now();
+            this.render();
+        }
+
+        /** Mobile Device Settings: screenshots of the phone or its wallpapers in its picture. */
+        async toggleScreenshots(dev) {
+            const on = !(dev.adb && dev.adb.screenshots === false);
+            const r = await fetch(`/api/activesync/adb/${dev.deviceId}/settings`, {
+                method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ screenshots: !on })
+            }).then((x) => x.json()).catch(() => null);
+            if (!r || !r.success) { await this.messageBox('The setting could not be changed.', null, 'error'); return; }
+            if (dev.adb) dev.adb.screenshots = !on;
+            this.screens.at = 0;
+            const a = as();
+            if (a) a.refresh().catch(() => {});
+            this.loadScreens(false);
+            this.render();
         }
 
         // ---------------------------------------------------------------- drawing
@@ -270,7 +478,7 @@
             this.el('.asdc-back').disabled = !this.page || this.busy;
 
             // the picture and the status line
-            this.el('.asdc-device').src = `${A}/${connected ? 'device-pda-256.png' : 'devices-256.png'}`;
+            this.paintDevice(dev, connected);
             this.status = this.busy ? 'connecting' : connected ? 'connected' : 'notconnected';
             this.paintStatus();
 
@@ -442,6 +650,7 @@
             if (!a) return;
             if (cmd === 'setup') { this.page = 'setup'; this.setupError = ''; this.pendingName = ''; this.render(); return; }
             if (cmd === 'info') { this.page = 'info'; this.render(); return; }
+            if (cmd === 'screens' && dev) { await this.toggleScreenshots(dev); return; }
             if (cmd === 'notifications') { this.page = 'notifications'; this.render(); return; }
             if (cmd === 'notif-dismiss' && dev && root.activeSyncNotifications) {
                 try { await root.activeSyncNotifications.dismiss(dev.deviceId, el.dataset.key); } catch (e) { await this.messageBox((e && e.message) || 'The notification could not be dismissed.', null, 'error'); }

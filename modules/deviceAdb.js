@@ -18,7 +18,8 @@
  *   screenshot(gr, deviceId, display)      PNG Buffer; display = a kind, a display id, or omitted (main / inner)
  *   install(gr, deviceId, apkFile)         { state: 'installed', via: 'adb' } (adb install -r)
  *   installOnPhone(gr, deviceId, root, p)  the same for an .apk already on the phone (pm install)
- *   settings(gr, deviceId, patch)          { allow, autoRestore } (Android Bridge's switches)
+ *   settings(gr, deviceId, patch)          { allow, autoRestore, screenshots } (Android Bridge / Device Center)
+ *     screenshots false: no screenshot leaves the phone (Device Center shows its wallpapers instead)
  *
  * adb: env DREAMSCAPE_ADB, else ~/.local/bin/adb (platform-tools in ~/.local/share), else PATH.
  */
@@ -95,7 +96,7 @@ function saveStore() {
 
 function entry(globalResources, deviceId) {
     const s = loadStore(globalResources);
-    if (!s[deviceId]) s[deviceId] = { allow: true, autoRestore: false };
+    if (!s[deviceId]) s[deviceId] = { allow: true, autoRestore: false, screenshots: true };
     return s[deviceId];
 }
 
@@ -104,11 +105,12 @@ function settings(globalResources, deviceId, patch) {
     if (patch && typeof patch === 'object') {
         if (typeof patch.allow === 'boolean') e.allow = patch.allow;
         if (typeof patch.autoRestore === 'boolean') e.autoRestore = patch.autoRestore;
+        if (typeof patch.screenshots === 'boolean') e.screenshots = patch.screenshots;
         saveStore();
         if (e.allow === false) states.set(deviceId, { state: 'off', checkedAt: Date.now() });
         else if ((states.get(deviceId) || {}).state === 'off') states.delete(deviceId);
     }
-    return { allow: e.allow !== false, autoRestore: !!e.autoRestore };
+    return { allow: e.allow !== false, autoRestore: !!e.autoRestore, screenshots: e.screenshots !== false };
 }
 
 // ---------------------------------------------------------------- detection
@@ -299,6 +301,7 @@ function pickDisplay(list, want) {
 
 /** One screen as PNG: { png, display }. */
 async function screenshot(globalResources, deviceId, display) {
+    if (!settings(globalResources, deviceId).screenshots) throw fail('SCREENSHOTS_OFF', 'Screenshots are turned off for this phone.');
     const list = await displays(globalResources, deviceId);
     const d = pickDisplay(list, display);
     if (!d) throw fail('NO_DISPLAY', display ? `The phone has no ${display} screen right now.` : 'The phone reports no screen.');
@@ -373,6 +376,7 @@ async function agentScreenshot(globalResources, input = {}) {
         if (online.length === 1) dev = online[0];
     }
     if (!dev) return { meta: { success: false, code: want ? 'NO_SUCH_DEVICE' : 'CHOOSE_DEVICE', error: want ? `No ActiveSync device called ${input.device}.` : 'Name a device.', devices: all.map(brief) }, images: [] };
+    if (!settings(globalResources, dev.deviceId).screenshots) return { meta: { success: false, code: 'SCREENSHOTS_OFF', device: brief(dev), hint: 'Screenshots are turned off for this phone (Device Center / Android Bridge).' }, images: [] };
     const st = await detect(globalResources, dev.deviceId, { force: !!input.detect });
     if (st.state !== 'ready') return { meta: { success: false, code: 'ADB_NOT_READY', device: brief(dev), hint: st.state === 'unauthorized' ? 'Tap Always allow for this server on the phone.' : st.state === 'unreachable' ? 'ADB is not listening on 5555 where the phone connects from (Wi-Fi or VPN).' : undefined }, images: [] };
     const list = await displays(globalResources, dev.deviceId);
@@ -398,7 +402,7 @@ async function agentScreenshot(globalResources, input = {}) {
 
 /*
  *   GET  /api/activesync/adb/:deviceId                 admin or the phone itself: status() (?detect=1 looks now)
- *   PUT  /api/activesync/adb/:deviceId/settings        admin or the phone itself: { allow, autoRestore }
+ *   PUT  /api/activesync/adb/:deviceId/settings        admin or the phone itself: { allow, autoRestore, screenshots }
  *   GET  /api/activesync/adb/:deviceId/displays        admin: displays()
  *   GET  /api/activesync/screen/:deviceId/shot         admin: image/png of ?display=inner|cover|external|main|<id>
  */
@@ -414,7 +418,7 @@ function mount(app, authMiddleware, globalResources) {
     };
     const isAdmin = (req) => req.userType === 'admin';
     const isPhone = (req, id) => as().isDeviceSession(globalResources, ws(), id, req.sessionId || (req.session && req.session.id));
-    const statusOf = (code) => ({ ADB_OFF: 409, NO_ADB_DEVICE: 409, NO_DISPLAY: 404, SHOT_FAILED: 502, NO_ADB: 503, TIMEOUT: 504 })[code] || 500;
+    const statusOf = (code) => ({ SCREENSHOTS_OFF: 409, ADB_OFF: 409, NO_ADB_DEVICE: 409, NO_DISPLAY: 404, SHOT_FAILED: 502, NO_ADB: 503, TIMEOUT: 504 })[code] || 500;
 
     app.get('/api/activesync/adb/:deviceId', auth, async (req, res) => {
         const id = idOf(req, res);

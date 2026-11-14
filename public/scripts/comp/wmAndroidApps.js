@@ -867,6 +867,8 @@
         const pim = () => window.AndroidPim || null;
         ws.registerPage({
             id: 'default-programs', tab: 'system', label: 'Android Bridge', icon: 'app-android-bridge',
+            // its own tab once Debugging (wmSettingsApplets.js: Shizuku + ADB, #818) is added
+            ownTab: ['programs', 'Programs'],
             // Phone Data lives in ActiveSync (Menu > Phone Data..., Yukimi, Nov 12, #777)
             tabs: [],
             init() {

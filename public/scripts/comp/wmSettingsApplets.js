@@ -84,7 +84,11 @@
         });
     }
 
+    // Shizuku lives in Android Bridge > Debugging (Yukimi, Nov 13 2026, #818), not on a page of its own
+    const MERGED = new Set(['shizuku']);
+
     function register(a) {
+        if (MERGED.has(a.id)) return;
         const pageId = `applet-${a.id}`;
         registered.add(pageId);
         wmSettings.registerPage({
@@ -99,6 +103,82 @@
     }
 
     applets().forEach(register);
+
+    // ---------------------------------------------------------------- Android Bridge > Debugging (#818)
+
+    /*
+     * Shizuku's state and switches (the app's applet rows) and ADB on port 5555 as this server sees
+     * it (modules/deviceAdb.js): Ready / Waiting for "Always allow" / Not listening, with
+     *   Allow Melaton to use ADB                          allow (screenshots, installs over 5555)
+     *   Restore ADB on port 5555 when it stops (on Wi-Fi) autoRestore (the app turns on wireless debugging)
+     *   Send screenshots to Device Center                 screenshots (off: Device Center shows the wallpapers)
+     */
+    const ADB_STATE = {
+        ready: 'Ready', unauthorized: 'Waiting for "Always allow" on this phone', unreachable: 'Not listening on port 5555',
+        mismatch: 'Another device answers at this address', off: 'Off', unknown: 'Not checked yet', error: 'Not available on the server'
+    };
+    let adbNow = null;
+    let adbAsked = 0;
+    function selfId() {
+        try { const st = window.activeSync && window.activeSync.state(); return (st && st.id) || null; } catch (_) { return null; }
+    }
+    function adbFetch(method, body, detect) {
+        const id = selfId();
+        if (!id) return Promise.resolve(null);
+        const url = `/api/activesync/adb/${id}${method === 'PUT' ? '/settings' : (detect ? '?detect=1' : '')}`;
+        return fetch(url, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined })
+            .then((r) => r.json()).then((j) => (j && j.success ? j.adb : null)).catch(() => null);
+    }
+    function adbRefresh(api, detect) {
+        adbAsked = Date.now();
+        adbFetch('GET', null, detect).then((s) => { adbNow = s; if (api && typeof api.rerender === 'function') api.rerender(); });
+    }
+
+    wmSettings.extendPage('default-programs', {
+        id: 'dbg',
+        tabs: [['dbg-debugging', 'Debugging']],
+        init: () => ({}),
+        render(el, tab, d, api) {
+            // the applet's own redraws (act, dreamscape:applets) come back to this tab
+            shown = { id: 'shizuku', el, api };
+            const sh = applets().find((x) => x.id === 'shizuku');
+            const rows = sh && Array.isArray(sh.rows) ? sh.rows : [];
+            const a = adbNow;
+            const set = a || { allow: true, autoRestore: false, screenshots: true };
+            el.innerHTML = [
+                ui.sub('Shizuku'),
+                rows.length ? rows.map(rowHtml).join('') : ui.note('This version of the app has no Shizuku.'),
+                ui.gap(),
+                ui.sub('ADB (port 5555)'),
+                ui.value('ADB:', selfId() ? (a ? (ADB_STATE[a.state] || a.state) : 'Checking...') : 'Not connected to ActiveSync'),
+                a && a.address ? ui.value('Address:', a.address) : '',
+                ui.check('dbg-allow', 'Allow Melaton to use ADB', set.allow !== false, 'data-dbg="allow"'),
+                ui.check('dbg-restore', 'Restore ADB on port 5555 when it stops (on Wi-Fi)', !!set.autoRestore, 'data-dbg="autoRestore"'),
+                ui.check('dbg-shots', 'Send screenshots to Device Center', set.screenshots !== false, 'data-dbg="screenshots"'),
+                ui.buttons([['dbg-check', 'Check Now', !selfId()]]),
+                ui.note(a && a.state === 'unauthorized'
+                    ? 'Tap Always allow on the USB debugging question for this server.'
+                    : 'With Restore on, the phone turns on wireless debugging by itself when ADB stops on Wi-Fi. Without screenshots, Device Center shows your wallpapers.')
+            ].join('');
+            el.querySelectorAll('[data-applet-check]').forEach((c) => c.addEventListener('change', () => act('shizuku', c.dataset.appletCheck, c.checked)));
+            el.querySelectorAll('.wm-buttons [data-act]').forEach((b) => {
+                const act2 = b.dataset.act;
+                b.addEventListener('click', () => {
+                    if (b.disabled) return;
+                    if (act2 === 'dbg-check') { adbNow = adbNow ? Object.assign({}, adbNow, { state: 'unknown' }) : null; adbRefresh(api, true); api.rerender(); return; }
+                    act('shizuku', act2, null);
+                });
+            });
+            el.querySelectorAll('[data-dbg]').forEach((c) => c.addEventListener('change', () => {
+                adbFetch('PUT', { [c.dataset.dbg]: c.checked }).then((s) => { if (s) adbNow = s; api.rerender(); });
+                // the app restores 5555 itself: tell it when it can listen (DSApp AndroidActiveSync.setAdbRestore)
+                if (c.dataset.dbg === 'autoRestore') {
+                    try { const A = window.AndroidActiveSync; if (A && typeof A.setAdbRestore === 'function') A.setAdbRestore(!!c.checked); } catch (_) { /* older app */ }
+                }
+            }));
+            if (!adbAsked || Date.now() - adbAsked > 60000) adbRefresh(api, false);
+        }
+    });
 
     window.addEventListener('dreamscape:applets', (e) => {
         const d = (e && e.detail) || {};
