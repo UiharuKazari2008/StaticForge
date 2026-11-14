@@ -228,6 +228,8 @@
                 key: `a:${shellId}`, kind: 'Android', title: label, img: icon ? { src: icon, srcset: '' } : artImg('app-android'), rank: r,
                 open: () => {
                     if (!hidden.has(a.id) && ws.listApps().some((x) => x.id === shellId)) { ws.open(shellId, { fromStart: true }); return; }
+                    // with WM's wait cursor through the start (#816, wmAndroidApps)
+                    if (typeof window.wmAndroidLaunch === 'function') { void window.wmAndroidLaunch(a.id, label); return; }
                     let ok = false;
                     try { ok = !!(window.AndroidApps && window.AndroidApps.launch(a.id) === true); } catch (_) { ok = false; }
                     if (!ok) void ws.messageBox({ title: label, text: `${label} could not be started. It may have been removed from the device.`, icon: 'warning' });

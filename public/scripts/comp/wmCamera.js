@@ -33,7 +33,9 @@
         const sh = window.wmShell;
         const a = cameraApp();
         let ok = false;
-        try { ok = !!(a && bridge().launch(a.id) === true); } catch (_) { ok = false; }
+        // with WM's wait cursor through the start (#816, wmAndroidApps)
+        const run = () => !!(a && bridge().launch(a.id) === true);
+        try { ok = typeof window.wmAndroidStartWithCursorNow === 'function' ? window.wmAndroidStartWithCursorNow(run) : run(); } catch (_) { ok = false; }
         if (!ok) {
             if (sh) void sh.messageBox({ title: 'Camera', icon: 'warning', text: 'The camera could not be started.' });
             return false;

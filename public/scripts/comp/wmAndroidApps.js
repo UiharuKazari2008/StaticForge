@@ -145,10 +145,121 @@
         return o && Object.prototype.hasOwnProperty.call(o, a.id) ? o[a.id] === true : a.game === true;
     };
 
+    // ---------------------------------------------------------------- the wait cursor through a start (#816)
+    // Windows Mobile showed its wait cursor from the tap until the program was up. The page is paused
+    // as soon as the program covers it, so the app draws the cursor above everything (DSApp
+    // LaunchCursor, Android's "Appear on top") from this page's own strip, at the busy cursor's place;
+    // the page then shows no cursor of its own, so two never overlap. Without "Appear on top" the
+    // page shows busy() until it is covered, and asks once for the permission.
+    const CURSOR_ASKED = 'wmLaunchCursorAsked';
+    const cursorKept = new Set();
+    const cursorBridge = () => !!(bridge && typeof bridge.showLaunchCursor === 'function');
+
+    /** Hands the strip to the app once per version and density (it keeps it across restarts). */
+    function sendCursor(spec) {
+        if (cursorKept.has(spec.key)) return Promise.resolve(true);
+        try {
+            if (bridge.hasLaunchCursor(spec.key) === true) { cursorKept.add(spec.key); return Promise.resolve(true); }
+        } catch (_) { return Promise.resolve(false); }
+        return fetch(spec.src)
+            .then((r) => (r.ok ? r.blob() : null))
+            .then((b) => b && new Promise((resolve) => {
+                const fr = new FileReader();
+                fr.onload = () => resolve(fr.result);
+                fr.onerror = () => resolve(null);
+                fr.readAsDataURL(b);
+            }))
+            .then((url) => {
+                const ok = !!url && bridge.setLaunchCursor(spec.key, url) === true;
+                if (ok) cursorKept.add(spec.key);
+                return ok;
+            })
+            .catch(() => false);
+    }
+
+    /** The page's own wait cursor for a start the app cannot draw over: until the page is covered. */
+    function pageCursor() {
+        if (!sh || typeof sh.busy !== 'function') return () => {};
+        const release = sh.busy(true, { delay: 0, timeout: 3000 });
+        let done = false;
+        const end = () => {
+            if (done) return;
+            done = true;
+            document.removeEventListener('visibilitychange', onVis);
+            release();
+        };
+        const onVis = () => { if (document.visibilityState === 'hidden') end(); };
+        document.addEventListener('visibilitychange', onVis);
+        setTimeout(end, 1500);
+        return end;
+    }
+
+    /**
+     * Runs a start (run(): true when Android took it: AndroidApps.launch, a pinned shortcut, the
+     * camera) with WM's wait cursor through it. Resolves true when it started, false when it did
+     * not, null when the user went to allow "Appear on top" instead (nothing started, no error).
+     */
+    async function startWithCursor(run) {
+        const go = () => { try { return run() === true; } catch (_) { return false; } };
+        if (!cursorBridge() || !sh) return go();
+        let allowed = false;
+        try { allowed = bridge.launchCursorAllowed() === true; } catch (_) { allowed = false; }
+        if (!allowed && localStorage.getItem(CURSOR_ASKED) !== '1') {
+            localStorage.setItem(CURSOR_ASKED, '1');
+            const yes = await sh.messageBox({
+                title: 'Melaton Mobile',
+                text: 'Show the wait cursor while Android programs start? Melaton Mobile needs Appear on top for this.',
+                icon: 'question',
+                buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+            });
+            if (yes) { try { bridge.requestLaunchCursor(); } catch (_) { /* Android's page did not open */ } return null; }
+        }
+        const spec = allowed && typeof sh.waitCursorSpec === 'function' ? sh.waitCursorSpec() : null;
+        if (!spec) {
+            const end = pageCursor();
+            const ok = go();
+            if (!ok) end();
+            return ok;
+        }
+        await Promise.race([sendCursor(spec), new Promise((r) => setTimeout(r, 400))]);
+        let shown = false;
+        try { shown = bridge.showLaunchCursor(JSON.stringify(spec)) === true; } catch (_) { shown = false; }
+        const ok = go();
+        if (!ok && shown) { try { bridge.hideLaunchCursor(); } catch (_) { /* gone with the window */ } }
+        if (ok && !shown) pageCursor();
+        return ok;
+    }
+    window.wmAndroidStartWithCursor = startWithCursor;
+
+    /** startWithCursor for a caller that must answer at once (the camera key): no question, and the app's cursor only when it already has the strip. */
+    function startWithCursorNow(run) {
+        const go = () => { try { return run() === true; } catch (_) { return false; } };
+        if (!cursorBridge() || !sh) return go();
+        let allowed = false;
+        try { allowed = bridge.launchCursorAllowed() === true; } catch (_) { allowed = false; }
+        const spec = allowed && typeof sh.waitCursorSpec === 'function' ? sh.waitCursorSpec() : null;
+        let kept = false;
+        if (spec) { try { kept = cursorKept.has(spec.key) || bridge.hasLaunchCursor(spec.key) === true; } catch (_) { kept = false; } }
+        let shown = false;
+        if (kept) { try { shown = bridge.showLaunchCursor(JSON.stringify(spec)) === true; } catch (_) { shown = false; } }
+        else if (spec) void sendCursor(spec); // ready for the next start
+        const end = shown ? () => { try { bridge.hideLaunchCursor(); } catch (_) { /* gone */ } } : pageCursor();
+        const ok = go();
+        if (!ok) end();
+        return ok;
+    }
+    window.wmAndroidStartWithCursorNow = startWithCursorNow;
+
+    /** Starts an Android program (Programs, Start, Search) with the wait cursor; a failed start says so. */
+    async function launchProgram(id, label) {
+        const ok = await startWithCursor(() => bridge.launch(id));
+        if (ok === false) void sh.messageBox({ title: label, text: `${label} could not be started. It may have been removed from the device.`, icon: 'warning' });
+        return ok === true;
+    }
+    window.wmAndroidLaunch = launchProgram;
+
     function start(a) {
-        let ok = false;
-        try { ok = bridge.launch(a.id) === true; } catch (_) { ok = false; }
-        if (!ok) void sh.messageBox({ title: labelOf(a), text: `${labelOf(a)} could not be started. It may have been removed from the device.`, icon: 'warning' });
+        void launchProgram(a.id, labelOf(a));
     }
 
     /** Redraw Programs and Start after a change (wmPrograms / wmStart65 listen). */

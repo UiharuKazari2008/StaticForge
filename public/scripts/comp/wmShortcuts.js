@@ -70,8 +70,11 @@
                 icon: s.icon || 'app-android',
                 inStart: s.where === 'start' ? 'top' : 'programs',
                 programsFolder: 'android',
-                launch: () => {
-                    if (!bridge.launch(s.key)) void sh.messageBox({ title: s.label, icon: 'warning', text: `${s.label} could not be started. The program that made it may have been removed.` });
+                launch: async () => {
+                    // with WM's wait cursor through the start (#816, wmAndroidApps)
+                    const run = () => bridge.launch(s.key) === true;
+                    const ok = typeof window.wmAndroidStartWithCursor === 'function' ? await window.wmAndroidStartWithCursor(run) : run();
+                    if (ok === false) void sh.messageBox({ title: s.label, icon: 'warning', text: `${s.label} could not be started. The program that made it may have been removed.` });
                 },
                 holdMenu: () => holdRows(s)
             });

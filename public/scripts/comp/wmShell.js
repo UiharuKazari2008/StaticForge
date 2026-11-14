@@ -5096,6 +5096,42 @@
         return p.finally(release);
     }
 
+    /**
+     * The wait cursor for the Dreamscape app to draw itself while an Android program starts (#816,
+     * DSApp LaunchCursor): the strip for this version and density, its frame time, and where the
+     * busy cursor sits on the page (CSS px, with the page's width so the app can map it to the
+     * screen). null when it would not show (no shell, a message box up).
+     */
+    function waitCursorSpec() {
+        if (!shell) return null;
+        const layer = shell.querySelector('.wm-busy');
+        const img = layer && layer.querySelector('.wm-busy-wait');
+        if (!img) return null;
+        // measured where busy() puts it, without painting it
+        const wasLayer = layer.hidden;
+        const wasImg = img.hidden;
+        layer.style.visibility = 'hidden';
+        layer.hidden = false;
+        img.hidden = false;
+        const r = img.getBoundingClientRect();
+        img.hidden = wasImg;
+        layer.hidden = wasLayer;
+        layer.style.visibility = '';
+        if (!(r.width > 0 && r.height > 0)) return null;
+        const base = WM65 ? 40 : 32; // the 1x frame (6.5: shellres.192 80 x 80 at 2x)
+        const need = (r.width * (window.devicePixelRatio || 1)) / base;
+        const scale = need <= 1 ? 1 : need <= 2 ? 2 : 4;
+        const d = WM65 ? '/static_images/wm65/' : ART;
+        return {
+            key: `${WM65 ? 'wm65' : 'wm61'}@${scale}x`,
+            src: `${d}wait-strip${scale === 1 ? '' : `@${scale}x`}.png`,
+            frames: 16,
+            ms: WAIT_FRAME_MS,
+            x: r.left, y: r.top, w: r.width, h: r.height,
+            vw: window.innerWidth
+        };
+    }
+
     /** Keys wait while busy, except for a message box or the desktop's question over it. */
     function busyBlocksKey() {
         if (busyCount <= 0) return false;
@@ -8799,6 +8835,8 @@
         bubble: (opts) => bubble(opts || {}),
         /** WM's wait cursor while the user must wait: busy(promise | fn, { delay, timeout }) or busy() -> release. */
         busy: (work, opts) => busy(work, opts || {}),
+        /** The wait cursor's strip, frame time and place, for the app to draw it over a starting Android program (#816). */
+        waitCursorSpec,
         /** The system Volume bubble (the title bar's speaker), for an app's own volume button (Notes' voice bar). */
         volumeBubble: () => { const v = shell && shell.querySelector('[data-role="volume"]'); if (v) toggleVolume(v); },
         /** Resolves once the next frame has painted (yield before heavy synchronous work). */
