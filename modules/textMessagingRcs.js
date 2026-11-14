@@ -313,6 +313,8 @@ class RcsProvider {
         this.storeMsgs([raw]);
         const message = this.normalizeMessage(raw);
         if (was == null && !isOld) {
+            const conv = this.convs.get(raw.conversationID);
+            if (conv && (usToMs(raw.timestamp) || 0) >= (usToMs(conv.lastMessageTimestamp) || 0)) { conv.latestMessageID = raw.messageID; conv.lastMessageTimestamp = raw.timestamp; }
             this.emit('message', { chatGuid: raw.conversationID, message, chat: this.convs.get(raw.conversationID) || null });
         } else if (was !== this.seen.get(raw.messageID)) {
             this.emit('updated', { chatGuid: raw.conversationID, message });
@@ -797,10 +799,12 @@ class RcsProvider {
 
     async unsend() { throw Object.assign(new Error('RCS messages cannot be unsent.'), { code: 'UNSUPPORTED' }); }
 
-    async markRead({ chatGuid }) {
+    async markRead({ chatGuid, messageGuid }) {
         let conv = this.convs.get(chatGuid);
-        if (!conv) { try { await this.getChat(chatGuid); conv = this.convs.get(chatGuid); } catch (_) { conv = null; } }
-        const messageId = conv && conv.latestMessageID;
+        if (!conv && !messageGuid) { try { await this.getChat(chatGuid); conv = this.convs.get(chatGuid); } catch (_) { conv = null; } }
+        // the newest message the screen showed: the conversation's latestMessageID can lag a new arrival,
+        // and Google marks read only up to the message named
+        const messageId = (messageGuid && !/^local-/.test(String(messageGuid)) ? String(messageGuid) : '') || (conv && conv.latestMessageID);
         if (!messageId) return { ok: false };
         await this.call('markRead', { conversationId: chatGuid, messageId });
         return { ok: true };

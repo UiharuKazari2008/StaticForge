@@ -18,7 +18,7 @@
  *   resync(accountId, rebuild)      catch up + reconcile now, or rebuild the server's copy from the source
  *   events also: 'reload' { accountId, chatGuid } (the source corrected that conversation), 'sync'
  *   search(q, { accountId?, limit }) -> [{ accountId, account, chatGuid, chatTitle, known, message }]
- *   markRead(accountId, chatGuid) / markUnread(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
+ *   markRead(accountId, chatGuid[, newestMessageGuid]) / markUnread(accountId, chatGuid) / typing(accountId, chatGuid, bool)  (typing is throttled)
  *   testAccount / saveAccount / deleteAccount / saveSettings({ notifyUnknown })
  *   pairRcs(accountId) -> { qr }   (show the URL as a QR code; 'pairing' events: { qr } refreshed, { paired: true })
  *   pairRcsGoogle(accountId) -> { emoji }  (Google account pairing: the sign-in is Alchemy's, signed in at
@@ -191,7 +191,7 @@
     const react = (accountId, args) => call('tm_react', Object.assign({ accountId }, args || {}));
     const edit = (accountId, args) => call('tm_edit', Object.assign({ accountId }, args || {}));
     const unsend = (accountId, args) => call('tm_unsend', Object.assign({ accountId }, args || {}));
-    const markRead = (accountId, chatGuid) => call('tm_read', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
+    const markRead = (accountId, chatGuid, messageGuid) => call('tm_read', messageGuid ? { accountId, chatGuid, messageGuid } : { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const syncStatus = () => call('tm_sync_status');
     const syncChats = (accountId) => call('tm_sync_chats', { accountId }).then((d) => d.chats || []);
     const resync = (accountId, rebuild) => call('tm_resync', { accountId, rebuild: !!rebuild });

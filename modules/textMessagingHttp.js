@@ -78,7 +78,16 @@ async function linkPreview(raw) {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 7000);
     let value = { url: u.href, title: '', description: '', image: '', site: u.hostname.replace(/^www\./, '') };
-    try {
+    // YouTube's pages answer a plain fetch with a consent page (no head metadata): its oEmbed has the title
+    // and picture the phone's own preview shows
+    if (/(^|\.)(youtube\.com|youtu\.be)$/i.test(u.hostname)) {
+        try {
+            const r = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(u.href)}`, { signal: ctrl.signal });
+            const d = r.ok ? await r.json() : null;
+            if (d && d.title) value = Object.assign(value, { title: String(d.title).slice(0, 300), description: String(d.author_name || '').slice(0, 500), image: /^https:/i.test(d.thumbnail_url || '') ? d.thumbnail_url : '', site: 'YouTube' });
+        } catch (_) { /* the page itself, below */ }
+    }
+    if (!value.title) try {
         const res = await fetch(u.href, { signal: ctrl.signal, redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MelatonMessenger/1.0; link preview)', Accept: 'text/html,application/xhtml+xml' } });
         const type = res.headers.get('content-type') || '';
         if (res.ok && /^image\//i.test(type) && /^https:/i.test(res.url)) value.image = res.url;

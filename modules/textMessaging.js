@@ -755,7 +755,10 @@ async function unsend(accountId, args) { return provider(accountId).unsend(args)
 async function markRead(accountId, args) {
     summaries.delete(accountId);
     markChatRead(accountId, args && args.chatGuid);
-    return provider(accountId).markRead(args);
+    const out = await provider(accountId).markRead(args);
+    // every screen hears it: other clients' rows and counts, the WM notice, Android's notification (tm.dismiss)
+    broadcast({ event: 'read', accountId, chatGuid: args && args.chatGuid, read: true });
+    return out;
 }
 /**
  * Search the text of messages in every connected account (or one): newest first, each with its

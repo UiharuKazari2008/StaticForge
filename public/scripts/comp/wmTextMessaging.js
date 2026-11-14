@@ -67,6 +67,7 @@
     let convTok = 0;
     let selMsg = null; // the selected message's guid
     let replyTo = null; // the message the reply box answers (guid)
+    let pendingFiles = []; // Insert > Picture / Video / File: held on the reply until Send
     let media = null; // the attachment in the picture view
     let newDraft = null; // { to, text, files }: files = pictures handed over by Pictures & Videos (#788)
     let localN = 0;
@@ -447,6 +448,7 @@
         conv = null;
         selMsg = null;
         replyTo = null;
+        pendingFiles = [];
     }
 
     // ---------------------------------------------------------------- conversation
@@ -459,8 +461,10 @@
         selectedGuid = c.guid;
         selMsg = null;
         replyTo = null;
+        pendingFiles = [];
         renderEntries();
         renderReply();
+        renderPending();
         const box = inputEl();
         box.value = '';
         fitInput();
@@ -501,12 +505,42 @@
         } catch (_) { /* the thread stays as it was */ }
     }
 
-    function markRead() {
+    /** The newest message from the other side (Google Messages marks read up to the message named). */
+    function newestIncoming() {
+        const list = conv ? conv.messages : [];
+        for (let i = list.length - 1; i >= 0; i--) if (!list[i].fromMe && !list[i]._local) return list[i].guid;
+        return null;
+    }
+
+    /**
+     * The conversation as read: the server hears it (the Mac / Google Messages, every other screen, the
+     * notifications), once per newest message. clear: you looked at it (scrolled, touched, replied), so
+     * the lines that arrived unread stop reading bold too.
+     */
+    function markRead(opts = {}) {
         if (!conv) return;
         const t = tm();
         const c = chatByGuid(conv.guid) || conv.chat;
+        const newest = newestIncoming();
+        const due = !!(c && c.unread) || conv.readTo !== newest;
         if (c) c.unread = false;
-        if (t && typeof t.markRead === 'function') t.markRead(conv.accountId, conv.guid).catch(() => {});
+        if (opts.clear && conv.unreadFrom !== Infinity) {
+            conv.unreadFrom = Infinity;
+            if (page) page.querySelectorAll('.wtm-entry.is-unread').forEach((el) => {
+                el.classList.remove('is-unread');
+                const ico = el.querySelector('.wch-eico');
+                if (ico) ico.dataset.ico = 'msg-read';
+            });
+        }
+        if (!due) return;
+        conv.readTo = newest;
+        if (t && typeof t.markRead === 'function') t.markRead(conv.accountId, conv.guid, newest || undefined).catch(() => { if (conv) conv.readTo = undefined; });
+    }
+
+    /** You did something in the open conversation (scrolled, touched, typed, replied): it is read. */
+    function engaged() {
+        if (!conv || view() !== 'conv' || !isCurrent() || document.visibilityState === 'hidden') return;
+        markRead({ clear: true });
     }
 
     async function loadOlder() {
@@ -682,7 +716,7 @@
         if (isCurrent()) sh.refreshSoftKeys();
     }
 
-    const canSend = () => !!(conv && inputEl().value.trim());
+    const canSend = () => !!(conv && (inputEl().value.trim() || pendingFiles.length));
 
     async function send() {
         if (!canSend()) return;
@@ -690,6 +724,19 @@
         const box = inputEl();
         const text = box.value.trim();
         const c = conv;
+        markRead({ clear: true });
+        // the attachments held on this reply go after its text, each with its own progress
+        const files = pendingFiles.slice();
+        pendingFiles = [];
+        renderPending();
+        if (!text) {
+            const reply = replyTo;
+            replyTo = null;
+            renderReply();
+            sh.refreshSoftKeys();
+            for (const f of files) { if (conv === c) await sendFile(f, reply); }
+            return;
+        }
         const local = { guid: `local-${++localN}`, _local: true, _sending: true, chatGuid: c.guid, text, fromMe: true, sender: { me: true }, date: Date.now(), reactions: [], attachments: [], replyTo: replyTo || null };
         const reply = replyTo;
         box.value = '';
@@ -716,33 +763,49 @@
             errorBox('The message was not sent.', err);
         }
         if (conv === c) renderEntries(true);
+        for (const f of files) { if (conv === c) await sendFile(f, reply); }
     }
 
     function pickFile(accept) {
         if (!conv || !feat('attachments')) return;
         const input = document.createElement('input');
         input.type = 'file';
+        input.multiple = true;
         if (accept) input.accept = accept;
         input.style.display = 'none';
         document.body.appendChild(input);
         input.addEventListener('change', () => {
-            const file = input.files && input.files[0];
+            const files = [...(input.files || [])];
             input.remove();
-            if (file) sendFile(file);
+            if (files.length) addPending(files);
         }, { once: true });
         input.click();
         // a cancelled picker fires no change: tidy up later
         setTimeout(() => { if (input.isConnected && !(input.files && input.files.length)) input.remove(); }, 120000);
     }
 
-    async function sendFile(file) {
+    /** Pictures / files onto the reply (Insert): they wait under the text box until Send. */
+    function addPending(files) {
+        if (!conv) return;
+        pendingFiles = pendingFiles.concat(files.filter(Boolean));
+        renderPending();
+        if (isCurrent()) sh.refreshSoftKeys();
+    }
+
+    /** The reply's attachments over the text box (Messaging's attachment rows); tap one to take it off. */
+    function renderPending() {
+        const box = page && page.querySelector('.wtm-atts');
+        if (!box) return;
+        const icon = sh && sh.art ? sh.art.img('msg-attachment') : '';
+        box.innerHTML = pendingFiles.map((f, n) => `<div class="msg-att" role="button" data-n="${n}" title="Remove">${icon}<span>${sh.escapeHtml(f.name || 'attachment')}</span>${f.size ? `<span class="wtm-att-size">${sizeText(f.size)}</span>` : ''}</div>`).join('');
+        box.hidden = !pendingFiles.length;
+    }
+
+    async function sendFile(file, reply = null) {
         const t = tm();
         const c = conv;
         if (!c) return;
-        const local = { guid: `local-${++localN}`, _local: true, _upload: true, _progress: 0, chatGuid: c.guid, text: '', fromMe: true, sender: { me: true }, date: Date.now(), reactions: [], attachments: [{ name: file.name, mime: file.type, size: file.size }], replyTo: replyTo || null };
-        const reply = replyTo;
-        replyTo = null;
-        renderReply();
+        const local = { guid: `local-${++localN}`, _local: true, _upload: true, _progress: 0, chatGuid: c.guid, text: '', fromMe: true, sender: { me: true }, date: Date.now(), reactions: [], attachments: [{ name: file.name, mime: file.type, size: file.size }], replyTo: reply || null };
         c.messages.push(local);
         renderEntries(true);
         let last = 0;
@@ -787,6 +850,7 @@
         if (!m || !feat('reply')) return;
         replyTo = m.guid;
         renderReply();
+        engaged();
         inputEl().focus();
         if (isCurrent()) sh.refreshSoftKeys();
     }
@@ -850,6 +914,14 @@
     function attOf(el) {
         const m = msgByGuid(el.dataset.msg);
         return m ? (m.attachments || [])[Number(el.dataset.att)] || null : null;
+    }
+
+    /** A link in a message: the phone's Internet Explorer (wmBrowser), else the browser's own window. */
+    function openLink(href) {
+        if (!href || !/^https?:/i.test(href)) return;
+        engaged();
+        if (window.wmBrowser && typeof window.wmBrowser.open === 'function' && window.wmBrowser.open(href) !== false) return;
+        window.open(href, '_blank', 'noopener');
     }
 
     function download(a) {
@@ -1061,6 +1133,7 @@
         }
         items.push({ label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertText(t) })) });
         if (replyTo) items.push({ label: 'Cancel Reply', action: () => { replyTo = null; renderReply(); sh.refreshSoftKeys(); } });
+        if (pendingFiles.length) items.push({ label: 'Remove Attachments', action: () => { pendingFiles = []; renderPending(); sh.refreshSoftKeys(); } });
         items.push('-');
         items.push({ label: 'Close', action: () => { popLayer(); sh.syncHistory(); } });
         return items;
@@ -1124,6 +1197,7 @@
             <div class="wch-convview wtm-convview" hidden>
                 <div class="wch-history" role="log" aria-live="polite"></div>
                 <div class="wtm-replyband" hidden><span class="wtm-replyband-text"></span><button type="button" class="wtm-replyband-x" aria-label="Cancel reply">Cancel</button></div>
+                <div class="wtm-atts" hidden></div>
                 <div class="wch-compose"><textarea class="wch-input" rows="2" enterkeyhint="send" autocomplete="off" aria-label="Message"></textarea></div>
             </div>
             <div class="wtm-newview wm-msg" hidden>
@@ -1165,6 +1239,13 @@
         const hist = p.querySelector('.wch-history');
         hist.addEventListener('click', (e) => {
             if (e.target.closest('.wch-more')) { loadOlder(); return; }
+            // a link (or its card): the phone's Internet Explorer, never the WebView's target=_blank (a dead tap)
+            const link = e.target.closest('a.wtm-link, a.tm-card');
+            if (link) {
+                e.preventDefault();
+                openLink(link.getAttribute('href'));
+                return;
+            }
             const att = e.target.closest('.wtm-att');
             if (att) {
                 const a = attOf(att);
@@ -1181,6 +1262,15 @@
             const el = e.target.closest('.wtm-entry');
             if (el) selectEntry(el.dataset.guid);
         });
+        // looking at the conversation reads it: a touch, a scroll by finger, wheel or keys
+        ['pointerdown', 'wheel', 'keydown'].forEach((type) => hist.addEventListener(type, engaged, { passive: true }));
+        p.querySelector('.wtm-atts').addEventListener('click', (e) => {
+            const a = e.target.closest('.msg-att');
+            if (!a) return;
+            pendingFiles.splice(Number(a.dataset.n), 1);
+            renderPending();
+            if (isCurrent()) sh.refreshSoftKeys();
+        });
         onHold(hist, '.wtm-entry', (el, x, y) => {
             const m = msgByGuid(el.dataset.guid);
             if (!m) return;
@@ -1189,7 +1279,9 @@
         });
 
         const input = p.querySelector('.wtm-convview .wch-input');
+        input.addEventListener('focus', engaged);
         input.addEventListener('input', () => {
+            engaged();
             fitInput();
             if (conv && feat('typing') && input.value.trim()) { const t = tm(); if (t) t.typing(conv.accountId, conv.guid, true); }
             if (isCurrent()) sh.refreshSoftKeys();
@@ -1221,6 +1313,10 @@
         wire();
         // a stand-in (tests) or a late client: listen to whichever window.textMessaging is there
         setInterval(wire, 3000);
+        // the phone woke (or the app came back) with a conversation on screen: what it shows is read
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && conv && view() === 'conv' && isCurrent()) markRead();
+        });
         loadAccounts(false);
         sh.registerApp({
             id: APP_ID,

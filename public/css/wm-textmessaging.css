@@ -210,6 +210,48 @@
     color: #424142;
 }
 
+/* the reply's attachments (Insert > Picture / Video / File), held until Send: Messaging's attachment
+   rows over the text box; tap one to take it off */
+.wm-tm .wtm-atts {
+    flex: 0 0 auto;
+    max-height: calc(56 * var(--wm-px));
+    overflow-y: auto;
+    padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid color-mix(in srgb, var(--wm-highlight) 55%, #fff);
+    background: #fff;
+    font-size: calc(11 * var(--wm-px));
+}
+
+.wm-tm .wtm-atts[hidden] { display: none; }
+
+.wm-tm .wtm-atts .msg-att {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    cursor: default;
+}
+
+.wm-tm .wtm-atts .msg-att > span:first-of-type {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-tm .wtm-atts .msg-att img {
+    flex: 0 0 auto;
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+}
+
+.wm-tm .wtm-atts .wtm-att-size {
+    flex: 0 0 auto;
+    margin-left: auto;
+    color: #848284;
+}
+
 .wm-tm .wtm-replyband-x {
     flex: 0 0 auto;
     margin: 0;

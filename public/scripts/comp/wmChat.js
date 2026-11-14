@@ -498,6 +498,25 @@
     }
 
 
+    /**
+     * You did something in the open conversation (scrolled, touched, typed, sent, the phone woke on it):
+     * what came while it was away is read now (the list, Today, the notification), and its lines stop
+     * reading bold.
+     */
+    function engagedChat() {
+        if (!conv || conv.id === 'new' || view() !== 'conv' || !isCurrent() || document.hidden) return;
+        const p = previews.get(conv.id);
+        const newest = conv.entries.reduce((m, e) => Math.max(m, msOf(e.at)), 0);
+        if ((p && p.unread) || fresh.has(conv.id) || newest > seenOf(conv.id)) markConvSeen();
+        if (unreadFrom === Infinity || !page) return;
+        unreadFrom = Infinity;
+        page.querySelectorAll('.wch-history .wch-entry.is-unread:not(.is-live)').forEach((el) => {
+            el.classList.remove('is-unread');
+            const ico = el.querySelector('.wch-eico');
+            if (ico) ico.dataset.ico = 'msg-read';
+        });
+    }
+
     function renderConvHead() {
         // the header is part of the thread (renderEntries); the reply box has no picture column
     }
@@ -591,6 +610,7 @@
         const t = inputEl();
         const text = t.value.trim();
         const id = conv.id;
+        engagedChat();
         if (!connected()) { failBox('The message was not sent: the server connection is down.'); return; }
         t.value = '';
         fitInput();
@@ -1461,6 +1481,8 @@
             const el = e.target.closest('.wch-entry');
             if (el && Number(el.dataset.n) >= 0) selectEntry(Number(el.dataset.n));
         });
+        // looking at the conversation reads it: a touch, a scroll by finger, wheel or keys
+        ['pointerdown', 'wheel', 'keydown'].forEach((type) => hist.addEventListener(type, engagedChat, { passive: true }));
         onHold(hist, '.wch-entry', (el, x, y) => {
             const n = Number(el.dataset.n);
             const en = conv && n >= 0 ? conv.entries[n] : null;
@@ -1473,7 +1495,9 @@
         });
 
         const input = p.querySelector('.wch-input');
+        input.addEventListener('focus', engagedChat);
         input.addEventListener('input', () => {
+            engagedChat();
             fitInput();
             if (isCurrent()) sh.refreshSoftKeys();
         });
@@ -1522,6 +1546,10 @@
         hookStream();
         patchDesktop();
         scheduleBgUnread();
+        // the phone woke (or the app came back) with a conversation on screen: what it shows is read
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && conv && conv.id !== 'new' && view() === 'conv' && isCurrent()) markConvSeen();
+        });
         // Messaging > Options > Dreamscape Messenger saved (wmSettingsSystem.js chat-options)
         window.addEventListener('wmChatOptionsChange', () => {
             showActions = stored(ACTIONS_KEY) === '1';
