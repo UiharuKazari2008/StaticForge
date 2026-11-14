@@ -2683,6 +2683,7 @@ function runCacheMaintenance(force = false) {
     await internal.put(MAINTENANCE_KEY, new Response(String(Date.now())));
   })().catch((error) => {
     console.warn('[sw] cache maintenance failed:', error);
+    perfLog(`maintenance failed ${error && (error.stack || error.message || error)}`.slice(0, 600));
   }).finally(() => {
     maintenanceRun = null;
   });
