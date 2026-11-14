@@ -358,13 +358,37 @@
         add('Human Interface Devices', 'hid', uniq(hid));
         // Samsung lists one front camera under two ids: one row per lens
         const camSeen = new Set();
-        const cams = list(hw.cameras).filter((c) => { const k = `${c.facing}|${c.width || ''}x${c.height || ''}|${c.focalLengthMm || c.megapixels || c.id}`; if (camSeen.has(k)) return false; camSeen.add(k); return true; });
+        // a logical camera made of several lenses (android.logicalMultiCamera): one row per lens, the
+        // logical camera's own size on its main (wide) lens
+        const KIND = { wide: 'Wide', ultrawide: 'Ultra Wide', telephoto: 'Telephoto' };
+        const lensRows = [];
+        list(hw.cameras).forEach((c) => {
+            const phys = list(c.physical);
+            if (!phys.length) { lensRows.push(c); return; }
+            // the lens kind: the app's 35 mm equivalent when it sends one (equivalentMm), else from the
+            // set itself - the biggest sensor is the main (wide) lens, a much shorter focal length is
+            // ultra wide, anything else is telephoto (a 3x lens can be 7 mm beside a 6.25 mm main)
+            const mp = (p) => (p.width && p.height ? p.width * p.height : (p.megapixels || 0) * 1e6);
+            const mainLens = phys.slice().sort((a, b) => mp(b) - mp(a))[0];
+            const kindOf = (p) => {
+                if (p.equivalentMm) return p.equivalentMm < 18 ? 'ultrawide' : p.equivalentMm < 35 ? 'wide' : 'telephoto';
+                if (p === mainLens) return 'wide';
+                return p.focalLengthMm && mainLens.focalLengthMm && p.focalLengthMm < mainLens.focalLengthMm * 0.6 ? 'ultrawide' : 'telephoto';
+            };
+            phys.forEach((p0) => {
+                const p = Object.assign({}, p0, { kind: kindOf(p0) });
+                const main = p.kind === 'wide';
+                lensRows.push(Object.assign({}, c, p, { id: `${c.id}/${p.id}`, lens: KIND[p.kind] || '',
+                    width: main && c.width > (p.width || 0) ? c.width : p.width, height: main && c.height > (p.height || 0) ? c.height : p.height, physical: null }));
+            });
+        });
+        const cams = lensRows.filter((c) => { const k = `${c.facing}|${c.width || ''}x${c.height || ''}|${c.focalLengthMm || c.megapixels || c.id}`; if (camSeen.has(k)) return false; camSeen.add(k); return true; });
         add('Imaging devices', 'imaging', cams.map((c) => {
-            const where = c.facing === 'front' ? 'Front Camera' : c.facing === 'external' ? 'USB Video Device' : 'Rear Camera';
+            const where = c.facing === 'front' ? `Front ${c.lens ? `${c.lens} ` : ''}Camera` : c.facing === 'external' ? 'USB Video Device' : `Rear ${c.lens ? `${c.lens} ` : ''}Camera`;
             const mp = c.width && c.height ? (c.width * c.height) / 1e6 : c.megapixels;
             const yn = (v) => (v == null ? '' : v ? 'Yes' : 'No');
             return { name: `${where}${mp ? ` (${Math.round(mp)} MP)` : ''}`, info: { manufacturer: maker || '(Standard imaging devices)', location: `Camera ${c.id}`,
-                props: [['Facing', c.facing], ['Resolution', mp ? `${Math.round(mp)} MP${c.width ? ` (${c.width} x ${c.height})` : ''}` : ''], ['Focal length', c.focalLengthMm ? `${Number(c.focalLengthMm).toFixed(2)} mm` : ''],
+                props: [['Facing', c.facing], ['Lens', c.lens ? `${c.lens}${c.equivalentMm ? ` (${Math.round(c.equivalentMm)} mm equivalent)` : ''}` : ''], ['Resolution', mp ? `${Math.round(mp)} MP${c.width ? ` (${c.width} x ${c.height})` : ''}` : ''], ['Focal length', c.focalLengthMm ? `${Number(c.focalLengthMm).toFixed(2)} mm` : ''],
                     ['Autofocus', yn(c.autofocus)], ['Optical stabilization', yn(c.ois)], ['Digital zoom', c.maxZoom ? `up to ${Number(c.maxZoom).toFixed(1)}x` : ''], ['Flash', yn(c.flash)], ['Camera ID', c.id]] } };
         }));
         const kb = input.filter((d) => has(d, 'keyboard') && d.keyboardType === 'alphabetic').map((d) => (d.external ? `HID Keyboard Device (${d.name || 'USB'})` : d.name || 'Standard Keyboard'));
