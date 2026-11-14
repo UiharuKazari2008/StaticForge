@@ -4034,6 +4034,14 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
 .wm-bubble-pair { display: flex; justify-content: space-between; align-items: baseline; gap: calc(8 * var(--wm-px)); }
 .wm-bubble-pair > b { font-weight: bold; white-space: nowrap; }
 .wm-bubble-text.is-bold { font-weight: bold; }
+/* Wi-Fi's signal in the Connectivity bubble: four bars rising left to right, the lit ones solid */
+.wm-bars { display: inline-flex; align-items: flex-end; gap: calc(2 * var(--wm-px)); height: calc(12 * var(--wm-px)); }
+.wm-bars > i { width: calc(3 * var(--wm-px)); background: transparent; box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) currentColor; opacity: .45; }
+.wm-bars > i:nth-child(1) { height: 25%; }
+.wm-bars > i:nth-child(2) { height: 50%; }
+.wm-bars > i:nth-child(3) { height: 75%; }
+.wm-bars > i:nth-child(4) { height: 100%; }
+.wm-bars > i.is-on { background: currentColor; opacity: 1; }
 
 /* status dots (Android Bridge > Advanced Tools, #820): green ok, yellow waiting, red off / failed */
 .wm-dot {

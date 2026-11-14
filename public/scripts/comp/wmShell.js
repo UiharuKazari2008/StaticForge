@@ -4710,13 +4710,21 @@
             const host = location.host;
             const dev = deviceView();
             const sections = [];
+            const pe = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+            // Wi-Fi as Mobile Broadband (Yukimi, Nov 14): "Wi-Fi: <network / Connected / Disconnected /
+            // Power Off>", its signal as bars (1-4) at the right
+            const w = dev.wifi;
+            if (w && (w.enabled != null || w.connected != null)) {
+                const on = w.enabled !== false;
+                const state = !on ? 'Power Off' : w.connected ? (dev.wifiName || 'Connected') : 'Disconnected';
+                const lv = on && w.connected && Number.isFinite(w.level) ? Math.max(0, Math.min(4, Math.round(w.level))) : null;
+                const barsHtml = lv == null ? '' : `<span class="wm-bars" role="img" aria-label="Signal ${lv} of 4">${[1, 2, 3, 4].map((n) => `<i class="${n <= lv ? 'is-on' : ''}"></i>`).join('')}</span>`;
+                sections.push({ html: `<div class="wm-bubble-pair"><span>Wi-Fi: ${pe(state)}</span>${barsHtml}</div>` });
+            }
             if (dev.link) {
-                const w = dev.wifi;
-                const wl = w && Number.isFinite(w.level) ? ` Signal: ${bars(Math.max(0, Math.min(4, Math.round(w.level))))}.` : '';
-                if (dev.active === 'wifi') sections.push(`Wi-Fi: ${dev.wifiName || 'Connected'}.${wl}`);
                 // the mobile network as WM's Connection Manager names it, its radio type in bold at the right (Yukimi, Nov 14)
-                else if (dev.active === 'cellular') sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: Connected</span>${dev.type ? `<b>${String(typeName(dev.type)).replace(/[&<>]/g, '')}</b>` : ''}</div>` });
-                else sections.push(`${dev.link.text}.`);
+                if (dev.active === 'cellular') sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: Connected</span>${dev.type ? `<b>${pe(typeName(dev.type))}</b>` : ''}</div>` });
+                else if (dev.active !== 'wifi' || !w) sections.push(dev.active === 'wifi' ? `Wi-Fi: ${dev.wifiName || 'Connected'}` : `${dev.link.text}`);
             }
             // the server still starting: no Mainframe Server box on the phone, this line instead (Yukimi, Nov 13)
             const dcBooting = !!(ws && ws.lastServerStartupStatus && ws.lastServerStartupStatus.isReady === false);
