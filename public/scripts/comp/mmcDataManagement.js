@@ -3,21 +3,27 @@
  * desktop (dsap://data.dreamscape.jp/ opens it there; phones and Windows Classic keep the DSAP page,
  * public/scripts/comp/dataManagementDsapApplet.js). Laid out like Computer Management:
  *
- *   Data Management (Local)   the console root: its items, as Computer Management lists its own
- *     Account                 NovelAI account standing, Anlas, subscription, Opus usage, ban notice
- *     Storage                 Generations by Workspace and the server's Storage Breakdown
- *       Workspaces            Disk Management: the volume list (a workspace is a volume), a splitter,
- *                             the graphical view (one disk per workspace, its volume bar coloured by
- *                             kind, hatched when selected) and the legend
- *     Remote Workers          the remote services' health (remote_workers_status), Refresh per row / all
- *     Favorites               favorite tags and text expanders, Remove
- *     Spellbook / Expanders   open the Spellbook and Expanders managers
+ * It stands in for Computer Management (Administrative Tools opens it):
+ *
+ *   Data Management (Local)   the console root: a summary, as Computer Management's is (the NovelAI
+ *                             account, Anlas, Opus usage, ban notice; the storage summary, Generations
+ *                             by Workspace, the server's Storage Breakdown)
+ *     Storage                 its items
+ *       Workspace Management  Disk Management: the volume list (a workspace is a volume), a splitter,
+ *                             the graphical view (ONE disk, each workspace a partition along it sized
+ *                             by its disk usage, hatched when selected) and the legend
+ *       Favorites             favorite tags and text expanders, Remove
+ *       Spellbook, Text Expanders, Enshutsuka, Dynamic Quips
+ *                             those snap-ins' own trees (window.mmcSpellbook / mmcExpanders /
+ *                             mmcEnshutsuka / mmcQuips .def(), hosted with mmcConsole.compose); a
+ *                             snap-in that is not loaded is a node that opens its own window
+ *     Workers                 the remote services' health (remote_workers_status), Refresh per row / all
  *     Replication             the replication pages (status, configuration, upsert, sync, separation
  *       ...                   setup, progress) hosted in the result pane; their driver is the DSAP's
  *
- * Workspace commands are workspaceUtils.js's (showAddWorkspaceModal, editWorkspaceSettings,
- * showRenameWorkspaceModal, showDumpWorkspaceModal, confirmDeleteWorkspace, reorderWorkspaces,
- * setActiveWorkspace); disk usage is get_system_info's workspace list. The refresh hooks
+ * Workspace dialogs are workspaceDialogs.js's (Properties sheet, New, Rename, Dump, Delete, Reorder
+ * Partitions); switching is workspaceUtils.js's setActiveWorkspace; disk usage is get_system_info's
+ * workspace list. The refresh hooks
  * workspaceUtils / textReplacementManager / accountDataBootstrap call (dataMgmtDsapRefresh*IfPresent
  * in dataManagementDsapApplet.js) call mmcDataManagement.refresh(kind) too.
  *
@@ -34,10 +40,20 @@
     const VI = '/static_images/vista-icons';
     const APPS = '/static_images/app_icons';
     const DEV = '/static_images/vista-devmgr';
-    const ICON16 = `${EXP}/drive-system-16.png`;
-    const ICON32 = `${EXP}/tree-drive-system-32.png`;
+    const ICON16 = `${APPS}/16/vista-computer-management.png`;
+    const ICON32 = `${APPS}/32/vista-computer-management.png`;
     const DISK16 = `${DEV}/disk-drives-16.png`;
+    const SERVER16 = '/static_images/melaton/net-server-16.png';
     const ISPY_URL = 'dsap://ispy.dreamscape.jp/';
+
+    // the snap-ins hosted under Storage: [node / embed key, name, global with def() and open(), icon, description]
+    const EMBEDS = [
+        ['spellbook', 'Spellbook', 'mmcSpellbook', `${APPS}/presetbook.png`, 'Presets and spells'],
+        ['expanders', 'Text Expanders', 'mmcExpanders', `${APPS}/expanders.png`, 'Global text expanders'],
+        ['enshutsuka', 'Enshutsuka', 'mmcEnshutsuka', `${APPS}/16/dna.png`, 'Director\'s memories, rules and persona'],
+        ['quips', 'Dynamic Quips', 'mmcQuips', `${APPS}/16/vista-dynamic-quips.png`, 'The lines shown while pictures are generated']
+    ];
+    const embedded = new Set(); // the EMBEDS keys hosted in the open console
 
     const REPL_SUBS = [
         ['configuration', 'Configuration', `${ITEMS}/administrative-tools-16.png`],
@@ -194,7 +210,8 @@
         state.workers = known.concat(extra);
     }
 
-    async function loadWorkers(c, workerId) {
+    /** manual: a Refresh the user asked for, so a failure gets Vista's message box. */
+    async function loadWorkers(c, workerId, manual) {
         const key = workerId || '*';
         if (state.workersBusy.has(key)) return;
         state.workersBusy.add(key);
@@ -205,7 +222,12 @@
             mergeWorkers(data.workers || []);
             state.workersError = state.workers.length ? '' : (data.error || '');
         } catch (err) {
-            if (!state.workers.length) state.workersError = (err && err.message) || 'The remote workers could not be checked.';
+            const msg = (err && err.message) || 'The server did not answer.';
+            if (!state.workers.length) state.workersError = `The workers could not be checked. ${msg}`;
+            else if (manual && c) {
+                const name = workerId ? ((state.workers.find((w) => w.id === workerId) || {}).name || workerId) : 'The workers';
+                void c.box(`<p>${esc(name)} could not be checked.</p><p>${esc(msg)}</p>`, null, { icon: 'error', title: 'Workers' });
+            }
         } finally {
             state.workersBusy.delete(key);
             state.workersLoaded = true;
@@ -260,21 +282,22 @@
 
     // ---- the console tree ---------------------------------------------------------------------
 
+    /** Storage's items; a hosted snap-in is { embed } (mmcConsole.compose puts its tree there). */
+    function storageItems() {
+        return [
+            { id: 'workspaces', name: 'Workspace Management', icon: DISK16, desc: 'Workspaces as partitions of one disk: create, change, order and remove them' },
+            { id: 'favorites', name: 'Favorites', icon: `${APPS}/vista-favorites.png`, desc: 'Favorite tags and text expanders' }
+        ].concat(EMBEDS.map(([key, name, , icon, desc]) => (embedded.has(key) ? { embed: key, name, desc } : { id: key, name, icon, desc })));
+    }
+
     function nodes() {
         return [{
             id: 'root',
             name: `${TITLE} (Local)`,
             icon: ICON16,
             children: [
-                { id: 'account', name: 'Account', icon: `${ITEMS}/user-accounts-16.png`, desc: 'NovelAI account standing, Anlas and subscription' },
-                {
-                    id: 'storage', name: 'Storage', icon: `${DEV}/storage-controllers-16.png`, desc: 'Generations by workspace and the server\'s storage',
-                    children: [{ id: 'workspaces', name: 'Workspaces', icon: DISK16, desc: 'Create, change, order and remove workspaces' }]
-                },
-                { id: 'workers', name: 'Remote Workers', icon: `${CPL}/network-16.png`, desc: 'The remote services Dreamscape uses' },
-                { id: 'favorites', name: 'Favorites', icon: `${APPS}/vista-favorites.png`, desc: 'Favorite tags and text expanders' },
-                { id: 'spellbook', name: 'Spellbook', icon: `${APPS}/presetbook.png`, desc: 'Presets and spells' },
-                { id: 'expanders', name: 'Expanders', icon: `${APPS}/expanders.png`, desc: 'Global text expanders' },
+                { id: 'storage', name: 'Storage', icon: `${DEV}/storage-controllers-16.png`, desc: 'Workspaces, favorites, presets, expanders and Director\'s data', children: storageItems() },
+                { id: 'workers', name: 'Workers', icon: SERVER16, desc: 'The remote services Dreamscape uses' },
                 {
                     id: 'replication', name: 'Replication', icon: `${ITEMS}/sync-center-16.png`, desc: 'Replication status, cargo, sync and separation',
                     children: REPL_SUBS.map(([id, name, icon]) => ({ id: `repl-${id}`, name, icon }))
@@ -283,18 +306,33 @@
         }];
     }
 
+    /** The host id of a Storage item: an embedded snap-in's root is '<key>::root'. */
+    const itemId = (key) => (embedded.has(key) ? `${key}::root` : key);
+
     // ---- pages ----------------------------------------------------------------------------------
 
+    /** The console root: Computer Management's summary page, the account first, then the storage. */
     function rootPage(c) {
-        const kids = nodes()[0].children;
-        const cols = [
-            { t: 'Name', w: 180, key: 'name', text: (d) => d.name },
-            { t: 'Description', w: 300, key: 'desc', text: (d) => d.desc || '' }
-        ];
-        return { html: c.listView(cols, kids.map((n) => ({ data: n, icon: n.icon, open: n.id }))), list: true };
+        const acct = accountSections(c);
+        const store = storageSections(c);
+        return c.page(`${TITLE} (Local)`, acct.side, acct.sections.concat(store.sections));
     }
 
-    function accountPage(c) {
+    /** Storage: its items, as Computer Management's Storage lists Disk Management. */
+    function storagePage(c) {
+        const cols = [
+            { t: 'Name', w: 180, key: 'name', text: (d) => d.name },
+            { t: 'Description', w: 340, key: 'desc', text: (d) => d.desc || '' }
+        ];
+        const icons = new Map(EMBEDS.map(([key, , , icon]) => [key, icon]));
+        const rows = storageItems().map((n) => {
+            const key = n.embed || n.id;
+            return { key, data: n, icon: n.icon || icons.get(key), open: itemId(key) };
+        });
+        return { html: c.listView(cols, rows), list: true };
+    }
+
+    function accountSections(c) {
         const od = root.optionsData || {};
         const user = od.user || null;
         const balance = od.balance || null;
@@ -340,10 +378,10 @@
         if (ban) {
             sections.push({ id: 'dm-acct-ban', title: 'Ban Notice', body: `<p>${c.state(false, 'This account has a ban notice.')}</p><div class="dm-ban">${esc(ban)}</div>` });
         }
-        return c.page('Account', standing.label, sections);
+        return { side: standing.label, sections };
     }
 
-    function storagePage(c) {
+    function storageSections(c) {
         const rows = wsRows();
         const sys = state.sys;
         const reading = !sys && !state.sysError;
@@ -374,16 +412,16 @@
         const bList = c.listView(bCols, breakdown.map((r) => ({ data: r })), { empty: usage ? 'No storage data available.' : 'The storage breakdown is not available.' });
         const wait = '<p>Reading data, please wait...</p>';
         const err = state.sysError ? `<p>${c.state(false, `System information could not be read. ${state.sysError}`)}</p>` : '';
-        return c.page('Storage', reading ? 'Reading data, please wait...' : (usedBytes ? `${dmSize(usedBytes)} used` : ''), [
-            { id: 'dm-st-summary', title: 'Summary', body: err || (reading ? wait : c.props([
-                ['Workspaces', `${num(rows.length)} <span class="mmc-link" data-act="nav:workspaces">Manage workspaces</span>`],
+        return { sections: [
+            { id: 'dm-st-summary', title: 'Storage', body: err || (reading ? wait : c.props([
+                ['Workspaces', `${num(rows.length)} <span class="mmc-link" data-act="nav:workspaces">Workspace Management</span>`],
                 ['Generations', num(total)],
                 ['Workspace images', dmSize(sysTotalBytes(rows))],
                 ['Total on the server', dmSize(usedBytes)]
             ])) },
             { id: 'dm-st-gen', title: 'Generations by Workspace', body: reading ? wait : genList },
             { id: 'dm-st-break', title: 'Storage Breakdown', body: reading ? wait : bList }
-        ]);
+        ] };
     }
 
     /** Disk Management: the volume list, the splitter, the graphical view and its legend. */
@@ -403,18 +441,25 @@
             { t: 'Order', w: 46, num: true, key: 'order', value: (d) => d.index, text: (d) => String(d.index + 1) }
         ];
         const list = c.listView(cols, rows.map((r) => ({ key: r.id, data: r })), { sortId: 'dm-vol', sort: { key: 'order', dir: 1 }, empty: 'No workspaces configured.' });
-        const disks = rows.map((r) => {
+        // one disk; each workspace a partition along it, as wide as its share of the disk's usage
+        // (a minimum width keeps a small one readable and clickable)
+        const weightOf = (r) => (r.bytes != null ? Number(r.bytes) || 0 : r.generations || 0);
+        const weightSum = rows.reduce((s, r) => s + weightOf(r), 0);
+        const parts = rows.map((r) => {
             const sel = String(c.sel) === String(r.id);
             const line2 = [r.bytes == null ? sizeText(r) : dmSize(r.bytes), `${num(r.generations)} generation${r.generations === 1 ? '' : 's'}`].join(' ');
             const tip = `${r.name}\n${line2}\n${r.status}${r.nicknames.length ? `\nAlso called: ${r.nicknames.join(', ')}` : ''}`;
-            return `<div class="dm-disk" data-ws="${esc(r.id)}">
-                <div class="dm-disk-label"><b><img src="${DISK16}" alt="">Disk ${r.index}</b><span>${r.isDefault ? 'Default' : 'Basic'}</span><span>${esc(sizeText(r))}</span><span>Online</span></div>
-                <div class="dm-disk-area"><div class="dm-part is-${r.kind}${sel ? ' is-selected' : ''}" data-ws="${esc(r.id)}" title="${esc(tip)}">
+            const grow = weightSum ? Math.max(0.0001, weightOf(r) / weightSum) : 1;
+            return `<div class="dm-part is-${r.kind}${sel ? ' is-selected' : ''}" data-ws="${esc(r.id)}" title="${esc(tip)}" style="flex-grow:${grow.toFixed(4)}">
                     <div class="dm-part-strip"></div>
                     <div class="dm-part-body"><b><span class="dm-swatch" style="background:${esc(r.color)}"></span>${esc(r.name)}</b><span>${esc(line2)}</span><span>${esc(r.status)}</span></div>
-                </div></div>
-            </div>`;
+                </div>`;
         }).join('');
+        const diskSize = state.sys ? dmSize(total) : (state.sysError ? 'Unknown' : 'Reading...');
+        const disks = rows.length ? `<div class="dm-disk is-single" style="--dm-parts:${rows.length}">
+                <div class="dm-disk-label"><b><img src="${DISK16}" alt="">Disk 0</b><span>Basic</span><span>${esc(diskSize)}</span><span>Online</span></div>
+                <div class="dm-disk-area">${parts}</div>
+            </div>` : '';
         const legend = Object.values(KINDS).map(([label, color]) => `<span><span class="dm-key" style="background:${color}"></span>${esc(label)}</span>`).join('');
         const html = `<div class="dm-vol">${list}</div><div class="dm-hsplit" title=""></div>
             <div class="dm-graph"><div class="dm-map" data-mmc-scroll>${disks || '<div class="mmc-empty">No workspaces configured.</div>'}</div><div class="dm-legend">${legend}</div></div>`;
@@ -462,7 +507,7 @@
             p.classList.toggle('is-selected', on);
             if (on) hit = p;
         });
-        if (hit) hit.closest('.dm-disk').scrollIntoView({ block: 'nearest' });
+        if (hit) hit.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
 
     function workersPage(c) {
@@ -475,8 +520,8 @@
             { t: 'Latency', w: 70, num: true, key: 'latency', value: (d) => Number(d.latencyMs) || 0, text: (d) => (d.latencyMs == null || !Number.isFinite(Number(d.latencyMs)) ? '' : `${Math.round(Number(d.latencyMs))} ms`) },
             { t: 'Details', w: 220, key: 'detail', text: (d) => d.detail || '' }
         ];
-        let empty = 'There are no remote workers.';
-        if (!state.workersLoaded) empty = 'Checking remote workers, please wait...';
+        let empty = 'There are no workers.';
+        if (!state.workersLoaded) empty = 'Checking workers, please wait...';
         else if (state.workersError) empty = state.workersError;
         const rows = state.workers.map((w) => ({ key: w.id, data: w, icon: (WORKER_STATUS[w.status] || WORKER_STATUS.offline)[1] }));
         return { html: c.listView(cols, rows, { sortId: 'dm-workers', empty }), list: true };
@@ -493,14 +538,28 @@
         return { html: c.listView(cols, rows, { sortId: 'dm-fav', empty }), list: true };
     }
 
+    /** A Storage snap-in that is not loaded here: what it keeps, and a button that opens its own window. */
     function launcherPage(c, node) {
-        const isSpell = node.id === 'spellbook';
+        const e = EMBEDS.find((x) => x[0] === node.id);
+        const about = {
+            spellbook: 'Spellbook keeps your presets: saved prompts, settings and their spells. Open it to add, change, sort and remove presets.',
+            expanders: 'Text expanders are global: a short !placeholder in a prompt is replaced with its text when you generate. Open Text Expanders to add, change and remove them.',
+            enshutsuka: 'Enshutsuka keeps Director\'s memories, static rules, feedback and persona.',
+            quips: 'Dynamic Quips writes the short lines Melaton shows while a picture is generated.'
+        }[node.id] || '';
         return c.page(node.name, '', [{
-            id: `dm-${node.id}`, title: node.name, body: `${c.overview(isSpell ? `${APPS}/presetbook.png` : `${APPS}/expanders.png`, isSpell
-                ? ['Spellbook keeps your presets: saved prompts, settings and their spells. Open it to add, change, sort and remove presets.']
-                : ['Expanders are the global text expanders: a short !placeholder in a prompt is replaced with its text when you generate. Open Expanders to add, change and remove them.'])}
-                <div class="mmc-buttons"><button type="button" class="btn-standard" data-act="${isSpell ? 'open-spellbook' : 'open-expanders'}">${isSpell ? 'Open Spellbook' : 'Open Expanders'}</button></div>`
+            id: `dm-${node.id}`, title: node.name, body: `${c.overview(e ? e[3] : ICON32, [about])}
+                <div class="mmc-buttons"><button type="button" class="btn-standard" data-act="open:${esc(node.id)}">Open ${esc(node.name)}</button></div>`
         }]);
+    }
+
+    /** Opens a Storage snap-in in its own window (the managers Spellbook and Text Expanders were). */
+    function openItem(key) {
+        if (key === 'spellbook' && !(root.mmcSpellbook && root.mmcSpellbook.open)) { call('showPresetManager'); return; }
+        if (key === 'expanders' && !(root.mmcExpanders && root.mmcExpanders.open)) { call('showTextReplacementManager'); return; }
+        const e = EMBEDS.find((x) => x[0] === key);
+        const m = e && root[e[2]];
+        if (m && typeof m.open === 'function') void m.open();
     }
 
     function replSub(nodeId) {
@@ -553,8 +612,95 @@
             },
             registerContextMenuItems: () => () => {},
             registerContextMenuAction: () => () => {},
-            clearContextMenuItems: () => {}
+            clearContextMenuItems: () => {},
+            vistaDialog: (kind, opts) => replDialog(c, kind, opts)
         };
+    }
+
+    // the replication pages' forms as Vista dialogs (the DSAP's own are web forms in a message box)
+    const SS = 0x50020000;
+    const EDIT = 0x50010080;
+    const PASSWORD = 0x500100A0;
+    const CHECK = 0x50010003;
+    const GROUP = 0x50000007;
+    const PUSH = 0x50010000;
+    const DEFPUSH = 0x50010001;
+    const EDGE = 0x200;
+    const REPL_TPL = {
+        register: { t: 'Register Child', w: 260, h: 196, f: ['MS Shell Dlg', 8], s: 0, c: [
+            [100, 'S', 7, 7, 246, 16, SS, 'Pair this node as a child, with the master\'s URLs and the replication token from the separation manifest.', 0],
+            ...[['Display &name:', 102], ['&Instance ID:', 104], ['Master &access URL:', 106], ['Master &WebSocket URL:', 108], ['&Peer host:', 110], ['P&eer port:', 112], ['Replication &token:', 114]]
+                .flatMap(([label, id], i) => [[id - 1, 'S', 7, 30 + i * 18, 90, 8, SS, label, 0], [id, 'E', 100, 28 + i * 18, 153, 14, id === 114 ? PASSWORD : EDIT, '', EDGE]]),
+            [115, 'S', 7, 156, 130, 16, SS, '', 0],
+            [1, 'B', 149, 175, 50, 14, DEFPUSH, 'OK', 0], [2, 'B', 203, 175, 50, 14, PUSH, 'Cancel', 0]
+        ] },
+        ephemeral: { t: 'Ephemeral Setup', w: 260, h: 202, f: ['MS Shell Dlg', 8], s: 0, c: [
+            [100, 'S', 7, 7, 246, 16, SS, 'Set up a short-lived ephemeral node (a phone, for example). Export cargo hands its work back to the master.', 0],
+            [101, 'S', 7, 30, 90, 8, SS, 'Display &name:', 0], [102, 'E', 100, 28, 153, 14, EDIT, '', EDGE],
+            [103, 'S', 7, 48, 90, 8, SS, 'Master &access URL:', 0], [104, 'E', 100, 46, 153, 14, EDIT, '', EDGE],
+            [105, 'S', 7, 66, 90, 8, SS, 'Master &WebSocket URL:', 0], [106, 'E', 100, 64, 153, 14, EDIT, '', EDGE],
+            [107, 'B', 7, 84, 246, 10, CHECK, 'A&irgapped: never contact the master', 0],
+            [110, 'B', 7, 100, 246, 72, GROUP, 'Local copies', 0],
+            [120, 'S', 7, 178, 130, 18, SS, '', 0],
+            [1, 'B', 149, 181, 50, 14, DEFPUSH, 'OK', 0], [2, 'B', 203, 181, 50, 14, PUSH, 'Cancel', 0]
+        ] }
+    };
+
+    function replDialog(c, kind, opts = {}) {
+        const a = root.vistaDialogTemplate;
+        const tpl = REPL_TPL[kind];
+        if (!a || !tpl) return Promise.resolve(false);
+        let t = tpl;
+        const clone = Array.isArray(opts.options) ? opts.options : [];
+        if (kind === 'ephemeral') {
+            // the clone profile's check boxes, two columns in the Local copies group
+            t = Object.assign({}, tpl, { c: tpl.c.concat(clone.map((o, i) => [130 + i, 'B', 16 + (i % 2) * 118, 114 + Math.floor(i / 2) * 13, 112, 10, CHECK, o.label, 0])) });
+        }
+        const errId = kind === 'register' ? 115 : 120;
+        return new Promise((resolve) => {
+            let saved = false;
+            const ctx = a.openDialog({
+                id: `dataManagementRepl_${kind}`,
+                tpl: t,
+                owner: c.modal,
+                focusFirst: true,
+                init: (d) => {
+                    if (kind !== 'ephemeral') return;
+                    clone.forEach((o, i) => d.set(130 + i, !!(opts.profile || {})[o.key]));
+                },
+                ok: async (d) => {
+                    const v = (id) => String(d.get(id) || '').trim();
+                    let values;
+                    if (kind === 'register') {
+                        values = { displayName: v(102), instanceId: v(104), masterAccessUrl: v(106), masterWsUrl: v(108), peerHost: v(110), peerPort: v(112), replicationToken: v(114) };
+                        if (!values.masterAccessUrl || !values.replicationToken) {
+                            d.html(errId, `<span class="dm-dlg-error"><img src="${VI}/error-16.png" alt="">Type the master access URL and the replication token.</span>`);
+                            return false;
+                        }
+                        if (values.peerPort && !/^\d+$/.test(values.peerPort)) {
+                            d.html(errId, `<span class="dm-dlg-error"><img src="${VI}/error-16.png" alt="">The peer port must be a number.</span>`);
+                            return false;
+                        }
+                    } else {
+                        const profile = {};
+                        clone.forEach((o, i) => { profile[o.key] = !!d.get(130 + i); });
+                        if (profile.previewCache && !profile.workspaceImages) profile.imageMetadata = true;
+                        values = { displayName: v(102), accessUrl: v(104) || null, wsUrl: v(106) || null, airgapped: !!d.get(107), cloneProfile: profile };
+                        if (!values.displayName) {
+                            d.html(errId, `<span class="dm-dlg-error"><img src="${VI}/error-16.png" alt="">Type a display name.</span>`);
+                            return false;
+                        }
+                    }
+                    d.html(errId, '');
+                    const ok = typeof opts.save === 'function' ? await opts.save(values) : false;
+                    if (!ok) return false;
+                    saved = true;
+                    return true;
+                },
+                close: () => resolve(saved)
+            });
+            if (!ctx) resolve(false);
+        });
     }
 
     /** The replication pages' controls in Vista's look: push buttons, no Font Awesome glyphs. */
@@ -625,7 +771,7 @@
             const sub = parts[1] === 'bundle' ? 'setup' : parts[1];
             return sub && REPL_SUBS.some((s) => s[0] === sub) ? `repl-${sub}` : 'replication';
         }
-        const map = { status: 'root', workspaces: 'workspaces', favorites: 'favorites', spellbook: 'spellbook', expanders: 'expanders', account: 'account', storage: 'storage', workers: 'workers' };
+        const map = { status: 'root', account: 'root', workspaces: 'workspaces', favorites: 'favorites', spellbook: itemId('spellbook'), expanders: itemId('expanders'), enshutsuka: itemId('enshutsuka'), quips: itemId('quips'), storage: 'storage', workers: 'workers' };
         return map[first] || 'root';
     }
 
@@ -667,7 +813,6 @@
     function commands(node) {
         switch (node.id) {
             case 'root':
-            case 'storage':
                 return [
                     { text: 'New Workspace...', action: 'ws-new' },
                     { text: 'Search Images...', action: 'search' }
@@ -675,25 +820,26 @@
             case 'workspaces':
                 return [
                     { text: 'New Workspace...', action: 'ws-new' },
+                    { text: 'Reorder Partitions...', action: 'ws-reorder' },
+                    { separator: true },
                     { text: 'Search Images...', action: 'search' }
                 ];
             case 'workers':
                 return []; // the shell's Refresh checks every worker
             case 'favorites':
-                return [{ text: 'Open Expanders...', action: 'open-expanders' }];
-            case 'spellbook':
-                return [{ text: 'Open Spellbook...', action: 'open-spellbook' }];
-            case 'expanders':
-                return [{ text: 'Open Expanders...', action: 'open-expanders' }];
+                return [{ text: 'Open Text Expanders...', action: 'open:expanders' }];
             case 'replication':
                 return replCommands();
-            default:
+            default: {
+                const e = EMBEDS.find((x) => x[0] === node.id);
+                if (e) return [{ text: `Open ${e[1]}...`, action: `open:${e[0]}` }];
                 return node.id.startsWith('repl-') ? [{ text: 'Replication Home', action: 'nav:replication' }] : [];
+            }
         }
     }
 
     function selCommands(node, key) {
-        if (node.id === 'workspaces' || node.id === 'storage') {
+        if (node.id === 'workspaces' || node.id === 'root') {
             const rows = wsRows();
             const r = rows.find((x) => String(x.id) === String(key));
             if (!r) return null;
@@ -730,7 +876,7 @@
     }
 
     function toolbar(node, c) {
-        if (node.id === 'root') return [];
+        if (node.id === 'root' || node.id === 'storage') return [];
         if (node.id === 'workspaces') {
             const r = c.sel ? wsRows().find((x) => String(x.id) === String(c.sel)) : null;
             return [
@@ -769,27 +915,73 @@
         await root.reorderWorkspaces(order);
     }
 
+    /** workspaceDialogs.js (loaded with the snap-ins): the Vista dialogs for a partition. */
+    function dialogs() {
+        const d = root.workspaceDialogs;
+        if (!d) throw new Error('The workspace dialogs could not be loaded.');
+        return d;
+    }
+
+    /** Remove from Favorites: Vista's question, then the server's favorites_remove. */
+    async function removeFavorite(c, f) {
+        const yes = await c.box(`<p>Are you sure you want to remove ${esc(f.name)} from Favorites?</p>`,
+            [{ text: 'Yes', value: true, className: 'btn-standard primary' }, { text: 'No', value: false, className: 'btn-standard' }],
+            { icon: 'warning', title: 'Remove from Favorites' });
+        if (yes !== true) return;
+        let fav = null;
+        try { if (typeof favoritesData !== 'undefined') fav = favoritesData; } catch (_) { fav = null; }
+        const item = fav && fav[f.type] ? fav[f.type][f.index] : null;
+        if (!item) return;
+        let res;
+        try {
+            res = await send('favorites_remove', { favoriteType: f.type, itemId: item.id });
+        } catch (err) {
+            await c.box(`<p>${esc(f.name)} could not be removed from Favorites.</p><p>${esc((err && err.message) || '')}</p>`, null, { icon: 'error', title: 'Remove from Favorites' });
+            return;
+        }
+        if (!res || res.success === false) {
+            await c.box(`<p>${esc(f.name)} could not be removed from Favorites.</p><p>${esc((res && res.error) || 'The server did not answer.')}</p>`, null, { icon: 'error', title: 'Remove from Favorites' });
+            return;
+        }
+        const i = fav[f.type].indexOf(item);
+        if (i >= 0) fav[f.type].splice(i, 1);
+        call('updateFavoritesCounts');
+        call('renderFavoritesList');
+        c.sel = null;
+        c.note(`${f.name} was removed from Favorites.`);
+        c.refresh();
+    }
+
     async function action(a, c) {
         const sel = c.sel;
         const ws = sel ? wsRows().find((r) => String(r.id) === String(sel)) : null;
+        const own = { owner: c.modal };
+        if (a.startsWith('open:')) {
+            // a snap-in hosted here opens in place; one that is not, in its own window
+            const key = a.slice(5);
+            if (embedded.has(key)) c.select(itemId(key), true);
+            else openItem(key);
+            return true;
+        }
         switch (a) {
             case 'refresh': {
-                if (c.node === 'workers') { void loadWorkers(c); return true; }
+                if (c.node === 'workers') { void loadWorkers(c, null, true); return true; }
                 if (c.node === 'favorites') { void loadFavorites(c); return true; }
                 if (c.node === 'replication' || c.node.startsWith('repl-')) {
                     if (repl && drv()) { await drv()._refreshReplication(repl.body, repl.host); c.refresh(); } else void loadRepl(c);
                     return true;
                 }
                 c.refresh();
-                if (c.node !== 'account') void loadSys(c);
+                void loadSys(c);
                 return true;
             }
             case 'search': openSearch(); return true;
-            case 'ws-new': call('showAddWorkspaceModal'); return true;
-            case 'ws-props': if (ws) call('editWorkspaceSettings', ws.id); return true;
-            case 'ws-rename': if (ws) { if (has('showRenameWorkspaceModal')) root.showRenameWorkspaceModal(ws.id); else call('editWorkspaceSettings', ws.id); } return true;
-            case 'ws-dump': if (ws && !ws.isDefault) call('showDumpWorkspaceModal', ws.id, ws.name); return true;
-            case 'ws-delete': if (ws && !ws.isDefault) call('confirmDeleteWorkspace', ws.id, ws.name); return true;
+            case 'ws-new': dialogs().create(own); return true;
+            case 'ws-reorder': dialogs().reorder(Object.assign({ select: ws ? ws.id : null }, own)); return true;
+            case 'ws-props': if (ws) dialogs().properties(ws.id, Object.assign({ sys: state.sys || undefined }, own)); return true;
+            case 'ws-rename': if (ws) dialogs().rename(ws.id, own); return true;
+            case 'ws-dump': if (ws && !ws.isDefault) dialogs().dump(ws.id, own); return true;
+            case 'ws-delete': if (ws && !ws.isDefault) await dialogs().remove(ws.id, own); return true;
             case 'ws-activate':
                 if (ws && !ws.active) {
                     c.note(`Switching to ${ws.name}...`);
@@ -802,18 +994,14 @@
             case 'ws-down': if (ws) await moveWorkspace(c, ws.id, 1); return true;
             case 'ws-copy': if (ws) await copyText(c, ws.id, 'The workspace ID'); return true;
             case 'delete':
-                if (c.node === 'workspaces' && ws && !ws.isDefault) call('confirmDeleteWorkspace', ws.id, ws.name);
+                if (c.node === 'workspaces' && ws && !ws.isDefault) await dialogs().remove(ws.id, own);
                 else if (c.node === 'favorites' && sel) await action('fav-remove', c);
                 return true;
-            case 'workers-all': void loadWorkers(c); return true;
-            case 'worker-refresh': if (sel) void loadWorkers(c, sel); return true;
+            case 'workers-all': void loadWorkers(c, null, true); return true;
+            case 'worker-refresh': if (sel) void loadWorkers(c, sel, true); return true;
             case 'fav-remove': {
                 const f = favRows().find((x) => x.key === sel);
-                if (f && has('removeFavorite')) {
-                    await root.removeFavorite(f.type, f.index);
-                    c.sel = null;
-                    c.refresh();
-                }
+                if (f) await removeFavorite(c, f);
                 return true;
             }
             case 'fav-copy': {
@@ -821,8 +1009,6 @@
                 if (f) await copyText(c, f.name, 'The name');
                 return true;
             }
-            case 'open-spellbook': call('showPresetManager'); return true;
-            case 'open-expanders': call('showTextReplacementManager'); return true;
             case 'help': call('openHelpAndSupport', 'data-management'); return true;
             default: return false;
         }
@@ -835,9 +1021,9 @@
                 if (state.sysLoading && !state.sys) return 'Reading data, please wait...';
                 return `${rows.length} workspace${rows.length === 1 ? '' : 's'}${state.sys ? `, ${dmSize(sysTotalBytes(rows))}` : ''}`;
             }
-            case 'storage': return state.sysError ? 'System information could not be read.' : (state.sys ? '' : 'Reading data, please wait...');
+            case 'root': return state.sysError ? 'System information could not be read.' : (state.sys ? '' : 'Reading data, please wait...');
             case 'workers': {
-                if (!state.workersLoaded || state.workersBusy.size) return 'Checking remote workers...';
+                if (!state.workersLoaded || state.workersBusy.size) return 'Checking workers...';
                 const ok = state.workers.filter((w) => w.status === 'healthy').length;
                 return `${ok} of ${state.workers.length} healthy`;
             }
@@ -855,20 +1041,17 @@
             icon16: ICON16,
             icon32: ICON32,
             taskbarIcon: ICON32,
-            treeWidth: 180,
+            treeWidth: 190,
             expanded: ['root', 'storage'],
             nodes,
             page: (node, c) => {
                 switch (node.id) {
-                    case 'account': return accountPage(c);
                     case 'storage': return storagePage(c);
                     case 'workspaces': return workspacesPage(c);
                     case 'workers': return workersPage(c);
                     case 'favorites': return favoritesPage(c);
-                    case 'spellbook':
-                    case 'expanders': return launcherPage(c, node);
                     case 'root': return rootPage(c);
-                    default: return replPage(c, node);
+                    default: return EMBEDS.some((e) => e[0] === node.id) ? launcherPage(c, node) : replPage(c, node);
                 }
             },
             commands,
@@ -876,17 +1059,19 @@
             toolbar,
             action,
             rowOpen: (key, node, c) => {
-                if (node.id === 'workspaces') void action('ws-props', c);
+                if (node.id === 'workspaces' || (node.id === 'root' && wsRows().some((r) => String(r.id) === String(key)))) void action('ws-props', c);
                 else if (node.id === 'workers') void action('worker-refresh', c);
             },
             onSelectRow: (key, node, c) => { if (node.id === 'workspaces') { markPartitions(c); c.renderToolbar(); } else if (node.id === 'favorites') c.renderToolbar(); },
             status,
-            about: { version: '1.0.0', lines: ['Data Management keeps Dreamscape\'s workspaces, account, storage, favorites and replication.'] },
+            about: { version: '1.0.0', lines: ['Data Management keeps Dreamscape\'s account, workspaces, favorites, presets, expanders, Director\'s data, workers and replication.'] },
             onOpen: (c) => {
                 current = c;
                 const pane = c.el('.mmc-result');
+                const mine = () => !String(c.node || '').includes('::');
                 // a partition in the graphical view picks its volume like a row of the list
                 const pick = (ev) => {
+                    if (!mine()) return false;
                     const p = ev.target.closest('.dm-part[data-ws]');
                     if (!p) return false;
                     c.selectRow(p.dataset.ws);
@@ -929,11 +1114,34 @@
         }
     }
 
+    /** The Storage snap-ins that can be hosted ({ key, def } for mmcConsole.compose). */
+    function embeds() {
+        const out = [];
+        EMBEDS.forEach(([key, , global]) => {
+            const m = root[global];
+            if (!m || typeof m.def !== 'function') return;
+            try {
+                const d = m.def();
+                if (d && typeof d.nodes === 'function' && typeof d.page === 'function') out.push({ key, def: d });
+            } catch (err) { console.error(`${TITLE}: ${key} snap-in`, err); }
+        });
+        return out;
+    }
+
     async function openDataManagementConsole(node) {
         await ensureAssets();
         if (!root.mmcConsole) return null;
+        // a console already open keeps the snap-ins it was built with
+        const open = root.mmcConsole.get(ID);
+        let full = null;
+        if (!open || !open.modal || !open.modal.isConnected) {
+            const list = typeof root.mmcConsole.compose === 'function' ? embeds() : [];
+            embedded.clear();
+            list.forEach((e) => embedded.add(e.key));
+            full = list.length ? root.mmcConsole.compose(def(), list) : def();
+        }
         const target = node ? nodeFor(node) : null;
-        return root.mmcConsole.open(def(), target ? { node: target } : {});
+        return root.mmcConsole.open(full || def(), target ? { node: target } : {});
     }
 
     /** The refresh hooks: kind 'workspaces' | 'status' | 'favorites' | 'account' | 'usage' | 'replication'. */
@@ -941,7 +1149,7 @@
         const c = current;
         if (!c || !c.modal || !c.modal.isConnected) return;
         if (kind === 'status') { loadSysSoon(); return; }
-        if ((kind === 'account' || kind === 'usage') && c.node !== 'account') return;
+        if ((kind === 'account' || kind === 'usage') && c.node !== 'root') return;
         if (kind === 'favorites') state.favLoaded = true;
         if (kind === 'workspaces' && c.sel && c.node === 'workspaces' && !wsRows().some((r) => String(r.id) === String(c.sel))) c.sel = null;
         c.refresh();

@@ -17,6 +17,8 @@
  * generationQuips.js's (loadDynamicGenerationQuips).
  *
  *   window.openDynamicQuipsConsole(workspaceId?, view?)   view: 'status' | 'phrasebook' | 'settings'
+ *   window.mmcQuips.def()     the snap-in's def, for a console that hosts it (Data Management's Storage,
+ *                             mmcConsole.compose): its callbacks use only the embed console's API
  */
 (function (root) {
     'use strict';
@@ -25,8 +27,8 @@
     const TITLE = 'Dynamic Quips';
     const ITEMS = '/static_images/vista-cpl/items';
     const VI = '/static_images/vista-icons';
-    const ICON16 = `${ITEMS}/text-to-speech-16.png`;
-    const ICON32 = `${ITEMS}/text-to-speech-32.png`;
+    const ICON16 = '/static_images/app_icons/16/vista-dynamic-quips.png';
+    const ICON32 = '/static_images/app_icons/32/vista-dynamic-quips.png';
     const ICON_WS = `${VI}/workspace-switcher-16.png`;
     const ICON_STATUS = `${ITEMS}/performance-information-and-tools-16.png`;
     const ICON_BOOK = `${VI}/explorer/text-16.png`;
@@ -373,7 +375,7 @@
             { text: 'Refresh Client Cache', action: 'refresh-cache' },
             { text: 'Clear All Quips...', action: 'clear', disabled: r || !state.status }
         ];
-        if (p.kind !== 'pb') out.push({ separator: true }, { text: 'Open Phrase Book', action: `nav:pb:${p.ws}` });
+        if (p.kind !== 'pb') out.push({ separator: true }, { text: 'Open Phrase Book', action: `go:pb:${p.ws}` });
         return out;
     }
 
@@ -382,7 +384,7 @@
         if ((key === 'pick:phrase' || key === 'pick:term') && state.pick) {
             return key === 'pick:phrase' ? { title: 'Phrase', items: [{ text: 'Copy Phrase', action: 'copy' }] } : { title: 'Term', items: [{ text: 'Copy Term', action: 'copy' }] };
         }
-        if (node.id === 'root' && key) return { title: wsName(key), items: [{ text: 'Status', action: `nav:st:${key}` }, { text: 'Phrase Book', action: `nav:pb:${key}` }, { text: 'Configuration', action: `nav:cfg:${key}` }] };
+        if (node.id === 'root' && key) return { title: wsName(key), items: [{ text: 'Status', action: `go:st:${key}` }, { text: 'Phrase Book', action: `go:pb:${key}` }, { text: 'Configuration', action: `go:cfg:${key}` }] };
         return null;
     }
 
@@ -435,6 +437,8 @@
     }
 
     async function action(a, c) {
+        // go:<node>: a node of this snap-in (c.select maps it when the snap-in is hosted)
+        if (a.startsWith('go:')) { c.select(a.slice(3), true); return true; }
         const p = parse(c.node || 'root');
         const id = p.ws;
         const needWs = ['generate', 'extract', 'clear'];
@@ -475,6 +479,7 @@
         };
         // a progress push redraws the pages that show it; a settings page keeps an open drop-down
         const redraw = (all) => {
+            if (c.isActive && !c.isActive()) return;
             const k = parse(c.node || 'root').kind;
             if (k === 'cfg') {
                 const focused = document.activeElement;
@@ -549,6 +554,7 @@
                 const pane = c.el('.mmc-result');
                 // a phrase or a term in the Phrase Book picks like a list row (Copy Phrase / Copy Term)
                 const pick = (ev) => {
+                    if (c.isActive && !c.isActive()) return;
                     if (parse(c.node || '').kind !== 'pb') return;
                     const li = ev.target.closest('.quip-wiki-phrases li');
                     const term = !li && ev.target.closest('.quip-wiki-term-title');
@@ -590,5 +596,5 @@
     }
 
     root.openDynamicQuipsConsole = openDynamicQuipsConsole;
-    root.mmcQuips = { open: openDynamicQuipsConsole, _state: state };
+    root.mmcQuips = { open: openDynamicQuipsConsole, def, _state: state };
 })(typeof window !== 'undefined' ? window : globalThis);

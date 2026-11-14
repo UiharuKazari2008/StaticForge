@@ -2526,7 +2526,26 @@ function addWorkspaceNicknameFromInput() {
     renderWorkspaceNicknamesList();
 }
 
+/**
+ * On the desktop a workspace is a partition of Data Management's disk: its dialogs are the Vista ones
+ * in workspaceDialogs.js (#828), owned by the window the command came from. Phones keep the panels below.
+ */
+function openWorkspaceDesktopDialog(kind, ...args) {
+    if (!document.body.classList.contains('desktop-mode') || !window.featureLoader) return false;
+    const owner = document.querySelector('.modal.active-window:not(.hidden)') || null;
+    window.featureLoader.loadFeature('workspace_dialogs').then(() => {
+        const dialogs = window.workspaceDialogs;
+        if (!dialogs || typeof dialogs[kind] !== 'function') throw new Error('The workspace dialogs are not available.');
+        return dialogs[kind](...args, { owner });
+    }).catch((error) => {
+        console.error('Workspace dialog:', error);
+        showError('The workspace dialog could not be opened: ' + error.message);
+    });
+    return true;
+}
+
 function showAddWorkspaceModal() {
+    if (openWorkspaceDesktopDialog('create')) return;
     currentWorkspaceOperation = { type: 'add' };
     document.getElementById('workspaceNameInput').classList.remove('hidden');
     document.getElementById('workspaceColorInput').classList.remove('hidden');
@@ -2542,6 +2561,7 @@ function showAddWorkspaceModal() {
 }
 
 function showRenameWorkspaceModal(id) {
+    if (openWorkspaceDesktopDialog('rename', id)) return;
     currentWorkspaceOperation = { type: 'rename', id };
     const workspace = workspaces[id];
     document.getElementById('workspaceNameInput').classList.remove('hidden');
@@ -2566,6 +2586,7 @@ function refreshExplorerWorkspacesListIfOpen() {
 }
 
 async function editWorkspaceSettings(id) {
+    if (openWorkspaceDesktopDialog('properties', id)) return;
     currentWorkspaceOperation = { type: 'settings', id };
     document.getElementById('workspaceNameInput').classList.remove('hidden');
     document.getElementById('workspaceColorInput').classList.remove('hidden');
@@ -2651,6 +2672,7 @@ function wireDumpTargetDropdown() {
 }
 
 function showDumpWorkspaceModal(sourceId, sourceName) {
+    if (openWorkspaceDesktopDialog('dump', sourceId)) return;
     document.getElementById('dumpSourceWorkspaceName').textContent = sourceName;
 
     dumpTargetExcludeWorkspaceId = sourceId;
@@ -2675,6 +2697,7 @@ async function hideWorkspaceDumpModal() {
 }
 
 async function confirmDeleteWorkspace(id, name) {
+    if (openWorkspaceDesktopDialog('remove', id)) return;
     const confirmed = await showConfirmationDialog(
         `Are you sure you want to delete the workspace "${name}"?\n\nAll items will be moved to the default workspace.`,
         [

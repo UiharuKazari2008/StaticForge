@@ -1,0 +1,43 @@
+/* Workspace dialogs on the desktop (Yozora #828; public/scripts/comp/workspaceDialogs.js): the bits the
+   dialog templates have no control for. The legend keys are shell32 1080's owner-drawn 10x9 DLU
+   buttons (15x15 px: solid colour, 1 px black frame), the pie its 82x39 DLU picture. */
+
+.vdt-window .wsd-key {
+    display: block;
+    width: 15px;
+    height: 15px;
+    box-sizing: border-box;
+    border: 1px solid #000;
+}
+
+.vdt-window .wsd-key.is-used { background: #0000ff; }
+.vdt-window .wsd-key.is-free { background: #ff00ff; }
+
+/* a colour's swatch: a sunken 45x20 well */
+.vdt-window .wsd-swatch {
+    display: block;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px #696969;
+}
+
+.vdt-window .wsd-pie {
+    display: block;
+    overflow: visible;
+}
+
+.vdt-window .wsd-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    line-height: 14px;
+}
+
+.vdt-window .wsd-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}

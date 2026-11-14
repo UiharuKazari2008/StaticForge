@@ -1603,7 +1603,40 @@ function dataMgmtDsapReplicationReadCloneGrid(dialogRoot, prefix) {
     return profile;
 }
 
+/** Save a manual child pairing: v = { displayName, instanceId, masterAccessUrl, masterWsUrl, peerHost, peerPort, replicationToken }. */
+async function dataMgmtDsapReplicationSaveRegister(host, root, v) {
+    if (!v.masterAccessUrl || !v.replicationToken) {
+        if (host?.showToast) host.showToast('error', 'Access URL and token required');
+        return false;
+    }
+    const patches = [
+        { path: ['replication', 'role'], value: 'child' },
+        { path: ['replication', 'connectivity'], value: 'normal' },
+        { path: ['replication', 'displayName'], value: v.displayName || 'child' },
+        { path: ['replication', 'masterAccessUrl'], value: v.masterAccessUrl },
+        { path: ['replication', 'masterWsUrl'], value: v.masterWsUrl || null },
+        { path: ['replication', 'masterPeerHost'], value: v.peerHost || null },
+        { path: ['replication', 'masterPeerPort'], value: v.peerPort ? Number(v.peerPort) : null },
+        { path: ['replication', 'replicationToken'], value: v.replicationToken },
+        { path: ['replication', 'pairedAt'], value: new Date().toISOString() }
+    ];
+    if (v.instanceId) patches.push({ path: ['replication', 'instanceId'], value: v.instanceId });
+    try {
+        await dataMgmtDsapReplicationSavePatches(patches);
+        if (host?.showToast) host.showToast('success', 'Child pairing saved');
+        await dataMgmtDsapDriver._refreshReplication(root, host);
+        return true;
+    } catch (err) {
+        if (host?.showToast) host.showToast('error', err.message);
+        return false;
+    }
+}
+
 async function dataMgmtDsapReplicationShowRegisterDialog(host, root) {
+    // a host with its own dialogs (Data Management's MMC console, mmcDataManagement.js) collects the values
+    if (host && typeof host.vistaDialog === 'function') {
+        return host.vistaDialog('register', { save: (v) => dataMgmtDsapReplicationSaveRegister(host, root, v) });
+    }
     const html = `<div class="data-mgmt-repl-dialog-form" id="dataMgmtReplRegisterForm">
   <p>Pair this node as a <strong>child</strong> using master URLs and the replication token from the separation manifest.</p>
   <div class="data-mgmt-repl-dialog-field"><label for="dataMgmtReplRegDisplayName">Display name</label><input type="text" id="dataMgmtReplRegDisplayName" /></div>
@@ -1628,40 +1661,52 @@ async function dataMgmtDsapReplicationShowRegisterDialog(host, root) {
                 const el = dialog?.querySelector(id);
                 return el ? el.value.trim() : '';
             };
-            const displayName = val('#dataMgmtReplRegDisplayName');
-            const instanceId = val('#dataMgmtReplRegInstanceId');
-            const masterAccessUrl = val('#dataMgmtReplRegAccessUrl');
-            const replicationToken = val('#dataMgmtReplRegToken');
-            if (!masterAccessUrl || !replicationToken) {
-                if (host?.showToast) host.showToast('error', 'Access URL and token required');
-                return false;
-            }
-            const patches = [
-                { path: ['replication', 'role'], value: 'child' },
-                { path: ['replication', 'connectivity'], value: 'normal' },
-                { path: ['replication', 'displayName'], value: displayName || 'child' },
-                { path: ['replication', 'masterAccessUrl'], value: masterAccessUrl },
-                { path: ['replication', 'masterWsUrl'], value: val('#dataMgmtReplRegWsUrl') || null },
-                { path: ['replication', 'masterPeerHost'], value: val('#dataMgmtReplRegPeerHost') || null },
-                { path: ['replication', 'masterPeerPort'], value: val('#dataMgmtReplRegPeerPort') ? Number(val('#dataMgmtReplRegPeerPort')) : null },
-                { path: ['replication', 'replicationToken'], value: replicationToken },
-                { path: ['replication', 'pairedAt'], value: new Date().toISOString() }
-            ];
-            if (instanceId) patches.push({ path: ['replication', 'instanceId'], value: instanceId });
-            try {
-                await dataMgmtDsapReplicationSavePatches(patches);
-                if (host?.showToast) host.showToast('success', 'Child pairing saved');
-                await dataMgmtDsapDriver._refreshReplication(root, host);
-                return true;
-            } catch (err) {
-                if (host?.showToast) host.showToast('error', err.message);
-                return false;
-            }
+            return dataMgmtDsapReplicationSaveRegister(host, root, {
+                displayName: val('#dataMgmtReplRegDisplayName'),
+                instanceId: val('#dataMgmtReplRegInstanceId'),
+                masterAccessUrl: val('#dataMgmtReplRegAccessUrl'),
+                masterWsUrl: val('#dataMgmtReplRegWsUrl'),
+                peerHost: val('#dataMgmtReplRegPeerHost'),
+                peerPort: val('#dataMgmtReplRegPeerPort'),
+                replicationToken: val('#dataMgmtReplRegToken')
+            });
         }
     });
 }
 
+/** Configure an ephemeral node: v = { displayName, accessUrl, wsUrl, airgapped, cloneProfile }. */
+async function dataMgmtDsapReplicationSaveEphemeral(host, root, v) {
+    if (!v.displayName) {
+        if (host?.showToast) host.showToast('error', 'Display name required');
+        return false;
+    }
+    const patches = [
+        { path: ['replication', 'role'], value: 'ephemeral' },
+        { path: ['replication', 'connectivity'], value: v.airgapped ? 'airgapped' : 'normal' },
+        { path: ['replication', 'displayName'], value: v.displayName },
+        { path: ['replication', 'cloneProfile'], value: v.cloneProfile },
+        { path: ['replication', 'masterAccessUrl'], value: v.accessUrl || null },
+        { path: ['replication', 'masterWsUrl'], value: v.wsUrl || null }
+    ];
+    try {
+        await dataMgmtDsapReplicationSavePatches(patches);
+        if (host?.showToast) host.showToast('success', 'Ephemeral node configured');
+        await dataMgmtDsapDriver._refreshReplication(root, host);
+        return true;
+    } catch (err) {
+        if (host?.showToast) host.showToast('error', err.message);
+        return false;
+    }
+}
+
 async function dataMgmtDsapReplicationShowEphemeralDialog(host, root) {
+    if (host && typeof host.vistaDialog === 'function') {
+        return host.vistaDialog('ephemeral', {
+            options: REPLICATION_DSAP_CLONE_OPTIONS,
+            profile: { ...REPLICATION_DSAP_DEFAULT_CLONE_PROFILE, wikiData: false, autoComplete: false, previewCache: false, workspaceImages: false },
+            save: (v) => dataMgmtDsapReplicationSaveEphemeral(host, root, v)
+        });
+    }
     const state = { airgapped: false };
     const html = `<div class="data-mgmt-repl-dialog-form" id="dataMgmtReplEphemeralForm">
   <p>Configure a short-lived <strong>ephemeral</strong> node (e.g. phone). Use Export cargo to hand work back to the master.</p>
@@ -1701,31 +1746,13 @@ async function dataMgmtDsapReplicationShowEphemeralDialog(host, root) {
             if (!value) return false;
             const dialog = document.getElementById('confirmationDialog');
             const nameEl = dialog?.querySelector('#dataMgmtReplEphName');
-            const displayName = nameEl ? nameEl.value.trim() : '';
-            if (!displayName) {
-                if (host?.showToast) host.showToast('error', 'Display name required');
-                return false;
-            }
-            const accessUrl = dialog?.querySelector('#dataMgmtReplEphAccessUrl')?.value.trim() || null;
-            const wsUrl = dialog?.querySelector('#dataMgmtReplEphWsUrl')?.value.trim() || null;
-            const cloneProfile = dataMgmtDsapReplicationReadCloneGrid(dialog, 'ephClone');
-            const patches = [
-                { path: ['replication', 'role'], value: 'ephemeral' },
-                { path: ['replication', 'connectivity'], value: state.airgapped ? 'airgapped' : 'normal' },
-                { path: ['replication', 'displayName'], value: displayName },
-                { path: ['replication', 'cloneProfile'], value: cloneProfile },
-                { path: ['replication', 'masterAccessUrl'], value: accessUrl },
-                { path: ['replication', 'masterWsUrl'], value: wsUrl }
-            ];
-            try {
-                await dataMgmtDsapReplicationSavePatches(patches);
-                if (host?.showToast) host.showToast('success', 'Ephemeral node configured');
-                await dataMgmtDsapDriver._refreshReplication(root, host);
-                return true;
-            } catch (err) {
-                if (host?.showToast) host.showToast('error', err.message);
-                return false;
-            }
+            return dataMgmtDsapReplicationSaveEphemeral(host, root, {
+                displayName: nameEl ? nameEl.value.trim() : '',
+                accessUrl: dialog?.querySelector('#dataMgmtReplEphAccessUrl')?.value.trim() || null,
+                wsUrl: dialog?.querySelector('#dataMgmtReplEphWsUrl')?.value.trim() || null,
+                airgapped: state.airgapped,
+                cloneProfile: dataMgmtDsapReplicationReadCloneGrid(dialog, 'ephClone')
+            });
         }
     });
 }
@@ -2287,16 +2314,16 @@ const dataMgmtDsapDriver = {
         if (spellbookBtn && !spellbookBtn.dataset.wired) {
             spellbookBtn.dataset.wired = '1';
             spellbookBtn.addEventListener('click', () => {
-                // showPresetManager: public/scripts/comp/presetManager.js
-                showPresetManager();
+                // manageSpellbook: public/scripts/comp/dsapManifests.js (the old window off the desktop)
+                manageSpellbook();
             });
         }
         const expandersBtn = root.querySelector('#dataMgmtOpenExpandersLegacyBtn');
         if (expandersBtn && !expandersBtn.dataset.wired) {
             expandersBtn.dataset.wired = '1';
             expandersBtn.addEventListener('click', () => {
-                // showTextReplacementManager: public/scripts/comp/textReplacementManager.js
-                showTextReplacementManager();
+                // manageTextExpanders: public/scripts/comp/dsapManifests.js (the old window off the desktop)
+                manageTextExpanders();
             });
         }
     },

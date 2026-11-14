@@ -821,8 +821,9 @@ function createRunPresetEntry(presetName, subtitle, score) {
             await openSpellbookApplet();
             if (window.spellbookModalManager) {
                 window.spellbookModalManager.selectPreset(presetName);
-            } else if (typeof showPresetManager === 'function') {
-                showPresetManager();
+            } else if (typeof manageSpellbook === 'function') {
+                // manageSpellbook: public/scripts/comp/dsapManifests.js
+                manageSpellbook();
             }
         }
     };
@@ -1772,8 +1773,9 @@ function getRunEntryActionMenu(entry) {
                     if (window.spellbookModalManager) {
                         window.spellbookModalManager.selectPreset(entry.presetName);
                     }
-                } else if (action === 'manager' && typeof showPresetManager === 'function') {
-                    showPresetManager();
+                } else if (action === 'manager' && typeof manageSpellbook === 'function') {
+                    // manageSpellbook: public/scripts/comp/dsapManifests.js
+                    manageSpellbook('presets', { preset: entry.presetName });
                 }
             }
         };

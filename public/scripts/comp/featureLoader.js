@@ -351,16 +351,25 @@ const FEATURE_MANIFEST = {
         styles: ['css/image-search.css'],
         scripts: ['scripts/comp/imageSearchApp.js']
     },
+    // Workspace Properties, New / Rename / Dump Workspace, Reorder Partitions on the desktop (#828):
+    // workspaceUtils.js opens them; Data Management's Workspace Management uses them too
+    workspace_dialogs: {
+        depends: ['vista_dialog_templates'],
+        styles: ['css/workspace-dialogs.css'],
+        scripts: ['scripts/comp/workspaceDialogs.js']
+    },
     // The MMC consoles that replaced the management DSAPs (Yozora #828): the shell, then the snap-ins
     mmc_snapins: {
-        depends: ['vista_dialog_templates'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css'],
+        depends: ['vista_dialog_templates', 'workspace_dialogs'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
             'scripts/comp/mmcFrontGate.js',
             'scripts/comp/mmcQuips.js',
             'scripts/comp/mmcAutofillRanking.js',
             'scripts/comp/mmcEnshutsuka.js',
+            'scripts/comp/mmcSpellbook.js',
+            'scripts/comp/mmcExpanders.js',
             'scripts/comp/mmcDataManagement.js'
         ]
     },

@@ -778,16 +778,24 @@
                 });
             }
         });
+        // a snap-in's 'nav:<id>' commands point at its own ids: map them to the host's
+        const fixItems = (e, list) => (Array.isArray(list) ? list.map((it) => (it && typeof it.action === 'string' && it.action.startsWith('nav:') ? Object.assign({}, it, { action: `nav:${P(e)}${it.action.slice(4)}` }) : it)) : list);
         ['commands', 'toolbar', 'viewMenu', 'status', 'help'].forEach((name) => {
             def[name] = (node, c) => {
                 const e = owner(node && node.id);
-                if (e) return call(e, name, c, orig(e, node));
+                if (e) {
+                    const out = call(e, name, c, orig(e, node));
+                    return name === 'commands' || name === 'viewMenu' ? fixItems(e, out) : out;
+                }
                 return typeof hostDef[name] === 'function' ? hostDef[name](node, c) : undefined;
             };
         });
         def.selCommands = (node, key, c) => {
             const e = owner(node && node.id);
-            if (e) return call(e, 'selCommands', c, orig(e, node), key);
+            if (e) {
+                const out = call(e, 'selCommands', c, orig(e, node), key);
+                return out && Array.isArray(out.items) ? Object.assign({}, out, { items: fixItems(e, out.items) }) : out;
+            }
             return typeof hostDef.selCommands === 'function' ? hostDef.selCommands(node, key, c) : null;
         };
         def.rowOpen = (key, node, c) => {

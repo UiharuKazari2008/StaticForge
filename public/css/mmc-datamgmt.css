@@ -119,6 +119,22 @@
     cursor: default;
 }
 
+/* the one disk: its partitions side by side, each as wide as its share of the usage (flex-grow, set per
+   partition) but never narrower than 44 px, so a small one can still be clicked; past that the map
+   scrolls sideways */
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk.is-single {
+    min-width: calc(110px + var(--dm-parts, 1) * 47px);
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk.is-single .dm-part {
+    flex: 1 0 0;
+    min-width: 44px;
+}
+
+.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk.is-single .dm-part + .dm-part {
+    margin-left: 3px;
+}
+
 /* the kind's strip above the volume (Disk Management's partition colours) */
 .mmc-window[data-mmc-snapin="dataManagement"] .dm-part-strip {
     flex: none;
@@ -555,4 +571,19 @@
     background: none;
     color: #1e3287;
     line-height: 19px;
+}
+
+/* ---- the replication dialogs (vistaDialogTemplate windows of this console) ---- */
+
+.vdt-window[id^="dataManagementRepl_"] .dm-dlg-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 4px;
+    line-height: 14px;
+}
+
+.vdt-window[id^="dataManagementRepl_"] .dm-dlg-error > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
 }

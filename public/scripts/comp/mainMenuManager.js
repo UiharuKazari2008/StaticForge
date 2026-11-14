@@ -805,8 +805,8 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'preset-manager':
-                // Open preset manager modal directly
-                showPresetManager();
+                // the Spellbook console on the desktop (manageSpellbook: public/scripts/comp/dsapManifests.js)
+                manageSpellbook();
                 break;
 
             case 'cast-spell':
@@ -957,8 +957,8 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'text-replacement-manager':
-                // Open Genso manager modal directly
-                showTextReplacementManager();
+                // the Text Expanders console on the desktop (manageTextExpanders: public/scripts/comp/dsapManifests.js)
+                manageTextExpanders();
                 break;
 
             case 'refresh-metadata-cache':

@@ -117,7 +117,10 @@ async function openFrontGateConsole(node) {
     return null;
 }
 
-/** Enshutsuka (#828), loading the MMC snap-ins first; node: 'root' | 'mem' | 'obl' | 'rules' | 'feedback' | 'persona'. */
+/**
+ * Enshutsuka (#828), loading the MMC snap-ins first; node: 'root' | 'memories' | 'default' | 'private' |
+ * 'ruleset' | 'director' | 'feedback' | 'profile' (the old ids mem, obl, rules, persona still work).
+ */
 async function openEnshutsukaSnapin(node, opts) {
     await featureLoader.loadFeature('mmc_snapins');
     // openEnshutsukaConsole: public/scripts/comp/mmcEnshutsuka.js
@@ -125,19 +128,51 @@ async function openEnshutsukaSnapin(node, opts) {
     return null;
 }
 
+/** Spellbook (#828), loading the MMC snap-ins first; node: 'root' | 'presets' | 'groups'. */
+async function openSpellbookSnapin(node, opts) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openSpellbookConsole: public/scripts/comp/mmcSpellbook.js
+    if (typeof openSpellbookConsole === 'function') return openSpellbookConsole(node, opts);
+    return null;
+}
+
+/** Text Expanders (#828), loading the MMC snap-ins first; node: 'root' | 'global' | 'favorites'. */
+async function openTextExpandersSnapin(node, opts) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openTextExpandersConsole: public/scripts/comp/mmcExpanders.js
+    if (typeof openTextExpandersConsole === 'function') return openTextExpandersConsole(node, opts);
+    return null;
+}
+
+/** "Manage presets": the Spellbook console on the Vista desktop, the old Spellbook window elsewhere
+ *  (showPresetManager: presetManager.js; on phones wmSpellbook.js replaces it). */
+function manageSpellbook(node, opts) {
+    if (dsapIsVistaDesktop()) return openSpellbookSnapin(node, opts);
+    if (typeof showPresetManager === 'function') return showPresetManager();
+    return null;
+}
+
+/** "Manage expanders": the Text Expanders console on the Vista desktop, the old window elsewhere
+ *  (showTextReplacementManager: textReplacementManager.js; on phones wmExpanders.js replaces it). */
+function manageTextExpanders(node, opts) {
+    if (dsapIsVistaDesktop()) return openTextExpandersSnapin(node, opts);
+    if (typeof showTextReplacementManager === 'function') return showTextReplacementManager();
+    return null;
+}
+
 /** Enshutsuka's page off the desktop: the Knowledge Memories DSAP's address for a console node. */
 function enshutsukaDsapUrl(node) {
-    if (node === 'persona') return 'dsap://xi.dyna.dreamscape.jp/persona';
-    if (node === 'rules') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules`;
+    if (node === 'persona' || node === 'profile') return 'dsap://xi.dyna.dreamscape.jp/persona';
+    if (node === 'rules' || node === 'director' || node === 'ruleset') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules`;
     if (node === 'feedback') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules/feedback`;
-    if (node === 'obl') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/?store=obliterated`;
+    if (node === 'obl' || node === 'private') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/?store=obliterated`;
     return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/`;
 }
 
 /** Enshutsuka: the MMC console on the desktop (#828), the Knowledge Memories DSAP elsewhere. */
 function openEnshutsuka(node) {
     if (document.body.classList.contains('desktop-mode')) {
-        void openEnshutsukaSnapin(node || 'mem');
+        void openEnshutsukaSnapin(node || 'default');
         return;
     }
     // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
@@ -178,7 +213,7 @@ function registerDsapManifests() {
         menuEntry: {
             launchId: 'dynamic-quips',
             icon: 'fas fa-comment-heart',
-            imageIcon: 'quips.png',
+            imageIcon: 'vista-dynamic-quips.png',
             text: 'Dynamic Quips',
             appMenu: false,
             startMenu: false,
@@ -224,11 +259,11 @@ function registerDsapManifests() {
             const host = segs.shift() || '';
             // en.grimoire.jp/applets/memories/... and applet.grimoire.jp/memories/...
             if (/grimoire\.jp$/.test(host) && segs.includes('memories')) segs.splice(0, segs.indexOf('memories') + 1);
-            const store = params.get('store') === 'obliterated' ? 'obl' : 'mem';
+            const store = params.get('store') === 'obliterated' ? 'private' : 'default';
             if (host.startsWith('xi.dyna') || segs[0] === 'persona' || segs.includes('linkxi')) {
-                void openEnshutsukaSnapin('persona');
+                void openEnshutsukaSnapin('profile');
             } else if (segs[0] === 'rules' || segs[0] === 'static_rules') {
-                void openEnshutsukaSnapin(segs[1] === 'feedback' ? 'feedback' : 'rules');
+                void openEnshutsukaSnapin(segs[1] === 'feedback' ? 'feedback' : 'director');
             } else if (segs[0] === 'view' && segs[1]) {
                 void openEnshutsukaSnapin(store, { memory: segs[1] });
             } else if (segs[0] === 'delete' || segs[0] === 'bulk-delete') {
@@ -354,7 +389,7 @@ function registerDsapManifests() {
         menuEntry: {
             launchId: 'data-management',
             icon: 'fas fa-database',
-            imageIcon: 'planet.png',
+            imageIcon: 'vista-computer-management.png',
             text: 'Data Management',
             startMenuIndex: 0,
             appMenuLocation: 'tools',
@@ -385,7 +420,7 @@ function registerDsapManifests() {
         menuEntry: {
             launchId: 'autofill-ranking',
             icon: 'fas fa-arrow-down-wide-short',
-            imageIcon: 'slider.png',
+            imageIcon: 'vista-autofill-ranking.png',
             text: 'Autofill Ranking',
             appMenu: false,
             startMenu: false,
@@ -659,15 +694,16 @@ registerDsapManifests();
 
 // Global compatibility shims (runs at startup). The applet script also installs one when loaded.
 (function installMemoriesDsapShims() {
-    // node: an Enshutsuka console node ('mem' by default, 'rules', 'persona', ...): openEnshutsuka above
+    // node: an Enshutsuka console node ('default' memories by default, 'director', 'profile', ...; the
+    // old 'mem', 'rules', 'persona' too): openEnshutsuka above
     if (typeof window.openKnowledgeMemoriesModal !== 'function') {
         window.openKnowledgeMemoriesModal = function (node) {
-            openEnshutsuka(typeof node === 'string' ? node : 'mem');
+            openEnshutsuka(typeof node === 'string' ? node : 'default');
         };
     }
     if (typeof window.openLinkXiPersonaDsap !== 'function') {
         window.openLinkXiPersonaDsap = function () {
-            openEnshutsuka('persona');
+            openEnshutsuka('profile');
         };
     }
 })();
