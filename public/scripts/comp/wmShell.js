@@ -4679,6 +4679,12 @@
         openWirelessManager();
     }
 
+    /** Four signal bars for a bubble row (level 0-4; null = none). */
+    function signalBars(lv) {
+        if (lv == null) return '';
+        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of 4">${[1, 2, 3, 4].map((n) => `<i class="${n <= lv ? 'is-on' : ''}"></i>`).join('')}</span>`;
+    }
+
     // the Connectivity bubble's time connected ticks while the bubble is open (a local clock, no request)
     let vpnClockTimer = null;
     function vpnClock() {
@@ -4718,14 +4724,21 @@
                 const on = w.enabled !== false;
                 const state = !on ? 'Power Off' : w.connected ? (dev.wifiName || 'Connected') : 'Disconnected';
                 const lv = on && w.connected && Number.isFinite(w.level) ? Math.max(0, Math.min(4, Math.round(w.level))) : null;
-                const barsHtml = lv == null ? '' : `<span class="wm-bars" role="img" aria-label="Signal ${lv} of 4">${[1, 2, 3, 4].map((n) => `<i class="${n <= lv ? 'is-on' : ''}"></i>`).join('')}</span>`;
+                const barsHtml = signalBars(lv);
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Wi-Fi: ${pe(state)}</span>${barsHtml}</div>` });
             }
-            if (dev.link) {
-                // the mobile network as WM's Connection Manager names it, its radio type in bold at the right (Yukimi, Nov 14)
-                if (dev.active === 'cellular') sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: Connected</span>${dev.type ? `<b>${pe(typeName(dev.type))}</b>` : ''}</div>` });
-                else if (dev.active !== 'wifi' || !w) sections.push(dev.active === 'wifi' ? `Wi-Fi: ${dev.wifiName || 'Connected'}` : `${dev.link.text}`);
+            // the mobile network as WM's Connection Manager names it (Yukimi, Nov 14): Connected while it
+            // carries data, Disconnected with mobile data off, Suspended with no service, Available on
+            // Wi-Fi; the radio type in bold and the signal bars at the right
+            const c = dev.cell;
+            if (c && c.present !== false) {
+                const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || c.level === 0;
+                const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
+                const lv = noService || !Number.isFinite(c.level) ? null : Math.max(0, Math.min(4, Math.round(c.level)));
+                const right = `${!noService && dev.type ? `<b>${pe(typeName(dev.type))}</b>` : ''}${signalBars(lv)}`;
+                sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
+            if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
             // the server still starting: no Mainframe Server box on the phone, this line instead (Yukimi, Nov 13)
             const dcBooting = !!(ws && ws.lastServerStartupStatus && ws.lastServerStartupStatus.isReady === false);
             // the Dreamscape link as one "VPN:" row like the Wi-Fi one, Reconnect at its right (Yukimi, Nov 13)

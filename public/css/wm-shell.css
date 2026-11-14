@@ -4033,6 +4033,8 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
 /* a bubble line with a value at its right (Connectivity: Mobile Broadband ... LTE) and bold text (Phone: the number) */
 .wm-bubble-pair { display: flex; justify-content: space-between; align-items: baseline; gap: calc(8 * var(--wm-px)); }
 .wm-bubble-pair > b { font-weight: bold; white-space: nowrap; }
+.wm-bubble-right { display: inline-flex; align-items: baseline; gap: calc(6 * var(--wm-px)); white-space: nowrap; }
+.wm-bubble-right > b { font-weight: bold; }
 .wm-bubble-text.is-bold { font-weight: bold; }
 /* Wi-Fi's signal in the Connectivity bubble: four bars rising left to right, the lit ones solid */
 .wm-bars { display: inline-flex; align-items: flex-end; gap: calc(2 * var(--wm-px)); height: calc(12 * var(--wm-px)); }
