@@ -561,6 +561,7 @@ class BannerManager {
             'character_db_delete': 'Delete Character',
             'character_db_rename_copyright': 'Rename Copyright',
             'character_db_delete_copyright': 'Delete Copyright',
+            'character_db_import': 'Import Characters',
             'get_memory_mind_map': 'Memory Mind Map',
             'get_memory_revision_images': 'Memory Revision Images',
             'list_memory_image_links': 'List Memory Links',

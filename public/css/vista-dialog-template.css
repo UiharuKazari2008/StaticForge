@@ -134,6 +134,75 @@ body.desktop-mode .modal.vdt-window[data-vista-dialog] > .modal-content.vdt-clie
 
 /* ---- list boxes and list views ---- */
 
+/* a drop-down combo box (CBS_DROPDOWN): the edit with Vista's 17 px drop button inside its right edge
+   (the glyph alone at rest; the hot / pressed button faces, as Save As's File name box) */
+.vdt-client .vdt-combo-edit input.tbp-edit {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 21px;
+    box-sizing: border-box;
+    margin: 0;
+    padding-right: 19px;
+}
+
+.vdt-client .vdt-combo-edit .vdt-combo-drop {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    width: 17px;
+    height: 19px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background: url("/static_images/vista-controls/combo-glyph-normal.png") 3px 0 / 10px 19px no-repeat;
+    cursor: default;
+}
+
+.vdt-client .vdt-combo-edit .vdt-combo-drop:hover {
+    background: url("/static_images/vista-controls/combo-dropbtn-hot.png") 0 -2px / 17px 23px no-repeat;
+}
+
+.vdt-client .vdt-combo-edit.is-open .vdt-combo-drop,
+.vdt-client .vdt-combo-edit .vdt-combo-drop:active {
+    background: url("/static_images/vista-controls/combo-dropbtn-pressed.png") 0 -2px / 17px 23px no-repeat;
+}
+
+.vdt-client .vdt-combo-edit .vdt-combo-drop:disabled {
+    background-image: url("/static_images/vista-controls/combo-glyph-disabled.png");
+}
+
+/* its list: a bordered list box under the edit, over everything (the dropped ComboLBox) */
+.vdt-combo-pop {
+    position: fixed;
+    z-index: 2147483000;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid #646464;
+    background: #fff;
+    color: #000;
+    cursor: default;
+}
+
+.vdt-combo-pop .vdt-lb-row {
+    display: flex;
+    align-items: center;
+    height: 15px;
+    padding: 0 2px;
+    white-space: nowrap;
+}
+
+.vdt-combo-pop .vdt-lb-row.is-selected {
+    background: #3399ff;
+    color: #fff;
+}
+
 /* a simple combo box (CBS_SIMPLE): its 21 px edit, the list box right under it (ChooseFont's) */
 .vdt-client .vdt-simple-combo input.tbp-edit {
     position: absolute;

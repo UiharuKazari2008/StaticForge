@@ -219,7 +219,9 @@
                         const lh = Math.max(15, Math.floor((r.height - 21 - 2) / 13) * 13 + 2);
                         out.push(`<div class="tbp-ctl vdt-simple-combo" style="${style(r)}" ${dataId}${hid}><input type="text" class="tbp-edit" id="${domId}"${dis} spellcheck="false" autocomplete="off"><div class="vdt-listbox vdt-edge" role="listbox" style="height:${lh}px"></div></div>`);
                     } else if (kind === 2) {
-                        out.push(`<div class="tbp-ctl vdt-combo-edit" style="${style(cr)}" ${dataId}${hid}><input type="text" class="tbp-edit" id="${domId}" list="${domId}-list"${dis} spellcheck="false" autocomplete="off"><datalist id="${domId}-list"></datalist></div>`);
+                        // CBS_DROPDOWN: the edit and Vista's drop button; the list drops from the button
+                        // (wireCommon), the choices kept in the datalist (no browser suggestions)
+                        out.push(`<div class="tbp-ctl vdt-combo-edit" style="${style(cr)}" data-drop="${Math.max(0, r.height - 21)}" ${dataId}${hid}><input type="text" class="tbp-edit" id="${domId}"${dis} spellcheck="false" autocomplete="off"><button type="button" class="vdt-combo-drop" tabindex="-1" aria-label="Open"${dis}></button><datalist id="${domId}-list"></datalist></div>`);
                     } else {
                         out.push(`<select class="tbp-ctl tbp-select vdt-select" id="${domId}" style="${style(cr)}" ${dataId}${dis}${hid}></select>`);
                     }
@@ -704,8 +706,8 @@
                     const box = e.closest('.vdt-simple-combo').querySelector('.vdt-listbox');
                     box.innerHTML = items.map((o) => `<div class="vdt-lb-row" data-value="${esc(o.value)}" role="option">${o.icon ? `<img src="${esc(o.icon)}" alt="">` : ''}<span>${esc(o.text)}</span></div>`).join('');
                     if (value !== undefined) ctx.set(id, value, key);
-                } else if (e.tagName === 'INPUT' && e.list) {
-                    e.list.innerHTML = items.map((o) => `<option value="${esc(o.text)}">`).join('');
+                } else if (e.tagName === 'INPUT' && (e.list || (e.closest('.vdt-combo-edit') && e.closest('.vdt-combo-edit').querySelector('datalist')))) {
+                    (e.list || e.closest('.vdt-combo-edit').querySelector('datalist')).innerHTML = items.map((o) => `<option value="${esc(o.text)}">`).join('');
                     if (value !== undefined) e.value = String(value);
                 } else {
                     e.innerHTML = items.map((o) => `<div class="vdt-lb-row" data-value="${esc(o.value)}" role="option">${o.icon ? `<img src="${esc(o.icon)}" alt="">` : ''}<span>${esc(o.text)}</span></div>`).join('');
@@ -750,6 +752,8 @@
         if (state.done) return;
         state.done = true;
         if (dtpPopup && state.modal.contains(dtpPopup.el)) dtpClose(false);
+        const pop = doc.querySelector('.vdt-combo-pop');
+        if (pop && pop._box && state.modal.contains(pop._box)) pop._close();
         if (typeof state.opts.close === 'function') {
             try { state.opts.close(state.ctx); } catch (err) { console.error(err); }
         }
@@ -838,6 +842,72 @@
         }
     }
 
+    /** A drop-down combo box's list: the datalist's choices under the edit, Vista's list box look. */
+    function comboDrop(box, state) {
+        const old = doc.querySelector('.vdt-combo-pop');
+        if (old) { const was = old._box; old._close(); if (was === box) return; }
+        const input = box && box.querySelector('input');
+        if (!input || input.disabled || input.readOnly) return;
+        const items = Array.from(box.querySelectorAll('datalist option')).map((o) => o.value);
+        const r = box.getBoundingClientRect();
+        const pop = doc.createElement('div');
+        pop.className = 'vdt-combo-pop vdt-listbox';
+        pop.setAttribute('role', 'listbox');
+        pop.style.font = getComputedStyle(input).font;
+        pop.innerHTML = items.length ? items.map((v) => `<div class="vdt-lb-row${v === input.value ? ' is-selected' : ''}" data-value="${esc(v)}" role="option"><span>${esc(v)}</span></div>`).join('') : '<div class="vdt-lb-row" data-empty="1"><span>&nbsp;</span></div>';
+        const n = Math.max(1, items.length);
+        pop.style.left = `${Math.round(r.left)}px`;
+        pop.style.width = `${Math.round(r.width)}px`;
+        doc.body.appendChild(pop);
+        const rowH = (pop.querySelector('.vdt-lb-row') || pop).getBoundingClientRect().height || 13;
+        // as tall as the template's drop rect allows (Win32 sizes the dropped list from it), whole rows
+        const room = Number(box.dataset.drop) || rowH * 30;
+        const h = Math.round(Math.max(1, Math.min(n, Math.floor((room - 2) / rowH))) * rowH + 2);
+        const below = window.innerHeight - r.bottom;
+        pop.style.height = `${h}px`;
+        pop.style.top = `${Math.round(below >= h || below >= r.top ? r.bottom : r.top - h)}px`;
+        const sel = pop.querySelector('.is-selected');
+        if (sel) sel.scrollIntoView({ block: 'nearest' });
+        const pick = (row) => {
+            if (!row || row.dataset.empty) return;
+            input.value = row.dataset.value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            if (state && state.ctx) state.ctx.dirty();
+        };
+        const close = () => {
+            pop.remove();
+            doc.removeEventListener('mousedown', outside, true);
+            input.removeEventListener('keydown', keys, true);
+            box.classList.remove('is-open');
+        };
+        const outside = (ev) => { if (!pop.contains(ev.target) && !(ev.target.closest && ev.target.closest('.vdt-combo-drop') === box.querySelector('.vdt-combo-drop'))) close(); };
+        const keys = (ev) => {
+            const list = Array.from(pop.querySelectorAll('.vdt-lb-row[data-value]'));
+            let i = list.findIndex((x) => x.classList.contains('is-selected'));
+            if (ev.key === 'Escape' || ev.key === 'Tab' || ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowUp' || ev.key === 'ArrowDown'))) { if (ev.key !== 'Tab') { ev.preventDefault(); ev.stopPropagation(); } close(); return; }
+            if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); pick(list[i]); close(); return; }
+            if (ev.key !== 'ArrowDown' && ev.key !== 'ArrowUp') return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            i = Math.max(0, Math.min(list.length - 1, i + (ev.key === 'ArrowDown' ? 1 : -1)));
+            list.forEach((x, j) => x.classList.toggle('is-selected', j === i));
+            if (list[i]) { list[i].scrollIntoView({ block: 'nearest' }); pick(list[i]); }
+        };
+        pop.addEventListener('mousedown', (ev) => ev.preventDefault());
+        pop.addEventListener('mousemove', (ev) => {
+            const row = ev.target.closest('.vdt-lb-row[data-value]');
+            if (row && !row.classList.contains('is-selected')) { pop.querySelectorAll('.is-selected').forEach((x) => x.classList.remove('is-selected')); row.classList.add('is-selected'); }
+        });
+        pop.addEventListener('click', (ev) => { pick(ev.target.closest('.vdt-lb-row')); close(); input.focus(); });
+        pop._box = box;
+        pop._close = close;
+        box.classList.add('is-open');
+        input.focus();
+        doc.addEventListener('mousedown', outside, true);
+        input.addEventListener('keydown', keys, true);
+    }
+
     function wireCommon(state) {
         const { content, modal } = state;
         // simple combo boxes: typing selects the list's first match, Up / Down walk the list
@@ -858,6 +928,18 @@
             simplePick(input, next.dataset.value, true);
             input.select();
             input.closest('[data-vdt-id]').dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        // drop-down combo boxes (CBS_DROPDOWN): the drop button, Alt+Down and F4 open the list
+        content.addEventListener('mousedown', (ev) => {
+            const b = ev.target.closest && ev.target.closest('.vdt-combo-drop');
+            if (!b || b.disabled) return;
+            ev.preventDefault();
+            comboDrop(b.closest('.vdt-combo-edit'), state);
+        });
+        content.addEventListener('keydown', (ev) => {
+            const input = ev.target;
+            if (!input.closest || !input.closest('.vdt-combo-edit')) return;
+            if (ev.key === 'F4' || (ev.altKey && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'))) { ev.preventDefault(); comboDrop(input.closest('.vdt-combo-edit'), state); }
         });
         // date pickers start on today until the program sets them
         dtpWire();

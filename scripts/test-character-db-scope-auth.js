@@ -11,7 +11,8 @@ const characterDbPackets = [
     'character_db_upsert',
     'character_db_delete',
     'character_db_rename_copyright',
-    'character_db_delete_copyright'
+    'character_db_delete_copyright',
+    'character_db_import'
 ];
 
 for (const packet of characterDbPackets) {
@@ -33,7 +34,8 @@ const mutatingPackets = [
     'character_db_upsert',
     'character_db_delete',
     'character_db_rename_copyright',
-    'character_db_delete_copyright'
+    'character_db_delete_copyright',
+    'character_db_import'
 ];
 
 for (const packet of mutatingPackets) {
