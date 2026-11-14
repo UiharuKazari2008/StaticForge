@@ -4047,6 +4047,10 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
 .wm-bars > i:nth-child(4) { height: 100%; }
 .wm-bars > i.is-on { background: currentColor; opacity: 1; }
 
+/* a warning line in a bubble (Updates with Continuity connected): the device's warning glyph before it */
+.wm-bubble-warn { position: relative; padding-left: calc(20 * var(--wm-px)); }
+.wm-bubble-warn::before { content: ''; position: absolute; left: 0; top: calc(1 * var(--wm-px)); width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); background: url('/static_images/wm61/msgbox-warning@2x.png') center / contain no-repeat; }
+
 /* status dots (Android Bridge > Advanced Tools, #820): green ok, yellow waiting, red off / failed */
 .wm-dot {
     display: inline-block;

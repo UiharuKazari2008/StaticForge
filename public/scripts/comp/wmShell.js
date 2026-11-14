@@ -4950,7 +4950,18 @@
             const n = sw && Number(sw.pendingUpdateFilesTotal);
             const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} files)` : ''}. Melaton restarts to install them.`;
             const links = sw && typeof sw.forceRestart === 'function' ? [{ label: 'Restart Now', action: () => { closeBubble(); sw.forceRestart(); } }] : [];
-            bubble({ title: 'Updates', role, anchor, sections: links.length ? [text, { links }] : [text], buttons: [{ text: 'Hide' }] });
+            // Continuity connected (#798): the restart's warning here too, before Restart Now (Yukimi, Nov 14);
+            // the same words as the restart's own question (melatonContinuity confirmUpdateRestart)
+            const warn = [];
+            const mc = window.melatonContinuity;
+            if (mc && typeof mc.active === 'function' && mc.active()) {
+                let both = false;
+                try { both = typeof mc.updateScope === 'function' && mc.updateScope(Array.from((sw && sw.pendingUpdateUrls) || [])) === 'both'; } catch (_) { both = false; }
+                warn.push({ html: `<div class="wm-bubble-warn">${both
+                    ? 'These updates also restart your Continuity-enabled PC. Programs that are open on it will close. Save your work there before you continue.'
+                    : 'Your Continuity-enabled PC stays on and reconnects when your Pocket PC is ready.'}</div>` });
+            }
+            bubble({ title: 'Updates', role, anchor, sections: [text, ...warn, ...(links.length ? [{ links }] : [])], buttons: [{ text: 'Hide' }] });
         } else if (role === 'prints') {
             const n = printsInProgress();
             bubble({ title: 'Prints', role, anchor, sections: [n ? `${n} ${n === 1 ? 'print is' : 'prints are'} in progress.` : 'No prints in progress.', { links: [{ label: 'Pictures', action: () => open('gallery') }] }], buttons: [{ text: 'Hide' }] });
