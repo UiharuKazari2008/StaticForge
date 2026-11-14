@@ -4220,7 +4220,14 @@ class ServiceWorkerManager {
         try { localStorage.setItem('meletonUpdateCheckedAt', String(Date.now())); } catch (_) { /* private mode */ }
     }
 
-    forceRestart() {
+    forceRestart(opts = {}) {
+        // Continuity (#798): the warning first when this restart also restarts the other window of a
+        // hybrid phone (the Pocket PC, or the Continuity-enabled PC); Cancel keeps the updates waiting
+        const mcw = window.melatonContinuity;
+        if (!opts.confirmed && mcw && typeof mcw.confirmUpdateRestart === 'function' && (mcw.isDexWindow() || mcw.keepPhoneConnected())) {
+            mcw.confirmUpdateRestart().then((go) => { if (go) this.forceRestart({ confirmed: true }); });
+            return;
+        }
         // Continuity (#798): the DeX window's "Restart Now" restarts the phone, which installs; this window
         // restarts with it. With no phone window to ask, this window restarts on its own.
         if (this._isContinuityDexWindow() && window.melatonContinuity.restartViaPhone('updates')) {

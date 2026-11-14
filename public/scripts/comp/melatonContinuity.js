@@ -273,6 +273,47 @@
     // a phone restart (Settings > Power > Restart, an update only it needs) leaves the DeX window up;
     // only installing files both windows use restarts it too
     let keepDexOnRestart = true;
+
+    // ---- a question to the other window and its answer: ask(type, payload, ms) -> answer or null
+    let askSeq = 0;
+    const asking = new Map();
+    api.ask = (type, payload, ms = 1500) => new Promise((resolve) => {
+        const rid = `${Date.now().toString(36)}-${++askSeq}`;
+        const timer = setTimeout(() => { asking.delete(rid); resolve(null); }, ms);
+        asking.set(rid, (answer) => { clearTimeout(timer); asking.delete(rid); resolve(answer); });
+        if (!api.post(Object.assign({}, payload || {}, { type, rid }))) { clearTimeout(timer); asking.delete(rid); resolve(null); }
+    });
+    api.on('answer', (m) => { const fn = asking.get(m.rid); if (fn) fn(m.answer); });
+    const answer = (m, value) => api.post({ type: 'answer', rid: m.rid, answer: value });
+    /** The phone window: what its downloaded updates touch ('mobile' | 'both'), 'none' with nothing waiting. */
+    function pendingScope() {
+        const sw = root.serviceWorkerManager;
+        if (!sw || !sw.pendingUpdateFuse) return 'none';
+        return api.updateScope(Array.from(sw.pendingUpdateUrls || []));
+    }
+    api.on('update-scope?', (m) => { if (isPhone()) answer(m, pendingScope()); });
+
+    /**
+     * Before a restart for updates (serviceWorkerManager.forceRestart): the warning when it restarts the
+     * other window too. The DeX window: the phone always restarts ("Pocket PC"), this window as well when
+     * the updates touch both. The phone: only when the updates touch both ("Continuity-enabled PC").
+     * Resolves true to go on, false when the person cancelled.
+     */
+    api.confirmUpdateRestart = async () => {
+        const ask = (text) => (typeof root.showConfirmationDialog === 'function'
+            ? root.showConfirmationDialog(text, [{ text: 'Restart Now', value: true }, { text: 'Cancel', value: false }], null, { title: 'Melaton Update', icon: 'fas fa-exclamation-triangle', sound: true })
+            : Promise.resolve(true));
+        if (isDw() && api.peers().includes('phone')) {
+            const scope = await api.ask('update-scope?');
+            return !!(await ask(scope === 'both'
+                ? 'Melaton will restart your Pocket PC and this Continuity-enabled PC to install updates.<br><br>Programs that are open on either one will close. Save your work before you continue.'
+                : 'Melaton will restart your Pocket PC to install updates.<br><br>Programs that are open on your Pocket PC will close. This computer stays on and reconnects when your Pocket PC is ready.'));
+        }
+        if (isPhone() && api.peers().includes('desktop') && pendingScope() === 'both') {
+            return !!(await ask('These updates also restart your Continuity-enabled PC.<br><br>Programs that are open on it will close. Save your work there before you continue.'));
+        }
+        return true;
+    };
     /** serviceWorkerManager.forceRestart (phone window): what the coming restart installs. */
     api.restartScope = (scope) => { keepDexOnRestart = scope !== 'both'; };
     /** serviceWorkerManager.applyStaticCacheUpdate (phone window): CSS and safe files applied live go to the DeX window too. */
@@ -421,7 +462,8 @@
     api.on('restart-request', () => {
         if (!isPhone()) return;
         const m = root.serviceWorkerManager;
-        if (m && typeof m.forceRestart === 'function') m.forceRestart();
+        // the DeX window already warned (and the person said Restart Now there)
+        if (m && typeof m.forceRestart === 'function') m.forceRestart({ confirmed: true });
         else if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
     });
 
