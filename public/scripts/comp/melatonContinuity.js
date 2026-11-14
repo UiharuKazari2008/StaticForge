@@ -506,6 +506,10 @@
         dovecote_list_mailboxes: { ttl: 60, dataset: 'messaging' },
         director_settings_get: { ttl: 60, dataset: 'director' },
         get_autofill_ranking: { ttl: 300, dataset: 'smarttext' },
+        // the gallery's blocks (#815 M2b): only block fetches that carry the gallery's version
+        // (_mpVersion, galleryImagesLoad.js) are kept, so a kept block is the current one by its key;
+        // probes and other gallery reads are never flagged (noFlag)
+        request_gallery: { ttl: 7 * 86400, dataset: 'gallery', noFlag: true },
         // fetched by the Miniport once for every page, instead of each page polling
         wallet_status: { ttl: 60, refresh: 300, dataset: 'status' },
         server_status: { ttl: 30, refresh: 60, dataset: 'status' },
@@ -519,6 +523,7 @@
         { id: 'messaging', label: 'Messaging and accounts' },
         { id: 'director', label: 'Director' },
         { id: 'smarttext', label: 'SmartText' },
+        { id: 'gallery', label: 'Gallery lists' },
         { id: 'status', label: 'Wallet and server status' }
     ];
     api.cacheDatasets = () => CACHE_DATASETS.map((d) => Object.assign({ refreshes: Object.values(CACHE_POLICY).some((p) => p.dataset === d.id && (p.refresh || 0) > 0) }, d));
@@ -537,9 +542,11 @@
     /** Change the Miniport's settings: { idleMinutes, scope: 'current'|'all', datasets: { id: { cache, update } } }. */
     api.setMiniportConfig = (set) => miniport.present() && miniport.post({ op: 'config', set });
     /** websocket.js: flag this request for the Miniport's cache. */
+    /** galleryImagesLoad.js: the gallery version to put on block fetches (null: not over the Miniport). */
+    api.galleryCacheVersion = (version) => (version && lastTransport === 'miniport' && miniport.up && datasetOn('request_gallery', 'cache') ? String(version) : null);
     api.cacheFlag = (type) => {
         const p = CACHE_POLICY[type];
-        if (!p || lastTransport !== 'miniport' || !miniport.up || !datasetOn(type, 'cache')) return false;
+        if (!p || p.noFlag || lastTransport !== 'miniport' || !miniport.up || !datasetOn(type, 'cache')) return false;
         const c = root.wsClient;
         return !(c && c.initializationCompleted) || (p.refresh || 0) > 0;
     };

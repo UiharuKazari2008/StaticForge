@@ -674,6 +674,11 @@ async function fetchGalleryBlocksInto(viewType, workspaceId, totalItems, probe, 
             if (afterCursor) {
                 chunkOpts.afterCursor = afterCursor;
             }
+            // Melaton Café Miniport (#815): the gallery's version on the block, so the Miniport keeps it
+            // and answers it from the phone while the gallery has not changed
+            const mcv = window.melatonContinuity && typeof window.melatonContinuity.galleryCacheVersion === 'function'
+                ? window.melatonContinuity.galleryCacheVersion(probe && probe.lastGalleryUpdatedAt) : null;
+            if (mcv) chunkOpts._mpVersion = mcv;
             const result = await loadGalleryChunk(viewType, offset, limit, chunkOpts);
             const chunk = result.chunk || [];
             if (!chunk.length) {
