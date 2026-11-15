@@ -3819,7 +3819,9 @@
     // the title bar's update icon (it shows while one waits, a tap on it brings the notice up), never
     // the speech bubble
     const LATENCY_TOAST = /^high latency/i;
-    const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|update check failed|updates? (are )?(ready|available))/i;
+    // 'Updates Complete' / 'Completed updating ...' belong to the update icon's one notification, not a
+    // separate bubble (Yukimi, Nov 15: merge the completion into the existing update notification)
+    const UPDATE_TOAST = /^(checking for updates|downloading updates|download stalled|up to date|updates? applied|updates? complete|completed updating|update check failed|updates? (are )?(ready|available))/i;
     const isUpdateNote = (n) => !!n && UPDATE_TOAST.test(String(n.title || ''));
     // while updates are checked for or download there is no notification and no popup: the update
     // icon animates and its own popup shows the progress; the result is the notification (Yukimi,
