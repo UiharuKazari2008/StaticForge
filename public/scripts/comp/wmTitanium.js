@@ -133,6 +133,26 @@
     const lower = (s) => String(s || '').toLowerCase();
 
     /** The shell's own rows as panels. */
+    /** The clock's pages: the clock (with the weather now), then the next hours, then the coming days. */
+    function clockPages(clockPage) {
+        let cur = null; let hours = []; let days = [];
+        const W = window.wmWeather;
+        try {
+            cur = W && typeof W.current === 'function' ? W.current() : null;
+            if (cur) {
+                hours = typeof W.hourly === 'function' ? W.hourly(6) : [];
+                days = typeof W.forecast === 'function' ? W.forecast().slice(0, 5) : [];
+            }
+        } catch (_) { cur = null; }
+        if (!cur) return [clockPage];
+        const openWx = () => { if (W && typeof W.open === 'function') W.open(); };
+        const wxKey = { label: 'Weather', action: openWx };
+        const out = [Object.assign({}, clockPage, { wx: { temp: cur.temp, condition: cur.condition, iconUrl: cur.iconUrl, iconUrl2x: cur.iconUrl2x } })];
+        if (hours.length) out.push({ cells: hours.map((h) => ({ label: h.label, iconUrl: h.iconUrl, iconUrl2x: h.iconUrl2x, value: h.temp })), softKey: wxKey, onTap: openWx });
+        if (days.length) out.push({ cells: days.map((d) => ({ label: String(d.day || '').slice(0, 3), iconUrl: d.iconUrl, iconUrl2x: d.iconUrl2x, value: d.hi != null ? `${d.hi}\u00b0` : '', sub: d.lo != null ? `${d.lo}\u00b0` : '' })), softKey: wxKey, onTap: openWx });
+        return out;
+    }
+
     /** The temperature now (Melaton Weather's selected place), for the time item: '52°' or ''. */
     function clockTemp() {
         try {
@@ -148,7 +168,10 @@
             return {
                 // the time item carries the temperature as its superscript, as the weather item does (Nov 15)
                 clock: true, label: t.time, count: [t.ampm, clockTemp()].filter(Boolean).join(' '), icon: 'ti-2051',
-                pages: [{ time: t.time, ampm: t.ampm, date: fmtShort.format(now), network: st.connection ? st.connection.text : '' }],
+                // with Melaton Weather's data the clock carries the weather (Yukimi, Nov 15): the
+                // condition icon for the clock's, the temperature and condition above the date, the next
+                // hours and the coming days as its pages to the right and left; Today's weather item goes
+                pages: clockPages({ time: t.time, ampm: t.ampm, date: fmtShort.format(now), network: st.connection ? st.connection.text : '' }),
                 softKey: { label: 'Set', action: () => openSettings('clock') },
                 onTap: () => {
                     if (st.connection && st.connection.tap === 'reconnect' && window.wsClient && typeof window.wsClient.manualReconnect === 'function') window.wsClient.manualReconnect();
@@ -410,6 +433,11 @@
             p.id = id;
             out.push(p);
         }
+        // the clock carries the weather: Today's own weather item goes (Yukimi, Nov 15)
+        if (out.some((p) => p.clock && p.pages[0] && p.pages[0].wx)) {
+            const i = out.findIndex((p) => p.id === 'weather');
+            if (i >= 0) out.splice(i, 1);
+        }
         // the date row switched off: the connection still needs a place
         if (!out.some((p) => p.clock) && ids.includes('connection') && st.connection) {
             out.unshift({ id: 'connection', label: 'connection', icon: 'ti-2603', pages: [{ title: st.connection.text }] });
@@ -457,7 +485,6 @@
         drawSuper(clock);
         const card = superEl.querySelector('.wm-ti-super-card');
         const frost = superEl.querySelector('.wm-ti-super-frost');
-        const extras = superExtras();
         const shade = superEl.querySelector('.wm-ti-super-shade');
         const body = superEl.querySelector('.wm-ti-super-body');
         const T = frostTransform();
@@ -491,10 +518,13 @@
             fxl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS, delay: SUPER_MS * 0.6, easing: 'linear', fill: 'both' })
         ];
         if (aclock) superAnim.push(aclock.animate([{ transform: 'none' }, { transform: `translateY(${CLOCK_TO.y * u}px) scale(${CLOCK_TO.scale})` }], opt));
-        // the weather comes in as the card rises: its line above the date, the condition icon over the
-        // clock (which fades under it), the page arrows
-        extras.forEach((el) => superAnim.push(el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'linear', fill: 'both' })));
-        if (aclock && superEl.querySelector('.wm-ti-super-wxicon')) superAnim.push(aclock.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'linear', fill: 'both' }));
+        // the clock carrying the weather: its condition icon (the band's) gives way to the live clock as
+        // the card rises, and comes back as it lands
+        const wxi = superEl.querySelector('.wm-ti-super-panel .wm-ti-wxicon');
+        if (aclock && wxi) {
+            superAnim.push(wxi.animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.6, easing: 'linear', fill: 'forwards' }));
+            superAnim.push(aclock.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.3, easing: 'linear', fill: 'both' }));
+        }
         // the hands leave the icon's resting places for the time
         if (aclock) superAnim.push(...swingHands(aclock, true, { duration: SUPER_MS, easing: SUPER_EASE }));
         superAnim[0].finished.then(() => { superBusy = false; }).catch(() => { superBusy = false; });
@@ -522,7 +552,6 @@
         const u = unit();
         const card = superEl.querySelector('.wm-ti-super-card');
         const frost = superEl.querySelector('.wm-ti-super-frost');
-        const extras = superExtras();
         const shade = superEl.querySelector('.wm-ti-super-shade');
         const body = superEl.querySelector('.wm-ti-super-body');
         const T = frostTransform();
@@ -544,10 +573,11 @@
             fxl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' })
         ];
         if (aclock) superAnim.push(aclock.animate([{ transform: `translateY(${CLOCK_TO.y * u}px) scale(${CLOCK_TO.scale})` }, { transform: 'none' }], opt));
-        extras.forEach((el) => superAnim.push(el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' })));
-        if (aclock && superEl.querySelector('.wm-ti-super-wxicon')) superAnim.push(aclock.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' }));
-        // the pages slide home under the closing card (the band is the clock page)
-        if (superPage) { superPage = 0; placeSuperPage(true); }
+        const wxi = superEl.querySelector('.wm-ti-super-panel .wm-ti-wxicon');
+        if (aclock && wxi) {
+            superAnim.push(aclock.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' }));
+            superAnim.push(wxi.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.6, delay: ms * 0.4, easing: 'linear', fill: 'both' }));
+        }
         // and go back to the icon's resting places, so the static icon under it matches when it goes
         if (aclock) superAnim.push(...swingHands(aclock, false, opt));
         superAnim[0].finished.then(finish).catch(() => { /* a new open took over */ });
@@ -569,28 +599,15 @@
         superEl.hidden = true;
         superEl.innerHTML = '<div class="wm-ti-super-shade"></div><div class="wm-ti-super-fx" aria-hidden="true"></div>'
             + '<div class="wm-ti-super-body"><div class="wm-ti-super-sub" hidden>notifications</div><div class="wm-ti-super-notes"></div></div>'
-            + '<div class="wm-ti-super-card"><div class="wm-ti-super-frostclip"><div class="wm-ti-super-frost"></div></div><div class="wm-ti-super-art"></div>'
-            // the card's pages, left and right of the clock (Yukimi, Nov 15): the next hours | the clock | the coming days
-            + '<div class="wm-ti-super-view"><div class="wm-ti-super-track"><div class="wm-ti-super-page is-hours"></div>'
-            + '<div class="wm-ti-super-page is-now"><div class="wm-ti-super-panel"></div><div class="wm-ti-super-wxwrap"></div></div>'
-            + '<div class="wm-ti-super-page is-days"></div></div></div>'
-            + '<button type="button" class="wm-ti-super-arrow" data-dir="-1" aria-label="Next hours"></button><button type="button" class="wm-ti-super-arrow" data-dir="1" aria-label="Coming days"></button></div>';
+            + '<div class="wm-ti-super-card"><div class="wm-ti-super-frostclip"><div class="wm-ti-super-frost"></div></div><div class="wm-ti-super-art"></div><div class="wm-ti-super-panel"></div></div>';
         superEl.querySelector('.wm-ti-super-art').style.borderImageSource = artImageSet('ti-3000');
-        superEl.querySelectorAll('.wm-ti-super-arrow').forEach((b) => {
-            b.style.backgroundImage = artImageSet(b.dataset.dir === '1' ? 'ti-3601' : 'ti-3600');
-            b.addEventListener('click', (e) => { e.stopPropagation(); if (!superBusy) turnSuperPage(Number(b.dataset.dir)); });
-        });
-        bindSuperSwipe(superEl.querySelector('.wm-ti-super-card'));
         // the list's own touch handling stays out of the sheet; its rows scroll and take taps
         ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'contextmenu'].forEach((t) => superEl.addEventListener(t, (e) => e.stopPropagation()));
         // the card puts the bar away; its weather opens Weather (the delegate below)
-        superEl.querySelector('.wm-ti-super-card').addEventListener('click', (e) => {
-            if (superSwiped) { superSwiped = false; return; } // the lift of a page swipe is not a tap
-            if (!superBusy && !e.target.closest('[data-super], .wm-ti-super-arrow')) closeSuper();
-        });
+        superEl.querySelector('.wm-ti-super-card').addEventListener('click', (e) => { if (!superBusy && !e.target.closest('[data-super]')) closeSuper(); });
         superEl.addEventListener('click', (e) => {
             const row = e.target.closest('[data-super]');
-            if (!row || superBusy || superSwiped) return;
+            if (!row || superBusy) return;
             const kind = row.dataset.super;
             if (kind === 'weather') {
                 closeSuper(true);
@@ -608,31 +625,12 @@
     }
 
     function drawSuper(clock) {
-        const cp = clock.pages[0];
+        // the page the band shows (the clock, or one of its forecast pages): the card is that page
+        const cp = clock.pages[pageIndex(clock)] || clock.pages[0];
         // the clock panel's own markup and classes: it draws exactly as the panel in the band
         superEl.querySelector('.wm-ti-super-panel').innerHTML = `<div class="wm-ti-pg">${pageHtml(clock, cp, { live: true })}</div>`;
-        // the weather (Melaton Weather's selected place), merged with the clock: its temperature and
-        // condition above the date, its condition icon over the clock, the next hours on the page to the
-        // left and the coming days to the right; any of it opens Weather (Yukimi, Nov 15)
-        const W = window.wmWeather;
-        let cur = null; let hours = []; let days = [];
-        try {
-            cur = W && typeof W.current === 'function' ? W.current() : null;
-            hours = cur && typeof W.hourly === 'function' ? W.hourly(6) : [];
-            days = cur && typeof W.forecast === 'function' ? W.forecast().slice(0, 5) : [];
-        } catch (_) { cur = null; hours = []; days = []; }
-        const icon = (k, url, url2) => `<img src="${esc(url)}" srcset="${esc(url)} 1x, ${esc(url2 || url)} 2x, ${esc(String(url2 || url).replace('@2x.png', '@4x.png'))} 4x" alt="" draggable="false">`;
-        const wrap = superEl.querySelector('.wm-ti-super-wxwrap');
-        if (cur) {
-            // an invisible copy of AM / PM keeps the line clear of the real one (12-hour clocks)
-            wrap.innerHTML = `<button type="button" class="wm-ti-super-wxline" data-super="weather">${cp.ampm ? `<span class="wm-ti-super-ph">${esc(cp.ampm)} </span>` : ''}${esc(cur.temp != null ? `${cur.temp}\u00b0 ` : '')}${esc(cur.condition || '')}</button>`
-                + `<button type="button" class="wm-ti-super-wxicon" data-super="weather" aria-label="Weather">${icon(cur.icon, cur.iconUrl, cur.iconUrl2x)}</button>`;
-        } else wrap.innerHTML = '';
-        superEl.querySelector('.wm-ti-super-page.is-hours').innerHTML = hours.length ? `<button type="button" class="wm-ti-super-cells" data-super="weather">${hours.map((h) => `<span class="wm-ti-super-cell"><span>${esc(h.label)}</span>${icon(h.icon, h.iconUrl, h.iconUrl2x)}<span>${esc(h.temp)}</span></span>`).join('')}</button>` : '';
-        superEl.querySelector('.wm-ti-super-page.is-days').innerHTML = days.length ? `<button type="button" class="wm-ti-super-cells" data-super="weather">${days.map((d) => `<span class="wm-ti-super-cell"><span>${esc(String(d.day || '').slice(0, 3))}</span>${icon(d.icon, d.iconUrl, d.iconUrl2x)}<span>${esc(d.hi != null ? `${d.hi}\u00b0` : '')} <i>${esc(d.lo != null ? `${d.lo}\u00b0` : '')}</i></span></span>`).join('')}</button>` : '';
-        superPages = { hours: hours.length > 0, days: days.length > 0 };
-        superPage = 0;
-        placeSuperPage(false);
+        let cur = null;
+        try { cur = window.wmWeather && typeof window.wmWeather.current === 'function' ? window.wmWeather.current() : null; } catch (_) { cur = null; }
         superGrow = 0;
         const uu = unit();
         superEl.querySelector('.wm-ti-super-body').style.top = `${(62 + superGrow) * uu}px`;
@@ -646,69 +644,6 @@
             const hr = host.getBoundingClientRect();
             Object.assign(frost.style, { display: '', backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, left: `${wr.left - hr.left}px`, top: `${wr.top - hr.top - 9 * unit()}px`, width: `${wr.width}px`, height: `${wr.height}px` });
         } else frost.style.display = 'none';
-    }
-
-    // the card's pages: -1 the next hours, 0 the clock, 1 the coming days
-    let superPage = 0;
-    let superPages = { hours: false, days: false };
-    let superSwiped = false;
-    const pageOk = (k) => k === 0 || (k === -1 && superPages.hours) || (k === 1 && superPages.days);
-    /** What fades in with the weather: its line, its icon, the arrows that have a page to go to. */
-    function superExtras() {
-        return [...superEl.querySelectorAll('.wm-ti-super-wxline, .wm-ti-super-wxicon, .wm-ti-super-arrow:not([hidden])')];
-    }
-    function placeSuperPage(animate, fromPx) {
-        const track = superEl.querySelector('.wm-ti-super-track');
-        const to = `translateX(${-superPage * 100}%)`;
-        superEl.querySelectorAll('.wm-ti-super-arrow').forEach((b) => { b.hidden = !pageOk(superPage + Number(b.dataset.dir)); });
-        if (animate) {
-            const from = fromPx != null ? `translateX(calc(${-superPage * 100}% + ${fromPx}px))` : getComputedStyle(track).transform;
-            track.animate([{ transform: from }, { transform: to }], { duration: 260, easing: 'cubic-bezier(0.2, 0, 0.2, 1)' });
-        }
-        track.style.transform = to;
-    }
-    function turnSuperPage(dir) {
-        if (!pageOk(superPage + dir)) return;
-        superPage += dir;
-        placeSuperPage(true);
-        haptic('tick');
-    }
-    /** A sideways swipe on the card turns its page (the finger leads, a short or slow one springs back). */
-    function bindSuperSwipe(card) {
-        let id = null; let x0 = 0; let y0 = 0; let t0 = 0; let dx = 0; let on = false;
-        card.addEventListener('pointerdown', (e) => {
-            if (!superOpen || superBusy) return;
-            id = e.pointerId; x0 = e.clientX; y0 = e.clientY; t0 = e.timeStamp; dx = 0; on = false;
-        });
-        card.addEventListener('pointermove', (e) => {
-            if (e.pointerId !== id) return;
-            dx = e.clientX - x0;
-            if (!on) {
-                if (Math.abs(dx) < 10 * unit() || Math.abs(dx) < Math.abs(e.clientY - y0)) return;
-                on = true;
-                try { card.setPointerCapture(id); } catch (_) { /* capture is a nicety */ }
-            }
-            // past the last page the card resists
-            const edge = !pageOk(superPage + (dx > 0 ? -1 : 1));
-            superEl.querySelector('.wm-ti-super-track').style.transform = `translateX(calc(${-superPage * 100}% + ${edge ? dx / 3 : dx}px))`;
-        });
-        const end = (e) => {
-            if (e.pointerId !== id) return;
-            id = null;
-            if (!on) return;
-            superSwiped = true;
-            setTimeout(() => { superSwiped = false; }, 350);
-            const w = card.clientWidth || 1;
-            const fast = Math.abs(dx) / Math.max(1, e.timeStamp - t0) > 0.5;
-            const dir = dx < 0 ? 1 : -1;
-            const was = superPage;
-            if ((Math.abs(dx) > w * 0.25 || fast) && pageOk(superPage + dir)) superPage += dir;
-            const edge = !pageOk(was + dir);
-            placeSuperPage(true, superPage === was ? (edge ? dx / 3 : dx) : (dx + dir * w));
-            if (superPage !== was) haptic('tick');
-        };
-        card.addEventListener('pointerup', end);
-        card.addEventListener('pointercancel', end);
     }
 
     /**
@@ -1240,10 +1175,20 @@
         // the clock's icon: the live analog clock (the art's face without its hands, ti-2051-face, and
         // three hands turned once a second) only in the Super Bar; the idle Today shows the device's
         // own static clock icon (Yukimi, Nov 15: the live one kept the phones drawing and hot)
-        const iconHtml = icon === 'ti-2051' && pg.time && opts.live ? liveClockHtml()
-            : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
+        const wxImg = (u1, u2, cls) => `<img class="${cls}" src="${esc(u1)}" srcset="${esc(u1)} 1x, ${esc(u2 || u1)} 2x, ${esc(String(u2 || u1).replace('@2x.png', '@4x.png'))} 4x" alt="" draggable="false">`;
+        // the forecast pages of the clock: a row of cells (an hour or a day, its icon, its temperature)
+        if (pg.cells) {
+            return `<div class="wm-ti-cells">${pg.cells.map((c) => `<span class="wm-ti-cell"><span>${esc(c.label)}</span>${wxImg(c.iconUrl, c.iconUrl2x, '')}<span>${esc(c.value)}${c.sub ? ` <i>${esc(c.sub)}</i>` : ''}</span></span>`).join('')}</div>`;
+        }
+        // the clock with the weather: the condition icon in the clock icon's place (the Super Bar keeps
+        // its live clock under it, faded in as the bar opens)
+        const iconHtml = p.clock && pg.wx ? wxImg(pg.wx.iconUrl, pg.wx.iconUrl2x, 'wm-ti-icon wm-ti-wxicon') + (opts.live ? liveClockHtml() : '')
+            : icon === 'ti-2051' && pg.time && opts.live ? liveClockHtml()
+                : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
         if (p.clock) {
-            return `${iconHtml}<div class="wm-ti-time">${esc(pg.time)}</div><div class="wm-ti-ampm">${esc(pg.ampm)}</div>
+            // the weather's line above the date, after an invisible copy of AM / PM (12-hour clocks)
+            const wx = pg.wx ? `<div class="wm-ti-wx">${pg.ampm ? `<span class="wm-ti-ph">${esc(pg.ampm)} </span>` : ''}${esc(pg.wx.temp != null ? `${pg.wx.temp}\u00b0 ` : '')}${esc(pg.wx.condition || '')}</div>` : '';
+            return `${iconHtml}<div class="wm-ti-time">${esc(pg.time)}</div><div class="wm-ti-ampm">${esc(pg.ampm)}</div>${wx}
                 <div class="wm-ti-date">${esc(pg.date)}</div><div class="wm-ti-network">${esc(pg.network)}</div>`;
         }
         const lines = [pg.title, pg.line2, pg.line3].filter(Boolean).length;
@@ -1354,7 +1299,7 @@
         const n = p.pages.length;
         const at = pageIndex(p);
         const pg = p.pages[at];
-        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.smallIcon, pg.icon]);
+        const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.smallIcon, pg.icon, pg.wx, pg.cells]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows
         // Effects > digits: the clock in the band at rest keeps its time and only the changed digits

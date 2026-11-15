@@ -535,153 +535,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-panel .wm-ti-aclock {
     will-change: transform;
 }
 
-/* the card's pages (wmTitanium.js placeSuperPage): the next hours | the clock | the coming days. The
- * view clips sideways only, so the clock's icon still overhangs the glass's top as on the band */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-view {
-    position: absolute;
-    inset: 0;
-    overflow-x: clip;
-    overflow-y: visible;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-track {
-    position: absolute;
-    inset: 0;
-    will-change: transform;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-page {
-    position: absolute;
-    top: 0;
-    width: 100%;
-    height: 100%;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-page.is-hours { left: -100%; }
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-page.is-now { left: 0; }
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-page.is-days { left: 100%; }
-
-/* the weather on the clock page: its temperature and condition on the AM / PM line, above the date */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxline {
-    position: absolute;
-    left: calc(113 * var(--u));
-    right: calc(52 * var(--u));
-    top: calc(18 * var(--u));
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-size: calc(10.667 * var(--u));
-    line-height: 1.2075;
-    text-align: left;
-    text-shadow: inherit;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    opacity: 0;
-    -webkit-tap-highlight-color: transparent;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-ph {
-    visibility: hidden;
-}
-
-/* ... and its condition icon over the clock's face where the clock settles beside the time */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxicon {
-    position: absolute;
-    right: calc(10 * var(--u));
-    top: calc(15 * var(--u));
-    width: calc(36 * var(--u));
-    height: calc(36 * var(--u));
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    opacity: 0;
-    -webkit-tap-highlight-color: transparent;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxicon img {
-    width: 100%;
-    height: 100%;
-    object-fit: contain;
-    filter: drop-shadow(0 calc(1 * var(--u)) calc(1.5 * var(--u)) rgba(0, 0, 0, 0.45));
-}
-
-/* the hours and days pages: a row of cells inside the glass (9 - 68), clear of the arrows */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-cells {
-    position: absolute;
-    left: calc(16 * var(--u));
-    right: calc(16 * var(--u));
-    top: calc(12 * var(--u));
-    height: calc(54 * var(--u));
-    display: flex;
-    justify-content: space-between;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    text-shadow: inherit;
-    -webkit-tap-highlight-color: transparent;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-cell {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex: 1 1 0;
-    min-width: 0;
-    gap: calc(1 * var(--u));
-    font-size: calc(10.667 * var(--u));
-    line-height: 1.2;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-cell img {
-    width: calc(22 * var(--u));
-    height: calc(22 * var(--u));
-    object-fit: contain;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-cell > span:last-child {
-    font-size: calc(13 * var(--u));
-    white-space: nowrap;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-cell i {
-    font-style: normal;
-    opacity: 0.7;
-}
-
-/* the page arrows, as the band's panels have them (ti-3600 / ti-3601) */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-arrow {
-    position: absolute;
-    top: calc(22 * var(--u));
-    width: calc(16 * var(--u));
-    height: calc(39 * var(--u));
-    padding: 0;
-    border: 0;
-    background: transparent no-repeat;
-    background-size: calc(4 * var(--u)) calc(9 * var(--u));
-    opacity: 0;
-    -webkit-tap-highlight-color: transparent;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-arrow[hidden] {
-    display: none;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-arrow[data-dir="-1"] { left: 0; background-position: calc(2 * var(--u)) calc(15 * var(--u)); }
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-arrow[data-dir="1"] { right: 0; background-position: right calc(2 * var(--u)) top calc(15 * var(--u)); }
-
-/* the card takes sideways swipes itself */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-card {
-    touch-action: none;
-}
 
 /* the notifications, below the card (its bottom shadow fades onto them) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-body {
@@ -1033,4 +886,76 @@ html.ui-mobile[data-wm-version="6.5"] .wm-wx-star {
 @keyframes wm-wx-twinkle {
     from { opacity: 0.15; }
     to { opacity: 0.9; }
+}
+
+/* ---- the clock carrying the weather (wmTitanium.js clockPages, Yukimi Nov 15): the condition icon in
+ * the clock icon's place, the temperature and condition on the AM / PM line above the date (after an
+ * invisible copy of AM / PM), the next hours and the coming days as the panel's pages */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-icon.wm-ti-wxicon {
+    right: calc(10 * var(--u));
+    top: calc(-6 * var(--u));
+    width: calc(40 * var(--u));
+    height: calc(40 * var(--u));
+    object-fit: contain;
+    object-position: center;
+    filter: drop-shadow(0 calc(1 * var(--u)) calc(1.5 * var(--u)) rgba(0, 0, 0, 0.45));
+}
+
+/* the Super Bar's copy keeps the live clock under the condition icon until the bar fades it in */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-panel .wm-ti-wxicon ~ .wm-ti-aclock {
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-wx {
+    position: absolute;
+    left: calc(113 * var(--u));
+    right: calc(56 * var(--u));
+    top: calc(18 * var(--u));
+    font-size: calc(10.667 * var(--u));
+    line-height: 1.2075;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-ph {
+    visibility: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-cells {
+    position: absolute;
+    left: calc(16 * var(--u));
+    right: calc(16 * var(--u));
+    top: calc(10 * var(--u));
+    height: calc(56 * var(--u));
+    display: flex;
+    justify-content: space-between;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-width: 0;
+    gap: calc(1 * var(--u));
+    font-size: calc(10.667 * var(--u));
+    line-height: 1.2;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-cell img {
+    width: calc(22 * var(--u));
+    height: calc(22 * var(--u));
+    object-fit: contain;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-cell > span:last-child {
+    font-size: calc(13 * var(--u));
+    white-space: nowrap;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-cell i {
+    font-style: normal;
+    opacity: 0.7;
 }
