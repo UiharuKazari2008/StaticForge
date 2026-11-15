@@ -714,7 +714,8 @@
     async function startNow() {
         const d = draftOf();
         const options = d.auto ? { auto: true, minutes: d.minutes } : { auto: false, temp: d.temp, defrost: d.defrost, heating: d.heating, seat: d.seat, minutes: d.minutes };
-        if (await send('start', options)) { layers = layers.filter((l) => l !== 'start'); draft = null; syncLayers(); }
+        // started from Today (or Traffic's bubble) the app is not on screen: its title is not the shell's
+        if (await send('start', options)) { layers = layers.filter((l) => l !== 'start'); draft = null; if (shown) syncLayers(); else stale = true; }
     }
 
     async function startConfirm() {
@@ -1060,6 +1061,7 @@
             commuteMiles: s.commuteMiles ? String(s.commuteMiles) : '',
             autoClimate: s.autoClimate !== false,
             runMinutes: s.runMinutes || 10,
+            todayDirect: todayDirect(),
             lockRemindMin: s.lockRemindMin || 10,
             lowFuelPct: s.lowFuelPct || 20,
             reservePct: s.reservePct == null ? 15 : s.reservePct,
@@ -1127,6 +1129,8 @@
             ${ui.sub('Remote start')}
             ${ui.check('lpsAuto', 'Choose the climate from the weather at the car', f.autoClimate, 'data-k="autoClimate"')}
             ${ui.row('Run for:', ui.comboHtml('runMinutes', label(RUNS, f.runMinutes)), { wide: true })}
+            ${ui.check('lpsTodayDirect', 'Remote Start directly from the Today screen', f.todayDirect, 'data-k="todayDirect"')}
+            ${ui.note('Start on the Today screen asks first, then starts the car without opening Lapis Remote (this phone only).')}
             ${ui.gap()}
             ${ui.sub('Automatic climate')}
             ${ui.note('The set temperature slides between these points by itself; nothing is a fixed step. "Cabin" is the estimate: the outdoor temperature plus what the sun adds.')}
@@ -1167,6 +1171,8 @@
         box.querySelectorAll('input[data-n]').forEach((el) => el.addEventListener('change', () => { f.notify[el.dataset.n] = el.checked; }));
         const auto = box.querySelector('input[data-k="autoClimate"]');
         auto.addEventListener('change', () => { f.autoClimate = auto.checked; });
+        const direct = box.querySelector('input[data-k="todayDirect"]');
+        direct.addEventListener('change', () => { f.todayDirect = direct.checked; });
         const combo = (act, list) => ui.bindCombo(box.querySelector(`[data-act="${act}"]`), list, f[act], (v) => { f[act] = Number(v); });
         combo('runMinutes', RUNS);
         combo('lockRemindMin', MINUTES);
@@ -1281,6 +1287,7 @@
         if (Number(f.mpg) > 0) next.mpg = Number(f.mpg);
         try {
             await ws.busy(ask('lapis_settings_save', { settings: next }), { delay: 250, timeout: 25000 });
+            try { localStorage.setItem(LS_DIRECT, f.todayDirect ? '1' : '0'); } catch (_) { /* private mode */ }
             form = null;
             popLayer();
         } catch (err) {
@@ -1441,6 +1448,15 @@
 
     // the 6.5 panel's name (the model's first word, else "car") and the small text beside it
     const LS_SUPER = 'wmLapisTodaySuper'; // fuel | issue | lock | none (this phone's choice)
+    // Settings > Remote start directly from the Today screen (this phone's choice): Today's Start asks
+    // "Start the car ...?" and starts it there, without opening Lapis Remote
+    const LS_DIRECT = 'wmLapisTodayDirect';
+    const todayDirect = () => { try { return localStorage.getItem(LS_DIRECT) === '1'; } catch (_) { return false; } };
+    /** Today's Start: the question and the start right there, or the Remote Start screen. */
+    function todayStart() {
+        if (todayDirect() && isAdmin() && configured() && !busyCommand()) { draft = null; startConfirm(); }
+        else open('start');
+    }
     const todaySuperPref = () => { try { const v = localStorage.getItem(LS_SUPER); return ['fuel', 'issue', 'lock', 'none'].includes(v) ? v : 'fuel'; } catch (_) { return 'fuel'; } };
     function todayName() {
         const v = state && state.vehicle;
@@ -1477,7 +1493,7 @@
                 if (!k) { open(); return; }
                 e.stopPropagation();
                 if (k.dataset.today === 'lock') { const s = st(); if (s && s.locked === false) send('lock'); else if (s && s.locked) doUnlock(); else open(); }
-                else if (k.dataset.today === 'start') { const s = st(); if (s && s.engine && s.climate) doStop(); else open('start'); }
+                else if (k.dataset.today === 'start') { const s = st(); if (s && s.engine && s.climate) doStop(); else todayStart(); }
             });
         }
         const keys = configured() && isAdmin()
@@ -1501,7 +1517,7 @@
         const running = !!(s.engine && s.climate);
         const pages = [
             { icon: 'x:app-lapis-lg', title: t.title, line2: t.sub, line3: state.location && state.location.place ? `Parked at ${state.location.place}` : '', softKey: lockKey, onTap: go },
-            { icon: 'x:lapis-key-lg', title: running ? `Running${runInfo() && runInfo().until ? `, ${leftShort(runInfo().until - Date.now())} left` : ''}` : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: () => open('start') }, onTap: () => open('start') }
+            { icon: 'x:lapis-key-lg', title: running ? `Running${runInfo() && runInfo().until ? `, ${leftShort(runInfo().until - Date.now())} left` : ''}` : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: todayStart }, onTap: () => open('start') }
         ];
         if (sv) pages.push({ icon: 'x:lapis-wrench-lg', title: sv.label, line2: sv.milesLeft <= 0 ? `${Math.abs(sv.milesLeft).toLocaleString()} miles over` : `in ${sv.milesLeft.toLocaleString()} miles`, line3: '', softKey: { label: 'Service', action: () => open('service') }, onTap: () => open('service') });
         return { label: todayName(), count: todaySuper(), icon: 'x:app-lapis-lg', pages, softKey: lockKey, onTap: go };
