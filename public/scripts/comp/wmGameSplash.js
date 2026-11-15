@@ -3,9 +3,9 @@
  * shows them once when it starts, over its own field while its first frames are made:
  *
  *   1. the game's card: its icon, its name, who made it
- *   2. "Powered by Xyridian Mobile DirectSpark 9"
+ *   2. "Powered by Xyridian Spark3D Mobile"
  *
- * DirectSpark is Xyridian's 3D graphics layer on Melaton Mobile (the place a phone of the time gave
+ * Spark3D Mobile is Xyridian's 3D graphics layer on Melaton Mobile (the place a phone of the time gave
  * to its maker's own 3D runtime). The name and the mark are ours: a four-point spark in Xyridian's
  * star orange inside a tilted blue orbit, drawn here as SVG.
  *
@@ -20,9 +20,9 @@
     if (window.uiShell !== 'mobile') return;
 
     const CSS = '/css/wm-game-splash.css';
-    const NAME = 'DirectSpark';
-    const VERSION = '9';
-    const MAKER = 'Xyridian Mobile';
+    const NAME = 'Spark3D';
+    const EDITION = 'Mobile';
+    const MAKER = 'Xyridian';
     let styled = null;
     let serial = 0;
 
@@ -42,11 +42,11 @@
         return styled;
     }
 
-    /** The DirectSpark mark: the orbit's far side, the spark, the orbit's near side over it, a small star on the orbit. */
+    /** The Spark3D mark: the orbit's far side, the spark, the orbit's near side over it, a small star on the orbit. */
     function mark() {
         const id = `wgs${++serial}`;
         const spark = 'M0,-40 C3.5,-11 11,-3.5 40,0 C11,3.5 3.5,11 0,40 C-3.5,11 -11,3.5 -40,0 C-11,-3.5 -3.5,-11 0,-40Z';
-        return `<svg class="wgs-mark" viewBox="0 0 200 112" role="img" aria-label="${NAME}">`
+        return `<svg class="wgs-mark" viewBox="0 0 200 112" role="img" aria-label="${NAME} ${EDITION}">`
             + `<defs><linearGradient id="${id}r" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2a6fd6"/><stop offset="0.5" stop-color="#a9dcff"/><stop offset="1" stop-color="#1c56b4"/></linearGradient>`
             + `<radialGradient id="${id}s"><stop offset="0" stop-color="#fff6cf"/><stop offset="0.4" stop-color="#ffbe2e"/><stop offset="1" stop-color="#f88800"/></radialGradient></defs>`
             + '<g transform="translate(100 56) rotate(-16)">'
@@ -73,7 +73,7 @@
                 + '<div class="wgs-powered">Powered by</div>'
                 + mark()
                 + `<div class="wgs-maker">${esc(MAKER)}</div>`
-                + `<div class="wgs-word">Direct<b>Spark</b><i>${esc(VERSION)}</i></div>`
+                + `<div class="wgs-word"><b>Spark</b><i>3D</i> <span>${esc(EDITION)}</span></div>`
                 + '</div>';
             host.appendChild(el);
             const game = el.querySelector('[data-card="game"]');
@@ -96,5 +96,5 @@
         }));
     }
 
-    window.wmGameSplash = { show, name: `${MAKER} ${NAME} ${VERSION}` };
+    window.wmGameSplash = { show, name: `${MAKER} ${NAME} ${EDITION}` };
 })();

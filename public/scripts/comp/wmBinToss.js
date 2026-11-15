@@ -15,8 +15,8 @@
  * from 6 pm to 6 am).
  * After a paper goes in, the basket slides to a new spot on its rug (a little nearer, farther or to
  * one side: a harder or softer flick). Time Attack (Menu): 60 seconds from the first throw, a paper
- * in the hand at once, a second back for every hit in a run of three or more. A kitten sits by the
- * rug: she plays with papers that miss, and now and then leaps for one in the air (a catch does not
+ * in the hand at once, a second back for every hit in a run of three or more. A kitten strolls about
+ * the floor and sits where she likes: she plays with papers that miss, and now and then leaps for one in the air (a catch does not
  * count against the run). Tilting the phone looks about the room. The score is a HUD over the room:
  * run / score, best, the clock, the draught, hits and misses; +1 and Miss rise where they happen.
  * Soft music is made as it plays (Options). Little things: tap the cat, the kitten, the lamp or the
@@ -62,6 +62,7 @@
     const WALL_GAP = 1.6; // the far wall behind the basket
     const SOFA = { halfW: 0.95, depth: 0.85, seatTop: 0.45, backTop: 0.88, armTop: 0.61, armW: 0.17 };
     const CAT = { x: 0.42, r: 0.15 };
+    const CAT_HEAD = [0.115, 0.15, 0.055]; // the middle of the sofa cat's head, from where she sits
     const LAMP = { x: -1.32, top: 1.62 };
 
     function norm(v) { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; }
@@ -105,6 +106,7 @@
     let kit = null; // the kitten on the floor
     let lampOn = null; // null: on at night, off by day; a tap or a paper on the shade switches it
     let pets = 0;
+    let catLook = 0; // which way the sofa cat's head is turned
     const tilt = { x: 0, y: 0, tx: 0, ty: 0, base: null, wired: false };
     let music = null;
     let gesture = false; // the first touch: sound and tilt may start
@@ -425,7 +427,7 @@
             timed.running = true;
             timed.thrown += 1;
             handAt = clock + 0.3;
-        } else if (kit && kit.state === 'idle' && run >= 1 && Math.random() < 0.14) {
+        } else if (kit && (kit.state === 'idle' || kit.state === 'wander') && run >= 1 && Math.random() < 0.14) {
             // now and then the kitten goes for one in the air
             kit.state = 'stalk'; kit.prey = b; kit.t = 0; kit.spot = [bk.x * 0.8, bk.z + 0.5];
         }
@@ -492,7 +494,25 @@
     // ---- the kitten: sits by the rug, plays with a paper that missed, sometimes leaps for one in the air
 
     function resetKit() {
-        kit = { x: -0.72, z: -dist + 0.5, y: 0, vy: 0, yaw: 0.4, state: 'idle', t: 0, toy: null, prey: null, bats: 0, hop: 0, spot: null };
+        kit = { x: -0.72, z: -dist + 0.5, y: 0, vy: 0, yaw: 0.4, face: 0.4, state: 'idle', t: 0, wait: 2.5, toy: null, prey: null, bats: 0, hop: 0, pace: 0, spot: null, to: null };
+    }
+
+    /** Somewhere on the open floor for her to stroll to: not in the basket's way, the stand's or the sofa's. */
+    function kitSpot() {
+        const zf = -dist - WALL_GAP + 0.04 + SOFA.depth;
+        for (let i = 0; i < 14; i++) {
+            const x = (Math.random() * 2 - 1) * 1.5;
+            const z = zf + 0.28 + Math.random() * (-dist + 1.3 - zf - 0.28);
+            if (Math.hypot(x - bk.tx, z - bk.tz) < 0.5 || Math.hypot(x - POLE.x, z + dist + 0.12) < 0.3 || Math.hypot(x - LAMP.x, z - (-dist - WALL_GAP + 0.34)) < 0.35) continue;
+            // the straight line there must clear the basket
+            const dx = x - kit.x;
+            const dz = z - kit.z;
+            const u = clamp(((bk.tx - kit.x) * dx + (bk.tz - kit.z) * dz) / (dx * dx + dz * dz || 1), 0, 1);
+            if (Math.hypot(kit.x + dx * u - bk.tx, kit.z + dz * u - bk.tz) < 0.38) continue;
+            if (Math.hypot(dx, dz) < 0.5) continue;
+            return [x, z];
+        }
+        return null;
     }
 
     /** Runs toward a spot; true once within `near` of it. */
@@ -503,8 +523,10 @@
         if (d <= near) return true;
         const step = Math.min(d - near, speed * dt);
         kit.x += dx / d * step; kit.z += dz / d * step;
-        kit.yaw = Math.atan2(dx, dz);
-        kit.hop += dt * 15;
+        kit.face = Math.atan2(dx, dz);
+        // her legs keep time with the ground she covers
+        kit.hop += step * 34;
+        kit.pace = speed;
         return d - step <= near + 0.005;
     }
 
@@ -513,6 +535,10 @@
         if (!k) return;
         k.t += dt;
         const alive = (b) => !!b && balls.indexOf(b) >= 0;
+        // she turns to where she is headed (the short way round), not at once
+        let turn = k.face - k.yaw;
+        turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+        k.yaw += turn * Math.min(1, dt * 9);
         if (k.state === 'jump') {
             k.vy -= GRAV * dt;
             k.y += k.vy * dt;
@@ -537,24 +563,36 @@
                     b2.p[0] = k.x + Math.sin(k.yaw) * 0.13; b2.p[1] = BALL_R; b2.p[2] = k.z + Math.cos(k.yaw) * 0.13;
                     b2.v[0] = b2.v[1] = b2.v[2] = 0;
                     k.state = 'play'; k.bats = 2;
-                } else k.state = 'return';
+                } else { k.state = 'idle'; k.wait = 1.2; }
             }
             return;
         }
+        // a missed paper lying on the floor is a toy, whatever she was doing
+        const findToy = () => {
+            const toy = balls.find((b) => b.rest && b.resolved && !b.scored && !b.inside && !b.played && b.p[1] < 0.08);
+            if (toy) { toy.played = true; k.toy = toy; k.state = 'run'; k.bats = 2 + (Math.random() < 0.4 ? 1 : 0); k.t = 0; }
+            return !!toy;
+        };
         if (k.state === 'idle') {
-            // watches the thrower; a missed paper lying on the floor is a toy
-            k.yaw += (0.4 - k.yaw) * Math.min(1, dt * 4);
-            if (k.t > 0.7) {
-                const toy = balls.find((b) => b.rest && b.resolved && !b.scored && !b.inside && !b.played && b.p[1] < 0.08);
-                if (toy) { toy.played = true; k.toy = toy; k.state = 'run'; k.bats = 2 + (Math.random() < 0.4 ? 1 : 0); k.t = 0; }
+            // sits a while, watching the paper in the air or the thrower; then strolls somewhere else
+            const fly = balls.find((b) => !b.rest && !b.held);
+            k.face = fly ? Math.atan2(fly.p[0] - k.x, fly.p[2] - k.z) : Math.atan2(-k.x, EYE[2] - k.z);
+            if (k.t > 0.7 && findToy()) return;
+            if (k.t > k.wait && !fly) {
+                k.to = kitSpot();
+                if (k.to) { k.state = 'wander'; k.t = 0; }
+                else k.t = 0;
             }
+        } else if (k.state === 'wander') {
+            if (findToy()) return;
+            if (kitGo(k.to[0], k.to[1], dt, 0.5, 0.03) || k.t > 14) { k.state = 'idle'; k.t = 0; k.wait = 2 + Math.random() * 5; }
         } else if (k.state === 'run') {
-            if (!alive(k.toy) || k.toy.inside || k.t > 6) { k.toy = null; k.state = 'return'; return; }
+            if (!alive(k.toy) || k.toy.inside || k.t > 6) { k.toy = null; k.state = 'idle'; k.t = 0; k.wait = 1.5; return; }
             if (kitGo(k.toy.p[0], k.toy.p[2], dt, 2.1, 0.14) && k.toy.rest) { k.state = 'play'; k.t = 0; }
         } else if (k.state === 'play') {
             const b = k.toy;
-            if (!alive(b) || b.inside) { k.toy = null; k.state = 'return'; return; }
-            k.yaw = Math.atan2(b.p[0] - k.x, b.p[2] - k.z);
+            if (!alive(b) || b.inside) { k.toy = null; k.state = 'idle'; k.t = 0; k.wait = 1.5; return; }
+            k.face = Math.atan2(b.p[0] - k.x, b.p[2] - k.z);
             if (k.t > 0.5) {
                 if (k.bats > 0 && b.rest) {
                     // a pat: the paper hops off, mostly back toward the middle of the room
@@ -563,12 +601,12 @@
                     b.rest = false; b.restT = 0; b.t = 1; b.spin = 9; b.touched = true; b.kitToy = true; b.landed = true;
                     k.bats -= 1; k.state = 'run'; k.t = 0;
                     sound('pat');
-                } else if (k.bats <= 0) { k.toy = null; k.state = 'return'; }
+                } else if (k.bats <= 0) { k.toy = null; k.state = 'idle'; k.t = 0; k.wait = 2 + Math.random() * 3; }
             }
         } else if (k.state === 'stalk') {
             const b = k.prey;
             kitGo(k.spot[0], k.spot[1], dt, 2.8, 0.02);
-            if (!alive(b) || b.resolved || k.t > 3.5) { k.prey = null; k.state = 'return'; return; }
+            if (!alive(b) || b.resolved || k.t > 3.5) { k.prey = null; k.state = 'idle'; k.t = 0; k.wait = 1.5; return; }
             // she springs when the paper is nearly on her, to meet it where it will be
             const away = Math.hypot(b.p[0] - k.x, b.p[2] - k.z);
             const pace = Math.hypot(b.v[0], b.v[2]);
@@ -576,15 +614,13 @@
                 const T = away / pace;
                 const meet = b.p[1] + b.v[1] * T - 0.5 * GRAV * T * T;
                 if (T > 0.08 && T < 0.4 && meet > 0.35 && meet < 1.15) {
-                    k.yaw = Math.atan2(b.p[0] - k.x, b.p[2] - k.z);
+                    k.face = k.yaw = Math.atan2(b.p[0] - k.x, b.p[2] - k.z);
                     k.state = 'jump';
                     k.vy = clamp((meet - 0.24) / T + 0.5 * GRAV * T, 1.2, 4.6);
                     k.jx = (b.p[0] + b.v[0] * T - k.x) / T * 0.5;
                     k.jz = (b.p[2] + b.v[2] * T - k.z) / T * 0.5;
                 }
             }
-        } else if (k.state === 'return') {
-            if (kitGo(-0.72, -dist + 0.5, dt, 1.7, 0.02)) { k.state = 'idle'; k.t = 0; }
         }
     }
 
@@ -631,8 +667,16 @@
             balls.splice(i >= 0 ? i : 0, 1);
         }
         windShown += (wind - windShown) * Math.min(1, dt * 3);
-        tilt.x += (tilt.tx - tilt.x) * Math.min(1, dt * 7);
-        tilt.y += (tilt.ty - tilt.y) * Math.min(1, dt * 7);
+        tilt.x += (tilt.tx - tilt.x) * Math.min(1, dt * 3.5);
+        tilt.y += (tilt.ty - tilt.y) * Math.min(1, dt * 3.5);
+        // the cat on the sofa watches what moves: a paper in the air, else the kitten on her rounds
+        let look = 0;
+        if (!night) {
+            const fly = balls.find((b) => !b.rest && !b.held);
+            const seen = fly ? fly.p : (kit && kit.state !== 'idle' ? [kit.x, 0, kit.z] : null);
+            look = seen ? clamp(Math.atan2(seen[0] - (solid.cat[0] + 0.115), seen[2] - solid.cat[2]), -1.1, 1.1) : Math.sin(clock * 0.23) * 0.25;
+        }
+        catLook += (look - catLook) * Math.min(1, dt * 4);
     }
 
     function switchLamp() {
@@ -1308,6 +1352,8 @@ void main() {
             basket: null,
             kitSit: null,
             kitLeap: null,
+            kitWalk: null,
+            catHead: null,
             vp: null,
             focal: 1,
             photoTex: null,
@@ -1336,6 +1382,7 @@ void main() {
         buildBasket();
         R.kitSit = buildKitten(false);
         R.kitLeap = buildKitten(true);
+        R.kitWalk = buildKitWalk();
         buildRoom();
         loadPhoto();
         return true;
@@ -1501,59 +1548,125 @@ void main() {
     }
 
     /**
+     * The kitten on her feet, in pieces that move: the body with the head (about the spot under her,
+     * facing +z), one leg about its hip (drawn four times, swinging), the tail about its root.
+     */
+    function buildKitWalk() {
+        const coat = [0.36, 0.38, 0.44];
+        const cream = [0.95, 0.94, 0.9];
+        const make = (fill) => {
+            const b = builder();
+            const parts = [];
+            fill(b, (mat, color, f) => { const first = b.count; f(); parts.push({ first, count: b.count - first, mat, color }); });
+            return Object.assign(vao(new Float32Array(b.v)), { parts });
+        };
+        const body = make((b, part) => {
+            part(10, coat, () => {
+                b.pillow(0, 0.118, 0, 0.048, 0.046, 0.098, 2.3);
+                b.pillow(0, 0.172, 0.118, 0.06, 0.054, 0.054, 2.1);
+            });
+            part(10, coat, () => {
+                b.tube(-0.036, 0.118, 0.208, 0.026, 0.27, 0.001, 10);
+                b.tube(0.036, 0.118, 0.208, 0.026, 0.27, 0.001, 10);
+            });
+            part(2, [0.93, 0.62, 0.6], () => {
+                b.pillow(-0.036, 0.226, 0.135, 0.012, 0.019, 0.005, 2);
+                b.pillow(0.036, 0.226, 0.135, 0.012, 0.019, 0.005, 2);
+            });
+            part(2, cream, () => {
+                b.pillow(0, 0.155, 0.166, 0.028, 0.019, 0.015, 2);
+                b.pillow(0, 0.1, 0.082, 0.032, 0.036, 0.022, 2);
+            });
+            part(2, [0.9, 0.45, 0.47], () => b.pillow(0, 0.165, 0.18, 0.007, 0.005, 0.004, 2));
+            part(2, [0.86, 0.68, 0.16], () => {
+                b.pillow(-0.026, 0.184, 0.163, 0.014, 0.016, 0.008, 2);
+                b.pillow(0.026, 0.184, 0.163, 0.014, 0.016, 0.008, 2);
+            });
+            part(2, [0.02, 0.02, 0.03], () => {
+                b.pillow(-0.026, 0.184, 0.1695, 0.008, 0.012, 0.004, 2);
+                b.pillow(0.026, 0.184, 0.1695, 0.008, 0.012, 0.004, 2);
+            });
+            part(2, [1.6, 1.6, 1.6], () => {
+                b.pillow(-0.022, 0.19, 0.1735, 0.003, 0.003, 0.002, 2);
+                b.pillow(0.03, 0.19, 0.1735, 0.003, 0.003, 0.002, 2);
+            });
+        });
+        const leg = make((b, part) => {
+            part(10, coat, () => b.pillow(0, -0.042, 0, 0.017, 0.047, 0.019, 2));
+            part(2, cream, () => b.pillow(0, -0.078, 0.006, 0.019, 0.011, 0.023, 2));
+        });
+        const tail = make((b, part) => {
+            part(10, coat, () => {
+                for (let i = 0; i < 8; i++) {
+                    const a = i / 7;
+                    b.pillow(0, a * 0.115, -a * 0.075 - 0.012 * Math.sin(a * 3), 0.016 - a * 0.003, 0.021, 0.018 - a * 0.003, 2);
+                }
+            });
+        });
+        return { body, leg, tail };
+    }
+
+    /**
      * The cat on the sofa, loafed with her paws tucked in and her tail round her: rounded shapes about
-     * the point she sits on (a buffer of its own: she breathes). Eyes open by day, shut at night.
+     * the point she sits on (buffers of their own: she breathes, and her head turns to watch).
+     * Eyes open by day, shut at night.
      */
     function buildCat() {
         const b = builder();
+        const h = builder(); // her head, about its middle: it turns
         const parts = [];
+        const headParts = [];
         const part = (mat, color, fill) => { const first = b.count; fill(); parts.push({ first, count: b.count - first, mat, color }); };
+        const hpart = (mat, color, fill) => { const first = h.count; fill(); headParts.push({ first, count: h.count - first, mat, color }); };
+        const [HX, HY, HZ] = CAT_HEAD;
+        const hp = (x, y, z, ...r) => h.pillow(x - HX, y - HY, z - HZ, ...r);
         const coat = [0.86, 0.50, 0.20];
         const cream = [0.96, 0.93, 0.86];
         part(10, coat, () => {
             b.pillow(0, 0.082, 0, 0.17, 0.085, 0.105, 2.3);         // body
-            b.pillow(0.115, 0.15, 0.055, 0.074, 0.066, 0.068, 2.1); // head, turned to the room
             // tail, curled along the front
             for (let i = 0; i < 9; i++) {
                 const a = i / 8;
                 b.pillow(-0.165 + a * 0.2 - 0.03 * Math.sin(a * 3.1), 0.026, 0.07 + 0.045 * Math.sin(a * 2.6), 0.03, 0.022 - a * 0.004, 0.024 - a * 0.004, 2);
             }
         });
-        // ears: two little cones, pink inside
-        part(10, coat, () => {
-            b.tube(0.078, 0.07, 0.196, 0.03, 0.262, 0.001, 10);
-            b.tube(0.152, 0.07, 0.196, 0.03, 0.262, 0.001, 10);
-        });
-        part(2, [0.93, 0.62, 0.6], () => {
-            b.pillow(0.079, 0.214, 0.09, 0.014, 0.022, 0.006, 2);
-            b.pillow(0.153, 0.214, 0.09, 0.014, 0.022, 0.006, 2);
-        });
         part(2, cream, () => {
-            b.pillow(0.115, 0.128, 0.112, 0.036, 0.024, 0.018, 2);  // muzzle
             b.pillow(0.07, 0.03, 0.1, 0.03, 0.02, 0.026, 2);        // paws
             b.pillow(0.14, 0.03, 0.105, 0.03, 0.02, 0.026, 2);
             b.pillow(0.06, 0.085, 0.088, 0.05, 0.05, 0.02, 2);      // bib
         });
-        part(2, [0.9, 0.45, 0.47], () => b.pillow(0.115, 0.14, 0.129, 0.008, 0.006, 0.005, 2)); // nose
+        hpart(10, coat, () => hp(0.115, 0.15, 0.055, 0.074, 0.066, 0.068, 2.1));
+        // ears: two little cones, pink inside
+        hpart(10, coat, () => {
+            h.tube(0.078 - HX, 0.07 - HZ, 0.196 - HY, 0.03, 0.262 - HY, 0.001, 10);
+            h.tube(0.152 - HX, 0.07 - HZ, 0.196 - HY, 0.03, 0.262 - HY, 0.001, 10);
+        });
+        hpart(2, [0.93, 0.62, 0.6], () => {
+            hp(0.079, 0.214, 0.09, 0.014, 0.022, 0.006, 2);
+            hp(0.153, 0.214, 0.09, 0.014, 0.022, 0.006, 2);
+        });
+        hpart(2, cream, () => hp(0.115, 0.128, 0.112, 0.036, 0.024, 0.018, 2)); // muzzle
+        hpart(2, [0.9, 0.45, 0.47], () => hp(0.115, 0.14, 0.129, 0.008, 0.006, 0.005, 2)); // nose
         if (night) {
             // asleep: two dark curves
-            part(2, [0.16, 0.09, 0.05], () => {
-                b.pillow(0.088, 0.158, 0.116, 0.014, 0.0035, 0.004, 2);
-                b.pillow(0.142, 0.158, 0.116, 0.014, 0.0035, 0.004, 2);
+            hpart(2, [0.16, 0.09, 0.05], () => {
+                hp(0.088, 0.158, 0.116, 0.014, 0.0035, 0.004, 2);
+                hp(0.142, 0.158, 0.116, 0.014, 0.0035, 0.004, 2);
             });
         } else {
-            part(2, [0.25, 0.42, 0.14], () => {
-                b.pillow(0.088, 0.16, 0.113, 0.012, 0.013, 0.008, 2);
-                b.pillow(0.142, 0.16, 0.113, 0.012, 0.013, 0.008, 2);
+            hpart(2, [0.25, 0.42, 0.14], () => {
+                hp(0.088, 0.16, 0.113, 0.012, 0.013, 0.008, 2);
+                hp(0.142, 0.16, 0.113, 0.012, 0.013, 0.008, 2);
             });
-            part(2, [0.03, 0.03, 0.03], () => {
-                b.pillow(0.088, 0.16, 0.1195, 0.004, 0.011, 0.003, 2);
-                b.pillow(0.142, 0.16, 0.1195, 0.004, 0.011, 0.003, 2);
+            hpart(2, [0.03, 0.03, 0.03], () => {
+                hp(0.088, 0.16, 0.1195, 0.004, 0.011, 0.003, 2);
+                hp(0.142, 0.16, 0.1195, 0.004, 0.011, 0.003, 2);
             });
         }
-        if (R.cat) { gl.deleteBuffer(R.cat.b); gl.deleteVertexArray(R.cat.a); }
+        if (R.cat) { gl.deleteBuffer(R.cat.b); gl.deleteVertexArray(R.cat.a); gl.deleteBuffer(R.catHead.b); gl.deleteVertexArray(R.catHead.a); }
         R.cat = vao(new Float32Array(b.v));
         R.catParts = parts;
+        R.catHead = Object.assign(vao(new Float32Array(h.v)), { parts: headParts });
     }
 
     /** One of the workspace's pictures for the frame over the sofa (the painted hills until it loads, or if there is none). */
@@ -1656,8 +1769,8 @@ void main() {
         const fovy = clamp(2 * Math.atan(Math.tan(27 * Math.PI / 180) / Math.min(1, aspect / 0.52)), 0.6, 1.5);
         // tilting the phone looks about the room (a slow drift of its own keeps the picture alive)
         const sway = Math.sin(clock * 0.37) * 0.012;
-        const eye = [EYE[0] + tilt.x * 0.2 + sway, EYE[1] - tilt.y * 0.07, EYE[2]];
-        const at = [tilt.x * 0.85 + sway * 0.5, 0.52 - tilt.y * 0.5, -dist * 0.78];
+        const eye = [EYE[0] + tilt.x * 0.09 + sway, EYE[1] - tilt.y * 0.03, EYE[2]];
+        const at = [tilt.x * 0.3 + sway * 0.5, 0.52 - tilt.y * 0.16, -dist * 0.78];
         const viewProj = mul(perspective(fovy, aspect, 0.1, 30), lookAt(eye, at, [0, 1, 0]));
         R.vp = viewProj;
         R.focal = 1 / Math.tan(fovy / 2);
@@ -1671,15 +1784,28 @@ void main() {
         // the cat breathes
         const catModel = trs([0, 1, 0], 0, solid.cat.map((v, i) => (i === 1 ? SOFA.seatTop - 0.004 : v)), 1 + Math.sin(clock * (night ? 1.3 : 1.9)) * 0.012);
         R.catParts.forEach((p) => drawables.push({ vao: R.cat.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: catModel }));
+        const catHeadModel = mul(catModel, trs([0, 1, 0], catLook, CAT_HEAD, 1));
+        R.catHead.parts.forEach((p) => drawables.push({ vao: R.catHead.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: catHeadModel }));
         const basketModel = trs([0, 1, 0], 0, [bk.x, 0, bk.z], 1);
         R.basket.parts.forEach((p) => drawables.push({ vao: R.basket.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: basketModel }));
         const shadowBalls = [];
         if (kit) {
-            const mesh = kit.state === 'jump' ? R.kitLeap : R.kitSit;
-            const moving = kit.state === 'run' || kit.state === 'stalk' || kit.state === 'return';
-            const ky = kit.y + (moving ? Math.abs(Math.sin(kit.hop)) * 0.045 : 0);
-            const kitModel = trs([0, 1, 0], kit.yaw, [kit.x, ky, kit.z], 0.86 * (1 + Math.sin(clock * 2.6) * 0.008));
-            mesh.parts.forEach((p) => drawables.push({ vao: mesh.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: kitModel }));
+            const add = (mesh, model) => mesh.parts.forEach((p) => drawables.push({ vao: mesh.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model }));
+            const afoot = kit.state === 'wander' || kit.state === 'run' || kit.state === 'stalk';
+            let ky = kit.y;
+            if (kit.state === 'jump') add(R.kitLeap, trs([0, 1, 0], kit.yaw, [kit.x, ky, kit.z], 0.86));
+            else if (afoot) {
+                // on her feet: the body dips twice a stride, opposite corners step together, the tail sways
+                const quick = kit.pace > 1;
+                ky += Math.abs(Math.sin(kit.hop)) * (quick ? 0.014 : 0.005);
+                const base = trs([0, 1, 0], kit.yaw, [kit.x, ky, kit.z], 0.86);
+                add(R.kitWalk.body, base);
+                const reach = quick ? 0.85 : 0.5;
+                [[-0.032, 0.062, 0], [0.032, 0.062, Math.PI], [-0.032, -0.058, Math.PI], [0.032, -0.058, 0]].forEach(([hx, hz, off]) => {
+                    add(R.kitWalk.leg, mul(base, trs([1, 0, 0], Math.sin(kit.hop + off) * reach, [hx, 0.088, hz], 1)));
+                });
+                add(R.kitWalk.tail, mul(base, trs([0, 1, 0], Math.sin(clock * 3.1) * 0.45, [0, 0.128, -0.086], 1)));
+            } else add(R.kitSit, trs([0, 1, 0], kit.yaw, [kit.x, ky, kit.z], 0.86 * (1 + Math.sin(clock * 2.6) * 0.008)));
             shadowBalls.push(kit.x, ky + 0.07, kit.z, 0.085);
         }
         balls.forEach((b) => {
@@ -1910,10 +2036,12 @@ void main() {
         const along = turn === 90 ? -e.gamma : turn === 270 ? e.gamma : e.beta;
         if (!tilt.base) tilt.base = [across, along];
         // however the phone comes to be held is the middle, after a while
-        tilt.base[0] += (across - tilt.base[0]) * 0.004;
-        tilt.base[1] += (along - tilt.base[1]) * 0.004;
-        tilt.tx = clamp((across - tilt.base[0]) / 20, -1, 1);
-        tilt.ty = clamp((along - tilt.base[1]) / 20, -1, 1);
+        tilt.base[0] += (across - tilt.base[0]) * 0.008;
+        tilt.base[1] += (along - tilt.base[1]) * 0.008;
+        // a small tilt does nothing (a hand is never still); the whole look takes some 40 degrees
+        const ease = (d) => clamp(Math.sign(d) * Math.max(0, Math.abs(d) - 2) / 38, -1, 1);
+        tilt.tx = ease(across - tilt.base[0]);
+        tilt.ty = ease(along - tilt.base[1]);
     }
 
     function wireTilt(on) {
@@ -1993,8 +2121,8 @@ void main() {
     }
 
     function pokeKit() {
-        if (!kit || kit.state !== 'idle') return;
-        kit.state = 'jump'; kit.vy = 2.3; kit.jx = 0; kit.jz = 0; kit.prey = null;
+        if (!kit || (kit.state !== 'idle' && kit.state !== 'wander')) return;
+        kit.state = 'jump'; kit.vy = 2.3; kit.jx = 0; kit.jz = 0; kit.prey = null; kit.toy = null;
         sound('meow', 1.5);
         hearts([kit.x, 0.3, kit.z]);
     }

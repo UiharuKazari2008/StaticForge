@@ -1,6 +1,6 @@
 /*
  * Melaton Mobile: the start-up cards of the phone's 3D games (wmGameSplash.js, Yozora #836): the
- * game's own card, then "Powered by Xyridian Mobile DirectSpark 9" (Xyridian's 3D graphics layer:
+ * game's own card, then "Powered by Xyridian Spark3D Mobile" (Xyridian's 3D graphics layer:
  * the name and the mark are ours). Black, over the game's field, gone in about three seconds or
  * at a touch. Lengths in the shell's units.
  */
@@ -82,8 +82,9 @@
 
 .wm-game-splash .wgs-word {
     margin-top: calc(1 * var(--wm-px, 1px));
-    font-size: calc(24 * var(--wm-px, 1px));
+    font-size: calc(22 * var(--wm-px, 1px));
     font-style: italic;
+    white-space: nowrap;
     letter-spacing: -0.01em;
 }
 
@@ -92,9 +93,12 @@
 }
 
 .wm-game-splash .wgs-word i {
-    margin-left: calc(3 * var(--wm-px, 1px));
     font-weight: bold;
     color: #f88800;
+}
+
+.wm-game-splash .wgs-word span {
+    font-weight: normal;
 }
 
 @media (prefers-reduced-motion: reduce) {
