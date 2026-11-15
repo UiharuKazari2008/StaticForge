@@ -12,7 +12,7 @@ Home, Work and the route are the household admin's commute. Reads need `admin` o
 | Request | Body -> reply |
 |---|---|
 | `traffic_get` | `{}` -> `{ settings, latest: { work, home }, providers }` |
-| `traffic_check` | `{ direction: 'work'|'home', force? }` -> a fresh report |
+| `traffic_check` | `{ direction: 'work'|'home', force?, origin? }` -> a fresh report. `origin { lat, lon }` (home only): To Home from the phone's position (rounded to ~110 m, no preferred streets); the report then has `fromHere: true` and `origin`. |
 | `traffic_advise` | `{ direction, force? }` -> the leave advisor (Google only) |
 | `traffic_settings_save` | `{ settings }`, merged into config `traffic`. Admin, destructive. |
 

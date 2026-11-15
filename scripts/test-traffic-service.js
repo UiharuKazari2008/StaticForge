@@ -195,6 +195,20 @@ T.setFetch(async (url, init) => {
         cfg.traffic.streets = ['Main Street', 'Interstate 90 East'];
     });
 
+    await ok('to Home from the phone\'s position routes from there, without the preferred streets', async () => {
+        T.routeCache.clear();
+        const n = calls.length;
+        const r = await svc.check('home', { force: true, origin: { lat: 44.1234567, lon: -103.2345678 } });
+        assert.strictEqual(r.fromHere, true);
+        assert.deepStrictEqual(r.origin, { lat: 44.123, lon: -103.235 }, 'rounded to ~110 m');
+        assert.deepStrictEqual(r.streets, []);
+        const g = calls.slice(n).filter((c) => /routes\.googleapis/.test(c.url)).map((c) => JSON.parse(c.init.body));
+        assert.ok(g.length >= 1 && g.every((b) => !b.intermediates), 'no via streets');
+        assert.strictEqual(g[0].origin.location.latLng.latitude, 44.123);
+        const w = await svc.check('work', { force: true, origin: { lat: 1, lon: 2 } });
+        assert.strictEqual(w.fromHere, false, 'only the way home takes an origin');
+    });
+
     await ok('one TomTom / Overpass call serves both directions', async () => {
         T.routeCache.clear();
         T.cameraState.store = {};

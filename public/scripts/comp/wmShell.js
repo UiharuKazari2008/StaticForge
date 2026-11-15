@@ -5397,7 +5397,11 @@
             const t = window.wmTraffic;
             const st = t && typeof t.statusState === 'function' ? t.statusState() : null;
             const sections = st && st.lines && st.lines.length ? st.lines.slice() : ['No commute report.'];
-            if (t) sections.push({ links: [{ label: 'Open Traffic', action: () => { closeBubble(); t.open(st && st.direction); } }] });
+            // the way home with a car to start (Lapis Remote, #835): start it before leaving work
+            const lp = window.wmLapis;
+            const startCar = st && st.direction === 'home' && lp && typeof lp.canStart === 'function' && lp.canStart()
+                ? [{ label: 'Start Car', action: () => { closeBubble(); lp.startPrompt(); } }] : [];
+            if (t) sections.push({ links: [...startCar, { label: 'Open Traffic', action: () => { closeBubble(); t.open(st && st.direction); } }] });
             bubble({ title: (st && st.title) || STATUS_APP_LABEL[role], role, anchor, sections, buttons: [{ text: 'Hide' }] });
         } else if (role === 'update') {
             // updates downloading: the progress lives here, in the icon's own popup

@@ -6,7 +6,8 @@ const trafficService = require('../../trafficService');
 // Home, Work and the route are the household admin's commute: admin (and dev_admin test tabs) only.
 //
 //   traffic_get            {}                          { settings, latest: { work, home }, providers }
-//   traffic_check          { direction, force? }       a fresh report for 'work' or 'home'
+//   traffic_check          { direction, force?, origin? }  a fresh report for 'work' or 'home'; origin { lat, lon }
+//                                                      (home only) = To Home from the phone's position
 //   traffic_advise         { direction, force? }       the leave advisor (Google only)
 //   traffic_settings_save  { settings }                admins; merged into config `traffic`
 //   traffic_where          {}                          { lat, lon, source, accuracyKm }: the phone's place by
@@ -52,7 +53,7 @@ async function handleGet(handlersCtx, ws, message, clientInfo) {
 async function handleCheck(handlersCtx, ws, message, clientInfo) {
     if (!guard(handlersCtx, ws, message, clientInfo)) return;
     try {
-        const report = await trafficService.check(message.direction, { force: !!message.force });
+        const report = await trafficService.check(message.direction, { force: !!message.force, origin: message.origin || null });
         reply(handlersCtx, ws, message, { report, providers: trafficService.providers() });
     } catch (error) {
         fail(handlersCtx, ws, message, error, 'Traffic could not be checked');

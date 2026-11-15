@@ -961,15 +961,27 @@ function publicRoute(r, extra) {
 const fmtMin = (sec) => `${Math.max(1, Math.round(sec / 60))} min`;
 
 /** Read the routes, incidents and cameras for one direction and build the report (see the header). */
-async function check(direction, { force = false } = {}) {
+async function check(direction, { force = false, origin = null } = {}) {
     if (!DIRECTIONS.includes(direction)) throw new TrafficError('direction is work or home', 'BAD_REQUEST');
     const s = getSettings();
-    const { from, to } = endpoints(direction, s);
+    let { from, to } = endpoints(direction, s);
+    // To Home from where the phone is (away from Home and Work, Yukimi Nov 15): the device's position,
+    // rounded to ~110 m so nearby checks share Google's answer; the preferred streets do not apply
+    const here = direction === 'home' && origin && Number.isFinite(Number(origin.lat)) && Number.isFinite(Number(origin.lon)) && Math.abs(Number(origin.lat)) <= 90 && Math.abs(Number(origin.lon)) <= 180
+        ? { lat: Math.round(Number(origin.lat) * 1e3) / 1e3, lon: Math.round(Number(origin.lon) * 1e3) / 1e3, label: 'Your location' }
+        : null;
+    if (here) from = here;
     if (!s.home || !s.work) throw new TrafficError('Set Home and Work first', 'NOT_SET');
     if (!googleKey()) throw new TrafficError('Add a Google Maps key in Dreamscape CardSpace > Service keys', 'NO_ACCOUNT');
     const errors = [];
     const provider = 'google';
-    const { streets, tag, alts, via } = await preferredPlan(direction, s, from, to, force, errors);
+    const { streets, tag, alts, via } = here
+        ? await (async () => {
+            const t = `here|${JSON.stringify([from, to])}`;
+            const a = await cachedCall(`g:alt:${t}`, ROUTE_TTL, () => googleRoutes(from, to, { alternatives: true }), force).catch((e) => { errors.push(e.message); return []; });
+            return { streets: [], tag: t, alts: a, via: [] };
+        })()
+        : await preferredPlan(direction, s, from, to, force, errors);
     const pref = via.length ? await cachedCall(`g:via:${tag}`, ROUTE_TTL, () => googleRoutes(from, to, { via }), force).catch((e) => { errors.push(`Preferred route: ${e.message}`); return []; }) : [];
     const routes = alts.slice();
     let viaRoute = pref[0] || null;
@@ -1047,6 +1059,8 @@ async function check(direction, { force = false } = {}) {
         at: new Date().toISOString(),
         provider,
         from: placeName(from, direction === 'work' ? 'Home' : 'Work'),
+        fromHere: !!here,
+        origin: here ? { lat: here.lat, lon: here.lon } : null,
         to: placeName(to, direction === 'work' ? 'Work' : 'Home'),
         streets,
         preferred: publicRoute(preferred),

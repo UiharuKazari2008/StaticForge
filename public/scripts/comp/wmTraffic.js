@@ -125,7 +125,9 @@
         checking[direction] = true;
         render();
         try {
-            const d = await ask('traffic_check', { direction, force: !!force }, 40000);
+            const origin = originFor(direction);
+            const d = await ask('traffic_check', origin ? { direction, force: !!force, origin } : { direction, force: !!force }, 40000);
+            if (origin) lastOrigin = { lat: origin.lat, lon: origin.lon, at: Date.now() };
             if (d && d.report) latest[direction] = d.report;
             if (d && d.providers) provs = d.providers;
             return latest[direction];
@@ -149,7 +151,7 @@
      * ti-x-app-traffic-lg[-<level>] (scripts/generate-wm-traffic-art.js).
      */
     function levelSuffix() {
-        const lv = loaded ? (todayLine(direction()).level || 'none') : 'none';
+        const lv = loaded ? (todayLine(commuteNow() || direction()).level || 'none') : 'none';
         return lv === 'clear' ? '' : `-${['moderate', 'heavy'].includes(lv) ? lv : 'none'}`;
     }
 
@@ -222,13 +224,14 @@
         if (!force && Date.now() - geoAt < every) return;
         geoAt = Date.now();
         geoBusy = true;
-        const before = direction();
+        const before = commuteNow();
         const found = (pos) => {
             geoBusy = false;
             here = Object.assign({ at: Date.now() }, pos);
             const p = placeNow();
             if (p) { try { localStorage.setItem(LS_PLACE, JSON.stringify({ place: p, at: Date.now() })); } catch (_) { /* none */ } }
-            if (direction() !== before) { const r = latest[direction()]; if (configured() && (!r || Date.now() - Date.parse(r.at) > STALE_MS)) quietCheck(direction()); }
+            const now = commuteNow();
+            if (now && (now !== before || (now === 'home' && hereMoved()))) { const r = latest[now]; if (!r || Date.now() - Date.parse(r.at) > STALE_MS || hereMoved()) quietCheck(now); }
             changed();
             watchCameras();
         };
@@ -521,6 +524,50 @@
         const p = placeNow() || storedPlace();
         if (p) return p === 'home' ? 'work' : 'home';
         return autoDirection();
+    }
+
+    // ---------------------------------------------------------------- the commute worth showing (Yukimi, Nov 15)
+    //
+    // At Home the way to Work is offered only on a work day (Settings' days) before Leave Work; on a day
+    // off, or once the work day is over and the phone is home, there is nothing to show and no background
+    // checks. At Work: the way home. Anywhere else: the way home from where the phone is (its own position).
+    // The position is still read as before, so leaving home brings the way home back. The app itself still
+    // shows either direction when asked; this rule is for Today, the title-bar car and the quiet checks.
+
+    let lastOrigin = null; // { lat, lon, at } where the last To Home from here was asked from
+
+    function commuteNow(now = new Date()) {
+        if (!configured()) return null;
+        const dv = driving();
+        if (dv) return dv.direction;
+        const s = settings || {};
+        const workDay = Array.isArray(s.days) && s.days.includes(now.getDay());
+        const t = now.getHours() * 60 + now.getMinutes();
+        const lw = minutesOf(s.leaveWork);
+        const workOn = workDay && (lw == null ? t < 12 * 60 : t < lw);
+        // a known position decides; without one, the last place found (12 h) stands in
+        const p = placeNow() || (here ? null : storedPlace());
+        if (p === 'home') return workOn ? 'work' : null;
+        if (p === 'work') return 'home';
+        if (here) return 'home';
+        // no position at all yet: only during the work day (after Leave Work the phone is most likely home)
+        return workOn ? autoDirection() : null;
+    }
+
+    /** Away from Home and Work, with the device's own position: To Home is asked from there. */
+    function originFor(d) {
+        if (d !== 'home' || !here || here.source !== 'device' || placeNow()) return null;
+        return { lat: Math.round(here.lat * 1e5) / 1e5, lon: Math.round(here.lon * 1e5) / 1e5 };
+    }
+
+    /** The way home from here is out of date: asked from more than 2 km away (and over 3 min ago). */
+    function hereMoved() {
+        const o = originFor('home');
+        if (!o) return false;
+        const r = latest.home;
+        const from = r && r.fromHere && r.origin ? r.origin : lastOrigin;
+        if (!from) return true;
+        return distKm(o, from) > 2 && (!r || Date.now() - Date.parse(r.at) > STALE_MS);
     }
 
     /** Where the direction came from, for the plate ("At Home", "At Work", "On the road"). */
@@ -1262,6 +1309,7 @@
         }
         const delay = r.delaySec >= 60 ? ` (+${mins(r.delaySec)})` : '';
         const bits = [];
+        if (d === 'home' && r.fromHere) bits.push('From here');
         const arrive = arriveText(r);
         if (arrive) bits.push(arrive.charAt(0).toUpperCase() + arrive.slice(1));
         if (r.better) bits.push(`Faster via ${r.better.summary}`);
@@ -1311,7 +1359,9 @@
     function statusState() {
         if (!canUse() || !loaded || !configured()) return null;
         const dv = driving();
-        const win = leaveWindow();
+        let win = leaveWindow();
+        // the leave window's commute must also be the one that matters now (no way home at Home)
+        if (!dv && win && commuteNow() !== win.direction) win = null;
         const d = dv ? dv.direction : (win ? win.direction : direction());
         const r = latest[d];
         if (dv && r && r.preferred) {
@@ -1346,11 +1396,13 @@
         if (!loaded) { if (!wired) wire(); return false; }
         if (!configured() && !isAdmin()) return false;
         readPosition();
-        const d = direction();
+        const d = configured() ? commuteNow() : direction();
+        // at Home on a day off or after work: nothing to show, and no checks
+        if (configured() && !d) return false;
         // Today on screen with an old report: one fresh check (at most every 15 min; the server caches too),
         // never while driving the route (the time left comes from the report already here)
         const r0 = latest[d];
-        if (configured() && !driving() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS)) {
+        if (configured() && !driving() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS || (d === 'home' && hereMoved()))) {
             todayCheckAt = Date.now();
             quietCheck(d);
         }
@@ -1360,7 +1412,7 @@
             el.classList.add('wtw', 'trf-today');
             el.setAttribute('role', 'button');
             el.tabIndex = 0;
-            el.addEventListener('click', () => open(direction()));
+            el.addEventListener('click', () => open(commuteNow() || direction()));
         }
         const html = `<span class="trf-today-sig" data-level="${t.level}"><i></i><i></i><i></i></span><span class="wtw-lines"><span class="wtw-title">${esc(t.title)}</span><span class="wtw-sub">${esc(t.sub)}</span></span>`;
         if (html !== todayHtml || !el.firstChild) { todayHtml = html; el.innerHTML = html; }
@@ -1369,9 +1421,10 @@
 
     function todayTitanium() {
         if (!canUse() || !loaded) return null;
-        const go = () => open(direction());
-        const first = direction();
-        const pages = [first, first === 'work' ? 'home' : 'work'].map((d) => {
+        const first = configured() ? commuteNow() : direction();
+        if (configured() && !first) return null;
+        const go = () => open(first);
+        const pages = [first].map((d) => {
             const t = todayLine(d);
             const r = latest[d];
             return { title: t.title, line2: t.sub, line3: r && r.alerts && r.alerts.length ? `${r.alerts.length} alert${r.alerts.length > 1 ? 's' : ''} on route` : '' };
@@ -1415,6 +1468,8 @@
         open,
         latest: () => latest,
         direction,
+        /** The commute worth showing now ('work' | 'home'), or null at Home off work. */
+        commuteNow: () => commuteNow(),
         statusState,
         /** Driving the commute: { direction, leftSec, arriveAt, toGoM, at } or null. */
         driving: () => driving(),

@@ -1525,6 +1525,10 @@
         /** A running remote start for the shell's title-bar glyph: { running, until, title, html, canStop }. */
         statusState,
         stop: () => doStop(),
+        /** A remote start can be offered from elsewhere (Traffic's title-bar car): set up, admin, not already running. */
+        canStart: () => !!(isAdmin() && configured() && !busyCommand() && !runInfo() && !(st() && st().engine)),
+        /** "Start the car for N minutes at T?" then the remote start with the automatic climate. */
+        startPrompt: () => { draft = null; startConfirm(); },
         /** Read what the server holds again (lapis_get). */
         reload: () => load()
     };
