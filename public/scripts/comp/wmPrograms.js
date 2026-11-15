@@ -1221,7 +1221,11 @@
                         ['gloss', 'Light the items under the glass'],
                         ['digits', "Roll the clock's digits"],
                         ['blur', 'Frosted glass'],
-                        ['haptics', 'Vibrate as items pass the glass']
+                        ['haptics', 'Vibrate as items pass the glass'],
+                        ['startopen', 'Start: icons come in from the corner'],
+                        ['startfrost', 'Start: frosted picture'],
+                        ['startlaunch', 'Start: programs grow out of their icon'],
+                        ['startticks', 'Start: vibrate as rows pass']
                     ];
                     el.innerHTML = `${check('wmTodayParallax', 'Parallax Effect', d.parallax)}
                         <div class="wm-form-sub">Distance</div><div data-f="parallax-level"></div>

@@ -157,3 +157,39 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-lifted,
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow.is-lifted {
     will-change: translate;
 }
+
+/* ---- Settings > Today > Effects > Start (wmStart65.js; html[data-wm-ti-fx] lists the ones on) ----
+ * the icons come in from the Start button's corner, row by row (each cell's own --r / --c, 22 ms a
+ * step, 14 steps at most); `translate` and `scale` compose with the cell's own transform */
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startopen"] .wm-s65.is-opening .wm-s65-cell {
+    animation: wm-s65-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+    animation-delay: calc(min(var(--r) * 2 + var(--c), 14) * 22ms);
+}
+
+@keyframes wm-s65-in {
+    from { opacity: 0; translate: calc(-14 * var(--wm-px)) calc(-18 * var(--wm-px)); scale: 0.82; }
+    to { opacity: 1; translate: 0 0; scale: 1; }
+}
+
+/* a program grows out of its icon as it opens (wmStart65.js waits 140 ms) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startlaunch"] .wm-s65-cell.is-launching .wm-s65-icon {
+    animation: wm-s65-launch 0.16s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes wm-s65-launch {
+    to { scale: 1.7; opacity: 0; }
+}
+
+/* the pressed icon sinks a little (a pan that starts on it lifts it again) */
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startlaunch"] .wm-s65-icon {
+    transition: scale 0.08s ease-out;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startlaunch"] .wm-s65-cell:active .wm-s65-icon {
+    scale: 0.92;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.ui-mobile[data-wm-version="6.5"] .wm-s65.is-opening .wm-s65-cell,
+    html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-launching .wm-s65-icon { animation: none; }
+}
