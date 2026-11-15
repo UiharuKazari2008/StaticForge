@@ -480,6 +480,22 @@ function runClaudeVersionProbe(bin, timeoutMs) {
     });
 }
 
+const CLAUDE_PROBE_KEEP_MS = 10 * 60 * 1000;
+let claudeProbeKept = null;
+async function claudeVersionOnce(bin, opts) {
+    let stamp = '';
+    try { const st = fs.statSync(bin); stamp = `${bin}|${st.size}|${st.mtimeMs}`; } catch (_) { stamp = ''; }
+    const keepable = opts.claudeBin === undefined && !!stamp;
+    if (keepable && claudeProbeKept && claudeProbeKept.stamp === stamp && Date.now() - claudeProbeKept.at < CLAUDE_PROBE_KEEP_MS) {
+        return { out: claudeProbeKept.out, latencyMs: claudeProbeKept.latencyMs };
+    }
+    const started = Date.now();
+    const out = await withTimeout(runClaudeVersionProbe(bin, opts.timeoutMs), opts.timeoutMs + 250);
+    const latencyMs = Date.now() - started;
+    if (keepable) claudeProbeKept = { stamp, at: Date.now(), out, latencyMs };
+    return { out, latencyMs };
+}
+
 async function checkClaudeXi(opts, secrets) {
     const name = 'Claude Runner (Xi)';
     const checkedAt = new Date().toISOString();
@@ -510,8 +526,14 @@ async function checkClaudeXi(opts, secrets) {
     }
     const started = Date.now();
     try {
-        const out = await withTimeout(runClaudeVersionProbe(bin, opts.timeoutMs), opts.timeoutMs + 250);
-        const latencyMs = Date.now() - started;
+        // The probe starts the CLI (a Node program) for its version. Every status request did,
+        // blocking this process ~110 ms in spawn and burning a CLI start each time; the answer only
+        // changes when the binary does. A good answer is kept ten minutes per binary (path, size,
+        // modified time); failures are never kept, and a caller that names its own binary (the
+        // tests) always probes (#849).
+        const probe = await claudeVersionOnce(bin, opts);
+        const out = probe.out;
+        const latencyMs = probe.latencyMs;
         return row({
             id: 'claude-xi',
             name,

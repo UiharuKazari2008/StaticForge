@@ -96,6 +96,7 @@ function markChatSynced(account, guid, synced) {
 }
 
 function deleteChat(account, guid) {
+    countChanged(account);
     const tx = d().transaction(() => {
         const guids = d().prepare('SELECT guid FROM messages WHERE account = ? AND chat_guid = ?').all(account, guid).map((r) => r.guid);
         const delFts = d().prepare('DELETE FROM messages_fts WHERE account = ? AND guid = ?');
@@ -114,6 +115,7 @@ function chatCount(account) {
 
 /** rows: [{ guid, chatGuid, date, text, raw }] (insert or replace; the text index follows). */
 function putMessages(account, rows) {
+    countChanged(account);
     const db0 = d();
     const ins = db0.prepare(`INSERT INTO messages (account, guid, chat_guid, date, text, raw) VALUES (@account, @guid, @chat, @date, @text, @raw)
         ON CONFLICT(account, guid) DO UPDATE SET chat_guid = excluded.chat_guid, date = excluded.date, text = excluded.text, raw = excluded.raw`);
@@ -146,9 +148,17 @@ function listMessages(account, chatGuids, { limit = 50, before = null } = {}) {
     return d().prepare(sql).all(...args).map((r) => JSON.parse(r.raw));
 }
 
+// An account's whole count is kept until a write below changes it (#849): counting walked the
+// account's index on the server's main thread (~20 ms for a large iMessage copy) on every summary.
+const countKept = new Map();
+function countChanged(account) { countKept.delete(account); }
+
 function messageCount(account, chatGuid) {
     if (chatGuid) return d().prepare('SELECT COUNT(*) AS n FROM messages WHERE account = ? AND chat_guid = ?').get(account, chatGuid).n;
-    return d().prepare('SELECT COUNT(*) AS n FROM messages WHERE account = ?').get(account).n;
+    if (countKept.has(account)) return countKept.get(account);
+    const n = d().prepare('SELECT COUNT(*) AS n FROM messages WHERE account = ?').get(account).n;
+    countKept.set(account, n);
+    return n;
 }
 
 function newestDate(account) {
@@ -180,6 +190,7 @@ function guidsBetween(account, chatGuids, from, to) {
 
 /** The source no longer has these: out of the store (the source wins). */
 function deleteMessages(account, guids) {
+    countChanged(account);
     if (!guids || !guids.length) return 0;
     const delM = d().prepare('DELETE FROM messages WHERE account = ? AND guid = ?');
     const delF = d().prepare('DELETE FROM messages_fts WHERE account = ? AND guid = ?');
@@ -222,6 +233,7 @@ function sizeOnDisk() {
 }
 
 function forgetAccount(account) {
+    countChanged(account);
     d().transaction(() => {
         d().prepare('DELETE FROM messages_fts WHERE account = ?').run(account);
         d().prepare('DELETE FROM messages WHERE account = ?').run(account);
@@ -238,7 +250,7 @@ function stats(account) {
     };
 }
 
-function _close() { if (db) { db.close(); db = null; } }
+function _close() { countKept.clear(); if (db) { db.close(); db = null; } }
 
 module.exports = {
     open, getState, setState, putChats, listChats, getChat, touchChat, markChatSynced, deleteChat, chatCount,

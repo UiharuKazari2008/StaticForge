@@ -2162,6 +2162,17 @@ function formatLoggedBody(body, approxBytes) {
     return out;
 }
 
+// The request log's time stamp: one formatter for the life of the process. toLocaleString with
+// options builds a new one on every call, the slowest line of this logger, once per request (#849).
+const requestLogTime = new Intl.DateTimeFormat('en-US', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+});
+
 // Logger // NOTE: Everything above this is not logged!
 app.use((req, res, next) => {
     const skippedPaths = [
@@ -2201,14 +2212,7 @@ app.use((req, res, next) => {
     }
     
     const startTime = Date.now();
-    const timestamp = new Date().toLocaleString('en-US', {
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    });
+    const timestamp = requestLogTime.format(startTime);
     
     const realIP = getRealIP(req);
     const queryParams = { ...req.query };
