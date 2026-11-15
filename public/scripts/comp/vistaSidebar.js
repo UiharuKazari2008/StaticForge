@@ -1165,8 +1165,10 @@ const VSB_SLIDE_TRANSITIONS = [['none', 'None'], ['random', 'Random'], ['fade', 
 const vsbSlideMount = function (inst) {
     const frame = vsbEl('div', 'vsb-slide', inst.body);
     const view = vsbEl('div', 'vsb-slide-view', frame);
-    const a = vsbImg(null, 'vsb-slide-img', view);
-    const b = vsbImg(null, 'vsb-slide-img', view);
+    // each picture sits in a clip box: Wipe and Iris move the box and counter-move the picture
+    // (transforms only, run by the compositor) instead of animating clip-path on the page's thread
+    const a = vsbImg(null, 'vsb-slide-img', vsbEl('div', 'vsb-slide-clip', view));
+    const b = vsbImg(null, 'vsb-slide-img', vsbEl('div', 'vsb-slide-clip', view));
     const glass = vsbEl('div', 'vsb-slide-glass', frame);
     const empty = vsbEl('div', 'vsb-slide-empty hidden', frame);
     empty.textContent = 'No pictures';
@@ -1402,6 +1404,7 @@ const vsbSlideShow = async function (inst, item) {
         layer.classList.remove('is-leaving');
         layer.classList.toggle('is-front', i === p.front);
         layer.dataset.fx = '';
+        delete layer.parentNode.dataset.fx;
     });
     const back = p.layers[1 - p.front];
     const front = p.layers[p.front];
@@ -1413,12 +1416,14 @@ const vsbSlideShow = async function (inst, item) {
         front.classList.remove('is-front');
     } else {
         back.dataset.fx = kind + '-in';
+        if (kind === 'wipe' || kind === 'iris') back.parentNode.dataset.fx = kind + '-in';
         if (kind === 'push') front.dataset.fx = 'push-out';
         back.classList.add('is-front');
         front.classList.add('is-leaving');
         inst.fxTimer = setTimeout(() => {
             front.classList.remove('is-front', 'is-leaving');
             front.dataset.fx = '';
+            delete back.parentNode.dataset.fx;
         }, 900);
     }
     p.front = 1 - p.front;

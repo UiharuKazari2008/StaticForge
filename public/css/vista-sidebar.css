@@ -754,15 +754,142 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
 .vsb-slide-img.is-front { z-index: 2; opacity: 1; }
 .vsb-slide-img.is-leaving { z-index: 1; opacity: 1; }
 .vsb-slide-img[data-fx="fade-in"] { animation: vsb-fx-fade 0.8s ease-out; }
-.vsb-slide-img[data-fx="wipe-in"] { animation: vsb-fx-wipe 0.8s ease-out; }
-.vsb-slide-img[data-fx="iris-in"] { animation: vsb-fx-iris 0.8s ease-out; }
+
+/* Wipe and Iris: the clip box moves and the picture counter-moves, so the picture stands still while
+   the box's edge crosses it. Transforms only: the compositor runs them. Animating clip-path took a
+   style pass and a repaint on the page's thread for every frame (#849). */
+.vsb-slide-clip { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.vsb-slide-clip[data-fx] { z-index: 2; overflow: hidden; }
+.vsb-slide-clip[data-fx="wipe-in"] { animation: vsb-fx-wipe-box 0.8s ease-out; }
+.vsb-slide-clip[data-fx="wipe-in"] > .vsb-slide-img { animation: vsb-fx-wipe-img 0.8s ease-out; }
+/* the circle of clip-path: circle(75%), whose radius is 75% of diagonal / sqrt(2), at full size */
+.vsb-slide-clip[data-fx="iris-in"] {
+    --vsb-iris: calc(hypot(var(--vsb-vw), var(--vsb-vh)) * 1.06066);
+    top: calc((var(--vsb-vh) - var(--vsb-iris)) / 2);
+    left: calc((var(--vsb-vw) - var(--vsb-iris)) / 2);
+    width: var(--vsb-iris);
+    height: var(--vsb-iris);
+    border-radius: 50%;
+    animation: vsb-fx-iris-box 0.8s linear;
+}
+.vsb-slide-clip[data-fx="iris-in"] > .vsb-slide-img {
+    top: calc((var(--vsb-iris) - var(--vsb-vh)) / 2);
+    left: calc((var(--vsb-iris) - var(--vsb-vw)) / 2);
+    width: var(--vsb-vw);
+    height: var(--vsb-vh);
+    animation: vsb-fx-iris-img 0.8s linear;
+}
 .vsb-slide-img[data-fx="slide-in"],
 .vsb-slide-img[data-fx="push-in"] { animation: vsb-fx-slide 0.8s ease-out; }
 .vsb-slide-img[data-fx="push-out"] { animation: vsb-fx-push-out 0.8s ease-out forwards; }
 
 @keyframes vsb-fx-fade { from { opacity: 0; } to { opacity: 1; } }
-@keyframes vsb-fx-wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0); } }
-@keyframes vsb-fx-iris { from { clip-path: circle(0% at 50% 50%); } to { clip-path: circle(75% at 50% 50%); } }
+@keyframes vsb-fx-wipe-box { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes vsb-fx-wipe-img { from { transform: translateX(100%); } to { transform: translateX(0); } }
+/* ease-out sampled once per 60 Hz frame: the box's scale and its exact inverse for the picture, so
+   the two cancel at every step (an eased pair would not: the inverse of a scale is not linear) */
+@keyframes vsb-fx-iris-box {
+    0% { scale: 0.004; }
+    2.0833% { scale: 0.0349; }
+    4.1667% { scale: 0.06886; }
+    6.25% { scale: 0.10213; }
+    8.3333% { scale: 0.13482; }
+    10.4167% { scale: 0.16696; }
+    12.5% { scale: 0.19858; }
+    14.5833% { scale: 0.2297; }
+    16.6667% { scale: 0.26034; }
+    18.75% { scale: 0.2905; }
+    20.8333% { scale: 0.32018; }
+    22.9167% { scale: 0.3494; }
+    25% { scale: 0.37814; }
+    27.0833% { scale: 0.40641; }
+    29.1667% { scale: 0.4342; }
+    31.25% { scale: 0.46152; }
+    33.3333% { scale: 0.48835; }
+    35.4167% { scale: 0.51469; }
+    37.5% { scale: 0.54053; }
+    39.5833% { scale: 0.56587; }
+    41.6667% { scale: 0.5907; }
+    43.75% { scale: 0.615; }
+    45.8333% { scale: 0.63877; }
+    47.9167% { scale: 0.66198; }
+    50% { scale: 0.68464; }
+    52.0833% { scale: 0.70673; }
+    54.1667% { scale: 0.72822; }
+    56.25% { scale: 0.74912; }
+    58.3333% { scale: 0.76938; }
+    60.4167% { scale: 0.78901; }
+    62.5% { scale: 0.80798; }
+    64.5833% { scale: 0.82626; }
+    66.6667% { scale: 0.84384; }
+    68.75% { scale: 0.86068; }
+    70.8333% { scale: 0.87676; }
+    72.9167% { scale: 0.89206; }
+    75% { scale: 0.90654; }
+    77.0833% { scale: 0.92016; }
+    79.1667% { scale: 0.93289; }
+    81.25% { scale: 0.94468; }
+    83.3333% { scale: 0.9555; }
+    85.4167% { scale: 0.9653; }
+    87.5% { scale: 0.97402; }
+    89.5833% { scale: 0.9816; }
+    91.6667% { scale: 0.98798; }
+    93.75% { scale: 0.9931; }
+    95.8333% { scale: 0.99687; }
+    97.9167% { scale: 0.9992; }
+    100% { scale: 1; }
+}
+@keyframes vsb-fx-iris-img {
+    0% { scale: 250; }
+    2.0833% { scale: 28.65438; }
+    4.1667% { scale: 14.52308; }
+    6.25% { scale: 9.79111; }
+    8.3333% { scale: 7.41738; }
+    10.4167% { scale: 5.98953; }
+    12.5% { scale: 5.03575; }
+    14.5833% { scale: 4.35344; }
+    16.6667% { scale: 3.84113; }
+    18.75% { scale: 3.44236; }
+    20.8333% { scale: 3.12321; }
+    22.9167% { scale: 2.86208; }
+    25% { scale: 2.64454; }
+    27.0833% { scale: 2.46058; }
+    29.1667% { scale: 2.30308; }
+    31.25% { scale: 2.16676; }
+    33.3333% { scale: 2.04772; }
+    35.4167% { scale: 1.94292; }
+    37.5% { scale: 1.85002; }
+    39.5833% { scale: 1.76718; }
+    41.6667% { scale: 1.69291; }
+    43.75% { scale: 1.62602; }
+    45.8333% { scale: 1.56552; }
+    47.9167% { scale: 1.51061; }
+    50% { scale: 1.46061; }
+    52.0833% { scale: 1.41497; }
+    54.1667% { scale: 1.3732; }
+    56.25% { scale: 1.33491; }
+    58.3333% { scale: 1.29974; }
+    60.4167% { scale: 1.26741; }
+    62.5% { scale: 1.23766; }
+    64.5833% { scale: 1.21027; }
+    66.6667% { scale: 1.18506; }
+    68.75% { scale: 1.16187; }
+    70.8333% { scale: 1.14056; }
+    72.9167% { scale: 1.121; }
+    75% { scale: 1.1031; }
+    77.0833% { scale: 1.08677; }
+    79.1667% { scale: 1.07194; }
+    81.25% { scale: 1.05856; }
+    83.3333% { scale: 1.04657; }
+    85.4167% { scale: 1.03595; }
+    87.5% { scale: 1.02668; }
+    89.5833% { scale: 1.01875; }
+    91.6667% { scale: 1.01216; }
+    93.75% { scale: 1.00695; }
+    95.8333% { scale: 1.00314; }
+    97.9167% { scale: 1.0008; }
+    100% { scale: 1; }
+}
 @keyframes vsb-fx-slide { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes vsb-fx-push-out { from { transform: translateX(0); } to { transform: translateX(-100%); } }
 
