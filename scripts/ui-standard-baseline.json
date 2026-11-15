@@ -12,9 +12,9 @@
   "own-menubar": 70,
   "colour-in-script": 1497,
   "native-scrollbar": 39,
-  "native-range": 4,
   "theme-test-copy": 19,
   "native-dialog": 1,
+  "native-range": 2,
   "native-select": 1
  },
  "files": {
@@ -632,7 +632,6 @@
    "font-literal": 1
   },
   "public/css/tag-wiki-search.css": {
-   "native-range": 2,
    "colour-literal": 149,
    "font-literal": 2,
    "theme-negative": 1

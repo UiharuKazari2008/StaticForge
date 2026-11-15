@@ -91,7 +91,7 @@ const RULES = [
     // ---- no native browser UI (no-native-browser-ui.mdc) ----
     { id: 'native-range', why: 'browser range slider outside the Vista-skinned scope (phone code, or any accent-color)',
       on: (f) => isPhone(f) || isCss(f),
-      re: (f) => isCss(f) ? /accent-color\s*:/g : /type\s*=\s*\\?["']?range\b/g },
+      re: (f) => isCss(f) ? /(?<![\w-])accent-color\s*:/g : /type\s*=\s*\\?["']?range\b/g },
     { id: 'native-picker', why: 'browser date / time / colour picker',
       on: (f) => isJs(f) || isHtml(f),
       re: () => /type\s*=\s*\\?["']?(date|time|datetime-local|month|week|color)\b|\.showPicker\s*\(/g },
