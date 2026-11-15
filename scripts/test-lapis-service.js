@@ -137,6 +137,32 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(hot.body.airTemp.value, 82);
     assert.strictEqual(hot.body.igniOnDuration, 30);
     await settle();
+    // ---- a remote start on its timer: warnings at 5, 3, 2 and 1 minutes, then driving ends it
+    sent.length = 0;
+    const runCmd = svc._test.live.command;
+    assert.ok(runCmd.runsUntil, 'the second start runs on its timer');
+    const until = runCmd.runsUntil;
+    const runLeft = () => notices().filter((n) => n.kind === 'run-left').map((n) => n.minutes);
+    svc._test.sched.accountSig = '';
+    now = until - 6 * 60000; await svc._test.tick();
+    assert.deepStrictEqual(runLeft(), [], 'nothing at 6 minutes');
+    now = until - 5 * 60000 + 1000; await svc._test.tick();
+    now = until - 4 * 60000; await svc._test.tick();
+    now = until - 3 * 60000 + 1000; await svc._test.tick();
+    now = until - 2 * 60000 + 1000; await svc._test.tick();
+    now = until - 60000 + 1000; await svc._test.tick();
+    assert.deepStrictEqual(runLeft(), [5, 3, 2, 1], 'one warning at each mark');
+    assert.match(notices().find((n) => n.kind === 'run-left').text, /remote start ends at/);
+    assert.ok(svc.getState().command.runsUntil, 'still running before anyone drives');
+    assert.strictEqual(svc.getState().command.startLoc, undefined, 'the start position stays on the server');
+    car.odo += 2; car.at = new Date(now).toISOString();
+    await svc.read({ reason: 'run' });
+    assert.strictEqual(svc._test.live.command.runsUntil, null, 'driving ends the timer');
+    assert.strictEqual(svc._test.live.command.ended, 'driving');
+    assert.strictEqual(svc._test.activeRun(), null);
+    now = until - 30000; await svc._test.tick();
+    assert.deepStrictEqual(runLeft(), [5, 3, 2, 1], 'no more warnings once driving');
+
     await assert.rejects(() => svc.command('honk'), /Unknown command/);
 
     // ---- left unlocked: one fresh look after lockRemindMin, then the notice

@@ -36,9 +36,9 @@ glass and mirrors. `seat`: 0 off, 6-8 heat low to high, 3-5 cool low to high.
 - `climate`: the remote start pick `{ outdoorF, interiorF, solarGainF, temp, defrost, heating, seat, mode, reason[] }`
 - `usage`: `{ today, refuel: { day, daysLeft, milesLeft, perDay[], beyond }, perPct, weekday, commute, miles7 }`
 - `maintenance[]`: `{ id, label, everyMiles, everyMonths, lastOdo, lastDate, milesLeft, daysLeft, due, soon }`
-- `command`: `{ id, kind, state: 'sent'|'success'|'failed'|'unconfirmed', at, detail?, runsUntil? }`
+- `command`: `{ id, kind, state: 'sent'|'success'|'failed'|'unconfirmed', at, detail?, runsUntil?, startOdo?, ended?, endedAt? }`. A start's `runsUntil` is cleared and `ended` set (`driving`, `off`, `timeout`) when the server sees the car move, the engine go off, or the time run out (a cached read every 3 minutes during the run).
 
 ## Broadcasts (admin clients)
 
 - `lapis_updated` `{ state }` after every read, command step and settings change
-- `lapis_notice` `{ id, kind, title, text, actions[] }`; `kind`: `unlocked` (action `lock`), `low-fuel`, `refuel`, `service`, `command`, `health` (with `key` and `stamp`; active ones are also in `state.alerts` until a report clears them)
+- `lapis_notice` `{ id, kind, title, text, actions[] }`; `kind`: `unlocked` (action `lock`), `low-fuel`, `refuel`, `service`, `command`, `health` (with `key` and `stamp`; active ones are also in `state.alerts` until a report clears them), `run-left` (with `minutes` 5 / 3 / 2 / 1 and `until`: a remote start on its timer is nearly over)

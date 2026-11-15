@@ -55,6 +55,7 @@
     let map = null;
     let holdTimer = null;
     let todayHtml = '';
+    let runNote = null; // the remote start's "n minutes left" note (one at a time)
     let heroMap = null; // the map shown in place of the car picture
     const LS_VIEW = 'wmLapisHeroView'; // 'car' | 'map'
     let heroView = (() => { try { return localStorage.getItem(LS_VIEW) === 'map' ? 'map' : 'car'; } catch (_) { return 'car'; } })();
@@ -151,6 +152,7 @@
         if (rev !== picture.rev) loadPicture(rev);
         changed();
         catchUpAlerts();
+        if (runNote && !runInfo()) { try { runNote.close(); } catch (_) { /* gone */ } runNote = null; }
     }
 
     async function load() {
@@ -290,14 +292,14 @@
 
     /** The running remote start: { until, total (ms), detail } or null. */
     function runInfo() {
-        const s = st();
+        // only a remote start running on its timer: the car simply running (driven) is not one, and the
+        // server ends the timer when it sees the car move or the engine go off
         const c = state && state.command;
-        if (!s || !s.engine) return null;
         if (c && c.kind === 'start' && c.state === 'success' && num(c.runsUntil) && c.runsUntil > Date.now()) {
             const total = ((c.detail && c.detail.minutes) || 10) * 60000;
             return { until: c.runsUntil, total, detail: c.detail || null };
         }
-        return s.climate ? { until: null, total: 0, detail: null } : null;
+        return null;
     }
 
     const leftText = (ms) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
@@ -1291,6 +1293,24 @@
     function onNotice(pk) {
         const n = (pk && (pk.data || pk)) || {};
         if (!n.title || !canUse()) return;
+        if (n.kind === 'run-left') {
+            // a stale warning (the run already ended or changed) is not shown
+            if (!runInfo() || (num(n.until) && state.command.runsUntil !== n.until)) return;
+            if (runNote) { try { runNote.close(); } catch (_) { /* gone */ } runNote = null; }
+            if (ws && typeof ws.appNote === 'function') {
+                const note = ws.appNote({
+                    title: n.title,
+                    html: esc(n.text || ''),
+                    icon: 'app-lapis',
+                    event: 'lapis-run-left',
+                    softKeys: () => ({ left: isAdmin() ? { label: 'Stop', action: () => { note.close(); runNote = null; doStop(); } } : { label: 'View', action: () => { note.close(); runNote = null; open('start'); } }, right: { label: 'Dismiss', action: () => { note.close(); runNote = null; } } })
+                });
+                runNote = note;
+                if (note) return;
+            }
+            if (ws && typeof ws.notify === 'function') ws.notify({ title: n.title, text: n.text || '', icon: 'info', asNote: true });
+            return;
+        }
         if (n.kind === 'health' && n.key) {
             // one note per alert and step, whether it came as a push or was waiting in the state
             const id = `${n.key}:${n.stamp}`;

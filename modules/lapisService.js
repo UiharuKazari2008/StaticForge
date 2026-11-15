@@ -23,7 +23,10 @@
  *
  * Broadcasts to admin clients:
  *   lapis_updated   { state }                       after every read, command step or settings change
- *   lapis_notice    { id, kind, title, text, actions[], key?, stamp? }   kind: unlocked | low-fuel | refuel | service | command | health
+ *   lapis_notice    { id, kind, title, text, actions[], key?, stamp?, minutes?, until? }   kind: unlocked | low-fuel | refuel | service | command | health | run-left
+ *
+ * A remote start on its timer is watched: 'run-left' at 5, 3, 2 and 1 minutes left, and a cached read every
+ * 3 minutes (no wake-up) ends it when the odometer or position moves (driving) or the engine is off.
  *
  * Health alerts (the 12 V battery under the car's warning level, a low tire, low washer or brake fluid, a
  * weak smart key battery) are raised the moment a report shows them, again when they get worse, and
@@ -610,6 +613,7 @@ function afterRead(before, status, reason) {
     } else if (!low && Number.isFinite(status.fuel) && status.fuel > s.lowFuelPct + 5) live.flags.lowFuel = false;
 
     healthNotices(s);
+    checkRun(status);
 }
 
 // ------------------------------------------------------------------------------------------ vehicle health
@@ -899,7 +903,14 @@ async function followCommand(cmd, v) {
         if (cmd.kind === 'unlock') live.status = { ...live.status, locked: false };
         if (cmd.kind === 'start') live.status = { ...live.status, engine: true, climate: true };
         if (cmd.kind === 'stop') live.status = { ...live.status, engine: false, climate: false };
-        if (cmd.kind === 'start') cmd.runsUntil = nowFn() + ((cmd.detail && cmd.detail.minutes) || 10) * MIN;
+        if (cmd.kind === 'start') {
+            cmd.runsUntil = nowFn() + ((cmd.detail && cmd.detail.minutes) || 10) * MIN;
+            // where the run began: a moved odometer or position later means someone is driving it
+            cmd.startOdo = Number.isFinite(live.status.odometer) ? live.status.odometer : null;
+            cmd.startLoc = live.location ? { lat: live.location.lat, lon: live.location.lon } : null;
+            cmd.saidLeft = [];
+            sched.runPollAt = nowFn() + 3 * MIN;
+        }
     }
     pushState();
     if (cmd.state === 'failed') notice('command', `${LABEL[cmd.kind]} did not work`, `${carName()} did not carry out the command. Check the car, then try again.`, ['view']);
@@ -910,11 +921,55 @@ async function followCommand(cmd, v) {
 }
 
 const LABEL = { lock: 'Lock', unlock: 'Unlock', start: 'Remote start', stop: 'Remote stop' };
+
+// ------------------------------------------------------------------------------------------ a remote start on its timer
+
+const RUN_WARN_MIN = [5, 3, 2, 1];
+
+/** The remote start that is running on its timer, or null. */
+function activeRun() {
+    const c = live.command;
+    return c && c.kind === 'start' && c.state === 'success' && Number.isFinite(c.runsUntil) ? c : null;
+}
+
+/** The run is over: someone drove off, the engine went off, or its time ran out. The timer stops. */
+function endRun(cmd, why) {
+    cmd.runsUntil = null;
+    cmd.ended = why;
+    cmd.endedAt = nowFn();
+    sched.runPollAt = 0;
+    logEvent('run-end', { why });
+}
+
+/** After a read: does the report show the run is over? */
+function checkRun(status) {
+    const cmd = activeRun();
+    if (!cmd || !status) return;
+    // the report must be newer than the start, or it is the car's state from before
+    const fresh = Number.isFinite(status.at) && status.at > (cmd.doneAt || cmd.at) + 30 * 1000;
+    const odoMoved = Number.isFinite(status.odometer) && Number.isFinite(cmd.startOdo) && status.odometer - cmd.startOdo >= 0.3;
+    const where = status.location || null;
+    const placeMoved = fresh && where && cmd.startLoc && usage.milesBetween(where, cmd.startLoc) * 1609.344 > 150;
+    if (odoMoved || placeMoved) endRun(cmd, 'driving');
+    else if (fresh && status.engine === false) endRun(cmd, 'off');
+}
+
+/** Say how long is left at 5, 3, 2 and 1 minutes (each once; a late tick says only the current one). */
+function runWarnings(cmd, s) {
+    const left = cmd.runsUntil - nowFn();
+    if (left <= 0) return;
+    const said = cmd.saidLeft || (cmd.saidLeft = []);
+    const due = RUN_WARN_MIN.filter((m) => left <= m * MIN && !said.includes(m));
+    if (!due.length) return;
+    said.push(...due);
+    const m = Math.min(...due);
+    notice('run-left', `${m} minute${m === 1 ? '' : 's'} left`, `${carName()}'s remote start ends at ${clockAt(cmd.runsUntil, s)}. Stop it now, or start the car with the key to keep driving.`, ['stop'], { minutes: m, until: cmd.runsUntil });
+}
 let sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function publicCommand(cmd) {
     if (!cmd) return null;
-    const { transactionId, ...rest } = cmd;
+    const { transactionId, startLoc, saidLeft, ...rest } = cmd;
     return rest;
 }
 
@@ -1045,7 +1100,24 @@ async function tick() {
     const s = getSettings();
     sched.busy = true;
     try {
-        if (sched.lockCheckAt && now >= sched.lockCheckAt && !pendingCommand()) {
+        // a remote start on its timer: the warnings, its end, and a look every 3 minutes for driving
+        let didRead = false;
+        const run = activeRun();
+        if (run) {
+            runWarnings(run, s);
+            if (nowFn() >= run.runsUntil) {
+                endRun(run, 'timeout');
+                sched.nextPollAt = Math.min(sched.nextPollAt || Infinity, nowFn() + MIN);
+                pushState();
+            } else if (nowFn() >= (sched.runPollAt || 0) && !pendingCommand()) {
+                sched.runPollAt = nowFn() + 3 * MIN;
+                await read({ reason: 'run' });
+                didRead = true;
+            }
+        }
+        if (didRead) {
+            /* the run's look counts as this tick's read */
+        } else if (sched.lockCheckAt && now >= sched.lockCheckAt && !pendingCommand()) {
             sched.lockCheckAt = 0;
             await read({ fresh: true, reason: 'lock-check' });
             sched.nextPollAt = nowFn() + s.pollMin * MIN;
@@ -1095,7 +1167,7 @@ function accountChanged() {
 function saveLatest() {
     try {
         fs.mkdirSync(path.dirname(LATEST_FILE), { recursive: true });
-        const body = JSON.stringify({ vehicle: live.vehicle, status: live.status, statusSeenAt: live.statusSeenAt, location: live.location, locationOdo: live.locationOdo, parkedSince: live.parkedSince, flags: live.flags, weather: live.weather });
+        const body = JSON.stringify({ command: activeRun(), vehicle: live.vehicle, status: live.status, statusSeenAt: live.statusSeenAt, location: live.location, locationOdo: live.locationOdo, parkedSince: live.parkedSince, flags: live.flags, weather: live.weather });
         fs.writeFileSync(`${LATEST_FILE}.tmp`, body);
         fs.renameSync(`${LATEST_FILE}.tmp`, LATEST_FILE);
     } catch (e) {
@@ -1109,6 +1181,8 @@ function loadLatest() {
         ['vehicle', 'status', 'statusSeenAt', 'location', 'locationOdo', 'parkedSince', 'weather'].forEach((k) => {
             if (o[k] !== undefined && o[k] !== null) live[k] = o[k];
         });
+        // a run still on its timer carries on (its warnings and the driving check)
+        if (o.command && o.command.kind === 'start' && o.command.state === 'success' && o.command.runsUntil > nowFn()) live.command = o.command;
         if (o.flags && typeof o.flags === 'object') live.flags = Object.assign(live.flags, o.flags, { service: Object.assign({}, o.flags.service || {}), health: Object.assign({}, o.flags.health || {}) });
     } catch (_e) {
         /* first run */
@@ -1173,6 +1247,7 @@ module.exports = {
         maintenanceState,
         healthAlerts,
         lowTires,
+        activeRun,
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
         },
