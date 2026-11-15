@@ -19,7 +19,8 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_signout` | `{}` -> `{ state }`. Forgets and revokes the sign-in; favourites are kept. Admin, destructive. |
 | `youtube_subscriptions` | `{ fresh? }` -> `{ channels[] }`, A to Z (kept 6 hours) |
 | `youtube_feed` | `{ fresh? }` -> `{ videos[], at, channels, partial }`: the newest uploads of every subscribed channel, newest first (kept 20 minutes; 1 quota unit a channel) |
-| `youtube_watch_later` | `{ fresh? }` -> `{ videos[], unavailable }`. The Data API does not give this list; `unavailable: true` when YouTube keeps it to itself. |
+| `youtube_watch_later` | `{ fresh? }` -> `{ videos[], unavailable, why, partial }`. The Data API does not give this list and YouTube's app interface refuses the OAuth sign-in, so the ids are read in the server's Alchemy browser (`modules/youtubeAlchemy.js`: a hidden tab, closed again; no cookie leaves the browser). `why`: `browser-signin` (Alchemy is not signed in to YouTube) or `browser-offline`. |
+| `youtube_import_bell` | `{}` -> `{ why, favourites[], channels, found, added, left, partial }`. Every subscribed channel whose notification bell is set to All becomes a favourite (read in the same browser). Admin. |
 | `youtube_search` | `{ query, page? }` -> `{ query, videos[], channels[], next }` (100 quota units a page; answers kept 10 minutes) |
 | `youtube_channel` | `{ id }` -> `{ channel, videos[], favourite, subscribed }` |
 | `youtube_favourite` | `{ channel: { id, title, thumb }, on }` -> `{ favourites[] }` (40 at most). Admin. |

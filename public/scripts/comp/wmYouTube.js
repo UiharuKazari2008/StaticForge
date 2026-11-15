@@ -65,7 +65,7 @@
     let tab = (() => { try { const t = localStorage.getItem(LS_TAB); return TABS.some((x) => x.id === t) ? t : 'subs'; } catch (_) { return 'subs'; } })();
     const data = {
         subs: { videos: null, at: 0, loading: false, error: '', note: '' },
-        later: { videos: null, at: 0, loading: false, error: '', unavailable: false },
+        later: { videos: null, at: 0, loading: false, error: '', unavailable: false, why: '' },
         search: { query: '', videos: null, channels: [], next: '', loading: false, error: '' },
         channels: { list: null, at: 0, loading: false, error: '' }
     };
@@ -244,6 +244,7 @@
                     const d = await ask('youtube_watch_later', { fresh: !!fresh }, 60000);
                     t.videos = d.videos || [];
                     t.unavailable = !!d.unavailable;
+                    t.why = d.why || '';
                 } else if (id === 'channels') {
                     const d = await ask('youtube_subscriptions', { fresh: !!fresh }, 90000);
                     t.list = d.channels || [];
@@ -344,6 +345,24 @@
             starBusy = false;
         }
     }
+    /** Channels whose notification bell is set to All become Today favourites (read in the server's browser). */
+    async function importBells() {
+        if (!isAdmin()) { box('Only the administrator can change the favourite channels.', 'info'); return; }
+        try {
+            const d = await ws.busy(ask('youtube_import_bell', {}, 90000), { delay: 250, timeout: 90000 });
+            if (d.why) { box(BROWSER_WHY[d.why] || BROWSER_WHY['browser-signin'], 'info'); return; }
+            if (Array.isArray(d.favourites)) { hub.favourites = d.favourites; changed(); }
+            const n = (k, word) => `${k} ${word}${k === 1 ? '' : 's'}`;
+            let text = !d.found ? 'None of your channels has its bell set to All notifications.'
+                : d.added ? `${n(d.added, 'channel')} with the bell set to All ${d.added === 1 ? 'was' : 'were'} added to Today.`
+                    : `The ${n(d.found, 'channel')} with the bell set to All ${d.found === 1 ? 'is' : 'are'} on Today already.`;
+            if (d.left) text += `\n\n${n(d.left, 'more channel')} did not fit: Today holds 40 favourites.`;
+            if (d.partial) text += '\n\nYouTube did not show the whole subscriptions list, so some channels may be missing.';
+            box(text, 'info');
+        } catch (e) {
+            box(failText(e, 'The channels could not be imported'));
+        }
+    }
     const toggleFavourite = (channel) => setFavourite(channel, !favIds().has(channel.id));
 
     async function saveSettings(patch) {
@@ -411,6 +430,12 @@
         </div>`;
     }
 
+    // Watch Later and the notification bells are shown only to a signed-in browser: the server reads
+    // them in its own browser (Alchemy, Internet Explorer on the phone and the desktop), #840
+    const BROWSER_WHY = {
+        'browser-signin': 'YouTube shows this only to a signed-in browser. Open youtube.com in Internet Explorer and sign in to your Google account there once.',
+        'browser-offline': 'YouTube shows this only to a signed-in browser, and the server\'s browser (Internet Explorer) is not running.'
+    };
     const emptyHtml = (head, text, extra) => `<div class="yt-empty"><b>${esc(head)}</b>${esc(text || '')}${extra || ''}</div>`;
     const errorHtml = (text, act) => emptyHtml('YouTube did not answer', text, `<br><button type="button" class="yt-btn" data-act="${act}">Try Again</button>`);
     const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0)).join('');
@@ -426,7 +451,7 @@
         if (id === 'later') {
             if (t.error && !t.videos) return errorHtml(t.error, 'retry');
             if (!t.videos) return emptyHtml('Watch Later', t.loading ? 'Reading the list...' : '');
-            if (t.unavailable) return emptyHtml('Watch Later stays in YouTube', 'YouTube does not hand the Watch Later list to other programs with this sign-in. It opens in the YouTube app.', '<br><button type="button" class="yt-btn is-go" data-act="open-later">Open Watch Later</button>');
+            if (t.unavailable) return emptyHtml(t.why === 'browser-offline' ? 'The server\'s browser is not running' : 'Sign in to YouTube in Internet Explorer', `${BROWSER_WHY[t.why] || BROWSER_WHY['browser-signin']} Until then the list opens in the YouTube app.`, '<br><button type="button" class="yt-btn is-go" data-act="open-later">Open Watch Later</button> <button type="button" class="yt-btn" data-act="retry">Try Again</button>');
             if (!t.videos.length) return emptyHtml('Nothing saved', 'Videos you save to Watch Later in YouTube show up here.');
             return videosHtml(t.videos);
         }
@@ -438,7 +463,7 @@
             // favourites first (those found by Search and not subscribed too), then the rest A to Z
             const favs = (hub.favourites || []).map((f) => t.list.find((c) => c.id === f.id) || f);
             const rest = t.list.filter((c) => !fav.has(c.id));
-            return `<div class="yt-sec">On Today (${favs.length})</div>${favs.length ? favs.map((c) => channelRow(c, subIds.has(c.id) ? '' : 'Not subscribed')).join('') : '<div class="yt-empty">Tap a channel\'s star to see its newest videos on Today.</div>'}
+            return `<div class="yt-sec">On Today (${favs.length})</div>${favs.length ? favs.map((c) => channelRow(c, subIds.has(c.id) ? '' : 'Not subscribed')).join('') : '<div class="yt-empty">Tap a channel\'s star to see its newest videos on Today, or bring in every channel whose bell is set to All notifications.<br><button type="button" class="yt-btn is-go" data-act="import-bells">Import from Notifications</button></div>'}
                 <div class="yt-sec">Subscriptions (${t.list.length})</div>${rest.length ? rest.map((c) => channelRow(c)).join('') : (t.list.length ? '' : '<div class="yt-empty">You do not subscribe to a channel yet. Find some with Search.</div>')}`;
         }
         // search
@@ -666,6 +691,7 @@
         else if (act === 'retry') loadTab(tab, true);
         else if (act === 'retry-channel' && layer) openChannel(layer.id, layer.channel);
         else if (act === 'open-later') openUrl('https://www.youtube.com/playlist?list=WL');
+        else if (act === 'import-bells') importBells();
         else if (act === 'more') runSearch(data.search.query, true);
         else if (act === 'search-again') runSearch(data.search.query);
     }
@@ -734,6 +760,7 @@
             { label: 'Leave Out Shorts', checked: s.noShorts !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ noShorts: s.noShorts === false }) },
             { label: 'Videos on Today', disabled: !admin || !signedIn(), submenu: [6, 12, 20, 30].map((k) => ({ label: String(k), radio: n === k, action: () => saveSettings({ todayCount: k }) })) },
             { label: 'Favourite Channels...', disabled: !signedIn(), action: () => setTab('channels') },
+            { label: 'Import from Notifications', disabled: !admin || !signedIn(), action: importBells },
             '-',
             { label: 'Open YouTube', action: () => openUrl('https://www.youtube.com/') },
             signedIn() ? { label: 'Sign Out', disabled: !admin, action: signOut } : { label: 'Sign In', disabled: !admin || !acct().configured || !!acct().signIn, action: signIn },

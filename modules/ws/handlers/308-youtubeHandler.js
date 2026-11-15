@@ -13,7 +13,8 @@ const youtubeService = require('../../youtubeService');
 //   youtube_signout          {}                        admins; forgets and revokes the sign-in -> { state }
 //   youtube_subscriptions    { fresh? }                { channels[] }: the subscribed channels, A to Z
 //   youtube_feed             { fresh? }                { videos[], at, channels, partial }: newest uploads of the subscriptions
-//   youtube_watch_later      { fresh? }                { videos[], unavailable }: unavailable when YouTube keeps the list to itself
+//   youtube_watch_later      { fresh? }                { videos[], unavailable, why }: read in the server's Alchemy browser; why: browser-signin | browser-offline
+//   youtube_import_bell      {}                        admins; channels whose bell is set to All become favourites -> { why, favourites[], found, added, left }
 //   youtube_search           { query, page? }          { query, videos[], channels[], next } (100 quota units a page)
 //   youtube_channel          { id }                    { channel, videos[], favourite, subscribed }
 //   youtube_favourite        { channel, on }           admins; adds or removes a Today favourite -> { favourites[] }
@@ -73,6 +74,7 @@ function registerPackets(handlersCtx) {
     reg('youtube_subscriptions', packet(false, 'The subscriptions could not be read', async (m) => ({ channels: await youtubeService.subscriptions({ fresh: !!m.fresh }) })));
     reg('youtube_feed', packet(false, 'The subscriptions could not be read', async (m) => youtubeService.feed({ fresh: !!m.fresh })));
     reg('youtube_watch_later', packet(false, 'Watch Later could not be read', async (m) => youtubeService.watchLater({ fresh: !!m.fresh })));
+    reg('youtube_import_bell', packet(true, 'The channels could not be imported', async () => youtubeService.importBellFavourites()));
     reg('youtube_search', packet(false, 'The search failed', async (m) => youtubeService.search(m.query, m.page)));
     reg('youtube_channel', packet(false, 'The channel could not be read', async (m) => youtubeService.channelPage(String(m.id || ''))));
     reg('youtube_favourite', packet(true, 'The favourite could not be saved', async (m) => ({ favourites: await youtubeService.setFavourite(m.channel, m.on !== false) })));
