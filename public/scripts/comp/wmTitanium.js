@@ -480,24 +480,35 @@
      * shows the picture still. One custom property on the layer itself, so only it restyles.
      */
     const PARALLAX_KEY = 'wmTodayParallax';
+    const PARALLAX_LEVEL_KEY = 'wmTodayParallaxLevel'; // 1 - 10: zoom 1 + 2 % a step, travel 7/8 of the margin
     let parallaxOn = false;
+    let parallaxZoom = 1.08;
     let parallaxWall = null;
     let parallaxAt = '';
     function readParallax() {
         try { parallaxOn = localStorage.getItem(PARALLAX_KEY) === '1'; } catch (_) { parallaxOn = false; }
+        let lv = 4;
+        try { lv = Math.max(1, Math.min(10, Math.round(Number(localStorage.getItem(PARALLAX_LEVEL_KEY)) || 4))); } catch (_) { /* default */ }
+        parallaxZoom = 1 + 0.02 * lv;
+        parallaxWall = null; // the next call sets the new zoom on the layer
         if (parallaxOn) root.dataset.wmParallax = '';
         else delete root.dataset.wmParallax;
     }
     readParallax();
     document.addEventListener('wmSettingsChange', (e) => {
         const keys = (e && e.detail && e.detail.keys) || [];
-        if (keys.includes(PARALLAX_KEY)) { readParallax(); parallaxAt = ''; if (parallaxOn && host && !host.hidden) place(); }
+        if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY)) { readParallax(); parallaxAt = ''; if (parallaxOn && host && !host.hidden) place(); }
     });
     /** The list stands at row `at` (fractions while it moves): -0.5 at the first item, 0.5 at the last. */
     function parallax(at) {
         if (!parallaxOn) return;
-        if (!parallaxWall || !parallaxWall.isConnected) parallaxWall = document.querySelector('#wmShell > .wm-wall65');
-        if (!parallaxWall) return;
+        if (!parallaxWall || !parallaxWall.isConnected) {
+            parallaxWall = document.querySelector('#wmShell > .wm-wall65');
+            if (!parallaxWall) return;
+            // the zoom and the travel at the list's ends (0.55 of it stays inside the zoomed margin)
+            parallaxWall.style.setProperty('--wm-ti-zoom', parallaxZoom.toFixed(2));
+            parallaxWall.style.setProperty('--wm-ti-shift', `${(-(parallaxZoom - 1) * 87.5).toFixed(2)}%`);
+        }
         const n = panels.length;
         const f = n > 1 ? Math.max(-0.55, Math.min(0.55, at / (n - 1) - 0.5)) : 0;
         const v = f.toFixed(4);

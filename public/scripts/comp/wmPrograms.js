@@ -46,6 +46,8 @@
         todayTimeout: 'wmTodayTimeout',
         // 6.5 Today > Wallpaper > Parallax Effect: the picture, zoomed in slightly, follows the list (wmTitanium.js)
         todayParallax: 'wmTodayParallax',
+        // ... and how far it moves: 1 (slight) - 10 (a lot), 4 = the first build's 8 % zoom
+        todayParallaxLevel: 'wmTodayParallaxLevel',
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
@@ -1159,6 +1161,7 @@
                 useDesktop: todayUsesDesktop(), source: sh && sh.todayWallSource ? sh.todayWallSource() : (todayUsesDesktop() ? 'workspace' : 'selected'), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
                 parallax: lsGet(K.todayParallax) === '1',
+                parallaxLevel: Math.max(1, Math.min(10, Math.round(Number(lsGet(K.todayParallaxLevel)) || 4))),
                 screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
             }),
             render(el, tab, d, api) {
@@ -1202,8 +1205,13 @@
                     // 6.5 home screen (Yukimi, Nov 15): the picture zoomed in slightly moves with the list; Start keeps it still
                     if (runningVersion() === '6.5') {
                         el.insertAdjacentHTML('beforeend', `<div class="wm-form-gap"></div>${check('wmTodayParallax', 'Parallax Effect', d.parallax)}
-                            <p class="wm-form-note">The picture is zoomed in slightly and moves as the Today screen moves up and down.${d.source === 'android' ? " Android's own wallpaper is drawn by Android and stays still." : ''}</p>`);
-                        el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; });
+                            <div class="wm-form-sub">Distance</div><div data-f="parallax-level"></div>
+                            <p class="wm-form-note">The picture is zoomed in and moves as the Today screen moves up and down; the farther it moves, the more it is zoomed in.${d.source === 'android' ? " Android's own wallpaper is drawn by Android and stays still." : ''}</p>`);
+                        el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; api.rerender(); });
+                        ui.trackbar(el.querySelector('[data-f="parallax-level"]'), {
+                            steps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: d.parallaxLevel, lo: 'Slight', hi: 'A lot', label: 'Parallax distance',
+                            disabled: !d.parallax, onChange: (v) => { d.parallaxLevel = v; }
+                        });
                     }
                     return;
                 }
@@ -1348,8 +1356,9 @@
                 lsSet(TODAY_OPTIONS_KEY, JSON.stringify(d.opts || {}));
                 lsSet(K.titleBar, d.titleBar);
                 lsSet(K.todayParallax, d.parallax ? '1' : null);
+                lsSet(K.todayParallaxLevel, d.parallaxLevel === 4 ? null : d.parallaxLevel);
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]
