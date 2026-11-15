@@ -860,8 +860,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-notify-title {
        the device). Drawn whole inside our 1 px border it doubled the frame: a thick dark band down
        the right, light arcs round the top corners where its transparent corners met our radius.
        Scaled so those 2 px fall just outside the band; its 2 px grey bottom line stays (the device
-       has it) (Yukimi, Nov 13) */
-    background: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) center bottom / calc(100% * 389 / 385) calc(100% * 46 / 44) no-repeat;
+       has it) (Yukimi, Nov 13). Its own corners are rounded tighter (about 5 units) than ours (7), so
+       at the Fold's scale a strip of its black corner arc showed inside our curve: it is drawn 6 units
+       wider each side, its rounded ends outside the band, and our frame and radius make the corners
+       alone (Nov 15) */
+    background: var(--wm65-art-msgboxtitle, url('/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')) center bottom / calc(100% + 12 * var(--wm-px)) calc(100% * 46 / 44) no-repeat;
     color: var(--wm65-caption-text);
     font-weight: bold;
 }

@@ -2673,6 +2673,7 @@
      * open at 4x, #723).
      */
     let fitQueued = false;
+    let fitAgain = false;
     /**
      * Director: Turn finished (a phone sound event): running -> idle plays its sound and, with
      * Display message on screen, posts a notification (off by default: the clapper already stops).
@@ -2765,9 +2766,24 @@
     }
 
     function fitStatus() {
-        if (!shell || fitQueued) return;
+        if (!shell) return;
+        // a request while one waits is not dropped: an unfold sends the cutout and the resize close
+        // together and the first fit ran on the folded layout, the icons pushing the X off the inner
+        // screen until the next app switch (Fold7, Nov 15): it runs once more after the queued one
+        if (fitQueued) { fitAgain = true; return; }
         fitQueued = true;
-        afterPaint().then(() => { fitQueued = false; syncIconUnit(); fitStatusNow(); snapStatusIcons(); });
+        afterPaint().then(() => {
+            fitQueued = false;
+            syncIconUnit(); fitStatusNow(); snapStatusIcons();
+            if (fitAgain) { fitAgain = false; fitStatus(); }
+        });
+    }
+    /** The screen changed (fold, turn, cutout): fit now and again as Android's insets and screen info settle. */
+    let fitSettleTimers = [];
+    function fitStatusSettled() {
+        fitStatus();
+        fitSettleTimers.forEach(clearTimeout);
+        fitSettleTimers = [300, 1000].map((ms) => setTimeout(() => { syncBezel(); fitStatus(); }, ms));
     }
 
     /*
@@ -9273,9 +9289,11 @@
         startBoot();
         refreshStatus();
         watchStatusSignals();
-        window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatus(); });
+        window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatusSettled(); });
         // the Android app moved or rotated the camera hole (--camera-hole-*)
-        window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatus(); });
+        window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatusSettled(); });
+        // back on screen (a fold or unfold can land while the page is hidden)
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !noteTrayOpen) { syncBezel(); fitStatusSettled(); } });
         // the app on screen decides whether the volume icon makes room for the camera (fitStatusNow)
         new MutationObserver(() => fitStatus()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
         checkTakeover();
