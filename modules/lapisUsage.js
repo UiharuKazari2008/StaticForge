@@ -37,6 +37,7 @@ function valid(n) {
 function daily(samples, timeZone) {
     const days = new Map();
     let prev = null;
+    let rose = false;
     for (const s of samples || []) {
         if (!s || !valid(s.t)) continue;
         const key = dayKey(s.t, timeZone);
@@ -49,8 +50,8 @@ function daily(samples, timeZone) {
         if (prev) {
             if (valid(s.odo) && valid(prev.odo) && s.odo > prev.odo && s.odo - prev.odo < 1500) d.miles += s.odo - prev.odo;
             if (valid(s.fuel) && valid(prev.fuel)) {
-                if (s.fuel - prev.fuel >= FILLUP_RISE_PCT) d.fillups++;
-                else if (s.fuel < prev.fuel) d.fuelUsed += prev.fuel - s.fuel;
+                if (s.fuel - prev.fuel >= FILLUP_RISE_PCT) { if (!rose) d.fillups++; rose = true; }
+                else if (s.fuel < prev.fuel) { d.fuelUsed += prev.fuel - s.fuel; rose = false; }
             }
         }
         if (valid(s.odo)) d.odo = s.odo;
@@ -65,13 +66,19 @@ function fillups(samples) {
     const out = [];
     let prev = null;
     let lastOdo = null;
+    let rising = false;
     for (const s of samples || []) {
         if (!s || !valid(s.fuel)) continue;
-        if (prev && s.fuel - prev.fuel >= FILLUP_RISE_PCT) {
+        const last = out[out.length - 1];
+        if (prev && last && rising && s.fuel > prev.fuel && s.t - last.t <= 3 * 60 * 60 * 1000) {
+            // the same fill-up seen over two reports (an hourly average catches the tank half full)
+            last.to = s.fuel;
+        } else if (prev && s.fuel - prev.fuel >= FILLUP_RISE_PCT) {
             const odo = valid(s.odo) ? s.odo : prev.odo;
             out.push({ t: s.t, from: prev.fuel, to: s.fuel, odo: valid(odo) ? odo : null, milesSinceLast: valid(odo) && valid(lastOdo) ? Math.round((odo - lastOdo) * 10) / 10 : null });
             if (valid(odo)) lastOdo = odo;
-        }
+            rising = true;
+        } else if (prev && s.fuel < prev.fuel) rising = false;
         if (lastOdo === null && valid(s.odo)) lastOdo = s.odo;
         prev = { fuel: s.fuel, odo: valid(s.odo) ? s.odo : prev && prev.odo, t: s.t };
     }
@@ -88,7 +95,8 @@ function milesPerPercent(samples, { tankGal = 13.2, mpg = 47 } = {}) {
     let prev = null;
     for (const s of samples || []) {
         if (!s || !valid(s.odo) || !valid(s.fuel)) continue;
-        if (prev && s.odo >= prev.odo && s.odo - prev.odo < 1500 && s.fuel <= prev.fuel) {
+        // only driving burns fuel: a level that moves while the odometer stands still is the gauge, not the tank
+        if (prev && s.odo > prev.odo && s.odo - prev.odo < 1500 && s.fuel <= prev.fuel) {
             miles += s.odo - prev.odo;
             pct += prev.fuel - s.fuel;
         }

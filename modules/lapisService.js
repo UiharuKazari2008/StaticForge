@@ -634,7 +634,12 @@ function usageModel(s) {
     const days = usage.daily(samples, s.timeZone);
     const today = usage.dayKey(nowFn(), s.timeZone);
     const commute = commuteMiles(s);
-    const perPct = usage.milesPerPercent(samples, { tankGal: s.tankGal, mpg: s.mpg });
+    let perPct = usage.milesPerPercent(samples, { tankGal: s.tankGal, mpg: s.mpg });
+    // the car's own range is the cautious figure when it promises fewer miles a percent than the record does
+    if (status && Number.isFinite(status.range) && Number.isFinite(status.fuel) && status.fuel >= 10 && status.range > 0) {
+        const car = Math.round((status.range / status.fuel) * 100) / 100;
+        if (car < perPct.value) perPct = { ...perPct, value: car, basis: 'car', measured: perPct.value };
+    }
     const weekday = usage.weekdayMiles(days.filter((d) => d.day !== today), { workDays: s.workDays, commuteMiles: commute.miles, errandMiles: s.errandMiles, offDayMiles: s.offDayMiles });
     const todayRow = days.find((d) => d.day === today);
     const refuel = status && Number.isFinite(status.fuel) ? usage.refuelBy({ fuelPct: status.fuel, milesPerPct: perPct.value, weekday, todayKey: today, milesToday: todayRow ? todayRow.miles : 0, reservePct: s.reservePct }) : null;
