@@ -35,6 +35,7 @@
 .wm-dreamstudio[data-view="home"] .wds-home,
 .wm-dreamstudio[data-view="settings"] .wds-settings,
 .wm-dreamstudio[data-view="print"] .wds-print,
+.wm-dreamstudio[data-view="presets"] .wds-presets,
 .wm-dreamstudio[data-view="editor"] .wds-editor {
     display: flex;
     flex-direction: column;
@@ -42,7 +43,8 @@
 
 .wm-dreamstudio > .wds-tabs { flex: 0 0 auto; }
 .wm-dreamstudio:not([data-layout="tabs"]) > .wds-tabs,
-.wm-dreamstudio[data-view="editor"] > .wds-tabs { display: none; }
+.wm-dreamstudio[data-view="editor"] > .wds-tabs,
+.wm-dreamstudio[data-view="presets"] > .wds-tabs { display: none; }
 
 /* ---------------------------------------------------------------- home */
 
@@ -181,6 +183,12 @@
 .wds-settings > .wm-form { flex: 0 0 auto; }
 .wds-settings .wds-sublabel { margin: calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px)); }
 .wds-settings .wm-listbox { margin-bottom: calc(4 * var(--wm-px)); }
+
+/* ---------------------------------------------------------------- presets: a list that fills the page */
+
+.wds-presets > .wm-listbox { flex: 1 1 0; min-height: 0; border: 0; }
+.wds-presets > .wm-listbox[hidden] { display: none; }
+.wds-presets > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); color: #848284; }
 
 /* ---------------------------------------------------------------- print */
 

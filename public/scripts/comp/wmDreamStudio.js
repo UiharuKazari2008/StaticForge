@@ -83,6 +83,7 @@
 
     function view() {
         if (top() === 'editor') return 'editor';
+        if (top() === 'presets') return 'presets';
         if (layout() === 'tabs') return tab === 'prompt' ? 'home' : tab;
         return top() || 'home';
     }
@@ -202,6 +203,36 @@
         const sum = $('.wds-summary > span');
         if (sum && s.model !== undefined) sum.textContent = summaryText(s, M.options());
         drawStrip();
+    }
+
+    // ---- presets: Open Preset is a list page; Save as Preset asks for the name
+
+    function drawPresets() {
+        const box = $('.wds-presets > .wm-listbox');
+        const none = $('.wds-presets > .wds-none');
+        if (!box) return;
+        const names = M.presets();
+        const cur = M.sessionName();
+        none.hidden = names.length > 0;
+        box.hidden = !names.length;
+        box.innerHTML = names.map((n) => `<button type="button" class="wm-listbox-row${n === cur ? ' is-selected' : ''}" data-key="${esc(n)}"><span>${esc(n)}</span></button>`).join('');
+    }
+
+    function openPreset(name) {
+        layers = [];
+        tab = 'prompt';
+        viewing = '';
+        sh.busy(M.openPreset(name).catch((err) => console.warn('[wmDreamStudio] preset', err)), { delay: 250 }).then(() => { snap = null; paint(); sh.syncHistory(); });
+    }
+
+    function savePresetAs() {
+        sh.messageBox({ title: 'Save as Preset', text: 'Name:', input: { value: M.sessionName() }, modal: true, buttons: [{ text: 'Save', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false })
+            .then((name) => {
+                if (!name) return null;
+                if (!M.presets().includes(name)) return name;
+                return sh.messageBox({ title: 'Save as Preset', text: `A preset named "${name}" already exists. Replace it?`, icon: 'question', modal: true, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false }).then((yes) => (yes ? name : null));
+            })
+            .then((name) => { if (name) sh.busy(M.savePreset(name).catch((err) => console.warn('[wmDreamStudio] save', err)), { delay: 250 }); });
     }
 
     /** Characters: one row each (in use or not, name, first words); a tap on the text edits it. */
@@ -362,8 +393,9 @@
         page.dataset.view = v;
         if (v === 'home' || v === 'print') { drawHome(); drawPrint(); }
         if (v === 'settings') drawSettings();
+        if (v === 'presets') drawPresets();
         drawTabs();
-        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio'));
+        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'presets' ? 'Open Preset' : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio')));
         sh.refreshTitleAction();
         sh.refreshSoftKeys();
     }
@@ -403,7 +435,7 @@
     // ---------------------------------------------------------------- layers
 
     function openLayer(name) {
-        if (layout() === 'tabs' && name !== 'editor') { tab = name; paint(); return; }
+        if (layout() === 'tabs' && name !== 'editor' && name !== 'presets') { tab = name; paint(); return; }
         if (top() === name) return;
         layers.push(name);
         paint();
@@ -747,7 +779,7 @@
         else rows.push({ label: 'Print', submenu: printRows }, '-');
         if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
-        rows.push({ label: 'New Session', action: newSession });
+        rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Preset...', action: () => openLayer('presets') }, { label: 'Save as Preset...', action: savePresetAs });
         return rows;
     }
 
@@ -774,6 +806,8 @@
 
     function softKeys() {
         if (top() === 'editor') return { left: { label: 'Done', action: closeEditor }, right: { label: 'Menu', menu: editorMenu } };
+        // a list to pick from: a tap opens, the left key backs out
+        if (top() === 'presets') return { left: { label: 'Cancel', action: popLayer }, right: null };
         if (running()) return { left: { label: 'Generate', disabled: true }, right: { label: 'Stop', action: stop } };
         return { left: { label: 'Generate', disabled: !M || !M.ready(), action: generate }, right: { label: 'Menu', menu: mainMenu } };
     }
@@ -801,6 +835,7 @@
   <div class="wds-stage"><img alt="" hidden><div class="wds-grid" hidden></div><div class="wds-empty">No print yet. Generate makes one.</div></div>
   <div class="wds-status" hidden><span></span><div class="wds-bar"><span></span></div></div>
 </div>
+<div class="wds-pane wds-presets"><div class="wm-listbox"></div><p class="wds-none" hidden>No presets have been saved yet.</p></div>
 <div class="wds-pane wds-editor">
   <div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
@@ -813,6 +848,7 @@
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
         $('.wds-summary').addEventListener('click', () => openLayer('settings'));
         p.querySelectorAll('.wds-field').forEach((b) => b.addEventListener('click', () => openEditor(b.dataset.field)));
+        $('.wds-presets').addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wm-listbox-row'); if (r) openPreset(r.dataset.key); });
         const chars = $('.wds-chars');
         chars.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-char-open'); if (b) openEditor(`c:${b.dataset.char}:prompt`); });
         chars.addEventListener('change', (e) => { const t = e.target; if (t && t.dataset && t.dataset.char != null && t.type === 'checkbox') { M.setCharacter(Number(t.dataset.char), { enabled: !!t.checked }); snap = null; } });
@@ -912,7 +948,7 @@
             M.ownsPrints = true;
             wrapEntryPoints();
             snap = null;
-            if (layout() === 'tabs') layers = layers.filter((l) => l === 'editor');
+            if (layout() === 'tabs') layers = layers.filter((l) => l === 'editor' || l === 'presets');
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },

@@ -14,6 +14,8 @@
  *   studioModel.addCharacter() / removeCharacter(i) / setCharacter(i, { name, enabled })
  *                                       characters by their place in snapshot().characters; their text is
  *                                       set('character:<i>:prompt' | ':uc' | ':negative', value)
+ *   studioModel.presets() / sessionName() / openPreset(name) / savePreset(name)
+ *                                       the saved presets' names, this session's name, load one, save as one
  *   studioModel.options()               what the lists offer and which controls the chosen model has
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
  *   studioModel.suggest(text)            tag suggestions for a few typed letters: [{ text, count }] (a promise)
@@ -42,7 +44,7 @@
        handleManualPreviewImageContextMenuAction, getAutofillSearchSettings, selectedDatasets,
        applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems, hasManagedEmphasisGroupIds, expandEmphasisGroupIds,
        resolveEmphasisBagForTextarea,
-       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, datasetAllowedForModel, getStudioUcPresetMenuItems */
+       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, handleManualSave, datasetAllowedForModel, getStudioUcPresetMenuItems */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -292,6 +294,34 @@
         return true;
     }
 
+    // ---- presets: a session kept under a name on the server
+
+    function presets() {
+        const list = (window.optionsData && window.optionsData.presets) || [];
+        return list.map((p) => p && p.name).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    }
+
+    function sessionName() {
+        const f = el('manualPresetName');
+        return f ? String(f.value || '').trim() : '';
+    }
+
+    function openPreset(name) {
+        if (!name || typeof window.openManualModalWithContent !== 'function') return Promise.resolve(false);
+        return Promise.resolve(window.openManualModalWithContent({ type: 'preset', name, title: name })).then(() => true);
+    }
+
+    /** Saves the session as the preset `name` (replacing one of that name: the caller asks first). */
+    async function savePreset(name) {
+        const clean = String(name || '').trim();
+        if (!clean || typeof handleManualSave !== 'function') return false;
+        const f = el('manualPresetName');
+        if (f) { f.value = clean; f.dispatchEvent(new Event('input', { bubbles: true })); }
+        await handleManualSave({ name: clean });
+        emit('change', { id: 'presetName' });
+        return true;
+    }
+
     function frameSrc(d) {
         const frames = Array.isArray(d.stepFrames) ? d.stepFrames : null;
         const last = frames && frames.length ? frames[frames.length - 1] : d;
@@ -408,7 +438,7 @@
     }
 
     const api = {
-        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, generate, stop, select, action, on, off,
+        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, generate, stop, select, action, on, off,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
