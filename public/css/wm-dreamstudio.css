@@ -156,6 +156,8 @@
 
 .wds-settings { overflow-y: auto; overscroll-behavior: contain; }
 .wds-settings > .wm-form { flex: 0 0 auto; }
+.wds-settings .wds-sublabel { margin: calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px)); }
+.wds-settings .wm-listbox { margin-bottom: calc(4 * var(--wm-px)); }
 
 /* ---------------------------------------------------------------- print */
 

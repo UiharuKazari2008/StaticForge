@@ -217,11 +217,33 @@
         rows.push(ui.row('', ui.check('seedLock', 'Keep this seed', !!s.seedLock, 'data-check="seedLock"')));
         rows.push(comboRow('Prints:', 'n', [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, String(n)]), Number(s.n) || 1));
         rows.push(ui.row('', ui.check('upscale', 'Upscale each print', !!s.upscale, 'data-check="upscale"')));
+        // what is added around the prompt: the desktop's Prompt menu lists
+        rows.push(ui.sub('Prompt'));
+        const picked = new Set(s.datasets || []);
+        if (o.has.datasets && o.datasets.length) {
+            rows.push('<div class="wds-sublabel">Datasets:</div>');
+            rows.push(ui.listbox(o.datasets.map((d) => ({ key: d.value, label: d.name, checked: picked.has(d.value) }))));
+        }
+        rows.push(ui.row('', ui.check('append_quality', 'Add quality tags', !!s.append_quality, 'data-check="append_quality"')));
+        const ucs = o.ucPresets.map((x) => [x.value, x.name]);
+        if (o.has.uc && ucs.length) rows.push(comboRow('UC Preset:', 'append_uc', ucs, Number(s.append_uc) || 0));
+        const nsfw = o.nsfw.map((x) => [x.value, x.name]);
+        rows.push(comboRow('NSFW:', 'nsfw', nsfw, Number(s.nsfw) || 0));
+        rows.push(ui.sub('Syntax Options'));
+        [['keep_newlines', 'Keep Newlines'], ['bake_newlines', 'Bake New Lines'], ['auto_char_numerize', 'Auto Char Numerize'], ['prompt_normalize', 'Prompt Normalize'], ['deduplicate_tags', 'Deduplicate']].forEach(([id, label]) => {
+            rows.push(ui.check(id, label, !!s[id], `data-check="${id}"${id === 'bake_newlines' && !s.keep_newlines ? ' disabled' : ''}`));
+        });
         host.innerHTML = rows.join('');
-        const lists = { model: models, resolution: sizes, sampler: o.samplers.map((x) => [x.value, x.name]), noiseScheduler: o.noise.map((x) => [x.value, x.name]), n: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, String(n)]) };
+        ui.bindListbox(host.querySelector('.wm-listbox'), () => {}, (key, on) => {
+            const next = new Set(read().datasets || []);
+            if (on) next.add(key); else next.delete(key);
+            change('datasets', Array.from(next));
+        });
+        const lists = { model: models, resolution: sizes, sampler: o.samplers.map((x) => [x.value, x.name]), noiseScheduler: o.noise.map((x) => [x.value, x.name]), n: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, String(n)]), append_uc: ucs, nsfw };
         host.querySelectorAll('.wm-combo[data-act]').forEach((btn) => {
             const id = btn.dataset.act;
-            ui.bindCombo(btn, lists[id] || [], id === 'n' ? (Number(s.n) || 1) : s[id], (v) => change(id, v));
+            const numeric = id === 'n' || id === 'append_uc' || id === 'nsfw';
+            ui.bindCombo(btn, lists[id] || [], numeric ? (Number(s[id]) || (id === 'n' ? 1 : 0)) : s[id], (v) => change(id, v));
         });
     }
 
@@ -298,6 +320,7 @@
     function onSettingsInput(e) {
         const t = e.target;
         if (!t || !t.dataset) return;
+        if (t.closest && t.closest('.wm-listbox')) return;
         if (t.dataset.check) {
             const id = t.dataset.check;
             if (id === 'effort') change('effort', t.checked ? 'medium' : 'high');

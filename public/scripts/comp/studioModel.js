@@ -36,7 +36,8 @@
        v5FullSupportsEffort, mediumControlIsLocked, isV5Model, getForgeModelFeatures, countTokensForText,
        ensurePromptTokenizerForModel, collectManualFormValues, addSharedFieldsToRequestBody,
        calculateCreditCost, registerWsInboundHandler, findImageByFilename, updateManualPreviewDirectly, getImageMetadata,
-       handleManualPreviewImageContextMenuAction, getAutofillSearchSettings */
+       handleManualPreviewImageContextMenuAction, getAutofillSearchSettings, selectedDatasets,
+       applyStudioDatasetConfig, getCurrentDatasetModelKey, datasetAllowedForModel, getStudioUcPresetMenuItems */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -81,12 +82,16 @@
         try { out.paid = typeof forcePaidRequest !== 'undefined' && !!forcePaidRequest; } catch (_) { out.paid = false; }
         out.hasBaseImage = !!(window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.sourceFilename && el('manualImg2ImgGroup') && !el('manualImg2ImgGroup').classList.contains('hidden')));
         out.generating = generating();
+        try { out.datasets = typeof selectedDatasets !== 'undefined' && Array.isArray(selectedDatasets) ? selectedDatasets.slice() : []; } catch (_) { out.datasets = []; }
         return out;
     }
 
     async function set(id, value) {
         if (!ready()) return false;
-        if (FIELDS[id]) {
+        if (id === 'datasets') {
+            // the checked datasets, by value (studioChangeJson.js applyStudioDatasetConfig)
+            if (typeof applyStudioDatasetConfig === 'function') applyStudioDatasetConfig({ include: Array.isArray(value) ? value : [] });
+        } else if (FIELDS[id]) {
             const f = el(FIELDS[id][0]);
             if (!f || f.value === String(value == null ? '' : value)) return true;
             writeStudioFieldValue(FIELDS[id][1], value);
@@ -111,8 +116,27 @@
             noise: (typeof NOISE_MAP !== 'undefined' ? NOISE_MAP : []).map((s) => ({ value: s.meta, name: s.display })),
             resolutions: (typeof RESOLUTION_GROUPS !== 'undefined' ? RESOLUTION_GROUPS : []).map((g) => ({ group: g.group, options: g.options.map((o) => ({ value: o.value, name: o.name || o.display || o.value })) })),
             sizes: (typeof RESOLUTIONS !== 'undefined' ? RESOLUTIONS : []).reduce((m, r) => { m[r.value] = [r.width, r.height]; return m; }, {}),
+            datasets: (() => {
+                try {
+                    const key = typeof getCurrentDatasetModelKey === 'function' ? getCurrentDatasetModelKey() : null;
+                    return ((window.optionsData && window.optionsData.datasets) || [])
+                        // the __quality__ kind are presets with switches of their own, not datasets
+                        .filter((d) => d && !/^__/.test(String(d.value)) && (typeof datasetAllowedForModel !== 'function' || datasetAllowedForModel(d, key)))
+                        .map((d) => ({ value: d.value, name: d.display || d.name || d.label || d.value }));
+                } catch (_) { return []; }
+            })(),
+            ucPresets: (() => {
+                try {
+                    return (typeof getStudioUcPresetMenuItems === 'function' ? getStudioUcPresetMenuItems() : [])
+                        .filter((r) => r && !r.separator && typeof r.value === 'number' && /^studio-uc-select-/.test(String(r.action || '')))
+                        .map((r) => ({ value: r.value, name: r.text }));
+                } catch (_) { return []; }
+            })(),
+            nsfw: [[3, 'Nude'], [2, 'Skimpy'], [1, 'Allow'], [0, 'Neutral'], [-1, 'Remove'], [-2, 'Clense']].map(([value, name]) => ({ value, name })),
             has: {
                 effort,
+                uc: !locked('uc'),
+                datasets: !/^v3/.test(model),
                 noise: !v5,
                 variety: !v5 && caps.varietyPlus !== false,
                 rescale: !locked('rescale'),
