@@ -355,16 +355,29 @@ class RcsProvider {
         (raw.messageInfo || []).forEach((info, i) => {
             if (info.messageContent && info.messageContent.content) texts.push(info.messageContent.content);
             const m = info.mediaContent;
-            if (m && m.mediaID) {
-                const mime = m.mimeType || '';
-                const ref = { m: m.mediaID, k: m.decryptionKey || '', t: m.thumbnailMediaID || '', tk: m.thumbnailDecryptionKey || '', y: mime, n: m.mediaName || '' };
-                const guid = `r${b64url(ref)}`;
-                const base = `/api/textmessaging/${encodeURIComponent(this.id)}/attachment/${encodeURIComponent(guid)}`;
-                attachments.push({
-                    guid, name: m.mediaName || `Attachment ${i + 1}`, mime, size: num(m.size),
+            // a picture sent from the phone often comes with no mediaID (Google keeps only its thumbnail
+            // for Messages for web, Nov 14: 35 of 55 stored): that thumbnail stands in for it, else the
+            // small preview inside the message (mediaData). Before, such pictures were left out.
+            if (m && (m.mediaID || m.thumbnailMediaID || m.mediaData)) {
+                const full = !!m.mediaID;
+                const mime = full ? (m.mimeType || '') : 'image/jpeg';
+                const common = {
+                    name: m.mediaName || `Attachment ${i + 1}`, mime, size: full ? num(m.size) : 0,
                     width: num(m.dimensions && m.dimensions.width) || null, height: num(m.dimensions && m.dimensions.height) || null,
-                    sticker: false, url: base, thumbUrl: /^image\/|^video\//.test(mime) ? `${base}?thumb=1` : null
-                });
+                    sticker: false, preview: !full
+                };
+                if (full || m.thumbnailMediaID) {
+                    const ref = full
+                        ? { m: m.mediaID, k: m.decryptionKey || '', t: m.thumbnailMediaID || '', tk: m.thumbnailDecryptionKey || '', y: mime, n: m.mediaName || '' }
+                        : { m: m.thumbnailMediaID, k: m.thumbnailDecryptionKey || '', t: '', tk: '', y: mime, n: m.mediaName || '' };
+                    const guid = `r${b64url(ref)}`;
+                    const base = `/api/textmessaging/${encodeURIComponent(this.id)}/attachment/${encodeURIComponent(guid)}`;
+                    const thumb = full ? (/^image\/|^video\//.test(mime) ? `${base}?thumb=1` : null) : base;
+                    attachments.push(Object.assign({ guid, url: base, thumbUrl: thumb }, common));
+                } else {
+                    const data = `data:image/jpeg;base64,${String(m.mediaData).replace(/[^A-Za-z0-9+/=]/g, '')}`;
+                    attachments.push(Object.assign({ guid: `rinline-${raw.messageID}-${i}`, url: data, thumbUrl: data }, common));
+                }
             }
         });
         const date = usToMs(raw.timestamp) || Date.now();
