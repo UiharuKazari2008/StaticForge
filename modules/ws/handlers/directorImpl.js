@@ -69,6 +69,10 @@ module.exports = {
     handleDirectorStreamingAck: function (_handler, _ws, message) {
         cursor.ackDirectorStream(message && message.sessionId, message && message.seq);
     },
+    // which chat this page has on screen: streaming updates go only there (cursorDirector.js, #843)
+    handleDirectorStreamWatch: function (handler, ws, message, clientInfo) {
+        cursor.watchDirectorStream(handler, ws, clientInfo, message && message.sessionId);
+    },
     handleDirectorComputerSize: cursor.handleDirectorComputerSize,
     handleDirectorComputerStatus: cursor.handleDirectorComputerStatus,
     handleDirectorCleanup: cursor.handleDirectorCleanup,

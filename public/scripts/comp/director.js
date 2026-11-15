@@ -698,7 +698,25 @@ class Director {
         return !!(host && host.isConnected && !host.closest('.hidden, .hidden-alt, [hidden]'));
     }
 
+    // Tell the server which chat is on screen (#843): a turn's streaming updates (every row so far,
+    // hundreds of KB, several a second) go only to the pages showing that chat (cursorDirector.js
+    // watchDirectorStream). Called wherever the chat shows, changes or goes away; '' = none. A page
+    // that errs keeps watching: too much data, never a missing live turn.
+    syncStreamWatch() {
+        const s = window.currentSession;
+        const chat = document.getElementById('directorSessionChat');
+        const onScreen = !!(chat && chat.isConnected && !document.hidden && !chat.closest('.hidden, .hidden-alt, .closing, [hidden]'));
+        const want = onScreen && s && s.id && !s.draft ? String(s.id) : '';
+        if (want === this._streamWatch) return;
+        if (!window.wsClient || !window.wsClient.isConnected()) return;
+        this._streamWatch = want;
+        window.wsClient.send({ type: 'director_stream_watch', sessionId: want });
+    }
+
     async init() {
+        document.addEventListener('visibilitychange', () => this.syncStreamWatch());
+        // Melaton Mobile: another program came to the front, or the Director did (wmShell.js)
+        document.addEventListener('wmAppChange', () => setTimeout(() => this.syncStreamWatch(), 0));
         this.setupDirectorDropdowns();
         this.setupDirectorEventListeners();
         this.setupDirectorContextMenus();
@@ -3121,6 +3139,7 @@ class Director {
         openModal(this.directorWindow);
         // she shows with the window, in the same frame (isHosted follows the window now)
         if (this.mascot) this.mascot.applyView();
+        this.syncStreamWatch();
         this.paintPersonaToggle();
         this.requestDirectorModels();
         this.updateTrayChrome();
@@ -3178,6 +3197,7 @@ class Director {
         this.mountDirectorInStudio();
         this.resetToWren();
         this.updateTrayChrome();
+        this.syncStreamWatch();
     }
 
     // ---- Tray icon (#directorTrayIcon), same pattern as Phasewalker ----
@@ -4277,6 +4297,8 @@ class Director {
     }
 
     hideDirector() {
+        // the panel is gone once its closing animation ends: then this page stops watching the chat
+        setTimeout(() => this.syncStreamWatch(), 800);
         // Studio close used to collapse the shared chat even while it was hosted
         // in #directorWindow, which left that window blank.
         if (this.directorDockedInWindow()) {
@@ -4410,6 +4432,7 @@ class Director {
             this.directorSessionChat.classList.remove('hidden');
         }
         if (this.mascot) this.mascot.applyView();
+        this.syncStreamWatch();
         this.placeComposer(false, true);
         this._scrollAfterLoad = true;
         const liveKeys = [];
@@ -5717,6 +5740,7 @@ class Director {
         this.closeSessionOverlay();
         if (this.directorSessionChat) this.directorSessionChat.classList.remove('hidden');
         if (this.mascot) this.mascot.applyView();
+        this.syncStreamWatch();
         this.placeComposer(true, true);
         this.updateHeaderForView('sessionChat');
         if (this.directorSessionTitle) {
@@ -8584,6 +8608,9 @@ class Director {
             if (!director) return;
             director.requestEngineBalances(true);
             director.requestDirectorSettings();
+            // a new socket is a new client to the server: say again which chat is on screen
+            director._streamWatch = undefined;
+            director.syncStreamWatch();
         });
 
         // Director Settings saved (this tab or another): new drafts start on the new defaults.
@@ -8804,6 +8831,7 @@ class Director {
         
         // Handle Director typing start
         window.wsClient.on('director_typing_start', (data) => {
+            if (window.directorInstance) window.directorInstance.syncStreamWatch();
             if (data.data && data.data.sessionId === window.currentSession?.id) {
                 if (window.directorInstance) {
                     window.directorInstance.showTypingIndicator();

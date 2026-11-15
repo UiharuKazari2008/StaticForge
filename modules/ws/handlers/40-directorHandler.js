@@ -43,6 +43,7 @@ const {
     handleWorkspaceSwitchResult,
     handleLedgeChecks,
     handleDirectorStreamingAck,
+    handleDirectorStreamWatch,
     handleDirectorSaveFeedback,
     handleDirectorLoadRules,
     handleDirectorSaveRules,
@@ -97,6 +98,7 @@ function registerPackets(handlersCtx) {
     reg('director_workspace_switch_result', handleWorkspaceSwitchResult);
     reg('ledge_checks', handleLedgeChecks);
     reg('director_streaming_ack', handleDirectorStreamingAck);
+    reg('director_stream_watch', handleDirectorStreamWatch);
     reg('director_get_cursor_usage', handleDirectorGetCursorUsage);
     // Tray icon state and the tray resource line. Read-only, so not destructive.
     reg('director_computer_status', handleDirectorComputerStatus);
