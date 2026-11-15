@@ -331,42 +331,133 @@
         }
     }
 
+    // The file list lives in IndexedDB, in the database /app's serviceWorkerManager keeps its
+    // verified record in (store 'v', key 'manifest'), packed and under the digest it belongs to
+    // (#849). In localStorage it was 1.24 MB every page of the origin loaded at its first storage
+    // read. Without IndexedDB (env.indexedDB) the localStorage copy is still read and written.
+    const SNAPSHOT_DB = 'melatonCacheVerified';
+    const snapshotDbs = new WeakMap();
+
+    function snapshotDb(env) {
+        const idb = env && env.indexedDB;
+        if (!idb) return Promise.resolve(null);
+        let opened = snapshotDbs.get(idb);
+        if (!opened) {
+            opened = new Promise((resolve) => {
+                try {
+                    const r = idb.open(SNAPSHOT_DB, 1);
+                    r.onupgradeneeded = () => r.result.createObjectStore('v');
+                    r.onsuccess = () => {
+                        // a reset deletes the database: an open handle would block it
+                        r.result.onversionchange = () => { try { r.result.close(); } catch (_) { /* closed */ } snapshotDbs.delete(idb); };
+                        resolve(r.result);
+                    };
+                    r.onerror = () => resolve(null);
+                    r.onblocked = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+            snapshotDbs.set(idb, opened);
+        }
+        return opened;
+    }
+
+    function snapshotRows(manifest) {
+        // auth stays: without it the shell pages count as updates on every 304 boot
+        return (Array.isArray(manifest) ? manifest : []).filter((file) => file && file.url && file.hash)
+            .map((file) => (file.auth === true ? { url: String(file.url), hash: String(file.hash), auth: true } : { url: String(file.url), hash: String(file.hash) }));
+    }
+
+    function packManifestSnapshot(manifest, hash) {
+        const rows = snapshotRows(manifest).filter((file) => !file.url.includes('\n') && !file.hash.includes('\n'));
+        if (!rows.length) return null;
+        return {
+            hash: hash || '',
+            n: rows.length,
+            urls: rows.map((file) => file.url).join('\n'),
+            hashes: rows.map((file) => file.hash).join('\n'),
+            auth: rows.filter((file) => file.auth).map((file) => file.url),
+        };
+    }
+
+    function unpackManifestSnapshot(packed, syncedHash) {
+        if (!packed || typeof packed.urls !== 'string' || typeof packed.hashes !== 'string') return null;
+        if ((packed.hash || '') !== (syncedHash || '')) return null;
+        const urls = packed.urls.split('\n');
+        const hashes = packed.hashes.split('\n');
+        if (!urls.length || urls.length !== hashes.length || urls.length !== packed.n) return null;
+        const auth = new Set(Array.isArray(packed.auth) ? packed.auth : []);
+        return urls.map((url, i) => (auth.has(url) ? { url, hash: hashes[i], auth: true } : { url, hash: hashes[i] }));
+    }
+
     /** Retry after a mismatch: drop the stored digest and list so the next check fetches the full list. */
     function forgetManifest(env) {
         try {
-            if (!env.localStorage) return;
-            env.localStorage.removeItem(SYNCED_MANIFEST_KEY);
-            env.localStorage.removeItem(MANIFEST_SNAPSHOT_KEY);
+            if (env.localStorage) {
+                env.localStorage.removeItem(SYNCED_MANIFEST_KEY);
+                env.localStorage.removeItem(MANIFEST_SNAPSHOT_KEY);
+            }
         } catch (_) { /* storage off */ }
+        // The list is only used under the digest just dropped. Its row is removed in the background.
+        void snapshotDb(env).then((db) => {
+            if (!db) return;
+            try { db.transaction('v', 'readwrite').objectStore('v').delete('manifest'); } catch (_) { /* gone */ }
+        });
     }
 
-    function readManifestSnapshot(env) {
+    async function readManifestSnapshot(env) {
+        const synced = readSyncedManifestHash(env);
+        const db = await snapshotDb(env);
+        if (db) {
+            const packed = await new Promise((resolve) => {
+                try {
+                    const g = db.transaction('v').objectStore('v').get('manifest');
+                    g.onsuccess = () => resolve(g.result || null);
+                    g.onerror = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+            const rows = unpackManifestSnapshot(packed, synced);
+            if (rows) return rows;
+        }
         try {
             const raw = env.localStorage && env.localStorage.getItem(MANIFEST_SNAPSHOT_KEY);
             const parsed = raw ? JSON.parse(raw) : null;
             if (!Array.isArray(parsed) || !parsed.length) return null;
-            return parsed.filter((file) => file && file.url && file.hash);
+            const rows = parsed.filter((file) => file && file.url && file.hash);
+            // the copy of earlier builds moves over once
+            if (db && rows.length) void writeManifestSnapshot(env, rows, synced);
+            return rows;
         } catch (_) {
             return null;
         }
     }
 
-    function writeManifestSnapshot(env, manifest) {
+    /** Resolves once the list is stored. */
+    async function writeManifestSnapshot(env, manifest, hash) {
         try {
-            if (!env.localStorage || !Array.isArray(manifest) || !manifest.length) return;
-            // auth stays: without it the shell pages count as updates on every 304 boot
-            const rows = manifest.filter((file) => file && file.url && file.hash)
-                .map((file) => (file.auth === true ? { url: file.url, hash: file.hash, auth: true } : { url: file.url, hash: file.hash }));
-            if (!rows.length) return;
-            env.localStorage.setItem(MANIFEST_SNAPSHOT_KEY, JSON.stringify(rows));
+            const packed = packManifestSnapshot(manifest, hash || readSyncedManifestHash(env));
+            if (!packed) return;
+            const db = await snapshotDb(env);
+            const stored = db && await new Promise((resolve) => {
+                try {
+                    const tx = db.transaction('v', 'readwrite');
+                    tx.objectStore('v').put(packed, 'manifest');
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                    tx.onabort = () => resolve(false);
+                } catch (_) { resolve(false); }
+            });
+            if (!env.localStorage) return;
+            if (stored) env.localStorage.removeItem(MANIFEST_SNAPSHOT_KEY);
+            else env.localStorage.setItem(MANIFEST_SNAPSHOT_KEY, JSON.stringify(snapshotRows(manifest)));
         } catch (_) { /* next check fetches the full list */ }
     }
 
-    function writeSyncedManifestHash(env, hash, manifest) {
+    /** The list first, then its digest: a page closed in between leaves the old digest, never a new digest over an old list. */
+    async function writeSyncedManifestHash(env, hash, manifest) {
+        if (manifest) await writeManifestSnapshot(env, manifest, hash);
         try {
             if (hash && env.localStorage) env.localStorage.setItem(SYNCED_MANIFEST_KEY, hash);
         } catch (_) { /* storage off */ }
-        if (manifest) writeManifestSnapshot(env, manifest);
     }
 
     /** OPTIONS / with the synced digest: { unchanged } on 304, { compile } on 503, { failed } on any other miss, else { manifest, hash }. */
@@ -408,7 +499,7 @@
         const fetched = await fetchManifestConditional(env);
         if (fetched.failed) return { failed: true };
         if (fetched.unchanged) {
-            const snapshot = readManifestSnapshot(env);
+            const snapshot = await readManifestSnapshot(env);
             if (snapshot) {
                 const files = requiredFiles(env, await filesNeedingUpdate(env, snapshot));
                 if (files.length) return { files, bytes: totalBytes(files), manifest: snapshot };
@@ -418,13 +509,13 @@
             if (full.compile) return { skipped: 'no-manifest' };
             if (full.failed || !full.manifest) return { failed: true };
             const files = requiredFiles(env, await filesNeedingUpdate(env, full.manifest));
-            if (!files.length) writeSyncedManifestHash(env, full.hash, full.manifest);
+            if (!files.length) await writeSyncedManifestHash(env, full.hash, full.manifest);
             return { files, bytes: totalBytes(files), manifest: full.manifest };
         }
         const manifest = fetched.manifest;
         if (!manifest || !manifest.length) return { skipped: 'no-manifest' };
         const files = requiredFiles(env, await filesNeedingUpdate(env, manifest));
-        if (!files.length) writeSyncedManifestHash(env, fetched.hash, manifest);
+        if (!files.length) await writeSyncedManifestHash(env, fetched.hash, manifest);
         return { files, bytes: totalBytes(files), manifest };
     }
 

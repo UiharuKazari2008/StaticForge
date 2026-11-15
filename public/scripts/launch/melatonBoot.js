@@ -2089,6 +2089,7 @@
             navigator: win.navigator,
             sessionStorage: win.sessionStorage,
             localStorage: (() => { try { return win.localStorage; } catch (_) { return null; } })(),
+            indexedDB: (() => { try { return win.indexedDB; } catch (_) { return null; } })(),
             caches: win.caches || null,
             engine: win.melatonUpdateEngine || null,
             // the Games toolbar while Setup runs (public/scripts/launch/launchGames.js)

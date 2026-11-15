@@ -138,6 +138,50 @@ function memoryStorage() {
         const routed = [{ url: '/scripts/main.js', hash: 'app1', size: 20 }, { url: '/app', hash: 'a', size: 9, type: 'route', auth: true }];
         await engine.check({ ...condEnv, localStorage: authStore, fetch: async () => ({ ok: true, status: 200, headers: { get: (h) => (h === 'X-Manifest-Hash' ? DIGEST : null) }, json: async () => routed }) });
         assert.deepStrictEqual(JSON.parse(authStore.getItem('melatonManifestSnapshot')), [{ url: '/scripts/main.js', hash: 'app1' }, { url: '/app', hash: 'a', auth: true }], 'the snapshot keeps auth');
+
+        // With IndexedDB the list is stored there, packed, under its digest (#849)
+        const fakeIdb = () => {
+            const rows = new Map();
+            const request = (run) => { const r = {}; setTimeout(() => { r.result = run(); if (r.onsuccess) r.onsuccess(); }, 0); return r; };
+            const db = {
+                transaction: () => {
+                    const tx = { objectStore: () => ({
+                        get: (k) => request(() => rows.get(k)),
+                        put: (v, k) => { rows.set(k, JSON.parse(JSON.stringify(v))); setTimeout(() => tx.oncomplete && tx.oncomplete(), 0); },
+                        delete: (k) => { rows.delete(k); },
+                    }) };
+                    return tx;
+                },
+            };
+            return { rows, open: () => request(() => db) };
+        };
+        const idb = fakeIdb();
+        const idbStore = memoryStorage();
+        await engine.check({ ...condEnv, localStorage: idbStore, indexedDB: idb, fetch: async () => ({ ok: true, status: 200, headers: { get: (h) => (h === 'X-Manifest-Hash' ? DIGEST : null) }, json: async () => routed }) });
+        assert.strictEqual(idbStore.getItem('melatonManifestSnapshot'), null, 'IndexedDB: nothing in localStorage');
+        assert.strictEqual(idbStore.getItem('melatonManifestHash'), DIGEST, 'IndexedDB: the digest is still written');
+        assert.deepStrictEqual(idb.rows.get('manifest'), { hash: DIGEST, n: 2, urls: '/scripts/main.js\n/app', hashes: 'app1\na', auth: ['/app'] }, 'IndexedDB: packed list under its digest');
+        const idbHit = await engine.check({ ...condEnv, localStorage: idbStore, indexedDB: idb, caches: fakeCaches([]) });
+        assert.ok(!idbHit.unchanged && idbHit.files.length === 1 && idbHit.files[0].url === '/scripts/main.js', 'IndexedDB: a 304 diffs the stored list');
+
+        // a list under another digest is not used: the full list is fetched
+        idb.rows.get('manifest').hash = 'other';
+        const stale = await engine.check({ ...condEnv, localStorage: idbStore, indexedDB: idb, caches: fakeCaches([]) });
+        assert.ok(!stale.unchanged && stale.files.length === 1, 'IndexedDB: a list of another digest falls back to the full list');
+
+        // the localStorage copy of earlier builds is read once and moved over
+        const moved = fakeIdb();
+        const oldStore = memoryStorage();
+        oldStore.setItem('melatonManifestHash', DIGEST);
+        oldStore.setItem('melatonManifestSnapshot', JSON.stringify([{ url: '/scripts/main.js', hash: 'app1' }]));
+        const movedCheck = await engine.check({ ...condEnv, localStorage: oldStore, indexedDB: moved, caches: fakeCaches([]) });
+        assert.strictEqual(movedCheck.files.length, 1, 'old copy: still read');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.strictEqual(oldStore.getItem('melatonManifestSnapshot'), null, 'old copy: removed from localStorage');
+        assert.strictEqual(moved.rows.get('manifest').hash, DIGEST, 'old copy: stored under the synced digest');
+        engine.forgetManifest({ localStorage: oldStore, indexedDB: moved });
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        assert.ok(!moved.rows.has('manifest') && oldStore.getItem('melatonManifestHash') === null, 'forgetManifest drops the digest and the stored list');
     }
     assert.deepStrictEqual((await engine.filesNeedingUpdate({ ...env, caches: null }, manifest)).map((f) => f.url), ['/scripts/a.js', '/scripts/b.js', '/css/c.css'], 'no Cache Storage: everything but the shell pages (never cached)');
     const withAuth = manifest.concat([
