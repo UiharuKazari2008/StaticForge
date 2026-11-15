@@ -3257,7 +3257,7 @@
     </div>
 
     <!-- Position Dialog Modal -->
-    <div id="positionDialog" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal">
+    <div id="positionDialog" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-crosshairs"></i>
@@ -3269,7 +3269,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding position-dialog-content center dark">
+        <div class="modal-content modal-padding position-dialog-content center dark win7">
             <div class="position-dialog-body">
                 <div class="position-grid">
                     <div class="position-row">
@@ -3308,7 +3308,7 @@
                         <div class="position-cell" data-x="0.9" data-y="0.9" data-cell="E5">E5</div>
                     </div>
                 </div>
-                <div class="position-dialog-actions">
+                <div class="position-dialog-actions vista-dialog-footer">
                     <button type="button" id="confirmPositionBtn" class="btn-primary">
                         <span>Confirm</span>
                         <i class="fas fa-check"></i>
@@ -4223,7 +4223,7 @@
     </div>
 
     <!-- Time/Date Selection Modal -->
-    <div id="timeDateModal" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal">
+    <div id="timeDateModal" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-clock icon-fa"></i>
@@ -4236,7 +4236,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding time-date-modal-content dark">
+        <div class="modal-content modal-padding time-date-modal-content dark win7">
             <div class="modal-body time-date-modal-body">
                 <div>
                     <div class="form-row">
@@ -4263,7 +4263,7 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer vista-dialog-footer">
                 <div class="modal-actions">
                     <button type="button" id="saveTimeDateBtn" class="btn-primary">
                         <i class="fas fa-save"></i> Save
@@ -4274,7 +4274,7 @@
     </div>
 
     <!-- Weather Location Modal -->
-    <div id="weatherLocationModal" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal">
+    <div id="weatherLocationModal" class="modal hidden owned-window on-top" data-parent-modal-id="manualModal" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-map-marker-alt icon-fa"></i>
@@ -4288,7 +4288,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding weather-location-modal-content dark">
+        <div class="modal-content modal-padding weather-location-modal-content dark win7">
             <div class="modal-body weather-location-modal-body">
                 <div class="form-group">
                     <label for="weatherLocationInput">Enter City Name</label>
@@ -4307,7 +4307,7 @@
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer vista-dialog-footer">
                 <div class="modal-actions">
                     <button type="button" id="saveWeatherLocationBtn" class="btn-primary" disabled>
                         <i class="fas fa-save"></i> Save Location
@@ -4461,7 +4461,7 @@
 
     <!-- Image Bias Adjustment Confirmation Dialog -->
     <div id="biasAdjustmentConfirmDialog" class="modal hidden alert-theme owned-window on-top"
-        data-parent-modal-id="imageBiasAdjustmentModal">
+        data-parent-modal-id="imageBiasAdjustmentModal" data-vista-dialog="message" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-ruler-combined icon-fa"></i>
@@ -4474,7 +4474,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding bias-confirm-content center dark">
+        <div class="modal-content modal-padding bias-confirm-content center dark win7">
             <div class="bias-confirm-body">
                 <p>Review the previews below to confirm your bias adjustment:</p>
                 <div class="bias-confirm-previews">
@@ -4492,7 +4492,7 @@
                     </div>
                 </div>
             </div>
-            <div class="bias-confirm-actions">
+            <div class="bias-confirm-actions vista-dialog-footer">
                 <button type="button" id="acceptBiasConfirmBtn" class="btn-primary"><span></span>Save</span> <i
                         class="nai-save"></i></button>
             </div>
@@ -4501,7 +4501,7 @@
 
     <!-- Base Image Change Alert Modal -->
     <div id="baseImageChangeAlertModal" class="modal hidden alert-theme owned-window on-top"
-        data-parent-modal-id="imageBiasAdjustmentModal">
+        data-parent-modal-id="imageBiasAdjustmentModal" data-vista-dialog="message" data-vista-icon="warning" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-exclamation-triangle icon-fa"></i>
@@ -4515,11 +4515,11 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding center dark">
+        <div class="modal-content modal-padding center dark win7">
             <div class="modal-body">
                 <p>Are you sure you want to replace the reference image?</p>
                 <p><b>The inpainting mask will be erased.</b></p>
-                <div class="modal-actions form-actions">
+                <div class="modal-actions form-actions vista-dialog-footer">
                     <button type="button" id="cancelBaseImageChangeBtn" class="btn-secondary">
                         <i class="fas fa-times"></i> Cancel
                     </button>
@@ -4533,7 +4533,7 @@
 
     <!-- Image Bias Mask Alert Modal -->
     <div id="imageBiasMaskAlertModal" class="modal hidden alert-theme owned-window on-top"
-        data-parent-modal-id="imageBiasAdjustmentModal">
+        data-parent-modal-id="imageBiasAdjustmentModal" data-vista-dialog="message" data-vista-icon="warning" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-exclamation-triangle icon-fa"></i>
@@ -4546,10 +4546,10 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content center dark">
+        <div class="modal-content center dark win7">
             <div class="modal-body">
                 <p>Changing the image bias will invalidate the mask.</p>
-                <div class="modal-actions form-actions">
+                <div class="modal-actions form-actions vista-dialog-footer">
                     <button type="button" id="cancelImageBiasBtn" class="btn-secondary">
                         <i class="fas fa-times"></i> Cancel
                     </button>
@@ -4671,7 +4671,7 @@
         data-window-client="light"
         data-parent-modal-id="manualModal" data-window-min-width="400" data-window-min-height="280"
         data-window-max-width="1200" data-window-max-height="1000"
-        data-window-default-width="480" data-window-default-height="680">
+        data-window-default-width="480" data-window-default-height="680" data-vista-dialog="form" data-vista-icon="info">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-magic"></i>
@@ -4789,7 +4789,7 @@
 
     <div id="requestFormWindow" class="modal hidden transient owned-window resizeable-window"
         data-window-identifier="request-form" data-window-min-width="420" data-window-min-height="280"
-        data-window-default-width="560" data-window-default-height="640">
+        data-window-default-width="560" data-window-default-height="640" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-rectangle-list icon-fa"></i>
@@ -4804,14 +4804,14 @@
         </div>
         <div class="modal-content dark">
             <div id="requestFormBody" class="modal-body modal-padding form-section-scroll"></div>
-            <div id="requestFormFooter" class="modal-footer modal-footer-padded"></div>
+            <div id="requestFormFooter" class="modal-footer modal-footer-padded vista-dialog-footer"></div>
         </div>
     </div>
 
     <!-- Director Feedback Modal -->
     <div id="directorFeedbackModal" class="modal resizeable-window hidden owned-window on-top"
         data-parent-modal-id="textReplacementLockModal" data-window-min-width="400" data-window-min-height="280"
-        data-window-max-width="900" data-window-max-height="900">
+        data-window-max-width="900" data-window-max-height="900" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-flag"></i>
@@ -4824,7 +4824,7 @@
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding dark">
+        <div class="modal-content modal-padding dark win7">
             <div class="modal-body">
                 <div class="form-group">
                     <label>Original Text</label>
@@ -4853,7 +4853,7 @@ Examples:
 - 'Text doesn't exist in the original prompt - stacked replacement'"></textarea>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer vista-dialog-footer">
                 <div class="form-actions">
                     <button type="button" id="saveFeedbackBtn" class="btn-primary">
                         <i class="fas fa-save"></i> Save Feedback
@@ -4927,7 +4927,7 @@ Examples:
 
     <!-- Create Text Replacement Modal -->
     <div id="createTextReplacementModal" class="modal hidden owned-window on-top"
-        data-parent-modal-id="textReplacementManagerModal">
+        data-parent-modal-id="textReplacementManagerModal" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-lambda icon-fa"></i>
@@ -4965,7 +4965,7 @@ Examples:
                     </div>
                 </div>
             </div>
-            <div class="modal-footer-colored">
+            <div class="modal-footer-colored vista-dialog-footer">
                 <div class="modal-actions btn-group">
                     <button type="button" id="createTextReplacementSaveBtn" class="btn-primary">
                         Save <i class="fas fa-save"></i>
@@ -5058,7 +5058,7 @@ Examples:
 
     <!-- Create Request Body Replacement Modal -->
     <div id="createRequestBodyReplacementModal" class="modal hidden owned-window on-top"
-        data-parent-modal-id="requestBodyReplacementsModal">
+        data-parent-modal-id="requestBodyReplacementsModal" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-lambda icon-fa"></i>
@@ -5149,7 +5149,7 @@ Examples:
                     </div>
                 </div>
             </div>
-            <div class="modal-footer-colored">
+            <div class="modal-footer-colored vista-dialog-footer">
                 <div class="modal-actions btn-group">
                     <button type="button" id="createRequestBodyReplacementSaveBtn" class="btn-primary">
                         Save <i class="fas fa-save"></i>
@@ -5208,7 +5208,7 @@ Examples:
     </div>
 
     <!-- Update Preset Modal -->
-    <div id="updatePresetModal" class="modal hidden owned-window on-top" data-parent-modal-id="presetManagerModal">
+    <div id="updatePresetModal" class="modal hidden owned-window on-top" data-parent-modal-id="presetManagerModal" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book-spells icon-fa"></i>
@@ -5220,7 +5220,7 @@ Examples:
             <button type="button" id="updatePresetCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
         </div>
-        <div class="modal-content dark">
+        <div class="modal-content dark win7">
             <div class="modal-body">
                 <div class="form-section">
                     <div class="form-row">
@@ -5337,7 +5337,7 @@ Examples:
                     </div>
                 </div>
             </div>
-            <div class="modal-footer-colored">
+            <div class="modal-footer-colored vista-dialog-footer">
                 <div class="modal-actions btn-group">
                     <button type="button" id="updatePresetSaveBtn" class="btn-primary">
                         Save <i class="fas fa-save"></i>
@@ -5348,7 +5348,7 @@ Examples:
     </div>
 
     <!-- Add/Rename Workspace Modal -->
-    <div id="workspaceEditModal" class="modal hidden owned-window on-top">
+    <div id="workspaceEditModal" class="modal hidden owned-window on-top" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-planet-ringed icon-fa"></i>
@@ -5360,7 +5360,7 @@ Examples:
             <button type="button" id="workspaceCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
         </div>
-        <div class="modal-content modal-padding dark">
+        <div class="modal-content modal-padding dark win7">
             <div class="modal-body">
                 <div class="form-section">
                     <div class="form-row">
@@ -5409,7 +5409,7 @@ Examples:
                     </div>
 
                 </div>
-                <div class="modal-actions btn-group">
+                <div class="modal-actions btn-group vista-dialog-footer">
                     <button type="button" id="workspaceSaveBtn" class="btn-primary">
                         <i class="nai-save"></i> Save
                     </button>
@@ -5419,7 +5419,7 @@ Examples:
     </div>
 
     <!-- Workspace Dump Modal -->
-    <div id="workspaceDumpModal" class="modal hidden owned-window on-top">
+    <div id="workspaceDumpModal" class="modal hidden owned-window on-top" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-planet-ringed icon-fa"></i>
@@ -5431,7 +5431,7 @@ Examples:
             <button type="button" id="workspaceDumpCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
         </div>
-        <div class="modal-content modal-padding dark">
+        <div class="modal-content modal-padding dark win7">
             <div class="modal-body">
                 <p>Select the target workspace to merge all items from <strong id="dumpSourceWorkspaceName"></strong>:
                 </p>
@@ -5442,7 +5442,7 @@ Examples:
                     </button>
                     <input type="hidden" id="dumpTargetHidden" value="">
                 </div>
-                <div class="modal-actions btn-group">
+                <div class="modal-actions btn-group vista-dialog-footer">
                     <button type="button" id="workspaceDumpConfirmBtn" class="btn-primary">
                         <i class="mdi mdi-1-5 mdi-planet-ringed"></i> Combine
                     </button>
@@ -5997,7 +5997,7 @@ Examples:
         </div>
     </div>
 
-    <div id="studioSaveNameModal" class="modal hidden" data-window-identifier="studio-save-name">
+    <div id="studioSaveNameModal" class="modal hidden" data-window-identifier="studio-save-name" data-vista-dialog="task" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fa-regular fa-floppy-disk icon-fa"></i>
@@ -6009,12 +6009,12 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding dark">
+        <div class="modal-content modal-padding dark win7">
             <label for="studioSaveNameInput" class="studio-save-name-label">Name:</label>
             <input type="text" id="studioSaveNameInput" class="form-control hover-show colored"
                 placeholder="Name" spellcheck="false" autocapitalize="false" autocorrect="false">
             <div id="studioSaveNameSuggestions" class="preset-autocomplete-overlay preset-autocomplete-list size-small hidden"></div>
-            <div class="form-row">
+            <div class="form-row vista-dialog-footer">
                 <button type="button" id="studioSaveNameWorkspaceBtn" class="btn-secondary" title="Workspace">
                     <span id="studioSaveNameWorkspaceDot" class="workspace-color-indicator"></span>
                 </button>
@@ -6129,7 +6129,7 @@ Examples:
     </div>
 
     <!-- VFS Import Choice Modal -->
-    <div id="vfsImportChoiceModal" data-icon-owner-id="explorerModal" class="modal hidden owned-window">
+    <div id="vfsImportChoiceModal" data-icon-owner-id="explorerModal" class="modal hidden owned-window" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <span id="vfsImportChoiceTitle">Import</span>
@@ -6141,8 +6141,8 @@ Examples:
                 <i class="fa-regular fa-xmark-large"></i>
             </button>
         </div>
-        <div class="modal-content modal-padding dark">
-            <div id="vfsImportChoiceList" class="vfs-import-choice-list"></div>
+        <div class="modal-content modal-padding dark win7">
+            <div id="vfsImportChoiceList" class="vfs-import-choice-list vista-dialog-footer"></div>
         </div>
     </div>
 
@@ -6236,12 +6236,12 @@ Examples:
 
     <!-- Combined Vibe Encoding Modal -->
     <div id="vibeEncodingModal" class="modal hidden owned-window on-top" data-window-min-width="480"
-        data-window-min-height="320" data-window-max-width="1100" data-window-max-height="900">
+        data-window-min-height="320" data-window-max-width="1100" data-window-max-height="900" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-controls">
             <button id="closeVibeEncodingBtn" class="btn-danger btn-small close-btn" type="button" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
         </div>
-        <div class="modal-content gallery-move-modal-content dark">
+        <div class="modal-content gallery-move-modal-content dark win7">
             <div class="gallery-move-left-panel">
                 <img id="vibeEncodingBackgroundImage" src="/static_images/background.jpg" alt="Vibe encoding image"
                     class="gallery-move-background-image">
@@ -6310,7 +6310,7 @@ Examples:
                             the image (0 = minimal, 1 = maximum). Use scroll wheel to adjust.</small>
                     </div>
                 </div>
-                <div class="modal-actions btn-group">
+                <div class="modal-actions btn-group vista-dialog-footer">
                     <button type="button" id="vibeEncodingConfirmBtn" class="btn-primary" disabled>
                         <span id="vibeEncodingConfirmText">Process</span> <i class="mdi mdi-1-5 mdi-data-matrix"></i>
                     </button>
@@ -6320,7 +6320,7 @@ Examples:
     </div>
 
     <!-- Bulk Change Preset Modal -->
-    <div id="bulkChangePresetModal" class="modal hidden owned-window on-top">
+    <div id="bulkChangePresetModal" class="modal hidden owned-window on-top" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-book-spells icon-fa"></i>
@@ -6332,7 +6332,7 @@ Examples:
             <button type="button" id="bulkChangePresetCancelBtn" class="btn-danger close-btn btn-small" title="Close"><i
                     class="fa-regular fa-xmark-large"></i></button>
         </div>
-        <div class="modal-content modal-padding dark">
+        <div class="modal-content modal-padding dark win7">
             <div class="modal-body">
                 <p>Change preset name for <span id="bulkChangePresetSelectedCount">0</span> selected image(s):</p>
                 <div class="form-group">
@@ -6342,7 +6342,7 @@ Examples:
                         autocapitalize="false">
                     <small class="form-text">Leave empty to remove preset name</small>
                 </div>
-                <div class="modal-actions btn-group">
+                <div class="modal-actions btn-group vista-dialog-footer">
                     <button type="button" id="bulkChangePresetConfirmBtn" class="btn-primary">
                         <i class="nai-save"></i> Write Changes
                     </button>
@@ -6420,7 +6420,7 @@ Examples:
     <!-- Cache Metadata Editing Modal -->
     <div id="cacheMetadataModal" class="modal hidden owned-window on-top" data-parent-modal-id="cacheManagerModal"
         data-window-min-width="480" data-window-min-height="320" data-window-max-width="900"
-        data-window-max-height="900">
+        data-window-max-height="900" data-vista-dialog="form" data-vista-icon="info" data-window-client="light">
         <div class="modal-window-title">
             <div class="modal-window-title-main">
                 <i class="fas fa-swatchbook icon-fa"></i>
@@ -6618,7 +6618,7 @@ Examples:
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
+            <div class="modal-footer vista-dialog-footer">
                 <div class="modal-actions btn-group cache-metadata-precise-actions">
                     <button type="button" id="preciseReferenceToggle" class="btn-secondary indicator" data-state="off"
                         title="Mark as precise reference only" style="width: 51px;">

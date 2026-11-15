@@ -17,9 +17,15 @@
  *                                 (vista-glass-controls.css), so 7.css paints the native controls
  *   .vista-dialog-footer          the row that holds the buttons
  *
- * The tags come off again when the desktop leaves Vista mode. JS-created dialogs (confirmation,
- * credit cost) are caught by a body observer; each dialog is re-read when it opens, since the
- * confirmation dialog changes its icon and content per call.
+ * A window carries these in its own markup, or in the script that builds it (ui-standard.md section
+ * 3: do not add an id to the run-time list below, give the window its attributes). Only the ids
+ * listed here are still tagged at run time, and for them the tags come off again when the desktop
+ * leaves Vista mode: the confirmation dialog (message box or task dialog, icon and text cell per
+ * call; the phone shell restyles it too), the credit cost dialog (it gets the shared caption here,
+ * and two scripts build it), the client update dialog (a phone takeover surface, so it cannot
+ * carry the light client in its markup) and the import wizard (vistaImportWizard.js marks a footer
+ * of its own; the re-read here is what places the footer today). They are caught by a body
+ * observer and re-read when they open.
  *
  * Push buttons are text only on Vista, and so are most command bar commands: when a light window
  * opens, a push button or command bar button that has a Font Awesome glyph and a label gets
@@ -34,20 +40,10 @@
 
     const doc = typeof document !== 'undefined' ? document : null;
 
-    const MESSAGE_IDS = ['confirmationDialog', 'creditCostDialog', 'agentClientUpdateDialog', 'biasAdjustmentConfirmDialog',
-        'baseImageChangeAlertModal', 'imageBiasMaskAlertModal', 'dovecoteNewMailModal'];
-    const FORM_IDS = ['positionDialog', 'createTextReplacementModal', 'createRequestBodyReplacementModal', 'updatePresetModal',
-        'workspaceEditModal', 'workspaceDumpModal', 'unifiedUploadModal', 'vibeEncodingModal',
-        'bulkChangePresetModal', 'cacheMetadataModal', 'timeDateModal', 'weatherLocationModal',
-        'naxtCustomTagModal',
-        'vfsImportChoiceModal', 'directorFeedbackModal', 'compiledPromptModal', 'chatModal', 'updateNoteModal',
-        'requestFormWindow'];
-    // forms with Studio's prompt boxes: no 7.css on the client (its textarea and button rules would
-    // move the text off the emphasis overlay and restyle the prompt toolbar)
-    const PROMPT_IDS = ['createTextReplacementModal', 'createRequestBodyReplacementModal', 'cacheMetadataModal', 'requestFormWindow'];
-    // name prompts laid out as the input dialog (a task dialog)
-    const TASK_IDS = ['studioSaveNameModal'];
-    const ALL_IDS = MESSAGE_IDS.concat(FORM_IDS, TASK_IDS);
+    // the run-time list: it only shrinks (see above)
+    const MESSAGE_IDS = ['confirmationDialog', 'creditCostDialog', 'agentClientUpdateDialog', 'dovecoteNewMailModal'];
+    const FORM_IDS = ['unifiedUploadModal', 'naxtCustomTagModal', 'chatModal', 'updateNoteModal'];
+    const ALL_IDS = MESSAGE_IDS.concat(FORM_IDS);
     // the confirmation dialog is a task dialog (form inside) rather than a message box when
     const TASK_CLASSES = ['enhance-dialog-modal', 'studio-change-dialog-modal', 'explore-publish-dialog-modal'];
     const TASK_CONTENT = 'input, select, textarea, form, .form-group, .form-row, [data-custom-scrollbar], img, table, .custom-dropdown';
@@ -79,7 +75,6 @@
 
     function kindOf(el) {
         if (FORM_IDS.includes(el.id)) return 'form';
-        if (TASK_IDS.includes(el.id)) return 'task';
         if (el.id !== 'confirmationDialog') return 'message';
         if (TASK_CLASSES.some((c) => el.classList.contains(c))) return 'task';
         const message = el.querySelector('#confirmationMessage');
@@ -105,7 +100,7 @@
     function markParts(el) {
         const content = clientOf(el);
         if (!content) return;
-        if (!PROMPT_IDS.includes(el.id)) content.classList.add('win7');
+        content.classList.add('win7');
         // the button row: the last element (at any depth) that is a known actions row, or whose
         // element children are all buttons; never one that holds a field
         const isRow = (el) => {
@@ -238,7 +233,7 @@
         doc.addEventListener('staticforge:modal-lifecycle', onLifecycle);
     }
 
-    const api = { apply, ownerCenter, isVista, markTextButtons, MESSAGE_IDS, FORM_IDS, TASK_IDS };
+    const api = { apply, ownerCenter, isVista, markTextButtons, MESSAGE_IDS, FORM_IDS };
     if (root) {
         root.vistaDialogs = api;
         if (doc && doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', init);

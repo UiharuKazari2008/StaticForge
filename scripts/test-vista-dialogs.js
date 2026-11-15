@@ -27,13 +27,24 @@ assert.deepStrictEqual(api.MESSAGE_IDS.slice(0, 3), ['confirmationDialog', 'cred
 const created = { confirmationDialog: 'public/scripts/comp/confirmationDialog.js', creditCostDialog: 'public/scripts/comp/creditCostDialog.js', agentClientUpdateDialog: 'public/scripts/comp/agentClientUpdateDialog.js', dovecoteNewMailModal: 'public/scripts/comp/desktop-apps/dovecote.js' };
 // lazy-loaded features keep their windows in public/templates
 const templates = fs.readdirSync(path.join(ROOT, 'public/templates')).filter((f) => f.endsWith('.html')).map((f) => read('public/templates/' + f));
-for (const id of api.MESSAGE_IDS.concat(api.FORM_IDS, api.TASK_IDS)) {
+for (const id of api.MESSAGE_IDS.concat(api.FORM_IDS)) {
     const inHtml = html.includes(`id="${id}"`) || templates.some((t) => t.includes(`id="${id}"`));
     const inJs = created[id] && read(created[id]).includes(`'${id}'`);
     assert.ok(inHtml || inJs, `${id} exists`);
 }
-assert.ok(api.FORM_IDS.length >= 20, 'the tool-window form dialogs are tagged');
-assert.ok(api.TASK_IDS.includes('studioSaveNameModal') && css.includes('#studioSaveNameModal[data-vista-dialog="task"] > .modal-content'), "Studio's name prompt (Save to Desktop) is a task dialog");
+// the run-time list only shrinks (#867): a dialog carries its tags in its own markup
+assert.ok(api.MESSAGE_IDS.length + api.FORM_IDS.length <= 8 && api.TASK_IDS === undefined, 'the run-time list holds only the dialogs that cannot be static yet');
+const openTag = (id) => { const at = html.indexOf(`<div id="${id}"`); return at < 0 ? '' : html.slice(at, html.indexOf('>', at)); };
+for (const [id, kind] of [['biasAdjustmentConfirmDialog', 'message'], ['baseImageChangeAlertModal', 'message'], ['imageBiasMaskAlertModal', 'message'],
+    ['positionDialog', 'form'], ['createTextReplacementModal', 'form'], ['createRequestBodyReplacementModal', 'form'], ['updatePresetModal', 'form'],
+    ['workspaceEditModal', 'form'], ['workspaceDumpModal', 'form'], ['vibeEncodingModal', 'form'], ['bulkChangePresetModal', 'form'],
+    ['cacheMetadataModal', 'form'], ['timeDateModal', 'form'], ['weatherLocationModal', 'form'], ['vfsImportChoiceModal', 'form'],
+    ['directorFeedbackModal', 'form'], ['compiledPromptModal', 'form'], ['requestFormWindow', 'form'], ['studioSaveNameModal', 'task']]) {
+    const tag = openTag(id);
+    assert.ok(tag.includes(`data-vista-dialog="${kind}"`) && tag.includes('data-window-client="light"') && tag.includes('data-vista-icon="'), `${id} carries its ${kind} dialog tags in app.html`);
+    assert.ok(!api.MESSAGE_IDS.concat(api.FORM_IDS).includes(id), `${id} is not retagged at run time`);
+}
+assert.ok(css.includes('#studioSaveNameModal[data-vista-dialog="task"] > .modal-content'), "Studio's name prompt (Save to Desktop) is a task dialog");
 assert.ok(js.includes("el.dataset.windowClient = 'light'") && js.includes("content.classList.add('win7')"), 'light client mechanism');
 assert.ok(js.includes('TASK_CLASSES') && js.includes("'task'") && js.includes('vista-dialog-text'), 'confirmation: message box vs task dialog, text cell for the icon grid');
 assert.ok(js.includes('ensureCaption') && js.includes("el.id !== 'creditCostDialog'"), 'the credit cost dialog gets the shared caption');
