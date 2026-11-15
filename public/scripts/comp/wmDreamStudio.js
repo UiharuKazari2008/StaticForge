@@ -219,8 +219,8 @@
             const box = $(`.wds-field[data-field="${id}"]`);
             if (!box) return;
             const text = s[id] || '';
-            box.textContent = text || (id === 'prompt' ? 'Tap here to write the prompt' : 'Tap here to list what to leave out');
-            box.classList.toggle('is-empty', !text);
+            if (box.value !== text) box.value = text;
+            box.scrollTop = 0;
             drawTokens(id, text, $(`.wds-label[data-for="${id}"] > span:last-child`));
         });
         drawChars(s);
@@ -526,6 +526,9 @@
         const v = view();
         page.dataset.layout = layout();
         page.dataset.view = v;
+        const box = v === 'editor' ? boxOf(edField) : null;
+        page.dataset.ed = v === 'editor' ? (box ? 'box' : 'own') : '';
+        page.querySelectorAll('.wds-field').forEach((b) => b.classList.toggle('is-editing', b === box));
         if (v === 'home' || v === 'print') { drawHome(); drawPrint(); }
         if (v === 'settings') drawSettings();
         if (v === 'presets') drawPresets();
@@ -589,7 +592,15 @@
 
     // ---------------------------------------------------------------- editor
 
-    function edArea() { return $('.wds-ed-text'); }
+    /**
+     * The field being edited. Prompt and Undesired are edited in their own boxes on the home page:
+     * the box that was touched grows to fill the page and keeps the focus it got from that touch,
+     * which is what Android raises its keyboard for (a field focused from script as the first one
+     * after a cold start gets none; seen on the A53). The other fields (a character's, the inline
+     * negative) have no box there and use the editor's own field.
+     */
+    const boxOf = (field) => (field === 'prompt' || field === 'uc' ? $(`.wds-field[data-field="${field}"]`) : null);
+    function edArea() { return (top() === 'editor' && boxOf(edField)) || $('.wds-ed-text'); }
 
     function edCount() {
         const ta = edArea();
@@ -618,9 +629,11 @@
         edField = FIELD_NAMES[field] || charOf(field) ? field : 'prompt';
         if (top() !== 'editor') layers.push('editor');
         paint();
-        edLoad();
         const ta = edArea();
-        if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        // a box that was touched already has the focus and the caret where the finger went
+        const touched = !!ta && document.activeElement === ta && ta === boxOf(edField);
+        if (!touched) edLoad(); else { const label = $('.wds-ed-head > .wm-combo > span'); if (label) label.textContent = fieldName(edField); edCount(); edWeight(); }
+        if (ta && !touched) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
         sh.syncHistory();
     }
 
@@ -640,6 +653,7 @@
         edCommit().then(() => {
             edField = field;
             snap = null;
+            paint();
             edLoad();
             sh.setTitle(fieldName(edField));
             const ta = edArea();
@@ -948,6 +962,8 @@
             { label: 'Upscale', disabled: none, action: () => printAction('upscale') },
             { label: 'Expand Canvas...', disabled: none, action: () => printAction('expand-canvas') },
             { label: 'Save to Phone', disabled: none, action: () => printAction('download') },
+            // Studio's Edit > Copy Lookback, straight from the tap (no async select first: the clipboard wants the tap)
+            { label: 'Copy Lookback', disabled: none || typeof window.copyLookbackImage !== 'function', action: () => window.copyLookbackImage(shownPrint()) },
             { label: 'Properties', disabled: none, action: () => printAction('view-image-data') },
             '-',
             { label: 'Scrap', disabled: none, action: () => printAction('scrap-preview', true) },
@@ -1010,9 +1026,9 @@
   <button type="button" class="wds-strip"><img class="wds-strip-thumb" alt="" hidden><div class="wds-strip-text"><b></b><span></span><div class="wds-bar" hidden><span></span></div></div></button>
   <div class="wds-fields">
     <div class="wds-label" data-for="prompt"><span>Prompt</span><span></span></div>
-    <div class="wds-field" role="button" tabindex="0" data-field="prompt"></div>
+    <textarea class="wds-field" data-field="prompt" placeholder="Tap here to write the prompt" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
     <div class="wds-label" data-for="uc"><span>Undesired</span><span></span></div>
-    <div class="wds-field" role="button" tabindex="0" data-field="uc"></div>
+    <textarea class="wds-field" data-field="uc" placeholder="Tap here to list what to leave out" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
     <div class="wds-chars" hidden></div>
     <div class="wds-refs" hidden></div>
     <button type="button" class="wds-base" hidden><img alt=""><div><b>Base image</b><span></span></div></button>
@@ -1026,19 +1042,23 @@
 </div>
 <div class="wds-pane wds-ref"><div class="wm-form"></div></div>
 <div class="wds-pane wds-presets"><div class="wm-listbox"></div><div class="wds-pager" hidden></div><p class="wds-none" hidden>No presets have been saved yet.</p></div>
+<div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
 <div class="wds-pane wds-editor">
-  <div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
-  <div class="wds-ac wm-listbox" hidden></div>
-  <div class="wds-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wds-tb-sep"></span>' : `<button type="button" class="wds-tb-btn" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}<span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightdown" aria-label="Less Weight">\u2212</button><span class="wds-tb-weight" aria-live="polite">1.00</span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightup" aria-label="More Weight">+</button><span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn" data-ed="find" aria-label="Find">${edIcon('find')}</button></div>
 </div>
+<div class="wds-ac wm-listbox" hidden></div>
+<div class="wds-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wds-tb-sep"></span>' : `<button type="button" class="wds-tb-btn" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}<span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightdown" aria-label="Less Weight">\u2212</button><span class="wds-tb-weight" aria-live="polite">1.00</span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightup" aria-label="More Weight">+</button><span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn" data-ed="find" aria-label="Find">${edIcon('find')}</button></div>
 </div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
 
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
         $('.wds-summary').addEventListener('click', () => openLayer('settings'));
         $('.wds-base').addEventListener('click', () => openLayer('settings'));
-        p.querySelectorAll('.wds-field').forEach((b) => b.addEventListener('click', () => openEditor(b.dataset.field)));
+        // the boxes are real text fields: the one that is touched becomes the editor (see edArea)
+        p.querySelectorAll('.wds-field').forEach((b) => {
+            // after the touch is over: a box that changes size under the finger gets no keyboard
+            b.addEventListener('click', () => { setTimeout(() => { if (top() !== 'editor' && document.activeElement === b) openEditor(b.dataset.field); }, 60); });
+        });
         const presetPane = $('.wds-presets');
         let presetX = null;
         let presetFlicked = false;
@@ -1084,9 +1104,11 @@
         bar.addEventListener('mousedown', (e) => e.preventDefault());
         bar.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-tb-btn'); if (b) edCommand(b.dataset.ed); });
         let countTimer = 0;
-        edArea().addEventListener('input', () => { clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
-        ['keyup', 'pointerup', 'select'].forEach((t) => edArea().addEventListener(t, edWeight));
-        edArea().addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== edArea()) acHide(); }, 0));
+        p.querySelectorAll('.wds-ed-text, .wds-field').forEach((area) => {
+            area.addEventListener('input', () => { if (top() !== 'editor') return; clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
+            ['keyup', 'pointerup', 'select'].forEach((t) => area.addEventListener(t, () => { if (top() === 'editor') edWeight(); }));
+            area.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== edArea()) acHide(); }, 0));
+        });
         // the list keeps the focus (and the keyboard) in the text; a tap on a row puts the tag in
         const ac = $('.wds-ac');
         ac.addEventListener('mousedown', (e) => e.preventDefault());

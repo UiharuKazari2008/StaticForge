@@ -39,9 +39,36 @@
 .wm-dreamstudio[data-view="print"] .wds-print,
 .wm-dreamstudio[data-view="ref"] .wds-ref,
 .wm-dreamstudio[data-view="presets"] .wds-presets,
-.wm-dreamstudio[data-view="editor"] .wds-editor {
+.wm-dreamstudio[data-view="editor"][data-ed="own"] .wds-editor,
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-home {
     display: flex;
     flex-direction: column;
+}
+
+/* the editor's own parts sit around whichever field is being edited: the head above, the autofill
+ * list and the tool bar below */
+.wds-body > .wds-ed-head { order: -1; }
+.wds-body > .wds-ac,
+.wds-body > .wds-toolbar { order: 10; }
+.wm-dreamstudio:not([data-view="editor"]) .wds-body > :is(.wds-ed-head, .wds-ac, .wds-toolbar) { display: none; }
+
+/* a box of the home page being edited: only it is left of the page, and it fills it (the same
+ * element that was touched, so it keeps its focus and the keyboard) */
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-home { overflow: hidden; }
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-home > :not(.wds-fields),
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-fields > :not(.is-editing) { display: none; }
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-fields { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-field.is-editing {
+    flex: 1 1 0;
+    min-height: 0;
+    height: auto;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #848284;
+    overflow-y: auto;
+    caret-color: auto;
+    user-select: text;
+    -webkit-user-select: text;
 }
 
 .wm-dreamstudio > .wds-tabs { flex: 0 0 auto; }
@@ -134,7 +161,9 @@
 
 .wds-field[data-field="prompt"] { height: calc(5 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
 .wds-field[data-field="uc"] { height: calc(2 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
-.wds-field.is-empty { color: #848284; }
+.wds-field { resize: none; outline: none; -webkit-appearance: none; appearance: none; caret-color: transparent; }
+.wds-field::placeholder { color: #848284; opacity: 1; }
+.wds-field.is-editing::placeholder { color: transparent; }
 
 /* characters: a WM list, one row each: the in-use check, then the name and the first words */
 .wds-chars[hidden] { display: none; }
