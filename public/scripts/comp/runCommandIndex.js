@@ -73,7 +73,8 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['expanders', 'text replacement', 'expander', 'prefix', 'prefixes'], launchIds: ['expanders'] },
     { aliases: ['import', 'upload' ,'vibe', 'style'], launchIds: ['import'] },
     { aliases: ['phasewalker', 'phase', 'bracket', 'stages'], launchIds: ['bracket-generation'] },
-    { aliases: ['config', 'settings editor', 'settings', 'runes'], launchIds: ['config-editor'] },
+    // Runes is Vista's Registry Editor (#831): regedit / regedt32 open it as on Vista
+    { aliases: ['config', 'settings editor', 'settings', 'runes', 'regedit', 'regedit.exe', 'regedt32', 'regedt32.exe', 'registry editor'], launchIds: ['config-editor'] },
     { aliases: ['log', 'logs', 'console', 'server log', 'log viewer', 'event viewer', 'events', 'periscope'], launchIds: ['event-viewer'] },
     { aliases: ['explorer', 'files', 'file explorer', 'cartograph', 'vfs'], launchIds: ['explorer'] },
     { aliases: ['request', 'body', 'replacements', 'stages', 'pipeline'], launchIds: ['request-body-replacements'] },

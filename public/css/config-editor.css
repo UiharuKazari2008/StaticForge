@@ -1,556 +1,437 @@
-/* Config editor applet — scripts/comp/configEditorApplet.js */
-body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
-    width: min(1100px, 92vw);
-    height: min(700px, 85vh);
-}
-
+/* Runes: Vista's Registry Editor 1:1 (configEditorApplet.js, app.html #configEditorModal; Yozora #831),
+   measured on the Vista VM's regedit at 96 dpi (~/.cache/vista-vm/regedit-ref). The client: the menu
+   bar, a row of #f0f0f0, the tree (216 px with its #828790 edge) and the list side by side with 4 px of
+   #f0f0f0 between them, the status bar under them. Segoe UI 9 pt everywhere, black on white. */
 #configEditorModal .config-editor-modal-content {
     display: flex;
     flex-direction: column;
-    min-height: 0;
     flex: 1;
+    min-height: 0;
+    padding: 0;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
 }
 
 #configEditorModal .config-editor-layout {
     display: flex;
-    flex-direction: row;
     flex: 1;
     min-height: 0;
-    gap: 0;
+    margin-top: 1px;
+    background: #f0f0f0;
+}
+
+#configEditorModal :is(.config-editor-tree-panel, .config-editor-values-panel) {
+    position: relative;
+    box-sizing: border-box;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid #828790;
+    background: #fff;
+    outline: none;
 }
 
 #configEditorModal .config-editor-tree-panel {
-    flex: 0 0 220px;
-    width: 220px;
-    border-right: 0;
-    padding: 0;
-    min-height: 0;
-    min-width: 140px;
-    max-width: 520px;
-    overflow: hidden;
+    flex: 0 0 216px;
+    width: 216px;
     display: flex;
     flex-direction: column;
-    gap: 0;
+}
+
+#configEditorModal .config-editor-values-panel {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    /* the list sits a pixel in from the left edge, as the VM's */
+    padding-left: 1px;
 }
 
 #configEditorModal .config-editor-splitter {
     flex: 0 0 4px;
+    background: #f0f0f0;
     cursor: var(--c-col-resize, col-resize);
-    background: var(--border-color, rgba(255, 255, 255, 0.12));
     touch-action: none;
 }
 
-#configEditorModal .config-editor-splitter:focus {
-    outline: 1px dotted currentColor;
-    outline-offset: -1px;
+#configEditorModal.rg-splitting,
+#configEditorModal.rg-splitting * {
+    cursor: var(--c-col-resize, col-resize) !important;
 }
 
-#configEditorModal .config-editor-tree-scroll-shell {
+#configEditorModal :is(.config-editor-tree-scroll-shell, .config-editor-values-scroll-shell) {
     flex: 1;
     min-height: 0;
     overflow: hidden;
 }
 
-#configEditorModal .config-editor-tree-scrollable {
+#configEditorModal :is(.config-editor-tree-scrollable, .config-editor-values-scrollable) {
     height: 100%;
     overflow: auto;
-    padding: 0px 5px 0px 5px;
-}
-
-#configEditorModal .config-editor-tree-scroll-inner {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-height: 0;
-}
-
-#configEditorModal .config-editor-search-row {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 4px;
-    position: relative;
-}
-
-#configEditorModal .config-editor-search-icon {
-    position: absolute;
-    left: 8px;
-    opacity: 0.55;
-    font-size: 0.85em;
-    pointer-events: none;
-    z-index: 1;
-}
-
-#configEditorModal .config-editor-search-input {
-    flex: 1;
-    min-width: 0;
-    padding-left: 28px;
-    font-size: 0.88em;
-}
-
-#configEditorModal .config-editor-search-clear {
-    flex: 0 0 auto;
-    width: 28px;
-    height: 28px;
     padding: 0;
 }
 
-#configEditorModal .config-editor-search-results {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-#configEditorModal .config-editor-search-results.hidden {
-    display: none;
-}
-
-#configEditorModal .config-editor-tree.search-hidden {
-    display: none;
-}
-
-#configEditorModal .config-editor-search-item {
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 2px;
-    text-align: left;
-    border: none;
-    background: transparent;
-    color: inherit;
-    padding: 6px 8px;
-    border-radius: 4px;
-    cursor: var(--c-pointer);
-    font-size: 0.85em;
-}
-
-#configEditorModal .config-editor-search-item:hover,
-#configEditorModal .config-editor-search-item.keyboard-selected {
-    background: rgba(100, 160, 220, 0.2);
-}
-
-#configEditorModal .config-editor-search-item-main {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-}
-
-#configEditorModal .config-editor-search-item-main i {
-    flex: 0 0 auto;
-    opacity: 0.75;
-    width: 14px;
-    text-align: center;
-}
-
-#configEditorModal .config-editor-search-item-label {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-weight: var(--wght-semibold, 600);
-}
-
-#configEditorModal .config-editor-search-item-type {
-    flex: 0 0 auto;
-    opacity: 0.6;
-    font-size: 0.85em;
-}
-
-#configEditorModal .config-editor-search-item-crumb {
-    opacity: 0.65;
-    font-size: 0.78em;
-    font-family: var(--font-mono);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#configEditorModal .config-editor-search-item mark {
-    background: rgba(255, 220, 80, 0.35);
-    color: inherit;
-    padding: 0 1px;
-    border-radius: 2px;
-}
-
-#configEditorModal .config-editor-search-empty,
-#configEditorModal .config-editor-search-loading {
-    padding: var(--spacing-sm);
-    opacity: 0.65;
-    font-size: 0.85em;
-}
-
+/* ---- the tree: rows of 18, each level 19 px in, the themed triangle in a 12 px cell 5 px in, dotted
+   lines, the folder 17 px after the cell's left, the label 4 px after the folder in its own box ---- */
 #configEditorModal .config-editor-tree {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-#configEditorModal .config-editor-tree-item {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 4px;
-}
-
-#configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
-    background: var(--btn-hover-bg-primary);
-    border: 1px solid var(--btn-hover-bg-primary);
-}
-
-#configEditorModal .config-editor-tree-item.active-trail .config-editor-tree-label {
-    background: var(--btn-hover-bg-primary);
-    border: 1px solid var(--btn-hover-bg-primary);
-}
-
-#configEditorModal .config-editor-tree-item.dirty .config-editor-tree-label {
-    box-shadow: inset 3px 0 0 rgba(255, 200, 80, 0.85);
-}
-
-#configEditorModal .config-editor-tree-item.pending-new .config-editor-tree-label {
-    box-shadow: inset 3px 0 0 rgba(100, 210, 140, 0.9);
-}
-
-#configEditorModal .config-editor-tree-expand {
-    flex: 0 0 auto;
-    width: 24px;
-    height: 24px;
-    padding: 0;
-    min-height: 0;
-    min-width: 0;
-}
-
-#configEditorModal .config-editor-tree-spacer {
-    flex: 0 0 auto;
-    width: 24px;
-    height: 24px;
-}
-
-#configEditorModal .config-editor-tree-label {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    text-align: left;
-    border: none;
-    background: transparent;
-    color: inherit;
-    padding: 4px 6px;
-    border-radius: 4px;
-    cursor: var(--c-pointer);
-    font-size: 0.9em;
-}
-
-#configEditorModal .config-editor-tree-label:hover {
-    background: rgba(255, 255, 255, 0.08);
+    position: relative;
+    min-width: max-content;
+    min-height: 100%;
+    padding: 0 0 0 1px;
+    outline: none;
+    line-height: 18px;
 }
 
 #configEditorModal .config-editor-tree-children {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding-left: 14px;
-}
-
-#configEditorModal .config-editor-tree-panel,
-#configEditorModal .config-editor-values-panel {
     position: relative;
+    padding-left: 19px;
 }
 
-#configEditorModal .config-editor-tree-panel.config-editor-panel-busy,
-#configEditorModal .config-editor-values-panel.config-editor-panel-busy {
-    cursor: var(--c-not-allowed);
-}
-
-#configEditorModal .config-editor-tree-panel.config-editor-panel-busy::after,
-#configEditorModal .config-editor-values-panel.config-editor-panel-busy::after {
+/* a level's vertical line through its own triangles (Win32 joins siblings), dotted */
+#configEditorModal .config-editor-tree-children::before {
     content: '';
     position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.28);
-    pointer-events: auto;
-    z-index: 4;
-    cursor: var(--c-not-allowed);
+    left: 29px;
+    top: 0;
+    bottom: 9px;
+    width: 1px;
+    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px);
+    pointer-events: none;
 }
 
-#configEditorModal .config-editor-values-state-row td {
-    padding: var(--spacing-md);
-    opacity: 0.7;
-    text-align: center;
-}
-
-#configEditorModal .config-editor-values-state-row td.config-editor-error {
-    color: #ff8c8c;
-}
-
-.config-editor-commit-parent-note {
-    margin: var(--spacing-sm) 0 var(--spacing-xs);
-    color: #ffcc80;
-    font-size: 0.9em;
-}
-
-.config-editor-commit-parent-list {
-    margin: 0 0 var(--spacing-sm);
-    padding-left: 1.25em;
-    font-size: 0.88em;
-}
-
-#configEditorModal .config-editor-values-panel {
-    flex: 1;
-    min-width: 0;
-    min-height: 0;
-    overflow: hidden;
+#configEditorModal .config-editor-tree-item {
+    position: relative;
     display: flex;
-    flex-direction: column;
-}
-
-#configEditorModal .config-editor-values-scroll-shell {
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-}
-
-#configEditorModal .config-editor-values-scrollable {
-    height: 100%;
-    overflow: auto;
-    padding: var(--spacing-sm);
-}
-
-#configEditorModal .config-editor-value-cell {
-    display: flex;
-    flex-direction: row;
     align-items: center;
-    gap: var(--spacing-sm);
-    min-width: 0;
-}
-
-#configEditorModal .config-editor-value-display {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-mono);
-    font-size: 0.9em;
-    opacity: 0.9;
-}
-
-#configEditorModal .config-editor-col-type {
-    width: 12%;
-    opacity: 0.75;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    height: 18px;
     white-space: nowrap;
 }
 
+/* the dots from the line to the folder (the triangle's white cell covers their start) */
+#configEditorModal .config-editor-tree-item::before {
+    content: '';
+    position: absolute;
+    left: 10px;
+    top: 9px;
+    width: 12px;
+    height: 1px;
+    background: repeating-linear-gradient(to right, #a0a0a0 0 1px, transparent 1px 2px);
+    pointer-events: none;
+}
+
+#configEditorModal .config-editor-tree-item.config-editor-tree-computer::before {
+    content: none;
+}
+
+#configEditorModal :is(.config-editor-tree-expand, .config-editor-tree-spacer) {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    width: 12px;
+    height: 18px;
+    margin: 0 5px;
+}
+
+#configEditorModal .config-editor-tree-expand {
+    background: #fff url('/static_images/vista-controls/tree-closed.png') no-repeat;
+}
+
+#configEditorModal .config-editor-tree-expand:has(.fa-chevron-down) {
+    background-image: url('/static_images/vista-controls/tree-open.png');
+}
+
+#configEditorModal .config-editor-tree-expand i {
+    display: none;
+}
+
+#configEditorModal .config-editor-tree-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    box-sizing: border-box;
+    height: 18px;
+    padding: 0 3px 0 2px;
+    margin-left: -3px;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    color: #000;
+}
+
+#configEditorModal .config-editor-tree-icon {
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+#configEditorModal .config-editor-tree-label > span {
+    line-height: 16px;
+}
+
+/* the selected key: the Explorer tree's selection box (icon and name) while the tree has the focus;
+   nothing at all without it (regedit's tree has no TVS_SHOWSELALWAYS) */
+#configEditorModal.rg-tree-focus .config-editor-tree-item.selected .config-editor-tree-label {
+    border-color: #9adffe;
+    background: linear-gradient(#f7fcfe, #d6f0fd calc(100% - 1px), #e8f6fe calc(100% - 1px));
+}
+
+/* ---- the list: Name / Type / Data (120, 120, 288) and the empty header after them ---- */
 #configEditorModal .config-editor-values-table {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     table-layout: fixed;
-    border-collapse: collapse;
-    font-size: 0.88em;
+    /* separate: a collapsed table draws no border-image on its header cells */
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
-#configEditorModal .config-editor-values-table th {
+#configEditorModal .config-editor-values-table thead th {
     position: sticky;
     top: 0;
     z-index: 1;
+    box-sizing: border-box;
+    height: 24px;
+    padding: 0 0 1px 5px;
+    border-style: solid;
+    border-color: transparent;
+    border-width: 0 2px 1px 1px;
+    border-image: url('/static_images/vista-controls/regedit-header-item.png') 0 2 1 1 fill / 0 2px 1px 1px stretch;
+    color: #000;
+    font-weight: 400;
     text-align: left;
-    padding: 3px 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-    color: var(--text-accent-tinted, #aac);
-    font-weight: var(--wght-semibold);
-    background: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#configEditorModal .config-editor-values-table thead th:nth-child(-n+2) {
+    width: 120px;
+}
+
+#configEditorModal .config-editor-values-table thead th:nth-child(3) {
+    width: 288px;
+}
+
+#configEditorModal .config-editor-values-table thead th.rg-col-fill {
+    width: auto;
+    min-width: 0;
 }
 
 #configEditorModal .config-editor-row td {
-    padding: 6px 8px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-    vertical-align: middle;
-}
-
-#configEditorModal .config-editor-row.dirty td {
-    background: rgba(255, 200, 80, 0.08);
-}
-
-#configEditorModal .config-editor-row.dirty.pending-new td {
-    background: rgba(100, 210, 140, 0.1);
-}
-
-#configEditorModal .config-editor-col-name {
-    width: 28%;
-    max-width: 0;
+    height: 19px;
+    padding: 0 6px;
+    border: 0;
+    color: #000;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
-    font-family: var(--font-mono);
+    background: none;
+}
+
+/* the header's shadow: a row of #fbfbfb over the first item */
+#configEditorModal .config-editor-values-table tbody::before {
+    content: '';
+    display: table-row;
+    height: 1px;
+    background: #fbfbfb;
+}
+
+#configEditorModal .config-editor-row td.config-editor-col-name {
+    padding-left: 4px;
 }
 
 #configEditorModal .config-editor-name-with-icon {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35em;
-    max-width: 100%;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: middle;
-}
-
-#configEditorModal .config-editor-name-with-icon i {
-    flex: 0 0 auto;
-    font-size: 0.85em;
-    width: 14px;
-    text-align: center;
-    opacity: 0.85;
-}
-
-#configEditorModal .config-editor-unmapped-badge {
-    display: inline-block;
-    margin-left: 0.35em;
-    padding: 0 0.25em;
-    font-size: 0.72em;
-    line-height: 1.2;
-    border-radius: 3px;
-    opacity: 0.55;
-    background: rgba(255, 255, 255, 0.08);
-    vertical-align: middle;
-    cursor: var(--c-help);
-    flex: 0 0 auto;
-}
-
-#configEditorModal .config-editor-inline-enum-btn .config-editor-inline-enum-selected {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.config-editor-add-type-btn {
-    width: 100%;
-    min-width: 0;
-}
-
-#configEditorModal .config-editor-col-value {
-    width: auto;
-    max-width: 0;
-    overflow: visible;
-}
-
-#configEditorModal .config-editor-value-cell .config-editor-edit-btn,
-#configEditorModal .config-editor-value-cell .config-editor-open-btn {
-    flex: 0 0 auto;
-}
-
-#configEditorModal .config-editor-row.config-editor-row-flash td {
-    background: rgba(100, 160, 220, 0.22);
-    transition: background 0.35s ease;
-}
-
-#configEditorModal .config-editor-value-cell .btn-small i,
-#configEditorModal .config-editor-open-btn i {
-    font-size: 0.8em;
-}
-
-#configEditorModal .config-editor-inline-input,
-#configEditorModal .config-editor-inline-enum-btn,
-#configEditorModal .config-editor-bool-toggle {
-    min-height: 26px;
-    box-sizing: border-box;
-}
-
-#configEditorModal .config-editor-inline-input {
-    width: 100%;
-    min-width: 0;
-    font-size: 0.88em;
-    font-family: var(--font-mono);
-    padding: 2px 6px;
-    line-height: 1.35;
-}
-
-#configEditorModal .config-editor-bool-toggle {
-    min-width: unset;
-    width: 100%;
-    padding: 2px 8px;
-    font-size: 0.88em;
-    font-family: var(--font-mono);
-}
-
-#configEditorModal .config-editor-inline-enum-btn {
-    width: 100%;
-    min-width: 0;
-    font-size: 0.88em;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    padding: 2px 8px;
-    line-height: 1.35;
-}
-
-#configEditorModal .config-editor-tree-label i {
-    flex: 0 0 auto;
-    font-size: 0.85em;
-    width: 14px;
-    text-align: center;
-    opacity: 0.85;
-}
-
-#configEditorModal .config-editor-tree-label span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-#configEditorModal .config-editor-status-bar {
-    flex: 0 0 auto;
     display: flex;
-    flex-direction: row;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 3px 6px;
-    font-size: 0.8em;
-    opacity: 0.8;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    gap: 0;
+    min-width: 0;
 }
 
-#configEditorModal .config-editor-status-bar [data-status="path"] {
-    min-width: 0;
+#configEditorModal .config-editor-value-icon {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    flex: none;
+}
+
+#configEditorModal .rg-name {
+    box-sizing: border-box;
+    height: 19px;
+    padding: 0 2px 0 1px;
+    border: 1px solid transparent;
+    line-height: 17px;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
 }
 
-#configEditorModal .config-editor-status-bar [data-status="note"] {
-    flex: 0 0 auto;
+#configEditorModal .config-editor-row.selected .rg-name {
+    background: #f0f0f0;
+}
+
+#configEditorModal.rg-list-focus .config-editor-row.selected .rg-name {
+    background: #3399ff;
+    color: #fff;
+}
+
+#configEditorModal.rg-list-focus .config-editor-row.selected .config-editor-value-icon {
+    /* ILD_BLEND50 with the selection colour (app.html #rgSelectedIcon) */
+    filter: url('#rgSelectedIcon');
+}
+
+#configEditorModal.rg-list-focus .config-editor-row.rg-focus .rg-name {
+    border: 1px dotted #000;
+}
+
+#configEditorModal.rg-list-focus .config-editor-row.rg-focus.selected .rg-name {
+    border-color: #cc6600;
+}
+
+/* ---- in-place rename: a plain edit box with a black frame over the label ---- */
+#configEditorModal .rg-rename {
+    box-sizing: border-box;
+    height: 19px;
+    min-width: 30px;
+    margin: 0 0 0 -2px;
+    padding: 0 0 0 4px;
+    border: 1px solid #646464;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: inherit;
+    line-height: 17px;
+    outline: none;
+    box-shadow: none;
+}
+
+#configEditorModal .rg-rename::selection {
+    background: #3399ff;
+    color: #fff;
+}
+
+/* ---- the status bar: a #919191 rule, a white one, 20 px of #f1eded, a white rule; the grip ---- */
+#configEditorModal .config-editor-status-bar {
+    position: relative;
+    flex: 0 0 23px;
+    box-sizing: border-box;
+    height: 23px;
+    padding: 0 20px 0 1px;
+    border: 1px solid #fff;
+    border-top-color: #919191;
+    box-shadow: inset 0 1px 0 #fff;
+    background: #f1eded;
+    color: #000;
+    line-height: 21px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#configEditorModal .config-editor-status-bar::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 16px;
+    height: 16px;
+    background: url('/static_images/vista-controls/regedit-sizegrip.png') no-repeat;
+}
+
+#configEditorModal.maximised .config-editor-status-bar::after {
+    content: none;
 }
 
 #configEditorModal[data-status-bar="off"] .config-editor-status-bar {
     display: none;
 }
 
-#configEditorModal .config-editor-tree-icon {
-    width: 16px;
-    height: 16px;
-    flex: 0 0 auto;
+/* a menu's default command (Modify..., Expand) in bold, as Win32 draws it */
+.context-menu .context-menu-item.rg-menu-default .context-menu-item-text {
+    font-weight: 700;
 }
 
-#configEditorModal .config-editor-row.selected td {
+/* ---- Edit Binary Value's HEX control and Binary Data's list: 8 x 13 px cells (Courier) ---- */
+.vdt-custom.rg-hex {
+    position: absolute;
+    box-sizing: border-box;
+    overflow: auto;
+    /* the HEX class's classic sunken edge (WS_EX_CLIENTEDGE without a theme) */
+    border: 1px solid;
+    border-color: #a0a0a0 #fff #fff #a0a0a0;
+    box-shadow: inset 1px 1px 0 #696969, inset -1px -1px 0 #e3e3e3;
+    background: #fff;
+    color: #000;
+    outline: none;
+    cursor: text;
+}
+
+.rg-hex .rg-hex-view {
+    position: relative;
+    padding: 1px 0 0 1px;
+    font: 13px/13px "Courier New", Courier, "Liberation Mono", monospace;
+}
+
+.rg-hex .rg-hex-row {
+    position: relative;
+    height: 13px;
+    white-space: pre;
+}
+
+.rg-hex :is(.rg-hex-a, .rg-hex-b, .rg-hex-c) {
+    position: absolute;
+    top: 0;
+    width: 8px;
+    text-align: center;
+}
+
+/* Value name is read-only: #f0f0f0 inside the edit frame */
+#configEditorBinaryDialog input[readonly] {
+    background-color: #f0f0f0;
+    border-image-slice: 2;
+}
+
+.rg-hex .is-sel {
     background: #3399ff;
     color: #fff;
 }
 
-#configEditorModal .config-editor-loading,
-#configEditorModal .config-editor-empty,
-#configEditorModal .config-editor-error {
-    padding: var(--spacing-md);
-    opacity: 0.7;
+.rg-hex .rg-hex-caret {
+    position: absolute;
+    width: 1px;
+    height: 13px;
+    margin: 1px 0 0 1px;
+    background: #000;
+    visibility: hidden;
+}
+
+.rg-hex:focus .rg-hex-caret {
+    visibility: visible;
+    animation: rg-caret 1.06s steps(1) infinite;
+}
+
+@keyframes rg-caret {
+    50% { visibility: hidden; }
+}
+
+.vdt-listbox.rg-bindata .vdt-lb-row.rg-bin-row {
+    height: 13px;
+    padding: 0 0 0 2px;
+    background: none;
+    color: #000;
+    font: 13px/13px "Courier New", Courier, "Liberation Mono", monospace;
+    white-space: pre;
+}
+
+.vdt-listbox.rg-bindata .rg-bin-row i {
+    display: inline-block;
+    width: 8px;
+    font-style: normal;
+    text-align: center;
+}
+
+.vdt-listbox.rg-bindata .rg-bin-row.rg-focus {
+    outline: 1px dotted #000;
+    outline-offset: -1px;
 }
 
 .config-editor-summary-table-wrap {
@@ -575,26 +456,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
 .config-editor-restart-note {
     margin-top: var(--spacing-sm);
     color: #ff8c00;
-}
-
-.config-editor-save-checkpoint-toggles {
-    margin: var(--spacing-sm) 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--spacing-xs);
-}
-
-.config-editor-save-checkpoint-heading {
-    font-size: 0.85em;
-    opacity: 0.85;
-    margin: 0;
-}
-
-.config-editor-save-checkpoint-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing-sm);
 }
 
 #configEditorCheckpointsModal .config-editor-checkpoints-modal-content {
@@ -666,137 +527,6 @@ body.desktop-mode #configEditorModal.modal:not(.minimised):not(.maximised) {
     padding: var(--spacing-md);
     text-align: center;
     opacity: 0.7;
-}
-
-/* Vista desktop: Registry Editor's white client. Classic keeps the dark rules above. */
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal > .modal-content {
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-row {
-    padding: 2px 4px;
-    background: #f0f0f0;
-    border-bottom: 1px solid #d0d0d0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-input,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-inline-input {
-    background: #fff;
-    color: #000;
-    border: 1px solid #7a7a7a;
-    box-shadow: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-icon {
-    color: #000;
-    opacity: 0.55;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-search-clear) {
-    background: transparent;
-    border: 0;
-    box-shadow: none;
-    color: #000;
-    min-height: 0;
-    width: 16px;
-    height: 16px;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-search-clear)::before,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-search-clear)::after {
-    content: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-panel {
-    background: #fff;
-    color: #000;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-splitter {
-    background: #f0f0f0;
-    border-left: 1px solid #828790;
-    border-right: 1px solid #fff;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label {
-    color: #000;
-    border-radius: 0;
-    padding: 0 3px;
-    font-size: 9pt;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label:hover {
-    background: rgba(0, 0, 0, 0.06);
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.active-trail .config-editor-tree-label {
-    background: transparent;
-    border: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
-    background: #3399ff;
-    color: #fff;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-scrollable {
-    padding: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table {
-    font-size: 9pt;
-    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table th {
-    background: linear-gradient(#fff, #f7f7f7 45%, #ececec);
-    color: #000;
-    font-weight: 400;
-    border-bottom: 1px solid #d5d5d5;
-    border-right: 1px solid #e5e5e5;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row td {
-    padding: 1px 6px;
-    border-bottom: 0;
-    color: #000;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-col-name,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-value-display {
-    font-family: "Segoe UI", "SegoeUI", "Noto Sans", sans-serif;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-bool-toggle,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-inline-enum-btn,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-edit-btn,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-open-btn {
-    background: #fff;
-    color: #000;
-    border: 1px solid #7a7a7a;
-    box-shadow: none;
-    font-weight: 400;
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-edit-btn, .config-editor-open-btn)::before,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-edit-btn, .config-editor-open-btn)::after {
-    content: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-status-bar {
-    background: #f0f0f0;
-    color: #000;
-    opacity: 1;
-    border-top: 1px solid #fff;
-    box-shadow: inset 0 1px 0 #d0d0d0;
-    font-size: 9pt;
 }
 
 
@@ -1163,173 +893,37 @@ body.desktop-mode:not(.windows-classic-theme) #configEditorCheckpointsModal .con
     left: 264px;
 }
 
-/* Vista desktop: Registry Editor 1:1 (the VM's regedit, ~/.cache/vista-vm/regedit-ref/s-full.png).
-   The Find box is gone: Edit > Find opens regedit's Find dialog. The tree: rows of 18, Computer on
-   top, each level 19 px in, the themed triangle in a 12 px cell 6 px in, dotted lines, the folder
-   17 px after the cell's left, the label 4 px after it with its own blue box. Values carry
-   regedit.exe's ab / 011 pictures. */
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-search-row {
-    display: none;
-}
 
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel {
-    padding: 1px 0 0;
-    line-height: 18px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-children {
+/* ---- regedit's MessageBox (configEditorMessageBox): the white area, its #dfdfdf rule, the band ---- */
+.vdt-client.rg-msgbox {
     position: relative;
-    gap: 0;
+    background: #f0f0f0;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-children {
-    padding-left: 19px;
+.rg-msgbox .rg-mb-white {
+    position: absolute;
+    left: 0;
+    top: 0;
+    right: 0;
+    background: #fff;
+    border-bottom: 1px solid #dfdfdf;
 }
 
-/* a level's vertical line, under its parent's triangle, dotted */
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-children::before {
-    content: '';
+.rg-msgbox .rg-mb-icon {
     position: absolute;
     left: 10px;
-    top: 0;
-    bottom: 9px;
-    width: 1px;
-    background: repeating-linear-gradient(#a0a0a0 0 1px, transparent 1px 2px);
-    pointer-events: none;
+    top: 10px;
+    width: 32px;
+    height: 32px;
 }
 
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item {
-    position: relative;
-    height: 18px;
-    gap: 0;
-}
-
-/* the dots from the triangle's cell to the folder */
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item::before {
-    content: '';
+/* (the shared dialog rule sets every div in a tbp client to Tahoma 11 px: a MessageBox is Segoe UI 9 pt) */
+#configEditorMessageBox .rg-msgbox .rg-mb-text {
     position: absolute;
-    left: 18px;
-    top: 9px;
-    width: 4px;
-    height: 1px;
-    background: repeating-linear-gradient(to right, #a0a0a0 0 1px, transparent 1px 2px);
-    pointer-events: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.config-editor-tree-computer::before {
-    content: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-expand, .config-editor-tree-spacer) {
-    position: relative;
-    z-index: 1;
-    flex: none;
-    width: 12px;
-    height: 18px;
-    margin: 0 5px;
-    padding: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-expand {
-    background: #fff url('/static_images/vista-controls/tree-closed.png') no-repeat;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-expand:has(.fa-chevron-down) {
-    background-image: url('/static_images/vista-controls/tree-open.png');
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-expand i {
-    display: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label {
-    flex: 0 1 auto;
-    gap: 4px;
-    height: 18px;
-    padding: 0;
-    background: none;
-    font: 12px "Segoe UI", Tahoma, sans-serif;
-    line-height: 18px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label:hover {
-    background: none;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-label > span {
-    padding: 0 2px;
-    line-height: 16px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label {
-    background: none;
-    color: #000;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-item.selected .config-editor-tree-label > span {
-    background: #3399ff;
-    color: #fff;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel:not(:focus-within) .config-editor-tree-item.selected .config-editor-tree-label > span {
-    background: #f0f0f0;
-    color: #000;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-value-icon {
-    width: 16px;
-    height: 16px;
-    flex: none;
-}
-
-/* the two panes: #828790 edges, a pixel of #f0f0f0 under the menu bar, 4 px of it between them
-   (the tree 216 px wide), the list's Name and Type columns 120 px each */
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-layout {
-    margin-top: 1px;
-    background: #f0f0f0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal :is(.config-editor-tree-panel, .config-editor-values-panel) {
-    box-sizing: border-box;
-    border: 1px solid #828790;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel {
-    flex-basis: 216px;
-    width: 216px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-tree-panel :is(.config-editor-tree-scroll-inner, .config-editor-tree-scrollable) {
-    padding: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-splitter {
-    flex-basis: 4px;
-    border: 0;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table {
-    table-layout: fixed;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table th:nth-child(-n+2) {
-    width: 120px;
-    min-width: 120px;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-values-table th {
-    color: #000;
-}
-
-/* the list's cells all in Segoe UI 9 pt black, as regedit's */
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row td,
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row td :is(span, .config-editor-value-display) {
-    font-size: 12px;
-    color: #000;
-    opacity: 1;
-}
-
-body.desktop-mode:not(.windows-classic-theme) #configEditorModal .config-editor-row.selected td :is(span, .config-editor-value-display) {
-    color: #fff;
+    left: 52px;
+    top: 15px;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
 }

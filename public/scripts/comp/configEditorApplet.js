@@ -1,33 +1,96 @@
 /**
- * Runes applet — registry-style config browser (WebSocket only).
+ * Runes: Vista's Registry Editor (regedit.exe) 1:1 over Dreamscape's JSON configs (WebSocket only,
+ * config_editor_* packets in modules/ws/handlers/20-configEditorHandler.js). Yozora #831.
+ *
+ * The window (app.html #configEditorModal, config-editor.css) is regedit's: the menu bar
+ * (regedit.exe.mui MENU 103), Computer and the five hives in the tree, Name / Type / Data in the
+ * list, the key's path in the status bar. How the configs map onto the registry:
+ *
+ *   a config        a key under a hive (HIVES below; an unknown config goes under HKEY_LOCAL_MACHINE)
+ *   an object       a key (subkeys in the tree, sorted as the registry sorts them)
+ *   a list          a key whose subkeys / values are named 0, 1, 2 ...; a list of strings is a
+ *                   REG_MULTI_SZ value, a list of bytes (0-255) a REG_BINARY value
+ *   a string        REG_SZ (a fraction, a number regedit has no type for, reads as REG_SZ too)
+ *   a whole number  REG_DWORD, or REG_QWORD when it does not fit 32 bits
+ *   true / false    REG_DWORD 1 / 0
+ *   null            REG_BINARY (zero-length binary value)
+ *
+ * Every change is written at once, as regedit writes (the server keeps an automatic checkpoint of
+ * each config file it saves); a value whose change restarts the server asks first. Secrets stay
+ * masked (eight bullets) until their own Edit String reveals the one value. Checkpoints (File >
+ * Checkpoints...) is the snapshot window; Export / Import write and read .reg text in the VFS.
+ *
  * public/scripts/comp/modalUtils.js (openModal, closeModal)
- * public/scripts/comp/confirmationDialog.js (showConfirmationDialog)
- * public/scripts/comp/contextMenu.js (attachClickMenuToElement)
+ * public/scripts/comp/confirmationDialog.js (showConfirmationDialog: Vista's message box)
+ * public/scripts/comp/contextMenu.js (attachClickMenuToElement, attachToElement)
+ * public/scripts/comp/vistaDialogTemplate.js (openDialog: regedit.exe.mui dialogs)
  */
 
-const CONFIG_EDITOR_SECRET_MASK = '••••••••';
+const CONFIG_EDITOR_SECRET_MASK = '\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022';
+
+/** The five hives, regedit's order, and the configs each holds. */
+const CONFIG_EDITOR_HIVES = [
+    { id: 'HKEY_CLASSES_ROOT', configs: ['promptConfig', 'naxGeneration'] },
+    { id: 'HKEY_CURRENT_USER', configs: ['directorConfig', 'favorites', 'workspaces'] },
+    { id: 'HKEY_LOCAL_MACHINE', configs: ['config', 'secureConfig'] },
+    { id: 'HKEY_USERS', configs: [] },
+    { id: 'HKEY_CURRENT_CONFIG', configs: ['workspaceDesktop'] }
+];
+
+/** regedit.exe.mui's status bar help for each menu and command (strings 512-1281). */
+const CONFIG_EDITOR_MENU_HELP = {
+    file: 'Contains commands for working with the whole registry.',
+    edit: 'Contains commands for editing values or keys.',
+    view: 'Contains commands for customizing the registry window.',
+    favorites: 'Contains commands for accessing frequently used keys.',
+    help: 'Contains commands for displaying Help for and information about Registry Editor.',
+    new: 'Contains commands for creating new keys or values.',
+    refresh: 'Refreshes the window.',
+    connect: 'Connects to a remote computer\'s registry.',
+    import: 'Imports a file into the registry.',
+    export: 'Exports all or part of the registry to a file.',
+    print: 'Prints all or part of the registry.',
+    exit: 'Quits the Registry Editor.',
+    find: 'Finds a text string in a key, value, or data.',
+    'new-key': 'Adds a new key.',
+    'new-string': 'Adds a new string value.',
+    'new-binary': 'Adds a new binary value.',
+    about: 'Displays program information, version number, and copyright.',
+    'status-bar': 'Shows or hides the status bar.',
+    split: 'Changes position of split between two panes.',
+    'find-next': 'Finds the next occurrence of text specified in previous search.',
+    'help-topics': 'Opens Registry Editor Help.',
+    'new-dword': 'Adds a new 32 bit value.',
+    'copy-key': 'Copies the name of the selected key to the Clipboard.',
+    'new-multi': 'Adds a new multi-string value.',
+    'new-expand': 'Adds a new expandable string value.',
+    permissions: 'Displays the permissions for a key.',
+    'display-binary': 'Displays a value\'s data in binary form.',
+    'load-hive': 'Loads a hive file to the registry.',
+    'unload-hive': 'Unloads a hive from the registry.',
+    'new-qword': 'Adds a new 64 bit value.',
+    disconnect: 'Disconnects from a remote computer\'s registry.',
+    modify: 'Modifies the value\'s data.',
+    delete: 'Deletes the selection.',
+    rename: 'Renames the selection.',
+    expand: 'Expands or collapses the branch.',
+    'modify-binary': 'Edit the value\'s data in binary form.',
+    'fav-remove': 'Removes keys from the Favorites list.',
+    'fav-add': 'Adds keys to the Favorites list.',
+    checkpoints: 'Creates and restores checkpoints of the configuration.'
+};
+
+const CONFIG_EDITOR_TYPE_ICON = {
+    REG_SZ: 'string', REG_EXPAND_SZ: 'string', REG_MULTI_SZ: 'string',
+    REG_DWORD: 'binary', REG_QWORD: 'binary', REG_BINARY: 'binary'
+};
 
 function configEditorEscapeHtml(s) {
-    return String(s)
+    return String(s == null ? '' : s)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
-}
-
-function configEditorPathKey(configId, path) {
-    return configId + '\0' + (path || []).join('\0');
-}
-
-function configEditorPathLabel(path) {
-    if (!path || !path.length) return '(root)';
-    return path.join('.');
-}
-
-function configEditorFormatDisplayValue(val) {
-    if (val === null) return 'null';
-    if (val === undefined) return '';
-    if (typeof val === 'object') return JSON.stringify(val);
-    return String(val);
 }
 
 function configEditorIsSecret(stub, configId) {
@@ -40,3041 +103,2116 @@ function configEditorIsSecret(stub, configId) {
     return /^(apiKey|api_key|password|secret|token|sessionSecret|loginKey|loginPin|devLoginKey|readOnlyPin)$/i.test(String(key || ''));
 }
 
-const CONFIG_EDITOR_INLINE_STRING_MAX = 100;
-
-function configEditorEnumLabel(val) {
-    if (val === null) return 'null';
-    if (val === undefined) return '';
-    return String(val);
-}
-
-function configEditorResolveEditMode(stub, effectiveVal) {
-    if (stub?.expandable) return 'modal';
-    if (stub?.readOnly) return 'readonly';
-    if (stub?.secret || configEditorIsSecret(stub)) return 'secret';
-    if (stub?.editMode) return stub.editMode;
-    if (stub?.editorType === 'prompt' || stub?.editorType === 'textarea') return 'modal';
-    if (stub?.editorType === 'input') return 'inline';
-    if (stub?.type === 'boolean' && !stub?.types?.length) return 'inline';
-    if (stub?.enum?.length) return 'inline';
-    if (stub?.type === 'number' && !stub?.types?.length) return 'inline';
-    if (stub?.type === 'string' && !stub?.types?.length) {
-        const val = effectiveVal !== undefined ? effectiveVal : stub.value;
-        const s = val == null ? '' : String(val);
-        if (s.length > CONFIG_EDITOR_INLINE_STRING_MAX || s.includes('\n')) return 'modal';
-        return 'inline';
-    }
-    return 'modal';
-}
-
-function configEditorResolveEditorType(stub, effectiveVal, effectiveType) {
-    const et = stub?.editorType;
-    if (et === 'prompt' || et === 'textarea' || et === 'input') return et;
-    if (effectiveType === 'array') return 'textarea';
-    if (effectiveType === 'string') {
-        const val = effectiveVal !== undefined ? effectiveVal : stub?.value;
-        const s = val == null ? '' : String(val);
-        if (s.length > CONFIG_EDITOR_INLINE_STRING_MAX || s.includes('\n')) return 'textarea';
-        return 'input';
-    }
-    return 'input';
-}
-
-/**
- * Which Registry Editor edit dialog a value opens in (#configEditorValueModal, config-editor.css):
- * multi (Edit Multi-String) for arrays, JSON, prompts and long text; dword (Edit DWORD / QWORD Value,
- * with its Base group) for numbers; string (Edit String) for the rest.
- */
-function configEditorValueDialogLayout({ rawJsonMode, effectiveType, editorType } = {}) {
-    if (rawJsonMode) return 'multi';
-    if (effectiveType === 'array') return 'multi';
-    if (editorType === 'prompt' || editorType === 'textarea') return 'multi';
-    if (effectiveType === 'number') return 'dword';
-    return 'string';
-}
-
-/** regedit's caption for a number: DWORD for 32-bit integers, QWORD for wider ones. */
-function configEditorNumberCaption(value) {
-    const n = Number(value);
-    if (Number.isInteger(n) && Math.abs(n) > 0xffffffff) return 'Edit QWORD (64-bit) Value';
-    return 'Edit DWORD (32-bit) Value';
-}
-
-function configEditorParsePathKey(pathKey) {
-    const parts = pathKey.split('\0');
-    const configId = parts[0];
-    const path = parts.length > 1 ? parts.slice(1).filter(Boolean) : [];
-    return { configId, path };
-}
-
 function configEditorPathsEqual(a, b) {
     const pa = a || [];
     const pb = b || [];
-    if (pa.length !== pb.length) return false;
-    return pa.every((seg, i) => String(seg) === String(pb[i]));
+    return pa.length === pb.length && pa.every((seg, i) => String(seg) === String(pb[i]));
 }
 
-function configEditorHighlightMatch(text, query) {
-    const raw = String(text ?? '');
-    const q = String(query || '').trim();
-    if (!q) return configEditorEscapeHtml(raw);
-    const lower = raw.toLowerCase();
-    const qLower = q.toLowerCase();
-    const idx = lower.indexOf(qLower);
-    if (idx < 0) return configEditorEscapeHtml(raw);
-    const before = configEditorEscapeHtml(raw.slice(0, idx));
-    const match = configEditorEscapeHtml(raw.slice(idx, idx + q.length));
-    const after = configEditorEscapeHtml(raw.slice(idx + q.length));
-    return `${before}<mark>${match}</mark>${after}`;
+/** The registry's order: subkeys and values by name, case-insensitive (a list's by index). */
+function configEditorCompareNames(a, b) {
+    const na = /^\d+$/.test(a) ? Number(a) : NaN;
+    const nb = /^\d+$/.test(b) ? Number(b) : NaN;
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    const ua = String(a).toUpperCase();
+    const ub = String(b).toUpperCase();
+    return ua < ub ? -1 : ua > ub ? 1 : 0;
 }
 
-function configEditorSearchTypeIcon(type) {
-    switch (type) {
-        case 'object': return 'fas fa-folder';
-        case 'array': return 'fas fa-list';
-        case 'boolean': return 'fas fa-toggle-on';
-        case 'number': return 'fas fa-hashtag';
-        case 'string': return 'fas fa-font';
-        default: return 'fas fa-circle';
+function configEditorIsByteList(v) {
+    return Array.isArray(v) && v.length > 0 && v.every((n) => Number.isInteger(n) && n >= 0 && n <= 255);
+}
+
+function configEditorIsStringList(v) {
+    return Array.isArray(v) && v.every((s) => typeof s === 'string');
+}
+
+/** The registry type a JSON value shows as (null when it is a key). */
+function configEditorRegTypeOf(value) {
+    if (value === null || value === undefined) return 'REG_BINARY';
+    if (Array.isArray(value)) {
+        if (configEditorIsStringList(value)) return 'REG_MULTI_SZ';
+        if (configEditorIsByteList(value)) return 'REG_BINARY';
+        return null;
     }
-}
-
-/** Vista desktop (not Classic): Registry Editor's own look (config-editor.css). */
-function configEditorRegeditLook() {
-    const b = document.body;
-    return !!b && b.classList.contains('desktop-mode') && !b.classList.contains('windows-classic-theme');
-}
-
-/** regedit's type names: text REG_SZ, lists REG_MULTI_SZ, numbers and switches REG_DWORD / REG_QWORD. */
-function configEditorRegType(child, effectiveType, value) {
-    if (effectiveType === 'array') return 'REG_MULTI_SZ';
-    if (effectiveType === 'boolean') return 'REG_DWORD';
-    if (effectiveType === 'number') return Number.isInteger(Number(value)) && Math.abs(Number(value)) > 0xffffffff ? 'REG_QWORD' : 'REG_DWORD';
-    if (effectiveType === 'object') return 'REG_BINARY';
+    if (typeof value === 'object') return null;
+    if (typeof value === 'boolean') return 'REG_DWORD';
+    if (typeof value === 'number') {
+        if (!Number.isInteger(value)) return 'REG_SZ';
+        return value >= -0x80000000 && value <= 0xffffffff ? 'REG_DWORD' : 'REG_QWORD';
+    }
     return 'REG_SZ';
 }
 
-/** regedit's data column: 0x0000002a (42) for numbers, a list's items one after another. */
-function configEditorRegData(value, effectiveType, fallback) {
-    if (effectiveType === 'boolean') { const n = value === true || value === 'true' ? 1 : 0; return `0x0000000${n} (${n})`; }
-    if (effectiveType === 'number' && value !== '' && value != null && Number.isFinite(Number(value))) {
-        const n = Number(value);
-        if (!Number.isInteger(n)) return String(n);
-        const hex = (n >>> 0).toString(16).padStart(8, '0');
-        return n >= 0 && n <= 0xffffffff ? `0x${hex} (${n})` : `0x${BigInt.asUintN(64, BigInt(n)).toString(16).padStart(16, '0')} (${n})`;
-    }
-    if (effectiveType === 'array' && Array.isArray(value)) return value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(' ');
-    return fallback;
+function configEditorHex(n, width) {
+    return n.toString(16).padStart(width, '0');
 }
 
-function configEditorFormatTypeDisplay(child, effectiveType) {
-    const base = effectiveType || child?.type || 'auto';
-    const strictLabel = (t) => {
-        if (t === 'number') return 'strict int';
-        if (t === 'boolean') return 'strict bool';
-        if (t === 'string') return 'strict str';
-        return `strict ${t}`;
+/** The Data column, as regedit writes it (strings 22, 27, 29, 32). */
+function configEditorRegData(regType, value, secret) {
+    if (secret && value != null && typeof value !== 'object') return CONFIG_EDITOR_SECRET_MASK;
+    if (regType === 'REG_DWORD') {
+        const n = value === true ? 1 : value === false ? 0 : Number(value);
+        return `0x${configEditorHex(n >>> 0, 8)} (${n < 0 ? n : n >>> 0})`;
+    }
+    if (regType === 'REG_QWORD') {
+        const big = BigInt.asUintN(64, BigInt(Math.trunc(Number(value))));
+        return `0x${configEditorHex(big, 16)} (${Number(value)})`;
+    }
+    if (regType === 'REG_BINARY') {
+        if (!Array.isArray(value) || !value.length) return '(zero-length binary value)';
+        return value.map((b) => configEditorHex(b, 2)).join(' ');
+    }
+    if (regType === 'REG_MULTI_SZ') return (value || []).join(' ');
+    return String(value);
+}
+
+/** The bytes regedit shows in Edit Binary Value / Binary Data for a value. */
+function configEditorBytesOf(regType, value) {
+    const utf16 = (s) => {
+        const out = [];
+        for (let i = 0; i < s.length; i += 1) { const c = s.charCodeAt(i); out.push(c & 0xff, c >> 8); }
+        return out;
     };
-
-    if (child?.enum?.length) {
-        const vals = child.enum.filter((v) => v !== null && v !== undefined);
-        let underlying = 'str';
-        if (vals.length && vals.every((v) => typeof v === 'number')) underlying = 'int';
-        else if (vals.length && vals.every((v) => typeof v === 'boolean')) underlying = 'bool';
-        return strictLabel(underlying);
+    if (regType === 'REG_BINARY') return Array.isArray(value) ? value.slice() : [];
+    if (regType === 'REG_DWORD') {
+        const n = (value === true ? 1 : value === false ? 0 : Number(value)) >>> 0;
+        return [n & 0xff, (n >>> 8) & 0xff, (n >>> 16) & 0xff, (n >>> 24) & 0xff];
     }
-
-    if (child?.types?.length === 1) {
-        return strictLabel(child.types[0]);
+    if (regType === 'REG_QWORD') {
+        let big = BigInt.asUintN(64, BigInt(Math.trunc(Number(value))));
+        const out = [];
+        for (let i = 0; i < 8; i += 1) { out.push(Number(big & 0xffn)); big >>= 8n; }
+        return out;
     }
-
-    if (base === 'number') return 'int';
-    if (base === 'boolean') return 'bool';
-    return base;
+    if (regType === 'REG_MULTI_SZ') {
+        const out = [];
+        (value || []).forEach((s) => out.push(...utf16(String(s)), 0, 0));
+        out.push(0, 0);
+        return out;
+    }
+    return utf16(String(value == null ? '' : value)).concat([0, 0]);
 }
 
-function configEditorTypeColumnTitle(child, effectiveType) {
-    if (child?.enum?.length) {
-        const labels = child.enum.map((v) => (v === null ? 'null' : String(v)));
-        return `Allowed values: ${labels.join(', ')}`;
+/** Bytes back into the value's own JSON type (the reverse of configEditorBytesOf). */
+function configEditorValueFromBytes(regType, bytes, original) {
+    const fromUtf16 = (arr) => {
+        let s = '';
+        for (let i = 0; i + 1 < arr.length; i += 2) s += String.fromCharCode(arr[i] | (arr[i + 1] << 8));
+        return s;
+    };
+    if (regType === 'REG_BINARY') return bytes.length ? bytes.slice() : (Array.isArray(original) ? [] : null);
+    if (regType === 'REG_DWORD') {
+        const b = bytes.concat([0, 0, 0, 0]);
+        const n = (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
+        if (typeof original === 'boolean') return n !== 0;
+        return typeof original === 'number' && original < 0 ? n | 0 : n;
     }
-    if (child?.types?.length > 1) {
-        return `Allowed types: ${child.types.join(', ')}`;
+    if (regType === 'REG_QWORD') {
+        const b = bytes.concat([0, 0, 0, 0, 0, 0, 0, 0]);
+        let big = 0n;
+        for (let i = 7; i >= 0; i -= 1) big = (big << 8n) | BigInt(b[i]);
+        return Number(BigInt.asIntN(64, big));
     }
-    if (child?.types?.length === 1) {
-        return `Restricted to: ${child.types[0]}`;
+    const text = fromUtf16(bytes);
+    if (regType === 'REG_MULTI_SZ') return text.split('\0').filter(Boolean);
+    const s = text.replace(/\0+$/, '').split('\0')[0];
+    if (typeof original === 'number') {
+        const n = Number(s);
+        return s.trim() !== '' && Number.isFinite(n) ? n : s;
     }
-    return '';
+    return s;
 }
 
-function configEditorSearchMatchReasonLabel(reason) {
-    switch (reason) {
-        case 'label': return 'label';
-        case 'description': return 'description';
-        case 'path': return 'path';
-        case 'enum': return 'enum';
-        case 'value': return 'value';
-        default: return reason || '';
+/**
+ * regedit's MessageBox, as Vista draws it (measured on the VM: Confirm Value Delete is a 556 x 101
+ * client): the 32 px icon at 10,10, Segoe UI 9 pt text from 52,15 in lines of 15 wrapped at 470 px,
+ * the white area at least 49 px tall, a #dfdfdf rule and a 40 px #f0f0f0 band with 66 x 21 buttons
+ * 9 px down, 8 px apart, 11 px from the right. Yes / No boxes have no Close and ignore Esc (no
+ * IDCANCEL). Resolves 'ok' / 'yes' / 'no'. Falls back to confirmationDialog.js without the dialogs.
+ */
+async function configEditorMessageBox(text, title, kind, buttons, owner) {
+    if (!window.vistaDialogTemplate && typeof featureLoader !== 'undefined') {
+        try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
     }
-}
-
-const CONFIG_EDITOR_ADD_TYPE_LABELS = {
-    object: 'Node (object)',
-    string: 'String',
-    number: 'Number',
-    boolean: 'Boolean',
-    array: 'Array'
-};
-
-function configEditorFormatChildLabel(key, value, childDisplay) {
-    if (!childDisplay?.displayTemplate) return String(key);
-    const fields = childDisplay.displayFields || ['name', 'display', 'id', 'text', 'select_text'];
-    let nameVal = String(key);
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-        for (const f of fields) {
-            if (value[f] != null && String(value[f]).trim() !== '') {
-                nameVal = String(value[f]);
-                break;
-            }
-        }
+    const V = window.vistaDialogTemplate;
+    const set = buttons === 'yesno' ? [['Yes', 'yes'], ['No', 'no']] : [['OK', 'ok']];
+    if (!V) {
+        if (typeof showConfirmationDialog !== 'function') return null;
+        const icons = { info: 'fas fa-circle-info', warning: 'fas fa-triangle-exclamation', error: 'fas fa-circle-xmark' };
+        return showConfirmationDialog(`<p>${configEditorEscapeHtml(text).replace(/\n/g, '<br>')}</p>`,
+            set.map(([t, v], i) => ({ text: t, value: v, className: i ? 'btn-standard' : 'btn-standard primary', primary: !i })), null,
+            { title: title || 'Registry Editor', icon: icons[kind || 'info'] });
     }
-    let typeVal = '';
-    if (value && typeof value === 'object' && !Array.isArray(value) && value.type != null) {
-        const raw = String(value.type);
-        typeVal = raw.charAt(0).toUpperCase() + raw.slice(1);
-    }
-    return childDisplay.displayTemplate
-        .replace(/\{index\}/g, String(key))
-        .replace(/\{name\}/g, nameVal)
-        .replace(/\{type\}/g, typeVal);
-}
-
-function configEditorChildIcon(value, childDisplay) {
-    if (!childDisplay?.iconField || !value || typeof value !== 'object') return null;
-    return value[childDisplay.iconField] || null;
+    const ctx2d = document.createElement('canvas').getContext('2d');
+    ctx2d.font = '12px "Segoe UI", Tahoma, sans-serif';
+    const WRAP = 470;
+    let wrapped = false;
+    const lines = [];
+    String(text).split('\n').forEach((para) => {
+        let line = '';
+        para.split(/(\s+)/).forEach((word) => {
+            const next = line + word;
+            if (line && ctx2d.measureText(next.trimEnd()).width > WRAP) { lines.push(line.trimEnd()); line = word.trimStart(); wrapped = true; } else line = next;
+        });
+        lines.push(line);
+    });
+    const widest = Math.max(...lines.map((l) => Math.ceil(ctx2d.measureText(l).width)));
+    const btnRow = 11 + set.length * 66 + (set.length - 1) * 8 + 11;
+    const w = Math.max(btnRow, 56 + (wrapped ? WRAP : widest) + 30);
+    const white = Math.max(49, 15 + lines.length * 15 + 15);
+    const h = white + 1 + 40;
+    const icon = { warning: 'msgbox-warning-32.png', error: 'msgbox-error-32.png', info: 'msgbox-info-32.png', question: 'msgbox-question-32.png' }[kind || 'info'];
+    const tpl = { t: title || 'Registry Editor', w: 100, h: 50, f: ['Segoe UI', 9], s: 0, c: set.map(([t], i) => [i ? 7 : 1, 'B', 0, 0, 10, 10, 0x50010000 | (i ? 0 : 1), t, 0]) };
+    return new Promise((resolve) => {
+        let result = buttons === 'yesno' ? 'no' : 'ok';
+        const ids = set.map((_, i) => (i ? 7 : 1));
+        V.openDialog({
+            id: 'configEditorMessageBox', tpl, owner, bareCaption: true,
+            buttons: { 7: (ctx) => { result = 'no'; ctx.close(); } },
+            init: (ctx) => {
+                const c = ctx.content;
+                c.classList.add('rg-msgbox');
+                c.style.width = `${w}px`;
+                c.style.height = `${h}px`;
+                c.insertAdjacentHTML('afterbegin', `<div class="rg-mb-white" style="height:${white}px"></div><img class="rg-mb-icon" src="/static_images/vista-icons/${icon}" alt=""><div class="rg-mb-text">${lines.map((l) => configEditorEscapeHtml(l) || '&nbsp;').join('<br>')}</div>`);
+                ids.forEach((id, i) => {
+                    const b = ctx.holder(id);
+                    if (!b) return;
+                    Object.assign(b.style, { left: `${w - 11 - 66 - (set.length - 1 - i) * 74}px`, top: `${white + 1 + 9}px`, width: '66px', height: '21px' });
+                    if (!i) b.dataset.dialogPrimary = '1';
+                });
+                if (buttons === 'yesno') {
+                    // no Close box at all on a Yes / No MessageBox (the VM's caption has none)
+                    const x = ctx.modal.querySelector('.vdt-close');
+                    if (x) { x.disabled = true; x.style.display = 'none'; }
+                    // no IDCANCEL: Esc does nothing
+                    ctx.modal.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.stopImmediatePropagation(); ev.preventDefault(); } }, true);
+                }
+                setTimeout(() => { try { ctx.holder(1)?.focus(); } catch (_) { /* gone */ } }, 0);
+            },
+            ok: () => { result = buttons === 'yesno' ? 'yes' : 'ok'; return true; },
+            cancel: () => { if (buttons !== 'yesno') result = 'ok'; }
+        });
+        // resolve once the box is gone
+        const watch = setInterval(() => {
+            const m = document.getElementById('configEditorMessageBox');
+            if (!m || m.classList.contains('hidden') || !m.isConnected) { clearInterval(watch); resolve(result); }
+        }, 100);
+    });
 }
 
 class ConfigEditorApplet {
     constructor() {
         this.modal = null;
         this.valueModal = null;
-        this.treePanel = null;
-        this.valuesPanel = null;
-        this.treeEl = null;
-        this.valuesEl = null;
-        this.statusEl = null;
         this.configList = [];
-        this.selectedConfigId = null;
-        this.selectedPath = [];
-        this.selectedValuePath = null;
-        this._statusNote = '';
         this.nodeCache = new Map();
-        this.pendingEdits = new Map();
-        this.expandedKeys = new Set();
+        this.expanded = new Set(['C']);
+        this.locs = new Map();
+        this.selLoc = { kind: 'computer' };
+        this.selNames = new Set();
+        this.focusName = null;
+        this.anchorName = null;
+        this.listEntries = [];
+        this.findState = null;
         this.editTarget = null;
-        this.searchInput = null;
-        this.searchClearBtn = null;
-        this.searchResultsEl = null;
-        this.searchQuery = '';
-        this.searchResults = [];
-        this.searchSelectedIndex = -1;
-        this.searchTimeout = null;
-        this.searchDebounceMs = 350;
-        this.searchToken = 0;
-        this.searchActive = false;
         this.checkpointsModal = null;
-        this.checkpointsListEl = null;
-        this.checkpointsStatusEl = null;
-        this.checkpointsScopeConfigId = null;
         this.checkpointsCache = [];
-        this.treeScrollShell = null;
-        this.valuesScrollShell = null;
-        this.checkpointsScrollShell = null;
-        this.loadValuesToken = 0;
-        this.editorBusyDepth = 0;
-        this._valueModalHeightSyncRafId = null;
-        this._isSyncingValueModalHeight = false;
-        this._valuePromptResizeObservedEl = null;
+        this.checkpointsScopeConfigId = null;
+        this._typeAhead = { text: '', at: 0 };
     }
 
-    setEditorBusy(busy) {
-        if (busy) {
-            this.editorBusyDepth++;
-        } else {
-            this.editorBusyDepth = Math.max(0, this.editorBusyDepth - 1);
-        }
-        const on = this.editorBusyDepth > 0;
-        if (this.treePanel) this.treePanel.classList.toggle('config-editor-panel-busy', on);
-        if (this.valuesPanel) this.valuesPanel.classList.toggle('config-editor-panel-busy', on);
-    }
-
-    async runEditorAction(fn) {
-        this.setEditorBusy(true);
-        try {
-            return await fn();
-        } finally {
-            this.setEditorBusy(false);
-        }
-    }
-
-    valuesPanelStateRow(className, text) {
-        return `<tr class="config-editor-values-state-row"><td colspan="3" class="${className}">${configEditorEscapeHtml(text)}</td></tr>`;
-    }
+    // ---- setup -------------------------------------------------------------------------------
 
     init() {
         this.modal = document.getElementById('configEditorModal');
-        if (!this.modal) return;
-        if (this._initWired) {
-            return;
-        }
+        if (!this.modal || this._initWired) return;
         this._initWired = true;
-
         this.valueModal = document.getElementById('configEditorValueModal');
         this.treePanel = this.modal.querySelector('.config-editor-tree-panel');
-        this.treeScrollShell = this.modal.querySelector('.config-editor-tree-scroll-shell');
-        this.valuesPanel = this.modal.querySelector('.config-editor-values-panel');
-        this.valuesScrollShell = this.modal.querySelector('.config-editor-values-scroll-shell');
         this.treeEl = document.getElementById('configEditorTree');
-        this.valuesEl = document.getElementById('configEditorValuesBody');
+        this.listPanel = this.modal.querySelector('.config-editor-values-panel');
+        this.listEl = document.getElementById('configEditorValuesBody');
         this.statusEl = document.getElementById('configEditorStatus');
-        this.searchInput = document.getElementById('configEditorSearchInput');
-        this.searchClearBtn = document.getElementById('configEditorSearchClearBtn');
-        this.searchResultsEl = document.getElementById('configEditorSearchResults');
+        this.treeScrollShell = this.modal.querySelector('.config-editor-tree-scroll-shell');
+        this.listScrollShell = this.modal.querySelector('.config-editor-values-scroll-shell');
 
-        if (this.searchInput) {
-            this.searchInput.addEventListener('input', () => this.handleSearchInput());
-            this.searchInput.addEventListener('keydown', (e) => this.handleSearchKeydown(e));
-        }
-        if (this.searchClearBtn) {
-            this.searchClearBtn.addEventListener('click', () => this.clearSearch(true));
-        }
-
-        const closeBtn = document.getElementById('closeConfigEditorBtn');
-        if (closeBtn) {
-            closeBtn.addEventListener('click', () => this.requestClose());
-        }
-
-        this.checkpointsModal = document.getElementById('configEditorCheckpointsModal');
-        this.checkpointsListEl = document.getElementById('configEditorCheckpointsList');
-        this.checkpointsStatusEl = document.getElementById('configEditorCheckpointsStatus');
-        this.checkpointsScrollShell = this.checkpointsModal?.querySelector('.config-editor-checkpoints-scroll-shell');
-
-        const checkpointsCreateBtn = document.getElementById('configEditorCheckpointsCreateBtn');
-        if (checkpointsCreateBtn) {
-            checkpointsCreateBtn.addEventListener('click', () => this.requestCreateCheckpoint());
-        }
-        // the command bar's Restore / Details / Delete act on the selected row
-        this.checkpointsSelectedId = null;
-        this.checkpointsRestoreBtn = document.getElementById('configEditorCheckpointsRestoreBtn');
-        this.checkpointsDetailBtn = document.getElementById('configEditorCheckpointsDetailBtn');
-        this.checkpointsDeleteBtn = document.getElementById('configEditorCheckpointsDeleteBtn');
-        this.checkpointsRestoreBtn?.addEventListener('click', () => {
-            if (this.checkpointsSelectedId) this.requestRestoreCheckpoint(this.checkpointsSelectedId);
+        document.getElementById('closeConfigEditorBtn')?.addEventListener('click', () => this.doClose());
+        this.modal.querySelector('.minimize-btn')?.addEventListener('click', () => {
+            this.modal.classList.add('minimised');
+            if (typeof updateBackdropVisibility === 'function') updateBackdropVisibility(); // modalUtils.js
         });
-        this.checkpointsDetailBtn?.addEventListener('click', () => {
-            if (this.checkpointsSelectedId) this.showCheckpointDetail(this.checkpointsSelectedId);
-        });
-        this.checkpointsDeleteBtn?.addEventListener('click', () => {
-            if (this.checkpointsSelectedId) this.requestDeleteCheckpoint(this.checkpointsSelectedId);
-        });
-        const closeCheckpointsBtn = document.getElementById('closeConfigEditorCheckpointsBtn');
-        if (closeCheckpointsBtn) {
-            closeCheckpointsBtn.addEventListener('click', () => this.closeCheckpointsModal());
-        }
 
-        const minimizeBtn = this.modal.querySelector('.minimize-btn');
-        if (minimizeBtn) {
-            minimizeBtn.addEventListener('click', () => {
-                this.modal.classList.add('minimised');
-                updateBackdropVisibility(); // modalUtils.js
+        this.wireTree();
+        this.wireList();
+        this.wireValueModal();
+        this.wireCheckpoints();
+        this.wireMenus();
+        this.wireContextMenus();
+        this.wireSplitter();
+        this.wireColumns();
+        this.wireKeyboard();
+        try {
+            if (localStorage.getItem('runes.statusBar') === 'off') this.modal.setAttribute('data-status-bar', 'off');
+            const w = Number(localStorage.getItem('runes.split'));
+            if (w >= 40) this.setSplit(w);
+            const cols = JSON.parse(localStorage.getItem('runes.columns') || 'null');
+            if (Array.isArray(cols)) this.setColumns(cols);
+        } catch (_) { /* no storage */ }
+    }
+
+    async ws(type, data) {
+        if (!window.wsClient?.isConnected()) throw new Error('WebSocket not connected');
+        return window.wsClient.sendMessage(type, data || {}, false);
+    }
+
+    async ensureDialogs() {
+        if (window.vistaDialogTemplate && window.vistaDialogTemplates) return window.vistaDialogTemplate;
+        if (typeof featureLoader !== 'undefined') {
+            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
+        }
+        return window.vistaDialogTemplate || null;
+    }
+
+    msg(text, title, kind, buttons) {
+        return configEditorMessageBox(text, title, kind, buttons, this.modal);
+    }
+
+    /** Opens the window at the last key (regedit's LastKey); configId/path open that key instead. */
+    async open(configId, path) {
+        if (!this.modal) this.init();
+        if (!this.modal) return;
+        // a window the session restored on its own has no list yet: it loads like a fresh one
+        const wasOpen = !this.modal.classList.contains('hidden') && this.configList.length > 0;
+        if (!wasOpen) {
+            // CW_USEDEFAULT: three quarters of the work area, as regedit's first window
+            if (!this.modal.dataset.windowDefaultWidth) {
+                this.modal.dataset.windowDefaultWidth = String(Math.round(window.innerWidth * 0.75));
+                this.modal.dataset.windowDefaultHeight = String(Math.round((window.innerHeight - 30) * 0.75));
+            }
+            this.nodeCache.clear();
+            this.expanded = new Set(['C']);
+            this.selLoc = { kind: 'computer' };
+            this.selNames.clear();
+            this.focusName = null;
+        }
+        openModal(this.modal);
+        if (!wasOpen) {
+            try {
+                const data = await this.ws('config_editor_list');
+                this.configList = data?.configs || [];
+            } catch (err) {
+                console.error('config_editor_list:', err);
+                this.configList = [];
+            }
+            let target = null;
+            if (configId) target = { kind: 'key', hive: this.hiveOf(configId), configId, path: path || [] };
+            else {
+                try { target = this.parseKeyPath(localStorage.getItem('runes.lastKey') || ''); } catch (_) { target = null; }
+            }
+            await this.renderTree();
+            if (target) await this.navigateTo(target, { quiet: true });
+            else await this.selectLoc({ kind: 'computer' });
+        } else if (configId) {
+            await this.navigateTo({ kind: 'key', hive: this.hiveOf(configId), configId, path: path || [] });
+        }
+        this.focusPane(this.treeEl);
+    }
+
+    /** vfsSystemOpenRouter.js: opens a config's key. */
+    async selectNode(configId, path) {
+        if (this.modal?.classList.contains('hidden')) return this.open(configId, path);
+        return this.navigateTo({ kind: 'key', hive: this.hiveOf(configId), configId, path: path || [] });
+    }
+
+    doClose() {
+        this.closeValueEditor();
+        if (this.modal) closeModal(this.modal);
+    }
+
+    // ---- the model ---------------------------------------------------------------------------
+
+    hiveOf(configId) {
+        const h = CONFIG_EDITOR_HIVES.find((x) => x.configs.includes(configId));
+        return h ? h.id : 'HKEY_LOCAL_MACHINE';
+    }
+
+    configsOf(hive) {
+        return this.configList
+            .filter((c) => this.hiveOf(c.id) === hive)
+            .sort((a, b) => configEditorCompareNames(a.label || a.id, b.label || b.id));
+    }
+
+    configLabel(configId) {
+        return this.configList.find((c) => c.id === configId)?.label || configId;
+    }
+
+    locKey(loc) {
+        if (!loc || loc.kind === 'computer') return 'C';
+        if (loc.kind === 'hive') return `H|${loc.hive}`;
+        return `K|${loc.configId}|${JSON.stringify((loc.path || []).map(String))}`;
+    }
+
+    locName(loc) {
+        if (loc.kind === 'computer') return 'Computer';
+        if (loc.kind === 'hive') return loc.hive;
+        return loc.path.length ? String(loc.path[loc.path.length - 1]) : this.configLabel(loc.configId);
+    }
+
+    /** "HKEY_LOCAL_MACHINE\Application Config\lruCache" (Copy Key Name; the status bar adds Computer). */
+    keyPath(loc) {
+        if (!loc || loc.kind === 'computer') return '';
+        if (loc.kind === 'hive') return loc.hive;
+        return [loc.hive, this.configLabel(loc.configId), ...loc.path].join('\\');
+    }
+
+    parseKeyPath(text) {
+        const parts = String(text || '').replace(/^Computer\\?/i, '').split('\\').filter((p) => p !== '');
+        if (!parts.length) return { kind: 'computer' };
+        const hive = CONFIG_EDITOR_HIVES.find((h) => h.id.toUpperCase() === parts[0].toUpperCase());
+        if (!hive) return null;
+        if (parts.length === 1) return { kind: 'hive', hive: hive.id };
+        const cfg = this.configList.find((c) => this.hiveOf(c.id) === hive.id
+            && String(c.label || c.id).toUpperCase() === parts[1].toUpperCase());
+        if (!cfg) return null;
+        return { kind: 'key', hive: hive.id, configId: cfg.id, path: parts.slice(2) };
+    }
+
+    async fetchNode(configId, path, force) {
+        const key = `${configId}|${(path || []).join('\0')}`;
+        if (!force && this.nodeCache.has(key)) return this.nodeCache.get(key);
+        const data = await this.ws('config_editor_get_node', { configId, path: path || [] });
+        this.nodeCache.set(key, data);
+        return data;
+    }
+
+    invalidateConfig(configId) {
+        for (const k of [...this.nodeCache.keys()]) if (k.startsWith(`${configId}|`)) this.nodeCache.delete(k);
+    }
+
+    /** A child's JSON value, from the stub or the parent's masked snapshot. */
+    childValue(data, child) {
+        if (!child.expandable) return child.value;
+        const nv = data?.nodeValue;
+        return nv && typeof nv === 'object' ? nv[child.key] : undefined;
+    }
+
+    /** Is the child a key (object, or a list that is not one value)? */
+    childIsKey(data, child) {
+        if (!child.expandable) return false;
+        const v = this.childValue(data, child);
+        if (v === undefined) return child.type !== 'array' || !!child.hasExpandableChildren;
+        return configEditorRegTypeOf(v) === null;
+    }
+
+    subkeysOf(data) {
+        return (data?.children || []).filter((c) => this.childIsKey(data, c))
+            .sort((a, b) => configEditorCompareNames(a.key, b.key));
+    }
+
+    valuesOf(data) {
+        const out = [];
+        for (const child of data?.children || []) {
+            if (this.childIsKey(data, child)) continue;
+            const value = this.childValue(data, child);
+            const regType = configEditorRegTypeOf(value) || 'REG_BINARY';
+            out.push({ name: child.key, child, value, regType, secret: configEditorIsSecret(child, data.configId) });
+        }
+        return out.sort((a, b) => configEditorCompareNames(a.name, b.name));
+    }
+
+    // ---- the tree ----------------------------------------------------------------------------
+
+    wireTree() {
+        const tree = this.treeEl;
+        tree.tabIndex = 0;
+        tree.setAttribute('role', 'tree');
+        tree.addEventListener('mousedown', (e) => {
+            const row = e.target.closest('.config-editor-tree-item');
+            if (!row || e.button > 2) return;
+            const loc = this.locs.get(row.dataset.loc);
+            if (!loc) return;
+            if (e.target.closest('.config-editor-tree-expand')) {
+                e.preventDefault();
+                this.focusPane(tree);
+                void this.toggle(loc);
+                return;
+            }
+            if (e.target.closest('.rg-rename')) return;
+            e.preventDefault();
+            this.focusPane(tree);
+            if (this.locKey(loc) !== this.locKey(this.selLoc)) void this.selectLoc(loc);
+        });
+        tree.addEventListener('dblclick', (e) => {
+            const row = e.target.closest('.config-editor-tree-item');
+            if (!row || e.target.closest('.config-editor-tree-expand, .rg-rename')) return;
+            const loc = this.locs.get(row.dataset.loc);
+            if (loc) void this.toggle(loc);
+        });
+        tree.addEventListener('keydown', (e) => this.treeKey(e));
+        tree.addEventListener('focus', () => this.syncFocus());
+        tree.addEventListener('blur', () => this.syncFocus());
+    }
+
+    /** The tree from Computer down, every expanded key loaded first. */
+    async renderTree() {
+        const build = async (loc, depth) => {
+            const key = this.locKey(loc);
+            this.locs.set(key, loc);
+            const kids = await this.treeChildren(loc, this.expanded.has(key));
+            const open = this.expanded.has(key) && kids.list !== null;
+            const row = document.createElement('div');
+            row.className = 'config-editor-tree-item';
+            if (loc.kind === 'computer') row.classList.add('config-editor-tree-computer');
+            row.dataset.loc = key;
+            row.setAttribute('role', 'treeitem');
+            const icon = loc.kind === 'computer' ? '/static_images/vista-explorer/computer-16.png' : '/static_images/vista-icons/explorer/folder-16.png';
+            const exp = kids.has
+                ? `<span class="config-editor-tree-expand" aria-hidden="true"><i class="fas ${open ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
+                : '<span class="config-editor-tree-spacer" aria-hidden="true"></span>';
+            row.innerHTML = `${exp}<span class="config-editor-tree-label"><img class="config-editor-tree-icon" src="${icon}" alt=""><span>${configEditorEscapeHtml(this.locName(loc))}</span></span>`;
+            const frag = [row];
+            if (open && kids.list && kids.list.length) {
+                const box = document.createElement('div');
+                box.className = 'config-editor-tree-children';
+                box.setAttribute('role', 'group');
+                for (const k of kids.list) {
+                    for (const el of await build(k, depth + 1)) box.appendChild(el);
+                }
+                frag.push(box);
+            }
+            return frag;
+        };
+        this.locs.clear();
+        const els = await build({ kind: 'computer' }, 0);
+        this.treeEl.replaceChildren(...els);
+        this.paintTreeSelection();
+        this.reinitScroll(this.treeScrollShell);
+    }
+
+    /** { has, list }: list is null when not loaded (a collapsed key keeps its triangle). */
+    async treeChildren(loc, load) {
+        if (loc.kind === 'computer') return { has: true, list: CONFIG_EDITOR_HIVES.map((h) => ({ kind: 'hive', hive: h.id })) };
+        if (loc.kind === 'hive') {
+            const list = this.configsOf(loc.hive).map((c) => ({ kind: 'key', hive: loc.hive, configId: c.id, path: [] }));
+            return { has: list.length > 0, list };
+        }
+        const cacheKey = `${loc.configId}|${loc.path.join('\0')}`;
+        let data = this.nodeCache.get(cacheKey);
+        if (!data && load) {
+            try { data = await this.fetchNode(loc.configId, loc.path); } catch (err) { console.error('config_editor_get_node:', err); }
+        }
+        if (!data) return { has: this.stubHasSubkeys(loc), list: null };
+        const list = this.subkeysOf(data).map((c) => ({ kind: 'key', hive: loc.hive, configId: loc.configId, path: c.path.map(String) }));
+        return { has: list.length > 0, list };
+    }
+
+    stubHasSubkeys(loc) {
+        if (!loc.path.length) return true;
+        const parent = this.nodeCache.get(`${loc.configId}|${loc.path.slice(0, -1).join('\0')}`);
+        const stub = parent?.children?.find((c) => String(c.key) === String(loc.path[loc.path.length - 1]));
+        return stub ? !!stub.hasExpandableChildren : true;
+    }
+
+    paintTreeSelection() {
+        const key = this.locKey(this.selLoc);
+        this.treeEl.querySelectorAll('.config-editor-tree-item').forEach((row) => {
+            const on = row.dataset.loc === key;
+            row.classList.toggle('selected', on);
+            row.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+    }
+
+    selectedRow() {
+        return this.treeEl.querySelector(`.config-editor-tree-item[data-loc="${CSS.escape(this.locKey(this.selLoc))}"]`);
+    }
+
+    async toggle(loc, force) {
+        const key = this.locKey(loc);
+        const open = force !== undefined ? force : !this.expanded.has(key);
+        if (open === this.expanded.has(key)) return;
+        if (open) this.expanded.add(key);
+        else {
+            this.expanded.delete(key);
+            // collapsing a branch that holds the selection selects the branch, as a tree view does
+            const sel = this.locKey(this.selLoc);
+            if (sel !== key && this.isUnder(this.selLoc, loc)) {
+                await this.renderTree();
+                await this.selectLoc(loc);
+                return;
+            }
+        }
+        await this.renderTree();
+    }
+
+    isUnder(loc, branch) {
+        if (branch.kind === 'computer') return loc.kind !== 'computer';
+        if (branch.kind === 'hive') return loc.kind === 'key' && loc.hive === branch.hive;
+        return loc.kind === 'key' && loc.configId === branch.configId && loc.path.length > branch.path.length
+            && configEditorPathsEqual(loc.path.slice(0, branch.path.length), branch.path);
+    }
+
+    parentLoc(loc) {
+        if (loc.kind === 'hive') return { kind: 'computer' };
+        if (loc.kind === 'key') return loc.path.length ? { ...loc, path: loc.path.slice(0, -1) } : { kind: 'hive', hive: loc.hive };
+        return null;
+    }
+
+    async selectLoc(loc, opts = {}) {
+        this.selLoc = loc;
+        this.selNames.clear();
+        this.focusName = null;
+        this.anchorName = null;
+        this.paintTreeSelection();
+        const row = this.selectedRow();
+        if (row) row.scrollIntoView({ block: 'nearest' });
+        this.renderStatus();
+        try { localStorage.setItem('runes.lastKey', `Computer${this.keyPath(loc) ? `\\${this.keyPath(loc)}` : ''}`); } catch (_) { /* no storage */ }
+        await this.renderList(opts);
+    }
+
+    /** Expands down to a key and selects it (the deepest part that exists, as regedit does). */
+    async navigateTo(target, opts = {}) {
+        let loc = target;
+        if (loc.kind === 'key') {
+            this.expanded.add('C');
+            this.expanded.add(`H|${loc.hive}`);
+            let reached = [];
+            for (let i = 0; i <= target.path.length; i += 1) {
+                const p = target.path.slice(0, i);
+                try {
+                    const data = await this.fetchNode(target.configId, p);
+                    if (i < target.path.length) {
+                        const next = String(target.path[i]);
+                        const child = data.children?.find((c) => String(c.key) === next);
+                        if (!child || !this.childIsKey(data, child)) { reached = p; break; }
+                        this.expanded.add(this.locKey({ ...target, path: p }));
+                    }
+                    reached = p;
+                } catch (_) { break; }
+            }
+            loc = { ...target, path: reached.map(String) };
+        } else if (loc.kind === 'hive') this.expanded.add('C');
+        await this.renderTree();
+        await this.selectLoc(loc, opts);
+    }
+
+    visibleRows() {
+        return Array.from(this.treeEl.querySelectorAll('.config-editor-tree-item')).filter((r) => r.offsetParent !== null);
+    }
+
+    async treeKey(e) {
+        if (e.target !== this.treeEl) return;
+        const rows = this.visibleRows();
+        const cur = this.selectedRow();
+        const i = rows.indexOf(cur);
+        const go = (row) => { if (row) { const loc = this.locs.get(row.dataset.loc); if (loc) void this.selectLoc(loc); } };
+        const page = Math.max(1, Math.floor(this.treeEl.clientHeight / 18) - 1);
+        const loc = this.selLoc;
+        const key = this.locKey(loc);
+        switch (e.key) {
+            case 'ArrowDown': go(rows[Math.min(rows.length - 1, i + 1)]); break;
+            case 'ArrowUp': go(rows[Math.max(0, i - 1)]); break;
+            case 'PageDown': go(rows[Math.min(rows.length - 1, i + page)]); break;
+            case 'PageUp': go(rows[Math.max(0, i - page)]); break;
+            case 'Home': go(rows[0]); break;
+            case 'End': go(rows[rows.length - 1]); break;
+            case 'ArrowRight':
+                if (!cur?.querySelector('.config-editor-tree-expand')) break;
+                if (!this.expanded.has(key)) await this.toggle(loc, true);
+                else go(this.visibleRows()[i + 1]);
+                break;
+            case 'ArrowLeft':
+                if (this.expanded.has(key) && cur?.querySelector('.config-editor-tree-expand')) await this.toggle(loc, false);
+                else { const p = this.parentLoc(loc); if (p) void this.selectLoc(p); }
+                break;
+            case 'Backspace': { const p = this.parentLoc(loc); if (p) void this.selectLoc(p); break; }
+            case '+': await this.toggle(loc, true); break;
+            case '-': await this.toggle(loc, false); break;
+            case '*': await this.expandAll(loc); break;
+            case 'Tab': case 'F6': this.listPanelFocus(); break;
+            case 'Enter': await this.toggle(loc); break;
+            default:
+                if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) { this.typeAhead(e.key, rows, i, go, (r) => r.querySelector('.config-editor-tree-label > span')?.textContent || ''); break; }
+                return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    /** "*" on the keypad: every key under the selection, expanded. */
+    async expandAll(loc) {
+        const walk = async (l, depth) => {
+            if (depth > 12) return;
+            this.expanded.add(this.locKey(l));
+            const kids = await this.treeChildren(l, true);
+            for (const k of kids.list || []) await walk(k, depth + 1);
+        };
+        await walk(loc, 0);
+        await this.renderTree();
+    }
+
+    typeAhead(ch, rows, i, go, textOf) {
+        const now = Date.now();
+        this._typeAhead.text = now - this._typeAhead.at > 1000 ? ch : this._typeAhead.text + ch;
+        this._typeAhead.at = now;
+        const q = this._typeAhead.text.toUpperCase();
+        const n = rows.length;
+        const start = q.length === 1 ? i + 1 : i;
+        for (let k = 0; k < n; k += 1) {
+            const row = rows[(start + k + n) % n];
+            if (textOf(row).toUpperCase().startsWith(q)) { go(row); return; }
+        }
+    }
+
+    // ---- the list ----------------------------------------------------------------------------
+
+    wireList() {
+        const panel = this.listPanel;
+        panel.tabIndex = 0;
+        panel.addEventListener('mousedown', (e) => {
+            if (e.target.closest('th, .rg-rename')) return;
+            if (e.button > 2) return;
+            e.preventDefault();
+            this.focusPane(panel);
+            const row = e.target.closest('tr.config-editor-row');
+            if (!row) {
+                if (e.button === 0 && !e.ctrlKey && !e.shiftKey) { this.selNames.clear(); this.focusName = null; this.paintList(); }
+                return;
+            }
+            const name = row.dataset.name;
+            if (e.button === 2) {
+                if (!this.selNames.has(name)) this.setListSelection([name], name);
+                return;
+            }
+            if (e.shiftKey && this.anchorName != null) this.selectRange(this.anchorName, name, e.ctrlKey);
+            else if (e.ctrlKey) {
+                if (this.selNames.has(name)) this.selNames.delete(name); else this.selNames.add(name);
+                this.focusName = name;
+                this.anchorName = name;
+                this.paintList();
+            } else this.setListSelection([name], name);
+        });
+        panel.addEventListener('dblclick', (e) => {
+            const row = e.target.closest('tr.config-editor-row');
+            if (!row) return;
+            this.setListSelection([row.dataset.name], row.dataset.name);
+            void this.modify();
+        });
+        panel.addEventListener('keydown', (e) => this.listKey(e));
+        panel.addEventListener('focus', () => this.paintList());
+        panel.addEventListener('blur', () => this.paintList());
+    }
+
+    listPanelFocus() {
+        this.focusPane(this.listPanel);
+        if (!this.focusName && this.listEntries.length) {
+            this.focusName = this.listEntries[0].name;
+            this.paintList();
+        }
+    }
+
+    async renderList(opts = {}) {
+        const loc = this.selLoc;
+        const token = (this._listToken = (this._listToken || 0) + 1);
+        let entries = [];
+        if (loc.kind === 'key') {
+            try {
+                const data = await this.fetchNode(loc.configId, loc.path);
+                if (token !== this._listToken) return;
+                this.listData = data;
+                entries = this.valuesOf(data);
+            } catch (err) {
+                if (token !== this._listToken) return;
+                console.error('config_editor_get_node:', err);
+                if (!opts.quiet) await this.msg(`${this.locName(loc)} cannot be opened.\nAn error is preventing this key from being opened.\nDetails: ${err.message || err}`, 'Error Opening Key', 'error');
+            }
+        } else this.listData = null;
+        // every key but Computer lists its (Default) value first
+        const def = loc.kind === 'computer' ? [] : [{ name: '', isDefault: true, regType: 'REG_SZ' }];
+        this.listEntries = def.concat(entries);
+        const names = new Set(this.listEntries.map((x) => x.name));
+        for (const n of [...this.selNames]) if (!names.has(n)) this.selNames.delete(n);
+        if (this.focusName != null && !names.has(this.focusName)) this.focusName = null;
+        const frag = document.createDocumentFragment();
+        for (const entry of this.listEntries) {
+            const tr = document.createElement('tr');
+            tr.className = 'config-editor-row';
+            tr.dataset.name = entry.name;
+            const icon = CONFIG_EDITOR_TYPE_ICON[entry.regType] || 'binary';
+            const label = entry.isDefault ? '(Default)' : entry.name;
+            const data = entry.isDefault ? '(value not set)' : configEditorRegData(entry.regType, entry.value, entry.secret);
+            tr.innerHTML = `<td class="config-editor-col-name"><span class="config-editor-name-with-icon"><img class="config-editor-value-icon" src="/static_images/vista-controls/regedit-value-${icon}.png" alt=""><span class="rg-name">${configEditorEscapeHtml(label)}</span></span></td><td class="config-editor-col-type">${entry.regType}</td><td class="config-editor-col-value"><span class="config-editor-value-display">${configEditorEscapeHtml(data)}</span></td><td class="rg-col-fill"></td>`;
+            if (entry.child?.description) tr.title = entry.child.description;
+            frag.appendChild(tr);
+        }
+        this.listEl.replaceChildren(frag);
+        this.paintList();
+        this.reinitScroll(this.listScrollShell);
+    }
+
+    /** Which pane has the focus: the tree shows its selection only then, the list in blue only then. */
+    syncFocus() {
+        if (!this.modal) return;
+        this.modal.classList.toggle('rg-tree-focus', document.activeElement === this.treeEl);
+        this.modal.classList.toggle('rg-list-focus', document.activeElement === this.listPanel);
+    }
+
+    focusPane(el) {
+        if (!el) return;
+        el.focus({ preventScroll: true });
+        this.syncFocus();
+        if (el === this.listPanel) this.paintList();
+    }
+
+    paintList() {
+        this.syncFocus();
+        const focused = document.activeElement === this.listPanel;
+        this.listEl.querySelectorAll('tr.config-editor-row').forEach((tr) => {
+            const name = tr.dataset.name;
+            tr.classList.toggle('selected', this.selNames.has(name));
+            tr.classList.toggle('rg-focus', focused && this.focusName === name);
+        });
+    }
+
+    setListSelection(names, focus) {
+        this.selNames = new Set(names);
+        this.focusName = focus;
+        this.anchorName = focus;
+        this.paintList();
+        const tr = this.rowFor(focus);
+        if (tr) tr.scrollIntoView({ block: 'nearest' });
+    }
+
+    selectRange(from, to, add) {
+        const names = this.listEntries.map((x) => x.name);
+        const a = names.indexOf(from);
+        const b = names.indexOf(to);
+        if (a < 0 || b < 0) return;
+        const range = names.slice(Math.min(a, b), Math.max(a, b) + 1);
+        this.selNames = new Set(add ? [...this.selNames, ...range] : range);
+        this.focusName = to;
+        this.paintList();
+    }
+
+    rowFor(name) {
+        if (name == null) return null;
+        return this.listEl.querySelector(`tr.config-editor-row[data-name="${CSS.escape(name)}"]`);
+    }
+
+    entry(name) {
+        return this.listEntries.find((x) => x.name === name) || null;
+    }
+
+    selectedEntries() {
+        return this.listEntries.filter((x) => this.selNames.has(x.name));
+    }
+
+    async listKey(e) {
+        if (e.target !== this.listPanel) return;
+        const names = this.listEntries.map((x) => x.name);
+        if (!names.length) { if (e.key === 'Tab') { this.treeEl.focus(); e.preventDefault(); } return; }
+        const i = names.indexOf(this.focusName);
+        const page = Math.max(1, Math.floor(this.listPanel.clientHeight / 19) - 2);
+        const move = (j) => {
+            const n = names[Math.max(0, Math.min(names.length - 1, j))];
+            if (e.shiftKey && this.anchorName != null) this.selectRange(this.anchorName, n, false);
+            else if (e.ctrlKey) { this.focusName = n; this.paintList(); }
+            else this.setListSelection([n], n);
+            this.rowFor(n)?.scrollIntoView({ block: 'nearest' });
+        };
+        switch (e.key) {
+            case 'ArrowDown': move(i < 0 ? 0 : i + 1); break;
+            case 'ArrowUp': move(i < 0 ? 0 : i - 1); break;
+            case 'PageDown': move(i + page); break;
+            case 'PageUp': move(i - page); break;
+            case 'Home': move(0); break;
+            case 'End': move(names.length - 1); break;
+            case ' ':
+                if (e.ctrlKey && this.focusName != null) {
+                    if (this.selNames.has(this.focusName)) this.selNames.delete(this.focusName); else this.selNames.add(this.focusName);
+                    this.paintList();
+                }
+                break;
+            case 'Enter': await this.modify(); break;
+            case 'Tab': case 'F6': this.focusPane(this.treeEl); break;
+            case 'a': case 'A':
+                if (e.ctrlKey) { this.selNames = new Set(names); this.paintList(); break; }
+                this.typeAhead(e.key, this.listRows(), i, (r) => this.setListSelection([r.dataset.name], r.dataset.name), (r) => r.querySelector('.rg-name')?.textContent || '');
+                break;
+            default:
+                if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                    this.typeAhead(e.key, this.listRows(), i, (r) => this.setListSelection([r.dataset.name], r.dataset.name), (r) => r.querySelector('.rg-name')?.textContent || '');
+                    break;
+                }
+                return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+    }
+
+    listRows() {
+        return Array.from(this.listEl.querySelectorAll('tr.config-editor-row'));
+    }
+
+    // ---- status bar, splitter, columns ---------------------------------------------------------
+
+    renderStatus(text) {
+        if (!this.statusEl) return;
+        const path = this.keyPath(this.selLoc);
+        const el = this.statusEl.querySelector('[data-status="path"]') || this.statusEl;
+        el.textContent = text != null ? text : `Computer${path ? `\\${path}` : ''}`;
+    }
+
+    setSplit(w) {
+        const width = Math.max(40, Math.min(Math.max(80, (this.modal.clientWidth || 800) - 60), w));
+        this.treePanel.style.flexBasis = `${width}px`;
+        this.treePanel.style.width = `${width}px`;
+        return width;
+    }
+
+    wireSplitter() {
+        const split = this.modal.querySelector('.config-editor-splitter');
+        if (!split) return;
+        split.addEventListener('pointerdown', (e) => {
+            if (e.button !== 0) return;
+            e.preventDefault();
+            split.setPointerCapture(e.pointerId);
+            const startX = e.clientX;
+            const startW = this.treePanel.getBoundingClientRect().width;
+            const move = (ev) => this.setSplit(startW + ev.clientX - startX);
+            const up = () => {
+                split.removeEventListener('pointermove', move);
+                split.removeEventListener('pointerup', up);
+                try { localStorage.setItem('runes.split', String(Math.round(this.treePanel.getBoundingClientRect().width))); } catch (_) { /* no storage */ }
+            };
+            split.addEventListener('pointermove', move);
+            split.addEventListener('pointerup', up);
+        });
+    }
+
+    /** View > Split: the split follows the mouse (or Left / Right) until a click or Enter. */
+    startSplit() {
+        const split = this.modal.querySelector('.config-editor-splitter');
+        const layout = this.modal.querySelector('.config-editor-layout');
+        if (!split || !layout) return;
+        const left = layout.getBoundingClientRect().left;
+        let width = this.treePanel.getBoundingClientRect().width;
+        const startW = width;
+        this.modal.classList.add('rg-splitting');
+        const done = (keep) => {
+            document.removeEventListener('mousemove', move, true);
+            document.removeEventListener('mousedown', click, true);
+            document.removeEventListener('keydown', key, true);
+            this.modal.classList.remove('rg-splitting');
+            if (!keep) this.setSplit(startW);
+            else try { localStorage.setItem('runes.split', String(Math.round(width))); } catch (_) { /* no storage */ }
+        };
+        const move = (e) => { width = this.setSplit(e.clientX - left - 2); };
+        const click = (e) => { e.preventDefault(); e.stopPropagation(); done(true); };
+        const key = (e) => {
+            if (e.key === 'ArrowLeft') width = this.setSplit(width - 8);
+            else if (e.key === 'ArrowRight') width = this.setSplit(width + 8);
+            else if (e.key === 'Enter') done(true);
+            else if (e.key === 'Escape') done(false);
+            else return;
+            e.preventDefault();
+            e.stopPropagation();
+        };
+        document.addEventListener('mousemove', move, true);
+        document.addEventListener('mousedown', click, true);
+        document.addEventListener('keydown', key, true);
+    }
+
+    setColumns(cols) {
+        const ths = this.modal.querySelectorAll('.config-editor-values-table thead th');
+        cols.forEach((w, i) => { if (ths[i] && w >= 0) ths[i].style.width = `${w}px`; });
+    }
+
+    /** The header's dividers drag a column's width (regedit keeps them in its View value). */
+    wireColumns() {
+        const ths = Array.from(this.modal.querySelectorAll('.config-editor-values-table thead th')).slice(0, 3);
+        ths.forEach((th) => {
+            th.addEventListener('pointerdown', (e) => {
+                const r = th.getBoundingClientRect();
+                if (e.clientX < r.right - 6 || e.button !== 0) return;
+                e.preventDefault();
+                th.setPointerCapture(e.pointerId);
+                const startX = e.clientX;
+                const startW = r.width;
+                const move = (ev) => { th.style.width = `${Math.max(0, Math.round(startW + ev.clientX - startX))}px`; };
+                const up = () => {
+                    th.removeEventListener('pointermove', move);
+                    th.removeEventListener('pointerup', up);
+                    try { localStorage.setItem('runes.columns', JSON.stringify(ths.map((t) => Math.round(t.getBoundingClientRect().width)))); } catch (_) { /* no storage */ }
+                };
+                th.addEventListener('pointermove', move);
+                th.addEventListener('pointerup', up);
             });
-        }
+            th.addEventListener('mousemove', (e) => {
+                const r = th.getBoundingClientRect();
+                th.style.cursor = e.clientX >= r.right - 6 ? 'col-resize' : '';
+            });
+        });
+    }
 
-        const valueCloseBtn = document.getElementById('closeConfigEditorValueBtn');
-        if (valueCloseBtn) {
-            valueCloseBtn.addEventListener('click', () => this.closeValueEditor());
+    reinitScroll(shell) {
+        if (!shell || !window.customScrollbar) return;
+        setTimeout(() => { try { window.customScrollbar.forceReinit(shell); } catch (_) { /* gone */ } }, 0);
+    }
+
+    // ---- what the commands act on ----------------------------------------------------------------
+
+    /** Which pane the Edit menu acts on: the list when it has the focus (or had it last). */
+    listActive() {
+        return document.activeElement === this.listPanel || (this._lastPane === 'list' && document.activeElement !== this.treeEl);
+    }
+
+    canNewHere() {
+        const loc = this.selLoc;
+        if (loc.kind !== 'key') return false;
+        const meta = this.listData?.node?.addMeta;
+        return !meta || meta.allowed !== false;
+    }
+
+    newAllows(jsType) {
+        if (!this.canNewHere()) return false;
+        const allowed = this.listData?.node?.addMeta?.allowedTypes;
+        if (!allowed || !allowed.length) return true;
+        if (jsType === 'null') return true;
+        return allowed.includes(jsType);
+    }
+
+    keyStub(loc) {
+        if (loc.kind !== 'key' || !loc.path.length) return null;
+        const parent = this.nodeCache.get(`${loc.configId}|${loc.path.slice(0, -1).join('\0')}`);
+        return parent?.children?.find((c) => String(c.key) === String(loc.path[loc.path.length - 1])) || null;
+    }
+
+    parentIsList(loc) {
+        if (loc.kind !== 'key' || !loc.path.length) return false;
+        const parent = this.nodeCache.get(`${loc.configId}|${loc.path.slice(0, -1).join('\0')}`);
+        return parent?.node?.type === 'array';
+    }
+
+    canDeleteKey(loc) {
+        if (loc.kind !== 'key' || !loc.path.length) return false;
+        const stub = this.keyStub(loc);
+        return !(stub?.required || stub?.readOnly);
+    }
+
+    canDeleteValues() {
+        const sel = this.selectedEntries().filter((x) => !x.isDefault);
+        return sel.length > 0 && sel.every((x) => !(x.child?.required || x.child?.readOnly));
+    }
+
+    // ---- menus -------------------------------------------------------------------------------
+
+    newSubmenu() {
+        return [
+            { text: 'Key', action: 'new-key', disabled: () => !this.newAllows('object') },
+            { separator: true },
+            { text: 'String Value', action: 'new-string', disabled: () => !this.newAllows('string') },
+            { text: 'Binary Value', action: 'new-binary', disabled: () => !this.newAllows('null') },
+            { text: 'DWORD (32-bit) Value', action: 'new-dword', disabled: () => !this.newAllows('number') },
+            { text: 'QWORD (64-bit) Value', action: 'new-qword', disabled: () => !this.newAllows('number') },
+            { text: 'Multi-String Value', action: 'new-multi', disabled: () => !this.newAllows('array') },
+            // the configs have no expandable strings
+            { text: 'Expandable String Value', action: 'new-expand', disabled: true }
+        ];
+    }
+
+    menuItems(menu) {
+        const loc = this.selLoc;
+        const isKey = loc.kind === 'key';
+        if (menu === 'file') {
+            return [
+                { text: 'Import...', action: 'import' },
+                { text: 'Export...', action: 'export' },
+                // Runes' own: the configuration's checkpoints, with the other whole-registry files
+                { text: 'Checkpoints...', action: 'checkpoints' },
+                { separator: true },
+                { text: 'Load Hive...', action: 'load-hive', disabled: true },
+                { text: 'Unload Hive...', action: 'unload-hive', disabled: true },
+                { separator: true },
+                { text: 'Connect Network Registry...', action: 'connect', disabled: true },
+                { text: 'Disconnect Network Registry...', action: 'disconnect', disabled: true },
+                { separator: true },
+                { text: 'Print...', action: 'print', subtext: 'Ctrl+P', disabled: true },
+                { separator: true },
+                { text: 'Exit', action: 'exit' }
+            ];
         }
-        const valueCancelBtn = document.getElementById('configEditorValueCancelBtn');
-        if (valueCancelBtn) {
-            valueCancelBtn.addEventListener('click', () => this.closeValueEditor());
+        if (menu === 'edit') {
+            const inList = this.listActive() && this.selNames.size > 0;
+            const one = this.selNames.size === 1;
+            const items = [];
+            if (inList) {
+                items.push(
+                    { text: 'Modify...', action: 'modify', className: 'rg-menu-default', disabled: () => !one },
+                    { text: 'Modify Binary Data...', action: 'modify-binary', disabled: () => !one },
+                    { separator: true }
+                );
+            }
+            items.push(
+                { text: 'New', submenu: this.newSubmenu(), disabled: () => !this.canNewHere() },
+                { separator: true },
+                { text: 'Permissions...', action: 'permissions', disabled: true },
+                { separator: true },
+                { text: 'Delete', action: 'delete', subtext: 'Del', disabled: () => (inList ? !this.canDeleteValues() : !this.canDeleteKey(loc)) },
+                { text: 'Rename', action: 'rename', disabled: () => (inList ? !(one && this.canRenameValue(this.selectedEntries()[0])) : !this.canRenameKey(loc)) },
+                { separator: true },
+                { text: 'Copy Key Name', action: 'copy-key', disabled: () => loc.kind === 'computer' },
+                { separator: true },
+                { text: 'Find...', action: 'find', subtext: 'Ctrl+F' },
+                { text: 'Find Next', action: 'find-next', subtext: 'F3' }
+            );
+            return items;
         }
-        const valueApplyBtn = document.getElementById('configEditorValueApplyBtn');
-        if (valueApplyBtn) {
-            valueApplyBtn.addEventListener('click', () => this.applyValueFromEditor());
+        if (menu === 'view') {
+            return [
+                { text: 'Status Bar', action: 'status-bar', checked: this.modal.getAttribute('data-status-bar') !== 'off', showIndicator: true },
+                { separator: true },
+                { text: 'Split', action: 'split' },
+                { separator: true },
+                { text: 'Display Binary Data...', action: 'display-binary', disabled: () => !(this.listActive() && this.selNames.size === 1 && !this.selectedEntries()[0]?.isDefault) },
+                { separator: true },
+                { text: 'Refresh', action: 'refresh', subtext: 'F5' }
+            ];
         }
-        const valueConvertBtn = document.getElementById('configEditorValueConvertBtn');
-        if (valueConvertBtn) {
-            valueConvertBtn.addEventListener('click', () => this.convertValueEditorType());
+        if (menu === 'favorites') {
+            const favs = this.getFavorites();
+            return [
+                { text: 'Add to Favorites...', action: 'fav-add', disabled: () => !isKey && loc.kind !== 'hive' },
+                { text: 'Remove Favorite...', action: 'fav-remove', disabled: () => !favs.length },
+                ...(favs.length ? [{ separator: true }, ...favs.map((f, k) => ({ text: f.name, action: `fav-go-${k}` }))] : [])
+            ];
         }
-        // Base: switching Hexadecimal / Decimal rewrites the number in the new base, as regedit does
+        return [
+            { text: 'Help Topics', action: 'help-topics' },
+            { separator: true },
+            { text: 'About Registry Editor...', action: 'about' }
+        ];
+    }
+
+    /** Context menus: regedit.exe.mui MENU 104 (a key), 107 (Computer), 105 (values), 106 (the list). */
+    contextItems(where) {
+        const loc = this.selLoc;
+        if (where === 'tree') {
+            const open = this.expanded.has(this.locKey(loc));
+            const hasKids = !!this.selectedRow()?.querySelector('.config-editor-tree-expand');
+            const expand = { text: open ? 'Collapse' : 'Expand', action: 'expand', className: 'rg-menu-default', disabled: !hasKids };
+            if (loc.kind === 'computer') {
+                return [expand, { separator: true }, { text: 'Export', action: 'export' }, { separator: true }, { text: 'Disconnect', action: 'disconnect', disabled: true }];
+            }
+            return [
+                expand,
+                { text: 'New', submenu: this.newSubmenu(), disabled: () => !this.canNewHere() },
+                { text: 'Find...', action: 'find' },
+                { separator: true },
+                { text: 'Delete', action: 'delete-key', disabled: () => !this.canDeleteKey(loc) },
+                { text: 'Rename', action: 'rename-key', disabled: () => !this.canRenameKey(loc) },
+                { separator: true },
+                { text: 'Export', action: 'export' },
+                { text: 'Permissions...', action: 'permissions', disabled: true },
+                { separator: true },
+                { text: 'Copy Key Name', action: 'copy-key' }
+            ];
+        }
+        if (this.selNames.size) {
+            const one = this.selNames.size === 1;
+            return [
+                { text: 'Modify...', action: 'modify', className: 'rg-menu-default', disabled: !one },
+                { text: 'Modify Binary Data...', action: 'modify-binary', disabled: !one },
+                { separator: true },
+                { text: 'Delete', action: 'delete-values', disabled: () => !this.canDeleteValues() },
+                { text: 'Rename', action: 'rename-value', disabled: () => !(one && this.canRenameValue(this.selectedEntries()[0])) }
+            ];
+        }
+        return [{ text: 'New', submenu: this.newSubmenu(), disabled: () => !this.canNewHere() }];
+    }
+
+    wireMenus() {
+        if (typeof contextMenu === 'undefined' || !contextMenu) return;
+        const ids = { file: 'configEditorMenuFile', edit: 'configEditorMenuEdit', view: 'configEditorMenuView', favorites: 'configEditorMenuFavorites', help: 'configEditorMenuHelp' };
+        Object.keys(ids).forEach((menu) => {
+            const button = document.getElementById(ids[menu]);
+            if (!button) return;
+            button.addEventListener('mousedown', () => {
+                this._lastPane = document.activeElement === this.listPanel ? 'list' : (document.activeElement === this.treeEl ? 'tree' : this._lastPane);
+            });
+            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
+            contextMenu.attachClickMenuToElement(button, {
+                beforeShow: () => { this._menuOpen = menu; this.renderStatus(CONFIG_EDITOR_MENU_HELP[menu]); },
+                onHide: () => { this._menuOpen = null; this.renderStatus(); },
+                onAction: (action) => this.command(action),
+                sections: [{ type: 'list', initfn: (section) => { section.items = this.menuItems(menu); } }]
+            });
+        });
+        // the status bar shows the help line of the menu row under the mouse
+        document.addEventListener('mouseover', (e) => {
+            if (!this._menuOpen && !this._ctxOpen) return;
+            const row = e.target.closest?.('.context-menu .context-menu-item, .context-menu-submenu .context-menu-item');
+            if (!row) return;
+            const it = row._menuItem;
+            const help = it && (CONFIG_EDITOR_MENU_HELP[it.action] || (it.submenu ? CONFIG_EDITOR_MENU_HELP.new : ''));
+            this.renderStatus(help || (this._menuOpen ? CONFIG_EDITOR_MENU_HELP[this._menuOpen] : ''));
+        });
+    }
+
+    wireContextMenus() {
+        if (typeof contextMenu === 'undefined' || !contextMenu) return;
+        // the right button selects what it is on first, as a tree view and a list view do
+        this.treeEl.addEventListener('contextmenu', (e) => {
+            const row = e.target.closest('.config-editor-tree-item');
+            const loc = row && this.locs.get(row.dataset.loc);
+            if (loc && this.locKey(loc) !== this.locKey(this.selLoc)) {
+                this.selLoc = loc;
+                this.paintTreeSelection();
+                this.renderStatus();
+                void this.renderList();
+            }
+        }, true);
+        const config = (where) => ({
+            beforeShow: () => { this._ctxOpen = true; },
+            onHide: () => { this._ctxOpen = false; this.renderStatus(); },
+            sections: [{ type: 'list', initfn: (section) => { section.items = this.contextItems(where); } }],
+            onAction: (action) => this.command(action, where)
+        });
+        contextMenu.attachToElement(this.treePanel, config('tree'));
+        contextMenu.attachToElement(this.listPanel, config('list'));
+    }
+
+    /** Shift+F10 / the menu key: the selection's context menu, at the selection. */
+    openContextMenuAtSelection(where) {
+        const el = where === 'tree' ? this.selectedRow()?.querySelector('.config-editor-tree-label') : (this.rowFor(this.focusName) || this.listPanel);
+        const host = where === 'tree' ? this.treePanel : this.listPanel;
+        if (!el || typeof contextMenu === 'undefined') return;
+        const r = el.getBoundingClientRect();
+        contextMenu.showMenu({ clientX: Math.round(r.left + 8), clientY: Math.round(r.bottom - 2), preventDefault() {}, stopPropagation() {} }, host);
+    }
+
+    async command(action, where) {
+        this.renderStatus();
+        const loc = this.selLoc;
+        switch (action) {
+            case 'modify': return this.modify();
+            case 'modify-binary': return this.modifyBinary();
+            case 'new-key': return this.newKey();
+            case 'new-string': return this.newValue('');
+            case 'new-binary': return this.newValue(null);
+            case 'new-dword': return this.newValue(0);
+            case 'new-qword': return this.newValue(0, 'REG_QWORD');
+            case 'new-multi': return this.newValue([]);
+            case 'delete': return this.listActive() && this.selNames.size ? this.deleteValues() : this.deleteKey();
+            case 'delete-key': return this.deleteKey();
+            case 'delete-values': return this.deleteValues();
+            case 'rename': return this.listActive() && this.selNames.size ? this.renameValue() : this.renameKey();
+            case 'rename-key': return this.renameKey();
+            case 'rename-value': return this.renameValue();
+            case 'copy-key': return this.copyKeyName();
+            case 'find': return this.openFind();
+            case 'find-next': return this.findNext();
+            case 'expand': return this.toggle(loc);
+            case 'status-bar': {
+                const off = this.modal.getAttribute('data-status-bar') !== 'off';
+                if (off) this.modal.setAttribute('data-status-bar', 'off'); else this.modal.removeAttribute('data-status-bar');
+                try { localStorage.setItem('runes.statusBar', off ? 'off' : 'on'); } catch (_) { /* no storage */ }
+                return undefined;
+            }
+            case 'split': return this.startSplit();
+            case 'display-binary': return this.displayBinary();
+            case 'refresh': return this.refresh();
+            case 'export': return this.exportBranch(where === 'tree' ? loc : (this.selLoc));
+            case 'import': return this.importFile();
+            case 'checkpoints': return this.openCheckpointsModal(loc.kind === 'key' ? loc.configId : null);
+            case 'exit': return this.doClose();
+            case 'fav-add': return this.addFavorite();
+            case 'fav-remove': return this.removeFavorites();
+            case 'help-topics':
+                if (typeof openHelpAndSupport === 'function') openHelpAndSupport('runes'); // eslint-disable-line no-undef
+                return undefined;
+            case 'about':
+                if (typeof openAboutMelatoninModal === 'function') openAboutMelatoninModal({ program: 'Registry Editor', owner: this.modal }); // eslint-disable-line no-undef
+                return undefined;
+            default:
+                if (action && action.startsWith('fav-go-')) {
+                    const f = this.getFavorites()[Number(action.slice(7))];
+                    const target = f && (f.key ? this.parseKeyPath(f.key) : (f.configId ? { kind: 'key', hive: this.hiveOf(f.configId), configId: f.configId, path: f.path || [] } : null));
+                    if (target) return this.navigateTo(target);
+                }
+                return undefined;
+        }
+    }
+
+    // ---- keyboard ----------------------------------------------------------------------------
+
+    wireKeyboard() {
+        const handler = (e) => {
+            if (!this.modal || this.modal.classList.contains('hidden')) return undefined;
+            if (this.valueModal && !this.valueModal.classList.contains('hidden')) return undefined;
+            if (e.target && e.target.closest && e.target.closest('.rg-rename')) return undefined;
+            const ctrl = e.ctrlKey || e.metaKey;
+            const inPane = e.target === this.treeEl || e.target === this.listPanel;
+            const where = e.target === this.listPanel ? 'list' : 'tree';
+            let act = null;
+            if (ctrl && (e.key === 'f' || e.key === 'F')) act = () => this.openFind();
+            else if (e.key === 'F3') act = () => this.findNext();
+            else if (e.key === 'F5') act = () => this.refresh();
+            else if (e.key === 'F2' && inPane) act = () => (where === 'list' ? this.renameValue() : this.renameKey());
+            else if (e.key === 'Delete' && inPane && !ctrl && !e.altKey) act = () => (where === 'list' ? (this.selNames.size ? this.deleteValues() : null) : this.deleteKey());
+            else if (inPane && ((e.key === 'F10' && e.shiftKey) || e.key === 'ContextMenu')) act = () => this.openContextMenuAtSelection(where);
+            else if (e.altKey && !ctrl && /^[fevah]$/i.test(e.key)) {
+                const map = { f: 'File', e: 'Edit', v: 'View', a: 'Favorites', h: 'Help' };
+                act = () => document.getElementById(`configEditorMenu${map[e.key.toLowerCase()]}`)?.click();
+            }
+            if (!act) return undefined;
+            e.preventDefault();
+            e.stopPropagation();
+            if (inPane) this._lastPane = where;
+            void act();
+            return true;
+        };
+        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
+        if (typeof registerKeyboardListener === 'function') {
+            registerKeyboardListener({ id: 'configEditorModal.regedit', handler, type: 'whenFocused', modalId: 'configEditorModal', priority: 78, showInOverlay: false });
+            registerKeyboardListener({
+                id: 'configEditorValueModal.keydown',
+                handler: (e) => {
+                    if (!this.valueModal || this.valueModal.classList.contains('hidden')) return undefined;
+                    if (e.key !== 'Escape') return undefined;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.closeValueEditor();
+                    return true;
+                },
+                type: 'whenFocused', modalId: 'configEditorValueModal', priority: 85, critical: true, showInOverlay: false
+            });
+        } else this.modal.addEventListener('keydown', handler);
+        if (typeof registerModalOverlayEntries === 'function') {
+            registerModalOverlayEntries('configEditorModal', 'Registry Editor', [
+                { id: 'overlay.configEditor.find', label: 'Find', keys: 'Ctrl+F', icon: 'fas fa-magnifying-glass' },
+                { id: 'overlay.configEditor.findNext', label: 'Find Next', keys: 'F3', icon: 'fas fa-magnifying-glass' },
+                { id: 'overlay.configEditor.refresh', label: 'Refresh', keys: 'F5', icon: 'fas fa-rotate' },
+                { id: 'overlay.configEditor.rename', label: 'Rename', keys: 'F2', icon: 'fas fa-i-cursor' },
+                { id: 'overlay.configEditor.delete', label: 'Delete', keys: 'Del', icon: 'fas fa-trash' }
+            ]);
+        }
+        this.treeEl.addEventListener('focus', () => { this._lastPane = 'tree'; });
+        this.listPanel.addEventListener('focus', () => { this._lastPane = 'list'; });
+    }
+
+    // ---- writing ----------------------------------------------------------------------------
+
+    stubAt(configId, path) {
+        const parent = this.nodeCache.get(`${configId}|${path.slice(0, -1).join('\0')}`);
+        return parent?.children?.find((c) => String(c.key) === String(path[path.length - 1])) || null;
+    }
+
+    /**
+     * Writes patches to one config at once (config_editor_save). A change to a value the server
+     * restarts for asks first. Resolves { ok, error }.
+     */
+    async commit(configId, patches) {
+        const restart = patches.filter((p) => this.stubAt(configId, p.path)?.restartRequired);
+        if (restart.length) {
+            const names = restart.map((p) => String(p.path[p.path.length - 1])).join(', ');
+            const ok = await this.msg(`Changing ${names} restarts the Dreamscape server.\nDo you want to continue?`, 'Registry Editor', 'warning', 'yesno');
+            if (ok !== 'yes') return { ok: false, cancelled: true };
+        }
+        let data;
+        try {
+            data = await this.ws('config_editor_save', { patches: { [configId]: patches } });
+        } catch (err) {
+            data = { success: false, errors: [{ message: err.message || String(err) }] };
+        }
+        this.invalidateConfig(configId);
+        if (!data?.success) {
+            const error = (data?.errors || []).map((x) => x.message || x).join('\n') || 'The server did not save the change.';
+            return { ok: false, error };
+        }
+        return { ok: true, restarting: !!data.restarting };
+    }
+
+    /** Re-reads the selected key and the tree after a write; keeps the list's selection by name. */
+    async reload(selectNames) {
+        await this.renderTree();
+        await this.renderList({ quiet: true });
+        if (selectNames) this.setListSelection(selectNames, selectNames[0]);
+    }
+
+    uniqueName(base, taken) {
+        const set = new Set([...taken].map((n) => String(n).toUpperCase()));
+        for (let n = 1; n < 10000; n += 1) {
+            const name = `${base} #${n}`;
+            if (!set.has(name.toUpperCase())) return name;
+        }
+        return null;
+    }
+
+    nextIndex(data) {
+        return String((data?.children || []).length);
+    }
+
+    async newKey() {
+        const loc = this.selLoc;
+        if (loc.kind !== 'key' || !this.newAllows('object')) return;
+        const data = await this.fetchNode(loc.configId, loc.path, true);
+        const isList = data?.node?.type === 'array';
+        const name = isList ? this.nextIndex(data) : this.uniqueName('New Key', (data.children || []).map((c) => c.key));
+        if (name == null) { await this.msg('Cannot create key: Unable to generate a unique name.', 'Error Creating Key', 'error'); return; }
+        const skeleton = data?.node?.addMeta?.defaultSkeleton;
+        const value = skeleton && typeof skeleton === 'object' ? JSON.parse(JSON.stringify(skeleton)) : {};
+        const res = await this.commit(loc.configId, [{ path: [...loc.path, name], value, deleted: false }]);
+        if (!res.ok) {
+            if (!res.cancelled) await this.msg(`Cannot create key: Error writing to the registry.\nDetails: ${res.error}`, 'Error Creating Key', 'error');
+            return;
+        }
+        this.expanded.add(this.locKey(loc));
+        const created = { ...loc, path: [...loc.path, name] };
+        await this.renderTree();
+        await this.selectLoc(created);
+        this.focusPane(this.treeEl);
+        // a new key is named in place at once (not a list's: its name is its index)
+        if (!isList) this.renameKey(true);
+    }
+
+    async newValue(value, wantType) {
+        const loc = this.selLoc;
+        if (loc.kind !== 'key') return;
+        const data = await this.fetchNode(loc.configId, loc.path, true);
+        const isList = data?.node?.type === 'array';
+        const name = isList ? this.nextIndex(data) : this.uniqueName('New Value', (data.children || []).map((c) => c.key));
+        if (name == null) { await this.msg('Cannot create value: Unable to generate a unique name.', 'Error Creating Value', 'error'); return; }
+        // a QWORD from 0 shows as REG_DWORD (JSON has one number type); the dialog it opens is the QWORD one
+        const res = await this.commit(loc.configId, [{ path: [...loc.path, name], value, deleted: false }]);
+        if (!res.ok) {
+            if (!res.cancelled) await this.msg(`Cannot create value: Error writing to the registry.\nDetails: ${res.error}`, 'Error Creating Value', 'error');
+            return;
+        }
+        this._qwordName = wantType === 'REG_QWORD' ? name : null;
+        await this.reload([name]);
+        this.focusPane(this.listPanel);
+        if (!isList) this.renameValue(true);
+    }
+
+    async deleteKey() {
+        const loc = this.selLoc;
+        if (!this.canDeleteKey(loc)) return;
+        const ok = await this.msg('Are you sure you want to permanently delete this key and all of its subkeys?', 'Confirm Key Delete', 'warning', 'yesno');
+        if (ok !== 'yes') return;
+        const res = await this.commit(loc.configId, [{ path: loc.path, deleted: true }]);
+        if (!res.ok) {
+            if (!res.cancelled) await this.msg(`Cannot delete ${this.locName(loc)}:  Error while deleting key.\nDetails: ${res.error}`, 'Error Deleting Key', 'error');
+            return;
+        }
+        // the selection goes to the key above, as regedit's does
+        const parent = this.parentLoc(loc);
+        await this.renderTree();
+        await this.selectLoc(parent);
+        this.focusPane(this.treeEl);
+    }
+
+    async deleteValues() {
+        const loc = this.selLoc;
+        if (loc.kind !== 'key' || !this.canDeleteValues()) return;
+        const sel = this.selectedEntries().filter((x) => !x.isDefault);
+        const text = sel.length > 1
+            ? 'Deleting certain registry values could cause system instability. Are you sure you want to permanently delete these values?'
+            : 'Deleting certain registry values could cause system instability. Are you sure you want to permanently delete this value?';
+        const ok = await this.msg(text, 'Confirm Value Delete', 'warning', 'yesno');
+        if (ok !== 'yes') return;
+        // a list's items go from the last, so the indexes before them hold
+        const patches = sel.map((x) => ({ path: [...loc.path, x.name], deleted: true }))
+            .sort((a, b) => configEditorCompareNames(String(b.path[b.path.length - 1]), String(a.path[a.path.length - 1])));
+        const res = await this.commit(loc.configId, patches);
+        if (!res.ok && !res.cancelled) await this.msg('Unable to delete all specified values.', 'Error Deleting Values', 'error');
+        await this.reload([]);
+    }
+
+    canRenameKey(loc) {
+        return loc.kind === 'key' && loc.path.length > 0 && !this.parentIsList(loc) && this.canDeleteKey(loc);
+    }
+
+    canRenameValue(entry) {
+        if (!entry || entry.isDefault) return false;
+        if (this.listData?.node?.type === 'array') return false;
+        return !(entry.child?.required || entry.child?.readOnly);
+    }
+
+    /** regedit's in-place label edit: Enter keeps, Esc (or an unchanged name) cancels. */
+    inlineEdit(span, initial, onDone) {
+        if (!span) return;
+        const box = document.createElement('input');
+        box.type = 'text';
+        box.className = 'rg-rename';
+        box.value = initial;
+        box.spellcheck = false;
+        box.autocomplete = 'off';
+        const host = span.parentElement;
+        span.hidden = true;
+        span.after(box);
+        let finished = false;
+        const size = () => {
+            const ctx = this._measure || (this._measure = document.createElement('canvas').getContext('2d'));
+            ctx.font = '9pt "Segoe UI", sans-serif';
+            // the list view's edit: the text, 4 px in, and room for about two more characters (VM)
+            box.style.width = `${Math.ceil(ctx.measureText(box.value || ' ').width) + 20}px`;
+        };
+        const end = (keep) => {
+            if (finished) return;
+            finished = true;
+            const value = box.value;
+            box.remove();
+            span.hidden = false;
+            void onDone(keep ? value : null, host);
+        };
+        box.addEventListener('input', size);
+        box.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') { e.preventDefault(); end(true); }
+            else if (e.key === 'Escape') { e.preventDefault(); end(false); }
+        });
+        box.addEventListener('mousedown', (e) => e.stopPropagation());
+        box.addEventListener('blur', () => end(true));
+        size();
+        box.focus();
+        box.select();
+    }
+
+    renameKey(isNew) {
+        const loc = this.selLoc;
+        if (!isNew && !this.canRenameKey(loc)) return;
+        const span = this.selectedRow()?.querySelector('.config-editor-tree-label > span');
+        const old = this.locName(loc);
+        this.inlineEdit(span, old, async (name) => {
+            this.focusPane(this.treeEl);
+            if (name == null || name === old) return;
+            const fail = (n) => this.msg(`The Registry Editor cannot rename ${old}. ${n}`, 'Error Renaming Key', 'error');
+            if (!name.trim()) { await fail('The specified key name is empty. Type another name and try again.'); this.renameKey(isNew); return; }
+            if (name.includes('\\')) { await fail('Specify a key name without a backslash (\\).'); this.renameKey(isNew); return; }
+            if (name.length > 255) { await fail('The specified key name is too long. Type a shorter name and try again.'); this.renameKey(isNew); return; }
+            const parentPath = loc.path.slice(0, -1);
+            const parent = await this.fetchNode(loc.configId, parentPath, true);
+            if ((parent.children || []).some((c) => String(c.key).toUpperCase() === name.toUpperCase() && String(c.key) !== old)) {
+                await fail('The specified key name already exists. Type another name and try again.');
+                this.renameKey(isNew);
+                return;
+            }
+            const node = await this.fetchNode(loc.configId, loc.path, true);
+            const value = node?.nodeValue;
+            // a masked secret inside would be written as the mask: refuse, as on any key it cannot read
+            if (value === undefined || JSON.stringify(value).includes(CONFIG_EDITOR_SECRET_MASK)) { await fail('Error while renaming key.'); return; }
+            const res = await this.commit(loc.configId, [{ path: [...parentPath, name], value, deleted: false }, { path: loc.path, deleted: true }]);
+            if (!res.ok) { if (!res.cancelled) await fail(`Error while renaming key.\nDetails: ${res.error}`); await this.renderTree(); return; }
+            const oldKey = this.locKey(loc);
+            const moved = { ...loc, path: [...parentPath, name] };
+            if (this.expanded.has(oldKey)) { this.expanded.delete(oldKey); this.expanded.add(this.locKey(moved)); }
+            await this.renderTree();
+            await this.selectLoc(moved);
+        });
+    }
+
+    renameValue(isNew) {
+        const entry = this.entry(this.focusName) || this.selectedEntries()[0];
+        if (!entry || (!isNew && !this.canRenameValue(entry))) return;
+        const loc = this.selLoc;
+        const span = this.rowFor(entry.name)?.querySelector('.rg-name');
+        const old = entry.name;
+        this.inlineEdit(span, old, async (name) => {
+            this.focusPane(this.listPanel);
+            if (name == null || name === old) return;
+            const fail = (n) => this.msg(`The Registry Editor cannot rename ${old}. ${n}`, 'Error Renaming Value', 'error');
+            if (!name.trim()) { await fail('The specified value name is empty. Type another name and try again.'); this.renameValue(isNew); return; }
+            if (this.listEntries.some((x) => !x.isDefault && x.name !== old && x.name.toUpperCase() === name.toUpperCase())) {
+                await fail('The specified value name already exists. Type another name and try again.');
+                this.renameValue(isNew);
+                return;
+            }
+            let value = entry.value;
+            if (entry.secret) {
+                try { value = (await this.ws('config_editor_reveal_secret', { configId: loc.configId, path: [...loc.path, old] }))?.value; } catch (_) { await fail('Error while renaming value.'); return; }
+            }
+            const res = await this.commit(loc.configId, [{ path: [...loc.path, name], value: value === undefined ? null : value, deleted: false }, { path: [...loc.path, old], deleted: true }]);
+            if (!res.ok) { if (!res.cancelled) await fail(`Error while renaming value.\nDetails: ${res.error}`); await this.reload([old]); return; }
+            if (this._qwordName === old) this._qwordName = name;
+            await this.reload([name]);
+        });
+    }
+
+    copyKeyName() {
+        const text = this.keyPath(this.selLoc);
+        if (!text) return;
+        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
+        if (typeof copyTextToClipboard === 'function') copyTextToClipboard(text).catch(() => {});
+        else navigator.clipboard?.writeText(text).catch(() => {});
+    }
+
+    async refresh() {
+        this.nodeCache.clear();
+        try {
+            const data = await this.ws('config_editor_list');
+            this.configList = data?.configs || this.configList;
+        } catch (_) { /* keep the list */ }
+        const keep = [...this.selNames];
+        await this.navigateTo(this.selLoc, { quiet: true });
+        this.setListSelection(keep.filter((n) => this.entry(n)), this.focusName);
+    }
+
+    // ---- Modify (#configEditorValueModal: Edit String / DWORD / QWORD / Multi-String) ---------------
+
+    wireValueModal() {
+        document.getElementById('closeConfigEditorValueBtn')?.addEventListener('click', () => this.closeValueEditor());
+        document.getElementById('configEditorValueCancelBtn')?.addEventListener('click', () => this.closeValueEditor());
+        document.getElementById('configEditorValueApplyBtn')?.addEventListener('click', () => this.applyValueEditor());
         ['configEditorValueBaseHex', 'configEditorValueBaseDec'].forEach((id) => {
             const radio = document.getElementById(id);
             if (radio) radio.addEventListener('change', () => this.setValueNumberBase(Number(radio.value)));
         });
+        // the DWORD box takes only digits of its base (hexadecimal: 8 of them, decimal: 10)
+        const num = document.getElementById('configEditorValueNumber');
+        num?.addEventListener('beforeinput', (e) => {
+            if (!e.data) return;
+            const re = this.valueNumberBase === 16 ? /^[0-9a-f]+$/i : /^[0-9]+$/;
+            if (!re.test(e.data)) e.preventDefault();
+        });
         if (this.valueModal) {
-            // Enter in a one-line box presses the default button (OK); Alt shows the access keys
             this.valueModal.addEventListener('keydown', (e) => {
                 if (e.key === 'Alt') this.valueModal.classList.add('cev-cues');
                 if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.altKey) return;
                 const t = e.target;
                 if (!t || t.tagName !== 'INPUT' || t.type === 'radio') return;
                 e.preventDefault();
-                this.applyValueFromEditor();
+                void this.applyValueEditor();
             });
         }
-
-        this.setupContextMenus();
-        this.wireMenus();
-        this.wireSplitter();
-        this.setupClickMenus();
-        this.wireKeyboardOverlayEntries();
-    }
-
-    setupClickMenus() {
-        // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-        if (!contextMenu) return;
-
-        this.inlineEnumClickMenuConfig = {
-            position: 'anchor',
-            anchorAlign: 'start',
-            maxHeight: 360,
-            beforeShow: (event, target) => this.refreshInlineEnumClickMenuItems(target),
-            sections: [{ type: 'list', items: [] }],
-            onAction: (action, target, item) => this.handleInlineEnumClickMenuAction(action, target, item)
-        };
-
-        this.valueModalEnumClickMenuConfig = {
-            position: 'anchor',
-            anchorAlign: 'start',
-            maxHeight: 360,
-            beforeShow: () => this.refreshValueModalEnumClickMenuItems(),
-            sections: [{ type: 'list', items: [] }],
-            onAction: (action, target, item) => this.handleValueModalEnumClickMenuAction(action, target, item)
-        };
-
-        const valueEnumBtn = document.getElementById('configEditorValueEnumBtn');
-        if (valueEnumBtn) {
-            contextMenu.attachClickMenuToElement(valueEnumBtn, this.valueModalEnumClickMenuConfig);
+        if (typeof contextMenu !== 'undefined' && contextMenu) {
+            const btn = document.getElementById('configEditorValueEnumBtn');
+            if (btn) {
+                contextMenu.attachClickMenuToElement(btn, {
+                    position: 'anchor', anchorAlign: 'start', maxHeight: 360,
+                    sections: [{ type: 'list', initfn: (section) => { section.items = this.enumMenuItems(); } }],
+                    onAction: (action, target, item) => this.pickEnum(action, item)
+                });
+            }
         }
     }
 
-    wireKeyboardOverlayEntries() {
-        if (this._keyboardOverlayWired) return;
-        this._keyboardOverlayWired = true;
-        if (!this._escapeKeyHandler) {
-            this._escapeKeyHandler = (e) => {
-                if (e.key !== 'Escape') return;
-                if (this.valueModal && !this.valueModal.classList.contains('hidden')) {
-                    this.closeValueEditor();
-                    return true;
-                }
-            };
-        }
-        // registerKeyboardListener: public/scripts/comp/modalKeyboardRegistry.js
-        registerKeyboardListener({
-            id: 'configEditorModal.escape',
-            handler: this._escapeKeyHandler,
-            type: 'whenFocused',
-            modalId: 'configEditorModal',
-            priority: 80,
-            critical: true,
-            showInOverlay: false
-        });
-        if (!this._saveKeyHandler) {
-            this._saveKeyHandler = (e) => {
-                if (!(e.ctrlKey || e.metaKey) || (e.key !== 's' && e.key !== 'S')) return;
-                if (this.valueModal && !this.valueModal.classList.contains('hidden')) return;
-                if (!this.modal || this.modal.classList.contains('hidden')) return;
-                e.preventDefault();
-                e.stopPropagation();
-                this.requestSave();
-                return true;
-            };
-        }
-        registerKeyboardListener({
-            id: 'configEditorModal.save',
-            handler: this._saveKeyHandler,
-            type: 'whenFocused',
-            modalId: 'configEditorModal',
-            priority: 79,
-            showInOverlay: false
-        });
-        registerModalOverlayEntries('configEditorModal', 'Runes', [
-            { id: 'overlay.configEditor.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
-            { id: 'overlay.configEditor.find', label: 'Find', keys: 'Ctrl+F', icon: 'fas fa-magnifying-glass' },
-            { id: 'overlay.configEditor.findNext', label: 'Find Next', keys: 'F3', icon: 'fas fa-magnifying-glass' },
-            { id: 'overlay.configEditor.refresh', label: 'Refresh', keys: 'F5', icon: 'fas fa-rotate' },
-            { id: 'overlay.configEditor.delete', label: 'Delete', keys: 'Del', icon: 'fas fa-trash' },
-            { id: 'overlay.configEditor.close', label: 'Close', keys: 'Alt+Q', icon: 'fas fa-times' }
-        ]);
-        if (!this._regeditKeyHandler) {
-            this._regeditKeyHandler = (e) => {
-                if (!this.modal || this.modal.classList.contains('hidden')) return;
-                if (this.valueModal && !this.valueModal.classList.contains('hidden')) return;
-                const typing = e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.isContentEditable);
-                if ((e.ctrlKey || e.metaKey) && (e.key === 'f' || e.key === 'F')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    void this.openFindDialog();
-                    return true;
-                }
-                if (e.key === 'F3') {
-                    e.preventDefault();
-                    void this.findNextHit();
-                    return true;
-                }
-                if (e.key === 'F5') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    void this.refreshSelected();
-                    return true;
-                }
-                if (e.key === 'Delete' && !e.ctrlKey && !e.altKey && !e.metaKey && !typing) {
-                    e.preventDefault();
-                    this.deleteSelected();
-                    return true;
-                }
-            };
-        }
-        registerKeyboardListener({
-            id: 'configEditorModal.regedit',
-            handler: this._regeditKeyHandler,
-            type: 'whenFocused',
-            modalId: 'configEditorModal',
-            priority: 78,
-            showInOverlay: false
-        });
-        registerKeyboardListener({
-            id: 'configEditorValueModal.keydown',
-            handler: (e) => {
-                const modal = this.valueModal;
-                if (!modal || modal.classList.contains('hidden')) return;
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.closeValueEditor();
-                    return true;
-                }
-                if ((e.ctrlKey || e.metaKey) && (e.key === 's' || e.key === 'S')) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    this.applyValueFromEditor();
-                    return true;
-                }
-            },
-            type: 'whenFocused',
-            modalId: 'configEditorValueModal',
-            priority: 85,
-            critical: true,
-            showInOverlay: false
-        });
-        registerModalOverlayEntries('configEditorValueModal', 'Runes', [
-            { id: 'overlay.configEditorValue.save', label: 'Save', keys: 'Ctrl+S', icon: 'fas fa-save' },
-            { id: 'overlay.configEditorValue.close', label: 'Close', keys: 'Esc', icon: 'fas fa-times' }
-        ]);
+    hideValueFields() {
+        ['configEditorValueInput', 'configEditorValueNumber', 'configEditorValueSecret', 'configEditorValueTextarea', 'configEditorValuePromptWrap', 'configEditorValueEnumBtn', 'configEditorValueConvertBtn']
+            .forEach((id) => document.getElementById(id)?.classList.add('hidden'));
     }
 
-    canShowCheckpointsMenu(path) {
-        return Array.isArray(path) && path.length <= 1;
-    }
-
-    setupContextMenus() {
-        if (!contextMenu) return;
-        const applet = this;
-
-        const panelCtx = () => ({
-            configId: applet.selectedConfigId,
-            path: applet.selectedPath.slice(),
-            containerPath: applet.selectedPath.slice(),
-            expandable: applet.isContainerPath(applet.selectedConfigId, applet.selectedPath)
-        });
-
-        const treePanelItems = () => [
-            applet.makeAddEntryMenuItem(panelCtx, { panelMode: true }),
-            { text: 'Commit all here', icon: 'fas fa-check', action: 'commit-all',
-                disabled: () => !applet.selectedConfigId
-                    || !applet.hasPendingUnder(applet.selectedConfigId, applet.selectedPath) },
-            { text: 'Revert all here', icon: 'fas fa-undo', action: 'revert-all',
-                disabled: () => !applet.selectedConfigId
-                    || !applet.hasPendingUnder(applet.selectedConfigId, applet.selectedPath) },
-            { separator: true },
-            { text: 'Checkpoints', icon: 'fas fa-clock-rotate-left', action: 'checkpoints',
-                hidden: () => !applet.selectedConfigId || !applet.canShowCheckpointsMenu(applet.selectedPath) }
-        ];
-
-        const valuesPanelItems = () => [
-            applet.makeAddEntryMenuItem(panelCtx, { panelMode: true }),
-            { text: 'Commit all here', icon: 'fas fa-check', action: 'commit-all',
-                disabled: () => !applet.selectedConfigId
-                    || !applet.hasPendingUnder(applet.selectedConfigId, applet.selectedPath) },
-            { text: 'Revert all here', icon: 'fas fa-undo', action: 'revert-all',
-                disabled: () => !applet.selectedConfigId
-                    || !applet.hasPendingUnder(applet.selectedConfigId, applet.selectedPath) }
-        ];
-
-        const itemMenuConfig = (getCtx, { includeCheckpoints = false } = {}) => ({
-            sections: [{
-                type: 'list',
-                items: [
-                    { text: 'Open', icon: 'fas fa-folder-open', action: 'open',
-                        hidden: () => !getCtx().expandable },
-                    { text: 'Edit value', icon: 'fas fa-pen', action: 'edit',
-                        hidden: () => getCtx().expandable },
-                    { text: 'View raw JSON', icon: 'fas fa-code', action: 'raw-json',
-                        loadfn: (item) => {
-                            item.text = applet.isConfigEditorAdmin() ? 'Edit raw JSON' : 'View raw JSON';
-                        } },
-                    { text: 'Change type', icon: 'fas fa-exchange-alt', action: 'change-type',
-                        hidden: () => !applet.canChangeChildType(getCtx()),
-                        loadfn: (item) => applet.loadChangeTypeMenuItem(item, getCtx()) },
-                    applet.makeAddEntryMenuItem(getCtx),
-                    { text: 'Delete', icon: 'fas fa-trash', action: 'delete',
-                        disabled: () => {
-                            const ctx = getCtx();
-                            return !applet.canDeletePath(ctx.configId, ctx.path, ctx.child);
-                        },
-                        tooltip: () => {
-                            const ctx = getCtx();
-                            return applet.canDeletePath(ctx.configId, ctx.path, ctx.child)
-                                ? ''
-                                : applet.getDeleteDeniedReason(ctx.configId, ctx.path, ctx.child);
-                        } },
-                    { separator: true },
-                    { text: 'Commit', icon: 'fas fa-check', action: 'commit',
-                        disabled: () => !applet.hasPendingUnder(getCtx().configId, getCtx().path) },
-                    { text: 'Revert', icon: 'fas fa-undo', action: 'revert',
-                        disabled: () => !applet.hasPendingAt(getCtx().configId, getCtx().path) },
-                    ...(includeCheckpoints ? [
-                        { separator: true },
-                        { text: 'Checkpoints', icon: 'fas fa-clock-rotate-left', action: 'checkpoints',
-                            hidden: () => !getCtx().configId || !applet.canShowCheckpointsMenu(getCtx().path) }
-                    ] : [])
-                ]
-            }],
-            onAction: (action, target, item) => applet.handleContextAction(action, getCtx(), item)
-        });
-
-        this._treeItemMenuFactory = (el) => itemMenuConfig(() => el._configEditorCtx, { includeCheckpoints: true });
-        this._valueRowMenuFactory = (el) => itemMenuConfig(() => el._configEditorCtx);
-
-        if (this.treePanel) {
-            contextMenu.attachToElement(this.treePanel, {
-                sections: [{ type: 'list', items: treePanelItems() }],
-                onAction: (action, target, item) => applet.handleContextAction(action, panelCtx(), item)
-            });
-        }
-        if (this.valuesPanel) {
-            contextMenu.attachToElement(this.valuesPanel, {
-                sections: [{ type: 'list', items: valuesPanelItems() }],
-                onAction: (action, target, item) => applet.handleContextAction(action, panelCtx(), item)
-            });
-        }
-    }
-
-    attachRowContextMenu(el, ctx) {
-        if (!contextMenu || !el) return;
-        el._configEditorCtx = ctx;
-        if (el.dataset.contextMenu) {
-            contextMenu.detachFromElement(el);
-        }
-        const factory = ctx.kind === 'value' ? this._valueRowMenuFactory : this._treeItemMenuFactory;
-        contextMenu.attachToElement(el, factory(el));
-    }
-
-    isContainerPath(configId, path) {
-        if (!configId) return false;
-        const data = this.nodeCache.get(configEditorPathKey(configId, path));
-        return !!data?.node?.expandable;
-    }
-
-    getAddDeniedReason(configId, containerPath) {
-        if (!configId || !this.isContainerPath(configId, containerPath)) {
-            return 'Select a container to add entries';
-        }
-        const data = this.nodeCache.get(configEditorPathKey(configId, containerPath));
-        return data?.node?.addMeta?.reason || 'Adding entries is not allowed here';
-    }
-
-    canAddAtPath(configId, containerPath) {
-        if (!this.isContainerPath(configId, containerPath)) return false;
-        const data = this.nodeCache.get(configEditorPathKey(configId, containerPath));
-        return data?.node?.addMeta?.allowed !== false;
-    }
-
-    getAddEntryTypeInfoSync(configId, containerPath) {
-        if (!configId || !containerPath) return { type: 'string', picker: false };
-        const data = this.nodeCache.get(configEditorPathKey(configId, containerPath));
-        if (!data) return { type: 'string', picker: false };
-        return this.resolveAddValueType(data);
-    }
-
-    buildAddTypeSubmenuItems(allowedTypes) {
-        return allowedTypes.map((t) => ({
-            text: CONFIG_EDITOR_ADD_TYPE_LABELS[t] || t,
-            icon: configEditorSearchTypeIcon(t),
-            action: 'add-type',
-            typeValue: t
-        }));
-    }
-
-    makeAddEntryMenuItem(getCtx, { panelMode = false } = {}) {
-        const applet = this;
-        const item = {
-            text: 'Add entry…',
-            icon: 'fas fa-plus',
-            tooltip: () => {
-                const ctx = getCtx();
-                if (!ctx?.configId) return '';
-                if (applet.canAddAtPath(ctx.configId, ctx.containerPath)) return '';
-                return applet.getAddDeniedReason(ctx.configId, ctx.containerPath);
-            },
-            loadfn: () => applet.loadAddEntryMenuItem(item, getCtx())
-        };
-        if (panelMode) {
-            item.disabled = () => {
-                const ctx = getCtx();
-                return !ctx?.configId || !applet.canAddAtPath(ctx.configId, ctx.containerPath);
-            };
-        } else {
-            item.hidden = () => {
-                const ctx = getCtx();
-                return !applet.canAddAtPath(ctx?.configId, ctx?.containerPath);
-            };
-        }
-        return item;
-    }
-
-    loadAddEntryMenuItem(item, ctx) {
-        const typeInfo = this.getAddEntryTypeInfoSync(ctx?.configId, ctx?.containerPath);
-        if (typeInfo.picker) {
-            item.submenu = this.buildAddTypeSubmenuItems(typeInfo.allowedTypes);
-            delete item.action;
-        } else {
-            item.action = 'add';
-            delete item.submenu;
-            delete item.optionsfn;
-        }
-    }
-
-    canDeletePath(configId, path, child) {
-        if (!Array.isArray(path) || path.length === 0) return false;
-        const stub = child || this.findChildAtPath(configId, path);
-        if (stub?.required || stub?.readOnly) return false;
-        return true;
-    }
-
-    getDeleteDeniedReason(configId, path, child) {
-        const stub = child || this.findChildAtPath(configId, path);
-        if (stub?.readOnly) return 'Read-only entry (JSON comment or documentation key)';
-        if (stub?.required) return 'Required by schema — cannot delete';
-        return 'Cannot delete this entry';
-    }
-
-    isConfigEditorAdmin() {
-        // serverManagement.isAdminSession: public/scripts/comp/serverManagement.js
-        return serverManagement.isAdminSession();
-    }
-
-    getConfigLabel(configId) {
-        return this.configList.find((c) => c.id === configId)?.label || configId;
-    }
-
-    /** regedit's caption for the dialog and the value's name in the read-only Value name box. */
-    setValueModalTitle(keyName, caption) {
-        const titleEl = document.getElementById('configEditorValueModalTitle');
-        if (titleEl) titleEl.textContent = caption;
-        const nameEl = document.getElementById('configEditorValueName');
-        if (nameEl) nameEl.value = keyName == null ? '' : String(keyName);
-    }
-
-    setValueEditorApplyState(enabled) {
-        const applyBtn = document.getElementById('configEditorValueApplyBtn');
-        if (applyBtn) applyBtn.disabled = !enabled;
-    }
-
-    resetValueEditorFieldClasses() {
-        const ta = document.getElementById('configEditorValueTextarea');
-        if (ta) {
-            ta.readOnly = false;
-        }
-        this.setValueEditorApplyState(true);
-    }
-
-    /** One of regedit's dialogs: string | dword | multi (fixed sizes in config-editor.css). */
-    applyValueModalLayout(layout) {
-        if (!this.valueModal) return;
+    setValueLayout(layout, caption, name) {
         this.valueModal.dataset.cevLayout = layout;
         this.valueModal.classList.remove('cev-cues');
         const base = document.getElementById('configEditorValueBase');
         if (base) base.disabled = layout !== 'dword';
+        const title = document.getElementById('configEditorValueModalTitle');
+        if (title) title.textContent = caption;
+        const nameEl = document.getElementById('configEditorValueName');
+        if (nameEl) nameEl.value = name;
+        const ok = document.getElementById('configEditorValueApplyBtn');
+        if (ok) ok.disabled = false;
     }
 
-    ensureValuePromptTextareaWired() {
-        if (this._valuePromptTextareaWired) return;
-        const ta = document.getElementById('configEditorValuePromptTextarea');
-        if (!ta) return;
-        // setupEditableTextarea: public/scripts/comp/textareaUtils.js
-        setupEditableTextarea(ta);
-        this._valuePromptTextareaWired = true;
-    }
-
-    isValuePromptEditorVisible() {
-        const wrap = document.getElementById('configEditorValuePromptWrap');
-        return wrap && !wrap.classList.contains('hidden');
-    }
-
-    hasPendingAt(configId, path) {
-        return !!this.getPendingEdit(configId, path);
-    }
-
-    hasPendingUnder(configId, containerPath) {
-        const prefix = configEditorPathKey(configId, containerPath);
-        const map = this.pendingEdits.get(configId);
-        if (!map) return false;
-        for (const key of map.keys()) {
-            if (key === prefix || key.startsWith(prefix + '\0')) return true;
+    async modify() {
+        const entry = this.selNames.size === 1 ? this.selectedEntries()[0] : null;
+        if (!entry || !this.valueModal) return;
+        const loc = this.selLoc;
+        if (entry.isDefault) {
+            // (Default) is never set in a config: Edit String opens on it empty and writes nothing
+            this.editTarget = { entry, loc, kind: 'default' };
+            this.hideValueFields();
+            this.setValueLayout('string', 'Edit String', '(Default)');
+            const el = document.getElementById('configEditorValueInput');
+            el.classList.remove('hidden');
+            el.value = '';
+            openModal(this.valueModal);
+            el.focus();
+            return;
         }
-        return false;
-    }
-
-    invalidateCacheFrom(configId, path) {
-        const prefix = configEditorPathKey(configId, path);
-        for (const key of [...this.nodeCache.keys()]) {
-            if (key === prefix || key.startsWith(prefix + '\0')) {
-                this.nodeCache.delete(key);
-            }
-        }
-    }
-
-    isPendingOnlyPath(configId, path) {
-        if (!path?.length) return false;
-        const pathKey = configEditorPathKey(configId, path);
-        const map = this.pendingEdits.get(configId);
-        if (!map) return false;
-        for (const edit of map.values()) {
-            if (!edit.isNew || edit.deleted || !edit.path?.length) continue;
-            const newPrefix = configEditorPathKey(configId, edit.path);
-            if (pathKey === newPrefix || pathKey.startsWith(newPrefix + '\0')) return true;
-        }
-        return false;
-    }
-
-    getEffectiveObjectAtPath(configId, path) {
-        const pending = this.getPendingEdit(configId, path);
-        let base = pending?.value;
-        if (base === undefined || base === null || typeof base !== 'object') return base;
-
-        const result = Array.isArray(base) ? base.slice() : { ...base };
-        const prefix = configEditorPathKey(configId, path);
-        const map = this.pendingEdits.get(configId);
-        if (!map) return result;
-
-        map.forEach((edit, key) => {
-            if (edit.deleted) return;
-            if (key === prefix || !key.startsWith(prefix + '\0')) return;
-            const rest = key.slice(prefix.length + 1);
-            if (rest.includes('\0')) return;
-            if (edit.deleted) {
-                if (Array.isArray(result)) result.splice(Number(rest), 1);
-                else delete result[rest];
-            } else {
-                result[rest] = edit.value;
-            }
-        });
-        return result;
-    }
-
-    buildChildStubsFromValue(configId, parentPath, rawValue, parentNodeMeta) {
-        const val = this.getEffectiveObjectAtPath(configId, parentPath) ?? rawValue;
-        if (!val || typeof val !== 'object') return [];
-
-        const keys = Array.isArray(val)
-            ? val.map((_, i) => String(i))
-            : Object.keys(val);
-        const childDisplay = parentNodeMeta?.childDisplay;
-        const multiTypes = parentNodeMeta?.addMeta?.allowedTypes;
-        const types = multiTypes?.length > 1 ? multiTypes.slice() : null;
-
-        return keys.map((key) => {
-            const childPath = [...parentPath, key];
-            const childVal = this.getEffectiveValue(configId, childPath, val[key]);
-            const expandable = childVal !== null && typeof childVal === 'object';
-            return {
-                key: String(key),
-                path: childPath,
-                type: Array.isArray(childVal) ? 'array' : expandable ? 'object' : typeof childVal,
-                label: configEditorFormatChildLabel(key, childVal, childDisplay),
-                icon: configEditorChildIcon(childVal, childDisplay),
-                types,
-                expandable,
-                hasExpandableChildren: expandable,
-                secret: configEditorIsSecret({ path: childPath, key, configId }),
-                value: expandable ? undefined : childVal,
-                mapped: false
-            };
-        });
-    }
-
-    valueHasExpandableChildren(val) {
-        if (!val || typeof val !== 'object') return false;
-        if (Array.isArray(val)) {
-            return val.some((item) => item !== null && typeof item === 'object');
-        }
-        return Object.values(val).some((item) => item !== null && typeof item === 'object');
-    }
-
-    async buildPseudoNode(configId, path) {
-        if (!path?.length || !this.isPendingOnlyPath(configId, path)) return null;
-
-        const parentPath = path.slice(0, -1);
-        let parentData;
-        if (parentPath.length && this.isPendingOnlyPath(configId, parentPath)) {
-            parentData = await this.buildPseudoNode(configId, parentPath);
-        } else {
-            parentData = await this.fetchNode(configId, parentPath, true);
-        }
-        if (!parentData) return null;
-
-        const merged = this.mergeChildrenWithPending(configId, parentData);
-        const childStub = merged.find((c) => configEditorPathsEqual(c.path, path));
-        const val = childStub
-            ? this.getEffectiveValue(configId, path, childStub.value)
-            : this.getEffectiveValue(configId, path, undefined);
-        const expandable = val !== null && typeof val === 'object';
-        const parentNode = parentData.node || {};
-        const childRuleAddMeta = childStub?.expandable ? parentNode.addMeta : undefined;
-
-        const node = {
-            type: Array.isArray(val) ? 'array' : expandable ? 'object' : (childStub?.type || typeof val),
-            expandable,
-            label: childStub?.label || String(path[path.length - 1]),
-            childDisplay: expandable && !Array.isArray(val) ? parentNode.childDisplay : undefined,
-            addMeta: expandable ? (childRuleAddMeta || parentNode.addMeta) : undefined,
-            hasExpandableChildren: expandable ? this.valueHasExpandableChildren(val) : false
-        };
-
-        const children = expandable
-            ? this.buildChildStubsFromValue(configId, path, val, { ...parentNode, addMeta: node.addMeta })
-            : [];
-
-        return { configId, path: path.slice(), node, children };
-    }
-
-    getUncommittedParentCommits(configId, path) {
-        if (!path?.length) return [];
-        const required = [];
-        for (let i = 1; i < path.length; i++) {
-            const ancestorPath = path.slice(0, i);
-            const edit = this.getPendingEdit(configId, ancestorPath);
-            if (edit?.isNew && !edit.deleted) {
-                required.push({
-                    path: ancestorPath.slice(),
-                    label: edit.label || configEditorPathLabel(ancestorPath)
-                });
-            }
-        }
-        return required;
-    }
-
-    collectPatchesForSubtree(configId, rootPath, includeParents = true) {
-        const patches = [];
-        const seen = new Set();
-        const addPatch = (edit) => {
-            const key = configEditorPathKey(configId, edit.path);
-            if (seen.has(key)) return;
-            seen.add(key);
-            patches.push({
-                path: edit.path.slice(),
-                value: edit.deleted ? undefined : edit.value,
-                deleted: !!edit.deleted
-            });
-        };
-
-        if (includeParents) {
-            for (const parent of this.getUncommittedParentCommits(configId, rootPath)) {
-                const edit = this.getPendingEdit(configId, parent.path);
-                if (edit) addPatch(edit);
-            }
-        }
-
-        const prefix = configEditorPathKey(configId, rootPath);
-        const map = this.pendingEdits.get(configId);
-        if (!map) return patches;
-        map.forEach((edit, key) => {
-            if (key === prefix || key.startsWith(prefix + '\0')) {
-                addPatch(edit);
-            }
-        });
-        return patches;
-    }
-
-    clearPendingForPatches(configId, patches) {
-        for (const patch of patches) {
-            this.setPendingEdit(configId, patch.path, null);
-        }
-        const rootPaths = new Set();
-        for (const patch of patches) {
-            if (patch.path?.length) rootPaths.add(patch.path[0]);
-        }
-        for (const seg of rootPaths) {
-            this.invalidateCacheFrom(configId, [seg]);
-        }
-    }
-
-    async requestPartialCommit(configId, containerPath) {
-        if (!configId || !this.hasPendingUnder(configId, containerPath)) return;
-
-        const parentCommits = this.getUncommittedParentCommits(configId, containerPath);
-        const patches = this.collectPatchesForSubtree(configId, containerPath, true);
-        if (!patches.length) return;
-
-        let summaryHtml = `<p>Commit <strong>${patches.length}</strong> pending change${patches.length === 1 ? '' : 's'} under <code>${configEditorEscapeHtml(configEditorPathLabel(containerPath))}</code>?</p>`;
-        if (parentCommits.length) {
-            const list = parentCommits.map((p) =>
-                `<li><strong>${configEditorEscapeHtml(p.label)}</strong> (${configEditorEscapeHtml(configEditorPathLabel(p.path))})</li>`
-            ).join('');
-            summaryHtml += `<p class="config-editor-commit-parent-note">These parent entries must also be committed first:</p><ul class="config-editor-commit-parent-list">${list}</ul>`;
-        }
-
-        const rows = patches.map((edit) => {
-            const pending = this.getPendingEdit(configId, edit.path)
-                || { path: edit.path, deleted: edit.deleted, value: edit.value };
-            const pathStr = configEditorPathLabel(pending.path);
-            const action = pending.deleted ? 'delete' : 'set';
-            return `<tr><td>${configEditorEscapeHtml(pathStr)}</td><td>${action}</td></tr>`;
-        }).join('');
-        summaryHtml += `<div class="config-editor-summary-table-wrap form-section-scroll"><table class="config-editor-summary-table"><thead><tr><th>Path</th><th>Action</th></tr></thead><tbody>${rows}</tbody></table></div>`;
-
-        const result = await showConfirmationDialog(summaryHtml, [
-            { text: 'Commit', value: 'commit', className: 'btn-primary', icon: 'fas fa-check', primary: true },
-            { text: 'Cancel', value: null, className: 'btn-secondary' }
-        ], null, { title: 'Partial commit' });
-
-        if (result !== 'commit') return;
-
-        await this.runEditorAction(async () => {
-            this.setStatus('Committing…');
+        const child = entry.child || {};
+        const types = child.types || [];
+        const multiType = types.includes('string') && types.includes('array');
+        this.editTarget = { entry, loc };
+        this.hideValueFields();
+        if (entry.secret) {
+            this.editTarget.kind = 'secret';
+            this.setValueLayout('string', 'Edit String', entry.name);
+            const el = document.getElementById('configEditorValueSecret');
+            el.classList.remove('hidden');
+            el.value = '';
+            el.disabled = true;
+            openModal(this.valueModal);
             try {
-                const payload = {
-                    patches: { [configId]: patches },
-                    createCheckpoint: { [configId]: true },
-                    partialScope: { configId, path: containerPath.slice() }
-                };
-                const data = await window.wsClient.sendMessage('config_editor_save', payload, false);
-                if (!data?.success) {
-                    const errMsg = data?.errors?.map((e) => e.message || e).join('; ') || 'Commit failed';
-                    this.setStatus(errMsg);
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('error', 'Runes', errMsg);
-                    }
-                    return;
-                }
-                this.clearPendingForPatches(configId, patches);
-                if (data.restarting) {
-                    this.setStatus('Restarting server…');
-                } else {
-                    this.setStatus('Committed');
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('success', 'Runes', 'Partial commit saved');
-                    }
-                    if (this.selectedConfigId === configId) {
-                        await this.refreshTreePreservingExpansion();
-                    }
-                }
+                const data = await this.ws('config_editor_reveal_secret', { configId: loc.configId, path: [...loc.path, entry.name] });
+                el.value = data?.value ?? '';
             } catch (err) {
-                console.error('config_editor_save partial:', err);
-                this.setStatus('Commit failed');
-            }
-        });
-    }
-
-    applyPendingHighlight(el, configId, path, isPendingNew) {
-        if (!el) return;
-        const pending = this.getPendingEdit(configId, path);
-        const dirty = !!pending || !!isPendingNew || this.hasPendingUnder(configId, path);
-        el.classList.toggle('dirty', dirty);
-        el.classList.toggle('pending-new', !!(isPendingNew || pending?.isNew));
-    }
-
-    async refreshTreeBranch(configId, path) {
-        const expandKey = configEditorPathKey(configId, path) + ':expanded';
-        if (!this.expandedKeys.has(expandKey)) return;
-        const row = this.findTreeRow(configId, path);
-        if (row) await this.loadTreeChildren(configId, path, row);
-    }
-
-    mergeChildrenWithPending(configId, data) {
-        const parentPath = data.path || [];
-        let children = [...(data.children || [])];
-
-        children = children.filter((c) => {
-            const pending = this.getPendingEdit(configId, c.path);
-            return !pending?.deleted;
-        });
-
-        const map = this.pendingEdits.get(configId);
-        if (map) {
-            const parentKey = configEditorPathKey(configId, parentPath);
-            map.forEach((edit) => {
-                if (edit.deleted) return;
-                if (!edit.path || edit.path.length !== parentPath.length + 1) return;
-                if (configEditorPathKey(configId, edit.path.slice(0, -1)) !== parentKey) return;
-                const exists = children.some((c) => configEditorPathsEqual(c.path, edit.path));
-                if (!exists) {
-                    const key = edit.path[edit.path.length - 1];
-                    const val = edit.value;
-                    const expandable = val !== null && typeof val === 'object';
-                    const parentDisplay = data?.node?.childDisplay;
-                    const label = configEditorFormatChildLabel(key, val, parentDisplay);
-                    const icon = configEditorChildIcon(val, parentDisplay);
-                    const multiTypes = data?.node?.addMeta?.allowedTypes;
-                    const types = multiTypes?.length > 1 ? multiTypes.slice() : null;
-                    children.push({
-                        key: String(key),
-                        path: edit.path.slice(),
-                        type: Array.isArray(val) ? 'array' : expandable ? 'object' : typeof val,
-                        label,
-                        icon,
-                        types,
-                        expandable,
-                        secret: configEditorIsSecret({ path: edit.path, key, configId }),
-                        value: expandable ? undefined : val,
-                        isPendingNew: !!edit.isNew
-                    });
-                }
-            });
-        }
-
-        children = children.map((c) => {
-            const pending = this.getPendingEdit(configId, c.path);
-            if (!pending || pending.deleted) return c;
-            if (pending.isNew) return c;
-            const copy = { ...c };
-            if (!copy.expandable) {
-                copy.value = pending.value;
-            }
-            return copy;
-        });
-
-        return children;
-    }
-
-    nextArrayEntryKey(configId, parentData) {
-        const parentPath = parentData.path || [];
-        const keys = new Set();
-
-        for (const c of parentData.children || []) {
-            keys.add(String(c.key));
-        }
-
-        const map = this.pendingEdits.get(configId);
-        if (map) {
-            const parentKey = configEditorPathKey(configId, parentPath);
-            map.forEach((edit) => {
-                if (edit.deleted) return;
-                if (!edit.path || edit.path.length !== parentPath.length + 1) return;
-                if (configEditorPathKey(configId, edit.path.slice(0, -1)) !== parentKey) return;
-                keys.add(String(edit.path[edit.path.length - 1]));
-            });
-        }
-
-        let max = -1;
-        for (const k of keys) {
-            const n = parseInt(k, 10);
-            if (!Number.isNaN(n) && n >= 0 && n > max) max = n;
-        }
-        return String(max + 1);
-    }
-
-    defaultValueForType(type) {
-        if (type === 'number') return 0;
-        if (type === 'boolean') return false;
-        if (type === 'array') return [];
-        if (type === 'object') return {};
-        return '';
-    }
-
-    prepareDefaultValue(addMeta, entryKey, valueType) {
-        if (valueType === 'object' && addMeta?.defaultSkeleton && typeof addMeta.defaultSkeleton === 'object') {
-            const sk = JSON.parse(JSON.stringify(addMeta.defaultSkeleton));
-            if (entryKey != null && entryKey !== '') {
-                const k = String(entryKey);
-                if ('name' in sk && (sk.name === '' || sk.name == null)) sk.name = k;
-                if ('preset' in sk && (sk.preset === '' || sk.preset == null)) sk.preset = k;
-                if ('display' in sk && (sk.display === '' || sk.display == null)) sk.display = k;
-            }
-            if ('id' in sk && (sk.id === '' || sk.id == null)) {
-                sk.id = `entry_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
-            }
-            if ('created' in sk && (sk.created === '' || sk.created == null)) {
-                sk.created = new Date().toISOString();
-            }
-            if ('timestamp' in sk && (sk.timestamp === '' || sk.timestamp == null)) {
-                sk.timestamp = new Date().toISOString();
-            }
-            if ('dateAdded' in sk && (sk.dateAdded === '' || sk.dateAdded == null)) {
-                sk.dateAdded = new Date().toISOString();
-            }
-            return sk;
-        }
-        return this.defaultValueForType(valueType);
-    }
-
-    resolveAddValueType(parentData) {
-        const addMeta = parentData?.node?.addMeta;
-        if (!addMeta) return { type: 'string', picker: false };
-        const allowed = addMeta.allowedTypes || ['string'];
-        if (allowed.length === 1) {
-            return { type: allowed[0], picker: false, addMeta };
-        }
-        return { type: addMeta.defaultType || allowed[0], picker: true, allowedTypes: allowed, addMeta };
-    }
-
-    async promptAddEntry(configId, containerPath, presetValueType) {
-        const parentData = await this.fetchNode(configId, containerPath, true);
-        if (!this.canAddAtPath(configId, containerPath)) {
-            this.setStatus(this.getAddDeniedReason(configId, containerPath));
-            return;
-        }
-        const isArray = parentData?.node?.type === 'array';
-        let key;
-
-        if (isArray) {
-            key = this.nextArrayEntryKey(configId, parentData);
-        } else {
-            if (typeof showInputDialog !== 'function') return;
-            key = await showInputDialog(
-                'Name for the new entry',
-                '',
-                'key name',
-                [
-                    { text: 'Add', value: 'ok', className: 'btn-primary', icon: 'fas fa-plus', primary: true },
-                    { text: 'Cancel', value: null, className: 'btn-secondary' }
-                ],
-                null,
-                { title: 'Add entry' }
-            );
-            if (!key || key === null) return;
-            key = String(key).trim();
-            if (!key) return;
-        }
-
-        const newPath = [...containerPath, key];
-        const merged = this.mergeChildrenWithPending(configId, parentData);
-        if (merged.some((c) => c.key === key)) {
-            this.setStatus('Key already exists');
-            return;
-        }
-
-        const typeInfo = this.resolveAddValueType(parentData);
-        const valueType = presetValueType || typeInfo.type;
-
-        const defaultVal = this.prepareDefaultValue(typeInfo.addMeta, key, valueType);
-        const parentDisplay = parentData?.node?.childDisplay;
-        const label = configEditorFormatChildLabel(key, defaultVal, parentDisplay);
-        this.setPendingEdit(configId, newPath, {
-            path: newPath.slice(),
-            value: defaultVal,
-            deleted: false,
-            isNew: true,
-            previousValue: undefined,
-            restartRequired: false,
-            secret: configEditorIsSecret({ path: newPath, key, configId }),
-            label
-        });
-        this.invalidateCacheFrom(configId, containerPath);
-        await this.selectNode(configId, containerPath);
-        await this.refreshTreeBranch(configId, containerPath);
-        this.highlightValueRow(configId, newPath);
-    }
-
-    revertPending(configId, path) {
-        this.setPendingEdit(configId, path, null);
-        const parentPath = path.slice(0, -1);
-        this.invalidateCacheFrom(configId, parentPath.length ? parentPath : path);
-    }
-
-    revertPendingUnder(configId, containerPath) {
-        const prefix = configEditorPathKey(configId, containerPath);
-        const map = this.pendingEdits.get(configId);
-        if (!map) return;
-        for (const key of [...map.keys()]) {
-            if (key === prefix || key.startsWith(prefix + '\0')) {
-                map.delete(key);
-            }
-        }
-        if (map.size === 0) this.pendingEdits.delete(configId);
-        this.invalidateCacheFrom(configId, containerPath);
-    }
-
-    async handleContextAction(action, ctx, item) {
-        if (!ctx?.configId) return;
-        const { configId } = ctx;
-        const path = ctx.path ? ctx.path.slice() : [];
-        const containerPath = ctx.containerPath ? ctx.containerPath.slice() : path.slice();
-
-        switch (action) {
-            case 'open':
-                if (ctx.expandable) await this.navigateToPath(configId, path);
-                break;
-            case 'edit': {
-                let child = ctx.child;
-                if (!child && ctx.path?.length) {
-                    child = await this.ensureChildAtPath(configId, ctx.path);
-                }
-                if (child) this.openValueEditor(configId, child);
-                break;
-            }
-            case 'raw-json':
-                await this.openRawJsonEditor(configId, path, ctx);
-                break;
-            case 'change-type': {
-                const child = ctx.child || this.findChildAtPath(configId, path);
-                if (child) await this.convertChildValueType(configId, child);
-                break;
-            }
-            case 'add':
-                await this.promptAddEntry(configId, containerPath);
-                break;
-            case 'add-type':
-                await this.promptAddEntry(configId, containerPath, item?.typeValue);
-                break;
-            case 'delete':
-                if (!this.canDeletePath(configId, path, ctx.child)) break;
-                this.markDeleted(configId, path);
-                break;
-            case 'revert':
-                await this.runEditorAction(async () => {
-                    this.revertPending(configId, path);
-                    if (configEditorPathsEqual(path, this.selectedPath) && this.selectedConfigId === configId) {
-                        await this.loadAndRenderValues(configId, this.selectedPath);
-                    }
-                });
-                break;
-            case 'revert-all':
-                await this.runEditorAction(async () => {
-                    this.revertPendingUnder(configId, containerPath);
-                    if (this.selectedConfigId === configId) {
-                        await this.loadAndRenderValues(configId, this.selectedPath);
-                    }
-                });
-                break;
-            case 'commit':
-                await this.requestPartialCommit(configId, path);
-                break;
-            case 'commit-all':
-                await this.requestPartialCommit(configId, containerPath);
-                break;
-            case 'checkpoints':
-                await this.openCheckpointsModal(configId);
-                break;
-            default:
-                break;
-        }
-    }
-
-    markDeleted(configId, path) {
-        const parentKey = configEditorPathKey(configId, path.slice(0, -1));
-        const parentData = this.nodeCache.get(parentKey);
-        const stub = parentData?.children?.find((c) => configEditorPathsEqual(c.path, path));
-        const pending = this.getPendingEdit(configId, path);
-        if (pending?.isNew) {
-            this.setPendingEdit(configId, path, null);
-        } else {
-            this.setPendingEdit(configId, path, {
-                path: path.slice(),
-                deleted: true,
-                previousValue: stub?.value,
-                restartRequired: !!stub?.restartRequired,
-                secret: configEditorIsSecret(stub || { path, configId }, configId),
-                label: path[path.length - 1]
-            });
-        }
-        this.invalidateCacheFrom(configId, path.slice(0, -1));
-        if (this.selectedConfigId === configId) {
-            this.loadAndRenderValues(configId, this.selectedPath);
-        }
-    }
-
-    reinitScrollbars() {
-        if (!window.customScrollbar) return;
-        if (this.treeScrollShell) window.customScrollbar.forceReinit(this.treeScrollShell);
-        if (this.valuesScrollShell) window.customScrollbar.forceReinit(this.valuesScrollShell);
-        if (this.checkpointsScrollShell) window.customScrollbar.forceReinit(this.checkpointsScrollShell);
-    }
-
-    async open() {
-        if (!this.modal) this.init();
-        if (!this.modal) return;
-
-        this.clearSession();
-        openModal(this.modal);
-        this.setStatus('Loading…');
-        setTimeout(() => this.reinitScrollbars(), 80);
-
-        try {
-            if (!window.wsClient?.isConnected()) {
-                this.setStatus('WebSocket not connected');
+                console.error('config_editor_reveal_secret:', err);
+                this.closeValueEditor();
+                await this.msg(`Cannot edit ${entry.name}:  Error reading the value's contents.`, 'Error Editing Value', 'error');
                 return;
             }
-            const data = await window.wsClient.sendMessage('config_editor_list', {}, false);
-            this.configList = data?.configs || [];
-            this.renderConfigRoots();
-            this.setStatus('Select a configuration');
-            setTimeout(() => this.reinitScrollbars(), 80);
-        } catch (err) {
-            console.error('Config editor list:', err);
-            this.setStatus('Failed to load config list');
-        }
-    }
-
-    clearSession() {
-        this.closeValueEditor();
-        this.clearSearch(false);
-        this.selectedConfigId = null;
-        this.selectedPath = [];
-        this.selectedValuePath = null;
-        this._statusNote = '';
-        this.nodeCache.clear();
-        this.pendingEdits.clear();
-        this.expandedKeys.clear();
-        this.editTarget = null;
-        if (this.treeEl) this.treeEl.innerHTML = '';
-        if (this.valuesEl) this.valuesEl.innerHTML = '';
-    }
-
-    handleSearchInput() {
-        clearTimeout(this.searchTimeout);
-        const value = this.searchInput ? this.searchInput.value : '';
-        if (this.searchClearBtn) {
-            this.searchClearBtn.classList.toggle('hidden', !value.trim());
-        }
-        if (!value.trim()) {
-            this.clearSearch(false);
+            el.disabled = false;
+            el.focus();
+            el.select();
             return;
         }
-        this.searchTimeout = setTimeout(() => this.runSearch(value.trim()), this.searchDebounceMs);
-    }
-
-    handleSearchKeydown(e) {
-        if (!this.searchActive || !this.searchResults.length) return;
-        if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            this.searchSelectedIndex = Math.min(this.searchSelectedIndex + 1, this.searchResults.length - 1);
-            this.updateSearchSelectionHighlight();
-            this.scrollSearchSelectionIntoView();
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            this.searchSelectedIndex = Math.max(this.searchSelectedIndex - 1, 0);
-            this.updateSearchSelectionHighlight();
-            this.scrollSearchSelectionIntoView();
-        } else if (e.key === 'Enter' && this.searchSelectedIndex >= 0) {
-            e.preventDefault();
-            const hit = this.searchResults[this.searchSelectedIndex];
-            if (hit) void this.navigateFromSearchResult(hit);
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            this.clearSearch(true);
-        }
-    }
-
-    async runSearch(query) {
-        if (!query) {
-            this.clearSearch(false);
+        if (child.enum?.length) {
+            this.editTarget.kind = 'enum';
+            this.setValueLayout(entry.regType === 'REG_DWORD' ? 'string' : 'string', entry.regType === 'REG_DWORD' ? 'Edit DWORD (32-bit) Value' : 'Edit String', entry.name);
+            const btn = document.getElementById('configEditorValueEnumBtn');
+            btn.classList.remove('hidden');
+            this.setEnum(entry.value);
+            openModal(this.valueModal);
+            btn.focus();
             return;
         }
-        if (!window.wsClient?.isConnected()) {
-            this.setStatus('WebSocket not connected');
+        if (entry.regType === 'REG_BINARY') return this.modifyBinary();
+        if (entry.regType === 'REG_DWORD' || entry.regType === 'REG_QWORD') {
+            const qword = entry.regType === 'REG_QWORD' || this._qwordName === entry.name;
+            this.editTarget.kind = qword ? 'qword' : 'dword';
+            this.setValueLayout('dword', qword ? 'Edit QWORD (64-bit) Value' : 'Edit DWORD (32-bit) Value', entry.name);
+            const el = document.getElementById('configEditorValueNumber');
+            el.classList.remove('hidden');
+            const n = entry.value === true ? 1 : entry.value === false ? 0 : Number(entry.value);
+            // regedit opens a DWORD in hexadecimal
+            document.getElementById('configEditorValueBaseHex').checked = true;
+            document.getElementById('configEditorValueBaseHex').disabled = false;
+            this.valueNumberBase = 16;
+            el.maxLength = qword ? 16 : 8;
+            el.value = qword ? BigInt.asUintN(64, BigInt(n)).toString(16) : (n >>> 0).toString(16);
+            openModal(this.valueModal);
+            el.focus();
+            el.select();
             return;
         }
-
-        const token = ++this.searchToken;
-        this.searchQuery = query;
-        this.searchActive = true;
-        if (this.treeEl) this.treeEl.classList.add('search-hidden');
-        if (this.searchResultsEl) {
-            this.searchResultsEl.classList.remove('hidden');
-            this.searchResultsEl.innerHTML = '<div class="config-editor-search-loading">Searching…</div>';
-        }
-        setTimeout(() => this.reinitScrollbars(), 0);
-
-        try {
-            const payload = { query, maxResults: 50 };
-            if (this.selectedConfigId) payload.configId = this.selectedConfigId;
-            const data = await window.wsClient.sendMessage('config_editor_search', payload, false);
-            if (token !== this.searchToken) return;
-            if ((this.searchInput?.value || '').trim() !== query) return;
-
-            this.searchResults = data?.results || [];
-            this.searchSelectedIndex = this.searchResults.length ? 0 : -1;
-            this.renderSearchResults();
-            const scope = this.selectedConfigId ? this.selectedConfigId : 'all configs';
-            const suffix = data?.truncated ? ' (truncated)' : '';
-            this.setStatus(`${this.searchResults.length} result${this.searchResults.length === 1 ? '' : 's'} in ${scope}${suffix}`);
-        } catch (err) {
-            if (token !== this.searchToken) return;
-            console.error('config_editor_search:', err);
-            if (this.searchResultsEl) {
-                this.searchResultsEl.innerHTML = '<div class="config-editor-search-empty">Search failed</div>';
-            }
-            this.setStatus('Search failed');
-        }
-        setTimeout(() => this.reinitScrollbars(), 0);
-    }
-
-    renderSearchResults() {
-        if (!this.searchResultsEl) return;
-        this.searchResultsEl.innerHTML = '';
-        if (!this.searchResults.length) {
-            this.searchResultsEl.innerHTML = '<div class="config-editor-search-empty">No matches</div>';
+        if (entry.regType === 'REG_MULTI_SZ' || multiType) {
+            this.editTarget.kind = 'multi';
+            this.setValueLayout('multi', 'Edit Multi-String', entry.name);
+            const el = document.getElementById('configEditorValueTextarea');
+            el.classList.remove('hidden');
+            el.readOnly = false;
+            el.value = Array.isArray(entry.value) ? entry.value.join('\n') : String(entry.value ?? '');
+            openModal(this.valueModal);
+            el.focus();
+            el.select();
             return;
         }
-
-        const frag = document.createDocumentFragment();
-        this.searchResults.forEach((hit, index) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'config-editor-search-item';
-            if (index === this.searchSelectedIndex) btn.classList.add('keyboard-selected');
-
-            const crumb = (hit.breadcrumb || []).join(' › ');
-            const typeIcon = !this.selectedConfigId && hit.configId
-                ? this.getConfigRootIcon(hit.configId)
-                : configEditorSearchTypeIcon(hit.type);
-            const reason = configEditorSearchMatchReasonLabel(hit.matchReason);
-            const preview = hit.valuePreview && !hit.secret
-                ? ` · ${hit.valuePreview}`
-                : '';
-            const labelHtml = configEditorHighlightMatch(hit.label || configEditorPathLabel(hit.path), this.searchQuery);
-            const crumbHtml = configEditorHighlightMatch(crumb + preview, this.searchQuery);
-
-            btn.innerHTML = `
-                <div class="config-editor-search-item-main">
-                    <i class="${typeIcon}" aria-hidden="true"></i>
-                    <span class="config-editor-search-item-label">${labelHtml}</span>
-                    <span class="config-editor-search-item-type" title="Match: ${configEditorEscapeHtml(reason)}">${configEditorEscapeHtml(hit.type || 'auto')}</span>
-                </div>
-                <div class="config-editor-search-item-crumb">${crumbHtml}</div>
-            `;
-            if (hit.description) btn.title = hit.description;
-            btn.addEventListener('click', () => {
-                this.searchSelectedIndex = index;
-                void this.navigateFromSearchResult(hit);
-            });
-            frag.appendChild(btn);
-        });
-        this.searchResultsEl.appendChild(frag);
-    }
-
-    updateSearchSelectionHighlight() {
-        if (!this.searchResultsEl) return;
-        this.searchResultsEl.querySelectorAll('.config-editor-search-item').forEach((el, index) => {
-            el.classList.toggle('keyboard-selected', index === this.searchSelectedIndex);
-        });
-    }
-
-    scrollSearchSelectionIntoView() {
-        if (!this.searchResultsEl || this.searchSelectedIndex < 0) return;
-        const items = this.searchResultsEl.querySelectorAll('.config-editor-search-item');
-        const el = items[this.searchSelectedIndex];
-        if (el?.scrollIntoView) {
-            el.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-        }
-    }
-
-    async navigateFromSearchResult(hit, keepList) {
-        if (!hit?.configId) return;
-        const query = this.searchQuery;
-        const fullPath = hit.path || [];
-        const isContainer = hit.type === 'object' || hit.type === 'array';
-        const selectPath = (!isContainer && fullPath.length) ? fullPath.slice(0, -1) : fullPath;
-        if (!keepList) {
-            this.clearSearch(false);
-            if (this.searchInput && query) this.searchInput.value = query;
-            if (this.searchClearBtn) this.searchClearBtn.classList.remove('hidden');
-        }
-        await this.navigateToPath(hit.configId, selectPath);
-        if (!isContainer && fullPath.length) {
-            this.selectedValuePath = fullPath.slice();
-            setTimeout(() => {
-                this.highlightValueRow(hit.configId, fullPath);
-                this.valuesEl?.querySelectorAll('tr.config-editor-row').forEach((row) => {
-                    const ctx = row._configEditorCtx;
-                    row.classList.toggle('selected', !!(ctx && configEditorPathsEqual(ctx.path, fullPath)));
-                });
-            }, 80);
-        }
-    }
-
-    clearSearch(clearInput) {
-        clearTimeout(this.searchTimeout);
-        this.searchToken++;
-        this.searchQuery = '';
-        this.searchResults = [];
-        this.searchSelectedIndex = -1;
-        this.searchActive = false;
-        if (clearInput && this.searchInput) this.searchInput.value = '';
-        if (this.searchClearBtn) this.searchClearBtn.classList.add('hidden');
-        if (this.treeEl) this.treeEl.classList.remove('search-hidden');
-        if (this.searchResultsEl) {
-            this.searchResultsEl.classList.add('hidden');
-            this.searchResultsEl.innerHTML = '';
-        }
-        setTimeout(() => this.reinitScrollbars(), 0);
-    }
-
-    formatValueDisplay(val, secretOrStub) {
-        const secret = typeof secretOrStub === 'object'
-            ? configEditorIsSecret(secretOrStub)
-            : !!secretOrStub;
-        if (secret) return CONFIG_EDITOR_SECRET_MASK;
-        if (val === null) return 'null';
-        if (val === undefined) return '—';
-        return configEditorFormatDisplayValue(val);
-    }
-
-    buildValueCellHtml(configId, child, effectiveVal, effectiveType) {
-        const pathAttr = encodeURIComponent(JSON.stringify(child.path));
-        const cfgAttr = configEditorEscapeHtml(configId);
-        const editMode = configEditorResolveEditMode(child, effectiveVal);
-        const isSecret = configEditorIsSecret(child);
-
-        if (child.expandable) {
-            return `<button type="button" class="btn-secondary btn-small config-editor-open-btn" data-config-id="${cfgAttr}" data-path="${pathAttr}">
-                <i class="fas fa-folder-open"></i> Open
-            </button>`;
-        }
-
-        if (editMode === 'inline') {
-            if (child.type === 'boolean' && !isSecret && !child.types?.length) {
-                const on = effectiveVal === true || effectiveVal === 'true';
-                return `<div class="config-editor-value-cell">
-                    <button type="button" class="btn-secondary btn-small toggle-btn config-editor-bool-toggle"
-                        data-state="${on ? 'on' : 'off'}"
-                        data-config-id="${cfgAttr}"
-                        data-path="${pathAttr}"
-                        title="Toggle value">${on ? 'true' : 'false'}</button>
-                </div>`;
-            }
-            if (child.enum?.length) {
-                const label = configEditorEnumLabel(effectiveVal);
-                const hiddenVal = effectiveVal === null ? 'null' : (effectiveVal != null ? String(effectiveVal) : '');
-                return `<div class="config-editor-value-cell">
-                    <button type="button" class="btn-secondary btn-small hover-show colored config-editor-inline-enum-btn"
-                        data-config-id="${cfgAttr}" data-path="${pathAttr}">
-                        <span class="config-editor-inline-enum-selected">${configEditorEscapeHtml(label)}</span>
-                    </button>
-                    <input type="hidden" class="config-editor-inline-enum-hidden" value="${configEditorEscapeHtml(hiddenVal)}">
-                </div>`;
-            }
-            if (effectiveType === 'number') {
-                const numVal = effectiveVal != null && effectiveVal !== '' ? String(effectiveVal) : '';
-                return `<div class="config-editor-value-cell">
-                    <input type="number" class="form-control hover-show colored config-editor-inline-input config-editor-inline-number"
-                        data-config-id="${cfgAttr}" data-path="${pathAttr}"
-                        value="${configEditorEscapeHtml(numVal)}" spellcheck="false">
-                </div>`;
-            }
-            const strVal = effectiveVal != null ? String(effectiveVal) : '';
-            return `<div class="config-editor-value-cell">
-                <input type="text" class="form-control hover-show colored config-editor-inline-input config-editor-inline-string"
-                    data-config-id="${cfgAttr}" data-path="${pathAttr}"
-                    value="${configEditorEscapeHtml(strVal)}" spellcheck="false">
-            </div>`;
-        }
-
-        const display = configEditorEscapeHtml(this.formatValueDisplay(effectiveVal, child));
-        const titleAttr = configEditorEscapeHtml(this.formatValueDisplay(effectiveVal, child));
-        if (editMode === 'secret') {
-            return `<div class="config-editor-value-cell config-editor-secret-cell">
-                <span class="config-editor-value-display" title="${titleAttr}">${display}</span>
-                <button type="button" class="btn-secondary btn-small config-editor-edit-btn"
-                    data-config-id="${cfgAttr}"
-                    data-path="${pathAttr}" title="Edit secret">
-                    <i class="fas fa-key"></i>
-                </button>
-            </div>`;
-        }
-
-        return `<div class="config-editor-value-cell">
-            <span class="config-editor-value-display" title="${titleAttr}">${display}</span>
-            <button type="button" class="btn-secondary btn-small config-editor-edit-btn"
-                data-config-id="${cfgAttr}"
-                data-path="${pathAttr}" title="Edit value">
-                <i class="fas fa-pen"></i>
-            </button>
-        </div>`;
-    }
-
-    // every key is a folder, as Registry Editor draws its keys and hives
-    buildTreeIconHtml() {
-        return '<img class="config-editor-tree-icon" src="/static_images/vista-icons/explorer/folder-16.png" alt="">';
-    }
-
-    // regedit.exe's value pictures: group 205 (ab) for text, 206 (011) for numbers and the rest
-    buildValueIconHtml(child, effectiveType) {
-        if (child?.expandable) return this.buildTreeIconHtml();
-        const text = effectiveType === 'string' || child?.secret || (child?.enum && child.enum.length);
-        return `<img class="config-editor-value-icon" src="/static_images/vista-controls/regedit-value-${text ? 'string' : 'binary'}.png" alt="">`;
-    }
-
-    buildTreeExpandHtml(hasExpandableChildren) {
-        if (hasExpandableChildren) {
-            return `<button type="button" class="config-editor-tree-expand btn-secondary btn-small" title="Expand" aria-label="Expand">
-                <i class="fas fa-chevron-right"></i>
-            </button>`;
-        }
-        return '<span class="config-editor-tree-spacer" aria-hidden="true"></span>';
-    }
-
-    setStatus(text) {
-        this._statusNote = text || '';
-        this.renderStatusBar();
-    }
-
-    // the status bar's key path starts at Computer, as regedit's
-    formatKeyPath() {
-        if (!this.selectedConfigId) return 'Computer';
-        return ['Computer', this.getConfigLabel(this.selectedConfigId), ...(this.selectedPath || [])].join('\\');
-    }
-
-    renderStatusBar() {
-        if (!this.statusEl) return;
-        const pathEl = this.statusEl.querySelector('[data-status="path"]');
-        const noteEl = this.statusEl.querySelector('[data-status="note"]');
-        if (!pathEl || !noteEl) {
-            this.statusEl.textContent = this._statusNote || this.formatKeyPath();
+        const text = String(entry.value ?? '');
+        if (child.editorType === 'prompt') {
+            this.editTarget.kind = 'prompt';
+            this.setValueLayout('multi', 'Edit String', entry.name);
+            const wrap = document.getElementById('configEditorValuePromptWrap');
+            const el = document.getElementById('configEditorValuePromptTextarea');
+            wrap.classList.remove('hidden');
+            el.value = text;
+            if (!this._promptWired && typeof setupEditableTextarea === 'function') { setupEditableTextarea(el); this._promptWired = true; } // textareaUtils.js
+            if (window.promptTextareaToolbar) window.promptTextareaToolbar.updateTokenCount(el);
+            openModal(this.valueModal);
+            setTimeout(() => el.focus(), 60);
             return;
         }
-        pathEl.textContent = this.formatKeyPath();
-        noteEl.textContent = this._statusNote || '';
+        this.editTarget.kind = 'string';
+        this.setValueLayout('string', 'Edit String', entry.name);
+        const el = document.getElementById('configEditorValueInput');
+        el.classList.remove('hidden');
+        el.value = text;
+        openModal(this.valueModal);
+        el.focus();
+        el.select();
     }
 
-    getPendingCount() {
-        let n = 0;
-        this.pendingEdits.forEach((m) => { n += m.size; });
-        return n;
+    enumMenuItems() {
+        const entry = this.editTarget?.entry;
+        const values = entry?.child?.enum || [];
+        const cur = this._enumValue;
+        return values.map((v) => ({ text: v === null ? 'null' : String(v), action: 'enum-pick', enumValue: v, highlighted: v === cur }))
+            .concat(entry?.child?.enumAllowCustom ? [{ text: 'Custom...', action: 'enum-custom' }] : []);
     }
 
-    getConfigRootIcon(configId) {
-        return this.configList.find((c) => c.id === configId)?.icon || 'fas fa-database';
+    setEnum(v) {
+        this._enumValue = v;
+        const el = document.getElementById('configEditorValueEnumSelected');
+        if (el) el.textContent = v === null ? 'null' : String(v ?? '');
     }
 
-    renderConfigRoots() {
-        if (!this.treeEl) return;
-        this.treeEl.innerHTML = '';
-        // Computer at the top, the configs under it as regedit's hives
-        const computer = document.createElement('div');
-        computer.className = 'config-editor-tree-item config-editor-tree-computer';
-        computer.innerHTML = `
-            <button type="button" class="config-editor-tree-expand is-open" title="Collapse" aria-label="Collapse"><i class="fas fa-chevron-down"></i></button>
-            <button type="button" class="config-editor-tree-label"><img class="config-editor-tree-icon" src="/static_images/vista-explorer/computer-16.png" alt=""><span>Computer</span></button>`;
-        const hives = document.createElement('div');
-        hives.className = 'config-editor-tree-children config-editor-tree-hives';
-        computer.querySelector('.config-editor-tree-expand').addEventListener('click', (e) => {
-            e.stopPropagation();
-            const open = hives.hidden;
-            hives.hidden = !open;
-            const icon = computer.querySelector('.config-editor-tree-expand i');
-            if (icon) icon.className = open ? 'fas fa-chevron-down' : 'fas fa-chevron-right';
-        });
-        computer.querySelector('.config-editor-tree-label').addEventListener('click', () => {
-            this.treeEl.querySelectorAll('.config-editor-tree-item.selected').forEach((el) => el.classList.remove('selected'));
-            computer.classList.add('selected');
-        });
-        this.treeEl.appendChild(computer);
-        this.treeEl.appendChild(hives);
-        for (const cfg of this.configList) {
-            const row = document.createElement('div');
-            row.className = 'config-editor-tree-item config-editor-tree-root';
-            row.dataset.configId = cfg.id;
-            row.dataset.path = '';
-            row.innerHTML = `
-                ${this.buildTreeExpandHtml(true)}
-                <button type="button" class="config-editor-tree-label">
-                    ${this.buildTreeIconHtml(cfg.icon || 'fas fa-database')}
-                    <span>${configEditorEscapeHtml(cfg.label)}</span>
-                </button>
-            `;
-            const expandBtn = row.querySelector('.config-editor-tree-expand');
-            const labelBtn = row.querySelector('.config-editor-tree-label');
-            expandBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.toggleTreeExpand(cfg.id, [], row);
-            });
-            labelBtn.addEventListener('click', () => {
-                this.selectNode(cfg.id, []);
-            });
-            this.attachRowContextMenu(row, {
-                kind: 'tree',
-                configId: cfg.id,
-                path: [],
-                containerPath: [],
-                expandable: true
-            });
-            hives.appendChild(row);
-        }
-        setTimeout(() => {
-            if (this.treeScrollShell) customScrollbar?.forceReinit(this.treeScrollShell);
-        }, 0);
-    }
-
-    async selectNode(configId, path) {
-        return this.runEditorAction(async () => {
-            this.selectedConfigId = configId;
-            this.selectedPath = path.slice();
-            this.selectedValuePath = null;
-            this.highlightTreeSelection();
-            this.scrollTreeSelectionIntoView();
-            if (this.getPendingCount() > 0) this.updatePendingStatus();
-            else this.setStatus('');
-            await this.loadAndRenderValues(configId, path);
-        });
-    }
-
-    highlightTreeSelection() {
-        if (!this.treeEl) return;
-        const key = configEditorPathKey(this.selectedConfigId, this.selectedPath);
-        const trailKeys = new Set();
-        for (let i = 0; i < this.selectedPath.length; i++) {
-            trailKeys.add(configEditorPathKey(this.selectedConfigId, this.selectedPath.slice(0, i)));
-        }
-        this.treeEl.querySelectorAll('.config-editor-tree-item').forEach((el) => {
-            const elPath = (el.dataset.path || '').split('\0').filter(Boolean);
-            const elKey = configEditorPathKey(el.dataset.configId, elPath);
-            el.classList.toggle('selected', elKey === key);
-            el.classList.toggle('active-trail', trailKeys.has(elKey) && elKey !== key);
-        });
-    }
-
-    scrollTreeSelectionIntoView() {
-        if (!this.selectedConfigId) return;
-        setTimeout(() => {
-            const row = this.findTreeRow(this.selectedConfigId, this.selectedPath);
-            if (!row) return;
-            const scrollable = this.treeScrollShell?.querySelector('.config-editor-tree-scrollable')
-                || this.treeScrollShell;
-            if (scrollable && row.scrollIntoView) {
-                row.scrollIntoView({ block: 'nearest', behavior: 'instant' });
-            }
-        }, 60);
-    }
-
-    scrollValuesRowIntoView(row) {
-        if (!row?.scrollIntoView) return;
-        const scrollable = this.valuesScrollShell?.querySelector('.config-editor-values-scrollable')
-            || this.valuesScrollShell;
-        if (scrollable) {
-            row.scrollIntoView({ block: 'nearest', behavior: 'instant' });
+    async pickEnum(action, item) {
+        if (action === 'enum-pick') { this.setEnum(item.enumValue); return; }
+        if (action === 'enum-custom' && typeof showInputDialog === 'function') {
+            const v = await showInputDialog('Value data:', this._enumValue == null ? '' : String(this._enumValue), '', null, null, { title: 'Edit String' });
+            if (v != null) this.setEnum(typeof this.editTarget?.entry?.value === 'number' && Number.isFinite(Number(v)) ? Number(v) : String(v));
         }
     }
 
-    async fetchNode(configId, path, force) {
-        const cacheKey = configEditorPathKey(configId, path);
-        if (!force && this.nodeCache.has(cacheKey)) {
-            return this.nodeCache.get(cacheKey);
-        }
-        if (path?.length && this.isPendingOnlyPath(configId, path)) {
-            const pseudo = await this.buildPseudoNode(configId, path);
-            if (pseudo) {
-                this.nodeCache.set(cacheKey, pseudo);
-                return pseudo;
-            }
-        }
-        try {
-            const data = await window.wsClient.sendMessage('config_editor_get_node', {
-                configId,
-                path
-            }, false);
-            this.nodeCache.set(cacheKey, data);
-            return data;
-        } catch (err) {
-            const pseudo = await this.buildPseudoNode(configId, path);
-            if (pseudo) {
-                this.nodeCache.set(cacheKey, pseudo);
-                return pseudo;
-            }
-            throw err;
-        }
-    }
-
-    async loadAndRenderValues(configId, path) {
-        if (!this.valuesEl) return;
-        const token = ++this.loadValuesToken;
-        this.valuesEl.innerHTML = this.valuesPanelStateRow('config-editor-loading', 'Loading…');
-        try {
-            const data = await this.fetchNode(configId, path);
-            if (token !== this.loadValuesToken) return;
-            if (this.selectedConfigId !== configId || !configEditorPathsEqual(this.selectedPath, path)) return;
-            this.renderValuesPanel(data);
-        } catch (err) {
-            if (token !== this.loadValuesToken) return;
-            console.error('config_editor_get_node:', err);
-            this.valuesEl.innerHTML = this.valuesPanelStateRow('config-editor-error', 'Failed to load values');
-        }
-    }
-
-    getPendingEdit(configId, path) {
-        const m = this.pendingEdits.get(configId);
-        if (!m) return null;
-        return m.get(configEditorPathKey(configId, path)) || null;
-    }
-
-    setPendingEdit(configId, path, patch) {
-        if (!this.pendingEdits.has(configId)) {
-            this.pendingEdits.set(configId, new Map());
-        }
-        const key = configEditorPathKey(configId, path);
-        const m = this.pendingEdits.get(configId);
-        if (patch == null) {
-            m.delete(key);
-        } else {
-            m.set(key, patch);
-        }
-        this.updatePendingStatus();
-    }
-
-    updatePendingStatus() {
-        const n = this.getPendingCount();
-        if (n > 0) {
-            this.setStatus(`${n} unsaved`);
-            return;
-        }
-        if (/^\d+ unsaved$/.test(this._statusNote || '')) this.setStatus('');
-    }
-
-    getEffectiveValue(configId, path, serverValue) {
-        const pending = this.getPendingEdit(configId, path);
-        if (pending) {
-            if (pending.deleted) return undefined;
-            return pending.value;
-        }
-        return serverValue;
-    }
-
-    renderValuesPanel(data) {
-        if (!this.valuesEl || !data) return;
-        const { configId, path } = data;
-        const children = this.mergeChildrenWithPending(configId, data);
-        if ((!children || !children.length) && !configEditorRegeditLook()) {
-            this.valuesEl.innerHTML = this.valuesPanelStateRow('config-editor-empty', 'No child values at this path');
-            return;
-        }
-
-        const frag = document.createDocumentFragment();
-        const regedit = configEditorRegeditLook();
-        if (regedit) {
-            // regedit lists a key's values only (its subkeys live in the tree), after (Default)
-            const def = document.createElement('tr');
-            def.className = 'config-editor-row config-editor-default-row';
-            def.innerHTML = `<td class="config-editor-col-name"><span class="config-editor-name-with-icon"><img class="config-editor-value-icon" src="/static_images/vista-controls/regedit-value-string.png" alt=""><span>(Default)</span></span></td><td class="config-editor-col-type">REG_SZ</td><td class="config-editor-col-value"><span class="config-editor-value-display">(value not set)</span></td>`;
-            frag.appendChild(def);
-        }
-        for (const child of children) {
-            if (regedit && child.expandable) continue;
-            const row = document.createElement('tr');
-            row.className = 'config-editor-row';
-            this.applyPendingHighlight(row, configId, child.path, child.isPendingNew);
-
-            const effectiveVal = this.getEffectiveValue(configId, child.path, child.value);
-            const name = child.label || child.key;
-            const effectiveType = this.getEffectiveChildType(child, effectiveVal);
-            const typeStr = regedit ? configEditorRegType(child, effectiveType, effectiveVal) : configEditorFormatTypeDisplay(child, effectiveType);
-            const typeTitle = configEditorTypeColumnTitle(child, effectiveType);
-            const unmappedBadge = child.mapped === false
-                ? '<span class="config-editor-unmapped-badge" title="Not documented in config map">?</span>'
-                : '';
-            const nameCell = `<span class="config-editor-name-with-icon">${this.buildValueIconHtml(child, effectiveType)}<span>${configEditorEscapeHtml(name)}</span>${unmappedBadge}</span>`;
-
-            const valueCell = regedit
-                ? `<span class="config-editor-value-display">${configEditorEscapeHtml(configEditorRegData(effectiveVal, effectiveType, this.formatValueDisplay(effectiveVal, child)))}</span>`
-                : this.buildValueCellHtml(configId, child, effectiveVal, effectiveType);
-            if (this.selectedValuePath && configEditorPathsEqual(this.selectedValuePath, child.path)) {
-                row.classList.add('selected');
-            }
-
-            row.innerHTML = `
-                <td class="config-editor-col-name">${nameCell}</td>
-                <td class="config-editor-col-type"${typeTitle ? ` title="${configEditorEscapeHtml(typeTitle)}"` : ''}>${configEditorEscapeHtml(typeStr)}</td>
-                <td class="config-editor-col-value">${valueCell}</td>
-            `;
-            if (child.description) row.title = child.description;
-            this.attachRowContextMenu(row, {
-                kind: 'value',
-                configId,
-                path: child.path.slice(),
-                containerPath: path.slice(),
-                expandable: !!child.expandable,
-                child
-            });
-            frag.appendChild(row);
-        }
-
-        this.valuesEl.innerHTML = '';
-        this.valuesEl.appendChild(frag);
-        this.wireValuePanelEvents(configId);
-        setTimeout(() => {
-            if (this.valuesScrollShell) customScrollbar?.forceReinit(this.valuesScrollShell);
-        }, 0);
-    }
-
-    parseValuePanelPath(datasetPath) {
-        if (!datasetPath) return [];
-        try {
-            return JSON.parse(decodeURIComponent(datasetPath));
-        } catch {
-            return [];
-        }
-    }
-
-    resolveChildFromValueTarget(target, configId, path) {
-        const row = target?.closest?.('tr.config-editor-row');
-        const ctxChild = row?._configEditorCtx?.child;
-        if (ctxChild && configEditorPathsEqual(ctxChild.path, path)) {
-            return ctxChild;
-        }
-        return this.findChildAtPath(configId, path);
-    }
-
-    async ensureChildAtPath(configId, path) {
-        if (!path?.length) return null;
-        const existing = this.findChildAtPath(configId, path);
-        if (existing) return existing;
-
-        const parentPath = path.slice(0, -1);
-        let parentData = this.nodeCache.get(configEditorPathKey(configId, parentPath));
-        if (!parentData) {
-            try {
-                parentData = await this.fetchNode(configId, parentPath);
-            } catch (err) {
-                console.error('configEditor ensureChildAtPath:', err);
-                return null;
-            }
-        }
-        if (!parentData) return null;
-        const merged = this.mergeChildrenWithPending(configId, parentData);
-        return merged.find(
-            (c) => configEditorPathKey(configId, c.path) === configEditorPathKey(configId, path)
-        ) || null;
-    }
-
-    async openValueEditorFromTarget(target) {
-        const path = this.parseValuePanelPath(target?.dataset?.path);
-        const configId = target?.dataset?.configId;
-        if (!configId || !path.length) return;
-
-        let child = this.resolveChildFromValueTarget(target, configId, path);
-        if (!child) child = await this.ensureChildAtPath(configId, path);
-        if (child) {
-            this.openValueEditor(configId, child);
-        } else {
-            this.setStatus('Could not open editor — re-select the parent node');
-        }
-    }
-
-    highlightValueRow(configId, path) {
-        if (!this.valuesEl || !path?.length) return;
-        this.valuesEl.querySelectorAll('tr.config-editor-row').forEach((row) => {
-            const ctx = row._configEditorCtx;
-            const match = ctx?.configId === configId && configEditorPathsEqual(ctx.path, path);
-            row.classList.toggle('config-editor-row-flash', match);
-            if (match) this.scrollValuesRowIntoView(row);
-        });
-        setTimeout(() => {
-            this.valuesEl?.querySelectorAll('.config-editor-row-flash').forEach((row) => {
-                row.classList.remove('config-editor-row-flash');
-            });
-        }, 1800);
-    }
-
-    wireValuePanelEvents(configId) {
-        this.valuesEl.querySelectorAll('.config-editor-open-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const path = this.parseValuePanelPath(btn.dataset.path);
-                const cfgId = btn.dataset.configId || configId;
-                if (path.length) void this.navigateToPath(cfgId, path);
-            });
-        });
-
-        this.valuesEl.querySelectorAll('.config-editor-edit-btn').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                void this.openValueEditorFromTarget(btn);
-            });
-        });
-
-        this.valuesEl.querySelectorAll('.config-editor-bool-toggle').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const on = btn.getAttribute('data-state') !== 'on';
-                btn.setAttribute('data-state', on ? 'on' : 'off');
-                btn.textContent = on ? 'true' : 'false';
-                const path = this.parseValuePanelPath(btn.dataset.path);
-                const cfgId = btn.dataset.configId || configId;
-                const row = btn.closest('tr.config-editor-row');
-                this.recordValueChange(cfgId, path, on, row);
-            });
-        });
-
-        this.valuesEl.querySelectorAll('.config-editor-inline-string').forEach((input) => {
-            const commit = () => {
-                const path = this.parseValuePanelPath(input.dataset.path);
-                const cfgId = input.dataset.configId || configId;
-                const row = input.closest('tr.config-editor-row');
-                this.recordValueChange(cfgId, path, input.value, row);
-            };
-            input.addEventListener('change', commit);
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    input.blur();
-                }
-            });
-        });
-
-        this.valuesEl.querySelectorAll('.config-editor-inline-number').forEach((input) => {
-            const commit = () => {
-                const path = this.parseValuePanelPath(input.dataset.path);
-                const cfgId = input.dataset.configId || configId;
-                const row = input.closest('tr.config-editor-row');
-                let val = input.value === '' ? '' : Number(input.value);
-                if (input.value !== '' && Number.isNaN(val)) {
-                    this.setStatus('Invalid number');
-                    return;
-                }
-                this.recordValueChange(cfgId, path, val, row);
-            };
-            input.addEventListener('change', commit);
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    input.blur();
-                }
-            });
-        });
-
-        this.valuesEl.querySelectorAll('.config-editor-inline-enum-btn').forEach((btn) => {
-            this.wireInlineEnumClickMenu(btn);
-        });
-
-        this.valuesEl.querySelectorAll('tr.config-editor-row').forEach((row) => {
-            row.addEventListener('click', () => this.selectValueRow(row));
-            if (configEditorRegeditLook()) {
-                // regedit: a double-click opens the value's Edit dialog
-                row.addEventListener('dblclick', () => {
-                    const ctx = row._configEditorCtx;
-                    if (ctx && ctx.child) this.openValueEditor(configId, ctx.child);
-                });
-                return;
-            }
-            const editBtn = row.querySelector('.config-editor-edit-btn');
-            if (!editBtn) return;
-            row.addEventListener('dblclick', () => editBtn.click());
-        });
-    }
-
-    findValuePanelChild(configId, path, target) {
-        if (!path?.length) return null;
-        if (target) {
-            const fromRow = this.resolveChildFromValueTarget(target, configId, path);
-            if (fromRow) return fromRow;
-        }
-        return this.findChildAtPath(configId, path);
-    }
-
-    findChildAtPath(configId, path) {
-        if (!path?.length) return null;
-        const parentPath = path.slice(0, -1);
-        const parentKey = configEditorPathKey(configId, parentPath);
-        const parentData = this.nodeCache.get(parentKey);
-        if (!parentData) return null;
-        const merged = this.mergeChildrenWithPending(configId, parentData);
-        return merged.find(
-            (c) => configEditorPathKey(configId, c.path) === configEditorPathKey(configId, path)
-        ) || null;
-    }
-
-    async refreshCurrentValuesPanel() {
-        if (!this.selectedConfigId || !this.valuesEl) return;
-        await this.loadAndRenderValues(this.selectedConfigId, this.selectedPath);
-    }
-
-    canChangeChildType(ctx) {
-        const child = ctx?.child || this.findChildAtPath(ctx?.configId, ctx?.path);
-        if (!child?.types || child.types.length <= 1) return false;
-        const val = this.getEffectiveValue(ctx.configId, child.path, child.value);
-        const t = this.getEffectiveChildType(child, val);
-        return t === 'string' || t === 'array';
-    }
-
-    loadChangeTypeMenuItem(item, ctx) {
-        const child = ctx?.child || this.findChildAtPath(ctx?.configId, ctx?.path);
-        if (!child) return;
-        const val = this.getEffectiveValue(ctx.configId, child.path, child.value);
-        const t = this.getEffectiveChildType(child, val);
-        if (t === 'array') {
-            item.text = 'Convert to string';
-            item.icon = 'fas fa-font';
-        } else {
-            item.text = 'Convert to array';
-            item.icon = 'fas fa-list';
-        }
-    }
-
-    wireInlineEnumClickMenu(btn) {
-        if (!contextMenu || !this.inlineEnumClickMenuConfig) return;
-        contextMenu.attachClickMenuToElement(btn, this.inlineEnumClickMenuConfig);
-    }
-
-    refreshInlineEnumClickMenuItems(target) {
-        if (!this.inlineEnumClickMenuConfig || !target) return;
-        const configId = target.dataset.configId;
-        const path = this.parseValuePanelPath(target.dataset.path);
-        const child = this.findValuePanelChild(configId, path, target);
-        if (!child?.enum?.length) {
-            this.inlineEnumClickMenuConfig.sections[0].items = [];
-            return;
-        }
-        const hidden = target.parentElement?.querySelector('.config-editor-inline-enum-hidden');
-        const current = hidden?.value ?? '';
-        const items = child.enum.map((v) => {
-            const raw = v === null ? 'null' : String(v);
-            return {
-                text: configEditorEnumLabel(v),
-                action: 'config-editor-inline-enum-pick',
-                enumValue: raw,
-                loadfn: (item) => {
-                    item.highlighted = item.enumValue === current;
-                }
-            };
-        });
-        if (child.enumAllowCustom) {
-            items.push({ text: 'Custom…', action: 'config-editor-inline-enum-custom' });
-        }
-        this.inlineEnumClickMenuConfig.sections[0].items = items;
-    }
-
-    async handleInlineEnumClickMenuAction(action, target, item) {
-        const configId = target?.dataset?.configId;
-        const path = this.parseValuePanelPath(target?.dataset?.path);
-        let child = this.findValuePanelChild(configId, path, target);
-        if (!child) child = await this.ensureChildAtPath(configId, path);
-        if (!child) return;
-
-        const selectedEl = target.querySelector('.config-editor-inline-enum-selected');
-        const hidden = target.parentElement?.querySelector('.config-editor-inline-enum-hidden');
-        const row = target.closest('tr.config-editor-row');
-
-        const applyEnumValue = (rawVal) => {
-            let stored = rawVal;
-            if (rawVal === 'null') stored = null;
-            else if (child.type === 'number') stored = Number(rawVal);
-            if (selectedEl) selectedEl.textContent = configEditorEnumLabel(stored);
-            if (hidden) hidden.value = stored === null ? 'null' : String(stored);
-            this.recordValueChange(configId, path, stored, row);
-        };
-
-        if (action === 'config-editor-inline-enum-pick') {
-            applyEnumValue(item.enumValue);
-            return;
-        }
-        if (action === 'config-editor-inline-enum-custom') {
-            const current = hidden?.value === 'null' ? '' : (hidden?.value ?? '');
-            // showInputDialog: public/scripts/comp/confirmationDialog.js
-            const custom = await showInputDialog(
-                'Enter custom value:',
-                current,
-                '',
-                null,
-                null,
-                { title: child.label || child.key || 'Custom value' }
-            );
-            if (custom == null) return;
-            applyEnumValue(String(custom));
-        }
-    }
-
-    refreshValueModalEnumClickMenuItems() {
-        if (!this.valueModalEnumClickMenuConfig) return;
-        const child = this.editTarget?.child;
-        const hidden = document.getElementById('configEditorValueEnumHidden');
-        const current = hidden?.value ?? '';
-        const values = this.valueEnumChoices || (child?.enum?.length ? child.enum : []);
-        const items = values.map((v) => {
-            const raw = v === null ? 'null' : String(v);
-            return {
-                text: configEditorEnumLabel(v),
-                action: 'config-editor-value-enum-pick',
-                enumValue: raw,
-                loadfn: (menuItem) => {
-                    menuItem.highlighted = menuItem.enumValue === current;
-                }
-            };
-        });
-        if (child?.enumAllowCustom && !this.valueEnumChoices) {
-            items.push({ text: 'Custom…', action: 'config-editor-value-enum-custom' });
-        }
-        this.valueModalEnumClickMenuConfig.sections[0].items = items;
-    }
-
-    async handleValueModalEnumClickMenuAction(action, target, item) {
-        const child = this.editTarget?.child;
-        const selectedEl = document.getElementById('configEditorValueEnumSelected');
-        const hidden = document.getElementById('configEditorValueEnumHidden');
-        if (!child || !selectedEl || !hidden) return;
-
-        if (action === 'config-editor-value-enum-pick') {
-            hidden.value = String(item.enumValue);
-            selectedEl.textContent = item.enumValue === 'null' ? 'null' : String(item.enumValue);
-            return;
-        }
-        if (action === 'config-editor-value-enum-custom') {
-            const current = hidden.value === 'null' ? '' : hidden.value;
-            // showInputDialog: public/scripts/comp/confirmationDialog.js
-            const custom = await showInputDialog(
-                'Enter custom value:',
-                current,
-                '',
-                null,
-                null,
-                { title: child.label || child.key || 'Custom value' }
-            );
-            if (custom == null) return;
-            hidden.value = String(custom);
-            selectedEl.textContent = String(custom);
-        }
-    }
-
-    getEffectiveChildType(child, value) {
-        if (child?.types?.length) {
-            if (Array.isArray(value)) return 'array';
-            if (value !== null && typeof value === 'object') return 'object';
-            if (typeof value === 'boolean') return 'boolean';
-            if (typeof value === 'number') return 'number';
-            return 'string';
-        }
-        return child?.type || 'string';
-    }
-
-    hideAllValueEditorFields() {
-        const ids = [
-            'configEditorValueInput',
-            'configEditorValueNumber',
-            'configEditorValueSecret',
-            'configEditorValueTextarea',
-            'configEditorValuePromptWrap',
-            'configEditorValueEnumBtn'
-        ];
-        this.valueEnumChoices = null;
-        ids.forEach((id) => {
-            const el = document.getElementById(id);
-            if (el) el.classList.add('hidden');
-        });
-        const convertBtn = document.getElementById('configEditorValueConvertBtn');
-        if (convertBtn) convertBtn.classList.add('hidden');
-    }
-
-    /** Edit DWORD's Base: rewrite the number in the box in base 16 or 10. */
     setValueNumberBase(base) {
         const el = document.getElementById('configEditorValueNumber');
         const from = this.valueNumberBase || 10;
         this.valueNumberBase = base;
         if (!el || from === base) return;
         const raw = el.value.trim();
+        const qword = this.editTarget?.kind === 'qword';
+        el.maxLength = base === 16 ? (qword ? 16 : 8) : (qword ? 20 : 10);
         if (!raw) return;
-        const num = from === 16 ? parseInt(raw, 16) : Number(raw);
-        if (!Number.isInteger(num)) return;
-        el.value = base === 16 ? num.toString(16) : String(num);
+        try {
+            const big = from === 16 ? BigInt(`0x${raw}`) : BigInt(raw);
+            el.value = base === 16 ? big.toString(16) : big.toString(10);
+        } catch (_) { /* leave it */ }
     }
 
-    async resolvePathValue(configId, path) {
-        const pending = this.getPendingEdit(configId, path);
-        if (pending) {
-            if (pending.deleted) return undefined;
-            return pending.value;
-        }
-        const data = await this.fetchNode(configId, path);
-        const secretLeaf = data?.node
-            && !data.node.expandable
-            && configEditorIsSecret({
-                secret: data.node.secret,
-                path,
-                configId,
-                key: path?.length ? path[path.length - 1] : undefined
-            }, configId);
-        if (secretLeaf) {
-            const revealed = await window.wsClient.sendMessage('config_editor_reveal_secret', {
-                configId,
-                path
-            }, false);
-            return revealed?.value;
-        }
-        if (data && Object.prototype.hasOwnProperty.call(data, 'nodeValue')) {
-            return data.nodeValue;
-        }
-        const child = this.findChildAtPath(configId, path);
-        return child?.value;
-    }
-
-    async openRawJsonEditor(configId, path, ctx) {
-        if (!this.valueModal) return;
-        const keyName = ctx?.child?.label || ctx?.child?.key
-            || (path?.length ? path[path.length - 1] : this.getConfigLabel(configId));
+    /** OK: the value in its JSON type, then the write. */
+    async applyValueEditor() {
+        const t = this.editTarget;
+        if (!t) return;
+        if (t.kind === 'default') { this.closeValueEditor(); return; }
+        const { entry, loc } = t;
+        const original = entry.value;
         let value;
-        try {
-            value = await this.resolvePathValue(configId, path);
-        } catch (err) {
-            console.error('config_editor raw json:', err);
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('error', 'Runes', err.message || 'Failed to load value');
+        if (t.kind === 'secret') {
+            value = document.getElementById('configEditorValueSecret').value;
+        } else if (t.kind === 'enum') {
+            value = this._enumValue;
+        } else if (t.kind === 'dword' || t.kind === 'qword') {
+            const raw = document.getElementById('configEditorValueNumber').value.trim() || '0';
+            let big;
+            try { big = this.valueNumberBase === 16 ? BigInt(`0x${raw}`) : BigInt(raw); } catch (_) { big = 0n; }
+            const max = t.kind === 'qword' ? 0xffffffffffffffffn : 0xffffffffn;
+            if (big > max) {
+                const ok = await this.msg(t.kind === 'qword'
+                    ? 'The decimal value entered is greater than the maximum value of a QWORD (64-bit number).\nShould the value be truncated in order to continue?'
+                    : 'The decimal value entered is greater than the maximum value of a DWORD (32-bit number).\nShould the value be truncated in order to continue?', 'Overflow', 'warning', 'yesno');
+                if (ok !== 'yes') return;
+                big = t.kind === 'qword' ? BigInt.asUintN(64, big) : BigInt.asUintN(32, big);
             }
-            return;
-        }
-        const readOnly = !this.isConfigEditorAdmin();
-        this.editTarget = {
-            configId,
-            path: path.slice(),
-            rawJsonMode: true,
-            readOnly,
-            keyName
-        };
-        this.setValueModalTitle(keyName, 'Edit Multi-String');
-        this.hideAllValueEditorFields();
-        this.resetValueEditorFieldClasses();
-        const ta = document.getElementById('configEditorValueTextarea');
-        if (!ta) return;
-        ta.classList.remove('hidden');
-        ta.readOnly = readOnly;
-        ta.value = JSON.stringify(value, null, 2);
-        this.setValueEditorApplyState(!readOnly);
-        this.applyValueModalLayout('multi');
-        openModal(this.valueModal);
-        setTimeout(() => ta.focus(), 80);
-    }
-
-    async openValueEditor(configId, child) {
-        if (!this.valueModal || !child || child.expandable) return;
-
-        this.editTarget = { configId, child: { ...child }, rawJsonMode: false, readOnly: false };
-        const effectiveVal = this.getEffectiveValue(configId, child.path, child.value);
-        const effectiveType = this.getEffectiveChildType(child, effectiveVal);
-        const keyName = child.label || child.key || 'value';
-
-        this.hideAllValueEditorFields();
-        this.resetValueEditorFieldClasses();
-
-        const multiType = child.types?.length > 1;
-        const convertBtn = document.getElementById('configEditorValueConvertBtn');
-        if (convertBtn) {
-            if (multiType) {
-                convertBtn.classList.remove('hidden');
-                const toArray = effectiveType === 'string';
-                convertBtn.textContent = toArray ? 'Convert to Array' : 'Convert to String';
-                convertBtn.dataset.convertTo = toArray ? 'array' : 'string';
-            } else {
-                convertBtn.classList.add('hidden');
-            }
-        }
-
-        const editorType = configEditorResolveEditorType(child, effectiveVal, effectiveType);
-        const layout = configEditorValueDialogLayout({ effectiveType, editorType });
-        const caption = layout === 'multi' ? 'Edit Multi-String'
-            : layout === 'dword' ? configEditorNumberCaption(effectiveVal) : 'Edit String';
-        this.setValueModalTitle(keyName, caption);
-        this.applyValueModalLayout(layout);
-        openModal(this.valueModal);
-
-        if (configEditorIsSecret(child)) {
-            const el = document.getElementById('configEditorValueSecret');
-            if (!el) return;
-            el.classList.remove('hidden');
-            el.value = '';
-            el.disabled = true;
-            el.placeholder = 'Loading secret…';
-            try {
-                const data = await window.wsClient.sendMessage('config_editor_reveal_secret', {
-                    configId,
-                    path: child.path
-                }, false);
-                el.value = data?.value ?? '';
-                el.placeholder = 'Enter new value (leave empty to keep unchanged)';
-            } catch (err) {
-                console.error('config_editor_reveal_secret:', err);
-                el.placeholder = 'Failed to load secret value';
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('error', 'Runes', err.message || 'Failed to load secret');
+            const n = t.kind === 'qword' ? Number(BigInt.asIntN(64, big)) : Number(big);
+            value = typeof original === 'boolean' ? n !== 0 : (typeof original === 'number' && original < 0 && t.kind === 'dword' ? n | 0 : n);
+        } else if (t.kind === 'multi') {
+            const lines = document.getElementById('configEditorValueTextarea').value.split('\n').map((l) => l.replace(/\r$/, ''));
+            const kept = lines.filter((l) => l !== '');
+            const types = entry.child?.types || [];
+            if (types.includes('string') && !Array.isArray(original) && kept.length <= 1) value = kept[0] || '';
+            else {
+                const empties = lines.length - kept.length - (lines[lines.length - 1] === '' ? 1 : 0);
+                if (empties > 0) {
+                    await this.msg(empties > 1
+                        ? 'Data of type REG_MULTI_SZ cannot contain empty strings.\nRegistry Editor will remove all empty strings found.'
+                        : 'Data of type REG_MULTI_SZ cannot contain empty strings.\nRegistry Editor will remove the empty string found.', 'Warning', 'warning');
                 }
+                value = kept;
             }
-            el.disabled = false;
-            el.focus();
-        } else if (effectiveType === 'boolean') {
-            // true / false in the drop-down list (the enum's click menu, configEditorValueChoices)
-            const enumBtn = document.getElementById('configEditorValueEnumBtn');
-            if (!enumBtn) return;
-            enumBtn.classList.remove('hidden');
-            this.setEnumEditorValue([true, false], effectiveVal === true || effectiveVal === 'true');
-            enumBtn.focus();
-        } else if (effectiveType === 'number') {
-            const el = document.getElementById('configEditorValueNumber');
-            if (!el) return;
-            el.classList.remove('hidden');
-            const num = effectiveVal != null && effectiveVal !== '' ? Number(effectiveVal) : null;
-            // Hexadecimal only for whole numbers; Runes' numbers are decimal by default
-            const hex = document.getElementById('configEditorValueBaseHex');
-            const dec = document.getElementById('configEditorValueBaseDec');
-            if (hex) hex.disabled = num !== null && !Number.isInteger(num);
-            if (dec) dec.checked = true;
-            this.valueNumberBase = 10;
-            el.value = num === null || Number.isNaN(num) ? (effectiveVal == null ? '' : String(effectiveVal)) : String(num);
-            el.focus();
-            el.select();
-        } else if (effectiveType === 'array') {
-            const el = document.getElementById('configEditorValueTextarea');
-            if (!el) return;
-            el.classList.remove('hidden');
-            const arr = Array.isArray(effectiveVal) ? effectiveVal : [];
-            // a list of one-line strings reads like regedit's REG_MULTI_SZ: one string per line
-            this.valueArrayAsLines = arr.every((v) => typeof v === 'string' && !v.includes('\n'));
-            el.value = this.valueArrayAsLines ? arr.join('\n') : JSON.stringify(arr, null, 2);
-            el.focus();
-            el.select();
-        } else if (child.enum?.length) {
-            const enumBtn = document.getElementById('configEditorValueEnumBtn');
-            if (!enumBtn) return;
-            enumBtn.classList.remove('hidden');
-            this.setEnumEditorValue(child.enum, effectiveVal);
-            enumBtn.focus();
-        } else if (editorType === 'prompt') {
-            const wrap = document.getElementById('configEditorValuePromptWrap');
-            const el = document.getElementById('configEditorValuePromptTextarea');
-            if (!wrap || !el) return;
-            wrap.classList.remove('hidden');
-            el.value = effectiveVal != null ? String(effectiveVal) : '';
-            this.ensureValuePromptTextareaWired();
-            if (window.promptTextareaToolbar) {
-                window.promptTextareaToolbar.updateTokenCount(el);
-            }
-            setTimeout(() => el.focus(), 80);
-        } else if (editorType === 'textarea') {
-            const el = document.getElementById('configEditorValueTextarea');
-            if (!el) return;
-            el.classList.remove('hidden');
-            el.value = effectiveVal != null ? String(effectiveVal) : '';
-            el.focus();
-            el.select();
+        } else if (t.kind === 'prompt') {
+            const ta = document.getElementById('configEditorValuePromptTextarea');
+            if (typeof applyFormattedText === 'function') applyFormattedText(ta, true); // utilities.js
+            value = ta.value;
         } else {
-            const el = document.getElementById('configEditorValueInput');
-            if (!el) return;
-            el.classList.remove('hidden');
-            el.value = effectiveVal != null ? configEditorFormatDisplayValue(effectiveVal) : '';
-            // regedit opens with the data selected
-            el.focus();
-            el.select();
+            const s = document.getElementById('configEditorValueInput').value;
+            const n = Number(s);
+            value = typeof original === 'number' && s.trim() !== '' && Number.isFinite(n) ? n : s;
         }
-    }
-
-    async convertChildValueType(configId, child, { reopenEditor = false } = {}) {
-        const effectiveVal = this.getEffectiveValue(configId, child.path, child.value);
-        const effectiveType = this.getEffectiveChildType(child, effectiveVal);
-
-        if (effectiveType === 'string') {
-            const wrapped = effectiveVal != null && effectiveVal !== '' ? [String(effectiveVal)] : [''];
-            this.recordValueChange(configId, child.path, wrapped, null);
-            const updated = { ...child, value: wrapped, type: 'array' };
-            if (this.editTarget?.configId === configId
-                && configEditorPathsEqual(this.editTarget.child?.path, child.path)) {
-                this.editTarget.child = updated;
-            }
-            if (reopenEditor) {
-                this.openValueEditor(configId, updated);
-            } else if (this.selectedConfigId === configId) {
-                await this.loadAndRenderValues(configId, this.selectedPath);
-            }
-            return;
-        }
-
-        if (effectiveType === 'array') {
-            const arr = Array.isArray(effectiveVal) ? effectiveVal : [];
-            const preview = arr.length === 1
-                ? `Use first item: "${String(arr[0]).slice(0, 80)}"`
-                : `Array has ${arr.length} items — only the first will be kept as a string.`;
-            const ok = await showConfirmationDialog(
-                `Convert this array to a single string?<br>${configEditorEscapeHtml(preview)}`,
-                [
-                    { text: 'Convert', value: 'ok', className: 'btn-primary', icon: 'fas fa-font', primary: true },
-                    { text: 'Cancel', value: null, className: 'btn-secondary' }
-                ],
-                null,
-                { title: 'Convert to string' }
-            );
-            if (ok !== 'ok') return;
-            const str = arr.length ? String(arr[0]) : '';
-            this.recordValueChange(configId, child.path, str, null);
-            const updated = { ...child, value: str, type: 'string' };
-            if (this.editTarget?.configId === configId
-                && configEditorPathsEqual(this.editTarget.child?.path, child.path)) {
-                this.editTarget.child = updated;
-            }
-            if (reopenEditor) {
-                this.openValueEditor(configId, updated);
-            } else if (this.selectedConfigId === configId) {
-                await this.loadAndRenderValues(configId, this.selectedPath);
-            }
-        }
-    }
-
-    async convertValueEditorType() {
-        if (!this.editTarget) return;
-        const { configId, child } = this.editTarget;
-        await this.convertChildValueType(configId, child, { reopenEditor: true });
-    }
-
-    setEnumEditorValue(enumValues, effectiveVal) {
-        this.valueEnumChoices = enumValues === this.editTarget?.child?.enum ? null : enumValues;
-        const selectedEl = document.getElementById('configEditorValueEnumSelected');
-        const hidden = document.getElementById('configEditorValueEnumHidden');
-        if (!selectedEl || !hidden) return;
-
-        const value = effectiveVal != null ? String(effectiveVal) : String(enumValues[0] ?? '');
-        const hiddenVal = effectiveVal === null ? 'null' : value;
-        hidden.value = hiddenVal;
-        selectedEl.textContent = configEditorEnumLabel(effectiveVal);
-    }
-
-    readValueFromEditor() {
-        const target = this.editTarget;
-        if (!target) return undefined;
-
-        if (target.rawJsonMode) {
-            const ta = document.getElementById('configEditorValueTextarea');
-            const raw = (ta?.value ?? '').trim();
-            if (!raw) return null;
-            try {
-                return JSON.parse(raw);
-            } catch {
-                throw new Error('Invalid JSON');
-            }
-        }
-
-        const child = target.child;
-        if (!child) return undefined;
-
-        if (configEditorIsSecret(child)) {
-            const el = document.getElementById('configEditorValueSecret');
-            return (el?.value ?? '').trim();
-        }
-        const effectiveVal = this.getEffectiveValue(target.configId, child.path, child.value);
-        const effectiveType = this.getEffectiveChildType(child, effectiveVal);
-        if (effectiveType === 'boolean') {
-            return document.getElementById('configEditorValueEnumHidden')?.value === 'true';
-        }
-        if (effectiveType === 'number') {
-            const el = document.getElementById('configEditorValueNumber');
-            const raw = (el?.value ?? '').trim();
-            if (!raw) return '';
-            const num = this.valueNumberBase === 16 ? parseInt(raw, 16) : Number(raw);
-            if (Number.isNaN(num)) throw new Error('Invalid number');
-            return num;
-        }
-        if (this.isValuePromptEditorVisible()) {
-            const promptTa = document.getElementById('configEditorValuePromptTextarea');
-            if (promptTa) {
-                // applyFormattedText: public/scripts/comp/utilities.js
-                if (typeof applyFormattedText === 'function') {
-                    applyFormattedText(promptTa, true);
-                }
-                return promptTa.value;
-            }
-        }
-        const ta = document.getElementById('configEditorValueTextarea');
-        if (ta && !ta.classList.contains('hidden')) {
-            if (effectiveType === 'array') {
-                // regedit drops the empty strings of a multi-string
-                if (this.valueArrayAsLines) return ta.value.split('\n').map((line) => line.replace(/\r$/, '')).filter(Boolean);
-                const raw = ta.value.trim();
-                if (!raw) return [];
-                try {
-                    const parsed = JSON.parse(raw);
-                    if (!Array.isArray(parsed)) throw new Error('not array');
-                    return parsed;
-                } catch {
-                    throw new Error('Invalid JSON array');
-                }
-            }
-            return ta.value;
-        }
-        const enumBtn = document.getElementById('configEditorValueEnumBtn');
-        if (enumBtn && !enumBtn.classList.contains('hidden')) {
-            const raw = document.getElementById('configEditorValueEnumHidden')?.value ?? '';
-            if (raw === 'null' && child.enum?.includes(null)) return null;
-            if (child.type === 'number' && raw !== '') return Number(raw);
-            return raw;
-        }
-        const el = document.getElementById('configEditorValueInput');
-        return el?.value ?? '';
-    }
-
-    applyValueFromEditor() {
-        if (!this.editTarget) return;
-        if (this.editTarget.readOnly) return;
-        const { configId, child, rawJsonMode, path } = this.editTarget;
-        let val;
-        try {
-            val = this.readValueFromEditor();
-        } catch (err) {
-            this.setStatus(err.message || 'Invalid value');
-            if (typeof showGlassToast === 'function') {
-                showGlassToast('error', 'Runes', err.message || 'Invalid value');
-            }
-            return;
-        }
-        if (rawJsonMode) {
-            this.recordValueChange(configId, path, val, null);
+        if (entry.child?.readOnly) {
             this.closeValueEditor();
-            if (this.selectedConfigId === configId) {
-                void this.refreshCurrentValuesPanel();
-            }
+            await this.msg(`Cannot edit ${entry.name}:  Error writing the value's new contents.`, 'Error Editing Value', 'error');
             return;
         }
-        if (configEditorIsSecret(child)) {
-            if (!val) {
-                this.closeValueEditor();
-                return;
-            }
-        }
-        this.recordValueChange(configId, child.path, val, null);
+        const name = entry.name;
         this.closeValueEditor();
-        if (this.selectedConfigId === configId) {
-            void this.refreshCurrentValuesPanel();
+        if (JSON.stringify(value) === JSON.stringify(original) && t.kind !== 'secret') return;
+        const res = await this.commit(loc.configId, [{ path: [...loc.path, name], value, deleted: false }]);
+        if (!res.ok && !res.cancelled) {
+            await this.msg(`Cannot edit ${name}:  Error writing the value's new contents.\nDetails: ${res.error}`, 'Error Editing Value', 'error');
         }
+        await this.reload([name]);
+        this.focusPane(this.listPanel);
     }
 
     closeValueEditor() {
         this.editTarget = null;
-        this.resetValueEditorFieldClasses();
-        if (this.valueModal && !this.valueModal.classList.contains('hidden')) {
-            closeModal(this.valueModal);
-        }
+        if (this.valueModal && !this.valueModal.classList.contains('hidden')) closeModal(this.valueModal);
     }
 
-    recordValueChange(configId, path, value, rowEl) {
-        const cacheKey = configEditorPathKey(configId, path);
-        const parentKey = configEditorPathKey(configId, this.selectedPath);
-        const parentData = this.nodeCache.get(parentKey);
-        let previousValue;
-        if (parentData?.children) {
-            const stub = parentData.children.find((c) => configEditorPathKey(configId, c.path) === cacheKey);
-            previousValue = stub?.value;
-        }
+    // ---- Modify Binary Data (regedit.exe.mui 103) and Display Binary Data (2021) -----------------
 
-        const stub = parentData?.children?.find((c) => configEditorPathKey(configId, c.path) === cacheKey);
-
-        const mergedStub = rowEl?._configEditorCtx?.child || stub;
-        this.setPendingEdit(configId, path, {
-            path: path.slice(),
-            value,
-            deleted: false,
-            previousValue,
-            restartRequired: !!(mergedStub?.restartRequired ?? stub?.restartRequired),
-            secret: configEditorIsSecret(mergedStub || stub || { path, key: path[path.length - 1], configId }, configId),
-            label: mergedStub?.label || mergedStub?.key || path[path.length - 1]
-        });
-        if (rowEl) {
-            this.applyPendingHighlight(rowEl, configId, path, false);
-            if (rowEl._configEditorCtx?.child && !rowEl._configEditorCtx.child.expandable) {
-                rowEl._configEditorCtx.child.value = value;
-            }
-        }
-        this.invalidateCacheFrom(configId, path.slice(0, -1));
+    async revealedValue(entry) {
+        if (!entry.secret) return entry.value;
+        const loc = this.selLoc;
+        const data = await this.ws('config_editor_reveal_secret', { configId: loc.configId, path: [...loc.path, entry.name] });
+        return data?.value;
     }
 
-    async navigateToPath(configId, path) {
-        await this.ensureTreePath(configId, path);
-        await this.selectNode(configId, path);
-    }
-
-    async ensureTreePath(configId, path) {
-        for (let i = 0; i < path.length; i++) {
-            const partial = path.slice(0, i);
-            const expandKey = configEditorPathKey(configId, partial) + ':expanded';
-            if (!this.expandedKeys.has(expandKey)) {
-                const row = this.findTreeRow(configId, partial);
-                if (row) await this.toggleTreeExpand(configId, partial, row, true);
-            }
-        }
-    }
-
-    findTreeRow(configId, path) {
-        const pathStr = path.join('\0');
-        return this.treeEl?.querySelector(
-            `.config-editor-tree-item[data-config-id="${configId}"][data-path="${pathStr}"]`
-        );
-    }
-
-    async toggleTreeExpand(configId, path, rowEl, forceOpen) {
-        const expandKey = configEditorPathKey(configId, path) + ':expanded';
-        const isOpen = this.expandedKeys.has(expandKey);
-        if (forceOpen && isOpen) {
-            await this.loadTreeChildren(configId, path, rowEl);
+    async modifyBinary() {
+        const entry = this.selNames.size === 1 ? this.selectedEntries()[0] : null;
+        if (!entry) return;
+        const V = await this.ensureDialogs();
+        if (!V) return;
+        const loc = this.selLoc;
+        let value;
+        try { value = entry.isDefault ? undefined : await this.revealedValue(entry); } catch (_) {
+            await this.msg(`Cannot edit ${entry.name}:  Error reading the value's contents.`, 'Error Editing Value', 'error');
             return;
         }
-        if (isOpen && !forceOpen) {
-            this.expandedKeys.delete(expandKey);
-            const container = rowEl.nextElementSibling;
-            if (container?.classList.contains('config-editor-tree-children')) {
-                container.remove();
-            }
-            const icon = rowEl.querySelector('.config-editor-tree-expand i');
-            if (icon) icon.className = 'fas fa-chevron-right';
-            return;
-        }
-
-        this.expandedKeys.add(expandKey);
-        const icon = rowEl.querySelector('.config-editor-tree-expand i');
-        if (icon) icon.className = 'fas fa-chevron-down';
-        await this.loadTreeChildren(configId, path, rowEl);
-    }
-
-    async loadTreeChildren(configId, path, rowEl) {
-        let container = rowEl.nextElementSibling;
-        if (container?.classList.contains('config-editor-tree-children')) {
-            container.remove();
-        }
-        container = document.createElement('div');
-        container.className = 'config-editor-tree-children';
-        rowEl.after(container);
-
-        try {
-            const data = await this.fetchNode(configId, path);
-            const children = this.mergeChildrenWithPending(configId, data);
-            for (const child of children) {
-                if (!child.expandable) continue;
-                const childPath = child.path;
-                const item = document.createElement('div');
-                item.className = 'config-editor-tree-item';
-                this.applyPendingHighlight(item, configId, childPath, child.isPendingNew);
-                item.dataset.configId = configId;
-                item.dataset.path = childPath.join('\0');
-                item.dataset.depth = String(childPath.length);
-                const hasExpandableChildren = !!child.hasExpandableChildren;
-                item.innerHTML = `
-                    ${this.buildTreeExpandHtml(hasExpandableChildren)}
-                    <button type="button" class="config-editor-tree-label">
-                        ${this.buildTreeIconHtml(child.icon || 'fas fa-folder')}
-                        <span>${configEditorEscapeHtml(child.label || child.key)}</span>
-                    </button>
-                `;
-                const expandBtn = item.querySelector('.config-editor-tree-expand');
-                const labelBtn = item.querySelector('.config-editor-tree-label');
-                if (expandBtn) {
-                    expandBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        this.toggleTreeExpand(configId, childPath, item);
-                    });
-                }
-                labelBtn.addEventListener('click', () => {
-                    this.selectNode(configId, childPath);
-                });
-                this.attachRowContextMenu(item, {
-                    kind: 'tree',
-                    configId,
-                    path: childPath.slice(),
-                    containerPath: childPath.slice(),
-                    expandable: true,
-                    hasExpandableChildren,
-                    child
-                });
-                container.appendChild(item);
-            }
-            this.highlightTreeSelection();
-        } catch (err) {
-            console.error('Tree expand:', err);
-        }
-        setTimeout(() => {
-            if (this.treeScrollShell) customScrollbar?.forceReinit(this.treeScrollShell);
-            this.scrollTreeSelectionIntoView();
-        }, 0);
-    }
-
-    async refreshTreePreservingExpansion() {
-        if (!this.treeEl) return;
-        const expandedSnapshot = [...this.expandedKeys];
-        const { selectedConfigId, selectedPath } = this;
-        this.renderConfigRoots();
-        const sorted = expandedSnapshot.sort((a, b) => {
-            const depthA = configEditorParsePathKey(a.slice(0, -':expanded'.length)).path.length;
-            const depthB = configEditorParsePathKey(b.slice(0, -':expanded'.length)).path.length;
-            return depthA - depthB;
-        });
-        for (const expandKey of sorted) {
-            if (!expandKey.endsWith(':expanded')) continue;
-            const { configId, path } = configEditorParsePathKey(expandKey.slice(0, -':expanded'.length));
-            this.expandedKeys.add(expandKey);
-            const row = this.findTreeRow(configId, path);
-            if (row) await this.toggleTreeExpand(configId, path, row, true);
-        }
-        if (selectedConfigId) {
-            await this.selectNode(selectedConfigId, selectedPath);
-        }
-    }
-
-    buildPatchesPayload() {
-        const patches = {};
-        this.pendingEdits.forEach((map, configId) => {
-            patches[configId] = [];
-            map.forEach((edit) => {
-                patches[configId].push({
-                    path: edit.path,
-                    value: edit.deleted ? undefined : edit.value,
-                    deleted: !!edit.deleted
-                });
-            });
-        });
-        return patches;
-    }
-
-    buildSaveSummaryHtml() {
-        const rows = [];
-        const configIds = [];
-        let anyRestart = false;
-        this.pendingEdits.forEach((map, configId) => {
-            configIds.push(configId);
-            map.forEach((edit) => {
-                if (edit.restartRequired) anyRestart = true;
-                const pathStr = configEditorPathLabel(edit.path);
-                const from = edit.secret
-                    ? CONFIG_EDITOR_SECRET_MASK
-                    : configEditorEscapeHtml(configEditorFormatDisplayValue(edit.previousValue));
-                const to = edit.deleted
-                    ? '<em>deleted</em>'
-                    : (edit.secret && edit.value !== CONFIG_EDITOR_SECRET_MASK
-                        ? CONFIG_EDITOR_SECRET_MASK
-                        : configEditorEscapeHtml(configEditorFormatDisplayValue(edit.value)));
-                const restart = edit.restartRequired ? ' <i class="fas fa-arrows-rotate" title="Restart required"></i>' : '';
-                rows.push(`<tr>
-                    <td>${configEditorEscapeHtml(configId)}</td>
-                    <td>${configEditorEscapeHtml(pathStr)}</td>
-                    <td>${edit.deleted ? 'delete' : 'set'}</td>
-                    <td>${from} → ${to}${restart}</td>
-                </tr>`);
-            });
-        });
-
-        const toggleRows = configIds.map((configId) => `
-            <div class="config-editor-save-checkpoint-row">
-                <span>${configEditorEscapeHtml(configId)}</span>
-                <button type="button" class="btn-secondary btn-small toggle-btn config-editor-save-cp-toggle"
-                    data-config-id="${configEditorEscapeHtml(configId)}"
-                    data-state="on"
-                    title="Create checkpoint before saving this config">Checkpoint: on</button>
-            </div>`).join('');
-
-        let html = `<p>Apply <strong>${rows.length}</strong> change${rows.length === 1 ? '' : 's'}?</p>`;
-        if (configIds.length) {
-            html += `<div class="config-editor-save-checkpoint-toggles form-section-scroll">
-                <p class="config-editor-save-checkpoint-heading">Checkpoint before save</p>
-                ${toggleRows}
-            </div>`;
-        }
-        html += `<div class="config-editor-summary-table-wrap form-section-scroll">
-            <table class="config-editor-summary-table">
-            <thead><tr><th>Config</th><th>Path</th><th>Action</th><th>Change</th></tr></thead>
-            <tbody>${rows.join('')}</tbody></table></div>`;
-        if (anyRestart) {
-            html += '<p class="config-editor-restart-note"><i class="fas fa-arrows-rotate"></i> Server will restart after save.</p>';
-        }
-        return html;
-    }
-
-    wireSaveCheckpointToggles(dialog) {
-        if (!dialog) return;
-        dialog.querySelectorAll('.config-editor-save-cp-toggle').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const on = btn.dataset.state === 'on';
-                btn.dataset.state = on ? 'off' : 'on';
-                btn.textContent = on ? 'Checkpoint: off' : 'Checkpoint: on';
-            });
-        });
-    }
-
-    collectSaveCheckpointOptions(dialog) {
-        const createCheckpoint = {};
-        if (!dialog) return createCheckpoint;
-        dialog.querySelectorAll('.config-editor-save-cp-toggle').forEach((btn) => {
-            const configId = btn.dataset.configId;
-            if (!configId) return;
-            createCheckpoint[configId] = btn.dataset.state === 'on';
-        });
-        return createCheckpoint;
-    }
-
-    selectValueRow(row) {
-        const ctx = row?._configEditorCtx;
-        if (!ctx?.path) return;
-        this.selectedValuePath = ctx.path.slice();
-        this.valuesEl?.querySelectorAll('tr.config-editor-row').forEach((el) => {
-            el.classList.toggle('selected', el === row);
-        });
-    }
-
-    focusSearch() {
-        if (!this.searchInput) return;
-        this.searchInput.focus();
-        this.searchInput.select();
-    }
-
-    /**
-     * Edit > Find: Registry Editor's Find dialog (regedit.exe.mui 106). Find Next runs the search
-     * and goes to the first match, as regedit selects it; F3 goes on to the next.
-     */
-    async openFindDialog() {
-        if (typeof featureLoader !== 'undefined' && !window.vistaDialogTemplate) {
-            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
-        }
-        const V = window.vistaDialogTemplate;
-        if (!V) { this.focusSearch(); return; }
+        const regType = entry.isDefault ? 'REG_SZ' : entry.regType;
+        const bytes = entry.isDefault ? [] : configEditorBytesOf(regType, value);
+        let hex = null;
         V.openDialog({
-            id: 'configEditorFindDialog', key: 'regedit:106', owner: this.modal, bareCaption: true, focusFirst: true,
+            id: 'configEditorBinaryDialog', key: 'regedit:103', owner: this.modal, bareCaption: true,
+            overrides: { 1000: { nudge: [0, 0, 11, 0] }, 1001: { nudge: [0, 0, 11, 0] }, 1: { nudge: [11, 0, 0, 0] }, 2: { nudge: [11, 0, 0, 0] } },
             init: (ctx) => {
-                ctx.set(1150, this.findQuery || '');
-                [1152, 1153, 1154].forEach((id) => ctx.set(id, true));
-                const sync = () => ctx.enable(1, !!String(ctx.get(1150) || '').trim());
-                ctx.on(1150, 'input', sync);
-                sync();
+                ctx.set(1000, entry.isDefault ? '(Default)' : entry.name);
+                const name = ctx.el(1000);
+                if (name) name.readOnly = true;
+                // regedit widens its HEX dialog by 11 px at run time (375 px windows on the VM, not the
+                // template's 364): the boxes grow and the buttons move with the right edge
+                ctx.content.style.width = `${parseFloat(ctx.content.style.width) + 11}px`;
+                const host = ctx.content.querySelector('.vdt-custom[data-class="HEX"]');
+                hex = this.hexEditor(host, bytes);
+                setTimeout(() => hex?.focus(), 0);
             },
-            ok: async (ctx) => {
-                const q = String(ctx.get(1150) || '').trim();
-                if (!q) return false;
-                this.findQuery = q;
-                await this.runFind(q);
+            ok: async () => {
+                if (entry.isDefault || !hex) return true;
+                const next = configEditorValueFromBytes(regType, hex.bytes(), value);
+                if (JSON.stringify(next) === JSON.stringify(value)) return true;
+                const res = await this.commit(loc.configId, [{ path: [...loc.path, entry.name], value: next, deleted: false }]);
+                if (!res.ok && !res.cancelled) await this.msg(`Cannot edit ${entry.name}:  Error writing the value's new contents.\nDetails: ${res.error}`, 'Error Editing Value', 'error');
+                await this.reload([entry.name]);
                 return true;
             }
         });
     }
 
-    async runFind(query) {
-        if (this.searchInput) this.searchInput.value = query;
-        await this.runSearch(query);
-        this.findHits = (this.searchResults || []).slice();
-        this.findIndex = 0;
-        if (!this.findHits.length) {
-            this.clearSearch(true);
-            this.setStatus('Finished searching through the registry.');
+    /**
+     * regedit's HEX control: "0000  01 02 FF ..  ..y" rows of 8 bytes in 8x13 cells (the address,
+     * the bytes from column 6, the characters from column 31). Typing hex digits inserts bytes at the
+     * caret; Backspace / Delete remove; arrows, Home / End move; Shift extends the selection.
+     */
+    hexEditor(host, initial) {
+        if (!host) return null;
+        let bytes = initial.slice();
+        let caret = 0;      // byte index
+        let nibble = 0;     // 0: before the high digit, 1: after it (a half-typed byte)
+        let anchor = null;  // selection anchor (byte index) or null
+        host.classList.add('rg-hex');
+        host.tabIndex = 0;
+        const view = document.createElement('div');
+        view.className = 'rg-hex-view';
+        host.appendChild(view);
+        const ch = (b) => ((b >= 0x20 && b < 0x7f) || b >= 0xa0 ? String.fromCharCode(b) : '.');
+        const selRange = () => (anchor == null || anchor === caret ? null : [Math.min(anchor, caret), Math.max(anchor, caret)]);
+        const draw = () => {
+            const rows = Math.max(1, Math.ceil((bytes.length + 1) / 8));
+            const sel = selRange();
+            let html = '';
+            for (let r = 0; r < rows; r += 1) {
+                const base = r * 8;
+                if (base > bytes.length) break;
+                // every character in its own 8 px cell, as the raster Courier lays them out
+                const cell = (col, text, cls, i) => `<span class="${cls}"${i != null ? ` data-i="${i}"` : ''} style="left:${col * 8}px">${configEditorEscapeHtml(text)}</span>`;
+                let line = '<div class="rg-hex-row">';
+                configEditorHex(base, 4).toUpperCase().split('').forEach((c, n) => { line += cell(n, c, 'rg-hex-a'); });
+                for (let k = 0; k < 8; k += 1) {
+                    const i = base + k;
+                    if (i >= bytes.length) break;
+                    const on = sel && i >= sel[0] && i < sel[1] ? ' is-sel' : '';
+                    const hx = configEditorHex(bytes[i], 2).toUpperCase();
+                    line += cell(6 + k * 3, hx[0], `rg-hex-b${on}`, i) + cell(7 + k * 3, hx[1], `rg-hex-b${on}`, i);
+                    line += cell(31 + k, ch(bytes[i]), `rg-hex-c${on}`, i);
+                }
+                html += `${line}</div>`;
+            }
+            const row = Math.floor(caret / 8);
+            const col = 6 + (caret % 8) * 3 + nibble;
+            html += `<span class="rg-hex-caret" style="left:${col * 8}px;top:${row * 13}px"></span>`;
+            view.innerHTML = html;
+        };
+        const removeSel = () => {
+            const sel = selRange();
+            if (!sel) return false;
+            bytes.splice(sel[0], sel[1] - sel[0]);
+            caret = sel[0];
+            anchor = null;
+            nibble = 0;
+            return true;
+        };
+        host.addEventListener('keydown', (e) => {
+            const k = e.key;
+            const move = (to) => {
+                if (e.shiftKey) { if (anchor == null) anchor = caret; } else anchor = null;
+                caret = Math.max(0, Math.min(bytes.length, to));
+                nibble = 0;
+            };
+            if (/^[0-9a-f]$/i.test(k) && !e.ctrlKey && !e.altKey) {
+                removeSel();
+                const d = parseInt(k, 16);
+                if (nibble === 0) { bytes.splice(caret, 0, d << 4); nibble = 1; } else { bytes[caret] = (bytes[caret] & 0xf0) | d; caret += 1; nibble = 0; }
+            } else if (k === 'Backspace') {
+                if (!removeSel()) { if (nibble) { bytes.splice(caret, 1); nibble = 0; } else if (caret > 0) { bytes.splice(caret - 1, 1); caret -= 1; } }
+            } else if (k === 'Delete') {
+                if (!removeSel() && caret < bytes.length) bytes.splice(caret, 1);
+                nibble = 0;
+            } else if (k === 'ArrowLeft') move(caret - (nibble ? 0 : 1));
+            else if (k === 'ArrowRight') move(caret + 1);
+            else if (k === 'ArrowUp') move(caret - 8);
+            else if (k === 'ArrowDown') move(caret + 8);
+            else if (k === 'Home') move(e.ctrlKey ? 0 : caret - (caret % 8));
+            else if (k === 'End') move(e.ctrlKey ? bytes.length : Math.min(bytes.length, caret - (caret % 8) + 7));
+            else if ((k === 'a' || k === 'A') && e.ctrlKey) { anchor = 0; caret = bytes.length; nibble = 0; } else return;
+            e.preventDefault();
+            e.stopPropagation();
+            draw();
+        });
+        host.addEventListener('mousedown', (e) => {
+            const cell = e.target.closest('[data-i]');
+            host.focus();
+            if (cell) { anchor = e.shiftKey ? (anchor ?? caret) : null; caret = Number(cell.dataset.i); nibble = 0; draw(); }
+            e.preventDefault();
+        });
+        draw();
+        return { bytes: () => bytes.slice(), focus: () => host.focus() };
+    }
+
+    async displayBinary() {
+        const entry = this.selNames.size === 1 ? this.selectedEntries()[0] : null;
+        if (!entry || entry.isDefault) return;
+        const V = await this.ensureDialogs();
+        if (!V) return;
+        let value;
+        try { value = await this.revealedValue(entry); } catch (_) {
+            await this.msg(`Cannot display ${entry.name}:  Error reading the value's contents.`, 'Error Displaying Value', 'error');
             return;
         }
-        await this.navigateFromSearchResult(this.findHits[0], false);
-        this.clearSearch(true);
+        const bytes = configEditorBytesOf(entry.regType, value);
+        const ch = (b) => ((b >= 0x20 && b < 0x7f) || b >= 0xa0 ? String.fromCharCode(b) : '.');
+        const lines = (size) => {
+            const out = [];
+            for (let base = 0; base < Math.max(1, bytes.length); base += 16) {
+                const row = bytes.slice(base, base + 16);
+                const groups = [];
+                for (let i = 0; i < row.length; i += size) {
+                    let n = 0n;
+                    for (let k = Math.min(size, row.length - i) - 1; k >= 0; k -= 1) n = (n << 8n) | BigInt(row[i + k]);
+                    groups.push(configEditorHex(n, size * 2));
+                }
+                const hexPart = groups.join(' ');
+                const width = 16 / size * (size * 2 + 1) - 1;
+                out.push(`${configEditorHex(base, 8)}   ${hexPart.padEnd(width, ' ')}    ${row.map(ch).join('')}`);
+                if (!bytes.length) break;
+            }
+            return out;
+        };
+        V.openDialog({
+            id: 'configEditorBinaryDataDialog', key: 'regedit:2021', owner: this.modal, bareCaption: true,
+            init: (ctx) => {
+                ctx.text(2026, entry.regType);
+                const vt = ctx.holder(2026);
+                if (vt) vt.style.overflow = 'visible';
+                const fill = (size) => {
+                    const box = ctx.el(2022);
+                    if (!box) return;
+                    box.classList.add('rg-bindata');
+                    // one 8 px cell per character (the VM's raster Courier); the first row has the focus box
+                    const cells = (l) => l.split('').map((c) => `<i>${c === ' ' ? '&nbsp;' : configEditorEscapeHtml(c)}</i>`).join('');
+                    box.innerHTML = lines(size).map((l, i) => `<div class="vdt-lb-row rg-bin-row${i === 0 ? ' rg-focus' : ''}" role="option"><span>${cells(l)}</span></div>`).join('');
+                };
+                ctx.set(2023, true);
+                fill(1);
+                [[2023, 1], [2024, 2], [2025, 4], [2027, 8]].forEach(([id, size]) => ctx.on(id, 'change', () => { if (ctx.get(id)) fill(size); }));
+            }
+        });
     }
 
-    async findNextHit() {
-        if (!this.findQuery) { await this.openFindDialog(); return; }
-        if (!this.findHits || !this.findHits.length) { await this.runFind(this.findQuery); return; }
-        this.findIndex = (this.findIndex + 1) % this.findHits.length;
-        await this.navigateFromSearchResult(this.findHits[this.findIndex], true);
+    // ---- Find (regedit.exe.mui 106) ----------------------------------------------------------------
+
+    async openFind() {
+        const V = await this.ensureDialogs();
+        if (!V) return;
+        let flags = { keys: true, values: true, data: true, whole: false };
+        try { flags = Object.assign(flags, JSON.parse(localStorage.getItem('runes.findFlags') || '{}')); } catch (_) { /* defaults */ }
+        V.openDialog({
+            id: 'configEditorFindDialog', key: 'regedit:106', owner: this.modal, bareCaption: true, focusFirst: true,
+            init: (ctx) => {
+                ctx.set(1150, this.findState?.query || '');
+                ctx.set(1152, flags.keys);
+                ctx.set(1153, flags.values);
+                ctx.set(1154, flags.data);
+                ctx.set(1151, flags.whole);
+                const sync = () => ctx.el(1)?.toggleAttribute('disabled', !String(ctx.get(1150) || '') || !(ctx.get(1152) || ctx.get(1153) || ctx.get(1154)));
+                [1150, 1152, 1153, 1154].forEach((id) => ctx.on(id, id === 1150 ? 'input' : 'change', sync));
+                sync();
+            },
+            ok: (ctx) => {
+                const query = String(ctx.get(1150) || '');
+                if (!query) return false;
+                const f = { keys: !!ctx.get(1152), values: !!ctx.get(1153), data: !!ctx.get(1154), whole: !!ctx.get(1151) };
+                try { localStorage.setItem('runes.findFlags', JSON.stringify(f)); } catch (_) { /* no storage */ }
+                this.findState = { query, ...f };
+                setTimeout(() => void this.findNext(), 0);
+                return true;
+            }
+        });
     }
 
-    /** Favorites (regedit's: HKCU ... Applets\Regedit\Favorites, a name for a key's path). */
+    /** The next match after the selection, in the tree's order (keys, then their values). */
+    async findNext() {
+        const st = this.findState;
+        if (!st) { await this.openFind(); return; }
+        const q = st.query.toUpperCase();
+        const hit = (text) => (st.whole ? String(text).toUpperCase() === q : String(text).toUpperCase().includes(q));
+        // the whole registry in order: [loc, valueName|null]
+        const order = [];
+        for (const h of CONFIG_EDITOR_HIVES) {
+            order.push([{ kind: 'hive', hive: h.id }, null]);
+            for (const cfg of this.configsOf(h.id)) {
+                let root;
+                try { root = (await this.ws('config_editor_get_node', { configId: cfg.id, path: [] }))?.nodeValue; } catch (_) { continue; }
+                const walk = (path, v) => {
+                    const loc = { kind: 'key', hive: h.id, configId: cfg.id, path };
+                    order.push([loc, null, v]);
+                    const keys = Object.keys(v || {}).sort(configEditorCompareNames);
+                    const vals = [];
+                    const subs = [];
+                    for (const k of keys) {
+                        const cv = v[k];
+                        if (cv !== null && typeof cv === 'object' && configEditorRegTypeOf(cv) === null) subs.push(k);
+                        else vals.push(k);
+                    }
+                    vals.forEach((k) => order.push([loc, k, v[k]]));
+                    subs.forEach((k) => walk([...path, String(k)], v[k]));
+                };
+                walk([], root || {});
+            }
+        }
+        const selKey = this.locKey(this.selLoc);
+        const selName = this.listActive() && this.focusName ? this.focusName : null;
+        let start = order.findIndex(([l, n]) => this.locKey(l) === selKey && (n === selName || (selName == null && n == null)));
+        if (start < 0) start = order.findIndex(([l]) => this.locKey(l) === selKey);
+        for (let i = start + 1; i < order.length; i += 1) {
+            const [loc, name, v] = order[i];
+            let match = false;
+            if (name == null) match = st.keys && loc.kind === 'key' && hit(this.locName(loc));
+            else {
+                if (st.values && hit(name)) match = true;
+                if (!match && st.data) {
+                    const regType = configEditorRegTypeOf(v) || 'REG_BINARY';
+                    const secret = configEditorIsSecret({ path: [...loc.path, name] }, loc.configId);
+                    if (!secret && (regType === 'REG_SZ' || regType === 'REG_MULTI_SZ')) {
+                        match = regType === 'REG_SZ' ? hit(v) : (v || []).some((s) => hit(s));
+                    }
+                }
+            }
+            if (!match) continue;
+            await this.navigateTo(loc, { quiet: true });
+            if (name != null) {
+                this.setListSelection([name], name);
+                this.focusPane(this.listPanel);
+            } else this.focusPane(this.treeEl);
+            return;
+        }
+        await this.msg('Finished searching through the registry.', 'Registry Editor', 'info');
+    }
+
+    // ---- Favorites (regedit.exe.mui 112 / 113) -------------------------------------------------------
+
     getFavorites() {
         try { return JSON.parse(localStorage.getItem('runes.favorites') || '[]'); } catch (_) { return []; }
     }
@@ -3084,406 +2222,286 @@ class ConfigEditorApplet {
     }
 
     async addFavorite() {
-        if (!this.selectedConfigId) return;
-        if (typeof featureLoader !== 'undefined' && !window.vistaDialogTemplate) {
-            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
-        }
-        const V = window.vistaDialogTemplate;
+        const loc = this.selLoc;
+        if (loc.kind === 'computer') return;
+        const V = await this.ensureDialogs();
         if (!V) return;
-        const configId = this.selectedConfigId;
-        const path = (this.selectedPath || []).slice();
-        const name = path.length ? String(path[path.length - 1]) : this.getConfigLabel(configId);
+        const name = this.locName(loc);
+        const key = `Computer\\${this.keyPath(loc)}`;
         V.openDialog({
             id: 'configEditorAddFavorite', key: 'regedit:112', owner: this.modal, bareCaption: true, focusFirst: true,
-            init: (ctx) => {
-                const edit = ctx.content.querySelector('input[type=text], input:not([type])');
-                if (edit) edit.value = name;
-            },
-            ok: (ctx) => {
-                const edit = ctx.content.querySelector('input[type=text], input:not([type])');
-                const n = (edit && edit.value.trim()) || name;
-                this.setFavorites(this.getFavorites().filter((f) => f.name !== n).concat([{ name: n, configId, path }]));
+            init: (ctx) => ctx.set(1190, name),
+            ok: async (ctx) => {
+                const n = String(ctx.get(1190) || '').trim();
+                if (!n) return false;
+                if (this.getFavorites().some((f) => f.name.toUpperCase() === n.toUpperCase())) {
+                    await this.msg('There is already a favorite with that name.', 'Error Adding Favorite', 'error');
+                    return false;
+                }
+                this.setFavorites(this.getFavorites().concat([{ name: n, key }]));
                 return true;
             }
         });
     }
 
     async removeFavorites() {
-        if (typeof featureLoader !== 'undefined' && !window.vistaDialogTemplate) {
-            try { await featureLoader.loadFeature('vista_dialog_templates'); } catch (_) { /* no dialogs */ }
-        }
-        const V = window.vistaDialogTemplate;
+        const V = await this.ensureDialogs();
         if (!V) return;
         V.openDialog({
             id: 'configEditorRemoveFavorites', key: 'regedit:113', owner: this.modal, bareCaption: true,
             init: (ctx) => {
-                const box = ctx.content.querySelector('.vdt-listbox');
+                const box = ctx.el(1191);
                 if (!box) return;
                 box.innerHTML = this.getFavorites().map((f) => `<div class="vdt-lb-row" data-value="${configEditorEscapeHtml(f.name)}" role="option"><span>${configEditorEscapeHtml(f.name)}</span></div>`).join('');
-                // LBS_EXTENDEDSEL: a click adds to the selection
+                // LBS_EXTENDEDSEL: a click picks one, Ctrl+click adds, Shift+click a range
+                let last = null;
                 box.addEventListener('click', (ev) => {
                     const row = ev.target.closest('.vdt-lb-row');
-                    if (row) setTimeout(() => row.classList.toggle('is-picked'), 0);
+                    if (!row) return;
+                    const rows = Array.from(box.querySelectorAll('.vdt-lb-row'));
+                    setTimeout(() => {
+                        if (ev.shiftKey && last) {
+                            const a = rows.indexOf(last);
+                            const b = rows.indexOf(row);
+                            rows.forEach((r, i) => r.classList.toggle('is-picked', i >= Math.min(a, b) && i <= Math.max(a, b)));
+                        } else if (ev.ctrlKey) row.classList.toggle('is-picked');
+                        else rows.forEach((r) => r.classList.toggle('is-picked', r === row));
+                        rows.forEach((r) => r.classList.remove('is-selected'));
+                        last = row;
+                    }, 0);
                 });
             },
             ok: (ctx) => {
-                const picked = new Set(Array.from(ctx.content.querySelectorAll('.vdt-lb-row.is-picked, .vdt-lb-row.is-selected'), (r) => r.dataset.value));
+                const picked = new Set(Array.from(ctx.content.querySelectorAll('.vdt-lb-row.is-picked'), (r) => r.dataset.value));
                 this.setFavorites(this.getFavorites().filter((f) => !picked.has(f.name)));
                 return true;
             }
         });
     }
 
-    findNext() {
-        if (!this.searchActive || !this.searchResults.length) {
-            this.focusSearch();
-            return;
-        }
-        if (this.searchSelectedIndex < 0) this.searchSelectedIndex = 0;
-        else this.searchSelectedIndex = (this.searchSelectedIndex + 1) % this.searchResults.length;
-        this.updateSearchSelectionHighlight();
-        this.scrollSearchSelectionIntoView();
-        const hit = this.searchResults[this.searchSelectedIndex];
-        if (hit) void this.navigateFromSearchResult(hit, true);
+    // ---- Export / Import (.reg text in the VFS) ------------------------------------------------------
+
+    regEscape(s) {
+        return String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     }
 
-    async refreshSelected() {
-        if (!window.wsClient?.isConnected()) {
-            this.setStatus('WebSocket not connected');
-            return;
-        }
-        if (!this.selectedConfigId) {
-            this.setStatus('Refreshing…');
-            try {
-                const data = await window.wsClient.sendMessage('config_editor_list', {}, false);
-                this.configList = data?.configs || [];
-                this.renderConfigRoots();
-                this.setStatus('');
-            } catch (err) {
-                console.error('config_editor_list:', err);
-                this.setStatus('Failed to load config list');
+    regHex(prefix, bytes) {
+        const parts = bytes.map((b) => configEditorHex(b, 2));
+        const lines = [];
+        let line = `${prefix}`;
+        parts.forEach((p, i) => {
+            const piece = p + (i < parts.length - 1 ? ',' : '');
+            if (line.length + piece.length > 77) { lines.push(`${line}\\`); line = '  '; }
+            line += piece;
+        });
+        lines.push(line);
+        return lines.join('\r\n');
+    }
+
+    regValueLine(name, v) {
+        const n = `"${this.regEscape(name)}"=`;
+        const t = configEditorRegTypeOf(v);
+        if (t === 'REG_SZ' && !/[\r\n\0]/.test(String(v))) return `${n}"${this.regEscape(v)}"`;
+        if (t === 'REG_SZ') return this.regHex(`${n}hex(1):`, configEditorBytesOf('REG_SZ', v));
+        if (t === 'REG_DWORD') return `${n}dword:${configEditorHex((v === true ? 1 : v === false ? 0 : v) >>> 0, 8)}`;
+        if (t === 'REG_QWORD') return this.regHex(`${n}hex(b):`, configEditorBytesOf('REG_QWORD', v));
+        if (t === 'REG_MULTI_SZ') return this.regHex(`${n}hex(7):`, configEditorBytesOf('REG_MULTI_SZ', v));
+        return this.regHex(`${n}hex:`, Array.isArray(v) ? v : []);
+    }
+
+    async regText(loc) {
+        const out = ['Windows Registry Editor Version 5.00', ''];
+        const emitKey = (keyPath, v) => {
+            out.push(`[${keyPath}]`);
+            const keys = Object.keys(v || {}).sort(configEditorCompareNames);
+            const subs = [];
+            for (const k of keys) {
+                const cv = v[k];
+                if (cv !== null && typeof cv === 'object' && configEditorRegTypeOf(cv) === null) subs.push(k);
+                else out.push(this.regValueLine(k, cv));
             }
-            return;
-        }
-        const configId = this.selectedConfigId;
-        const path = this.selectedPath.slice();
-        this.setStatus('Refreshing…');
-        this.invalidateCacheFrom(configId, path);
-        const row = this.findTreeRow(configId, path);
-        const expandKey = configEditorPathKey(configId, path) + ':expanded';
-        if (row && this.expandedKeys.has(expandKey)) {
-            await this.loadTreeChildren(configId, path, row);
-        }
-        await this.loadAndRenderValues(configId, path);
-        this.setStatus('');
-        this.updatePendingStatus();
-    }
-
-    deleteSelected() {
-        const configId = this.selectedConfigId;
-        if (!configId) return;
-        const fromValue = !!(this.selectedValuePath && this.selectedValuePath.length);
-        const path = fromValue ? this.selectedValuePath.slice() : this.selectedPath.slice();
-        const child = fromValue ? this.findChildAtPath(configId, path) : null;
-        if (!this.canDeletePath(configId, path, child)) {
-            this.setStatus(this.getDeleteDeniedReason(configId, path, child));
-            return;
-        }
-        this.markDeleted(configId, path);
-        if (fromValue && configEditorPathsEqual(this.selectedValuePath, path)) {
-            this.selectedValuePath = null;
-        }
-        if (!fromValue) void this.selectNode(configId, path.slice(0, -1));
-    }
-
-    copyKeyName() {
-        if (!this.selectedConfigId) return;
-        const text = this.formatKeyPath();
-        // copyTextToClipboard: public/scripts/utils/dreamscapeClipboard.js
-        copyTextToClipboard(text).then(() => {
-            this.setStatus('Copied key name');
-        }).catch(() => {
-            this.setStatus('Could not copy key name');
-        });
-    }
-
-    async modifySelected() {
-        if (!this.selectedConfigId || !this.selectedValuePath?.length) return;
-        const child = await this.ensureChildAtPath(this.selectedConfigId, this.selectedValuePath);
-        if (!child || child.expandable) return;
-        this.openValueEditor(this.selectedConfigId, child);
-    }
-
-    /**
-     * The menu bar's menus as Registry Editor's (regedit.exe.mui MENU 103): Win32 rows without
-     * pictures, accelerators in their own column. Runes keeps its own File commands (Save,
-     * Checkpoints) where regedit has Import / Export.
-     */
-    menuItems(menu) {
-        const plain = (items) => items.map((it) => {
-            if (!it || it.separator) return it;
-            const out = { ...it };
-            delete out.icon;
-            if (out.badge) { out.subtext = out.badge; delete out.badge; }
-            if (Array.isArray(out.submenu)) out.submenu = plain(out.submenu);
-            return out;
-        });
-        if (menu === 'favorites') {
-            const favs = this.getFavorites();
-            return [
-                { text: 'Add to Favorites...', action: 'fav-add', disabled: () => !this.selectedConfigId },
-                { text: 'Remove Favorite...', action: 'fav-remove', disabled: () => !favs.length },
-                ...(favs.length ? [{ separator: true }, ...favs.map((f, k) => ({ text: f.name, action: `fav-go-${k}` }))] : [])
-            ];
-        }
-        if (menu === 'help') {
-            return [
-                { text: 'Help Topics', action: 'help-topics' },
-                { separator: true },
-                { text: 'About Runes', action: 'about' }
-            ];
-        }
-        return plain(this.legacyMenuItems(menu));
-    }
-
-    legacyMenuItems(menu) {
-        if (menu === 'file') {
-            return [
-                { text: 'Save', icon: 'fas fa-save', action: 'save', badge: 'Ctrl+S',
-                    disabled: () => this.getPendingCount() < 1 },
-                { text: 'Checkpoints', icon: 'fas fa-clock-rotate-left', action: 'checkpoints',
-                    disabled: () => !this.selectedConfigId || !this.canShowCheckpointsMenu(this.selectedPath) },
-                { separator: true },
-                { text: 'Exit', action: 'exit' }
-            ];
-        }
-        if (menu === 'edit') {
-            const addItem = this.makeAddEntryMenuItem(() => ({
-                configId: this.selectedConfigId,
-                containerPath: this.selectedPath.slice()
-            }), { panelMode: true });
-            addItem.text = 'New';
-            return [
-                { text: 'Modify', icon: 'fas fa-pen', action: 'modify',
-                    disabled: () => {
-                        if (!this.selectedValuePath?.length) return true;
-                        const child = this.findChildAtPath(this.selectedConfigId, this.selectedValuePath);
-                        return !child || !!child.expandable;
-                    } },
-                addItem,
-                { separator: true },
-                { text: 'Delete', icon: 'fas fa-trash', action: 'delete', badge: 'Del',
-                    disabled: () => {
-                        const fromValue = !!(this.selectedValuePath && this.selectedValuePath.length);
-                        const path = fromValue ? this.selectedValuePath : this.selectedPath;
-                        if (!this.selectedConfigId || !path?.length) return true;
-                        const child = fromValue ? this.findChildAtPath(this.selectedConfigId, path) : null;
-                        return !this.canDeletePath(this.selectedConfigId, path, child);
-                    } },
-                { text: 'Copy Key Name', icon: 'fas fa-copy', action: 'copy-key',
-                    disabled: () => !this.selectedConfigId },
-                { separator: true },
-                { text: 'Find', icon: 'fas fa-magnifying-glass', action: 'find', badge: 'Ctrl+F' },
-                { text: 'Find Next', action: 'find-next', badge: 'F3' }
-            ];
-        }
-        return [
-            { text: 'Status Bar', action: 'status-bar', showIndicator: true,
-                checked: this.modal?.getAttribute('data-status-bar') !== 'off' },
-            { text: 'Split', action: 'split' },
-            { text: 'Refresh', icon: 'fas fa-rotate', action: 'refresh', badge: 'F5' }
-        ];
-    }
-
-    handleMenuAction(action, item) {
-        if (action === 'save') return this.requestSave();
-        if (action === 'exit') return this.requestClose();
-        if (action === 'modify') return this.modifySelected();
-        if (action === 'delete') return this.deleteSelected();
-        if (action === 'copy-key') return this.copyKeyName();
-        if (action === 'find') return this.openFindDialog();
-        if (action === 'find-next') return this.findNextHit();
-        if (action === 'fav-add') return this.addFavorite();
-        if (action === 'fav-remove') return this.removeFavorites();
-        if (action && action.startsWith('fav-go-')) {
-            const f = this.getFavorites()[Number(action.slice(7))];
-            if (f) return this.navigateToPath(f.configId, f.path);
-            return;
-        }
-        if (action === 'help-topics') {
-            if (typeof openHelpAndSupport === 'function') openHelpAndSupport('runes'); // eslint-disable-line no-undef
-            return;
-        }
-        if (action === 'about') {
-            if (typeof openAboutMelatoninModal === 'function') openAboutMelatoninModal({ program: 'Runes' }); // eslint-disable-line no-undef
-            return;
-        }
-        if (action === 'refresh') return this.refreshSelected();
-        if (action === 'split') {
-            this.modal?.querySelector('.config-editor-splitter')?.focus();
-            return;
-        }
-        if (action === 'status-bar') {
-            if (this.modal?.getAttribute('data-status-bar') === 'off') this.modal.removeAttribute('data-status-bar');
-            else this.modal?.setAttribute('data-status-bar', 'off');
-            return;
-        }
-        const ctx = {
-            configId: this.selectedConfigId,
-            path: this.selectedPath.slice(),
-            containerPath: this.selectedPath.slice(),
-            expandable: this.isContainerPath(this.selectedConfigId, this.selectedPath)
+            out.push('');
+            subs.forEach((k) => emitKey(`${keyPath}\\${k}`, v[k]));
         };
-        return this.handleContextAction(action, ctx, item);
+        const hives = loc.kind === 'computer' ? CONFIG_EDITOR_HIVES.map((h) => h.id) : [loc.hive];
+        for (const hive of hives) {
+            const cfgs = loc.kind === 'key' ? [this.configList.find((c) => c.id === loc.configId)].filter(Boolean) : this.configsOf(hive);
+            if (loc.kind !== 'key') { out.push(`[${hive}]`, ''); }
+            for (const cfg of cfgs) {
+                const path = loc.kind === 'key' ? loc.path : [];
+                const data = await this.ws('config_editor_get_node', { configId: cfg.id, path });
+                emitKey([hive, cfg.label || cfg.id, ...path].join('\\'), data?.nodeValue);
+            }
+        }
+        return out.join('\r\n');
     }
 
-    wireMenus() {
-        if (!contextMenu || this._menusWired) return;
-        this._menusWired = true;
+    vfs() {
+        return window.vfsClient || (typeof vfsClient !== 'undefined' ? vfsClient : null); // eslint-disable-line no-undef
+    }
+
+    async exportBranch(loc) {
+        if (typeof studioOpenFolderDialog !== 'function') return; // studioSession.js
+        const target = loc || { kind: 'computer' };
+        const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : ''; // eslint-disable-line no-undef
         const applet = this;
-        const ids = { file: 'configEditorMenuFile', edit: 'configEditorMenuEdit', view: 'configEditorMenuView', favorites: 'configEditorMenuFavorites', help: 'configEditorMenuHelp' };
-        Object.keys(ids).forEach((menu) => {
-            const button = document.getElementById(ids[menu]);
-            if (!button) return;
-            // contextMenu.attachClickMenuToElement: public/scripts/comp/contextMenu.js
-            contextMenu.attachClickMenuToElement(button, {
-                onAction: (action, target, item) => applet.handleMenuAction(action, item),
-                sections: [{
-                    type: 'list',
-                    initfn: (section) => { section.items = applet.menuItems(menu); }
-                }]
-            });
+        await studioOpenFolderDialog('save', {
+            startPath: ws ? `/Workspaces/${ws}` : '/',
+            host: {
+                title: 'Export Registry File',
+                typeLabel: 'Registration Files (*.reg)',
+                acceptType: 'user-file',
+                suggestName: () => '',
+                async onSave(info) {
+                    let name = String(info.name || '').trim();
+                    if (!name) return false;
+                    if (!/\.[a-z0-9]{1,5}$/i.test(name)) name += '.reg';
+                    try {
+                        const text = await applet.regText(target);
+                        const bytes = new TextEncoder().encode(text);
+                        let bin = '';
+                        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+                        await applet.vfs().uploadFile(info.path || '/', btoa(bin), name, 'text/plain');
+                        return true;
+                    } catch (err) {
+                        await applet.msg(`Cannot export ${name}: Error writing the file. There may be a disk or file system error.\nDetails: ${err.message || err}`, 'Registry Editor', 'error');
+                        return false;
+                    }
+                }
+            }
         });
     }
 
-    wireSplitter() {
-        const split = this.modal?.querySelector('.config-editor-splitter');
-        const tree = this.treePanel;
-        if (!split || !tree || split.dataset.wired) return;
-        split.dataset.wired = '1';
-        split.addEventListener('pointerdown', (e) => {
-            if (e.button !== 0) return;
-            e.preventDefault();
-            split.setPointerCapture(e.pointerId);
-            const startX = e.clientX;
-            const startW = tree.getBoundingClientRect().width;
-            const move = (ev) => {
-                const width = Math.max(140, Math.min(520, startW + ev.clientX - startX));
-                tree.style.flexBasis = width + 'px';
-                tree.style.width = width + 'px';
-            };
-            const up = () => {
-                split.removeEventListener('pointermove', move);
-                split.removeEventListener('pointerup', up);
-            };
-            split.addEventListener('pointermove', move);
-            split.addEventListener('pointerup', up);
-        });
-        split.addEventListener('keydown', (e) => {
-            const current = tree.getBoundingClientRect().width;
-            let width = current;
-            if (e.key === 'ArrowLeft') width = Math.max(140, current - 8);
-            else if (e.key === 'ArrowRight') width = Math.min(520, current + 8);
-            else return;
-            e.preventDefault();
-            tree.style.flexBasis = width + 'px';
-            tree.style.width = width + 'px';
+    async importFile() {
+        if (typeof studioOpenFolderDialog !== 'function') return;
+        const ws = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : ''; // eslint-disable-line no-undef
+        const applet = this;
+        await studioOpenFolderDialog('open-vfs', {
+            startPath: ws ? `/Workspaces/${ws}` : '/',
+            host: {
+                title: 'Import Registry File',
+                typeLabel: 'Registration Files (*.reg)',
+                rejectMessage: 'Choose a registration file',
+                acceptItem: (item) => item && item.targetKind === 'user-file',
+                async onOpen(item) {
+                    let text;
+                    try {
+                        const res = await applet.vfs().downloadFile(item.id);
+                        const r = await fetch(res.downloadUrl, { credentials: 'same-origin', cache: 'no-store' });
+                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                        text = await r.text();
+                    } catch (_) {
+                        await applet.msg(`Cannot import ${item.name}: Error opening the file. There may be a disk or file system error.`, 'Registry Editor', 'error');
+                        return;
+                    }
+                    await applet.importRegText(text, item.name);
+                }
+            }
         });
     }
 
-    async requestSave() {
-        const n = this.getPendingCount();
-        if (!n) {
-            this.setStatus('No pending changes');
+    /** Parses .reg text into patches per config; existing values keep their JSON type. */
+    async importRegText(text, fileName) {
+        const raw = String(text || '').replace(/^\uFEFF/, '').replace(/\\\r?\n\s*/g, '');
+        const lines = raw.split(/\r?\n/);
+        if (!/^(Windows Registry Editor Version 5\.00|REGEDIT4)\s*$/.test(lines[0] || '')) {
+            await this.msg(`Cannot import ${fileName}: The specified file is not a registry script.\nYou can only import binary registry files from within the registry editor.`, 'Registry Editor', 'error');
             return;
         }
-
-        const summaryHtml = this.buildSaveSummaryHtml();
-        const result = await showConfirmationDialog(summaryHtml, [
-            { text: 'Save', value: 'save', className: 'btn-primary', icon: 'fas fa-save', primary: true },
-            { text: 'Cancel', value: null, className: 'btn-secondary' }
-        ], null, {
-            title: 'Save configuration changes',
-            onDialogReady: () => {
-                const dialog = document.getElementById('confirmationDialog');
-                this.wireSaveCheckpointToggles(dialog);
-            },
-            resolveValue: (value, dialog) => {
-                if (value !== 'save') return value;
-                return {
-                    action: 'save',
-                    createCheckpoint: this.collectSaveCheckpointOptions(dialog)
-                };
+        const byConfig = new Map();
+        const add = (cid, patch) => { if (!byConfig.has(cid)) byConfig.set(cid, []); byConfig.get(cid).push(patch); };
+        const parseBytes = (s) => s.split(',').map((x) => x.trim()).filter(Boolean).map((x) => parseInt(x, 16) & 0xff);
+        const unq = (s) => s.replace(/\\(.)/g, '$1');
+        let cur = null;
+        let bad = false;
+        const roots = new Map();
+        for (const line of lines.slice(1)) {
+            const l = line.trim();
+            if (!l || l.startsWith(';')) continue;
+            const km = /^\[(-?)(.+)\]$/.exec(l);
+            if (km) {
+                const loc = this.parseKeyPath(km[2]);
+                cur = loc && loc.kind === 'key' ? loc : null;
+                if (!cur) { if (loc === null) bad = true; continue; }
+                if (km[1]) { if (cur.path.length) add(cur.configId, { path: cur.path, deleted: true }); cur = null; continue; }
+                if (cur.path.length) add(cur.configId, { path: cur.path, ensureKey: true });
+                continue;
             }
-        });
-
-        if (!result || result.action !== 'save') return;
-
-        await this.runEditorAction(async () => {
-            this.setStatus('Saving…');
-            try {
-                const patches = this.buildPatchesPayload();
-                const payload = { patches };
-                if (result.createCheckpoint && Object.keys(result.createCheckpoint).length) {
-                    payload.createCheckpoint = result.createCheckpoint;
-                }
-                const data = await window.wsClient.sendMessage('config_editor_save', payload, false);
-                if (!data?.success) {
-                    const errMsg = data?.errors?.map((e) => e.message || e).join('; ') || 'Save failed';
-                    this.setStatus(errMsg);
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('error', 'Runes', errMsg);
-                    }
-                    return;
-                }
-                this.pendingEdits.clear();
-                this.nodeCache.clear();
-                if (data.restarting) {
-                    this.setStatus('Restarting server…');
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('info', 'Runes', 'Server is restarting…');
-                    }
-                } else {
-                    this.setStatus('Saved');
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('success', 'Runes', 'Configuration saved');
-                    }
-                    if (this.selectedConfigId) {
-                        await this.refreshTreePreservingExpansion();
-                    }
-                }
-            } catch (err) {
-                console.error('config_editor_save:', err);
-                this.setStatus('Save failed');
+            if (!cur) continue;
+            const vm = /^(@|"((?:[^"\\]|\\.)*)")=(.*)$/.exec(l);
+            if (!vm || vm[1] === '@') continue;
+            const name = unq(vm[2]);
+            const rhs = vm[3];
+            const path = [...cur.path, name];
+            let value;
+            let regType;
+            if (rhs === '-') { add(cur.configId, { path, deleted: true }); continue; }
+            if (/^"/.test(rhs)) { value = unq(rhs.replace(/^"|"$/g, '')); regType = 'REG_SZ'; } else if (/^dword:/i.test(rhs)) { value = parseInt(rhs.slice(6), 16) >>> 0; regType = 'REG_DWORD'; } else {
+                const hm = /^hex(?:\(([0-9a-f]+)\))?:(.*)$/i.exec(rhs);
+                if (!hm) continue;
+                const t = hm[1] ? parseInt(hm[1], 16) : 3;
+                const bytes = parseBytes(hm[2]);
+                regType = { 1: 'REG_SZ', 2: 'REG_SZ', 3: 'REG_BINARY', 4: 'REG_DWORD', 7: 'REG_MULTI_SZ', 11: 'REG_QWORD' }[t] || 'REG_BINARY';
+                value = configEditorValueFromBytes(regType, bytes, regType === 'REG_BINARY' ? [] : undefined);
             }
-        });
+            add(cur.configId, { path, value, regType });
+        }
+        if (bad && !byConfig.size) {
+            await this.msg(`Cannot import ${fileName}: Error accessing the registry.`, 'Registry Editor', 'error');
+            return;
+        }
+        let failed = false;
+        for (const [cid, list] of byConfig) {
+            let root = roots.get(cid);
+            if (!root) { try { root = (await this.ws('config_editor_get_node', { configId: cid, path: [] }))?.nodeValue || {}; } catch (_) { root = {}; } roots.set(cid, root); }
+            const at = (p) => p.reduce((v, k) => (v == null ? undefined : v[k]), root);
+            const patches = [];
+            for (const p of list) {
+                if (p.deleted) { patches.push({ path: p.path, deleted: true }); continue; }
+                if (p.ensureKey) {
+                    if (at(p.path) === undefined) patches.push({ path: p.path, value: {}, deleted: false });
+                    continue;
+                }
+                const old = at(p.path);
+                let v = p.value;
+                if (v === CONFIG_EDITOR_SECRET_MASK) continue;
+                if (typeof old === 'boolean' && p.regType === 'REG_DWORD') v = v !== 0;
+                else if (typeof old === 'number' && p.regType === 'REG_SZ' && Number.isFinite(Number(v)) && String(v).trim() !== '') v = Number(v);
+                else if (old === null && p.regType === 'REG_BINARY' && Array.isArray(v) && !v.length) v = null;
+                // only what differs is written (a re-imported export changes nothing and restarts nothing)
+                if (JSON.stringify(old) === JSON.stringify(v)) continue;
+                patches.push({ path: p.path, value: v, deleted: false });
+            }
+            if (!patches.length) continue;
+            const res = await this.commit(cid, patches);
+            if (!res.ok && !res.cancelled) failed = true;
+        }
+        await this.refresh();
+        if (failed) await this.msg(`Cannot import ${fileName}: Not all data was successfully written to the registry.  Some keys are open by the system or other processes.`, 'Registry Editor', 'error');
+        else await this.msg(`The keys and values contained in ${fileName} have been successfully added to the registry.`, 'Registry Editor', 'info');
     }
 
-    async requestClose() {
-        const n = this.getPendingCount();
-        if (n > 0) {
-            const result = await showConfirmationDialog(
-                `Discard <strong>${n}</strong> pending change${n === 1 ? '' : 's'}?`,
-                [
-                    { text: 'Discard', value: 'discard', className: 'btn-danger', icon: 'fas fa-trash' },
-                    { text: 'Cancel', value: null, className: 'btn-secondary' }
-                ],
-                null,
-                { title: 'Unsaved changes' }
-            );
-            if (result !== 'discard') return;
-        }
-        this.doClose();
+    // ---- Checkpoints (File > Checkpoints...: the snapshot window) --------------------------------
+
+    wireCheckpoints() {
+        this.checkpointsModal = document.getElementById('configEditorCheckpointsModal');
+        this.checkpointsListEl = document.getElementById('configEditorCheckpointsList');
+        this.checkpointsStatusEl = document.getElementById('configEditorCheckpointsStatus');
+        this.checkpointsScrollShell = this.checkpointsModal?.querySelector('.config-editor-checkpoints-scroll-shell');
+        this.checkpointsSelectedId = null;
+        this.checkpointsRestoreBtn = document.getElementById('configEditorCheckpointsRestoreBtn');
+        this.checkpointsDetailBtn = document.getElementById('configEditorCheckpointsDetailBtn');
+        this.checkpointsDeleteBtn = document.getElementById('configEditorCheckpointsDeleteBtn');
+        document.getElementById('configEditorCheckpointsCreateBtn')?.addEventListener('click', () => this.requestCreateCheckpoint());
+        this.checkpointsRestoreBtn?.addEventListener('click', () => { if (this.checkpointsSelectedId) this.requestRestoreCheckpoint(this.checkpointsSelectedId); });
+        this.checkpointsDetailBtn?.addEventListener('click', () => { if (this.checkpointsSelectedId) this.showCheckpointDetail(this.checkpointsSelectedId); });
+        this.checkpointsDeleteBtn?.addEventListener('click', () => { if (this.checkpointsSelectedId) this.requestDeleteCheckpoint(this.checkpointsSelectedId); });
+        document.getElementById('closeConfigEditorCheckpointsBtn')?.addEventListener('click', () => this.closeCheckpointsModal());
     }
 
     formatCheckpointTimestamp(iso) {
         if (!iso) return '';
-        try {
-            const d = new Date(iso);
-            return d.toLocaleString();
-        } catch {
-            return String(iso);
-        }
+        try { return new Date(iso).toLocaleString(); } catch (_) { return String(iso); }
     }
 
     formatCheckpointRelativeTime(iso) {
@@ -3512,34 +2530,26 @@ class ConfigEditorApplet {
     }
 
     setCheckpointsStatus(msg) {
-        if (this.checkpointsStatusEl) {
-            this.checkpointsStatusEl.textContent = msg || '';
-        }
+        if (this.checkpointsStatusEl) this.checkpointsStatusEl.textContent = msg || '';
     }
 
     async openCheckpointsModal(configId) {
         if (!this.checkpointsModal) return;
-        this.checkpointsScopeConfigId = configId || this.selectedConfigId || null;
+        this.checkpointsScopeConfigId = configId || null;
         openModal(this.checkpointsModal);
-        setTimeout(() => this.reinitScrollbars(), 80);
+        this.reinitScroll(this.checkpointsScrollShell);
         await this.loadCheckpointsList();
     }
 
     closeCheckpointsModal() {
-        if (this.checkpointsModal && !this.checkpointsModal.classList.contains('hidden')) {
-            closeModal(this.checkpointsModal);
-        }
+        if (this.checkpointsModal && !this.checkpointsModal.classList.contains('hidden')) closeModal(this.checkpointsModal);
     }
 
     renderCheckpointsList(checkpoints) {
         if (!this.checkpointsListEl) return;
-        const scopeLabel = this.checkpointsScopeConfigId
-            ? (this.configList.find((c) => c.id === this.checkpointsScopeConfigId)?.label || this.checkpointsScopeConfigId)
-            : null;
+        const scopeLabel = this.checkpointsScopeConfigId ? this.configLabel(this.checkpointsScopeConfigId) : null;
         if (!checkpoints?.length) {
-            const emptyMsg = scopeLabel
-                ? `No checkpoints for ${scopeLabel} yet.`
-                : 'No checkpoints yet. Create one before major changes.';
+            const emptyMsg = scopeLabel ? `No checkpoints for ${scopeLabel} yet.` : 'No checkpoints yet. Create one before major changes.';
             this.checkpointsListEl.innerHTML = `<div class="config-editor-checkpoints-empty">${configEditorEscapeHtml(emptyMsg)}</div>`;
             this.selectCheckpoint(null);
             return;
@@ -3548,18 +2558,12 @@ class ConfigEditorApplet {
             const label = cp.label
                 ? configEditorEscapeHtml(cp.label)
                 : `<span class="config-editor-checkpoints-auto">${configEditorEscapeHtml(cp.reason || (cp.kind === 'config-file' ? 'auto-save' : 'manual'))}</span>`;
-            const absoluteTime = this.formatCheckpointTimestamp(cp.createdAt);
-            const relativeTime = this.formatCheckpointRelativeTime(cp.createdAt);
-            const meta = `<span title="${configEditorEscapeHtml(absoluteTime)}">${configEditorEscapeHtml(relativeTime)}</span> · ${configEditorEscapeHtml(cp.scopeSummary || '')} · ${this.formatBytes(cp.totalSizeBytes || 0)}`;
+            const meta = `<span title="${configEditorEscapeHtml(this.formatCheckpointTimestamp(cp.createdAt))}">${configEditorEscapeHtml(this.formatCheckpointRelativeTime(cp.createdAt))}</span> \u00b7 ${configEditorEscapeHtml(cp.scopeSummary || '')} \u00b7 ${this.formatBytes(cp.totalSizeBytes || 0)}`;
             return `<div class="config-editor-checkpoint-row" role="option" tabindex="-1" aria-selected="false" data-checkpoint-id="${configEditorEscapeHtml(cp.id)}">
-                <div class="config-editor-checkpoint-main">
-                    <div class="config-editor-checkpoint-label">${label}</div>
-                    <div class="config-editor-checkpoint-meta">${meta}</div>
-                </div>
+                <div class="config-editor-checkpoint-main"><div class="config-editor-checkpoint-label">${label}</div><div class="config-editor-checkpoint-meta">${meta}</div></div>
             </div>`;
         }).join('');
-
-        // a list box: click selects, double-click opens Details (Restore for auto-saved files)
+        // a list box: click selects, double-click opens Properties (Restore for auto-saved files)
         this.checkpointsListEl.querySelectorAll('.config-editor-checkpoint-row').forEach((row) => {
             const id = row.dataset.checkpointId;
             row.addEventListener('click', () => this.selectCheckpoint(id));
@@ -3574,7 +2578,6 @@ class ConfigEditorApplet {
         this.selectCheckpoint(keep);
     }
 
-    /** Select a checkpoint row (null clears) and enable the command bar buttons that apply to it. */
     selectCheckpoint(checkpointId) {
         this.checkpointsSelectedId = checkpointId || null;
         this.checkpointsListEl?.querySelectorAll('.config-editor-checkpoint-row').forEach((row) => {
@@ -3582,9 +2585,7 @@ class ConfigEditorApplet {
             row.classList.toggle('selected', on);
             row.setAttribute('aria-selected', on ? 'true' : 'false');
         });
-        const cp = this.checkpointsSelectedId
-            ? (this.checkpointsCache || []).find((c) => c.id === this.checkpointsSelectedId)
-            : null;
+        const cp = this.checkpointsSelectedId ? (this.checkpointsCache || []).find((c) => c.id === this.checkpointsSelectedId) : null;
         // auto-saved config files can be restored only (no details, no delete)
         const bundle = !!cp && cp.kind !== 'config-file';
         if (this.checkpointsRestoreBtn) this.checkpointsRestoreBtn.disabled = !cp;
@@ -3594,20 +2595,15 @@ class ConfigEditorApplet {
 
     async loadCheckpointsList() {
         if (!this.checkpointsListEl) return;
-        this.checkpointsListEl.innerHTML = '<div class="config-editor-checkpoints-loading">Loading checkpoints…</div>';
+        this.checkpointsListEl.innerHTML = '<div class="config-editor-checkpoints-loading">Loading checkpoints...</div>';
         this.setCheckpointsStatus('');
         try {
-            const payload = this.checkpointsScopeConfigId
-                ? { configId: this.checkpointsScopeConfigId }
-                : {};
-            const data = await window.wsClient.sendMessage('config_editor_checkpoints_list', payload, false);
+            const payload = this.checkpointsScopeConfigId ? { configId: this.checkpointsScopeConfigId } : {};
+            const data = await this.ws('config_editor_checkpoints_list', payload);
             this.checkpointsCache = data?.checkpoints || [];
             this.renderCheckpointsList(this.checkpointsCache);
-            if (this.checkpointsScopeConfigId) {
-                const cfgLabel = this.configList.find((c) => c.id === this.checkpointsScopeConfigId)?.label
-                    || this.checkpointsScopeConfigId;
-                this.setCheckpointsStatus(`${this.checkpointsCache.length} checkpoint${this.checkpointsCache.length === 1 ? '' : 's'} for ${cfgLabel}`);
-            }
+            const n = this.checkpointsCache.length;
+            this.setCheckpointsStatus(this.checkpointsScopeConfigId ? `${n} checkpoint${n === 1 ? '' : 's'} for ${this.configLabel(this.checkpointsScopeConfigId)}` : `${n} checkpoint${n === 1 ? '' : 's'}`);
         } catch (err) {
             console.error('config_editor_checkpoints_list:', err);
             this.checkpointsListEl.innerHTML = '<div class="config-editor-checkpoints-empty config-editor-error">Failed to load checkpoints</div>';
@@ -3617,26 +2613,17 @@ class ConfigEditorApplet {
 
     async showCheckpointDetail(checkpointId) {
         try {
-            const data = await window.wsClient.sendMessage('config_editor_checkpoints_get', { checkpointId }, false);
-            const jsonRows = Object.entries(data?.resources?.json || {}).map(([k, v]) =>
-                `<tr><td>${configEditorEscapeHtml(k)}</td><td>${configEditorEscapeHtml(v.filename || '')}</td><td>${this.formatBytes(v.sizeBytes)}</td><td>${v.exists ? 'OK' : 'Missing'}</td></tr>`
-            ).join('');
-            const dbRows = Object.entries(data?.resources?.database || {}).map(([k, v]) =>
-                `<tr><td>${configEditorEscapeHtml(k)}</td><td>${configEditorEscapeHtml(v.filename || '')}</td><td>${this.formatBytes(v.sizeBytes)}</td><td>${v.exists ? 'OK' : 'Missing'}</td></tr>`
-            ).join('');
+            const data = await this.ws('config_editor_checkpoints_get', { checkpointId });
+            const rows = (obj) => Object.entries(obj || {}).map(([k, v]) => `<tr><td>${configEditorEscapeHtml(k)}</td><td>${configEditorEscapeHtml(v.filename || '')}</td><td>${this.formatBytes(v.sizeBytes)}</td><td>${v.exists ? 'OK' : 'Missing'}</td></tr>`).join('');
             const html = `<p><strong>${configEditorEscapeHtml(data.label || data.reason || checkpointId)}</strong></p>
-                <p>${configEditorEscapeHtml(this.formatCheckpointTimestamp(data.createdAt))} · ${this.formatBytes(data.totalSizeBytes)}</p>
-                <div class="config-editor-summary-table-wrap form-section-scroll">
-                <table class="config-editor-summary-table">
+                <p>${configEditorEscapeHtml(this.formatCheckpointTimestamp(data.createdAt))} \u00b7 ${this.formatBytes(data.totalSizeBytes)}</p>
+                <div class="config-editor-summary-table-wrap form-section-scroll"><table class="config-editor-summary-table">
                 <thead><tr><th>Config</th><th>File</th><th>Size</th><th>Status</th></tr></thead>
-                <tbody>${jsonRows || '<tr><td colspan="4">No config files</td></tr>'}</tbody></table></div>
-                <div class="config-editor-summary-table-wrap form-section-scroll">
-                <table class="config-editor-summary-table">
+                <tbody>${rows(data?.resources?.json) || '<tr><td colspan="4">No config files</td></tr>'}</tbody></table></div>
+                <div class="config-editor-summary-table-wrap form-section-scroll"><table class="config-editor-summary-table">
                 <thead><tr><th>Database</th><th>File</th><th>Size</th><th>Status</th></tr></thead>
-                <tbody>${dbRows || '<tr><td colspan="4">No databases</td></tr>'}</tbody></table></div>`;
-            await showConfirmationDialog(html, [
-                { text: 'Close', value: true, className: 'btn-secondary' }
-            ], null, { title: 'Checkpoint details' });
+                <tbody>${rows(data?.resources?.database) || '<tr><td colspan="4">No databases</td></tr>'}</tbody></table></div>`;
+            await showConfirmationDialog(html, [{ text: 'Close', value: true, className: 'btn-standard primary' }], null, { title: 'Checkpoint Properties', icon: 'fas fa-circle-info' });
         } catch (err) {
             console.error('config_editor_checkpoints_get:', err);
             this.setCheckpointsStatus('Failed to load checkpoint details');
@@ -3644,32 +2631,16 @@ class ConfigEditorApplet {
     }
 
     async requestCreateCheckpoint() {
-        // showInputDialog: public/scripts/comp/confirmationDialog.js
         let label = '';
         if (typeof showInputDialog === 'function') {
-            label = await showInputDialog(
-                'Optional label for this checkpoint:',
-                '',
-                'e.g. Before API key rotation',
-                null,
-                null,
-                { title: 'Create checkpoint' }
-            );
+            label = await showInputDialog('Type a description to help you identify the checkpoint:', '', '', null, null, { title: 'Create Checkpoint' });
             if (label === null) return;
         }
-
-        this.setCheckpointsStatus('Creating checkpoint…');
+        this.setCheckpointsStatus('Creating checkpoint...');
         try {
-            const data = await window.wsClient.sendMessage('config_editor_checkpoints_create', { label: label || '' }, false);
-            if (data?.success) {
-                this.setCheckpointsStatus('Checkpoint created');
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('success', 'Checkpoints', 'Snapshot created');
-                }
-                await this.loadCheckpointsList();
-            } else {
-                this.setCheckpointsStatus('Create failed');
-            }
+            const data = await this.ws('config_editor_checkpoints_create', { label: label || '' });
+            this.setCheckpointsStatus(data?.success ? 'The checkpoint was created successfully.' : 'Create failed');
+            if (data?.success) await this.loadCheckpointsList();
         } catch (err) {
             console.error('config_editor_checkpoints_create:', err);
             this.setCheckpointsStatus('Create failed');
@@ -3679,75 +2650,37 @@ class ConfigEditorApplet {
     async requestRestoreCheckpoint(checkpointId) {
         const cp = this.checkpointsCache.find((c) => c.id === checkpointId);
         const label = cp?.label || cp?.reason || checkpointId?.slice(0, 8) || 'checkpoint';
-        const html = `<p>Restore <strong>${configEditorEscapeHtml(label)}</strong>?</p>
-            <p>This replaces live config files and databases with the snapshot state. A pre-restore safety checkpoint will be created first.</p>
-            <p class="config-editor-restart-note"><i class="fas fa-triangle-exclamation"></i> Destructive — running sessions may see stale data until refresh.</p>`;
-        const result = await showConfirmationDialog(html, [
-            { text: 'Restore', value: 'restore', className: 'btn-danger', icon: 'fas fa-rotate-left' },
-            { text: 'Cancel', value: null, className: 'btn-secondary' }
-        ], null, { title: 'Restore checkpoint' });
-        if (result !== 'restore') return;
-
-        this.setCheckpointsStatus('Restoring…');
-        await this.runEditorAction(async () => {
-            try {
-                const data = await window.wsClient.sendMessage('config_editor_checkpoints_restore', {
-                    checkpointId,
-                    createSafetyCheckpoint: true
-                }, false);
-                if (data?.success) {
-                    this.pendingEdits.clear();
-                    this.nodeCache.clear();
-                    this.setCheckpointsStatus('Restored');
-                    if (typeof showGlassToast === 'function') {
-                        showGlassToast('success', 'Checkpoints', 'Config and databases restored');
-                    }
-                    await this.loadCheckpointsList();
-                    if (this.selectedConfigId) {
-                        await this.refreshTreePreservingExpansion();
-                    }
-                    this.setStatus('Restored from checkpoint — reload settings if needed');
-                } else {
-                    this.setCheckpointsStatus('Restore failed');
-                }
-            } catch (err) {
-                console.error('config_editor_checkpoints_restore:', err);
-                this.setCheckpointsStatus('Restore failed');
-                if (typeof showGlassToast === 'function') {
-                    showGlassToast('error', 'Checkpoints', err.message || 'Restore failed');
-                }
-            }
-        });
+        const ok = await this.msg(`Restore ${label}?\nThis replaces the configuration files and databases with the checkpoint's. A checkpoint of the current state is created first.`, 'Restore Checkpoint', 'warning', 'yesno');
+        if (ok !== 'yes') return;
+        this.setCheckpointsStatus('Restoring...');
+        try {
+            const data = await this.ws('config_editor_checkpoints_restore', { checkpointId, createSafetyCheckpoint: true });
+            if (data?.success) {
+                this.setCheckpointsStatus('Restored');
+                await this.loadCheckpointsList();
+                await this.refresh();
+            } else this.setCheckpointsStatus('Restore failed');
+        } catch (err) {
+            console.error('config_editor_checkpoints_restore:', err);
+            this.setCheckpointsStatus('Restore failed');
+            await this.msg(`The checkpoint could not be restored.\nDetails: ${err.message || err}`, 'Restore Checkpoint', 'error');
+        }
     }
 
     async requestDeleteCheckpoint(checkpointId) {
         const cp = this.checkpointsCache.find((c) => c.id === checkpointId);
         const label = cp?.label || cp?.reason || checkpointId?.slice(0, 8) || 'checkpoint';
-        const result = await showConfirmationDialog(
-            `Delete checkpoint <strong>${configEditorEscapeHtml(label)}</strong>? Snapshot files will be removed when not referenced by other bundles.`,
-            [
-                { text: 'Delete', value: 'delete', className: 'btn-danger', icon: 'fas fa-trash' },
-                { text: 'Cancel', value: null, className: 'btn-secondary' }
-            ],
-            null,
-            { title: 'Delete checkpoint' }
-        );
-        if (result !== 'delete') return;
-
-        this.setCheckpointsStatus('Deleting…');
+        const ok = await this.msg(`Are you sure you want to permanently delete the checkpoint ${label}?`, 'Confirm Checkpoint Delete', 'warning', 'yesno');
+        if (ok !== 'yes') return;
+        this.setCheckpointsStatus('Deleting...');
         try {
-            await window.wsClient.sendMessage('config_editor_checkpoints_delete', { checkpointId }, false);
+            await this.ws('config_editor_checkpoints_delete', { checkpointId });
             this.setCheckpointsStatus('Deleted');
             await this.loadCheckpointsList();
         } catch (err) {
             console.error('config_editor_checkpoints_delete:', err);
             this.setCheckpointsStatus('Delete failed');
         }
-    }
-
-    doClose() {
-        this.clearSession();
-        if (this.modal) closeModal(this.modal);
     }
 }
 
