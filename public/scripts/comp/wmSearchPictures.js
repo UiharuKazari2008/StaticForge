@@ -94,9 +94,7 @@
         if (have()) return Promise.resolve(true);
         if (!helpersP) {
             helpersP = (async () => {
-                /* global resolveDsap, loadDsapEntryAssets */
-                const m = typeof resolveDsap === 'function' ? resolveDsap('dsap://ispy.dreamscape.jp/') : null;
-                if (m && m.entry && typeof loadDsapEntryAssets === 'function') await loadDsapEntryAssets(m.entry);
+                if (window.featureLoader) await window.featureLoader.loadFeature('image_search_lib'); // #831: featureLoader.js
                 return have();
             })().catch((err) => { console.warn('[wmSearchPictures] helpers', err); return false; })
                 .then((ok) => { if (!ok) helpersP = null; return ok; });

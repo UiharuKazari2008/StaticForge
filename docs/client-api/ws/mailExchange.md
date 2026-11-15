@@ -1,8 +1,8 @@
 # WebSocket: Dreamscape Exchange Server
 
 Server handler: `modules/ws/handlers/255-mailExchangeHandler.js`.
-Logic: `modules/mailExchange.js`. Client: `public/scripts/comp/desktop-apps/exchange.js`.
-DSAP: `dsap://exchange.dreamscape.jp` (Control Panel DSAP page, All Apps, admin Tools). Relay: [docs/lantis-relay-api.md](../../lantis-relay-api.md).
+Logic: `modules/mailExchange.js`. Client: the Exchange Management Console (`public/scripts/comp/mmcExchange.js`).
+The old DSAP page and desktop app are retired (Yozora #831); `dsap://exchange.dreamscape.jp` opens the console. Relay: [docs/lantis-relay-api.md](../../lantis-relay-api.md).
 
 See [WebSocket protocol](../websocket.md) for envelope format, auth, and error handling.
 

@@ -77,7 +77,7 @@ async function handleUpdateAutofillRanking(handlers, ws, message, clientInfo, ws
  * Run the SAME server search pipeline that live autocomplete uses (searchService.searchCharacters),
  * returning the full mixed result set (characters + tags + text replacements) plus spellcheck.
  * Runs headlessly (ws=null, isolated session key) so it never streams into / clobbers the caller's
- * live autofill session. The client (autofillConfigDsapApplet.js) then applies the real client-side
+ * live autofill session. The client (mmcAutofillRanking.js) then applies the real client-side
  * merge/rank path (assembleRankedAutofillResults) with per-result score breakdowns.
  */
 async function handleTestAutofillRanking(handlers, ws, message, clientInfo, wsServer) {

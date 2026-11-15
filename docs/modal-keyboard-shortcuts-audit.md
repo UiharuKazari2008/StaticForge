@@ -161,7 +161,6 @@
 | `notebookModal` | `notepadManager.js` | None | New note, save | `Ctrl+S`; `Ctrl+N` | Medium |
 | `openNoteModal` / `updateNoteModal` | same | Close btns | Save, Esc | `Ctrl+S`; `Esc` | Medium |
 | `novelEditorTool` / `novelProgressTool` | `novelManager.js` | None | Save chapter, Esc | `Ctrl+S`; `Esc` | Low |
-| `quipsDsapApplet` | `quipsDsapApplet.js` | Injected dialog wiring | Settings save Esc | Mirror confirmation | Low |
 | `bracketGenerationModal` | (see above) | | | | |
 | `dreamscapeAppErrorModal` | app error handler | Close btn | Esc, copy | `Esc`; `Ctrl+C` | Low |
 | `tokenDisplayModal` | token utils | Close btn | Esc, select all | `Esc`; `Ctrl+A` | Low |

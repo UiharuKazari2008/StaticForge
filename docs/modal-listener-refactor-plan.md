@@ -70,7 +70,6 @@ Counts from ripgrep across `public/scripts/**/*.js` (excluding examples). **83**
 | `pinModal.js` | `keydown` on document, init-time, never removed | Scope to `#pinModal` open/close |
 | `logViewerApplet.js` | `click` outside glass popover (injected) | Wire via dialog `setTimeout(0)` + scope |
 | `serverManagement.js` | Injected dialog dropdown wiring | Use `attachModalListeners` in dialog open path |
-| `quipsDsapApplet.js` | Injected settings dropdowns | Same as logViewer pattern |
 
 ### Tier D — P1: High-waste document `keydown` (always on, modal-gated in handler)
 
@@ -403,14 +402,13 @@ Dropdown outside-click should eventually use `{ signal }` tied to dropdown open 
 - `public/scripts/comp/confirmationDialog.js` (reference implementation — done)
 - `public/scripts/comp/creditCostDialog.js`
 - `public/scripts/comp/serverManagement.js`
-- `public/scripts/comp/quipsDsapApplet.js`
 - `public/scripts/comp/logViewerApplet.js`
 
 **Changes:**
 - Migrate `creditCostDialog.js` keydown to `attachModalListeners` (mirror confirmation).
 - Audit `showConfirmationDialog` / `showInputDialog` injectors: wire dropdowns in `setTimeout(0)` with modal-scoped `document` listeners using `{ signal }`.
 - `logViewerApplet.js`: scope `_glassPopoverOutsideHandler` to popover open state.
-- `serverManagement.js` / `quipsDsapApplet.js`: replace bare `document.addEventListener` in dialog inject paths.
+- `serverManagement.js`: replace bare `document.addEventListener` in dialog inject paths.
 
 **Dependencies:** Phase 0–1 interface.
 

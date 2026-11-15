@@ -9,7 +9,8 @@
  *                     (imageGenerationSettings.js; user global settings + localStorage enhancePreset)
  *   Director          Director Settings sheet: directorInstance.requestDirectorSettings,
  *                     director_settings_set, director_learned_* (director.js), engine catalogs
- *                     through loadSettingsCatalog / catalogFor
+ *                     through loadSettingsCatalog / catalogFor; Persona (get_ / save_persona_settings)
+ *                     and Static Rules (director_load_ / save_rules) tabs, #831
  *   Dovecote          Mail Options: window.dovecoteMailSettings (desktop-apps/dovecote.js)
  *   Search Indexing   Control Panel's Melaton Search (cplSearch.js): the tray indicator's
  *                     _indexJobs, actions fired as the tray's contextMenuAction events
@@ -594,6 +595,175 @@
                 }
             } catch (err) {
                 await errorBox('Director', (err && err.message) || 'Could not save Director Settings.');
+                return false;
+            }
+            return [];
+        }
+    });
+
+    // ---- Persona and Static Rules (#831) ----
+    // The old LinkXi persona and Rules pages (Enshutsuka's Profile and Director Rules on the desktop,
+    // mmcEnshutsuka.js) as two more tabs: the persona's name, backstory and default verbosity (the
+    // photo is left as it is: the desktop sets it), get_ / save_persona_settings; the static rules
+    // list with New / Edit / Delete, saved at once as the desktop does, director_load_ / save_rules.
+
+    const PERSONA_VERBOSITY = [['auto', 'Auto'], ['1', 'Brief'], ['2', 'Direct'], ['3', 'Expressive'], ['4', 'Elaborate'], ['5', 'Poetic']];
+
+    async function xiSend(type, data) {
+        const client = window.wsClient;
+        if (!client || typeof client.sendMessage !== 'function') throw new Error('Melaton is not connected to the server.');
+        const r = await client.sendMessage(type, data || {}, false);
+        // the Director's handlers answer { data: { success, ... } } inside the reply (mmcEnshutsuka.js send)
+        return r && r.data && typeof r.data === 'object' && r.data.success !== undefined && r.success === undefined ? r.data : r;
+    }
+
+    function xiBusy(p) {
+        const sh = window.wmShell;
+        if (sh && typeof sh.busy === 'function') sh.busy(p).catch(() => {});
+        return p;
+    }
+
+    function xiLoadPersona(x) {
+        if (x.personaAsked) return;
+        x.personaAsked = true;
+        xiBusy(xiSend('get_persona_settings', {}).then((r) => {
+            const s = (r && r.success && r.settings) || {};
+            x.persona = {
+                user_name: s.user_name || '',
+                backstory: s.backstory || '',
+                default_verbosity: s.default_verbosity != null && s.default_verbosity !== '' ? String(s.default_verbosity) : '3'
+            };
+            x.personaSaved = JSON.stringify(x.persona);
+            x.personaError = '';
+        }).catch((err) => {
+            x.personaError = (err && err.message) || 'The persona settings could not be read.';
+        }).then(() => { if (x.redraw) x.redraw(); }));
+    }
+
+    function xiLoadRules(x) {
+        if (x.rulesAsked) return;
+        x.rulesAsked = true;
+        xiBusy(xiSend('director_load_rules', {}).then((r) => {
+            x.rules = r && r.success ? (Array.isArray(r.rules) ? r.rules : []) : [];
+            x.rulesError = r && r.success ? '' : ((r && (r.error || r.message)) || 'The rules could not be read.');
+        }).catch((err) => {
+            x.rules = null;
+            x.rulesError = (err && err.message) || 'The rules could not be read.';
+        }).then(() => { if (x.redraw) x.redraw(); }));
+    }
+
+    async function xiSaveRules(x, next) {
+        try {
+            const r = await xiBusy(xiSend('director_save_rules', { rules: next }));
+            if (r && r.success === false) throw new Error(r.error || r.message || 'The rules were not saved.');
+            x.rules = next;
+            return true;
+        } catch (err) {
+            await errorBox('Static Rules', `The Director rules could not be saved. ${(err && err.message) || ''}`.trim());
+            return false;
+        }
+    }
+
+    function xiRenderPersona(el, x, api) {
+        xiLoadPersona(x);
+        const p = x.persona;
+        if (!p) { el.innerHTML = x.personaError ? ui.text(x.personaError) : ''; return; }
+        const nameId = ui.uid('wmDsXiName');
+        const storyId = ui.uid('wmDsXiStory');
+        const cur = PERSONA_VERBOSITY.find(([v]) => v === p.default_verbosity) || PERSONA_VERBOSITY[3];
+        el.innerHTML = `${ui.row('My name:', ui.edit(nameId, p.user_name, 'maxlength="80" spellcheck="false"'), { for: nameId })}
+            <label for="${storyId}">My backstory:</label>
+            <textarea id="${storyId}" class="wm-ds-textarea" spellcheck="true">${esc(p.backstory)}</textarea>
+            ${ui.row('Default verbosity:', ui.comboHtml('xi-verbosity', cur[1]), { wide: true })}`;
+        el.querySelector(`#${nameId}`).addEventListener('input', (e) => { p.user_name = e.target.value; });
+        el.querySelector(`#${storyId}`).addEventListener('input', (e) => { p.backstory = e.target.value; });
+        ui.bindCombo(el.querySelector('[data-act="xi-verbosity"]'), PERSONA_VERBOSITY, p.default_verbosity, (v) => { p.default_verbosity = v; });
+        void api;
+    }
+
+    function xiRenderRuleEdit(el, x, api) {
+        const id = ui.uid('wmDsStaticRule');
+        el.innerHTML = `${ui.sub(x.editing.id ? 'Edit Rule' : 'New Rule')}
+            <label for="${id}">Rule:</label>
+            <textarea id="${id}" class="wm-ds-textarea" spellcheck="true">${esc(x.editing.text)}</textarea>
+            ${ui.buttons([['xi-rule-save', 'Save'], ['xi-rule-cancel', 'Cancel']])}`;
+        const ta = el.querySelector('textarea');
+        ta.addEventListener('input', () => { if (x.editing) x.editing.text = ta.value; });
+        el.querySelector('[data-act="xi-rule-cancel"]').addEventListener('click', () => { x.editing = null; rerenderKeep(el, api); });
+        el.querySelector('[data-act="xi-rule-save"]').addEventListener('click', () => { void xiSaveEdit(x).then(() => { if (el.isConnected) rerenderKeep(el, api); }); });
+    }
+
+    /** The rule being typed, saved: true when there is nothing left to save. */
+    async function xiSaveEdit(x) {
+        const cur = x.editing;
+        if (!cur) return true;
+        const text = String(cur.text || '').trim();
+        if (!text) { await errorBox(cur.id ? 'Edit Rule' : 'New Rule', 'Type the rule.'); return false; }
+        const list = (x.rules || []).slice();
+        if (cur.id) {
+            const at = list.findIndex((r) => String(r.id) === String(cur.id));
+            if (at < 0 || list[at].text === text) { x.editing = null; return true; }
+            list[at] = { ...list[at], text };
+        } else {
+            list.push({ id: `rule_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`, text, created: new Date().toISOString() });
+        }
+        if (!(await xiSaveRules(x, list))) return false;
+        if (!cur.id) x.ruleSel = String(list[list.length - 1].id);
+        x.editing = null;
+        return true;
+    }
+
+    function xiRenderRules(el, x, api) {
+        xiLoadRules(x);
+        if (x.editing) { xiRenderRuleEdit(el, x, api); return; }
+        if (!x.rules) { el.innerHTML = x.rulesError ? ui.text(x.rulesError) : ''; return; }
+        const rules = x.rules;
+        if (!rules.some((r) => String(r.id) === x.ruleSel)) x.ruleSel = '';
+        const rule = rules.find((r) => String(r.id) === x.ruleSel);
+        el.innerHTML = `${ui.text('Static rules (the Director always follows these):')}
+            ${rules.length ? ui.listbox(rules.map((r) => ({ key: String(r.id), label: line(r.text), selected: String(r.id) === x.ruleSel })), { maxHeight: 190 }).replace('class="wm-listbox"', 'class="wm-listbox wm-ds-list" data-f="static-rules"') : `<div class="wm-listbox wm-ds-list is-empty">${esc('No static rules.')}</div>`}
+            ${ui.buttons([['xi-rule-new', 'New...'], ['xi-rule-edit', 'Edit...', !rule], ['xi-rule-delete', 'Delete', !rule]]).replace('class="wm-buttons', 'class="wm-ds-xi-btns wm-buttons')}`;
+        ui.bindListbox(el.querySelector('[data-f="static-rules"]'), (key) => { x.ruleSel = key; rerenderKeep(el, api); });
+        const on = (act, f) => { const b = el.querySelector(`[data-act="${act}"]`); if (b) b.addEventListener('click', f); };
+        on('xi-rule-new', () => { x.editing = { id: '', text: '' }; rerenderKeep(el, api); });
+        on('xi-rule-edit', () => { if (!rule) return; x.editing = { id: String(rule.id), text: rule.text || '' }; rerenderKeep(el, api); });
+        on('xi-rule-delete', async () => {
+            if (!rule) return;
+            if (!(await yesNo('Delete Rule', `Are you sure you want to delete this rule?\n\n${line(rule.text)}`, 'warning'))) return;
+            if (await xiSaveRules(x, rules.filter((r) => r !== rule))) x.ruleSel = '';
+            if (el.isConnected) rerenderKeep(el, api);
+        });
+    }
+
+    wmSettings.extendPage('director', {
+        id: 'dirx',
+        tabs: [['dirx-persona', 'Persona'], ['dirx-rules', 'Static Rules']],
+        init: () => ({ persona: null, personaSaved: '', personaError: '', personaAsked: false, rules: null, rulesError: '', rulesAsked: false, ruleSel: '', editing: null }),
+        render(el, tab, x, api) {
+            x.redraw = () => { if (el.isConnected) rerenderKeep(el, api); };
+            if (tab === 'dirx-rules') xiRenderRules(el, x, api);
+            else xiRenderPersona(el, x, api);
+        },
+        async commit(x) {
+            // a rule still being typed is saved first (ok on the page, as Save)
+            if (x.editing && String(x.editing.text || '').trim() && !(await xiSaveEdit(x))) return false;
+            x.editing = null;
+            const p = x.persona;
+            if (!p || JSON.stringify(p) === x.personaSaved) return [];
+            const settings = {
+                user_name: p.user_name || '',
+                backstory: p.backstory || '',
+                // the column is an integer: Auto is stored as the default (3), as the desktop does
+                default_verbosity: parseInt(p.default_verbosity, 10) || 3
+                // (no profile_photo_base64: only the keys sent are written, so the photo stays, #763)
+            };
+            try {
+                const r = await xiSend('save_persona_settings', { settings });
+                if (!(r && r.success)) throw new Error((r && (r.error || r.message)) || 'The persona settings were not saved.');
+                if (window.chatSystem) window.chatSystem.personaSettings = { ...(window.chatSystem.personaSettings || {}), ...settings };
+                x.personaSaved = JSON.stringify(p);
+            } catch (err) {
+                await errorBox('Persona', `The persona settings could not be saved. ${(err && err.message) || ''}`.trim());
                 return false;
             }
             return [];

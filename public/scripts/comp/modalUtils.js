@@ -6652,7 +6652,8 @@ function isAppMenuToolsEntryEnabled(item) {
     return true;
 }
 
-function buildToolsSubmenuItems() {
+/** opts.hidden: keep the entries kept off the Start menu (startMenu: false), which still launch by id (#831). */
+function buildToolsSubmenuItems(opts) {
     const staticItems = [
         { launchId: 'import', icon: 'nai-import', imageIcon: 'vista-easy-transfer.png', text: 'Import', appMenuLocation: 'tools', action: () => { unifiedUploadModalManager.show(); } },
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/dsapManifests.js */ manageSpellbook(); } },
@@ -6671,7 +6672,7 @@ function buildToolsSubmenuItems() {
         { launchId: 'mmc-wiki-caches', icon: 'fas fa-books', imageIcon: 'vista-wiki-caches.png', text: 'Wiki Caches', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openWikiCachesConsole(); } },
         // Print Management (#831): the generation backends as printers (openPrintManagementSnapin: dsapManifests.js)
         // Server Manager (#831 slice 5): every console in one tree (openServerManagerConsole: dsapManifests.js);
-        // the suite folder's "Server Manager" is the old dashboard's entry (dreamscapeHomeDsap.js), which opens it too
+        // the suite folder's "Server Manager" is the retired dashboard's entry (server-manager, dsapManifests.js), which opens it too
         { launchId: 'mmc-server-manager', icon: 'fas fa-server', imageIcon: 'vista-server-manager.png', text: 'Server Manager', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openServerManagerConsole(); } },
         // 'control-panel' is Control Panel for agents' open_application (Server Manager had the id until #831); not listed
         { launchId: 'control-panel', icon: 'fas fa-sliders', imageIcon: 'vista-control-panel.png', text: 'Control Panel', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: async () => { await featureLoader.loadFeature('control_panel'); if (window.melatonControlPanel) window.melatonControlPanel.open('home'); } },
@@ -6725,7 +6726,7 @@ function buildToolsSubmenuItems() {
         { launchId: 'pomodoro', icon: 'fas fa-timer', imageIcon: 'vista-date-time.png', text: 'Pomodoro', appMenuLocation: 'tools', startMenu: false, appMenu: false, /* the Pomodoro tab of Alarm Clock; kept for old shortcuts */ action: () => melatonApps.launch({ packageId: 'alarm', args: { mode: 'pomodoro' } }) },
         { launchId: 'media-player', icon: 'fas fa-play', imageIcon: 'media_player.png', text: 'Media Player', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('media_player'); /* public/scripts/comp/desktop-apps/mediaPlayer.js */ openDesktopMediaPlayer(); } },
         { launchId: 'emotion', icon: 'fas fa-photo-film', imageIcon: 'emotion.png', text: 'eMotion LIVE', appMenuLocation: 'tools', action: async () => { await featureLoader.loadFeature('emotion'); /* public/scripts/comp/desktop-apps/emotion.js */ openDesktopEmotion(); } },
-    ].filter(isStartMenuEntryEnabled).filter((item) => !item.adminOnly || localStorage.getItem('userType') === 'admin');
+    ].filter((item) => (opts && opts.hidden) || isStartMenuEntryEnabled(item)).filter((item) => !item.adminOnly || localStorage.getItem('userType') === 'admin');
     // getDsapStartMenuEntriesAtLocation: public/scripts/comp/dsapRegistry.js
     const dsapAtTools = typeof getDsapStartMenuEntriesAtLocation === 'function'
         ? getDsapStartMenuEntriesAtLocation('tools')

@@ -2130,7 +2130,7 @@ class TagLookup {
         category,
         minUseCount,
         limit = 35,
-        // DSAP-SMF Autofill Ranking Test tab only (public/scripts/comp/autofillConfigDsapApplet.js) —
+        // the Autofill Ranking snap-in's Test node only (public/scripts/comp/mmcAutofillRanking.js) —
         // attaches tag.rankingBreakdown with per-stage server score components.
         includeBreakdown = false,
         model = '',

@@ -398,10 +398,10 @@ async function main() {
 
         const applet = fs.readFileSync(path.join(__dirname, '../public/scripts/comp/dataManagementDsapApplet.js'), 'utf8');
         assert.ok(applet.includes("dsapSmfBuildSectionHdr('Remote Workers')"));
-        assert.ok(applet.includes('data-mgmt-worker-dot-healthy'));
-        assert.ok(applet.includes('data-mgmt-worker-dot-degraded'));
-        assert.ok(applet.includes('data-mgmt-worker-dot-offline'));
-        assert.ok(applet.includes('data-mgmt-worker-dot-unconfigured'));
+        // the state dots' colours are dsap-smf.css's (the DSAP page and its scoped styles are retired, #831)
+        assert.ok(applet.includes('data-mgmt-worker-dot-${status}'));
+        const smfCss = fs.readFileSync(path.join(__dirname, '../public/css/dsap-smf.css'), 'utf8');
+        for (const st of ['healthy', 'degraded', 'offline', 'unconfigured']) assert.ok(smfCss.includes(`.data-mgmt-worker-dot-${st}`), st);
         assert.ok(applet.includes('data-remote-worker-refresh'));
         assert.ok(applet.includes('dataMgmtRemoteWorkersRefreshAll'));
         const builderStart = applet.indexOf('function dataMgmtDsapBuildRemoteWorkersHtml');

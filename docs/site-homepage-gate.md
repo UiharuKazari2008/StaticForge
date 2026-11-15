@@ -1,6 +1,6 @@
 # Site homepage access gate
 
-When **Site Homepage** is installed (Control Panel → Site Homepage, `dsap://site.dreamscape.jp/`), unauthenticated visitors see a static **cover site** instead of Dreamscape. Access to the real app requires:
+When **Site Homepage** is installed (Front Gate, the MMC console in Administrative Tools: `public/scripts/comp/mmcFrontGate.js`; the old `dsap://site.dreamscape.jp/` address opens it), unauthenticated visitors see a static **cover site** instead of Dreamscape. Access to the real app requires:
 
 1. **Cover phrase** (lookup form field `q`, **POST** body only to the site's door action from `manifest.json`) → on success, **`dsk`** cookie plus redirect to **`/launch?k=<access-hash>`**. The plaintext phrase must never appear in a URL, query string, or referrer; the **access hash** may (`?k=`, PWA `start_url`, bookmarks).
 2. **Dreamscape PIN** at **Phoenix BIOS** (only when the gate is on and there is no valid **`connect.sid`**) or in-app **Vista logon / Connect / PIN modal** after boot.

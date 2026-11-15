@@ -511,7 +511,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sys-lv-row.is-selected { color: #fff; 
 .wm-sys-contrast-bar .wm-slider { grid-row: 1; grid-column: 2; }
 /* the list takes the page's free height down to the tabs, so the page itself never scrolls */
 .wm-sys-certs,
-.wm-sys-managed:has(> .wm-sys-lv) {
+.wm-sys-managed:has(> .wm-sys-lv),
+.wm-sys-ws-list:has(> .wm-sys-lv),
+.wm-sys-ar-list:has(> .wm-sys-lv) {
     display: flex;
     flex-direction: column;
     height: 100%;
@@ -519,7 +521,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-sys-lv-row.is-selected { color: #fff; 
 }
 .wm-sys-certs > p { flex: 0 0 auto; }
 .wm-sys-certs > .wm-sys-lv,
-.wm-sys-managed > .wm-sys-lv { flex: 1 1 auto; min-height: 0; max-height: none; }
+.wm-sys-managed > .wm-sys-lv,
+.wm-sys-ws-list > .wm-sys-lv,
+.wm-sys-ar-list > .wm-sys-lv { flex: 1 1 auto; min-height: 0; max-height: none; }
 /* Encryption: the check box row (VGA 16,122 448 x 64) starts 11 units under the rule, 32 units tall */
 .wm-sys-encrypt > .wm-check { margin-top: calc(6 * var(--wm-px)); min-height: calc(32 * var(--wm-px)); align-items: flex-start; }
 .wm-sys-encrypt > p { margin-top: calc(2 * var(--wm-px)); }

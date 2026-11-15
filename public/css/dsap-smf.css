@@ -624,57 +624,6 @@
     background: var(--dsap-smf-tab-active-bg) !important;
 }
 
-/* --- Dreamscape home landing --- */
-[data-dsap="dreamscape-home"] .dsap-smf-home-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: #ffffff;
-    border: 1px solid var(--dsap-smf-border);
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-link-cell {
-    border-bottom: 1px solid var(--dsap-smf-border-light);
-    padding: 8px 10px;
-    vertical-align: top;
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-link {
-    color: #003366;
-    text-decoration: none;
-    font-size: var(--dsap-smf-font-size-sm);
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-link:hover {
-    text-decoration: underline;
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-desc {
-    font-size: 10pt;
-    color: #333;
-    margin-top: 3px;
-    padding-left: 22px;
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-admin {
-    font-size: 9pt;
-    background: #ffeecc;
-    border: 1px solid var(--dsap-smf-tab-accent);
-    padding: 0 4px;
-    margin-left: 4px;
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-foot {
-    font-size: 10pt;
-    color: #444;
-    margin: 8px 2px 2px;
-}
-
-[data-dsap="dreamscape-home"] .dsap-smf-home-foot code {
-    background: #fff;
-    border: 1px solid var(--dsap-smf-border-light);
-    padding: 0 3px;
-}
-
 /* Director account profile form: token field with its copy button, badge colour picker */
 [data-dsap] .sec-token-row {
     display: flex;

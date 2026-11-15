@@ -135,7 +135,7 @@ Copy both files via USB, SCP, or any file transfer. Airgapped setups stop here u
 ### On the child (blank install)
 
 1. Install Dreamscape (clone repo, `pnpm install`, create `config.json` with NovelAI key and PINs).
-2. Open **Data Management → Replication → Separation Bootstrap** panel (`replicationDsapSeparation.js`), or use the registration wizard in the Replication tab after first login.
+2. Open **Computer Management → Replication → Separation Bootstrap** panel (`replicationDsapSeparation.js`), or use the registration wizard in the Replication tab after first login.
 3. Select **manifest.json** and **archive**.
 4. Preview shows clone profile and entry counts.
 5. Enter **confirm token** from manifest (`replicationToken` field).

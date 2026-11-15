@@ -882,7 +882,7 @@ class PromptTextareaToolbar {
                 openStudioVSliderTool();
                 break;
             case 'manage-director-rules':
-                // Enshutsuka's Director Rules: the MMC console on the desktop, the memories DSAP's /rules elsewhere
+                // Enshutsuka's Director Rules, the MMC console (#831: the memories DSAP page is retired)
                 // openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js
                 openKnowledgeMemoriesModal('director');
                 break;

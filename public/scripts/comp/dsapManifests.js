@@ -30,72 +30,83 @@ function dsapIsVistaDesktop() {
  * Melaton Mobile (#831): Image Search is the phone's Search Pictures program (wmSearchPictures.js,
  * a lazy program: wmShell's stand-in loads it). opts as openImageSearchWindow's. true when it opened.
  */
+/**
+ * The phone (#831): the old pages that have a phone version are Settings pages there (wmSettingsSystem.js
+ * Workspaces, wmSettingsDreamscape.js Director > Persona / Static Rules). true when the phone took it.
+ */
+function dsapPhoneSettings(page, tab) {
+    const s = window.uiShell === 'mobile' ? window.wmSettings : null;
+    if (!s || typeof s.open !== 'function') return false;
+    if (s.open(page, tab)) return true;
+    // the Director's page is there once the Director has started (director.js initializeDirector)
+    if (page !== 'director' || typeof initializeDirector !== 'function') return false;
+    Promise.resolve().then(initializeDirector).catch(() => {}).then(() => s.open(page, tab));
+    return true;
+}
+
 function dsapPhoneSearchPictures(opts) {
     if (window.uiShell !== 'mobile' || !window.wmSearchPictures || typeof window.wmSearchPictures.open !== 'function') return false;
     void window.wmSearchPictures.open(opts || {});
     return true;
 }
 
+/**
+ * Data Management's old addresses and launchers (#831: the DSAP page is retired): Computer Management
+ * (mmcDataManagement.js) on every client, the phone included (wmHost.js hosts the console); tabId 'search'
+ * is the Image Search program's (Search Pictures on the phone).
+ */
 function openDataManagementDsap(tabId) {
-    if (tabId === 'search' && dsapPhoneSearchPictures()) return;
-    // the Data Management MMC snap-in on the desktop (#828: public/scripts/comp/mmcDataManagement.js);
-    // Search is the Image Search program's now
-    if (dsapIsVistaDesktop()) {
-        if (tabId === 'search') {
-            void openImageSearchWindow();
-            return;
-        }
-        void openDataManagementSnapin(tabId);
+    if (tabId === 'search') {
+        void openImageSearchWindow();
         return;
     }
-    let target;
-    if (!tabId || tabId === 'status') {
-        target = `dsap://${DATA_DSAP_MANIFEST_URL}/`;
-    } else if (tabId === 'search') {
-        target = `dsap://${ISPY_DSAP_MANIFEST_URL}/`;
-    } else {
-        target = `dsap://${DATA_DSAP_MANIFEST_URL}/${tabId}`;
-    }
-    // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
-    openDsapInGrimoire(target);
+    // the phone: Settings > System > Workspaces, Data Management's quick tasks
+    if (dsapPhoneSettings('workspaces')) return;
+    void openDataManagementSnapin(tabId);
 }
 
 /**
- * Image Search (#828): the desktop program (public/scripts/comp/imageSearchApp.js) on the Vista
- * desktop, the DSAP elsewhere. opts: { url } (a dsap://ispy.dreamscape.jp/?... URL) or the
- * DSAP's openIspyDsap params ({ blocks, view, viewType, workspaceId, filters, file, frame ... }).
- * The DSAP's script loads first: the program uses its search helpers and sessions.
+ * Image Search (#828): the program (public/scripts/comp/imageSearchApp.js) on every non-phone client
+ * (#831: the Global Search DSAP page is retired). opts: { url } (a dsap://ispy.dreamscape.jp/?... URL),
+ * { params } or the old openIspyDsap params ({ blocks, view, viewType, workspaceId, filters, file, frame ... }).
+ * featureLoader 'image_search' loads its search library (omegasearchDsapApplet.js, 'image_search_lib') first.
  */
 async function openImageSearchWindow(opts) {
     // the phone: its own program, Search Pictures (#831: public/scripts/comp/wmSearchPictures.js)
     if (dsapPhoneSearchPictures(opts)) return null;
-    const entry = resolveDsap(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
-    // loadDsapEntryAssets: public/scripts/comp/dsapRegistry.js
-    if (entry) await loadDsapEntryAssets(entry.entry);
-    if (!dsapIsVistaDesktop()) {
-        // openIspyDsap: public/scripts/comp/omegasearchDsapApplet.js
-        if (opts && opts.url) openDsapInGrimoire(opts.url);
-        else openIspyDsap((opts && opts.params) || opts || {});
-        return null;
-    }
     await featureLoader.loadFeature('image_search');
     if (typeof window.openImageSearch !== 'function') return null;
     if (opts && !opts.url && !opts.params && Object.keys(opts).length) return window.openImageSearch({ params: opts });
     return window.openImageSearch(opts || {});
 }
 
-function openDynamicQuipsDsap(workspaceId) {
-    // the Dynamic Quips MMC snap-in on the desktop (#828: public/scripts/comp/mmcQuips.js)
-    if (dsapIsVistaDesktop()) {
-        void openDynamicQuipsSnapin(workspaceId);
+/** The old Global Search DSAP's opener (vistaSidebar.js and others still call it): the Image Search program. */
+function openIspyDsap(params = {}) {
+    void openImageSearchWindow({ params: params || {} });
+}
+
+/**
+ * Security Center's old opener (#831: the DSAP page is retired): Melaton Defender (windowsDefender.js) on
+ * that page, Dreamscape CardSpace (cplAuthentication.js) for 'auth', Key Manager for 'appkeys' / 'keys'.
+ */
+async function openSecurityCenterDsap(view) {
+    const v = String(view || 'home').split('?')[0].replace(/^\/+|\/+$/g, '').toLowerCase() || 'home';
+    if (v === 'appkeys' || v === 'keys') {
+        void openKeyManagerConsole(v === 'keys' ? 'svc' : 'issued');
         return;
     }
-    const wsPart = workspaceId ? `${encodeURIComponent(workspaceId)}` : '';
-    const path = wsPart
-        ? `dsap://${QUIPS_DSAP_MANIFEST_URL}/${wsPart}`
-        : `dsap://${QUIPS_DSAP_MANIFEST_URL}/`;
-    // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
-    openDsapInGrimoire(path);
+    await featureLoader.loadFeature('control_panel');
+    if (['auth', 'authentication', 'pins', 'approved-ips', 'approvedips', 'ips'].includes(v)) {
+        if (window.cplAuthentication) window.cplAuthentication.open();
+        return;
+    }
+    const page = { blocked: 'quarantine', honeypot: 'honeypot', paths: 'honeypot', scraped: 'honeypot', telemetry: 'history', approved: 'allowed' }[v] || 'home';
+    if (window.windowsDefender) window.windowsDefender.open(page);
+}
+
+/** Dynamic Quips' old launcher (#831: the DSAP page is retired): the MMC snap-in (mmcQuips.js). */
+function openDynamicQuipsDsap(workspaceId) {
+    void openDynamicQuipsSnapin(workspaceId);
 }
 
 /** Dynamic Quips (#828), loading the MMC snap-ins first; view: 'status' | 'phrasebook' | 'settings'. */
@@ -261,23 +272,13 @@ function manageTextExpanders(node, opts) {
     return null;
 }
 
-/** Enshutsuka's page off the desktop: the Knowledge Memories DSAP's address for a console node. */
-function enshutsukaDsapUrl(node) {
-    if (node === 'persona' || node === 'profile') return 'dsap://xi.dyna.dreamscape.jp/persona';
-    if (node === 'rules' || node === 'director' || node === 'ruleset') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules`;
-    if (node === 'feedback') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/rules/feedback`;
-    if (node === 'obl' || node === 'private') return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/?store=obliterated`;
-    return `dsap://${MEMORIES_DSAP_MANIFEST_URL}/`;
-}
-
-/** Enshutsuka: the MMC console on the desktop (#828), the Knowledge Memories DSAP elsewhere. */
+/** Enshutsuka: the MMC console (#828) on every client (#831: the Knowledge Memories DSAP page is retired). */
 function openEnshutsuka(node) {
-    if (document.body.classList.contains('desktop-mode')) {
-        void openEnshutsukaSnapin(node || 'default');
-        return;
-    }
-    // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
-    openDsapInGrimoire(enshutsukaDsapUrl(node));
+    // the phone: the persona and the static rules are Director Settings tabs there
+    const n = String(node || '');
+    if (/^(profile|persona|linkxi)$/.test(n) && dsapPhoneSettings('director', 'dirx-persona')) return;
+    if (/^(ruleset|director|rules|static_rules)$/.test(n) && dsapPhoneSettings('director', 'dirx-rules')) return;
+    void openEnshutsukaSnapin(node || 'default');
 }
 
 function registerDsapManifests() {
@@ -293,13 +294,9 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Dynamic Quips',
-        assets: {
-            scripts: ['scripts/comp/quipsDsapApplet.js']
-        },
-        // on the desktop every Dynamic Quips page is the MMC snap-in's (#828), on the same workspace and
-        // view (<workspace>[/phrasebook|/settings], ?workspace=); elsewhere the page stays
+        // the page is retired (#831): every address is the MMC snap-in's (#828, mmcQuips.js), on the same
+        // workspace and view (<workspace>[/phrasebook|/settings], ?workspace=)
         opensApp(match) {
-            if (!dsapIsVistaDesktop()) return false;
             const [pathPart, query = ''] = String((match && match.displayPath) || '').split('?');
             const base = QUIPS_DSAP_MANIFEST_URL;
             const segs = pathPart.startsWith(base)
@@ -324,13 +321,13 @@ function registerDsapManifests() {
                 const wsId = typeof getActiveWorkspaceIdForQuips === 'function'
                     ? getActiveWorkspaceIdForQuips()
                     : null;
-                openDynamicQuipsDsap(wsId);
+                void openDynamicQuipsSnapin(wsId);
             }
         }
     });
 
-    // Memories DSAP (converted from the old modal viewer, now a first-class grimoire applet)
-    // Note: memories menu entry is provided statically in modalUtils.js to preserve original start menu ordering (after Favorites, before Rules).
+    // Knowledge Memories + the LinkXi persona: the pages are retired (#831); every address is the Enshutsuka
+    // MMC snap-in's (mmcEnshutsuka.js). Its launchers (memories, enshutsuka-rules, linkxi-persona) are in modalUtils.js.
     const LINKXI_DSAP_MANIFEST_URL = 'xi.dyna.dreamscape.jp/persona';
     registerDsap({
         url: MEMORIES_DSAP_MANIFEST_URL,
@@ -345,14 +342,10 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Knowledge Memories',
-        assets: {
-            scripts: ['scripts/comp/memoriesDsapApplet.js']
-        },
-        // on the desktop every page is the Enshutsuka MMC snap-in's (#828): /rules[/feedback], /view/<name>,
+        // every address is the Enshutsuka MMC snap-in's (#828): /rules[/feedback], /view/<name>,
         // /delete[?filter=], the LinkXi persona, and the list's ?store= / search / category / page / perPage /
-        // sort / view; elsewhere the page stays
+        // sort / view
         opensApp(match) {
-            if (!document.body.classList.contains('desktop-mode')) return false;
             const [pathPart, query = ''] = String((match && match.displayPath) || '').split('?');
             const params = new URLSearchParams(query);
             const dec = (x) => { try { return decodeURIComponent(x); } catch (_) { return x; } };
@@ -417,23 +410,11 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Security Center',
-        assets: {
-            scripts: ['scripts/comp/securityCenterDsapApplet.js']
-        },
-        // On the Vista desktop every Security Center page is Melaton Defender's now (#828): its links
-        // open Defender on that page (/auth: Dreamscape CardSpace). Elsewhere the page stays.
+        // the page is retired (#831): every address is Melaton Defender's on that page (/auth: Dreamscape
+        // CardSpace, /appkeys and /keys: Key Manager); openSecurityCenterDsap above
         opensApp(match) {
-            const body = document.body;
-            if (!body.classList.contains('desktop-mode') || body.classList.contains('windows-classic-theme')) return false;
             const path = String((match && match.displayPath) || '').split('?')[0].split('/').filter(Boolean);
-            const view = path[1] || 'home';
-            const page = { blocked: 'quarantine', honeypot: 'honeypot', telemetry: 'history', approved: 'allowed', home: 'home' }[view] || 'home';
-            // /appkeys: the application keys live in Key Manager (#831)
-            if (view === 'appkeys' || view === 'keys') { void openKeyManagerConsole(view === 'keys' ? 'svc' : 'issued'); return true; }
-            void featureLoader.loadFeature('control_panel').then(() => {
-                if (view === 'auth' && window.cplAuthentication) window.cplAuthentication.open();
-                else if (window.windowsDefender) window.windowsDefender.open(page);
-            });
+            void openSecurityCenterDsap(path[1] || 'home');
             return true;
         },
         menuEntry: {
@@ -446,20 +427,7 @@ function registerDsapManifests() {
             desktopOnly: true,
             adminOnly: true,
             launch() {
-                // Security Center is Windows Defender on the Vista desktop: public/scripts/comp/windowsDefender.js
-                const body = document.body;
-                if (body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme')) {
-                    void featureLoader.loadFeature('control_panel').then(() => {
-                        if (window.windowsDefender) window.windowsDefender.open('home');
-                    });
-                    return;
-                }
-                // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js
-                if (typeof openSecurityCenterDsap === 'function') {
-                    openSecurityCenterDsap('home');
-                } else {
-                    openDsapInGrimoire(`dsap://${SECURITY_DSAP_MANIFEST_URL}/`);
-                }
+                void openSecurityCenterDsap('home');
             }
         }
     });
@@ -473,19 +441,10 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Data Management',
-        assets: {
-            scripts: [
-                'scripts/comp/dataManagementDsapApplet.js',
-                'scripts/comp/replicationDsapSeparation.js',
-                'scripts/comp/replicationDsapCargo.js',
-                'scripts/comp/replicationDsapSync.js'
-            ],
-            styles: ['css/replication-dsap.css']
-        },
-        // On the Vista desktop Data Management is an MMC console (#828: mmcDataManagement.js): its
-        // addresses open the console on that page (/replication/progress: Operation Progress)
+        // the page is retired (#831): its addresses open Computer Management (#828: mmcDataManagement.js)
+        // on that page (/replication/progress: Operation Progress). The console's library
+        // (dataManagementDsapApplet.js, replication*) loads as featureLoader 'data_mgmt_lib'.
         opensApp(match) {
-            if (!dsapIsVistaDesktop()) return false;
             void openDataManagementSnapin(String((match && match.displayPath) || ''));
             return true;
         },
@@ -497,7 +456,7 @@ function registerDsapManifests() {
             startMenuIndex: 0,
             appMenuLocation: 'tools',
             launch() {
-                openDataManagementDsap();
+                void openDataManagementSnapin();
             }
         }
     });
@@ -511,12 +470,8 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'SmartText Ranking',
-        assets: {
-            scripts: ['scripts/comp/autofillConfigDsapApplet.js']
-        },
-        // on the desktop the ranking is the Autofill Ranking MMC snap-in (#828); elsewhere the page stays
+        // the page is retired (#831): the ranking is the Autofill Ranking MMC snap-in's (#828)
         opensApp() {
-            if (!dsapIsVistaDesktop()) return false;
             void openAutofillRankingSnapin();
             return true;
         },
@@ -530,17 +485,8 @@ function registerDsapManifests() {
             desktopOnly: true,
             adminOnly: true,
             launch() {
-                // the Autofill Ranking MMC snap-in on the desktop: public/scripts/comp/mmcAutofillRanking.js
-                if (dsapIsVistaDesktop()) {
-                    void openAutofillRankingSnapin();
-                    return;
-                }
-                // openAutofillRankingDsap: public/scripts/comp/autofillConfigDsapApplet.js
-                if (typeof openAutofillRankingDsap === 'function') {
-                    openAutofillRankingDsap();
-                } else {
-                    openDsapInGrimoire(`dsap://${AUTOFILL_DSAP_MANIFEST_URL}/`);
-                }
+                // public/scripts/comp/mmcAutofillRanking.js
+                void openAutofillRankingSnapin();
             }
         }
     });
@@ -557,19 +503,12 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Image Search',
-        assets: {
-            scripts: ['scripts/comp/omegasearchDsapApplet.js']
-        },
-        // the Image Search program on the Vista desktop (#828: public/scripts/comp/imageSearchApp.js):
-        // a link's search (blocks, filters, view, file, frame) opens in it; elsewhere the page stays
+        // the page is retired (#831): a link's search (blocks, filters, view, file, frame) opens in the
+        // Image Search program (#828: imageSearchApp.js; Search Pictures on the phone)
         opensApp(match) {
             const path = String((match && match.displayPath) || '');
             const q = path.indexOf('?');
-            const url = `dsap://${ISPY_DSAP_MANIFEST_URL}/${q >= 0 ? path.slice(q) : ''}`;
-            // the phone: Search Pictures (#831)
-            if (dsapPhoneSearchPictures({ url })) return true;
-            if (!dsapIsVistaDesktop()) return false;
-            void openImageSearchWindow({ url });
+            void openImageSearchWindow({ url: `dsap://${ISPY_DSAP_MANIFEST_URL}/${q >= 0 ? path.slice(q) : ''}` });
             return true;
         },
         menuEntry: {
@@ -580,12 +519,7 @@ function registerDsapManifests() {
             appMenu: false,
             startMenuIndex: 1,
             launch() {
-                if (dsapPhoneSearchPictures()) return;
-                if (dsapIsVistaDesktop()) {
-                    void openImageSearchWindow();
-                    return;
-                }
-                openDsapInGrimoire(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
+                void openImageSearchWindow();
             }
         }
     });
@@ -664,14 +598,9 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Wiki Manager',
-        assets: {
-            scripts: ['scripts/comp/fandomWikiManagerDsapApplet.js']
-        },
-        // on the Vista desktop the Wiki Manager is Wiki Caches, under Storage in Computer Management
-        // (#831: mmcWikiManager.js): /import starts New Import..., /library (and the rest) opens the
-        // snap-in; phones and Windows Classic keep the page
+        // the page is retired (#831): the Wiki Manager is Wiki Caches, under Storage in Computer Management
+        // (mmcWikiManager.js); /import starts New Import..., /library (and the rest) opens the snap-in
         opensApp(match) {
-            if (!dsapIsVistaDesktop()) return false;
             const pathPart = String((match && match.displayPath) || '').split('?')[0];
             const segs = pathPart.split('/').filter(Boolean);
             void openWikiCachesSnapin('root', { wizard: segs.includes('import') });
@@ -686,7 +615,7 @@ function registerDsapManifests() {
             startMenu: false,
             startMenuIndex: 8,
             launch() {
-                openDsapInGrimoire(`dsap://${WIKI_DSAP_MANIFEST_URL}/`);
+                void openWikiCachesSnapin('root');
             }
         }
     });
@@ -701,18 +630,9 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'Dreamscape Exchange Server',
-        theme: 'dsap-smf',
-        assets: {
-            scripts: [
-                'scripts/comp/desktop-apps/exchange.js',
-                'scripts/comp/exchangeDsapApplet.js'
-            ],
-            styles: ['css/desktop-apps/exchange.css']
-        },
-        // On the Vista desktop the Exchange Management Console (#831: mmcExchange.js) replaced the page;
-        // its addresses open the console on that tab's node (/mailboxes, /aliases, /spam ...)
+        // the page is retired (#831): the Exchange Management Console (mmcExchange.js) opens on that
+        // tab's node (/mailboxes, /aliases, /spam ...)
         opensApp(match) {
-            if (!dsapIsVistaDesktop()) return false;
             void openExchangeConsole(String((match && match.displayPath) || ''));
             return true;
         },
@@ -725,9 +645,7 @@ function registerDsapManifests() {
             startMenu: false,
             adminOnly: true,
             launch() {
-                if (dsapIsVistaDesktop()) { void openExchangeConsole(); return; }
-                // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
-                openDsapInGrimoire(`dsap://${EXCHANGE_DSAP_MANIFEST_URL}/`);
+                void openExchangeConsole();
             }
         }
     });
@@ -759,6 +677,43 @@ function registerDsapManifests() {
         }
     });
 
+    // the Server Manager dashboard (dsap://dreamscape.jp/, a link list) is retired (#831): its addresses
+    // open the Server Manager console (mmcServerManager.js), which holds every other console
+    const DREAMSCAPE_HOME_URL = 'dreamscape.jp';
+    registerDsap({
+        url: DREAMSCAPE_HOME_URL,
+        aliases: [
+            'dreamscape.jp/',
+            'www.dreamscape.jp',
+            'www.dreamscape.jp/',
+            'dyna.dreamscape.jp',
+            'dyna.dreamscape.jp/',
+            `dsap://${DREAMSCAPE_HOME_URL}`,
+            `dsap://${DREAMSCAPE_HOME_URL}/`
+        ],
+        type: 'core',
+        title: 'Server Manager',
+        opensApp() {
+            void openServerManagerConsole();
+            return true;
+        },
+        menuEntry: {
+            // not the desktop's Control Panel: the server's administration home (Yukimi, Nov 10); its
+            // own id since #831 ('control-panel' is Control Panel: modalUtils.js buildToolsSubmenuItems)
+            launchId: 'server-manager',
+            icon: 'fas fa-gauge',
+            imageIcon: 'vista-server-manager.png',
+            text: 'Server Manager',
+            fullName: 'Dreamscape Server Manager',
+            appMenu: false,
+            startMenu: true,
+            startMenuIndex: 5,
+            launch() {
+                void openServerManagerConsole();
+            }
+        }
+    });
+
     const MCP_DSAP_MANIFEST_URL = 'mcp.dreamscape.jp';
     registerDsap({
         url: MCP_DSAP_MANIFEST_URL,
@@ -770,13 +725,10 @@ function registerDsapManifests() {
         ],
         type: 'dsap',
         title: 'MCP Connector',
-        assets: {
-            scripts: ['scripts/comp/mcpConnectorDsapApplet.js']
-        },
-        // the connector moved to Remote Access Properties' MCP Connector tab (#828:
-        // remoteAccessProperties.js); on the desktop its page opens that tab, elsewhere (the app) the page stays
+        // the page is retired (#831): the connector is Remote Access Properties' MCP Connector tab (#828:
+        // remoteAccessProperties.js). The server keeps the mcp.dreamscape.jp Grimoire domain: that tab
+        // reads it (resolve_grimoire_url, modules/grimoireDomainRegistry.js).
         opensApp() {
-            if (!document.body.classList.contains('desktop-mode')) return false;
             // openRemoteAccessSettingsModal: public/scripts/comp/modalUtils.js
             if (typeof openRemoteAccessSettingsModal !== 'function') return false;
             void openRemoteAccessSettingsModal('mcp');
@@ -817,7 +769,7 @@ function registerDsapManifests() {
 
 registerDsapManifests();
 
-// Global compatibility shims (runs at startup). The applet script also installs one when loaded.
+// Global compatibility shims (runs at startup) for the retired Knowledge Memories / LinkXi pages (#831).
 (function installMemoriesDsapShims() {
     // node: an Enshutsuka console node ('default' memories by default, 'director', 'profile', ...; the
     // old 'mem', 'rules', 'persona' too): openEnshutsuka above

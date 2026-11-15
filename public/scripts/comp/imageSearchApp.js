@@ -1,6 +1,7 @@
 /**
- * Image Search (Yozora #828): the Vista desktop program that replaced the Global Search DSAP
- * (dsap://ispy.dreamscape.jp/, omegasearchDsapApplet.js). Modelled on Vista's Search window, measured
+ * Image Search (Yozora #828): the desktop program that replaced the Global Search DSAP
+ * (dsap://ispy.dreamscape.jp/ opens this; #831: the page is retired, its helpers are the library
+ * omegasearchDsapApplet.js). Modelled on Vista's Search window, measured
  * on the Vista VM (Start > Search, then Advanced Search, 800x600; captures in ~/.cache/vista-vm/search-ref):
  *
  *   title row       travel orbs, Recent Pages, the address ("Search Results in <workspace> > <view>":
@@ -24,8 +25,8 @@
  *                   (Input / Final), Undesired Content, Expanders (text / Tendai)
  *
  * Server calls are the DSAP's: omegasearch_query and request_image_metadata. The DSAP's helpers
- * (omegasearchDsap*, OMEGASEARCH_*) are globals of omegasearchDsapApplet.js, loaded first by
- * openImageSearchWindow (dsapManifests.js); its search sessions (sessionStorage
+ * (omegasearchDsap*, OMEGASEARCH_*) are globals of omegasearchDsapApplet.js, this feature's library
+ * (featureLoader 'image_search_lib', a dependency of 'image_search'); its search sessions (sessionStorage
  * ispy-dsap-search-sessions-v1) are shared, so a search survives a reopen. URL state is the DSAP's
  * query string (blocks, modes, view, viewType, workspace, filters, file, page, frame).
  * Styles: public/css/image-search.css.
@@ -2185,7 +2186,7 @@
      *                 viewType, workspace, filters, file, page, frame); its search runs or comes back
      *   opts.params   the same as openIspyDsap's params ({ blocks, view, viewType, workspaceId, filters,
      *                 promptSource, blockOptions, file, page, frame })
-     * Needs omegasearchDsapApplet.js loaded first (openImageSearchWindow in dsapManifests.js does it).
+     * Needs omegasearchDsapApplet.js loaded first (featureLoader 'image_search' depends on 'image_search_lib').
      */
     function openImageSearch(opts) {
         if (!doc) return null;

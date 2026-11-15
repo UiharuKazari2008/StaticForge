@@ -872,18 +872,15 @@ function setupMainMenuContextMenus() {
                 break;
 
             case 'knowledge-memories':
-                // Enshutsuka: the MMC console on the desktop, the memories DSAP elsewhere
+                // Enshutsuka, the MMC console (#831: the memories DSAP page is retired)
                 // openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js
                 openKnowledgeMemoriesModal('default');
                 break;
 
             case 'api-key-manager':
                 if (localStorage.getItem('userType') === 'admin') {
-                    if (typeof openSecurityCenterDsap === 'function') {
-                        openSecurityCenterDsap('auth');
-                    } else {
-                        openDsapInGrimoire('dsap://security.dreamscape.jp/auth');
-                    }
+                    // Dreamscape CardSpace (openSecurityCenterDsap: public/scripts/comp/dsapManifests.js)
+                    void openSecurityCenterDsap('auth');
                 } else {
                     showGlassToast('warning', null, 'Admin access required to manage API keys.', false, 5000, '<i class="fas fa-key-skeleton-left-right"></i>');
                 }
@@ -915,11 +912,8 @@ function setupMainMenuContextMenus() {
                     showGlassToast('warning', null, 'Admin access required for Security Center.', false, 5000, '<i class="fas fa-lock"></i>');
                     break;
                 }
-                if (typeof openSecurityCenterDsap === 'function') {
-                    openSecurityCenterDsap('blocked');
-                } else if (typeof openDsapInGrimoire === 'function') {
-                    openDsapInGrimoire('dsap://security.dreamscape.jp/');
-                }
+                // Melaton Defender's Quarantined items (openSecurityCenterDsap: public/scripts/comp/dsapManifests.js)
+                void openSecurityCenterDsap('blocked');
                 break;
 
             case 'lockAllReplacements':

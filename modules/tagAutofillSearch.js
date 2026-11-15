@@ -122,7 +122,7 @@ class TagAutofillSearch {
                 isPrefixMatch: matchTier >= 3
             },
             // Only present when searchTags({ includeBreakdown: true }) was requested
-            // (DSAP-SMF Autofill Ranking Test tab — public/scripts/comp/autofillConfigDsapApplet.js)
+            // (the Autofill Ranking snap-in's Test node: public/scripts/comp/mmcAutofillRanking.js)
             ...(tag.rankingBreakdown ? { rankingBreakdown: tag.rankingBreakdown } : {})
         };
     }

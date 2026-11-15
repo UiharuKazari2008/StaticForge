@@ -15,13 +15,12 @@
  * (cplDefender.js). The page runs its own copy of the Security Center driver
  * (securityCenterDsapApplet.js securityDsapDriver) on the applet's markup, which still loads and
  * acts; vault() turns each table into rows whenever the driver re-renders it, moving the cells'
- * own nodes so every button keeps its handler. Security Center loads on demand
- * (dsapRegistry.js ensureDsapEntryReady). Admins only.
+ * own nodes so every button keeps its handler. Security Center's library loads on demand
+ * (featureLoader 'security_center_lib'; the DSAP page is retired, #831). Admins only.
  */
 (function (root) {
     'use strict';
 
-    const SECURITY_URL = 'security.dreamscape.jp';
     const ART = '/static_images/vista-cpl';
 
     /** The vault's sections: where the driver's header, buttons and tables are. */
@@ -54,12 +53,12 @@
             .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
+    /** Security Center's library (featureLoader 'security_center_lib', #831: the DSAP page is retired). */
     async function loadSecurityCenter() {
         if (typeof root.securityDsapBuildHtml === 'function' || typeof securityDsapBuildHtml === 'function') return true;
-        if (typeof resolveDsap !== 'function' || typeof ensureDsapEntryReady !== 'function') return false;
-        const match = resolveDsap(SECURITY_URL);
-        if (!match) return false;
-        return ensureDsapEntryReady(match.entry);
+        if (!root.featureLoader) return false;
+        await root.featureLoader.loadFeature('security_center_lib');
+        return typeof root.securityDsapBuildHtml === 'function';
     }
 
     /** The slice of a Grimoire shell the driver uses (getRoot, path, query, navigate, menus). */

@@ -28,7 +28,7 @@ Application keys let desktop tools, scripts, and integrations authenticate **wit
 | Expiration | Optional (`expiresAt`); `null` = perpetual |
 | Refresh deadline | `refreshBeforeAt` — client must call `refresh_application_key` before this date |
 | Refresh behavior | Issues a **new** key and invalidates the old one; **does not** extend `originalExpiresAt` |
-| After expiration | Client must re-authorize (admin approval or Security Center) |
+| After expiration | Client must re-authorize (admin approval in Key Manager) |
 | Scope | Feature scopes (e.g. `gallery`, `generation`) or `universal` |
 | User-Agent | Exact string declared at registration; validated on every REST/WS use |
 | User type | `admin` or `readonly` (same destructive restrictions as PIN sessions) |
@@ -120,13 +120,13 @@ Before `refreshBeforeAt`:
 
 **Success:** `application_key_refreshed` with new `applicationKey` in `data` — replace stored key immediately.
 
-If `expiresAt` has passed, refresh fails with `KEY_EXPIRED`; user must re-authorize via Security Center.
+If `expiresAt` has passed, refresh fails with `KEY_EXPIRED`; user must re-authorize via Key Manager.
 
 ### Authorization request flow (Discord-style)
 
 1. App (unauthenticated WS) sends **`request_application_authorization`** with `appName`, `userAgent`, `scopes`, optional `expiresAt`, `refreshIntervalDays`.
 2. Server returns `application_authorization_requested` with `requestId` and human **`requestCode`** (6 hex chars).
-3. Administrator approves in **Security Center → Application Keys** (or WS `approve_application_auth_request`).
+3. Administrator approves in **Key Manager → Pending Requests** (or WS `approve_application_auth_request`).
 4. App polls **`check_application_authorization`** until `status: "approved"`.
 5. App sends **`claim_application_authorization`** once to retrieve `applicationKey` (single claim).
 6. App calls **`authenticate_application`** and proceeds.
@@ -189,7 +189,7 @@ Module scopes support submodule specifiers: `sfapp_cake_pantry:deliver` grants o
 
 List via WS `get_application_auth_scopes` (admin).
 
-### Admin management (Security Center / WS)
+### Admin management (Key Manager / WS)
 
 | Packet | Auth | Description |
 |--------|------|-------------|
@@ -202,7 +202,7 @@ List via WS `get_application_auth_scopes` (admin).
 | `deny_application_auth_request` | admin | Deny pending request |
 | `get_application_auth_scopes` | admin | Scope catalog |
 
-Security Center DSAP: `security.dyna.dreamscape.jp/appkeys` tab.
+Admin UI: Key Manager (`public/scripts/comp/mmcAppKeys.js`); the retired Security Center DSAP's `security.dreamscape.jp/appkeys` address opens it (Yozora #831).
 
 ### Critical WS packets (no prior auth)
 
@@ -391,7 +391,7 @@ Useful for headless downloads and API calls without a cookie jar. When `loginKey
 
 ## Approved IPs (web UI, no PIN)
 
-Security Center → **Approved IPs** (admin only) stores a list of CIDRs. Each row has a label, an enabled toggle, and the web UI account it signs in as (`admin` or `readonly`).
+Melaton Defender → Tools → **Authentication Bypass** (admin only; was Security Center's Approved IPs) stores a list of CIDRs. Each row has a label, an enabled toggle, and the web UI account it signs in as (`admin` or `readonly`).
 
 A request whose real client IP matches an enabled row is signed in on that request (`req.session.authenticated`, `req.authMethod = 'approved_ip'`) with no PIN and no login screen. The login page ping then redirects to `/app`. A non-match leaves the session unauthenticated so PIN login still applies.
 

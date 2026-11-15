@@ -5227,8 +5227,8 @@ async function rebuildAndDisplayResults() {
  * dynamic placeholders, tags) exactly as live typing does — including top/bottom tiering,
  * dedup, calculateComprehensiveRanking scores, and typeOrder/typeWeights tie-breaking.
  *
- * Shared by rebuildAndDisplayResults (live) and the DSAP-SMF Autofill Ranking Test tab
- * (public/scripts/comp/autofillConfigDsapApplet.js) so the test list matches what users see.
+ * Shared by rebuildAndDisplayResults (live) and the Autofill Ranking snap-in's Test node
+ * (public/scripts/comp/mmcAutofillRanking.js) so the test list matches what users see.
  * Inputs are already-prepared per-type collections (prepare*ForDisplay applied by the caller).
  * When attachBreakdown is true, each returned result gets _testScore + _testBreakdown from
  * calculateComprehensiveRanking(..., true) for per-result inspection.

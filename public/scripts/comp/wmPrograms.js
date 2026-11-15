@@ -587,7 +587,6 @@
     // Manager under Settings > System). These apps and desktop programs leave Programs.
     const IN_SETTINGS_APPS = new Set(['taskmgr', 'accounts']);
     const IN_SETTINGS_DESKTOP = new Set(['alarm', 'control-panel', 'data-management', 'taskmgr']);
-    const openDsap = (url) => { try { if (typeof window.openDsapInGrimoire === 'function') window.openDsapInGrimoire(url); } catch (err) { console.warn('Settings: open', url, err); } };
     // Programs folders (Yukimi, Nov 10): Games first, then the Dreamscape suite (a WM folder drawn
     // like Games'); everything else, the AmusementVISION operator apps too, sits in Programs itself
     const PROGRAM_FOLDERS = {
@@ -610,8 +609,8 @@
     // Settings grid items that open an app (not a Settings page)
     const SETTINGS_LINKS = [
         { id: 'link-taskmgr', tab: 'system', label: 'Task Manager', icon: 'app-task-manager', app: 'taskmgr' },
-        { id: 'link-server-manager', tab: 'system', label: 'Server Manager', icon: 'app-control-panel', open: () => openDsap('dsap://dreamscape.jp/') },
-        { id: 'link-data-management', tab: 'system', label: 'Data Management', icon: 'app-data-management', open: () => openDsap('dsap://data.dreamscape.jp/') },
+        // (#831: Server Manager's dashboard is retired, no phone version; Data Management's place is
+        // System > Workspaces and Application Requests, wmSettingsSystem.js)
         { id: 'link-accounts', tab: 'personal', label: 'Accounts', icon: 'app-accounts', app: 'accounts' }
     ];
     const SHELL_ONLY = new Set(['today', 'programs', 'settings', 'help']);
@@ -2252,7 +2251,10 @@
                 try { extDrafts.set(x.id, typeof x.init === 'function' ? x.init() : {}); } catch (err) { console.warn('Settings: init failed', x.id, err); extDrafts.set(x.id, {}); }
             }
             const first = tabs[0] ? tabs[0][0] : '';
-            open = { def, exts, tabs, tab: tab && tabs.some(([t]) => t === tab) ? tab : first, draft: def.init(), extDrafts, direct: !!(opts && opts.direct), openedAt: Date.now() };
+            const at = tab ? tabs.findIndex(([t]) => t === tab) : -1;
+            // opened at a tab behind the spin buttons (Director > Persona from an old address): the
+            // strip starts at that tab, so it shows (fitTabs keeps the last tabs whole)
+            open = { def, exts, tabs, tab: at >= 0 ? tab : first, draft: def.init(), extDrafts, direct: !!(opts && opts.direct), openedAt: Date.now(), tabScroll: { first: Math.max(0, at) } };
             renderPage();
             sh.syncHistory();
             return true;

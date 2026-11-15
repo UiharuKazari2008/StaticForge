@@ -1,10 +1,9 @@
 /**
- * Data Management DSAP — data.dreamscape.jp
- * Status dashboard, workspaces, favorites, and stubs for spellbook / text expanders.
- * On the Vista desktop the Data Management MMC console (mmcDataManagement.js, #828) replaced this page:
- * data.dreamscape.jp opens the console there, which loads this script for its replication pages and
- * account helpers. Phones and Windows Classic keep this page.
- * Depends on: dsapRegistry.js, dsapSmfMarkup.js, workspaceUtils.js, textReplacementManager.js
+ * Computer Management's library (Yozora #831): what is left of the retired Data Management DSAP
+ * (data.dreamscape.jp, whose addresses open Computer Management: dsapManifests.js). The MMC console
+ * (mmcDataManagement.js, #828) hosts its replication pages with dataMgmtDsapDriver and uses its account
+ * helpers; replicationDsap*.js call into it. Loaded as featureLoader 'data_mgmt_lib' (featureLoader.js).
+ * Depends on: dsapSmfMarkup.js, workspaceUtils.js, textReplacementManager.js
  */
 
 const DATA_DSAP_URL = 'data.dreamscape.jp';
@@ -156,18 +155,6 @@ function dataMgmtDsapBuildReplicationUrl(subRoute) {
     const base = `dsap://${DATA_DSAP_URL}/replication`;
     if (!subRoute || subRoute === 'home') return base;
     return `${base}/${subRoute}`;
-}
-
-function dataMgmtDsapBuildTabBar(activeTabId) {
-    return dsapSmfBuildTabBar([
-        { id: 'status', label: 'Status', icon: 'fas fa-gauge-high' },
-        { id: 'workspaces', label: 'Workspaces', icon: 'fas fa-planet-ringed' },
-        { id: 'spellbook', label: 'Spellbook', icon: 'fas fa-book-spells' },
-        { id: 'expanders', label: 'Expanders', icon: 'fas fa-book-font' },
-        { id: 'favorites', label: 'Favorites', icon: 'fas fa-star' },
-        { id: 'replication', label: 'Replication', icon: 'fas fa-clone' },
-        { id: 'search', label: 'Search', icon: 'fas fa-search' }
-    ], activeTabId, { tabBarId: 'dataMgmtTabBar', dataAttr: 'data-data-tab' });
 }
 
 function dataMgmtDsapFormatNumber(num) {
@@ -481,15 +468,6 @@ function dataMgmtDsapRenderAccountSection(root) {
     usageToolManager.fillDataMgmtAccountUsage();
 }
 
-function dataMgmtDsapRefreshAccountIfPresent() {
-    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
-    if (window.mmcDataManagement) window.mmcDataManagement.refresh('account');
-    const host = document.getElementById('dataMgmtAccountHost');
-    if (!host) return;
-    const root = host.closest('[data-dsap="data-mgmt"]');
-    if (root) dataMgmtDsapRenderAccountSection(root);
-}
-
 function dataMgmtDsapBuildStorageTableHtml(usage) {
     if (!usage) return '<p class="data-mgmt-muted">Storage breakdown unavailable</p>';
 
@@ -715,18 +693,6 @@ function dataMgmtDsapBuildSpellbookHtml() {
 function dataMgmtDsapBuildExpandersHtml() {
     return dataMgmtDsapBuildStubHtml('Expanders', `<p>Global text expander management will migrate here from the legacy Expanders modal.</p>
 <p class="data-mgmt-muted">Until then, open <button type="button" class="dsap-smf-btn dsap-smf-btn-small" id="dataMgmtOpenExpandersLegacyBtn"><i class="fas fa-book-font"></i> Legacy Expanders</button></p>`);
-}
-
-function dataMgmtDsapBuildShellHtml(activeTabId) {
-    const tabId = activeTabId || 'status';
-    return `${dsapSmfBuildRootOpen('data-mgmt')}
-${dsapSmfBuildHeader({
-    branchTitle: DSAP_SMF_BRANCH_DATA_MGMT,
-    toolTitle: DATA_DSAP_TAB_LABELS[tabId] || 'Status'
-})}
-${dataMgmtDsapBuildTabBar(tabId)}
-<div class="data-mgmt-view" id="dataMgmtViewHost"></div>
-${dsapSmfBuildRootClose()}`;
 }
 
 function dataMgmtDsapGetSortedWorkspaces() {
@@ -1022,33 +988,6 @@ function dataMgmtDsapRenderFavoritesList(root) {
         }
         favoritesList.appendChild(row);
     });
-}
-
-function dataMgmtDsapRefreshWorkspacesIfPresent() {
-    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
-    if (window.mmcDataManagement) window.mmcDataManagement.refresh('workspaces');
-    const list = document.getElementById('dataMgmtWorkspaceList');
-    if (!list) return;
-    const root = list.closest('[data-dsap="data-mgmt"]');
-    if (root) dataMgmtDsapRenderWorkspaceList(root);
-}
-
-function dataMgmtDsapRefreshFavoritesIfPresent() {
-    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
-    if (window.mmcDataManagement) window.mmcDataManagement.refresh('favorites');
-    const list = document.getElementById('dataMgmtFavoritesList');
-    if (!list) return;
-    const root = list.closest('[data-dsap="data-mgmt"]');
-    if (root) dataMgmtDsapRenderFavoritesList(root);
-}
-
-function dataMgmtDsapRefreshStatusIfPresent() {
-    // the Data Management MMC console (#828: public/scripts/comp/mmcDataManagement.js)
-    if (window.mmcDataManagement) window.mmcDataManagement.refresh('status');
-    const pieHost = document.getElementById('dataMgmtPieHost');
-    if (!pieHost) return;
-    const root = pieHost.closest('[data-dsap="data-mgmt"]');
-    if (root) void dataMgmtDsapDriver._loadStatus(root);
 }
 
 function dataMgmtDsapReplicationEscapeHtml(text) {
@@ -1996,93 +1935,6 @@ function dataMgmtDsapReplicationWirePage(root, host, subRoute) {
     void dataMgmtDsapDriver._refreshReplication(root, host, subRoute);
 }
 
-const dataMgmtDsapScopedCss = `
-[data-dsap="data-mgmt"] .data-mgmt-view { padding: 4px 0 0; }
-[data-dsap="data-mgmt"] .data-mgmt-account-host { margin-bottom: 12px; }
-[data-dsap="data-mgmt"] .data-mgmt-opus-usage-host { margin-top: 10px; }
-[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar-wrap { margin-top: 6px; display: flex; flex-direction: column; gap: 4px; }
-[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar { height: 8px; width: 100%; background: #e8eef4; border: 1px solid #c5ced8; }
-[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar .token-progress-fill { height: 100%; background: #3a7bd5; }
-[data-dsap="data-mgmt"] .data-mgmt-opus-usage-bar .token-progress-fill.low { background: #c79100; }
-[data-dsap="data-mgmt"] .data-mgmt-ban-host { margin-top: 5px; }
-[data-dsap="data-mgmt"] .data-mgmt-ban-label { display: block; font-weight: 600; margin-bottom: 4px; }
-[data-dsap="data-mgmt"] .data-mgmt-ban-text { font-weight: normal; white-space: pre-wrap; word-break: break-word; line-height: 1.4; }
-[data-dsap="data-mgmt"] .data-mgmt-view.data-mgmt-view-fill { min-height: calc(100vh - 180px); }
-[data-dsap="data-mgmt"] .data-mgmt-status-layout { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
-[data-dsap="data-mgmt"] .data-mgmt-status-left { flex: 0 0 280px; min-width: 240px; max-width: 100%; }
-[data-dsap="data-mgmt"] .data-mgmt-status-right { flex: 1 1 320px; min-width: 280px; }
-[data-dsap="data-mgmt"] .data-mgmt-panel-hdr { font-weight: 600; font-size: 0.85rem; margin: 0 0 6px; color: var(--dsap-smf-context-bg, #336699); }
-[data-dsap="data-mgmt"] .data-mgmt-panel-hdr-spaced { margin-top: 14px; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-host,
-[data-dsap="data-mgmt"] .data-mgmt-table-host { background: #fff; border: 1px solid #b8c4d0; padding: 8px; min-height: 80px; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-chart { width: 200px; height: 200px; max-width: 100%; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-legend { width: 100%; font-size: 0.8rem; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-legend-item { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.15); }
-[data-dsap="data-mgmt"] .data-mgmt-pie-legend-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-legend-value { white-space: nowrap; color: #555; }
-[data-dsap="data-mgmt"] .data-mgmt-pie-empty,
-[data-dsap="data-mgmt"] .data-mgmt-muted { color: #666; font-size: 0.85rem; }
-[data-dsap="data-mgmt"] .data-mgmt-loading { color: #666; font-size: 0.85rem; padding: 12px; text-align: center; }
-[data-dsap="data-mgmt"] .data-mgmt-workspaces-table,
-[data-dsap="data-mgmt"] .data-mgmt-storage-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-[data-dsap="data-mgmt"] .data-mgmt-workspaces-table thead th,
-[data-dsap="data-mgmt"] .data-mgmt-storage-table thead th { text-align: right; padding: 4px 6px; border-bottom: 1px solid #c5ced8; font-weight: 600; background: #f4f6f8; }
-[data-dsap="data-mgmt"] .data-mgmt-workspaces-table tbody td,
-[data-dsap="data-mgmt"] .data-mgmt-storage-table tbody td { padding: 4px 6px; border-bottom: 1px solid #e2e8ee; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-name-header,
-[data-dsap="data-mgmt"] .data-mgmt-storage-label { text-align: left!important; width: 100%; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-col,
-[data-dsap="data-mgmt"] .data-mgmt-storage-value { text-align: right; white-space: nowrap; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-table,
-[data-dsap="data-mgmt"] .data-mgmt-favorites-table { margin-top: 2px; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-name-cell { text-align: left; vertical-align: middle; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-name-cell span.workspace-color-indicator { display: inline-block; vertical-align: middle; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-color { display: inline-block; width: 10px; height: 20px; border: 1px solid rgba(0,0,0,0.2); margin-right: 6px; vertical-align: middle; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-name { font-weight: 600; vertical-align: middle; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-active { color: #228822; margin-left: 4px; vertical-align: middle; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-drag-cell { color: #666; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-drag-handle { cursor: var(--c-grab); display: inline-block; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-drag-handle:active { cursor: var(--c-grabbing); }
-[data-dsap="data-mgmt"] .data-mgmt-ws-actions-cell,
-[data-dsap="data-mgmt"] .data-mgmt-fav-actions { white-space: nowrap; text-align: center; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-actions-cell .dsap-smf-btn,
-[data-dsap="data-mgmt"] .data-mgmt-fav-actions .dsap-smf-btn { padding: 3px 8px;
-    margin: 0 1px;
-    min-width: 26px;
-    min-height: 28px;
-    max-width: 30px;
-    max-height: 28px;
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    vertical-align: middle; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-row.dragging { opacity: 0.55; background: #ffffee; }
-[data-dsap="data-mgmt"] .data-mgmt-ws-row.drag-over { outline: 1px dashed var(--dsap-smf-tab-accent, #ff8c00); }
-[data-dsap="data-mgmt"] .data-mgmt-fav-name { font-weight: 600; }
-[data-dsap="data-mgmt"] .data-mgmt-fav-detail { color: #333; word-break: break-word; }
-[data-dsap="data-mgmt"] .data-mgmt-fav-type { color: #555; }
-[data-dsap="data-mgmt"] #dataMgmtFavoritesEmpty small { display: block; margin-top: 6px; color: #666; font-weight: normal; }
-[data-dsap="data-mgmt"] .data-mgmt-stub { background: #fff; border: 1px solid #b8c4d0; padding: 14px 16px; }
-[data-dsap="data-mgmt"] .data-mgmt-stub-lead { font-weight: 600; margin: 0 0 8px; }
-[data-dsap="data-mgmt"] .data-mgmt-stub-body p { margin: 0 0 8px; font-size: 0.85rem; line-height: 1.45; }
-[data-dsap="data-mgmt"] .data-mgmt-workers-host { margin-bottom: 12px; }
-[data-dsap="data-mgmt"] #dataMgmtRemoteWorkersToolbar { justify-content: flex-end; }
-[data-dsap="data-mgmt"] .data-mgmt-workers-table { margin-top: 2px; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-dot-cell { text-align: center; width: 28px; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; vertical-align: middle; border: 1px solid rgba(0,0,0,0.2); }
-[data-dsap="data-mgmt"] .data-mgmt-worker-dot-healthy { background: #228822; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-dot-degraded { background: #c79100; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-dot-offline { background: #aa2222; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-dot-unconfigured { background: #9aa3ab; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-name { font-weight: 600; text-align: left; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-host { text-align: left; word-break: break-all; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-meta { white-space: nowrap; text-align: center; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-actions { text-align: center; white-space: nowrap; }
-[data-dsap="data-mgmt"] .data-mgmt-worker-row-busy { opacity: 0.72; }
-`;
-
 const dataMgmtDsapDriver = {
     _host: null,
     _statusData: null,
@@ -2375,36 +2227,3 @@ const dataMgmtDsapDriver = {
     }
 };
 
-function registerDataManagementDsapApplet() {
-    // registerDsap: public/scripts/comp/dsapRegistry.js
-    if (typeof registerDsap !== 'function') return;
-
-    registerDsap({
-        url: DATA_DSAP_URL,
-        theme: 'dsap-smf',
-        getContent(match) {
-            const hostStub = {
-                getPathSegments() {
-                    const norm = typeof normalizeDsapUrlInput === 'function'
-                        ? normalizeDsapUrlInput(match.canonicalUrl)
-                        : match.canonicalUrl;
-                    const base = DATA_DSAP_URL;
-                    if (!norm.startsWith(base)) return [];
-                    const rest = norm.slice(base.length).replace(/^\//, '');
-                    const pathOnly = rest.split('?')[0];
-                    return pathOnly ? pathOnly.split('/').filter(Boolean) : [];
-                },
-                getQueryParam() { return null; }
-            };
-            const activeTab = dataMgmtDsapResolveActiveTab(hostStub);
-            return {
-                html: dataMgmtDsapBuildShellHtml(activeTab),
-                css: dataMgmtDsapScopedCss,
-                drivers: dataMgmtDsapDriver,
-                baseBackground: '#eeeeee'
-            };
-        }
-    });
-}
-
-registerDataManagementDsapApplet();

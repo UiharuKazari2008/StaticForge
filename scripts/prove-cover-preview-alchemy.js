@@ -100,13 +100,14 @@ async function main() {
     }
     console.log('ok Alchemy session', sessionJson.sessionId.slice(0, 8) + '...');
 
-    const appletPath = path.join(root, 'public/scripts/comp/siteHomepageDsapApplet.js');
+    // Front Gate (the MMC console that replaced the Site Homepage DSAP, #828/#831) previews the cover
+    const appletPath = path.join(root, 'public/scripts/comp/mmcFrontGate.js');
     const appletSrc = fs.readFileSync(appletPath, 'utf8');
     if (appletSrc.includes('openGrimoireUrl(') || !appletSrc.includes('grimoireOpenStandaloneWindow(')) {
-        console.error('FAIL: DSAP applet must call grimoireOpenStandaloneWindow, not openGrimoireUrl');
+        console.error('FAIL: Front Gate must call grimoireOpenStandaloneWindow, not openGrimoireUrl');
         process.exit(1);
     }
-    console.log('ok DSAP source uses grimoireOpenStandaloneWindow');
+    console.log('ok Front Gate source uses grimoireOpenStandaloneWindow');
 
     console.log('\nprove-cover-preview-alchemy: PASS');
     console.log('Preview URL (paste in desktop web shortcut / Alchemy standalone):');

@@ -8,7 +8,7 @@ stored in `config.autofillRanking` (`modules/autofillRankingSettings.js`). Appli
 - `modules/tag-lookup.js` `searchTagsAutofill()` — server-side candidate scoring
 - `public/scripts/comp/autocompleteUtils.js` `calculateComprehensiveRanking()` + sort comparator — client-side scoring/tie-breaking
 
-Admin UI: DSAP-SMF applet at `dsap://autofill.dreamscape.jp/` (`public/scripts/comp/autofillConfigDsapApplet.js`).
+Admin UI: the Autofill Ranking MMC snap-in (`public/scripts/comp/mmcAutofillRanking.js`); the old DSAP page (`dsap://autofill.dreamscape.jp/`) is retired and its address opens the snap-in (Yozora #831).
 
 Application-key scope: `autofill` (ranking + Grimoire / tag wiki). Not `search`.
 Loopback HTTP: `POST /agent/packet` with `type` `get_autofill_ranking` / `test_autofill_ranking` / `update_autofill_ranking`.

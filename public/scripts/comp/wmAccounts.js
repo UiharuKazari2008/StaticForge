@@ -40,7 +40,7 @@
     const STALE_MS = 60 * 1000;
     const TODAY_CACHE_MS = 15 * 1000;
     const SEEN_KEY = 'sf_wallet_seen_alerts'; // walletTray.js: alerts this session has shown
-    const ACTION_LABELS = { login: 'Log In', unlock: 'Unlock', 'novelai-site': 'Open NovelAI' };
+    const ACTION_LABELS = { login: 'Log In', unlock: 'Unlock', 'novelai-site': 'Open NovelAI', 'app-requests': 'View Requests' };
     const DOT_TITLES = { ok: 'OK', warn: 'Needs attention', bad: 'Out', off: 'Unavailable' };
 
     let sh = null;
@@ -63,7 +63,30 @@
     function readModel() {
         const w = wallet();
         try { current = w && typeof w.model === 'function' ? w.model() : { rows: [], alerts: [] }; } catch (_) { current = { rows: [], alerts: [] }; }
+        const req = appRequestsAlert();
+        if (req) current = { ...current, alerts: [req, ...(current.alerts || [])] };
         return current;
+    }
+
+    /**
+     * Programs waiting for an application key (admin only, #831): an alert whose link opens
+     * Settings > System > Application Requests (wmSettingsSystem.js window.wmAppRequests). Its id
+     * carries the requests' ids, so a new request shows as unseen again.
+     */
+    function appRequestsAlert() {
+        const ar = window.wmAppRequests;
+        let list = [];
+        try { list = ar && typeof ar.pending === 'function' ? ar.pending() : []; } catch (_) { list = []; }
+        if (!list.length) return null;
+        const names = [...new Set(list.map((r) => r.appName).filter(Boolean))];
+        return {
+            id: `app-requests:${list.map((r) => r.id).sort().join(',')}`,
+            level: 'warning',
+            title: list.length === 1 ? 'Application key request' : `${list.length} application key requests`,
+            service: 'Dreamscape',
+            text: names.length ? `${names.slice(0, 2).join(', ')}${names.length > 2 ? ', ...' : ''} waiting for approval` : 'Waiting for approval',
+            action: { name: 'app-requests' }
+        };
     }
 
     function state() {
@@ -95,7 +118,11 @@
         const w = wallet();
         if (!w || typeof w.refresh !== 'function' || !connected()) return Promise.resolve();
         if (fetching) return fetching;
-        fetching = Promise.resolve(w.refresh({ force: opts.force === true }))
+        const ar = window.wmAppRequests;
+        fetching = Promise.all([
+            Promise.resolve(w.refresh({ force: opts.force === true })),
+            ar && typeof ar.refresh === 'function' ? ar.refresh(opts.force === true) : null
+        ])
             .catch(() => { /* the notes show the error */ })
             .finally(() => {
                 fetching = null;
@@ -134,6 +161,11 @@
     }
 
     function runAction(action) {
+        if (action && action.name === 'app-requests') {
+            const ar = window.wmAppRequests;
+            if (ar && typeof ar.open === 'function') ar.open();
+            return;
+        }
         const w = wallet();
         if (!action || !w || typeof w.runAction !== 'function') return;
         try { w.runAction(action.name, action.arg); } catch (err) { console.warn('[wmAccounts] action', action.name, err); }

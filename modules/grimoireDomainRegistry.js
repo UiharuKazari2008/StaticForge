@@ -262,16 +262,6 @@ registerDomain({
 });
 
 registerDomain({
-  domain: 'wiki.dyna.dreamscape.jp',
-  aliases: [
-    'dsap://wiki.dyna.dreamscape.jp',
-    'en.grimoire.jp/applets/wiki',
-    'applet.grimoire.jp/wiki'
-  ],
-  title: 'Wiki Manager'
-});
-
-registerDomain({
   domain: 'docs.novelai.jp',
   aliases: [
     'novelai.jp/docs',
@@ -329,6 +319,8 @@ registerDomain({
   }
 });
 
+// the MCP Connector page is retired on the client (#831), but Remote Access Properties' MCP Connector tab
+// reads this page (resolve_grimoire_url): keep it
 registerDomain({
   domain: 'mcp.dreamscape.jp',
   aliases: [
@@ -341,44 +333,6 @@ registerDomain({
   getPage(_match, context) {
     return buildMcpConnectorGrimPage(context && context.globalResources);
   }
-});
-
-registerDomain({
-  domain: 'security.dreamscape.jp',
-  aliases: [
-    'security.dyna.dreamscape.jp',
-    'dsap://security.dreamscape.jp',
-    'dsap://security.dyna.dreamscape.jp',
-    'en.grimoire.jp/applets/security',
-    'applet.grimoire.jp/security'
-  ],
-  title: 'Security Center'
-});
-
-registerDomain({
-  domain: 'dreamscape.jp',
-  aliases: [
-    'dreamscape.jp/',
-    'www.dreamscape.jp',
-    'dyna.dreamscape.jp',
-    'dsap://dreamscape.jp',
-    'dsap://dreamscape.jp/'
-  ],
-  title: 'Dreamscape'
-});
-
-registerDomain({
-  domain: 'memories.dyna.dreamscape.jp',
-  aliases: [
-    'dsap://memories.dyna.dreamscape.jp',
-    'en.grimoire.jp/applets/memories',
-    'applet.grimoire.jp/memories',
-    'xi.dyna.dreamscape.jp/persona',
-    'dsap://xi.dyna.dreamscape.jp/persona',
-    'en.grimoire.jp/applets/linkxi',
-    'applet.grimoire.jp/linkxi'
-  ],
-  title: 'Knowledge Memories'
 });
 
 module.exports = {

@@ -2,8 +2,8 @@
  * Melaton Mobile: Dreamscape apps (DSAP applets) in Internet Explorer, Yozora #732 (parent #709).
  * wmBrowser.js runs the desktop's applet code in IE's page (.wm-browser .wmb-dsap); this file is
  * the phone layout: one column, touch-sized rows, nothing wider than the page.
- * Applets in the DSAP-SMF frame (Data Management, Image Search, Control Panel, Novels, Security
- * Center ...: .dsap-smf) take WM 6.1's form look, as Settings pages and the hosted desktop programs
+ * Applets in the DSAP-SMF frame (Control Panel, Novels, Pantry ...: .dsap-smf; #831: Data Management,
+ * Image Search and Security Center are retired) take WM 6.1's form look, as Settings pages and the hosted desktop programs
  * do (wm-studio-tools.css idioms): Tahoma 12 px black on white, the page title in bold with a rule
  * under it, tabs as a scrolling WM tab strip, group headers as bold labels over a rule, tint push
  * buttons with a 1 px black frame, 20 px edit boxes and combos. Applets that copy a web site's own
@@ -78,7 +78,7 @@
     word-break: normal;
 }
 
-.wm-browser .wmb-dsap [data-dsap] table:is(.sec-data-table, .dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) {
+.wm-browser .wmb-dsap [data-dsap] table:is(.dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) {
     display: block;
     width: 100% !important;
     /* the cells keep their rules; no frame around the empty space beside a narrow table */
@@ -87,11 +87,11 @@
     overscroll-behavior-x: contain;
 }
 
-.wm-browser .wmb-dsap [data-dsap] table:is(.sec-data-table, .dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) :is(thead, tbody, tfoot, tr, td, th) {
+.wm-browser .wmb-dsap [data-dsap] table:is(.dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) :is(thead, tbody, tfoot, tr, td, th) {
     max-width: none;
 }
 
-.wm-browser .wmb-dsap [data-dsap] table:is(.sec-data-table, .dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) :is(td, th) {
+.wm-browser .wmb-dsap [data-dsap] table:is(.dsap-smf-table, [class*="-data-table"], [class*="-list-table"]) :is(td, th) {
     overflow-wrap: normal;
     white-space: nowrap;
 }
@@ -195,8 +195,7 @@
 
 /* tabs: WM's tab strip (tint, 1 px black frames, the selected tab white and open to the page),
    scrolling sideways when they do not fit */
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav),
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar {
     display: block;
     width: 100% !important;
     margin: 0 !important;
@@ -210,11 +209,11 @@
     scrollbar-width: none;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav)::-webkit-scrollbar {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar::-webkit-scrollbar {
     display: none;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) :is(tbody, tr) {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar :is(tbody, tr) {
     display: flex;
     gap: calc(2 * var(--wm-px));
     width: max-content;
@@ -222,8 +221,7 @@
     max-width: none;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td,
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar .omega-dsap-tab {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td {
     display: flex !important;
     flex-direction: row !important;
     align-items: center;
@@ -247,17 +245,16 @@
     overflow: visible;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td:empty,
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td.dsap-smf-tab-auto {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td:empty,
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td.dsap-smf-tab-auto {
     display: none !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td :is(br) {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td :is(br) {
     display: none;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td *,
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar .omega-dsap-tab * {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td * {
     display: inline;
     margin: 0 !important;
     color: #000 !important;
@@ -265,12 +262,11 @@
     white-space: nowrap;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td i {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td i {
     font-size: calc(11 * var(--wm-px)) !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td:is(.active, .dsap-smf-tab-active, .sec-tab.active),
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-detail-subtabbar .omega-dsap-tab.active {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td:is(.active, .dsap-smf-tab-active) {
     position: relative;
     z-index: 1;
     padding-bottom: calc(1 * var(--wm-px)) !important;
@@ -278,12 +274,12 @@
     font-weight: bold !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-tabbar, .sec-dsap-nav) td:is(.active, .dsap-smf-tab-active) * {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td:is(.active, .dsap-smf-tab-active) * {
     font-weight: bold !important;
 }
 
 /* the context bar under the tabs (Workspace: Global / This, counts) */
-.wm-browser .wmb-dsap .dsap-smf :is(.omega-dsap-contextbar, .dsap-smf-contextbar) {
+.wm-browser .wmb-dsap .dsap-smf .dsap-smf-contextbar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -296,7 +292,7 @@
     color: #000 !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf :is(.omega-dsap-contextbar, .dsap-smf-contextbar) * {
+.wm-browser .wmb-dsap .dsap-smf .dsap-smf-contextbar * {
     color: #000 !important;
 }
 
@@ -307,7 +303,7 @@
 }
 
 /* group headers: a bold label over a rule */
-.wm-browser .wmb-dsap .dsap-smf :is([class*="-section-hdr"], .data-mgmt-panel-hdr) {
+.wm-browser .wmb-dsap .dsap-smf [class*="-section-hdr"] {
     display: block;
     margin: calc(8 * var(--wm-px)) 0 calc(3 * var(--wm-px)) !important;
     padding: 0 0 calc(1 * var(--wm-px)) !important;
@@ -321,12 +317,12 @@
     height: auto !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf :is([class*="-section-hdr"], .data-mgmt-panel-hdr) * {
+.wm-browser .wmb-dsap .dsap-smf [class*="-section-hdr"] * {
     color: inherit !important;
 }
 
 /* status boxes (ok / error lines) */
-.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-statusbox, .quips-dsap-statusbox, .sec-dsap-statusbox) {
+.wm-browser .wmb-dsap .dsap-smf .dsap-smf-statusbox {
     margin: calc(3 * var(--wm-px)) 0 !important;
     padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
     border: calc(1 * var(--wm-px)) solid #a0a0a0 !important;
@@ -335,18 +331,18 @@
 
 /* number tiles (Fixed / Paid / Total Anlas, Role / Connectivity ...): two or three to a row, the
    label over the value */
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats {
     display: block;
     width: 100% !important;
     margin: calc(3 * var(--wm-px)) 0 !important;
     border: 0 !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) tbody {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats tbody {
     display: block;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) tr {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats tr {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(calc(90 * var(--wm-px)), 1fr));
     gap: 0;
@@ -354,7 +350,7 @@
     background: #fff;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) td {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats td {
     display: block;
     width: auto !important;
     margin: calc(-1 * var(--wm-px)) 0 0 calc(-1 * var(--wm-px)) !important;
@@ -364,41 +360,41 @@
     text-align: left !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) td :is(br) {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats td :is(br) {
     display: none;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) td > * {
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats td > * {
     display: block;
     margin: 0 !important;
     padding: 0 !important;
     text-align: left !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-stat-label, .omega-dsap-stat-label) {
+.wm-browser .wmb-dsap .dsap-smf .dsap-smf-stat-label {
     color: #404040 !important;
     font-weight: normal !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf :is(.dsap-smf-stat-value, .omega-dsap-stat-value) {
+.wm-browser .wmb-dsap .dsap-smf .dsap-smf-stat-value {
     font-weight: bold !important;
 }
 
 /* key / value tables: grey label cells off, WM's label: value rows */
-.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.sec-dsap-nav):not(.dsap-smf-stats):not(.omega-dsap-stats) {
+.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.dsap-smf-stats) {
     width: 100% !important;
     border-collapse: collapse;
     border-color: #a0a0a0 !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.sec-dsap-nav):not(.dsap-smf-stats):not(.omega-dsap-stats) :is(td, th) {
+.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.dsap-smf-stats) :is(td, th) {
     padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) !important;
     border-color: #a0a0a0 !important;
     color: #000;
     vertical-align: middle;
 }
 
-.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.sec-dsap-nav):not(.dsap-smf-stats):not(.omega-dsap-stats) th {
+.wm-browser .wmb-dsap .dsap-smf table:not(.dsap-smf-header):not(.dsap-smf-tabbar):not(.dsap-smf-stats) th {
     background: var(--wm-tab-strip) !important;
     color: #000 !important;
     font-weight: bold !important;
@@ -545,32 +541,6 @@
     border-radius: 0 !important;
 }
 
-/* Image Search's value sliders (the value written in the channel) */
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-wrap {
-    flex: 1 1 100%;
-    max-width: none;
-}
-
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-track {
-    height: calc(22 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-}
-
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-input {
-    height: calc(22 * var(--wm-px));
-    min-height: 0 !important;
-    border: 0 !important;
-    padding: 0 !important;
-}
-
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-input::-webkit-slider-thumb {
-    height: calc(20 * var(--wm-px)) !important;
-}
-
-.wm-browser .wmb-dsap .dsap-smf .omega-dsap-slider-value {
-    color: #000 !important;
-}
-
 /* settings tables (a label and its controls on each row): in portrait the label stands over its
    controls, so the controls get the page's width */
 @media (orientation: portrait) {
@@ -623,44 +593,14 @@
 /* ---------------------------------------------------------------- landscape: a little more on a row */
 
 @media (orientation: landscape) {
-    .wm-browser .wmb-dsap .dsap-smf table:is(.dsap-smf-stats, .omega-dsap-stats) tr {
+    .wm-browser .wmb-dsap .dsap-smf table.dsap-smf-stats tr {
         grid-template-columns: repeat(auto-fit, minmax(calc(110 * var(--wm-px)), 1fr));
     }
 }
 
 /* ---------------------------------------------------------------- no Font Awesome on the phone (#748)
- * Server Manager's link list and Data Management drew the desktop's Font Awesome glyphs. A link
- * whose target has a fitting picture in the phone's art set (static_images/wm61, 16 px) shows
- * that; WM tab strips and push buttons carry text only, so their glyphs go; the workers' bare
- * refresh buttons take the media player's refresh art. Glyphs with no fitting art are left (listed
- * in #748). */
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i:is(.fa-database, .fa-search, .fa-shield-halved, .fa-globe, .fa-building-columns),
-.wm-browser .wmb-dsap .data-mgmt-worker-actions button > i.fa-arrows-rotate {
-    display: inline-block !important;
-    width: calc(16 * var(--wm-px)) !important;
-    height: calc(16 * var(--wm-px)) !important;
-    margin: 0 calc(3 * var(--wm-px)) 0 0 !important;
-    font-size: 0 !important;
-    line-height: 0 !important;
-    vertical-align: middle;
-    color: transparent !important;
-    -webkit-text-fill-color: transparent !important;
-    background: var(--wmd-art) center / 100% 100% no-repeat !important;
-}
-
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i:is(.fa-database, .fa-search, .fa-shield-halved, .fa-globe, .fa-building-columns)::before,
-.wm-browser .wmb-dsap .data-mgmt-worker-actions button > i.fa-arrows-rotate::before {
-    content: none !important;
-}
-
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-database { --wmd-art: image-set(url('/static_images/wm61/app-data-management.png') 1x, url('/static_images/wm61/app-data-management@2x.png') 2x, url('/static_images/wm61/app-data-management@4x.png') 4x); }
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-search { --wmd-art: image-set(url('/static_images/wm61/app-search.png') 1x, url('/static_images/wm61/app-search@2x.png') 2x, url('/static_images/wm61/app-search@4x.png') 4x); }
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-shield-halved { --wmd-art: image-set(url('/static_images/wm61/ie-lock.png') 1x, url('/static_images/wm61/ie-lock@2x.png') 2x, url('/static_images/wm61/ie-lock@4x.png') 4x); }
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-globe { --wmd-art: image-set(url('/static_images/wm61/app-ie.png') 1x, url('/static_images/wm61/app-ie@2x.png') 2x, url('/static_images/wm61/app-ie@4x.png') 4x); }
-.wm-browser .wmb-dsap a.dsap-smf-home-link > i.fa-building-columns { --wmd-art: image-set(url('/static_images/wm61/msg-acct-outlook.png') 1x, url('/static_images/wm61/msg-acct-outlook@2x.png') 2x, url('/static_images/wm61/msg-acct-outlook@4x.png') 4x); }
-.wm-browser .wmb-dsap .data-mgmt-worker-actions button > i.fa-arrows-rotate { --wmd-art: image-set(url('/static_images/wm61/wmp-refresh.png') 1x, url('/static_images/wm61/wmp-refresh@2x.png') 2x, url('/static_images/wm61/wmp-refresh@4x.png') 4x); margin: 0 !important; }
-
-.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td.dsap-smf-tab > i[class*="fa-"],
-.wm-browser .wmb-dsap .dsap-smf :is(#dataMgmtRemoteWorkersRefreshAll, .data-mgmt-repl-status-link button, .data-mgmt-indexing-controls button) > i[class*="fa-"] {
+ * WM tab strips carry text only, so their glyphs go (#831: Server Manager's link list and Data
+ * Management, which took WM art for theirs, are retired). */
+.wm-browser .wmb-dsap .dsap-smf table.dsap-smf-tabbar td.dsap-smf-tab > i[class*="fa-"] {
     display: none !important;
 }

@@ -29,7 +29,7 @@ const REFRESH_FLOOR_MS = 20 * 1000;
 const RUNPOD_TTL_MS = 60 * 1000;
 const CUSTOM_TTL_MS = 60 * 1000;
 const REQUEST_TIMEOUT_MS = 12000;
-// Same rule as Security Center's Login button (securityCenterDsapApplet.js loginNeeded), plus a
+// Same rule as Security Center's Login button (securityCenterDsapApplet.js loginNeeded, Melaton Defender's library), plus a
 // profile with no saved credentials at all.
 const LOGIN_NEEDED_RE = /expired|not logged|login|unauthorized|no credentials/i;
 const KEY_SKIP_SERVICES = new Set();

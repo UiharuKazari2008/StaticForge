@@ -1750,9 +1750,9 @@ class WikiDisplayBase {
         const settingsBtn = this.displayArea.querySelector('[data-action="open-dreamscape-settings"]');
         if (settingsBtn) {
             settingsBtn.addEventListener('click', () => {
-                // the Server Manager console on the Vista desktop (#831), the page elsewhere
-                /* global dsapIsVistaDesktop, openServerManagerConsole */
-                if (typeof dsapIsVistaDesktop === 'function' && dsapIsVistaDesktop() && typeof openServerManagerConsole === 'function') {
+                // the Server Manager console (#831: the dashboard page is retired)
+                /* global openServerManagerConsole */
+                if (typeof openServerManagerConsole === 'function') {
                     void openServerManagerConsole();
                     return;
                 }

@@ -141,7 +141,7 @@ const cplJs = read('public/scripts/comp/melatonControlPanel.js');
 assert.ok(/id: 'system',[\s\S]{0,400}pages\.system \? navigate\('system'\)/.test(cplJs), 'the System item opens the page');
 assert.ok(/id: 'remote-access',[\s\S]{0,400}root\.remoteAccessProperties\.open\(\)/.test(cplJs), 'the Remote Access item opens Remote Access Properties');
 assert.ok(read('public/scripts/comp/cplSystem.js').includes("shieldLink('Remote settings', 'item', 'remote-access')"), "System's Remote settings opens it too");
-assert.ok(/async function openRemoteAccessSettingsModal\(\) \{[\s\S]{0,300}window\.remoteAccessProperties\.open\(\)/.test(read('public/scripts/comp/modalUtils.js')), 'and every openRemoteAccessSettingsModal caller');
+assert.ok(/async function openRemoteAccessSettingsModal\([^)]*\) \{[\s\S]{0,400}window\.remoteAccessProperties\.open\(/.test(read('public/scripts/comp/modalUtils.js')), 'and every openRemoteAccessSettingsModal caller');
 const gr = read('modules/globalResources.js');
 assert.ok(gr.includes('host: hostInfo') && /hostname: os\.hostname\(\)/.test(gr) && /arch: os\.arch\(\)/.test(gr), 'get_system_info carries host.*');
 const docs = read('docs/client-api/ws/infrastructure.md');

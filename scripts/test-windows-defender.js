@@ -22,13 +22,14 @@ const warn = wd._test.homeHtml({ blockedTotal: 3, blockedToday: 2, pathsTotal: 9
 assert.ok(warn.includes('defender-banner--warn') && warn.includes('2 clients were blocked') && warn.includes('data-defender="quarantine"'));
 assert.ok(warn.includes('<td>Guest sign-in:</td><td>Off</td>'));
 const tools = wd._test.toolsHtml();
-assert.ok(tools.includes('Tools and Settings') && tools.includes('Quarantined items') && tools.includes('Allowed items'));
+assert.ok(tools.includes('Tools and Settings') && tools.includes('Quarantined items') && tools.includes('Authentication Bypass'));
 
-// Security Center's launchers land in Defender on the Vista desktop
+// Security Center's launchers and addresses land in Defender (#831: the DSAP page is retired)
 const sec = read('public/scripts/comp/securityCenterDsapApplet.js');
-assert.ok(sec.includes('if (securityDsapOpenDefender(normalized)) return;'));
+assert.ok(!sec.includes('registerDsap('), 'Security Center is a library now');
 const man = read('public/scripts/comp/dsapManifests.js');
-assert.ok(man.includes("text: 'Melaton Defender'") && man.includes("window.windowsDefender.open('home')"));
+assert.ok(man.includes("text: 'Melaton Defender'") && man.includes('window.windowsDefender.open(page)'));
+assert.ok(read('public/scripts/comp/featureLoader.js').includes("'scripts/comp/securityCenterDsapApplet.js'"), 'its library is a feature');
 const loader = read('public/scripts/comp/featureLoader.js');
 assert.ok(loader.includes("'scripts/comp/windowsDefender.js'") && loader.includes("'css/vista-defender.css'"), 'Defender loads with Control Panel');
 const css = read('public/css/vista-defender.css');

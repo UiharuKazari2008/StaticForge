@@ -1,7 +1,8 @@
 /**
  * Data Management (Yozora #828): the MMC snap-in that replaced the Data Management DSAP on the Vista
- * desktop (dsap://data.dreamscape.jp/ opens it there; phones and Windows Classic keep the DSAP page,
- * public/scripts/comp/dataManagementDsapApplet.js). Laid out like Computer Management:
+ * desktop (#831: the DSAP page is retired, dsap://data.dreamscape.jp/ opens this everywhere; the old
+ * page's driver and replication pages stay as this console's library, featureLoader 'data_mgmt_lib':
+ * public/scripts/comp/dataManagementDsapApplet.js, replicationDsap*.js). Laid out like Computer Management:
  *
  * It stands in for Computer Management (Administrative Tools opens it):
  *
@@ -23,9 +24,8 @@
  *
  * Workspace dialogs are workspaceDialogs.js's (Properties sheet, New, Rename, Dump, Delete, Reorder
  * Partitions); switching is workspaceUtils.js's setActiveWorkspace; disk usage is get_system_info's
- * workspace list. The refresh hooks
- * workspaceUtils / textReplacementManager / accountDataBootstrap call (dataMgmtDsapRefresh*IfPresent
- * in dataManagementDsapApplet.js) call mmcDataManagement.refresh(kind) too.
+ * workspace list. workspaceUtils / textReplacementManager / accountDataBootstrap call
+ * mmcDataManagement.refresh(kind) when their data changes.
  *
  *   window.openDataManagementConsole(node?)   node: a node id below, or an old DSAP tab id
  *   window.mmcDataManagement.partDef(part, { skip })   'storage' | 'workers' | 'replication' as a def of
@@ -1160,14 +1160,12 @@
         return list.length ? root.mmcConsole.compose(partDef(part, opts), list) : partDef(part, opts);
     }
 
-    /** The DSAP's own scripts: the replication pages and the account helpers live there. */
+    /** The library (featureLoader 'data_mgmt_lib', #831): the replication pages and the account helpers live there. */
     async function ensureAssets() {
-        if (root.featureLoader) await root.featureLoader.loadFeature('mmc_snapins');
-        if (!replReady() && has('resolveDsap') && has('ensureDsapEntryReady')) {
-            const m = root.resolveDsap('dsap://data.dreamscape.jp/');
-            if (m && m.entry) {
-                try { await root.ensureDsapEntryReady(m.entry); } catch (err) { console.error(`${TITLE}: DSAP scripts`, err); }
-            }
+        if (!root.featureLoader) return;
+        await root.featureLoader.loadFeature('mmc_snapins');
+        if (!replReady()) {
+            try { await root.featureLoader.loadFeature('data_mgmt_lib'); } catch (err) { console.error(`${TITLE}: library scripts`, err); }
         }
     }
 

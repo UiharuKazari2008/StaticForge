@@ -1,7 +1,6 @@
 /**
- * Wiki Caches (Yozora #831): the MMC snap-in that replaced the Wiki Manager DSAP on the Vista desktop
- * (dsap://wiki.dyna.dreamscape.jp/ opens Computer Management at Storage > Wiki Caches; phones and
- * Windows Classic keep the DSAP page, public/scripts/comp/fandomWikiManagerDsapApplet.js).
+ * Wiki Caches (Yozora #831): the MMC snap-in that replaced the Wiki Manager DSAP (the page is retired;
+ * dsap://wiki.dyna.dreamscape.jp/ opens Computer Management at Storage > Wiki Caches: dsapManifests.js).
  *
  *   Wiki Caches            the summary: wikis, Fandom wikis, pages, page imports (get_fandom_wiki_manager)
  *     Sites                every cached wiki: Name, Kind, Pages, Last Updated, Location; Update (pull the

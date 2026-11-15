@@ -2466,18 +2466,15 @@ function updateManualWorkspaceDisplay() {
     }
 }
 function refreshWorkspaceManagementListsIfPresent() {
-    // dataMgmtDsapRefreshWorkspacesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
-    if (typeof dataMgmtDsapRefreshWorkspacesIfPresent === 'function') {
-        dataMgmtDsapRefreshWorkspacesIfPresent();
-    }
-    // dataMgmtDsapRefreshStatusIfPresent: public/scripts/comp/dataManagementDsapApplet.js (lazy applet)
-    if (typeof dataMgmtDsapRefreshStatusIfPresent === 'function') {
-        dataMgmtDsapRefreshStatusIfPresent();
+    // Computer Management's Workspaces and status views, when open (mmcDataManagement.js)
+    if (window.mmcDataManagement) {
+        window.mmcDataManagement.refresh('workspaces');
+        window.mmcDataManagement.refresh('status');
     }
 }
 
-// Workspace management lives in Data Management's Workspaces page: the MMC console's Disk Management-style
-// Workspaces node on the Vista desktop (#828, mmcDataManagement.js), the DSAP elsewhere (the Solar System dialog is retired)
+// Workspace management lives in Computer Management's Disk Management-style Workspaces node (#828,
+// mmcDataManagement.js; #831: the Data Management DSAP page is retired)
 function showWorkspaceManagementModal() {
     // openDataManagementDsap: public/scripts/comp/dsapManifests.js
     openDataManagementDsap('workspaces');

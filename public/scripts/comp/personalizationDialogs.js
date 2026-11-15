@@ -623,7 +623,7 @@
         await openImageSearchWindow(saved ? { ...saved, view: 'gallery', frame: 'screensaver' } : { workspaceId: ws, view: 'search', frame: 'screensaver' });
     }
 
-    /** Image Search's Save (imageSearchApp.js; omegasearchDsapApplet.js off the desktop) for frame=screensaver. */
+    /** Image Search's Save (imageSearchApp.js) for frame=screensaver. */
     function setPhotoSearch(search, total) {
         if (!search) return false;
         const value = { ...search, total: Number(total) || 0 };

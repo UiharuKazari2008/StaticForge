@@ -16,14 +16,13 @@
  *                     CardSpace, User Accounts
  *
  * The list pages run Security Center's own driver (securityCenterDsapApplet.js
- * securityDsapDriver) on the applet markup with that view showing, so searching, paging,
+ * securityDsapDriver, featureLoader 'security_center_lib'; the DSAP page is retired, #831) on the applet markup with that view showing, so searching, paging,
  * unblocking and approving all work; the driver's links stay inside Defender. Admins only.
  */
 (function (root) {
     'use strict';
 
     const ART = '/static_images/vista-defender';
-    const SECURITY_URL = 'security.dreamscape.jp';
     const PAGES = {
         quarantine: { view: 'blocked', icon: 'quarantine-32.png', title: 'Quarantined items', text: 'Melaton Defender keeps these clients from reaching Dreamscape until you unblock them.' },
         allowed: { view: 'auth', icon: 'allowed-32.png', title: 'Authentication Bypass', text: 'A browser whose address matches an enabled entry is signed in as that account without a PIN.' },
@@ -247,11 +246,12 @@
 
     // ---- the list pages: Security Center's driver on its own view ----
 
+    /** Security Center's library (featureLoader 'security_center_lib', #831: the DSAP page is retired). */
     async function loadSecurityCenter() {
         if (typeof root.securityDsapBuildHtml === 'function') return true;
-        if (typeof resolveDsap !== 'function' || typeof ensureDsapEntryReady !== 'function') return false;
-        const match = resolveDsap(SECURITY_URL);
-        return match ? ensureDsapEntryReady(match.entry) : false;
+        if (!root.featureLoader) return false;
+        await root.featureLoader.loadFeature('security_center_lib');
+        return typeof root.securityDsapBuildHtml === 'function';
     }
 
     function parseUrl(url) {

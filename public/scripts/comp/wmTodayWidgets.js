@@ -40,7 +40,8 @@
  *   remote-desktop  row: the last computer (wmRemoteDesktop.lastComputer()); tap reconnects
  *   server          block: Details (state, host uptime, version, CPU, RAM, disk, workers) or One
  *                   line; server_status, get_system_info, sidebar_host_metrics (admin only, never sent
- *                   otherwise), remote_workers_status (Details, 15 min); tap opens Server Manager in IE
+ *                   otherwise), remote_workers_status (Details, 15 min); no tap action (#831: Server
+ *                   Manager's dashboard is retired)
  *   music           6.5 only: the Windows Media panel (ti-2401): what plays (the phone's active media
  *                   session, AndroidMediaSession, or Melaton Media) with play / pause on tap and
  *                   Previous / Next on tap-and-hold, else Play All Songs in the default app; a page
@@ -493,9 +494,10 @@
     function galleryItems() {
         try {
             if (Array.isArray(window.originalAllImages) && window.originalAllImages.length) return window.originalAllImages;
-            if (typeof allImages !== 'undefined' && Array.isArray(allImages)) return allImages; // eslint-disable-line no-undef
+            if (typeof allImages !== 'undefined' && Array.isArray(allImages) && allImages.length) return allImages; // eslint-disable-line no-undef
         } catch (_) { /* gallery not loaded */ }
-        return [];
+        // the phone loads the whole list after boot: until then the newest prints (appInitSteps.js)
+        return Array.isArray(window.galleryHeadItems) ? window.galleryHeadItems : [];
     }
 
     function lastPrint() {
@@ -1106,7 +1108,7 @@
         if (!m) return null;
         const pages = [{ title: m.head, line2: m.uptime ? `up ${m.uptime}` : '' }];
         for (let i = 0; i < m.lines.length; i += 2) pages.push({ title: m.head, line2: m.lines[i], line3: m.lines[i + 1] || '' });
-        return { label: 'server status', icon: 'x:app-data-management-lg', pages, softKey: { label: 'Manage', action: openServerManager }, onTap: openServerManager };
+        return { label: 'server status', icon: 'x:app-data-management-lg', pages };
     }
 
     function renderServer(el, { option }) {
@@ -1116,7 +1118,7 @@
         if (!m) return false;
         if (!detailed || !m.lines.length) {
             // one row, drawn like the shell's rows (icon + bold line)
-            shell(el, 'wtw-rowlike', `<img ${imgSrcset('app-data-management')} alt=""><span class="wtw-title"></span>`, openServerManager);
+            shell(el, 'wtw-rowlike', `<img ${imgSrcset('app-data-management')} alt=""><span class="wtw-title"></span>`, null);
             setText(el.querySelector('.wtw-title'), m.compact || m.head);
             return true;
         }
@@ -1125,7 +1127,7 @@
             <span class="wtw-lines">
                 <span class="wtw-server-head"><span class="wtw-title"></span><span class="wtw-uptime"></span></span>
                 <span class="wtw-server-lines"></span>
-            </span>`, openServerManager);
+            </span>`, null);
         setText(el.querySelector('.wtw-title'), m.head);
         setText(el.querySelector('.wtw-uptime'), m.uptime ? `up ${m.uptime}` : '');
         const box = el.querySelector('.wtw-server-lines');
@@ -1133,13 +1135,6 @@
         if (box.dataset.html !== html) { box.dataset.html = html; box.innerHTML = html; }
         el.classList.toggle('is-busy', m.state === 'busy');
         return true;
-    }
-
-    function openServerManager() {
-        try {
-            if (typeof openDsapInGrimoire === 'function') { openDsapInGrimoire('dsap://dreamscape.jp/'); return; } // eslint-disable-line no-undef
-        } catch (err) { console.warn('[wmTodayWidgets] Server Manager', err); }
-        open('ie');
     }
 
     // ================================================================ Files

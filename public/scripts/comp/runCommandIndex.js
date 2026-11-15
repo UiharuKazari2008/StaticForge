@@ -639,8 +639,8 @@ function buildRunSystemCommandEntries() {
 }
 
 /**
- * Run: workspaces / favorites open Data Management on that page (openDataManagementDsap in dsapManifests.js:
- * the MMC console on the Vista desktop, #828; the DSAP elsewhere).
+ * Run: workspaces / favorites open Computer Management on that page (openDataManagementDsap in
+ * dsapManifests.js: the MMC console, #828; #831: the Data Management DSAP page is retired).
  */
 function buildRunWorkspaceManagerEntries() {
     if (typeof openDataManagementDsap !== 'function') return [];

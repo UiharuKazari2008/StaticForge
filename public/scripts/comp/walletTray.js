@@ -1037,7 +1037,7 @@
                 root.cplAuthentication.open('service');
                 return 'cardspace';
             }
-            // openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js
+            // openSecurityCenterDsap: public/scripts/comp/dsapManifests.js
             if (typeof root.openSecurityCenterDsap === 'function') {
                 root.openSecurityCenterDsap('auth');
                 return 'security-center';

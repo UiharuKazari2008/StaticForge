@@ -290,10 +290,8 @@ function applyAccountHealthFieldsToOptions(health, balance) {
     if (typeof syncFixedCreditsIndicatorStanding === 'function') {
         syncFixedCreditsIndicatorStanding();
     }
-    // dataMgmtDsapRefreshAccountIfPresent: public/scripts/comp/dataManagementDsapApplet.js
-    if (typeof dataMgmtDsapRefreshAccountIfPresent === 'function') {
-        dataMgmtDsapRefreshAccountIfPresent();
-    }
+    // Computer Management's account view, when open (mmcDataManagement.js)
+    if (window.mmcDataManagement) window.mmcDataManagement.refresh('account');
 }
 
 function handleAccountHealthUpdate(health, balance) {

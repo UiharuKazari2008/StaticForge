@@ -18,11 +18,11 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Agent session drive | `POST /agent/session/open-image`, `POST /agent/session/studio`, `POST /agent/session/update`, `POST /agent/session/prepare-update`, `POST /agent/session/restart`, `POST /agent/session/js`, `POST /agent/session/inspect`, `GET /agent/session/state`, `GET /agent/scopes`, `POST /agent/packet` | `agent_session_result` | `agent_session_command` | Opens Studio / applies change JSON / bound-tab Client Update dialog / silent prepare-update (CSS `appliedWithoutRestart` or JS `readyForRestart` + restart+reattach) / JS + HTML inspect / state snapshot (`change` + named `scopes` + `vfsPathUuid` when the key has `vfs`). `POST /agent/packet` runs the same WS handlers (generation, vfs, autofill ranking + Grimoire) under the app key's named scopes. No bind for packet/scopes. |
 | Public MCP / Grok connector | `POST /{mcpPathUuid}` Streamable HTTP (generate/upscale/expand/staged, gallery delete/scrap/favorite, Lumen/Glancewell, compare, theme eval, VFS/desktop, studio, `get_session_state`, physics, dynagen/director, LinkXi persona, autofill, NAX, prompt guide, knowledge memories, wiki, presets, notes) | same packets as `/agent/packet` / `agent_session_command`; pushes `mcp_activity`, `mcp_open_viewer`, `gallery_updated`, `agent_session_notice` | Remote Access tray `#mcpActivityIndicator` (bound + 2 min hover quoting token `appName`; right-click Disconnect; click Periscope `client:mcp-activity`), `#mcpPhysicsIndicator` (location arrow) when physics was used — also shown on Remote Access, Properties `forgedata-badge` **MCP**. Desktop context menu **Remote Access Settings** (`#remoteAccessSettingsModal`) persists `userGlobalSettings.remoteAccess` | Facade over existing `/agent` + WS. Bearer `sfapp_`. Bind is per key. First tool: `get_session_state` (includes `remoteAccess`). After apply/get the bound tab stores a checkpoint; later live checks return only the delta. `generate_image` / `get_generated_image` return a tool-channel webp plus `dest_path` / short-lived `url` for `render_file` (Grok Computer artifacts). Opens Lumen / Glancewell / nothing per Remote Access Settings. Grim setup: `dsap://mcp.dreamscape.jp/`. |
 | Session check | `OPTIONS /app`, `POST /` ping | `connection` | — | localStorage sync |
-| Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Security Center details |
+| Client performance telemetry | — | `report_client_perf`, `get_telemetry` | — | FPS/long-task/heap and UI-size sampling; Melaton Defender's History |
 | Logout | `POST /` logout | disconnect | — | Clear local state |
 | Server readiness | `OPTIONS /status` | — | — | Connecting dialog, Network and Server Center (`melaton`: domain, WAN / Ethernet) |
 | Bearer API key | `?auth=` / `Authorization` | — | — | — |
-| Application key | `X-StaticForge-App-Key` + UA | `authenticate_application`, refresh, temp tokens | — | Security Center appkeys tab |
+| Application key | `X-StaticForge-App-Key` + UA | `authenticate_application`, refresh, temp tokens | — | Key Manager (mmcAppKeys.js) |
 | WS reconnect | — | — | `connection`, `gallery_hint`, restore msgs | Circuit breaker, refresh callbacks; `gallery_hint` is the add/update probe (`total`, `lastGalleryUpdatedAt`, `latestFilename`) |
 
 ---
@@ -88,7 +88,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 |---------|------|-----|------|-------------|
 | Tag search | — | `search_tags`, `search_dataset_tags` | — | Autocomplete UI |
 | Model-aware tag suggest cutoffs | — | (applied inside `search_tags` / autofill) | — | V4.5 hides tags after 2025-05-29; V5 hides tags on/after 2026-08-01; wiki pages stay browsable (`modules/tagModelCutoff.js`) |
-| Autofill ranking config | — | `get_autofill_ranking`, `update_autofill_ranking`, `test_autofill_ranking` | `autofill_ranking_updated` | autofillConfigDsapApplet (admin) |
+| Autofill ranking config | — | `get_autofill_ranking`, `update_autofill_ranking`, `test_autofill_ranking` | `autofill_ranking_updated` | mmcAutofillRanking (admin) |
 | File search | — | `search_files` | `search_results_*` | File search modal |
 | Tag wiki / Grimoire | `GET /private/wiki/*` (cached pages) | `search_tag_wiki`, `get_tag_wiki_page`, `refresh_tag_wiki_page`, `resolve_grimoire_url`, `get_apocrypha_zine` | — | DSAP router, panes; Apocrypha zine interior |
 | Static NovelAI docs | — | `get_static_wiki_site_index`, `get_static_wiki_page` | — | — |
@@ -133,7 +133,7 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Chat sessions | — | `create_chat_session`, `get_chat_sessions`, … | `chat_streaming_*` | Chat UI |
 | Director SI training | — | `director_*` | `director_*` | Director modals, served by `modules/cursorDirector.js` / `modules/xiDirector.js` engines (see [ws/director.md](ws/director.md)). No xAI API calls remain (Yozora #738). |
 | LinkXi persona (MCP) | — | `get_persona_settings`, `save_persona_settings` | — | MCP `get_linkxi_persona` / `save_linkxi_persona`; in-app `dsap://xi.dyna.dreamscape.jp/persona` |
-| MCP connector Grim | — | `resolve_grimoire_url` (`getPage`) | — | `dsap://mcp.dreamscape.jp/` live connector URLs + Enshutsuka project paste-block |
+| MCP connector Grim | — | `resolve_grimoire_url` (`getPage`) | — | `dsap://mcp.dreamscape.jp/` live connector URLs + Enshutsuka project paste-block (read by Remote Access Properties' MCP Connector tab; the client page is retired, #831) |
 
 ---
 
@@ -166,12 +166,12 @@ Legend: **REST** = HTTP route; **WS** = WebSocket packet type; **—** = no dire
 | Favorites | — | `favorites_*` | — | — |
 | Config editor | — | `config_editor_*` | — | Config editor applet |
 | Managed RunPod GPU pods | — | `runpod_pods_status`, `runpod_pod_start`, `runpod_pod_stop` | `runpod_pods_status_update` | Desktop tray icon; Periscope source `runpod`; auto-stop when no sessions and idle |
-| Security center | — | `get_blocked_ips`, `set_admin_pin`, `list_application_keys`, … | — | securityCenterDsapApplet |
+| Security center | — | `get_blocked_ips`, `set_admin_pin`, `list_application_keys`, … | — | windowsDefender / cplAuthentication / mmcAppKeys (securityCenterDsapApplet library) |
 | API keys | — | `get_api_key_services`, `add_api_key`, … | — | apiKeyModal |
 | Log viewer | `GET /{logViewerPathUuid}/*` | — | — | logViewerApplet (Periscope); client sources include Gallery Load, Developer Warnings, MCP Activity; `runpod` for managed GPU pods |
 | Pending queue admin | `GET /pending` | `cancel_pending_requests` | — | serverManagement |
 | Runtime recompile | — | `recompile_runtime_assets`, `refresh_server_cache` | `runtime_compile_*`, `service_worker_cache_update` | — |
-| Generation quips | — | `get_generation_quips`, `generation_quips_run`, … | `generation_quips_*` | quipsDsapApplet |
+| Generation quips | — | `get_generation_quips`, `generation_quips_run`, … | `generation_quips_*` | mmcQuips |
 | App options / account bootstrap | — | `get_app_options`, `retry_account_data` | `account_data_health_updated` | accountDataBootstrap.js |
 | Traces | `GET /traces/*` | — | — | traces.js UI |
 

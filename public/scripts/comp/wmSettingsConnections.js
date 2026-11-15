@@ -20,9 +20,10 @@
  *                          Disconnect Cellular Data; then the Dreamscape connection row: tap connects
  *                          (wsClient.manualReconnect) or disconnects (cancelConnectionFromUser,
  *                          after a warning), as the tray flyout's "Connect or disconnect"
- *   Remote Access          remoteAccessProperties.js on three tabs: priority client
+ *   Remote Access          remoteAccessProperties.js on four tabs: priority client
  *                          (setAgentPriorityClient), generation method + Auto Generate + prints
- *                          per turn, Open With; one persistRemoteAccessSettingsPatch on ok
+ *                          per turn, Open With; one persistRemoteAccessSettingsPatch on ok; MCP:
+ *                          the connector addresses (resolve_grimoire_url), read-only with Copy (#831)
  *   Grimoire               Internet Properties for Grimoire / Alchemy through cplInternetOptions.js
  *                          (loaded on demand): home page + search provider, delete browsing
  *                          history, Alchemy's picture quality and frame rates (saveAlchemy)
@@ -761,6 +762,72 @@
         };
     }
 
+    // MCP (#831): the MCP Connector's addresses, read-only, each with Copy (remoteAccessProperties.js's
+    // MCP Connector tab): the server's connector page, resolve_grimoire_url (modules/mcpServerInfo.js)
+    const MCP_DSAP_URL = 'dsap://mcp.dreamscape.jp/';
+    const MCP_FIELDS = [
+        ['url', 'Connector URL:', 'connectorUrl'],
+        ['mcp', 'MCP path:', 'mcpUrl'],
+        ['authorize', 'Authorize URL:', 'oauthAuthorize'],
+        ['token', 'Token URL:', 'oauthToken'],
+        ['scopes', 'Scopes:', 'scopes'],
+        ['recommended', 'Recommended:', 'recommendedScopes']
+    ];
+    const MCP_DEFAULT_SCOPES = 'generation gallery workspace chat';
+
+    function loadMcp(d) {
+        if (d.mcp) return;
+        d.mcp = { loading: true, page: null };
+        const client = ws();
+        const p = client && typeof client.sendMessage === 'function'
+            ? Promise.resolve(client.sendMessage('resolve_grimoire_url', { url: MCP_DSAP_URL }, false)).then((r) => (r && r.page && r.page.data ? r.page.data : null))
+            : Promise.resolve(null);
+        const sh = root.wmShell;
+        if (sh && typeof sh.busy === 'function') sh.busy(p).catch(() => {});
+        p.catch((err) => { console.warn('Remote Access: could not read the connector addresses', err); return null; })
+            .then((page) => { d.mcp = { loading: false, page }; if (d.rerender) d.rerender(); });
+    }
+
+    async function copyText(text) {
+        try {
+            // eslint-disable-next-line no-undef
+            if (typeof copyTextToClipboard === 'function') { await copyTextToClipboard(text); return true; }
+            if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+        } catch (_) { /* the fallback below */ }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+        ta.remove();
+        return ok;
+    }
+
+    function renderMcp(el, d) {
+        loadMcp(d);
+        el.classList.add('wm-setc-mcp');
+        const page = d.mcp && d.mcp.page;
+        const empty = d.mcp && d.mcp.loading ? '' : (page ? 'Not set up on this server' : 'Unavailable');
+        el.innerHTML = `${ui.sub('Grok Custom Connector')}
+            <p>In Grok, add a custom connector with these addresses. The path is unlisted; do not share it.</p>
+            ${MCP_FIELDS.map(([id, label, key]) => {
+                let value = (page && page[key]) || '';
+                if (!value && key === 'scopes' && page) value = MCP_DEFAULT_SCOPES;
+                const fid = ui.uid('wmSetcMcp');
+                return `<label class="wm-setc-mcp-label" for="${fid}">${esc(label)}</label>
+                    <div class="wm-setc-mcp-row">${ui.edit(fid, value, `readonly spellcheck="false" placeholder="${esc(empty)}" data-mcp="${esc(id)}"`)}<button type="button" class="wm-button" data-copy="${esc(id)}"${value ? '' : ' disabled'}>Copy</button></div>`;
+            }).join('')}`;
+        el.querySelectorAll('[data-copy]').forEach((b) => b.addEventListener('click', async () => {
+            const input = el.querySelector(`[data-mcp="${b.dataset.copy}"]`);
+            if (!input || !input.value) return;
+            input.focus();
+            input.select();
+            if (!(await copyText(input.value))) await ui.messageBox({ title: 'Remote Access', icon: 'error', text: 'The address could not be copied.' });
+        }));
+    }
+
     wmSettings.registerPage({
         id: 'remote',
         // Personal: how agents and prints reach this phone (Yukimi); set-usb went to Continuity
@@ -768,7 +835,7 @@
         label: 'Remote Access',
         // Remote Desktop Mobile's icon (tsclient); 6.5's ROM has no Start icon for it, so 6.5 shows this one too
         icon: 'app-remote-desktop-mobile-lg',
-        tabs: [['general', 'General'], ['generation', 'Generation'], ['openwith', 'Open With']],
+        tabs: [['general', 'General'], ['generation', 'Generation'], ['openwith', 'Open With'], ['mcp', 'MCP']],
         available: () => typeof root.setAgentPriorityClient === 'function' && typeof root.isAgentPriorityClient === 'function',
         init() {
             const saved = remoteState();
@@ -790,6 +857,7 @@
             d.rerender = api.rerender;
             const p = d.p;
             const touch = () => { d.dirty = true; };
+            if (tab === 'mcp') { renderMcp(el, d); return; }
             if (tab === 'generation') {
                 el.innerHTML = `<p>Click an option, and then choose where prints open, if needed.</p>
                     ${METHODS.map(([v, l]) => ui.radio('method', v, l, p.method === v)).join('')}

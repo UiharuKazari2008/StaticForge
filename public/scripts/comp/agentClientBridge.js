@@ -503,11 +503,14 @@
         // findStartMenuLaunchableById / startMenuLaunchables / buildToolsSubmenuItems / flattenToolsSubmenuItems: public/scripts/comp/modalUtils.js
         let item = findStartMenuLaunchableById(launchId);
         if (!item) item = startMenuLaunchables.find((entry) => entry.launchId === launchId) || null;
-        if (!item) item = flattenToolsSubmenuItems(buildToolsSubmenuItems()).find((entry) => entry.launchId === launchId) || null;
+        // hidden: the ids kept off the Start menu ('control-panel', 'enshutsuka-rules', 'linkxi-persona' ...) launch too
+        if (!item) item = flattenToolsSubmenuItems(buildToolsSubmenuItems({ hidden: true })).find((entry) => entry.launchId === launchId) || null;
         if (!item && typeof startMenuShellConfig !== 'undefined') {
             item = startMenuShellConfig.find((entry) => entry && entry.launchId === launchId) || null;
         }
-        // DSAPs kept out of the Start menu (Exchange, Site Homepage) still launch by id. getDsapMenuEntries: public/scripts/comp/dsapRegistry.js
+        // DSAPs kept out of the Start menu still launch by id; the retired pages' ids (#831: exchange, site-homepage,
+        // dynamic-quips, autofill-ranking, wiki-manager, security-center, data-management, ispy, server-manager) open
+        // their consoles / programs (dsapManifests.js). getDsapMenuEntries: public/scripts/comp/dsapRegistry.js
         if (!item && typeof getDsapMenuEntries === 'function') {
             item = getDsapMenuEntries().find((entry) => entry.launchId === launchId && (!entry.adminOnly || localStorage.getItem('userType') === 'admin')) || null;
         }

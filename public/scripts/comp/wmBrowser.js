@@ -25,9 +25,11 @@
  * two agree, else a fresh navigation); Favorites and History are layers too.
  * Home: the Grimoire homepage in the start page's layout, and the Grimoire's wiki, search and
  * documentation pages drawn here without Alchemy (see "Grimoire pages" below).
- * Dreamscape apps (dsap: addresses: Data Management, Image Search, Control Panel, Agora ...) run
- * here too, the desktop's own applet code in IE's page (see "Dreamscape apps" below); their phone
- * layout is public/css/wm-dsap.css. Fandom and the Apocrypha show here with the desktop Grimoire's
+ * Dreamscape apps (dsap: addresses: Image Search, Control Panel, Agora ...) run here too, the
+ * desktop's own applet code in IE's page (see "Dreamscape apps" below); their phone layout is
+ * public/css/wm-dsap.css. The old apps that are Settings pages on the phone now (Data Management's
+ * workspaces, application keys, LinkXi persona, Director rules, MCP Connector) open those pages,
+ * and Server Manager's dashboard is retired (phonePageFor, #831). Fandom and the Apocrypha show here with the desktop Grimoire's
  * own renderers (see "Fandom and the Apocrypha" below).
  * Sessions: Alchemy has a 4-session cap, so the session is closed when the app is closed (title
  * X), 60 s after the app goes behind another, and when the tab goes away.
@@ -91,8 +93,8 @@
     const RECENT_KEY = 'dreamWikiRecentPages'; // DREAMWIKI_RECENT_STORAGE_KEY, shared with the desktop Grimoire
     const RECENT_MAX = 20;
     const ALCHEMY_HOME = 'https://www.bing.com/'; // ALCHEMY_HOME_URL: public/scripts/comp/featureLoader.js
-    // the desktop Grimoire homepage's Settings, Fandom and Apocrypha buttons (bindDreamWikiHomepageEvents)
-    const SETTINGS_URL = 'dsap://dreamscape.jp/';
+    // the desktop Grimoire homepage's Fandom and Apocrypha buttons (bindDreamWikiHomepageEvents); its
+    // Settings button opened Server Manager's dashboard, retired with no phone version (#831)
     const FANDOM_HOME = 'rdf://wiki.fandom.jp/';
     const APOCRYPHA_HOME = 'rdf://apocrypha.737.jp.net/';
 
@@ -2344,7 +2346,6 @@
             const tagIcon = iconImg('/static_images/wm61/ie-page.png');
             const rows = [
                 linkTo({ kind: 'search', q: '' }, 'Search the Grim', iconImg('/static_images/wm61/app-search.png')),
-                webLink(SETTINGS_URL, 'Settings', iconImg('/static_images/wm61/app-settings.png')),
                 linkTo({ kind: 'wiki', tag: 'tag groups' }, 'Danbooru Tags', tagIcon),
                 linkTo({ kind: 'wiki', tag: 'tag_group:index' }, 'e621 Tags', tagIcon),
                 webLink(FANDOM_HOME, 'Fandom', iconImg('/static_images/fandom.png')),
@@ -2579,8 +2580,60 @@
         ws.notify({ title: 'Internet Explorer', icon: 'warning', text });
     }
 
+    /**
+     * The old Dreamscape apps that have a phone version as a Settings page now (#831), or none at all:
+     * { page, tab } for wmSettings.open, 'retired' (no phone version), or null (IE shows the applet).
+     *   dreamscape.jp/                       Server Manager's dashboard: retired
+     *   data.dreamscape.jp/...               Data Management: System > Workspaces
+     *   security.dreamscape.jp/appkeys|keys  application keys: System > Application Requests
+     *   xi.dyna.dreamscape.jp/persona,
+     *   memories.dyna.dreamscape.jp/persona|linkxi|rules|static_rules   Director > Persona / Static Rules
+     *   mcp.dreamscape.jp/                   Remote Access > MCP
+     */
+    function phonePageFor(raw) {
+        const text = String(raw || '').trim().replace(/^dsap:\/\//i, '').replace(/[?#].*$/, '').toLowerCase();
+        const [host, first = ''] = text.split('/').filter(Boolean);
+        if (!host) return null;
+        if (host === 'dreamscape.jp') return 'retired';
+        if (host === 'data.dreamscape.jp') return { page: 'workspaces' };
+        if (host === 'security.dreamscape.jp' && (first === 'appkeys' || first === 'keys')) return { page: 'app-requests' };
+        if (host === 'xi.dyna.dreamscape.jp' && first === 'persona') return { page: 'director', tab: 'dirx-persona' };
+        if (host === 'memories.dyna.dreamscape.jp' && (first === 'persona' || first === 'linkxi')) return { page: 'director', tab: 'dirx-persona' };
+        if (host === 'memories.dyna.dreamscape.jp' && (first === 'rules' || first === 'static_rules')) return { page: 'director', tab: 'dirx-rules' };
+        if (host === 'mcp.dreamscape.jp') return { page: 'remote', tab: 'mcp' };
+        // any other retired page (its entry only opens a desktop window now), Image Search's aside
+        // (Search Pictures takes those in openDsap): no phone version, IE stays where it is
+        let m = null;
+        try { m = dsapApi() ? window.resolveDsap(raw) : null; } catch (_) { m = null; }
+        if (m && m.entry && typeof m.entry.opensApp === 'function' && !retiredToSearch(m)) return 'retired';
+        return null;
+    }
+
+    /** A retired entry whose addresses are Search Pictures' on the phone (Image Search's). */
+    function retiredToSearch(m) {
+        const host = String(m.canonicalUrl || m.normalized || '').replace(/^dsap:\/\//i, '').split(/[/?#]/)[0].toLowerCase();
+        return /^(ispy|omegasearch\.dyna)\.dreamscape\.jp$/.test(host) && !!window.wmSearchPictures;
+    }
+
+    /** Opens the phone page an old Dreamscape app address stands for; true when it took the address. */
+    function openPhonePage(raw) {
+        const target = phonePageFor(raw);
+        if (!target) return false;
+        const s = window.wmSettings;
+        if (target === 'retired' || !s || typeof s.open !== 'function') { cannotOpen(raw); return true; }
+        if (s.open(target.page, target.tab)) return true;
+        // the Director's page is there once the Director has started (director.js initializeDirector)
+        const start = target.page === 'director' && typeof window.initializeDirector === 'function' ? window.initializeDirector : null;
+        if (!start) { cannotOpen(raw); return true; }
+        const run = Promise.resolve().then(start).catch(() => {});
+        (ws && typeof ws.busy === 'function' ? ws.busy(run) : run).catch(() => {})
+            .then(() => { if (!s.open(target.page, target.tab)) cannotOpen(raw); });
+        return true;
+    }
+
     function openDsap(raw, title) {
         closeSub();
+        if (openPhonePage(raw)) return;
         let m = null;
         try { m = dsapApi() ? window.resolveDsap(raw) : null; } catch (_) { m = null; }
         if (!m) { cannotOpen(raw); return; }
@@ -2590,6 +2643,17 @@
             if (g) openLocal(g, title);
             else if (coreAddress(m.normalized)) openCore(m.normalized, title);
             else cannotOpen(raw);
+            return;
+        }
+        // a retired page (#831: its entry only opens a desktop window now, opensApp, and has no applet
+        // left to show here): Image Search's addresses are Search Pictures on the phone (its opensApp
+        // goes there, dsapManifests.js dsapPhoneSearchPictures); the rest have no phone version
+        if (m.entry && typeof m.entry.opensApp === 'function') {
+            if (retiredToSearch(m)) {
+                try { m.entry.opensApp(m); } catch (err) { console.warn('[wmBrowser] Search Pictures', err); cannotOpen(raw); }
+            } else {
+                cannotOpen(raw);
+            }
             return;
         }
         const cur = entry();
@@ -2947,7 +3011,8 @@
             navigate(view.getAttribute('data-fandom-index-view') === 'all' ? FANDOM_HOME + '?all=1' : FANDOM_HOME, 'Fandom Wikis');
             return;
         }
-        if (t.closest('[data-action="open-fandom-wiki-import"]')) { swallow(); navigate('dsap://wiki.dyna.dreamscape.jp/import'); return; }
+        // Fandom's Import is desktop-only (#831): wm-browser.css hides the button; a tap that still lands does nothing
+        if (t.closest('[data-action="open-fandom-wiki-import"]')) { swallow(); return; }
         const a = t.closest('a');
         if (!a || !box.contains(a)) return;
         swallow();
@@ -4373,6 +4438,8 @@
                 const phoneOpenDsap = async function (url) {
                     const address = String(url || '').trim();
                     if (!address) return undefined;
+                    // an old app that is a Settings page on the phone now opens there, not over IE (#831)
+                    if ((/^dsap:/i.test(address) || dsapAddress(address)) && openPhonePage(address)) return undefined;
                     if (/^dsap:/i.test(address) || dsapAddress(address)) { ws.open(APP_ID); openDsap(address); return undefined; }
                     openGrimoireTarget({ address });
                     return undefined;

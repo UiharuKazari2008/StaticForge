@@ -1,7 +1,6 @@
 /**
- * Autofill Ranking (Yozora #828): the MMC snap-in that replaced the SmartText Ranking DSAP on the
- * desktop (dsap://autofill.dreamscape.jp/ opens it there; elsewhere the DSAP page stays,
- * public/scripts/comp/autofillConfigDsapApplet.js). Admin only: anyone else gets the access-denied
+ * Autofill Ranking (Yozora #828): the MMC snap-in that replaced the SmartText Ranking DSAP (#831: the
+ * page is retired; dsap://autofill.dreamscape.jp/ opens this: dsapManifests.js). Admin only: anyone else gets the access-denied
  * page. It edits the shared ranking config (config.autofillRanking, modules/autofillRankingSettings.js)
  * that these read:
  *   - modules/tag-lookup.js searchTagsAutofill (server ranking)
@@ -62,7 +61,7 @@
         spellcheck: 'Spell Check'
     };
 
-    // Copied from autofillConfigDsapApplet.js (the DSAP keeps its own copy for the non-desktop page):
+    // Copied from the retired SmartText Ranking DSAP (autofillConfigDsapApplet.js, removed in #831):
     // what each scoring number does, by group / key (and one level of nesting for tiers.tokenScores
     // and tiers.coverageWeights), mirroring modules/autofillRankingSettings.js DEFAULT_AUTOFILL_RANKING.
     const AUTOFILL_DSAP_FIELD_DESCRIPTIONS = {
@@ -161,7 +160,7 @@
         }
     };
 
-    // Copied from autofillConfigDsapApplet.js: the score-breakdown labels of calculateComprehensiveRanking.
+    // Copied from the retired DSAP (autofillConfigDsapApplet.js): the score-breakdown labels of calculateComprehensiveRanking.
     // Friendly labels for the score-breakdown components produced by calculateComprehensiveRanking
     // (public/scripts/comp/autocompleteUtils.js) - both the tag and non-tag breakdown shapes.
     const AUTOFILL_DSAP_BREAKDOWN_LABELS = {
@@ -216,7 +215,7 @@
 
     // ---- Test ----------------------------------------------------------------------------------------
 
-    // Copied from autofillConfigDsapApplet.js (autofillDsapDriver): the live mixed rank of a result set.
+    // Copied from the retired DSAP (autofillConfigDsapApplet.js autofillDsapDriver): the live mixed rank of a result set.
     const rank = {
     // Split the server's mixed result set by type, apply the exact client prepare*ForDisplay
     // transforms, add client-only dynamic placeholders, then run the shared live merge/rank path

@@ -13,7 +13,7 @@
  * wiki body rendering, history shapes, etc.), we use shimActivate or a lightweight
  * activate hook that parses the match and calls the appropriate shell method.
  *
- * New domains / applets should live in their own file (like quipsDsapApplet.js)
+ * New domains / applets should live in their own file (like novelsDsapApplet.js)
  * and call registerDsap at load time.
  *
  * See: public/scripts/comp/dsapRegistry.js (resolveDsap, navigateDsapIfMatched, createDsapHost, etc.)

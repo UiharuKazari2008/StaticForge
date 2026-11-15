@@ -2548,4 +2548,406 @@
             return [];
         }
     });
+
+    // ---------------------------------------------------------------- Workspaces (#831)
+    // Data Management's workspace list, the quick tasks only (Yukimi: "just the very much only
+    // required to do quick tasks"): New, Rename, Delete and Properties (name, colour), through the
+    // desktop's own calls (workspaceUtils.js createWorkspace / renameWorkspace / deleteWorkspace,
+    // wsClient.updateWorkspaceSettings with the record's whole settings, as workspaceDialogs.js does).
+
+    const wsMap = () => {
+        try { if (typeof workspaces !== 'undefined' && workspaces) return workspaces; } catch (_) { /* not loaded */ } // eslint-disable-line no-undef
+        return window.workspaces || {};
+    };
+    const wsActiveId = () => {
+        try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) return activeWorkspace; } catch (_) { /* not loaded */ } // eslint-disable-line no-undef
+        return 'default';
+    };
+    const wsIsDefault = (w) => !!(w && (w.isDefault || w.id === 'default'));
+    const wsOrdered = () => Object.values(wsMap()).filter((w) => w && w.id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    const serverUp = () => { const c = window.wsClient; return !!(c && typeof c.isConnected === 'function' && c.isConnected()); };
+    const globalFn = (name) => (typeof window[name] === 'function' ? window[name] : null);
+    const wsSettingsOf = (w) => ({
+        name: w.name, color: w.color || '#102040', backgroundColor: w.backgroundColor || null, primaryFont: w.primaryFont || null,
+        textareaFont: w.textareaFont || null, wallpaper: w.wallpaper || null, wallpaperPosition: w.wallpaperPosition || null,
+        nicknames: Array.isArray(w.nicknames) ? w.nicknames.slice() : []
+    });
+    const wsColor = (c) => (/^#[0-9a-f]{6}$/i.test(String(c || '')) ? String(c).toLowerCase() : '#102040');
+    const wsError = (title, text) => ui.messageBox({ title, icon: 'error', text });
+    const notConnected = (title) => wsError(title, 'Melaton is not connected to the server.');
+    const busyDo = (fn) => { const s = sh(); return s && typeof s.busy === 'function' ? s.busy(fn, { paint: true }) : Promise.resolve().then(fn); };
+
+    async function wsReload() {
+        const load = globalFn('loadWorkspaces');
+        if (load) { try { await load(); } catch (_) { /* the update push follows */ } }
+    }
+
+    function wsRedraw(d) {
+        if (d.rerender) d.rerender();
+        softKeysAgain();
+    }
+
+    function softKeysAgain() {
+        const s = sh();
+        if (s && typeof s.refreshSoftKeys === 'function') s.refreshSoftKeys();
+    }
+
+    /**
+     * A list page's rows: a tap selects (soft keys follow), a second tap on the selected row calls
+     * again(); the list keeps its scroll across redraws, and d.reveal brings the selected row into view.
+     */
+    function bindListRows(el, d, again) {
+        const body = el.querySelector('.wm-sys-lv-body');
+        if (body) {
+            body.scrollTop = d.lvTop || 0;
+            const sel = d.reveal && body.querySelector('.wm-sys-lv-row.is-selected');
+            if (sel) sel.scrollIntoView({ block: 'nearest' });
+            d.reveal = false;
+            body.addEventListener('scroll', () => { d.lvTop = body.scrollTop; }, { passive: true });
+        }
+        el.querySelectorAll('.wm-sys-lv-row').forEach((row) => row.addEventListener('click', () => {
+            const twice = d.sel === row.dataset.key;
+            d.sel = row.dataset.key;
+            el.querySelectorAll('.wm-sys-lv-row.is-selected').forEach((r) => r.classList.remove('is-selected'));
+            row.classList.add('is-selected');
+            if (twice) again(d.sel);
+            else softKeysAgain();
+        }));
+    }
+
+    async function wsNew(d) {
+        const name = await ui.messageBox({ title: 'New Workspace', text: 'Name of the new workspace:', input: { value: '' }, buttons: [{ text: 'Create', value: true }, { text: 'Cancel', value: false }], cancelValue: false });
+        const text = typeof name === 'string' ? name.trim() : '';
+        if (!text) return;
+        if (!serverUp()) { await notConnected('New Workspace'); return; }
+        const create = globalFn('createWorkspace');
+        let res = null;
+        try {
+            res = await busyDo(() => (create ? create(text) : window.wsClient.createWorkspace(text)));
+        } catch (_) {
+            return; // createWorkspace reported it
+        }
+        const id = res && (res.id || (res.workspace && res.workspace.id));
+        await busyDo(wsReload);
+        if (id) { d.sel = id; d.reveal = true; }
+        wsRedraw(d);
+    }
+
+    async function wsRename(d, w) {
+        if (!w) return;
+        const name = await ui.messageBox({ title: 'Rename Workspace', text: 'Type a new name for the workspace:', input: { value: w.name || '' }, buttons: [{ text: 'Rename', value: true }, { text: 'Cancel', value: false }], cancelValue: false });
+        const text = typeof name === 'string' ? name.trim() : '';
+        if (!text || text === w.name) return;
+        if (!serverUp()) { await notConnected('Rename Workspace'); return; }
+        try {
+            await busyDo(async () => {
+                // the default workspace keeps its id; its name is a setting like the others' (workspaceDialogs.js)
+                const rename = globalFn('renameWorkspace');
+                if (wsIsDefault(w) || !rename) await window.wsClient.updateWorkspaceSettings(w.id, { ...wsSettingsOf(w), name: text });
+                else await rename(w.id, text);
+                w.name = text;
+                await wsReload();
+            });
+        } catch (err) {
+            await wsError('Rename Workspace', `The workspace could not be renamed. ${(err && err.message) || ''}`.trim());
+        }
+        wsRedraw(d);
+    }
+
+    async function wsDelete(d, w) {
+        if (!w || wsIsDefault(w)) return;
+        const yes = await ui.messageBox({
+            title: 'Delete Workspace', icon: 'warning',
+            text: `All items in ${w.name || w.id} will be moved to the Default workspace, and the workspace will be deleted.\n\nDo you want to continue?`,
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+        });
+        if (yes !== true) return;
+        if (!serverUp()) { await notConnected('Delete Workspace'); return; }
+        await busyDo(async () => {
+            const del = globalFn('deleteWorkspace');
+            if (del) await del(w.id);
+            else await window.wsClient.deleteWorkspace(w.id);
+            await wsReload();
+        }).catch(() => {});
+        d.sel = null;
+        wsRedraw(d);
+    }
+
+    function wsProps(d, w) {
+        if (!w) return;
+        d.props = { id: w.id, name: w.name || w.id, color: wsColor(w.color) };
+        wsRedraw(d);
+    }
+
+    /** Properties' ok: false keeps the page open (it goes back to the list, or stays on an error). */
+    async function wsSaveProps(d) {
+        const p = d.props;
+        const w = p && wsMap()[p.id];
+        if (!w) { d.props = null; wsRedraw(d); return false; }
+        const name = String(p.name || '').trim();
+        if (!name) { await wsError('Workspace Properties', 'Type a name.'); return false; }
+        const color = wsColor(p.color);
+        if (name !== w.name || color !== wsColor(w.color)) {
+            if (!serverUp()) { await notConnected('Workspace Properties'); return false; }
+            try {
+                await window.wsClient.updateWorkspaceSettings(w.id, { ...wsSettingsOf(w), name, color });
+            } catch (err) {
+                await wsError('Workspace Properties', `The changes could not be saved. ${(err && err.message) || ''}`.trim());
+                return false;
+            }
+            Object.assign(w, { name, color });
+            await wsReload();
+            const theme = globalFn('switchWorkspaceTheme');
+            if (w.id === wsActiveId() && theme) { try { theme(w.id); } catch (_) { /* the theme follows on the next switch */ } }
+        }
+        d.props = null;
+        wsRedraw(d);
+        return false;
+    }
+
+    wmSettings.registerPage({
+        id: 'workspaces', tab: 'system', label: 'Workspaces', icon: 'app-data-management',
+        available: () => !!(window.wsClient && typeof window.wsClient.updateWorkspaceSettings === 'function'),
+        init: () => ({ sel: wsActiveId(), props: null, reveal: true }),
+        softKeys(d) {
+            if (d.props) return { left: { label: 'Cancel', action: () => { d.props = null; wsRedraw(d); } }, right: null };
+            const w = d.sel ? wsMap()[d.sel] : null;
+            return {
+                left: { label: 'New', action: () => wsNew(d) },
+                right: {
+                    label: 'Menu',
+                    menu: () => [
+                        { label: 'New...', action: () => wsNew(d) },
+                        { label: 'Rename...', disabled: !w, action: () => wsRename(d, w) },
+                        { label: 'Delete', disabled: !w || wsIsDefault(w), action: () => wsDelete(d, w) },
+                        '-',
+                        { label: 'Properties', disabled: !w, action: () => wsProps(d, w) }
+                    ]
+                }
+            };
+        },
+        render(el, tab, d, api) {
+            d.rerender = api.rerender;
+            el.classList.add('wm-sys-ws');
+            const p = d.props;
+            if (p && wsMap()[p.id]) {
+                const id = ui.uid('wmSysWsName');
+                el.classList.remove('wm-sys-ws-list');
+                el.innerHTML = `${ui.sub(`${wsMap()[p.id].name || p.id} Properties`)}
+                    ${ui.row('Name:', ui.edit(id, p.name, 'maxlength="64" spellcheck="false"'), { for: id })}
+                    ${ui.row('Color:', `<label class="wmsp-color"><input type="color" value="${esc(p.color)}" data-f="color"><span>${esc(p.color.toUpperCase())}</span></label>`)}`;
+                el.querySelector(`#${id}`).addEventListener('input', (e) => { p.name = e.target.value; });
+                const color = el.querySelector('[data-f="color"]');
+                color.addEventListener('input', () => { p.color = color.value; color.nextElementSibling.textContent = color.value.toUpperCase(); });
+                return;
+            }
+            d.props = null;
+            const list = wsOrdered();
+            if (d.sel && !wsMap()[d.sel]) d.sel = null;
+            const cur = wsActiveId();
+            el.classList.add('wm-sys-ws-list');
+            el.innerHTML = list.length
+                ? listView([{ label: 'Name', width: '1fr' }, { label: 'Status', width: '32%' }], list.map((w) => ({ key: w.id, cells: [w.name || w.id, w.id === cur ? 'Current' : ''] })), d.sel)
+                : '<p class="wm-sys-managed-none">There are no workspaces.</p>';
+            // a second tap on the selected workspace shows its properties
+            bindListRows(el, d, (key) => wsProps(d, wsMap()[key]));
+        },
+        commit(d) {
+            if (d.props) return wsSaveProps(d);
+            return [];
+        }
+    });
+
+    // ---------------------------------------------------------------- Application Requests (#831)
+    // Key Manager's Pending Requests (mmcAppKeys.js) for the phone: the programs that asked for an
+    // application key, Approve / Deny, and the issued key shown once with Copy. Admin only. Packets:
+    // 195-applicationAuthHandler.js list_ / approve_ / deny_application_auth_request(s),
+    // get_application_auth_scopes. Accounts shows an alert while a request waits (window.wmAppRequests).
+
+    const AR = { pending: [], scopes: [], loaded: false, at: 0, loading: null, listeners: new Set() };
+    const isAdminUser = () => { try { return localStorage.getItem('userType') === 'admin'; } catch (_) { return false; } };
+
+    async function arSend(type, data) {
+        const c = window.wsClient;
+        if (!c || typeof c.sendMessage !== 'function') throw new Error('Melaton is not connected to the server.');
+        const r = await c.sendMessage(type, data || {}, false);
+        return (r && r.data && typeof r.data === 'object' && !Array.isArray(r.data) && r.success === undefined) ? r.data : r;
+    }
+
+    /** The pending requests (asked again when force, or when over a minute old). */
+    function arLoad(force) {
+        if (!isAdminUser() || !serverUp()) return Promise.resolve(AR.pending);
+        if (AR.loading) return AR.loading;
+        if (!force && AR.loaded && Date.now() - AR.at < 60000) return Promise.resolve(AR.pending);
+        AR.loading = Promise.all([
+            arSend('list_application_auth_requests', { status: 'pending' }),
+            AR.scopes.length ? null : arSend('get_application_auth_scopes', {}).catch(() => null)
+        ]).then(([r, s]) => {
+            AR.pending = (r && Array.isArray(r.requests)) ? r.requests.filter((x) => x && (!x.status || x.status === 'pending')) : AR.pending;
+            if (s && Array.isArray(s.scopes)) AR.scopes = s.scopes;
+            AR.loaded = true;
+        }).catch((err) => {
+            console.warn('Settings: application requests', err);
+        }).finally(() => {
+            AR.loading = null;
+            AR.at = Date.now();
+            AR.listeners.forEach((fn) => { try { fn(AR.pending); } catch (_) { /* a reader's own problem */ } });
+        }).then(() => AR.pending);
+        return AR.loading;
+    }
+
+    function arScope(id) {
+        if (id === 'universal') return 'All Dreamscape requests';
+        const s = AR.scopes.find((x) => x.id === id);
+        return s ? (s.label || s.id) : id;
+    }
+    const arPurposes = (list) => {
+        const scopes = Array.isArray(list) && list.length ? list : ['universal'];
+        return scopes.includes('universal') ? '<All>' : scopes.map(arScope).join(', ');
+    };
+    const arSignsInAs = (r) => ((r.userType || 'admin') === 'admin' ? 'Administrator' : 'Read-only user');
+    const arDate = (t) => { const d = t ? new Date(t) : null; return d && !Number.isNaN(d.getTime()) ? d.toLocaleString() : ''; };
+    const arById = (id) => AR.pending.find((r) => String(r.id) === String(id)) || null;
+
+    async function copyText(text) {
+        try {
+            if (typeof copyTextToClipboard === 'function') { await copyTextToClipboard(text); return true; } // eslint-disable-line no-undef
+            if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+        } catch (_) { /* the fallback below */ }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+        document.body.appendChild(ta);
+        ta.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+        ta.remove();
+        return ok;
+    }
+
+    async function arApprove(d, r) {
+        if (!r) return;
+        const yes = await ui.messageBox({
+            title: 'Approve Request', icon: 'question',
+            text: `Issue a key to ${r.appName}?\n\nRequest code: ${r.requestCode}\nPurposes: ${arPurposes(r.scopes)}\nSigns in as: ${arSignsInAs(r)}\n\nApprove only a request whose code the program showed you.`,
+            buttons: [{ text: 'Approve', value: true }, { text: 'Cancel', value: false }], cancelValue: false
+        });
+        if (yes !== true) return;
+        let res = null;
+        try {
+            res = await busyDo(() => arSend('approve_application_auth_request', { requestId: r.id }));
+            if (!res || res.success === false) throw new Error((res && res.error) || 'The request could not be approved.');
+        } catch (err) {
+            await wsError('Approve Request', (err && err.message) || 'The request could not be approved.');
+            return;
+        }
+        d.sel = null;
+        d.details = false;
+        await busyDo(() => arLoad(true));
+        wsRedraw(d);
+        if (res.applicationKey) {
+            // shown once (Key Manager's Key Issued): the key in an edit box, Copy copies it
+            const key = String(res.applicationKey);
+            const got = await ui.messageBox({
+                title: 'Key Issued',
+                text: `The request from ${r.appName} was approved. This is its application key:`,
+                input: { value: key },
+                buttons: [{ text: 'Copy', value: true }, { text: 'Close', value: false }], cancelValue: false
+            });
+            if (typeof got === 'string' && !(await copyText(key))) await wsError('Key Issued', 'The key could not be copied.');
+        } else {
+            await ui.messageBox({ title: 'Approve Request', icon: 'info', text: `The request from ${r.appName} was approved. The program collects its key itself.` });
+        }
+    }
+
+    async function arDeny(d, r) {
+        if (!r) return;
+        const yes = await ui.messageBox({
+            title: 'Deny Request', icon: 'question',
+            text: `Do you want to deny the request from ${r.appName} (code ${r.requestCode})?`,
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }], cancelValue: false
+        });
+        if (yes !== true) return;
+        try {
+            const res = await busyDo(() => arSend('deny_application_auth_request', { requestId: r.id }));
+            if (res && res.success === false) throw new Error(res.error || 'The request could not be denied.');
+        } catch (err) {
+            await wsError('Deny Request', (err && err.message) || 'The request could not be denied.');
+        }
+        d.sel = null;
+        d.details = false;
+        await busyDo(() => arLoad(true));
+        wsRedraw(d);
+    }
+
+    wmSettings.registerPage({
+        id: 'app-requests', tab: 'system', label: 'Application Requests', icon: '/static_images/wm65/start-certificates@2x.png',
+        available: () => isAdminUser() && !!window.wsClient,
+        init() {
+            const d = { sel: null, details: false };
+            const loaded = arLoad(true).then(() => wsRedraw(d));
+            const s = sh();
+            if (s && typeof s.busy === 'function') s.busy(loaded).catch(() => {});
+            return d;
+        },
+        softKeys(d) {
+            const r = d.sel ? arById(d.sel) : null;
+            const menu = () => [
+                { label: 'Approve...', disabled: !r, action: () => arApprove(d, r) },
+                { label: 'Deny', disabled: !r, action: () => arDeny(d, r) },
+                '-',
+                d.details
+                    ? { label: 'Back', action: () => { d.details = false; wsRedraw(d); } }
+                    : { label: 'Details', disabled: !r, action: () => { d.details = true; wsRedraw(d); } },
+                { label: 'Refresh', action: () => busyDo(() => arLoad(true)).then(() => wsRedraw(d)) }
+            ];
+            return { left: { label: 'Approve', disabled: !r, action: () => arApprove(d, r) }, right: { label: 'Menu', menu } };
+        },
+        render(el, tab, d, api) {
+            d.rerender = api.rerender;
+            el.classList.add('wm-sys-ar');
+            if (d.sel && !arById(d.sel)) { d.sel = null; d.details = false; }
+            const r = d.details && d.sel ? arById(d.sel) : null;
+            if (r) {
+                el.classList.remove('wm-sys-ar-list');
+                el.innerHTML = `${ui.sub(r.appName || 'Request')}
+                    <div class="wm-sys-facts">${ui.facts([
+                        ['Request code:', r.requestCode || ''],
+                        ['Program:', r.appName || ''],
+                        ['Client:', r.userAgent || ''],
+                        ['Purposes:', arPurposes(r.scopes)],
+                        ['Signs in as:', arSignsInAs(r)],
+                        ['Key expires:', r.expiresAt ? arDate(r.expiresAt) : 'Never'],
+                        ['Submitted:', arDate(r.createdAt)]
+                    ])}</div>`;
+                return;
+            }
+            d.details = false;
+            el.classList.add('wm-sys-ar-list');
+            if (!AR.loaded) { el.innerHTML = ''; return; }
+            if (!AR.pending.length) { el.innerHTML = '<p class="wm-sys-managed-none">There are no pending requests.</p>'; return; }
+            el.innerHTML = listView([{ label: 'Program', width: '1fr' }, { label: 'Code', width: '34%' }], AR.pending.map((x) => ({ key: String(x.id), cells: [x.appName || '', x.requestCode || ''] })), d.sel);
+            // a second tap on the selected request shows it, as Details does
+            bindListRows(el, d, () => { d.details = true; wsRedraw(d); });
+        },
+        commit(d) {
+            if (d.details) { d.details = false; wsRedraw(d); return false; }
+            return [];
+        }
+    });
+
+    /**
+     * The pending application key requests for other phone programs (Accounts' alert, #831):
+     *   pending()            the list as last read (admin only; [] otherwise)
+     *   refresh(force?)      read it again (once a minute at most unless force) -> Promise<list>
+     *   open()               Settings > System > Application Requests
+     *   onChange(fn)         fn(list) after each read; returns an unsubscribe
+     */
+    window.wmAppRequests = {
+        pending: () => (isAdminUser() ? AR.pending.slice() : []),
+        refresh: (force) => arLoad(force === true),
+        // direct: ok goes back to the program that opened it (Accounts), as a WM applet a program starts
+        open: () => !!(wmSettings && typeof wmSettings.open === 'function' && wmSettings.open('app-requests', undefined, { direct: true })),
+        onChange: (fn) => { if (typeof fn === 'function') AR.listeners.add(fn); return () => AR.listeners.delete(fn); }
+    };
 })();

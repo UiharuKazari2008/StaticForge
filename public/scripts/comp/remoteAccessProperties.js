@@ -367,12 +367,13 @@
     }
 
     function openLinkXi() {
-        // Enshutsuka's persona page (enshutsukaConsole), else the old DSAP page
+        // Enshutsuka's persona page (enshutsukaConsole), else its old address (the retired page's opensApp
+        // loads the console: dsapManifests.js)
         if (typeof root.openEnshutsukaConsole === 'function') {
             root.openEnshutsukaConsole('profile');
             return;
         }
-        // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js (follows the page's opensApp)
+        // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
         callGlobal('openDsapInGrimoire', 'dsap://xi.dyna.dreamscape.jp/persona');
     }
 

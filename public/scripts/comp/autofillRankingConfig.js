@@ -3,7 +3,7 @@
 // autofill_ranking_updated broadcast. Read by:
 //   - public/scripts/comp/autocompleteRanking.js (calculateComprehensiveRanking)
 //   - public/scripts/comp/autocompleteUtils.js (sort / assembleRankedAutofillResults)
-//   - public/scripts/comp/autofillConfigDsapApplet.js (DSAP-SMF admin applet)
+//   - public/scripts/comp/mmcAutofillRanking.js (the Autofill Ranking MMC snap-in, admin)
 
 const AUTOFILL_TYPE_KEYS = [
     'character',

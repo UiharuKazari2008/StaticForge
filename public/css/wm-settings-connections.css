@@ -271,3 +271,21 @@ html.ui-mobile .wm-setc .wm-wl-state {
 .wm-setc .wm-setc-indent {
     padding-left: calc(16 * var(--wm-px));
 }
+
+/* Remote Access > MCP (#831): a label over each read-only address, the edit and its Copy button on one line */
+html.ui-mobile .wm-setc-mcp .wm-setc-mcp-label {
+    display: block;
+    margin-top: calc(4 * var(--wm-px));
+}
+html.ui-mobile .wm-setc-mcp .wm-setc-mcp-row {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+}
+html.ui-mobile .wm-setc-mcp .wm-setc-mcp-row .wm-edit {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+html.ui-mobile .wm-setc-mcp .wm-setc-mcp-row .wm-button {
+    flex: 0 0 auto;
+}

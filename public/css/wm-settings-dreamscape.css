@@ -135,3 +135,7 @@ html.ui-mobile .wm-ds-matrix td .wm-check {
     margin: 0;
     min-width: calc(24 * var(--wm-px));
 }
+
+/* Director > Static Rules (#831): New / Edit / Delete share one row (three 76 unit buttons do not fit 240 units) */
+html.ui-mobile .wm-ds-xi-btns { flex-wrap: nowrap; }
+html.ui-mobile .wm-ds-xi-btns .wm-button { flex: 1 1 0; min-width: 0; }

@@ -1305,13 +1305,9 @@ function initializeFavoritesManager() {
 
 // Show favorites manager modal
 async function showFavoritesManager() {
-    // openDataManagementDsap: public/scripts/comp/dataManagementDsapApplet.js
+    // Computer Management's Favorites (openDataManagementDsap: public/scripts/comp/dsapManifests.js)
     if (typeof openDataManagementDsap === 'function') {
         openDataManagementDsap('favorites');
-        return;
-    }
-    if (typeof openDsapInGrimoire === 'function') {
-        openDsapInGrimoire('dsap://data.dreamscape.jp/favorites');
         return;
     }
 
@@ -1413,10 +1409,8 @@ function updateFavoritesCounts() {
 function renderFavoritesList(targetList, options) {
     const favoritesList = targetList || document.getElementById('favoritesList');
     if (!favoritesList) {
-        // dataMgmtDsapRefreshFavoritesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
-        if (typeof dataMgmtDsapRefreshFavoritesIfPresent === 'function') {
-            dataMgmtDsapRefreshFavoritesIfPresent();
-        }
+        // Computer Management's Favorites view, when open (mmcDataManagement.js)
+        if (window.mmcDataManagement) window.mmcDataManagement.refresh('favorites');
         return;
     }
 
@@ -1451,10 +1445,8 @@ function renderFavoritesList(targetList, options) {
                 <small>Add tags and text replacements to your favorites from other parts of the app</small>
             </div>
         `;
-        // dataMgmtDsapRefreshFavoritesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
-        if (typeof dataMgmtDsapRefreshFavoritesIfPresent === 'function') {
-            dataMgmtDsapRefreshFavoritesIfPresent();
-        }
+        // Computer Management's Favorites view, when open (mmcDataManagement.js)
+        if (window.mmcDataManagement) window.mmcDataManagement.refresh('favorites');
         return;
     }
 
@@ -1469,10 +1461,8 @@ function renderFavoritesList(targetList, options) {
         }
     });
 
-    // dataMgmtDsapRefreshFavoritesIfPresent: public/scripts/comp/dataManagementDsapApplet.js
-    if (typeof dataMgmtDsapRefreshFavoritesIfPresent === 'function') {
-        dataMgmtDsapRefreshFavoritesIfPresent();
-    }
+    // Computer Management's Favorites view, when open (mmcDataManagement.js)
+    if (window.mmcDataManagement) window.mmcDataManagement.refresh('favorites');
 }
 
 

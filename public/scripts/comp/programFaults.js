@@ -155,8 +155,11 @@
         remote_desktop: 'remote-desktop',
         remote_desktop_connection: 'remote-desktop-connection',
         emotion: 'emotion',
-        exchange: 'exchange',
         control_panel: 'control-panel',
+        // the retired DSAP pages' libraries (#831), shared by the consoles / programs that load them
+        data_mgmt_lib: 'lib',
+        security_center_lib: 'lib',
+        image_search_lib: 'lib',
         start_menu_organizer: 'core',
         vista_games: 'lib',
         vista_cards: 'lib'

@@ -169,13 +169,6 @@ const FEATURE_MANIFEST = {
         styles: ['css/desktop-apps/emotion.css'],
         scripts: ['scripts/comp/desktop-apps/emotion.js']
     },
-    exchange: {
-        styles: ['css/desktop-apps/exchange.css'],
-        scripts: [
-            'scripts/comp/desktop-apps/exchange.js',
-            'scripts/comp/exchangeDsapApplet.js'
-        ]
-    },
     // Windows Vista's games (Yozora #609): the shared engine, then one feature per game
     vista_games: {
         styles: ['css/desktop-apps/vista-games.css'],
@@ -345,11 +338,32 @@ const FEATURE_MANIFEST = {
             'scripts/comp/cplDeviceManager.js'
         ]
     },
-    // Image Search (Yozora #828), the desktop program that replaced the Global Search DSAP; its
-    // search helpers are omegasearchDsapApplet.js's, loaded first by openImageSearchWindow (dsapManifests.js)
+    // Image Search's search library (#831): the retired Global Search DSAP's helpers and sessions
+    // (omegasearchDsap*, OMEGASEARCH_*), used by Image Search, the phone's Search Pictures (wmSearchPictures.js)
+    image_search_lib: {
+        scripts: ['scripts/comp/omegasearchDsapApplet.js']
+    },
+    // Image Search (Yozora #828), the desktop program that replaced the Global Search DSAP
     image_search: {
+        depends: ['image_search_lib'],
         styles: ['css/image-search.css'],
         scripts: ['scripts/comp/imageSearchApp.js']
+    },
+    // Computer Management's library (#831): the retired Data Management DSAP's replication pages, account
+    // helpers and driver (dataMgmtDsap*, replication*), hosted by mmcDataManagement.js
+    data_mgmt_lib: {
+        styles: ['css/replication-dsap.css'],
+        scripts: [
+            'scripts/comp/dataManagementDsapApplet.js',
+            'scripts/comp/replicationDsapSeparation.js',
+            'scripts/comp/replicationDsapCargo.js',
+            'scripts/comp/replicationDsapSync.js'
+        ]
+    },
+    // Melaton Defender's and Dreamscape CardSpace's library (#831): the retired Security Center DSAP's
+    // markup and driver (securityDsap*), run by windowsDefender.js and cplAuthentication.js
+    security_center_lib: {
+        scripts: ['scripts/comp/securityCenterDsapApplet.js']
     },
     // Workspace Properties, New / Rename / Dump Workspace, Reorder Partitions on the desktop (#828):
     // workspaceUtils.js opens them; Data Management's Workspace Management uses them too

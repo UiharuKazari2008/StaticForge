@@ -96,7 +96,7 @@ assert.ok(D._test.screenSaverPage().includes('cpl-pers-monitor'), 'the monitor p
 assert.ok(D._test.soundsPage().includes('role="tree"'), 'the Program Events tree');
 assert.ok(typeof D.openTheme === 'function' && typeof D.openPhotoSettings === 'function' && typeof D.setPhotoSearch === 'function', 'Theme Settings, Photos settings, Image Search hand-back');
 assert.ok(!read('public/scripts/comp/personalizationDialogs.js').includes('on-top tbp-window'), 'the dialogs are not always on top');
-assert.ok(read('public/scripts/comp/omegasearchDsapApplet.js').includes("state.frameId === 'screensaver'"), 'Image Search saves for the screen saver');
+assert.ok(read('public/scripts/comp/imageSearchApp.js').includes("frame === 'screensaver'"), 'Image Search saves for the screen saver');
 // Windows Logo: logon.scr's logo and flare frames
 for (const f of ['logo-saver.png', 'logo-flare-sheet.png', 'logo-flare-small-sheet.png']) assert.ok(fs.existsSync(path.join(ROOT, 'public/static_images/vista-personalization', f)), f);
 // the taskbar's opacity

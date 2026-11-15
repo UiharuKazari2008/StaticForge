@@ -1,6 +1,6 @@
 /**
- * Legacy IP Management shim — redirects to Security Center DSAP.
- * openSecurityCenterDsap: public/scripts/comp/securityCenterDsapApplet.js
+ * Legacy IP Management shim: Melaton Defender's Quarantined items (#831: the Security Center DSAP page is retired).
+ * openSecurityCenterDsap: public/scripts/comp/dsapManifests.js
  */
 
 class IPManagementSystem {
@@ -11,11 +11,7 @@ class IPManagementSystem {
             return;
         }
         if (typeof openSecurityCenterDsap === 'function') {
-            openSecurityCenterDsap('blocked');
-            return;
-        }
-        if (typeof openDsapInGrimoire === 'function') {
-            openDsapInGrimoire('dsap://security.dreamscape.jp/');
+            void openSecurityCenterDsap('blocked');
             return;
         }
         showGlassToast('error', 'Error', 'Security Center is not available', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');

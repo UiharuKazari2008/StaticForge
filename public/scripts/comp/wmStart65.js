@@ -196,7 +196,9 @@
         // continuity: the ROM's USB to PC (pccon); remote (Remote Access): Vista's Remote Desktop Connection
         // icon (mstscax.dll 0 at its native 256 px, from the Vista VM: 6.5's ROM has no Remote Desktop Mobile); 6.1 keeps tsclient
         sounds: 'sounds', today: 'todayset', continuity: 'pccon', remote: 'remote-access', wireless: 'wirelessmgr', domain: 'denroll', 'network-cards': 'wifi',
-        'error-reporting': 'watson', 'link-taskmgr': 'taskmgr', update: 'update'
+        'error-reporting': 'watson', 'link-taskmgr': 'taskmgr', update: 'update',
+        // Application Requests (#831): the ROM's Certificates icon (application keys are Melaton's certificates)
+        'app-requests': 'certificates'
     };
     // Start_Icon_SettingsS: the folder with the OS logo (the Melaton flower in place of the flag)
     const SETTINGS_FOLDERS = [['connections', 'Connections', 'settingsc'], ['personal', 'Personal', 'settingsp'], ['system', 'System', 'settingss']];

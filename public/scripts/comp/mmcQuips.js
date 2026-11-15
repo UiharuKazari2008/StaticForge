@@ -1,7 +1,6 @@
 /**
- * Dynamic Quips (Yozora #828): the MMC snap-in that replaced the Dynamic Quips DSAP on the desktop
- * (dsap://quips.dyna.dreamscape.jp/<workspace>[/phrasebook|/settings] opens it there; elsewhere the
- * DSAP page stays, public/scripts/comp/quipsDsapApplet.js).
+ * Dynamic Quips (Yozora #828): the MMC snap-in that replaced the Dynamic Quips DSAP (#831: the page is
+ * retired; dsap://quips.dyna.dreamscape.jp/<workspace>[/phrasebook|/settings] opens this: dsapManifests.js).
  *
  *   Dynamic Quips (Local)     every workspace with its quip counts
  *     <workspace>             Status, Phrase Book, Configuration

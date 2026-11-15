@@ -892,7 +892,8 @@ function testRecipientPushSurfaces() {
 
 function testTokensStayServerSide() {
     const clientSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/lantisRelayClient.js'), 'utf8');
-    const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/desktop-apps/exchange.js'), 'utf8');
+    // the Exchange Management Console (the old Exchange desktop app and DSAP are retired, #831)
+    const uiSrc = fs.readFileSync(path.join(__dirname, '..', 'public/scripts/comp/mmcExchange.js'), 'utf8');
     const docSrc = fs.readFileSync(path.join(__dirname, '..', 'docs/lantis-relay-api.md'), 'utf8');
     const scopesSrc = fs.readFileSync(path.join(__dirname, '..', 'modules/directorAppKeyScopes.js'), 'utf8');
     const secureMap = fs.readFileSync(path.join(__dirname, '..', 'config-maps/secureConfig.map.json'), 'utf8');

@@ -69,7 +69,9 @@ assert.ok(read('public/scripts/comp/melatonControlPanel.js').includes("open: () 
 const sec = read('public/scripts/comp/securityCenterDsapApplet.js');
 assert.ok(!sec.includes('data-sec-tab="auth"'), 'Security Center has no Authentication tab');
 assert.ok(sec.includes("if (view === 'auth' && !host.cplAuthentication && securityDsapOpenAuthInControlPanel()) view = 'home';"), 'old auth links land in Control Panel');
-assert.ok(/function openSecurityCenterDsap\(view\) \{\s*if \(securityDsapNormalizeView\(view\) === 'auth' && securityDsapOpenAuthInControlPanel\(\)\) return;/.test(sec));
+// Security Center's old opener (dsapManifests.js since the page was retired, #831): auth is CardSpace
+const manifests = read('public/scripts/comp/dsapManifests.js');
+assert.ok(/async function openSecurityCenterDsap\(view\) \{[\s\S]*?window\.cplAuthentication\.open\(\)/.test(manifests), 'old auth links open Dreamscape CardSpace');
 const auth = read('public/scripts/comp/cplAuthentication.js');
 assert.ok(auth.includes('driver = Object.create(securityDsapDriver)') && auth.includes("getPathSegments: () => ['auth']"), 'the page runs its own driver on the auth view');
 assert.ok(auth.includes("name: 'Dreamscape CardSpace'") && auth.includes("title: () => 'Dreamscape CardSpace'"), 'the item is Dreamscape CardSpace');

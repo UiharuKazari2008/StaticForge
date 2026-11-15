@@ -84,7 +84,7 @@ const vfsSystemOpenRouter = {
 
         startMenuLaunchables.forEach(push);
         // flattenToolsSubmenuItems, buildToolsSubmenuItems: public/scripts/comp/modalUtils.js
-        flattenToolsSubmenuItems(buildToolsSubmenuItems()).forEach(push);
+        flattenToolsSubmenuItems(buildToolsSubmenuItems({ hidden: true })).forEach(push);
         // getDsapMenuEntries: public/scripts/comp/dsapRegistry.js
         getDsapMenuEntries().forEach(push);
 
