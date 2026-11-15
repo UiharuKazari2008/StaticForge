@@ -85,8 +85,12 @@
         // into the page while it parses, so they load and run there, in order and blocking as before.
         // The server still puts ?sha= on the tags inside (runtimeAssetService rewrites by pattern) and
         // the service worker still precaches every file, so both windows of the Android app share one cache.
+        // Something can be appended to the body while it parses (assetPreload.js ensureHold puts
+        // #assetPreloadHold at its end), landing between a template and its call (#832): step back
+        // over such nodes to the template, never past the previous script (another block's call).
         globalThis.writeShellTags = function () {
-            const tpl = document.currentScript && document.currentScript.previousElementSibling;
+            let tpl = document.currentScript && document.currentScript.previousElementSibling;
+            while (tpl && tpl.tagName !== 'TEMPLATE' && tpl.tagName !== 'SCRIPT') tpl = tpl.previousElementSibling;
             if (tpl && tpl.tagName === 'TEMPLATE' && tpl.dataset.shell === globalThis.uiShell) document.write(tpl.innerHTML);
         };
         // Settings > Screen > Camera before the first paint (#735): the black bezel band and its logo
