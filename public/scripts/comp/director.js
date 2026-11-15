@@ -741,7 +741,8 @@ class Director {
     async init() {
         document.addEventListener('visibilitychange', () => this.syncStreamWatch());
         // Melaton Mobile: another program came to the front, or the Director did (wmShell.js)
-        document.addEventListener('wmAppChange', () => setTimeout(() => this.syncStreamWatch(), 0));
+        // (the mascot's tick is slow while she is not shown: she looks at once, #849)
+        document.addEventListener('wmAppChange', () => setTimeout(() => { this.syncStreamWatch(); if (this.mascot) this.mascot.tick(); }, 0));
         this.setupDirectorDropdowns();
         this.setupDirectorEventListeners();
         this.setupDirectorContextMenus();

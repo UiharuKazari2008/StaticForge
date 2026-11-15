@@ -1433,11 +1433,46 @@
             'desktopWorkstationLocked', 'desktopWorkstationUnlocked'].forEach((type) => {
             document.addEventListener(type, () => announceDesktopState(false));
         });
-        // the startup window closing (websocket.js hideProgressNotification) has no event of its own:
-        // a cheap check that sends only when the state changed
-        setInterval(() => announceDesktopState(false), 1000);
+        // What the state is read from, each told as it changes instead of asked every second (#849:
+        // the page woke once a second for good, on every client, to compare a state that changes a
+        // handful of times in a session):
+        // - the connection's three fields (startup window gone, logon handed over, session
+        //   suspended; websocket.js sets them in several places and has no event for them): set
+        //   through accessors that announce after a change;
+        // - Melaton Mobile's Studio opening or closing (wmDirectorPhoneState reads #manualModal's
+        //   class) and its Director options (wmDirector.js fires wmDirectorPrefsChange).
+        // One check a minute stays as the net under all of it.
+        const announceSoon = () => queueMicrotask(() => announceDesktopState(false));
+        const watchField = (obj, key) => {
+            let value = obj[key];
+            try {
+                Object.defineProperty(obj, key, {
+                    configurable: true,
+                    enumerable: true,
+                    get: () => value,
+                    set: (next) => { const changed = next !== value; value = next; if (changed) announceSoon(); }
+                });
+            } catch (_) { /* a sealed object: the minute check covers it */ }
+        };
+        let fieldsWatched = false;
+        const watchConnectionFields = () => {
+            if (fieldsWatched || !window.wsClient) return;
+            fieldsWatched = true;
+            ['initStartupUiDismissed', 'preStartupHandoffCompleted', 'sessionSuspended'].forEach((key) => watchField(window.wsClient, key));
+        };
+        watchConnectionFields();
+        window.addEventListener('wmDirectorPrefsChange', announceSoon);
+        if (window.uiShell === 'mobile' && typeof MutationObserver === 'function') {
+            const watchStudio = () => {
+                const studio = document.getElementById('manualModal');
+                if (studio) new MutationObserver(announceSoon).observe(studio, { attributes: true, attributeFilter: ['class'] });
+            };
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchStudio, { once: true });
+            else watchStudio();
+        }
+        setInterval(() => { watchConnectionFields(); announceDesktopState(false); }, 60000);
         if (!hookConnected()) {
-            const timer = setInterval(() => { if (hookConnected()) clearInterval(timer); }, 500);
+            const timer = setInterval(() => { if (hookConnected()) { clearInterval(timer); watchConnectionFields(); } }, 500);
         }
     }
 
