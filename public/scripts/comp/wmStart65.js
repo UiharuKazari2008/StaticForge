@@ -546,6 +546,16 @@
     function columnsFor() {
         const unit = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
         const w = (view && view.clientWidth) || window.innerWidth || 0;
+        // 6.5.1 (#850): a phone on its side. 6.5.3 in landscape (640 x 480, measured; 6.5's
+        // StartMenu_GridScene_640x480.cpr says Columns="3" too) keeps the portrait grid as it is,
+        // three columns 144 px apart, in the middle of the screen (the first icon at x 131 of 640)
+        // and leaves the sides empty (wm65-start.css .is-land651). The Fold opened and tablets
+        // (both sides 600 CSS px or more) keep the wide grid below.
+        if (REL651 && page) {
+            const land = window.innerWidth > window.innerHeight && window.innerHeight < 600 && w >= 240 * unit;
+            page.classList.toggle('is-land651', land);
+            if (land) return 3;
+        }
         // a phone-width screen keeps the device's three columns whatever its unit (Yukimi: the
         // Fold7 cover screen, 480 CSS px at a small --wm-px, got four); wider screens (the Fold
         // opened, a tablet) take as many as fit at the 72-unit pitch

@@ -1143,8 +1143,9 @@
             w = bars651Ctx.measureText(label).width;
         } catch (_) { w = String(label).length * 5.5 * px; }
         // device: the bubble is its text + 18 px (9 units), 102 px (51 units) at least; here never past
-        // the room between its two round neighbours (128 px less a 13 px gap each side on the device)
-        w = Math.max(51 * px, Math.min(Math.ceil(w + 9 * px), Math.max(51 * px, bars651Pitch() * 2 - 47 * px)));
+        // the room between its two round neighbours (128 px on the device; how the device cuts a longer
+        // label was not seen: here it ends in dots)
+        w = Math.max(51 * px, Math.min(Math.ceil(w + 9 * px), Math.max(51 * px, bars651Pitch() * 2 - 34 * px)));
         bars651Widths.set(label, w);
         return w;
     }
@@ -5752,13 +5753,24 @@
     /** Whether a tap on this part of the title bar is the drawer's. */
     function d651Trigger(t) {
         if (!t || !t.closest) return false;
-        if (t.closest('.wm-status-icon')) return true;
+        // the status icons and the room between them
+        if (t.closest('.wm-status')) return true;
         // the thin title bar: all of it (Start and the X / ok are on the button bar)
         return BARS651 && !t.closest('.wm-start, .wm-title-action');
     }
 
     function drawer651Init() {
         const bar = shell.querySelector('.wm-titlebar');
+        // the strip opens in one frame: its always-present pictures are fetched once, when the page
+        // is idle after the boot, so the first opening does not show the band alone
+        const warm = () => {
+            const big = (window.devicePixelRatio || 1) * rootPx() > 1.01 ? '@2x' : '';
+            for (const n of ['drawer-band', 'drawer-zoom-in', 'drawer-zoom-out', 'drawer-connectivity', 'drawer-phone', 'drawer-volume', 'drawer-battery', 'drawer-clock', 'zoom-bubble', 'zoom-out']) {
+                const im = new Image();
+                im.src = `/static_images/wm65/v651-${n}${big}.png`;
+            }
+        };
+        setTimeout(() => { if (typeof requestIdleCallback === 'function') requestIdleCallback(warm, { timeout: 5000 }); else warm(); }, 8000);
         bar.addEventListener('pointerdown', (e) => {
             if (!e.isPrimary || e.button > 0 || !d651Trigger(e.target)) return;
             d651BarDown = performance.now();
@@ -6033,7 +6045,8 @@
         // the button is the magnifier's own: the page sees nothing of a press on it (an open menu stays open)
         if (z.btn && e.target === z.btn) {
             stop();
-            if (e.type === 'contextmenu') e.preventDefault();
+            // it never takes the focus: a field keeps it, and its keyboard
+            if (e.type === 'contextmenu' || e.type === 'mousedown') e.preventDefault();
             if (e.type === 'click') z651Stop();
             return;
         }
@@ -7501,7 +7514,8 @@
     // the see-through window of the first try is switched off once (builds that turned it on)
     let androidWallOff = false;
     function applyAndroidWall() {
-        document.documentElement.classList.remove('wm-android-wall');
+        // (contains first: a remove of a class that is not there still writes the attribute, every draw)
+        if (document.documentElement.classList.contains('wm-android-wall')) document.documentElement.classList.remove('wm-android-wall');
         if (androidWallOff || !window.AndroidHome || typeof window.AndroidHome.setShowWallpaper !== 'function') return;
         androidWallOff = true;
         try { window.AndroidHome.setShowWallpaper(false); } catch (_) { /* bridge gone */ }

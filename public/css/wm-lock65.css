@@ -648,3 +648,41 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key.is-messagin
 html.ui-mobile[data-wm-rev="6.5.1"] #wmShell.wm-lock65-box > .wm-msgbox-layer {
     z-index: 29;
 }
+
+/* 6.5.1 (#850): the PIN asked for by Settings > Lock (device: LS_SimplePinScene "SimplePinOnly"):
+ * one key 208 x 38 (LS_KeyPadAppBar) in place of the three, the unlock picture at x 11.5 and
+ * "Unlock" centred in 151.5 units from x 45, Tahoma bold 9 pt */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key > span {
+    display: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key:not(.is-unlock) {
+    display: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock {
+    grid-column: 1 / span 3;
+    background-image: url('/static_images/wm65/ls-keypadappbar@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-keypadappbar.png') 1x, url('/static_images/wm65/ls-keypadappbar@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock:active {
+    background-image: url('/static_images/wm65/ls-keypadappbar-dwn@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-keypadappbar-dwn.png') 1x, url('/static_images/wm65/ls-keypadappbar-dwn@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock > i {
+    left: calc(11.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock > span {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: calc(45 * var(--wm-px));
+    width: calc(151.5 * var(--wm-px));
+    height: 100%;
+    font: bold calc(12 * var(--wm-px)) / calc(38 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+    pointer-events: none;
+}

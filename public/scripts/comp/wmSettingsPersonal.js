@@ -584,9 +584,82 @@
     const WAITS = [1, 2, 3, 4, 5, 10, 15, 20, 30, 45, 60, 120, 180, 240, 360, 720];
     const waitLabel = (m) => (m % 60 === 0 && m >= 60 ? `${m / 60} hour${m === 60 ? '' : 's'}` : `${m} minute${m === 1 ? '' : 's'}`);
 
+    // ---- 6.5.1 (#850): Settings > Lock > Password, as Windows Mobile 6.5.3's (emulator, 480 x 640) ----
+    // "Prompt if phone unused for" with its wait (0 Minutes .. 24 Hours), Password type (Simple PIN;
+    // the device's Strong alphanumeric is not offered), Password and Confirm. Ticked with a PIN typed
+    // twice: the lock screen asks for it (wmLock65.js keeps only its salted hash, on this device).
+    // Cleared: no PIN. A PIN that is set shows as eight stars (device); typing replaces it. The
+    // device's Hint tab is left out: what it does with a hint was not seen on the emulator.
+    // This keeps the screen private; it is not protection for the data.
+    const LOCK_PIN_651 = document.documentElement.dataset.wmRev === '6.5.1';
+    const PIN_STARS = '********';
+    const pinWaitLabel = (m) => (m < 60 ? `${m} Minute${m === 1 ? '' : 's'}` : `${m / 60} Hour${m === 60 ? '' : 's'}`);
+    const lockPin651 = {
+        api: () => (window.wmLock && window.wmLock.pin) || null,
+        render(el, d) {
+            const pin = this.api();
+            if (!pin) { el.innerHTML = ''; return; }
+            // a PIN is set: the page opens once it has been given (device: the keypad with one wide
+            // Unlock key comes up first; its X goes back without opening the page)
+            if (!d.pin && !d.pinOk && pin.isSet()) {
+                el.innerHTML = '';
+                if (!d.pinAsking) {
+                    d.pinAsking = true;
+                    pin.ask().then((ok) => {
+                        d.pinAsking = false;
+                        if (ok) { d.pinOk = true; d.rerender(); return; }
+                        const sh = window.wmShell;
+                        if (sh && sh.current === 'settings' && typeof sh.back === 'function') sh.back();
+                    });
+                }
+                return;
+            }
+            if (!d.pin) { const s = pin.settings(); d.pin = { on: s.on, wait: s.wait, was: s.on, pw: s.on ? PIN_STARS : '', pw2: s.on ? PIN_STARS : '', typed: false }; }
+            const p = d.pin;
+            const off = p.on ? '' : ' disabled';
+            const field = (f, v) => `<input class="wm-edit" type="password" inputmode="numeric" autocomplete="off" maxlength="16" data-f="${f}" value="${esc(v)}"${off}>`;
+            el.innerHTML = `<div class="wmsp-checkcombo">${ui.check('pinOn', 'Prompt if phone unused for', p.on)}${ui.comboHtml('pinWait', pinWaitLabel(p.wait), !p.on)}</div>
+                <div class="wm-pin651-rows">${ui.row('Password type', ui.comboHtml('pinType', 'Simple PIN', !p.on))}
+                ${ui.row('Password', field('pw', p.pw))}
+                ${ui.row('Confirm', field('pw2', p.pw2))}</div>`;
+            el.querySelector('input[name="pinOn"]').addEventListener('change', (e) => { p.on = e.target.checked; d.rerender(); });
+            ui.bindCombo(el.querySelector('[data-act="pinWait"]'), pin.waits().map((m) => [m, pinWaitLabel(m)]), p.wait, (v) => { p.wait = v; }, 'right');
+            ui.bindCombo(el.querySelector('[data-act="pinType"]'), [['pin', 'Simple PIN']], 'pin', () => {});
+            el.querySelectorAll('input[data-f]').forEach((inp) => {
+                // the stars stand for the PIN that is set: the first key into either box starts both afresh
+                inp.addEventListener('focus', () => { if (!p.typed && p.was) { p.typed = true; p.pw = ''; p.pw2 = ''; el.querySelectorAll('input[data-f]').forEach((x) => { x.value = ''; }); } });
+                inp.addEventListener('input', () => { p.typed = true; p[inp.dataset.f] = inp.value; });
+            });
+        },
+        box(title, text) {
+            const sh = window.wmShell;
+            return sh && typeof sh.messageBox === 'function' ? sh.messageBox({ title, text, buttons: [{ text: 'OK', value: true }] }) : Promise.resolve();
+        },
+        /** Save the password page; false when a box told the user what to fix. */
+        async commit(d) {
+            const pin = this.api();
+            const p = d.pin;
+            if (!pin || !p) return true;
+            if (!p.on) { if (p.was) { pin.clear(); p.was = false; } return true; }
+            const fresh = p.typed || !p.was;
+            if (!fresh) { pin.update({ wait: p.wait }); return true; }
+            // nothing typed over a PIN that is set (the boxes were only focused): it stays
+            if (p.was && !p.pw && !p.pw2) { pin.update({ wait: p.wait }); return true; }
+            if (p.pw !== p.pw2) { await this.box('Password Error', 'Passwords do not match. Please retype identical passwords in both boxes.'); return false; }
+            const why = pin.problem(p.pw);
+            if (why) { await this.box('Password Error', why); return false; }
+            if (!pin.canSet() || !(await pin.set(p.pw, { wait: p.wait }))) { await this.box('Password Error', 'The password could not be saved on this device.'); return false; }
+            Object.assign(p, { was: true, typed: false, pw: PIN_STARS, pw2: PIN_STARS });
+            return true;
+        }
+    };
+
     wmSettings.registerPage({
         id: 'lock', tab: 'personal', label: 'Lock', icon: 'set-lock',
-        tabs: [['password', 'Password']],
+        // 6.5.1 (#850): the phone's own password comes first (lockPin651 below); the workspace's screen
+        // saver, which was this page's Password tab, keeps its controls on a tab of its own (Display:
+        // 6.5's name for the third tab of this applet; "Screen saver" does not fit the tab band)
+        tabs: LOCK_PIN_651 ? [['pin', 'Password'], ['password', 'Display']] : [['password', 'Password']],
         available: () => !!(P() && typeof P().update === 'function'),
         init() {
             const ss = P().get().screenSaver;
@@ -610,6 +683,7 @@
         },
         render(el, tab, d, api) {
             d.rerender = api.rerender;
+            if (tab === 'pin') { lockPin651.render(el, d, api); return; }
             const waits = WAITS.includes(d.wait) ? WAITS.slice() : WAITS.concat([d.wait]).sort((x, y) => x - y);
             let pin = 'Unknown';
             if (d.account !== 'administrator') pin = 'Set by the administrator';
@@ -625,9 +699,11 @@
             el.querySelector('input[name="resume"]').addEventListener('change', (e) => { d.resumeLogon = e.target.checked; });
             ui.bindCombo(el.querySelector('[data-act="wait"]'), waits.map((m) => [m, waitLabel(m)]), d.wait, (v) => { d.wait = v; }, 'right');
         },
-        commit(d) {
+        async commit(d) {
+            // 6.5.1 (#850): the password first; false keeps the page open (its message box was shown)
+            if (LOCK_PIN_651 && d.pin && (await lockPin651.commit(d)) === false) return false;
             const next = { id: d.on ? d.id : 'none', wait: d.wait, resumeLogon: d.resumeLogon };
-            if (!same(next, d.saved)) P().update({ screenSaver: next });
+            if (!same(next, d.saved)) { P().update({ screenSaver: next }); d.saved = next; }
             return [];
         }
     });

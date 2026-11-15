@@ -461,6 +461,7 @@
     let pinDigits = '';
     let pinOpts = null;
     let pinBusy = false;
+    let askDone = null;     // pinAsk()'s answer while its keypad is up
     let idleAt = Date.now();
     let idleTimer = 0;
     let idleWatching = false;
@@ -558,7 +559,7 @@
         el.pin.hidden = true;
         pinDigits = '';
         pinOpts = null;
-        layer.classList.remove('is-pin');
+        layer.classList.remove('is-pin', 'is-ask');
         if (locked && !unlocking && el.alarm.hidden) enter(el.slider);
     }
 
@@ -571,6 +572,7 @@
         if (ok) {
             const o = Object.assign({}, pinOpts || {}, app ? { app } : {});
             pinDigits = '';
+            if (askDone) { const done = askDone; askDone = null; unlock({ instant: true }); done(true); return; }
             unlock(o.app ? o : undefined);
             return;
         }
@@ -588,10 +590,27 @@
         if (pinBusy || unlocking) return;
         if (/^\d$/.test(key)) { if (pinDigits.length < 16) pinDigits += key; paintPin(); }
         else if (key === 'clear') { pinDigits = pinDigits.slice(0, -1); paintPin(); }
-        else if (key === 'back') hidePin();
+        else if (key === 'back') {
+            if (askDone) { const done = askDone; askDone = null; unlock({ instant: true }); done(false); } else hidePin();
+        }
         else if (key === 'unlock') pinTry('');
         else if (key === 'contacts') pinTry('contacts');
         else if (key === 'messaging') pinTry('messaging');
+    }
+
+    /**
+     * Ask for the PIN before something that needs it (Settings > Lock; device: the same keypad
+     * with one wide "Unlock" key in place of the three). Resolves true when the right PIN was
+     * given or none is set, false when the X key backed out.
+     */
+    function pinAsk() {
+        return new Promise((resolve) => {
+            if (!pinState()) { resolve(true); return; }
+            if (locked || askDone || !lock()) { resolve(false); return; }
+            askDone = resolve;
+            showPin(null);
+            layer.classList.add('is-ask');
+        });
     }
 
     // "Prompt if phone unused for": one timer for the time left, pushed back by a tap or a key;
@@ -759,7 +778,8 @@
         const at = timeParts(new Date()).time;
         r.note = sh.appNote({
             title: `${at} | Reminder`,
-            html: `<span class="wm-alarm651-note"><b>${escHtml(`Alarm: ${r.text || 'No description'}`)}</b><br>${escHtml(fmtAlarm(r.due))}</span>`,
+            // the hidden mark keeps two alarms of the same minute and text two notifications ("1 of 2")
+            html: `<span class="wm-alarm651-note"><b>${escHtml(`Alarm: ${r.text || 'No description'}`)}</b><br>${escHtml(fmtAlarm(r.due))}<span hidden>${r.i}.${r.due}</span></span>`,
             icon: 'status-reminder',
             silent: true,
             softKeys: () => ({
@@ -898,7 +918,7 @@
                         ${key('clear', 'is-clear', '<i></i>', 'Backspace')}${digit('0')}${key('back', 'is-back', '<i></i>', 'Cancel')}
                     </div>
                     <div class="wm-lock65-unlock">
-                        ${key('unlock', 'is-unlock', '<i></i>', 'Unlock')}${key('contacts', 'is-contacts', '<i></i>', 'Unlock to Contacts')}${key('messaging', 'is-messaging', '<i></i>', 'Unlock to Messaging')}
+                        ${key('unlock', 'is-unlock', '<i></i><span>Unlock</span>', 'Unlock')}${key('contacts', 'is-contacts', '<i></i>', 'Unlock to Contacts')}${key('messaging', 'is-messaging', '<i></i>', 'Unlock to Messaging')}
                     </div>
                 </div>
             </div>`);
@@ -919,7 +939,7 @@
     function lock651() {
         el.pin.hidden = true;
         el.alarm.hidden = true;
-        layer.classList.remove('is-pin', 'is-alarm');
+        layer.classList.remove('is-pin', 'is-alarm', 'is-ask');
         pinDigits = '';
         pinOpts = null;
         clearTimeout(idleTimer);
@@ -935,8 +955,10 @@
         if (el && el.pin) {
             el.pin.hidden = true;
             el.alarm.hidden = true;
-            layer.classList.remove('is-pin', 'is-alarm');
+            layer.classList.remove('is-pin', 'is-alarm', 'is-ask');
         }
+        // unlocked some other way while pinAsk() waited: not answered
+        if (askDone) { const done = askDone; askDone = null; done(false); }
         shell.classList.remove('wm-lock65-box');
         pinDigits = '';
         pinOpts = null;
@@ -979,6 +1001,7 @@
                 verify: pinVerify,
                 update: pinUpdate,
                 clear: pinClear,
+                ask: pinAsk,
                 waits: () => PIN_WAITS.slice(),
                 settings: () => { const p = pinState(); return { on: !!p, wait: p ? Number(p.wait) || 0 : 0, hint: p ? p.hint || '' : '' }; }
             }

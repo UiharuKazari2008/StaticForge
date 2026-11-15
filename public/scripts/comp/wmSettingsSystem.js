@@ -304,6 +304,101 @@
         commit: clockCommit
     });
 
+    // ---------------------------------------------------------------- 6.5.1 (#850): Alarms
+    /*
+     * Clock & Alarms > Alarms as Windows Mobile 6.5.3 draws it (emulator, 480 x 640): three rows 88 px
+     * apart, each a check box, the alarm's time (Tahoma 14 pt), its description ("< Description >"
+     * while it has none) and the week S M T W T F S with the alarm's days filled; under them "Sound
+     * alarms even when the device is set to silent or vibrate". A tap on the time or the description
+     * opens Alarm Settings: the time, the description, the days (large), Sound (No Sound and every
+     * WMA of \Windows: Alarm-01 first), Play / Stop, and Play once / Repeat / Repeat and Vibrate /
+     * Vibrate only. The alarms live on this device (wmLock65.js window.wmAlarms rings them); 6.1 and
+     * 6.5 have no Alarms tab here and keep none.
+     */
+    const ALARM_DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const ALARM_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const alarmTimeFmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+    const alarmTimeText = (min) => alarmTimeFmt.format(new Date(2026, 0, 1, Math.floor(min / 60), min % 60));
+    const alarmDaysHtml = (a, i, big) => `<span class="wm-alarm651-days${big ? ' is-big' : ''}">${ALARM_DAYS.map((l, n) => `<button type="button" class="wm-alarm651-day${a.days & (1 << n) ? ' is-on' : ''}" data-alarm="${i}" data-day="${n}" aria-pressed="${a.days & (1 << n) ? 'true' : 'false'}" aria-label="${ALARM_DAY_NAMES[n]}">${l}</button>`).join('')}</span>`;
+    // the device's Sound list: the WMA files only, under their file names
+    const alarmSounds = () => {
+        const s = sh();
+        const files = s && s.sounds ? s.sounds.files().filter((f) => /\.mp3$/i.test(f.file) && !/^online\./i.test(f.file)) : [];
+        return [['', 'No Sound']].concat(files.map((f) => [f.file, f.file.replace(/\.mp3$/i, '')]).sort((x, y) => x[1].localeCompare(y[1], 'en', { sensitivity: 'base' })));
+    };
+
+    wmSettings.extendPage('clock', {
+        id: 'alarms',
+        tabs: [['alarms-list', 'Alarms']],
+        after: 'time',
+        available: () => wmSettings.release() === '6.5.1' && !!window.wmAlarms,
+        init() {
+            const cur = window.wmAlarms.get();
+            return { list: cur.list, loud: cur.loud, edit: null, saved: JSON.stringify(cur) };
+        },
+        render(el, tab, d, api) {
+            d.rerender = api.rerender;
+            const days = (root) => root.querySelectorAll('.wm-alarm651-day').forEach((b) => b.addEventListener('click', () => {
+                const a = d.list[Number(b.dataset.alarm)];
+                a.days ^= 1 << Number(b.dataset.day);
+                b.classList.toggle('is-on');
+                b.setAttribute('aria-pressed', a.days & (1 << Number(b.dataset.day)) ? 'true' : 'false');
+            }));
+            if (d.edit != null) {
+                const i = d.edit;
+                const a = d.list[i];
+                const sounds = alarmSounds();
+                const modes = window.wmAlarms.modes().map((m) => [m.value, m.label]);
+                const hh = String(Math.floor(a.time / 60)).padStart(2, '0');
+                const mm = String(a.time % 60).padStart(2, '0');
+                el.innerHTML = `<div class="wm-alarm651-edit">
+                        <input class="wm-edit wm-alarm651-time" type="time" value="${hh}:${mm}" aria-label="Time">
+                        ${ui.edit('', a.text, 'maxlength="63" placeholder="&lt; Description &gt;" data-f="text" aria-label="Description"')}
+                        ${alarmDaysHtml(a, i, true)}
+                        <div class="wm-alarm651-sound"><span>Sound</span>${ui.comboHtml('sound', (sounds.find(([v]) => v === a.sound) || sounds[0])[1])}</div>
+                        <div class="wm-alarm651-play"><button type="button" class="wm-button" data-act="play">Play</button><button type="button" class="wm-button" data-act="stop">Stop</button></div>
+                        ${ui.comboHtml('mode', (modes.find(([v]) => v === a.mode) || modes[2])[1])}
+                    </div>`;
+                el.querySelector('.wm-alarm651-time').addEventListener('change', (e) => {
+                    const m = /^(\d{1,2}):(\d{2})/.exec(e.target.value);
+                    if (m) a.time = Number(m[1]) * 60 + Number(m[2]);
+                });
+                el.querySelector('[data-f="text"]').addEventListener('input', (e) => { a.text = e.target.value; });
+                days(el);
+                ui.bindCombo(el.querySelector('[data-act="sound"]'), sounds, a.sound, (v) => { a.sound = v; });
+                ui.bindCombo(el.querySelector('[data-act="mode"]'), modes, a.mode, (v) => { a.mode = v; });
+                const s = sh();
+                el.querySelector('[data-act="play"]').addEventListener('click', () => { if (s && s.sounds && a.sound) s.sounds.preview(a.sound); });
+                el.querySelector('[data-act="stop"]').addEventListener('click', () => { if (s && s.sounds) s.sounds.stop(); });
+                return;
+            }
+            el.innerHTML = `<div class="wm-alarm651-list">${d.list.map((a, i) => `<div class="wm-alarm651-row">
+                    ${ui.check(`alarm${i}`, '', a.on, `aria-label="Alarm ${i + 1}"`)}
+                    <button type="button" class="wm-alarm651-open is-time" data-open="${i}">${esc(alarmTimeText(a.time))}</button>
+                    <button type="button" class="wm-alarm651-open is-text" data-open="${i}">${esc(a.text || '< Description >')}</button>
+                    ${alarmDaysHtml(a, i, false)}
+                </div>`).join('')}
+                <div class="wm-alarm651-loud">${ui.check('loud', 'Sound alarms even when the device is set to silent or vibrate', d.loud)}</div></div>`;
+            d.list.forEach((a, i) => el.querySelector(`input[name="alarm${i}"]`).addEventListener('change', (e) => { a.on = e.target.checked; }));
+            el.querySelector('input[name="loud"]').addEventListener('change', (e) => { d.loud = e.target.checked; });
+            el.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => { d.edit = Number(b.dataset.open); api.rerender(); }));
+            days(el);
+        },
+        commit(d) {
+            // ok on Alarm Settings goes back to the list (the page stays open)
+            if (d.edit != null) {
+                const s = sh();
+                if (s && s.sounds) s.sounds.stop();
+                d.edit = null;
+                if (d.rerender) d.rerender();
+                return false;
+            }
+            const next = { list: d.list, loud: d.loud };
+            if (JSON.stringify(next) !== d.saved && window.wmAlarms) { window.wmAlarms.set(next); d.saved = JSON.stringify(next); }
+            return [];
+        }
+    });
+
     // ================================================================ Regional Settings
 
     const INTL_KEY = 'HKCU\\Control Panel\\International';

@@ -552,7 +552,6 @@
         strip.classList.add('wm-pivot-on');
         const host = strip.parentElement;
         if (host) {
-            host.classList.add('wm-pivot-host');
             // the band stands for the page heading (the applet's name is in the title bar)
             const hdr = host.querySelector(':scope > .wm-form-hdr');
             if (hdr) hdr.classList.add('wm-pivot-hdr-off');
@@ -1315,7 +1314,8 @@
      */
     const PAGES = [
         {
-            id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
+            // 6.5.1 (#850): Windows Mobile 6.5.3 names this applet Home (window title and Start item)
+            id: 'today', tab: 'personal', label: runningRelease() === '6.5.1' ? 'Home' : 'Today', icon: 'set-today',
             // 6.5's home screen has an Effects tab (Yukimi, Nov 15)
             tabs: runningVersion() === '6.5' ? [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items'], ['effects', 'Effects']] : [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
             init: () => ({

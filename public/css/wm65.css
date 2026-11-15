@@ -1482,7 +1482,9 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
     margin: 0 calc(5 * var(--wm-px)) 0 calc(7 * var(--wm-px));
     font-size: var(--wm-fs);
     font-weight: bold;
-    line-height: calc(16.5 * var(--wm-px));
+    /* the title's line, moved half a unit down (text lines themselves land on whole pixels) */
+    line-height: calc(15 * var(--wm-px));
+    transform: translateY(calc(0.5 * var(--wm-px)));
     white-space: nowrap;
     pointer-events: none;
 }
@@ -1498,6 +1500,7 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
 
     html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
         line-height: normal;
+        transform: none;
         text-box: trim-both cap alphabetic;
         align-content: center;
     }
@@ -2407,7 +2410,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-form :is(.wmsp-play, .wmsp-stop):active:
  *     units at least, from 60 units; a longer name pushes both arrows out ("Program Buttons": arrows
  *     at 46.5 and 177.5);
  *   - the left name is centred in the box from 2 units to 3 units before the block, the right
- *     name in the box from 3 units after the block to 4.5 units before the edge.
+ *     name in the box from 2 units after the block to 3.5 units before the edge (both boxes
+ *     55 units with the 119.5 block: "Storage C..." and "Notificatio..." are 53.5 wide there).
  * The band's picture: Classic Blue's pivot background is not among the unpacked ROM files (the
  * other themes' are 8 x 64 strips), so its rows are read from a device grab: a black row, a
  * light row, a slate fall to row 34, a step down at row 35, near black to row 50, then a rise.
@@ -2432,18 +2436,20 @@ html.ui-mobile[data-wm-rev="6.5.1"] {
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-tabs {
-    order: -1;
+    /* (!important: the programs' own strips - Calendar, Contacts, Studio, the hosted desktop
+       forms - carry longer selectors for the 6.5 tab row) */
+    /* (display is left alone: Studio and others hide their strip with it) */
+    order: -1 !important;
     position: relative;
-    display: block;
-    flex: 0 0 auto;
+    flex: 0 0 auto !important;
     width: auto;
-    height: calc(32 * var(--wm-px));
-    min-height: calc(32 * var(--wm-px));
-    margin: 0;
-    padding: 0;
-    border: 0;
-    overflow: hidden;
-    background: var(--wm651-pivot-bg);
+    height: calc(32 * var(--wm-px)) !important;
+    min-height: calc(32 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    overflow: hidden !important;
+    background: var(--wm651-pivot-bg) !important;
     animation: wm651-pivot-seen 1ms;
 }
 
@@ -2458,9 +2464,11 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-tabs > .wm-tabs-spin {
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot {
     display: flex;
+    flex: 1 1 100%;
     box-sizing: border-box;
+    width: 100%;
     height: 100%;
-    padding: 0 calc(4.5 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    padding: 0 calc(3.5 * var(--wm-px)) 0 calc(2 * var(--wm-px));
     color: #fff;
     font: bold calc(12 * var(--wm-px)) / calc(32 * var(--wm-px)) var(--wm-font);
     white-space: nowrap;
@@ -2495,12 +2503,11 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side {
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="-1"] {
-    flex-basis: calc(2 * var(--wm-px));
     margin-right: calc(3 * var(--wm-px)) !important;
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="1"] {
-    margin-left: calc(3 * var(--wm-px)) !important;
+    margin-left: calc(2 * var(--wm-px)) !important;
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side > span {
@@ -2535,6 +2542,11 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-cur {
     text-align: center;
 }
 
+/* Studio: its empty-view lines hang 20 units from the top of the page, where the band now is */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-studio:has(> .wms-tabs.wm-pivot-on) > :is(.wms-noprint, .wms-norefs) {
+    margin-top: calc(32 * var(--wm-px));
+}
+
 /* one page: its name alone, no arrows (Contrast, Remove Programs, Encryption ...) */
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot.is-single .wm-pivot-arrow,
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot.is-single .wm-pivot-side {
@@ -2560,4 +2572,237 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-set > .wm-form-hdr:not(:has(*)) {
 /* ---- end 6.5.1 pivot ---- */
 
 /* ---- 6.5.1 notices: notification bubble buttons ---- */
+/* The notification bubble as Windows Mobile 6.5.3 draws it (emulator 480 x 640, wmnotify.exe and
+ * the alarm reminder, against the same on 6.5):
+ *   - the frame, its sides and the title text are 6.5's; the title band is 32 px taller (75 px of
+ *     blue + the 2 px grey line; 6.5: 43 + 2) with the title in its middle
+ *   - the body is at least 237 px tall (6.5: 115), so the whole bubble stands 316 px over the bar
+ *   - with several waiting the pager is two navy triangles 28 x 62 px, 101 px apart, "1 of 3"
+ *     bold between them, the right one ending 24 px before the frame
+ *   - an HTML push button is finger-sized: 142 x 90 px with its text half as large again (6.5:
+ *     72 x 36); a link is a lighter blue
+ *   - what the soft keys were is on the bottom button bar: "Hide" a text bubble, Dismiss and Menu
+ *     picture buttons (wmShell.js gives those keys their picture; with the bars off they are
+ *     6.5's text keys). Nothing of them is drawn in the bubble itself. */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-title {
+    height: calc(38.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body {
+    min-height: calc(118.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-pager {
+    margin-right: calc(8 * var(--wm-px));
+    font-weight: bold;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-step {
+    width: calc(14 * var(--wm-px));
+    height: calc(38.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-step.is-prev { margin-right: calc(7 * var(--wm-px)); }
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-step.is-next { margin-left: calc(7 * var(--wm-px)); }
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-step::before,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-step.is-next::before {
+    top: calc(3.5 * var(--wm-px));
+    left: 0;
+    width: calc(14 * var(--wm-px));
+    height: calc(31 * var(--wm-px));
+    /* 16 32 99 under the default theme */
+    background: hsl(calc(221.9deg + var(--wm65-dh) + 6.5deg * var(--wm65-near)) calc(72% * var(--wm65-k)) 22.5%);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body .toast-buttons button {
+    height: calc(45 * var(--wm-px));
+    min-width: calc(71 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) !important;
+    font-size: calc(var(--wm-fs) * 1.5);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body a {
+    color: #08a2f7;
+}
+
+/* the alarm's reminder (wmLock65.js): its two lines are 1.4 times the bubble's text (device:
+ * "Alarm: No description" 318 px wide against 226 on 6.5) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body .wm-alarm651-note {
+    display: block;
+    /* the first line starts 15 px under the band (device rows 350 - 375 of 640) */
+    margin-top: calc(-4.5 * var(--wm-px));
+    font-size: calc(var(--wm-fs) * 1.4);
+    line-height: 1.25;
+}
+
+/* ---- Settings > Clock & Alarms > Alarms (wmSettingsSystem.js), device 480 x 640: rows 88 px apart
+ * under a 1 px rule; the check box at 8, 9; the time 160 x 62 at 68, 21 (Tahoma 14 pt); the
+ * description at 228, 9; the week 7 x 29.5 px cells, 38 px high, at 232, 37 ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-list {
+    margin: calc(-2 * var(--wm-px)) calc(-8 * var(--wm-px)) 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-row {
+    position: relative;
+    height: calc(43.5 * var(--wm-px));
+    border-bottom: calc(0.5 * var(--wm-px)) solid #848284;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-row > .wm-check {
+    position: absolute;
+    left: calc(4 * var(--wm-px));
+    top: calc(4.5 * var(--wm-px));
+    margin: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-open {
+    position: absolute;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--wm65-text);
+    font: var(--wm-fs) var(--wm-font);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-open.is-time {
+    left: calc(34 * var(--wm-px));
+    top: calc(6.5 * var(--wm-px));
+    width: calc(82 * var(--wm-px));
+    height: calc(31 * var(--wm-px));
+    font-size: calc(18.67 * var(--wm-px));
+    line-height: calc(31 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-open.is-text {
+    left: calc(116 * var(--wm-px));
+    top: calc(2.5 * var(--wm-px));
+    width: calc(120 * var(--wm-px));
+    height: calc(17 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-days {
+    display: flex;
+    background: var(--wm65-face);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-row > .wm-alarm651-days {
+    position: absolute;
+    left: calc(116 * var(--wm-px));
+    top: calc(18.5 * var(--wm-px));
+    width: calc(103.25 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-day {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--wm65-text);
+    font: var(--wm-fs) var(--wm-font);
+    text-align: center;
+}
+
+/* a day the alarm rings on: the selection's blue, white letter */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-day.is-on {
+    background: linear-gradient(to bottom, var(--wm65-band-from), var(--wm65-band-to));
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-loud {
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+}
+
+/* Alarm Settings: the time 420 x 70 px at 14, 98; the description 420 x 64; the week 420 x 64
+ * (60 px cells, Tahoma 13 pt); Sound; Play / Stop 202 x 64; how it plays */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-edit {
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--wm-px));
+    margin: 0 calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-edit > .wm-edit {
+    box-sizing: border-box;
+    width: 100%;
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-edit > .wm-alarm651-time {
+    height: calc(35 * var(--wm-px));
+    font-size: calc(17.33 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-days.is-big {
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-days.is-big .wm-alarm651-day {
+    font-size: calc(17.33 * var(--wm-px));
+    border-radius: calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-edit > .wm-combo {
+    width: 100%;
+}
+
+/* Settings > Lock > Password (wmSettingsPersonal.js), device: the three labels end at x 170 px,
+ * their boxes are 242 px wide from x 178 */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pin651-rows .wm-form-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    margin-left: calc(-4 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pin651-rows .wm-form-row > .wm-form-label {
+    flex: 0 0 calc(82 * var(--wm-px));
+    width: auto;
+    padding: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) 0 0;
+    box-sizing: border-box;
+    text-align: right;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pin651-rows .wm-form-row > .wm-combo,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pin651-rows .wm-form-row > .wm-edit {
+    flex: 0 0 calc(121 * var(--wm-px));
+    width: calc(121 * var(--wm-px));
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+/* "Sound" 49 units wide, its list beside it; Play and Stop 101 x 32 with 7 between */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-sound,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-play {
+    display: flex;
+    align-items: center;
+    gap: calc(7 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-sound > span {
+    flex: 0 0 calc(45 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-sound > .wm-combo,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-play > .wm-button {
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-play > .wm-button {
+    height: calc(32 * var(--wm-px));
+}
 /* ---- end 6.5.1 notices ---- */

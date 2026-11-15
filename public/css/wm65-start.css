@@ -214,4 +214,32 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-cell.is-lifted {
     transition: none;
     will-change: translate;
 }
+
+/* the lifted icon is drawn at its own size whatever Effects > Start does to a pressed icon */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-list.is-lift651 .wm-s65-cell.is-lifted .wm-s65-icon {
+    scale: none;
+    transition: none;
+}
+
+/* what a cell answers to on 6.5.3 (wmStart65.js hit651 reads the pen the same way; this keeps the
+ * pressed look and the hold ring's target on the same cell): from 36 px above its top to 36 px
+ * above its bottom (a press at y 165 took the first row's item, at 168 the second row's); the
+ * outer columns over their whole width, the middle one over the 96 px between them */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-cell::before {
+    left: calc(var(--m) * 25%);
+    right: calc(var(--m) * 25%);
+    top: calc(-18 * var(--wm-px));
+    bottom: calc(18 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-label {
+    pointer-events: none;
+}
+
+/* a phone on its side (wmStart65.js columnsFor): 6.5.3 at 640 x 480 draws the portrait grid, 480
+ * wide, in the middle of the screen (icons at x 131 / 275 / 419, glow at 80) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65.is-land651 .wm-s65-list {
+    left: calc(50% - 120 * var(--wm-px));
+    width: calc(240 * var(--wm-px));
+}
 /* ---- end 6.5.1 ---- */
