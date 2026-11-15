@@ -1243,10 +1243,6 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([
     will-change: transform;
 }
 
-html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65.has-fx > .wm-wall65-fx.is-breathe {
-    animation: wm-ti-breathe 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
 @keyframes wm-ti-breathe {
     from { scale: 1.035; }
     to { scale: 1; }
@@ -1443,3 +1439,23 @@ html.ui-mobile[data-wm-version="6.5"] .wm-today-timeout {
     align-items: center;
     margin-top: calc(3 * var(--wm-px));
 }
+
+/* ==== Melaton Mobile 6.5.1 (#850): Windows Mobile 6.5.3's changes on top of 6.5 ==================
+ * The page runs as 6.5 (every rule above holds) with html[data-wm-rev="6.5.1"]. Scope every rule
+ * below with  html.ui-mobile[data-wm-rev="6.5.1"]  (the bars also need [data-wm-bars="bottom"]).
+ * One section per part; keep a part's rules between its two marks. */
+
+/* ---- 6.5.1 bars: bottom button bar + thin title bar (only with data-wm-bars="bottom") ---- */
+/* ---- end 6.5.1 bars ---- */
+
+/* ---- 6.5.1 drawer: status drawer under the title bar, screen magnifier ---- */
+/* ---- end 6.5.1 drawer ---- */
+
+/* ---- 6.5.1 controls: check boxes, option buttons, drop-downs, buttons, scroll bars, menus, message boxes, list rows ---- */
+/* ---- end 6.5.1 controls ---- */
+
+/* ---- 6.5.1 pivot: tabs as a sliding band under the title bar ---- */
+/* ---- end 6.5.1 pivot ---- */
+
+/* ---- 6.5.1 notices: notification bubble buttons ---- */
+/* ---- end 6.5.1 notices ---- */

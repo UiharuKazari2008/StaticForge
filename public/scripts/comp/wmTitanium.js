@@ -797,13 +797,12 @@
     /** The picture settles from a slight zoom (the entrance). */
     function breathe() {
         if (!fx.breathe || !ensureWall()) return;
+        // a Web Animation, not a class restarted through a forced layout: the entrance's first frame
+        // after a return paid for three whole-page layouts that way (A53 trace, Nov 15: 170 ms)
         for (const el of [fxLayer, blurInner]) {
-            if (!el) continue;
-            el.classList.remove('is-breathe');
-            void el.offsetWidth;
-            el.classList.add('is-breathe');
+            if (!el || typeof el.animate !== 'function') continue;
+            try { el.animate([{ scale: '1.035' }, { scale: '1' }], { duration: 900, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }); } catch (_) { /* no Web Animations */ }
         }
-        setTimeout(() => { for (const el of [fxLayer, blurInner]) if (el) el.classList.remove('is-breathe'); }, 1000);
     }
 
     /**
@@ -832,10 +831,10 @@
     /** The glass catches the light as the list lands. */
     function catchLight() {
         if (!fx.catch || !host) return;
-        host.classList.remove('is-catch');
-        void host.offsetWidth;
-        host.classList.add('is-catch');
-        setTimeout(() => host.classList.remove('is-catch'), 450);
+        const band = host.querySelector('.wm-ti-band');
+        if (!band || typeof band.animate !== 'function') return;
+        // the band's ::after sheen as a Web Animation (no forced layout to restart it)
+        try { band.animate([{ opacity: 0 }, { opacity: 1, offset: 0.35 }, { opacity: 0 }], { duration: 600, easing: 'ease-in-out', pseudoElement: '::after' }); } catch (_) { /* no pseudo-element animations */ }
     }
 
     /** Haptics: 'tick' as an item crosses the band, 'land' when the list stops (the Vibration tab's level). */
@@ -1222,8 +1221,11 @@
         entering = !!entering || homeArrival;
         homeArrival = false;
         clearTimeout(zoomTimer);
-        host.classList.remove('is-zoom', 'is-zoom-enter');
-        void host.offsetWidth; // restart the animation
+        // restart the grow only when one is still running (a forced layout otherwise for nothing)
+        if (host.classList.contains('is-zoom') || host.classList.contains('is-zoom-enter')) {
+            host.classList.remove('is-zoom', 'is-zoom-enter');
+            void host.offsetWidth;
+        }
         // after the entrance (#800): a bigger grow with the panel fading in, so it reads after the run
         host.classList.add(entering ? 'is-zoom-enter' : 'is-zoom');
         zoomTimer = setTimeout(() => {
@@ -1535,17 +1537,22 @@
         cancelAnimationFrame(settle); settle = 0; tw = null;
         clearTimeout(zoomTimer); zoomTimer = 0; host.classList.remove('is-zoom', 'is-zoom-enter');
         const at = Math.max(0, panels.findIndex((p) => p.clock));
+        // geometry first, before this frame's writes dirty the layout again
+        const u = unit();
+        const ft = focusTop();
+        const screenUnits = (host.clientHeight || window.innerHeight) / u;
         sel = at;
         skSel = at;
         drawExpanded();
-        host.classList.remove('is-entering');
-        void host.offsetWidth; // restart the scale-in
+        if (host.classList.contains('is-entering')) {
+            host.classList.remove('is-entering');
+            void host.offsetWidth; // restart the scale-in (only when one is still running)
+        }
         host.classList.add('is-entering');
         // the list starts all the way below the screen (its first item under the bottom edge) and runs
         // up into the clock while it fades in (Yukimi, Nov 14: from below, fading in, a slight grow
         // that is done halfway; wm-titanium.css); no input until the clock panel has grown in
-        const screenUnits = (host.clientHeight || window.innerHeight) / unit();
-        const below = screenUnits - (focusTop() - ROW * at) + ROW;
+        const below = screenUnits - (ft - ROW * at) + ROW;
         pos = at - below / ROW;
         host.classList.remove('is-exiting');
         unprime();

@@ -362,10 +362,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in {
     will-change: transform;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in.is-breathe {
-    animation: wm-ti-breathe 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
 /* the glass catches the light as the list lands: a highlight over the band's upper glass, in and out */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-band::after {
     content: "";
@@ -379,10 +375,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-band::after {
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0) 70%);
     opacity: 0;
     pointer-events: none;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-catch .wm-ti-band::after {
-    animation: wm-ti-catch 0.6s ease-in-out both;
 }
 
 @keyframes wm-ti-catch {
@@ -448,7 +440,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-dg-out {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-catch .wm-ti-band::after,
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-list,
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-focus { animation: none; }
 }
