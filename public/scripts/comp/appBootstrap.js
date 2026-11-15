@@ -157,7 +157,8 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
             }
 
             // Initialize datasetBias dynamically from config with default values
-            if (window.optionsData?.datasets) {
+            // (datasetBias: manualDropdownManager.js; only once Studio's scripts have declared it, #844)
+            if (window.optionsData?.datasets && typeof datasetBias !== 'undefined') {
                 window.optionsData.datasets.forEach(dataset => {
                     // Use default value from config, fallback to 1.0
                     datasetBias[dataset.value] = dataset.default !== undefined ? dataset.default : 1.0;

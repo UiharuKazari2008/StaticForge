@@ -135,10 +135,12 @@ function applyImageGenerationPreviewChrome() {
     } else {
         root.style.removeProperty('--studio-transparency-custom');
     }
+    // Studio's output viewer follows the setting when Studio's scripts are there (#844: these
+    // settings are applied by the boot itself)
     if (settings.lockOutputViewerCamera) {
         // destroyManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
-        destroyManualPreviewImageLoupe();
-    } else {
+        if (typeof destroyManualPreviewImageLoupe === 'function') destroyManualPreviewImageLoupe();
+    } else if (typeof refreshManualPreviewImageLoupe === 'function') {
         // refreshManualPreviewImageLoupe: public/scripts/comp/manualModalManager.js
         refreshManualPreviewImageLoupe();
     }
