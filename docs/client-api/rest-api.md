@@ -1018,6 +1018,29 @@ written to the report's `fix` field (`state`: `queued`, `running`, `proposed`, `
 `not-a-bug`, `needs-human`, `blocked`, `failed`; plus `attempts`, `issue`, `commit`, `branch`,
 `runs[]` with each run's log under `data/fault-reports/autofix-logs/`).
 
+Before every run the fixer itself (not the agent) does two things, in this order, and starts
+no run without both (Yukimi, 2026-11-14):
+
+1. **Yozora issue**: an open issue naming the fault id is reused, else
+   `[Fault] <program>: <message>` is opened (`type:bug`, `status:in-progress`, carded In progress,
+   with the report summary and stack). The run is told to use that issue and not open another.
+2. **Snapshot commit**: the live tree is committed as it stands (`git add -A`, other sessions'
+   uncommitted work included): `chore(autofix): snapshot of the live tree before the fault <id>
+   run (#<issue>)`. The fix is then a commit of its own on top. In live mode the run may push the
+   snapshot with its fix.
+
+If Yozora or git fails, the fault goes back in the queue for 10 minutes (6 tries, then `failed`).
+When the run ends, the fixer comments its result on the issue (status, summary, snapshot, fix
+commit, log path).
+
+**Settings pages.** `enabled`, `mode` and `maxRunsPerDay` are set from the desktop Control
+Panel (Problem Reports and Solutions → Change settings → **Advanced settings**, `cplPages2.js`)
+and the phone (Settings → Error Reporting → **Auto-fix** tab, `wmSettingsDreamscape.js`). They are
+saved in `data/fault-reports/.autofix-settings.json` and win over `config.json`. Only
+administrators may change them; the pages disable their controls when `editable` is false.
+"Runs a day" counts automatic runs per server-local calendar day (`0` = none; runs queued by
+hand do not count).
+
 `config.json` → `faultAutoFix` (all optional; defaults shown):
 
 ```json
@@ -1053,7 +1076,8 @@ written to the report's `fix` field (`state`: `queued`, `running`, `proposed`, `
 
 | Method | Path | Notes |
 |--------|------|-------|
-| GET | `/api/fault-autofix` | `{ ok, config, active, queue, today }` |
+| GET | `/api/fault-autofix` | `{ ok, editable, config, settings: { enabled, mode, maxRunsPerDay, max }, active, queue, today }` |
+| PUT | `/api/fault-autofix/settings` | **Admin.** `{ enabled?, mode?, maxRunsPerDay? }` (0-50); bad values are ignored. Answers like GET |
 | POST | `/api/fault-reports/:id/fix` | **Admin.** Queue that report now (skips the filters and the daily cap); **409** with `reason` when it cannot |
 | POST | `/api/fault-autofix/cancel` | **Admin.** Stop the active run (`{ ok, cancelled }`) |
 

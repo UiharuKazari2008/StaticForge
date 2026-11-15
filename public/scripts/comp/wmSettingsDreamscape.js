@@ -14,7 +14,8 @@
  *   Dovecote          Mail Options: window.dovecoteMailSettings (desktop-apps/dovecote.js)
  *   Search Indexing   Control Panel's Melaton Search (cplSearch.js): the tray indicator's
  *                     _indexJobs, actions fired as the tray's contextMenuAction events
- *   Error Reporting   Problem Reports and Solutions (cplPages2.js): its registry key's Consent
+ *   Error Reporting   Problem Reports and Solutions (cplPages2.js): its registry key's Consent;
+ *                     Auto-fix tab = Advanced settings there (GET/PUT /api/fault-autofix, #833)
  *                     (melatonRegistry) and GET /api/fault-reports
  *
  * Styles: public/css/wm-settings-dreamscape.css. Runs only on Melaton Mobile (uiShell 'mobile').
@@ -960,11 +961,23 @@
         tab: 'system',
         label: 'Error Reporting',
         icon: 'set-error-reporting',
-        tabs: [['settings', 'Settings'], ['history', 'History']],
+        tabs: [['settings', 'Settings'], ['history', 'History'], ['autofix', 'Auto-fix']],
         available: () => !!(reg() && typeof reg().get === 'function'),
         init() {
             const consent = reg().get(WER, 'Consent', 'auto') === 'ask' ? 'ask' : 'auto';
-            const d = { consent, saved: consent, faults: null, sel: '' };
+            const d = { consent, saved: consent, faults: null, sel: '', af: null, afSaved: null };
+            // the server's automatic fixes (modules/faultAutoFix.js, #833), shared with the desktop's
+            // Problem Reports and Solutions > Change settings > Advanced settings
+            fetch('/api/fault-autofix', { credentials: 'same-origin', cache: 'no-store' })
+                .then((r) => r.json())
+                .then((j) => {
+                    if (!j || !j.ok) throw new Error('no settings');
+                    d.afInfo = j;
+                    d.af = Object.assign({}, j.settings);
+                    d.afSaved = Object.assign({}, j.settings);
+                })
+                .catch(() => { d.afFailed = true; })
+                .then(() => { if (d.redraw) d.redraw(); });
             fetch('/api/fault-reports?limit=100', { credentials: 'same-origin', cache: 'no-store' })
                 .then((r) => r.json())
                 .then((j) => { d.faults = (j && j.reports) || []; })
@@ -973,7 +986,7 @@
             return d;
         },
         render(el, tab, d, api) {
-            d.redraw = () => { if (el.isConnected && d.tab === 'history') rerenderKeep(el, api); };
+            d.redraw = () => { if (el.isConnected && (d.tab === 'history' || d.tab === 'autofix')) rerenderKeep(el, api); };
             d.tab = tab;
             if (tab === 'history') {
                 if (d.faults === null) { el.innerHTML = ui.text('Reading problem reports...'); return; }
@@ -999,15 +1012,51 @@
                 });
                 return;
             }
+            if (tab === 'autofix') {
+                if (d.afFailed) { el.innerHTML = ui.text('The settings could not be read from the Dreamscape server.'); return; }
+                if (!d.af) { el.innerHTML = ui.text('Reading settings...'); return; }
+                const info = d.afInfo || {};
+                const off = !info.editable;
+                const limits = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50];
+                if (!limits.includes(d.af.maxRunsPerDay)) limits.push(d.af.maxRunsPerDay);
+                const opts = limits.sort((a, b) => a - b).map((n) => [String(n), n === 0 ? 'None' : String(n)]);
+                const used = (info.today && info.today.count) || 0;
+                const now = info.active ? `Fixing a problem now${info.active.issue ? ` (issue #${info.active.issue})` : ''}.` : 'No fix is running.';
+                el.innerHTML = `${ui.text('When a program stops working, Dreamscape can find the cause and fix it. The current code is committed first, and every fix gets a Yozora issue.')}
+                    ${ui.check('af-on', 'Fix problems automatically', !!d.af.enabled, off ? 'disabled' : '')}
+                    ${ui.text('When a fix is ready:')}
+                    ${ui.radio('af-mode', 'live', 'Apply it right away', d.af.mode === 'live').replace('<input', off ? '<input disabled' : '<input')}
+                    ${ui.radio('af-mode', 'worktree', 'Keep it for review', d.af.mode === 'worktree').replace('<input', off ? '<input disabled' : '<input')}
+                    ${comboRow('Fixes a day:', 'af-limit', opts, String(d.af.maxRunsPerDay), off)}
+                    ${ui.note(`Today: ${used} of ${d.afSaved ? d.afSaved.maxRunsPerDay : d.af.maxRunsPerDay} used. ${now}${off ? ' Only an administrator can change these settings.' : ''}`)}`;
+                const box = el.querySelector('input[name="af-on"]');
+                if (box) box.addEventListener('change', () => { d.af.enabled = box.checked; });
+                el.querySelectorAll('input[name="af-mode"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.af.mode = r.value; }));
+                const combo = el.querySelector('[data-act="af-limit"]');
+                if (combo && !off) ui.bindCombo(combo, opts, String(d.af.maxRunsPerDay), (v) => { d.af.maxRunsPerDay = Number(v); });
+                return;
+            }
             el.innerHTML = `${ui.text('When a problem occurs, Melaton can check for solutions automatically or ask you each time.')}
                 ${ui.radio('wer', 'auto', 'Check for solutions automatically (recommended)', d.consent === 'auto')}
                 ${ui.radio('wer', 'ask', 'Ask me to check if a problem occurs', d.consent === 'ask')}`;
             el.querySelectorAll('input[name="wer"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.consent = r.value; }));
         },
         async commit(d) {
-            if (d.consent === d.saved) return [];
             try {
-                await reg().set(WER, { Consent: d.consent });
+                if (d.consent !== d.saved) await reg().set(WER, { Consent: d.consent });
+                const a = d.af;
+                const b = d.afSaved;
+                if (a && b && d.afInfo && d.afInfo.editable && (a.enabled !== b.enabled || a.mode !== b.mode || a.maxRunsPerDay !== b.maxRunsPerDay)) {
+                    const r = await fetch('/api/fault-autofix/settings', {
+                        method: 'PUT',
+                        credentials: 'same-origin',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled: a.enabled, mode: a.mode, maxRunsPerDay: a.maxRunsPerDay })
+                    });
+                    const j = await r.json().catch(() => null);
+                    if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || `The auto-fix settings could not be saved (HTTP ${r.status}).`);
+                    d.afSaved = Object.assign({}, j.settings);
+                }
             } catch (err) {
                 await errorBox('Error Reporting', (err && err.message) || 'The setting could not be saved.');
                 return false;

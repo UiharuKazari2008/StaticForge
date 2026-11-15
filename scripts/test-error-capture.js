@@ -172,11 +172,20 @@ async function testAutoFix() {
     const dir = path.join(tmp, 'fix');
     const store = reports.createStore({ dir });
     const launches = [];
+    const order = [];
+    const comments = [];
+    let yozoraDown = false;
+    const yozora = {
+        ensureIssue: async (rep) => { order.push('issue'); if (yozoraDown) throw new Error('Yozora down'); return 900 + Number(rep.message.length % 50); },
+        comment: async (n, text) => { comments.push({ n, text }); }
+    };
     let config = { faultAutoFix: { mode: 'live', settleMs: 0, maxRunsPerDay: 1 } };
     const fixer = autofix.createFixer({
         store,
         getConfig: () => config,
-        launch: (o) => { launches.push(o); return { pid: 0 }; } // pid 0: "not alive" on the next check
+        yozora,
+        snapshot: (id, issue) => { order.push('snapshot'); return issue ? 'snap1234' : null; },
+        launch: (o) => { order.push('launch'); launches.push(o); return { pid: 0 }; } // pid 0: "not alive" on the next check
     });
     fixer.start();
     const r = await store.upsert(clientBody({ surface: 'desktop', client: { userAgent: 'Chrome/131' } }));
@@ -187,6 +196,8 @@ async function testAutoFix() {
     assert.strictEqual(launches.length, 1, 'one run started');
     assert.ok(launches[0].prompt.includes(r.id) && launches[0].prompt.includes('FAULT_FIX_RESULT'));
     assert.ok(launches[0].prompt.includes('Mode: live'));
+    assert.deepStrictEqual(order, ['issue', 'snapshot', 'launch'], 'issue first, then the snapshot commit, then the run');
+    assert.ok(/issue is #\d+/.test(launches[0].prompt) && launches[0].prompt.includes('snap1234'), 'the prompt names the issue and the snapshot');
     rep = await store.read(r.id);
     assert.strictEqual(rep.fix.state, 'running');
     assert.strictEqual(rep.fix.attempts, 1);
@@ -198,6 +209,8 @@ async function testAutoFix() {
     assert.strictEqual(rep.status, 'fixed');
     assert.strictEqual(rep.fix.issue, 901);
     assert.strictEqual(fixer._state().active, null);
+    assert.strictEqual(comments.length, 1, 'the result is commented on the issue');
+    assert.ok(/ended: \*\*fixed\*\*/.test(comments[0].text) && comments[0].text.includes('snap1234'));
 
     // daily cap: a second fault waits (manual still goes)
     const r2 = await store.upsert(clientBody({ surface: 'desktop', message: 'second fault', client: { userAgent: 'Chrome/131' } }));
@@ -208,12 +221,69 @@ async function testAutoFix() {
     const again = await fixer.enqueue(r2.id, { manual: true });
     assert.strictEqual(again.queued, false, 'already queued');
 
+    // no issue, no run: Yozora down puts the fault back in the queue
+    yozoraDown = true;
+    config = { faultAutoFix: { mode: 'live', settleMs: 0, maxRunsPerDay: 5 } };
+    order.length = 0;
+    await fixer.tick();
+    assert.deepStrictEqual(order, ['issue'], 'nothing is committed or launched without an issue');
+    assert.strictEqual(launches.length, 1);
+    const q = fixer._state().queue;
+    assert.strictEqual(q.length, 1);
+    assert.strictEqual(q[0].prepFailures, 1);
+    assert.ok(q[0].readyAt > Date.now() + 60000, 'retried later');
+    yozoraDown = false;
+
+    // the real snapshot commits a dirty tree and does nothing on a clean one
+    const repo = path.join(tmp, 'repo');
+    fs.mkdirSync(repo);
+    const { execFileSync } = require('child_process');
+    const g = (...a) => execFileSync('git', a, { cwd: repo, encoding: 'utf8' });
+    g('init', '-q'); g('config', 'user.email', 't@t'); g('config', 'user.name', 't');
+    fs.writeFileSync(path.join(repo, 'a.js'), '1'); g('add', '-A'); g('commit', '-qm', 'init');
+    assert.strictEqual(autofix.snapshotLiveTree('fault_x', 5, repo), null, 'clean tree: no commit');
+    fs.writeFileSync(path.join(repo, 'a.js'), '2'); fs.writeFileSync(path.join(repo, 'b.js'), 'new');
+    const snap = autofix.snapshotLiveTree('fault_x', 5, repo);
+    assert.ok(/^[0-9a-f]{12}$/.test(snap));
+    assert.strictEqual(g('status', '--porcelain').trim(), '', 'everything committed, untracked files too');
+    assert.ok(g('log', '-1', '--format=%s').includes('#5'));
+
     // worktree mode: a "fixed" result is only "proposed"
     config = { faultAutoFix: { mode: 'worktree', settleMs: 0, maxRunsPerDay: 5 } };
     const wfixer = autofix.createFixer({ store: reports.createStore({ dir: path.join(tmp, 'wt') }), getConfig: () => config, launch: () => ({ pid: 0 }) });
     void wfixer; // prepareWorktree runs git; covered by buildPrompt below instead
-    const prompt = autofix.buildPrompt(rep, autofix.cfg(() => config), { id: 'run_x', cwd: '/w', branch: 'autofix/fault_x' });
+    const prompt = autofix.buildPrompt(rep, autofix.cfg(() => config), { id: 'run_x', cwd: '/w', branch: 'autofix/fault_x', issue: 777, snapshot: null });
     assert.ok(prompt.includes('Mode: worktree') && prompt.includes('autofix/fault_x') && prompt.includes('do not push'));
+
+    // settings from the Control Panel / phone: only checked keys, saved over config.json
+    assert.deepStrictEqual(autofix.cleanSettings({ enabled: 'yes', mode: 'rm -rf', maxRunsPerDay: 999, ignore: ['x'] }), {}, 'bad values and other keys are dropped');
+    assert.deepStrictEqual(autofix.cleanSettings({ enabled: false, mode: 'live', maxRunsPerDay: 0 }), { enabled: false, mode: 'live', maxRunsPerDay: 0 });
+    const sdir = path.join(tmp, 'settings');
+    const sstore = reports.createStore({ dir: sdir });
+    const slaunches = [];
+    const sfixer = autofix.createFixer({
+        store: sstore,
+        getConfig: () => ({ faultAutoFix: { mode: 'worktree', settleMs: 0, maxRunsPerDay: 8 } }),
+        yozora: { ensureIssue: async () => 1, comment: async () => {} },
+        snapshot: () => null,
+        launch: (o) => { slaunches.push(o); return { pid: 0 }; }
+    });
+    sfixer.start();
+    assert.strictEqual(sfixer.status().settings.maxRunsPerDay, 8, 'config.json until something is saved');
+    const saved = sfixer.saveSettings({ maxRunsPerDay: 0, mode: 'live' });
+    assert.strictEqual(saved.settings.maxRunsPerDay, 0);
+    assert.strictEqual(saved.settings.mode, 'live');
+    assert.ok(fs.existsSync(path.join(sdir, '.autofix-settings.json')));
+    await sstore.upsert(clientBody({ surface: 'desktop', message: 'limited fault', client: { userAgent: 'Chrome/131' } }));
+    await wait(30);
+    await sfixer.tick();
+    assert.strictEqual(slaunches.length, 0, 'a limit of 0 starts no automatic run');
+    sfixer.saveSettings({ maxRunsPerDay: 3 });
+    await sfixer.tick();
+    assert.strictEqual(slaunches.length, 1, 'raising the limit lets the waiting fault start');
+    assert.ok(slaunches[0].prompt.includes('Mode: live'), 'the saved mode wins over config.json');
+    const reread = autofix.createFixer({ store: reports.createStore({ dir: sdir }), getConfig: () => ({}), launch: () => ({ pid: 0 }) });
+    assert.strictEqual(reread.status().settings.maxRunsPerDay, 3, 'saved settings survive a restart');
 
     // disabled: nothing is queued automatically
     config = { faultAutoFix: { enabled: false } };

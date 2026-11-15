@@ -172,6 +172,7 @@
         title: () => 'Problem Reporting Settings',
         tasks: () => '',
         body: () => {
+            autofix = null; // Advanced settings reads them fresh each time it opens
             const v = reg(WER, 'Consent', 'auto');
             const opt = (id, text) => `<div class="cpl-vradio"><input type="radio" name="cpl-wer" id="cpl-wer-${id}" value="${id}"${v === id ? ' checked' : ''}><label for="cpl-wer-${id}">${esc(text)}</label></div>`;
             return `<div class="cpl-vpage">${help('problem-reports')}
@@ -179,6 +180,7 @@
                 <p class="cpl-vtext">When a problem occurs, Melaton can check for solutions automatically or ask you each time.</p>
                 ${opt('auto', 'Check for solutions automatically (recommended)')}
                 ${opt('ask', 'Ask me to check if a problem occurs')}
+                <p class="cpl-vtext cpl-vgap"><a href="#" class="cpl-vlink is-underlined" data-cpl-action="nav" data-cpl-arg="problem-reports-advanced">Advanced settings</a></p>
                 <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="ok">OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-action="nav" data-cpl-arg="problem-reports">Cancel</button></div>
             </div>`;
         }
@@ -188,6 +190,72 @@
             const v = main().querySelector('input[name="cpl-wer"]:checked');
             if (v && R()) await R().set(WER, { Consent: v.value });
             nav('problem-reports');
+        }
+    };
+
+    // Advanced settings: the server's automatic fixes (modules/faultAutoFix.js, Yozora #833), shared
+    // with the phone's Error Reporting > Auto-fix tab. GET/PUT /api/fault-autofix; only an
+    // administrator may change them (the server says so in `editable`).
+    let autofix = null;
+    async function loadAutofix() {
+        try {
+            const r = await fetch('/api/fault-autofix', { credentials: 'same-origin', cache: 'no-store' });
+            const j = await r.json();
+            autofix = j && j.ok ? j : { failed: true };
+        } catch (_) {
+            autofix = { failed: true };
+        }
+        if (CP() && CP().currentPage() === 'problem-reports-advanced') rerender();
+    }
+    const RUN_LIMITS = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50];
+
+    pages['problem-reports-advanced'] = {
+        parent: 'problem-reports-settings',
+        title: () => 'Advanced Problem Reporting Settings',
+        tasks: () => '',
+        body: () => {
+            if (autofix === null) { void loadAutofix(); return `<div class="cpl-vpage">${help('problem-reports')}<p class="cpl-vtext">Reading the settings...</p></div>`; }
+            if (autofix.failed) return `<div class="cpl-vpage">${help('problem-reports')}<h1 class="cpl-vtitle">Advanced settings for problem reporting</h1><p class="cpl-vtext">The settings could not be read from the Dreamscape server.</p><div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-action="nav" data-cpl-arg="problem-reports-settings">Cancel</button></div></div>`;
+            const st = autofix.settings || {};
+            const dis = autofix.editable ? '' : ' disabled';
+            const limits = RUN_LIMITS.includes(st.maxRunsPerDay) ? RUN_LIMITS : RUN_LIMITS.concat([st.maxRunsPerDay]).sort((a, b) => a - b);
+            const used = (autofix.today && autofix.today.count) || 0;
+            const active = autofix.active;
+            const now = active ? `Fixing a problem now${active.issue ? ` (Yozora issue #${active.issue})` : ''}.` : 'No fix is running.';
+            const radio = (id, text) => `<div class="cpl-vradio"><input type="radio" name="cpl-af-mode" id="cpl-af-${id}" value="${id}"${st.mode === id ? ' checked' : ''}${dis}><label for="cpl-af-${id}">${esc(text)}</label></div>`;
+            return `<div class="cpl-vpage">${help('problem-reports')}
+                <h1 class="cpl-vtitle">Advanced settings for problem reporting</h1>
+                <p class="cpl-vtext">When a program stops working, Dreamscape can find the cause and fix it. Before a fix starts, the current code is committed, and every fix is recorded on a Yozora issue.</p>
+                <div class="cpl-vcheck"><input type="checkbox" id="cpl-af-on"${st.enabled ? ' checked' : ''}${dis}><label for="cpl-af-on">Fix problems automatically</label></div>
+                <p class="cpl-vtext cpl-vgap">When a fix is ready:</p>
+                ${radio('live', 'Apply it right away')}
+                ${radio('worktree', 'Keep it aside until someone reviews it')}
+                <p class="cpl-vtext cpl-vgap"><label for="cpl-af-limit">Most fixes to start in one day:</label> <select class="cpl-vselect" id="cpl-af-limit"${dis}>${limits.map((n) => `<option value="${n}"${n === st.maxRunsPerDay ? ' selected' : ''}>${n === 0 ? 'None' : n}</option>`).join('')}</select></p>
+                <p class="cpl-vtext">Today: ${used} of ${st.maxRunsPerDay} used. ${esc(now)}</p>
+                ${autofix.editable ? '' : '<p class="cpl-vtext"><img src="/static_images/vista-cpl/shield-uac-16.png" alt="" onerror="this.remove()"> Only an administrator can change these settings.</p>'}
+                <div class="cpl-vbuttons"><button type="button" class="tbp-button cpl-vbutton" data-cpl-vpage="ok"${dis}>OK</button><button type="button" class="tbp-button cpl-vbutton" data-cpl-action="nav" data-cpl-arg="problem-reports-settings">Cancel</button></div>
+            </div>`;
+        }
+    };
+    handlers['problem-reports-advanced'] = {
+        async ok() {
+            const m = main();
+            const mode = m.querySelector('input[name="cpl-af-mode"]:checked');
+            const body = {
+                enabled: !!(m.querySelector('#cpl-af-on') || {}).checked,
+                mode: mode ? mode.value : undefined,
+                maxRunsPerDay: Number((m.querySelector('#cpl-af-limit') || {}).value)
+            };
+            try {
+                const r = await fetch('/api/fault-autofix/settings', { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                const j = await r.json().catch(() => null);
+                if (!r.ok || !j || !j.ok) throw new Error((j && j.error) || `HTTP ${r.status}`);
+                autofix = j;
+            } catch (err) {
+                msg(`The settings could not be saved. ${err && err.message ? err.message : ''}`.trim(), 'Problem Reports and Solutions');
+                return;
+            }
+            nav('problem-reports-settings');
         }
     };
 
