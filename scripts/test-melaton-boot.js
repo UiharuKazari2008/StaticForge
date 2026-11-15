@@ -92,7 +92,10 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.deepStrictEqual((await probe({ ok: true, status: 200, json: async () => ({ hello: 1 }) })).kind, 'http', 'JSON without isReady is not /status');
     assert.deepStrictEqual(await probe(timeoutErr()), { kind: 'timeout' });
     assert.deepStrictEqual(await probe(networkErr()), { kind: 'network' });
-    assert.deepStrictEqual(await boot.probeStatus({ navigator: { onLine: false }, fetch: () => assert.fail('no fetch when offline') }), { kind: 'offline' });
+    // the browser's offline flag does not decide (the Fold's WebView said offline with the server up):
+    // the request is made; it failing while the flag says offline is 'offline', it answering is the answer
+    assert.deepStrictEqual(await boot.probeStatus({ navigator: { onLine: false }, fetch: async () => { throw new TypeError('Failed to fetch'); } }), { kind: 'offline' });
+    assert.strictEqual((await boot.probeStatus({ navigator: { onLine: false }, fetch: async () => ({ ok: true, status: 200, json: async () => ({ isReady: true }) }) })).kind, 'json');
 
     // ---------- a starting server is a connection: boot screen until ready, then teal ----------
     let h = harness([json(false), json(false), json(false), json(true)]);

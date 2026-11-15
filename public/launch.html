@@ -1165,7 +1165,13 @@
         var dreamscapeLaunchSplashHoldUntilMs = 0;
 
         async function checkOnlineStatus() {
-            return navigator.onLine;
+            if (navigator.onLine) return true;
+            // The browser's flag can be wrong: the Fold's WebView said offline while the server
+            // answered it in 26 ms (Nov 15 2026). "Offline" then skipped the installer, the app found
+            // its large update, sent the phone back here, and the two went round until the app's
+            // "needs to restart to install an update" box, which Restart could not clear. The
+            // server's own answer decides (5 s at most, checkServerReadiness).
+            return (await checkServerReadiness()) !== null;
         }
 
         async function checkServerAccessibility() {

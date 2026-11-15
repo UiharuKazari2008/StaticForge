@@ -209,7 +209,8 @@
     }
 
     async function probeStatus(env) {
-        if (env.navigator && env.navigator.onLine === false) return { kind: 'offline' };
+        // navigator.onLine is not asked first: the Fold's WebView reported offline with the server
+        // answering in 26 ms (Nov 15 2026). A request that fails while it says offline is 'offline'.
         try {
             const res = await env.fetch('/status', {
                 method: 'OPTIONS',
@@ -231,6 +232,7 @@
             }
             return { kind: 'json', data };
         } catch (err) {
+            if (env.navigator && env.navigator.onLine === false) return { kind: 'offline' };
             const name = err && err.name;
             if (name === 'TimeoutError' || name === 'AbortError') return { kind: 'timeout' };
             return { kind: 'network' };
