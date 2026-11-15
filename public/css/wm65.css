@@ -1215,6 +1215,27 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65
     display: block;
 }
 
+/* Parallax Effect (Settings > Today > Wallpaper; wmTitanium.js sets --wm-ti-par, -0.55 to 0.55, from
+ * where the list stands): a copy of the picture (the layer's own inline background, inherited), zoomed
+ * in 8 %, moves up to 3.85 % of its height, slower than the list and never past its zoomed edge. The
+ * layer clips it, so the system bar bands stay black. Today only: Start keeps the picture still. */
+html.ui-mobile[data-wm-version="6.5"][data-wm-parallax][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65 {
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-parallax][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-color: inherit;
+    background-image: inherit;
+    background-size: inherit;
+    background-position: inherit;
+    background-repeat: inherit;
+    transform: translate3d(0, calc(var(--wm-ti-par, 0) * -7%), 0) scale(1.08);
+    will-change: transform;
+}
+
 html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-today.has-picture {
     background-image: none !important;
     background-color: transparent !important;

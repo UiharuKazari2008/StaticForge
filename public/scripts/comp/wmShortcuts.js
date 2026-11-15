@@ -108,35 +108,44 @@
     }
 
     /**
-     * Settings > System > Home Screen: Melaton Mobile as the phone's launcher (AndroidHome), the same
-     * switch as the app's own settings. Android asks once which home app to use; off goes back to the
-     * phone's launcher.
+     * Settings > System > Android Bridge > Home Screen (moved off its own System page, Yukimi Nov 15):
+     * Melaton Mobile as the phone's launcher (AndroidHome), the same switch as the app's own settings.
+     * Android asks once which home app to use; off goes back to the phone's launcher. The box acts at
+     * once (Android's chooser), not on the page's ok.
      */
     function registerHomeScreenPage() {
         const home = window.AndroidHome;
         if (!home || typeof home.setEnabled !== 'function') return;
-        let page = null;
-        const draw = () => {
-            if (!page) return;
-            const on = !!home.isHome();
-            const ui = window.wmSettings && window.wmSettings.ui;
-            const check = ui && typeof ui.check === 'function'
-                ? ui.check('home', 'Use Melaton Mobile as the home screen', on)
-                : `<label class="wm-check"><input type="checkbox" name="home"${on ? ' checked' : ''}><span>Use Melaton Mobile as the home screen</span></label>`;
-            page.innerHTML = `<div class="wm-form-hdr">Home Screen</div><div class="wm-form wm-homescreen">${check}
-                <p>The Home button brings Today. Android asks once which home app to use, and to let Melaton Mobile run in the background.</p>
-                <p>Turn this off to go back to the phone's own launcher.</p></div>`;
-            const box = page.querySelector('input[name="home"]');
-            if (box) box.addEventListener('change', () => home.setEnabled(box.checked));
+        let shown = null; // { api } while the tab is on screen
+        const ext = {
+            id: 'home-screen',
+            tabs: [['home-screen', 'Home Screen']],
+            after: 'programs',
+            init: () => ({}),
+            render(el, tab, d, api) {
+                shown = { api };
+                const on = !!home.isHome();
+                const ui = window.wmSettings && window.wmSettings.ui;
+                const check = ui && typeof ui.check === 'function'
+                    ? ui.check('home', 'Use Melaton Mobile as the home screen', on)
+                    : `<label class="wm-check"><input type="checkbox" name="home"${on ? ' checked' : ''}><span>Use Melaton Mobile as the home screen</span></label>`;
+                el.innerHTML = `<div class="wm-homescreen">${check}
+                    <p>The Home button brings Today. Android asks once which home app to use, and to let Melaton Mobile run in the background.</p>
+                    <p>Turn this off to go back to the phone's own launcher.</p></div>`;
+                const box = el.querySelector('input[name="home"]');
+                if (box) box.addEventListener('change', () => home.setEnabled(box.checked));
+            }
         };
-        sh.registerApp({ id: 'home-screen', title: 'Home Screen', icon: 'set-today', inStart: false, mount(p) { page = p; draw(); }, show: draw });
         // back from Android's home chooser: the box follows what was picked
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && sh.current === 'home-screen') draw(); });
-        const link = () => {
-            if (window.wmSettings && typeof window.wmSettings.addLink === 'function') window.wmSettings.addLink({ id: 'link-home-screen', tab: 'system', label: 'Home Screen', icon: 'set-today', app: 'home-screen' });
-            else setTimeout(link, 1500);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState !== 'visible' || !shown || sh.current !== 'settings') return;
+            try { shown.api.rerender(); } catch (_) { shown = null; }
+        });
+        const add = () => {
+            if (window.wmSettings && typeof window.wmSettings.extendPage === 'function') window.wmSettings.extendPage('default-programs', ext);
+            else setTimeout(add, 1500);
         };
-        link();
+        add();
     }
 
     function register() {
