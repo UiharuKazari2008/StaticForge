@@ -4641,6 +4641,9 @@ const doveEnsureNewMailModal = function () {
     modal = document.createElement('div');
     modal.id = DOVE_NEW_MAIL_ID;
     modal.className = 'modal hidden transient owned-window on-top';
+    // a Vista message box (vista-dialogs.css): the tags vistaDialogs.js used to add at run time
+    modal.dataset.vistaDialog = 'message';
+    modal.dataset.vistaIcon = 'info';
     modal.dataset.windowClient = 'light';
     modal.dataset.windowPositionMode = 'manual-only';
     modal.setAttribute('role', 'dialog');
@@ -4696,7 +4699,7 @@ const doveEnsureNewMailModal = function () {
     body.appendChild(text);
 
     const actions = document.createElement('div');
-    actions.className = 'dovecote-new-mail-actions';
+    actions.className = 'dovecote-new-mail-actions vista-dialog-footer';
     const readBtn = doveCreateButton('btn-primary', 'Read');
     readBtn.dataset.dialogPrimary = '1';
     readBtn.textContent = 'Read';

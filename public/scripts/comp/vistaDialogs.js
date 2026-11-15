@@ -41,8 +41,8 @@
     const doc = typeof document !== 'undefined' ? document : null;
 
     // the run-time list: it only shrinks (see above)
-    const MESSAGE_IDS = ['confirmationDialog', 'creditCostDialog', 'agentClientUpdateDialog', 'dovecoteNewMailModal'];
-    const FORM_IDS = ['unifiedUploadModal', 'naxtCustomTagModal', 'chatModal', 'updateNoteModal'];
+    const MESSAGE_IDS = ['confirmationDialog', 'creditCostDialog', 'agentClientUpdateDialog'];
+    const FORM_IDS = ['unifiedUploadModal'];
     const ALL_IDS = MESSAGE_IDS.concat(FORM_IDS);
     // the confirmation dialog is a task dialog (form inside) rather than a message box when
     const TASK_CLASSES = ['enhance-dialog-modal', 'studio-change-dialog-modal', 'explore-publish-dialog-modal'];
