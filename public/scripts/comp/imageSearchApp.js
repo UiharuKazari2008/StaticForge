@@ -3,9 +3,11 @@
  * (dsap://ispy.dreamscape.jp/, omegasearchDsapApplet.js). Modelled on Vista's Search window, measured
  * on the Vista VM (Start > Search, then Advanced Search, 800x600; captures in ~/.cache/vista-vm/search-ref):
  *
- *   title row       travel orbs, Recent Pages, the address ("Search Results in <workspace> > <view>",
- *                   a green fill while a search runs), refresh, the search box (vista-explorer.css draws
- *                   it, as Control Panel's and the Games folder's)
+ *   title row       travel orbs, Recent Pages, the address ("Search Results in <workspace> > <view>":
+ *                   each > drops down the places beside the crumb after it; a click on the empty part
+ *                   types an address, the dsap:// search URL as Vista shows search-ms:; the right-end
+ *                   drop-down lists the places visited; a green fill while a search runs), refresh, the
+ *                   search box (its magnifier turns into the clear X while there is a search)
  *   Show only band  Images / Scraps / Pinned / Upscaled (the DSAP's view type) and Advanced Search
  *   Advanced Search the drop-down pane: Location (workspace scope and its corpus), date, models, sampler,
  *                   scheduler, resolution, steps / guidance / rescale, UC and NSFW (Vista trackbars),
@@ -241,11 +243,15 @@
                             <button type="button" class="btn-secondary toolbar-input-segment explorer-recent-pages-btn cpl-recent" title="Recent Pages" aria-label="Recent Pages" disabled></button>
                         </div>
                         <div class="button-group cpl-address-group isx-address-group">
-                            <div class="form-control colored toolbar-input-segment cpl-address isx-address" role="navigation" aria-label="Address"><span class="isx-progress" aria-hidden="true"></span><i class="fas fa-search cpl-address-icon" aria-hidden="true"></i><span class="isx-crumbs"></span></div>
+                            <span class="isx-progress" aria-hidden="true"></span>
+                            <div class="form-control colored toolbar-input-segment cpl-address isx-address" role="navigation" aria-label="Address"><span class="cpl-address-icon" aria-hidden="true"></span><span class="isx-crumbs"></span></div>
+                            <input type="text" class="isx-address-edit" aria-label="Address" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" tabindex="-1">
+                            <button type="button" class="isx-address-drop" title="Previous Locations" aria-label="Previous Locations"></button>
                             <button type="button" class="btn-secondary toolbar-input-segment cpl-refresh" title="Refresh"><i class="fas fa-sync"></i></button>
                         </div>
                         <div class="button-group">
                             <input type="text" class="form-control colored toolbar-input-segment cpl-search isx-search" placeholder="Search" spellcheck="false" autocapitalize="off" autocorrect="off" autocomplete="off" title="Type a tag or phrase (term1 | term2 for either), then press Enter">
+                            <button type="button" class="isx-search-clear" title="Clear" aria-label="Clear" hidden></button>
                         </div>
                     </div>
                 </div>
@@ -364,6 +370,9 @@
                 ev.preventDefault();
                 this.submitSearchBox();
             });
+            box.addEventListener('input', () => this.syncSearchClear());
+            this.$('.isx-search-clear').addEventListener('click', () => this.clearSearch());
+            this.wireAddress();
             this.$('.isx-band').addEventListener('click', (ev) => {
                 const b = ev.target.closest('.isx-band-btn');
                 if (!b) return;
@@ -432,6 +441,9 @@
                 else if (ev.altKey && ev.key === 'ArrowLeft') { ev.preventDefault(); this.go(-1); }
                 else if (ev.altKey && ev.key === 'ArrowRight') { ev.preventDefault(); this.go(1); }
                 else if ((ev.ctrlKey && ev.key.toLowerCase() === 'e') || ev.key === 'F3') { ev.preventDefault(); this.$('.isx-search').focus(); }
+                // Vista: Alt+D types an address, F4 drops the address list down
+                else if (ev.altKey && ev.key.toLowerCase() === 'd') { ev.preventDefault(); this.editAddress(); }
+                else if (ev.key === 'F4') { ev.preventDefault(); this.$('.isx-address-drop').click(); }
             });
             this.wireMenus();
         }
@@ -456,6 +468,23 @@
                 { text: 'Open in Studio', action: 'studio' }
             ], (a) => this.action(a));
             click(this.$('.cpl-recent'), () => this.recentItems(), (a) => this.action(a));
+            // the places visited drop down under the address box, from its left edge (Vista's list)
+            cm.attachClickMenuToElement(this.$('.isx-address-drop'), {
+                position: 'anchor',
+                anchorAlign: 'start',
+                anchorElement: () => this.$('.isx-address-group'),
+                maxHeight: 460,
+                sections: [{ type: 'list', initfn: (sec) => { sec.items = this.visitedItems(); } }],
+                onAction: (a) => this.openVisited(a)
+            });
+            // a crumb's arrow: the places under the crumb before it (renderAddress attaches it to each)
+            this.crumbMenu = {
+                position: 'anchor',
+                anchorAlign: 'start',
+                maxHeight: 460,
+                sections: [{ type: 'list', initfn: (sec, target) => { sec.items = this.crumbItems(target); } }],
+                onAction: (a) => this.crumbAction(a)
+            };
             click(this.$('.isx-f-models'), () => this.modelItems(), (a, item) => this.toggleListFilter('models', item && item.value));
             click(this.$('.isx-f-resolution'), () => RESOLUTION_TIERS.map((r) => ({
                 text: r.label, action: 'toggle', value: r.value, keepMenuOpen: true, showIndicator: true,
@@ -866,7 +895,11 @@
             const h = hostFor(url);
             const blocks = omegasearchDsapResolveBlocks(h);
             const where = workspaceLabel(omegasearchDsapResolveWorkspaceId(h));
-            return blocks.length ? `${blocks.map(omegasearchDsapFormatBlockLabel).join(', ')} - ${where}` : `Search Results in ${where}`;
+            // the place the address shows: a Show only type or Prompt Usages in the workspace
+            const type = omegasearchDsapResolveViewType(h);
+            const place = omegasearchDsapResolveView(h) === 'usages' ? 'Prompt Usages in '
+                : (type && type !== 'images' ? `${(VIEW_TYPES.find((v) => v.value === type) || {}).label || type} in ` : '');
+            return blocks.length ? `${blocks.map(omegasearchDsapFormatBlockLabel).join(', ')} - ${place}${where}` : (place ? `${place}${where}` : `Search Results in ${where}`);
         }
 
         /** A DSAP URL (or its query) into the state, as the DSAP's init read its host. */
@@ -1126,6 +1159,7 @@
             m.classList.toggle('is-landing', landing);
             m.classList.toggle('isx-usages', s.view === 'usages');
             this.renderAddress();
+            this.syncSearchClear();
             this.$('.isx-window-title').textContent = 'Search Results';
             this.$('.cpl-back').disabled = !this.history.length;
             this.$('.cpl-forward').disabled = !this.future.length;
@@ -1140,12 +1174,177 @@
             if (this.panes.advanced) this.renderAdvancedLabels();
         }
 
-        renderAddress() {
+        /** The address: [icon] > crumb > crumb. Each > is a drop-down of the places beside the crumb
+            after it (Vista's breadcrumb), that crumb in bold; an empty search is just "Search Results". */
+        addressCrumbs() {
             const s = this.state;
-            const parts = [`Search Results in ${workspaceLabel(s.workspaceId)}`];
-            if (s.viewType !== 'images') parts.push((VIEW_TYPES.find((v) => v.value === s.viewType) || {}).label);
-            if (s.view === 'usages') parts.push('Prompt Usages');
-            this.$('.isx-crumbs').innerHTML = parts.map((p) => `<span class="cpl-crumb-sep" aria-hidden="true">&#9656;</span><span class="cpl-crumb isx-crumb">${esc(p)}</span>`).join('');
+            if (!s.blocks.length && s.view === 'search') return [{ kind: 'root', label: 'Search Results' }];
+            const crumbs = [{ kind: 'scope', label: `Search Results in ${workspaceLabel(s.workspaceId)}` }];
+            if (s.viewType !== 'images') crumbs.push({ kind: 'type', label: (VIEW_TYPES.find((v) => v.value === s.viewType) || {}).label });
+            if (s.view === 'usages') crumbs.push({ kind: 'usages', label: 'Prompt Usages' });
+            return crumbs;
+        }
+
+        renderAddress() {
+            const crumbs = this.addressCrumbs();
+            const addr = this.$('.isx-address');
+            addr.classList.toggle('is-empty-search', crumbs[0].kind === 'root');
+            addr.classList.toggle('is-sub-place', crumbs.length > 1);
+            const host = this.$('.isx-crumbs');
+            const cm = root.contextMenu;
+            if (cm) host.querySelectorAll('.isx-crumb-arrow').forEach((x) => cm.detachClickMenuFromElement(x));
+            host.innerHTML = crumbs.map((c, i) => `<button type="button" class="isx-crumb-arrow" data-index="${i}" tabindex="-1" aria-label="Locations"></button><button type="button" class="cpl-crumb isx-crumb" data-index="${i}" tabindex="-1">${esc(c.label)}</button>`).join('');
+            this.crumbs = crumbs;
+            if (cm && this.crumbMenu) host.querySelectorAll('.isx-crumb-arrow').forEach((x) => cm.attachClickMenuToElement(x, this.crumbMenu));
+        }
+
+        /** The places beside crumb i (what its arrow lists), the current one marked. */
+        crumbItems(target) {
+            const s = this.state;
+            const i = Number(target && target.dataset ? target.dataset.index : NaN);
+            const c = (this.crumbs || [])[i];
+            if (!c) return [];
+            const cur = (on) => (on ? { className: 'isx-menu-current' } : {});
+            if (c.kind === 'type') return VIEW_TYPES.map((v) => ({ text: v.label, action: `type:${v.value}`, ...cur(v.value === s.viewType) }));
+            if (c.kind === 'usages') return [{ text: 'Prompt Usages', action: 'usages', ...cur(true) }];
+            const scope = c.kind === 'scope';
+            return [{ text: 'All Workspaces', action: `ws:${GLOBAL_WS}`, ...cur(scope && s.workspaceId === GLOBAL_WS) }]
+                .concat(omegasearchDsapGetWorkspaceList().map((w) => ({ text: w.name, action: `ws:${w.id}`, ...cur(scope && s.workspaceId === w.id) })));
+        }
+
+        crumbAction(a) {
+            const s = this.state;
+            if (a.startsWith('ws:')) {
+                if (s.view === 'usages') s.view = s.blocks.length ? 'gallery' : 'search';
+                this.setWorkspace(a.slice(3), true);
+            } else if (a.startsWith('type:')) {
+                if (s.view === 'usages') s.view = 'gallery';
+                const v = a.slice(5);
+                if (v === s.viewType) { this.pushHistory(); this.render(); } else this.setViewType(v);
+            } else if (a === 'usages') {
+                if (s.view !== 'usages') this.setView('usages');
+            }
+        }
+
+        /** A crumb goes back up to that place: the scope drops the type and Prompt Usages. */
+        openCrumb(i) {
+            const s = this.state;
+            const c = (this.crumbs || [])[i];
+            if (!c || i === this.crumbs.length - 1) return;
+            if (s.view === 'usages') s.view = s.blocks.length ? 'gallery' : 'search';
+            if (c.kind === 'scope' && s.viewType !== 'images') { this.setViewType('images'); return; }
+            this.pushHistory();
+            this.render();
+        }
+
+        // ---- the address box: typing an address, the list of places visited ----------------------------
+
+        wireAddress() {
+            const addr = this.$('.isx-address');
+            const input = this.$('.isx-address-edit');
+            addr.addEventListener('click', (ev) => {
+                if (ev.target.closest('.isx-crumb-arrow')) return; // its menu (renderAddress)
+                const crumb = ev.target.closest('.isx-crumb');
+                if (crumb) { this.openCrumb(Number(crumb.dataset.index)); return; }
+                this.editAddress();
+            });
+            input.addEventListener('blur', () => this.leaveAddress());
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Escape') {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    input.blur();
+                } else if (ev.key === 'Enter') {
+                    ev.preventDefault();
+                    const text = input.value;
+                    input.blur();
+                    this.goToAddress(text);
+                }
+            });
+        }
+
+        /** Vista: a click on the box's empty part (or Alt+D) shows the address as text, all selected. */
+        editAddress() {
+            const group = this.$('.isx-address-group');
+            const input = this.$('.isx-address-edit');
+            input.value = this.currentUrl();
+            group.classList.add('is-editing');
+            input.focus();
+            input.select();
+            input.scrollLeft = input.scrollWidth;
+        }
+
+        leaveAddress() {
+            this.$('.isx-address-group').classList.remove('is-editing');
+        }
+
+        /** An address typed in the box: a search address opens here, another dsap:// page in Internet
+            Explorer, anything else is searched for. */
+        goToAddress(text) {
+            const t = String(text || '').trim();
+            if (!t || t === this.currentUrl()) return;
+            if (/^dsap:\/\/ispy\.dreamscape\.jp(\/|$)/i.test(t) || t.startsWith('?')) {
+                const frame = this.state.frameId;
+                this.applyUrl(t);
+                this.state.frameId = frame;
+                if (this.state.blocks.length && this.state.view === 'search') this.state.view = 'gallery';
+                this.startFromState(true);
+                return;
+            }
+            if (/^dsap:\/\//i.test(t) && typeof root.openDsapInGrimoire === 'function') {
+                root.openDsapInGrimoire(t);
+                return;
+            }
+            const block = omegasearchDsapParseBlockInput(t);
+            if (!block) return;
+            block.matchMode = this.state.blockOptions.defaultMatchMode || 'substring';
+            this.state.blocks = omegasearchDsapNormalizeBlocks([block], { defaultMatchMode: block.matchMode });
+            this.searchNow(true);
+        }
+
+        /** The address list: each place visited once, newest first (Explorer's visitedItems). */
+        visitedItems() {
+            const seen = new Set();
+            const items = [];
+            [this.currentUrl()].concat(this.history.slice().reverse(), this.future.slice().reverse()).forEach((u) => {
+                if (!u || seen.has(u) || items.length >= 12) return;
+                seen.add(u);
+                items.push({ text: this.labelFor(u), action: `url:${u}`, tooltip: u });
+            });
+            return items;
+        }
+
+        openVisited(a) {
+            if (!a || !a.startsWith('url:')) return;
+            const url = a.slice(4);
+            if (url === this.currentUrl()) return;
+            this.goToAddress(url);
+        }
+
+        // ---- the search box's clear button (Vista: the magnifier turns into it while there is a search) ----
+
+        syncSearchClear() {
+            const on = !!(this.$('.isx-search').value || this.state.blocks.length);
+            const x = this.$('.isx-search-clear');
+            if (x.hidden === on) x.hidden = !on;
+            this.$('.isx-search').classList.toggle('has-clear', on);
+        }
+
+        clearSearch() {
+            const box = this.$('.isx-search');
+            if (box.value) {
+                box.value = '';
+                this.syncSearchClear();
+                box.focus();
+                if (!this.state.blocks.length) return;
+            }
+            const s = this.state;
+            s.blocks = [];
+            s.searchSessionId = null;
+            s.serverSearchSessionId = null;
+            Object.assign(s, { view: 'search', results: [], usages: [], total: 0, searched: false, selected: null, page: 1 });
+            this.pushHistory();
+            this.render();
         }
 
         renderTerms() {
