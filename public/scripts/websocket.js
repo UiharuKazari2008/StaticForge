@@ -1791,6 +1791,8 @@ class WebSocketClient {
     }
 
     _updateServiceWorkerTrayIcon() {
+        // Melaton Mobile has no desktop tray: its title bar shows the update state itself (#849)
+        if (window.uiShell === 'mobile') return;
         const trayIcon = document.getElementById('serviceWorkerTrayIcon');
         const glyph = document.getElementById('serviceWorkerTrayIconGlyph');
         if (!trayIcon || !glyph) return;
@@ -1866,6 +1868,7 @@ class WebSocketClient {
     }
 
     _updateModemTrayIcon() {
+        if (window.uiShell === 'mobile') return;
         const icon = document.getElementById('modemTrayIcon');
         const glyph = document.getElementById('modemTrayIconGlyph');
         if (!icon || !glyph) return;
@@ -3335,6 +3338,7 @@ class WebSocketClient {
      * Updates the ping warning tray icon visibility and tooltip
      */
     updatePingWarningIcon(options = {}) {
+        if (window.uiShell === 'mobile') return;
         const warningIcon = document.getElementById('pingWarningIndicator');
         if (!warningIcon) return;
 
@@ -9825,7 +9829,9 @@ class WebSocketClient {
         this.websocketIndicators = [];
 
         // Find all websocket indicator containers on the page
-        const containers = document.querySelectorAll('.websocket-indicator');
+        // Melaton Mobile shows none of the desktop's connection indicators (menu bar, overlay, taskbar):
+        // with none listed, their status dots, tooltips and arrows are not written there (#849)
+        const containers = window.uiShell === 'mobile' ? [] : document.querySelectorAll('.websocket-indicator');
 
         // Populate indicator array with elements from each container
         containers.forEach(container => {
@@ -9896,7 +9902,9 @@ class WebSocketClient {
         this.websocketIndicators = [];
 
         // Find all websocket indicator containers on the page
-        const containers = document.querySelectorAll('.websocket-indicator');
+        // Melaton Mobile shows none of the desktop's connection indicators (menu bar, overlay, taskbar):
+        // with none listed, their status dots, tooltips and arrows are not written there (#849)
+        const containers = window.uiShell === 'mobile' ? [] : document.querySelectorAll('.websocket-indicator');
 
         // Populate indicator array with elements from each container
         containers.forEach(container => {
@@ -9933,7 +9941,9 @@ class WebSocketClient {
         this._pingResponseWaitingFlash = !!active;
         this.websocketIndicators.forEach(indicator => {
             if (!indicator.status) return;
-            indicator.status.classList.toggle('ping-response-wait', !!(active && indicator.status.classList.contains('connected')));
+            // only a real change is written: toggle(name, same) still wakes every class observer (#849)
+            const on = !!(active && indicator.status.classList.contains('connected'));
+            if (indicator.status.classList.contains('ping-response-wait') !== on) indicator.status.classList.toggle('ping-response-wait', on);
         });
     }
 

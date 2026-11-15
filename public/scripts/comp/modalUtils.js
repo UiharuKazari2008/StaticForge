@@ -4633,8 +4633,12 @@ function initializeDesktopTaskbar() {
     }
 
     // The clock displays minutes, so align once and update only on minute boundaries.
-    updateTaskbarClock();
-    scheduleTaskbarClock();
+    // Not on Melaton Mobile: its taskbar is never shown and the shell has a clock of its own, yet
+    // this one woke the page every minute to write a hidden element (#849).
+    if (window.uiShell !== 'mobile') {
+        updateTaskbarClock();
+        scheduleTaskbarClock();
+    }
 
     // Set up modal observation
     observeModals();
