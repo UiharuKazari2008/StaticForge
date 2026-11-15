@@ -1404,7 +1404,8 @@
         },
         {
             id: 'menus', tab: 'personal', label: 'Menus', icon: 'set-menus',
-            tabs: [['start', 'Start Menu'], ['button', 'Start Button']],
+            // 6.5's Start is the grid (its ROM has no Menus applet): only the Start button applies there
+            get tabs() { return runningVersion() === '6.5' ? [['button', 'Start Button']] : [['start', 'Start Menu'], ['button', 'Start Button']]; },
             init() {
                 const sb = startButton();
                 return { ids: startMenuIds(), source: sb.source, text: sb.source === 'custom' ? sb.text : (lsGet(K.startText) || 'Start'), icon: sb.source === 'custom' ? sb.icon : MELATON_EMBLEM };

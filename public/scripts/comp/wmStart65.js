@@ -198,7 +198,10 @@
         sounds: 'sounds', today: 'todayset', continuity: 'pccon', remote: 'remote-access', wireless: 'wirelessmgr', domain: 'denroll', 'network-cards': 'wifi',
         'error-reporting': 'watson', 'link-taskmgr': 'taskmgr', update: 'update',
         // Application Requests (#831): the ROM's Certificates icon (application keys are Melaton's certificates)
-        'app-requests': 'certificates'
+        'app-requests': 'certificates',
+        // Menus: 6.5's ROM has no Menus applet (its Start is the grid); Melaton keeps it for the Start
+        // button, so it has a drawn 6.5 icon in the ROM's style (start-menus, #831)
+        menus: 'menus'
     };
     // Start_Icon_SettingsS: the folder with the OS logo (the Melaton flower in place of the flag)
     const SETTINGS_FOLDERS = [['connections', 'Connections', 'settingsc'], ['personal', 'Personal', 'settingsp'], ['system', 'System', 'settingss']];

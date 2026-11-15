@@ -2706,7 +2706,7 @@
     }
 
     wmSettings.registerPage({
-        id: 'workspaces', tab: 'system', label: 'Workspaces', icon: 'set-workspace',
+        id: 'workspaces', tab: 'system', label: 'Workspaces', icon: 'app-data-management',
         available: () => !!(window.wsClient && typeof window.wsClient.updateWorkspaceSettings === 'function'),
         init: () => ({ sel: wsActiveId(), props: null, reveal: true }),
         softKeys(d) {
