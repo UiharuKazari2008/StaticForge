@@ -1,0 +1,102 @@
+/*
+ * Melaton Mobile: the start-up cards of the phone's 3D games (wmGameSplash.js, Yozora #836): the
+ * game's own card, then "Powered by Xyridian Mobile DirectSpark 9" (Xyridian's 3D graphics layer:
+ * the name and the mark are ours). Black, over the game's field, gone in about three seconds or
+ * at a touch. Lengths in the shell's units.
+ */
+.wm-game-splash {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    font-family: var(--wm-font, Tahoma, sans-serif);
+    text-align: center;
+    opacity: 1;
+    transition: opacity 0.4s linear;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.wm-game-splash.is-leaving {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.wm-game-splash .wgs-card {
+    grid-area: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 calc(16 * var(--wm-px, 1px));
+    opacity: 0;
+    transform: scale(0.96);
+    transition: opacity 0.35s ease, transform 1.6s ease-out;
+}
+
+.wm-game-splash .wgs-card.is-on {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.wm-game-splash .wgs-icon {
+    width: calc(64 * var(--wm-px, 1px));
+    height: calc(64 * var(--wm-px, 1px));
+    margin-bottom: calc(12 * var(--wm-px, 1px));
+}
+
+.wm-game-splash .wgs-title {
+    font-size: calc(26 * var(--wm-px, 1px));
+    font-weight: bold;
+    letter-spacing: 0.02em;
+}
+
+.wm-game-splash .wgs-by {
+    margin-top: calc(8 * var(--wm-px, 1px));
+    font-size: calc(10 * var(--wm-px, 1px));
+    color: #9aa3b2;
+}
+
+.wm-game-splash .wgs-powered {
+    font-size: calc(10 * var(--wm-px, 1px));
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #9aa3b2;
+}
+
+.wm-game-splash .wgs-mark {
+    width: calc(150 * var(--wm-px, 1px));
+    height: calc(84 * var(--wm-px, 1px));
+    margin: calc(4 * var(--wm-px, 1px)) 0 0;
+}
+
+.wm-game-splash .wgs-maker {
+    font-size: calc(10 * var(--wm-px, 1px));
+    letter-spacing: 0.12em;
+    color: #c8d2e2;
+}
+
+.wm-game-splash .wgs-word {
+    margin-top: calc(1 * var(--wm-px, 1px));
+    font-size: calc(24 * var(--wm-px, 1px));
+    font-style: italic;
+    letter-spacing: -0.01em;
+}
+
+.wm-game-splash .wgs-word b {
+    font-weight: bold;
+}
+
+.wm-game-splash .wgs-word i {
+    margin-left: calc(3 * var(--wm-px, 1px));
+    font-weight: bold;
+    color: #f88800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wm-game-splash .wgs-card { transition: opacity 0.2s linear; transform: none; }
+}

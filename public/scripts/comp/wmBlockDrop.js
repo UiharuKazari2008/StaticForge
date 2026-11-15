@@ -490,6 +490,9 @@
     const SIDE_CELLS = 5;     // the side column, in well cells
     const GAP_CELLS = 0.6;
     const MAX_CELL = 24;      // units
+    // what a clear is called (the desktop's words)
+    const CLEAR_NAMES = ['', 'Single', 'Double', 'Triple', 'Quadruple'];
+    const DANGER_ROWS = 5;    // the well warns once the stack is within this many rows of its top
 
     let ws = null;
     let page = null;
@@ -539,6 +542,7 @@
         game.state = 'ready';
         game.time = 0;
         game.flash = null;
+        fxClear();
         soft.on = false;
         save(true);
         render();
@@ -583,6 +587,7 @@
         if (game.state !== 'running') return;
         game.state = 'paused';
         soft.on = false;
+        fxClear();
         loopStop();
         save();
         keysAfterMenu();
@@ -639,7 +644,10 @@
         record(won);
         save();
         ws.refreshSoftKeys();
+        // a lost game: the stack turns grey row by row from the floor up, then the box
+        if (!won) fx.sweep = { t0: performance.now(), dur: 520 };
         render();
+        fxRun();
         const lines = [won ? 'Congratulations, you won the game!' : 'Sorry, you lost this game. Better luck next time!', ''];
         if (game.lastHigh) lines.push('You have a new high score!', '');
         lines.push(`Score: ${e.score.toLocaleString('en-US')}`, `Lines: ${e.lines}`, `Level: ${e.level}`, `Time: ${clockText(game.time)}`, '', 'Play again?');
@@ -653,7 +661,7 @@
                 cancelValue: false,
                 modal: true
             }).then((again) => { if (again && game.state === 'over') newGame(); });
-        }, 450);
+        }, won ? 450 : 700);
     }
 
     // a game under way counts as lost when it is left for a new one (the desktop's rule)
@@ -724,12 +732,148 @@
         renderStatus();
     }
 
-    // what the engine did: rows to flash while they clear
+    // what the engine did, shown: the streak of a dropped piece, a flash where it locks, the rows that
+    // clear (and the stack falling into them), what the clear was called and scored, a new level
     function events() {
         const list = game.engine.takeEvents();
+        const now = performance.now();
         for (const ev of list) {
-            if (ev.type === 'clear') game.flash = ev.rows.slice();
-            else if (ev.type === 'spawn') game.flash = null;
+            if (ev.type === 'harddrop') {
+                const far = ev.to - ev.from;
+                if (far < 2) continue;
+                const top = new Map(); // column -> the piece's highest cell in it
+                ev.cells.forEach(([x, y]) => top.set(x, Math.min(y, top.has(x) ? top.get(x) : ROWS)));
+                fx.list.push({ kind: 'streak', t0: now, dur: 150, far: Math.min(far, 8), cols: [...top], ci: game.engine.board[ev.cells[0][1] * COLS + ev.cells[0][0]] - 1 });
+            } else if (ev.type === 'lock') {
+                fx.list.push({ kind: 'lock', t0: now, dur: 110, cells: ev.cells });
+                if (ev.tspin && !ev.lines) popup(ev, now);
+            } else if (ev.type === 'clear') {
+                game.flash = ev.rows.slice();
+                popup(ev, now);
+            } else if (ev.type === 'spawn') {
+                if (game.flash) settleRows(game.flash, now);
+                game.flash = null;
+            } else if (ev.type === 'levelup') {
+                fx.list = fx.list.filter((f) => f.kind !== 'level');
+                fx.list.push({ kind: 'level', t0: now, dur: 1100, text: `Level ${ev.level}` });
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- effects
+    //
+    // Flat rectangles and text over the well, drawn by the game's own loop; each lives a moment and
+    // is then dropped. Places are in well cells, so a new layout does not move them.
+
+    const fx = { list: [], settle: null, sweep: null, raf: 0 };
+    let streakFill = null; // the pale tone of each piece (its ghost's)
+
+    function fxClear() {
+        fx.list = [];
+        fx.settle = null;
+        fx.sweep = null;
+    }
+
+    // the lines a clear earns, stacked in the upper well: its name, Back-to-Back, the combo, the points
+    function popup(ev, now) {
+        const lines = [];
+        if (ev.tspin) lines.push((ev.tspin === 'mini' ? 'Mini T-Spin' : 'T-Spin') + (ev.lines ? ' ' + CLEAR_NAMES[ev.lines] : ''));
+        else if (ev.lines >= 2) lines.push(CLEAR_NAMES[ev.lines]);
+        if (ev.b2b) lines.push('Back-to-Back');
+        if (ev.combo > 0) lines.push(`Combo x${ev.combo}`);
+        if (ev.points) lines.push('+' + ev.points.toLocaleString('en-US'));
+        fx.list = fx.list.filter((f) => f.kind !== 'popup');
+        fx.list.push({ kind: 'popup', t0: now, dur: 1100, lines, big: ev.lines >= 4 });
+    }
+
+    // the rows above a cleared row fall into it: how many rows each row of the new board came down
+    function settleRows(rows, now) {
+        const gone = new Set(rows);
+        const drop = new Array(ROWS).fill(0);
+        let to = ROWS - 1;
+        for (let from = ROWS - 1; from >= 0; from--) {
+            if (gone.has(from)) continue;
+            drop[to] = to - from;
+            to--;
+        }
+        fx.settle = { t0: now, dur: 60 + 35 * rows.length, drop };
+    }
+
+    function fxLive(now) {
+        fx.list = fx.list.filter((f) => now - f.t0 < f.dur);
+        if (fx.settle && now - fx.settle.t0 >= fx.settle.dur) fx.settle = null;
+        return fx.list.length > 0 || !!fx.settle || !!(fx.sweep && now - fx.sweep.t0 < fx.sweep.dur);
+    }
+
+    // effects that outlast the game's loop (the stack greying after the last piece) draw by themselves until done
+    function fxRun() {
+        if (fx.raf || game.state === 'running') return;
+        fx.raf = requestAnimationFrame(() => {
+            fx.raf = 0;
+            draw();
+            if (fxLive(performance.now())) fxRun();
+        });
+    }
+
+    // text over the well: the status row's blue with a white edge, shrunk to the well where it is long
+    function fxText(str, cx, y, size, weight) {
+        ctx.font = `${weight} ${size}px ${font}`;
+        const max = COLS * geo.cell - geo.frame * 4;
+        const w = ctx.measureText(str).width;
+        if (w > max) ctx.font = `${weight} ${Math.floor(size * max / w)}px ${font}`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(2, Math.round(geo.u * geo.dpr * 2.5));
+        ctx.strokeStyle = '#fff';
+        ctx.strokeText(str, cx, y);
+        ctx.fillStyle = '#0000ff';
+        ctx.fillText(str, cx, y);
+    }
+
+    // under the blocks: the streak a dropped piece leaves (its tail catches up with it)
+    function drawFxUnder(now, ix, iy) {
+        const { cell } = geo;
+        for (const f of fx.list) {
+            if (f.kind !== 'streak') continue;
+            const p = Math.max(0, (now - f.t0) / f.dur);
+            if (!streakFill) streakFill = FILL.map((c) => shade(c, 0.8));
+            ctx.fillStyle = streakFill[f.ci] || streakFill[7];
+            for (const [x, y] of f.cols) {
+                const from = Math.max(HIDDEN, y - f.far * (1 - p));
+                if (from < y) ctx.fillRect(ix + x * cell, Math.round(iy + (from - HIDDEN) * cell), cell, Math.round((y - from) * cell));
+            }
+        }
+    }
+
+    // over the blocks: the lock flash, the lines of a clear, the new level
+    function drawFxOver(now, ix, iy) {
+        const { cell } = geo;
+        const vis = ROWS - HIDDEN;
+        const cx = ix + (COLS * cell) / 2;
+        for (const f of fx.list) {
+            const p = Math.min(1, Math.max(0, (now - f.t0) / f.dur));
+            if (f.kind === 'lock') {
+                // two steps of white over the piece, not over rows that are clearing
+                ctx.globalAlpha = p < 0.5 ? 0.7 : 0.35;
+                ctx.fillStyle = '#fff';
+                for (const [x, y] of f.cells) {
+                    if (y >= HIDDEN && !(game.flash && game.flash.includes(y))) ctx.fillRect(ix + x * cell, iy + (y - HIDDEN) * cell, cell, cell);
+                }
+                ctx.globalAlpha = 1;
+            } else if (f.kind === 'popup') {
+                const size = Math.round(geo.label * 1.15);
+                const step = Math.round(size * 1.3);
+                const rise = (1 - (1 - p) * (1 - p)) * cell * 0.8;
+                f.lines.forEach((str, i) => {
+                    const first = i === 0 && f.big;
+                    fxText(str, cx, iy + vis * cell * 0.26 + i * step - rise, first ? Math.round(size * 1.3) : size, 'bold');
+                });
+            } else if (f.kind === 'level') {
+                // the new level, under the lines of the clear that reached it; it lands large and settles
+                const pop = p < 0.1 ? 0.7 + p * 4.5 : p < 0.2 ? 1.15 - (p - 0.1) * 1.5 : 1;
+                fxText(f.text, cx, iy + vis * cell * 0.46, Math.round(geo.label * 1.5 * pop), 'bold');
+            }
         }
     }
 
@@ -935,29 +1079,53 @@
         const ix = well.x + f;
         const iy = well.y + f;
         const vis = ROWS - HIDDEN;
-        ctx.fillStyle = '#efefef';
+        const now = performance.now();
+        fxLive(now);
+        const covered = game.state === 'paused';
+        // a stack near the top of the well: the well turns a pale red
+        let top = ROWS;
+        for (let i = 0; i < e.board.length; i++) if (e.board[i]) { top = Math.floor(i / COLS); break; }
+        const danger = game.state === 'running' && top < HIDDEN + DANGER_ROWS;
+        if (danger) { ctx.fillStyle = '#ffeaea'; ctx.fillRect(ix, iy, COLS * cell, vis * cell); }
+        ctx.fillStyle = danger ? '#f4cfcf' : '#efefef';
         for (let x = 1; x < COLS; x++) ctx.fillRect(ix + x * cell, iy, 1, vis * cell);
         for (let y = 1; y < vis; y++) ctx.fillRect(ix, iy + y * cell, COLS * cell, 1);
         frameBox(well);
-        const covered = game.state === 'paused';
         if (!covered) {
+            drawFxUnder(now, ix, iy);
+            // rows that clear light up, then go from the middle outward
             const flash = game.flash && e.clearing ? new Set(game.flash) : null;
-            const on = flash && Math.floor((e.clearing.total - e.clearing.t) / 80) % 2 === 0;
-            for (let y = HIDDEN; y < ROWS; y++) {
+            const q = flash && e.clearing.total ? (e.clearing.total - e.clearing.t) / e.clearing.total : 0;
+            const gone = q < 0.3 ? 0 : Math.floor(((q - 0.3) / 0.7) * (COLS / 2 + 1));
+            // the stack falling into cleared rows, and the grey of a lost game climbing it
+            const st = fx.settle;
+            const fall = st ? 1 - Math.pow(Math.min(1, Math.max(0, (now - st.t0) / st.dur)), 2) : 0;
+            const sw = fx.sweep;
+            const grey = e.over && !e.won ? (sw ? Math.ceil(Math.min(1, Math.max(0, (now - sw.t0) / sw.dur)) * vis) : vis) : 0;
+            if (st) { ctx.save(); ctx.beginPath(); ctx.rect(ix, iy, COLS * cell, vis * cell); ctx.clip(); }
+            for (let y = st ? 0 : HIDDEN; y < ROWS; y++) {
+                const lit = flash && flash.has(y);
+                const py = iy + (y - HIDDEN) * cell - (st ? Math.round(st.drop[y] * cell * fall) : 0);
                 for (let x = 0; x < COLS; x++) {
                     const v = e.board[y * COLS + x];
                     if (!v) continue;
-                    const px = ix + x * cell;
-                    const py = iy + (y - HIDDEN) * cell;
-                    if (flash && flash.has(y)) {
-                        ctx.fillStyle = on ? '#ffffff' : '#000000';
-                        ctx.fillRect(px, py, cell, cell);
-                    } else block(px, py, cell, e.over && !e.won ? 7 : v - 1);
+                    if (lit && Math.floor(Math.abs(x - (COLS - 1) / 2)) < gone) continue;
+                    block(ix + x * cell, py, cell, ROWS - y <= grey ? 7 : v - 1);
+                }
+                if (lit) {
+                    ctx.globalAlpha = 0.6;
+                    ctx.fillStyle = '#fff';
+                    const half = Math.max(0, COLS / 2 - gone);
+                    ctx.fillRect(ix, py, half * cell, cell);
+                    ctx.fillRect(ix + (COLS - half) * cell, py, half * cell, cell);
+                    ctx.globalAlpha = 1;
                 }
             }
+            if (st) ctx.restore();
             if (e.piece && !e.over && game.state !== 'ready') {
                 const ci = COLOR[e.piece.type];
-                if (game.s.ghost) {
+                // no ghost while the stack is still falling under it
+                if (game.s.ghost && !fx.settle) {
                     const gy = e.ghostY();
                     if (gy !== e.piece.y) {
                         for (const [cx, cy] of CELLS[e.piece.type][e.piece.rot]) {
@@ -971,6 +1139,7 @@
                     if (yy >= HIDDEN) block(ix + (e.piece.x + cx) * cell, iy + (yy - HIDDEN) * cell, cell, ci);
                 }
             }
+            drawFxOver(now, ix, iy);
         }
         // a message in the well: Ready / Paused (the well is covered while paused, as the desktop)
         if (game.state === 'ready' || covered) {

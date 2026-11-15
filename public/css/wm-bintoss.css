@@ -183,8 +183,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
     min-height: calc(24 * var(--wm-px));
 }
 
-/* ---- Bin Toss' own: the 3D room fills the field (black until its first frame); the draught's
- * arrow in the status row; the note over the room; the best-runs caption ---- */
+/* ---- Bin Toss' own: the 3D room fills the page (black until its first frame). Over it a HUD of
+ * dark glass tablets (run or score, best, the clock, the draught), the hit and miss tally, words
+ * that rise from places in the room, and the note line. Lengths in the shell's units. ---- */
 .wm-bintoss .wbt-field {
     background: #0d0d0f;
 }
@@ -195,7 +196,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
     height: 100%;
 }
 
-.wm-bintoss .wbt-field.is-flat canvas {
+.wm-bintoss .wbt-field.is-flat canvas,
+.wm-bintoss .wbt-field.is-flat .wbt-hud,
+.wm-bintoss .wbt-field.is-flat .wbt-tally {
     display: none;
 }
 
@@ -213,24 +216,99 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
     display: block;
 }
 
-.wm-bintoss .wbt-wind {
-    display: inline-flex;
+.wm-bintoss .wbt-hud {
+    position: absolute;
+    top: calc(5 * var(--wm-px));
+    left: calc(5 * var(--wm-px));
+    right: calc(5 * var(--wm-px));
+    display: flex;
+    gap: calc(4 * var(--wm-px));
+    pointer-events: none;
+}
+
+.wm-bintoss .wbt-pill {
+    display: flex;
+    flex-direction: column;
     align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-width: calc(38 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    padding: 0 calc(7 * var(--wm-px));
+    border: calc(0.5 * var(--wm-px)) solid rgba(255, 255, 255, 0.22);
+    border-radius: calc(7 * var(--wm-px));
+    background: linear-gradient(rgba(38, 42, 54, 0.62), rgba(10, 12, 18, 0.62));
+    box-shadow: 0 calc(1 * var(--wm-px)) calc(4 * var(--wm-px)) rgba(0, 0, 0, 0.35), inset 0 calc(0.5 * var(--wm-px)) 0 rgba(255, 255, 255, 0.18);
+    color: #fff;
+    font-family: var(--wm-font);
+    line-height: 1;
+    white-space: nowrap;
 }
 
-.wm-bintoss .wbt-wind b {
-    margin-right: calc(3 * var(--wm-px));
+.wm-bintoss .wbt-pill[hidden] {
+    display: none;
 }
 
-/* the arrow: a shaft with a head, pointing the way the draught blows */
+.wm-bintoss .wbt-pill > span {
+    font-size: calc(7.5 * var(--wm-px));
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.66);
+}
+
+.wm-bintoss .wbt-pill > b {
+    margin-top: calc(2 * var(--wm-px));
+    font-size: calc(14 * var(--wm-px));
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-bintoss .wbt-pill.is-gold > b {
+    color: #ffd24a;
+    text-shadow: 0 0 calc(4 * var(--wm-px)) rgba(255, 190, 40, 0.8);
+}
+
+.wm-bintoss .wbt-clock.is-low {
+    border-color: rgba(255, 110, 90, 0.8);
+    animation: wbt-low 1s steps(2, jump-none) infinite;
+}
+
+.wm-bintoss .wbt-clock.is-low > b {
+    color: #ff8a78;
+}
+
+@keyframes wbt-low {
+    50% { background: linear-gradient(rgba(120, 24, 16, 0.7), rgba(60, 8, 6, 0.7)); }
+}
+
+/* the draught: pushed to the right edge; an arrow that grows and warms with its strength */
+.wm-bintoss .wbt-wind {
+    margin-left: auto;
+    display: grid;
+    grid-template: "k k" auto "a v" auto / auto auto;
+    column-gap: calc(4 * var(--wm-px));
+    align-items: center;
+    justify-items: center;
+    --force: 0;
+    --ink: #ffffff;
+}
+
+.wm-bintoss .wbt-wind[data-force="fresh"] { --ink: #ffd24a; }
+.wm-bintoss .wbt-wind[data-force="strong"] { --ink: #ff7a5c; }
+
+.wm-bintoss .wbt-wind > span { grid-area: k; }
+.wm-bintoss .wbt-wind > em { grid-area: a; display: flex; align-items: center; width: calc(24 * var(--wm-px)); height: calc(10 * var(--wm-px)); margin-top: calc(2 * var(--wm-px)); }
+.wm-bintoss .wbt-wind > b { grid-area: v; color: var(--ink); }
+
 .wm-bintoss .wbt-wind s {
     position: relative;
-    display: inline-block;
-    width: calc(11 * var(--wm-px));
+    display: block;
+    width: calc((8 + 12 * var(--force)) * var(--wm-px));
     height: calc(2 * var(--wm-px));
-    margin: 0 calc(4 * var(--wm-px)) 0 calc(1 * var(--wm-px));
-    background: #000;
+    margin: 0 auto;
+    border-radius: calc(1 * var(--wm-px));
+    background: var(--ink);
     text-decoration: none;
+    transition: width 0.3s ease;
 }
 
 .wm-bintoss .wbt-wind s::after {
@@ -240,26 +318,139 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
     right: calc(-3 * var(--wm-px));
     border: calc(4 * var(--wm-px)) solid transparent;
     border-right-width: 0;
-    border-left-color: #000;
+    border-left-color: var(--ink);
     transform: translateY(-50%);
 }
 
-.wm-bintoss .wbt-wind[data-side="left"] s {
-    margin: 0 calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+.wm-bintoss .wbt-wind[data-side="left"] em {
     transform: scaleX(-1);
 }
 
-.wm-bintoss .wbt-wind[data-side="calm"] s {
+.wm-bintoss .wbt-wind[data-side="calm"] em {
     display: none;
+}
+
+/* hits and misses, bottom left: a green tick and a red cross, drawn */
+.wm-bintoss .wbt-tally {
+    position: absolute;
+    left: calc(6 * var(--wm-px));
+    bottom: calc(6 * var(--wm-px));
+    display: flex;
+    gap: calc(8 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+    border: calc(0.5 * var(--wm-px)) solid rgba(255, 255, 255, 0.2);
+    border-radius: calc(9 * var(--wm-px));
+    background: rgba(12, 14, 20, 0.55);
+    color: #fff;
+    font-family: var(--wm-font);
+    font-size: calc(12 * var(--wm-px));
+    font-weight: bold;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.wm-bintoss .wbt-tally > span {
+    display: inline-flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-bintoss .wbt-tally i {
+    position: relative;
+    width: calc(11 * var(--wm-px));
+    height: calc(11 * var(--wm-px));
+    border-radius: 50%;
+    background: #2fb457;
+}
+
+.wm-bintoss .wbt-tally .is-miss i {
+    background: #d8483a;
+}
+
+.wm-bintoss .wbt-tally .is-hit i::after {
+    content: "";
+    position: absolute;
+    left: 32%;
+    top: 16%;
+    width: 24%;
+    height: 46%;
+    border: solid #fff;
+    border-width: 0 calc(1.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) 0;
+    transform: rotate(45deg);
+}
+
+.wm-bintoss .wbt-tally .is-miss i::before,
+.wm-bintoss .wbt-tally .is-miss i::after {
+    content: "";
+    position: absolute;
+    left: 22%;
+    right: 22%;
+    top: calc(50% - 0.75 * var(--wm-px));
+    height: calc(1.5 * var(--wm-px));
+    background: #fff;
+    transform: rotate(45deg);
+}
+
+.wm-bintoss .wbt-tally .is-miss i::after {
+    transform: rotate(-45deg);
+}
+
+/* words that rise where something happened */
+.wm-bintoss .wbt-pops {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.wm-bintoss .wbt-pop {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-family: var(--wm-font);
+    font-size: calc(20 * var(--wm-px));
+    font-weight: bold;
+    white-space: nowrap;
+    color: #fff;
+    text-shadow: 0 0 calc(3 * var(--wm-px)) rgba(0, 0, 0, 0.9), 0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) #000;
+    animation: wbt-pop 1.2s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+}
+
+.wm-bintoss .wbt-pop.is-hit { color: #ffd24a; font-size: calc(26 * var(--wm-px)); }
+.wm-bintoss .wbt-pop.is-miss { color: #ff8a78; font-size: calc(16 * var(--wm-px)); }
+.wm-bintoss .wbt-pop.is-how { color: #9fe0ff; font-size: calc(15 * var(--wm-px)); }
+.wm-bintoss .wbt-pop.is-time { color: #9df29d; font-size: calc(15 * var(--wm-px)); }
+.wm-bintoss .wbt-pop.is-heart { color: #ff6f91; font-size: calc(18 * var(--wm-px)); }
+
+@keyframes wbt-pop {
+    0% { opacity: 0; transform: translate(-50%, -30%) scale(0.5); }
+    18% { opacity: 1; transform: translate(-50%, -90%) scale(1.15); }
+    30% { transform: translate(-50%, -110%) scale(1); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -260%) scale(1); }
+}
+
+.wm-bintoss .wbt-confetti {
+    position: absolute;
+    top: calc(-8 * var(--wm-px));
+    width: calc(5 * var(--wm-px));
+    height: calc(8 * var(--wm-px));
+    animation: wbt-confetti 2s linear forwards;
+}
+
+@keyframes wbt-confetti {
+    to { transform: translateY(calc(520 * var(--wm-px))) rotate(var(--turn, 360deg)); opacity: 0.9; }
 }
 
 .wm-bintoss .wbt-note {
     position: absolute;
     left: 0;
     right: 0;
-    top: calc(10 * var(--wm-px));
+    top: calc(44 * var(--wm-px));
+    padding: 0 calc(10 * var(--wm-px));
     text-align: center;
-    font-size: calc(15 * var(--wm-px));
+    font-family: var(--wm-font);
+    font-size: calc(14 * var(--wm-px));
     font-weight: bold;
     color: #fff;
     text-shadow: 0 0 calc(3 * var(--wm-px)) #000, 0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) #000;
@@ -289,4 +480,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
 .wm-bintoss .wbt-logo {
     width: calc(32 * var(--wm-px));
     height: calc(32 * var(--wm-px));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .wm-bintoss .wbt-clock.is-low { animation: none; }
+    .wm-bintoss .wbt-confetti { display: none; }
 }

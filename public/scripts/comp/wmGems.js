@@ -55,7 +55,9 @@
     let L = { s: 1, ox: 0, oy: 0, cell: 1, dpr: 1, barY: 0 };
     let raf = 0;
     let anim = null; // { kind, t0, dur, ... } while something moves
+    let fx = []; // short effects over the board: { kind: 'float' | 'shard' | 'call' | 'banner', t0, dur, ... }
     let sel = null; // { x, y } the selected gem
+    let selPop = 0; // when the selected gem was picked up (it pops once)
     let press = null;
     let hint = null; // { x, y, t0 }
     let idleTimer = 0;
@@ -184,6 +186,7 @@
         sel = null;
         hint = null;
         anim = null;
+        fx = [];
         save();
         renderStatus();
         draw();
@@ -271,7 +274,11 @@
         G.cleared += clear.size;
         if (G.type === 'timed') G.time = Math.min(TIMED_MAX, G.time + clear.size * 0.5);
         sound(step > 1 ? 'cascade' : 'match', step);
-        startAnim({ kind: 'clear', dur: 220, cells: clear, gain, at: centreOf(clear) }, () => {
+        burst(clear);
+        const [fxX, fxY] = centreOf(clear);
+        addFx({ kind: 'float', dur: 800, text: String(gain), x: fxX, y: fxY, big: step > 1 || mult > 1 });
+        if (step > 1) addFx({ kind: 'call', dur: 900, text: `Cascade x${step}` }, true);
+        startAnim({ kind: 'clear', dur: 240, cells: clear }, () => {
             for (const i of clear) {
                 const m = made.get(i);
                 G.board[i] = m ? Object.assign(freshGem(m.k), { sp: m.sp }) : null;
@@ -303,8 +310,40 @@
                 falls.push({ g, x, from: -k, to: y });
             }
         }
+        // every gem falls under the same pull (so none overtakes another), lands and settles
         const far = falls.reduce((m, f) => Math.max(m, f.to - f.from), 0);
-        startAnim({ kind: 'fall', dur: 90 + far * 45, falls }, done);
+        falls.forEach((f) => { f.t = fallMs(f.to - f.from); });
+        startAnim({ kind: 'fall', dur: fallMs(far) + SETTLE_MS, falls }, done);
+    }
+
+    const SETTLE_MS = 110; // the little bounce after a gem lands
+    const fallMs = (cells) => 105 * Math.sqrt(Math.max(0, cells));
+
+    /** An effect over the board; alone: it takes the place of the one of its kind still up. */
+    function addFx(f, alone) {
+        if (alone) fx = fx.filter((o) => o.kind !== f.kind);
+        f.t0 = performance.now();
+        fx.push(f);
+        kick();
+    }
+
+    /** Shards of each gem that clears: small squares in its three tones thrown outward, then falling. */
+    function burst(cells) {
+        const per = cells.size > 20 ? 2 : 4;
+        const now = performance.now();
+        for (const i of cells) {
+            const g = G.board[i];
+            if (!g) continue;
+            const col = g.k === STAR ? GEMS[1] : GEMS[g.k];
+            const tones = [col.light, col.face, col.dark, col.light];
+            const x = i % N + 0.5;
+            const y = Math.floor(i / N) + 0.5;
+            for (let n = 0; n < per; n++) {
+                const side = n % 2 ? 1 : -1;
+                // cells and cells per second
+                fx.push({ kind: 'shard', t0: now + 60, dur: 380 + rnd(120), x, y, vx: side * (1 + Math.random() * 1.6), vy: -(1 + Math.random() * 2.6) + (n > 1 ? 1.2 : 0), col: tones[n] });
+            }
+        }
     }
 
     function addScore(n) {
@@ -315,6 +354,7 @@
             G.level++;
             if (G.type === 'timed') G.time = Math.min(TIMED_MAX, G.time + 20);
             sound('level');
+            addFx({ kind: 'banner', dur: 1100, text: `Level ${G.level}` }, true);
         }
         renderStatus();
     }
@@ -357,14 +397,19 @@
         stopClock();
         const high = record();
         save();
-        draw();
+        sel = null;
+        hint = null;
         sound('over');
-        const yes = await ws.messageBox({
-            title: 'Game Over', icon: 'info', modal: true, cancelValue: false,
-            text: `${why}\n\nScore: ${G.score}\nLevel: ${G.level}${high ? '\nNew high score!' : ''}\n\nDo you want to play again?`,
-            buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }]
+        const game = G;
+        // the board greys out row by row, then the box
+        startAnim({ kind: 'over', dur: 560 }, async () => {
+            const yes = await ws.messageBox({
+                title: 'Game Over', icon: 'info', modal: true, cancelValue: false,
+                text: `${why}\n\nScore: ${game.score}\nLevel: ${game.level}${high ? '\nNew high score!' : ''}\n\nDo you want to play again?`,
+                buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }]
+            });
+            if (yes && G === game) newGame();
         });
-        if (yes) newGame();
     }
 
     async function askNewGame() {
@@ -454,6 +499,8 @@
     function kick() { if (!raf) raf = requestAnimationFrame(frame); }
     function stopLoop() { if (raf) cancelAnimationFrame(raf); raf = 0; }
 
+    const POP_MS = 200; // a gem picked up swells and comes back
+
     function frame(now) {
         raf = 0;
         if (!page || page.hidden || view !== 'main') return;
@@ -464,7 +511,7 @@
         }
         draw(now);
         // keep going while something moves (a hint pulses for 3 s)
-        if (anim || (hint && now - hint.t0 < 3000)) kick();
+        if (anim || fx.length || (sel && now - selPop < POP_MS) || (hint && now - hint.t0 < 3000)) kick();
         else if (hint) { hint = null; draw(now); }
     }
 
@@ -507,13 +554,14 @@
 
     let boardLayer = null;
     let gemSheet = null;
+    let washLayer = null; // GDI's disabled look (every other pixel white), over the board of a game that is over
     let spriteKey = '';
 
     function buildSprites() {
         const { dpr, cell, bw } = L;
         if (!bw || !cell) return;
         const key = [cell, dpr, L.tint].join('|');
-        if (key === spriteKey && boardLayer && gemSheet) return;
+        if (key === spriteKey && boardLayer && gemSheet && washLayer) return;
         spriteKey = key;
         const px = Math.round(bw * dpr);
         boardLayer = boardLayer || document.createElement('canvas');
@@ -540,6 +588,21 @@
         for (let sp = 0; sp < 2; sp++) for (let k = 0; k < KINDS; k++) drawGem(g, { k, sp }, k * cell, sp * cell, cell, 1, 0);
         drawGem(g, { k: STAR, sp: 2 }, 0, 2 * cell, cell, 1, 0);
         gemSheet.cell = cp;
+        // the wash: a checker of white squares one VGA pixel a side
+        const dot = Math.max(1, Math.round(L.unit * dpr / 2));
+        const tile = document.createElement('canvas');
+        tile.width = tile.height = dot * 2;
+        const t = tile.getContext('2d');
+        t.fillStyle = '#fff';
+        t.fillRect(0, 0, dot, dot);
+        t.fillRect(dot, dot, dot, dot);
+        washLayer = washLayer || document.createElement('canvas');
+        washLayer.width = px;
+        washLayer.height = px;
+        const wl = washLayer.getContext('2d');
+        wl.clearRect(0, 0, px, px);
+        wl.fillStyle = wl.createPattern(tile, 'repeat');
+        wl.fillRect(1, 1, px - 2, px - 2);
     }
 
     /** A gem from the sheet at (x, y) in css px, shrunk about its centre by sc. */
@@ -554,6 +617,8 @@
 
     const ease = (t) => (t < 0 ? 0 : t > 1 ? 1 : t);
     const easeIn = (t) => ease(t) * ease(t);
+    const easeOut = (t) => 1 - (1 - ease(t)) * (1 - ease(t));
+    const smooth = (t) => ease(t) * ease(t) * (3 - 2 * ease(t));
 
     function draw(now) {
         // nothing to draw on before the first layout (a new game is dealt in mount, before it)
@@ -579,13 +644,23 @@
         if (a && a.kind === 'swap') {
             const ga = at(G.board, a.a[0], a.a[1]);
             const gb = at(G.board, a.b[0], a.b[1]);
-            if (ga) pos.set(ga, [a.a[0] + (a.b[0] - a.a[0]) * p, a.a[1] + (a.b[1] - a.a[1]) * p]);
-            if (gb) pos.set(gb, [a.b[0] + (a.a[0] - a.b[0]) * p, a.b[1] + (a.a[1] - a.b[1]) * p]);
+            const q = smooth(p);
+            if (ga) pos.set(ga, [a.a[0] + (a.b[0] - a.a[0]) * q, a.a[1] + (a.b[1] - a.a[1]) * q]);
+            if (gb) pos.set(gb, [a.b[0] + (a.a[0] - a.b[0]) * q, a.b[1] + (a.a[1] - a.b[1]) * q]);
         } else if (a && a.kind === 'clear') {
-            for (const i of a.cells) { const g = G.board[i]; if (g) scale.set(g, 1 - p); }
+            // a matched gem swells for a moment, then shrinks away
+            const sc = p < 0.25 ? 1 + 0.6 * p : 1.15 * (1 - (p - 0.25) / 0.75);
+            for (const i of a.cells) { const g = G.board[i]; if (g) scale.set(g, sc); }
         } else if (a && a.kind === 'fall') {
-            const t = (now - a.t0) / a.dur;
-            for (const f of a.falls) pos.set(f.g, [f.x, f.from + (f.to - f.from) * easeIn(t)]);
+            const t = now - a.t0;
+            for (const f of a.falls) {
+                const d = f.to - f.from;
+                const y = t < f.t ? f.from + d * easeIn(t / f.t) : f.to - Math.min(0.1, 0.04 + d * 0.02) * Math.sin(Math.PI * ease((t - f.t) / SETTLE_MS));
+                pos.set(f.g, [f.x, y]);
+            }
+        } else if (!a && sel && now - selPop < POP_MS) {
+            const g = at(G.board, sel.x, sel.y);
+            if (g) scale.set(g, 1 + 0.16 * Math.sin(Math.PI * ease((now - selPop) / POP_MS)));
         }
         c.save();
         c.beginPath();
@@ -593,6 +668,16 @@
         c.clip();
         for (const [g, [x, y]] of pos) blitGem(c, g, ox + x * cell, oy + y * cell, scale.has(g) ? scale.get(g) : 1);
         c.restore();
+        // a game that is over: the wash comes down over the rows
+        if (G.over && washLayer && washLayer.width) {
+            const rows = a && a.kind === 'over' ? Math.ceil(p * N) : N;
+            const hpx = Math.min(washLayer.height, Math.round(rows * cell * dpr));
+            if (hpx > 0) {
+                c.setTransform(1, 0, 0, 1, 0, 0);
+                c.drawImage(washLayer, 0, 0, washLayer.width, hpx, Math.round(ox * dpr), Math.round(oy * dpr), washLayer.width, hpx);
+                c.setTransform(dpr, 0, 0, dpr, 0, 0);
+            }
+        }
         // selection and hint frames: the theme's highlight, 2 units
         const frameAt = (x, y, col) => {
             c.strokeStyle = col;
@@ -601,21 +686,18 @@
             c.strokeRect(ox + x * cell + i, oy + y * cell + i, cell - i * 2, cell - i * 2);
         };
         const hl = L.hl;
-        if (sel && !a) frameAt(sel.x, sel.y, hl);
-        if (hint && !a && Math.floor((now - hint.t0) / 300) % 2 === 0) frameAt(hint.x, hint.y, '#000');
-        // points rising from a clear
-        if (a && a.kind === 'clear' && a.gain) {
-            c.font = `bold ${Math.round(12 * L.unit)}px Tahoma, sans-serif`;
-            c.textAlign = 'center';
-            c.textBaseline = 'middle';
-            const tx = ox + (a.at[0] + 0.5) * cell;
-            const ty = oy + (a.at[1] + 0.5) * cell - p * cell * 0.6;
-            c.lineWidth = Math.max(2, L.unit * 2);
-            c.strokeStyle = '#fff';
-            c.strokeText(String(a.gain), tx, ty);
-            c.fillStyle = '#0000ff';
-            c.fillText(String(a.gain), tx, ty);
+        if (sel && !a) {
+            frameAt(sel.x, sel.y, hl);
+            // picked up with the d-pad (Enter): a black line inside the frame
+            if (sel.held) {
+                const i = c.lineWidth + 0.5 / dpr;
+                c.strokeStyle = '#000';
+                c.lineWidth = 1 / dpr;
+                c.strokeRect(ox + sel.x * cell + i, oy + sel.y * cell + i, cell - i * 2, cell - i * 2);
+            }
         }
+        if (hint && !a && Math.floor((now - hint.t0) / 300) % 2 === 0) frameAt(hint.x, hint.y, '#000');
+        drawFx(c, now);
         // the bar: level progress (Normal, Endless) or the clock (Timed), WM's progress bar
         const by = oy + bw + L.gap;
         const frac = G.type === 'timed' ? G.time / TIMED_MAX : G.levelPts / levelTarget(G.level);
@@ -627,6 +709,65 @@
         c.lineWidth = 1 / dpr;
         c.strokeRect(ox + 0.5 / dpr, by + 0.5 / dpr, bw - 1 / dpr, L.bar - 1 / dpr);
         renderStatus();
+    }
+
+    /** The effects over the board: shards, points rising from a clear, the cascade callout, the level banner. */
+    function drawFx(c, now) {
+        if (!fx.length) return;
+        fx = fx.filter((f) => now - f.t0 < f.dur);
+        const { cell, ox, oy, bw, unit } = L;
+        const label = (str, x, y, size) => {
+            c.font = `bold ${Math.round(size)}px Tahoma, sans-serif`;
+            c.textAlign = 'center';
+            c.textBaseline = 'middle';
+            c.lineJoin = 'round';
+            c.lineWidth = Math.max(2, unit * 2.5);
+            c.strokeStyle = '#fff';
+            c.strokeText(str, x, y);
+            c.fillStyle = '#0000ff';
+            c.fillText(str, x, y);
+        };
+        // shards under the texts
+        const side = Math.max(2, Math.round(cell * 0.15));
+        for (const f of fx) {
+            if (f.kind !== 'shard' || now < f.t0) continue;
+            const t = (now - f.t0) / 1000;
+            const s = now - f.t0 < f.dur * 0.6 ? side : Math.max(1, Math.round(side * 0.55));
+            c.fillStyle = f.col;
+            c.fillRect(Math.round(ox + (f.x + f.vx * t) * cell - s / 2), Math.round(oy + (f.y + f.vy * t + 7 * t * t) * cell - s / 2), s, s);
+        }
+        for (const f of fx) {
+            const p = ease((now - f.t0) / f.dur);
+            if (f.kind === 'float') {
+                const size = (f.big ? 15 : 12) * unit;
+                const tx = Math.max(ox + cell * 0.7, Math.min(ox + bw - cell * 0.7, ox + (f.x + 0.5) * cell));
+                label(f.text, tx, Math.max(oy + size * 0.7, oy + (f.y + 0.5) * cell - easeOut(p) * cell * 0.9), size);
+            } else if (f.kind === 'call') {
+                // it lands a little large and settles
+                const pop = p < 0.1 ? 0.7 + p * 4.5 : p < 0.2 ? 1.15 - (p - 0.1) * 1.5 : 1;
+                label(f.text, ox + bw / 2, oy + cell * 1.5, 17 * unit * pop);
+            } else if (f.kind === 'banner') {
+                // a white band with a black frame across the board; it opens and closes
+                const open = Math.min(1, p / 0.08, (1 - p) / 0.08);
+                const bh = Math.round(24 * unit * open);
+                const w = Math.round(bw * 0.7);
+                const x = Math.round(ox + (bw - w) / 2);
+                const y = Math.round(oy + bw / 2 - bh / 2);
+                if (bh < 3) continue;
+                c.fillStyle = '#000';
+                c.fillRect(x, y, w, bh);
+                c.fillStyle = '#fff';
+                const line = Math.max(1, Math.round(unit / 2));
+                c.fillRect(x + line, y + line, w - line * 2, bh - line * 2);
+                if (open >= 1) {
+                    c.font = `bold ${Math.round(14 * unit)}px Tahoma, sans-serif`;
+                    c.textAlign = 'center';
+                    c.textBaseline = 'middle';
+                    c.fillStyle = '#0000ff';
+                    c.fillText(f.text, ox + bw / 2, oy + bw / 2 + unit / 2);
+                }
+            }
+        }
     }
 
     /** One gem, GDI style: a cut outline in a dark shade, flat facets in three tones, a light corner. */
@@ -801,6 +942,7 @@
         const c = p.c;
         if (sel && Math.abs(sel.x - c.x) + Math.abs(sel.y - c.y) === 1) { trySwap(sel.x, sel.y, c.x, c.y); return; }
         sel = sel && sel.x === c.x && sel.y === c.y ? null : c;
+        if (sel) { selPop = performance.now(); kick(); }
         draw();
         armHint();
     }
@@ -819,6 +961,7 @@
         } else if (e.key === 'Enter' && sel) {
             e.preventDefault();
             sel.held = !sel.held;
+            if (sel.held) { selPop = performance.now(); kick(); }
             draw();
         }
     }
@@ -832,7 +975,8 @@
         if (v === 'options') renderOptions();
         if (v === 'stats') renderStats();
         if (v === 'about') renderAbout();
-        if (v === 'main') { requestAnimationFrame(() => { layout(); startClock(); }); armHint(); } else { stopClock(); clearTimeout(idleTimer); }
+        // an animation that a page opened over goes on from here (the loop stops off the board)
+        if (v === 'main') { requestAnimationFrame(() => { layout(); startClock(); if (anim || fx.length) kick(); }); armHint(); } else { stopClock(); clearTimeout(idleTimer); }
         ws.refreshTitleAction();
         ws.refreshSoftKeys();
     }
@@ -960,6 +1104,7 @@
         clearTimeout(idleTimer);
         // an animation in flight finishes at once so the saved board is whole
         while (anim) { const a = anim; anim = null; if (a.done) a.done(); }
+        fx = [];
         save();
     }
 

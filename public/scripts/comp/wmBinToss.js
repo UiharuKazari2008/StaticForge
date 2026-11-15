@@ -13,7 +13,15 @@
  * workspace's own pictures, picked at random each time the program starts. Options > Time of day:
  * Day (sun through the windows), Night (moonlight, the lamp on, the cat asleep) or Automatic (night
  * from 6 pm to 6 am).
- * Statistics: the best run at each distance, throws, papers in the basket.
+ * After a paper goes in, the basket slides to a new spot on its rug (a little nearer, farther or to
+ * one side: a harder or softer flick). Time Attack (Menu): 60 seconds from the first throw, a paper
+ * in the hand at once, a second back for every hit in a run of three or more. A kitten sits by the
+ * rug: she plays with papers that miss, and now and then leaps for one in the air (a catch does not
+ * count against the run). Tilting the phone looks about the room. The score is a HUD over the room:
+ * run / score, best, the clock, the draught, hits and misses; +1 and Miss rise where they happen.
+ * Soft music is made as it plays (Options). Little things: tap the cat, the kitten, the lamp or the
+ * picture; a paper on the lamp's shade works its switch; ten in a row turns the paper gold.
+ * Statistics: the best run and the best Time Attack at each distance, throws, papers in the basket.
  * Settings and statistics: localStorage wmGame:bintoss.
  *
  * Drawing: WebGL 2, everything made here (no models or textures to load): a room lit by the sun
@@ -89,17 +97,28 @@
     let solid = { boxes: [], cat: [0, 0, 0] }; // what a paper can land on besides the floor and the basket
     let night = false;
     let meowAt = -10;
+    let bk = { x: 0, z: -DISTANCES.middle.d, fx: 0, fz: 0, tx: 0, tz: 0, t: 1 }; // the basket: where it stands, and its slide to a new spot
+    let mode = 'classic'; // or 'timed'
+    let timed = null; // Time Attack: { left, running, over, done, score, thrown, endAt }
+    let hits = 0;
+    let misses = 0;
+    let kit = null; // the kitten on the floor
+    let lampOn = null; // null: on at night, off by day; a tap or a paper on the shade switches it
+    let pets = 0;
+    const tilt = { x: 0, y: 0, tx: 0, ty: 0, base: null, wired: false };
+    let music = null;
+    let gesture = false; // the first touch: sound and tilt may start
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
     // ---------------------------------------------------------------- storage
 
-    const DEFAULTS = { distance: 'middle', sounds: true, detail: 'high', time: 'auto' };
+    const DEFAULTS = { distance: 'middle', sounds: true, music: true, tilt: true, wander: true, haptics: true, detail: 'high', time: 'auto', mode: 'classic' };
     function store() { try { const v = JSON.parse(localStorage.getItem(KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } }
     function storePut(patch) { try { localStorage.setItem(KEY, JSON.stringify(Object.assign(store(), patch))); } catch (_) { /* private mode */ } }
     function settings() { const s = Object.assign({}, DEFAULTS, store().settings || {}); if (!DISTANCES[s.distance]) s.distance = 'middle'; return s; }
-    function blankStats() { return { best: { near: 0, middle: 0, far: 0 }, throws: 0, hits: 0 }; }
-    function stats() { const s = Object.assign(blankStats(), store().stats || {}); s.best = Object.assign(blankStats().best, s.best || {}); return s; }
+    function blankStats() { return { best: { near: 0, middle: 0, far: 0 }, timed: { near: 0, middle: 0, far: 0 }, throws: 0, hits: 0 }; }
+    function stats() { const s = Object.assign(blankStats(), store().stats || {}); s.best = Object.assign(blankStats().best, s.best || {}); s.timed = Object.assign(blankStats().timed, s.timed || {}); return s; }
 
     // ---------------------------------------------------------------- physics
 
@@ -131,21 +150,22 @@
         const note = (k, s) => { if (events && s > (events[k] || 0)) events[k] = s; };
 
         // the basket: its rim (a ring), its side (a cone), its bottom
-        const dx = p[0];
-        const dz = p[2] - basketZ;
+        const dx = p[0] - bk.x;
+        const dz = p[2] - bk.z;
         const rad = Math.hypot(dx, dz) || 1e-6;
         const ux = dx / rad;
         const uz = dz / rad;
         {
-            const ex = p[0] - ux * BK.rTop;
+            const ex = p[0] - (bk.x + ux * BK.rTop);
             const ey = p[1] - BK.H;
-            const ez = p[2] - (basketZ + uz * BK.rTop);
+            const ez = p[2] - (bk.z + uz * BK.rTop);
             const d = Math.hypot(ex, ey, ez);
             const min = BALL_R + BK.tube;
             if (d < min && d > 1e-6) {
                 const n = [ex / d, ey / d, ez / d];
                 p[0] += n[0] * (min - d); p[1] += n[1] * (min - d); p[2] += n[2] * (min - d);
                 note('rim', bounce(b, n, 0.42, 0.92));
+                b.rim = true;
                 contact = true;
             }
         }
@@ -172,6 +192,7 @@
                 const over = rw - (rad - BALL_R);
                 p[0] += n[0] * over; p[2] += n[2] * over;
                 note('side', bounce(b, n, 0.35, 0.9));
+                b.rim = true;
                 contact = true;
             }
         }
@@ -242,7 +263,21 @@
             contact = true;
         }
         const zWall = basketZ - WALL_GAP;
-        if (p[2] - BALL_R < zWall) { p[2] = zWall + BALL_R; note('wall', bounce(b, [0, 0, 1], 0.4, 0.85)); }
+        if (p[2] - BALL_R < zWall) { p[2] = zWall + BALL_R; note('wall', bounce(b, [0, 0, 1], 0.4, 0.85)); b.banked = true; }
+        // the lamp's shade: a paper that hits it works the switch
+        {
+            const ex = p[0] - LAMP.x;
+            const ey = p[1] - (LAMP.top - 0.13);
+            const ez = p[2] - (zWall + 0.34);
+            const d = Math.hypot(ex, ey, ez);
+            if (d < 0.17 + BALL_R && d > 1e-6) {
+                const n = [ex / d, ey / d, ez / d];
+                const over = 0.17 + BALL_R - d;
+                p[0] += n[0] * over; p[1] += n[1] * over; p[2] += n[2] * over;
+                bounce(b, n, 0.35, 0.8);
+                if (!b.hitLamp) { b.hitLamp = true; if (events) events.lamp = 1; }
+            }
+        }
         if (p[2] + BALL_R > ROOM.front) { p[2] = ROOM.front - BALL_R; bounce(b, [0, 0, -1], 0.4, 0.85); }
         if (p[0] - BALL_R < -ROOM.halfW) { p[0] = -ROOM.halfW + BALL_R; note('wall', bounce(b, [1, 0, 0], 0.4, 0.85)); }
         if (p[0] + BALL_R > ROOM.halfW) { p[0] = ROOM.halfW - BALL_R; note('wall', bounce(b, [-1, 0, 0], 0.4, 0.85)); }
@@ -317,6 +352,8 @@
         };
         throwSpeed = solveSpeed(dist);
         balls = [];
+        bk = { x: 0, z: -dist, fx: 0, fz: -dist, tx: 0, tz: -dist, t: 1 };
+        resetKit();
         if (!keepRun) run = 0;
         newDraught();
         windShown = wind;
@@ -328,16 +365,43 @@
 
     function newGame() {
         endRun();
+        hits = 0;
+        misses = 0;
+        mode = settings().mode === 'timed' ? 'timed' : 'classic';
+        timed = mode === 'timed' ? { left: 60, running: false, over: false, done: false, score: 0, thrown: 0, endAt: 0 } : null;
         setDistance(settings().distance, false);
-        note('');
+        note(mode === 'timed' ? 'Time Attack: 60 seconds from your first throw' : '');
+        if (ws) ws.refreshSoftKeys();
     }
 
     function endRun() {
         if (!run) return;
-        const st = stats();
-        const k = settings().distance;
-        if (run > (st.best[k] || 0)) { st.best[k] = run; storePut({ stats: st }); }
+        if (mode === 'classic') {
+            const st = stats();
+            const k = settings().distance;
+            if (run > (st.best[k] || 0)) { st.best[k] = run; storePut({ stats: st }); }
+        }
         run = 0;
+    }
+
+    /** After a paper in the basket it slides to a new spot on its rug: a little nearer or farther, a little to one side. */
+    function moveBasket() {
+        if (!settings().wander) return;
+        bk.fx = bk.x; bk.fz = bk.z;
+        bk.tx = (Math.random() * 2 - 1) * 0.28;
+        bk.tz = -dist + (Math.random() * 2 - 1) * 0.3;
+        bk.t = 0;
+    }
+
+    function slideBasket(dt) {
+        if (bk.t >= 1) return;
+        bk.t = Math.min(1, bk.t + dt / 0.45);
+        const e = bk.t * bk.t * (3 - 2 * bk.t);
+        const nx = bk.fx + (bk.tx - bk.fx) * e;
+        const nz = bk.fz + (bk.tz - bk.fz) * e;
+        // the papers in it ride along
+        balls.forEach((b) => { if (b.inside) { b.p[0] += nx - bk.x; b.p[2] += nz - bk.z; } });
+        bk.x = nx; bk.z = nz;
     }
 
     function throwPaper(yaw, power) {
@@ -345,7 +409,8 @@
         const b = {
             p: [HAND[0] + hand.x, HAND[1] + hand.y, HAND[2]], v: launchVelocity(throwSpeed * power, yaw),
             axis: norm([Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5]), angle: Math.random() * 6.28, spin: 5 + Math.random() * 6,
-            wind, rest: false, restT: 0, t: 0, inside: false, scored: false, landed: false, resolved: false, touched: false
+            wind, rest: false, restT: 0, t: 0, inside: false, scored: false, landed: false, resolved: false, touched: false,
+            gold: mode === 'classic' && run >= 10
         };
         balls.push(b);
         hand = null;
@@ -355,28 +420,172 @@
         st.throws += 1;
         storePut({ stats: st });
         sound('throw');
+        if (timed && !timed.over) {
+            // against the clock the next paper is in the hand at once
+            timed.running = true;
+            timed.thrown += 1;
+            handAt = clock + 0.3;
+        } else if (kit && kit.state === 'idle' && run >= 1 && Math.random() < 0.14) {
+            // now and then the kitten goes for one in the air
+            kit.state = 'stalk'; kit.prey = b; kit.t = 0; kit.spot = [bk.x * 0.8, bk.z + 0.5];
+        }
     }
 
     function resolve(b) {
         b.resolved = true;
+        const at = [bk.x, BK.H + 0.12, bk.z];
         if (b.scored) {
             run += 1;
+            hits += 1;
             const st = stats();
             st.hits += 1;
             const k = settings().distance;
-            if (run > (st.best[k] || 0)) st.best[k] = run;
+            if (mode === 'classic' && run > (st.best[k] || 0)) st.best[k] = run;
             storePut({ stats: st });
             sound('in');
-            note(run > 1 ? `In! ${run} in a row` : 'In!', true);
+            buzz(18);
+            const how = b.banked ? 'Bank shot!' : !b.rim ? 'Swish!' : '';
+            pop(at, '+1', 'is-hit');
+            if (how) setTimeout(() => pop(at, how, 'is-how'), 220);
+            if (timed) {
+                timed.score += 1;
+                // a run of three or more buys time
+                if (run >= 3 && !timed.over) { timed.left += 1; setTimeout(() => pop(at, '+1 s', 'is-time'), how ? 440 : 220); }
+                note(run >= 3 ? `${run} in a row!` : '', true);
+            } else if (run === 10) {
+                note('10 in a row! Golden paper', true);
+                confetti();
+                sound('fanfare');
+            } else note(run > 1 ? `${run} in a row` : 'In!', true);
+            moveBasket();
         } else {
-            if (clock - meowAt < 1) { /* the cat has said it */ } else if (run > 1) note(`Missed. The run ends at ${run}.`);
-            else note('Missed');
+            misses += 1;
+            pop(b.p[1] < 0.3 ? [b.p[0], 0.25, b.p[2]] : at, 'Miss', 'is-miss');
+            if (clock - meowAt < 1) { /* the cat has said it */ } else if (mode === 'classic' && run > 1) note(`Missed. The run ends at ${run}.`);
+            else note('');
             endRun();
+            run = 0;
             sound('miss');
         }
         newDraught();
-        handAt = clock + 0.45;
+        if (!hand && !handAt) handAt = clock + 0.45;
         renderStatus();
+    }
+
+    function finishTimed() {
+        timed.done = true;
+        const st = stats();
+        const k = settings().distance;
+        const best = st.timed[k] || 0;
+        const high = timed.score > best;
+        if (high) { st.timed[k] = timed.score; storePut({ stats: st }); confetti(); }
+        sound('fanfare');
+        renderStatus();
+        const t = timed;
+        ws.messageBox({
+            title: 'Time Attack', icon: 'info', modal: true, cancelValue: false,
+            text: `Time!\n\nIn the basket: ${t.score}\nThrown: ${t.thrown}\nBest: ${Math.max(best, t.score)}${high && best ? '\nA new best!' : ''}\n\nDo you want to play again?`,
+            buttons: [{ text: 'Yes', value: true, default: true }, { text: 'No', value: false }]
+        }).then((yes) => { if (yes && page) newGame(); });
+    }
+
+    // ---- the kitten: sits by the rug, plays with a paper that missed, sometimes leaps for one in the air
+
+    function resetKit() {
+        kit = { x: -0.72, z: -dist + 0.5, y: 0, vy: 0, yaw: 0.4, state: 'idle', t: 0, toy: null, prey: null, bats: 0, hop: 0, spot: null };
+    }
+
+    /** Runs toward a spot; true once within `near` of it. */
+    function kitGo(tx, tz, dt, speed, near) {
+        const dx = tx - kit.x;
+        const dz = tz - kit.z;
+        const d = Math.hypot(dx, dz);
+        if (d <= near) return true;
+        const step = Math.min(d - near, speed * dt);
+        kit.x += dx / d * step; kit.z += dz / d * step;
+        kit.yaw = Math.atan2(dx, dz);
+        kit.hop += dt * 15;
+        return d - step <= near + 0.005;
+    }
+
+    function stepKit(dt) {
+        const k = kit;
+        if (!k) return;
+        k.t += dt;
+        const alive = (b) => !!b && balls.indexOf(b) >= 0;
+        if (k.state === 'jump') {
+            k.vy -= GRAV * dt;
+            k.y += k.vy * dt;
+            k.x += (k.jx || 0) * dt;
+            k.z += (k.jz || 0) * dt;
+            const b = k.prey;
+            if (alive(b) && !b.held && !b.resolved && Math.hypot(b.p[0] - k.x, b.p[1] - (k.y + 0.24), b.p[2] - k.z) < 0.19) {
+                // caught: the throw does not count, and the paper is hers now
+                b.held = true; b.resolved = true; b.played = true; b.kitToy = true; b.spin = 0;
+                k.toy = b;
+                pop([k.x, k.y + 0.45, k.z], 'Caught!', 'is-how');
+                note('The kitten caught it. Throw again!');
+                sound('meow', 1.5);
+                if (!hand && !handAt) handAt = clock + 0.6;
+            }
+            if (k.toy && k.toy.held) { k.toy.p[0] = k.x; k.toy.p[1] = k.y + 0.33; k.toy.p[2] = k.z + 0.07; }
+            if (k.y <= 0 && k.vy < 0) {
+                k.y = 0; k.vy = 0; k.jx = 0; k.jz = 0; k.prey = null; k.t = 0;
+                if (k.toy && k.toy.held) {
+                    const b2 = k.toy;
+                    b2.held = false; b2.rest = true; b2.inside = false; b2.touched = true;
+                    b2.p[0] = k.x + Math.sin(k.yaw) * 0.13; b2.p[1] = BALL_R; b2.p[2] = k.z + Math.cos(k.yaw) * 0.13;
+                    b2.v[0] = b2.v[1] = b2.v[2] = 0;
+                    k.state = 'play'; k.bats = 2;
+                } else k.state = 'return';
+            }
+            return;
+        }
+        if (k.state === 'idle') {
+            // watches the thrower; a missed paper lying on the floor is a toy
+            k.yaw += (0.4 - k.yaw) * Math.min(1, dt * 4);
+            if (k.t > 0.7) {
+                const toy = balls.find((b) => b.rest && b.resolved && !b.scored && !b.inside && !b.played && b.p[1] < 0.08);
+                if (toy) { toy.played = true; k.toy = toy; k.state = 'run'; k.bats = 2 + (Math.random() < 0.4 ? 1 : 0); k.t = 0; }
+            }
+        } else if (k.state === 'run') {
+            if (!alive(k.toy) || k.toy.inside || k.t > 6) { k.toy = null; k.state = 'return'; return; }
+            if (kitGo(k.toy.p[0], k.toy.p[2], dt, 2.1, 0.14) && k.toy.rest) { k.state = 'play'; k.t = 0; }
+        } else if (k.state === 'play') {
+            const b = k.toy;
+            if (!alive(b) || b.inside) { k.toy = null; k.state = 'return'; return; }
+            k.yaw = Math.atan2(b.p[0] - k.x, b.p[2] - k.z);
+            if (k.t > 0.5) {
+                if (k.bats > 0 && b.rest) {
+                    // a pat: the paper hops off, mostly back toward the middle of the room
+                    const a = Math.atan2(-b.p[0], -dist + 0.9 - b.p[2]) + (Math.random() - 0.5) * 2.2;
+                    b.v[0] = Math.sin(a) * 1.1; b.v[1] = 1.5; b.v[2] = Math.cos(a) * 1.1;
+                    b.rest = false; b.restT = 0; b.t = 1; b.spin = 9; b.touched = true; b.kitToy = true; b.landed = true;
+                    k.bats -= 1; k.state = 'run'; k.t = 0;
+                    sound('pat');
+                } else if (k.bats <= 0) { k.toy = null; k.state = 'return'; }
+            }
+        } else if (k.state === 'stalk') {
+            const b = k.prey;
+            kitGo(k.spot[0], k.spot[1], dt, 2.8, 0.02);
+            if (!alive(b) || b.resolved || k.t > 3.5) { k.prey = null; k.state = 'return'; return; }
+            // she springs when the paper is nearly on her, to meet it where it will be
+            const away = Math.hypot(b.p[0] - k.x, b.p[2] - k.z);
+            const pace = Math.hypot(b.v[0], b.v[2]);
+            if (b.v[1] < 0 && away < 1 && pace > 0.5) {
+                const T = away / pace;
+                const meet = b.p[1] + b.v[1] * T - 0.5 * GRAV * T * T;
+                if (T > 0.08 && T < 0.4 && meet > 0.35 && meet < 1.15) {
+                    k.yaw = Math.atan2(b.p[0] - k.x, b.p[2] - k.z);
+                    k.state = 'jump';
+                    k.vy = clamp((meet - 0.24) / T + 0.5 * GRAV * T, 1.2, 4.6);
+                    k.jx = (b.p[0] + b.v[0] * T - k.x) / T * 0.5;
+                    k.jz = (b.p[2] + b.v[2] * T - k.z) / T * 0.5;
+                }
+            }
+        } else if (k.state === 'return') {
+            if (kitGo(-0.72, -dist + 0.5, dt, 1.7, 0.02)) { k.state = 'idle'; k.t = 0; }
+        }
     }
 
     function simulate(dt) {
@@ -387,29 +596,73 @@
             clock += STEP;
             const statics = balls.filter((b) => b.rest);
             for (const b of balls) {
-                if (b.rest) continue;
+                if (b.rest || b.held) continue;
                 stepBall(b, STEP, -dist, statics, events);
                 if (!b.resolved && (b.scored || b.landed || b.rest)) resolve(b);
             }
         }
+        slideBasket(dt);
+        stepKit(dt);
         if (events.rim > 0.5) sound('rim', events.rim);
         else if (events.side > 0.6) sound('rim', events.side * 0.6);
         if (events.floor > 0.6 || events.wall > 0.8 || events.bottom > 0.6) sound('thud', Math.max(events.floor || 0, events.wall || 0, events.bottom || 0));
         else if (events.soft > 0.8) sound('thud', events.soft * 0.5);
         if (events.cat) { meowAt = clock; sound('meow'); note('Sorry, kitty!'); }
-        if (!hand && handAt && clock >= handAt) { hand = { x: 0, y: 0, grab: false }; handAt = 0; }
+        if (events.lamp) switchLamp();
+        // a paper the kitten patted into the basket
+        balls.forEach((b) => {
+            if (b.kitToy && b.scored && !b.assist) { b.assist = true; note('Kitten assist!', true); pop([bk.x, BK.H + 0.12, bk.z], 'Assist!', 'is-how'); sound('in'); }
+        });
+        if (timed && timed.running) {
+            const was = Math.ceil(timed.left);
+            timed.left -= dt;
+            if (timed.left <= 0) {
+                timed.left = 0; timed.running = false; timed.over = true; timed.endAt = clock + 2.5;
+                hand = null; handAt = 0;
+                note('Time!');
+            } else if (Math.ceil(timed.left) !== was && timed.left < 10) sound('tick');
+            renderClock();
+        }
+        if (timed && timed.over && !timed.done && (clock >= timed.endAt || balls.every((b) => b.resolved))) finishTimed();
+        if (!hand && handAt && clock >= handAt && !(timed && timed.over)) { hand = { x: 0, y: 0, grab: false }; handAt = 0; }
         // old papers on the floor go first when there are too many
         while (balls.length > MAX_BALLS) {
-            const i = balls.findIndex((b) => b.rest && !b.inside);
+            const i = balls.findIndex((b) => b.rest && !b.inside && b !== kit.toy);
             balls.splice(i >= 0 ? i : 0, 1);
         }
         windShown += (wind - windShown) * Math.min(1, dt * 3);
+        tilt.x += (tilt.tx - tilt.x) * Math.min(1, dt * 7);
+        tilt.y += (tilt.ty - tilt.y) * Math.min(1, dt * 7);
+    }
+
+    function switchLamp() {
+        const lit = lampOn == null ? night : lampOn;
+        lampOn = !lit;
+        sound('click');
+    }
+
+    /**
+     * A short buzz for a paper in the basket (Options > Vibrate on a hit). The phone's own choice comes
+     * first: Settings > Sounds & Notifications > Vibration off means none, and its level sets the
+     * strength where the motor has one (the Android app's AndroidHaptics; a browser has on / off only).
+     */
+    function buzz(ms) {
+        if (!settings().haptics) return;
+        try {
+            let prefs = null;
+            try { prefs = JSON.parse(localStorage.getItem('wmVibration') || 'null'); } catch (_) { prefs = null; }
+            if (prefs && prefs.on === false) return;
+            const level = prefs && prefs.level >= 1 && prefs.level <= 5 ? prefs.level : 5;
+            const bridge = window.AndroidHaptics;
+            if (bridge && typeof bridge.vibrate === 'function') bridge.vibrate(JSON.stringify({ timings: [ms], amplitudes: [Math.round(255 * level / 5)], repeat: -1, usage: 'touch' }));
+            else if (navigator.vibrate) navigator.vibrate(ms);
+        } catch (_) { /* no motor */ }
     }
 
     // ---------------------------------------------------------------- sound
 
     function sound(kind, strength) {
-        if (!settings().sounds) return;
+        if (!settings().sounds || !gesture) return;
         try {
             if (ws.sounds && typeof ws.sounds.silent === 'function' && ws.sounds.silent()) return;
             if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
@@ -445,16 +698,35 @@
             else if (kind === 'thud') hiss(0, 0.07, 420, 0.7, 0.16 * k, 'lowpass');
             else if (kind === 'in') { hiss(0, 0.12, 2400, 0.6, 0.09); tone(784, 0.05, 0.1, 'triangle', 0.07); tone(1175, 0.15, 0.18, 'triangle', 0.07); }
             else if (kind === 'miss') tone(196, 0.05, 0.16, 'triangle', 0.05);
-            else if (kind === 'meow') {
-                // a small voice that rises and falls
+            else if (kind === 'pat') hiss(0, 0.05, 900, 0.8, 0.1);
+            else if (kind === 'click') { tone(1400, 0, 0.03, 'square', 0.04); tone(900, 0.03, 0.03, 'square', 0.03); }
+            else if (kind === 'tick') tone(1000, 0, 0.05, 'sine', 0.05);
+            else if (kind === 'fanfare') { [523, 659, 784, 1047].forEach((f, i) => tone(f, i * 0.11, 0.22, 'triangle', 0.07)); }
+            else if (kind === 'purr') {
+                // a low rattle, breathing in and out
                 const o = audio.createOscillator();
                 const g = audio.createGain();
                 const f = audio.createBiquadFilter();
+                o.type = 'sawtooth'; o.frequency.value = 26;
+                f.type = 'lowpass'; f.frequency.value = 260;
+                g.gain.setValueAtTime(0.0001, now);
+                g.gain.linearRampToValueAtTime(0.22, now + 0.25);
+                g.gain.linearRampToValueAtTime(0.1, now + 0.6);
+                g.gain.linearRampToValueAtTime(0.22, now + 0.9);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + 1.4);
+                o.connect(f).connect(g).connect(audio.destination);
+                o.start(now); o.stop(now + 1.45);
+            } else if (kind === 'meow') {
+                // a small voice that rises and falls (the kitten's is higher)
+                const o = audio.createOscillator();
+                const g = audio.createGain();
+                const f = audio.createBiquadFilter();
+                const hi = kind === 'meow' && strength > 1 ? strength : 1;
                 o.type = 'sawtooth';
-                o.frequency.setValueAtTime(620, now);
-                o.frequency.linearRampToValueAtTime(980, now + 0.12);
-                o.frequency.linearRampToValueAtTime(700, now + 0.38);
-                f.type = 'bandpass'; f.frequency.value = 1500; f.Q.value = 2.5;
+                o.frequency.setValueAtTime(620 * hi, now);
+                o.frequency.linearRampToValueAtTime(980 * hi, now + 0.12);
+                o.frequency.linearRampToValueAtTime(700 * hi, now + 0.38);
+                f.type = 'bandpass'; f.frequency.value = 1500 * hi; f.Q.value = 2.5;
                 g.gain.setValueAtTime(0.0001, now);
                 g.gain.linearRampToValueAtTime(0.09, now + 0.05);
                 g.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
@@ -462,6 +734,82 @@
                 o.start(now); o.stop(now + 0.45);
             }
         } catch (_) { /* no audio */ }
+    }
+
+    // ---- music: soft and slow, made here (four chords of low pads, a few bell notes over them, an echo)
+
+    const CHORDS = [[174.61, 220, 261.63, 329.63], [164.81, 196, 246.94, 293.66], [146.83, 174.61, 220, 261.63], [130.81, 164.81, 196, 246.94]];
+    const BELLS = [523.25, 587.33, 659.25, 783.99, 880, 1046.5];
+    const BAR = 6.4;
+
+    function musicWanted() {
+        if (!settings().music || !gesture || !page || page.hidden || view !== 'main' || document.hidden) return false;
+        try { return !(ws.sounds && typeof ws.sounds.silent === 'function' && ws.sounds.silent()); } catch (_) { return true; }
+    }
+
+    function startMusic() {
+        if (music || !musicWanted()) return;
+        try {
+            if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+            if (audio.state === 'suspended') audio.resume();
+            const now = audio.currentTime;
+            const out = audio.createGain();
+            out.gain.setValueAtTime(0.0001, now);
+            out.gain.linearRampToValueAtTime(night ? 0.7 : 0.9, now + 3);
+            const bus = audio.createBiquadFilter();
+            bus.type = 'lowpass'; bus.frequency.value = night ? 1200 : 1700;
+            const echo = audio.createDelay(1);
+            echo.delayTime.value = 0.43;
+            const back = audio.createGain();
+            back.gain.value = 0.3;
+            bus.connect(out); bus.connect(echo); echo.connect(back); back.connect(echo); echo.connect(out);
+            out.connect(audio.destination);
+            music = { out, bus, bar: Math.floor(Math.random() * 4), next: now + 0.15, timer: 0 };
+            musicBar();
+        } catch (_) { music = null; }
+    }
+
+    /** One chord's worth of sound, laid on the audio clock; then a timer for the next (one every 6 seconds). */
+    function musicBar() {
+        const m = music;
+        if (!m) return;
+        if (!musicWanted()) { stopMusic(); return; }
+        try {
+            const t0 = m.next;
+            const voice = (f, at, type, peak, rise, len) => {
+                const o = audio.createOscillator();
+                const g = audio.createGain();
+                o.type = type; o.frequency.value = f;
+                g.gain.setValueAtTime(0.0001, at);
+                g.gain.linearRampToValueAtTime(peak, at + rise);
+                g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+                o.connect(g).connect(m.bus);
+                o.start(at); o.stop(at + len + 0.05);
+            };
+            const chord = CHORDS[m.bar % CHORDS.length];
+            chord.forEach((f, i) => voice(f, t0, i % 2 ? 'sine' : 'triangle', 0.03, 1.8, BAR + 1.6));
+            voice(chord[0] / 2, t0, 'sine', 0.06, 0.08, 3.4);
+            let t = t0 + 0.4;
+            while (t < t0 + BAR - 0.3) {
+                if (Math.random() < 0.6) voice(BELLS[Math.floor(Math.random() * BELLS.length)], t, 'triangle', 0.032, 0.01, 1.3);
+                t += [0.4, 0.8, 0.8, 1.6][Math.floor(Math.random() * 4)];
+            }
+            m.bar += 1;
+            m.next = t0 + BAR;
+            m.timer = setTimeout(musicBar, Math.max(250, (m.next - audio.currentTime - 1) * 1000));
+        } catch (_) { stopMusic(); }
+    }
+
+    function stopMusic() {
+        const m = music;
+        if (!m) return;
+        music = null;
+        clearTimeout(m.timer);
+        try {
+            m.out.gain.cancelScheduledValues(audio.currentTime);
+            m.out.gain.setTargetAtTime(0.0001, audio.currentTime, 0.2);
+            setTimeout(() => { try { m.out.disconnect(); } catch (_) { /* gone */ } }, 1200);
+        } catch (_) { /* gone */ }
     }
 
     // ---------------------------------------------------------------- matrices (column-major)
@@ -821,6 +1169,10 @@ void main() {
         albedo = vec3(0.93, 0.925, 0.90) * (0.74 + 0.8 * clamp(vUv.x + 0.2, 0.0, 0.34));
         ao *= uColor.x;
         gloss = 0.05;
+        // the golden paper of a long run
+        albedo = mix(albedo, albedo * vec3(1.0, 0.72, 0.2), uColor.y);
+        gloss = mix(gloss, 0.7, uColor.y);
+        shine = mix(shine, 40.0, uColor.y);
     } else if (uMat == 4) {
         alpha = wire(vUv);
         if (alpha < 0.03) discard;
@@ -867,8 +1219,8 @@ void main() {
         albedo = mix(uColor, uColor * 0.5, stripe * 0.8);
         albedo += vec3(0.22, 0.17, 0.12) * pow(1.0 - max(dot(N, V), 0.0), 2.5);
     } else if (uMat == 11) {
-        // the lamp's shade: lit from inside at night
-        glow = uColor * vec3(1.0, 0.78, 0.5) * 2.4 * uNight;
+        // the lamp's shade: lit from inside when the lamp is on
+        glow = uColor * vec3(1.0, 0.78, 0.5) * mix(1.1, 2.4, uNight) * step(0.01, uLamp.w);
         gloss = 0.05;
     } else if (uMat == 6) {
         gloss = 0.25;
@@ -953,6 +1305,11 @@ void main() {
             ribbon: null,
             cat: null,
             catParts: [],
+            basket: null,
+            kitSit: null,
+            kitLeap: null,
+            vp: null,
+            focal: 1,
             photoTex: null,
             photoAspect: 0,
             ribbonData: new Float32Array(RIBBON_SEGS * 6 * 8)
@@ -976,6 +1333,9 @@ void main() {
         gl.drawBuffers([gl.NONE]);
         gl.readBuffer(gl.NONE);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        buildBasket();
+        R.kitSit = buildKitten(false);
+        R.kitLeap = buildKitten(true);
         buildRoom();
         loadPhoto();
         return true;
@@ -1004,13 +1364,6 @@ void main() {
         });
         // the rug under the basket
         part(5, null, false, () => b.quad([-0.8, 0.004, bz + 0.55], [0.8, 0.004, bz + 0.55], [0.8, 0.004, bz - 0.55], [-0.8, 0.004, bz - 0.55], [0, 1, 0]));
-        // the basket: wire side, rim and foot rings, a plate for a bottom
-        part(4, null, true, () => b.tube(0, bz, 0.006, BK.rBot, BK.H, BK.rTop, 56));
-        part(2, [0.17, 0.18, 0.2], true, () => {
-            b.torus(0, BK.H, bz, BK.rTop, BK.tube, 56, 8);
-            b.torus(0, 0.008, bz, BK.rBot, 0.008, 56, 8);
-            b.disc(0, 0.012, bz, BK.rBot, 40);
-        });
         // the ribbon's stand: a foot, a thin post, a knob
         part(2, [0.22, 0.2, 0.19], true, () => {
             b.tube(POLE.x, bz - 0.12, 0, 0.09, 0.02, 0.075, 24);
@@ -1063,6 +1416,88 @@ void main() {
         if (R.room) { gl.deleteBuffer(R.room.b); gl.deleteVertexArray(R.room.a); }
         R.room = vao(new Float32Array(b.v));
         R.parts = parts;
+    }
+
+    /** The basket about its own foot (it moves): wire side, rim and foot rings, a plate for a bottom. */
+    function buildBasket() {
+        const b = builder();
+        const parts = [];
+        const part = (mat, color, fill) => { const first = b.count; fill(); parts.push({ first, count: b.count - first, mat, color }); };
+        part(4, [1, 1, 1], () => b.tube(0, 0, 0.006, BK.rBot, BK.H, BK.rTop, 56));
+        part(2, [0.17, 0.18, 0.2], () => {
+            b.torus(0, BK.H, 0, BK.rTop, BK.tube, 56, 8);
+            b.torus(0, 0.008, 0, BK.rBot, 0.008, 56, 8);
+            b.disc(0, 0.012, 0, BK.rBot, 40);
+        });
+        R.basket = Object.assign(vao(new Float32Array(b.v)), { parts });
+    }
+
+    /**
+     * The kitten, about the spot she stands on and facing +z: sitting up (also how she runs, in
+     * hops), or stretched out in a leap with her paws up.
+     */
+    function buildKitten(leap) {
+        const b = builder();
+        const parts = [];
+        const part = (mat, color, fill) => { const first = b.count; fill(); parts.push({ first, count: b.count - first, mat, color }); };
+        const coat = [0.36, 0.38, 0.44];
+        const cream = [0.95, 0.94, 0.9];
+        const hy = leap ? 0.13 : 0; // how much higher her head is in a leap
+        part(10, coat, () => {
+            if (leap) b.pillow(0, 0.17, 0, 0.058, 0.13, 0.06, 2.2);
+            else b.pillow(0, 0.085, -0.01, 0.068, 0.088, 0.075, 2.2);
+            b.pillow(0, 0.205 + hy, 0.03, 0.066, 0.06, 0.06, 2.1);
+            // tail: curled round her when she sits, trailing in a leap
+            for (let i = 0; i < 8; i++) {
+                const a = i / 7;
+                if (leap) b.pillow(0.01 * Math.sin(a * 3), 0.07 - a * 0.1, -0.055 - a * 0.05, 0.02, 0.024, 0.02, 2);
+                else b.pillow(0.06 + 0.03 * Math.sin(a * 3.1), 0.022, -0.07 + a * 0.15, 0.022 - a * 0.004, 0.02 - a * 0.004, 0.026, 2);
+            }
+            // legs
+            if (leap) {
+                b.pillow(-0.045, 0.355, 0.075, 0.02, 0.055, 0.02, 2);
+                b.pillow(0.045, 0.355, 0.075, 0.02, 0.055, 0.02, 2);
+                b.pillow(-0.035, 0.035, 0.01, 0.021, 0.05, 0.023, 2);
+                b.pillow(0.035, 0.035, 0.01, 0.021, 0.05, 0.023, 2);
+            } else {
+                b.pillow(-0.03, 0.045, 0.058, 0.02, 0.045, 0.022, 2);
+                b.pillow(0.03, 0.045, 0.058, 0.02, 0.045, 0.022, 2);
+            }
+        });
+        part(10, coat, () => {
+            b.tube(-0.04, 0.03, 0.245 + hy, 0.027, 0.31 + hy, 0.001, 10);
+            b.tube(0.04, 0.03, 0.245 + hy, 0.027, 0.31 + hy, 0.001, 10);
+        });
+        part(2, [0.93, 0.62, 0.6], () => {
+            b.pillow(-0.04, 0.262 + hy, 0.048, 0.012, 0.02, 0.005, 2);
+            b.pillow(0.04, 0.262 + hy, 0.048, 0.012, 0.02, 0.005, 2);
+        });
+        part(2, cream, () => {
+            b.pillow(0, 0.186 + hy, 0.082, 0.03, 0.02, 0.016, 2);          // muzzle
+            b.pillow(0, leap ? 0.2 : 0.1, 0.052, 0.036, 0.05, 0.02, 2);    // bib
+            if (leap) {
+                b.pillow(-0.045, 0.405, 0.08, 0.022, 0.018, 0.022, 2);
+                b.pillow(0.045, 0.405, 0.08, 0.022, 0.018, 0.022, 2);
+            } else {
+                b.pillow(-0.03, 0.012, 0.072, 0.022, 0.013, 0.026, 2);
+                b.pillow(0.03, 0.012, 0.072, 0.022, 0.013, 0.026, 2);
+            }
+        });
+        part(2, [0.9, 0.45, 0.47], () => b.pillow(0, 0.197 + hy, 0.097, 0.007, 0.005, 0.004, 2));
+        // big eyes: amber, a wide pupil, a point of light
+        part(2, [0.86, 0.68, 0.16], () => {
+            b.pillow(-0.027, 0.216 + hy, 0.08, 0.015, 0.017, 0.008, 2);
+            b.pillow(0.027, 0.216 + hy, 0.08, 0.015, 0.017, 0.008, 2);
+        });
+        part(2, [0.02, 0.02, 0.03], () => {
+            b.pillow(-0.027, 0.216 + hy, 0.0865, 0.009, 0.013, 0.004, 2);
+            b.pillow(0.027, 0.216 + hy, 0.0865, 0.009, 0.013, 0.004, 2);
+        });
+        part(2, [1.6, 1.6, 1.6], () => {
+            b.pillow(-0.023, 0.222 + hy, 0.0905, 0.003, 0.003, 0.002, 2);
+            b.pillow(0.031, 0.222 + hy, 0.0905, 0.003, 0.003, 0.002, 2);
+        });
+        return Object.assign(vao(new Float32Array(b.v)), { parts });
     }
 
     /**
@@ -1219,9 +1654,13 @@ void main() {
         const aspect = cv.width / cv.height;
         // a tall screen sees the room through a narrow door: widen the lens until the basket's rug fits
         const fovy = clamp(2 * Math.atan(Math.tan(27 * Math.PI / 180) / Math.min(1, aspect / 0.52)), 0.6, 1.5);
-        const eye = EYE;
-        const at = [0, 0.52, -dist * 0.78];
+        // tilting the phone looks about the room (a slow drift of its own keeps the picture alive)
+        const sway = Math.sin(clock * 0.37) * 0.012;
+        const eye = [EYE[0] + tilt.x * 0.2 + sway, EYE[1] - tilt.y * 0.07, EYE[2]];
+        const at = [tilt.x * 0.85 + sway * 0.5, 0.52 - tilt.y * 0.5, -dist * 0.78];
         const viewProj = mul(perspective(fovy, aspect, 0.1, 30), lookAt(eye, at, [0, 1, 0]));
+        R.vp = viewProj;
+        R.focal = 1 / Math.tan(fovy / 2);
         const centre = [0, 0.6, -dist * 0.55];
         const span = dist * 0.5 + 2.2;
         const lightVP = mul(ortho(-span, span, -span, span, 0.5, 30), lookAt([centre[0] + SUN[0] * 12, centre[1] + SUN[1] * 12, centre[2] + SUN[2] * 12], centre, [0, 1, 0]));
@@ -1232,16 +1671,26 @@ void main() {
         // the cat breathes
         const catModel = trs([0, 1, 0], 0, solid.cat.map((v, i) => (i === 1 ? SOFA.seatTop - 0.004 : v)), 1 + Math.sin(clock * (night ? 1.3 : 1.9)) * 0.012);
         R.catParts.forEach((p) => drawables.push({ vao: R.cat.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: catModel }));
+        const basketModel = trs([0, 1, 0], 0, [bk.x, 0, bk.z], 1);
+        R.basket.parts.forEach((p) => drawables.push({ vao: R.basket.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: basketModel }));
         const shadowBalls = [];
+        if (kit) {
+            const mesh = kit.state === 'jump' ? R.kitLeap : R.kitSit;
+            const moving = kit.state === 'run' || kit.state === 'stalk' || kit.state === 'return';
+            const ky = kit.y + (moving ? Math.abs(Math.sin(kit.hop)) * 0.045 : 0);
+            const kitModel = trs([0, 1, 0], kit.yaw, [kit.x, ky, kit.z], 0.86 * (1 + Math.sin(clock * 2.6) * 0.008));
+            mesh.parts.forEach((p) => drawables.push({ vao: mesh.a, first: p.first, count: p.count, mat: p.mat, color: p.color, casts: true, model: kitModel }));
+            shadowBalls.push(kit.x, ky + 0.07, kit.z, 0.085);
+        }
         balls.forEach((b) => {
             // a paper inside the basket sits in its shade
             const deep = b.inside ? 0.62 + 0.38 * clamp(b.p[1] / BK.H, 0, 1) : 1;
-            drawables.push({ vao: R.ball.a, first: 0, count: R.ball.count, mat: 3, color: [deep, 0, 0], casts: true, model: trs(b.axis, b.angle, b.p, BALL_R * 0.86) });
+            drawables.push({ vao: R.ball.a, first: 0, count: R.ball.count, mat: 3, color: [deep, b.gold ? 1 : 0, 0], casts: true, model: trs(b.axis, b.angle, b.p, BALL_R * 0.86) });
             if (!b.inside && b.p[1] < 0.35 && shadowBalls.length < 10) shadowBalls.push(b.p[0], b.p[1], b.p[2], BALL_R);
         });
         if (hand) {
             const bob = hand.grab ? 0 : Math.sin(clock * 2.2) * 0.006;
-            drawables.push({ vao: R.ball.a, first: 0, count: R.ball.count, mat: 3, color: [1, 0, 0], casts: true, model: trs([0.3, 0.9, 0.3], 0.6 + clock * 0.25, [HAND[0] + hand.x, HAND[1] + hand.y + bob, HAND[2]], BALL_R * 0.86) });
+            drawables.push({ vao: R.ball.a, first: 0, count: R.ball.count, mat: 3, color: [1, mode === 'classic' && run >= 10 ? 1 : 0, 0], casts: true, model: trs([0.3, 0.9, 0.3], 0.6 + clock * 0.25, [HAND[0] + hand.x, HAND[1] + hand.y + bob, HAND[2]], BALL_R * 0.86) });
         }
 
         gl.enable(gl.DEPTH_TEST);
@@ -1285,7 +1734,7 @@ void main() {
         gl.uniform1i(u.uTaps, settings().detail === 'low' ? 4 : 12);
         // the sun over the basket came through the window at z = basket + (wall - basket x) * sun z / sun x
         gl.uniform4f(u.uWin, ROOM.halfW, -dist + ROOM.halfW * SUN[2] / SUN[0], WINDOW_PERIOD, 0.44);
-        gl.uniform3f(u.uBasket, 0, -dist, BK.rBot);
+        gl.uniform3f(u.uBasket, bk.x, bk.z, BK.rBot);
         const bl = new Float32Array(40);
         bl.set(shadowBalls.slice(0, 40));
         gl.uniform4fv(u.uBalls, bl);
@@ -1296,15 +1745,15 @@ void main() {
             gl.uniform3f(u.uSunCol, 0.20, 0.27, 0.48);
             gl.uniform3f(u.uHemiUp, 0.050, 0.060, 0.105);
             gl.uniform3f(u.uHemiDown, 0.045, 0.038, 0.036);
-            gl.uniform4f(u.uLamp, LAMP.x + 0.1, LAMP.top - 0.2, zWall + 0.5, 3.4);
             gl.uniform1f(u.uExposure, 1.0);
         } else {
             gl.uniform3f(u.uSunCol, 2.7, 2.46, 2.05);
             gl.uniform3f(u.uHemiUp, 0.40, 0.45, 0.56);
             gl.uniform3f(u.uHemiDown, 0.27, 0.20, 0.15);
-            gl.uniform4f(u.uLamp, LAMP.x, LAMP.top, zWall + 0.34, 0);
             gl.uniform1f(u.uExposure, 0.74);
         }
+        const lit = lampOn == null ? night : lampOn;
+        gl.uniform4f(u.uLamp, LAMP.x + 0.1, LAMP.top - 0.2, zWall + 0.5, lit ? (night ? 3.4 : 1.6) : 0);
         gl.uniform1f(u.uNight, night ? 1 : 0);
         gl.uniform4f(u.uSofa, -SOFA.halfW, SOFA.halfW, zWall, zWall + 0.04 + SOFA.depth);
         gl.activeTexture(gl.TEXTURE1);
@@ -1332,7 +1781,8 @@ void main() {
         lastFrame = now;
         simulate(dt);
         // nothing in the air: every other frame is enough for the ribbon
-        const busy = balls.some((b) => !b.rest) || (hand && hand.grab) || !hand;
+        const busy = balls.some((b) => !b.rest) || (hand && hand.grab) || !hand || bk.t < 1 || (kit && kit.state !== 'idle')
+            || Math.abs(tilt.tx - tilt.x) + Math.abs(tilt.ty - tilt.y) > 0.004;
         idleSkip = busy ? false : !idleSkip;
         if (!idleSkip) {
             try { render(); } catch (err) { console.error('Bin Toss:', err); stopLoop(); return; }
@@ -1351,19 +1801,91 @@ void main() {
         raf = 0;
     }
 
-    // ---------------------------------------------------------------- status row and notes
+    // ---------------------------------------------------------------- the HUD over the room, and notes
 
     function renderStatus() {
         if (!page) return;
-        const set = (k, v) => { const el = page.querySelector(`.wbt-status [data-v="${k}"]`); if (el && el.textContent !== String(v)) el.textContent = v; };
+        const set = (k, v) => { const el = page.querySelector(`.wbt-field [data-v="${k}"]`); if (el && el.textContent !== String(v)) el.textContent = v; };
         const key = settings().distance;
-        set('run', run);
-        set('best', Math.max(stats().best[key] || 0, run));
+        const st = stats();
+        set('runLabel', timed ? 'Score' : 'Run');
+        set('run', timed ? timed.score : run);
+        set('best', timed ? Math.max(st.timed[key] || 0, timed.score) : Math.max(st.best[key] || 0, run));
+        set('hits', hits);
+        set('misses', misses);
         const w = page.querySelector('.wbt-wind');
         if (w) {
+            const strength = Math.abs(wind);
             w.dataset.side = wind < 0 ? 'left' : wind > 0 ? 'right' : 'calm';
-            w.querySelector('i').textContent = wind ? Math.abs(wind).toFixed(1) : 'Calm';
-            w.setAttribute('aria-label', wind ? `Draught ${Math.abs(wind).toFixed(1)} to the ${wind < 0 ? 'left' : 'right'}` : 'No draught');
+            w.dataset.force = strength >= 2 ? 'strong' : strength >= 1 ? 'fresh' : 'light';
+            w.style.setProperty('--force', String(Math.min(1, strength / 3)));
+            w.querySelector('b').textContent = wind ? strength.toFixed(1) : 'Calm';
+            w.setAttribute('aria-label', wind ? `Draught ${strength.toFixed(1)} to the ${wind < 0 ? 'left' : 'right'}` : 'No draught');
+        }
+        const run10 = page.querySelector('.wbt-pill[data-k="run"]');
+        if (run10) run10.classList.toggle('is-gold', !timed && run >= 10);
+        renderClock();
+    }
+
+    function renderClock() {
+        if (!page) return;
+        const pill = page.querySelector('.wbt-clock');
+        if (!pill) return;
+        pill.hidden = !timed;
+        if (!timed) return;
+        const text = String(Math.ceil(timed.left));
+        const b = pill.querySelector('b');
+        if (b.textContent !== text) b.textContent = text;
+        pill.classList.toggle('is-low', timed.running && timed.left < 10);
+    }
+
+    /** A point of the room on the screen: [x, y] in the field's CSS pixels and its depth; null behind the eye. */
+    function project(p) {
+        const m = R && R.vp;
+        if (!m || !cv) return null;
+        const x = m[0] * p[0] + m[4] * p[1] + m[8] * p[2] + m[12];
+        const y = m[1] * p[0] + m[5] * p[1] + m[9] * p[2] + m[13];
+        const w = m[3] * p[0] + m[7] * p[1] + m[11] * p[2] + m[15];
+        if (w <= 0.01) return null;
+        return [(x / w * 0.5 + 0.5) * cv.clientWidth, (1 - (y / w * 0.5 + 0.5)) * cv.clientHeight, w];
+    }
+
+    /** A word that rises from a place in the room and fades: +1 over the basket, Miss where the paper fell. */
+    function pop(world, text, cls) {
+        if (!page) return;
+        const at = project(world);
+        const box = page.querySelector('.wbt-pops');
+        if (!at || !box) return;
+        const el = document.createElement('span');
+        el.className = `wbt-pop ${cls || ''}`;
+        el.textContent = text;
+        el.style.left = `${clamp(at[0], 30, cv.clientWidth - 30)}px`;
+        el.style.top = `${Math.max(40, at[1])}px`;
+        box.appendChild(el);
+        setTimeout(() => el.remove(), 1500);
+    }
+
+    function hearts(world) {
+        // U+2665, a real heart (not a typographic lookalike)
+        [0, 180, 360].forEach((ms, i) => setTimeout(() => pop([world[0] + (i - 1) * 0.07, world[1] + 0.12, world[2]], '♥', 'is-heart'), ms));
+    }
+
+    /** Scraps of coloured paper down the screen: ten in a row, a new best against the clock. */
+    function confetti() {
+        if (!page) return;
+        const box = page.querySelector('.wbt-pops');
+        if (!box) return;
+        const colors = ['#ffd24a', '#ff6f61', '#5ec8ff', '#7be07b', '#ffffff', '#c59bff'];
+        for (let i = 0; i < 28; i++) {
+            const el = document.createElement('i');
+            el.className = 'wbt-confetti';
+            el.style.left = `${Math.random() * 100}%`;
+            el.style.background = colors[i % colors.length];
+            el.style.animationDelay = `${Math.random() * 0.5}s`;
+            el.style.animationDuration = `${1.5 + Math.random() * 0.9}s`;
+            el.style.setProperty('--turn', `${(Math.random() * 2 - 1) * 540}deg`);
+            box.appendChild(el);
+            setTimeout(() => el.remove(), 3200);
         }
     }
 
@@ -1380,31 +1902,117 @@ void main() {
 
     // ---------------------------------------------------------------- input
 
+    function onTilt(e) {
+        if (e.beta == null || e.gamma == null) return;
+        // held upright or on its side: which way is across the screen
+        const turn = (window.screen && window.screen.orientation && window.screen.orientation.angle) || 0;
+        const across = turn === 90 ? e.beta : turn === 270 ? -e.beta : e.gamma;
+        const along = turn === 90 ? -e.gamma : turn === 270 ? e.gamma : e.beta;
+        if (!tilt.base) tilt.base = [across, along];
+        // however the phone comes to be held is the middle, after a while
+        tilt.base[0] += (across - tilt.base[0]) * 0.004;
+        tilt.base[1] += (along - tilt.base[1]) * 0.004;
+        tilt.tx = clamp((across - tilt.base[0]) / 20, -1, 1);
+        tilt.ty = clamp((along - tilt.base[1]) / 20, -1, 1);
+    }
+
+    function wireTilt(on) {
+        const want = on && settings().tilt;
+        if (want && !tilt.wired) {
+            window.addEventListener('deviceorientation', onTilt);
+            tilt.wired = true;
+        } else if (!want && tilt.wired) {
+            window.removeEventListener('deviceorientation', onTilt);
+            tilt.wired = false;
+            tilt.tx = 0; tilt.ty = 0; tilt.base = null;
+        }
+    }
+
+    function firstTouch() {
+        if (gesture) return;
+        gesture = true;
+        startMusic();
+        // where the browser asks before it gives the phone's tilt
+        try {
+            const D = window.DeviceOrientationEvent;
+            if (settings().tilt && D && typeof D.requestPermission === 'function') D.requestPermission().catch(() => {});
+        } catch (_) { /* no tilt */ }
+    }
+
     function onDown(e) {
-        if (view !== 'main' || !hand) return;
+        if (view !== 'main') return;
         e.preventDefault();
+        firstTouch();
         try { cv.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
-        press = { id: e.pointerId, x0: e.clientX, y0: e.clientY, trail: [{ x: e.clientX, y: e.clientY, t: performance.now() }] };
-        hand.grab = true;
+        const t = performance.now();
+        press = { id: e.pointerId, x0: e.clientX, y0: e.clientY, t0: t, trail: [{ x: e.clientX, y: e.clientY, t }] };
+        if (hand) hand.grab = true;
     }
 
     function onMove(e) {
-        if (!press || e.pointerId !== press.id || !hand) return;
+        if (!press || e.pointerId !== press.id) return;
         const now = performance.now();
         press.trail.push({ x: e.clientX, y: e.clientY, t: now });
         while (press.trail.length > 2 && now - press.trail[0].t > 160) press.trail.shift();
+        if (!hand) return;
         // the paper follows the finger a little
         const h = cv.clientHeight || 1;
         hand.x = clamp((e.clientX - press.x0) / h * 0.5, -0.14, 0.14);
         hand.y = clamp(-(e.clientY - press.y0) / h * 0.45, -0.06, 0.2);
     }
 
+    /** A tap on something in the room: the cat, the kitten, the lamp, the picture. */
+    function tapAt(x, y) {
+        if (!R || !R.vp) return false;
+        const zWall = -dist - WALL_GAP;
+        const things = [
+            { p: [solid.cat[0], solid.cat[1] + 0.03, solid.cat[2]], r: 0.2, act: petCat },
+            { p: [LAMP.x, LAMP.top - 0.13, zWall + 0.34], r: 0.22, act: switchLamp },
+            { p: [0, 1.66, zWall], r: 0.42, act: () => { loadPhoto(); sound('click'); } }
+        ];
+        if (kit) things.push({ p: [kit.x, kit.y + 0.13, kit.z], r: 0.17, act: pokeKit });
+        let best = null;
+        things.forEach((t) => {
+            const at = project(t.p);
+            if (!at) return;
+            const reach = Math.max(22, t.r * R.focal / at[2] * cv.clientHeight / 2);
+            const d = Math.hypot(x - at[0], y - at[1]);
+            if (d <= reach && (!best || d < best.d)) best = { d, t };
+        });
+        if (!best) return false;
+        best.t.act();
+        return true;
+    }
+
+    function petCat() {
+        pets += 1;
+        sound(night && pets < 3 ? 'purr' : pets % 4 === 0 ? 'meow' : 'purr');
+        hearts(solid.cat);
+        buzz(10);
+        note(pets === 5 ? 'She likes you.' : pets === 15 ? 'She will allow it.' : 'Purr...');
+    }
+
+    function pokeKit() {
+        if (!kit || kit.state !== 'idle') return;
+        kit.state = 'jump'; kit.vy = 2.3; kit.jx = 0; kit.jz = 0; kit.prey = null;
+        sound('meow', 1.5);
+        hearts([kit.x, 0.3, kit.z]);
+    }
+
     function onUp(e) {
         if (!press || e.pointerId !== press.id) return;
         const p = press;
         press = null;
-        if (!hand) return;
         const now = performance.now();
+        const back = () => { if (hand) { hand.grab = false; hand.x = 0; hand.y = 0; } };
+        if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) < 12 && now - p.t0 < 400) {
+            // a tap, not a throw
+            back();
+            const r = cv.getBoundingClientRect();
+            tapAt(e.clientX - r.left, e.clientY - r.top);
+            return;
+        }
+        if (!hand) return;
         const last = { x: e.clientX, y: e.clientY, t: now };
         // the flick: the last tenth of a second of the finger's path
         let from = p.trail[0];
@@ -1415,12 +2023,14 @@ void main() {
         const h = cv.clientHeight || 1;
         const speed = Math.hypot(dx, up) / dt / h; // screen heights a second
         const travelled = p.y0 - last.y;
-        if (up < 6 || travelled < h * 0.05 || speed < 0.5) {
-            // not a throw: the paper goes back to the hand
-            hand.grab = false; hand.x = 0; hand.y = 0;
-            return;
-        }
-        const yaw = clamp(Math.atan2(dx, up) * 0.35, -0.42, 0.42);
+        if (up < 6 || travelled < h * 0.05 || speed < 0.5) { back(); return; }
+        // a flick straight at the basket, as it shows on the screen, throws straight at it (wherever
+        // the basket stands and however the phone is tilted); to either side of that aims aside
+        const hs = project(HAND);
+        const bs = project([bk.x, BK.H, bk.z]);
+        const ref = hs && bs ? Math.atan2(bs[0] - hs[0], hs[1] - bs[1]) : 0;
+        const toBasket = Math.atan2(bk.x - HAND[0], HAND[2] - bk.z);
+        const yaw = clamp(toBasket + (Math.atan2(dx, up) - ref) * 0.35, -0.5, 0.5);
         const power = 1 + 0.12 * Math.tanh((speed - 2.2) / 2.2 * 1.2);
         note('');
         throwPaper(yaw, power);
@@ -1440,7 +2050,7 @@ void main() {
         if (v === 'options') renderOptions();
         if (v === 'stats') renderStats();
         if (v === 'about') renderAbout();
-        if (v === 'main') startLoop(); else stopLoop();
+        if (v === 'main') { startLoop(); startMusic(); } else { stopLoop(); stopMusic(); }
         ws.refreshTitleAction();
         ws.refreshSoftKeys();
     }
@@ -1462,7 +2072,7 @@ void main() {
             + `<div class="wm-form-row is-wide"><span class="wm-form-label">Distance:</span><button type="button" class="wm-combo" data-act="distance"><span>${DISTANCES[d.distance].label}</span></button></div>`
             + `<div class="wm-form-row is-wide"><span class="wm-form-label">Detail:</span><button type="button" class="wm-combo" data-act="detail"><span>${DETAIL[d.detail] || DETAIL.high}</span></button></div>`
             + `<div class="wm-form-row is-wide"><span class="wm-form-label">Time of day:</span><button type="button" class="wm-combo" data-act="time"><span>${TIMES[d.time] || TIMES.auto}</span></button></div>`
-            + `<div class="wbt-checks">${check('sounds', 'Play sounds')}</div>`
+            + `<div class="wbt-checks">${check('sounds', 'Play sounds')}${check('music', 'Play music')}${check('tilt', 'Tilt the phone to look around')}${check('wander', 'Move the basket after each hit')}${check('haptics', 'Vibrate on a hit')}</div>`
             + '</div></div>';
         box.querySelectorAll('[data-opt]').forEach((el) => el.addEventListener('change', () => { d[el.dataset.opt] = el.checked; }));
         box.querySelector('[data-act="distance"]').addEventListener('click', (e) => {
@@ -1491,6 +2101,9 @@ void main() {
         if (detail) { dropGL(); startGL(); }
         if (moved) setDistance(next.distance, false);
         else if (isNight() !== night) { night = isNight(); if (R) buildRoom(); }
+        if (!next.music) stopMusic();
+        if (!next.wander && bk.t >= 1 && (bk.x !== 0 || bk.z !== -dist)) { bk.fx = bk.x; bk.fz = bk.z; bk.tx = 0; bk.tz = -dist; bk.t = 0; }
+        wireTilt(true);
     }
 
     function renderStats() {
@@ -1500,8 +2113,8 @@ void main() {
         const rows = [['Papers thrown', st.throws], ['In the basket', st.hits], ['Accuracy', `${pct}%`]];
         box.innerHTML = '<div class="wm-form-hdr">Statistics</div><div class="wm-set-scroll"><div class="wbt-stats">'
             + '<p class="wbt-stats-type">Best runs:</p>'
-            + '<table class="wbt-high"><thead><tr><th>Distance</th><th>In a row</th></tr></thead><tbody>'
-            + Object.keys(DISTANCES).map((k) => `<tr><td>${esc(DISTANCES[k].label)}</td><td>${Math.max(st.best[k] || 0, k === settings().distance ? run : 0) || '-'}</td></tr>`).join('')
+            + '<table class="wbt-high"><thead><tr><th>Distance</th><th>In a row</th><th>Time Attack</th></tr></thead><tbody>'
+            + Object.keys(DISTANCES).map((k) => `<tr><td>${esc(DISTANCES[k].label)}</td><td>${Math.max(st.best[k] || 0, k === settings().distance && !timed ? run : 0) || '-'}</td><td>${st.timed[k] || '-'}</td></tr>`).join('')
             + '</tbody></table>'
             + `<table class="wbt-totals"><tbody>${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>`
             + '<div class="wbt-reset"><button type="button" class="wm-button" data-act="reset">Reset</button></div>'
@@ -1577,32 +2190,65 @@ void main() {
         cv.addEventListener('webglcontextrestored', () => { gl = null; R = null; startGL(); });
     }
 
+    /** The start-up cards (public/scripts/comp/wmGameSplash.js, shared by the phone's 3D games), loaded when first wanted. */
+    function splash() {
+        const run = () => { if (page && window.wmGameSplash) window.wmGameSplash.show(page.querySelector('.wbt-field'), { title: TITLE, icon: '/static_images/wm61/app-bintoss-lg@4x.png', developer: DEVELOPER }); };
+        if (window.wmGameSplash) { run(); return; }
+        const sc = document.createElement('script');
+        sc.src = '/scripts/comp/wmGameSplash.js';
+        sc.onload = run;
+        document.head.appendChild(sc);
+    }
+
     function mount(p) {
         page = p;
         p.classList.add('wm-bintoss');
         p.dataset.view = 'main';
         p.innerHTML = '<div class="wbt-view" data-view="main">'
-            + '<div class="wbt-status"><span><b>Run:</b> <i data-v="run">0</i></span><span><b>Best:</b> <i data-v="best">0</i></span>'
-            + '<span class="wbt-wind" data-side="calm"><b>Draught:</b> <s aria-hidden="true"></s><i>Calm</i></span></div>'
-            + `<div class="wbt-field" data-wm-no-hold><canvas aria-label="${esc(TITLE)}"></canvas><div class="wbt-note" aria-live="polite"></div><div class="wbt-none"></div></div></div>`
+            + `<div class="wbt-field" data-wm-no-hold><canvas aria-label="${esc(TITLE)}"></canvas>`
+            + '<div class="wbt-hud">'
+            + '<div class="wbt-pill" data-k="run"><span data-v="runLabel">Run</span><b data-v="run">0</b></div>'
+            + '<div class="wbt-pill" data-k="best"><span>Best</span><b data-v="best">0</b></div>'
+            + '<div class="wbt-pill wbt-clock" hidden><span>Time</span><b>60</b></div>'
+            + '<div class="wbt-pill wbt-wind" data-side="calm"><span>Draught</span><em aria-hidden="true"><s></s></em><b>Calm</b></div>'
+            + '</div>'
+            + '<div class="wbt-tally"><span class="is-hit"><i aria-hidden="true"></i><b data-v="hits">0</b></span><span class="is-miss"><i aria-hidden="true"></i><b data-v="misses">0</b></span></div>'
+            + '<div class="wbt-pops" aria-hidden="true"></div>'
+            + '<div class="wbt-note" aria-live="polite"></div><div class="wbt-none"></div></div></div>'
             + '<div class="wbt-view" data-view="options" hidden></div><div class="wbt-view" data-view="stats" hidden></div><div class="wbt-view" data-view="about" hidden></div>';
         cv = p.querySelector('.wbt-field canvas');
         wireCanvas();
         threw = false;
-        setDistance(settings().distance, false);
-        if (startGL()) note('Flick the paper into the basket');
+        lampOn = null;
+        pets = 0;
+        newGame();
+        if (startGL()) {
+            if (mode === 'classic') note('Flick the paper into the basket');
+            splash();
+        }
     }
 
     function show() {
         renderStatus();
         // Automatic: evening may have come while the program was in the background
         if (isNight() !== night) { night = isNight(); if (R) buildRoom(); }
-        if (view === 'main') startLoop();
+        wireTilt(true);
+        if (view === 'main') { startLoop(); startMusic(); }
     }
 
     function hide() {
         stopLoop();
+        stopMusic();
+        wireTilt(false);
         onCancel();
+    }
+
+    function setMode(m) {
+        const st = settings();
+        if (st.mode === m && mode === m) return;
+        st.mode = m;
+        storePut({ settings: st });
+        newGame();
     }
 
     function softKeys() {
@@ -1612,10 +2258,14 @@ void main() {
             left: { label: 'New Game', action: newGame },
             right: {
                 label: 'Menu',
-                menu: () => Object.keys(DISTANCES).map((k) => ({
+                menu: () => [
+                    { label: 'Classic', radio: mode === 'classic', action: () => setMode('classic') },
+                    { label: 'Time Attack', radio: mode === 'timed', action: () => setMode('timed') },
+                    '-'
+                ].concat(Object.keys(DISTANCES).map((k) => ({
                     label: DISTANCES[k].label, radio: key === k,
-                    action: () => { if (k !== settings().distance) { endRun(); setDistance(k, false); note(''); ws.refreshSoftKeys(); } }
-                })).concat([
+                    action: () => { if (k !== settings().distance) { endRun(); const st = settings(); st.distance = k; storePut({ settings: st }); newGame(); } }
+                }))).concat([
                     '-',
                     { label: 'Options...', action: () => openPage('options') },
                     { label: 'Statistics', action: () => openPage('stats') },
@@ -1646,17 +2296,18 @@ void main() {
                 hide();
                 // give the 3D context back to the phone
                 if (gl) { const ext = gl.getExtension('WEBGL_lose_context'); if (ext) { try { ext.loseContext(); } catch (_) { /* gone */ } } }
-                gl = null; R = null; view = 'main'; page = null; cv = null; balls = [];
+                gl = null; R = null; view = 'main'; page = null; cv = null; balls = []; timed = null;
             },
             softKeys
         });
-        document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); else if (page && !page.hidden && view === 'main') startLoop(); });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); else if (page && !page.hidden && ws.current === APP_ID) show(); });
     }
 
     // tests
     window.wmBinToss = {
         solveSpeed, stepBall, launchVelocity, BK, BALL_R, DISTANCES,
-        get state() { return { run, wind, dist, throwSpeed, balls, hand, gl: !!gl }; },
+        get state() { return { run, wind, dist, throwSpeed, balls, hand, gl: !!gl, bk, kit, timed, mode, hits, misses, tilt, music: !!music }; },
+        confetti, pop, tapAt, project,
         setWind(w) { wind = w; windShown = w; renderStatus(); },
         setNight(n) { night = !!n; if (R) buildRoom(); },
         throwPaper, render, newGame
