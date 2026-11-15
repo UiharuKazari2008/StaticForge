@@ -371,18 +371,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-band::after {
     right: 0;
     top: 0;
     height: calc(70 * var(--u));
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.1) 48%, rgba(255, 255, 255, 0) 100%);
+    /* a faint sheen on the glass's upper half, not a flash (Yukimi, Nov 15: the first one read as a white flash) */
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0) 70%);
     opacity: 0;
     pointer-events: none;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-catch .wm-ti-band::after {
-    animation: wm-ti-catch 0.42s ease-out both;
+    animation: wm-ti-catch 0.6s ease-in-out both;
 }
 
 @keyframes wm-ti-catch {
     0% { opacity: 0; }
-    28% { opacity: 1; }
+    35% { opacity: 1; }
     100% { opacity: 0; }
 }
 
@@ -446,4 +447,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-dg-out {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-catch .wm-ti-band::after,
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-list,
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-focus { animation: none; }
+}
+
+/* the return readied (wmTitanium.prime: the app going behind another program, the screen going off): the
+ * entrance's first pose, the picture and the empty band, so the frame Android shows on the way back is
+ * where the entrance starts */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-primed .wm-ti-list,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-primed .wm-ti-focus {
+    opacity: 0;
 }
