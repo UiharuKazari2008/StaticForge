@@ -34,9 +34,18 @@ Rules, in force now:
 - No script carries its own theme test (`classList.contains('windows-classic-theme')`,
   `localStorage.wmVersion`, a private `isVista()` or `WM65`). Use the shared helper.
 
-Lands with slice 2: `html[data-theme="vista" | "xp"]`, the helper `uiTheme` (`uiTheme.desktop()`,
-`uiTheme.phone()`, `uiTheme.is('xp')`), theme folders under `public/css/themes/<id>/`, and a theme's
-art root as a token so no path names a theme folder.
+Lands with slice 2 (#851):
+
+- The desktop theme id is a body class, `body.theme-vista` or `body.theme-xp`, mirrored as
+  `html[data-theme]`, set before first paint and owned by `uiTheme.js`. While a boot theme
+  (`windows-classic-theme`) is on, no theme class is on. The phone id stays
+  `html[data-wm-version]`.
+- The helper: `uiTheme.desktop()` (`'vista'`, `'xp'`, or the boot theme), `uiTheme.is('xp')`,
+  `uiTheme.phone()` (`'6.1'`, `'6.5'`).
+- Theme files live in `public/css/themes/<id>/`. A stylesheet that belongs to one theme is loaded
+  only under that theme (the loader and package manifests name the theme per stylesheet), so a
+  whole file cannot leak. A file shared by both themes holds structure only.
+- A theme's art root is a token, so no path names a theme folder.
 
 **Zero leak** means: with theme A active, no rule, art, font, metric, sound or behaviour written for
 theme B applies. A theme file contains only its own theme's selectors; shared structure (layout that
