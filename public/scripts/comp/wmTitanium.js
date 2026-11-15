@@ -427,7 +427,7 @@
     const SUPER_MS = 420;
     const SUPER_EASE = 'cubic-bezier(0.45, 0, 0.2, 1)';
     let superGrow = 0; // units the card grows by: the weather (drawSuper)
-    const CLOCK_TO = { y: 31, scale: 0.62 }; // the analog clock's move beside the digital one (units, size)
+    const CLOCK_TO = { y: 26, scale: 0.85 }; // the analog clock's move beside the digital one (units, size): larger (Yukimi, Nov 15), its face on the time's line, clear of the weather
 
     /*
      * The card is the band itself: the band art as a nine-slice (its glass lines stay put as it grows),
