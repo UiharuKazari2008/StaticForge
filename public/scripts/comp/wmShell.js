@@ -1852,6 +1852,12 @@
             try { stand(); } catch (err) { console.warn('[wmShell] default program', id, err); }
             return;
         }
+        // boot steps put off until Today was up (#817, websocket.js _runDeferredInitSteps: Studio's
+        // toolbars, tool windows and settings): the rest of them first, then this open again
+        if (id !== 'today' && window.wsClient && window.wsClient.deferredInitPending) {
+            void busy(window.wsClient.whenDeferredInitDone()).then(() => open(id, opts));
+            return;
+        }
         // a program loaded on demand (#817): its script first, then this open again
         if (apps.get(id).lazyScript) { openLazy(id, opts); return; }
         // a program that is not a page of the shell (registerApp({ launch })): one of the phone's own

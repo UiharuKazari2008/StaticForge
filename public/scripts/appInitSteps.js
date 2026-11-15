@@ -314,6 +314,24 @@ if (window.wsClient) {
         setTimeout(run, 60000);
     }
 
+    // Steps Melaton Mobile runs after Today is up (websocket.js _deferInitStepOnPhone, #817): the
+    // ones that only prepare Studio, its tool windows and its settings, and the two that wire the
+    // desktop's menus and keys. Their order among themselves is kept. Not here: anything Today,
+    // the phone's notifications or the server's view of the phone need (settings, workspaces,
+    // gallery, Director, background services, Finalizing).
+    window.wsClient.phoneDeferredInitSteps = new Set([
+        'Initializing emphasis groups tool', 'Initializing generation usage tool', 'Initializing Prompt Toolbar',
+        'Loading SmartText settings', 'Initializing Image Bias System', 'Initializing Inpaint Editor',
+        'Loading autofill ranking config', 'Initializing reference manager', 'Initializing stage results review',
+        'Initializing Text Replacement Manager', 'Initializing Keyboard Shortcuts', 'Wiring Application UI',
+        'Wiring Dynamic Generation UI', 'Request body replacements listener scope', 'Initializing Preset Manager',
+        'Compile to Prompts', 'Manual modal listener scope', 'Manual preview manager', 'Studio quickstart gallery',
+        'Character prompt listener scope', 'Character positions tool', 'Manual tab listener scope',
+        'Manual generation params listener scope', 'Studio soft tips', 'Pipeline global toggle listener scope',
+        'Metadata dialog listener scope', 'Random prompt listener scope', 'Director learning admin listener scope',
+        'Manual resolution and dropdown listeners', 'Main prompt autocomplete listeners'
+    ]);
+
     let tokenizersQueued = false;
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
         if (tokenizersQueued) return;
