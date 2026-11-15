@@ -308,7 +308,9 @@ class RcsProvider {
         const status = (raw.messageStatus && raw.messageStatus.status) || '';
         const was = this.seen.get(raw.messageID);
         this.seen.delete(raw.messageID);
-        this.seen.set(raw.messageID, status + '|' + JSON.stringify(raw.reactions || []));
+        // a picture's full size arriving (its mediaID) counts as a change too
+        const media = (raw.messageInfo || []).map((x) => (x.mediaContent && x.mediaContent.mediaID) || '').join(',');
+        this.seen.set(raw.messageID, status + '|' + JSON.stringify(raw.reactions || []) + '|' + media);
         if (this.seen.size > SEEN_MAX) this.seen.delete(this.seen.keys().next().value);
         this.storeMsgs([raw]);
         const message = this.normalizeMessage(raw);
@@ -369,7 +371,7 @@ class RcsProvider {
                 if (full || m.thumbnailMediaID) {
                     const ref = full
                         ? { m: m.mediaID, k: m.decryptionKey || '', t: m.thumbnailMediaID || '', tk: m.thumbnailDecryptionKey || '', y: mime, n: m.mediaName || '' }
-                        : { m: m.thumbnailMediaID, k: m.thumbnailDecryptionKey || '', t: '', tk: '', y: mime, n: m.mediaName || '' };
+                        : { m: m.thumbnailMediaID, k: m.thumbnailDecryptionKey || '', t: '', tk: '', y: mime, n: m.mediaName || '', i: raw.messageID || '', a: info.actionMessageID || '' };
                     const guid = `r${b64url(ref)}`;
                     const base = `/api/textmessaging/${encodeURIComponent(this.id)}/attachment/${encodeURIComponent(guid)}`;
                     const thumb = full ? (/^image\/|^video\//.test(mime) ? `${base}?thumb=1` : null) : base;
@@ -715,6 +717,7 @@ class RcsProvider {
     async downloadAttachment(guid, { thumb } = {}) {
         const ref = unb64url(String(guid).replace(/^r/, ''));
         if (!ref || !ref.m) throw Object.assign(new Error('Unknown attachment.'), { code: 'NOT_FOUND', status: 404 });
+        this.attachmentSeen(guid);
         const useThumb = thumb && ref.t;
         const file = path.join(this.tmpDir, `dl-${randomUUID()}`);
         await this.call('download', { mediaId: useThumb ? ref.t : ref.m, key: useThumb ? ref.tk : ref.k, path: file }, SEND_TIMEOUT_MS);
@@ -726,6 +729,26 @@ class RcsProvider {
             headers: { get: (h) => (h.toLowerCase() === 'content-type' ? type : (h.toLowerCase() === 'content-disposition' && ref.n ? `inline; filename*=UTF-8''${encodeURIComponent(ref.n)}` : null)) },
             arrayBuffer: async () => buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.length)
         };
+    }
+
+    /**
+     * An attachment was asked for (the server's cache too): when it is only Google's thumbnail of a picture
+     * the phone sent, ask the phone for the full size once; the message then comes again with its mediaID
+     * and the screens draw that.
+     */
+    attachmentSeen(guid) {
+        const ref = unb64url(String(guid || '').replace(/^r/, ''));
+        if (ref && ref.i && ref.a) this.requestFullMedia(ref.i, ref.a);
+    }
+
+    requestFullMedia(messageId, actionMessageId) {
+        if (!this.fullAsked) this.fullAsked = new Set();
+        const key = `${messageId}|${actionMessageId}`;
+        if (this.fullAsked.has(key)) return;
+        this.fullAsked.add(key);
+        if (this.fullAsked.size > 2000) this.fullAsked.delete(this.fullAsked.values().next().value);
+        // an older bridge has no fullMedia: the thumbnail stays
+        this.call('fullMedia', { messageId, actionMessageId }, 30000).catch((error) => this.log(`full size for ${messageId}: ${error.message}`));
     }
 
     // ---- writes ----

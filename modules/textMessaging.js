@@ -811,6 +811,11 @@ async function markUnread(accountId, args) {
 
 async function typing(accountId, args) { return provider(accountId).typing(args); }
 async function downloadAttachment(accountId, guid, opts) { return provider(accountId).downloadAttachment(guid, opts); }
+/** An attachment was asked for, from the server's cache too (RCS: a thumbnail-only picture asks the phone for its full size). */
+function attachmentSeen(accountId, guid) {
+    const p = providers.get(String(accountId || ''));
+    if (p && typeof p.attachmentSeen === 'function') { try { p.attachmentSeen(guid); } catch (_) { /* only a hint */ } }
+}
 
 async function resolveName(accountId, address) {
     const p = providers.get(accountId);
@@ -831,5 +836,5 @@ function _reset() {
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
-    downloadAttachment, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
+    downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };

@@ -136,6 +136,7 @@ function mount(app, authMiddleware, globalResources) {
         const thumb = req.query.thumb === '1';
         const key = crypto.createHash('sha1').update(`${accountId}|${guid}|${thumb ? 't' : 'f'}`).digest('hex');
         const file = path.join(cacheDir, key);
+        textMessaging.attachmentSeen(accountId, guid);
         try {
             const meta = JSON.parse(await fs.promises.readFile(`${file}.json`, 'utf8'));
             res.setHeader('Content-Type', meta.type || 'application/octet-stream');

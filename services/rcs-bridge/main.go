@@ -13,7 +13,7 @@
 //
 // Protos leave as protojson (field names as in gmproto); the server normalizes them.
 // Commands: status, login, logout, conversations, conversation, messages, send, react, delete,
-// markRead, typing, download, newChat, contacts.
+// markRead, typing, download, fullMedia, newChat, contacts.
 package main
 
 import (
@@ -467,6 +467,13 @@ func handle(ctx context.Context, r request) (any, error) {
 		return protoRaw(res), nil
 	case "markRead":
 		if err := cli.MarkRead(ctx, str("conversationId"), str("messageId")); err != nil {
+			return nil, err
+		}
+		return map[string]any{"ok": true}, nil
+	case "fullMedia":
+		// a picture the phone sent comes with only its thumbnail: ask the phone to upload the full size;
+		// the message then comes again (an update) with its mediaID
+		if _, err := cli.GetFullSizeImage(ctx, str("messageId"), str("actionMessageId")); err != nil {
 			return nil, err
 		}
 		return map[string]any{"ok": true}, nil
