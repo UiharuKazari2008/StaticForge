@@ -967,7 +967,7 @@
             if (a) { e.stopPropagation(); todayStep(a.dataset.dir === 'next' ? 1 : -1); return; }
             const v = latest()[todayAt];
             if (signedIn() && v) openVideo(v.id);
-            else open(signedIn() ? 'channels' : null);
+            else open(signedIn() ? ((hub.favourites || []).length ? 'subs' : 'channels') : null);
         });
     }
 
@@ -991,7 +991,7 @@
             const len = lenText(v);
             inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines${v.watched ? ' is-watched' : ''}"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc([v.channel, age(v.at), rareText(v)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
         } else {
-            const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Tap to choose favourite channels' : a.error ? a.error : 'Looking for new videos...';
+            const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Tap to choose favourite channels' : hub.latest && hub.latest.caughtUp ? 'You have watched everything new' : a.error ? a.error : 'Looking for new videos...';
             inner = `<img class="yt-td-icon" src="${ws.art.url('app-youtube-lg')}" srcset="${ws.art.srcset('app-youtube-lg')}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">YouTube</span><span class="wtw-sub">${esc(line)}</span></span>`;
         }
         const many = !!v && vids.length > 1;
@@ -1016,8 +1016,8 @@
         const key = { label: 'YouTube', action: go };
         const vids = signedIn() ? latest() : [];
         if (!vids.length) {
-            const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Choose favourite channels' : 'Looking for new videos...';
-            const to = () => open(signedIn() ? 'channels' : null);
+            const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Choose favourite channels' : hub.latest && hub.latest.caughtUp ? 'You have watched everything new' : 'Looking for new videos...';
+            const to = () => open(signedIn() ? ((hub.favourites || []).length ? 'subs' : 'channels') : null);
             return { label: 'youtube', icon: 'x:app-youtube-lg', pages: [{ title: 'YouTube', line2: line, line3: '' }], softKey: key, onTap: to };
         }
         const fresh = vids.filter(isNew).length;

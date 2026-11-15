@@ -47,6 +47,6 @@ favourites' video counts (1 unit per 50 channels) and reads only the channels th
 
 - `account`: `{ configured, signedIn, account: { id, title, thumb } | null, signIn: { userCode, url, expiresAt } | null, error }`
 - `favourites[]`: the channels whose uploads Today shows
-- `latest`: `{ videos[] }`, the favourites' uploads as one list (`settings.todayCount` at most). With `settings.rareFirst` (default) a video's age counts in units of its channel's usual gap between uploads, so channels that upload seldom come first; off: newest first. Each video also has `gap` (ms since that channel's upload before it, or null).
+- `latest`: `{ videos[], caughtUp }`, the favourites' uploads that are not watched yet, as one list (`settings.todayCount` at most; `caughtUp` when there are uploads but all were watched). With `settings.rareFirst` (default) a video's age counts in units of its channel's usual gap between uploads, so channels that upload seldom come first; off: newest first. Each video also has `gap` (ms since that channel's upload before it, or null).
 - `settings`: `{ noShorts, rareFirst, todayCount, budget }`
 - `feed`: `{ at }`, when the subscriptions feed or the watched marks last changed (read `youtube_feed` again when it moves)

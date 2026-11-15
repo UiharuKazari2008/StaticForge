@@ -1036,9 +1036,9 @@ function cadenceOf(videos) {
  * that "do not upload often get higher sort") a video's age counts in units of its channel's usual gap
  * between uploads, so a three-day-old video of a monthly channel (0.1 of a gap) comes before a daily
  * channel's video of yesterday (1 gap), and a daily channel's video of an hour ago still leads. Off: newest
- * first. Each video carries `gap`, the time since the channel's upload before it (the "first in 3 weeks" note).
+ * first. Watched videos are left out. Each video carries `gap`, the time since the channel's upload before it (the "first in 3 weeks" note).
  */
-function latestVideos(now = Date.now()) {
+function latestVideos(now = Date.now(), opts = {}) {
     const all = [];
     acct.favourites.forEach((f) => {
         const held = cache.uploads[f.id];
@@ -1051,7 +1051,9 @@ function latestVideos(now = Date.now()) {
     });
     const rare = settings().rareFirst;
     const seen = new Set();
+    // Today is what is still to watch: a video the account's history shows as watched is left out
     return all.filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true)))
+        .filter((v) => opts.withWatched || !isWatched(v.id))
         .sort((a, b) => (rare ? (a.rank - b.rank) || ((b.at || 0) - (a.at || 0)) : (b.at || 0) - (a.at || 0)))
         .slice(0, settings().todayCount)
         .map((v) => {
@@ -1106,10 +1108,17 @@ function accountView() {
     };
 }
 
+/** Today's list; caughtUp when the favourites have uploads but every one of them was watched. */
+function latestView() {
+    if (!signedIn()) return { videos: [], caughtUp: false };
+    const videos = marked(latestVideos());
+    return { videos, caughtUp: !videos.length && latestVideos(Date.now(), { withWatched: true }).length > 0 };
+}
+
 function hubItems() {
     refreshLatest(false);
     void syncHistory();
-    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? marked(latestVideos()) : [] }, settings: settings(), feed: { at: Math.max(feedMemo ? feedMemo.at : 0, historyChangedAt) } };
+    return { account: accountView(), favourites: acct.favourites.slice(), latest: latestView(), settings: settings(), feed: { at: Math.max(feedMemo ? feedMemo.at : 0, historyChangedAt) } };
 }
 
 function getState() {

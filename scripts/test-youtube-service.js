@@ -423,6 +423,28 @@ T.setBrowser({ watched: async (on, id) => {
         assert.ok((await svc.feed()).videos.every((v) => !v.watched));
     });
 
+    await ok('Today: watched videos are left out; caught up when all of them were watched', async () => {
+        await settle();
+        const all = svc.getState().latest.videos.map((v) => v.id);
+        assert.ok(all.length >= 2);
+        ytHistory = [{ id: all[0], pct: 100 }, { id: all[1], pct: 20 }];
+        await wait(5);
+        await T.syncHistory({ maxAge: 1 });
+        let l = svc.getState().latest;
+        assert.deepStrictEqual(l.videos.map((v) => v.id), all.slice(1), 'the watched one is gone, the started one stays');
+        assert.strictEqual(l.videos[0].progress, 20);
+        assert.strictEqual(l.caughtUp, false);
+        ytHistory = all.map((id) => ({ id, pct: 100 }));
+        await wait(5);
+        await T.syncHistory({ maxAge: 1 });
+        l = svc.getState().latest;
+        assert.deepStrictEqual(l, { videos: [], caughtUp: true });
+        ytHistory = [];
+        await wait(5);
+        await T.syncHistory({ maxAge: 1 });
+        assert.deepStrictEqual(svc.getState().latest.videos.map((v) => v.id), all);
+    });
+
     await ok('members-only videos: read for the channels the account is a member of, flagged', async () => {
         await svc.feed();
         await settle();
