@@ -244,9 +244,13 @@
     appearance: none;
     -webkit-appearance: none;
     font: inherit;
-    --go: 52; /* the button's size in --u (the ring's mask follows it) */
-    width: calc(var(--go) * var(--u));
-    height: calc(var(--go) * var(--u));
+    --go: 52; /* the button's size in --u */
+    --go-px: calc(var(--go) * var(--u));
+    width: var(--go-px);
+    height: var(--go-px);
+    flex: 0 0 auto;
+    touch-action: none;
+    -webkit-touch-callout: none;
     border-radius: 50%;
     border: 0;
     padding: 0;
@@ -255,7 +259,7 @@
     justify-content: center;
     text-align: center;
     color: #fff;
-    font-size: calc(var(--go) / 8 * var(--u));
+    font-size: calc(var(--go-px) / 8);
     font-weight: 700;
     letter-spacing: calc(0.5 * var(--u));
     line-height: 1.3;
@@ -264,13 +268,13 @@
     box-shadow: 0 0 0 calc(2.5 * var(--u)) #eef0f2, 0 0 0 calc(3.5 * var(--u)) #6c747e, 0 calc(4 * var(--u)) calc(4 * var(--u)) rgba(0, 0, 0, 0.5), inset 0 0 0 calc(2 * var(--u)) var(--lps-blue), inset 0 0 calc(9 * var(--u)) rgba(0, 170, 210, 0.95);
 }
 /* the ring is turned metal: a conic sheen over the plain ring */
-.wm-lapis .lps-go::before { content: ''; position: absolute; inset: calc(-3.5 * var(--u)); border-radius: 50%; background: conic-gradient(from 20deg, rgba(255, 255, 255, 0.9), rgba(90, 98, 108, 0.7) 12%, rgba(255, 255, 255, 0.85) 25%, rgba(90, 98, 108, 0.7) 38%, rgba(255, 255, 255, 0.9) 50%, rgba(90, 98, 108, 0.7) 62%, rgba(255, 255, 255, 0.85) 75%, rgba(90, 98, 108, 0.7) 88%, rgba(255, 255, 255, 0.9)); -webkit-mask: radial-gradient(circle, transparent calc(var(--go) / 2 * var(--u)), #000 calc((var(--go) / 2 + 0.5) * var(--u))); mask: radial-gradient(circle, transparent calc(var(--go) / 2 * var(--u)), #000 calc((var(--go) / 2 + 0.5) * var(--u))); pointer-events: none; }
+.wm-lapis .lps-go::before { content: ''; position: absolute; inset: calc(-3.5 * var(--u)); border-radius: 50%; background: conic-gradient(from 20deg, rgba(255, 255, 255, 0.9), rgba(90, 98, 108, 0.7) 12%, rgba(255, 255, 255, 0.85) 25%, rgba(90, 98, 108, 0.7) 38%, rgba(255, 255, 255, 0.9) 50%, rgba(90, 98, 108, 0.7) 62%, rgba(255, 255, 255, 0.85) 75%, rgba(90, 98, 108, 0.7) 88%, rgba(255, 255, 255, 0.9)); -webkit-mask: radial-gradient(circle closest-side, transparent calc(100% - 3.5 * var(--u)), #000 calc(100% - 3 * var(--u))); mask: radial-gradient(circle closest-side, transparent calc(100% - 3.5 * var(--u)), #000 calc(100% - 3 * var(--u))); pointer-events: none; }
 .wm-lapis .lps-go:active:not(:disabled), .wm-lapis .lps-go.is-down { transform: scale(0.96); }
 .wm-lapis .lps-go.is-running { box-shadow: 0 0 0 calc(2.5 * var(--u)) #eef0f2, 0 0 0 calc(3.5 * var(--u)) #6c747e, 0 calc(4 * var(--u)) calc(4 * var(--u)) rgba(0, 0, 0, 0.5), inset 0 0 0 calc(2 * var(--u)) var(--lps-amber), inset 0 0 calc(9 * var(--u)) rgba(255, 160, 40, 0.95); }
 .wm-lapis .lps-go:disabled { color: #7d858e; }
 /* hold to start: the collar fills */
 .wm-lapis .lps-go-fill { position: absolute; inset: calc(2 * var(--u)); border-radius: 50%; background: radial-gradient(circle, rgba(0, 170, 210, 0.75), rgba(0, 170, 210, 0.1) 70%); opacity: 0; transform: scale(0.3); pointer-events: none; }
-.wm-lapis .lps-go.is-holding .lps-go-fill { opacity: 1; transform: scale(1); transition: transform 1.1s linear, opacity 0.2s linear; }
+.wm-lapis .lps-go.is-holding .lps-go-fill { opacity: 1; transform: scale(1); transition: transform 0.6s linear, opacity 0.15s linear; }
 .wm-lapis .lps-go span { position: relative; }
 
 /* ---------------------------------------------------------------- layers */
@@ -310,7 +314,19 @@
 .wm-lapis .lps-opts .lps-key svg { width: calc(17 * var(--u)); height: calc(17 * var(--u)); margin-top: calc(4 * var(--u)); }
 .wm-lapis .lps-launch { flex: 1 0 auto; display: flex; align-items: center; justify-content: center; gap: calc(14 * var(--u)); padding: calc(10 * var(--u)) calc(10 * var(--u)) calc(4 * var(--u)); }
 .wm-lapis .lps-launch-txt { font-size: calc(9 * var(--u)); line-height: 1.35; color: #2c333d; }
+/* the Remote Start screen's own ENGINE START STOP is its main control: at least the knob's size, and a
+ * third of the screen's short side where there is room (the main page's keeps the key row's size) */
+.wm-lapis .lps-launch .lps-go { --go-px: max(calc(84 * var(--u)), min(34cqmin, calc(240 * var(--u)))); }
 .wm-lapis .lps-launch-txt b { display: block; font-size: calc(11 * var(--u)); color: #1b222b; }
+
+/* LED temperatures: seven segments, the unlit ones faintly there */
+/* span.lps-led7: the label spans of the knob and the auto line must not restyle it */
+.wm-lapis span.lps-led7 { font-size: inherit; letter-spacing: 0; margin: 0; display: inline-flex; align-items: flex-end; gap: 0.04em; height: 0.92em; vertical-align: -0.02em; color: #7fe6ff; filter: drop-shadow(0 0 0.06em rgba(0, 190, 240, 0.9)) drop-shadow(0 0 0.18em rgba(0, 170, 210, 0.55)); }
+.wm-lapis .lps-led7 svg { display: block; height: 100%; width: auto; aspect-ratio: 13 / 20; overflow: visible; }
+.wm-lapis .lps-led7 .is-on { fill: currentColor; }
+.wm-lapis .lps-led7 .is-off { fill: currentColor; opacity: 0.09; }
+.wm-lapis .lps-knob.is-heat .lps-led7 { color: #ffc067; filter: drop-shadow(0 0 0.06em rgba(255, 150, 40, 0.95)) drop-shadow(0 0 0.18em rgba(255, 130, 30, 0.55)); }
+.wm-lapis .lps-led7 + small { margin-left: calc(3 * var(--u)); }
 
 /* list rows on the display */
 .wm-lapis .lps-list { padding: calc(3 * var(--u)) calc(4 * var(--u)) calc(4 * var(--u)); display: flex; flex-direction: column; gap: calc(3 * var(--u)); }
@@ -390,8 +406,6 @@
 @container lps (min-width: 560px) and (min-height: 480px) {
     .wm-lapis .lps-cmd,
     .wm-lapis .lps-layer-body:not(.wm-form) { --u: calc(var(--wm-px, 1px) * 1.3); }
-    /* the remote start's own button is the screen's main control: as big as the knob */
-    .wm-lapis .lps-launch .lps-go { --go: 72; }
     .wm-lapis .lps-launch-txt { font-size: calc(10 * var(--u)); }
     .wm-lapis .lps-launch-txt b { font-size: calc(12.5 * var(--u)); }
 }

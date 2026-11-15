@@ -30,7 +30,7 @@
     const CAR_ART_SM = '/static_images/lapis/car-sm.webp';
     const LAYER_TITLES = { start: 'Remote Start', map: 'Find My Car', status: 'Vehicle Status', service: 'Maintenance', item: 'Maintenance Item', history: 'Driving Record', settings: 'Lapis Settings' };
     const TILE = 256;
-    const HOLD_MS = 1100;
+    const HOLD_MS = 600; // hold ENGINE START STOP this long to start (css .lps-go-fill matches)
     const SEAT_HEAT = [0, 6, 7, 8];
     const SEAT_COOL = [0, 3, 4, 5];
     const WHEEL = [0, 3, 4];
@@ -98,6 +98,23 @@
         return fmtDay.format(new Date(y, m - 1, d));
     }
     const tempText = (t, lim) => (!num(t) ? '--' : lim && t <= lim.tempMin ? 'LO' : lim && t >= lim.tempMax ? 'HI' : String(Math.round(t)));
+    // ---------------------------------------------------------------- LED temperatures (seven segments)
+
+    // segments in a 12 x 20 cell: a top, b upper right, c lower right, d bottom, e lower left, f upper left, g middle
+    const hSeg = (y) => `2.4,${y} 3.4,${y - 1} 8.6,${y - 1} 9.6,${y} 8.6,${y + 1} 3.4,${y + 1}`;
+    const vSeg = (x, y0, y1) => `${x},${y0 + 0.9} ${x + 1},${y0 + 1.9} ${x + 1},${y1 - 1.9} ${x},${y1 - 0.9} ${x - 1},${y1 - 1.9} ${x - 1},${y0 + 1.9}`;
+    const SEGS = { a: hSeg(1.6), g: hSeg(10), d: hSeg(18.4), f: vSeg(1.6, 1.6, 10), b: vSeg(10.4, 1.6, 10), e: vSeg(1.6, 10, 18.4), c: vSeg(10.4, 10, 18.4) };
+    const GLYPH = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', '-': 'g', L: 'fed', O: 'abcdef', H: 'bcefg', I: 'bc', ' ': '' };
+    const ledDigit = (ch) => {
+        const on = GLYPH[ch] == null ? '' : GLYPH[ch];
+        return `<svg viewBox="0 0 13 20" aria-hidden="true"><g transform="translate(1.2 0) skewX(-6)">${Object.keys(SEGS).map((k) => `<polygon class="${on.includes(k) ? 'is-on' : 'is-off'}" points="${SEGS[k]}"/>`).join('')}</g></svg>`;
+    };
+    /** "77" / "LO" / "--" as lit seven-segment digits (unlit segments faintly visible, like the real thing). */
+    const led = (text) => {
+        const t = String(text == null ? '--' : text).toUpperCase();
+        return `<span class="lps-led7" role="img" aria-label="${esc(t)}">${[...t].map(ledDigit).join('')}</span>`;
+    };
+
     const seatText = (c) => ({ 3: 'cool, low', 4: 'cool, medium', 5: 'cool, high', 6: 'heat, low', 7: 'heat, medium', 8: 'heat, high' }[c] || 'off');
 
     // ---------------------------------------------------------------- art (inline, our own thin-line set)
@@ -359,12 +376,21 @@
         return false;
     }
 
-    async function send(kind, options) {
+    /** Whether a command can go now (says why not). */
+    function canSend() {
         if (!needAdmin()) return false;
         if (!configured()) { openLayer('settings'); return false; }
         if (busyCommand()) { ws.messageBox({ title: TITLE, icon: 'info', text: 'The car is still answering the last command.' }); return false; }
+        return true;
+    }
+
+    /** background: no wait cursor while BlueLink takes the command (a few seconds); the pushed state
+     * shows "Starting, waiting for the car" meanwhile, and a failure still comes up as a message. */
+    async function send(kind, options, background) {
+        if (!canSend()) return false;
         try {
-            await ws.busy(ask('lapis_command', { kind, options: options || {} }, 60000), { delay: 250, timeout: 60000 });
+            const req = ask('lapis_command', { kind, options: options || {} }, 60000);
+            await (background ? req : ws.busy(req, { delay: 250, timeout: 60000 }));
             return true;
         } catch (err) {
             ws.messageBox({ title: TITLE, icon: 'error', text: `${{ lock: 'Lock', unlock: 'Unlock', start: 'Remote start', stop: 'Remote stop' }[kind]} could not be sent.\n\n${(err && err.message) || 'Check the data connection, then try again.'}` });
@@ -493,7 +519,7 @@
         const c = state && state.climate;
         const tt = c ? tempText(c.temp, lim) : '--';
         els.clim.innerHTML = `<div class="lps-card-l">${I.fan}Climate${state && state.settings && state.settings.autoClimate ? ' · Auto' : ''}</div>
-            <div class="lps-card-v">${tt}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</div>
+            <div class="lps-card-v">${led(tt)}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</div>
             <div class="lps-card-s"><span>Outside ${c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°` : '--'}</span><span>cabin <b>${c && num(c.interiorF) ? `${Math.round(c.interiorF)}°F` : '--'}</b></span></div>
             <div class="lps-card-s lps-card-sets"><span>Start sets</span><b>${esc(startSets(c))}</b></div>`;
 
@@ -659,12 +685,12 @@
         els.body.innerHTML = `
             <div class="lps-scr">
                 <div class="lps-sbar">${I.fan}<b>${d.auto ? 'Auto climate' : 'Manual climate'}</b><span class="lps-sp"></span><span>${c ? `${Math.round(c.cloudCover)}% cloud, sun adds ${c.solarGainF}°F` : ''}</span></div>
-                <div class="lps-auto-line"><div class="lps-auto-t"><span>Outside</span><b>${c && num(c.outdoorF) ? Math.round(c.outdoorF) : '--'}<small>°F</small></b></div>${I.arrow}<div class="lps-auto-t"><span>Cabin target</span><b>${tt}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</b></div></div>
+                <div class="lps-auto-line"><div class="lps-auto-t"><span>Outside</span><b>${led(c && num(c.outdoorF) ? Math.round(c.outdoorF) : '--')}<small>°F</small></b></div>${I.arrow}<div class="lps-auto-t"><span>Cabin target</span><b>${led(tt)}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</b></div></div>
                 <div class="lps-why">${why}</div>
             </div>
             <div class="lps-knobrow">
                 <button type="button" class="lps-key is-pm" data-act="down" aria-label="Cooler">&minus;</button>
-                <div class="lps-knob${d.temp >= 76 ? ' is-heat' : ''}"><i class="lps-nib" style="transform:rotate(${Math.round(-135 + 270 * frac)}deg)"></i><div class="lps-knob-in"><b>${tt}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</b><span>${d.auto ? 'AUTO' : 'MANUAL'}</span></div></div>
+                <div class="lps-knob${d.temp >= 76 ? ' is-heat' : ''}"><i class="lps-nib" style="transform:rotate(${Math.round(-135 + 270 * frac)}deg)"></i><div class="lps-knob-in"><b>${led(tt)}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</b><span>${d.auto ? 'AUTO' : 'MANUAL'}</span></div></div>
                 <button type="button" class="lps-key is-pm" data-act="up" aria-label="Warmer">+</button>
             </div>
             <div class="lps-opts">
@@ -681,8 +707,10 @@
         const go = els.body.querySelector('[data-act="go"]');
         if (go && !running) {
             const cancel = () => { clearTimeout(holdTimer); holdTimer = null; go.classList.remove('is-holding'); };
-            go.addEventListener('pointerdown', () => {
+            go.addEventListener('contextmenu', (e) => e.preventDefault());
+            go.addEventListener('pointerdown', (e) => {
                 if (go.disabled) return;
+                try { go.setPointerCapture(e.pointerId); } catch (_) { /* gone */ }
                 go.classList.add('is-holding');
                 clearTimeout(holdTimer);
                 holdTimer = setTimeout(() => { cancel(); startNow(); }, HOLD_MS);
@@ -715,7 +743,12 @@
         const d = draftOf();
         const options = d.auto ? { auto: true, minutes: d.minutes } : { auto: false, temp: d.temp, defrost: d.defrost, heating: d.heating, seat: d.seat, minutes: d.minutes };
         // started from Today (or Traffic's bubble) the app is not on screen: its title is not the shell's
-        if (await send('start', options)) { layers = layers.filter((l) => l !== 'start'); draft = null; if (shown) syncLayers(); else stale = true; }
+        if (!canSend()) return;
+        // the start goes at once: back to the car page, which shows it being sent and then running
+        layers = layers.filter((l) => l !== 'start');
+        draft = null;
+        if (shown) syncLayers(); else stale = true;
+        await send('start', options, true);
     }
 
     async function startConfirm() {
