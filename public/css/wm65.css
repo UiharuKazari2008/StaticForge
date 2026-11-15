@@ -1138,6 +1138,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row.is-selected {
     color: #fff;
 }
 
+/* an indented row keeps its indent here too (the padding above outranked wm-programs.css .is-indent:
+   Super Bar settings' channels sat level with their app, Nov 15) */
+html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row.is-indent {
+    padding-left: calc(20 * var(--wm-px)) !important;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-listbox-row:has(.wm-check) {
     min-height: calc(27 * var(--wm-px));
 }
