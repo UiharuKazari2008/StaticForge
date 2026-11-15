@@ -81,10 +81,16 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
 
 (async () => {
     // ---- climate table: Yukimi's sensor, row by row
-    for (const [t, temp, def, h, s] of [[20, 85, true, 4, 8], [33, 80, true, 3, 7], [41, 78, false, 3, 6], [56, 74, false, 0, 0], [76, 70, false, 0, 3], [85, 65, false, 0, 4], [95, 61, false, 0, 5]]) {
+    // the scaling line: within 2 °F of every step of Yukimi's old table at the step's middle, and the same levels
+    for (const [t, temp, def, h, s] of [[25, 82, true, 4, 8], [37, 80, true, 3, 7], [48.5, 78, false, 3, 6], [66, 74, false, 0, 0], [80.5, 70, false, 0, 3], [90, 65, false, 0, 4], [100, 62, false, 0, 5]]) {
         const r = climate.choose(t);
-        assert.deepStrictEqual([r.temp, r.defrost, r.heating, r.seat], [temp, def, h, s], `climate row at ${t}`);
+        assert.ok(Math.abs(r.temp - temp) <= 2, `climate temperature at ${t}: ${r.temp} vs ${temp}`);
+        assert.deepStrictEqual([r.defrost, r.heating, r.seat], [def, h, s], `climate levels at ${t}`);
     }
+    assert.strictEqual(climate.choose(50, { seats: false, wheel: false }).seat, 0);
+    assert.strictEqual(climate.choose(50, { seats: false, wheel: false }).heating, 0);
+    assert.ok(climate.choose(66, { comfort: 70 }).temp === 70, 'comfort moves the mild point');
+    assert.strictEqual(climate.cleanSettings({ coldAt: 60, seatHeatBelow: 40 }).seatHeatBelow > 50, true, 'anchors stay in order');
     assert.strictEqual(climate.interiorEstimate({ outdoorF: 41, shortwave: 400, cloudCover: 50 }), 44);
 
     // ---- first read
@@ -95,7 +101,7 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(state.status.setTemp, 62, 'LO reads as the low end');
     assert.strictEqual(state.status.tireLow.any, true);
     assert.strictEqual(state.location.place, 'Home');
-    assert.strictEqual(state.climate.temp, 78, '44 °F estimate -> 78');
+    assert.strictEqual(state.climate.temp, 79, '44 °F estimate -> 79 on the line');
     assert.strictEqual(state.climate.seat, 6);
     assert.ok(state.usage.refuel && state.usage.refuel.day, 'a refuel day');
     assert.strictEqual(state.usage.commute.basis, 'distance');
@@ -110,7 +116,7 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(res.command.kind, 'start');
     assert.strictEqual(res.command.transactionId, undefined, 'the transaction id stays on the server');
     const start = car.calls.find((c) => c.path.endsWith('rcs/rsc/start'));
-    assert.deepStrictEqual(start.body.airTemp, { unit: 1, value: 78 });
+    assert.deepStrictEqual(start.body.airTemp, { unit: 1, value: 79 });
     assert.strictEqual(start.body.heating1, 3);
     assert.strictEqual(start.body.defrost, false);
     assert.strictEqual(start.body.seatHeaterVentInfo.drvSeatHeatState, 6);
@@ -191,8 +197,11 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(m.known, true);
 
     // ---- settings and picture
-    const s = await svc.saveSettings({ lowFuelPct: 25, workDays: [1, 2, 3, 4], leaveHome: '7:15', notify: { refuel: false } });
+    const s = await svc.saveSettings({ climate: { comfort: 72, seats: false }, lowFuelPct: 25, workDays: [1, 2, 3, 4], leaveHome: '7:15', notify: { refuel: false } });
     assert.strictEqual(s.lowFuelPct, 25);
+    assert.strictEqual(s.climate.comfort, 72);
+    assert.strictEqual(s.climate.seats, false);
+    assert.strictEqual(s.climate.coldAt, 33, 'unset anchors keep their defaults');
     assert.deepStrictEqual(s.workDays, [1, 2, 3, 4]);
     assert.strictEqual(s.leaveHome, '07:15');
     assert.strictEqual(s.notify.refuel, false);

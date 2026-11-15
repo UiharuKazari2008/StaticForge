@@ -28,7 +28,7 @@
     const TITLE = 'Lapis Remote';
     const CAR_ART = '/static_images/lapis/car.webp';
     const CAR_ART_SM = '/static_images/lapis/car-sm.webp';
-    const LAYER_TITLES = { start: 'Remote Start', map: 'Find My Car', status: 'Vehicle Status', service: 'Maintenance', history: 'Driving Record', settings: 'Lapis Settings' };
+    const LAYER_TITLES = { start: 'Remote Start', map: 'Find My Car', status: 'Vehicle Status', service: 'Maintenance', item: 'Maintenance Item', history: 'Driving Record', settings: 'Lapis Settings' };
     const TILE = 256;
     const HOLD_MS = 1100;
     const SEAT_HEAT = [0, 6, 7, 8];
@@ -49,6 +49,7 @@
     let picture = { rev: '', url: '' }; // the saved car picture (data URL), when one is set
     let draft = null; // remote start settings being edited
     let form = null; // settings being edited
+    let item = null; // the maintenance item being edited ({ isNew, ...fields as text })
     let history = null;
     let historyRange = 'month';
     let map = null;
@@ -60,6 +61,8 @@
     const isAdmin = () => { try { return localStorage.getItem('userType') === 'admin'; } catch (_) { return false; } };
     const client = () => (window.wsClient && (!window.wsClient.isConnected || window.wsClient.isConnected()) ? window.wsClient : null);
     const num = (v) => typeof v === 'number' && Number.isFinite(v);
+    /** The 12 V battery is under the level the car itself warns at (50% when the car does not say). */
+    const battLow = (s) => !!(s && num(s.battery12) && s.battery12 < (num(s.battery12WarnAt) ? s.battery12WarnAt : 50));
 
     // ---------------------------------------------------------------- formatting
 
@@ -365,7 +368,7 @@
             + tile(I.win, o.windows.length ? 'Open' : 'Up', o.windows.length > 0)
             + tile(I.trunk, s.trunk ? 'Open' : 'Shut', s.trunk === true)
             + tile(I.tire, s.tireLow && s.tireLow.any ? 'Low' : 'OK', !!(s.tireLow && s.tireLow.any))
-            + tile(I.batt, num(s.battery12) ? `${Math.round(s.battery12)}%` : 'OK', num(s.battery12) && s.battery12 < 50);
+            + tile(I.batt, num(s.battery12) ? `${Math.round(s.battery12)}%` : 'OK', battLow(s));
 
         // the leather pad
         const rows = [];
@@ -435,6 +438,7 @@
         const top = layers[layers.length - 1];
         if (!top || !els) return;
         if (top === 'settings') { if (els.body.dataset.for !== 'settings') renderSettings(); return; }
+        if (top === 'item') { if (els.body.dataset.for !== 'item') renderItem(); return; }
         els.body.className = 'lps-layer-body';
         if (top === 'start') renderStart();
         else if (top === 'map') renderMap();
@@ -450,7 +454,7 @@
         const act = b.dataset.act;
         const top = layers[layers.length - 1];
         if (top === 'start') startAct(act);
-        else if (top === 'service' && act === 'done') serviceDone(b.dataset.id);
+        else if (top === 'service' && act === 'edit') editItem(b.dataset.id);
         else if (top === 'history' && act === 'range') { historyRange = b.dataset.range; loadHistory(historyRange); renderLayer(); }
         else if (top === 'map' && (act === 'zin' || act === 'zout') && map) map.zoom(act === 'zin' ? 1 : -1);
         else if (top === 'map' && act === 'centre' && map) map.home();
@@ -563,6 +567,11 @@
 
     // ---------------------------------------------------------------- vehicle status
 
+    function psiText(s) {
+        const p = (s && s.tirePsi) || {};
+        return ['fl', 'fr', 'rl', 'rr'].every((k) => num(p[k])) ? `Front ${p.fl} / ${p.fr} psi, rear ${p.rl} / ${p.rr} psi` : '';
+    }
+
     function statusHtml() {
         const s = st();
         if (!s) return '<div class="lps-scr"><div class="lps-empty">No report from the car yet.</div></div>';
@@ -579,8 +588,8 @@
                 ${row(I.hood, 'Hood', s.hood ? 'Open' : 'Shut', s.hood ? 'is-warn' : '')}
                 ${row(I.power, 'Engine', s.engine ? 'Running' : 'Off', '', s.climate ? `Climate on${num(s.setTemp) ? `, ${tempText(s.setTemp, state.limits)}` : ''}${s.defrost ? ', defrost' : ''}` : '')}
                 ${row(I.fuel, 'Fuel', num(s.fuel) ? `${Math.round(s.fuel)}%` : '--', s.fuelLow ? 'is-warn' : '', num(s.range) ? `${Math.round(s.range)} miles of range` : '')}
-                ${row(I.tire, 'Tire pressure', tires.any ? 'Low' : 'OK', tires.any ? 'is-warn' : '', lowTires.length ? lowTires.join(', ') : '')}
-                ${row(I.batt, '12 V battery', num(s.battery12) ? `${Math.round(s.battery12)}%` : '--', num(s.battery12) && s.battery12 < 50 ? 'is-warn' : '')}
+                ${row(I.tire, 'Tire pressure', tires.any ? 'Low' : 'OK', tires.any ? 'is-warn' : '', lowTires.length ? `Low: ${lowTires.join(', ')}` : psiText(s))}
+                ${row(I.batt, '12 V battery', num(s.battery12) ? `${Math.round(s.battery12)}%` : '--', battLow(s) ? 'is-warn' : '', battLow(s) ? `The car warns under ${num(s.battery12WarnAt) ? s.battery12WarnAt : 50}%` : '')}
                 ${row(I.drop, 'Washer fluid', s.washerLow ? 'Low' : 'OK', s.washerLow ? 'is-warn' : '')}
                 ${row(I.drop, 'Brake fluid', s.brakeFluidLow ? 'Low' : 'OK', s.brakeFluidLow ? 'is-warn' : '')}
                 ${row(I.key, 'Smart key battery', s.keyBatteryLow ? 'Low' : 'OK', s.keyBatteryLow ? 'is-warn' : '')}
@@ -598,13 +607,13 @@
         if (s && s.washerLow) warn.push([I.drop, 'Washer fluid is low']);
         if (s && s.brakeFluidLow) warn.push([I.drop, 'Brake fluid is low']);
         if (s && s.keyBatteryLow) warn.push([I.key, 'The smart key battery is low']);
-        if (s && num(s.battery12) && s.battery12 < 50) warn.push([I.batt, `The 12 V battery is at ${Math.round(s.battery12)}%`]);
+        if (battLow(s)) warn.push([I.batt, `The 12 V battery is at ${Math.round(s.battery12)}%`]);
         const rows = list.map((m) => {
             const total = m.everyMiles || 1;
             const used = m.milesLeft === null ? 0 : Math.max(0, Math.min(1, 1 - m.milesLeft / total));
             const value = m.milesLeft !== null ? (m.milesLeft <= 0 ? `${Math.abs(m.milesLeft).toLocaleString()} mi over` : `${m.milesLeft.toLocaleString()} mi`) : m.daysLeft !== null ? `${m.daysLeft} days` : '--';
             const sub = [m.everyMiles ? `every ${m.everyMiles.toLocaleString()} mi` : '', m.everyMonths ? `${m.everyMonths} months` : '', m.lastDate ? `done ${m.lastDate}` : 'not marked done yet'].filter(Boolean).join(' · ');
-            return `<div class="lps-row${m.due ? ' is-due' : m.soon ? ' is-warn' : ''}" data-act="done" data-id="${esc(m.id)}">${I.wrench}<span class="lps-row-t">${esc(m.label)}<small>${esc(sub)}</small><div class="lps-bar${m.due ? ' is-over' : m.soon ? ' is-low' : ''}"><i style="transform:scaleX(${m.due ? 1 : Math.max(0.02, used)})"></i></div></span><span class="lps-row-v">${esc(value)}</span></div>`;
+            return `<div class="lps-row${m.due ? ' is-due' : m.soon ? ' is-warn' : ''}" data-act="edit" data-id="${esc(m.id)}">${I.wrench}<span class="lps-row-t">${esc(m.label)}<small>${esc(sub)}</small><div class="lps-bar${m.due ? ' is-over' : m.soon ? ' is-low' : ''}"><i style="transform:scaleX(${m.due ? 1 : Math.max(0.02, used)})"></i></div></span><span class="lps-row-v">${esc(value)}</span></div>`;
         }).join('');
         return `<div class="lps-scr">
             <div class="lps-sbar">${I.wrench}<b>Maintenance</b><span class="lps-sp"></span><span>${s ? esc(miles(s.odometer)) : ''}</span></div>
@@ -612,20 +621,89 @@
             <div class="lps-head">Schedule</div>
             <div class="lps-list">${rows || '<div class="lps-empty">No maintenance items.</div>'}</div>
         </div>
-        <div class="lps-pad"><div class="lps-pad-note">Tap an item when it is done to start its count again. The intervals are starting values: check them against the owner's manual and change them in Settings.</div></div>`;
+        <div class="lps-pad"><div class="lps-pad-note">Tap an item to set how often it is due and when it was last done, or to start its count again after the work. Menu adds an item.</div></div>`;
     }
 
-    async function serviceDone(id) {
+    // one maintenance item: how often, when it was last done, and the reset after the work
+
+    function editItem(id) {
         if (!needAdmin()) return;
-        const m = ((state && state.maintenance) || []).find((x) => x.id === id);
-        if (!m) return;
-        const ok = await ws.messageBox({ title: 'Maintenance', icon: 'question', text: `Mark "${m.label}" as done today at ${miles(st() && st().odometer)}?`, buttons: [{ text: 'Done', value: true }, { text: 'Cancel', value: false }] });
-        if (!ok) return;
+        const m = id ? ((state && state.settings && state.settings.maintenance) || []).find((x) => x.id === id) : null;
+        if (id && !m) return;
+        item = m
+            ? { isNew: false, id: m.id, label: m.label, everyMiles: m.everyMiles ? String(m.everyMiles) : '', everyMonths: m.everyMonths ? String(m.everyMonths) : '', lastOdo: num(m.lastOdo) ? String(m.lastOdo) : '', lastDate: m.lastDate || '' }
+            : { isNew: true, id: `item-${Date.now().toString(36)}`, label: '', everyMiles: '', everyMonths: '', lastOdo: '', lastDate: '' };
+        layers.push('item');
+        syncLayers();
+    }
+
+    function renderItem() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const box = els.body;
+        box.className = 'lps-layer-body wm-form lps-settings';
+        box.dataset.for = 'item';
+        if (!ui || !item) { box.innerHTML = '<p>The item is not available.</p>'; return; }
+        const s = st();
+        const live = ((state && state.maintenance) || []).find((x) => x.id === item.id);
+        const left = live && live.milesLeft !== null ? (live.milesLeft <= 0 ? `${Math.abs(live.milesLeft).toLocaleString()} miles over` : `due in ${live.milesLeft.toLocaleString()} miles`) : '';
+        box.innerHTML = `
+            ${ui.row('Name:', ui.edit('lpsItName', item.label, 'data-i="label" maxlength="60" placeholder="for example Engine oil and filter"'), { for: 'lpsItName' })}
+            ${ui.gap()}
+            ${ui.sub('How often')}
+            ${ui.row('Every (miles):', ui.edit('lpsItMi', item.everyMiles, 'data-i="everyMiles" maxlength="6" inputmode="numeric" placeholder="for example 8000"'), { for: 'lpsItMi' })}
+            ${ui.row('Every (months):', ui.edit('lpsItMo', item.everyMonths, 'data-i="everyMonths" maxlength="3" inputmode="numeric" placeholder="blank: by miles only"'), { for: 'lpsItMo' })}
+            ${ui.gap()}
+            ${ui.sub('Last done')}
+            ${ui.row('At (miles):', ui.edit('lpsItOdo', item.lastOdo, 'data-i="lastOdo" maxlength="7" inputmode="numeric" placeholder="the odometer at the last service"'), { for: 'lpsItOdo' })}
+            ${ui.row('On:', ui.edit('lpsItDate', item.lastDate, 'data-i="lastDate" maxlength="10" placeholder="YYYY-MM-DD"'), { for: 'lpsItDate' })}
+            ${ui.note(`The car is at ${miles(s && s.odometer)}${left ? `: ${left}` : ''}. Leave "Last done" blank if you do not know it: the count then runs to the next multiple of the miles.`)}
+            ${ui.buttons([['itReset', 'Done Today (Reset)', !s || !num(s.odometer)], ...(item.isNew ? [] : [['itRemove', 'Remove Item']])], false)}`;
+        box.querySelectorAll('input.wm-edit[data-i]').forEach((el) => el.addEventListener('input', () => { item[el.dataset.i] = el.value; }));
+        box.querySelectorAll('.wm-button[data-act]').forEach((b) => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (b.dataset.act === 'itReset') {
+                // the work was just done: the count starts again from here
+                item.lastOdo = String(Math.round(st().odometer));
+                item.lastDate = (state && state.usage && state.usage.today) || new Date().toISOString().slice(0, 10);
+                saveItem();
+            } else if (b.dataset.act === 'itRemove') removeItem();
+        }));
+    }
+
+    async function putMaintenance(list, failText) {
         try {
-            await ws.busy(ask('lapis_service_done', { id }), { delay: 250, timeout: 25000 });
+            await ws.busy(ask('lapis_settings_save', { settings: { maintenance: list } }), { delay: 250, timeout: 25000 });
+            item = null;
+            popLayer();
         } catch (err) {
-            ws.messageBox({ title: 'Maintenance', icon: 'error', text: (err && err.message) || 'The item could not be marked.' });
+            ws.messageBox({ title: 'Maintenance', icon: 'error', text: `${failText}\n\n${(err && err.message) || ''}`.trim() });
         }
+    }
+
+    function saveItem() {
+        if (!item) return;
+        const bad = (text) => { ws.messageBox({ title: 'Maintenance', icon: 'warning', text }); };
+        const label = item.label.trim();
+        const everyMiles = Math.round(Number(item.everyMiles) || 0);
+        const everyMonths = Math.round(Number(item.everyMonths) || 0);
+        if (!label) { bad('Give the item a name.'); return; }
+        if (everyMiles <= 0 && everyMonths <= 0) { bad('Say how often the item is due: miles, months, or both.'); return; }
+        if (item.lastDate.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(item.lastDate.trim())) { bad('The date is year-month-day, for example 2026-05-02.'); return; }
+        if (everyMonths > 0 && !item.lastDate.trim()) { bad('An item due by months needs the date it was last done.'); return; }
+        const next = { id: item.id, label, everyMiles: Math.max(0, everyMiles), everyMonths: Math.max(0, everyMonths) };
+        if (item.lastOdo.trim() && Number(item.lastOdo) >= 0) next.lastOdo = Math.round(Number(item.lastOdo));
+        if (item.lastDate.trim()) next.lastDate = item.lastDate.trim();
+        const cur = ((state && state.settings && state.settings.maintenance) || []).slice();
+        const i = cur.findIndex((m) => m.id === item.id);
+        if (i >= 0) cur[i] = next; else cur.push(next);
+        putMaintenance(cur, 'The item could not be saved.');
+    }
+
+    async function removeItem() {
+        if (!item) return;
+        const ok = await ws.messageBox({ title: 'Maintenance', icon: 'question', text: `Remove "${item.label}" from the schedule?`, buttons: [{ text: 'Remove', value: true }, { text: 'Cancel', value: false }] });
+        if (!ok) return;
+        putMaintenance(((state && state.settings && state.settings.maintenance) || []).filter((m) => m.id !== item.id), 'The item could not be removed.');
     }
 
     // ---------------------------------------------------------------- driving record
@@ -805,7 +883,7 @@
             tankGal: String(s.tankGal || ''),
             mpg: String(s.mpg || ''),
             notify: Object.assign({ unlocked: true, lowFuel: true, refuel: true, service: true }, s.notify || {}),
-            maintenance: (s.maintenance || []).map((m) => ({ ...m }))
+            climate: Object.assign({ comfort: 74, coldAt: 33, hotAt: 95, seatHeatBelow: 56, seatCoolAbove: 76, defrostBelow: 41, wheel: true, seats: true }, s.climate || {})
         };
         return form;
     }
@@ -814,6 +892,16 @@
     const RUNS = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes']];
     const LOWS = [[10, '10%'], [15, '15%'], [20, '20%'], [25, '25%'], [30, '30%']];
     const RESERVES = [[5, '5%'], [10, '10%'], [15, '15%'], [20, '20%'], [25, '25%']];
+    const degs = (list) => list.map((v) => [v, `${v}°F`]);
+    const CL = {
+        comfort: degs([68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78]),
+        coldAt: degs([15, 20, 25, 30, 33, 36, 40, 45]),
+        hotAt: degs([85, 90, 95, 100, 105]),
+        seatHeatBelow: degs([45, 50, 53, 56, 60, 65]),
+        seatCoolAbove: degs([70, 73, 76, 80, 85]),
+        defrostBelow: degs([32, 35, 38, 41, 45, 50])
+    };
+    const comboLabel = (list, v) => (list.find(([x]) => String(x) === String(v)) || [v, `${v}°F`])[1];
 
     function renderSettings() {
         const ui = window.wmSettings && window.wmSettings.ui;
@@ -849,6 +937,19 @@
             ${ui.check('lpsAuto', 'Choose the climate from the weather at the car', f.autoClimate, 'data-k="autoClimate"')}
             ${ui.row('Run for:', ui.comboHtml('runMinutes', label(RUNS, f.runMinutes)), { wide: true })}
             ${ui.gap()}
+            ${ui.sub('Automatic climate')}
+            ${ui.note('The set temperature slides between these points by itself; nothing is a fixed step. "Cabin" is the estimate: the outdoor temperature plus what the sun adds.')}
+            ${ui.row('When mild, set:', ui.comboHtml('cl-comfort', comboLabel(CL.comfort, f.climate.comfort)), { wide: true })}
+            ${ui.row('Warmest (HI) at:', ui.comboHtml('cl-coldAt', `${comboLabel(CL.coldAt, f.climate.coldAt)} cabin or colder`), { wide: true })}
+            ${ui.row('Coolest (LO) at:', ui.comboHtml('cl-hotAt', `${comboLabel(CL.hotAt, f.climate.hotAt)} cabin or hotter`), { wide: true })}
+            ${ui.check('lpsClSeats', 'Heat and cool the driver\'s seat', f.climate.seats, 'data-c="seats"')}
+            ${ui.row('Seat heat under:', ui.comboHtml('cl-seatHeatBelow', comboLabel(CL.seatHeatBelow, f.climate.seatHeatBelow)), { wide: true })}
+            ${ui.row('Seat cooling from:', ui.comboHtml('cl-seatCoolAbove', comboLabel(CL.seatCoolAbove, f.climate.seatCoolAbove)), { wide: true })}
+            ${ui.check('lpsClWheel', 'Heat the steering wheel with the seat (rear glass and mirrors when coldest)', f.climate.wheel, 'data-c="wheel"')}
+            ${ui.row('Defrost under:', ui.comboHtml('cl-defrostBelow', comboLabel(CL.defrostBelow, f.climate.defrostBelow)), { wide: true })}
+            ${ui.note(`As saved: ${((state && state.climatePreview) || []).filter((p) => [25, 45, 66, 85, 105].includes(p.est)).map((p) => `${p.est}°F cabin sets ${tempText(p.temp, state.limits)}`).join(', ')}.`)}
+            ${ui.buttons([['clDefaults', 'Use the Defaults']], false)}
+            ${ui.gap()}
             ${ui.sub('Notifications')}
             ${ui.check('lpsNUn', 'The car was left unlocked', f.notify.unlocked, 'data-n="unlocked"')}
             ${ui.row('After:', ui.comboHtml('lockRemindMin', label(MINUTES, f.lockRemindMin)), { wide: true })}
@@ -862,12 +963,8 @@
             ${ui.row('Tank:', ui.edit('lpsTank', f.tankGal, 'placeholder="gallons" data-k="tankGal" maxlength="5" inputmode="decimal"'), { for: 'lpsTank' })}
             ${ui.row('Rated mpg:', ui.edit('lpsMpg', f.mpg, 'data-k="mpg" maxlength="5" inputmode="decimal"'), { for: 'lpsMpg' })}
             ${ui.note('The rated figure is used until the record has measured the car\'s own.')}
-            ${ui.gap()}
-            ${ui.sub('Maintenance intervals (miles)')}
-            ${f.maintenance.map((m, i) => ui.row(`${m.label}:`, ui.edit(`lpsMt${i}`, String(m.everyMiles || ''), `data-m="${i}" maxlength="6" inputmode="numeric"`), { for: `lpsMt${i}` })).join('')}
-            <input type="file" accept="image/png,image/jpeg,image/webp" hidden data-pic>`;
+            ${ui.note('Maintenance intervals are set item by item: Menu > Maintenance, then tap an item.')}`;
         box.querySelectorAll('input.wm-edit[data-k]').forEach((el) => el.addEventListener('input', () => { f[el.dataset.k] = el.value; }));
-        box.querySelectorAll('input.wm-edit[data-m]').forEach((el) => el.addEventListener('input', () => { f.maintenance[Number(el.dataset.m)].everyMiles = Math.max(0, Math.round(Number(el.value) || 0)); }));
         box.querySelectorAll('input[data-day]').forEach((el) => el.addEventListener('change', () => {
             const d = Number(el.dataset.day);
             f.workDays = el.checked ? [...new Set(f.workDays.concat(d))].sort() : f.workDays.filter((x) => x !== d);
@@ -880,13 +977,17 @@
         combo('lockRemindMin', MINUTES);
         combo('lowFuelPct', LOWS);
         combo('reservePct', RESERVES);
-        const file = box.querySelector('input[data-pic]');
-        file.addEventListener('change', () => { if (file.files && file.files[0]) savePictureFile(file.files[0]); file.value = ''; });
+        box.querySelectorAll('input[data-c]').forEach((el) => el.addEventListener('change', () => { f.climate[el.dataset.c] = el.checked; }));
+        Object.keys(CL).forEach((k) => {
+            const tail = k === 'coldAt' ? ' cabin or colder' : k === 'hotAt' ? ' cabin or hotter' : '';
+            ui.bindCombo(box.querySelector(`[data-act="cl-${k}"]`), CL[k].map(([v, l]) => [v, `${l}${tail}`]), f.climate[k], (v) => { f.climate[k] = Number(v); });
+        });
         box.querySelectorAll('.wm-button[data-act]').forEach((b) => b.addEventListener('click', (e) => {
             e.stopPropagation();
             const act = b.dataset.act;
             const loc = state && state.location;
-            if (act === 'picChoose') HTMLInputElement.prototype.click.call(file);
+            if (act === 'picChoose') choosePicture();
+            else if (act === 'clDefaults') { f.climate = { comfort: 74, coldAt: 33, hotAt: 95, seatHeatBelow: 56, seatCoolAbove: 76, defrostBelow: 41, wheel: true, seats: true }; renderSettings(); }
             else if (act === 'picReset') savePicture(null);
             else if ((act === 'hereHome' || act === 'hereWork') && loc) {
                 const k = act === 'hereHome' ? 'home' : 'work';
@@ -896,7 +997,44 @@
         }));
     }
 
-    /** The chosen file, drawn down to 720 px wide, as a WebP data URL. */
+    // the picture comes through Melaton Mobile's own Open dialog: Dreamscape's files, the gallery, the phone's storage
+
+    async function pickedUrl(it) {
+        if (it.phoneFile && window.phoneStorage) return window.phoneStorage.fileUrl(it.phoneFile.root, it.phoneFile.path);
+        const galleryFile = (it.targetKind === 'image' || it.targetKind === 'scrap') ? (it.previewImageFilename || it.targetId)
+            : (it.shortcutType === 'image' && it.shortcutData && it.shortcutData.filename) || null;
+        if (galleryFile) return `/images/${encodeURIComponent(galleryFile)}`;
+        /* global vfsClient */
+        if (it.targetKind === 'user-file' && (it.targetId || it.id) && typeof vfsClient !== 'undefined') {
+            const r = await vfsClient.downloadFile(it.targetId || it.id);
+            return (r && r.downloadUrl) || null;
+        }
+        return null;
+    }
+
+    function choosePicture() {
+        if (!window.wmFileDialogs) { ws.messageBox({ title: TITLE, icon: 'error', text: 'The Open dialog is not available.' }); return; }
+        const readable = (i) => !!(i && (i.phoneFile || i.targetKind === 'image' || i.targetKind === 'scrap' || (i.shortcutType === 'image' && i.shortcutData) || i.targetKind === 'user-file'));
+        void window.wmFileDialogs.open({
+            title: 'Choose Picture', appTitle: TITLE, typeLabel: 'Pictures', pictures: true, phone: true,
+            accept: (i) => readable(i) && (i.targetKind === 'image' || i.targetKind === 'scrap' || /^image\//i.test(String(i.mimeType || '')) || /\.(png|jpe?g|webp)$/i.test(String(i.name || ''))),
+            onCancel: () => { if (ws) ws.open(APP_ID); },
+            onPick: async (it) => {
+                let blob = null;
+                try {
+                    const url = await pickedUrl(it);
+                    const res = url ? await fetch(url, { credentials: 'same-origin' }) : null;
+                    blob = res && res.ok ? await res.blob() : null;
+                } catch (_) { blob = null; }
+                if (!blob) { await ws.messageBox({ title: TITLE, icon: 'error', text: `"${it.name}" could not be read.` }); return false; }
+                ws.open(APP_ID);
+                await savePictureFile(blob);
+                return true;
+            }
+        });
+    }
+
+    /** The chosen picture, drawn down to 720 px wide, as a WebP data URL. */
     async function savePictureFile(file) {
         try {
             const bmp = await createImageBitmap(file);
@@ -927,7 +1065,7 @@
         const f = formOf();
         const s = (state && state.settings) || {};
         const bad = (text) => { ws.messageBox({ title: 'Lapis Settings', icon: 'warning', text }); };
-        const next = { name: f.name.trim(), workDays: f.workDays, autoClimate: f.autoClimate, runMinutes: f.runMinutes, lockRemindMin: f.lockRemindMin, lowFuelPct: f.lowFuelPct, reservePct: f.reservePct, notify: f.notify, maintenance: f.maintenance };
+        const next = { name: f.name.trim(), workDays: f.workDays, autoClimate: f.autoClimate, runMinutes: f.runMinutes, lockRemindMin: f.lockRemindMin, lowFuelPct: f.lowFuelPct, reservePct: f.reservePct, notify: f.notify, climate: f.climate };
         for (const k of ['home', 'work']) {
             const t = f[k].trim();
             if (!t) { if (s[`${k}Own`]) next[k] = null; continue; }
@@ -1044,11 +1182,13 @@
         historyDepth: () => layers.length,
         onBack: () => popLayer(),
         titleKind: () => (layers.length ? 'ok' : 'close'),
-        onTitleOk: () => { if (layers[layers.length - 1] === 'settings') saveSettings(); else popLayer(); },
-        onTitleClose() { layers = []; map = null; draft = null; form = null; },
+        onTitleOk: () => { const top = layers[layers.length - 1]; if (top === 'settings') saveSettings(); else if (top === 'item') saveItem(); else popLayer(); },
+        onTitleClose() { layers = []; map = null; draft = null; form = null; item = null; },
         softKeys() {
             const top = layers[layers.length - 1];
             if (top === 'settings') return { left: { label: 'Save', action: saveSettings }, right: { label: 'Cancel', action: () => { form = null; popLayer(); } } };
+            if (top === 'item') return { left: { label: 'Save', action: saveItem }, right: { label: 'Cancel', action: () => { item = null; popLayer(); } } };
+            if (top === 'service') return { left: { label: 'Done', action: popLayer }, right: { label: 'Menu', menu: () => [{ label: 'New Item...', disabled: !isAdmin(), action: () => editItem(null) }, '-', { label: 'Refresh', disabled: !isAdmin(), action: () => userRefresh(false) }] } };
             if (top === 'start') {
                 const s = st();
                 const running = !!(s && s.engine && s.climate);

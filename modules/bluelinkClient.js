@@ -168,7 +168,7 @@ function createClient(getCredentials) {
 
     async function vehicles({ fresh = false } = {}) {
         if (!fresh && enrollment && Date.now() - enrollment.at < 6 * 60 * 60 * 1000) return enrollment.list;
-        const { json } = await authed('Vehicle list', (headers, cred) => ({ path: `${API}enrollment/details/${encodeURIComponent(cred.username)}`, headers }));
+        const { json } = await authed('Vehicle list', (headers, cred) => ({ path: `${API}enrollment/details/${encodeURI(cred.username)}`, headers }));
         const rows = (json && json.enrolledVehicleDetails) || null;
         if (!Array.isArray(rows)) throw new BlueLinkError('Vehicle list: BlueLink sent no vehicles', 'BAD_ANSWER');
         const list = rows
@@ -324,7 +324,10 @@ function normalizeStatus(s) {
     const door = s.doorOpen || {};
     const win = s.windowOpen || {};
     const lamp = s.tirePressureLamp || {};
-    const seat = s.seatHeaterVentState || {};
+    // the car reports seats as seatHeaterVentInfo (drv / ast); older ones as seatHeaterVentState (fl / fr)
+    const sv = s.seatHeaterVentInfo || {};
+    const seat = s.seatHeaterVentState || { flSeatHeatState: sv.drvSeatHeatState, frSeatHeatState: sv.astSeatHeatState, rlSeatHeatState: sv.rlSeatHeatState, rrSeatHeatState: sv.rrSeatHeatState };
+    const psi = s.tirePressure || {};
     let air = pick(s.airTemp, 'value');
     if (air === 'LO') air = TEMP_MIN;
     else if (air === 'HI') air = TEMP_MAX;
@@ -346,6 +349,9 @@ function normalizeStatus(s) {
         range: range === null ? null : rangeUnit === 1 ? Math.round(range * 0.621371) : range,
         odometer: toNum(s.odometer),
         battery12: toNum(pick(s.battery, 'batSoc')),
+        // the level under which the car itself warns about the 12 V battery
+        battery12WarnAt: toNum(pick(pick(s.battery, 'batSignalReferenceValue'), 'batWarning')),
+        tirePsi: { fl: toNum(psi.tirePressureFrontLeft), fr: toNum(psi.tirePressureFrontRight), rl: toNum(psi.tirePressureRearLeft), rr: toNum(psi.tirePressureRearRight) },
         doors: { fl: flag(door.frontLeft), fr: flag(door.frontRight), rl: flag(door.backLeft), rr: flag(door.backRight) },
         windows: { fl: flag(win.frontLeft), fr: flag(win.frontRight), rl: flag(win.backLeft), rr: flag(win.backRight) },
         trunk: flag(s.trunkOpen),

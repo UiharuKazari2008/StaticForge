@@ -8,13 +8,13 @@
  *
  * BlueLink:  modules/bluelinkClient.js is the only code that talks to Hyundai. Account: Service key
  *            `bluelink` (e-mail in `username`, password as the key value, PIN in `pin`).
- * Reads:     every `pollMin` minutes the car's last report is read (this does not wake the car). The
+ * Reads:     every `pollMin` minutes (30) the car's last report is read (this does not wake the car). The
  *            car is woken for a fresh report only when asked (Refresh), after a command, and once
  *            `lockRemindMin` after it parks unlocked, to see whether it was locked by hand since.
  *            Its position is asked for when the odometer moved (Hyundai limits Find My Car).
  * Record:    lapis.db (better-sqlite3) `samples`: one row per changed report, kept for good; `events`:
  *            commands, notices, fill-ups. Graphs, trips and the usage model read it.
- * Climate:   modules/lapisClimate.js on the weather at the car (Open-Meteo through weatherService:
+ * Climate:   modules/lapisClimate.js (a line between a few saved anchors) on the weather at the car (Open-Meteo through weatherService:
  *            outdoor °F, cloud cover and shortwave radiation of the current hour).
  * Usage:     modules/lapisUsage.js. Home, Work, work days and leave times are Lapis's own settings,
  *            falling back to Melaton Traffic's commute when unset.
@@ -49,7 +49,7 @@ const PICTURE_MAX = 900 * 1024;
 const DEFAULTS = {
     vehicleId: '',
     name: '',
-    pollMin: 15,
+    pollMin: 30,
     lockRemindMin: 10,
     lowFuelPct: 20,
     reservePct: 15,
@@ -225,7 +225,7 @@ function getSettings() {
         mpg: num(c.mpg, 5, 150, DEFAULTS.mpg),
         runMinutes: int(c.runMinutes, 1, 30, DEFAULTS.runMinutes),
         autoClimate: c.autoClimate !== false,
-        climateTable: climate.cleanTable(c.climateTable).map((r) => ({ ...r })),
+        climate: climate.cleanSettings(c.climate),
         errandMiles: num(c.errandMiles, 0, 200, DEFAULTS.errandMiles),
         offDayMiles: num(c.offDayMiles, 0, 500, DEFAULTS.offDayMiles),
         radiusKm: num(c.radiusKm, 0.05, 5, DEFAULTS.radiusKm),
@@ -271,10 +271,12 @@ async function saveSettings(next = {}) {
     if ('mpg' in next) out.mpg = num(next.mpg, 5, 150, DEFAULTS.mpg);
     if ('runMinutes' in next) out.runMinutes = int(next.runMinutes, 1, 30, DEFAULTS.runMinutes);
     if ('autoClimate' in next) out.autoClimate = next.autoClimate !== false;
-    if ('climateTable' in next) {
-        if (next.climateTable === null) delete out.climateTable;
-        else out.climateTable = climate.cleanTable(next.climateTable).map((r) => ({ ...r }));
+    if ('climate' in next) {
+        // null: back to the defaults
+        if (next.climate === null) delete out.climate;
+        else out.climate = climate.cleanSettings(Object.assign({}, out.climate || {}, next.climate));
     }
+    delete out.climateTable; // the step table of the first version
     if ('errandMiles' in next) out.errandMiles = num(next.errandMiles, 0, 200, DEFAULTS.errandMiles);
     if ('offDayMiles' in next) out.offDayMiles = num(next.offDayMiles, 0, 500, DEFAULTS.offDayMiles);
     if ('radiusKm' in next) out.radiusKm = num(next.radiusKm, 0.05, 5, DEFAULTS.radiusKm);
@@ -500,7 +502,7 @@ async function refreshWeather(force) {
 
 function climatePick(settings) {
     if (!live.weather) return null;
-    const pick = climate.fromWeather(live.weather, settings.climateTable);
+    const pick = climate.fromWeather(live.weather, settings.climate);
     return pick ? { ...pick, cloudCover: live.weather.cloudCover, shortwave: live.weather.shortwave, where: live.weather.where, at: live.weather.at } : null;
 }
 
@@ -811,6 +813,7 @@ function getState() {
         error: live.lastError,
         nextReadAt: sched.nextPollAt || null,
         limits: { tempMin: bluelink.TEMP_MIN, tempMax: bluelink.TEMP_MAX },
+        climatePreview: climate.preview(s.climate),
         settings: s,
     };
 }
