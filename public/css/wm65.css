@@ -2615,11 +2615,13 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-step.is-next::before {
     background: hsl(calc(221.9deg + var(--wm65-dh) + 6.5deg * var(--wm65-near)) calc(72% * var(--wm65-k)) 22.5%);
 }
 
+/* Windows Mobile 6.5.3 draws these 142 x 90 px with text half as large again. Yukimi (#850): far
+ * too large. They are 6.5.1's own push button height (64 px, as every other button of this
+ * version) with the bubble's normal text; the width follows the words (6.5's 72 px at least). */
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body .toast-buttons button {
-    height: calc(45 * var(--wm-px));
-    min-width: calc(71 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    min-width: calc(36 * var(--wm-px));
     padding: 0 calc(6 * var(--wm-px)) !important;
-    font-size: calc(var(--wm-fs) * 1.5);
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-notify-body a {
