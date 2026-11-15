@@ -710,7 +710,32 @@ class Director {
         if (want === this._streamWatch) return;
         if (!window.wsClient || !window.wsClient.isConnected()) return;
         this._streamWatch = want;
-        window.wsClient.send({ type: 'director_stream_watch', sessionId: want });
+        // the rows kept for putting deltas together belong to the chat watched until now
+        this._streamState = null;
+        window.wsClient.send({ type: 'director_stream_watch', sessionId: want, delta: 1 });
+    }
+
+    // A streaming update with row deltas (cursorDirector.js flushDirectorStream, #843): rows holds
+    // the rows from index rowsFrom on; the ones before it are as in the update it builds on
+    // (prevSeq). Puts the whole list back into payload.rows, so everything after reads it as before,
+    // and leaves rowsFrom for renderLiveTrace. False: this page does not have that update (it joined
+    // late, or missed one); it has asked for the whole thing, which arrives as a full update.
+    mergeStreamRows(payload) {
+        // every row is in it (a full update, or a delta that starts at the first row): a new base
+        if (payload.rowsFrom == null || payload.rowsFrom === 0) {
+            if (Array.isArray(payload.rows) && payload.seq != null) this._streamState = { sessionId: payload.sessionId, seq: payload.seq, rows: payload.rows };
+            return true;
+        }
+        const st = this._streamState;
+        if (!st || st.sessionId !== payload.sessionId || st.seq !== payload.prevSeq) {
+            this._streamWatch = undefined;
+            this.syncStreamWatch();
+            return false;
+        }
+        payload.rows = st.rows.slice(0, payload.rowsFrom).concat(payload.rows || []);
+        st.rows = payload.rows;
+        st.seq = payload.seq;
+        return true;
     }
 
     async init() {
@@ -7741,7 +7766,11 @@ class Director {
         const streaming = !!(payload.live && (payload.live.text || payload.live.name));
         if (streaming) rows.push(payload.live);
         const existing = [...host.children].filter((el) => el.dataset.liveCard !== '1');
+        // rows the server says are as they were (row deltas, mergeStreamRows) keep their row as it is:
+        // a turn of a thousand rows patched every one of them on each update
+        const same = this._liveSameUntil(payload, existing);
         rows.forEach((row, index) => {
+            if (index < same) return;
             const held = existing[index];
             const sameKind = held && held.dataset.traceKind === this.traceKind(row);
             if (sameKind && held.dataset.traceExtras === this.traceExtras(row)) {
@@ -7782,6 +7811,17 @@ class Director {
         }
         this.notePendingPrint(payload.rows, payload.live);
         this.showTypingIndicator();
+    }
+
+    // How many leading rows of this update can be left alone: the server's rowsFrom, when the rows
+    // on screen are the ones the previous update drew (same host, at least that many, none replaced
+    // by a re-render in between).
+    _liveSameUntil(payload, existing) {
+        const from = payload && Number.isInteger(payload.rowsFrom) ? payload.rowsFrom : 0;
+        const key = payload ? payload.sessionId : null;
+        const ok = from > 0 && this._liveDrawn && this._liveDrawn.sessionId === key && this._liveDrawn.host === (existing[0] && existing[0].parentNode) && existing.length >= from;
+        this._liveDrawn = { sessionId: key, host: existing[0] ? existing[0].parentNode : this.directorChatMessages.querySelector('.director-live-turn') };
+        return ok ? from : 0;
     }
 
     // Yozora edits files where the prompt engineers make prints, so what her mascot eats is a document
@@ -8858,6 +8898,7 @@ class Director {
                     seq: payload.seq
                 });
             }
+            if (payload && window.directorInstance && !window.directorInstance.mergeStreamRows(payload)) return;
             // A late flush for a turn that already ended must not re-arm "running".
             if (payload && window.directorInstance && payload.sessionId === window.directorInstance._settledSessionId) return;
             if (payload && window.directorInstance && window.directorInstance._steer && payload.sessionId === window.directorInstance._steer.sessionId) return;

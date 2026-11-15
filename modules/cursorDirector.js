@@ -4966,10 +4966,12 @@ function watchesDirectorStream(info, sessionId) {
 
 // A page opened a chat (or closed it: sessionId ''). A chat whose turn is running sends its newest
 // update at once, so the page does not wait for the next one.
-function watchDirectorStream(handler, ws, clientInfo, sessionId) {
+function watchDirectorStream(handler, ws, clientInfo, sessionId, delta) {
     if (!clientInfo) return;
     const id = String(sessionId || '');
     clientInfo.directorWatch = id;
+    // this page puts row deltas together (flushDirectorStream); the full update below is its base
+    clientInfo.directorDelta = delta === true || delta === 1;
     const gate = id ? streamGates.get(id) : null;
     if (gate && gate.last && handler && ws) {
         try { handler.sendToClient(ws, { type: 'director_streaming_update', data: gate.last, timestamp: new Date().toISOString() }); } catch (_) { /* the next update reaches it */ }
@@ -5037,9 +5039,34 @@ function flushDirectorStream(sessionId) {
         timestamp: new Date().toISOString()
     };
     gate.last = payload.data;
+    // Row deltas (#843). An update carries every row of the turn so far, and a turn of a thousand
+    // rows is 1.3 MB several times a second. Rows only change at the end (the newest grows, new ones
+    // are added), so a page that says it can (director_stream_watch delta) gets the rows from the
+    // first one that differs from the last update, with where they start (rowsFrom), how many there
+    // are in all (rowsTotal) and the update they build on (prevSeq). A page that did not get that
+    // update asks again and is sent the whole thing (watchDirectorStream).
+    const rowJson = (Array.isArray(data.rows) ? data.rows : []).map((row) => JSON.stringify(row));
+    const before = gate.sentJson || [];
+    let from = 0;
+    while (from < rowJson.length && from < before.length && rowJson[from] === before[from]) from += 1;
+    const deltaPayload = {
+        type: 'director_streaming_update',
+        data: Object.assign({}, payload.data, {
+            rows: (data.rows || []).slice(from),
+            rowsFrom: from,
+            rowsTotal: rowJson.length,
+            prevSeq: gate.sentSeq || 0
+        }),
+        timestamp: payload.timestamp
+    };
+    gate.sentJson = rowJson;
+    gate.sentSeq = gate.seq;
     let wsServer = null;
     try { wsServer = gate.gr && gate.gr.getWebSocketServer && gate.gr.getWebSocketServer(); } catch (_) { wsServer = null; }
-    if (wsServer && typeof wsServer.broadcast === 'function') wsServer.broadcast(payload, (info) => watchesDirectorStream(info, sessionId));
+    if (wsServer && typeof wsServer.broadcast === 'function') {
+        wsServer.broadcast(payload, (info) => watchesDirectorStream(info, sessionId) && !(info && info.directorDelta));
+        wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && watchesDirectorStream(info, sessionId));
+    }
     else if (gate.handler && gate.ws) gate.handler.sendToClient(gate.ws, payload);
 }
 
