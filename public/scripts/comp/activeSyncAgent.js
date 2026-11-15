@@ -348,9 +348,21 @@
         const c = client();
         // fire-and-forget: no reply packet exists for it
         if (c && c.ws && c.ws.readyState === 1) {
-            try { c.ws.send(JSON.stringify({ type: 'as_status', status: deviceStatus() })); } catch (_) { /* closing */ }
+            // only what changed (rule server-push-not-polling): the app's device status event fires every
+            // few seconds, and each one sent the whole status and made the server re-send every peer
+            // list; the same status again goes out at most every 10 minutes
+            const status = deviceStatus();
+            let key = '';
+            try { const { at: _at, ...rest } = status || {}; key = JSON.stringify(rest); } catch (_) { key = String(Date.now()); }
+            if (key === lastStatusKey && Date.now() - lastStatusSentAt < STATUS_SAME_MS) return;
+            lastStatusKey = key;
+            lastStatusSentAt = Date.now();
+            try { c.ws.send(JSON.stringify({ type: 'as_status', status })); } catch (_) { /* closing */ }
         }
     }
+    let lastStatusKey = '';
+    let lastStatusSentAt = 0;
+    const STATUS_SAME_MS = 10 * 60 * 1000;
 
     // ---------------------------------------------------------------- hello
 
@@ -383,6 +395,9 @@
             if (kind === 'device') { st.session = res.session || null; st.permissions = res.permissions || []; }
             takeLists(res);
             lastStatusAt = Date.now();
+            // the hello carried the status: the next one goes out only when it differs from this
+            try { const { at: _at, ...rest } = data.status || {}; lastStatusKey = data.status ? JSON.stringify(rest) : ''; } catch (_) { lastStatusKey = ''; }
+            lastStatusSentAt = Date.now();
             fire('state', state());
             if (kind === 'device') { loadReceived(); tellVisible(); }
             if (helloAgain) scheduleHello(200);

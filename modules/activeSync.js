@@ -460,6 +460,26 @@ function list(globalResources, wsServer) {
     return { devices, computers };
 }
 
+let lastPeersKey = null;
+const PEER_CLOCKS = new Set(['lastSeen', 'at', 'checkedAt', 'connectedAt', 'lastActivity']);
+/** The peer list without its clocks, devices and computers in a fixed order. */
+function peersKey(data) {
+    const strip = (v) => {
+        if (Array.isArray(v)) return v.map(strip);
+        if (!v || typeof v !== 'object') return v;
+        const out = {};
+        for (const k of Object.keys(v).sort()) if (!PEER_CLOCKS.has(k)) out[k] = strip(v[k]);
+        return out;
+    };
+    const byId = (a, b) => String(a.deviceId || a.id || a.clientId || '').localeCompare(String(b.deviceId || b.id || b.clientId || ''));
+    try {
+        return JSON.stringify({
+            devices: (data.devices || []).map(strip).sort(byId),
+            computers: (data.computers || []).map(strip).sort(byId)
+        });
+    } catch (_) { return String(Date.now()); }
+}
+
 /** as_peers_updated to every peer that may list (administrators' computers and the devices), coalesced. */
 function scheduleUpdated(globalResources, wsServer) {
     const server = wsServerOf(globalResources, wsServer);
@@ -474,6 +494,13 @@ function scheduleUpdated(globalResources, wsServer) {
             console.warn('[activeSync] list for as_peers_updated failed:', err.message);
             return;
         }
+        // only when something other than the clocks changed (rule server-push-not-polling): a phone
+        // reports its status every few seconds, and each report re-sent this whole list (8 KB) to
+        // every peer - 17 times in 2 min on the A53 - with only lastSeen / status.at different and the
+        // devices in a new order
+        const key = peersKey(data);
+        if (key === lastPeersKey) return;
+        lastPeersKey = key;
         server.broadcast({ type: 'as_peers_updated', data, timestamp: new Date().toISOString() },
             (info) => !!(info && info.authenticated && info.userType === 'admin' && info.as));
     }, BROADCAST_DEBOUNCE_MS);

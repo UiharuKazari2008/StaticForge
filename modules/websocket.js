@@ -14,6 +14,11 @@ const {
 function pingStatusKey(data) {
     if (!data || typeof data !== 'object') return JSON.stringify(data);
     const { server_time: _t, ...rest } = data;
+    // queue_status.sinceLast is the read's own clock as well
+    if (rest.queue_status && typeof rest.queue_status === 'object') {
+        const { sinceLast: _s, ...q } = rest.queue_status;
+        rest.queue_status = q;
+    }
     try { return JSON.stringify(rest); } catch (_) { return String(Date.now()); }
 }
 
