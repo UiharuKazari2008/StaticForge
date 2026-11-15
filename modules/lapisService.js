@@ -1216,6 +1216,16 @@ function notice(kind, title, text, actions, extra) {
     const n = Object.assign({ id: `${nowFn().toString(36)}-${++noticeSeq}`, kind, title, text, actions: actions || [] }, extra || {});
     logEvent('notice', { kind, title, text });
     broadcast({ type: 'lapis_notice', data: n });
+    // the durable inbox (#845): shown on resume and posted by the native app when the page is not running.
+    // a run countdown is only useful until it ends (its 'until'); stable ids so a later step supersedes one.
+    try {
+        const inboxId = extra && extra.key ? `lapis:${kind}:${extra.key}` : kind === 'run-left' ? 'lapis:run-left' : `lapis:${n.id}`;
+        require('./notificationInbox').bind(gr).publish({
+            app: 'lapis', id: inboxId, cls: kind === 'unlocked' ? 'notification' : kind === 'run-left' ? 'lapis-run-left' : 'notification',
+            title, text, actions: n.actions, data: { app: 'lapis', kind, open: kind === 'service' ? 'service' : kind === 'refuel' || kind === 'low-fuel' ? 'history' : kind === 'run-left' ? 'start' : kind === 'health' ? 'status' : null },
+            expiresAt: kind === 'run-left' && Number.isFinite(n.until) ? n.until : undefined,
+        });
+    } catch (e) { console.warn(`[lapis] inbox publish: ${e.message}`); }
     return n;
 }
 

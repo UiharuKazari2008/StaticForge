@@ -1200,6 +1200,21 @@ async function runScheduled(direction, kind) {
         }
     }
     broadcastAdmins({ type: 'traffic_report', data: { kind, direction, report, advice, leave: direction === 'work' ? s.leaveHome : s.leaveWork } });
+    // the durable inbox (#845): the leave-time report, shown on resume and by the native app when the
+    // page is not running. One per direction per day; a short life so an old commute is not shown later.
+    try {
+        const label = DIRECTION_LABEL[direction];
+        const mins = report && report.preferred && report.preferred.durationSec ? Math.max(1, Math.round(report.preferred.durationSec / 60)) : null;
+        const late = report && report.delaySec >= 60 ? `, ${Math.round(report.delaySec / 60)} min late` : '';
+        const wait = advice && advice.wait ? ` Leave advisor: wait ${advice.wait.offsetMin} min.` : '';
+        require('./notificationInbox').bind(gr).publish({
+            app: 'traffic', id: `traffic:${kind}:${direction}:${localNow(s).date}`, cls: 'notification',
+            title: `${label}${mins ? `: ${mins} min${late}` : ''}`,
+            text: report ? `${report.summary || ''}${wait}`.trim() : 'Could not check the traffic.',
+            actions: ['view'], data: { app: 'traffic', direction, open: direction },
+            ttlMs: 3 * 60 * 60 * 1000,
+        });
+    } catch (e) { console.warn(`[traffic] inbox publish: ${e.message}`); }
 }
 
 function tick() {

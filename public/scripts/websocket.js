@@ -555,6 +555,10 @@ class BannerManager {
             'lapis_picture_get': 'Car Picture',
             'lapis_picture_save': 'Save Car Picture',
 
+            // Notification inbox (#845)
+            'inbox_list': 'Notifications',
+            'inbox_ack': 'Notification',
+
             // Melaton Mobile YouTube (#839)
             'youtube_get': 'YouTube',
             'youtube_signin': 'YouTube Sign-in',
@@ -1015,6 +1019,8 @@ class WebSocketClient {
         'lapis_get',
         'lapis_picture_get',
         'lapis_history',
+        // Notification inbox (#845): reads of what the server holds
+        'inbox_list',
         // YouTube (#839): the About box's read of what the server holds (no call to YouTube)
         'youtube_get',
     ]);
