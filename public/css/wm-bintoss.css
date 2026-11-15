@@ -1,0 +1,292 @@
+/*
+ * Melaton Mobile: Bin Toss (#836), wmBinToss.js. Redrawn in WM style after the device's
+ * Bubble Breaker (emulator, VGA; lengths N * --wm-px = VGA / 2): white page; status row VGA rows
+ * 52-84 (16.5 units), Tahoma 13 units, labels #0000ff, values black, 10 units in from the sides,
+ * a 1 VGA px black rule under it. The field is a canvas (wmBrickBreaker.js draws it at device
+ * pixels). Options / Statistics / About are full pages with the shared form classes.
+ */
+
+.wm-page.wm-bintoss {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+    color: #000;
+    font-family: var(--wm-font);
+}
+
+.wm-bintoss .wbt-probe {
+    position: absolute;
+    width: calc(100 * var(--wm-px));
+    height: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.wm-bintoss .wbt-view {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-bintoss .wbt-view[hidden] {
+    display: none;
+}
+
+/* ---- the game ---- */
+
+.wm-bintoss .wbt-status {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    height: calc(17 * var(--wm-px));
+    padding: 0 calc(10 * var(--wm-px));
+    border-bottom: calc(0.5 * var(--wm-px)) solid #000;
+    font-size: calc(13 * var(--wm-px));
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.wm-bintoss .wbt-status b {
+    font-weight: normal;
+    color: #0000ff;
+}
+
+.wm-bintoss .wbt-status i {
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-bintoss .wbt-field {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.wm-bintoss .wbt-field canvas {
+    position: absolute;
+    inset: 0 auto auto 0;
+    display: block;
+    touch-action: none;
+}
+
+/* ---- Options ---- */
+
+.wm-bintoss .wbt-form .wm-form-row {
+    margin-bottom: calc(5 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-form .wm-form-row.is-wide {
+    grid-template-columns: calc(80 * var(--wm-px)) minmax(0, calc(100 * var(--wm-px)));
+}
+
+.wm-bintoss .wbt-form .wm-form-row > .wm-form-label {
+    text-align: left;
+    padding-left: calc(3 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-checks {
+    margin-top: calc(8 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-checks .wm-check {
+    min-height: calc(21 * var(--wm-px));
+}
+
+/* ---- Statistics: Bubble Breaker's table (centred columns, labels left), Reset push button ---- */
+
+.wm-bintoss .wbt-stats {
+    padding: calc(5 * var(--wm-px)) calc(7 * var(--wm-px)) calc(8 * var(--wm-px));
+    font-size: var(--wm-fs);
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-stats table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.wm-bintoss .wbt-high th {
+    font-weight: normal;
+    text-align: center;
+}
+
+.wm-bintoss .wbt-high td {
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-bintoss .wbt-high .is-rank {
+    width: calc(16 * var(--wm-px));
+    text-align: left;
+}
+
+.wm-bintoss .wbt-totals {
+    margin-top: calc(6 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-totals td:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.wm-bintoss .wbt-reset {
+    margin-top: calc(8 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-reset .wm-button {
+    min-width: calc(78 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
+}
+
+/* ---- About: Bubble Breaker's (picture at the top, centred lines 16 units apart) ---- */
+
+.wm-bintoss .wbt-about {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) calc(10 * var(--wm-px));
+    text-align: center;
+    font-size: calc(11 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-logo {
+    width: calc(90 * var(--wm-px));
+    height: calc(90 * var(--wm-px));
+    margin-bottom: calc(10 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-about p {
+    margin: 0;
+}
+
+.wm-bintoss .wbt-about .wbt-copy {
+    margin-top: calc(10 * var(--wm-px));
+    font-size: calc(9 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+
+/* ---- 6.5: Bubble Breaker draws the same page under 6.5's black bars; the shared form classes
+ * take 6.5's look from wm65.css ---- */
+
+html.ui-mobile[data-wm-version="6.5"] .wm-bintoss .wbt-checks .wm-check {
+    min-height: calc(24 * var(--wm-px));
+}
+
+/* ---- Bin Toss' own: the 3D room fills the field (black until its first frame); the draught's
+ * arrow in the status row; the note over the room; the best-runs caption ---- */
+.wm-bintoss .wbt-field {
+    background: #0d0d0f;
+}
+
+.wm-bintoss .wbt-field canvas {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.wm-bintoss .wbt-field.is-flat canvas {
+    display: none;
+}
+
+.wm-bintoss .wbt-none {
+    display: none;
+    position: absolute;
+    inset: 0;
+    padding: calc(12 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    font-size: var(--wm-fs);
+}
+
+.wm-bintoss .wbt-field.is-flat .wbt-none {
+    display: block;
+}
+
+.wm-bintoss .wbt-wind {
+    display: inline-flex;
+    align-items: center;
+}
+
+.wm-bintoss .wbt-wind b {
+    margin-right: calc(3 * var(--wm-px));
+}
+
+/* the arrow: a shaft with a head, pointing the way the draught blows */
+.wm-bintoss .wbt-wind s {
+    position: relative;
+    display: inline-block;
+    width: calc(11 * var(--wm-px));
+    height: calc(2 * var(--wm-px));
+    margin: 0 calc(4 * var(--wm-px)) 0 calc(1 * var(--wm-px));
+    background: #000;
+    text-decoration: none;
+}
+
+.wm-bintoss .wbt-wind s::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: calc(-3 * var(--wm-px));
+    border: calc(4 * var(--wm-px)) solid transparent;
+    border-right-width: 0;
+    border-left-color: #000;
+    transform: translateY(-50%);
+}
+
+.wm-bintoss .wbt-wind[data-side="left"] s {
+    margin: 0 calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px));
+    transform: scaleX(-1);
+}
+
+.wm-bintoss .wbt-wind[data-side="calm"] s {
+    display: none;
+}
+
+.wm-bintoss .wbt-note {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(10 * var(--wm-px));
+    text-align: center;
+    font-size: calc(15 * var(--wm-px));
+    font-weight: bold;
+    color: #fff;
+    text-shadow: 0 0 calc(3 * var(--wm-px)) #000, 0 calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) #000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s linear;
+}
+
+.wm-bintoss .wbt-note.is-on {
+    opacity: 1;
+}
+
+.wm-bintoss .wbt-note.is-good {
+    color: #ffe27a;
+}
+
+.wm-bintoss .wbt-stats-type {
+    margin: 0 0 calc(3 * var(--wm-px));
+}
+
+.wm-bintoss .wbt-high th:first-child,
+.wm-bintoss .wbt-high td:first-child {
+    text-align: left;
+}
+
+/* About shows the program's icon at its large size, not a drawn picture */
+.wm-bintoss .wbt-logo {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+}

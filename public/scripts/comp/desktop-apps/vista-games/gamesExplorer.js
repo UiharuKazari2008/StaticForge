@@ -57,6 +57,22 @@
                 minimum: '1',
                 recommended: '2'
             }
+        },
+        {
+            id: 'doubles',
+            pack: null,
+            name: 'Doubles',
+            gdf: {
+                description: 'The object of Doubles is to slide the numbered tiles so that tiles of the same number meet and '
+                    + 'join into one of twice the number. Make the 2048 tile to win. If the board fills up with no two '
+                    + 'neighbors alike, the game is over.',
+                genre: 'Puzzle',
+                developer: 'Academy City Research P.S.R.',
+                publisher: 'Melaton',
+                version: '6.0.6002.18005',
+                minimum: '1',
+                recommended: '2'
+            }
         }
     ];
 

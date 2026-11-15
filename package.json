@@ -175,7 +175,7 @@
     "test:vista-scrollbars": "node scripts/test-vista-scrollbars.js",
     "test:vista-dialogs": "node scripts/test-vista-dialogs.js",
     "test:desktop-icon-view": "node scripts/test-desktop-icon-view.js",
-    "test:vista-games": "node scripts/test-vista-games.js && node scripts/test-vista-arcade.js && node scripts/test-vista-chess.js && node scripts/test-vista-inkball.js && node scripts/test-vista-purble.js && node scripts/test-vista-jezzball.js && node scripts/test-vista-games-media.js && node scripts/test-sw-game-assets.js",
+    "test:vista-games": "node scripts/test-vista-games.js && node scripts/test-vista-arcade.js && node scripts/test-vista-doubles.js && node scripts/test-vista-chess.js && node scripts/test-vista-inkball.js && node scripts/test-vista-purble.js && node scripts/test-vista-jezzball.js && node scripts/test-vista-games-media.js && node scripts/test-sw-game-assets.js",
     "test:vista-jezzball": "node scripts/test-vista-jezzball.js",
     "test:wheel-scroll-lock": "node scripts/test-wheel-scroll-lock.js",
     "test:classic-context-menus": "node scripts/test-classic-context-menus.js",

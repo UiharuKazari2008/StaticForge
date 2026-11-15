@@ -238,6 +238,11 @@ const FEATURE_MANIFEST = {
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/brickbreaker.js']
     },
+    // Doubles (#836): a Melaton slide-and-join number puzzle; draws itself, no pack
+    vista_doubles: {
+        depends: ['vista_games'],
+        scripts: ['scripts/comp/desktop-apps/vista-games/doubles.js']
+    },
     // JezzBall (Win 3.x Entertainment Pack): a 16-bit program's classic window on the Vista desktop
     vista_jezzball: {
         depends: ['vista_games'],

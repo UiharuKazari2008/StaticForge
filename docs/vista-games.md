@@ -13,6 +13,7 @@ Games place opens Games Explorer.
 | Chess Titans | `chess*.js` | `chess` | `vista_chess` |
 | InkBall | `inkball*.js` | `inkball` | `vista_inkball` |
 | Block Drop, Brick Breaker (Melaton) | `blockdrop.js`, `brickbreaker.js` | `blockdrop`, `brickbreaker` (own art, `scripts/build-vista-arcade-art.js`) + Minesweeper's frame and sounds, CardGames' particles and sounds, Mahjong's tile clacks; Block Drop also plays Teleport's `/sounds/planet/innerlight.opus` as music | `vista_blockdrop`, `vista_brickbreaker` |
+| Doubles (Melaton, #836) | `doubles.js` (rules shared by text with the phone's `wmDoubles.js`; `scripts/test-vista-doubles.js`) | none: the game paints its own glass tiles; icons and the Games Explorer thumbnail from `scripts/build-new-games-art.js`; the card games', Mahjong's and Minesweeper's sounds | `vista_doubles` |
 | JezzBall (Win 3.x, Entertainment Pack 4) | `jezzball.js` on `jezzballCore.js` + `jezzballReal.js`, `jezzballHelp.js`; `vista-jezzball.css` | `jezzball` (`scripts/build-vista-jezzball.js` from the game's own files) | `vista_jezzball` |
 | Games Explorer | `gamesExplorer.js` | `explorer` (icons taken from gameux.dll; the `gameux` pack is built but not loaded) + each game's GDF | `vista_explorer` |
 

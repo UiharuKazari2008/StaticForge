@@ -6585,6 +6585,7 @@ const startMenuGameLaunchables = [
     { launchId: 'game-blockdrop', game: 'blockdrop', icon: 'fas fa-cubes', imageIcon: 'vista-blockdrop.png', text: 'Block Drop' },
     { launchId: 'game-brickbreaker', game: 'brickbreaker', icon: 'fas fa-table-tennis-paddle-ball', imageIcon: 'vista-brickbreaker.png', text: 'Brick Breaker' },
     { launchId: 'game-chess', game: 'chess', icon: 'fas fa-chess', imageIcon: 'vista-chess.png', text: 'Chess Titans' },
+    { launchId: 'game-doubles', game: 'doubles', icon: 'fas fa-table-cells', imageIcon: 'vista-doubles.png', text: 'Doubles' },
     { launchId: 'game-freecell', game: 'freecell', icon: 'fas fa-crown', imageIcon: 'vista-freecell.png', text: 'FreeCell' },
     { launchId: 'games-explorer', game: 'explorer', icon: 'fas fa-trophy', imageIcon: 'vista-games.png', text: 'Games Explorer' },
     { launchId: 'game-hearts', game: 'hearts', icon: 'fas fa-heart', imageIcon: 'vista-hearts.png', text: 'Hearts' },
