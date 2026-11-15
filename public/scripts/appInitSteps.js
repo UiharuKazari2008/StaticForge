@@ -320,6 +320,7 @@ if (window.wsClient) {
     // the phone's notifications or the server's view of the phone need (settings, workspaces,
     // gallery, Director, background services, Finalizing).
     window.wsClient.phoneDeferredInitSteps = new Set([
+        'Configuring Studio',
         'Initializing emphasis groups tool', 'Initializing generation usage tool', 'Initializing Prompt Toolbar',
         'Loading SmartText settings', 'Initializing Image Bias System', 'Initializing Inpaint Editor',
         'Loading autofill ranking config', 'Initializing reference manager', 'Initializing stage results review',
@@ -367,8 +368,17 @@ if (window.wsClient) {
         if (phoneShell()) whenPhoneStudioOpens(load);
         else afterDesktopBoot(load);
     }, true);
+    // The boot's own part and Studio's part are two steps (#844). They ran as one, so the phone could
+    // not put Studio's half off and a boot without Studio's scripts stopped here. On the desktop
+    // 'Configuring Studio' follows at once, as before; Melaton Mobile runs it after Today is up
+    // (phoneDeferredInitSteps below).
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
+        galleryRows = calculateGalleryRows();
+        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
+        galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+    });
+    window.wsClient.registerInitStep(10.1, 'Configuring Studio', async () => {
         // Handle queue status
         if (window.optionsData?.queue_status === 2) {
             isQueueStopped = true;
@@ -403,10 +413,6 @@ if (window.wsClient) {
         selectUcPreset(3);
         setupUcDropdownContextMenu();
         setupDatasetDropdownContextMenu();
-
-        galleryRows = calculateGalleryRows();
-        const galleryToggleGroup = document.getElementById('galleryToggleGroup');
-        galleryToggleGroup.setAttribute('data-active', currentGalleryView);
     });
 
     // The phone's Today before the whole list is in: the newest prints, kept apart from allImages (a
