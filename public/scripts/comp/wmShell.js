@@ -231,9 +231,25 @@
      * in the Classic Blue highlight colour gives 0 / 1 / 1 / 1: no art variable, the ROM's files
      * as they are.
      */
-    function applyTheme() {
+    // body style and the workspace sheet change many times while the phone boots, and each read of
+    // --primary-color is a full style pass (#817 trace): read once per frame, and only when the
+    // workspace, its sheet or body's inline style moved since the last read (a sheet load forces it)
+    let themeQueued = false;
+    let themeForce = false;
+    let themeKey = '';
+    function scheduleTheme(force) {
+        if (force === true) themeForce = true;
+        if (themeQueued) return;
+        themeQueued = true;
+        requestAnimationFrame(() => { themeQueued = false; const f = themeForce; themeForce = false; applyTheme(f); });
+    }
+    function applyTheme(force) {
         // before the workspace is known --primary-color is the page default: keep the cached roles
         if (!document.body.dataset.workspace) return;
+        const sheet = document.getElementById('workspace-styles');
+        const key = `${document.body.dataset.workspace}|${sheet ? sheet.getAttribute('href') : ''}|${document.body.getAttribute('style') || ''}`;
+        if (force !== true && key === themeKey) return;
+        themeKey = key;
         const color = getComputedStyle(document.body).getPropertyValue('--primary-color').trim();
         const roles = deriveRoles(color);
         if (!roles) return;
@@ -445,8 +461,15 @@
     function watchPixelScale() {
         syncPixelScale();
         window.addEventListener('resize', syncPixelScale);
-        // Settings > Screen sets --wm-px inline on <html>
-        new MutationObserver(syncPixelScale).observe(root, { attributes: true, attributeFilter: ['style'] });
+        // Settings > Screen sets --wm-px inline on <html>; the theme writes many other properties
+        // there too, and each re-read was a full style pass: only a change of --wm-px itself counts
+        let inlinePx = root.style.getPropertyValue('--wm-px');
+        new MutationObserver(() => {
+            const v = root.style.getPropertyValue('--wm-px');
+            if (v === inlinePx) return;
+            inlinePx = v;
+            syncPixelScale();
+        }).observe(root, { attributes: true, attributeFilter: ['style'] });
         // a dpr change without a resize (the window moves to another screen)
         const watchDpr = () => {
             if (!window.matchMedia) return;
@@ -459,18 +482,18 @@
         applyCachedTheme();
         // the workspace stylesheet sets --primary-color once the workspace is known; before that
         // the cached roles stay (applyTheme ignores the page default until data-workspace is set)
-        if (document.body.dataset.workspace) applyTheme();
-        new MutationObserver(applyTheme).observe(document.body, { attributes: true, attributeFilter: ['data-workspace', 'style'] });
+        if (document.body.dataset.workspace) applyTheme(true);
+        new MutationObserver(() => scheduleTheme(false)).observe(document.body, { attributes: true, attributeFilter: ['data-workspace', 'style'] });
         const link = document.getElementById('workspace-styles');
         if (link) {
-            link.addEventListener('load', applyTheme);
-            new MutationObserver(() => setTimeout(applyTheme, 50)).observe(link, { attributes: true, attributeFilter: ['href'] });
+            link.addEventListener('load', () => scheduleTheme(true));
+            new MutationObserver(() => setTimeout(() => scheduleTheme(true), 50)).observe(link, { attributes: true, attributeFilter: ['href'] });
         }
         // workspaceUtils swaps the stylesheet link node itself on a live theme update
         new MutationObserver((records) => {
             for (const r of records) {
                 for (const n of r.addedNodes) {
-                    if (n.id === 'workspace-styles') { n.addEventListener('load', applyTheme); setTimeout(applyTheme, 50); }
+                    if (n.id === 'workspace-styles') { n.addEventListener('load', () => scheduleTheme(true)); setTimeout(() => scheduleTheme(true), 50); }
                 }
             }
         }).observe(document.head, { childList: true });
@@ -2799,6 +2822,16 @@
      * camera to a side, so the top band goes and a side band comes (#735).
      */
     /** Screen > Camera > Only in portrait: a turned phone (wider than tall) ignores the camera. */
+    // the window's size without a style pass per read (innerWidth flushes pending style): read once
+    // after each resize
+    let viewSize = null;
+    window.addEventListener('resize', () => { viewSize = null; lastBezelKey = ''; }, { capture: true, passive: true });
+    const viewRead = () => { if (!viewSize) viewSize = { w: window.innerWidth, h: window.innerHeight }; return viewSize; };
+    const viewW = () => viewRead().w;
+    const viewH = () => viewRead().h;
+    const BEZEL_KEYS = ['wmBezelLogoOpacity', 'wmBezelLogoSize', 'wmBezelLogoPos', 'wmBezelModelShow', 'wmBezelModel', 'wmBezelModelPos', 'wmBezelModelSize', 'wmCameraPortraitOnly'];
+    let lastBezelKey = '';
+
     function cameraIgnoredNow() {
         // Settings > Screen > Bezel: the camera is handled only while the app hides the status bar
         // (with the bar showing, the camera sits under it anyway)
@@ -2808,7 +2841,7 @@
         }
         let only = false;
         try { only = localStorage.getItem('wmCameraPortraitOnly') === '1'; } catch (_) { /* storage off */ }
-        return only && window.innerWidth > window.innerHeight;
+        return only && viewW() > viewH();
     }
 
     // Top edge of the wordmark's ink in its right 30 % (fraction of its height) per column fraction:
@@ -2833,7 +2866,7 @@
     function bezelLogoMargin(lw, lh, px) {
         const r = parseFloat(root.style.getPropertyValue('--display-corner-tr')) || 0;
         if (!(r > 0)) return 12 * px; // no corner reported (a browser, an older app): as before
-        const W = window.innerWidth;
+        const W = viewW();
         const inside = (x, y) => x <= W - r || y >= r || Math.hypot(x - (W - r), y - r) <= r;
         for (let m = 0; m <= r + 1; m += 0.5) {
             if (BEZEL_LOGO_INK.every(([fx, fy]) => inside(W - m - (1 - fx) * lw, fy * lh))) return m + 1;
@@ -2844,7 +2877,7 @@
     /** localStorage wmBezelCache: per screen size, what the band and logo were, for the next boot. */
     function saveBezelCache(entry) {
         try {
-            const key = `${window.innerWidth}x${window.innerHeight}`;
+            const key = `${viewW()}x${viewH()}`;
             const all = JSON.parse(localStorage.getItem('wmBezelCache') || '{}') || {};
             const prev = all[key] ? JSON.stringify(all[key]) : '';
             const next = entry;
@@ -2879,7 +2912,7 @@
         el.style.lineHeight = '1';
         el.style.top = `${model.baseline - model.size * 0.8}px`;
         el.style.left = model.align === 'left' ? `${model.x}px` : '';
-        el.style.right = model.align === 'right' ? `${window.innerWidth - model.x}px` : '';
+        el.style.right = model.align === 'right' ? `${viewW() - model.x}px` : '';
     }
 
     /**
@@ -2908,12 +2941,25 @@
      */
     function cameraBottom(h) {
         const mid = h.left + h.width / 2;
-        const central = h.width > 0 && Math.abs(mid - window.innerWidth / 2) < window.innerWidth * 0.2;
+        const central = h.width > 0 && Math.abs(mid - viewW() / 2) < viewW() * 0.2;
         return h.top + h.height + (central ? 6 : 1);
     }
 
     function syncBezel() {
         const style = root.style;
+        // the title bar asks for this on every render (~48 times while the phone boots, each a full
+        // style pass for --wm-px and the window size, #817 trace): nothing is redone while what it
+        // draws from is the same (the camera, the screen size, --wm-px, the Bezel settings, the bars)
+        let ls = '';
+        try { ls = BEZEL_KEYS.map((k) => localStorage.getItem(k)).join('|'); } catch (_) { /* storage off */ }
+        let bars = '';
+        try { bars = window.AndroidDisplay && typeof window.AndroidDisplay.getSystemBars === 'function' ? window.AndroidDisplay.getSystemBars() : ''; } catch (_) { /* older app */ }
+        const bezelKey = [viewW(), viewH(), style.getPropertyValue('--camera-hole-left'), style.getPropertyValue('--camera-hole-top'),
+            style.getPropertyValue('--camera-hole-width'), style.getPropertyValue('--camera-hole-height'), style.getPropertyValue('--wm-px'),
+            style.getPropertyValue('--display-corner-tl'), style.getPropertyValue('--display-corner-tr'), ls, bars,
+            document.getElementById('wmBezelOverlay') ? 1 : 0].join('/');
+        if (bezelKey === lastBezelKey) return;
+        lastBezelKey = bezelKey;
         const v = (n) => parseFloat(style.getPropertyValue(n)) || 0;
         const h = { left: v('--camera-hole-left'), top: v('--camera-hole-top'), width: v('--camera-hole-width'), height: v('--camera-hole-height') };
         // the Android app sends the camera a moment after the shell starts (dreamscape:cutout): until
@@ -2931,11 +2977,11 @@
         if (!(h.width > 0 && h.height > 0)) edge = 'top'; // no camera reported (a browser): a plain top bezel
         else if (h.top < near) edge = 'top';
         else if (h.left < near) edge = 'left';
-        else if (h.left + h.width > window.innerWidth - near) edge = 'right';
+        else if (h.left + h.width > viewW() - near) edge = 'right';
         const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
         // a camera in the middle of the top edge is a punch hole (Fold7 cover screen): the logo goes top right
         const mid = h.left + h.width / 2;
-        const central = edge === 'top' && h.width > 0 && Math.abs(mid - window.innerWidth / 2) < window.innerWidth * 0.2;
+        const central = edge === 'top' && h.width > 0 && Math.abs(mid - viewW() / 2) < viewW() * 0.2;
         // a band only as tall as the camera needs (Yukimi tuned it on the Fold7): a punch hole's circle
         // is estimated from Android's box and gets 6 px; the inner screen's measured camera area 1 px;
         // 18 px where none is reported
@@ -2949,7 +2995,7 @@
         // camera in the middle), the model text and the notification LED
         let logo = null;
         let model = null;
-        const W = window.innerWidth;
+        const W = viewW();
         let lsv = (k) => null;
         try { lsv = (k) => localStorage.getItem(k); } catch (_) { /* storage off */ }
         const opacity = Math.min(1, Math.max(0.1, (parseFloat(lsv('wmBezelLogoOpacity')) || 55) / 100));
@@ -2994,7 +3040,7 @@
             else delete root.dataset.wmBezelLogo;
         }
         const left = edge === 'left' ? h.left + h.width + margin : 0;
-        const right = edge === 'right' ? window.innerWidth - h.left + margin : 0;
+        const right = edge === 'right' ? viewW() - h.left + margin : 0;
         style.setProperty('--wm-bezel-left', `${left}px`);
         style.setProperty('--wm-bezel-right', `${right}px`);
         if (root.dataset.wmBezelEdge !== edge) root.dataset.wmBezelEdge = edge;
@@ -3066,8 +3112,17 @@
         }
         gap.style.width = `${hole.width + 2 * pad}px`;
         status.style.marginLeft = 'auto';
-        // what does not fit right of the camera moves left of it, keeping the order (first icons first)
-        const room = br.right - (hole.left + hole.width + pad);
+        // what does not fit right of the camera moves left of it, keeping the order (first icons first).
+        // The room ends where the X / ok and the bar's right padding begin: measured to the bar's edge it
+        // took the X's 33 px for icons, so on Start (Fold7 inner screen, Nov 15) five icons "fitted" and
+        // pushed the X off the screen
+        let after = parseFloat(bar.style.paddingRight) || parseFloat(getComputedStyle(bar).paddingRight) || 0;
+        for (let n = status.nextElementSibling; n; n = n.nextElementSibling) {
+            if (!n.getClientRects().length) continue;
+            const cs = getComputedStyle(n);
+            after += n.getBoundingClientRect().width + (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+        }
+        const room = br.right - after - (hole.left + hole.width + pad);
         const shown = () => status._wmOrder.filter((i) => i.parentElement === status && !i.hidden);
         while (!noCross && status.getBoundingClientRect().width > room && shown().length > 1) {
             const first = shown()[0];
@@ -7213,9 +7268,17 @@
             show() {
                 if (mailUnread == null) loadMail();
                 this.stale = false;
-                this.refresh();
+                this.draw();
             },
+            // many things ask Today to redraw at once while the phone boots (accounts, gallery, mail,
+            // tasks, widgets: ~60 calls, each a full style pass, #817 trace): they draw once per frame
             refresh() {
+                if (this._drawQueued) return;
+                this._drawQueued = true;
+                requestAnimationFrame(() => { this._drawQueued = false; this.draw(); });
+            },
+            draw() {
+                this._drawQueued = false;
                 const page = this.page;
                 if (!page) return;
                 // nothing draws Today while it is not on screen (another app in front, the page hidden,
@@ -7223,6 +7286,10 @@
                 // Nov 14: Traffic's minute tick laid it out behind the Pictures app)
                 if (current !== 'today' || document.hidden || root.dataset.screenOff !== undefined) { this.stale = true; return; }
                 this.stale = false;
+                // layout reads first, before this draw's writes dirty the styles again
+                const strip = page.querySelector('[data-row="prints"]');
+                const pxv = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+                const stripWidth = strip.clientWidth || page.clientWidth;
                 applyTodayBackground();
                 const now = new Date();
                 setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
@@ -7252,15 +7319,13 @@
                 } catch (_) { /* workspaces not loaded yet */ }
                 if (!wsEl.textContent) wsEl.textContent = 'Workspace';
                 // newest prints: as many square tiles as fit one row
-                const strip = page.querySelector('[data-row="prints"]');
                 // Options: picture size and rows
                 const tile = TODAY_PRINT_SIZE[todayOption('prints', 'size')] || 44;
                 const rows = Number(todayOption('prints', 'rows')) || 1;
                 strip.style.setProperty('--wm-today-tile', String(tile));
                 strip.style.setProperty('--wm-today-rows', String(rows));
                 // exactly the tiles that fit the rows (extra ones would add empty grid rows and gaps)
-                const pxv = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
-                const width = (strip.clientWidth || page.clientWidth) - 6 * pxv;
+                const width = stripWidth - 6 * pxv;
                 const cols = Math.max(1, Math.floor((width + 2 * pxv) / ((tile + 2) * pxv)));
                 const prints = newestPrints(cols * rows);
                 const key = prints.map((p) => p.filename || p.preview).join('|');
