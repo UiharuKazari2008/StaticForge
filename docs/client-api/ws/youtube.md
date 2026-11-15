@@ -25,7 +25,7 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_channel` | `{ id }` -> `{ channel, videos[], favourite, subscribed }` |
 | `youtube_favourite` | `{ channel: { id, title, thumb }, on }` -> `{ favourites[] }`. Admin. |
 | `youtube_favourites_order` | `{ ids[] }` -> `{ favourites[] }`. Admin. |
-| `youtube_settings_save` | `{ settings: { noShorts?, todayCount? } }` -> `{ settings }`. Admin. |
+| `youtube_settings_save` | `{ settings: { noShorts?, rareFirst?, todayCount? } }` -> `{ settings }`. Admin. |
 
 A video is `{ id, title, channel, channelId, thumb, at, length, live }` (`at` in ms, `length` in seconds or null,
 `live`: `''`, `live` or `upcoming`). A channel is `{ id, title, thumb }`.
@@ -45,5 +45,5 @@ favourite channel's uploads when they are older than 15 minutes.
 
 - `account`: `{ configured, signedIn, account: { id, title, thumb } | null, signIn: { userCode, url, expiresAt } | null, error }`
 - `favourites[]`: the channels whose uploads Today shows
-- `latest`: `{ videos[] }`, the favourites' newest uploads, newest first (`settings.todayCount` at most)
-- `settings`: `{ noShorts, todayCount, budget }`
+- `latest`: `{ videos[] }`, the favourites' uploads as one list (`settings.todayCount` at most). With `settings.rareFirst` (default) a video's age counts in units of its channel's usual gap between uploads, so channels that upload seldom come first; off: newest first. Each video also has `gap` (ms since that channel's upload before it, or null).
+- `settings`: `{ noShorts, rareFirst, todayCount, budget }`

@@ -62,7 +62,7 @@ const SEARCH_TTL = 10 * MIN;
 const FEED_MIN_GAP = 5 * MIN; // a Refresh inside this gap answers from what is held
 const HUB_INTERVAL = 5 * MIN;
 const DEVICE_MIN_S = Number(process.env.YOUTUBE_DEVICE_MIN_S || 5);
-const DEFAULTS = { noShorts: true, todayCount: 12, budget: 6000 };
+const DEFAULTS = { noShorts: true, rareFirst: true, todayCount: 12, budget: 6000 };
 // No small cap on favourites (Yukimi, Nov 15 2026: an import of every channel with its bell on must fit).
 // What a long list costs is the refresh, one unit a channel, so the refresh slows with the list instead:
 // each favourite is read again after latestTtl(), sized so a day of Today on screen stays near 3,000 units.
@@ -152,6 +152,7 @@ function settings() {
     const b = Number(s.budget);
     return {
         noShorts: s.noShorts === undefined ? DEFAULTS.noShorts : !!s.noShorts,
+        rareFirst: s.rareFirst === undefined ? DEFAULTS.rareFirst : !!s.rareFirst,
         todayCount: Number.isFinite(n) ? Math.max(3, Math.min(30, Math.round(n))) : DEFAULTS.todayCount,
         budget: Number.isFinite(b) ? Math.max(500, Math.min(10000, Math.round(b))) : DEFAULTS.budget
     };
@@ -171,6 +172,7 @@ async function saveSettings(next) {
     const before = cur.noShorts;
     acct.settings = Object.assign({}, acct.settings, {
         noShorts: next && next.noShorts !== undefined ? !!next.noShorts : cur.noShorts,
+        rareFirst: next && next.rareFirst !== undefined ? !!next.rareFirst : cur.rareFirst,
         todayCount: next && next.todayCount !== undefined ? next.todayCount : cur.todayCount
     });
     saveAccount();
@@ -662,17 +664,49 @@ function latestTtl() {
     return Math.max(LATEST_TTL, Math.ceil((acct.favourites.length * 24 * 60 * MIN) / LATEST_UNITS_A_DAY));
 }
 
-function latestVideos() {
+const HOUR = 60 * MIN;
+const DAY_MS = 24 * HOUR;
+
+/** A channel's usual time between uploads, from the uploads held (median gap; 6 hours to 90 days). */
+function cadenceOf(videos) {
+    const ats = (videos || []).map((v) => v.at).filter(Boolean).sort((a, b) => b - a);
+    const gaps = [];
+    for (let i = 1; i < ats.length; i++) gaps.push(ats[i - 1] - ats[i]);
+    if (!gaps.length) return 30 * DAY_MS; // one upload known: not a channel that uploads often
+    gaps.sort((a, b) => a - b);
+    const mid = gaps.length % 2 ? gaps[(gaps.length - 1) / 2] : (gaps[gaps.length / 2 - 1] + gaps[gaps.length / 2]) / 2;
+    return Math.max(6 * HOUR, Math.min(90 * DAY_MS, mid));
+}
+
+/**
+ * Today's list: every favourite's uploads together. With Rare Uploads First (Yukimi, Nov 15 2026: channels
+ * that "do not upload often get higher sort") a video's age counts in units of its channel's usual gap
+ * between uploads, so a three-day-old video of a monthly channel (0.1 of a gap) comes before a daily
+ * channel's video of yesterday (1 gap), and a daily channel's video of an hour ago still leads. Off: newest
+ * first. Each video carries `gap`, the time since the channel's upload before it (the "first in 3 weeks" note).
+ */
+function latestVideos(now = Date.now()) {
     const all = [];
     acct.favourites.forEach((f) => {
         const held = cache.uploads[f.id];
-        if (held && Array.isArray(held.videos)) all.push(...held.videos.slice(0, 5));
+        if (!held || !Array.isArray(held.videos)) return;
+        const cadence = cadenceOf(held.videos);
+        held.videos.slice(0, 5).forEach((v, i) => {
+            const older = held.videos[i + 1];
+            all.push(Object.assign({}, v, { gap: v.at && older && older.at ? v.at - older.at : null, rank: v.at ? Math.max(0, now - v.at) / cadence : Infinity }));
+        });
     });
+    const rare = settings().rareFirst;
     const seen = new Set();
-    return all.filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true))).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, settings().todayCount).map((v) => {
-        const d = cache.details[v.id];
-        return d && !d.gone ? Object.assign({}, v, { length: d.length, live: d.live }) : v;
-    });
+    return all.filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true)))
+        .sort((a, b) => (rare ? (a.rank - b.rank) || ((b.at || 0) - (a.at || 0)) : (b.at || 0) - (a.at || 0)))
+        .slice(0, settings().todayCount)
+        .map((v) => {
+            const d = cache.details[v.id];
+            const out = d && !d.gone ? Object.assign({}, v, { length: d.length, live: d.live }) : Object.assign({}, v);
+            delete out.rank;
+            return out;
+        });
 }
 
 /** Reads the favourites whose uploads are older than latestTtl(); pushes when something changed. */
@@ -683,7 +717,7 @@ function refreshLatest(force) {
         return !held || Date.now() - held.triedAt >= (force ? FEED_MIN_GAP : latestTtl());
     });
     if (!due.length) return null;
-    const before = JSON.stringify(latestVideos());
+    const before = JSON.stringify(latestVideos().map((v) => [v.id, v.length, v.live]));
     refreshing = (async () => {
         try {
             const got = await pool(due, 4, (f) => uploadsOf(f.id, { max: 5, ttl: force ? FEED_MIN_GAP : latestTtl() }));
@@ -695,7 +729,7 @@ function refreshLatest(force) {
         } finally {
             refreshing = null;
         }
-        if (JSON.stringify(latestVideos()) !== before || lastError) poke();
+        if (JSON.stringify(latestVideos().map((v) => [v.id, v.length, v.live])) !== before || lastError) poke();
     })();
     return refreshing;
 }
@@ -756,5 +790,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, latestTtl, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, latestTtl, cadenceOf, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };
