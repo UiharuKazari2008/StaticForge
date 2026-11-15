@@ -10998,6 +10998,29 @@ class WebSocketClient {
 // Create global WebSocket instance
 window.wsClient = new WebSocketClient();
 
+// A phone page tells the server when it sleeps (screen off, or another app in front) and wakes
+// (client_dormant, Nov 15 2026): while it sleeps the server holds status pushes nothing waits on and
+// sends them when it wakes, so the radio is not woken for things no one sees (rule
+// server-push-not-polling). Replies, texts, mail and Director events still arrive at once.
+(function reportDormant() {
+    const c = window.wsClient;
+    if (!c || typeof document === 'undefined') return;
+    let sent = null;
+    const dormant = () => document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined;
+    const tell = (force) => {
+        if (window.uiShell !== 'mobile') return;
+        const on = dormant();
+        if (!force && on === sent) return;
+        const ws = c.ws;
+        if (!ws || ws.readyState !== 1) return;
+        try { ws.send(JSON.stringify({ type: 'client_dormant', on })); sent = on; } catch (_) { /* closing */ }
+    };
+    document.addEventListener('visibilitychange', () => tell(false));
+    window.addEventListener('melatonscreen', () => setTimeout(() => tell(false), 0));
+    // a new socket starts awake on the server: say it again only when sleeping
+    c.on('connected', () => { sent = false; if (dormant()) tell(true); });
+})();
+
 // Export for module use
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = WebSocketClient;

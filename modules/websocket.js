@@ -10,6 +10,21 @@ const {
     formatWsDisconnectLog
 } = require('./wsSocketHeartbeat');
 
+// held for a dormant phone page: 'last' keeps the newest only, 'path' one per folder, 'all' every one in order
+const DORMANT_HOLD = new Map([
+    ['ping', 'last'],
+    ['dovecote_mailbox_updated', 'last'],
+    ['as_peers_updated', 'last'],
+    ['runpod_pods_status_update', 'last'],
+    ['browsing_sessions_changed', 'last'],
+    ['runtime_compile_progress', 'last'],
+    ['vfs_updated', 'path'],
+    ['xlink_status', 'all'],
+    ['service_worker_cache_update', 'all'],
+    ['runtime_compile_complete', 'all']
+]);
+const DORMANT_HOLD_MAX = 300;
+
 // notices a phone gets batched (WebSocketServer.broadcast): small, frequent, nothing waits on them
 const PHONE_BATCH_TYPES = new Set(['vfs_updated']);
 const PHONE_BATCH_MS = 10000;
@@ -722,7 +737,63 @@ class WebSocketServer {
     // message may already be a JSON string (broadcast serializes once for every client).
     sendToClient(ws, message) {
         if (ws.readyState === WebSocket.OPEN) {
+            if (this._dormantHold(ws, message)) return;
             ws.send(typeof message === 'string' ? message : JSON.stringify(message));
+        }
+    }
+
+    // ---- Dormant phone pages (rule server-push-not-polling; the phone reports its screen off or the
+    // app behind another, client_dormant): status pushes that nothing waits on are held while it
+    // sleeps and delivered when it wakes, newest state only where that is all the page uses. Replies
+    // (requestId), texts, mail and Director events are never held.
+    _isDormantPhone(ws) {
+        const info = this.clients.get(ws);
+        return !!(info && info.dormant && info.phone && info.phone.shell === 'mobile');
+    }
+
+    /** True when the message was held for a dormant phone page (sent later by setDormant(ws, false)). */
+    _dormantHold(ws, message) {
+        if (!this._isDormantPhone(ws)) return false;
+        let type = null;
+        let rid = false;
+        if (typeof message === 'string') {
+            const m = /^\{"type":"([a-z0-9_]+)"/.exec(message);
+            type = m ? m[1] : null;
+            rid = message.includes('"requestId"');
+        } else if (message && typeof message === 'object') {
+            type = message.type;
+            rid = !!message.requestId;
+        }
+        if (!type || rid || !DORMANT_HOLD.has(type)) return false;
+        if (!this._dormantHeld) this._dormantHeld = new WeakMap();
+        let held = this._dormantHeld.get(ws);
+        if (!held) { held = new Map(); this._dormantHeld.set(ws, held); }
+        const mode = DORMANT_HOLD.get(type);
+        let key;
+        if (mode === 'last') key = type;
+        else if (mode === 'path') {
+            let path = '';
+            try { const o = typeof message === 'string' ? JSON.parse(message) : message; path = (o.data && o.data.path) || ''; } catch (_) { path = ''; }
+            key = `${type}|${path}`;
+        } else key = `${type}|${(this._dormantSeq = (this._dormantSeq || 0) + 1)}`;
+        held.delete(key); // a newer copy goes to the end
+        held.set(key, message);
+        if (held.size > DORMANT_HOLD_MAX) held.delete(held.keys().next().value);
+        return true;
+    }
+
+    /** The page went to sleep (on) or woke (off): on waking, what was held goes out in order. */
+    setDormant(ws, on) {
+        const info = this.clients.get(ws);
+        if (!info) return;
+        info.dormant = !!on;
+        if (on) return;
+        const held = this._dormantHeld && this._dormantHeld.get(ws);
+        if (!held) return;
+        this._dormantHeld.delete(ws);
+        for (const m of held.values()) {
+            if (ws.readyState !== WebSocket.OPEN) break;
+            try { ws.send(typeof m === 'string' ? m : JSON.stringify(m)); } catch (_) { break; }
         }
     }
 
@@ -944,6 +1015,16 @@ class WebSocketServer {
         this.forEachSocket(client => {
             if (client.readyState === WebSocket.OPEN && (!filter || filter(this.clients.get(client)))) to.push(client);
         });
+        // a dormant phone page: held for it (setDormant), not sent over its carrier now
+        if (message && DORMANT_HOLD.has(message.type) && !message.requestId) {
+            const sleeping = to.filter((ws) => this._isDormantPhone(ws));
+            if (sleeping.length) {
+                sleeping.forEach((ws) => this._dormantHold(ws, message));
+                const awake = to.filter((ws) => !sleeping.includes(ws));
+                to.length = 0;
+                to.push(...awake);
+            }
+        }
         // a phone gets frequent small notices (file changes) in one go every few seconds instead of a
         // radio wakeup each (rule server-push-not-polling); desktops keep getting them at once
         if (message && PHONE_BATCH_TYPES.has(message.type)) {
