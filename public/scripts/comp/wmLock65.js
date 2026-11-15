@@ -28,6 +28,8 @@
 
     const root = document.documentElement;
     if (root.dataset.wmVersion !== '6.5' || !root.classList.contains('ui-mobile')) return;
+    // 6.5.1 (#850): the alarm page, the simple PIN page and the alarms themselves (the last part of this file)
+    const R651 = root.dataset.wmRev === '6.5.1';
 
     // the device's order after the finger lifts at an end, its emulator times (+230 soft key bar,
     // +430 title, +660 body) scaled to a phone's
@@ -114,8 +116,9 @@
 
         // 66 units of travel for the handle (slider 192 - handle 60, halved); a notification's
         // slide has 77.5 (222 - 67, halved)
-        bindSlide(el.slider, 66, () => unlock(), () => { if (mailCount > 0) showList(); });
-        bindSlide(el.mail, 77.5, () => unlock({ app: 'messaging' }));
+        bindSlide(el.slider, 66, () => slideUnlock(), () => { if (mailCount > 0) showList(); });
+        bindSlide(el.mail, 77.5, () => slideUnlock({ app: 'messaging' }));
+        if (R651) build651();
         // nothing under the layer is reached, and no text is selected or dragged on it
         ['click', 'dblclick', 'contextmenu', 'dragstart', 'selectstart', 'wheel'].forEach((type) => {
             layer.addEventListener(type, (e) => { e.stopPropagation(); if (e.cancelable) e.preventDefault(); }, { passive: false });
@@ -344,6 +347,7 @@
         // Lock closes the Start screen: what was under it is there after unlocking (device)
         try { if (sh.current === 'start') sh.back(); } catch (err) { console.warn('[wmLock65] start', err); }
         enter(el.slider);
+        if (R651) lock651();
         clearInterval(tick);
         tick = setInterval(paint, 1000);
         document.dispatchEvent(new CustomEvent('wmLockChange', { detail: { locked: true } }));
@@ -362,6 +366,7 @@
         el.mail.classList.remove('is-entry', 'is-idle', 'is-pressed');
         locked = false;
         unlocking = false;
+        if (R651) unlock651();
         watchHistoryGo(false);
         try {
             if (swallowed) sh.syncHistory();
@@ -418,4 +423,5 @@
         get isLocked() { return locked; },
         locked: () => locked
     };
+    if (R651) start651();
 })();

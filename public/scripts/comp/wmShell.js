@@ -664,6 +664,9 @@
                 else statusBubble(b.dataset.role, b);
             });
         });
+        // 6.5.1 (#850) drawer: the pen down on the status icons (with the 6.5.1 bars: anywhere on the
+        // thin title bar) opens the status drawer; the icons' own pop-ups are opened from it
+        if (WM651) drawer651Init();
         // The input panel button. Device (6.1 and 6.5, MS_SIPBUTTON): a tap opens the panel, a tap
         // while it is up closes it, both on pen up; nothing is drawn for the pen held on it; while
         // the panel is up the cell is lit. Here the panel is the phone's own keyboard: it is up
@@ -5670,6 +5673,511 @@
             const n = shellMailUnread + imapUnread();
             bubble({ title: 'Messaging', role, anchor, sections: [n ? `${n} unread ${n === 1 ? 'message' : 'messages'}.` : 'No unread messages.', ...(apps.has('messaging') ? [{ links: [{ label: 'Messaging', action: () => open('messaging') }] }] : [])], buttons: [{ text: 'Hide' }] });
         }
+    }
+
+    // ---------------------------------------------------------------- 6.5.1 (#850) drawer
+    /*
+     * Windows Mobile 6.5.3's status drawer and its screen magnifier, in 6.5.1 under either title
+     * bar (the look is wm65.css "6.5.1 drawer"). Measured on the device (480 x 640, 2 px = 1 unit):
+     * - the pen going DOWN on the title bar opens a strip under it (window "TitleBarList", 480 x 86
+     *   at y 36) in one frame about 100 ms later, no slide and no fade. The pen down on the bar
+     *   again, or anywhere outside the strip, closes it the same way, and that tap still reaches
+     *   what it hit (the home screen's selection moved under a closing tap).
+     * - the strip: shellres.192 RCDATA 4952 (8 x 86, grey to black, 204 / 255 see-through) across;
+     *   64 px icons at y 10 on an 86 px pitch, the first at x 20, 22 px after the last one. Order:
+     *   the magnifier, then the title bar's own status icons left to right (connectivity, phone,
+     *   volume, battery), then the clock. The icons are shellres.192 icon groups 4946 - 4958.
+     * - no pressed look. A tap (the pen up within about 0.9 s: 0.8 s still opens, 1.0 s does not)
+     *   closes the strip and opens the item about 300 ms later: connectivity and phone their
+     *   bubbles, volume the volume box, the battery Settings > Power, the clock Clock & Alarms.
+     * - a drag slides the icons with the pen once it has gone about 16 units (nothing at 15 units,
+     *   moving by 20), 1:1 from there, stopping dead at both ends; a flick carries on and runs up
+     *   to 16 px past an end, back in about 0.4 s.
+     * - the magnifier draws the whole screen (both bars, menus, the input panel) at twice its size
+     *   from the top left corner, in one frame. A drag pans 1:1 (the same start distance), with no
+     *   run-on, stopping dead at the edges; it never reaches the program, and neither does a hold.
+     *   A tap is passed on when the pen lifts (no pressed look while it is down). Windows and menus
+     *   that open come up zoomed, the pan kept. A round button (default_toolbarIconBubbleButton
+     *   68 x 68 with classicblue_magnifier_zoomout 48 x 48 at 10,10) stays in the top right corner:
+     *   it, or the strip's first icon (a minus magnifier then), ends the zoom in one frame.
+     * Not copied: the device draws the zoomed picture unsmoothed while the pen pans it and
+     * smoothed about 110 ms after the pen lifts; here the compositor scales it the same way always.
+     *
+     * Here the strip lists every status icon the title bar holds (those folded into the group
+     * icon too), each with a large picture, and a tap does what the small icon's tap does (the
+     * battery opens Settings > Power and the clock Clock & Alarms, as on the device). The zoom is
+     * one compositor transform on <body>, set by a filled Web Animation: no style or attribute of
+     * the page changes, so ending it leaves the page exactly as it was. While it is on, client
+     * rectangles and pointer positions read as the page's own unscaled ones (z651Shim), so code
+     * that places a menu or a bubble from them works unchanged, and nothing runs while it idles.
+     */
+    const D651_HOLD_MS = 900;   // a press longer than this is not a tap (device: between 0.8 and 1.0 s)
+    const D651_PAN_START = 16;  // units the pen travels before the strip or the zoomed screen follows
+    const D651_OVER = 8;        // units a flick runs past an end (device: up to 16 px)
+    const d651Rom = (n) => `image-set(url("/static_images/wm65/v651-drawer-${n}.png") 1x, url("/static_images/wm65/v651-drawer-${n}@2x.png") 2x)`;
+    const d651Start = (n) => `image-set(url("/static_images/wm65/start-${n}.png") 1x, url("/static_images/wm65/start-${n}@2x.png") 2x, url("/static_images/wm65/start-${n}@4x.png") 4x)`;
+    // the large picture of a status icon: the ROM's drawer icon, else its program's Start icon
+    // (ROM Start_Icon_*, or our own in that set), else the program's large WM icon (wm61 -lg art).
+    // notify and continuity have none: their title bar glyph is shown as it is.
+    const D651_ART = {
+        bluetooth: () => d651Rom('bluetooth'),
+        data: () => d651Rom('connectivity'),
+        roaming: () => d651Rom('roaming'),
+        signal: () => d651Rom('phone'),
+        volume: () => d651Rom('volume'),
+        battery: (b) => d651Rom(/low|empty/.test(b.dataset.icon || '') ? 'battery-low' : 'battery'),
+        mail: () => d651Start('msg'),
+        sms: () => d651Start('sms'),
+        chat: () => d651Start('messenger'),
+        prints: () => d651Start('photos'),
+        update: () => d651Start('update'),
+        traffic: () => d651Start('traffic'),
+        lapis: () => d651Start('lapis'),
+        received: () => d651Start('async'),
+        director: () => artImageSet('app-director-lg'),
+        wxalert: () => artImageSet('app-weather-lg'),
+        rain: () => artImageSet('app-weather-lg')
+    };
+    let d651El = null;     // the strip, made on first use
+    let d651Acts = [];     // what each item opens
+    let d651X = 0;         // how far the row is slid, CSS px
+    let d651Max = 0;
+    let d651Drag = null;
+    let d651Fling = null;  // the Web Animation of a flick
+    let d651DownAt = 0;    // when the pen went down on the strip
+    let d651BarDown = 0;   // when the pen last went down on the title bar's part that opens it
+
+    /** Whether a tap on this part of the title bar is the drawer's. */
+    function d651Trigger(t) {
+        if (!t || !t.closest) return false;
+        if (t.closest('.wm-status-icon')) return true;
+        // the thin title bar: all of it (Start and the X / ok are on the button bar)
+        return BARS651 && !t.closest('.wm-start, .wm-title-action');
+    }
+
+    function drawer651Init() {
+        const bar = shell.querySelector('.wm-titlebar');
+        bar.addEventListener('pointerdown', (e) => {
+            if (!e.isPrimary || e.button > 0 || !d651Trigger(e.target)) return;
+            d651BarDown = performance.now();
+            d651Toggle();
+        }, true);
+        // the click that follows is not the small icon's (nor Start's); a click with no pen before
+        // it is the keyboard's
+        bar.addEventListener('click', (e) => {
+            if (!d651Trigger(e.target)) return;
+            e.stopPropagation();
+            e.preventDefault();
+            if (performance.now() - d651BarDown > 1500) d651Toggle();
+        }, true);
+    }
+
+    function d651Make() {
+        d651El = document.createElement('div');
+        d651El.className = 'wm651-drawer';
+        d651El.hidden = true;
+        d651El.setAttribute('role', 'toolbar');
+        d651El.setAttribute('aria-label', 'Status');
+        d651El.innerHTML = '<div class="wm651-drawer-row"></div>';
+        shell.appendChild(d651El);
+        const row = d651El.firstElementChild;
+        d651El.addEventListener('pointerdown', (e) => {
+            if (!e.isPrimary || e.button > 0) return;
+            d651DownAt = performance.now();
+            if (d651Fling) {
+                // a flick is caught where it is
+                const at = -new DOMMatrixReadOnly(getComputedStyle(row).transform).m41;
+                d651Fling.cancel();
+                d651Fling = null;
+                d651Slide(Math.max(0, Math.min(d651Max, at)));
+            }
+            d651Drag = { id: e.pointerId, x0: e.clientX, from: d651X, moved: false, pts: [] };
+        });
+        d651El.addEventListener('pointermove', (e) => {
+            const d = d651Drag;
+            if (!d || e.pointerId !== d.id) return;
+            const dx = e.clientX - d.x0;
+            if (!d.moved) {
+                if (Math.abs(dx) < D651_PAN_START * rootPx()) return;
+                d.moved = true;
+                try { d651El.setPointerCapture(e.pointerId); } catch (_) { /* the pen is gone */ }
+            }
+            d651Slide(Math.max(0, Math.min(d651Max, d.from - dx)));
+            d.pts.push([e.timeStamp, e.clientX]);
+            if (d.pts.length > 6) d.pts.shift();
+        });
+        const up = (e) => {
+            const d = d651Drag;
+            if (!d || e.pointerId !== d.id) return;
+            d651Drag = null;
+            if (!d.moved || e.type === 'pointercancel') return;
+            // the pen's speed over its last samples (at most 100 ms back), in px / ms of the row's offset
+            const pts = d.pts.filter((p) => e.timeStamp - p[0] <= 100);
+            const a = pts[0];
+            const v = a && e.timeStamp > a[0] ? -(e.clientX - a[1]) / (e.timeStamp - a[0]) : 0;
+            if (Math.abs(v) > 0.15 * rootPx()) d651Flick(v);
+        };
+        d651El.addEventListener('pointerup', up);
+        d651El.addEventListener('pointercancel', up);
+        d651El.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const it = e.target.closest ? e.target.closest('.wm651-drawer-item') : null;
+            // a long press is not a tap; the keyboard's click (no pen) always is
+            if (!it || (e.detail > 0 && performance.now() - d651DownAt > D651_HOLD_MS + 150)) return;
+            const act = d651Acts[Number(it.dataset.i)];
+            d651Close();
+            if (typeof act === 'function') act();
+        });
+        d651El.addEventListener('contextmenu', (e) => { e.preventDefault(); e.stopPropagation(); });
+    }
+
+    function d651Slide(x) {
+        d651X = x;
+        d651El.firstElementChild.style.transform = x ? `translate3d(${-x}px,0,0)` : '';
+    }
+
+    /** A flick: v is the row offset's speed in px / ms. It runs out, or runs past an end and comes back. */
+    function d651Flick(v) {
+        const row = d651El.firstElementChild;
+        const px = rootPx();
+        const from = d651X;
+        const to = from + v * 300;
+        const at = (x) => ({ transform: `translate3d(${-x}px,0,0)` });
+        let frames; let ms; let end;
+        if (to >= 0 && to <= d651Max) {
+            end = to;
+            frames = [at(from), at(to)];
+            ms = 500;
+        } else {
+            end = to < 0 ? 0 : d651Max;
+            const over = Math.min(D651_OVER, D651_OVER * Math.abs(v) / px) * px * (to < 0 ? -1 : 1);
+            const travel = Math.min(250, Math.abs(end - from) / Math.max(0.05, Math.abs(v)));
+            ms = travel + 520;
+            frames = [{ ...at(from), easing: 'ease-out' }, { ...at(end + over), offset: (travel + 110) / ms, easing: 'ease-in-out' }, at(end)];
+        }
+        let anim = null;
+        try { anim = row.animate(frames, { duration: ms, easing: 'cubic-bezier(0.2, 0.7, 0.3, 1)' }); } catch (_) { anim = null; }
+        d651Slide(end);
+        if (!anim) return;
+        d651Fling = anim;
+        const done = () => { if (d651Fling === anim) d651Fling = null; };
+        anim.onfinish = done;
+        anim.oncancel = done;
+    }
+
+    /** The strip's items now: the magnifier, every status icon the title bar holds, the clock. */
+    function d651Fill() {
+        const row = d651El.firstElementChild;
+        row.replaceChildren();
+        d651Acts = [];
+        const px = rootPx();
+        const add = (label, art, act, glyph) => {
+            const it = document.createElement('button');
+            it.type = 'button';
+            it.className = 'wm651-drawer-item';
+            it.dataset.i = String(d651Acts.length);
+            it.setAttribute('aria-label', label);
+            if (art) it.style.backgroundImage = art;
+            if (glyph) {
+                // no large picture: the title bar's own glyph as it is drawn there (a cell of the
+                // status sheet or a picture of its own), on the icons' centre line
+                const cs = getComputedStyle(glyph);
+                const w = parseFloat(cs.width);
+                const h = parseFloat(cs.height);
+                const g = document.createElement('span');
+                g.className = 'wm651-drawer-glyph';
+                g.style.width = `${w > 0 ? w : 16 * px}px`;
+                g.style.height = `${h > 0 ? h : 16 * px}px`;
+                g.style.backgroundImage = cs.backgroundImage;
+                g.style.backgroundSize = cs.backgroundSize;
+                g.style.backgroundPosition = cs.backgroundPosition;
+                g.style.backgroundRepeat = cs.backgroundRepeat;
+                it.appendChild(g);
+            }
+            row.appendChild(it);
+            d651Acts.push(act);
+        };
+        add(z651 ? 'Zoom out' : 'Zoom in', d651Rom(z651 ? 'zoom-out' : 'zoom-in'), () => { if (z651) z651Stop(); else z651Start(); });
+        const settingsPage = (id, tab) => { const st = window.wmSettings; return !!(st && typeof st.open === 'function' && st.open(id, tab)); };
+        let phone = false;
+        shell.querySelectorAll('.wm-status > .wm-status-icon').forEach((b) => {
+            if (b.hidden) return;
+            const role = b.dataset.role;
+            // the group icon stands for its own notifications here: what is folded into it has an item of its own
+            if (role === 'notify' && !notesForBubbleIcon().length) return;
+            // the network type and the signal are one phone item (both open the Phone bubble)
+            const kind = role === 'cell' ? 'signal' : role;
+            if (kind === 'signal') { if (phone) return; phone = true; }
+            // where the small icon's pop-up points: the icon, or the group icon it is folded into
+            const anchor = () => (b.getClientRects().length ? b : shell.querySelector('.wm-status-icon[data-role="notify"]:not([hidden])'));
+            const act = role === 'notify' ? () => noteIconTap()
+                : kind === 'battery' ? () => { if (!settingsPage('power', 'battery')) statusBubble('battery', anchor()); }
+                    : () => { if (!messageIconTap(role)) statusBubble(role, anchor()); };
+            const big = D651_ART[kind];
+            if (big) { add(b.getAttribute('aria-label') || kind, big(b), act); return; }
+            add(b.getAttribute('aria-label') || kind, '', act, b);
+        });
+        add('Clock & Alarms', d651Rom('clock'), () => { settingsPage('clock'); });
+    }
+
+    function d651Outside(e) {
+        if (!d651El || d651El.hidden) return;
+        const t = e.target;
+        // the strip's own presses, and the title bar's (its own listener closes it)
+        if (d651El.contains(t) || (shell.querySelector('.wm-titlebar').contains(t) && d651Trigger(t))) return;
+        d651Close();
+    }
+
+    function d651Toggle() {
+        if (d651El && !d651El.hidden) { d651Close(); return; }
+        if (!d651El) d651Make();
+        closeMenus(true);
+        closeBubble();
+        closeVolume();
+        if (noteTrayOpen) { noteTrayOpen = false; renderNotes(); }
+        d651Fill();
+        const bar = shell.querySelector('.wm-titlebar');
+        d651El.style.top = `${bar.offsetTop + bar.offsetHeight}px`;
+        d651Slide(0);
+        d651El.hidden = false;
+        const row = d651El.firstElementChild;
+        d651Max = Math.max(0, row.scrollWidth - d651El.clientWidth);
+        document.addEventListener('pointerdown', d651Outside, true);
+    }
+
+    function d651Close() {
+        if (!d651El || d651El.hidden) return;
+        document.removeEventListener('pointerdown', d651Outside, true);
+        if (d651Fling) { d651Fling.cancel(); d651Fling = null; }
+        d651Drag = null;
+        d651El.hidden = true;
+        // nothing is kept while it is closed
+        d651El.firstElementChild.replaceChildren();
+        d651Acts = [];
+    }
+
+    // ---- the screen magnifier ----
+    let z651 = null;                  // { s, x, y, anim, btn, raf, g } while the screen is zoomed
+    const z651Saved = [];             // [object, name, descriptor] of everything z651Shim replaced
+    const z651Mine = new WeakSet();   // the events a passed-on tap is made of
+
+    /** The zoomed screen's transform: the pan in CSS px of the screen, the scale about the top left corner. */
+    const z651Frame = () => [{ transform: `translate3d(${-z651.x}px,${-z651.y}px,0) scale(${z651.s})`, transformOrigin: '0 0' }];
+
+    function z651Apply() {
+        if (!z651) return;
+        z651.raf = 0;
+        try { z651.anim.effect.setKeyframes(z651Frame()); } catch (_) { /* the animation is gone: the next start makes one */ }
+    }
+
+    function z651Clamp() {
+        z651.x = Math.max(0, Math.min(window.innerWidth * (z651.s - 1), z651.x));
+        z651.y = Math.max(0, Math.min(window.innerHeight * (z651.s - 1), z651.y));
+    }
+
+    function z651Start() {
+        if (z651 || !WM651 || !document.body.animate) return;
+        z651 = { s: 2, x: 0, y: 0, anim: null, btn: null, raf: 0, g: null, eat: 0 };
+        try {
+            z651.anim = document.body.animate(z651Frame(), { duration: 1, fill: 'forwards' });
+            z651.anim.finish();
+        } catch (_) { z651 = null; return; }
+        z651Shim(true);
+        z651Listen(true);
+        // the button is no part of the zoomed page: it sits beside <body>
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'wm651-zoom-exit';
+        btn.setAttribute('aria-label', 'Zoom out');
+        btn.addEventListener('click', (e) => { e.stopPropagation(); z651Stop(); });
+        btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        root.appendChild(btn);
+        z651.btn = btn;
+    }
+
+    function z651Stop() {
+        const z = z651;
+        if (!z) return;
+        z651Listen(false);
+        z651Shim(false);
+        if (z.raf) cancelAnimationFrame(z.raf);
+        try { z.anim.cancel(); } catch (_) { /* gone with the page */ }
+        if (z.btn) z.btn.remove();
+        z651 = null;
+    }
+
+    function z651Resize() {
+        // the keyboard, a rotation, a fold: the pan stays inside the new screen
+        if (!z651) return;
+        z651Clamp();
+        z651Apply();
+    }
+
+    function z651Listen(on) {
+        const f = on ? 'addEventListener' : 'removeEventListener';
+        const o = { capture: true, passive: false };
+        for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'touchstart', 'touchmove', 'touchend', 'touchcancel', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu']) window[f](t, z651Event, o);
+        window[f]('resize', z651Resize);
+    }
+
+    /**
+     * While zoomed the pen is the magnifier's: nothing of a press reaches the page until it lifts.
+     * A drag pans; a short press with no travel is then passed on whole (pointerdown and touchstart
+     * made again at the lift, the lift itself and the click the browser's own); a longer press, or
+     * one that panned, is dropped. Keyboard and script clicks pass.
+     */
+    function z651Event(e) {
+        const z = z651;
+        if (!z || !e.isTrusted || z651Mine.has(e) || (z.btn && (e.target === z.btn))) return;
+        const stop = () => { e.stopImmediatePropagation(); };
+        const now = performance.now();
+        const cx = z651Raw(e, 'clientX');
+        const cy = z651Raw(e, 'clientY');
+        let g = z.g;
+        switch (e.type) {
+            case 'pointerdown':
+                stop();
+                if (!e.isPrimary || e.button > 0) return;
+                z.g = { id: e.pointerId, mouse: e.pointerType === 'mouse', target: e.target, x0: cx, y0: cy, px: z.x, py: z.y, t0: now, pan: false, dead: false, tap: false, down: e, touch: null };
+                return;
+            case 'pointermove':
+                // a mouse that only hovers is the page's
+                if (!g || g.done || e.pointerId !== g.id) { if (e.pointerType !== 'mouse' || e.buttons) stop(); return; }
+                stop();
+                if (g.dead) return;
+                if (!g.pan) {
+                    if (Math.hypot(cx - g.x0, cy - g.y0) < D651_PAN_START * rootPx()) return;
+                    g.pan = true;
+                }
+                z.x = g.px - (cx - g.x0);
+                z.y = g.py - (cy - g.y0);
+                z651Clamp();
+                if (!z.raf) z.raf = requestAnimationFrame(z651Apply);
+                return;
+            case 'pointerup':
+            case 'pointercancel':
+                if (!g || g.done || e.pointerId !== g.id) { stop(); return; }
+                g.done = true;
+                g.tap = e.type === 'pointerup' && !g.pan && !g.dead && now - g.t0 <= D651_HOLD_MS;
+                if (!g.tap) { stop(); z.eat = now + 600; return; }
+                z.eat = 0;
+                z651Replay(g, 'pointerdown');
+                if (g.mouse) {
+                    z651Replay(g, 'mousedown');
+                    const f = g.target && g.target.closest ? g.target.closest('input, textarea, select, button, [tabindex], [contenteditable=""], [contenteditable="true"]') : null;
+                    if (f && typeof f.focus === 'function') { try { f.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ } }
+                }
+                return;
+            case 'touchstart':
+                stop();
+                if (g && !g.done && !g.touch) g.touch = e;
+                return;
+            case 'touchmove':
+                // no scroll and no drag of the page's own while zoomed
+                stop();
+                if (e.cancelable) e.preventDefault();
+                return;
+            case 'touchend':
+            case 'touchcancel':
+                if (g && g.tap && g.touch && e.type === 'touchend') { const t = g.touch; g.touch = null; z651ReplayTouch(g, t); return; }
+                stop();
+                return;
+            case 'mousedown':
+                // the pen is down (a mouse), or this is the browser's own press after a tap that was passed on
+                if (g && g.tap) return;
+                stop();
+                e.preventDefault();
+                return;
+            case 'contextmenu':
+                stop();
+                e.preventDefault();
+                return;
+            default:
+                // mouseup, click, dblclick: the browser's own after a passed-on tap; the keyboard's click (detail 0)
+                if ((g && g.tap && now >= z.eat) || (e.type === 'click' && e.detail === 0)) return;
+                stop();
+                e.preventDefault();
+        }
+    }
+
+    /** A page event's own untouched coordinate (the getters are replaced while zoomed). */
+    function z651Raw(e, name) {
+        const s = z651Saved.find((x) => x[1] === name && x[0] === MouseEvent.prototype);
+        const v = s && s[2].get ? s[2].get.call(e) : e[name];
+        return typeof v === 'number' ? v : 0;
+    }
+
+    function z651Replay(g, type) {
+        const d = g.down;
+        const init = {
+            bubbles: true, cancelable: true, composed: true, view: window, detail: type === 'mousedown' ? 1 : 0,
+            clientX: g.x0, clientY: g.y0, screenX: d.screenX, screenY: d.screenY,
+            button: 0, buttons: 1, ctrlKey: d.ctrlKey, shiftKey: d.shiftKey, altKey: d.altKey, metaKey: d.metaKey
+        };
+        let ev = null;
+        try {
+            ev = type === 'mousedown' ? new MouseEvent(type, init)
+                : new PointerEvent(type, { ...init, pointerId: d.pointerId, pointerType: d.pointerType, isPrimary: true, width: d.width, height: d.height, pressure: d.pressure || 0.5 });
+        } catch (_) { return; }
+        z651Mine.add(ev);
+        const t = g.target && g.target.isConnected ? g.target : null;
+        if (t) t.dispatchEvent(ev);
+    }
+
+    function z651ReplayTouch(g, start) {
+        const t = g.target && g.target.isConnected ? g.target : null;
+        if (!t || typeof TouchEvent !== 'function') return;
+        let ev = null;
+        try {
+            ev = new TouchEvent('touchstart', {
+                bubbles: true, cancelable: true, composed: true, view: window,
+                touches: Array.from(start.touches), targetTouches: Array.from(start.targetTouches), changedTouches: Array.from(start.changedTouches)
+            });
+        } catch (_) { return; }
+        z651Mine.add(ev);
+        t.dispatchEvent(ev);
+    }
+
+    /**
+     * While zoomed, what the page reads of positions is in its own unscaled coordinates: client
+     * rectangles, pointer and touch positions, and the points it asks elements at. Everything is
+     * put back as it was when the zoom ends.
+     */
+    function z651Shim(on) {
+        if (!on) {
+            while (z651Saved.length) {
+                const [obj, name, desc] = z651Saved.pop();
+                try { Object.defineProperty(obj, name, desc); } catch (_) { /* a frozen prototype: nothing was replaced */ }
+            }
+            return;
+        }
+        const body = document.body;
+        const inPage = (n) => !!n && (n === body || body.contains(n));
+        const toPage = (r) => new DOMRect((r.x + z651.x) / z651.s, (r.y + z651.y) / z651.s, r.width / z651.s, r.height / z651.s);
+        const list = (l) => { const a = Array.from(l, toPage); a.item = (i) => a[i] || null; return a; };
+        const swap = (obj, name, make) => {
+            const desc = obj && Object.getOwnPropertyDescriptor(obj, name);
+            if (!desc || !desc.configurable) return;
+            try {
+                Object.defineProperty(obj, name, make(desc));
+                z651Saved.push([obj, name, desc]);
+            } catch (_) { /* left as it is */ }
+        };
+        const method = (obj, name, wrap) => swap(obj, name, (d) => ({ ...d, value: wrap(d.value) }));
+        const getter = (obj, name, wrap) => swap(obj, name, (d) => (d.get ? { ...d, get: wrap(d.get) } : d));
+        method(Element.prototype, 'getBoundingClientRect', (f) => function () { const r = f.call(this); return z651 && inPage(this) ? toPage(r) : r; });
+        method(Element.prototype, 'getClientRects', (f) => function () { const l = f.call(this); return z651 && inPage(this) ? list(l) : l; });
+        method(Range.prototype, 'getBoundingClientRect', (f) => function () { const r = f.call(this); return z651 && inPage(this.commonAncestorContainer) ? toPage(r) : r; });
+        method(Range.prototype, 'getClientRects', (f) => function () { const l = f.call(this); return z651 && inPage(this.commonAncestorContainer) ? list(l) : l; });
+        const px = (f) => function () { const v = f.call(this); return z651 ? (v + z651.x) / z651.s : v; };
+        const py = (f) => function () { const v = f.call(this); return z651 ? (v + z651.y) / z651.s : v; };
+        for (const proto of [MouseEvent.prototype, typeof Touch === 'function' ? Touch.prototype : null]) {
+            if (!proto) continue;
+            for (const n of ['clientX', 'pageX', 'x']) getter(proto, n, px);
+            for (const n of ['clientY', 'pageY', 'y']) getter(proto, n, py);
+        }
+        const point = (f) => function (x, y) { return z651 ? f.call(this, x * z651.s - z651.x, y * z651.s - z651.y) : f.call(this, x, y); };
+        for (const n of ['elementFromPoint', 'elementsFromPoint', 'caretRangeFromPoint', 'caretPositionFromPoint']) method(Document.prototype, n, point);
     }
 
     // ---------------------------------------------------------------- busy

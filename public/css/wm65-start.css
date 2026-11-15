@@ -193,3 +193,25 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startlaunch"] .wm-s65-cell
     html.ui-mobile[data-wm-version="6.5"] .wm-s65.is-opening .wm-s65-cell,
     html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell.is-launching .wm-s65-icon { animation: none; }
 }
+
+/* ---- 6.5.1 (#850): Windows Mobile 6.5.3's reordering (wmStart65.js lift651), measured on a 6.5.3
+ * device: when the hold completes, in one frame, every other icon and label is drawn at 60 % of
+ * its colour over the picture, the held cell hangs over the pen at its own size (no growth, no
+ * animation), the glow stays in the grid on the cell whose place it would take, and that cell is
+ * drawn at full strength. Nothing slides. ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-list.is-lift651 .wm-s65-cell {
+    opacity: 0.6;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-list.is-lift651 .wm-s65-cell.is-target,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-list.is-lift651 .wm-s65-cell.is-lifted {
+    opacity: 1;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-s65-cell.is-lifted {
+    z-index: 2;
+    scale: none;
+    transition: none;
+    will-change: translate;
+}
+/* ---- end 6.5.1 ---- */

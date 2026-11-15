@@ -1446,9 +1446,435 @@ html.ui-mobile[data-wm-version="6.5"] .wm-today-timeout {
  * One section per part; keep a part's rules between its two marks. */
 
 /* ---- 6.5.1 bars: bottom button bar + thin title bar (only with data-wm-bars="bottom") ---- */
+/* Windows Mobile 6.5.3 Professional VGA on the device, halved (wmShell.js "6.5.1 (#850) bars" has
+ * the rules of use). Title bar: 36 px of the black task bar art; the title in Tahoma bold 21 px
+ * from x 8, capitals y 9..24, cut (no dots) where the icons start; the status icons are 6.5's own
+ * 32 px cells at y 2 (device cells x 242 / 284 / 326, battery 366); the clock in the same bold
+ * ends 11 px before the edge, 14 px after the battery, its digits 1 px lower than the title's
+ * capitals (y 10..25). Start and the X / ok are on the bottom bar (wmShell bars651Build moves
+ * the two buttons there), so nothing of theirs is drawn here. */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-titlebar {
+    height: calc(18 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-camera="clear"][data-wm-bezel-edge="top"][data-wm-bar-extend] #wmShell > .wm-titlebar {
+    height: calc(18 * var(--wm-px) + var(--wm-camera-extend, 0px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-title {
+    padding-left: calc(4 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    text-overflow: clip;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-status,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-status-left {
+    margin-top: calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-status {
+    padding-right: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
+    flex: 0 0 auto;
+    align-self: stretch;
+    margin: 0 calc(5.5 * var(--wm-px)) 0 calc(7 * var(--wm-px));
+    font-size: var(--wm-fs);
+    font-weight: bold;
+    line-height: calc(16 * var(--wm-px));
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+/* capitals placed by their own height where the browser can (as 6.5's title, wm65.css above): the
+ * title's are centred half a unit above the bar's middle, the clock's on it */
+@supports (text-box: trim-both cap alphabetic) {
+    html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-title {
+        line-height: normal;
+        box-sizing: border-box;
+        padding-bottom: calc(1 * var(--wm-px));
+    }
+
+    html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
+        line-height: normal;
+        text-box: trim-both cap alphabetic;
+        align-content: center;
+    }
+}
+
+/* The button bar: 68 px of the theme's soft key bar art (classicblue_softkeybar, 8 x 68, tiled),
+ * solid inside a program. Over the home screen it is that art at 100 / 255 on the picture, as 6.5's
+ * bars; over the Start screen it measures 0.63 to 0.66 (the art laid twice: 1 - 0.608 x 0.608).
+ * Five 68 px slots on a 98 px pitch from x 10 (art at x 10 / 108 / 206 / 304 / 402): on a wider
+ * screen the same margins and the room between shared evenly. */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="today"] .wm-softkeys,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="start"] .wm-softkeys {
+    height: calc(34 * var(--wm-px));
+    box-sizing: border-box;
+    padding: 0 calc(5 * var(--wm-px));
+    background: none;
+    grid-template-columns: repeat(5, calc(34 * var(--wm-px)));
+    grid-template-rows: calc(34 * var(--wm-px));
+    justify-content: space-between;
+    align-items: start;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    /* under the art (Android's gesture bar strip, wm-shell.css data-wm-softkey-extend): its last row */
+    background: #131313 image-set(url('/static_images/wm65/v651-softkeybar@2x.png') 2x) 0 0 / calc(4 * var(--wm-px)) calc(34 * var(--wm-px)) repeat-x;
+}
+
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys::before {
+    background-image: url('/static_images/wm65/v651-softkeybar.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="today"] .wm-softkeys::before,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-stage~="keys-home"] .wm-softkeys::before {
+    opacity: 0.392;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="start"] .wm-softkeys::before {
+    opacity: 0.63;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-stage~="keys-app"] .wm-softkeys::before {
+    opacity: 1;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-boot="reveal"] .wm-softkeys::before {
+    display: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-softkey-extend]:not([data-wm-sip]) #wmShell > .wm-softkeys {
+    height: calc(34 * var(--wm-px) + env(safe-area-inset-bottom));
+}
+
+/* the slots, whatever is in them */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > * {
+    grid-row: 1;
+    height: calc(34 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start { grid-column: 1; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-side="left"] { grid-column: 2; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-sip { grid-column: 3; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-side="right"] { grid-column: 4; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-title-action { grid-column: 5; }
+
+/* A round button: default_toolbarIconBubbleButton (68 x 68) with a 48 px picture at 10,10. Held:
+ * ...Selected, the picture unchanged, normal again when the pen leaves it; disabled: ...Disabled
+ * and the picture at 166 / 255. Start, the input panel button, the X / ok and a soft key that
+ * names a picture (data-bk-icon, wmShell bars651Paint). */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is(.wm-start, .wm-sip, .wm-title-action, .wm-softkey[data-bk-icon]) {
+    width: calc(34 * var(--wm-px));
+    margin: 0;
+    padding: 0 !important;
+    position: relative;
+    background: image-set(url('/static_images/wm65/v651-bubble-icon@2x.png') 2x) center / calc(34 * var(--wm-px)) calc(34 * var(--wm-px)) no-repeat !important;
+}
+
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is(.wm-start, .wm-sip, .wm-title-action, .wm-softkey[data-bk-icon]) {
+    background-image: url('/static_images/wm65/v651-bubble-icon.png') !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is(.wm-start, .wm-title-action, .wm-softkey[data-bk-icon]):active:not(:disabled),
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon].is-pressed,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-sip[aria-pressed="true"] {
+    background-image: image-set(url('/static_images/wm65/v651-bubble-icon-selected@2x.png') 2x) !important;
+}
+
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is(.wm-start, .wm-title-action, .wm-softkey[data-bk-icon]):active:not(:disabled),
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon].is-pressed,
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-sip[aria-pressed="true"] {
+    background-image: url('/static_images/wm65/v651-bubble-icon-selected.png') !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is(.wm-start, .wm-softkey[data-bk-icon]):disabled {
+    background-image: image-set(url('/static_images/wm65/v651-bubble-icon-disabled@2x.png') 2x) !important;
+}
+
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is(.wm-start, .wm-softkey[data-bk-icon]):disabled {
+    background-image: url('/static_images/wm65/v651-bubble-icon-disabled.png') !important;
+}
+
+/* Start: the Start mark the shell draws (never the flag of bubble_flag.png), on the flag's place:
+ * the device's flag covers 40 x 36 px of the 48 px picture box, its middle 1 px right of the
+ * button's: the square emblem 19 units, the white flag picture 20 x 18 */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start.is-flag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start img {
+    width: calc(19 * var(--wm-px));
+    height: calc(19 * var(--wm-px));
+    margin: 0 0 0 calc(1 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start.is-flag img {
+    width: calc(20 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start::before,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-start::after,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-title-action::before {
+    display: none;
+}
+
+/* the input panel button: 6.5's keyboard icon (msim.192.dll 15366, 32 px) at 18,18 */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-sip::before {
+    margin: calc(9 * var(--wm-px)) 0 0 calc(9 * var(--wm-px));
+}
+
+/* the pictures: one strip of 48 px cells (the theme's classicblue_bubble_*.png, ok rebuilt from
+ * bubble_ok_disabled, then Calendar's and Tasks' own from outres.192.dll) */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon] {
+    justify-self: center;
+    font-size: 0;
+    color: transparent;
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-title-action::after,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-title-action:active::after,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon]::after {
+    content: '';
+    position: absolute;
+    inset: calc(5 * var(--wm-px));
+    pointer-events: none;
+    -webkit-mask: none;
+    mask: none;
+    image-rendering: auto;
+    background: image-set(url('/static_images/wm65/v651-bubble-glyphs@2x.png') 2x) calc(var(--bk-i, 0) * -24 * var(--wm-px)) 0 / calc(480 * var(--wm-px)) calc(24 * var(--wm-px)) no-repeat;
+}
+
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-title-action::after,
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-title-action:active::after,
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon]::after {
+    background-image: url('/static_images/wm65/v651-bubble-glyphs.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon]::before {
+    content: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey[data-bk-icon]:disabled::after {
+    opacity: 0.651;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:is([data-bk-icon^="cal-"], [data-bk-icon^="task-"]):disabled::after {
+    opacity: 0.6;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="menu"] { --bk-i: 0; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="new"] { --bk-i: 1; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="navback"] { --bk-i: 2; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="navfwd"] { --bk-i: 3; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="lock"] { --bk-i: 4; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="edit"] { --bk-i: 5; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="delete"] { --bk-i: 6; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="dismiss"] { --bk-i: 7; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="contacts"] { --bk-i: 8; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="phone"] { --bk-i: 9; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="snooze"] { --bk-i: 10; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is([data-bk-icon="close"], .wm-title-action[data-kind="close"]) { --bk-i: 11; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > :is([data-bk-icon="ok"], .wm-title-action[data-kind="ok"]) { --bk-i: 12; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="cal-day"] { --bk-i: 13; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="cal-week"] { --bk-i: 14; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="cal-month"] { --bk-i: 15; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="cal-year"] { --bk-i: 16; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="cal-agenda"] { --bk-i: 17; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="task-done"] { --bk-i: 18; }
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > [data-bk-icon="task-undone"] { --bk-i: 19; }
+
+/* A text key: default_toolbarTextBubbleButton stretched from its middle column (34 px ends), 102 px
+ * wide, or its text + 18 px when that is more (both keys then as wide as the wider one, --wm-bk-w
+ * from wmShell bars651Paint), centred on its slot. Tahoma 21 px, not bold, white, capitals at
+ * y 26..41 of the bar; disabled: the Disabled art and #999 text. A key with nothing is not drawn. */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon]) {
+    justify-self: center;
+    width: max(calc(51 * var(--wm-px)), var(--wm-bk-w, 0px));
+    padding: 0 calc(3 * var(--wm-px)) !important;
+    position: relative;
+    isolation: isolate;
+    font-weight: normal;
+    line-height: calc(33.5 * var(--wm-px));
+    color: #fff;
+    background: none !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon]):disabled {
+    color: var(--wm65-gray) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon])::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    border-style: solid;
+    border-color: transparent;
+    border-width: 0 calc(16.5 * var(--wm-px)) 0 calc(17 * var(--wm-px));
+    border-image: image-set(url('/static_images/wm65/v651-bubble-text@2x.png') 2x) 0 48.53% 0 50% fill / 0 calc(16.5 * var(--wm-px)) 0 calc(17 * var(--wm-px)) stretch;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon]):is(.is-pressed, :active):not(:disabled)::before {
+    border-image-source: image-set(url('/static_images/wm65/v651-bubble-text-selected@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon]):disabled::before {
+    border-image-source: image-set(url('/static_images/wm65/v651-bubble-text-disabled@2x.png') 2x);
+}
+
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon])::before { border-image-source: url('/static_images/wm65/v651-bubble-text.png'); }
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon]):is(.is-pressed, :active):not(:disabled)::before { border-image-source: url('/static_images/wm65/v651-bubble-text-selected.png'); }
+html.wm-art-1x.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:not([data-bk-icon]):disabled::before { border-image-source: url('/static_images/wm65/v651-bubble-text-disabled.png'); }
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-softkeys > .wm-softkey:empty {
+    visibility: hidden;
+}
+
+/* What stands on the bars follows them: 18 units at the top, 34 at the bottom (6.5: 26 and 26).
+ * A soft key menu needs nothing: the device's ends 17 px into the button bar and starts no higher
+ * than 11 px, which is 6.5's own 25.5 units over the screen's bottom and 31 units of room. */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="gallery"] body > #galleryWindow {
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 18 * var(--wm-px)) !important;
+    bottom: calc(env(safe-area-inset-bottom) + 34 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-searchbar,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-notify-tray {
+    top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 18 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-msgbox-layer {
+    padding-top: calc(18 * var(--wm-px));
+    padding-bottom: calc(34 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-notify {
+    bottom: calc(env(safe-area-inset-bottom) + 34 * var(--wm-px));
+    max-height: calc(70% - 34 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-viewbar,
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-taskstrip {
+    bottom: calc(var(--wm-safe-bottom) + 34 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-lock65-scene {
+    top: calc(18 * var(--wm-px));
+}
+
+/* the end of the boot (wm-stage.css): the splash stays in the two bars' bands */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-reveal] .wm-splash {
+    --wm-band-top: calc(var(--wm-safe-top, 0px) + 18 * var(--wm-px));
+    --wm-band-bottom: calc(100% - var(--wm-safe-bottom, 0px) - 34 * var(--wm-px));
+}
+
+/* Internet Explorer Mobile's own full-screen layouts run under the title bar (wm-browser.css) */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-app="browser"]:is([data-wm-ie65="bars"], [data-wm-ie65="bare"], [data-wm-ie65="kbd"]) #wmShell > .wm-content {
+    margin-top: calc(-18 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-browser .wmb-bar {
+    top: calc(18 * var(--wm-px));
+}
 /* ---- end 6.5.1 bars ---- */
 
 /* ---- 6.5.1 drawer: status drawer under the title bar, screen magnifier ---- */
+/* The strip (wmShell.js "6.5.1 (#850) drawer"; device: window TitleBarList 480 x 86 under the
+   title bar): shellres.192 RCDATA 4952 across (8 x 86, 204 / 255 see-through), 64 px icons at y 10
+   on an 86 px pitch, the first at x 20, 22 px after the last. No pressed look on the device. */
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: calc(43 * var(--wm-px));
+    z-index: 12;
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background: image-set(url('/static_images/wm65/v651-drawer-band.png') 1x, url('/static_images/wm65/v651-drawer-band@2x.png') 2x) 0 0 / calc(4 * var(--wm-px)) 100% repeat-x;
+}
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer[hidden] {
+    display: none;
+}
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer > .wm651-drawer-row {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 0 calc(5.5 * var(--wm-px)) 0 calc(4.5 * var(--wm-px));
+}
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer .wm651-drawer-item {
+    position: relative;
+    flex: 0 0 calc(43 * var(--wm-px));
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    outline: 0;
+    box-shadow: none;
+    background-color: transparent;
+    background-repeat: no-repeat;
+    background-position: center calc(5 * var(--wm-px));
+    background-size: calc(32 * var(--wm-px)) calc(32 * var(--wm-px));
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+}
+/* a status icon with no large picture: its title bar glyph, centred where the 64 px icons are */
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell > .wm651-drawer .wm651-drawer-glyph {
+    position: absolute;
+    left: 50%;
+    top: calc(21 * var(--wm-px));
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+/* The magnifier's button (device: default_toolbarIconBubbleButton 68 x 68 flush in the top right
+   corner, classicblue_magnifier_zoomout 48 x 48 at 10,10 in it; held: the Selected art). It is a
+   child of <html>, beside the zoomed <body>. */
+html.ui-mobile[data-wm-rev="6.5.1"] > .wm651-zoom-exit {
+    position: fixed;
+    top: env(safe-area-inset-top, 0px);
+    right: env(safe-area-inset-right, 0px);
+    z-index: 2147483647;
+    width: calc(34 * var(--wm-px));
+    height: calc(34 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background:
+        image-set(url('/static_images/wm65/v651-zoom-out.png') 1x, url('/static_images/wm65/v651-zoom-out@2x.png') 2x) center / calc(24 * var(--wm-px)) calc(24 * var(--wm-px)) no-repeat,
+        image-set(url('/static_images/wm65/v651-zoom-bubble.png') 1x, url('/static_images/wm65/v651-zoom-bubble@2x.png') 2x) center / 100% 100% no-repeat;
+}
+html.ui-mobile[data-wm-rev="6.5.1"] > .wm651-zoom-exit:active {
+    background:
+        image-set(url('/static_images/wm65/v651-zoom-out.png') 1x, url('/static_images/wm65/v651-zoom-out@2x.png') 2x) center / calc(24 * var(--wm-px)) calc(24 * var(--wm-px)) no-repeat,
+        image-set(url('/static_images/wm65/v651-zoom-bubble-pressed.png') 1x, url('/static_images/wm65/v651-zoom-bubble-pressed@2x.png') 2x) center / 100% 100% no-repeat;
+}
 /* ---- end 6.5.1 drawer ---- */
 
 /* ---- 6.5.1 controls: check boxes, option buttons, drop-downs, buttons, scroll bars, menus, message boxes, list rows ---- */
@@ -1665,25 +2091,22 @@ html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[
 
 /* ---- scroll bar: the arrow buttons are 40 px tall with their own 26 x 40 art (6.5: the 26 x 26
  * art stretched to 39); thumb, track and width as 6.5. File Explorer: up button y 102 - 141, the
- * thumb from 142. The down button is the ROM's up art turned over. ---- */
-html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button {
-    height: calc(20 * var(--wm-px));
+ * thumb from 142. The down button is the ROM's up art turned over.
+ * Phone browsers draw no ::-webkit-scrollbar-button at all (the test tab and Android alike: a
+ * 6.5 bar there is a thumb on a bare track), so here the two caps are drawn on the bar itself and
+ * the track is held 20 units short at each end; the real buttons are switched off so that a
+ * browser that does draw them shows one cap, not two. The caps do not take taps. ---- */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar:vertical {
+    background: url('/static_images/wm65/v651-scrollbar-up@2x.png') top / 100% calc(20 * var(--wm-px)) no-repeat, url('/static_images/wm65/v651-scrollbar-down@2x.png') bottom / 100% calc(20 * var(--wm-px)) no-repeat, #e6e6e6;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement {
-    background-image: url('/static_images/wm65/v651-scrollbar-up@2x.png');
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar-track:vertical {
+    margin: calc(20 * var(--wm-px)) 0;
+    background: transparent;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
-    background-image: var(--wm651-art-scrollbar-up-selected, url('/static_images/wm65/v651-scrollbar-up-selected@2x.png'));
-}
-
-html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment {
-    background-image: url('/static_images/wm65/v651-scrollbar-down@2x.png');
-}
-
-html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment:active {
-    background-image: var(--wm651-art-scrollbar-down-selected, url('/static_images/wm65/v651-scrollbar-down-selected@2x.png'));
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar-button:single-button:vertical {
+    display: none;
 }
 
 /* ---- menus (soft key, tap-and-hold, submenus): 78 px rows where 6.5 has 62 (File Explorer's
@@ -1866,11 +2289,11 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-listbox-row.is-selected {
  * 12 between two arrows (classicblue_pivot_*arrow.png, 18 x 32) and the pages before and after in
  * plain Tahoma at either side, white, cut with an ellipsis ("Notificatio...", "Storage C...").
  * Layout read from eleven Settings pages:
- *   - the middle block is arrow 18 + 5.5 + name (71 at least, centred) + 7.5 + arrow 18 = 120
- *     units at least; a longer name pushes both arrows out ("Program Buttons": arrows at 46.5 and
- *     177.5). The block is centred 1 unit right of the screen's middle;
- *   - the left name is centred in the box from 2 units to 4 units before the block, the right
- *     name in the box from 1.5 units after the block to 4.5 units before the edge.
+ *   - the middle block is arrow 18 + 6.5 + name (71 at least, centred) + 6.5 + arrow 18 = 120
+ *     units at least, centred; a longer name pushes both arrows out ("Program Buttons": arrows
+ *     at 46.5 and 177.5);
+ *   - the left name is centred in the box from 2 units to 3 units before the block, the right
+ *     name in the box from 2.5 units after the block to 4.5 units before the edge.
  * The band's picture: Classic Blue's pivot background is not among the unpacked ROM files (the
  * other themes' are 8 x 64 strips), so its rows are read from a device grab: a black row, a
  * light row, a slate fall to row 34, a step down at row 35, near black to row 50, then a rise.
@@ -1951,17 +2374,19 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot button {
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side {
     flex: 1 1 0;
     overflow: hidden;
+    /* the side names are the page font, Tahoma 10.5 ("Copyrights" 97 px, "Advanced" 89 px wide) */
+    font-size: calc(10.5 * var(--wm-px)) !important;
     font-weight: normal !important;
     text-align: center;
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="-1"] {
     flex-basis: calc(2 * var(--wm-px));
-    margin-right: calc(4 * var(--wm-px)) !important;
+    margin-right: calc(3 * var(--wm-px)) !important;
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="1"] {
-    margin-left: calc(1.5 * var(--wm-px)) !important;
+    margin-left: calc(2.5 * var(--wm-px)) !important;
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side > span {
@@ -1990,7 +2415,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-cur {
     flex: 0 1 auto;
     box-sizing: content-box;
     min-width: calc(71 * var(--wm-px));
-    padding: 0 calc(7.5 * var(--wm-px)) 0 calc(5.5 * var(--wm-px));
+    padding: 0 calc(6.5 * var(--wm-px));
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: center;

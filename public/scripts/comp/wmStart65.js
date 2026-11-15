@@ -57,6 +57,40 @@
  * Dragging an icon to a new place is Windows Mobile 6.5.3's (Yukimi asked for it too): no
  * 6.5.3 device could be run, so that part follows its documentation only and nothing of it is
  * measured (see startDrag).
+ *
+ * 6.5.1 (#850): Melaton Mobile 6.5.1 orders Start as Windows Mobile 6.5.3 does, measured on a
+ * 6.5.3 device instance (CE OS 5.2.23xxx, VGA; 16 ms recordings, pen at known points):
+ *   - a hold opens no menu. The ring's first dot shows 430 ms after pen down, and 920 ms after
+ *     pen down (918 - 923 in five holds), in one frame, the ring goes and the icon is lifted:
+ *     its cell (icon and label, same size, no glow of its own) is drawn with its middle on the
+ *     pen and its top 130 px above it (the icon ends 36 px above the pen, the label is under the
+ *     finger), over the others and cut by the grid's edges; every other icon and label is drawn
+ *     at 60 % (0.59 - 0.61 of its colour over the picture); the place it left stays empty.
+ *   - the glow marks the place the icon would take: the cell whose band holds the pen. A cell's
+ *     band is the cell moved up 36 px (a press at y 165 took the first row's item, at 168 the
+ *     second row's); the outer columns own their whole width (0 - 192 and 288 - 480 of 480), the
+ *     middle column what is left (192 - 288). The icon in the glow is drawn at full strength.
+ *     Over empty space the glow is gone.
+ *   - the lifted icon stays put until the pen has gone 35 px (first moved frame at 35, 35 and
+ *     38 px in three drags at 1, 1.25 and 2 px a step), then follows it 1:1 (no distance lost).
+ *     Nothing else moves while it is dragged: no icon makes room.
+ *   - with the pen less than 53 px under the grid's top edge, or less than 34 px above its bottom
+ *     edge (or past it: on the bars), the grid scrolls under the icon at 0.33 px/ms, the same at
+ *     any depth, for as long as the pen stays there (the device draws it in steps of 105 ms).
+ *   - pen up: one redraw (16 - 60 ms). Over a cell: the icon takes that cell's place in the list
+ *     and the ones between move one place (onto a later cell too: it takes that cell's index);
+ *     the glow is on it and the grid shows its cell whole. Over empty space, or without having
+ *     moved: back where it was, selected, not opened. Pen up on the bars is not a cancel: the
+ *     cell in the glow counts.
+ *   - folders (Settings, its folders, Office Mobile, Games) reorder the same way. An icon held
+ *     over a folder for 3 s opens nothing, and dropped on it takes the folder's place: nothing
+ *     goes into or out of a folder by dragging.
+ *   - the order is kept in the registry (ItemPosition under HKLM\Security\Shell\StartInfo\Start
+ *     for every item up to the last place touched) and was the same after Start was closed and
+ *     opened. A device restart was not run.
+ * Names: Today is "Home" (on Start and as the Settings applet, which so sorts after Clock &
+ * Alarms); Lock's Settings icon has a gear. "Alarms" (new, after Getting Started) opens Clock &
+ * Alarms on its Alarms tab: Melaton has no alarms, so it is not listed.
  */
 (function () {
     'use strict';
@@ -80,6 +114,15 @@
     // fling: speed falls by e every FRICTION_MS; past an end a critically damped spring pulls back
     const FRICTION_MS = 420;
     const SPRING = 0.00035;
+    // 6.5.1 (#850): Windows Mobile 6.5.3's reordering, in units (half a VGA pixel); see the header
+    const REL651 = root.dataset.wmRev === '6.5.1';
+    const LIFT_MS = 920;        // pen down to the lifted icon
+    const LIFT_UP = 65;         // the lifted cell's top above the pen (130 px)
+    const BAND_UP = 18;         // a cell answers to the pen from 36 px above its top to 36 px above its bottom
+    const FOLLOW_START = 17.5;  // the lifted icon follows the pen after 35 px
+    const EDGE_TOP = 26.5;      // the grid scrolls with the pen this near its top edge (53 px) ...
+    const EDGE_BOTTOM = 17;     // ... or its bottom edge (34 px)
+    const EDGE_SPEED = 0.165;   // units a ms (0.33 px/ms)
 
     let sh = null; // window.wmShell
     let manifest = null; // wm61 art names (the -lg, 32 px versions)
@@ -90,6 +133,9 @@
 
     /** A 6.5 Start icon from the ROM (Start_Icon_<name>.png, 90x90, with its half-size copy). */
     const art65 = (name) => ({ src: `${ART65}start-${name}.png`, srcset: `${ART65}start-${name}.png 1x, ${ART65}start-${name}@2x.png 2x, ${ART65}start-${name}@4x.png 4x` });
+
+    /** 6.5.1 (#850): art that only 6.5.3's ROM has (v651-<name>.png with its @2x and @4x copies). */
+    const art65v651 = (name) => ({ src: `${ART65}v651-${name}.png`, srcset: `${ART65}v651-${name}.png 1x, ${ART65}v651-${name}@2x.png 2x, ${ART65}v651-${name}@4x.png 4x` });
 
     /** The largest copy of a 6.1 shell icon (app-x-lg@4x is 128 px), drawn into the 90x90 box. */
     function art61(name) {
@@ -218,7 +264,12 @@
         const grid = settingsGrid() || [];
         const coll = new Intl.Collator(undefined, { sensitivity: 'base' });
         const byLabel = (x, y) => coll.compare(x.label, y.label);
-        const applet = (g) => ({ key: `s:${g.key}`, label: g.label, img: SETTINGS_ART65[g.key] ? art65(SETTINGS_ART65[g.key]) : art61(g.icon || 'app-settings'), setting: g });
+        // 6.5.1 (#850): the Today applet is "Home" (so it sorts after Clock & Alarms) and Lock's icon
+        // has the gear (6.5.3's Start_Icon_Lock.png)
+        const applet = (g) => ({
+            key: `s:${g.key}`, label: REL651 && g.key === 'today' ? 'Home' : g.label,
+            img: REL651 && g.key === 'lock' ? art65v651('start-lock') : (SETTINGS_ART65[g.key] ? art65(SETTINGS_ART65[g.key]) : art61(g.icon || 'app-settings')), setting: g
+        });
         if (folder !== 'settings') {
             const tab = folder.slice('settings:'.length);
             return grid.filter((g) => g.tab === tab && !SETTINGS_TOP.has(g.key)).map(applet).sort(byLabel);
@@ -261,7 +312,8 @@
         const n = APP_ART65[a.id] || a.art65; // art65: an app that names its own 6.5 Start icon (wmAndroidApps.js)
         // Settings is a folder of Start once its applets can be listed
         if (a.id === 'settings' && settingsGrid()) return { key: 'a:settings', label: a.title || 'Settings', img: art65('settings'), folder: 'settings' };
-        return { key: `a:${a.id}`, label: a.id === 'today' ? 'Today' : appLabel(a), img: n ? art65(n) : art61(a.icon || 'app-programs'), app: a.id };
+        // 6.5.1 (#850): Today is "Home" on 6.5.3's Start
+        return { key: `a:${a.id}`, label: a.id === 'today' ? (REL651 ? 'Home' : 'Today') : appLabel(a), img: n ? art65(n) : art61(a.icon || 'app-programs'), app: a.id };
     }
 
     /** The items of the Start screen (folder null) or of one of its folders, in the default order. */
@@ -798,14 +850,14 @@
         const d = drag;
         drag = null;
         if (d.raf) cancelAnimationFrame(d.raf);
-        list.classList.remove('is-dragging');
+        list.classList.remove('is-dragging', 'is-lift651');
         const keep = y;
         if (commit && d.slot !== d.i) {
             const seq = dragOrder(d.i, d.slot).map((k) => items[k]);
             const lay = layout();
             const folder = folderNow();
             if (folder) {
-                lay.order[folder] = seq.map((it) => it.key);
+                lay.order[folder] = keepUnknown(lay.order[folder], seq.map((it) => it.key));
             } else {
                 // the head of the list is the moved-to-top programs: the dropped icon joins them
                 // when it lands before the last of them, and leaves them when it lands after
@@ -818,7 +870,7 @@
                 const rest = seq.slice(tops).map((n) => n.key);
                 const moving = new Set(rest);
                 let j = 0;
-                lay.order[''] = orderedItems(null, lay).map((n) => (moving.has(n.key) ? rest[j++] : n.key)).concat(rest.slice(j));
+                lay.order[''] = keepUnknown(lay.order[''], orderedItems(null, lay).map((n) => (moving.has(n.key) ? rest[j++] : n.key)).concat(rest.slice(j)));
             }
             saveLayout(lay);
             selected = d.slot;
@@ -827,8 +879,127 @@
         }
         render();
         place(Math.max(0, Math.min(maxY, keep)));
-        select(selected, false);
+        // 6.5.1 (#850): the grid shows the dropped icon's cell whole (6.5.3: its bottom edge on the grid's)
+        select(selected, !!d.v651 && commit && d.slot !== d.i);
         sh.syncHistory();
+        return true;
+    }
+
+    /**
+     * A stored order with the sequence a drag left on this device: the keys nothing here answers
+     * to (a program this device does not have: the phone's Android programs seen from another
+     * device) keep their place, each after the key it followed. Before 6.5.1 (#850) a drag dropped
+     * them, and the programs went to the end of Start on the device that has them.
+     */
+    function keepUnknown(old, now) {
+        const have = new Set(now);
+        const out = now.slice();
+        let after = -1;
+        for (const k of (Array.isArray(old) ? old : [])) {
+            if (have.has(k)) { after = out.indexOf(k); continue; }
+            out.splice(after + 1, 0, k);
+            after += 1;
+        }
+        return out;
+    }
+
+    // ---- 6.5.1 (#850): Windows Mobile 6.5.3's reordering, as measured (see the header). The
+    // lifted cell hangs over the pen, the glow marks the cell whose place it would take, nothing
+    // else moves, and letting go lists the grid again once. One difference from the device: a
+    // program with commands of its own (the phone's Android programs: Add to Start, Hide ...; a
+    // folder made here: Rename, Delete) shows them when its icon is let go without having been
+    // moved, since 6.5.3 has no such programs and a hold there has no menu to put them in.
+
+    /** The item whose band holds a point of the screen (CSS px), or -1: bands are the cells moved up 18 units. */
+    function hit651(px, py) {
+        const lr = list.getBoundingClientRect();
+        const x = px - lr.left;
+        if (!(x >= 0 && x < lr.width)) return -1;
+        const u = unit();
+        const pitch = lr.width / (cols + 1 / 3);
+        // an even column owns its whole cell (4/3 of the pitch), the odd one after it what is left
+        const pair = Math.floor(x / (2 * pitch));
+        const c = Math.min(cols - 1, x - pair * 2 * pitch < pitch * 4 / 3 ? pair * 2 : pair * 2 + 1);
+        const yy = py - lr.top + (BAND_UP - (c % 2 === 1 ? 41.5 : 0)) * u;
+        if (yy < 0) return -1;
+        const i = Math.floor(yy / (83 * u)) * cols + c;
+        return i < items.length ? i : -1;
+    }
+
+    function lift651(i, px, py) {
+        const cell = list.querySelector(`.wm-s65-cell[data-i="${i}"]`);
+        const it = items[i];
+        if (!cell || !it) return false;
+        stopMotion();
+        sh.closeMenus();
+        select(i, false);
+        const tops = folderNow() ? 0 : items.filter((n) => n.top).length;
+        drag = {
+            v651: true, i, cell, x0: px, y0: py, px, py, follow: false, slot: i, target: i, tops,
+            // a guest from a folder stays among the moved-to-top programs (6.5's Move to Top)
+            lo: 0, hi: it.top && it.from ? tops - 1 : items.length - 1, raf: 0, last: 0, speed: 0
+        };
+        list.classList.add('is-lift651');
+        cell.classList.add('is-lifted');
+        sh.syncHistory();
+        move651(px, py);
+        return true;
+    }
+
+    /** The pen moved, or the grid scrolled under it: the lifted cell, the glow and the edge scroll. */
+    function move651(px, py) {
+        const d = drag;
+        if (!d || !d.v651) return;
+        const u = unit();
+        if (!d.follow && Math.hypot(px - d.x0, py - d.y0) >= FOLLOW_START * u) d.follow = true;
+        if (d.follow) { d.px = px; d.py = py; }
+        const lr = list.getBoundingClientRect();
+        const from = slotPos(d.i);
+        d.cell.style.translate = `${d.px - lr.left - from.w / 2 - from.left}px ${d.py - lr.top - LIFT_UP * u - from.top}px`;
+        let t = hit651(d.px, d.py);
+        if (t < d.lo || t > d.hi) t = -1;
+        if (t !== d.target || glow.hidden !== (t < 0)) {
+            const was = list.querySelector('.wm-s65-cell.is-target');
+            if (was) was.classList.remove('is-target');
+            d.target = t;
+            glow.hidden = t < 0;
+            if (t >= 0) {
+                const p = slotPos(t);
+                glow.style.setProperty('--c', String(p.c));
+                glow.style.setProperty('--r', String(p.r));
+                glow.style.setProperty('--m', String(p.m));
+                const now = t === d.i ? null : list.querySelector(`.wm-s65-cell[data-i="${t}"]`);
+                if (now) now.classList.add('is-target');
+            }
+        }
+        d.slot = t < 0 ? d.i : t;
+        // near the top or bottom edge, and past them, the grid scrolls at one speed
+        const vr = view.getBoundingClientRect();
+        d.speed = !d.follow ? 0 : (d.py < vr.top + EDGE_TOP * u ? -1 : (d.py > vr.bottom - EDGE_BOTTOM * u ? 1 : 0)) * EDGE_SPEED * u;
+        if (d.speed && !d.raf) {
+            d.last = performance.now();
+            const step = (now) => {
+                if (drag !== d) return;
+                d.raf = 0;
+                if (!d.speed) return;
+                const dt = Math.max(0, Math.min(34, now - d.last));
+                d.last = now;
+                const next = Math.max(0, Math.min(maxY, y + d.speed * dt));
+                if (next !== y) { place(next); move651(d.px, d.py); }
+                if (drag === d && d.speed && !d.raf && next !== (d.speed < 0 ? 0 : maxY)) d.raf = requestAnimationFrame(step);
+            };
+            d.raf = requestAnimationFrame(step);
+        }
+    }
+
+    /** 6.5.1: the commands of a program that has its own, shown when its lifted icon is let go unmoved. */
+    function ownMenu651(i, x, yPt) {
+        const it = items[i];
+        if (!it) return false;
+        const AF = window.wmAndroidFolders;
+        const own = it.app ? sh.appHoldMenu(it.app) : (it.folder && AF && AF.isUser(it.folder) ? AF.folderRows(it.folder) : []);
+        if (!own || !own.length) return false;
+        sh.menuAt(x, yPt, own);
         return true;
     }
 
@@ -882,21 +1053,26 @@
             lifted = false;
             samples = [];
             const c = e.target.closest('.wm-s65-cell');
-            cell = c ? Number(c.dataset.i) : -1;
+            // 6.5.1 (#850): the item whose band holds the pen (6.5.3), not the cell's own box
+            cell = REL651 ? hit651(downX, downY) : (c ? Number(c.dataset.i) : -1);
             try { view.setPointerCapture(id); } catch (_) { /* a synthetic pointer */ }
             clearTimeout(holdTimer);
             holdTimer = setTimeout(() => {
                 holdTimer = 0;
                 if (id === null || panning || caught || cell < 0) return;
                 held = true;
+                // 6.5.1 (#850): no menu, the icon is lifted where it is held
+                if (REL651) { lifted = lift651(cell, downX, downY); return; }
                 holdMenu(cell, downX, downY);
-            }, HOLD_MS);
+            }, REL651 ? LIFT_MS : HOLD_MS);
         });
 
         view.addEventListener('pointermove', (e) => {
             if (e.pointerId !== id) return;
             lastSeen = e.timeStamp;
             if (held) {
+                // 6.5.1 (#850): the icon was lifted when the hold completed
+                if (REL651) { if (drag) move651(e.clientX, e.clientY); return; }
                 // the hold is complete: the finger moving on lifts the icon (6.5.3's drag)
                 // (once per press: an icon put back by the back key stays put until the finger lifts)
                 if (drag) dragMove(e.clientX, e.clientY);
@@ -923,6 +1099,17 @@
             const wasCaught = caught;
             const hit = cell;
             end();
+            if (drag && drag.v651) {
+                // 6.5.1 (#850): the cell in the glow counts wherever the pen is let go (6.5.3: on the bars too)
+                const moved = drag.follow;
+                endDrag(!cancelled);
+                // the lift after the hold brings no click to the grid (and none to a menu opened here)
+                const eat = (ce) => { ce.stopPropagation(); ce.preventDefault(); };
+                window.addEventListener('click', eat, { capture: true, once: true });
+                setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 400);
+                if (!cancelled && !moved) ownMenu651(hit, downX, downY);
+                return;
+            }
             if (drag) {
                 // let go over the grid: the icon stays there; anywhere else (the bars): back
                 const vr = view.getBoundingClientRect();
