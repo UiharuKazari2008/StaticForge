@@ -364,6 +364,76 @@ if (window.wsClient) {
         if (typeof allImages !== 'undefined' && Array.isArray(allImages) && allImages.length) window.galleryHeadItems = null; // eslint-disable-line no-undef
     });
 
+    // ---- The phone's copy of the gallery list (Yukimi, Nov 15: keep it across cold boots as long as
+    // the gallery's hash matches). Every cold boot downloaded the whole list again (16,915 items,
+    // ~15 MB on the A53). The list and its sync stamp (galleryImagesSyncState: total, last destructive
+    // change, last update, newest file) are kept in IndexedDB after each complete load; after the next
+    // boot they come back before the load, and the loader's own probe decides: the same gallery is
+    // used as it is, a few new prints come as a head sync, a deletion anywhere means the full read.
+    const GALLERY_COPY_DB = 'melatonGalleryCopy';
+    const GALLERY_COPY_STORE = 'copy';
+    function galleryCopyDb() {
+        return new Promise((resolve, reject) => {
+            const r = indexedDB.open(GALLERY_COPY_DB, 1);
+            r.onupgradeneeded = () => r.result.createObjectStore(GALLERY_COPY_STORE);
+            r.onsuccess = () => resolve(r.result);
+            r.onerror = () => reject(r.error);
+        });
+    }
+    function galleryCopyReq(db, mode, fn) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(GALLERY_COPY_STORE, mode);
+            const req = fn(tx.objectStore(GALLERY_COPY_STORE));
+            tx.oncomplete = () => resolve(req && req.result);
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+        });
+    }
+    async function restorePhoneGallery() {
+        try {
+            if (typeof allImages === 'undefined' || !Array.isArray(allImages) || allImages.length) return; // eslint-disable-line no-undef
+            if (typeof indexedDB === 'undefined') return;
+            const db = await galleryCopyDb();
+            const rec = await galleryCopyReq(db, 'readonly', (st) => st.get('images'));
+            db.close();
+            const ws = typeof getGalleryLoadWorkspaceId === 'function' ? getGalleryLoadWorkspaceId() : 'default'; // eslint-disable-line no-undef
+            if (!rec || rec.v !== 1 || rec.workspaceId !== ws || !Array.isArray(rec.list) || !rec.list.length || !rec.syncState) return;
+            if (allImages.length) return; // eslint-disable-line no-undef
+            for (let i = 0; i < rec.list.length; i += 2000) allImages.push(...rec.list.slice(i, i + 2000)); // eslint-disable-line no-undef
+            galleryImagesSyncState = rec.syncState; // eslint-disable-line no-undef
+            galleryCopyKey = galleryCopyKeyOf(rec.syncState, rec.list.length);
+        } catch (error) {
+            console.warn('Phone gallery copy not restored:', error && error.message);
+        }
+    }
+    let galleryCopyTimer = null;
+    let galleryCopyKey = '';
+    const galleryCopyKeyOf = (st, n) => JSON.stringify([st && st.workspaceId, st && st.total, st && st.destructiveAt, st && st.updatedAt, st && st.latestFilename, n]);
+    function savePhoneGallerySoon() {
+        clearTimeout(galleryCopyTimer);
+        galleryCopyTimer = setTimeout(() => {
+            const run = async () => {
+                try {
+                    const st = typeof galleryImagesSyncState !== 'undefined' ? galleryImagesSyncState : null; // eslint-disable-line no-undef
+                    const list = typeof allImages !== 'undefined' ? allImages : null; // eslint-disable-line no-undef
+                    if (!st || !Array.isArray(list) || !list.length || st.total !== list.length || typeof indexedDB === 'undefined') return;
+                    // the copy already kept is this one (a boot that used it): no second write
+                    const key = galleryCopyKeyOf(st, list.length);
+                    if (key === galleryCopyKey) return;
+                    galleryCopyKey = key;
+                    const db = await galleryCopyDb();
+                    await galleryCopyReq(db, 'readwrite', (store) => store.put({ v: 1, workspaceId: st.workspaceId, syncState: { ...st }, list: list.slice(), at: Date.now() }, 'images'));
+                    db.close();
+                } catch (error) {
+                    console.warn('Phone gallery copy not saved:', error && error.message);
+                }
+            };
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => { void run(); }, { timeout: 20000 });
+            else void run();
+        }, 5000);
+    }
+    if (phoneShell()) document.addEventListener('galleryUpdated', savePhoneGallerySoon);
+
     // public/scripts/comp/galleryView.js loadGallery, shouldAutoLaunchWorkspace
     function beginStartupGalleryLoad() {
         if (window.isEditorStandaloneWindow) {
@@ -446,9 +516,10 @@ if (window.wsClient) {
         }
         if (phoneShell()) {
             // Today shows only the newest prints (wmShell newestPrints, wmTodayWidgets lastPrint): one
-            // small read for those now (galleryHeadItems), the whole list after Today is up
+            // small read for those now (galleryHeadItems), the whole list after Today is up - from the
+            // phone's own copy when the server's gallery still matches it (restorePhoneGallery)
             await loadPhoneGalleryHead();
-            afterPhoneBoot(() => { void beginStartupGalleryLoad(); });
+            afterPhoneBoot(async () => { await restorePhoneGallery(); void beginStartupGalleryLoad(); });
             return;
         }
         await beginStartupGalleryLoad();
