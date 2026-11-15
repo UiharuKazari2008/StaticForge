@@ -18,55 +18,19 @@ self.addEventListener('fetch', (event) => {
 // page asked and DOMContentLoaded waited for it (A53, Nov 15: all 410 requested by 0.85 s, median
 // worker start 2.93 s, no long task in the page).
 // This listener is registered before Workbox's, answers such a request itself and keeps the event
-// from the router. The rows come from one read of the whole hashed-URL cache (keys + matchAll, two
-// cache operations for the burst instead of one per file), kept for a few seconds; each row is
-// still the Cache Storage response itself, so Chrome's compiled code for it is used. A file not in
-// that read takes hashedScriptRow (one lookup, and the copy from the static cache on first sight).
+// from the router: one exact-key lookup in the hashed-URL cache (opened once per worker), the row
+// handed over as it is, so Chrome's compiled code for it is used. A file not there yet takes
+// hashedScriptRow (the copy from the static cache on first sight).
+// Read on the A53 (Nov 15): DOMContentLoaded 5.05 -> 4.6 s, median worker start 2.93 -> 1.61 s. One
+// read of the whole cache per burst (keys + matchAll) was tried and measured no better there
+// (worker start 1.71 s, DOMContentLoaded 4.7 s) and worse on the desktop; it is not kept.
 const HASHED_FAST_PREFIXES = ['/scripts/', '/css/'];
-const HASHED_SNAPSHOT_FRESH_MS = 8000;
-const HASHED_SNAPSHOT_KEEP_MS = 20000;
-const hashedSnapshot = { map: null, at: 0, building: null, dropTimer: null };
-
-const HASHED_SNAPSHOT_ON = false;
-const HASHED_EMPTY = new Map();
-function hashedSnapshotMap() {
-  if (!HASHED_SNAPSHOT_ON) return Promise.resolve(HASHED_EMPTY);
-  if (hashedSnapshot.map && Date.now() - hashedSnapshot.at < HASHED_SNAPSHOT_FRESH_MS) return Promise.resolve(hashedSnapshot.map);
-  if (hashedSnapshot.building) return hashedSnapshot.building;
-  hashedSnapshot.building = (async () => {
-    const map = new Map();
-    try {
-      const cache = await openScriptCodeCache();
-      // back to back, so no write can come between them; the hash check below covers the rest
-      const [keys, rows] = await Promise.all([cache.keys(), cache.matchAll()]);
-      if (keys.length === rows.length) {
-        for (let i = 0; i < keys.length; i++) {
-          const key = keys[i].url;
-          const at = key.indexOf('?sha=');
-          const row = rows[i];
-          if (at > 0 && row && row.status === 200 && row.headers.get('x-file-hash') === key.slice(at + 5)) map.set(key, row);
-        }
-      }
-    } catch (_err) { /* an empty read: every file takes the single lookup */ }
-    hashedSnapshot.map = map;
-    hashedSnapshot.at = Date.now();
-    hashedSnapshot.building = null;
-    clearTimeout(hashedSnapshot.dropTimer);
-    hashedSnapshot.dropTimer = setTimeout(() => { hashedSnapshot.map = null; }, HASHED_SNAPSHOT_KEEP_MS);
-    return map;
-  })();
-  return hashedSnapshot.building;
-}
 
 async function answerHashedAsset(event, request, url, key) {
   try {
-    const map = await hashedSnapshotMap();
-    const kept = map.get(key);
-    if (kept) {
-      // a response body is read once: the next request for this file takes its own lookup
-      map.delete(key);
-      return kept;
-    }
+    const cache = await openScriptCodeCache();
+    const kept = await cache.match(key);
+    if (kept) return kept;
     const row = await hashedScriptRow({ event }, request, url);
     if (row) return row;
     // the kept file is another version than the page asked for: what the router answered before
