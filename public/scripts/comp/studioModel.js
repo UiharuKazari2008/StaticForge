@@ -16,6 +16,9 @@
  *                                       set('character:<i>:prompt' | ':uc' | ':negative', value)
  *   studioModel.setBaseImage(filename) / clearBaseImage()
  *                                       the gallery picture a print starts from (snapshot().baseImage)
+ *   studioModel.setReferences([{ file | source, type, strength, fidelity }])
+ *                                       the character / style reference pictures, whole list at once
+ *                                       (snapshot().references; at most six)
  *   studioModel.openPicture(filename)   a gallery picture's own settings as the session
  *   studioModel.peers() / sendTo(id) / getFrom(id)
  *                                       the devices ActiveSync can pass a session to or fetch one from
@@ -49,7 +52,8 @@
        handleManualPreviewImageContextMenuAction, getAutofillSearchSettings, selectedDatasets,
        applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems, hasManagedEmphasisGroupIds, expandEmphasisGroupIds,
        resolveEmphasisBagForTextarea,
-       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, handleManualSave, applyImageAsVariationBase, handleDeleteBaseImage, datasetAllowedForModel, getStudioUcPresetMenuItems */
+       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, handleManualSave, applyImageAsVariationBase, handleDeleteBaseImage, collectPreciseReferenceData,
+       loadPreciseReferencesFromMetadata, updateManualPriceDisplay, datasetAllowedForModel, getStudioUcPresetMenuItems */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -114,6 +118,16 @@
         // the base image, when it is a picture of the gallery: its file name
         const src = window.uploadedImageData && typeof window.uploadedImageData.image_source === 'string' ? window.uploadedImageData.image_source : '';
         out.baseImage = out.hasBaseImage ? (src.startsWith('file:') ? src.slice(5) : '') : '';
+        try {
+            const refs = typeof collectPreciseReferenceData === 'function' ? collectPreciseReferenceData() : null;
+            out.references = refs ? refs.chara_reference_source.map((source, i) => ({
+                source,
+                file: String(source).startsWith('file:') ? String(source).slice(5) : '',
+                type: refs.chara_reference_type[i] || 1,
+                strength: refs.chara_reference_strength[i],
+                fidelity: refs.chara_reference_fidelity[i]
+            })) : [];
+        } catch (_) { out.references = []; }
         out.generating = generating();
         try {
             const items = typeof getStudioCharacterItems === 'function' ? getStudioCharacterItems() : [];
@@ -183,6 +197,7 @@
                 uc: !locked('uc'),
                 datasets: !/^v3/.test(model),
                 characters: !/^v3/.test(model),
+                references: caps.preciseReference !== false && !/^v3/.test(model),
                 noise: !v5,
                 variety: !v5 && caps.varietyPlus !== false,
                 rescale: !locked('rescale'),
@@ -318,6 +333,24 @@
         if (typeof handleDeleteBaseImage !== 'function') return false;
         handleDeleteBaseImage();
         emit('change', { id: 'baseImage' });
+        return true;
+    }
+
+    // ---- references: pictures a print takes its character and / or its style from
+    // (type 1 character and style, 2 character, 3 style; strength and fidelity 0..1)
+
+    async function setReferences(list) {
+        if (typeof loadPreciseReferencesFromMetadata !== 'function') return false;
+        const refs = (Array.isArray(list) ? list : []).filter((r) => r && (r.source || r.file)).slice(0, 6);
+        const clamp = (v) => { const n = Number(v); return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 1; };
+        await loadPreciseReferencesFromMetadata({
+            chara_reference_source: refs.map((r) => r.source || `file:${r.file}`),
+            chara_reference_type: refs.map((r) => (r.type === 2 || r.type === 3 ? r.type : 1)),
+            chara_reference_strength: refs.map((r) => clamp(r.strength)),
+            chara_reference_fidelity: refs.map((r) => clamp(r.fidelity))
+        });
+        if (typeof updateManualPriceDisplay === 'function') { try { updateManualPriceDisplay(); } catch (_) { /* the badge only */ } }
+        emit('change', { id: 'references' });
         return true;
     }
 
@@ -478,7 +511,7 @@
     }
 
     const api = {
-        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
+        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */

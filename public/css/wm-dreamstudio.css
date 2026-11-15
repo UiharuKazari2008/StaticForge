@@ -37,6 +37,7 @@
 .wm-dreamstudio[data-view="home"] .wds-home,
 .wm-dreamstudio[data-view="settings"] .wds-settings,
 .wm-dreamstudio[data-view="print"] .wds-print,
+.wm-dreamstudio[data-view="ref"] .wds-ref,
 .wm-dreamstudio[data-view="presets"] .wds-presets,
 .wm-dreamstudio[data-view="editor"] .wds-editor {
     display: flex;
@@ -46,6 +47,7 @@
 .wm-dreamstudio > .wds-tabs { flex: 0 0 auto; }
 .wm-dreamstudio:not([data-layout="tabs"]) > .wds-tabs,
 .wm-dreamstudio[data-view="editor"] > .wds-tabs,
+.wm-dreamstudio[data-view="ref"] > .wds-tabs,
 .wm-dreamstudio[data-view="presets"] > .wds-tabs { display: none; }
 
 /* ---------------------------------------------------------------- home */
@@ -157,6 +159,11 @@
 .wds-char.is-off .wds-char-open { color: #848284; }
 .wds-char-open:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 
+/* references: a WM list, one row each: its picture, what is taken from it, how strongly */
+.wds-refs[hidden] { display: none; }
+.wds-refs .wm-listbox { margin-bottom: calc(2 * var(--wm-px)); }
+.wds-refrow { min-height: calc(20 * var(--wm-px)); }
+
 /* the base image: its picture and its two numbers in a row; a tap opens Settings */
 .wds-base {
     display: flex;
@@ -208,6 +215,20 @@
 .wds-settings > .wm-form { flex: 0 0 auto; }
 .wds-settings .wds-sublabel { margin: calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px)); }
 .wds-settings .wm-listbox { margin-bottom: calc(4 * var(--wm-px)); }
+
+/* ---------------------------------------------------------------- one reference: its picture over a form */
+
+.wds-ref { overflow-y: auto; overscroll-behavior: contain; }
+.wds-ref > .wm-form { flex: 0 0 auto; }
+.wds-ref-pic {
+    display: block;
+    max-width: 100%;
+    max-height: calc(120 * var(--wm-px));
+    margin: 0 auto calc(6 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    object-fit: contain;
+}
 
 /* ---------------------------------------------------------------- presets: a list that fills the page */
 

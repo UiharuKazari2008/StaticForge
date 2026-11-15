@@ -84,6 +84,7 @@
     function view() {
         if (top() === 'editor') return 'editor';
         if (top() === 'presets') return 'presets';
+        if (top() === 'ref') return 'ref';
         if (layout() === 'tabs') return tab === 'prompt' ? 'home' : tab;
         return top() || 'home';
     }
@@ -200,6 +201,7 @@
             drawTokens(id, text, $(`.wds-label[data-for="${id}"] > span:last-child`));
         });
         drawChars(s);
+        drawRefs(s);
         const base = $('.wds-base');
         if (base) {
             base.hidden = !s.hasBaseImage;
@@ -213,6 +215,62 @@
         const sum = $('.wds-summary > span');
         if (sum && s.model !== undefined) sum.textContent = summaryText(s, M.options());
         drawStrip();
+    }
+
+    // ---- references: a list on the home page; one opens as a small form (type, strength, fidelity)
+
+    const REF_TYPES = [[1, 'Character and Style'], [2, 'Character'], [3, 'Style']];
+    let refAt = 0;
+
+    function drawRefs(s) {
+        const box = $('.wds-refs');
+        if (!box) return;
+        const list = s.references || [];
+        box.hidden = !list.length;
+        if (!list.length) { box.textContent = ''; return; }
+        const name = (t) => (REF_TYPES.find((x) => x[0] === t) || REF_TYPES[0])[1];
+        box.innerHTML = `<div class="wds-label"><span>References</span><span></span></div><div class="wm-listbox">${list.map((r, i) => `<button type="button" class="wm-listbox-row wds-refrow" data-ref="${i}">${r.file ? `<img alt="" src="${esc(thumbUrl(r.file))}">` : ''}<span>${esc(name(r.type))}, strength ${Number(r.strength).toFixed(2)}</span></button>`).join('')}</div>`;
+    }
+
+    function refList() { return (read().references || []).map((r) => Object.assign({}, r)); }
+
+    function refChange(patch) {
+        const list = refList();
+        if (!list[refAt]) return Promise.resolve();
+        Object.assign(list[refAt], patch);
+        snap = null;
+        return M.setReferences(list);
+    }
+
+    function drawRef() {
+        const host = $('.wds-ref > .wm-form');
+        const r = (read().references || [])[refAt];
+        if (!host || !ui) return;
+        if (!r) { host.textContent = ''; return; }
+        if (host.contains(document.activeElement) && document.activeElement.tagName === 'INPUT') return;
+        const type = REF_TYPES.find((x) => x[0] === r.type) || REF_TYPES[0];
+        host.innerHTML = (r.file ? `<img class="wds-ref-pic" alt="" src="${esc(pictureUrl(r.file))}">` : '')
+            + ui.row('Use its:', ui.comboHtml('type', type[1]))
+            + ui.row('Strength:', ui.edit('', Number(r.strength).toFixed(2), 'data-ref-set="strength" inputmode="decimal"'))
+            + ui.row('Fidelity:', ui.edit('', Number(r.fidelity).toFixed(2), 'data-ref-set="fidelity" inputmode="decimal"'));
+        ui.bindCombo(host.querySelector('.wm-combo'), REF_TYPES, type[0], (v) => refChange({ type: v }));
+    }
+
+    function addReference() {
+        if ((read().references || []).length >= 6) { sh.messageBox({ title: 'DreamStudio', text: 'A session holds six references at most.', icon: 'info', modal: true }); return; }
+        choosePicture('Add Reference', (f) => {
+            const list = refList();
+            list.push({ file: f, type: 1, strength: 1, fidelity: 1 });
+            snap = null;
+            Promise.resolve(M.setReferences(list)).then(() => { layers = []; tab = 'prompt'; if (sh.current !== APP_ID) sh.open(APP_ID); snap = null; paint(); });
+        });
+    }
+
+    function removeReference() {
+        const list = refList();
+        list.splice(refAt, 1);
+        snap = null;
+        Promise.resolve(M.setReferences(list)).then(() => { if (top() === 'ref') layers.pop(); snap = null; paint(); sh.syncHistory(); });
     }
 
     // ---- presets: Open Preset is a list page; Save as Preset asks for the name
@@ -442,8 +500,9 @@
         if (v === 'home' || v === 'print') { drawHome(); drawPrint(); }
         if (v === 'settings') drawSettings();
         if (v === 'presets') drawPresets();
+        if (v === 'ref') drawRef();
         drawTabs();
-        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'presets' ? 'Open Preset' : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio')));
+        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'ref' ? 'Reference' : v === 'presets' ? 'Open Preset' : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio')));
         sh.refreshTitleAction();
         sh.refreshSoftKeys();
     }
@@ -483,7 +542,7 @@
     // ---------------------------------------------------------------- layers
 
     function openLayer(name) {
-        if (layout() === 'tabs' && name !== 'editor' && name !== 'presets') { tab = name; paint(); return; }
+        if (layout() === 'tabs' && name !== 'editor' && name !== 'presets' && name !== 'ref') { tab = name; paint(); return; }
         if (top() === name) return;
         layers.push(name);
         paint();
@@ -874,6 +933,7 @@
         else rows.push({ label: 'Print', submenu: printRows }, '-');
         if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
+        if (M.options().has.references) rows.push({ label: 'Add Reference...', action: addReference });
         rows.push({ label: 'Base Image...', action: chooseBase });
         if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
         rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Picture...', action: openPictureSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs }, ...syncRows());
@@ -903,6 +963,7 @@
 
     function softKeys() {
         if (top() === 'editor') return { left: { label: 'Done', action: closeEditor }, right: { label: 'Menu', menu: editorMenu } };
+        if (top() === 'ref') return { left: { label: 'Done', action: popLayer }, right: { label: 'Remove', action: removeReference } };
         // a list to pick from, a page at a time: a tap opens, the keys turn the pages, ok backs out
         if (top() === 'presets') return { left: { label: 'Previous', disabled: presetPage <= 0, action: () => presetStep(-1) }, right: { label: 'Next', disabled: presetPage >= presetPages - 1, action: () => presetStep(1) } };
         if (running()) return { left: { label: 'Generate', disabled: true }, right: { label: 'Stop', action: stop } };
@@ -924,6 +985,7 @@
     <div class="wds-label" data-for="uc"><span>Undesired</span><span></span></div>
     <div class="wds-field" role="button" tabindex="0" data-field="uc"></div>
     <div class="wds-chars" hidden></div>
+    <div class="wds-refs" hidden></div>
     <button type="button" class="wds-base" hidden><img alt=""><div><b>Base image</b><span></span></div></button>
   </div>
   <button type="button" class="wds-summary"><b>Settings</b><span></span></button>
@@ -933,6 +995,7 @@
   <div class="wds-stage"><img alt="" hidden><div class="wds-grid" hidden></div><div class="wds-empty">No print yet. Generate makes one.</div></div>
   <div class="wds-status" hidden><span></span><div class="wds-bar"><span></span></div></div>
 </div>
+<div class="wds-pane wds-ref"><div class="wm-form"></div></div>
 <div class="wds-pane wds-presets"><div class="wm-listbox"></div><div class="wds-pager" hidden></div><p class="wds-none" hidden>No presets have been saved yet.</p></div>
 <div class="wds-pane wds-editor">
   <div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
@@ -962,6 +1025,17 @@
             const r = e.target.closest && e.target.closest('.wm-listbox-row');
             if (r) openPreset(r.dataset.key);
         });
+        $('.wds-refs').addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-refrow'); if (b) { refAt = Number(b.dataset.ref) || 0; openLayer('ref'); } });
+        const refForm = $('.wds-ref');
+        refForm.addEventListener('change', (e) => {
+            const t = e.target;
+            if (!t || !t.dataset || !t.dataset.refSet) return;
+            const n = Number(String(t.value || '').trim());
+            t.blur();
+            if (Number.isFinite(n)) refChange({ [t.dataset.refSet]: Math.max(0, Math.min(1, n)) }).then(() => { snap = null; drawRef(); });
+            else drawRef();
+        });
+        refForm.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target && e.target.dataset && e.target.dataset.refSet) e.target.blur(); });
         const chars = $('.wds-chars');
         chars.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-char-open'); if (b) openEditor(`c:${b.dataset.char}:prompt`); });
         chars.addEventListener('change', (e) => { const t = e.target; if (t && t.dataset && t.dataset.char != null && t.type === 'checkbox') { M.setCharacter(Number(t.dataset.char), { enabled: !!t.checked }); snap = null; } });
@@ -1061,7 +1135,7 @@
             M.ownsPrints = true;
             wrapEntryPoints();
             snap = null;
-            if (layout() === 'tabs') layers = layers.filter((l) => l === 'editor' || l === 'presets');
+            if (layout() === 'tabs') layers = layers.filter((l) => l === 'editor' || l === 'presets' || l === 'ref');
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
