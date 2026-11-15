@@ -10,6 +10,10 @@ const {
     formatWsDisconnectLog
 } = require('./wsSocketHeartbeat');
 
+// notices a phone gets batched (WebSocketServer.broadcast): small, frequent, nothing waits on them
+const PHONE_BATCH_TYPES = new Set(['vfs_updated']);
+const PHONE_BATCH_MS = 10000;
+
 /** The ping's status without its clock: two reads with the same key carry the same news. */
 function pingStatusKey(data) {
     if (!data || typeof data !== 'object') return JSON.stringify(data);
@@ -940,8 +944,37 @@ class WebSocketServer {
         this.forEachSocket(client => {
             if (client.readyState === WebSocket.OPEN && (!filter || filter(this.clients.get(client)))) to.push(client);
         });
+        // a phone gets frequent small notices (file changes) in one go every few seconds instead of a
+        // radio wakeup each (rule server-push-not-polling); desktops keep getting them at once
+        if (message && PHONE_BATCH_TYPES.has(message.type)) {
+            const phones = to.filter((ws) => { const i = this.clients.get(ws); return !!(i && i.phone && i.phone.shell === 'mobile'); });
+            if (phones.length) {
+                phones.forEach((ws) => this._batchForPhone(ws, message));
+                const rest = to.filter((ws) => !phones.includes(ws));
+                to.length = 0;
+                to.push(...rest);
+            }
+        }
         // a Continuity carrier and its sub-client: one copy over the phone's socket (#798)
         require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this.sendToClient(ws, payload));
+    }
+
+    _batchForPhone(ws, message) {
+        if (!this._phoneBatches) this._phoneBatches = new Map();
+        let b = this._phoneBatches.get(ws);
+        if (!b) {
+            b = new Map();
+            this._phoneBatches.set(ws, b);
+            const t = setTimeout(() => {
+                const batch = this._phoneBatches.get(ws);
+                this._phoneBatches.delete(ws);
+                if (!batch || ws.readyState !== WebSocket.OPEN) return;
+                for (const m of batch.values()) { try { this.sendToClient(ws, m); } catch (_) { /* gone */ } }
+            }, PHONE_BATCH_MS);
+            if (t.unref) t.unref();
+        }
+        // the same notice twice in a batch (the same folder changed again) goes once
+        b.set(`${message.type}|${JSON.stringify(message.data || {})}`, message);
     }
 
     /** Alias used by generation quips and admin resource broadcasts. */
