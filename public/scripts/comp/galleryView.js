@@ -2112,7 +2112,7 @@ async function switchGalleryView(view, force = false, progressCallback = null) {
     updateGalleryTitleBar({ syncTaskbar: true });
 
     // Update workspace overlay if modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) {
+    if (isStudioCoveringPage()) {
         if (manualPreviewWorkspaceOverlay.classList.contains('visible')) {
             loadWorkspaceImagesForOverlay();
         }
@@ -2949,7 +2949,7 @@ const REROLL_HEAD_LIMIT = 10;
 
 function galleryRerollUsesPlaceholder() {
     return !isGalleryWindowHidden()
-        && (manualModal.classList.contains('hidden') || manualModal.classList.contains('windowed'));
+        && !isStudioCoveringPage();
 }
 
 function isGalleryRerollSessionActive() {
@@ -3519,7 +3519,7 @@ function updateGalleryPlaceholders() {
     if (!gallery) return;
 
     // Don't update gallery if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't update gallery if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -3548,7 +3548,7 @@ function displayCurrentPageOptimized() {
     initializeGalleryMinmaxValue();
 
     // Don't update gallery if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't update gallery if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -4388,7 +4388,7 @@ function reindexGallery() {
 
 function scheduleDeferredPlaceholderAddition(direction) {
     // Don't schedule placeholder additions if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't schedule placeholder additions if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -4554,7 +4554,7 @@ function addPlaceholdersAbove() {
     if (!gallery || isLoadingMore) return;
 
     // Don't add placeholders if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't add placeholders if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -4631,7 +4631,7 @@ function addPlaceholdersBelow() {
     if (!gallery || isLoadingMore) return;
 
     // Don't add placeholders if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't add placeholders if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -4917,7 +4917,7 @@ async function loadMoreImagesBefore() {
     if (isLoadingMore || !hasMoreImagesBefore) return;
 
     // Don't load more images if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't load more images if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
@@ -5034,7 +5034,7 @@ function updateGalleryGrid(onlyIfChanged = false, updatePlaceholders = true) {
 
     // Don't update gallery if manual modal is open and maximized (when onlyIfChanged is true)
     if (onlyIfChanged) {
-        if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+        if (isStudioCoveringPage()) return;
         if (isGalleryWindowHidden()) return;
     }
 
@@ -5322,7 +5322,7 @@ function isGalleryScrollLive() {
     if (isGalleryForeground()) return true;
     if (isGalleryWindowHidden()) return false;
     if (document.body.classList.contains('is-window-dragging')) return false;
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return false;
+    if (isStudioCoveringPage()) return false;
     return Date.now() - lastGalleryUserScrollAt < GALLERY_SCROLL_LIVE_MS;
 }
 
@@ -6430,7 +6430,7 @@ function updateVirtualScrollInternal() {
 // Refresh the entire gallery display to ensure consistency
 function refreshGalleryDisplay() {
     if (isGalleryWindowHidden()) return;
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // captureGalleryViewportAnchor: public/scripts/comp/galleryView.js — before wiping DOM
     const anchor = captureGalleryViewportAnchor();
@@ -6467,7 +6467,7 @@ function removeImageFromGallery(image) {
 // Remove multiple images from gallery and refresh display cleanly
 function removeMultipleImagesFromGallery(images) {
     // Don't update gallery if manual modal is open and maximized
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return;
+    if (isStudioCoveringPage()) return;
 
     // Don't update gallery if gallery is hidden in desktop mode
     if (isGalleryWindowHidden()) return;
