@@ -4523,6 +4523,15 @@ function waitForGalleryVisiblePreviews(timeoutMs = 10000) {
 // Check if gallery is hidden in desktop mode (for function inhibition)
 // Gallery update functions use this to skip updates when gallery is hidden
 // Similar to how they check for manual modal open state
+// Studio is open over the whole page (not as a window): the gallery under it does not draw.
+// One place for the test the gallery repeated a dozen times through Studio's own manualModal
+// const, which made the gallery's list load need Studio's scripts (#844). No Studio window in the
+// page (not loaded): nothing covers it.
+function isStudioCoveringPage() {
+    const studio = document.getElementById('manualModal');
+    return !!studio && !studio.classList.contains('hidden') && !studio.classList.contains('windowed');
+}
+
 function isGalleryWindowHidden() {
     // Melaton Mobile never shows the desktop gallery (wm-shell.css keeps #galleryWindow out of the
     // page; Pictures is wmPhoneGallery.js with its own cells), but the window carries neither
@@ -4538,7 +4547,7 @@ function isGalleryWindowHidden() {
 function isGalleryForeground() {
     if (isGalleryWindowHidden()) return false;
     if (document.body.classList.contains('is-window-dragging')) return false;
-    if (!manualModal.classList.contains('hidden') && !manualModal.classList.contains('windowed')) return false;
+    if (isStudioCoveringPage()) return false;
     if (document.body.classList.contains('desktop-mode') && galleryWindow && !galleryWindow.classList.contains('active-window')) {
         return false;
     }
