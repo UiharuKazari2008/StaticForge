@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 # Usage: python3 scripts/generate-wm-notification-sounds.py [out-dir] [name ...]
 # Melaton Mobile's own notification sounds (Yozora #848), one per sound class of wmShell.js
-# SND_EVENTS. All synthesised here (no samples), 22.05 kHz 16-bit mono like TrafficCamera.wav and
-# LapisCountdown.wav, written to public/sounds/wm61:
+# SND_EVENTS. All synthesised here (no samples), 22.05 kHz 16-bit mono like TrafficCamera.wav,
+# written to public/sounds/wm61:
 #
-#   BatteryLow.wav       battery-low       two wooden mallet notes falling a fourth: "running down"
-#   BatteryCritical.wav  battery-very-low  a harder falling three-note figure, played twice
+#   BatteryLow.wav       battery-low       a held electronic high-low warning pair, twice
+#   BatteryCritical.wav  battery-very-low  an alarm: a fast falling three-tone burst three times,
+#                                          then a long buzzing low tone
 #   BatteryFull.wav      battery-full      a bright bell arpeggio rising an octave: "topped up"
 #   WeatherAlert.wav     weather-alert     a weather-radio style high-low pair, twice, the last held
 #   WeatherSevere.wav    weather-severe    the 853 Hz + 960 Hz two-tone attention signal, in the
 #                                          long-short-short cadence of a phone's emergency alert.
 #                                          Tones only: no header or end-of-message data bursts.
 #   RainAlarm.wav        rain-alarm        five water drops, then one soft bell
-#   SoftwareUpdate.wav   update            a glassy rising fifth and octave with a shimmer on top
+#   SoftwareUpdate.wav   update            a short glassy rising fifth and octave
+#   LapisCountdown.wav   lapis-run-left    a car's cabin warning gong, three even strokes on one note
+#   LapisUnlocked.wav    lapis-unlocked    two key-fob chirps, then a rising two-note gong: "locked?"
+#   LapisIssue.wav       lapis-issue       a dashboard fault chime: a gong falling a tritone, twice
 import math, os, struct, sys, wave
 
 RATE = 22050
@@ -48,13 +52,32 @@ def glass(f, t, ring):
     return math.sin(TAU * f * t + 1.6 * math.exp(-t * 14) * math.sin(TAU * 3.5 * f * t)) * env
 
 
-def beep(f, t, length, edge=0.008, trem=0.0):
-    """A held soft-square tone with shaped edges; trem = depth of a 14 Hz flutter."""
+def beep(f, t, length, edge=0.008, trem=0.0, bite=0.0, rate=14):
+    """A held soft-square tone with shaped edges; trem = depth of a flutter; bite = more square."""
     if t < 0 or t > length:
         return 0.0
     env = min(1.0, t / edge) * min(1.0, (length - t) / edge)
-    s = math.sin(TAU * f * t) + 0.25 * math.sin(TAU * 3 * f * t) + 0.08 * math.sin(TAU * 5 * f * t)
-    return s * env * (1 - trem * (0.5 + 0.5 * math.sin(TAU * 14 * t)))
+    s = math.sin(TAU * f * t) + (0.25 + 0.2 * bite) * math.sin(TAU * 3 * f * t) + (0.08 + 0.16 * bite) * math.sin(TAU * 5 * f * t) + 0.1 * bite * math.sin(TAU * 7 * f * t)
+    return s * env * (1 - trem * (0.5 + 0.5 * math.sin(TAU * rate * t)))
+
+
+def gong(f, t, ring):
+    """A car's cabin chime: a struck tone with a slow beat (a twin 3 Hz off) and a short clang on top."""
+    if t < 0 or t > ring:
+        return 0.0
+    env = min(1.0, t / 0.004) * math.exp(-t * 4.6 / ring) * min(1.0, (ring - t) / 0.02)
+    s = math.sin(TAU * f * t) + 0.6 * math.sin(TAU * (f + 3) * t) + 0.3 * math.sin(TAU * 2 * f * t) * math.exp(-t * 5)
+    s += 0.35 * math.sin(TAU * 2.76 * f * t) * math.exp(-t * 16)
+    return s * env
+
+
+def chirp(t, length, f0, f1):
+    """A key-fob chirp: a bright tone sliding up, cut short."""
+    if t < 0 or t > length:
+        return 0.0
+    env = min(1.0, t / 0.003) * min(1.0, (length - t) / 0.006)
+    phase = TAU * (f0 * t + (f1 - f0) * t * t / (2 * length))
+    return (math.sin(phase) + 0.3 * math.sin(2 * phase)) * env
 
 
 def render(length, fn):
@@ -62,14 +85,16 @@ def render(length, fn):
 
 
 def battery_low():
-    notes = [(880.0, 0.0, 0.55), (659.3, 0.21, 0.75)]
-    return render(1.0, lambda t: sum(mallet(f, t - s, r) for f, s, r in notes))
+    hi, lo = 987.8, 740.0
+    notes = [(hi, 0.0, 0.15), (lo, 0.17, 0.22), (hi, 0.55, 0.15), (lo, 0.72, 0.30)]
+    return render(1.05, lambda t: sum(beep(f, t - s, n, bite=0.5) for f, s, n in notes))
 
 
 def battery_critical():
-    figure = [(880.0, 0.0), (698.5, 0.12), (587.3, 0.24)]
-    notes = [(f, s + rep, 0.34 if i < 2 else 0.5) for rep in (0.0, 0.62) for i, (f, s) in enumerate(figure)]
-    return render(1.45, lambda t: sum(mallet(f, t - s, r, hard=1.0) for f, s, r in notes))
+    burst = [(1318.5, 0.0), (1046.5, 0.095), (784.0, 0.19)]
+    notes = [(f, s + rep, 0.085) for rep in (0.0, 0.36, 0.72) for f, s in burst]
+    return render(1.72, lambda t: sum(beep(f, t - s, n, edge=0.004, bite=1.0) for f, s, n in notes)
+                  + beep(659.3, t - 1.1, 0.6, bite=1.0, trem=0.6, rate=22))
 
 
 def battery_full():
@@ -115,8 +140,22 @@ def rain_alarm():
 
 
 def software_update():
-    notes = [(784.0, 0.0, 0.6, 1.0), (1174.7, 0.13, 0.6, 0.9), (1568.0, 0.26, 1.2, 1.0), (1975.5, 0.39, 1.1, 0.45)]
-    return render(1.55, lambda t: sum(g * glass(f, t - s, r) for f, s, r, g in notes))
+    notes = [(784.0, 0.0, 0.3, 1.0), (1174.7, 0.085, 0.32, 0.9), (1568.0, 0.17, 0.55, 1.0)]
+    return render(0.75, lambda t: sum(g * glass(f, t - s, r) for f, s, r, g in notes))
+
+
+def lapis_countdown():
+    return render(1.75, lambda t: sum(gong(830.6, t - s, 0.85) for s in (0.0, 0.42, 0.84)))
+
+
+def lapis_unlocked():
+    return render(1.3, lambda t: 0.8 * (chirp(t, 0.07, 2300, 2900) + chirp(t - 0.13, 0.07, 2300, 2900))
+                  + gong(659.3, t - 0.36, 0.5) + gong(880.0, t - 0.58, 0.7))
+
+
+def lapis_issue():
+    notes = [(880.0, 0.0, 0.5), (622.3, 0.24, 0.6), (880.0, 0.78, 0.5), (622.3, 1.02, 0.85)]
+    return render(1.9, lambda t: sum(gong(f, t - s, r) for f, s, r in notes))
 
 
 SOUNDS = {
@@ -127,6 +166,9 @@ SOUNDS = {
     'WeatherSevere': weather_severe,
     'RainAlarm': rain_alarm,
     'SoftwareUpdate': software_update,
+    'LapisCountdown': lapis_countdown,
+    'LapisUnlocked': lapis_unlocked,
+    'LapisIssue': lapis_issue,
 }
 
 out_dir = sys.argv[1] if len(sys.argv) > 1 else 'public/sounds/wm61'
