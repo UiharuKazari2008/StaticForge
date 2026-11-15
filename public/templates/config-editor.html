@@ -1,0 +1,175 @@
+    <div id="configEditorModal" class="modal hidden resizeable-window" data-window-client="light"
+        data-window-min-width="240" data-window-min-height="160">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-binary icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-regedit.webp" srcset="/static_images/app_icons/24/vista-regedit.webp 1x, /static_images/app_icons/48/vista-regedit.webp 2x" alt="" class="icon-image" />
+                <span>Registry Editor</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeConfigEditorBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content config-editor-modal-content">
+            <div class="naxt-menubar" role="menubar" data-win32-menus>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuFile" role="menuitem">File</button>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuEdit" role="menuitem">Edit</button>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuView" role="menuitem">View</button>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuFavorites" role="menuitem">Favorites</button>
+                <button type="button" class="naxt-menu-title" id="configEditorMenuHelp" role="menuitem">Help</button>
+            </div>
+            <div class="config-editor-layout">
+                <div class="config-editor-tree-panel">
+                    <div class="config-editor-tree-scroll-shell">
+                        <div id="configEditorTree" class="config-editor-tree"></div>
+                    </div>
+                </div>
+                <div class="config-editor-splitter" role="separator" aria-orientation="vertical" aria-label="Split"></div>
+                <div class="config-editor-values-panel">
+                    <div class="config-editor-values-scroll-shell">
+                        <table class="config-editor-values-table">
+                            <thead>
+                                <tr>
+                                    <th class="config-editor-col-name">Name</th>
+                                    <th class="config-editor-col-type">Type</th>
+                                    <th class="config-editor-col-value">Data</th>
+                                    <th class="rg-col-fill"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="configEditorValuesBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div id="configEditorStatus" class="config-editor-status-bar">
+                <span data-status="path">Computer</span>
+            </div>
+            <svg width="0" height="0" aria-hidden="true" style="position:absolute"><filter id="rgSelectedIcon" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="0.5 0 0 0 0.1  0 0.5 0 0 0.3  0 0 0.5 0 0.5  0 0 0 1 0"/></filter></svg>
+        </div>
+    </div>
+    <div id="configEditorValueModal" class="modal hidden" role="dialog" aria-labelledby="configEditorValueModalTitle"
+        data-parent-modal-id="configEditorModal" data-window-position-mode="cascade-parent"
+        data-window-content-anchor="top" data-window-cascade-align="top" data-window-fixed-size="true"
+        data-window-no-maximize="true" data-window-client="light" data-vista-dialog="regedit"
+        data-caption-icon="none" data-cev-layout="string">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <span id="configEditorValueModalTitle">Edit String</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeConfigEditorValueBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content config-editor-value-modal-content cev-client">
+            <label class="cev-label cev-name-label" for="configEditorValueName">Value <u>n</u>ame:</label>
+            <input type="text" id="configEditorValueName" class="cev-name" readonly spellcheck="false" autocomplete="off">
+            <label class="cev-label cev-data-label" id="configEditorValueDataLabel"><u>V</u>alue data:</label>
+            <div id="configEditorValueFieldWrap" class="config-editor-value-field-wrap cev-data">
+                <input type="text" id="configEditorValueInput" class="cev-field hidden" spellcheck="false" autocomplete="off"
+                    aria-labelledby="configEditorValueDataLabel">
+                <input type="text" id="configEditorValueNumber" class="cev-field hidden" spellcheck="false" autocomplete="off"
+                    inputmode="decimal" aria-labelledby="configEditorValueDataLabel">
+                <input type="text" id="configEditorValueSecret" class="cev-field config-editor-secret-input hidden"
+                    autocomplete="off" spellcheck="false" aria-labelledby="configEditorValueDataLabel">
+                <textarea id="configEditorValueTextarea" class="cev-field cev-multi hidden" spellcheck="false"
+                    wrap="off" aria-labelledby="configEditorValueDataLabel"></textarea>
+                <div id="configEditorValuePromptWrap" class="config-editor-value-prompt-wrap hidden">
+                    <div class="character-prompt-textarea-container">
+                        <div class="character-prompt-textarea-background"></div>
+                        <textarea id="configEditorValuePromptTextarea"
+                            class="form-control character-prompt-textarea prompt-textarea" rows="6"
+                            autocapitalize="false" autocorrect="false" spellcheck="false"
+                            data-ms-editor="false"></textarea>
+                        <div class="prompt-textarea-toolbar hidden">
+                            <div class="toolbar-left">
+                                <span class="token-count">0 tokens</span>
+                            </div>
+                            <div class="toolbar-right">
+                                <button type="button" class="btn-secondary btn-small toolbar-btn indicator"
+                                    data-action="autofill" data-state="off"
+                                    title="Toggle SmartText Autofill">
+                                    <i class="fas fa-lightbulb-slash"></i>
+                                </button>
+                                <button type="button" class="btn-secondary btn-small toolbar-btn"
+                                    data-action="emphasis" title="Emphasis">
+                                    <i class="fas fa-dial"></i>
+                                </button>
+                                <button type="button" class="btn-secondary btn-small toolbar-btn"
+                                    data-action="quick-access" title="Quick Access">
+                                    <i class="fas fa-book-font"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- an enum or a boolean: a drop-down list (the click menu keeps the enum's Custom...) -->
+                <button type="button" id="configEditorValueEnumBtn" class="cpl-db-combo cev-field cev-combo hidden"
+                    aria-labelledby="configEditorValueDataLabel">
+                    <span id="configEditorValueEnumSelected"></span>
+                </button>
+                <input type="hidden" id="configEditorValueEnumHidden" value="">
+            </div>
+            <fieldset class="cev-base" id="configEditorValueBase">
+                <legend>Base</legend>
+                <label class="cev-radio"><input type="radio" name="configEditorValueBase" id="configEditorValueBaseHex"
+                        value="16"><u>H</u>exadecimal</label>
+                <label class="cev-radio"><input type="radio" name="configEditorValueBase" id="configEditorValueBaseDec"
+                        value="10" checked><u>D</u>ecimal</label>
+            </fieldset>
+            <button type="button" id="configEditorValueApplyBtn" class="btn-standard cev-button cev-ok"
+                data-dialog-primary="1">OK</button>
+            <button type="button" id="configEditorValueCancelBtn" class="btn-standard cev-button cev-cancel">Cancel</button>
+        </div>
+    </div>
+    <div id="configEditorCheckpointsModal" class="modal hidden resizeable-window owned-window on-top"
+        data-parent-modal-id="configEditorModal" data-window-position-mode="cascade-parent"
+        data-window-content-anchor="top" data-window-cascade-align="top" data-window-default-width="560"
+        data-window-default-height="480" data-window-max-width="720" data-window-max-height="640"
+        data-window-min-width="480" data-window-min-height="320" data-window-client="light">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-clock-rotate-left icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-regedit.webp" srcset="/static_images/app_icons/24/vista-regedit.webp 1x, /static_images/app_icons/48/vista-regedit.webp 2x" alt="" class="icon-image" />
+                <span>Config Checkpoints</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeConfigEditorCheckpointsBtn" class="btn-danger close-btn btn-small"
+                title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content config-editor-checkpoints-modal-content dark">
+            <div class="explorer-actions-header config-editor-checkpoints-command-bar" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="configEditorCheckpointsCreateBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Create checkpoint"><img loading="lazy" decoding="async"
+                            class="explorer-command-icon" src="/static_images/vista-cmdbar/restore-point.png" alt="">Create Checkpoint</button>
+                    <button type="button" id="configEditorCheckpointsRestoreBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Restore the selected checkpoint"
+                        disabled><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/restore.png" alt="">Restore</button>
+                    <button type="button" id="configEditorCheckpointsDetailBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Properties of the selected checkpoint"
+                        disabled><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/properties.png" alt="">Properties</button>
+                    <button type="button" id="configEditorCheckpointsDeleteBtn"
+                        class="btn-secondary btn-small explorer-command-btn" title="Delete the selected checkpoint"
+                        disabled><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/delete.png" alt="">Delete</button>
+                </div>
+            </div>
+            <div class="modal-body config-editor-checkpoints-modal-body">
+                <div class="config-editor-checkpoints-scroll-shell scrollbar-padding" data-custom-scrollbar
+                    data-scrollable-wrapper-class="config-editor-checkpoints-scrollable">
+                    <div id="configEditorCheckpointsList" class="config-editor-checkpoints-list"></div>
+                </div>
+            </div>
+            <div id="configEditorCheckpointsStatus" class="config-editor-status-bar"></div>
+        </div>
+    </div>

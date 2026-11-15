@@ -1,0 +1,42 @@
+    <!-- Run (Application Finder): Vista's Run dialog (shell32 dialog 1003), run-applet.css -->
+    <div id="runModal" class="modal hidden transient run-applet" role="dialog" aria-label="Run"
+        data-window-position-mode="run-open" data-window-fixed-size="true" data-window-no-maximize="true"
+        data-window-restore-position="false" data-window-restore-size="false" data-window-client="light"
+        data-vista-dialog="run">
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-magnifying-glass icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-run.webp" srcset="/static_images/app_icons/24/vista-run.webp 1x, /static_images/app_icons/48/vista-run.webp 2x" alt="" class="icon-image" />
+                <span>Run</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content run-applet-content">
+            <div class="run-applet-panel">
+                <img loading="lazy" decoding="async" class="run-applet-icon" src="/static_images/vista-icons/run-32.png" alt="" width="32" height="32" />
+                <div class="run-applet-text">Type the name of a program, note, preset, or tag, and Melaton will open it for you.</div>
+                <label class="run-applet-open-label" for="runAppletInput"><u>O</u>pen:</label>
+                <div class="run-applet-combo">
+                    <input type="text" id="runAppletInput" class="run-applet-input" autocomplete="off" spellcheck="false" />
+                    <span class="run-applet-drop" aria-hidden="true"></span>
+                </div>
+                <img loading="lazy" decoding="async" class="run-applet-hint-icon" src="/static_images/vista-icons/info-16.png" alt="" width="16" height="16" />
+                <div id="runAppletPrefixHint" class="run-applet-prefix-hint"></div>
+            </div>
+            <div class="run-applet-footer">
+                <button type="button" class="btn-standard run-applet-button" data-run-action="ok" data-dialog-primary="1" disabled>OK</button>
+                <button type="button" class="btn-standard run-applet-button" data-run-action="cancel">Cancel</button>
+                <button type="button" class="btn-standard run-applet-button" data-run-action="browse"><u>B</u>rowse...</button>
+            </div>
+        </div>
+        <div class="run-applet-results-shell hidden">
+            <div id="runAppletSuggestions" class="run-applet-suggestions" role="listbox"></div>
+            <div id="runAppletActionPanel" class="run-applet-action-panel hidden"></div>
+            <span class="run-applet-grip" aria-hidden="true"></span>
+        </div>
+    </div>

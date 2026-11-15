@@ -37,10 +37,12 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/chatSystem.js']
     },
     config_editor: {
+        html: 'templates/config-editor.html',
         styles: ['css/config-editor.css'],
         scripts: ['scripts/comp/configEditorApplet.js']
     },
     character_db: {
+        html: 'templates/character-db.html',
         styles: ['css/character-db-applet.css'],
         scripts: ['scripts/comp/characterDbApplet.js']
     },
@@ -51,6 +53,7 @@ const FEATURE_MANIFEST = {
         ]
     },
     log_viewer: {
+        html: 'templates/log-viewer.html',
         depends: ['server_management'],
         styles: ['css/log-viewer.css', 'css/websocket-requests.css'],
         scripts: ['scripts/comp/websocketRequestsModal.js', 'scripts/comp/logViewerApplet.js']
@@ -59,6 +62,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/runCommandIndex.js']
     },
     run: {
+        html: 'templates/run.html',
         depends: ['run_index'],
         styles: ['css/run-applet.css'],
         scripts: ['scripts/comp/runApplet.js']
@@ -67,6 +71,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/naxVibesApplet.js']
     },
     grimoire: {
+        html: 'templates/grimoire.html',
         styles: ['css/tag-wiki-search.css'],
         scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js', 'scripts/comp/grimoireHistoryDsap.js']
     },
@@ -84,10 +89,12 @@ const FEATURE_MANIFEST = {
         styles: ['css/taskbar-properties.css']
     },
     naxt: {
+        html: 'templates/naxt.html',
         styles: ['css/naxt-shell.css', 'css/spellbook.css', 'css/vista-atelier.css'],
         scripts: ['scripts/comp/naxtVistaChrome.js', 'scripts/comp/naxtApplet.js']
     },
     bracket_gen: {
+        html: 'templates/bracket-generation.html',
         styles: ['css/bracket-generation.css'],
         scripts: ['scripts/comp/bracketGenerationApplet.js']
     },
@@ -99,6 +106,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/compiledPromptInspector.js']
     },
     image_prompt_inspector: {
+        html: 'templates/image-prompt-inspector.html',
         // vista-atelier.css: the Vista menu bar; compiled-prompt-lcd.css: the Property / Value list
         // and the scene cards of the Dynamic Generation section
         styles: ['css/image-prompt-inspector.css', 'css/vista-atelier.css', 'css/compiled-prompt-lcd.css'],
@@ -428,6 +436,28 @@ class FeatureLoader {
      * @param {string} name - Name of the feature in the manifest
      * @returns {Promise<boolean>}
      */
+    /**
+     * A feature's windows, from its template file, as the last children of <body> (#817: the
+     * markup of on-demand features lives in templates/*.html, not in app.html).
+     * A top-level element whose id the page already has is left out: a page from before the markup
+     * moved still carries that window, and two of one id would break every lookup.
+     * Each window is handed to the taskbar's class observer (modalUtils.js observeModals), which
+     * only knew the windows present at boot.
+     */
+    _insertFeatureMarkup(htmlText) {
+        const holder = document.createElement('template');
+        holder.innerHTML = htmlText;
+        const added = [];
+        Array.from(holder.content.children).forEach((el) => {
+            if (el.id && document.getElementById(el.id)) { el.remove(); return; }
+            added.push(el);
+        });
+        document.body.appendChild(holder.content);
+        if (typeof window.observeTaskbarModal === 'function') {
+            added.forEach((el) => { if (el.classList.contains('modal')) window.observeTaskbarModal(el); });
+        }
+    }
+
     async loadFeature(name) {
         if (this.loadedFeatures.has(name)) return true;
         if (this.loadingPromises.has(name)) return this.loadingPromises.get(name);
@@ -461,7 +491,7 @@ class FeatureLoader {
                         if (!r.ok) throw new Error(`HTTP ${r.status}`);
                         return r.text();
                     });
-                    document.body.insertAdjacentHTML('beforeend', htmlText);
+                    this._insertFeatureMarkup(htmlText);
                 } catch (err) {
                     console.error(`❌ Failed to load HTML template for "${name}":`, err);
                     throw err;

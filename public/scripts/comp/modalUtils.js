@@ -4768,6 +4768,8 @@ function observeModals() {
     };
 
     document.querySelectorAll('.modal').forEach(observeElement);
+    // windows added later from a feature's template (featureLoader.js _insertFeatureMarkup, #817)
+    window.observeTaskbarModal = observeElement;
 
     // Also observe gallery window even if it doesn't have modal class yet
     const galleryWin = document.getElementById('galleryWindow');
