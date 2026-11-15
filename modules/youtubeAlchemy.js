@@ -12,10 +12,12 @@
  * The Google session never leaves the browser. Nothing here reads or copies a cookie out of Alchemy:
  * a copy presented from a second client is what made Google sign the session out on Nov 13 2026
  * (modules/textMessaging.js). The page itself asks YouTube for the further parts of a long list, the
- * way its own scripts do. Read-only: no click, no change to the account.
+ * way its own scripts do. No clicks. The one change it makes to the account is on the owner's own
+ * command: edit() adds a video to, or removes it from, Watch Later (the request the page's Save button makes).
  *
  *   read('watch-later')  -> { signedIn, ids[] }                     video ids in list order
  *   read('bells')        -> { signedIn, channels[{ id, title, thumb, bell }] }   bell: all | some | none | ''
+ *   edit('add' | 'remove', videoId) -> { signedIn, ok }
  * signedIn false: Alchemy is not signed in to YouTube. Throws ALCHEMY_OFFLINE when Alchemy is not running.
  */
 'use strict';
@@ -27,7 +29,9 @@ const CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9339) || 0);
 const QUIET_URL = 'about:blank#alchemy-quiet';
 const PAGES = {
     'watch-later': 'https://www.youtube.com/playlist?list=WL',
-    bells: 'https://www.youtube.com/feed/channels'
+    bells: 'https://www.youtube.com/feed/channels',
+    'later-add': 'https://www.youtube.com/playlist?list=WL',
+    'later-remove': 'https://www.youtube.com/playlist?list=WL'
 };
 const READ_TIMEOUT_MS = 60000;
 
@@ -39,7 +43,7 @@ function offline(message) {
 
 // Runs inside the YouTube page. Returns null until the page's data is there, then a small result.
 // `kind` is 'watch-later' or 'bells'; MAX_PARTS further parts of the list are asked for at most.
-const IN_PAGE = `(async (kind) => {
+const IN_PAGE = `(async (kind, arg) => {
     // a signed-out browser is sent to Google's sign-in page for the pages that need an account
     if (/(^|\\.)accounts\\.google\\.com$/.test(location.hostname)) return { signedIn: false };
     if (!window.ytcfg || typeof window.ytcfg.get !== 'function' || !window.ytInitialData) return null;
@@ -100,6 +104,22 @@ const IN_PAGE = `(async (kind) => {
         const buf = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(ts + ' ' + cookie + ' ' + location.origin));
         return 'SAPISIDHASH ' + ts + '_' + [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
     };
+    // the owner's own command (the program's Add to / Remove from Watch Later): the same request the page's
+    // Save button makes
+    if (kind === 'later-add' || kind === 'later-remove') {
+        if (!cookie || !VIDEO.test(String(arg))) return { signedIn: true, ok: false };
+        try {
+            const ctx = cfg.get('INNERTUBE_CONTEXT');
+            const res = await fetch('/youtubei/v1/browse/edit_playlist?prettyPrint=false', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Authorization: await sign(), 'X-Origin': location.origin, 'X-Goog-AuthUser': String(cfg.get('SESSION_INDEX') || '0'), 'X-Youtube-Client-Name': '1', 'X-Youtube-Client-Version': String((ctx && ctx.client && ctx.client.clientVersion) || '') },
+                body: JSON.stringify({ context: ctx, playlistId: 'WL', actions: [kind === 'later-add' ? { action: 'ACTION_ADD_VIDEO', addedVideoId: arg } : { action: 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', removedVideoId: arg }] })
+            });
+            const body = await res.json().catch(() => ({}));
+            return { signedIn: true, ok: res.ok && body.status === 'STATUS_SUCCEEDED' };
+        } catch (_) { return { signedIn: true, ok: false }; }
+    }
     let parts = 0;
     let partial = false;
     while (next && parts < MAX_PARTS) {
@@ -142,14 +162,14 @@ function browserSocketUrl() {
 let queue = Promise.resolve();
 
 /** One read at a time: a hidden tab, the page, its data, the tab closed again. */
-function read(kind) {
+function read(kind, arg) {
     if (!PAGES[kind]) return Promise.reject(new Error('Unknown page'));
-    const run = queue.then(() => readNow(kind));
+    const run = queue.then(() => readNow(kind, arg));
     queue = run.catch(() => {});
     return run;
 }
 
-async function readNow(kind) {
+async function readNow(kind, arg) {
     const WebSocket = require('ws');
     const ws = new WebSocket(await browserSocketUrl(), { perMessageDeflate: false });
     await new Promise((resolve, reject) => { ws.once('open', resolve); ws.once('error', () => reject(offline())); });
@@ -181,7 +201,7 @@ async function readNow(kind) {
         const started = Date.now();
         while (Date.now() - started < READ_TIMEOUT_MS) {
             await new Promise((r) => setTimeout(r, 600));
-            const r = await send('Runtime.evaluate', { expression: `${IN_PAGE}(${JSON.stringify(kind)})`, returnByValue: true, awaitPromise: true }, sessionId).catch(() => null);
+            const r = await send('Runtime.evaluate', { expression: `${IN_PAGE}(${JSON.stringify(kind)}, ${JSON.stringify(arg === undefined ? null : arg)})`, returnByValue: true, awaitPromise: true }, sessionId).catch(() => null);
             const value = r && r.result && r.result.value;
             if (value && typeof value === 'object') return value;
         }
@@ -192,4 +212,7 @@ async function readNow(kind) {
     }
 }
 
-module.exports = { read, QUIET_URL };
+/** Add a video to, or remove it from, the account's Watch Later list: { signedIn, ok }. */
+const edit = (action, videoId) => read(action === 'remove' ? 'later-remove' : 'later-add', String(videoId));
+
+module.exports = { read, edit, QUIET_URL };

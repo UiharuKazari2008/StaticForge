@@ -14,6 +14,9 @@ const youtubeService = require('../../youtubeService');
 //   youtube_subscriptions    { fresh? }                { channels[] }: the subscribed channels, A to Z
 //   youtube_feed             { fresh? }                { videos[], at, channels, partial }: newest uploads of the subscriptions
 //   youtube_watch_later      { fresh? }                { videos[], unavailable, why }: read in the server's Alchemy browser; why: browser-signin | browser-offline
+//   youtube_mark             { id, watched }           admins; this program's own watched mark -> { id, watched }
+//   youtube_later            { id, on }                admins; add to / remove from Watch Later -> { id, later, youtube }
+//                                                      youtube: done | failed | browser-signin | browser-offline (the account's own list)
 //   youtube_import_bell      {}                        admins; channels whose bell is set to All become favourites -> { why, favourites[], found, added, left }
 //   youtube_search           { query, page? }          { query, videos[], channels[], next } (100 quota units a page)
 //   youtube_channel          { id }                    { channel, videos[], favourite, subscribed }
@@ -25,7 +28,8 @@ const youtubeService = require('../../youtubeService');
 // Today item or the program is on screen) answers { account, favourites, latest, settings } once and then
 // pushes youtube_status { changed } only when one of them changes (a sign-in finishing, a new upload).
 //
-// A video is { id, title, channel, channelId, thumb, at (ms), length (seconds or null), live ('' | live | upcoming) };
+// A video is { id, title, channel, channelId, thumb, at (ms), length (seconds or null), live ('' | live | upcoming),
+// watched, later };
 // a channel is { id, title, thumb }.
 
 const canRead = (info) => !!(info && /^(admin|dev_admin)$/.test(String(info.userType || '')));
@@ -74,6 +78,8 @@ function registerPackets(handlersCtx) {
     reg('youtube_subscriptions', packet(false, 'The subscriptions could not be read', async (m) => ({ channels: await youtubeService.subscriptions({ fresh: !!m.fresh }) })));
     reg('youtube_feed', packet(false, 'The subscriptions could not be read', async (m) => youtubeService.feed({ fresh: !!m.fresh })));
     reg('youtube_watch_later', packet(false, 'Watch Later could not be read', async (m) => youtubeService.watchLater({ fresh: !!m.fresh })));
+    reg('youtube_mark', packet(true, 'The mark could not be saved', async (m) => youtubeService.markWatched(String(m.id || ''), m.watched !== false)));
+    reg('youtube_later', packet(true, 'Watch Later could not be changed', async (m) => youtubeService.setLater(String(m.id || ''), m.on !== false)));
     reg('youtube_import_bell', packet(true, 'The channels could not be imported', async () => youtubeService.importBellFavourites()));
     reg('youtube_search', packet(false, 'The search failed', async (m) => youtubeService.search(m.query, m.page)));
     reg('youtube_channel', packet(false, 'The channel could not be read', async (m) => youtubeService.channelPage(String(m.id || ''))));

@@ -106,10 +106,18 @@ const feedReads = () => calls.filter((c) => c.path === '/feeds/videos.xml').map(
 
 // the Alchemy browser, stood in for
 let browserMode = 'ok';
-T.setBrowser({ read: async (kind) => {
+let ytList = [VID(601), VID(602)];
+const edits = [];
+T.setBrowser({ edit: async (action, id) => {
     if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
     if (browserMode === 'signedout') return { signedIn: false };
-    if (kind === 'watch-later') return { signedIn: true, ids: [VID(601), VID(602), VID(777), 'not-an-id', VID(601)].filter((v, i, a) => a.indexOf(v) === i) };
+    edits.push(`${action} ${id}`);
+    ytList = action === 'add' ? [id, ...ytList.filter((x) => x !== id)] : ytList.filter((x) => x !== id);
+    return { signedIn: true, ok: true };
+}, read: async (kind) => {
+    if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
+    if (browserMode === 'signedout') return { signedIn: false };
+    if (kind === 'watch-later') return { signedIn: true, ids: [...ytList, VID(777), 'not-an-id'] };
     const bell = (b) => (browserMode === 'nobells' ? '' : b);
     return { signedIn: true, channels: [
         { id: CH(1), title: 'Channel 1', thumb: 'https://yt3.ggpht.com/c1=s88', bell: bell('all') },
@@ -339,10 +347,55 @@ T.setBrowser({ read: async (kind) => {
 
     await ok('Watch Later: says why when the browser is signed out or not running', async () => {
         browserMode = 'signedout';
-        assert.deepStrictEqual(await svc.watchLater({ fresh: true }), { videos: [], unavailable: true, why: 'browser-signin' });
+        assert.deepStrictEqual(await svc.watchLater({ fresh: true }), { videos: [], unavailable: true, why: 'browser-signin', partial: false });
         browserMode = 'offline';
         assert.strictEqual((await svc.watchLater({ fresh: true })).why, 'browser-offline');
         browserMode = 'ok';
+    });
+
+    await ok('watched: marked videos are flagged everywhere and go below the rest of the feed', async () => {
+        await settle();
+        const before = (await svc.feed()).videos.map((v) => v.id);
+        const top = before[0];
+        assert.deepStrictEqual(await svc.markWatched(top, true), { id: top, watched: true });
+        const f = await svc.feed();
+        assert.strictEqual(f.videos[f.videos.length - 1].id, top, 'the watched video is last');
+        assert.strictEqual(f.videos[f.videos.length - 1].watched, true);
+        assert.deepStrictEqual(f.videos.slice(0, -1).map((v) => v.id), before.slice(1), 'the rest keep their order');
+        assert.ok(f.videos.slice(0, -1).every((v) => v.watched === false));
+        const again = JSON.parse(fs.readFileSync(process.env.YOUTUBE_ACCOUNT_FILE, 'utf8'));
+        assert.ok(again.watched[top] > 0, 'kept with the account');
+        await svc.markWatched(top, false);
+        assert.deepStrictEqual((await svc.feed()).videos.map((v) => v.id), before);
+        await assert.rejects(svc.markWatched('nope', true), (e) => e.code === 'YOUTUBE_BAD_VIDEO');
+    });
+
+    await ok('Watch Later: adding works without the browser, and goes to YouTube\'s list when it can', async () => {
+        const id = (await svc.feed()).videos[0].id;
+        browserMode = 'signedout';
+        const a = await svc.setLater(id, true);
+        assert.deepStrictEqual(a, { id, later: true, youtube: 'browser-signin' });
+        assert.strictEqual((await svc.feed()).videos[0].later, true, 'flagged in the feed');
+        let w = await svc.watchLater({ fresh: true });
+        assert.deepStrictEqual(w.videos.map((v) => v.id), [id], 'the list kept here');
+        assert.strictEqual(w.unavailable, false);
+        assert.strictEqual(w.why, 'browser-signin');
+        assert.deepStrictEqual(await svc.setLater(id, false), { id, later: false, youtube: 'browser-signin' });
+        browserMode = 'ok';
+        assert.strictEqual((await svc.setLater(id, true)).youtube, 'done');
+        assert.deepStrictEqual(edits, [`add ${id}`]);
+        w = await svc.watchLater({ fresh: true });
+        assert.deepStrictEqual(w.videos.map((v) => v.id), [id, VID(601), VID(602)]);
+        assert.ok(w.videos.every((v) => v.later));
+        // removed on YouTube itself: it leaves the list here too
+        ytList = ytList.filter((x) => x !== id);
+        w = await svc.watchLater({ fresh: true });
+        assert.deepStrictEqual(w.videos.map((v) => v.id), [VID(601), VID(602)]);
+        assert.strictEqual((await svc.feed()).videos[0].later, false);
+        assert.strictEqual((await svc.setLater(VID(601), false)).youtube, 'done');
+        assert.deepStrictEqual((await svc.watchLater({ fresh: true })).videos.map((v) => v.id), [VID(602)]);
+        ytList = [VID(601), VID(602)];
+        await svc.watchLater({ fresh: true });
     });
 
     await ok('import: channels with the bell on All become favourites, the rest stay out', async () => {
@@ -365,7 +418,11 @@ T.setBrowser({ read: async (kind) => {
     await ok('the in-page reader: playlist ids, bell states, signed-out pages', async () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'youtubeAlchemy.js'), 'utf8');
         const code = eval('`' + /const IN_PAGE = `([\s\S]*?)`;\n/.exec(src)[1] + '`'); // eslint-disable-line no-eval
-        const run = (kind, win, loc) => new Function('window', 'location', 'document', 'crypto', 'fetch', `return ${code}(${JSON.stringify(kind)})`)(win, loc || { hostname: 'www.youtube.com', origin: 'https://www.youtube.com' }, { cookie: '' }, null, null);
+        const sent = [];
+        const page = { doc: { cookie: '' } };
+        const fakeCrypto = { subtle: { digest: async () => new Uint8Array([1, 2, 3]).buffer } };
+        const fakeFetch = async (url, o) => { sent.push([url, JSON.parse(o.body), o.headers.Authorization]); return { ok: true, json: async () => ({ status: 'STATUS_SUCCEEDED' }) }; };
+        const run = (kind, win, loc, arg) => new Function('window', 'location', 'document', 'crypto', 'fetch', `return ${code}(${JSON.stringify(kind)}, ${JSON.stringify(arg || null)})`)(win, loc || { hostname: 'www.youtube.com', origin: 'https://www.youtube.com' }, page.doc, fakeCrypto, fakeFetch);
         const cfg = (logged) => ({ get: (k) => (k === 'LOGGED_IN' ? logged : null) });
         const bell = (cur) => ({ subscribeButtonRenderer: { notificationPreferenceButton: { subscriptionNotificationToggleButtonRenderer: { currentStateId: cur, states: [
             { stateId: 2, state: { buttonRenderer: { icon: { iconType: 'NOTIFICATIONS_ACTIVE' } } } },
@@ -383,6 +440,19 @@ T.setBrowser({ read: async (kind) => {
             { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: 'more' } } } }] } } } });
         assert.deepStrictEqual(w.ids, [VID(1), VID(2)], 'the list\'s own videos, in order, not the ones beside it');
         assert.strictEqual(w.partial, true, 'a further part that could not be asked for is reported');
+        // the owner's Add to / Remove from Watch Later: the page's own Save request
+        const cfgIn = { get: (k) => (k === 'LOGGED_IN' ? true : k === 'INNERTUBE_CONTEXT' ? { client: { clientVersion: '2.0' } } : null) };
+        assert.deepStrictEqual(await run('later-add', { ytcfg: cfgIn, ytInitialData: {} }, null, VID(5)), { signedIn: true, ok: false }, 'no session cookie, no request');
+        page.doc = { cookie: 'a=1; SAPISID=abc; b=2' };
+        assert.deepStrictEqual(await run('later-add', { ytcfg: cfgIn, ytInitialData: {} }, null, VID(5)), { signedIn: true, ok: true });
+        assert.deepStrictEqual(await run('later-remove', { ytcfg: cfgIn, ytInitialData: {} }, null, VID(5)), { signedIn: true, ok: true });
+        assert.strictEqual(sent[0][0], '/youtubei/v1/browse/edit_playlist?prettyPrint=false');
+        assert.deepStrictEqual(sent[0][1].actions, [{ action: 'ACTION_ADD_VIDEO', addedVideoId: VID(5) }]);
+        assert.strictEqual(sent[0][1].playlistId, 'WL');
+        assert.deepStrictEqual(sent[1][1].actions, [{ action: 'ACTION_REMOVE_VIDEO_BY_VIDEO_ID', removedVideoId: VID(5) }]);
+        assert.ok(/^SAPISIDHASH \d+_010203$/.test(sent[0][2]));
+        assert.deepStrictEqual(await run('later-add', { ytcfg: cfg(false), ytInitialData: {} }, null, VID(5)), { signedIn: false });
+        page.doc = { cookie: '' };
     });
 
     await ok('the unit budget stops calls with a plain message', async () => {

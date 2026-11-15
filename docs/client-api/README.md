@@ -85,7 +85,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | Traffic | [ws/traffic.md](./ws/traffic.md) | 4 |
 | Lapis Remote (car remote, Hyundai BlueLink) | [ws/lapis.md](./ws/lapis.md) | 9 |
 | Notification inbox (durable notices + native posting) | [ws/notificationInbox.md](./ws/notificationInbox.md) | 2 |
-| YouTube (Melaton Mobile program and Today item) | [ws/youtube.md](./ws/youtube.md) | 13 |
+| YouTube (Melaton Mobile program and Today item) | [ws/youtube.md](./ws/youtube.md) | 15 |
 | XLink Operator Console | [ws/xlink.md](./ws/xlink.md) | 5 |
 | PayPass Operator (openCreditIC) | [ws/paypass.md](./ws/paypass.md) | 5 |
 | VisionCaster (video mixer remote, was QuickCast) | [ws/quickcast.md](./ws/quickcast.md) | 8 |

@@ -18,16 +18,18 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_signin_cancel` | `{}` -> `{ cancelled }`. Admin. |
 | `youtube_signout` | `{}` -> `{ state }`. Forgets and revokes the sign-in; favourites are kept. Admin, destructive. |
 | `youtube_subscriptions` | `{ fresh? }` -> `{ channels[] }`, A to Z (kept 6 hours) |
-| `youtube_feed` | `{ fresh? }` -> `{ videos[], at, channels, partial, refreshing }`: the newest uploads of every subscribed channel, newest first. Answered at once from what the server holds; when that is older than 10 minutes (2 with `fresh`) a look for new uploads runs behind it (`refreshing: true`) and the status feed's `feed.at` moves when it is done. Cost of a look: the subscriptions pass (1 unit per 50 channels, it carries each channel's video count); only channels whose count moved are read, from YouTube's public channel feeds (no quota; `playlistItems` when the feeds are down). |
-| `youtube_watch_later` | `{ fresh? }` -> `{ videos[], unavailable, why, partial }`. The Data API does not give this list and YouTube's app interface refuses the OAuth sign-in, so the ids are read in the server's Alchemy browser (`modules/youtubeAlchemy.js`: a hidden tab, closed again; no cookie leaves the browser). `why`: `browser-signin` (Alchemy is not signed in to YouTube) or `browser-offline`. |
+| `youtube_feed` | `{ fresh? }` -> `{ videos[], at, channels, partial, refreshing }`: the newest uploads of every subscribed channel, newest first, the ones marked watched after the rest. Answered at once from what the server holds; when that is older than 10 minutes (2 with `fresh`) a look for new uploads runs behind it (`refreshing: true`) and the status feed's `feed.at` moves when it is done. Cost of a look: the subscriptions pass (1 unit per 50 channels, it carries each channel's video count); only channels whose count moved are read, from YouTube's public channel feeds (no quota; `playlistItems` when the feeds are down). |
+| `youtube_watch_later` | `{ fresh? }` -> `{ videos[], unavailable, why, partial }`: the videos added through `youtube_later`, with the account's own list when the server's Alchemy browser can read it (`modules/youtubeAlchemy.js`: a hidden tab, closed again; no cookie leaves the browser). `why`: `browser-signin` (Alchemy is not signed in to YouTube) or `browser-offline`; the list is then only what was added here, and `unavailable` is true when that is nothing. |
 | `youtube_import_bell` | `{}` -> `{ why, favourites[], channels, found, added, left, partial }`. Every subscribed channel whose notification bell is set to All becomes a favourite (read in the same browser). Admin. |
+| `youtube_mark` | `{ id, watched }` -> `{ id, watched }`. The program's own watched mark (YouTube gives no program its history), kept with the account. Admin. |
+| `youtube_later` | `{ id, on }` -> `{ id, later, youtube }`. Add to / remove from Watch Later: always kept on the server; `youtube` says what happened on the account's own list through the Alchemy browser: `done`, `failed`, `browser-signin`, `browser-offline`. Admin. |
 | `youtube_search` | `{ query, page? }` -> `{ query, videos[], channels[], next }` (100 quota units a page; answers kept 10 minutes) |
 | `youtube_channel` | `{ id }` -> `{ channel, videos[], favourite, subscribed }` |
 | `youtube_favourite` | `{ channel: { id, title, thumb }, on }` -> `{ favourites[] }`. Admin. |
 | `youtube_favourites_order` | `{ ids[] }` -> `{ favourites[] }`. Admin. |
 | `youtube_settings_save` | `{ settings: { noShorts?, rareFirst?, todayCount? } }` -> `{ settings }`. Admin. |
 
-A video is `{ id, title, channel, channelId, thumb, at, length, live }` (`at` in ms, `length` in seconds or null,
+A video is `{ id, title, channel, channelId, thumb, at, length, live, watched, later }` (`at` in ms, `length` in seconds or null,
 `live`: `''`, `live` or `upcoming`). A channel is `{ id, title, thumb }`.
 
 Errors carry a code: `YOUTUBE_SIGNIN` (not signed in, or Google ended the sign-in), `YOUTUBE_NO_CLIENT`,

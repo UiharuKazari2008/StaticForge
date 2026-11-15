@@ -17,6 +17,11 @@
  * Lists (youtube_feed, youtube_watch_later, youtube_search, youtube_subscriptions, youtube_channel)
  * are read when their page is opened, on Refresh, or when they are older than 15 minutes on return.
  *
+ * Holding a video offers Mark as Watched / Unwatched and Add to / Remove from Watch Later. Watched is the
+ * program's own mark (YouTube gives no program its history; a video opened from here is marked too): those
+ * videos are dimmed and sit below the rest of the Subscriptions list. A clock on the picture says a video
+ * is in Watch Later.
+ *
  * A video opens in the phone's YouTube app through the Dreamscape app's link bridge
  * (window.AndroidLinks.openNative); without the bridge the link opens the way the browser opens it.
  *
@@ -45,6 +50,7 @@
         search: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="6.8" cy="6.8" r="4.4"/><path d="M10.2 10.2l4 4"/></svg>',
         channels: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.6l1.9 4 4.4.6-3.2 3 .8 4.4L8 11.5l-3.9 2.1.8-4.4-3.2-3 4.4-.6z"/></svg>',
         star: '<svg viewBox="0 0 20 20"><path d="M10 2l2.4 5 5.5.7-4 3.8 1 5.5-4.9-2.7L5.1 17l1-5.5-4-3.8L7.6 7z"/></svg>',
+        later: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4V6l1.9 1.2"/></svg>',
         clock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.4V8l2.6 1.6"/></svg>',
         left: '<svg viewBox="0 0 7 11"><path d="M6 0.5L1 5.5l5 5z" fill="currentColor"/></svg>',
         right: '<svg viewBox="0 0 7 11"><path d="M1 0.5l5 5-5 5z" fill="currentColor"/></svg>'
@@ -140,7 +146,13 @@
         } catch (_) { /* the plain way below */ }
         try { window.open(url, '_blank', 'noopener'); return true; } catch (_) { return false; }
     }
-    const openVideo = (id) => openUrl(videoUrl(id));
+    /** Opens the video in the YouTube app; a video opened from here counts as watched. */
+    function openVideo(id) {
+        const ok = openUrl(videoUrl(id));
+        const v = seen.get(id);
+        if (ok && isAdmin() && !(v && v.watched)) setWatched(id, true, true);
+        return ok;
+    }
 
     async function copyText(text) {
         try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* older WebView */ }
@@ -360,6 +372,60 @@
             starBusy = false;
         }
     }
+    // ---- marks: watched (this program's own) and Watch Later
+
+    /** Every copy of a video the lists hold (the same video can be in several). */
+    function eachVideo(id, fn) {
+        [data.subs.videos, data.later.videos, data.search.videos, layer && layer.videos, latest()].forEach((list) => {
+            (list || []).forEach((v) => { if (v && v.id === id) fn(v); });
+        });
+        const v = seen.get(id);
+        if (v) fn(v);
+    }
+    /** The Subscriptions list keeps watched videos below the rest (each part newest first). */
+    function sinkWatched() {
+        const list = data.subs.videos;
+        if (list) data.subs.videos = list.filter((v) => !v.watched).concat(list.filter((v) => v.watched));
+    }
+    function redraw() {
+        if (shown) { renderPane(tab); renderLayer(); renderHead(); } else stale = true;
+        todayHtml = '';
+    }
+
+    async function setWatched(id, on, quiet) {
+        if (!isAdmin()) { if (!quiet) box('Only the administrator can mark videos.', 'info'); return; }
+        eachVideo(id, (v) => { v.watched = on; });
+        // a video just opened stays where it is until the list is next read: the page is behind the YouTube app
+        if (!quiet) { sinkWatched(); redraw(); }
+        try {
+            await ask('youtube_mark', { id, watched: on });
+        } catch (e) {
+            eachVideo(id, (v) => { v.watched = !on; });
+            if (!quiet) { sinkWatched(); redraw(); box(failText(e, 'The mark could not be saved')); }
+        }
+    }
+
+    async function setLater(id, on) {
+        if (!isAdmin()) { box('Only the administrator can change Watch Later.', 'info'); return; }
+        eachVideo(id, (v) => { v.later = on; });
+        if (!on && data.later.videos) data.later.videos = data.later.videos.filter((v) => v.id !== id);
+        data.later.at = 0; // the Watch Later page reads its list again when it is next shown
+        redraw();
+        try {
+            const d = await ask('youtube_later', { id, on }, 60000);
+            eachVideo(id, (v) => { v.later = !!d.later; });
+            redraw();
+            // still on the account's own list: the server's browser could not take it off there
+            if (!on && d.later) box(`It is still in your YouTube Watch Later list. ${BROWSER_WHY[d.youtube] || 'YouTube did not take the change.'}`, 'info');
+            else if (d.youtube === 'failed') box(on ? 'Saved here, but YouTube did not add it to the account\'s own Watch Later list.' : 'YouTube did not take the change.', 'info');
+            if (tab === 'later' && shown) loadTab('later', true, true);
+        } catch (e) {
+            eachVideo(id, (v) => { v.later = !on; });
+            redraw();
+            box(failText(e, 'Watch Later could not be changed'));
+        }
+    }
+
     /** Channels whose notification bell is set to All become Today favourites (read in the server's browser). */
     async function importBells() {
         if (!isAdmin()) { box('Only the administrator can change the favourite channels.', 'info'); return; }
@@ -429,9 +495,9 @@
         const live = v.live === 'live' || v.live === 'upcoming';
         const big = hero ? `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/hqdefault.jpg` : v.thumb;
         const sub = [v.channel, age(v.at)].filter(Boolean);
-        return `<div class="yt-row${hero ? ' is-hero' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
-            <span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>
-            <span class="yt-tx"><span class="yt-t">${isNew(v) ? '<i class="yt-new">NEW</i>' : ''}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(age(v.at))}</span>`}</span>
+        return `<div class="yt-row${hero ? ' is-hero' : ''}${v.watched ? ' is-watched' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
+            <span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>
+            <span class="yt-tx"><span class="yt-t">${isNew(v) && !v.watched ? '<i class="yt-new">NEW</i>' : ''}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(age(v.at))}</span>`}</span>
         </div>`;
     }
 
@@ -453,7 +519,7 @@
     };
     const emptyHtml = (head, text, extra) => `<div class="yt-empty"><b>${esc(head)}</b>${esc(text || '')}${extra || ''}</div>`;
     const errorHtml = (text, act) => emptyHtml('YouTube did not answer', text, `<br><button type="button" class="yt-btn" data-act="${act}">Try Again</button>`);
-    const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0)).join('');
+    const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0 && !v.watched)).join('');
 
     function paneHtml(id) {
         const t = data[id];
@@ -468,7 +534,7 @@
             if (!t.videos) return emptyHtml('Watch Later', t.loading ? 'Reading the list...' : '');
             if (t.unavailable) return emptyHtml(t.why === 'browser-offline' ? 'The server\'s browser is not running' : 'Sign in to YouTube in Internet Explorer', `${BROWSER_WHY[t.why] || BROWSER_WHY['browser-signin']} Until then the list opens in the YouTube app.`, '<br><button type="button" class="yt-btn is-go" data-act="open-later">Open Watch Later</button> <button type="button" class="yt-btn" data-act="retry">Try Again</button>');
             if (!t.videos.length) return emptyHtml('Nothing saved', 'Videos you save to Watch Later in YouTube show up here.');
-            return videosHtml(t.videos);
+            return videosHtml(t.videos) + (t.why ? `<div class="yt-foot">These are the videos added here. ${esc(BROWSER_WHY[t.why] || '')}<br><button type="button" class="yt-btn" data-act="open-later">Open Watch Later in YouTube</button></div>` : '');
         }
         if (id === 'channels') {
             if (t.error && !t.list) return errorHtml(t.error, 'retry');
@@ -725,6 +791,9 @@
                 { label: 'Play in YouTube', action: () => openVideo(v.id) },
                 { label: 'Open in Browser', action: () => openUrl(videoUrl(v.id), false) },
                 '-',
+                { label: v.watched ? 'Mark as Unwatched' : 'Mark as Watched', disabled: !isAdmin(), action: () => setWatched(v.id, !v.watched) },
+                { label: v.later ? 'Remove from Watch Later' : 'Add to Watch Later', disabled: !isAdmin(), action: () => setLater(v.id, !v.later) },
+                '-',
                 c && !(layer && layer.id === c.id) ? { label: 'Go to Channel', action: () => openChannel(c.id, seen.get(c.id) || c) } : null,
                 c ? { label: 'Show Channel on Today', checked: fav.has(c.id), action: () => toggleFavourite(seen.get(c.id) || c) } : null,
                 '-',
@@ -908,7 +977,7 @@
         let inner;
         if (v) {
             const len = lenText(v);
-            inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc([v.channel, age(v.at), rareText(v)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
+            inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines${v.watched ? ' is-watched' : ''}"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc([v.channel, age(v.at), rareText(v)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
         } else {
             const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Tap to choose favourite channels' : a.error ? a.error : 'Looking for new videos...';
             inner = `<img class="yt-td-icon" src="${ws.art.url('app-youtube-lg')}" srcset="${ws.art.srcset('app-youtube-lg')}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">YouTube</span><span class="wtw-sub">${esc(line)}</span></span>`;
