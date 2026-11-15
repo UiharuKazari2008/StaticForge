@@ -118,6 +118,8 @@ function loadFiles() {
             token: a.token && typeof a.token === 'object' ? a.token : {},
             account: a.account || null,
             favourites: Array.isArray(a.favourites) ? a.favourites.map(cleanChannel).filter(Boolean) : [],
+            watched: a.watched && typeof a.watched === 'object' ? a.watched : {},
+            later: Array.isArray(a.later) ? a.later.filter((x) => x && VIDEO_ID.test(String(x.id))) : [],
             settings: a.settings && typeof a.settings === 'object' ? a.settings : {}
         };
     }
@@ -653,6 +655,76 @@ async function channelCounts(ids) {
     return out;
 }
 
+// ---- marks: watched, and Watch Later
+//
+// YouTube gives no program its watch history, so "watched" is this program's own mark (the hold menu, or a
+// video opened from here), kept with the account. Watch Later is kept here too, so adding works whether
+// or not the server's browser is signed in; when it is, the change also goes to the account's own list on
+// YouTube and that list is shown with it.
+
+const MAX_WATCHED = 5000;
+let ytLater = null; // { at, ids: Set }: the account's own Watch Later list as the browser last read it
+
+function watchedMap() {
+    if (!acct.watched || typeof acct.watched !== 'object') acct.watched = {};
+    return acct.watched;
+}
+function laterList() {
+    if (!Array.isArray(acct.later)) acct.later = [];
+    return acct.later;
+}
+const inLater = (id) => laterList().some((x) => x.id === id) || !!(ytLater && ytLater.ids.has(id));
+
+/** Copies of these videos with `watched` and `later` set. */
+function marked(videos) {
+    const w = watchedMap();
+    return (videos || []).map((v) => Object.assign({}, v, { watched: !!w[v.id], later: inLater(v.id) }));
+}
+/** Marked, and the watched ones after the rest (each part keeps its order). */
+function unwatchedFirst(videos) {
+    const m = marked(videos);
+    return m.filter((v) => !v.watched).concat(m.filter((v) => v.watched));
+}
+
+async function markWatched(id, on) {
+    if (!VIDEO_ID.test(String(id || ''))) throw fail('That is not a video', 'YOUTUBE_BAD_VIDEO');
+    const w = watchedMap();
+    if (on) w[id] = Date.now(); else delete w[id];
+    const ids = Object.keys(w);
+    if (ids.length > MAX_WATCHED) ids.sort((a, b) => w[a] - w[b]).slice(0, ids.length - MAX_WATCHED).forEach((k) => { delete w[k]; });
+    saveAccount();
+    poke();
+    return { id, watched: !!on };
+}
+
+/**
+ * Add to / remove from Watch Later. Always kept here; `youtube` says what happened on the account's own
+ * list: done | failed | browser-signin | browser-offline.
+ */
+async function setLater(id, on) {
+    if (!VIDEO_ID.test(String(id || ''))) throw fail('That is not a video', 'YOUTUBE_BAD_VIDEO');
+    let list = laterList();
+    let entry = list.find((x) => x.id === id);
+    if (on && !entry) { entry = { id, at: Date.now(), synced: false }; list.unshift(entry); }
+    if (!on) { acct.later = list = list.filter((x) => x.id !== id); entry = null; }
+    saveAccount();
+    let youtube = '';
+    try {
+        const r = await browser.edit(on ? 'add' : 'remove', id);
+        youtube = !r || !r.signedIn ? 'browser-signin' : r.ok ? 'done' : 'failed';
+        if (youtube === 'done') {
+            if (entry) entry.synced = true;
+            if (ytLater) { if (on) ytLater.ids.add(id); else ytLater.ids.delete(id); }
+            saveAccount();
+        }
+    } catch (e) {
+        youtube = e && e.code === 'ALCHEMY_OFFLINE' ? 'browser-offline' : 'failed';
+    }
+    watchLater.memo = null;
+    poke();
+    return { id, later: inLater(id), youtube };
+}
+
 // ---- the subscriptions feed
 
 const FEED_TTL = 10 * MIN; // how old the feed may be before a read looks for new uploads
@@ -692,7 +764,8 @@ function refreshFeed() {
 }
 
 /**
- * The subscriptions feed: every subscribed channel's newest uploads, newest first. A read that finds the
+ * The subscriptions feed: every subscribed channel's newest uploads, newest first, the ones marked watched
+ * after the rest. A read that finds the
  * feed older than 10 minutes answers at once from what is held ({ refreshing: true }) and looks for new
  * uploads behind it; the status feed's `feed.at` then tells the program to read again. Only the very
  * first read (nothing held yet) waits. opts.fresh (the Refresh key) looks again after 2 minutes.
@@ -700,11 +773,12 @@ function refreshFeed() {
 async function feed(opts = {}) {
     if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
     const age = feedMemo ? Date.now() - feedMemo.at : Infinity;
-    if (feedMemo && age < (opts.fresh ? 2 * MIN : FEED_TTL)) return Object.assign({ refreshing: !!feedBusy }, feedMemo);
+    const out = (f, refreshing) => Object.assign({}, f, { refreshing, videos: unwatchedFirst(f.videos) });
+    if (feedMemo && age < (opts.fresh ? 2 * MIN : FEED_TTL)) return out(feedMemo, !!feedBusy);
     const held = cache.subs && cache.subs.list && cache.subs.list.some((c) => cache.uploads[c.id] && cache.uploads[c.id].at);
-    if (!held) return Object.assign({ refreshing: false }, await refreshFeed());
+    if (!held) return out(await refreshFeed(), false);
     refreshFeed().then(() => poke(), (e) => { lastError = e.message; poke(); });
-    return { at: feedMemo ? feedMemo.at : (cache.subs && cache.subs.at) || 0, videos: detailed(feedFromCache()), channels: cache.subs.list.length, partial: false, refreshing: true };
+    return out({ at: feedMemo ? feedMemo.at : (cache.subs && cache.subs.at) || 0, videos: detailed(feedFromCache()), channels: cache.subs.list.length, partial: false }, true);
 }
 
 async function channelPage(id) {
@@ -718,7 +792,7 @@ async function channelPage(id) {
         const c = d.items && d.items[0];
         channel = cleanChannel({ id, title: plain(c && c.snippet && c.snippet.title) || (videos[0] && videos[0].channel), thumb: thumbOf(c && c.snippet && c.snippet.thumbnails) });
     }
-    return { channel, videos, favourite: acct.favourites.some((f) => f.id === id), subscribed: !!(cache.subs && cache.subs.list.some((c) => c.id === id)) };
+    return { channel, videos: marked(videos), favourite: acct.favourites.some((f) => f.id === id), subscribed: !!(cache.subs && cache.subs.list.some((c) => c.id === id)) };
 }
 
 async function search(query, page) {
@@ -726,7 +800,7 @@ async function search(query, page) {
     if (!q) throw fail('Type what to look for', 'YOUTUBE_BAD_QUERY');
     const key = `${q.toLowerCase()}|${page || ''}`;
     const held = searches.get(key);
-    if (held && Date.now() - held.at < SEARCH_TTL) return held.data;
+    if (held && Date.now() - held.at < SEARCH_TTL) return Object.assign({}, held.data, { videos: marked(held.data.videos) });
     const p = { part: 'snippet', q, type: 'video,channel', maxResults: '25', safeSearch: 'none' };
     if (page) p.pageToken = String(page);
     const d = await api('search', p, 100);
@@ -745,7 +819,7 @@ async function search(query, page) {
     const data = { query: q, videos: await withDetails(videos), channels, next: d.nextPageToken || '' };
     searches.set(key, { at: Date.now(), data });
     if (searches.size > 40) searches.delete(searches.keys().next().value);
-    return data;
+    return Object.assign({}, data, { videos: marked(data.videos) });
 }
 
 // ------------------------------------------------------------------------------------------ Watch Later and the bells (Alchemy)
@@ -764,15 +838,31 @@ async function browserRead(kind) {
     }
 }
 
+/**
+ * Watch Later: what was added here, with the account's own list on YouTube when the server's browser can
+ * read it (`why` says when it cannot: browser-signin | browser-offline; the list is then only what was
+ * added here, and `unavailable` is true when that is nothing).
+ */
 async function watchLater(opts = {}) {
     if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
-    if (watchLater.memo && !opts.fresh && Date.now() - watchLater.memo.at < UPLOADS_TTL) return watchLater.memo.data;
+    const answer = (d) => Object.assign({}, d, { videos: marked(d.videos) });
+    if (watchLater.memo && !opts.fresh && Date.now() - watchLater.memo.at < watchLater.memo.ttl) return answer(watchLater.memo.data);
     const r = await browserRead('watch-later');
-    if (r.why) return { videos: [], unavailable: true, why: r.why };
-    const ids = (r.ids || []).filter((id) => VIDEO_ID.test(String(id))).slice(0, 300);
-    const data = { videos: await withDetails(ids.map((id) => ({ id, title: '', channel: '', channelId: '', thumb: '', at: null, length: null, live: '' }))), unavailable: false, why: '', partial: !!r.partial };
-    watchLater.memo = { at: Date.now(), data };
-    return data;
+    let ids;
+    if (r.why) {
+        ids = laterList().map((x) => x.id);
+    } else {
+        const yt = (r.ids || []).filter((id) => VIDEO_ID.test(String(id))).slice(0, 300);
+        ytLater = { at: Date.now(), ids: new Set(yt) };
+        // a video that reached YouTube's list from here and is gone from it was removed there
+        const kept = laterList().filter((x) => !(x.synced && !ytLater.ids.has(x.id) && !r.partial));
+        if (kept.length !== laterList().length) { acct.later = kept; saveAccount(); }
+        ids = kept.filter((x) => !ytLater.ids.has(x.id)).map((x) => x.id).concat(yt);
+    }
+    const stub = (id) => ({ id, title: '', channel: '', channelId: '', thumb: '', at: null, length: null, live: '' });
+    const data = { videos: await withDetails(ids.map(stub)), unavailable: !!r.why && !ids.length, why: r.why || '', partial: !!r.partial };
+    watchLater.memo = { at: Date.now(), ttl: r.why ? 2 * MIN : UPLOADS_TTL, data };
+    return answer(data);
 }
 
 /**
@@ -893,7 +983,7 @@ function accountView() {
 
 function hubItems() {
     refreshLatest(false);
-    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? latestVideos() : [] }, settings: settings(), feed: { at: feedMemo ? feedMemo.at : 0 } };
+    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? marked(latestVideos()) : [] }, settings: settings(), feed: { at: feedMemo ? feedMemo.at : 0 } };
 }
 
 function getState() {
@@ -926,6 +1016,8 @@ module.exports = {
     subscriptions,
     feed,
     watchLater,
+    markWatched,
+    setLater,
     importBellFavourites,
     search,
     channelPage,
@@ -935,5 +1027,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };

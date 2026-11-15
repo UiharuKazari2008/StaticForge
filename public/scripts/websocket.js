@@ -564,6 +564,8 @@ class BannerManager {
             'youtube_feed': 'YouTube Subscriptions',
             'youtube_watch_later': 'Watch Later',
             'youtube_import_bell': 'Import Favourite Channels',
+            'youtube_mark': 'Mark Video',
+            'youtube_later': 'Watch Later',
             'youtube_search': 'YouTube Search',
             'youtube_channel': 'YouTube Channel',
             'youtube_favourite': 'Favourite Channel',
@@ -1017,6 +1019,8 @@ class WebSocketClient {
         'lapis_history',
         // YouTube (#839): the About box's read of what the server holds (no call to YouTube)
         'youtube_get',
+        // a video opened from the program is marked watched behind the hand-off to the YouTube app
+        'youtube_mark',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -10098,9 +10102,10 @@ class WebSocketClient {
         }
 
         if (!this._wsFlashVisibilityInterval) {
+            // the net under the class observer above: every 30 s (was every 5, #849)
             this._wsFlashVisibilityInterval = setInterval(() => {
                 this._refreshWsFlashTargets();
-            }, 5000);
+            }, 30000);
         }
     }
 
