@@ -9814,7 +9814,11 @@ class WebSocketClient {
             displayCount = 0;
         }
 
-        const badges = document.querySelectorAll('.websocket-ticker-badge');
+        // the badges are part of the page (app.html): one lookup, repeated only if one has gone (#849)
+        if (!this._tickerBadges || !this._tickerBadges.length || !this._tickerBadges[0].isConnected) {
+            this._tickerBadges = Array.from(document.querySelectorAll('.websocket-ticker-badge'));
+        }
+        const badges = this._tickerBadges;
         const text = displayCount > 0 ? String(displayCount) : '';
         const count = String(displayCount);
         badges.forEach(badge => {
@@ -10389,9 +10393,17 @@ class WebSocketClient {
     }
 
     _syncTaskbarNetFlags() {
-        const up = document.querySelector('#taskbarWebsocketIndicator .websocket-arrow-up');
-        const down = document.querySelector('#taskbarWebsocketIndicator .websocket-arrow-down');
-        const status = document.getElementById('taskbarWsStatus');
+        // three fixed elements, asked for on every traffic change: kept while they are in the page (#849)
+        const net = this._taskbarNetEls && this._taskbarNetEls.up && this._taskbarNetEls.up.isConnected
+            ? this._taskbarNetEls
+            : (this._taskbarNetEls = {
+                up: document.querySelector('#taskbarWebsocketIndicator .websocket-arrow-up'),
+                down: document.querySelector('#taskbarWebsocketIndicator .websocket-arrow-down'),
+                status: document.getElementById('taskbarWsStatus')
+            });
+        const up = net.up;
+        const down = net.down;
+        const status = net.status;
         const upOn = !!(up && (up.classList.contains('active') || up.classList.contains('active-http')
             || (up.classList.contains('streaming-up') && !up.classList.contains('streaming-stalled-up'))));
         const downOn = !!(down && (down.classList.contains('active') || down.classList.contains('active-http')
