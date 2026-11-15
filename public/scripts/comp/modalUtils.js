@@ -3561,6 +3561,10 @@ function openModal(modal) {
         handleModalActivatePointer(e, modal);
     };
     const clickHandlerOptions = modalListenerSignal ? { signal: modalListenerSignal } : undefined;
+    // openModal on a window that is already open (a second call while opening, bring-to-front
+    // paths) added a second handler and lost track of the first, which then stayed on the window
+    // for good: one more listener per open of the Director window (#849). The earlier one goes first.
+    if (modal._modalClickHandler) modal.removeEventListener('mousedown', modal._modalClickHandler);
     modal.addEventListener('mousedown', clickHandler, clickHandlerOptions);
 
     // Store the click handler for cleanup (legacy path during migration)
@@ -3595,6 +3599,10 @@ function openModal(modal) {
             }
         }
     };
+    // an open whose animation never ran (animations off, a second open mid-way) left its handler
+    // on the window: the one from the open before goes first (#849)
+    if (modal._openingAnimationHandler) modal.removeEventListener('animationend', modal._openingAnimationHandler);
+    modal._openingAnimationHandler = openingAnimationHandler;
     modal.addEventListener('animationend', openingAnimationHandler);
 
     if (modal.dataset.windowPositionMode === 'cascade-parent') {
