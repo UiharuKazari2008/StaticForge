@@ -424,6 +424,10 @@ function preloadOtherWorkspaceWallpapers() {
     // wallpapers; the phone's Today paints its own, so every workspace's decoded wallpaper here is wasted RAM
     const mc = window.melatonContinuity;
     if (mc && mc.available && mc.role() === 'phone' && (mc.hybrid() || {}).hybrid) return Promise.resolve();
+    // any Melaton Mobile page, hybrid or not (#849): the phone shell has no desktop backdrop to switch
+    // (Today paints its own picture), yet it fetched every workspace's wallpaper and kept all of them
+    // decoded: 10 pictures, 62 MB of bitmaps, in a phone test tab
+    if (window.uiShell === 'mobile') return Promise.resolve();
     otherWallpapersPreloaded = true;
     const idle = () => new Promise((resolve) => {
         if (typeof requestIdleCallback === 'function') requestIdleCallback(() => resolve(), { timeout: 2000 });
