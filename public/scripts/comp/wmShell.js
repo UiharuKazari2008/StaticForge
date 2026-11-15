@@ -29,6 +29,19 @@
     'use strict';
 
     const root = document.documentElement;
+    // --wm-px on <html> comes only from its inline style (Settings > Screen) and its classes
+    // (ui-mobile, wm-touch; wm-shell.css): the computed value is read again only when one of those
+    // changed, not on every title-bar fit, bezel or Today draw (each read was a full style pass, #817)
+    let rootPxKey = null;
+    let rootPxVal = 1;
+    function rootPx() {
+        const key = `${root.style.getPropertyValue('--wm-px')}|${root.className}`;
+        if (key !== rootPxKey) {
+            rootPxKey = key;
+            rootPxVal = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        }
+        return rootPxVal;
+    }
     // The UI version this page runs (#739): app.html reads wmVersion before the first paint. 6.5
     // swaps the Start menu for the Start screen (wmStart65.js, app id 'start') and Today's rows
     // for the Melaton Default home screen (wmTitanium.js, setTodayView); wm65.css restyles the rest.
@@ -420,7 +433,7 @@
     let pixelScaleKey = '';
     function syncPixelScale() {
         const dpr = window.devicePixelRatio || 1;
-        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const px = rootPx();
         const scale = dpr * px;
         const artClass = scale <= 1.01 ? 'wm-art-1x' : scale <= 2.01 ? 'wm-art-2x' : 'wm-art-4x';
         const key = `${dpr}|${artClass}`;
@@ -859,7 +872,7 @@
         // 6.1's colour emblem: the file nearest the box's device size (19 units wide)
         const emblem61 = !WM65 && b.icon === EMBLEM61;
         if (img && emblem61) {
-            img.setAttribute('sizes', `${19 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1)}px`);
+            img.setAttribute('sizes', `${19 * (rootPx())}px`);
             if (img.getAttribute('srcset') !== EMBLEM61_SRCSET) img.setAttribute('srcset', EMBLEM61_SRCSET);
         } else if (img) img.removeAttribute('sizes');
         shell.querySelector('.wm-start').classList.toggle('is-melaton', emblem61);
@@ -2762,7 +2775,7 @@
      */
     function syncIconUnit() {
         const dpr = window.devicePixelRatio || 1;
-        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const px = rootPx();
         const want = 16 * px * dpr; // the icon's size in device px
         // under 24 device px a whole 2x icon (32 px) would be up to twice its slot (a mouse-driven
         // window at one device px a unit: 16 px wanted, 32 drawn, the icons overflowing the bar):
@@ -2777,14 +2790,23 @@
     function snapStatusIcons() {
         if (!shell) return;
         const dpr = window.devicePixelRatio || 1;
-        const icons = shell.querySelectorAll('.wm-titlebar .wm-status-icon');
-        icons.forEach((i) => { i.style.translate = ''; });
-        icons.forEach((i) => {
-            if (i.hidden || !i.offsetWidth) return;
+        // all reads first, then the writes: one style and layout pass for the whole bar, not one per
+        // icon (each write made the next icon's read flush again, ~140 passes while booting, #817).
+        // An icon's place without its current nudge is its box minus that nudge.
+        const icons = Array.from(shell.querySelectorAll('.wm-titlebar .wm-status-icon'));
+        const moves = icons.map((i) => {
+            if (i.hidden || !i.offsetWidth) return null;
             const r = i.getBoundingClientRect();
-            const dx = Math.round(r.left * dpr) / dpr - r.left;
-            const dy = Math.round(r.top * dpr) / dpr - r.top;
-            if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001) i.style.translate = `${dx}px ${dy}px`;
+            const cur = String(i.style.translate || '').split(/\s+/).map((v) => parseFloat(v) || 0);
+            const left = r.left - (cur[0] || 0);
+            const top = r.top - (cur[1] || 0);
+            const dx = Math.round(left * dpr) / dpr - left;
+            const dy = Math.round(top * dpr) / dpr - top;
+            return Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001 ? `${dx}px ${dy}px` : '';
+        });
+        icons.forEach((i, n) => {
+            const want = moves[n] == null ? '' : moves[n];
+            if (i.style.translate !== want) i.style.translate = want;
         });
     }
 
@@ -2978,7 +3000,7 @@
         else if (h.top < near) edge = 'top';
         else if (h.left < near) edge = 'left';
         else if (h.left + h.width > viewW() - near) edge = 'right';
-        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const px = rootPx();
         // a camera in the middle of the top edge is a punch hole (Fold7 cover screen): the logo goes top right
         const mid = h.left + h.width / 2;
         const central = edge === 'top' && h.width > 0 && Math.abs(mid - viewW() / 2) < viewW() * 0.2;
@@ -3065,7 +3087,7 @@
         // Settings > Screen > Bezel > Extend Status Bar to edge of Camera (#777): a camera reaching
         // below the title bar would hang into the page: the page starts under it and the title bar
         // grows up over the strip (wm-shell.css data-wm-bar-extend); the icons keep their row
-        const pxu = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const pxu = rootPx();
         let extend = 0;
         let extOn = false;
         try { extOn = localStorage.getItem('wmCameraExtendBar') === '1'; } catch (_) { /* storage off */ }
@@ -3085,7 +3107,7 @@
         // the icons' row: centred in the bar when extended (wm-shell.css: half the extra space above it, half below)
         const br = { top: br0.top + extend / 2, bottom: br0.bottom - extend / 2, right: br0.right, left: br0.left };
         const tl = title.getBoundingClientRect().left;
-        const pad = 3 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1);
+        const pad = 3 * (rootPx());
         const inBar = !bezel && !cameraIgnoredNow() && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
             && hole.left - pad > tl && hole.left + hole.width < br.right;
         if (!inBar) {
@@ -7301,7 +7323,7 @@
                 this.stale = false;
                 // layout reads first, before this draw's writes dirty the styles again
                 const strip = page.querySelector('[data-row="prints"]');
-                const pxv = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+                const pxv = rootPx();
                 const stripWidth = strip.clientWidth || page.clientWidth;
                 applyTodayBackground();
                 const now = new Date();
@@ -7618,7 +7640,7 @@
             const scroller = page.querySelector('.wm-pv-scroll');
             const w = (scroller && scroller.clientWidth) || page.clientWidth;
             if (!w) return false;
-            const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+            const px = rootPx();
             page.style.setProperty('--wm-pv-k', String(pvK()));
             const cols = Math.max(2, Math.floor(w / (80 * px * pvK())));
             const prev = page.style.getPropertyValue('--wm-pv-cols');
@@ -7685,7 +7707,7 @@
             const anchor = gridAnchor(page);
             const box = page.querySelector('.wm-pv-grid');
             const cols = Number(page.style.getPropertyValue('--wm-pv-cols')) || 3;
-            const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+            const px = rootPx();
             // a block is whole rows: 60 cells in 7 columns left a gap after every block (Fold7)
             const size = cols * Math.max(1, Math.round(CHUNK / cols));
             const chunkHtml = (i) => {
@@ -8551,7 +8573,7 @@
      * height when this counted the bars alone).
      */
     function viewerPadding() {
-        const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        const px = rootPx();
         const pad = { top: 26 * px, bottom: 50 * px, left: 0, right: 0 };
         try {
             const title = shell && shell.querySelector('.wm-titlebar');
