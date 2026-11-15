@@ -724,7 +724,9 @@ class WebSocketServer {
 
         // a sleeping phone page that asks for something is awake (a missed wake report must never leave
         // its status pushes held, Yukimi Nov 15: status icons not updating): what was held goes now
-        if (clientInfo.dormant && message && message.type !== 'client_dormant' && message.type !== 'pong') {
+        // (not in the first 10 s: a page going to sleep sends its own last requests, unsubscribes and reads)
+        if (clientInfo.dormant && message && message.type !== 'client_dormant' && message.type !== 'pong'
+            && Date.now() - (clientInfo.dormantAt || 0) > 10000) {
             this.setDormant(ws, false, `request ${String(message.type || '').slice(0, 40)}`);
         }
 
@@ -800,6 +802,7 @@ class WebSocketServer {
         if (!info) return;
         const was = !!info.dormant;
         info.dormant = !!on;
+        if (on && !was) info.dormantAt = Date.now();
         const held = !on && this._dormantHeld ? this._dormantHeld.get(ws) : null;
         if (was !== !!on) {
             const ua = String(info.userAgent || '');
