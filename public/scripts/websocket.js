@@ -555,6 +555,20 @@ class BannerManager {
             'lapis_picture_get': 'Car Picture',
             'lapis_picture_save': 'Save Car Picture',
 
+            // Melaton Mobile YouTube (#839)
+            'youtube_get': 'YouTube',
+            'youtube_signin': 'YouTube Sign-in',
+            'youtube_signin_cancel': 'Cancel YouTube Sign-in',
+            'youtube_signout': 'YouTube Sign-out',
+            'youtube_subscriptions': 'YouTube Channels',
+            'youtube_feed': 'YouTube Subscriptions',
+            'youtube_watch_later': 'Watch Later',
+            'youtube_search': 'YouTube Search',
+            'youtube_channel': 'YouTube Channel',
+            'youtube_favourite': 'Favourite Channel',
+            'youtube_favourites_order': 'Favourite Channels',
+            'youtube_settings_save': 'Save YouTube Settings',
+
             // Cursor accounts
             'get_cursor_accounts': 'Get Cursor Accounts',
             'switch_cursor_account': 'Switch Cursor Account',
@@ -999,6 +1013,8 @@ class WebSocketClient {
         'lapis_get',
         'lapis_picture_get',
         'lapis_history',
+        // YouTube (#839): the About box's read of what the server holds (no call to YouTube)
+        'youtube_get',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([

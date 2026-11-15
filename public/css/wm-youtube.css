@@ -1,0 +1,610 @@
+/*
+ * Melaton Mobile: YouTube (wmYouTube.js, Yozora #839). Our own drawing in the manner of the 2009-2010
+ * HTC Sense programs Yukimi asked for: a black glass page, a glossy header, lists of framed thumbnails
+ * with a red press glow, and Sense's bottom tab strip with a glass slider that follows the finger.
+ * The accent is red (Yukimi, Nov 15 2026: "make the app theme red"). Nothing here is HTC's or YouTube's art.
+ *   Animations move only transform and opacity and stop while the page is hidden (.is-paused).
+ *   Sizes follow the shell scale (--wm-px). Phones only. A wide screen (an unfolded phone, a tablet)
+ *   lays the lists out in two columns.
+ * The Today row (.yt-today) sits in the shell's Today block (6.1); the 6.5 panel is the shell's own.
+ */
+.wm-page.wm-youtube {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #000;
+    color: #fff;
+    container: yt / size;
+    --u: var(--wm-px, 1px);
+    --yt-accent: #e8281d;
+    --yt-accent-deep: #a3120c;
+    --yt-dim: #9aa1a8;
+    --yt-red: #e3261c;
+    font-family: 'Segoe UI', Tahoma, Verdana, sans-serif;
+    font-size: calc(10 * var(--u));
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-youtube .yt-root {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(#17191c, #060607 60%, #000);
+}
+
+.wm-youtube .yt-root.is-paused *,
+.wm-youtube .yt-root.is-paused *::before,
+.wm-youtube .yt-root.is-paused *::after { animation-play-state: paused !important; }
+
+.wm-youtube svg { display: block; }
+.wm-youtube [hidden] { display: none !important; }
+
+/* ---------------------------------------------------------------- header (glossy black glass) */
+
+.wm-youtube .yt-head {
+    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--u));
+    height: calc(28 * var(--u));
+    padding: 0 calc(7 * var(--u));
+    background: linear-gradient(#6a7078, #3c4046 46%, #1b1d20 52%, #0d0e10);
+    border-bottom: 1px solid #000;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.35), 0 calc(1 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.7);
+    z-index: 2;
+}
+
+.wm-youtube .yt-head::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(1 * var(--u));
+    background: linear-gradient(90deg, transparent, var(--yt-accent) 30%, var(--yt-accent) 70%, transparent);
+    opacity: 0.7;
+}
+
+.wm-youtube .yt-me {
+    flex: 0 0 auto;
+    width: calc(20 * var(--u));
+    height: calc(20 * var(--u));
+    border-radius: 50%;
+    object-fit: cover;
+    background: #25282c;
+    box-shadow: 0 0 0 1px #000, 0 0 0 calc(1 * var(--u) + 1px) rgba(255, 255, 255, 0.35);
+}
+
+.wm-youtube .yt-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: calc(12 * var(--u));
+    font-weight: bold;
+    text-shadow: 0 -1px #000;
+}
+
+.wm-youtube .yt-note {
+    flex: 0 0 auto;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #c9ced4;
+    font-size: calc(8.5 * var(--u));
+    text-shadow: 0 -1px #000;
+}
+
+/* ---------------------------------------------------------------- panes and lists */
+
+.wm-youtube .yt-panes { flex: 1 1 auto; min-height: 0; position: relative; }
+
+.wm-youtube .yt-pane {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-youtube .yt-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+.wm-youtube .yt-list::-webkit-scrollbar { display: none; }
+
+.wm-youtube .yt-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: calc(7 * var(--u));
+    min-height: calc(46 * var(--u));
+    padding: calc(4 * var(--u)) calc(7 * var(--u));
+    box-sizing: border-box;
+    background: linear-gradient(#1c1e21, #101113);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    border-bottom: 1px solid #000;
+    outline: 0;
+}
+
+.wm-youtube .yt-row:active,
+.wm-youtube .yt-row.is-held {
+    background: linear-gradient(#ff7466, var(--yt-accent) 45%, var(--yt-accent-deep));
+    border-top-color: rgba(255, 255, 255, 0.5);
+}
+.wm-youtube .yt-row:active .yt-s,
+.wm-youtube .yt-row.is-held .yt-s { color: #ffe1dd; }
+.wm-youtube .yt-row:active .yt-t,
+.wm-youtube .yt-row.is-held .yt-t { color: #fff; text-shadow: 0 -1px rgba(0, 0, 0, 0.45); }
+
+/* a framed thumbnail: black edge, a light line around it, gloss over the top half */
+.wm-youtube .yt-th {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(66 * var(--u));
+    aspect-ratio: 16 / 9;
+    background: #000;
+    box-shadow: 0 0 0 1px #000, 0 0 0 calc(1px + 1 * var(--u)) rgba(255, 255, 255, 0.22), 0 calc(2 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+.wm-youtube .yt-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.wm-youtube .yt-th::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 48%;
+    background: linear-gradient(rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.03));
+    pointer-events: none;
+}
+
+.wm-youtube .yt-len {
+    position: absolute;
+    right: calc(2 * var(--u));
+    bottom: calc(2 * var(--u));
+    padding: 0 calc(2.5 * var(--u));
+    border-radius: calc(1.5 * var(--u));
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-size: calc(7.5 * var(--u));
+    font-style: normal;
+    line-height: calc(10 * var(--u));
+    z-index: 1;
+}
+.wm-youtube .yt-len.is-live { background: var(--yt-red); font-weight: bold; }
+
+.wm-youtube .yt-tx { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: calc(1 * var(--u)); }
+
+.wm-youtube .yt-t {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+    font-size: calc(10 * var(--u));
+    font-weight: bold;
+    line-height: 1.2;
+    text-shadow: 0 -1px #000;
+    overflow-wrap: anywhere;
+}
+
+.wm-youtube .yt-s {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--yt-dim);
+    font-size: calc(8.5 * var(--u));
+}
+
+.wm-youtube .yt-new {
+    display: inline-block;
+    margin-right: calc(3 * var(--u));
+    padding: 0 calc(3 * var(--u));
+    border-radius: calc(1.5 * var(--u));
+    background: linear-gradient(#ff7466, var(--yt-accent-deep));
+    color: #fff;
+    font-size: calc(7 * var(--u));
+    font-weight: bold;
+    line-height: calc(10 * var(--u));
+    vertical-align: calc(1 * var(--u));
+}
+
+/* the first video of a list: the whole width, its title over the foot of the picture */
+.wm-youtube .yt-row.is-hero {
+    display: block;
+    padding: 0;
+    min-height: 0;
+    border-top: 0;
+}
+.wm-youtube .yt-row.is-hero .yt-th { display: block; width: 100%; max-height: 62cqh; box-shadow: none; }
+.wm-youtube .yt-row.is-hero .yt-th::after { height: 40%; background: linear-gradient(rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0)); }
+.wm-youtube .yt-row.is-hero .yt-tx {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: calc(18 * var(--u)) calc(8 * var(--u)) calc(5 * var(--u));
+    background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.82) 55%, rgba(0, 0, 0, 0.94));
+}
+.wm-youtube .yt-row.is-hero .yt-t { font-size: calc(12 * var(--u)); text-shadow: 0 1px calc(2 * var(--u)) #000; }
+.wm-youtube .yt-row.is-hero .yt-s { color: #d3d8dd; }
+.wm-youtube .yt-row.is-hero .yt-len { bottom: auto; top: calc(4 * var(--u)); right: calc(4 * var(--u)); }
+.wm-youtube .yt-row.is-hero:active .yt-th,
+.wm-youtube .yt-row.is-hero.is-held .yt-th { opacity: 0.72; }
+.wm-youtube .yt-row.is-hero:active .yt-t,
+.wm-youtube .yt-row.is-hero.is-held .yt-t { color: #fff; text-shadow: 0 1px calc(2 * var(--u)) #000; }
+.wm-youtube .yt-row.is-hero:active .yt-s,
+.wm-youtube .yt-row.is-hero.is-held .yt-s { color: #d3d8dd; }
+
+/* a section name between rows */
+.wm-youtube .yt-sec {
+    padding: calc(2 * var(--u)) calc(7 * var(--u));
+    background: linear-gradient(#3a3e43, #24272a);
+    border-top: 1px solid rgba(255, 255, 255, 0.18);
+    border-bottom: 1px solid #000;
+    color: #d9dde1;
+    font-size: calc(8.5 * var(--u));
+    font-weight: bold;
+    text-shadow: 0 -1px #000;
+}
+
+/* a channel: round picture, name, the Today star */
+.wm-youtube .yt-av {
+    flex: 0 0 auto;
+    width: calc(32 * var(--u));
+    height: calc(32 * var(--u));
+    border-radius: 50%;
+    object-fit: cover;
+    background: #25282c;
+    box-shadow: 0 0 0 1px #000, 0 0 0 calc(1px + 1 * var(--u)) rgba(255, 255, 255, 0.22);
+}
+
+.wm-youtube .yt-star {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(34 * var(--u));
+    height: calc(34 * var(--u));
+    margin: calc(-2 * var(--u)) calc(-4 * var(--u)) calc(-2 * var(--u)) 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #6d737a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wm-youtube .yt-star svg { width: calc(20 * var(--u)); height: calc(20 * var(--u)); fill: rgba(0, 0, 0, 0.35); stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; }
+.wm-youtube .yt-star.is-on { color: #a8791a; }
+.wm-youtube .yt-star.is-on svg { fill: #ffd23c; filter: drop-shadow(0 0 calc(2 * var(--u)) rgba(255, 210, 60, 0.55)); }
+.wm-youtube .yt-star:active svg { transform: scale(0.86); }
+.wm-youtube .yt-star:disabled { opacity: 0.35; }
+
+/* a plain message in a list: nothing here, an error, loading */
+.wm-youtube .yt-empty {
+    padding: calc(22 * var(--u)) calc(16 * var(--u));
+    text-align: center;
+    color: var(--yt-dim);
+    font-size: calc(10 * var(--u));
+    line-height: 1.35;
+}
+.wm-youtube .yt-empty b { display: block; margin-bottom: calc(4 * var(--u)); color: #fff; font-size: calc(11 * var(--u)); }
+.wm-youtube .yt-empty .yt-btn { margin-top: calc(10 * var(--u)); }
+
+.wm-youtube .yt-foot { padding: calc(8 * var(--u)); text-align: center; color: #6d737a; font-size: calc(8 * var(--u)); }
+.wm-youtube .yt-foot .yt-btn { min-width: calc(110 * var(--u)); }
+
+/* ---------------------------------------------------------------- buttons (Sense glass keys) */
+
+.wm-youtube .yt-btn {
+    appearance: none;
+    -webkit-appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(5 * var(--u));
+    min-width: calc(86 * var(--u));
+    min-height: calc(26 * var(--u));
+    padding: 0 calc(10 * var(--u));
+    border: 1px solid #000;
+    border-radius: calc(4 * var(--u));
+    background: linear-gradient(#70767e, #43474d 48%, #23262a 52%, #33373c);
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.4), 0 calc(1 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, 0.7);
+    color: #fff;
+    font: inherit;
+    font-size: calc(10 * var(--u));
+    font-weight: bold;
+    text-shadow: 0 -1px #000;
+}
+.wm-youtube .yt-btn:active { background: linear-gradient(#2a2d31, #17191b 50%, #3b3f44); }
+.wm-youtube .yt-btn.is-go { background: linear-gradient(#ff8375, #e8281d 48%, #b3140e 52%, #cf1f16); color: #fff; text-shadow: 0 -1px rgba(0, 0, 0, 0.5); }
+.wm-youtube .yt-btn.is-go:active { background: linear-gradient(#7d0d08, #b3140e); }
+.wm-youtube .yt-btn:disabled { opacity: 0.45; }
+
+/* ---------------------------------------------------------------- search box */
+
+.wm-youtube .yt-search {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--u));
+    margin: 0;
+    padding: calc(5 * var(--u)) calc(6 * var(--u));
+    background: linear-gradient(#2c2f33, #17191b);
+    border-bottom: 1px solid #000;
+    box-shadow: inset 0 -1px rgba(255, 255, 255, 0.06);
+}
+
+.wm-youtube .yt-field {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    height: calc(24 * var(--u));
+    padding: 0 calc(6 * var(--u));
+    border-radius: calc(12 * var(--u));
+    background: linear-gradient(#d6dade, #fff 40%);
+    box-shadow: inset 0 calc(1 * var(--u)) calc(3 * var(--u)) rgba(0, 0, 0, 0.55), 0 1px rgba(255, 255, 255, 0.18);
+    color: #5d646b;
+}
+.wm-youtube .yt-field svg { flex: 0 0 auto; width: calc(12 * var(--u)); height: calc(12 * var(--u)); }
+
+.wm-youtube .yt-q {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background: none;
+    color: #111;
+    font: inherit;
+    font-size: calc(11 * var(--u));
+    user-select: text;
+    -webkit-user-select: text;
+}
+.wm-youtube .yt-q::-webkit-search-cancel-button { display: none; }
+.wm-youtube .yt-q::placeholder { color: #8b9198; }
+
+.wm-youtube .yt-clear {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(18 * var(--u));
+    height: calc(18 * var(--u));
+    margin-right: calc(-3 * var(--u));
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: #9aa1a8;
+    color: #fff;
+    font-size: calc(11 * var(--u));
+    font-weight: bold;
+    line-height: calc(18 * var(--u));
+}
+
+.wm-youtube .yt-search .yt-btn { min-width: 0; min-height: calc(24 * var(--u)); }
+
+.wm-youtube .yt-row.is-recent { min-height: calc(30 * var(--u)); color: #d9dde1; font-size: calc(10 * var(--u)); }
+.wm-youtube .yt-row.is-recent svg { flex: 0 0 auto; width: calc(13 * var(--u)); height: calc(13 * var(--u)); color: #7d848b; }
+.wm-youtube .yt-row.is-recent span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- the tab strip and its glass slider */
+
+.wm-youtube .yt-tabs {
+    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    height: calc(38 * var(--u));
+    background: linear-gradient(#4a4f56, #25282c 46%, #0b0c0d 52%, #17191c);
+    border-top: 1px solid #000;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.3), 0 calc(-2 * var(--u)) calc(4 * var(--u)) rgba(0, 0, 0, 0.6);
+    touch-action: none;
+    z-index: 2;
+}
+
+.wm-youtube .yt-slider {
+    position: absolute;
+    left: 0;
+    top: calc(2 * var(--u));
+    bottom: calc(2 * var(--u));
+    width: 25%;
+    padding: 0 calc(2 * var(--u));
+    box-sizing: border-box;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+    pointer-events: none;
+    will-change: transform;
+}
+.wm-youtube .yt-tabs.is-drag .yt-slider { transition: none; }
+
+.wm-youtube .yt-slider i {
+    display: block;
+    height: 100%;
+    border-radius: calc(5 * var(--u));
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    background: linear-gradient(rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.1) 47%, rgba(255, 255, 255, 0) 52%, rgba(232, 40, 29, 0.34));
+    box-shadow: inset 0 calc(-2 * var(--u)) 0 calc(-1 * var(--u)) var(--yt-accent), 0 0 calc(5 * var(--u)) rgba(232, 40, 29, 0.4);
+    box-sizing: border-box;
+}
+
+.wm-youtube .yt-tab {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: 1 1 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0 calc(1 * var(--u));
+    border: 0;
+    background: none;
+    color: #9aa1a8;
+    font: inherit;
+    font-size: calc(7.5 * var(--u));
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(1.5 * var(--u));
+    text-shadow: 0 -1px #000;
+}
+.wm-youtube .yt-tab svg { width: calc(16 * var(--u)); height: calc(16 * var(--u)); }
+.wm-youtube .yt-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wm-youtube .yt-tab.is-on { color: #fff; font-weight: bold; }
+
+/* ---------------------------------------------------------------- a pushed page (a channel) */
+
+.wm-youtube .yt-layer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(#17191c, #060607 60%, #000);
+    z-index: 3;
+}
+
+.wm-youtube .yt-chan {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--u));
+    padding: calc(7 * var(--u));
+    background: linear-gradient(#3d4147, #1d1f22);
+    border-bottom: 1px solid #000;
+    box-shadow: inset 0 1px rgba(255, 255, 255, 0.25);
+}
+.wm-youtube .yt-chan .yt-av { width: calc(40 * var(--u)); height: calc(40 * var(--u)); }
+.wm-youtube .yt-chan .yt-tx { gap: calc(2 * var(--u)); }
+.wm-youtube .yt-chan .yt-t { font-size: calc(12 * var(--u)); }
+
+/* ---------------------------------------------------------------- sign-in */
+
+.wm-youtube .yt-sign {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(8 * var(--u));
+    padding: calc(14 * var(--u));
+    box-sizing: border-box;
+    overflow-y: auto;
+    text-align: center;
+    background: radial-gradient(90% 60% at 50% 22%, #2c3035, transparent 75%), linear-gradient(#17191c, #000);
+    z-index: 4;
+}
+
+.wm-youtube .yt-sign-art { width: calc(72 * var(--u)); height: calc(72 * var(--u)); object-fit: contain; filter: drop-shadow(0 calc(4 * var(--u)) calc(5 * var(--u)) rgba(0, 0, 0, 0.7)); }
+.wm-youtube .yt-sign h2 { margin: 0; font-size: calc(14 * var(--u)); font-weight: bold; text-shadow: 0 -1px #000; }
+.wm-youtube .yt-sign p { margin: 0; max-width: calc(210 * var(--u)); color: #c3c8cd; font-size: calc(10 * var(--u)); line-height: 1.35; }
+.wm-youtube .yt-sign p.is-bad { color: #ffb0a8; }
+.wm-youtube .yt-sign .yt-btns { display: flex; flex-wrap: wrap; justify-content: center; gap: calc(6 * var(--u)); margin-top: calc(2 * var(--u)); }
+
+.wm-youtube .yt-code { display: flex; align-items: center; justify-content: center; gap: calc(3 * var(--u)); margin: calc(2 * var(--u)) 0; user-select: text; -webkit-user-select: text; }
+.wm-youtube .yt-code b {
+    width: calc(19 * var(--u));
+    height: calc(26 * var(--u));
+    border-radius: calc(3 * var(--u));
+    border: 1px solid #000;
+    background: linear-gradient(#0c0d0f, #25282c);
+    box-shadow: inset 0 calc(1 * var(--u)) calc(3 * var(--u)) #000, 0 1px rgba(255, 255, 255, 0.2);
+    color: #ffd2cc;
+    font: bold calc(17 * var(--u)) / calc(26 * var(--u)) 'Consolas', 'Courier New', monospace;
+    text-shadow: 0 0 calc(4 * var(--u)) rgba(232, 40, 29, 0.7);
+}
+.wm-youtube .yt-code span { color: #6d737a; font-size: calc(14 * var(--u)); }
+
+.wm-youtube .yt-wait { display: flex; align-items: center; gap: calc(6 * var(--u)); color: var(--yt-dim); font-size: calc(9 * var(--u)); }
+.wm-youtube .yt-wait i {
+    width: calc(12 * var(--u));
+    height: calc(12 * var(--u));
+    border-radius: 50%;
+    border: calc(2 * var(--u)) solid rgba(255, 255, 255, 0.18);
+    border-top-color: var(--yt-accent);
+    box-sizing: border-box;
+    animation: yt-spin 0.9s linear infinite;
+}
+@keyframes yt-spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------- wide screens: two columns */
+
+@container yt (min-width: 560px) {
+    .wm-youtube .yt-list.is-videos { display: grid; grid-template-columns: 1fr 1fr; align-content: start; }
+    .wm-youtube .yt-list.is-videos > .yt-sec,
+    .wm-youtube .yt-list.is-videos > .yt-empty,
+    .wm-youtube .yt-list.is-videos > .yt-foot { grid-column: 1 / -1; }
+    .wm-youtube .yt-row.is-hero { grid-row: span 3; }
+    .wm-youtube .yt-row.is-hero .yt-th { height: 100%; max-height: none; aspect-ratio: auto; }
+}
+
+/* ---------------------------------------------------------------- Today (6.1): one video, paged sideways */
+
+.wm-today-block.yt-today { display: flex; align-items: center; gap: calc(2 * var(--wm-px)); padding-left: 0; padding-right: 0; touch-action: pan-y; overflow: hidden; }
+
+.yt-today .yt-td-arrow {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(14 * var(--wm-px));
+    align-self: stretch;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    opacity: 0.75;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.yt-today .yt-td-arrow svg { width: calc(7 * var(--wm-px)); height: calc(11 * var(--wm-px)); display: block; }
+.yt-today .yt-td-arrow:active { opacity: 1; background: var(--wm-highlight); }
+.yt-today .yt-td-arrow[disabled] { visibility: hidden; }
+
+.yt-today .yt-td-slide { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: calc(6 * var(--wm-px)); will-change: transform; }
+.yt-today .yt-td-slide.is-back { transition: transform 0.16s ease-out; }
+.yt-today .yt-td-slide.is-in-r { animation: yt-in-r 0.2s ease-out; }
+.yt-today .yt-td-slide.is-in-l { animation: yt-in-l 0.2s ease-out; }
+@keyframes yt-in-r { from { transform: translateX(45%); opacity: 0; } }
+@keyframes yt-in-l { from { transform: translateX(-45%); opacity: 0; } }
+
+.yt-today .yt-td-th {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(60 * var(--wm-px));
+    aspect-ratio: 16 / 9;
+    background: #000;
+    border: calc(1 * var(--wm-px)) solid var(--wm-today-rule);
+    box-sizing: border-box;
+    overflow: hidden;
+}
+.yt-today .yt-td-th img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.yt-today .yt-td-th i {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    font-size: calc(7 * var(--wm-px));
+    font-style: normal;
+    line-height: calc(9 * var(--wm-px));
+}
+.yt-today .yt-td-icon { flex: 0 0 auto; width: calc(32 * var(--wm-px)); height: calc(32 * var(--wm-px)); margin: 0 calc(4 * var(--wm-px)); }
+.yt-today .wtw-lines { flex: 1 1 auto; min-width: 0; }
+.yt-today .yt-td-n { flex: 0 0 auto; font-size: calc(8 * var(--wm-px)); opacity: 0.8; }
