@@ -909,6 +909,7 @@ class ServiceWorkerManager {
                 // missed list was treated as "do not install."
                 signal: AbortSignal.timeout(30000)
             });
+            this._noteBroadcastHash(response);
             if (response.status === 304) {
                 // Same digest. The cache still has to be checked against the stored file list.
                 this._manifestOutcome = 'unchanged';
@@ -1885,6 +1886,7 @@ class ServiceWorkerManager {
                     'X-Requested-With': 'ServiceWorker'
                 }
             });
+            this._noteBroadcastHash(response);
 
             if (response.ok) {
                 const files = await response.json();
@@ -2178,6 +2180,14 @@ class ServiceWorkerManager {
             if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 30000 });
             else run();
         }, 60000);
+    }
+
+    /** The cache update broadcast's list hash (X-Manifest-Broadcast-Hash): which delta this client can apply. */
+    _noteBroadcastHash(response) {
+        try {
+            const h = response && response.headers && response.headers.get('X-Manifest-Broadcast-Hash');
+            if (h) this._broadcastHash = h;
+        } catch (_) { /* no header */ }
     }
 
     async getFilesNeedingUpdate(files, opts = {}) {
@@ -4033,6 +4043,7 @@ class ServiceWorkerManager {
                         'X-Requested-With': 'ServiceWorker'
                     }
                 });
+                this._noteBroadcastHash(response);
 
                 if (!response.ok) {
                     console.log('No update information available, continuing...');

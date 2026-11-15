@@ -112,10 +112,17 @@ class WebSocketServer {
 
             // Service worker cache manifest broadcast (CLI / admin refresh)
             plumbing.subscribe('ws:broadcast:serviceWorkerCacheUpdate', (data) => {
+                // only the rows that changed since the last broadcast (modules/swManifestDelta.js);
+                // an unchanged manifest sends nothing
+                const d = require('./swManifestDelta').next(data.files || []);
+                if (d.same) return;
                 this.broadcast({
                     type: 'service_worker_cache_update',
                     data: {
-                        files: data.files || [],
+                        files: d.files,
+                        delta: d.delta === true,
+                        baseHash: d.baseHash || null,
+                        hash: d.hash,
                         silent: data.silent === true,
                         message: data.message || 'Application updates are available',
                         timestamp: data.timestamp || Date.now()

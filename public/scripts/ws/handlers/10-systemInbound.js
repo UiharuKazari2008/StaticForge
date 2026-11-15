@@ -23,6 +23,19 @@ registerWsInboundHandler({
             return;
         }
 
+        // a delta (modules/swManifestDelta.js) applies only on top of the list this client last took;
+        // otherwise the manifest is read in full, as before
+        const sm = window.serviceWorkerManager;
+        const d = message.data || {};
+        if (d.delta === true && sm) {
+            if (!d.baseHash || sm._broadcastHash !== d.baseHash) {
+                if (typeof sm.checkStaticFileUpdates === 'function') sm.checkStaticFileUpdates(silent);
+                return;
+            }
+            sm._broadcastHash = d.hash || sm._broadcastHash;
+        } else if (sm && d.hash) {
+            sm._broadcastHash = d.hash;
+        }
         if (files.length > 0 && window.serviceWorkerManager && typeof window.serviceWorkerManager.updateStaticCache === 'function') {
             window.serviceWorkerManager.updateStaticCache(files, silent, cacheOptions);
         } else if (!silent && window.serviceWorkerManager && typeof window.serviceWorkerManager.checkStaticFileUpdates === 'function') {

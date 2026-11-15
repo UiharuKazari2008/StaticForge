@@ -2702,7 +2702,10 @@ app.options('/', (req, res) => {
         // boot (/launch and /app) on links where that held up the logon (Yozora #516).
         const digest = serviceWorkerManifestDigest(manifest);
         res.setHeader('X-Manifest-Hash', digest);
-        res.setHeader('Access-Control-Expose-Headers', 'X-Manifest-Hash');
+        // the cache update broadcast's own list (modules/swManifestDelta.js): which delta applies
+        const broadcastHash = require('./modules/swManifestDelta').current();
+        if (broadcastHash) res.setHeader('X-Manifest-Broadcast-Hash', broadcastHash);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Manifest-Hash, X-Manifest-Broadcast-Hash');
         if (req.get('X-Manifest-Hash') === digest) {
             return res.status(304).end();
         }
