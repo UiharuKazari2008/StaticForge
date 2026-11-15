@@ -1,0 +1,144 @@
+    <div id="tagWikiWindowTemplate" class="modal hidden transient resizeable-window wiki-page-viewer-modal"
+        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-min-height="600" data-window-client="light">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fa-regular fa-globe icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-wordpad-document.webp" srcset="/static_images/app_icons/24/vista-wordpad-document.webp 1x, /static_images/app_icons/48/vista-wordpad-document.webp 2x" alt="" class="icon-image" />
+                <span>Wiki Page</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small wiki-window-close-btn" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content tag-wiki-search-content dark">
+            <div class="explorer-actions-header wiki-window-command-bar" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-back-btn"
+                        title="Back"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/back.png" alt="">Back</button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-forward-btn"
+                        title="Forward"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-cmdbar/forward.png" alt="">Forward</button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-home-btn"
+                        title="Home"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-ie/home.png" alt="">Home</button>
+                </div>
+                <div class="explorer-command-set">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn wiki-window-maximize-btn"
+                        title="Open in Grimoire"><img loading="lazy" decoding="async" class="explorer-command-icon" src="/static_images/vista-ie/page-ie.png" alt="">Open in Grimoire</button>
+                </div>
+            </div>
+            <div class="tag-wiki-search-body">
+                <div class="tag-wiki-search-display form-section-scroll selectable">
+                    <div class="tag-wiki-display-content wiki-window-display">
+                        <div class="tag-wiki-empty-state">
+                            <i class="fas fa-book-open"></i>
+                            <p>Loading wiki page...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Tag Wiki Search Modal -->
+    <div id="tagWikiSearchModal" class="modal toolbar-visible hidden resizeable-window"
+        data-window-identifier="grimoire" data-window-max-width="1800" data-window-max-height="1400"
+        data-window-min-width="650" data-window-min-height="600">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-book icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-iexplore.webp" srcset="/static_images/app_icons/24/vista-iexplore.webp 1x, /static_images/app_icons/48/vista-iexplore.webp 2x" alt="" class="icon-image" />
+                <span>Grimoire</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group">
+                    <button type="button" class="btn-secondary toolbar-input-segment" id="tagWikiSearchBackBtn"
+                        title="Back">
+                        <i class="fas fa-arrow-left"></i>
+                    </button>
+                    <button type="button" class="btn-secondary toolbar-input-segment" id="tagWikiSearchForwardBtn"
+                        title="Forward">
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" id="tagWikiSearchHomeBtn" title="Home">
+                    <i class="fas fa-home"></i>
+                </button>
+                <!-- Two-layer pseudo-browser address bar (replaces plain search+refresh group).
+                     Display layer (icon + path) is on top; edit layer (real input + refresh) sits underneath
+                     and is revealed on click of display or hover of the address bar group. -->
+                <div class="wiki-address-bar" id="grimoireAddressBar" data-protocol="edtx">
+                    <!-- Top / visible display layer -->
+                    <div class="address-display-layer" id="grimoireAddressDisplay" tabindex="0"
+                        title="Click or hover to edit address / search">
+                        <i class="address-mode-icon fas fa-book" id="grimoireAddressModeIcon" aria-hidden="true"></i>
+                        <span class="address-path" id="grimoireAddressPath">edtx://en.grimoire.jp/index.dtxt</span>
+                    </div>
+                    <!-- Lower / hidden edit layer (contains the original input + refresh for compatibility) -->
+                    <div class="address-edit-layer hidden" id="grimoireAddressEdit">
+                        <input type="text" id="tagWikiSearchInput"
+                            class="form-control colored tag-wiki-search-bar toolbar-input-segment"
+                            placeholder="Search, a wiki address, or a site such as bing.com"
+                            autocapitalize="false" autocorrect="false" spellcheck="false">
+                        <button type="button" id="tagWikiSearchRefreshBtn" class="btn-secondary toolbar-input-segment"
+                            title="Refresh">
+                            <i class="fas fa-sync"></i>
+                        </button>
+                    </div>
+                </div>
+                <button type="button" class="btn-secondary" id="grimoireAddressSiteBtn" title="Menu">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" id="closeTagWikiSearchModalBtn" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content tag-wiki-search-content dark">
+            <div class="tag-wiki-panels-wrap">
+                <div class="tag-wiki-search-body tag-wiki-split-pane-left">
+                    <!-- Old results sidebar (tag-wiki-search-results-panel + list + toggles + overlay) removed.
+                         All search results now render as a full "page" via showSearchResultsPage directly
+                         into the display area (Google-style home + results list). Wiki content and split
+                         panes continue to use the display areas. -->
+                    <div class="tag-wiki-search-display selectable">
+                        <div id="tagWikiSearchDisplay" class="tag-wiki-display-content">
+                            <div class="tag-wiki-empty-state">
+                                <i class="fas fa-book-open"></i>
+                                <p>Use the address bar or search to navigate (edtx://, wiki tags, or rdf:// docs).</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="tagWikiSearchSplitDivider" class="tag-wiki-split-divider hidden" aria-hidden="true">
+                    <button type="button" id="tagWikiSearchSplitSwapBtn"
+                        class="btn-secondary btn-small tag-wiki-split-swap-btn" title="Swap panels">
+                        <i class="fas fa-arrow-right-arrow-left"></i>
+                    </button>
+                </div>
+                <div id="tagWikiSearchRightPane" class="tag-wiki-split-pane tag-wiki-split-pane-right hidden">
+                    <div class="tag-wiki-search-display selectable">
+                        <div id="tagWikiSearchRightDisplay" class="tag-wiki-display-content">
+                            <div class="tag-wiki-split-blank-state">
+                                <i class="fas fa-book-open"></i>
+                                <p>Open a link on the right, or swap panels to browse here.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>

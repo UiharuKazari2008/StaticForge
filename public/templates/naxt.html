@@ -1,0 +1,207 @@
+    <!-- NAXT: NAX community tag browser -->
+    <div id="naxtModal" class="modal toolbar-visible hidden resizeable-window" data-window-identifier="naxt"
+        data-window-max-width="1800" data-window-max-height="1200" data-window-min-width="800"
+        data-window-min-height="600">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-flask icon-fa"></i>
+                <img src="/static_images/app_icons/24/test_tube.webp" srcset="/static_images/app_icons/24/test_tube.webp 1x, /static_images/app_icons/48/test_tube.webp 2x" alt="" class="icon-image" />
+                <span id="naxtModalTitleLabel">Atelier</span>
+            </div>
+            <div class="modal-window-title-toolbar">
+                <div class="button-group naxt-quick-filters">
+                    <button type="button" id="naxtQuickGoatBtn" class="btn-secondary btn-toggle toolbar-input-segment"
+                        data-state="off" title="GOAT — up ratio ≥ 75%, min 15 upvotes, sorted by score">
+                        <i class="fas fa-crown"></i>
+                    </button>
+                    <button type="button" id="naxtQuickGemsBtn" class="btn-secondary btn-toggle toolbar-input-segment"
+                        data-state="off" title="Hidden Gems — max 4 upvotes, 0 downvotes, min 1 upvote, random order">
+                        <i class="fas fa-gem"></i>
+                    </button>
+                    <button type="button" id="naxtQuickDebatedBtn"
+                        class="btn-secondary btn-toggle toolbar-input-segment" data-state="off"
+                        title="Debated — up ratio 50–60%, min 5 up &amp; 5 down, sorted by ratio">
+                        <i class="fas fa-scale-balanced"></i>
+                    </button>
+                </div>
+                <button type="button" class="btn-secondary" id="naxtHomeBtn" title="Home">
+                    <i class="fas fa-home"></i>
+                </button>
+                <div class="button-group">
+                    <button type="button" id="naxtDatasetDropdownBtn"
+                        class="btn-secondary toolbar-input-segment naxt-toolbar-dataset" title="Dataset">
+                        <span id="naxtDatasetSelected"><i class="fas fa-layer-group naxt-dataset-btn-icon"
+                                aria-hidden="true"></i></span>
+                    </button>
+                    <input type="text" id="naxtSearchInput"
+                        class="form-control colored naxt-search-input toolbar-input-segment"
+                        placeholder="Press Enter to search…" autocapitalize="false" autocorrect="false"
+                        spellcheck="false">
+                    <button type="button" id="naxtRefreshBtn" class="btn-secondary toolbar-input-segment"
+                        title="Refresh">
+                        <i class="fas fa-sync"></i>
+                    </button>
+                </div>
+                <button type="button" id="naxtFilterToggleBtn" class="btn-secondary btn-toggle" data-state="off"
+                    title="Show filters">
+                    <i class="fas fa-filter"></i>
+                </button>
+                <button type="button" id="naxtMarkFilterDropdownBtn"
+                    class="btn-secondary btn-toggle icon-only indicator" data-state="off" title="Filter by mark: All">
+                    <i id="naxtMarkFilterIcon" class="fas fa-bookmark" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="naxtElevatePinsDropdownBtn"
+                    class="btn-secondary btn-toggle icon-only indicator" data-state="off" title="Pin to top: None">
+                    <i id="naxtElevatePinsIcon" class="fas fa-thumbtack" aria-hidden="true"></i>
+                </button>
+                <button type="button" id="naxtBagDropdownBtn" class="btn-secondary indicator" data-state="off"
+                    title="Tag bag">
+                    <i class="fas fa-shopping-bag"></i>
+                    <span id="naxtBagCount" class="naxt-bag-count hidden" aria-hidden="true">0</span>
+                </button>
+                <button type="button" id="naxtOpenCustomTagBtn" class="btn-primary hidden"
+                    title="Add custom tag (generate preview)">
+                    <i class="fas fa-plus"></i>
+                </button>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" id="closeNaxtModalBtn" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content naxt-modal-content dark">
+            <div id="naxtFilterToolbar" class="modal-content-toolbar-overlay naxt-filter-toolbar hidden">
+                <div class="naxt-filter-fields">
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinUp">Min up</label>
+                        <input type="number" id="naxtMinUp" class="form-control colored" min="0" value=""
+                            placeholder="0">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxUp">Max up</label>
+                        <input type="number" id="naxtMaxUp" class="form-control colored" min="0" value=""
+                            placeholder="∞">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinDown">Min down</label>
+                        <input type="number" id="naxtMinDown" class="form-control colored" min="0" value=""
+                            placeholder="0">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxDown">Max down</label>
+                        <input type="number" id="naxtMaxDown" class="form-control colored" min="0" value=""
+                            placeholder="∞">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMinScore">Min score</label>
+                        <input type="number" id="naxtMinScore" class="form-control colored" min="-100" max="100"
+                            value="" placeholder="-100">
+                    </div>
+                    <div class="naxt-filter-pair">
+                        <label for="naxtMaxScore">Max score</label>
+                        <input type="number" id="naxtMaxScore" class="form-control colored" min="-100" max="100"
+                            value="" placeholder="100">
+                    </div>
+                </div>
+                <div class="naxt-filter-actions">
+                    <button type="button" id="naxtSortDropdownBtn" class="btn-secondary"
+                        title="Date sorts by position in the NAX export (not calendar date)">
+                        <span id="naxtSortSelected">Score</span>
+                        <i class="fas fa-sort"></i>
+                    </button>
+                    <button type="button" id="naxtInvertBtn" class="btn-secondary toggle-btn" data-state="off"
+                        title="Invert order">
+                        <i class="fas fa-arrow-down-arrow-up"></i>
+                    </button>
+                    <button type="button" id="naxtResetFiltersBtn" class="btn-secondary" title="Clear all filters">
+                        <i class="fas fa-rotate-left"></i>
+                    </button>
+                </div>
+                <input type="hidden" id="naxtMinRatio" value="">
+                <input type="hidden" id="naxtMaxRatio" value="">
+            </div>
+            <div class="naxt-body form-section-scroll">
+                <div id="naxtGrid" class="naxt-grid"></div>
+                <div id="naxtLoadSentinel" class="naxt-load-sentinel" aria-hidden="true"></div>
+                <div id="naxtEmptyState" class="naxt-empty-state hidden">
+                    <i class="fas fa-database"></i>
+                    <p id="naxtEmptySetup" data-naxt-empty="setup">No tags loaded. Pick a dataset or run
+                        <code>node scripts/import-nax-tags.js</code>.
+                    </p>
+                    <p id="naxtEmptyNoResults" data-naxt-empty="no-results" class="hidden">No tags match your search or
+                        filters.</p>
+                </div>
+            </div>
+            <footer id="naxtStatusBar" class="naxt-status-bar" aria-live="polite">0 tags</footer>
+        </div>
+    </div>
+    <!-- NAXT: add custom tag (attached tool window) -->
+    <div id="naxtCustomTagModal" class="modal hidden owned-window on-top" data-parent-modal-id="naxtModal"
+        data-window-position-mode="cascade-parent" data-window-content-anchor="top" data-window-cascade-align="top">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-plus icon-fa"></i>
+                <img src="/static_images/app_icons/24/test_tube.webp" srcset="/static_images/app_icons/24/test_tube.webp 1x, /static_images/app_icons/48/test_tube.webp 2x" alt="" class="icon-image" />
+                <span id="naxtCustomTagModalTitle">Add Tag</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" id="closeNaxtCustomTagModalBtn" class="btn-danger close-btn btn-small"
+                title="Close"><i class="fa-regular fa-xmark-large"></i></button>
+        </div>
+        <div class="modal-content modal-padding dark">
+            <div class="modal-body">
+                <div class="naxt-custom-tag-layout spellbook-modal-layout">
+                    <div class="spellbook-preview-container">
+                        <div id="naxtCustomTagPreviewContainer"
+                            class="spellbook-preview-image-container naxt-custom-tag-preview-container">
+                            <div id="naxtCustomTagPreviewPlaceholder" class="naxt-custom-tag-preview-placeholder">
+                                <i class="nai-sparkles"></i>
+                                <span>Enter a tag and generate a preview</span>
+                            </div>
+                            <div id="naxtCustomTagPreviewLoading" class="naxt-custom-tag-preview-loading hidden">
+                                <img class="loading" src="/static_images/azuspin.gif" alt="">
+                                <span>Generating preview…</span>
+                            </div>
+                            <div id="naxtCustomTagPreviewError" class="naxt-custom-tag-preview-error hidden"></div>
+                            <img id="naxtCustomTagPreviewImg" class="spellbook-preview-image hidden" alt="">
+                            <div id="naxtCustomTagPreviewCaption" class="naxt-custom-tag-preview-caption hidden"></div>
+                            <div class="spellbook-overlay-buttons">
+                                <div class="spellbook-bottom-left-buttons naxt-custom-tag-overlay-buttons hidden"
+                                    id="naxtCustomTagOverlayButtons">
+                                    <button type="button" id="naxtCustomTagFavoriteBtn"
+                                        class="btn-secondary round-button indicator" data-state="off" title="Favorite">
+                                        <i class="fa-regular fa-star"></i>
+                                    </button>
+                                    <button type="button" id="naxtCustomTagTryBtn"
+                                        class="btn-secondary round-button indicator" data-state="off" title="Try mark">
+                                        <i class="fas fa-vial"></i>
+                                    </button>
+                                    <button type="button" id="naxtCustomTagDeleteBtn" class="btn-danger round-button"
+                                        title="Delete tag">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="spellbook-controls-container naxt-custom-tag-controls">
+                        <input type="text" id="naxtCustomTagInput" class="form-control hover-show colored"
+                            data-autofill-enable="tags,single" placeholder="artist tag name" autocapitalize="off"
+                            autocorrect="off" spellcheck="false" maxlength="120">
+                        <button type="button" id="naxtCustomTagGenerateBtn" class="btn-primary" title="Generate">
+                            <i class="nai-sparkles"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>

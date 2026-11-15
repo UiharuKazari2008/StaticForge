@@ -1,0 +1,61 @@
+    <!-- Character Database Browser Applet. Vista (#485): a light window, Explorer's command bar (vista-explorer.css) -->
+    <div id="characterDbModal" class="modal hidden resizeable-window" data-window-client="light" data-window-max-width="1400"
+        data-window-max-height="1000" data-window-min-width="720" data-window-min-height="420">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-users icon-fa"></i>
+                <img src="/static_images/app_icons/24/characters.webp" srcset="/static_images/app_icons/24/characters.webp 1x, /static_images/app_icons/48/characters.webp 2x" alt="" class="icon-image">
+                <span>Characters</span>
+            </div>
+        </div>
+        <div class="modal-focus-overlay"></div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" id="closeCharacterDbBtn" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content character-db-modal-content dark">
+            <div class="explorer-actions-header" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="characterDbCopyTagBtn" class="btn-secondary btn-small explorer-command-btn" title="Copy the base prompt" disabled><i class="fas fa-copy"></i>Copy tag</button>
+                    <button type="button" id="characterDbSearchClearBtn" class="btn-secondary btn-small explorer-command-btn" title="Clear search" disabled><i class="fas fa-xmark"></i>Clear search</button>
+                </div>
+                <div class="character-db-search-row" role="search">
+                    <i class="fas fa-magnifying-glass character-db-search-icon" aria-hidden="true"></i>
+                    <input type="text" id="characterDbSearchInput" class="form-control character-db-search-input"
+                        placeholder="Search characters..." autocomplete="off" spellcheck="false" aria-label="Search characters" />
+                </div>
+            </div>
+            <div id="characterDbSearchHits" class="character-db-search-hits hidden"></div>
+            <div class="character-db-layout">
+                <div class="character-db-panel" data-panel="copyright">
+                    <div class="character-db-panel-header">Copyrights</div>
+                    <div class="character-db-panel-body">
+                        <div class="character-db-scroll-shell">
+                            <div id="characterDbCopyrightList" class="character-db-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="character-db-panel" data-panel="character">
+                    <div class="character-db-panel-header">Characters</div>
+                    <div class="character-db-panel-body">
+                        <div class="character-db-scroll-shell">
+                            <div id="characterDbCharacterList" class="character-db-list"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="character-db-panel" data-panel="tagtext">
+                    <div class="character-db-panel-header">Tag text</div>
+                    <div class="character-db-panel-body">
+                        <div class="character-db-scroll-shell">
+                            <div id="characterDbTagList" class="character-db-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="characterDbStatus" class="character-db-status-bar"></div>
+        </div>
+    </div>

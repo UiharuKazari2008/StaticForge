@@ -1,0 +1,164 @@
+    <!-- Vista (#476): a light window, the menu bar (vista-atelier.css) over Explorer's command bar (vista-explorer.css) -->
+    <div id="imagePromptInspectorTemplate" class="modal hidden transient resizeable-window image-prompt-inspector"
+        data-window-client="light"
+        data-window-max-width="1200" data-window-max-height="1100" data-window-min-width="420"
+        data-window-min-height="420">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-glasses-round icon-fa"></i>
+                <img src="/static_images/app_icons/24/vista-photo-viewer.webp" srcset="/static_images/app_icons/24/vista-photo-viewer.webp 1x, /static_images/app_icons/48/vista-photo-viewer.webp 2x" alt="" class="icon-image" />
+                <span id="imagePromptInspectorTitle">Properties</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary toolbar-btn btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark image-prompt-inspector-content selectable">
+            <div class="gallery-move-right-panel-cover" aria-hidden="true">
+                <div class="cover-spinner"><i class="fas fa-spinner-third fa-spin"></i></div>
+            </div>
+            <div class="naxt-menubar" role="menubar">
+                <button type="button" class="naxt-menu-title" data-inspector-menu="file" role="menuitem">File</button>
+                <button type="button" class="naxt-menu-title" data-inspector-menu="edit" role="menuitem">Edit</button>
+                <button type="button" class="naxt-menu-title" data-inspector-menu="view" role="menuitem">View</button>
+            </div>
+            <div class="explorer-actions-header" role="toolbar">
+                <div class="explorer-command-set">
+                    <button type="button" id="imagePromptInspectorCopyBtn"
+                        class="btn-secondary btn-small explorer-command-btn has-menu" title="Copy">
+                        <i class="fas fa-copy"></i>Copy<span class="explorer-command-glyph" aria-hidden="true"></span>
+                    </button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="studio"
+                        title="Edit in DreamStudio">
+                        <i class="fas fa-compass-drafting"></i>Edit
+                    </button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="view-image"
+                        title="Open the image">
+                        <i class="fas fa-image"></i>Open
+                    </button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="json"
+                        title="Show metadata JSON">
+                        <i class="fas fa-brackets-curly"></i>Metadata
+                    </button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="find"
+                        title="Find text in the prompts (Ctrl+F)">
+                        <i class="fas fa-magnifying-glass"></i>Find
+                    </button>
+                </div>
+                <div id="imagePromptInspectorPromptTabs" class="explorer-command-set" data-active="prompt"
+                    role="tablist" aria-label="Prompt type">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn toggle-btn active" data-state="on" data-prompt-type="prompt"
+                        title="Base Prompt" role="tab" aria-selected="true">Prompt</button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn toggle-btn hidden" data-state="off" data-prompt-type="director"
+                        title="Creative Directive" role="tab" aria-selected="false">Director</button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn toggle-btn" data-state="off" data-prompt-type="uc"
+                        title="Undesired Content" role="tab" aria-selected="false">UC</button>
+                    <button type="button" id="imagePromptInspectorLaneToggle" class="btn-secondary btn-small explorer-command-btn toggle-btn"
+                        data-state="off" data-prompt-lane="input" title="Showing input prompt; click for computed prompt"
+                        aria-label="Toggle input or computed prompt" aria-pressed="false">
+                        <i class="fas fa-hammer"></i>Computed
+                    </button>
+                </div>
+            </div>
+            <div id="imagePromptInspectorFindBar" class="explorer-actions-header image-prompt-inspector-findbar hidden"
+                role="search">
+                <input type="text" id="imagePromptInspectorFindInput" class="image-prompt-inspector-find-input"
+                    placeholder="Find in prompts" aria-label="Find text in the prompts" spellcheck="false" autocomplete="off">
+                <div class="explorer-command-set">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="find-prev"
+                        title="Previous (Shift+Enter)"><i class="fas fa-chevron-up"></i></button>
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="find-next"
+                        title="Next (Enter)"><i class="fas fa-chevron-down"></i></button>
+                </div>
+                <span id="imagePromptInspectorFindCount" class="image-prompt-inspector-find-count" aria-live="polite"></span>
+                <div class="explorer-command-set">
+                    <button type="button" class="btn-secondary btn-small explorer-command-btn" data-inspector-action="find-close"
+                        title="Close (Esc)"><i class="fas fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="image-prompt-inspector-summary">
+                <img id="imagePromptInspectorThumb" class="image-prompt-inspector-thumb hidden" src="" alt="">
+                <div class="image-prompt-inspector-file selectable">
+                    <span id="imagePromptInspectorFilename" class="image-prompt-inspector-filename selectable">Image</span>
+                    <span id="imagePromptInspectorSubtitle" class="image-prompt-inspector-subtitle selectable"></span>
+                </div>
+            </div>
+            <div id="imagePromptInspectorScrollShell" class="image-prompt-inspector-scroll-shell">
+                <div class="image-prompt-inspector-scroll-inner">
+                    <section class="image-prompt-inspector-section">
+                        <h3 id="imagePromptInspectorPromptHeading" class="image-prompt-inspector-section-title">
+                            <i class="fas fa-align-left"></i> Prompt
+                        </h3>
+                        <div class="prompt-textarea-container image-prompt-inspector-prompt-container">
+                            <div class="prompt-textarea-background"></div>
+                            <div class="prompt-textarea-emphasis-wrap">
+                                <textarea id="imagePromptInspectorPrompt"
+                                    class="form-control prompt-textarea textarea-inset image-prompt-inspector-prompt selectable"
+                                    rows="1" readonly tabindex="-1" spellcheck="false"
+                                    aria-label="Selected image prompt"></textarea>
+                            </div>
+                        </div>
+                        <div id="imagePromptInspectorCharacters" class="image-prompt-inspector-characters hidden"></div>
+                    </section>
+                    <section class="image-prompt-inspector-section">
+                        <h3 class="image-prompt-inspector-section-title">
+                            <i class="fas fa-sliders"></i> Parameters
+                        </h3>
+                        <div id="imagePromptInspectorParameters" class="blueprint-info selectable"></div>
+                    </section>
+                    <section class="image-prompt-inspector-section hidden" id="imagePromptInspectorExpandersSection">
+                        <h3 class="image-prompt-inspector-section-title">
+                            <i class="fas fa-wand-magic-sparkles"></i> Text Expanders
+                        </h3>
+                        <div id="imagePromptInspectorExpanders"
+                            class="text-replacement-lock-list image-prompt-inspector-expanders selectable"></div>
+                    </section>
+                    <section class="image-prompt-inspector-section hidden" id="imagePromptInspectorDynamicSection">
+                        <h3 class="image-prompt-inspector-section-title">
+                            <i class="fas fa-sparkles"></i> Dynamic Generation
+                        </h3>
+                        <div id="imagePromptInspectorDynamic" class="image-prompt-inspector-dynamic selectable"></div>
+                        <div id="imagePromptInspectorDynamicContext" class="hidden"></div>
+                    </section>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Image Prompt Inspector JSON Metadata Window Template -->
+    <div id="imagePromptInspectorJsonTemplate"
+        class="modal hidden transient resizeable-window owned-window on-top image-prompt-inspector-json"
+        data-window-client="light"
+        data-window-max-width="1400" data-window-max-height="1100" data-window-min-width="640"
+        data-window-min-height="420">
+        <div class="modal-window-title">
+            <div class="modal-window-title-main">
+                <i class="fas fa-brackets-curly icon-fa"></i>
+                <span>Image Metadata JSON</span>
+            </div>
+        </div>
+        <div class="modal-window-controls">
+            <button type="button" class="btn-secondary minimize-btn btn-small" title="Minimize">
+                <i class="fa-regular fa-window-minimize"></i>
+            </button>
+            <button type="button" class="btn-secondary toolbar-btn btn-small modal-work-area-maximize" title="Maximize">
+                <i class="fa-regular fa-window-maximize"></i>
+            </button>
+            <button type="button" class="btn-danger close-btn btn-small" title="Close">
+                <i class="fa-regular fa-xmark-large"></i>
+            </button>
+        </div>
+        <div class="modal-content dark image-prompt-inspector-json-content">
+            <div id="imagePromptInspectorJsonScrollShell"
+                class="image-prompt-inspector-json-scroll-shell">
+                <pre id="imagePromptInspectorJsonBody" class="image-prompt-inspector-json-body selectable"></pre>
+            </div>
+        </div>
+    </div>
