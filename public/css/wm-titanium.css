@@ -476,7 +476,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super[hidden] {
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-shade {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.55);
+    background: rgba(0, 0, 0, 0.3);
     opacity: 0;
 }
 
@@ -680,4 +680,77 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-x::after {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-x::after {
     transform: rotate(-45deg);
+}
+
+/* ---- the clock panel's live clock (wmTitanium.js liveClockHtml): the art's face without its hands
+ * (ti-2051-face, 43 x 57 units, face centre at 21.5, 24) and the hands as the art draws them (4x art:
+ * hour 36 px, minute 48 px, both dark grey and 5 px wide; the second hand orange, 50 px with an 18 px
+ * tail; an orange hub with a white centre). Each turns by an endless CSS animation whose negative
+ * delay is the time of day: compositor-only, nothing runs per frame in script. */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock {
+    display: block;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > i {
+    position: absolute;
+    left: calc(21.5 * var(--u) - var(--w) / 2);
+    top: calc(24 * var(--u) - var(--len));
+    width: var(--w);
+    height: var(--len);
+    border-radius: calc(var(--w) / 2);
+    transform-origin: 50% 100%;
+    box-shadow: calc(0.4 * var(--u)) calc(0.5 * var(--u)) calc(0.6 * var(--u)) rgba(0, 0, 0, 0.28);
+    animation: wm-ti-turn var(--period) linear infinite;
+    will-change: transform;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-ah {
+    --w: calc(1.3 * var(--u));
+    --len: calc(9 * var(--u));
+    --period: 43200s;
+    animation-delay: var(--ah);
+    background: linear-gradient(to right, #3a3a3a, #1c1c1c);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-am {
+    --w: calc(1.2 * var(--u));
+    --len: calc(12 * var(--u));
+    --period: 3600s;
+    animation-delay: var(--am);
+    background: linear-gradient(to right, #3a3a3a, #1c1c1c);
+}
+
+/* the second hand with its tail: the turn is about the centre, 12.5 units down its 17 */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-as {
+    --w: calc(0.55 * var(--u));
+    --len: calc(12.5 * var(--u));
+    --period: 60s;
+    height: calc(17 * var(--u));
+    transform-origin: 50% calc(12.5 * var(--u));
+    animation-delay: var(--as);
+    background: #f7931e;
+    box-shadow: calc(0.3 * var(--u)) calc(0.4 * var(--u)) calc(0.5 * var(--u)) rgba(0, 0, 0, 0.22);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > b {
+    position: absolute;
+    left: calc(19.25 * var(--u));
+    top: calc(21.75 * var(--u));
+    width: calc(4.5 * var(--u));
+    height: calc(4.5 * var(--u));
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff 0 24%, #f7931e 30% 100%);
+    box-shadow: calc(0.3 * var(--u)) calc(0.4 * var(--u)) calc(0.5 * var(--u)) rgba(0, 0, 0, 0.25);
+}
+
+@keyframes wm-ti-turn {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }

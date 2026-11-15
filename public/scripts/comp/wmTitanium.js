@@ -468,7 +468,8 @@
             card.animate([{ transform: `translateY(${y0}px)`, height: `${h0}px` }, { transform: `translateY(${y1}px)`, height: `${h1}px` }], opt),
             frost.animate([{ transform: `translateY(${-y0}px) ${T}` }, { transform: `translateY(${-y1}px) ${T}` }], opt),
             extra.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'linear', fill: 'both' }),
-            shade.animate([{ opacity: 0 }, { opacity: 1 }], opt),
+            // the darkening comes once the card has grown (Yukimi, Nov 15), and is light
+            shade.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.5, delay: SUPER_MS * 0.6, easing: 'linear', fill: 'both' }),
             // the notifications come once the card is on its way, not under the band before it moves
             body.animate([{ opacity: 0, transform: `translateY(${18 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'cubic-bezier(0.2, 0, 0.2, 1)', fill: 'both' }),
             host.querySelector('.wm-ti-list').animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.5, easing: 'linear', fill: 'forwards' })
@@ -513,7 +514,7 @@
             card.animate([{ transform: `translateY(${y1}px)`, height: `${h1}px` }, { transform: `translateY(${y0}px)`, height: `${h0}px` }], opt),
             frost.animate([{ transform: `translateY(${-y1}px) ${T}` }, { transform: `translateY(${-y0}px) ${T}` }], opt),
             extra.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' }),
-            shade.animate([{ opacity: 1 }, { opacity: 0 }], opt),
+            shade.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.45, easing: 'linear', fill: 'forwards' }),
             body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' }),
             host.querySelector('.wm-ti-list').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.7, delay: ms * 0.3, easing: 'linear', fill: 'both' })
         ];
@@ -1068,7 +1069,11 @@
     /** One page of a panel as markup (positions are the layout's, inside the 480 x 164 expanded box). */
     function pageHtml(p, pg) {
         const icon = pg.icon || p.icon;
-        const iconHtml = icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
+        // the clock's icon is a real clock (Yukimi, Nov 15): the art's face without its hands
+        // (ti-2051-face) and three hands turned by CSS animations set to the time (the compositor
+        // runs them; the panel draws again each minute, which sets them again)
+        const iconHtml = icon === 'ti-2051' && pg.time ? liveClockHtml()
+            : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
         if (p.clock) {
             return `${iconHtml}<div class="wm-ti-time">${esc(pg.time)}</div><div class="wm-ti-ampm">${esc(pg.ampm)}</div>
                 <div class="wm-ti-date">${esc(pg.date)}</div><div class="wm-ti-network">${esc(pg.network)}</div>`;
@@ -1079,6 +1084,16 @@
         // pg.bare: a picture without the white frame (the Music panel's album art and Play All Songs tile)
         return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ` data-pic="${pg.bare ? 'bare' : '1'}"` : ''}${small ? ' data-small="1"' : ''}>${pic}${small}
             ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
+    }
+
+    function liveClockHtml() {
+        const d = new Date();
+        const s = d.getSeconds() + d.getMilliseconds() / 1000;
+        const m = d.getMinutes() * 60 + s;
+        const h = (d.getHours() % 12) * 3600 + m;
+        return `<span class="wm-ti-icon wm-ti-aclock" aria-hidden="true" style="--ah:-${h.toFixed(2)}s;--am:-${m.toFixed(2)}s;--as:-${s.toFixed(2)}s">`
+            + `<img src="${esc(artUrl('ti-2051-face'))}" srcset="${esc(artSet('ti-2051-face'))}" alt="" draggable="false">`
+            + '<i class="wm-ti-ah"></i><i class="wm-ti-am"></i><i class="wm-ti-as"></i><b></b></span>';
     }
 
     function pageIndex(p) {
@@ -1797,6 +1812,21 @@
         enter: () => entrance(),
         // the Android app readies the return before Melaton goes behind another program (#800)
         prime: () => prime(), unprime: () => unprime(),
+        // the Super Bar from elsewhere (the title bar's notification bubble, #800): Today first when it
+        // is not on screen, then the bar once its list has settled; false when 6.5 Today is not in use
+        superBar() {
+            if (!enabled() || !sh) return false;
+            if (sh.current !== 'today') sh.open('today');
+            const t0 = performance.now();
+            const go = () => {
+                if (superOpen) return;
+                const ready = host && !host.hidden && host.classList.contains('is-rest') && !tw && !zoomTimer && performance.now() >= enterLockUntil;
+                if (ready) { openSuper(); return; }
+                if (performance.now() - t0 < 2500) requestAnimationFrame(go);
+            };
+            requestAnimationFrame(go);
+            return true;
+        },
         panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
