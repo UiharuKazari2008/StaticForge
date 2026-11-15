@@ -250,6 +250,9 @@
     vertical-align: calc(1 * var(--u));
 }
 
+/* a members-only video of a channel the account is a member of */
+.wm-youtube .yt-new.is-members { background: linear-gradient(#8fe08a, #2f8f3a); }
+
 /* the first video of a list: the whole width, its title over the foot of the picture */
 .wm-youtube .yt-row.is-hero {
     display: block;

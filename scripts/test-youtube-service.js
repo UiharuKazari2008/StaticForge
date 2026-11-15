@@ -68,6 +68,11 @@ global.fetch = async (url, opts = {}) => {
         if (rssMode === 'down') return { status: 500, text: async () => 'no' };
         const pl = u.searchParams.get('playlist_id');
         if (pl.startsWith('UULF') && longListMissing) return { status: 404, text: async () => '' };
+        if (pl.startsWith('UUM')) {
+            const n = Number(pl.slice(-1));
+            if (pl.startsWith('UUMF') && n !== 3) return { status: 404, text: async () => '' };
+            return { status: 200, text: async () => `<feed xmlns="http://www.w3.org/2005/Atom"><entry><yt:videoId>${VID(n * 10 + 8)}</yt:videoId><yt:channelId>${CH(n)}</yt:channelId><title>C${n} members video</title><author><name>Channel ${n}</name></author><published>${day(13)}</published></entry></feed>` };
+        }
         const n = Number(pl.slice(-1));
         const entry = (k) => `<entry><id>yt:video:${VID(n * 10 + k)}</id><yt:videoId>${VID(n * 10 + k)}</yt:videoId><yt:channelId>${CH(n)}</yt:channelId><title>C${n} &amp; video ${k}</title><author><name>Channel ${n}</name></author><published>${day(10 + n - k * 3)}</published><media:group><media:thumbnail url="https://i2.ytimg.com/vi/x/hqdefault.jpg"/></media:group></entry>`;
         const extra = newUpload[n] ? `<entry><yt:videoId>${VID(n * 10 + 9)}</yt:videoId><yt:channelId>${CH(n)}</yt:channelId><title>C${n} new</title><author><name>Channel ${n}</name></author><published>${day(14)}</published></entry>` : '';
@@ -109,6 +114,7 @@ let browserMode = 'ok';
 let ytList = [VID(601), VID(602)];
 const edits = [];
 let ytHistory = [];
+let memberOf = ['Premium Lite', 'YouTube TV'];
 const watchCalls = [];
 T.setBrowser({ watched: async (on, id) => {
     if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
@@ -129,6 +135,7 @@ T.setBrowser({ watched: async (on, id) => {
     if (browserMode === 'signedout') return { signedIn: false };
     if (kind === 'watch-later') return { signedIn: true, ids: [...ytList, VID(777), 'not-an-id'] };
     if (kind === 'history') return { signedIn: true, items: ytHistory.slice(), partial: false };
+    if (kind === 'memberships') return { signedIn: true, names: memberOf };
     const bell = (b) => (browserMode === 'nobells' ? '' : b);
     return { signedIn: true, channels: [
         { id: CH(1), title: 'Channel 1', thumb: 'https://yt3.ggpht.com/c1=s88', bell: bell('all') },
@@ -414,6 +421,33 @@ T.setBrowser({ watched: async (on, id) => {
         await wait(5);
         await T.syncHistory({ maxAge: 1 });
         assert.ok((await svc.feed()).videos.every((v) => !v.watched));
+    });
+
+    await ok('members-only videos: read for the channels the account is a member of, flagged', async () => {
+        await svc.feed();
+        await settle();
+        assert.ok(!(await svc.feed()).videos.some((v) => v.members), 'none without a membership');
+        assert.ok(!feedReads().some((pl) => pl.startsWith('UUM')));
+        memberOf = ['Premium Lite', 'channel 3'];
+        assert.strictEqual(await T.syncMemberships({ maxAge: 1 }), true);
+        T.clearFeed();
+        calls.length = 0;
+        await svc.feed();
+        await settle();
+        assert.deepStrictEqual(feedReads().filter((pl) => pl.startsWith('UUM')), [`UUMF${CH(3).slice(2)}`], 'the member channel\'s long members-only list, and no other channel\'s');
+        const f = await svc.feed();
+        const m = f.videos.filter((v) => v.members);
+        assert.deepStrictEqual(m.map((v) => v.id), [VID(38)]);
+        assert.strictEqual(m[0].title, 'C3 members video');
+        assert.strictEqual(m[0].length, 3723);
+        memberOf = [];
+        await wait(5);
+        await T.syncMemberships({ maxAge: 1 });
+        T.state().cache.uploads[CH(3)].at = 0;
+        T.clearFeed();
+        await svc.feed();
+        await settle();
+        assert.ok(!(await svc.feed()).videos.some((v) => v.members), 'gone when the membership ends');
     });
 
     await ok('Watch Later: adding works without the browser, and goes to YouTube\'s list when it can', async () => {

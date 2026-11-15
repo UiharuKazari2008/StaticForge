@@ -29,7 +29,7 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_favourites_order` | `{ ids[] }` -> `{ favourites[] }`. Admin. |
 | `youtube_settings_save` | `{ settings: { noShorts?, rareFirst?, todayCount? } }` -> `{ settings }`. Admin. |
 
-A video is `{ id, title, channel, channelId, thumb, at, length, live, watched, progress, later }`. `watched` and `progress` come from the account's watch history, read in the Alchemy browser at most every 10 minutes (played 60 % or more = watched; less = `progress` percent). Other fields: (`at` in ms, `length` in seconds or null,
+A video is `{ id, title, channel, channelId, thumb, at, length, live, watched, progress, later }`. `watched` and `progress` come from the account's watch history, read in the Alchemy browser at most every 10 minutes (played 60 % or more = watched; less = `progress` percent). `members: true` marks a members-only video of a channel the account pays a membership on (the Memberships page is read in the Alchemy browser once a day; those channels' members-only lists are read with their public ones). Other fields: (`at` in ms, `length` in seconds or null,
 `live`: `''`, `live` or `upcoming`). A channel is `{ id, title, thumb }`.
 
 Errors carry a code: `YOUTUBE_SIGNIN` (not signed in, or Google ended the sign-in), `YOUTUBE_NO_CLIENT`,

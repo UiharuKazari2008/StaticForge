@@ -22,6 +22,9 @@
  *                  (1 unit) only when the feeds are down; "UULF" + id = the channel's long videos only
  *                  (Leave Out Shorts). Kept on disk for good and read again only when the channel's
  *                  video count changed, or after a week.
+ *   members        a channel the account pays a membership on (the browser reads the Memberships page
+ *                  once a day) also gets its members-only list read ("UUMF" / "UUMO" + id); those
+ *                  videos carry members: true.
  *   feed           answered at once from what is held; a look for new uploads runs behind it at most
  *                  every 10 minutes and the status feed's `feed.at` tells the program to read again.
  *   details        videos.list (1 unit per 50 videos): length, live state; kept for good
@@ -125,7 +128,7 @@ function loadFiles() {
     }
     const c = readJson(CACHE_FILE);
     if (c && typeof c === 'object') {
-        cache = { subs: c.subs || null, uploads: c.uploads && typeof c.uploads === 'object' ? c.uploads : {}, details: c.details && typeof c.details === 'object' ? c.details : {}, history: c.history && typeof c.history === 'object' && c.history.map ? c.history : null };
+        cache = { subs: c.subs || null, uploads: c.uploads && typeof c.uploads === 'object' ? c.uploads : {}, details: c.details && typeof c.details === 'object' ? c.details : {}, history: c.history && typeof c.history === 'object' && c.history.map ? c.history : null, members: c.members && Array.isArray(c.members.ids) ? c.members : null };
     }
 }
 
@@ -515,7 +518,7 @@ async function withDetails(videos) {
         if (!d) return v;
         return {
             id: v.id, title: v.title || d.title, channel: v.channel || d.channel, channelId: v.channelId || d.channelId, thumb: v.thumb || d.thumb,
-            at: v.at || d.at, length: d.length, live: d.live
+            at: v.at || d.at, length: d.length, live: d.live, members: v.members || undefined
         };
     });
 }
@@ -582,9 +585,8 @@ async function readListApi(playlistId, channelId) {
     return videos;
 }
 
-async function readUploads(channelId) {
-    const tail = channelId.slice(2);
-    const lists = settings().noShorts ? [`UULF${tail}`, `UU${tail}`] : [`UU${tail}`];
+/** The first of these lists that exists, as videos (null when none does). */
+async function readList(lists, channelId) {
     let videos = null;
     for (const playlistId of lists) {
         // the free feed first; while the feeds are down (tried again after 10 minutes) the API answers
@@ -601,7 +603,57 @@ async function readUploads(channelId) {
         }
         if (videos) break;
     }
-    return (videos || []).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, UPLOADS_KEPT);
+    return videos;
+}
+
+async function readUploads(channelId) {
+    const tail = channelId.slice(2);
+    const lists = settings().noShorts ? [`UULF${tail}`, `UU${tail}`] : [`UU${tail}`];
+    const videos = await readList(lists, channelId);
+    let list = videos || [];
+    // a channel the account is a member of: its members-only videos are a list of their own ("UUMF" + id
+    // the long ones, "UUMO" + id all of them), which the public lists above leave out
+    if (isMember(channelId)) {
+        const extra = await readList(settings().noShorts ? [`UUMF${tail}`, `UUMO${tail}`] : [`UUMO${tail}`], channelId).catch(() => null);
+        const have = new Set(list.map((v) => v.id));
+        (extra || []).forEach((v) => { if (!have.has(v.id)) list.push(Object.assign(v, { members: true })); });
+    }
+    return list.sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, UPLOADS_KEPT + (isMember(channelId) ? 10 : 0));
+}
+
+// ---- memberships: which channels' members-only videos to read (the server's browser reads the account's
+// Memberships page once a day; the names there are matched to the subscribed channels)
+
+const MEMBERS_TTL = 24 * 60 * MIN;
+const MEMBER_RECHECK = 30 * MIN; // member channels are read on the clock: a members-only upload may not move the public count
+let membersBusy = null;
+
+const isMember = (channelId) => !!(cache.members && cache.members.ids.includes(channelId));
+
+function syncMemberships(opts = {}) {
+    if (!signedIn() || !cache.subs) return Promise.resolve(false);
+    if (cache.members && Date.now() - cache.members.at < (opts.maxAge || MEMBERS_TTL)) return Promise.resolve(false);
+    if (membersBusy) return membersBusy;
+    membersBusy = (async () => {
+        try {
+            const r = await browserRead('memberships');
+            if (r.why) { if (cache.members) cache.members.at = Date.now() - MEMBERS_TTL + 30 * MIN; return false; }
+            const names = new Set((r.names || []).map((n) => String(n).trim().toLowerCase()));
+            const ids = cache.subs.list.filter((c) => names.has(c.title.trim().toLowerCase())).map((c) => c.id);
+            const before = cache.members ? cache.members.ids.join() : '';
+            cache.members = { at: Date.now(), ids };
+            // a new membership: read that channel again so its members-only videos come in
+            if (ids.join() !== before) ids.forEach((id) => { if (cache.uploads[id]) cache.uploads[id].at = 0; });
+            saveCacheSoon();
+            return ids.join() !== before;
+        } catch (e) {
+            console.warn(`[youtube] memberships not read: ${e.message}`);
+            return false;
+        } finally {
+            membersBusy = null;
+        }
+    })();
+    return membersBusy;
 }
 
 /** Does this channel's list need reading: never read, its video count moved, a lagging feed, or a week old. */
@@ -610,6 +662,7 @@ function uploadsDue(id, count, now) {
     if (!e || !Array.isArray(e.videos) || !e.at) return true;
     if (count !== undefined && count !== null && e.count !== count) return true;
     if (e.again && now >= e.again) return true;
+    if (isMember(id) && now - e.at > MEMBER_RECHECK) return true;
     return now - e.at > UPLOADS_MAX_AGE;
 }
 
@@ -821,6 +874,7 @@ function refreshFeed() {
         try {
             void syncHistory();
             const channels = await subscriptions({ maxAge: FEED_TTL });
+            await syncMemberships();
             const r = await syncUploads(channels.map((c) => c.id), (cache.subs && cache.subs.counts) || {});
             if (r.failed && r.failed === r.read && r.read === channels.length) throw r.error;
             const videos = await withDetails(feedFromCache());
@@ -1099,5 +1153,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy || historyBusy, syncHistory, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {}, history: null }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; historyBusy = null; historyChangedAt = 0; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy || historyBusy || membersBusy, syncHistory, syncMemberships, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {}, history: null, members: null }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; historyBusy = null; historyChangedAt = 0; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };
