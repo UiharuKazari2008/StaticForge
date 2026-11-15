@@ -199,6 +199,8 @@
     // (idle perf pass 2026-11-04). Both ways at once shows receiving, as the old class rules did.
     let netGlyph = null;
     function setDesktopTaskbarNetFlags(flags) {
+        // no taskbar on Melaton Mobile (#849)
+        if (window.uiShell === 'mobile') return;
         if (!netGlyph || !netGlyph.isConnected) netGlyph = document.getElementById('modemTrayIconGlyph');
         if (netGlyph) {
             const net = flags.recv ? 'recv' : (flags.send ? 'send' : '');

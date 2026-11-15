@@ -345,6 +345,8 @@ function updateWorkspaceTrayIcon(options = {}) {
 }
 
 function updateSearchIndexingIndicator() {
+    // a desktop tray icon: Melaton Mobile has no tray to show it in (#849)
+    if (window.uiShell === 'mobile') return;
     const indicator = document.getElementById('searchIndexingIndicator');
     if (!indicator) return;
 
