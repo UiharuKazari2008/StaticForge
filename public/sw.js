@@ -42,6 +42,9 @@ function isKeptProtectedPath(pathname) {
 // Explorer file previews (Yozora #643): /<vfs uuid>/previews/<fileId>?v=<version> and
 // /cache/preview/<hash>.webp. Its own limits, apart from the Gallery's IMAGE_CACHE.
 const EXPLORER_PREVIEW_CACHE = 'explorer-preview-cache-v1';
+// Page scripts keyed by the URL the page asks with (path?sha=hash), so Chrome can keep V8's compiled
+// code beside each row (#817, hashedScriptRow below). Copies of STATIC_CACHE rows; safe to delete.
+const SCRIPT_CODE_CACHE = 'script-code-cache-v1';
 const EXPLORER_PREVIEW_POLICY = {
   maxEntries: 5000,
   maxIdleSeconds: 14 * 24 * 60 * 60, // a hit restarts the clock
@@ -330,6 +333,51 @@ function reusableCachedResponse(response, cacheControl) {
     });
   } catch (error) {
     return response;
+  }
+}
+
+// A script the page asks for by its hash (?sha=) is answered with a Cache Storage row handed over
+// untouched, from a cache keyed by that exact URL (#817).
+// Why: Chrome keeps V8's compiled code for a script beside its Cache Storage row, and uses it only
+// when (1) the worker passes the row on as it is and (2) the row's key is the URL the page asked
+// for. STATIC_CACHE met neither: its rows are keyed by the bare path, and every hit was copied
+// (new Response(row.body), reusableCachedResponse) to change its headers, which makes it a response
+// the worker wrote. So no script ever had a code cache: all of them (about 250, 6.7 MB) were parsed
+// and compiled again on every boot, in the page's background threads, before DOMContentLoaded.
+// How: the first request for path?sha=hash copies the STATIC_CACHE row (only when its x-file-hash
+// is that hash) into SCRIPT_CODE_CACHE under that URL and is answered the old way; later requests
+// get the copy itself. Chrome writes the compiled code to it after a couple of loads and reads it
+// back from then on. The URL carries the hash, so new bytes are a new key: the row's own max-age
+// cannot serve an old copy (the reason other shell hits are stamped no-cache), and copies of
+// earlier hashes of the same path are dropped when the new one is stored.
+let scriptCodeCacheOpen = null;
+function openScriptCodeCache() {
+  if (!scriptCodeCacheOpen) {
+    scriptCodeCacheOpen = caches.open(SCRIPT_CODE_CACHE).catch((error) => { scriptCodeCacheOpen = null; throw error; });
+  }
+  return scriptCodeCacheOpen;
+}
+
+async function hashedScriptRow(handler, request, url) {
+  if (request.destination !== 'script' || request.headers.get('range')) return null;
+  const sha = url.searchParams.get('sha');
+  if (!sha) return null;
+  try {
+    const cache = await openScriptCodeCache();
+    const bare = url.origin + url.pathname;
+    const key = `${bare}?sha=${sha}`;
+    const kept = await cache.match(key);
+    if (kept) return kept;
+    const row = await matchStaticShell(url.pathname);
+    if (!row || row.headers.get('x-file-hash') !== sha) return null;
+    const stored = cache.put(key, row.clone())
+      .then(() => cache.keys(bare, { ignoreSearch: true }))
+      .then((keys) => Promise.all(keys.filter((k) => k.url !== key).map((k) => cache.delete(k))))
+      .catch(() => {});
+    if (handler && handler.event && handler.event.waitUntil) handler.event.waitUntil(stored);
+    return respondWithSavedAsset(request, row, SHELL_ASSET_CACHE_CONTROL);
+  } catch (error) {
+    return null;
   }
 }
 
@@ -1591,6 +1639,9 @@ workbox.routing.registerRoute(
           timestamp: Date.now()
         });
       }
+      else if ((response = await hashedScriptRow(event, request, url))) {
+        perfMark(event, 'hit');
+      }
       else {
         const shellHit = await matchStaticShell(url.pathname);
         perfMark(event, shellHit ? 'hit' : 'miss');
@@ -2719,6 +2770,7 @@ self.addEventListener('activate', (event) => {
               cacheName !== INTERNAL_CACHE &&
               cacheName !== WALLPAPER_CACHE &&
               cacheName !== EXPLORER_PREVIEW_CACHE &&
+              cacheName !== SCRIPT_CODE_CACHE &&
               cacheName !== LAUNCH_SHELL_CACHE &&
               cacheName !== PROTECTED_FONT_CACHE) {
             return caches.delete(cacheName);
