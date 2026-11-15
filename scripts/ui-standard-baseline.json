@@ -1,0 +1,2045 @@
+{
+ "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
+ "totals": {
+  "colour-literal": 12800,
+  "font-literal": 597,
+  "theme-negative": 2548,
+  "own-control": 717,
+  "inline-style": 667,
+  "theme-art-path": 201,
+  "hand-built-window": 103,
+  "toast": 1063,
+  "theme-test-copy": 37,
+  "own-menubar": 70,
+  "colour-in-script": 1500,
+  "native-picker": 20,
+  "native-scrollbar": 51,
+  "native-range": 11,
+  "native-dialog": 10,
+  "native-widget": 4,
+  "native-select": 1
+ },
+ "files": {
+  "apps/activesync/assets/activesync.css": {
+   "colour-literal": 54,
+   "font-literal": 19,
+   "theme-negative": 17,
+   "own-control": 1
+  },
+  "apps/activesync/client/activesync.js": {
+   "inline-style": 3,
+   "theme-art-path": 2,
+   "hand-built-window": 1
+  },
+  "apps/alarm/client/alarm.js": {
+   "hand-built-window": 1,
+   "toast": 1
+  },
+  "apps/calculator/assets/calculator.css": {
+   "colour-literal": 41,
+   "font-literal": 8,
+   "theme-negative": 62
+  },
+  "apps/calculator/client/calculator.js": {
+   "theme-test-copy": 1,
+   "hand-built-window": 1
+  },
+  "apps/calendar/assets/calendar.css": {
+   "colour-literal": 109,
+   "font-literal": 11,
+   "own-menubar": 6,
+   "own-control": 3
+  },
+  "apps/calendar/client/calendar.js": {
+   "colour-in-script": 40,
+   "inline-style": 38,
+   "hand-built-window": 2
+  },
+  "apps/contacts/assets/contacts.css": {
+   "colour-literal": 2
+  },
+  "apps/contacts/client/contacts.js": {
+   "native-picker": 1,
+   "colour-in-script": 2,
+   "inline-style": 6
+  },
+  "apps/messenger/assets/messenger.css": {
+   "colour-literal": 142,
+   "font-literal": 7,
+   "theme-art-path": 1,
+   "own-menubar": 3
+  },
+  "apps/messenger/client/messenger.js": {
+   "inline-style": 3,
+   "hand-built-window": 1
+  },
+  "apps/msgbridge/assets/msgbridge.css": {
+   "colour-literal": 74,
+   "font-literal": 5,
+   "own-menubar": 6
+  },
+  "apps/msgbridge/client/msgbridge.js": {
+   "inline-style": 3,
+   "hand-built-window": 1
+  },
+  "apps/paypass/assets/paypass.css": {
+   "colour-literal": 125,
+   "font-literal": 18,
+   "own-menubar": 3,
+   "own-control": 10
+  },
+  "apps/paypass/client/paypass.js": {
+   "hand-built-window": 2
+  },
+  "apps/perfmon/assets/perfmon.css": {
+   "colour-literal": 148,
+   "font-literal": 15,
+   "own-menubar": 6
+  },
+  "apps/perfmon/client/perfmon.js": {
+   "colour-in-script": 24,
+   "inline-style": 16,
+   "hand-built-window": 1
+  },
+  "apps/quickcast/assets/quickcast.css": {
+   "colour-literal": 480,
+   "font-literal": 77,
+   "own-menubar": 3,
+   "own-control": 8
+  },
+  "apps/quickcast/client/quickcast.js": {
+   "colour-in-script": 8,
+   "inline-style": 2,
+   "hand-built-window": 2
+  },
+  "apps/snipping/assets/snipping.css": {
+   "colour-literal": 9,
+   "font-literal": 3,
+   "own-menubar": 6
+  },
+  "apps/snipping/client/snipping.js": {
+   "colour-in-script": 29,
+   "hand-built-window": 1
+  },
+  "apps/soundrec/assets/soundrec.css": {
+   "colour-literal": 4,
+   "font-literal": 2
+  },
+  "apps/soundrec/client/soundrec.js": {
+   "hand-built-window": 1
+  },
+  "apps/taskmgr/assets/taskmgr.css": {
+   "colour-literal": 42,
+   "font-literal": 5,
+   "own-menubar": 7,
+   "own-control": 21
+  },
+  "apps/taskmgr/client/taskmgr.js": {
+   "colour-in-script": 12,
+   "inline-style": 5,
+   "hand-built-window": 2
+  },
+  "apps/wordpad/assets/wordpad.css": {
+   "colour-literal": 38,
+   "font-literal": 3,
+   "own-menubar": 6,
+   "own-control": 2
+  },
+  "apps/wordpad/client/wordpad.js": {
+   "colour-in-script": 18,
+   "inline-style": 7,
+   "hand-built-window": 1
+  },
+  "apps/xlink/assets/xlink.css": {
+   "colour-literal": 140,
+   "font-literal": 21,
+   "own-menubar": 3,
+   "own-control": 6
+  },
+  "apps/xlink/client/xlink.js": {
+   "colour-in-script": 5,
+   "inline-style": 1,
+   "hand-built-window": 2
+  },
+  "public/app.html": {
+   "native-picker": 3
+  },
+  "public/css/about-melaton.css": {
+   "colour-literal": 21,
+   "font-literal": 2,
+   "theme-negative": 1
+  },
+  "public/css/activesync-device-art.css": {
+   "colour-literal": 54,
+   "font-literal": 2,
+   "theme-negative": 2
+  },
+  "public/css/aero-glass.css": {
+   "theme-negative": 12
+  },
+  "public/css/apocrypha.css": {
+   "colour-literal": 71,
+   "font-literal": 5
+  },
+  "public/css/app.css": {
+   "theme-negative": 14
+  },
+  "public/css/autocomplete.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 103,
+   "own-control": 1
+  },
+  "public/css/blockContainer.css": {
+   "colour-literal": 11
+  },
+  "public/css/bracket-generation.css": {
+   "colour-literal": 68,
+   "theme-negative": 1,
+   "own-control": 1
+  },
+  "public/css/browsing-sessions.css": {
+   "colour-literal": 2
+  },
+  "public/css/cache-browser.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 137,
+   "theme-negative": 3,
+   "own-control": 4
+  },
+  "public/css/character-db-applet.css": {
+   "colour-literal": 29,
+   "theme-negative": 14
+  },
+  "public/css/character-position-tool.css": {
+   "colour-literal": 3
+  },
+  "public/css/chat-modal.css": {
+   "colour-literal": 105,
+   "font-literal": 1,
+   "theme-negative": 22
+  },
+  "public/css/compile-to-prompts.css": {
+   "colour-literal": 28
+  },
+  "public/css/compiled-prompt-lcd.css": {
+   "colour-literal": 78,
+   "font-literal": 4,
+   "theme-negative": 84,
+   "own-control": 12
+  },
+  "public/css/config-editor.css": {
+   "colour-literal": 79,
+   "font-literal": 8,
+   "theme-negative": 8,
+   "own-control": 5
+  },
+  "public/css/confirmation-dialogs.css": {
+   "theme-negative": 27
+  },
+  "public/css/cpl-cardspace.css": {
+   "colour-literal": 76,
+   "font-literal": 4,
+   "own-control": 4
+  },
+  "public/css/cpl-catalog.css": {
+   "colour-literal": 19,
+   "theme-negative": 2
+  },
+  "public/css/cpl-dialogs.css": {
+   "colour-literal": 19
+  },
+  "public/css/cpl-indexing.css": {
+   "colour-literal": 11,
+   "own-control": 2
+  },
+  "public/css/cpl-pages.css": {
+   "colour-literal": 33
+  },
+  "public/css/cpl-pages2.css": {
+   "colour-literal": 146,
+   "font-literal": 5,
+   "theme-negative": 8,
+   "own-menubar": 2
+  },
+  "public/css/cpl-personalization.css": {
+   "colour-literal": 133,
+   "font-literal": 3,
+   "own-control": 6
+  },
+  "public/css/cpl-system.css": {
+   "colour-literal": 9,
+   "font-literal": 1
+  },
+  "public/css/custom-scrollbar.css": {
+   "native-scrollbar": 2
+  },
+  "public/css/desktop-apps/desktopAppWindows.css": {
+   "colour-literal": 113,
+   "font-literal": 10,
+   "theme-negative": 1
+  },
+  "public/css/desktop-apps/dovecote.css": {
+   "colour-literal": 178,
+   "font-literal": 16,
+   "theme-negative": 140,
+   "own-menubar": 2
+  },
+  "public/css/desktop-apps/emotion.css": {
+   "colour-literal": 20,
+   "theme-negative": 6
+  },
+  "public/css/desktop-apps/mediaPlayer.css": {
+   "colour-literal": 178,
+   "font-literal": 2,
+   "theme-negative": 1,
+   "own-control": 1
+  },
+  "public/css/desktop-apps/remoteDesktopConnection.css": {
+   "colour-literal": 49,
+   "font-literal": 9,
+   "own-control": 24
+  },
+  "public/css/desktop-apps/vista-games-explorer.css": {
+   "colour-literal": 73,
+   "font-literal": 7,
+   "theme-negative": 5,
+   "own-control": 3
+  },
+  "public/css/desktop-apps/vista-games.css": {
+   "colour-literal": 52,
+   "font-literal": 11,
+   "theme-negative": 1
+  },
+  "public/css/desktop-apps/vista-jezzball.css": {
+   "colour-literal": 100,
+   "font-literal": 6,
+   "own-menubar": 1,
+   "own-control": 12
+  },
+  "public/css/desktop-boot.css": {
+   "colour-literal": 88,
+   "font-literal": 10,
+   "own-control": 1
+  },
+  "public/css/desktop-icon-dialogs.css": {
+   "colour-literal": 10
+  },
+  "public/css/desktop-icon-view.css": {
+   "colour-literal": 6,
+   "theme-negative": 25
+  },
+  "public/css/desktop-settings.css": {
+   "colour-literal": 45,
+   "own-control": 15
+  },
+  "public/css/director.css": {
+   "native-scrollbar": 3,
+   "colour-literal": 315,
+   "font-literal": 15,
+   "own-control": 2
+  },
+  "public/css/dsap-smf.css": {
+   "colour-literal": 65,
+   "font-literal": 1,
+   "own-control": 9
+  },
+  "public/css/emphasis-groups-tool.css": {
+   "colour-literal": 38,
+   "font-literal": 2
+  },
+  "public/css/emphasis-manager.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 28,
+   "own-control": 7
+  },
+  "public/css/expander-make-global.css": {
+   "colour-literal": 1
+  },
+  "public/css/explorer-contacts.css": {
+   "colour-literal": 15,
+   "font-literal": 4,
+   "theme-negative": 4
+  },
+  "public/css/explorer-phone.css": {
+   "colour-literal": 15,
+   "font-literal": 1
+  },
+  "public/css/explorer.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 44
+  },
+  "public/css/fatal-error.css": {
+   "colour-literal": 36,
+   "font-literal": 5,
+   "theme-negative": 27
+  },
+  "public/css/flip3d.css": {
+   "colour-literal": 1
+  },
+  "public/css/gallery-core.css": {
+   "native-range": 1,
+   "colour-literal": 44,
+   "own-control": 2
+  },
+  "public/css/gallery-move.css": {
+   "colour-literal": 97,
+   "font-literal": 2,
+   "theme-negative": 20,
+   "own-control": 4
+  },
+  "public/css/gallery-toolbar.css": {
+   "colour-literal": 31,
+   "own-control": 4
+  },
+  "public/css/generation-quips.css": {
+   "colour-literal": 21
+  },
+  "public/css/generation-usage-tool.css": {
+   "colour-literal": 3
+  },
+  "public/css/genso-lock.css": {
+   "colour-literal": 128,
+   "font-literal": 1,
+   "theme-negative": 22
+  },
+  "public/css/genso-manager.css": {
+   "colour-literal": 46,
+   "theme-negative": 28,
+   "own-control": 3
+  },
+  "public/css/grimoire-browser.css": {
+   "colour-literal": 26
+  },
+  "public/css/image-loupe.css": {
+   "colour-literal": 34
+  },
+  "public/css/image-prompt-inspector.css": {
+   "colour-literal": 22,
+   "font-literal": 1,
+   "theme-negative": 39,
+   "own-control": 6
+  },
+  "public/css/image-search.css": {
+   "colour-literal": 247,
+   "font-literal": 3,
+   "theme-negative": 39,
+   "own-control": 6
+  },
+  "public/css/imageExpansion.css": {
+   "colour-literal": 11,
+   "own-control": 12
+  },
+  "public/css/keyboard-shortcuts.css": {
+   "colour-literal": 8
+  },
+  "public/css/launch-boot.css": {
+   "colour-literal": 21,
+   "font-literal": 3
+  },
+  "public/css/launch-games.css": {
+   "colour-literal": 79,
+   "font-literal": 3,
+   "own-control": 4
+  },
+  "public/css/launch-install.css": {
+   "colour-literal": 218,
+   "font-literal": 6,
+   "own-control": 13
+  },
+  "public/css/launch-phone-update.css": {
+   "colour-literal": 29,
+   "font-literal": 2,
+   "own-control": 3
+  },
+  "public/css/lightbox.css": {
+   "colour-literal": 53,
+   "own-control": 6
+  },
+  "public/css/log-viewer.css": {
+   "colour-literal": 84,
+   "font-literal": 3,
+   "theme-negative": 15,
+   "own-control": 2
+  },
+  "public/css/login_new.css": {
+   "colour-literal": 49,
+   "font-literal": 1,
+   "own-control": 13
+  },
+  "public/css/mail-options.css": {
+   "colour-literal": 10,
+   "font-literal": 1
+  },
+  "public/css/manual-modal-generate.css": {
+   "colour-literal": 23,
+   "font-literal": 3,
+   "theme-negative": 2,
+   "own-control": 4
+  },
+  "public/css/manual-modal-preview-tools.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 61,
+   "theme-negative": 12,
+   "own-control": 6
+  },
+  "public/css/manual-modal-prompt-form.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 51,
+   "font-literal": 1,
+   "own-control": 20
+  },
+  "public/css/manual-modal-splash.css": {
+   "colour-literal": 13,
+   "font-literal": 3
+  },
+  "public/css/manual-modal-viewer.css": {
+   "colour-literal": 4,
+   "own-control": 2
+  },
+  "public/css/manual-modal.css": {
+   "colour-literal": 119,
+   "font-literal": 2,
+   "theme-negative": 19,
+   "own-menubar": 4,
+   "own-control": 42
+  },
+  "public/css/mask-editor.css": {
+   "colour-literal": 124,
+   "font-literal": 2,
+   "theme-negative": 18,
+   "own-control": 2
+  },
+  "public/css/melaton-network.css": {
+   "colour-literal": 285,
+   "font-literal": 8,
+   "own-control": 11
+  },
+  "public/css/menu-chrome.css": {
+   "colour-literal": 2,
+   "own-control": 4
+  },
+  "public/css/mmc-appkeys.css": {
+   "colour-literal": 16,
+   "own-control": 4
+  },
+  "public/css/mmc-books.css": {
+   "colour-literal": 7,
+   "font-literal": 1,
+   "own-control": 4
+  },
+  "public/css/mmc-chardb.css": {
+   "colour-literal": 12,
+   "font-literal": 1
+  },
+  "public/css/mmc-console.css": {
+   "colour-literal": 75,
+   "font-literal": 5,
+   "own-menubar": 6
+  },
+  "public/css/mmc-datamgmt.css": {
+   "colour-literal": 81,
+   "font-literal": 5
+  },
+  "public/css/mmc-enshutsuka.css": {
+   "colour-literal": 47,
+   "font-literal": 4
+  },
+  "public/css/mmc-exchange.css": {
+   "colour-literal": 19,
+   "font-literal": 2,
+   "own-control": 2
+  },
+  "public/css/mmc-frontgate.css": {
+   "colour-literal": 28,
+   "font-literal": 1
+  },
+  "public/css/mmc-quips-autofill.css": {
+   "colour-literal": 21,
+   "font-literal": 2
+  },
+  "public/css/mmc-servermgr.css": {
+   "colour-literal": 3
+  },
+  "public/css/modal-theme-glass.css": {
+   "colour-literal": 84,
+   "theme-negative": 11
+  },
+  "public/css/modal-window-title-toolbar.css": {
+   "theme-negative": 101
+  },
+  "public/css/naxt-shell.css": {
+   "colour-literal": 12
+  },
+  "public/css/notepad-vista.css": {
+   "colour-literal": 9,
+   "font-literal": 1,
+   "theme-negative": 2
+  },
+  "public/css/notepad.css": {
+   "colour-literal": 99,
+   "font-literal": 10,
+   "theme-negative": 4,
+   "own-control": 15
+  },
+  "public/css/novel-tool.css": {
+   "colour-literal": 16,
+   "font-literal": 1
+  },
+  "public/css/pin-modal.css": {
+   "colour-literal": 38,
+   "font-literal": 2,
+   "theme-negative": 30,
+   "own-control": 35
+  },
+  "public/css/planet-switcher.css": {
+   "colour-literal": 77,
+   "font-literal": 1
+  },
+  "public/css/print-queue.css": {
+   "colour-literal": 45,
+   "font-literal": 4,
+   "own-menubar": 6
+  },
+  "public/css/prompt-tool-windows.css": {
+   "colour-literal": 22,
+   "font-literal": 1
+  },
+  "public/css/remote-access-properties.css": {
+   "colour-literal": 16,
+   "font-literal": 1,
+   "own-control": 14
+  },
+  "public/css/replication-dsap.css": {
+   "colour-literal": 34
+  },
+  "public/css/requestBodyReplacements.css": {
+   "own-control": 1
+  },
+  "public/css/run-applet.css": {
+   "colour-literal": 25,
+   "font-literal": 4
+  },
+  "public/css/service-worker-tray.css": {
+   "colour-literal": 15,
+   "theme-negative": 9
+  },
+  "public/css/spell-check.css": {
+   "colour-literal": 36,
+   "own-control": 37
+  },
+  "public/css/spellbook.css": {
+   "colour-literal": 8,
+   "font-literal": 2,
+   "theme-negative": 18,
+   "own-control": 1
+  },
+  "public/css/stage-results-review.css": {
+   "colour-literal": 52,
+   "font-literal": 2
+  },
+  "public/css/studio-activity-tool.css": {
+   "colour-literal": 38,
+   "font-literal": 1
+  },
+  "public/css/studio-vslider.css": {
+   "colour-literal": 45,
+   "font-literal": 1
+  },
+  "public/css/tag-wiki-search.css": {
+   "native-range": 2,
+   "colour-literal": 149,
+   "font-literal": 2,
+   "theme-negative": 1
+  },
+  "public/css/taskbar-properties.css": {
+   "colour-literal": 90,
+   "font-literal": 4,
+   "own-control": 31
+  },
+  "public/css/toasts.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 48
+  },
+  "public/css/token-display.css": {
+   "colour-literal": 19,
+   "font-literal": 1
+  },
+  "public/css/traces.css": {
+   "colour-literal": 23
+  },
+  "public/css/unified-upload.css": {
+   "colour-literal": 1,
+   "own-control": 1
+  },
+  "public/css/vibe-manager.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 56,
+   "own-control": 4
+  },
+  "public/css/virtual-keyboard.css": {
+   "colour-literal": 19
+  },
+  "public/css/vista-7zip.css": {
+   "colour-literal": 8,
+   "theme-negative": 31,
+   "own-control": 1
+  },
+  "public/css/vista-atelier.css": {
+   "colour-literal": 126,
+   "font-literal": 8,
+   "theme-negative": 5
+  },
+  "public/css/vista-charmap.css": {
+   "colour-literal": 37,
+   "font-literal": 3
+  },
+  "public/css/vista-defender.css": {
+   "colour-literal": 76,
+   "font-literal": 1,
+   "own-control": 1
+  },
+  "public/css/vista-dialog-template.css": {
+   "theme-negative": 1
+  },
+  "public/css/vista-dialogs.css": {
+   "theme-negative": 82
+  },
+  "public/css/vista-director.css": {
+   "colour-literal": 262,
+   "font-literal": 11,
+   "theme-negative": 121
+  },
+  "public/css/vista-explorer.css": {
+   "colour-literal": 423,
+   "font-literal": 6,
+   "theme-negative": 510,
+   "own-control": 1
+  },
+  "public/css/vista-fa-icons.css": {
+   "theme-negative": 142
+  },
+  "public/css/vista-file-dialog.css": {
+   "colour-literal": 29,
+   "font-literal": 5,
+   "theme-negative": 12,
+   "own-control": 3
+  },
+  "public/css/vista-file-progress.css": {
+   "colour-literal": 10,
+   "font-literal": 3,
+   "theme-negative": 1,
+   "own-control": 1
+  },
+  "public/css/vista-gadget-host.css": {
+   "colour-literal": 3
+  },
+  "public/css/vista-glass-controls.css": {
+   "theme-negative": 290
+  },
+  "public/css/vista-import-wizard.css": {
+   "colour-literal": 63,
+   "font-literal": 5,
+   "theme-negative": 93
+  },
+  "public/css/vista-menus.css": {
+   "theme-negative": 63
+  },
+  "public/css/vista-paint.css": {
+   "colour-literal": 316,
+   "font-literal": 28
+  },
+  "public/css/vista-photo-gallery.css": {
+   "colour-literal": 50,
+   "font-literal": 4,
+   "theme-negative": 1
+  },
+  "public/css/vista-scrollbars.css": {
+   "theme-negative": 232
+  },
+  "public/css/vista-sidebar.css": {
+   "native-scrollbar": 2,
+   "colour-literal": 148,
+   "font-literal": 28,
+   "theme-negative": 4
+  },
+  "public/css/vista-sideshow-simulator.css": {
+   "colour-literal": 22,
+   "font-literal": 2,
+   "own-control": 3
+  },
+  "public/css/vista-taskbar.css": {
+   "theme-negative": 52
+  },
+  "public/css/vista-visual-index.css": {
+   "colour-literal": 51,
+   "font-literal": 4,
+   "theme-negative": 29,
+   "own-control": 2
+  },
+  "public/css/vista-wer-dialog.css": {
+   "colour-literal": 8,
+   "font-literal": 2,
+   "theme-negative": 1,
+   "own-control": 1
+  },
+  "public/css/wallet-tray.css": {
+   "colour-literal": 124,
+   "font-literal": 2,
+   "own-control": 2
+  },
+  "public/css/weather-cards.css": {
+   "colour-literal": 479,
+   "font-literal": 2
+  },
+  "public/css/weather-lcd.css": {
+   "colour-literal": 39
+  },
+  "public/css/weather-location.css": {
+   "colour-literal": 9
+  },
+  "public/css/websocket-requests.css": {
+   "colour-literal": 19,
+   "font-literal": 1,
+   "own-control": 1
+  },
+  "public/css/welcome-center.css": {
+   "colour-literal": 23,
+   "font-literal": 5,
+   "theme-negative": 1
+  },
+  "public/css/window-switcher.css": {
+   "colour-literal": 24
+  },
+  "public/css/wm-accounts.css": {
+   "colour-literal": 18,
+   "own-control": 2
+  },
+  "public/css/wm-activesync.css": {
+   "colour-literal": 13,
+   "own-control": 4
+  },
+  "public/css/wm-atelier.css": {
+   "colour-literal": 9
+  },
+  "public/css/wm-bintoss.css": {
+   "colour-literal": 42,
+   "own-control": 3
+  },
+  "public/css/wm-blockdrop.css": {
+   "colour-literal": 5,
+   "own-control": 1
+  },
+  "public/css/wm-brickbreaker.css": {
+   "colour-literal": 4,
+   "own-control": 3
+  },
+  "public/css/wm-browser.css": {
+   "native-scrollbar": 6,
+   "colour-literal": 131,
+   "font-literal": 4,
+   "theme-art-path": 30,
+   "own-control": 33
+  },
+  "public/css/wm-calculator.css": {
+   "colour-literal": 22,
+   "theme-art-path": 6
+  },
+  "public/css/wm-calendar.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 65,
+   "theme-art-path": 9
+  },
+  "public/css/wm-characters.css": {
+   "colour-literal": 2
+  },
+  "public/css/wm-chat.css": {
+   "colour-literal": 28,
+   "theme-art-path": 7,
+   "own-control": 1
+  },
+  "public/css/wm-director.css": {
+   "native-scrollbar": 11,
+   "colour-literal": 404,
+   "font-literal": 14,
+   "theme-art-path": 12,
+   "own-control": 1
+  },
+  "public/css/wm-doubles.css": {
+   "colour-literal": 10,
+   "own-control": 3
+  },
+  "public/css/wm-dreamstudio.css": {
+   "colour-literal": 42,
+   "own-control": 5
+  },
+  "public/css/wm-dsap.css": {
+   "native-range": 1,
+   "native-scrollbar": 1,
+   "colour-literal": 57
+  },
+  "public/css/wm-emotion.css": {
+   "colour-literal": 12,
+   "own-control": 1
+  },
+  "public/css/wm-expanders.css": {
+   "colour-literal": 1
+  },
+  "public/css/wm-file-dialogs.css": {
+   "native-scrollbar": 2,
+   "colour-literal": 19,
+   "own-control": 17
+  },
+  "public/css/wm-file-explorer.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 25
+  },
+  "public/css/wm-game-splash.css": {
+   "colour-literal": 6
+  },
+  "public/css/wm-gems.css": {
+   "colour-literal": 5,
+   "own-control": 3
+  },
+  "public/css/wm-inkball.css": {
+   "colour-literal": 4,
+   "own-control": 1
+  },
+  "public/css/wm-internet-search.css": {
+   "colour-literal": 6
+  },
+  "public/css/wm-lapis.css": {
+   "colour-literal": 237,
+   "font-literal": 1
+  },
+  "public/css/wm-mailaccounts.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 3,
+   "theme-art-path": 7
+  },
+  "public/css/wm-media.css": {
+   "colour-literal": 11,
+   "font-literal": 1,
+   "own-control": 6
+  },
+  "public/css/wm-messaging.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 45,
+   "theme-art-path": 25,
+   "own-control": 10
+  },
+  "public/css/wm-minesweeper.css": {
+   "colour-literal": 6,
+   "own-control": 1
+  },
+  "public/css/wm-notes.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 56,
+   "theme-art-path": 10,
+   "own-control": 3
+  },
+  "public/css/wm-paypass.css": {
+   "colour-literal": 41,
+   "own-control": 1
+  },
+  "public/css/wm-phasewalker.css": {
+   "colour-literal": 9,
+   "own-control": 1
+  },
+  "public/css/wm-reference.css": {
+   "colour-literal": 14
+  },
+  "public/css/wm-remote-desktop.css": {
+   "colour-literal": 26,
+   "own-control": 1
+  },
+  "public/css/wm-search.css": {
+   "colour-literal": 16
+  },
+  "public/css/wm-settings-connections.css": {
+   "colour-literal": 17,
+   "own-control": 6
+  },
+  "public/css/wm-settings-dreamscape.css": {
+   "colour-literal": 14,
+   "own-control": 2
+  },
+  "public/css/wm-settings-personal.css": {
+   "colour-literal": 9,
+   "own-control": 17
+  },
+  "public/css/wm-settings-system.css": {
+   "colour-literal": 33,
+   "own-control": 14
+  },
+  "public/css/wm-shell.css": {
+   "native-range": 2
+  },
+  "public/css/wm-solitaire.css": {
+   "colour-literal": 5,
+   "own-control": 5
+  },
+  "public/css/wm-spellbook.css": {
+   "colour-literal": 36,
+   "theme-art-path": 1,
+   "own-control": 10
+  },
+  "public/css/wm-spellcaster.css": {
+   "colour-literal": 6
+  },
+  "public/css/wm-stage.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 14,
+   "theme-art-path": 4
+  },
+  "public/css/wm-studio-tools.css": {
+   "native-range": 1,
+   "native-scrollbar": 1,
+   "colour-literal": 81,
+   "font-literal": 1,
+   "own-control": 4
+  },
+  "public/css/wm-studio.css": {
+   "native-scrollbar": 3,
+   "colour-literal": 253,
+   "theme-art-path": 9,
+   "own-control": 31
+  },
+  "public/css/wm-suite-kit.css": {
+   "colour-literal": 42,
+   "theme-art-path": 1,
+   "own-control": 13
+  },
+  "public/css/wm-task-manager.css": {
+   "colour-literal": 6
+  },
+  "public/css/wm-tasks.css": {
+   "colour-literal": 40,
+   "theme-art-path": 10,
+   "own-control": 4
+  },
+  "public/css/wm-textmessaging.css": {
+   "colour-literal": 34,
+   "theme-art-path": 3
+  },
+  "public/css/wm-today-widgets.css": {
+   "colour-literal": 13,
+   "theme-art-path": 6
+  },
+  "public/css/wm-traffic.css": {
+   "colour-literal": 237,
+   "font-literal": 9
+  },
+  "public/css/wm-weather.css": {
+   "native-scrollbar": 5,
+   "colour-literal": 541,
+   "font-literal": 9,
+   "theme-art-path": 9,
+   "own-control": 4
+  },
+  "public/css/wm-xlink.css": {
+   "native-range": 1,
+   "colour-literal": 57,
+   "font-literal": 4,
+   "theme-art-path": 1
+  },
+  "public/css/wm-youtube.css": {
+   "native-scrollbar": 1,
+   "colour-literal": 170,
+   "font-literal": 2,
+   "own-control": 12
+  },
+  "public/css/workspace-dialogs.css": {
+   "colour-literal": 8
+  },
+  "public/scripts/comp/accountDataBootstrap.js": {
+   "inline-style": 2,
+   "toast": 4
+  },
+  "public/scripts/comp/activeSyncAgent.js": {
+   "theme-test-copy": 3
+  },
+  "public/scripts/comp/activeSyncClipboard.js": {
+   "inline-style": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/activeSyncDeviceArt.js": {
+   "colour-in-script": 35,
+   "inline-style": 18
+  },
+  "public/scripts/comp/activeSyncPackages.js": {
+   "colour-in-script": 25,
+   "inline-style": 1,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/activeSyncScreen.js": {
+   "colour-in-script": 2,
+   "inline-style": 3,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/activeSyncStudio.js": {
+   "hand-built-window": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/aeroGlass.js": {
+   "colour-in-script": 2
+  },
+  "public/scripts/comp/agentClientBridge.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/agentClientUpdateDialog.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/appBootstrap.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/autocompleteUtils.js": {
+   "colour-in-script": 1,
+   "inline-style": 3,
+   "toast": 8
+  },
+  "public/scripts/comp/autofill/wordLookup.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/autofillSettings.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/balanceDisplay.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/bootMessageBox.js": {
+   "colour-in-script": 13,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/bracketGenerationApplet.js": {
+   "toast": 23
+  },
+  "public/scripts/comp/browsingRestore.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/bulkOperationsManager.js": {
+   "toast": 21
+  },
+  "public/scripts/comp/cacheAndReadOnly.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/characterDbApplet.js": {
+   "toast": 26
+  },
+  "public/scripts/comp/characterPositionToolManager.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/characterSearchModal.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/clientPerfSampler.js": {
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/compareViewManager.js": {
+   "colour-in-script": 5,
+   "toast": 14
+  },
+  "public/scripts/comp/compileToPromptsApplet.js": {
+   "toast": 7
+  },
+  "public/scripts/comp/compiledPromptInspector.js": {
+   "inline-style": 8,
+   "toast": 1
+  },
+  "public/scripts/comp/configEditorApplet.js": {
+   "inline-style": 3
+  },
+  "public/scripts/comp/copyLookback.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/cplAuthentication.js": {
+   "native-picker": 1,
+   "hand-built-window": 1,
+   "toast": 3
+  },
+  "public/scripts/comp/cplDesktopBackground.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/cplDeviceManager.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/cplDialogs.js": {
+   "inline-style": 15
+  },
+  "public/scripts/comp/cplDialogs2.js": {
+   "inline-style": 2
+  },
+  "public/scripts/comp/cplInternetOptions.js": {
+   "native-picker": 1,
+   "colour-in-script": 5,
+   "inline-style": 6,
+   "toast": 1
+  },
+  "public/scripts/comp/cplPages2.js": {
+   "native-picker": 1,
+   "colour-in-script": 4,
+   "inline-style": 13
+  },
+  "public/scripts/comp/cplPages3.js": {
+   "colour-in-script": 1,
+   "inline-style": 5
+  },
+  "public/scripts/comp/cplPersonalization.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/cplSearch.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/cplUpdate.js": {
+   "inline-style": 6,
+   "toast": 1
+  },
+  "public/scripts/comp/cplUserAccounts.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/dataManagementDsapApplet.js": {
+   "colour-in-script": 4,
+   "inline-style": 4,
+   "toast": 1
+  },
+  "public/scripts/comp/desktop-apps/charmap/charmapApp.js": {
+   "inline-style": 1,
+   "hand-built-window": 2
+  },
+  "public/scripts/comp/desktop-apps/dovecote.js": {
+   "native-dialog": 1,
+   "inline-style": 1,
+   "theme-test-copy": 1,
+   "hand-built-window": 6,
+   "toast": 1
+  },
+  "public/scripts/comp/desktop-apps/emotion.js": {
+   "hand-built-window": 1,
+   "toast": 9
+  },
+  "public/scripts/comp/desktop-apps/guacRemote.js": {
+   "hand-built-window": 5,
+   "toast": 8
+  },
+  "public/scripts/comp/desktop-apps/mediaPlayer.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintApp.js": {
+   "colour-in-script": 49,
+   "inline-style": 2,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintBar.js": {
+   "inline-style": 3
+  },
+  "public/scripts/comp/desktop-apps/paint/paintBrush.js": {
+   "colour-in-script": 6,
+   "inline-style": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintColor.js": {
+   "colour-in-script": 50,
+   "inline-style": 2
+  },
+  "public/scripts/comp/desktop-apps/paint/paintComps.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintCore.js": {
+   "colour-in-script": 3
+  },
+  "public/scripts/comp/desktop-apps/paint/paintDialogs.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintGenerate.js": {
+   "colour-in-script": 7
+  },
+  "public/scripts/comp/desktop-apps/paint/paintLayers.js": {
+   "colour-in-script": 1,
+   "inline-style": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintPath.js": {
+   "colour-in-script": 3
+  },
+  "public/scripts/comp/desktop-apps/paint/paintPrefs.js": {
+   "colour-in-script": 15,
+   "inline-style": 3
+  },
+  "public/scripts/comp/desktop-apps/paint/paintPro.js": {
+   "colour-in-script": 40,
+   "inline-style": 1
+  },
+  "public/scripts/comp/desktop-apps/paint/paintPsd.js": {
+   "colour-in-script": 3
+  },
+  "public/scripts/comp/desktop-apps/paint/paintType.js": {
+   "colour-in-script": 1,
+   "inline-style": 8
+  },
+  "public/scripts/comp/desktop-apps/paint/paintWarp.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/remoteDesktopConnection.js": {
+   "inline-style": 25,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/desktop-apps/sideshow/sideshowSimulator.js": {
+   "colour-in-script": 23,
+   "inline-style": 12,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/desktop-apps/startMenuOrganizer.js": {
+   "hand-built-window": 1,
+   "toast": 3
+  },
+  "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
+   "colour-in-script": 15
+  },
+  "public/scripts/comp/desktop-apps/vista-games/brickbreaker.js": {
+   "colour-in-script": 20
+  },
+  "public/scripts/comp/desktop-apps/vista-games/cardEngine.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/chess.js": {
+   "colour-in-script": 3
+  },
+  "public/scripts/comp/desktop-apps/vista-games/doubles.js": {
+   "colour-in-script": 59
+  },
+  "public/scripts/comp/desktop-apps/vista-games/gamesExplorer.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/hearts.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/inkball.js": {
+   "colour-in-script": 6
+  },
+  "public/scripts/comp/desktop-apps/vista-games/jezzball.js": {
+   "colour-in-script": 5,
+   "hand-built-window": 3
+  },
+  "public/scripts/comp/desktop-apps/vista-games/mahjong.js": {
+   "colour-in-script": 2
+  },
+  "public/scripts/comp/desktop-apps/vista-games/minesweeper.js": {
+   "colour-in-script": 3
+  },
+  "public/scripts/comp/desktop-apps/vista-games/purble.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/purbleShop.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/desktop-apps/vista-games/spider.js": {
+   "colour-in-script": 6
+  },
+  "public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js": {
+   "colour-in-script": 5,
+   "theme-test-copy": 1,
+   "hand-built-window": 2
+  },
+  "public/scripts/comp/desktopIconDialogs.js": {
+   "inline-style": 8,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/desktopShortcuts.js": {
+   "colour-in-script": 2,
+   "inline-style": 1,
+   "toast": 41
+  },
+  "public/scripts/comp/director.js": {
+   "colour-in-script": 18,
+   "inline-style": 4,
+   "theme-test-copy": 2,
+   "hand-built-window": 1,
+   "toast": 70
+  },
+  "public/scripts/comp/directorLearningAdmin.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/directorMascotLab.js": {
+   "colour-in-script": 13,
+   "inline-style": 2
+  },
+  "public/scripts/comp/directorToolInspector.js": {
+   "hand-built-window": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/dropPasteFallback.js": {
+   "toast": 5
+  },
+  "public/scripts/comp/dsapManifests.js": {
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/dsapRegistry.js": {
+   "inline-style": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/dynamicGenerationManager.js": {
+   "inline-style": 1,
+   "toast": 6
+  },
+  "public/scripts/comp/dynamicGenerationOverrides.js": {
+   "toast": 12
+  },
+  "public/scripts/comp/emphasisGroupsToolManager.js": {
+   "inline-style": 2,
+   "toast": 1
+  },
+  "public/scripts/comp/emphasisHighlight.js": {
+   "colour-in-script": 8,
+   "inline-style": 12
+  },
+  "public/scripts/comp/emphasisTokenModal.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/errorDisplay.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/exitConfirmation.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/expanderMakeGlobalWizard.js": {
+   "inline-style": 14
+  },
+  "public/scripts/comp/exploreDsapApplet.js": {
+   "colour-in-script": 28,
+   "inline-style": 9,
+   "toast": 12
+  },
+  "public/scripts/comp/explorerApplet.js": {
+   "native-dialog": 2,
+   "colour-in-script": 4,
+   "inline-style": 3,
+   "toast": 59
+  },
+  "public/scripts/comp/explorerArchive.js": {
+   "inline-style": 14,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/explorerContacts.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/explorerPhoneDrive.js": {
+   "native-widget": 2,
+   "hand-built-window": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/explorerVistaChrome.js": {
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/fatalErrorBootstrap.js": {
+   "native-dialog": 4,
+   "inline-style": 1
+  },
+  "public/scripts/comp/fileOperationProgress.js": {
+   "hand-built-window": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/fileSearch.js": {
+   "inline-style": 2
+  },
+  "public/scripts/comp/flip3d.js": {
+   "colour-in-script": 2
+  },
+  "public/scripts/comp/galleryActions.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/galleryToolbar.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/galleryView.js": {
+   "colour-in-script": 1,
+   "inline-style": 9,
+   "hand-built-window": 1,
+   "toast": 30
+  },
+  "public/scripts/comp/generationOrchestrator.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/generationQuipsTray.js": {
+   "toast": 20
+  },
+  "public/scripts/comp/grimoireHistoryDsap.js": {
+   "colour-in-script": 12
+  },
+  "public/scripts/comp/grimoireIeChrome.js": {
+   "theme-test-copy": 1,
+   "hand-built-window": 1,
+   "toast": 6
+  },
+  "public/scripts/comp/grimoireRemoteBrowser.js": {
+   "hand-built-window": 1,
+   "toast": 14
+  },
+  "public/scripts/comp/imageExpansion.js": {
+   "colour-in-script": 1,
+   "inline-style": 4,
+   "toast": 20
+  },
+  "public/scripts/comp/imageGenerationSettings.js": {
+   "native-picker": 1,
+   "colour-in-script": 9,
+   "toast": 4
+  },
+  "public/scripts/comp/imagePromptInspector.js": {
+   "inline-style": 3,
+   "toast": 4
+  },
+  "public/scripts/comp/imageSearchApp.js": {
+   "native-picker": 2,
+   "inline-style": 12,
+   "hand-built-window": 2
+  },
+  "public/scripts/comp/imageViewer.js": {
+   "colour-in-script": 1,
+   "inline-style": 2,
+   "toast": 3
+  },
+  "public/scripts/comp/inpaint.js": {
+   "colour-in-script": 14
+  },
+  "public/scripts/comp/ipManagement.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/journal.js": {
+   "colour-in-script": 20,
+   "inline-style": 1,
+   "toast": 2
+  },
+  "public/scripts/comp/ledgeDesk.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/logViewerApplet.js": {
+   "inline-style": 2,
+   "toast": 2
+  },
+  "public/scripts/comp/mailOptions.js": {
+   "inline-style": 5,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/mainMenuManager.js": {
+   "colour-in-script": 5,
+   "inline-style": 9,
+   "toast": 40
+  },
+  "public/scripts/comp/mainframeExceptionDialog.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/mainframeServerWindow.js": {
+   "colour-in-script": 13,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/manualDropdownManager.js": {
+   "colour-in-script": 1,
+   "inline-style": 5,
+   "toast": 20
+  },
+  "public/scripts/comp/manualGenerationParams.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/manualModalManager.js": {
+   "colour-in-script": 48,
+   "hand-built-window": 1,
+   "toast": 31
+  },
+  "public/scripts/comp/manualPreviewManager.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/manualUploadHandlers.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/melatonApps.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/melatonControlPanel.js": {
+   "hand-built-window": 3
+  },
+  "public/scripts/comp/melatonNetworkDialogs.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/menmaDsapApplet.js": {
+   "colour-in-script": 15,
+   "inline-style": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/mmcAppKeys.js": {
+   "inline-style": 6
+  },
+  "public/scripts/comp/mmcAutofillRanking.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/mmcCharacterDb.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/mmcConsole.js": {
+   "inline-style": 2,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/mmcDataManagement.js": {
+   "colour-in-script": 4,
+   "inline-style": 7,
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/mmcEnshutsuka.js": {
+   "colour-in-script": 9,
+   "inline-style": 2
+  },
+  "public/scripts/comp/mmcExchange.js": {
+   "inline-style": 2
+  },
+  "public/scripts/comp/mmcQuips.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/mmcSpellbook.js": {
+   "inline-style": 3,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/modalUtils.js": {
+   "colour-in-script": 2,
+   "toast": 12
+  },
+  "public/scripts/comp/naxVibesApplet.js": {
+   "colour-in-script": 90,
+   "inline-style": 7,
+   "toast": 2
+  },
+  "public/scripts/comp/naxtApplet.js": {
+   "inline-style": 1,
+   "toast": 29
+  },
+  "public/scripts/comp/naxtVistaChrome.js": {
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/notepadManager.js": {
+   "colour-in-script": 23,
+   "inline-style": 11,
+   "toast": 13
+  },
+  "public/scripts/comp/novelAiAccountStatus.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/novelContextMenu.js": {
+   "colour-in-script": 1,
+   "inline-style": 2
+  },
+  "public/scripts/comp/novelManager.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/novelsDsapApplet.js": {
+   "colour-in-script": 2,
+   "toast": 1
+  },
+  "public/scripts/comp/personalizationDialogs.js": {
+   "native-picker": 2,
+   "colour-in-script": 2,
+   "inline-style": 20,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/pipelineStageControls.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/pipelineStageManager.js": {
+   "inline-style": 10,
+   "toast": 2
+  },
+  "public/scripts/comp/planetSwitcher.js": {
+   "colour-in-script": 2,
+   "toast": 1
+  },
+  "public/scripts/comp/presetManager.js": {
+   "colour-in-script": 6,
+   "inline-style": 2,
+   "toast": 43
+  },
+  "public/scripts/comp/printQueueWindow.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/programFaults.js": {
+   "hand-built-window": 2
+  },
+  "public/scripts/comp/promptTextareaContextMenu.js": {
+   "inline-style": 1,
+   "toast": 13
+  },
+  "public/scripts/comp/randomPromptManager.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/referenceContextMenu.js": {
+   "colour-in-script": 1,
+   "inline-style": 1,
+   "toast": 3
+  },
+  "public/scripts/comp/referenceManager.js": {
+   "colour-in-script": 3,
+   "inline-style": 2,
+   "toast": 40
+  },
+  "public/scripts/comp/remoteAccessProperties.js": {
+   "inline-style": 11,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/replicationDsapSeparation.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/requestBodyReplacementsModal.js": {
+   "inline-style": 2,
+   "toast": 16
+  },
+  "public/scripts/comp/requestForm.js": {
+   "theme-test-copy": 1,
+   "toast": 2
+  },
+  "public/scripts/comp/runApplet.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/runCommandIndex.js": {
+   "toast": 10
+  },
+  "public/scripts/comp/runpodTray.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/screenSaver.js": {
+   "colour-in-script": 15
+  },
+  "public/scripts/comp/securityCenterDsapApplet.js": {
+   "native-picker": 1,
+   "native-dialog": 1,
+   "colour-in-script": 5,
+   "inline-style": 5,
+   "toast": 77
+  },
+  "public/scripts/comp/serverManagement.js": {
+   "toast": 3
+  },
+  "public/scripts/comp/serviceWorkerManager.js": {
+   "native-dialog": 2,
+   "theme-test-copy": 1,
+   "toast": 19
+  },
+  "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
+   "colour-in-script": 6
+  },
+  "public/scripts/comp/similarImageDsapApplet.js": {
+   "colour-in-script": 5,
+   "inline-style": 1,
+   "toast": 3
+  },
+  "public/scripts/comp/spellbookModal.js": {
+   "colour-in-script": 43,
+   "inline-style": 2,
+   "toast": 10
+  },
+  "public/scripts/comp/stageResultsReview.js": {
+   "toast": 6
+  },
+  "public/scripts/comp/streamingEventHandler.js": {
+   "inline-style": 2
+  },
+  "public/scripts/comp/studioChangeJson.js": {
+   "toast": 10
+  },
+  "public/scripts/comp/studioSession.js": {
+   "colour-in-script": 2,
+   "inline-style": 1,
+   "hand-built-window": 2,
+   "toast": 8
+  },
+  "public/scripts/comp/studioSoftTips.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/studioVSlider.js": {
+   "inline-style": 2,
+   "toast": 5
+  },
+  "public/scripts/comp/tagWikiSearchModal.js": {
+   "colour-in-script": 9,
+   "inline-style": 13,
+   "theme-test-copy": 1,
+   "hand-built-window": 2,
+   "toast": 33
+  },
+  "public/scripts/comp/taskbarProperties.js": {
+   "inline-style": 21,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/textOverlayManager.js": {
+   "inline-style": 3
+  },
+  "public/scripts/comp/textReplacementManager.js": {
+   "colour-in-script": 20,
+   "inline-style": 28,
+   "toast": 50
+  },
+  "public/scripts/comp/toastManager.js": {
+   "inline-style": 2,
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/trayIndicators.js": {
+   "toast": 2
+  },
+  "public/scripts/comp/trayRegistry.js": {
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/uploadHandlers.js": {
+   "toast": 4
+  },
+  "public/scripts/comp/usageToolManager.js": {
+   "toast": 1
+  },
+  "public/scripts/comp/vfsImportRouter.js": {
+   "toast": 7
+  },
+  "public/scripts/comp/vfsSystemOpenRouter.js": {
+   "inline-style": 1,
+   "hand-built-window": 1,
+   "toast": 7
+  },
+  "public/scripts/comp/vistaDialogTemplate.js": {
+   "colour-in-script": 51,
+   "inline-style": 40
+  },
+  "public/scripts/comp/vistaDialogTemplates.js": {
+   "colour-in-script": 26
+  },
+  "public/scripts/comp/vistaDialogs.js": {
+   "theme-test-copy": 1,
+   "hand-built-window": 2
+  },
+  "public/scripts/comp/vistaImportWizard.js": {
+   "theme-test-copy": 1,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/vistaSidebar.js": {
+   "colour-in-script": 18,
+   "inline-style": 1,
+   "hand-built-window": 1,
+   "toast": 3
+  },
+  "public/scripts/comp/walletTray.js": {
+   "colour-in-script": 11,
+   "inline-style": 2,
+   "toast": 6
+  },
+  "public/scripts/comp/weatherAlerts.js": {
+   "inline-style": 2,
+   "toast": 2
+  },
+  "public/scripts/comp/windowCapture.js": {
+   "colour-in-script": 3,
+   "inline-style": 1
+  },
+  "public/scripts/comp/windowManagementHelpers.js": {
+   "inline-style": 2
+  },
+  "public/scripts/comp/windowsDefender.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/winlogonPower.js": {
+   "hand-built-window": 3
+  },
+  "public/scripts/comp/wmAccounts.js": {
+   "inline-style": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmActiveSync.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/wmAndroidApps.js": {
+   "colour-in-script": 3,
+   "inline-style": 1
+  },
+  "public/scripts/comp/wmAndroidWidgets.js": {
+   "inline-style": 1
+  },
+  "public/scripts/comp/wmBinToss.js": {
+   "colour-in-script": 6,
+   "theme-art-path": 2
+  },
+  "public/scripts/comp/wmBlockDrop.js": {
+   "colour-in-script": 26
+  },
+  "public/scripts/comp/wmBrickBreaker.js": {
+   "colour-in-script": 11
+  },
+  "public/scripts/comp/wmBrowser.js": {
+   "theme-test-copy": 1,
+   "theme-art-path": 9
+  },
+  "public/scripts/comp/wmCalendar.js": {
+   "native-picker": 3,
+   "colour-in-script": 2,
+   "inline-style": 1,
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/wmChat.js": {
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmDialogs.js": {
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/wmDirector.js": {
+   "inline-style": 1,
+   "hand-built-window": 1,
+   "toast": 1
+  },
+  "public/scripts/comp/wmDoubles.js": {
+   "colour-in-script": 53
+  },
+  "public/scripts/comp/wmDreamStudio.js": {
+   "theme-art-path": 3
+  },
+  "public/scripts/comp/wmFileDialogs.js": {
+   "inline-style": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmFileExplorer.js": {
+   "inline-style": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmGameSplash.js": {
+   "colour-in-script": 8
+  },
+  "public/scripts/comp/wmGems.js": {
+   "colour-in-script": 41
+  },
+  "public/scripts/comp/wmHost.js": {
+   "hand-built-window": 2,
+   "toast": 1
+  },
+  "public/scripts/comp/wmInkBall.js": {
+   "colour-in-script": 16
+  },
+  "public/scripts/comp/wmInternetSearch.js": {
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmLapis.js": {
+   "colour-in-script": 6,
+   "inline-style": 6
+  },
+  "public/scripts/comp/wmLock65.js": {
+   "theme-test-copy": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmMedia.js": {
+   "inline-style": 10,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmMessaging.js": {
+   "colour-in-script": 2,
+   "theme-test-copy": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmMinesweeper.js": {
+   "colour-in-script": 22
+  },
+  "public/scripts/comp/wmNotes.js": {
+   "colour-in-script": 7,
+   "inline-style": 1,
+   "theme-test-copy": 1,
+   "theme-art-path": 5
+  },
+  "public/scripts/comp/wmPhoneGallery.js": {
+   "native-widget": 1
+  },
+  "public/scripts/comp/wmPrograms.js": {
+   "colour-in-script": 1,
+   "inline-style": 20,
+   "theme-test-copy": 2,
+   "theme-art-path": 6
+  },
+  "public/scripts/comp/wmSearch.js": {
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/wmSettingsApplets.js": {
+   "inline-style": 2
+  },
+  "public/scripts/comp/wmSettingsDreamscape.js": {
+   "colour-in-script": 8,
+   "inline-style": 1
+  },
+  "public/scripts/comp/wmSettingsSystem.js": {
+   "native-picker": 2,
+   "colour-in-script": 2,
+   "inline-style": 4,
+   "theme-test-copy": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmShell.js": {
+   "native-range": 1,
+   "colour-in-script": 2,
+   "inline-style": 3,
+   "theme-test-copy": 4,
+   "hand-built-window": 2,
+   "toast": 2
+  },
+  "public/scripts/comp/wmSolitaire.js": {
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/wmStart65.js": {
+   "colour-in-script": 1,
+   "theme-test-copy": 2
+  },
+  "public/scripts/comp/wmStudio.js": {
+   "theme-art-path": 9,
+   "hand-built-window": 2,
+   "toast": 1
+  },
+  "public/scripts/comp/wmSuiteKit.js": {
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/wmTasks.js": {
+   "native-picker": 2,
+   "colour-in-script": 1
+  },
+  "public/scripts/comp/wmTeleport.js": {
+   "colour-in-script": 2
+  },
+  "public/scripts/comp/wmTextMessaging.js": {
+   "native-widget": 1,
+   "inline-style": 1
+  },
+  "public/scripts/comp/wmTitanium.js": {
+   "colour-in-script": 1,
+   "inline-style": 8,
+   "theme-test-copy": 1
+  },
+  "public/scripts/comp/wmTodayWidgets.js": {
+   "theme-art-path": 2
+  },
+  "public/scripts/comp/wmTraffic.js": {
+   "colour-in-script": 73,
+   "inline-style": 4
+  },
+  "public/scripts/comp/wmWeather.js": {
+   "native-range": 1,
+   "native-select": 1,
+   "colour-in-script": 11,
+   "inline-style": 4,
+   "theme-art-path": 1,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/wmXLink.js": {
+   "native-range": 1,
+   "colour-in-script": 4,
+   "inline-style": 1
+  },
+  "public/scripts/comp/wmYouTube.js": {
+   "inline-style": 1,
+   "theme-art-path": 1
+  },
+  "public/scripts/comp/workspaceDialogs.js": {
+   "colour-in-script": 12,
+   "inline-style": 1,
+   "hand-built-window": 1
+  },
+  "public/scripts/comp/workspaceUtils.js": {
+   "colour-in-script": 24,
+   "inline-style": 5,
+   "toast": 7
+  },
+  "public/scripts/comp/workstationLock.js": {
+   "colour-in-script": 10,
+   "hand-built-window": 1
+  }
+ }
+}
