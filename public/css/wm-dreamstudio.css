@@ -1,0 +1,335 @@
+/*
+ * Melaton Mobile: DreamStudio (wmDreamStudio.js, #860). A phone program of its own on the shell's
+ * stock parts (wm-programs.css forms, combos, tabs, edit boxes); nothing here styles a desktop
+ * element. Units are WM units (--wm-px). Tool bars use Word Mobile's measured bar (6.1 / 6.5
+ * emulators, VGA): 1-unit black rule, 24 units of the tab tint, 22 x 21 boxes in 23-unit cells from
+ * the left, framed only when pressed, 16-unit glyphs, etched 1 x 18 dividers in 5-unit gaps.
+ */
+
+.wm-dreamstudio {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    container: wds / inline-size;
+}
+
+.wm-dreamstudio > .wds-pane {
+    display: none;
+    flex: 1 1 0;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* one view at a time: the home page, Settings, the print, the editor */
+.wm-dreamstudio[data-view="home"] > .wds-home,
+.wm-dreamstudio[data-view="settings"] > .wds-settings,
+.wm-dreamstudio[data-view="print"] > .wds-print,
+.wm-dreamstudio[data-view="editor"] > .wds-editor {
+    display: flex;
+    flex-direction: column;
+}
+
+.wm-dreamstudio > .wds-tabs { flex: 0 0 auto; }
+.wm-dreamstudio:not([data-layout="tabs"]) > .wds-tabs,
+.wm-dreamstudio[data-view="editor"] > .wds-tabs { display: none; }
+
+/* ---------------------------------------------------------------- home */
+
+.wds-home { overflow-y: auto; overscroll-behavior: contain; }
+
+/* the print in hand: one row, picture left, what it is right; a tap opens the print */
+.wds-strip {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    flex: 0 0 auto;
+    width: 100%;
+    min-height: calc(36 * var(--wm-px));
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    border: 0;
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: var(--wm-tab-strip);
+    color: #000;
+    font: inherit;
+    text-align: left;
+}
+
+.wm-dreamstudio[data-layout="tabs"] .wds-strip,
+.wm-dreamstudio[data-layout="tabs"] .wds-summary { display: none; }
+
+.wds-strip:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+
+.wds-strip-thumb {
+    flex: 0 0 auto;
+    width: calc(30 * var(--wm-px));
+    height: calc(30 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+    object-fit: cover;
+}
+
+.wds-strip-thumb[hidden] { display: none; }
+
+.wds-strip-text { flex: 1 1 auto; min-width: 0; }
+.wds-strip-text > b,
+.wds-strip-text > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-strip-text > b { font-weight: bold; }
+
+.wds-strip .wds-bar { margin-top: calc(2 * var(--wm-px)); }
+
+.wds-fields { flex: 0 0 auto; padding: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) 0; }
+
+.wds-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin: calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px));
+}
+
+.wds-label > span:last-child { color: #555; }
+.wds-label > span.is-over { color: #c00000; }
+
+/* a prompt as WM's multi-line edit shows text: framed, white, from the top-left; a tap edits it */
+.wds-field {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    font: inherit;
+    line-height: calc(14 * var(--wm-px));
+    text-align: left;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+}
+
+.wds-field[data-field="prompt"] { height: calc(5 * 14 * var(--wm-px) + 6 * var(--wm-px)); }
+.wds-field[data-field="uc"] { height: calc(2 * 14 * var(--wm-px) + 6 * var(--wm-px)); }
+.wds-field.is-empty { color: #808080; }
+
+/* the settings in one row; a tap opens Settings */
+.wds-summary {
+    display: block;
+    flex: 0 0 auto;
+    width: calc(100% - 8 * var(--wm-px));
+    min-height: calc(20 * var(--wm-px));
+    margin: calc(6 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    box-sizing: border-box;
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #848284;
+    border-radius: 0;
+    background: transparent;
+    color: #000;
+    font: inherit;
+    text-align: left;
+}
+
+.wds-summary:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-summary > b { display: block; }
+.wds-summary > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------------------------------------------------------------- settings */
+
+.wds-settings { overflow-y: auto; overscroll-behavior: contain; }
+.wds-settings > .wm-form { flex: 0 0 auto; }
+
+/* ---------------------------------------------------------------- print */
+
+.wds-print { background: #000; color: #fff; }
+
+.wds-stage {
+    position: relative;
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    touch-action: pan-y;
+}
+
+.wds-stage > img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.wds-stage > img[hidden],
+.wds-grid[hidden],
+.wds-empty[hidden],
+.wds-status[hidden] { display: none; }
+
+.wds-empty { padding: calc(8 * var(--wm-px)); color: #c0c0c0; text-align: center; }
+
+/* several prints: thumbnails that fill as they land (Pictures & Videos' grid) */
+.wds-grid {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    gap: calc(2 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+    box-sizing: border-box;
+    background: #000;
+}
+
+.wds-grid > button {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid #808080;
+    border-radius: 0;
+    background: #202020;
+    color: #c0c0c0;
+    font: inherit;
+    overflow: hidden;
+}
+
+.wds-grid > button > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.wds-grid > button.is-current { border-color: #fff; }
+
+.wds-status {
+    flex: 0 0 auto;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    background: #fff;
+    color: #000;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+}
+
+.wds-status > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* WM's progress bar (the shell's own, wm-shell.css .wm-progress-bar): 7-unit blocks, 2-unit gaps */
+.wds-bar {
+    position: relative;
+    height: calc(15 * var(--wm-px));
+    margin-top: calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+    overflow: hidden;
+}
+
+.wds-bar[hidden] { display: none; }
+
+.wds-bar > span {
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    top: calc(1 * var(--wm-px));
+    bottom: calc(1 * var(--wm-px));
+    width: calc(var(--wds-blocks, 0) * 9 * var(--wm-px));
+    max-width: calc(100% - 2 * var(--wm-px));
+    background: repeating-linear-gradient(to right, var(--wm-highlight) 0, var(--wm-highlight) calc(7 * var(--wm-px)), transparent calc(7 * var(--wm-px)), transparent calc(9 * var(--wm-px)));
+}
+
+/* ---------------------------------------------------------------- editor */
+
+.wds-editor { background: #fff; }
+
+.wds-ed-head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+}
+
+.wds-ed-head > .wm-combo { flex: 1 1 auto; min-width: 0; }
+.wds-ed-head > span { flex: 0 0 auto; color: #555; }
+.wds-ed-head > span.is-over { color: #c00000; }
+
+.wds-toolbar {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+    justify-content: flex-start;
+    height: calc(25 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(1 * var(--wm-px)) 0;
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    touch-action: none;
+    overflow: hidden;
+}
+
+.wds-tb-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: calc(22 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    box-sizing: border-box;
+    color: #000;
+    touch-action: manipulation;
+}
+
+.wds-tb-btn > img { width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); pointer-events: none; }
+.wds-tb-btn:active:not(:disabled) { border-color: #000; background: #fff; }
+
+.wds-tb-sep {
+    flex: 0 0 auto;
+    width: calc(1 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    background: #848284;
+}
+
+/* the text fills the page between the head and the bar (a page-filling editor, as Notes: no frame) */
+.wds-ed-text {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    margin: 0;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #848284;
+    border-radius: 0;
+    outline: none;
+    resize: none;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    line-height: calc(15 * var(--wm-px));
+    user-select: text;
+    -webkit-user-select: text;
+}
+
+/* ---------------------------------------------------------------- wide screens: home beside the print */
+
+@container wds (min-width: 60em) {
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"],
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] {
+        flex-direction: row;
+    }
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"] > .wds-print,
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] > .wds-home {
+        display: flex;
+        flex-direction: column;
+    }
+    .wm-dreamstudio:not([data-layout="tabs"]) > .wds-home { order: 1; border-right: calc(1 * var(--wm-px)) solid #000; }
+    .wm-dreamstudio:not([data-layout="tabs"]) > .wds-print { order: 2; }
+    .wm-dreamstudio:not([data-layout="tabs"]) .wds-strip { display: none; }
+}

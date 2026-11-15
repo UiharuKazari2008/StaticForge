@@ -42,6 +42,11 @@
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
     const APP_ID = 'studio';
+    // Settings > System > DreamStudio (#860): the new phone Studio (wmDreamStudio.js) takes the program;
+    // this file then only keeps what other programs borrow from it (the WM menu translation, the
+    // window routing to wmHost.js, wmStudioKit). Read once at load, as the new program reads it.
+    let NEXT = false;
+    try { NEXT = localStorage.getItem('wmStudioNext') === '1'; } catch (_) { /* private mode */ }
     const root = document.documentElement;
     const TABS = [['prompt', 'Prompt'], ['images', 'Images'], ['print', 'Print']];
     // the former Characters and Settings tabs are sections of the Prompt page
@@ -1674,7 +1679,7 @@
     /** A window opening, or asked for again while open: hosted over Studio, else a notification. */
     function routeWindow(el) {
         if (!isToolCandidate(el)) return;
-        if (isCurrent() && studioOpen()) { unnotify(el); hostTool(el); }
+        if (!NEXT && isCurrent() && studioOpen()) { unnotify(el); hostTool(el); }
         // anywhere else the window is its own WM app (wmHost.js); without it, a notification
         else if (window.wmHost && typeof window.wmHost.take === 'function' && window.wmHost.take(el)) unnotify(el);
         else notifyBehind(el);
@@ -2468,6 +2473,15 @@
     function register() {
         ws = window.wmShell;
         if (!ws || typeof ws.registerApp !== 'function') return;
+        if (NEXT) {
+            watchWindows();
+            wrapOpenModal();
+            if (!patchContextMenu()) {
+                const t = setInterval(() => { if (patchContextMenu()) clearInterval(t); }, 1000);
+                setTimeout(() => clearInterval(t), 60000);
+            }
+            return;
+        }
         ws.registerApp({
             id: APP_ID,
             title: 'Studio',
@@ -2557,7 +2571,7 @@
         armMenuHide: (fn) => armMenuHide(fn),
         menuInContent: (x, y, items) => menuInContent(x, y, items),
         // a page of the form (prompt, images, print; or a Prompt section): Phasewalker's Compile lands on Prompt
-        showTab: (id) => setTab(id)
+        showTab: (id) => (NEXT && window.wmDreamStudio ? window.wmDreamStudio.show(id) : setTab(id))
     };
 
     if (window.wmShell) register();

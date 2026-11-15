@@ -938,7 +938,8 @@ class StageResultsReviewManager {
      */
     applySavedFilenames(filenames) {
         if (!this.view) return;
-        if (this.showWhenSaved) { this.showWhenSaved = false; this.show(); }
+        // a front end that shows the prints itself (studioModel.js ownsPrints) keeps this window shut
+        if (this.showWhenSaved) { this.showWhenSaved = false; if (!(window.studioModel && window.studioModel.ownsPrints)) this.show(); }
         const list = Array.isArray(filenames) ? filenames : (filenames ? [filenames] : []);
         const items = this.items();
         const used = new Set();
