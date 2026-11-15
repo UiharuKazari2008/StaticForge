@@ -30,7 +30,9 @@
     const CAR_ART_SM = '/static_images/lapis/car-sm.webp';
     const LAYER_TITLES = { start: 'Remote Start', map: 'Find My Car', status: 'Vehicle Status', service: 'Maintenance', item: 'Maintenance Item', history: 'Driving Record', settings: 'Lapis Settings' };
     const TILE = 256;
-    const HOLD_MS = 600; // hold ENGINE START STOP this long to start (css .lps-go-fill matches)
+    // hold ENGINE START STOP this long to start (css .lps-go-fill matches). The car button's own safety
+    // hold on purpose, not the shell's tap-and-hold menu, so it does not follow wmShell.holdMs
+    const HOLD_MS = 600;
     const SEAT_HEAT = [0, 6, 7, 8];
     const SEAT_COOL = [0, 3, 4, 5];
     const WHEEL = [0, 3, 4];

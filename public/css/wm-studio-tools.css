@@ -375,7 +375,6 @@
     background: transparent !important;
     box-shadow: none !important;
     outline: none !important;
-    accent-color: var(--wm-highlight);
 }
 
 :is(.wm-studio .wms-tool-host, .wm-host .wmh-host) > .modal input[type="range"]::-webkit-slider-runnable-track {

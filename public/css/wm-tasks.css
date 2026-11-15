@@ -423,14 +423,18 @@
     padding-left: calc(6 * var(--wm-px)) !important;
 }
 
-.wm-tasks .wtk-fnative {
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    width: 1px;
-    height: 1px;
-    opacity: 0;
-    pointer-events: none;
+/* the reminder's time while it is edited: the kit's time box stands over the text */
+.wm-tasks .wtk-ftime {
+    position: relative;
+    height: calc(18 * var(--wm-px));
+    font-size: calc(13.35 * var(--wm-px));
+}
+
+/* 6.1 emulator: the box starts just right of the date (x 313 to 453 px of the VGA screen: 70
+ * units; 84 here, the width "12:00 AM" needs in this face without scrolling in the box) */
+html.ui-mobile #wmShell .wm-tasks .wtk-ftime .wm-timecombo.is-inrow {
+    left: calc(2 * var(--wm-px));
+    width: calc(84 * var(--wm-px));
 }
 
 .wm-tasks .wtk-fnotes {
@@ -464,124 +468,6 @@
     min-height: calc(19 * var(--wm-px));
 }
 
-/* ---- the month picker: x 34..203 from the top of the screen, a 1 px black frame ---- */
-
-.wtk-cal {
-    position: absolute;
-    z-index: 9000;
-    left: calc(34 * var(--wm-px));
-    top: 0;
-    box-sizing: border-box;
-    width: calc(170 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-top: 0;
-    background: #fff;
-    color: #000;
-    font: calc(10.5 * var(--wm-px)) var(--wm-font);
-}
-
-.wtk-cal button {
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-}
-
-/* the month band: 33 px of the highlight, the name bold white 13.5 px, the two 19 x 14 px buttons */
-.wtk-cal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: calc(33 * var(--wm-px));
-    padding: 0 calc(5 * var(--wm-px));
-    background: var(--wm-highlight);
-    color: var(--wm-highlight-text);
-    font-weight: bold;
-    font-size: calc(13.5 * var(--wm-px));
-}
-
-.wtk-cal-nav {
-    position: relative;
-    width: calc(19.5 * var(--wm-px));
-    height: calc(14 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000 !important;
-    background: #fff !important;
-}
-
-.wtk-cal-nav::before {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    margin: calc(-4.5 * var(--wm-px)) 0 0 calc(-2.5 * var(--wm-px));
-    border-top: calc(4.5 * var(--wm-px)) solid transparent;
-    border-bottom: calc(4.5 * var(--wm-px)) solid transparent;
-    border-right: calc(4.5 * var(--wm-px)) solid #000;
-}
-
-.wtk-cal-nav[data-nav="1"]::before {
-    border-right: 0;
-    border-left: calc(4.5 * var(--wm-px)) solid #000;
-}
-
-.wtk-cal-week,
-.wtk-cal-grid {
-    display: grid;
-    grid-template-columns: repeat(7, calc(24 * var(--wm-px)));
-    text-align: center;
-}
-
-.wtk-cal-week {
-    height: calc(16.5 * var(--wm-px));
-    margin: 0 calc(4.5 * var(--wm-px)) calc(1 * var(--wm-px));
-    grid-template-columns: repeat(7, 1fr);
-    border-bottom: calc(1 * var(--wm-px)) solid #000;
-    color: var(--wm-highlight);
-    font-weight: bold;
-    font-size: calc(13.5 * var(--wm-px));
-    line-height: calc(17 * var(--wm-px));
-}
-
-.wtk-cal-grid {
-    padding: 0 0 0 calc(0.5 * var(--wm-px));
-}
-
-.wtk-cal-day {
-    height: calc(17.5 * var(--wm-px));
-    font-size: calc(13.5 * var(--wm-px)) !important;
-    line-height: calc(17 * var(--wm-px));
-}
-
-.wtk-cal-day.is-other {
-    color: #a5a5a5;
-}
-
-.wtk-cal-day.is-today {
-    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #000;
-}
-
-.wtk-cal-day.is-picked {
-    background: var(--wm-highlight);
-    color: var(--wm-highlight-text);
-}
-
-.wtk-cal-line {
-    display: block;
-    width: 100%;
-    height: calc(20 * var(--wm-px));
-    padding: 0 calc(4.5 * var(--wm-px)) !important;
-    text-align: left;
-    font-weight: bold !important;
-    font-size: calc(13.5 * var(--wm-px)) !important;
-}
-
-.wtk-cal-line.is-none {
-    padding-left: calc(7.5 * var(--wm-px)) !important;
-}
-
 /* ---- Melaton Mobile 6.5 ---- */
 /* Measured on the 6.5 emulator (VGA halved; ~/.cache/claude-run/wm65apps/progs/emu65 a*.png): the
  * same program under the 6.5 chrome: white pages (no list gradient), the theme's tint band and
@@ -595,8 +481,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-entry,
 html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-entry::placeholder,
 html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-finput,
 html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-fval,
-html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-fnotes,
-html.ui-mobile[data-wm-version="6.5"] .wtk-cal {
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-fnotes {
     color: var(--wm65-text);
 }
 
@@ -608,16 +493,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-row.is-overdue {
     color: #f00;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-row.is-selected,
-html.ui-mobile[data-wm-version="6.5"] .wtk-cal-day.is-picked {
+html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-row.is-selected {
     color: #fff;
 }
 
-/* the month's name is drawn in the tint on the 6.5 selection colour */
-html.ui-mobile[data-wm-version="6.5"] .wtk-cal-head > span {
-    color: var(--wm-tint);
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wtk-cal-day.is-other {
-    color: #a5a5a5;
-}

@@ -2974,16 +2974,24 @@ html.ui-mobile[data-wm-note] #wmShell .wm-softkeys {
 /* a video in the picture view: the phone's file with the WebView's own controls */
 .wm-pv-video {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
 }
 
+/* the video over the kit's transport (wmSettings.ui.mediaBar, wm-programs.css) */
 .wm-pv-video video {
+    flex: 0 1 auto;
+    min-height: 0;
     max-width: 100%;
     max-height: 100%;
     background: #000;
+}
+
+.wm-pv-video > .wm-mediabar {
+    flex: 0 0 auto;
 }
 
 .wm-pv .wm-photos-empty {
@@ -3412,44 +3420,6 @@ html.ui-mobile body > .pswp .pswp__preloader {
     border: calc(1 * var(--wm-px)) solid #000 !important;
     background: var(--wm-tint) !important;
     font-weight: bold;
-}
-
-.wm-bubble-volume {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: calc(6 * var(--wm-px)) calc(12 * var(--wm-px));
-}
-
-.wm-bubble-volume input[type="range"] {
-    flex: 1 1 100%;
-    accent-color: var(--wm-highlight);
-}
-
-/* the volume bubble's controls are plain WM controls, not the desktop's styled inputs */
-.wm-bubble-volume input[type="radio"] {
-    appearance: auto !important;
-    -webkit-appearance: radio !important;
-    width: calc(13 * var(--wm-px)) !important;
-    height: calc(13 * var(--wm-px)) !important;
-    margin: 0 calc(3 * var(--wm-px)) 0 0 !important;
-    accent-color: var(--wm-highlight);
-    vertical-align: middle;
-}
-
-.wm-bubble-volume input[type="range"] {
-    appearance: auto !important;
-    -webkit-appearance: auto !important;
-    height: calc(18 * var(--wm-px)) !important;
-    background: none !important;
-    border: 0 !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-}
-
-.wm-bubble-volume label {
-    display: inline-flex;
-    align-items: center;
 }
 
 /* ---- the volume bubble (WM 6.1 speaker icon, emulator VGA capture halved): a 77 x 199 callout

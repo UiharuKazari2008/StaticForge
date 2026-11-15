@@ -133,44 +133,6 @@
     display: none;
 }
 
-/* WM scroll bar, as wm-shell.css draws it for the shell's lists */
-.wm-fe .fe-scroll::-webkit-scrollbar {
-    width: calc(13 * var(--wm-px));
-}
-
-.wm-fe .fe-scroll::-webkit-scrollbar-track {
-    background: #fff;
-    border-left: calc(1 * var(--wm-px)) solid #000;
-}
-
-.wm-fe .fe-scroll::-webkit-scrollbar-thumb {
-    background: var(--wm-tab-strip);
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-right: 0;
-    border-radius: 0;
-}
-
-.wm-fe .fe-scroll::-webkit-scrollbar-button:single-button {
-    display: block;
-    height: calc(19 * var(--wm-px));
-    background: var(--wm-tab-strip) center / calc(8 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
-    border-left: calc(1 * var(--wm-px)) solid #000;
-}
-
-.wm-fe .fe-scroll::-webkit-scrollbar-button:single-button:vertical:decrement {
-    border-bottom: calc(1 * var(--wm-px)) solid #000;
-    background-image: linear-gradient(to bottom right, transparent 50%, #000 50%), linear-gradient(to bottom left, transparent 50%, #000 50%);
-    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
-    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
-}
-
-.wm-fe .fe-scroll::-webkit-scrollbar-button:single-button:vertical:increment {
-    border-top: calc(1 * var(--wm-px)) solid #000;
-    background-image: linear-gradient(to top right, transparent 50%, #000 50%), linear-gradient(to top left, transparent 50%, #000 50%);
-    background-size: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)), calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
-    background-position: calc(50% - 2 * var(--wm-px)) 50%, calc(50% + 2 * var(--wm-px)) 50%;
-}
-
 /* ---- View > Thumbnails: Pictures & Videos cells (80 px columns, ruled, white-to-green field),
  * a picture fitted into 68 x 46 or the item's icon at 32 px, the name under it ---- */
 .wm-fe .fe-list.fe-grid {

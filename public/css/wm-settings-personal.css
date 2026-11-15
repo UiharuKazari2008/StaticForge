@@ -82,33 +82,7 @@ html.ui-mobile .wm-form .wm-picker-cell:disabled {
     opacity: 1;
 }
 
-/* Workspace > Color: the accent colour as a WM box with its swatch, the window colour swatches */
-html.ui-mobile .wm-form .wmsp-color {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: calc(5 * var(--wm-px));
-    height: calc(20 * var(--wm-px));
-}
-
-html.ui-mobile .wm-form .wmsp-color input {
-    width: calc(34 * var(--wm-px));
-    height: calc(20 * var(--wm-px));
-    margin: 0;
-    padding: calc(2 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid #000;
-    border-radius: 0;
-    background: #fff;
-}
-
-html.ui-mobile .wm-form .wmsp-color input::-webkit-color-swatch-wrapper {
-    padding: 0;
-}
-
-html.ui-mobile .wm-form .wmsp-color input::-webkit-color-swatch {
-    border: 0;
-}
-
+/* the window colour swatches */
 html.ui-mobile .wm-form .wmsp-swatches {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     max-height: none;

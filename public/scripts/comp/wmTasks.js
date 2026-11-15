@@ -19,8 +19,9 @@
  *               that shows Starts / Due, the notes under a 1 px rule; Edit | Menu (Beam..., Delete)
  *   the form    Subject, Priority, Status, Starts, Due, Occurs, Reminder, Categories,
  *               Sensitivity (labels right-aligned to x 74, values from x 78 on a 1 px #848284
- *               rule, 19.5 px rows), tabs Task | Notes, the month picker over the title bar from
- *               x 34 (170 px wide, "Today:" and "None" rows); ok saves, Menu > Cancel leaves
+ *               rule, 19.5 px rows), tabs Task | Notes, the kit's month calendar under a date
+ *               ("Today:" and "None" rows) and its time box for the reminder; ok saves, Menu >
+ *               Cancel leaves
  *   delete      "Tasks will be permanently deleted. Continue?" Yes / No (No is the default)
  *   Today       "No tasks" / "2 Active tasks" and under it "1 High priority"
  *
@@ -43,7 +44,6 @@
     const RELOAD_MS = 60000;
     const GEN_TYPES = new Map([['generate_image', 'Print'], ['generate_preset', 'Print'], ['reroll_image', 'Reroll'], ['upscale_image', 'Upscale'],
         ['expand_image', 'Expand'], ['reroll_expanded_image', 'Reroll'], ['enhance_image', 'Enhance'], ['max_enhance_image', 'Enhance'], ['animate_image', 'Animate']]);
-    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     // the device's Subject drop-down
     const SUBJECT_WORDS = ['Complete', 'Work on', 'Buy', 'Update', 'Create', 'Plan', 'Call', 'Send', 'Schedule', 'Prepare', 'Review'];
 
@@ -61,7 +61,6 @@
     let expanded = false;
     let barPri = 0; // the entry bar's toggle: 0 | 1 (high) | 9 (low)
     let barFocus = 'high';
-    let picker = null;
     let printTimer = null;
     let printKey = '';
     const recent = [];
@@ -72,7 +71,6 @@
     const formDate = (d) => `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
     const shortDate = (d) => `${d.getMonth() + 1}/${d.getDate()}/${pad(d.getFullYear() % 100)}`;
     const formTime = (d) => `${(d.getHours() % 12) || 12}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
-    const inputTime = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     const newUid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}@melaton`;
     const isHigh = (t) => t.priority >= 1 && t.priority <= 4;
     const isLow = (t) => t.priority >= 6;
@@ -576,7 +574,7 @@
             fieldRow('occurs', 'Occurs', fixed('Once')),
             fieldRow('reminder', 'Reminder', val('reminder', f.remind ? 'Remind me' : 'None')),
             fieldRow('remwhen', '', f.remind && f.reminderAt
-                ? `<span class="wtk-fdt">${val('rem-date', formDate(f.reminderAt))}${val('rem-time', formTime(f.reminderAt))}<input type="time" class="wtk-fnative" value="${inputTime(f.reminderAt)}" tabindex="-1" aria-hidden="true"></span>`
+                ? `<span class="wtk-fdt">${val('rem-date', formDate(f.reminderAt))}${val('rem-time', formTime(f.reminderAt))}</span>`
                 : fixed('')),
             fieldRow('categories', 'Categories', fixed('No categories...')),
             fieldRow('sensitivity', 'Sensitivity', fixed('Normal'))
@@ -616,16 +614,22 @@
             return;
         }
         if (k === 'rem-time') {
-            const input = btn.parentElement.querySelector('.wtk-fnative');
-            input.onchange = () => {
-                const [h, mi] = input.value.split(':').map(Number);
-                if (Number.isNaN(h)) return;
+            // the device's time box: the time typed, or picked from its list of half hours
+            if (!kit()) return;
+            const cell = document.createElement('span');
+            cell.className = 'wtk-ftime';
+            btn.replaceWith(cell);
+            const box = kit().timeCombo(cell, { value: f.reminderAt.getHours() * 60 + f.reminderAt.getMinutes(), label: 'Reminder time', inRow: true, onChange: (v) => {
                 const d = new Date(f.reminderAt);
-                d.setHours(h, mi || 0, 0, 0);
+                d.setHours(Math.floor(v / 60), v % 60, 0, 0);
                 f.reminderAt = d;
                 redo();
-            };
-            try { input.showPicker(); } catch (_) { input.focus(); input.click(); }
+            } });
+            box.input.focus();
+            box.input.select();
+            // left without a change (and not for its own list): the value is plain text again (only this
+            // cell: the tap that took the focus away must still find its target)
+            box.input.addEventListener('blur', () => setTimeout(() => { if (cell.isConnected && !cell.querySelector('[aria-expanded="true"]')) cell.replaceWith(btn); }, 0));
             return;
         }
         let items = [];
@@ -676,53 +680,14 @@
 
     // ---------------------------------------------------------------- the month picker
 
-    function closePicker() {
-        if (!picker) return;
-        document.removeEventListener('pointerdown', picker.away, true);
-        picker.el.remove();
-        picker = null;
-    }
+    const kit = () => window.wmSettings && window.wmSettings.ui;
+    const pickerOpen = () => !!(kit() && kit().monthCalendarOpen());
+    const closePicker = () => !!(kit() && kit().closeMonthCalendar());
 
-    /** The device's month calendar: over the title bar from x 34; a day, "Today" or "None" picks. */
+    /** The device's month calendar (the kit's, wmSettings.ui.monthCalendar): a day, "Today" or "None" picks. */
     function pickDate(anchor, value, withNone, onPick) {
-        closePicker();
-        const el = document.createElement('div');
-        el.className = 'wtk-cal';
-        const today = startOfDay(new Date());
-        let month = value ? new Date(value.getFullYear(), value.getMonth(), 1) : new Date(today.getFullYear(), today.getMonth(), 1);
-        const draw = () => {
-            // a month that starts on a Sunday shows the week before it first (the device's month calendar)
-            const first = new Date(month.getFullYear(), month.getMonth(), 1 - (month.getDay() || 7));
-            let cells = '';
-            for (let i = 0; i < 42; i++) {
-                const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
-                const cls = ['wtk-cal-day'];
-                if (d.getMonth() !== month.getMonth()) cls.push('is-other');
-                if (+d === +today) cls.push('is-today');
-                if (value && +d === +startOfDay(value)) cls.push('is-picked');
-                cells += `<button type="button" class="${cls.join(' ')}" data-day="${d.getTime()}">${d.getDate()}</button>`;
-            }
-            el.innerHTML = `<div class="wtk-cal-head"><button type="button" class="wtk-cal-nav" data-nav="-1" aria-label="Previous month"></button><span>${MONTHS[month.getMonth()]} ${month.getFullYear()}</span><button type="button" class="wtk-cal-nav" data-nav="1" aria-label="Next month"></button></div>`
-                + `<div class="wtk-cal-week">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((c) => `<span>${c}</span>`).join('')}</div>`
-                + `<div class="wtk-cal-grid">${cells}</div>`
-                + `<button type="button" class="wtk-cal-line" data-day="${today.getTime()}">Today: ${shortDate(today)}</button>`
-                + (withNone ? '<button type="button" class="wtk-cal-line is-none" data-day="">None</button>' : '');
-        };
-        draw();
-        el.addEventListener('click', (e) => {
-            const nav = e.target.closest('[data-nav]');
-            if (nav) { month = new Date(month.getFullYear(), month.getMonth() + Number(nav.dataset.nav), 1); draw(); return; }
-            const day = e.target.closest('[data-day]');
-            if (!day) return;
-            const d = day.dataset.day ? new Date(Number(day.dataset.day)) : null;
-            closePicker();
-            onPick(d);
-        });
-        const away = (e) => { if (!el.contains(e.target)) { e.preventDefault(); e.stopPropagation(); closePicker(); ws.syncHistory(); } };
-        (document.getElementById('wmShell') || document.body).appendChild(el);
-        picker = { el, away };
-        setTimeout(() => { if (picker && picker.el === el) document.addEventListener('pointerdown', away, true); }, 0);
-        ws.syncHistory();
+        if (!kit() || kit().monthCalendarJustClosed(anchor)) return;
+        kit().monthCalendar(anchor, { value, none: withNone, onPick });
     }
 
     // ---------------------------------------------------------------- options
@@ -826,6 +791,8 @@
 
     function mount(p) {
         page = p;
+        // a new page starts on the list: the program may have been ended (Task Manager) with the form open
+        if (view === 'form') { view = 'list'; form = null; }
         p.classList.add('wm-tasks');
         p.innerHTML = '<div class="wtk-listview">'
             + '<div class="wtk-bar"><span class="wtk-pri"><button type="button" data-pri="high" aria-label="High priority"><i></i></button><button type="button" data-pri="low" aria-label="Low priority"><i></i></button></span>'
@@ -946,7 +913,7 @@
     }
 
     function back() {
-        if (picker) { closePicker(); return true; }
+        if (closePicker()) return true;
         if (view === 'form') { cancelForm(false); return true; }
         if (view === 'summary' || view === 'options') { view = 'list'; render(); return true; }
         return false;
@@ -1022,12 +989,12 @@
             titleNow: () => (view === 'list' && filter().show === 'recent' ? 'Recent' : 'Tasks'),
             titleKind: () => (view === 'list' ? 'close' : 'ok'),
             onTitleOk() {
-                if (picker) closePicker();
+                closePicker();
                 if (view === 'form') { commitForm(); return true; }
                 if (view === 'summary' || view === 'options') { view = 'list'; render(); ws.syncHistory(); return true; }
                 return false;
             },
-            historyDepth: () => (view === 'list' ? 0 : 1) + (picker ? 1 : 0),
+            historyDepth: () => (view === 'list' ? 0 : 1) + (pickerOpen() ? 1 : 0),
             onBack: back,
             onEnd() { view = 'list'; form = null; closePicker(); },
             softKeys

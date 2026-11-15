@@ -2158,9 +2158,24 @@
 
     // ---- wmSettings.ui: WM 6.1 form idioms (wm-programs.css), so every page looks the same.
     // The *Html helpers return markup; the bind* helpers wire it after el.innerHTML is set.
+    // Controls that draw themselves into a host element and return a small handle: trackbar,
+    // dateField / monthCalendar, timeCombo, timeField, colorField, mediaBar. They stand where a page would
+    // otherwise reach for the browser's range, date, time or colour input or its media controls
+    // (no-native-browser-ui.mdc).
 
     const escUi = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     let uiSeq = 0;
+    let calPop = null; // the open month calendar: { el, away, anchor }
+    let calSkip = null; // the control whose tap just closed its calendar
+    const CAL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    // the sixteen system colours, in the order of the system palette: [['#rrggbb', name]]; silver and
+    // gray are the two greys, the others the red / green / blue bits at half (0 - 6) or full (9 - 15)
+    const WM_COLORS = ['Black', 'Maroon', 'Green', 'Olive', 'Navy', 'Purple', 'Teal', 'Silver', 'Gray', 'Red', 'Lime', 'Yellow', 'Blue', 'Fuchsia', 'Aqua', 'White'].map((name, i) => {
+        const grey = i === 7 ? 192 : i === 8 ? 128 : -1;
+        const level = i < 8 ? 128 : 255;
+        const bits = i < 8 ? i : i - 8;
+        return [`#${[1, 2, 4].map((b) => (grey >= 0 ? grey : (bits & b ? level : 0)).toString(16).padStart(2, '0')).join('')}`, name];
+    });
 
     const ui = {
         esc: escUi,
@@ -2250,15 +2265,16 @@
         /**
          * Horizontal trackbar (Screen's Text Size look) rendered into `host`: steps = the values,
          * value = the current one, lo / hi = the scale's end labels, label = its accessible name,
-         * onChange(value). Returns { set(value) }.
+         * onChange(value), ticks = a tick mark every that many steps (1; a long scale such as
+         * 0 - 100 takes 10, 0 draws none). Returns { set(value) }.
          */
-        trackbar(host, { steps, value, lo = '', hi = '', label = '', onChange, disabled = false }) {
+        trackbar(host, { steps, value, lo = '', hi = '', label = '', onChange, disabled = false, ticks = 1 }) {
             const n = steps.length;
             const pos = (i) => `calc(4 * var(--wm-px) + (100% - 8 * var(--wm-px)) * ${n > 1 ? i / (n - 1) : 0})`;
             host.insertAdjacentHTML('beforeend', `<div class="wm-slider-scale"><span>${escUi(lo)}</span><span>${escUi(hi)}</span></div>
                 <div class="wm-slider${disabled ? ' is-disabled' : ''}" role="slider"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${escUi(label)}" aria-valuemin="0" aria-valuemax="${n - 1}">
                     <div class="wm-slider-track"></div>
-                    ${steps.map((_, i) => `<div class="wm-slider-tick" style="left:${pos(i)}"></div>`).join('')}
+                    ${steps.map((_, i) => (ticks > 0 && (i % ticks === 0 || i === n - 1) ? `<div class="wm-slider-tick" style="left:${pos(i)}"></div>` : '')).join('')}
                     <div class="wm-slider-thumb"></div>
                 </div>`);
             const sliders = host.querySelectorAll('.wm-slider');
@@ -2309,6 +2325,350 @@
                 });
             }
             return { set: (v) => setIdx(Math.max(0, steps.indexOf(v)), false) };
+        },
+        /**
+         * The WM month calendar (the date control's drop-down, SysMonthCal32; 6.1 and 6.5 emulators,
+         * Calendar and Tasks): the month band in the highlight with its two arrow buttons, the week's
+         * letters over a rule, six weeks of days, "Today: M/D/YY" and, with none, "None". It hangs
+         * under `anchor`, pulled left to stay on the screen; with no room below it opens at the top
+         * of the screen (device: x 67 px, y 0). opts: value (Date or null), none, onPick(Date | null).
+         * One at a time; a tap outside closes it. monthCalendarOpen() / closeMonthCalendar() are for
+         * an app's back key and historyDepth.
+         */
+        monthCalendar(anchor, { value = null, none = false, onPick } = {}) {
+            ui.closeMonthCalendar();
+            const host = document.getElementById('wmShell') || document.body;
+            const el = document.createElement('div');
+            el.className = 'wm-cal';
+            el.setAttribute('role', 'dialog');
+            el.setAttribute('aria-label', 'Calendar');
+            const day0 = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+            const today = day0(new Date());
+            const picked = value ? day0(value) : null;
+            let month = new Date((picked || today).getFullYear(), (picked || today).getMonth(), 1);
+            const draw = () => {
+                // a month that starts on a Sunday shows the week before it first (the device's month calendar)
+                const first = new Date(month.getFullYear(), month.getMonth(), 1 - (month.getDay() || 7));
+                let cells = '';
+                for (let i = 0; i < 42; i++) {
+                    const d = new Date(first.getFullYear(), first.getMonth(), first.getDate() + i);
+                    const cls = ['wm-cal-day'];
+                    if (d.getMonth() !== month.getMonth()) cls.push('is-other');
+                    if (+d === +today) cls.push('is-today');
+                    if (picked && +d === +picked) cls.push('is-picked');
+                    cells += `<button type="button" class="${cls.join(' ')}" data-day="${d.getTime()}">${d.getDate()}</button>`;
+                }
+                el.innerHTML = `<div class="wm-cal-head"><button type="button" class="wm-cal-nav" data-nav="-1" aria-label="Previous month"></button><span>${CAL_MONTHS[month.getMonth()]} ${month.getFullYear()}</span><button type="button" class="wm-cal-nav" data-nav="1" aria-label="Next month"></button></div>`
+                    + `<div class="wm-cal-week">${['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((c) => `<span>${c}</span>`).join('')}</div>`
+                    + `<div class="wm-cal-grid">${cells}</div>`
+                    + `<button type="button" class="wm-cal-line" data-day="${today.getTime()}">Today: ${today.getMonth() + 1}/${today.getDate()}/${String(today.getFullYear() % 100).padStart(2, '0')}</button>`
+                    + (none ? '<button type="button" class="wm-cal-line is-none" data-day="">None</button>' : '');
+            };
+            draw();
+            el.addEventListener('click', (e) => {
+                const nav = e.target.closest('[data-nav]');
+                if (nav) { month = new Date(month.getFullYear(), month.getMonth() + Number(nav.dataset.nav), 1); draw(); return; }
+                const day = e.target.closest('[data-day]');
+                if (!day) return;
+                const d = day.dataset.day ? new Date(Number(day.dataset.day)) : null;
+                ui.closeMonthCalendar();
+                if (onPick) onPick(d);
+            });
+            const away = (e) => {
+                if (el.contains(e.target)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                // a tap on the control that opened it closes it, and that tap's click does not open it again
+                if (anchor && anchor.contains && anchor.contains(e.target)) { calSkip = anchor; setTimeout(() => { calSkip = null; }, 400); }
+                ui.closeMonthCalendar();
+            };
+            host.appendChild(el);
+            // under the control while it fits on the screen, else from the top of the screen
+            const hr = host.getBoundingClientRect();
+            const unit = el.offsetWidth / 170;
+            const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : null;
+            if (r && r.bottom - hr.top + el.offsetHeight <= hr.height + 0.5) {
+                el.style.left = `${Math.max(0, Math.min(r.left - hr.left, hr.width - 2.5 * unit - el.offsetWidth))}px`;
+                el.style.top = `${r.bottom - hr.top}px`;
+            } else {
+                el.classList.add('is-top');
+                el.style.left = `${Math.max(0, Math.min(33.5 * unit, hr.width - el.offsetWidth))}px`;
+                el.style.top = '0px';
+            }
+            calPop = { el, away, anchor };
+            setTimeout(() => { if (calPop && calPop.el === el) document.addEventListener('pointerdown', away, true); }, 0);
+            if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
+        },
+        monthCalendarOpen: () => !!calPop,
+        /** True right after a tap on `anchor` closed its own calendar: that tap's click must not open it again. */
+        monthCalendarJustClosed: (anchor) => { if (calSkip !== anchor) return false; calSkip = null; return true; },
+        /** Closes the open month calendar; true when there was one. */
+        closeMonthCalendar() {
+            if (!calPop) return false;
+            document.removeEventListener('pointerdown', calPop.away, true);
+            calPop.el.remove();
+            calPop = null;
+            if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
+            return true;
+        },
+        /**
+         * Date control rendered into `host` (SysDateTimePick32 with its drop arrow: the combo's box
+         * showing M/D/YYYY, the month calendar under it). opts: value (Date | null), none (offers
+         * "None"), label (accessible name), onChange(Date | null), disabled. Returns { get, set, el }.
+         */
+        dateField(host, { value = null, none = false, label = 'Date', onChange, disabled = false } = {}) {
+            const text = (d) => (d ? `${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}` : 'None');
+            host.insertAdjacentHTML('beforeend', `<button type="button" class="wm-combo wm-datefield" aria-haspopup="dialog" aria-label="${escUi(label)}"${disabled ? ' disabled' : ''}><span></span></button>`);
+            const all = host.querySelectorAll('.wm-datefield');
+            const btn = all[all.length - 1];
+            let cur = value ? new Date(value) : null;
+            const show = () => { btn.querySelector('span').textContent = text(cur); };
+            show();
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (btn.disabled) return;
+                if (calSkip === btn) { calSkip = null; return; }
+                ui.monthCalendar(btn, { value: cur, none, onPick: (d) => { cur = d; show(); if (onChange) onChange(d ? new Date(d) : null); } });
+            });
+            return { get: () => (cur ? new Date(cur) : null), set: (v) => { cur = v ? new Date(v) : null; show(); }, el: btn };
+        },
+        /** "h:mm AM" for minutes since midnight, and back (also "9", "930", "9:30p", "21:30"); NaN when it is no time. */
+        timeText: (min) => `${(Math.floor(min / 60) % 12) || 12}:${String(min % 60).padStart(2, '0')} ${min < 720 ? 'AM' : 'PM'}`,
+        parseTime(text) {
+            const m = /^\s*(\d{1,2})(?:[:.]?(\d{2}))?\s*([ap])?\.?m?\.?\s*$/i.exec(String(text || ''));
+            if (!m) return NaN;
+            let h = Number(m[1]);
+            const mi = Number(m[2] || 0);
+            if (mi > 59 || h > 23 || (m[3] && (h < 1 || h > 12))) return NaN;
+            if (m[3]) h = (h % 12) + (m[3].toLowerCase() === 'p' ? 12 : 0);
+            return h * 60 + mi;
+        },
+        /**
+         * Calendar's time box rendered into `host` (6.1 / 6.5 emulators, New Appointment > Starts): an
+         * editable combo; the time can be typed, the arrow opens the list of times a `step` (30
+         * minutes) apart, seven rows tall, opened on the current time. opts: value (minutes since
+         * midnight), step, label, onChange(minutes), inRow (the box as it stands in a Calendar or
+         * Tasks form row: over the value's text, in the row's type). Returns { get, set, input }.
+         */
+        timeCombo(host, { value = 0, step = 30, label = 'Time', onChange, inRow = false } = {}) {
+            host.insertAdjacentHTML('beforeend', `<span class="wm-combo-edit wm-timecombo${inRow ? ' is-inrow' : ''}"><input class="wm-edit" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="${escUi(label)}"><button type="button" class="wm-combo" tabindex="-1" aria-label="Times"></button></span>`);
+            const all = host.querySelectorAll('.wm-timecombo');
+            const box = all[all.length - 1];
+            const input = box.querySelector('input');
+            const btn = box.querySelector('button');
+            let cur = Math.max(0, Math.min(1439, Math.round(Number(value) || 0)));
+            input.value = ui.timeText(cur);
+            const commit = (v) => {
+                if (Number.isNaN(v)) { input.value = ui.timeText(cur); return; }
+                const was = cur;
+                cur = v;
+                input.value = ui.timeText(cur);
+                if (was !== cur && onChange) onChange(cur);
+            };
+            input.addEventListener('change', () => commit(ui.parseTime(input.value)));
+            input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(ui.parseTime(input.value)); input.select(); } });
+            // the arrow leaves the caret in the box, as the device's does
+            btn.addEventListener('pointerdown', (e) => e.preventDefault());
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!sh) return;
+                const typed = ui.parseTime(input.value);
+                const now = Number.isNaN(typed) ? cur : typed;
+                const items = [];
+                for (let t = 0; t < 1440; t += step) items.push({ label: ui.timeText(t), radio: t === now, action: () => commit(t) });
+                const pop0 = document.querySelector('#wmShell > .wm-popup');
+                // closed again, the caret is back in the box
+                sh.dropdown(box, items, 'left', () => { if (pop0) { delete pop0.dataset.wmList; pop0.style.fontSize = ''; } if (input.isConnected) input.focus({ preventScroll: true }); });
+                const pop = pop0;
+                if (!pop || pop.hidden || box.getAttribute('aria-expanded') !== 'true') return;
+                // the box's own list (wm-programs.css): as wide as the box, seven rows, under it
+                // (the shell moves it above when there is no room), in the box's type
+                pop.dataset.wmList = 'time';
+                pop.style.fontSize = getComputedStyle(input).fontSize;
+                const row = pop.querySelector(':scope > .wm-popup-item');
+                const br = box.getBoundingClientRect();
+                const sr = pop.parentElement.getBoundingClientRect();
+                pop.style.minWidth = pop.style.maxWidth = `${br.width}px`;
+                if (row) pop.style.maxHeight = `${row.getBoundingClientRect().height * 7 + (pop.offsetHeight - pop.clientHeight)}px`;
+                pop.style.overflowY = 'auto';
+                pop.style.right = pop.style.bottom = 'auto';
+                pop.style.left = `${br.left - sr.left}px`;
+                pop.style.top = `${br.bottom - sr.top}px`;
+                // it opens with the current time (or the step before it) as its first row
+                const at = pop.querySelectorAll(':scope > .wm-popup-item')[Math.floor(now / step)];
+                queueMicrotask(() => { if (at && !pop.hidden) pop.scrollTop = at.offsetTop; });
+            });
+            return { get: () => cur, set: (v) => { cur = Math.max(0, Math.min(1439, Math.round(Number(v) || 0))); input.value = ui.timeText(cur); }, input };
+        },
+        /**
+         * Time control with the spin buttons rendered into `host` (SysDateTimePick32 + msctls_updown32:
+         * Settings > Clock & Alarms on the 6.1 / 6.5 emulators, Alarm Settings on 6.5.3): hour, minute
+         * (and second) and AM / PM fields; a tap gives a field the highlight (AM / PM also flips, as
+         * on the device), the up and down buttons and the arrow keys step it, digits type into it
+         * and Left / Right change field. A minute or second wraps without carrying. opts: value
+         * (minutes since midnight; seconds since midnight with seconds: true), seconds, label,
+         * onChange(value), disabled. Returns { get, set }.
+         */
+        timeField(host, { value = 0, seconds = false, label = 'Time', onChange, disabled = false } = {}) {
+            const parts = seconds ? ['h', 'm', 's', 'ap'] : ['h', 'm', 'ap'];
+            const NAMES = { h: 'Hours', m: 'Minutes', s: 'Seconds', ap: 'AM or PM' };
+            host.insertAdjacentHTML('beforeend', `<div class="wm-timefield${disabled ? ' is-disabled' : ''}" role="group" aria-label="${escUi(label)}"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'}>
+                    <span class="wm-timefield-text">${parts.map((p, i) => `${i && p !== 'ap' ? '<span class="wm-timefield-sep">:</span>' : ''}<span class="wm-timefield-part" data-part="${p}" role="spinbutton" aria-label="${NAMES[p]}"></span>`).join('')}</span>
+                    <span class="wm-spin"><button type="button" data-dir="1" aria-label="Up" tabindex="-1"${disabled ? ' disabled' : ''}></button><button type="button" data-dir="-1" aria-label="Down" tabindex="-1"${disabled ? ' disabled' : ''}></button></span>
+                </div>`);
+            const all = host.querySelectorAll('.wm-timefield');
+            const root = all[all.length - 1];
+            const max = seconds ? 86400 : 1440;
+            const unit = seconds ? 3600 : 60;
+            let cur = ((Math.round(Number(value) || 0) % max) + max) % max;
+            let active = 'h';
+            let typed = '';
+            const get = (p) => (p === 'h' ? Math.floor(cur / unit) : p === 'm' ? Math.floor(cur / (unit / 60)) % 60 : p === 's' ? cur % 60 : (cur < max / 2 ? 0 : 1));
+            const put = (p, v) => {
+                const h = get('h');
+                const m = get('m');
+                const s = seconds ? get('s') : 0;
+                const next = p === 'h' ? [v, m, s] : p === 'm' ? [h, v, s] : p === 's' ? [h, m, v] : [(h % 12) + (v ? 12 : 0), m, s];
+                const was = cur;
+                cur = seconds ? next[0] * 3600 + next[1] * 60 + next[2] : next[0] * 60 + next[1];
+                show();
+                if (was !== cur && onChange) onChange(cur);
+            };
+            const show = () => {
+                root.querySelectorAll('.wm-timefield-part').forEach((n) => {
+                    const p = n.dataset.part;
+                    const v = get(p);
+                    n.textContent = p === 'h' ? String((v % 12) || 12) : p === 'ap' ? (v ? 'PM' : 'AM') : String(v).padStart(2, '0');
+                    n.classList.toggle('is-active', p === active);
+                    n.setAttribute('aria-valuetext', n.textContent);
+                });
+            };
+            const step = (dir) => {
+                typed = '';
+                if (active === 'ap') put('ap', get('ap') ? 0 : 1);
+                else if (active === 'h') put('h', (get('h') + dir + 24) % 24);
+                else put(active, (get(active) + dir + 60) % 60);
+            };
+            const select = (p) => { active = p; typed = ''; show(); };
+            show();
+            if (disabled) return { get: () => cur, set: (v) => { cur = ((Math.round(Number(v) || 0) % max) + max) % max; show(); } };
+            root.addEventListener('pointerdown', (e) => {
+                const part = e.target.closest('.wm-timefield-part');
+                // the buttons leave the focus (and the highlight) on the fields
+                if (e.target.closest('.wm-spin')) e.preventDefault();
+                if (!part) return;
+                select(part.dataset.part);
+                if (part.dataset.part === 'ap') put('ap', get('ap') ? 0 : 1);
+            });
+            // a held button repeats (the up-down control: after a pause, then steadily)
+            let rep = 0;
+            const stop = () => { clearTimeout(rep); rep = 0; };
+            root.querySelectorAll('.wm-spin button').forEach((b) => {
+                b.addEventListener('pointerdown', (e) => {
+                    if (e.button > 0) return;
+                    e.stopPropagation();
+                    root.focus({ preventScroll: true });
+                    const dir = Number(b.dataset.dir);
+                    step(dir);
+                    stop();
+                    const again = () => { step(dir); rep = setTimeout(again, 90); };
+                    rep = setTimeout(again, 600);
+                });
+                ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => b.addEventListener(t, stop));
+                b.addEventListener('click', (e) => e.stopPropagation());
+                // a touch tap gives a button the focus whatever pointerdown said: hand it back to the fields
+                b.addEventListener('focus', () => root.focus({ preventScroll: true }));
+            });
+            root.addEventListener('blur', stop);
+            root.addEventListener('keydown', (e) => {
+                const i = parts.indexOf(active);
+                if (e.key === 'ArrowUp') step(1);
+                else if (e.key === 'ArrowDown') step(-1);
+                else if (e.key === 'ArrowLeft') select(parts[Math.max(0, i - 1)]);
+                else if (e.key === 'ArrowRight') select(parts[Math.min(parts.length - 1, i + 1)]);
+                else if (active === 'ap' && /^[ap]$/i.test(e.key)) put('ap', e.key.toLowerCase() === 'p' ? 1 : 0);
+                else if (active !== 'ap' && /^\d$/.test(e.key)) {
+                    // digits build the number; one that would pass the field's limit starts it again
+                    const hi = active === 'h' ? 12 : 59;
+                    let n = Number(typed + e.key);
+                    if (n > hi || typed.length >= 2) { typed = ''; n = Number(e.key); }
+                    typed += e.key;
+                    if (active === 'h') { if (n >= 1) put('h', (n % 12) + (get('ap') ? 12 : 0)); } else put(active, n);
+                } else return;
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            return { get: () => cur, set: (v) => { cur = ((Math.round(Number(v) || 0) % max) + max) % max; typed = ''; show(); } };
+        },
+        /**
+         * Colour choice rendered into `host`: the kit's picker grid holding the sixteen system
+         * colours (and the current one first when it is none of them), with an edit box for any
+         * other value as #RRGGBB (it then keeps a cell of its own). WM has no colour dialog of its own in Settings; this is the picker
+         * grid (Today's pictures, the Start icons) with colour cells. opts: value ('#rrggbb'), colors
+         * ([[value, name]]), label, onChange(value). Returns { get, set }.
+         */
+        colorField(host, { value = '', colors = WM_COLORS, label = 'Color', onChange } = {}) {
+            const norm = (v) => { const m = /^#?([0-9a-f]{6})$/i.exec(String(v || '').trim()); return m ? `#${m[1].toLowerCase()}` : null; };
+            let cur = norm(value) || colors[0][0];
+            let own = null;
+            host.insertAdjacentHTML('beforeend', `<div class="wm-colorfield"><div class="wm-picker wm-color-grid" role="listbox" aria-label="${escUi(label)}"></div><div class="wm-color-custom"><span class="wm-color-well" aria-hidden="true"></span><input class="wm-edit" type="text" maxlength="7" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="${escUi(label)} value"></div></div>`);
+            const all = host.querySelectorAll('.wm-colorfield');
+            const root = all[all.length - 1];
+            const grid = root.querySelector('.wm-color-grid');
+            const well = root.querySelector('.wm-color-well');
+            const input = root.querySelector('input');
+            const draw = () => {
+                // a colour that is none of the listed ones (the value it came with, one typed) keeps a cell of its own
+                if (!colors.some(([v]) => v === cur)) own = cur;
+                const list = own ? [[own, 'Custom']].concat(colors) : colors;
+                grid.innerHTML = list.map(([v, name]) => `<button type="button" class="wm-picker-cell${v === cur ? ' is-selected' : ''}" role="option" aria-selected="${v === cur}" data-color="${escUi(v)}" aria-label="${escUi(name)}"><span class="wm-color-cell"></span></button>`).join('');
+                grid.querySelectorAll('.wm-picker-cell').forEach((c) => c.firstChild.style.setProperty('--wm-swatch', c.dataset.color));
+                well.style.setProperty('--wm-swatch', cur);
+                if (document.activeElement !== input) input.value = cur.toUpperCase();
+            };
+            const pick = (v) => { if (!v || v === cur) { draw(); return; } cur = v; draw(); if (onChange) onChange(cur); };
+            draw();
+            grid.addEventListener('click', (e) => { const c = e.target.closest('[data-color]'); if (c) pick(c.dataset.color); });
+            input.addEventListener('input', () => { const v = norm(input.value); if (v) pick(v); });
+            input.addEventListener('change', () => { input.value = cur.toUpperCase(); });
+            return { get: () => cur, set: (v) => { cur = norm(v) || cur; draw(); } };
+        },
+        /**
+         * Transport for a <video> or <audio> element, rendered into `host` (the element itself carries
+         * no `controls`: the browser's own transport is never shown): a Play / Pause push button, the
+         * WM trackbar as the position and "0:12 / 1:30". A tap on a video also plays / pauses it.
+         * Returns { el }.
+         */
+        mediaBar(host, media) {
+            const clock = (t) => { t = Math.max(0, Math.floor(Number(t) || 0)); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`; };
+            host.insertAdjacentHTML('beforeend', '<div class="wm-mediabar"><button type="button" class="wm-button wm-mediabar-play">Play</button><div class="wm-mediabar-seek"></div><span class="wm-mediabar-time"></span></div>');
+            const bars = host.querySelectorAll('.wm-mediabar');
+            const bar = bars[bars.length - 1];
+            const play = bar.querySelector('.wm-mediabar-play');
+            const time = bar.querySelector('.wm-mediabar-time');
+            const STEPS = 200;
+            let held = 0; // a drag owns the thumb until the element has sought
+            const dur = () => (Number.isFinite(media.duration) && media.duration > 0 ? media.duration : 0);
+            const track = ui.trackbar(bar.querySelector('.wm-mediabar-seek'), {
+                steps: Array.from({ length: STEPS + 1 }, (_, i) => i),
+                value: 0,
+                label: 'Position',
+                ticks: 0,
+                onChange: (v) => { if (dur()) { held = Date.now(); media.currentTime = (v / STEPS) * dur(); show(); } }
+            });
+            const show = () => {
+                play.textContent = media.paused || media.ended ? 'Play' : 'Pause';
+                time.textContent = dur() ? `${clock(media.currentTime)} / ${clock(dur())}` : clock(media.currentTime);
+                if (dur() && Date.now() - held > 400) track.set(Math.round((media.currentTime / dur()) * STEPS));
+            };
+            const toggle = () => { if (media.paused || media.ended) { const p = media.play(); if (p && p.catch) p.catch(() => {}); } else media.pause(); };
+            play.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+            if (media.tagName === 'VIDEO') media.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
+            ['play', 'pause', 'ended', 'timeupdate', 'durationchange', 'loadedmetadata', 'seeked'].forEach((t) => media.addEventListener(t, show));
+            // a viewer under the bar (the picture viewer's swipes and tap-to-close) never sees its taps
+            ['pointerdown', 'touchstart', 'click'].forEach((t) => bar.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+            show();
+            return { el: bar };
         },
         /** The shell's message box (Promise of the pressed button's value). */
         messageBox: (opts) => (sh ? sh.messageBox(opts) : Promise.resolve(false)),

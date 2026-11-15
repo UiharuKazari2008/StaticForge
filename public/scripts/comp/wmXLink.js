@@ -441,7 +441,7 @@
                     <p class="wxl-hint">Pick a position, then Set.</p>`;
             } else if (it.kind === 'slider') {
                 ctl = it.status && !it.status.failed
-                    ? `<div class="wm-form-sub">Level:</div><div class="wxl-level"><input type="range" class="wxl-range" min="0" max="100" step="1" value="${t.level}"><b class="wxl-level-val">${t.level}${esc(it.append)}</b></div><p class="wxl-hint">Move the level, then Set.</p>`
+                    ? `<div class="wm-form-sub">Level:</div><div class="wxl-level"><div class="wxl-track"></div><b class="wxl-level-val">${t.level}${esc(it.append)}</b></div><p class="wxl-hint">Move the level, then Set.</p>`
                     : '<p>The level cannot be read, so it cannot be set.</p>';
             } else if (it.kind === 'button') {
                 ctl = `<p>Take sends this command to ${esc(d ? d.name : t.key)}.</p>`;
@@ -457,6 +457,25 @@
             <div class="wxl-scroll"><div class="wm-form">${body}</div></div>
             <div class="wm-tabs" role="tablist"><button type="button" class="wm-tab" role="tab" data-itab="control" aria-selected="${t.tab === 'control'}">Control</button><button type="button" class="wm-tab" role="tab" data-itab="properties" aria-selected="${t.tab === 'properties'}">Properties</button></div>
         </div>`;
+        // the level: the shell's WM trackbar (wmSettings.ui.trackbar), 0 - 100 with a tick every 10;
+        // never the browser's range input (sliders-platform.mdc)
+        const track = host.querySelector('.wxl-track');
+        const kit = window.wmSettings && window.wmSettings.ui;
+        if (track && kit) {
+            kit.trackbar(track, {
+                steps: Array.from({ length: 101 }, (_, i) => i),
+                value: Math.max(0, Math.min(100, Math.round(Number(t.level) || 0))),
+                lo: '0',
+                hi: '100',
+                label: 'Level',
+                ticks: 10,
+                onChange: (v) => {
+                    t.level = v;
+                    const out = host.querySelector('.wxl-level-val');
+                    if (out) out.textContent = `${v}${it.append || ''}`;
+                }
+            });
+        }
     }
 
     /**
@@ -703,15 +722,6 @@
             const t = top();
             if (!t || t.kind !== 'item') return;
             if (e.target.name === 'wxl-pos') { t.choice = Number(e.target.value); host.querySelectorAll('.wxl-pos').forEach((l) => l.classList.toggle('is-picked', l.querySelector('input').checked)); }
-            if (e.target.classList.contains('wxl-range')) t.level = Number(e.target.value);
-        });
-        host.addEventListener('input', (e) => {
-            const t = top();
-            if (!t || t.kind !== 'item' || !e.target.classList.contains('wxl-range')) return;
-            t.level = Number(e.target.value);
-            const it = itemAt(t.key, t.path);
-            const v = host.querySelector('.wxl-level-val');
-            if (v) v.textContent = `${t.level}${(it && it.append) || ''}`;
         });
         renderMain();
     }

@@ -1107,7 +1107,9 @@
     const FLOOR = [222, 221, 232];
     const GOLD = [240, 196, 32];
     const TICK = 16;          // inkball.exe's tick (timeGetTime steps on the VM)
-    const HOLD_MS = 650;      // tap and hold: drop a wall tile
+    // tap and hold: drop a wall tile. The game's own timing on purpose (a held stylus in play, not
+    // the shell's tap-and-hold menu), so it does not follow wmShell.holdMs
+    const HOLD_MS = 650;
     const HOLD_SLOP = 8;      // CSS px
 
     const rgb = (c) => `rgb(${c[0] | 0},${c[1] | 0},${c[2] | 0})`;

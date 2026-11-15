@@ -595,6 +595,379 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo:disabled::after {
     background: #8c8e8c;
 }
 
+/* ---- the month calendar (wmSettings.ui.monthCalendar / dateField; SysMonthCal32 on the 6.1 and
+ * 6.5 emulators, VGA halved): 170 units wide in a 1-unit black frame; the month band 33 units of
+ * the highlight, its name bold white 13.5, the two 19.5 x 14 arrow buttons; the week's letters in
+ * the highlight colour over a rule; six weeks of 17.5-unit rows; "Today:" and "None" lines of 20.
+ * Under its control, or cut off by the top of the screen when there is no room below (.is-top). */
+.wm-cal {
+    position: absolute;
+    z-index: 9000;
+    left: 0;
+    top: 0;
+    box-sizing: border-box;
+    width: calc(170 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: calc(10.5 * var(--wm-px)) var(--wm-font);
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.wm-cal.is-top {
+    border-top: 0;
+}
+
+.wm-cal button {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(33 * var(--wm-px));
+    padding: 0 calc(5 * var(--wm-px));
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+    font-weight: bold;
+    font-size: calc(13.5 * var(--wm-px));
+}
+
+.wm-cal-nav {
+    position: relative;
+    width: calc(19.5 * var(--wm-px));
+    height: calc(14 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    background: #fff !important;
+}
+
+.wm-cal-nav::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin: calc(-4.5 * var(--wm-px)) 0 0 calc(-2.5 * var(--wm-px));
+    border-top: calc(4.5 * var(--wm-px)) solid transparent;
+    border-bottom: calc(4.5 * var(--wm-px)) solid transparent;
+    border-right: calc(4.5 * var(--wm-px)) solid #000;
+}
+
+.wm-cal-nav[data-nav="1"]::before {
+    border-right: 0;
+    border-left: calc(4.5 * var(--wm-px)) solid #000;
+}
+
+.wm-cal-week,
+.wm-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, calc(24 * var(--wm-px)));
+    text-align: center;
+}
+
+.wm-cal-week {
+    height: calc(16.5 * var(--wm-px));
+    margin: 0 calc(4.5 * var(--wm-px)) calc(1 * var(--wm-px));
+    grid-template-columns: repeat(7, 1fr);
+    border-bottom: calc(1 * var(--wm-px)) solid #000;
+    color: var(--wm-highlight);
+    font-weight: bold;
+    font-size: calc(13.5 * var(--wm-px));
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wm-cal-grid {
+    padding: 0 0 0 calc(0.5 * var(--wm-px));
+}
+
+.wm-cal-day {
+    height: calc(17.5 * var(--wm-px));
+    font-size: calc(13.5 * var(--wm-px)) !important;
+    line-height: calc(17 * var(--wm-px));
+}
+
+.wm-cal-day.is-other {
+    color: #a5a5a5;
+}
+
+.wm-cal-day.is-today {
+    box-shadow: inset 0 0 0 calc(1 * var(--wm-px)) #000;
+}
+
+.wm-cal-day.is-picked {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-cal-line {
+    display: block;
+    width: 100%;
+    height: calc(20 * var(--wm-px));
+    padding: 0 calc(4.5 * var(--wm-px)) !important;
+    text-align: left;
+    font-weight: bold !important;
+    font-size: calc(13.5 * var(--wm-px)) !important;
+}
+
+.wm-cal-line.is-none {
+    padding-left: calc(7.5 * var(--wm-px)) !important;
+}
+
+/* ---- the time control with its spin buttons (wmSettings.ui.timeField; Settings > Clock & Alarms
+ * on the 6.1 / 6.5 emulators: the box 125 x 19 units, the text 9 units in, two 13.5-unit buttons
+ * behind 1-unit rules, each a black 8 x 4 arrow). The field in use takes the highlight while the
+ * control has the focus; a pressed button turns black, its arrow white. */
+.wm-timefield {
+    display: flex;
+    box-sizing: border-box;
+    width: calc(125 * var(--wm-px));
+    max-width: 100%;
+    height: calc(20 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    outline: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.wm-timefield-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    padding-left: calc(9 * var(--wm-px));
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.wm-timefield-part[data-part="ap"] {
+    margin-left: calc(4 * var(--wm-px));
+}
+
+.wm-timefield:focus .wm-timefield-part.is-active {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+.wm-spin {
+    flex: 0 0 auto;
+    display: flex;
+}
+
+.wm-spin > button {
+    box-sizing: content-box;
+    width: calc(13.5 * var(--wm-px));
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    color: #000;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+}
+
+/* the arrow: two 4 x 4 unit halves in the button's ink (up; down is the same pair turned over) */
+.wm-spin > button::before {
+    content: '';
+    display: block;
+    width: calc(8 * var(--wm-px));
+    height: calc(4 * var(--wm-px));
+    margin: 0 auto;
+    background: linear-gradient(to bottom right, transparent 50%, currentColor 50%) 0 0 / 50% 100% no-repeat,
+        linear-gradient(to bottom left, transparent 50%, currentColor 50%) 100% 0 / 50% 100% no-repeat;
+}
+
+.wm-spin > button[data-dir="-1"]::before {
+    transform: scaleY(-1);
+}
+
+.wm-spin > button:active:not(:disabled) {
+    background: #000;
+    color: #fff;
+}
+
+.wm-timefield.is-disabled {
+    color: #8c8e8c;
+}
+
+.wm-timefield.is-disabled .wm-spin > button {
+    color: #8c8e8c;
+}
+
+/* ---- the time box of Calendar and Tasks (wmSettings.ui.timeCombo): the editable combo, 87 units */
+.wm-timecombo {
+    width: calc(87 * var(--wm-px));
+    max-width: 100%;
+}
+
+/* in a Calendar / Tasks form row (inRow; 6.1 and 6.5 emulators, New Appointment > Starts with the
+ * time tapped): the box 90 x 18.5 units over the value, its text 4 units inside, where the plain
+ * text stood 15.5 units further right; the row's own type. The same on 6.5.1, whose finger-sized
+ * boxes belong to Settings pages. */
+html.ui-mobile #wmShell .wm-timecombo.is-inrow {
+    position: absolute;
+    z-index: 1;
+    left: calc(-13.5 * var(--wm-px));
+    top: 0;
+    width: calc(90 * var(--wm-px));
+    max-width: none;
+    height: calc(18.5 * var(--wm-px));
+    font-size: inherit;
+}
+
+html.ui-mobile #wmShell .wm-timecombo.is-inrow > .wm-edit {
+    height: 100%;
+    padding: 0 calc(3 * var(--wm-px));
+    font-size: inherit;
+}
+
+html.ui-mobile #wmShell .wm-timecombo.is-inrow > .wm-combo {
+    width: calc(16 * var(--wm-px));
+    height: 100%;
+    border-left: 0 !important;
+}
+
+html.ui-mobile #wmShell .wm-timecombo.is-inrow > .wm-combo::after {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    transform: scaleY(-1);
+    background: linear-gradient(to bottom right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat;
+}
+
+/* its list open: the arrow's cell is black, the arrow white (both devices) */
+html.ui-mobile #wmShell .wm-timecombo.is-inrow[aria-expanded="true"] > .wm-combo::after {
+    background: linear-gradient(to bottom right, transparent 50%, #fff 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to bottom left, transparent 50%, #fff 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        #000;
+}
+
+/* the time box's list (6.1 and 6.5 emulators): plain rows 16.75 units tall in the box's type, the
+ * text 2 units in, the current time under the highlight, no option mark */
+html.ui-mobile #wmShell .wm-popup[data-side="dropdown"][data-wm-list="time"] {
+    padding: 0 !important;
+    color: #000;
+}
+
+html.ui-mobile #wmShell .wm-popup[data-side="dropdown"][data-wm-list="time"] > .wm-popup-item {
+    height: calc(16.75 * var(--wm-px)) !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 calc(2 * var(--wm-px)) !important;
+    color: inherit;
+    font-size: inherit !important;
+    font-weight: normal !important;
+    line-height: calc(16.75 * var(--wm-px)) !important;
+}
+
+html.ui-mobile #wmShell .wm-popup[data-side="dropdown"][data-wm-list="time"] > .wm-popup-item.is-radio[aria-checked="true"] {
+    background: var(--wm-highlight) !important;
+    color: var(--wm-highlight-text) !important;
+}
+
+html.ui-mobile #wmShell .wm-popup[data-side="dropdown"][data-wm-list="time"] > .wm-popup-item.is-radio::before {
+    display: none !important;
+}
+
+/* ---- the transport under a video or sound (wmSettings.ui.mediaBar): a push button, the WM
+ * trackbar as the position (no scale line, no ticks) and the time, on a white strip under a rule */
+.wm-mediabar {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    box-sizing: border-box;
+    width: 100%;
+    padding: calc(3 * var(--wm-px)) calc(4 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+}
+
+.wm-mediabar-play {
+    flex: 0 0 auto;
+    min-width: calc(40 * var(--wm-px));
+}
+
+.wm-mediabar-seek {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.wm-mediabar-seek > .wm-slider-scale {
+    display: none;
+}
+
+.wm-mediabar-seek > .wm-slider {
+    height: calc(20 * var(--wm-px));
+    margin: 0;
+}
+
+.wm-mediabar-time {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* ---- the colour choice (wmSettings.ui.colorField): the picker grid with colour cells, eight to
+ * a row, and the value's box beside a well of the colour */
+.wm-colorfield {
+    display: block;
+    min-width: 0;
+}
+
+.wm-picker.wm-color-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    max-height: none;
+    overflow: visible;
+}
+
+.wm-color-cell,
+.wm-color-well {
+    display: block;
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-swatch, #fff);
+}
+
+.wm-color-cell {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.wm-color-custom {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    margin-top: calc(4 * var(--wm-px));
+}
+
+.wm-color-well {
+    flex: 0 0 auto;
+    width: calc(20 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+}
+
+.wm-color-custom > .wm-edit {
+    width: calc(62 * var(--wm-px));
+}
+
 /* Memory: Storage / Program columns of label: value */
 .wm-mem {
     display: grid;

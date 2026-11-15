@@ -72,7 +72,6 @@
     const headDate = (d) => `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}, ${pad(d.getFullYear() % 100)}`;
     const longDate = (d) => `${DAYS3[d.getDay()]}, ${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()}`;
     const inputDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const inputTime = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}@melaton`;
 
     function span(o) {
@@ -538,6 +537,9 @@
         return { ev: null, cal: null, summary: '', location: '', description: '', start: s, end: new Date(+s + 3600000), allDay: false, freq: '', remind: true, remN: rem.n, remUnit: rem.unit, attendees: [] };
     }
 
+    /** The kit's month calendar is open over the form (it counts as a layer for the back key). */
+    const calOpen = () => !!(window.wmSettings && window.wmSettings.ui && window.wmSettings.ui.monthCalendarOpen());
+
     function editForm(o) {
         const ev = o.ev;
         const rem = remParts(ev.reminder);
@@ -555,8 +557,9 @@
     function renderForm() {
         const f = form;
         const box = page.querySelector('.wcl-fbody');
-        const st = (k, text, picker) => `<button type="button" class="wcl-fval" data-pick="${k}">${esc(text)}</button>${picker || ''}`;
-        const when = (k, d) => `<span class="wcl-fdt">${st(`${k}-date`, formDate(d), `<input type="date" class="wcl-fnative" data-native="${k}-date" value="${inputDate(d)}" tabindex="-1" aria-hidden="true">`)}${f.allDay ? '' : st(`${k}-time`, formTime(d), `<input type="time" class="wcl-fnative" data-native="${k}-time" value="${inputTime(d)}" tabindex="-1" aria-hidden="true">`)}</span>`;
+        const st = (k, text) => `<button type="button" class="wcl-fval" data-pick="${k}">${esc(text)}</button>`;
+        // the date opens the kit's month calendar, the time becomes the kit's time box (pick)
+        const when = (k, d) => `<span class="wcl-fdt">${st(`${k}-date`, formDate(d))}${f.allDay ? '' : st(`${k}-time`, formTime(d))}</span>`;
         box.innerHTML = [
             fieldRow('subject', 'Subject', `<input type="text" class="wcl-finput" data-f="summary" value="${esc(f.summary)}" autocomplete="off" aria-label="Subject">`, { drop: true, cls: 'is-boxed' }),
             fieldRow('location', 'Location', `<input type="text" class="wcl-finput" data-f="location" value="${esc(f.location)}" autocomplete="off" aria-label="Location">`, { drop: true }),
@@ -619,10 +622,26 @@
         const k = btn.dataset.pick;
         const redo = () => renderForm();
         if (/-(date|time)$/.test(k)) {
-            const input = btn.parentElement.querySelector(`[data-native="${k}"]`);
-            if (!input) return;
-            input.onchange = () => { const [which, part] = k.split('-'); setWhen(which, part, input.value); redo(); };
-            try { input.showPicker(); } catch (_) { input.focus(); input.click(); }
+            const kit = window.wmSettings && window.wmSettings.ui;
+            if (!kit) return;
+            const [which, part] = k.split('-');
+            const d = which === 'start' ? form.start : form.end;
+            if (part === 'date') {
+                // the device's month calendar under the date (a second tap on the date closes it)
+                if (kit.monthCalendarJustClosed(btn)) return;
+                kit.monthCalendar(btn, { value: d, onPick: (day) => { if (day) { setWhen(which, 'date', inputDate(day)); redo(); } } });
+                return;
+            }
+            // the device's time box: the time typed, or picked from its list of half hours
+            const cell = document.createElement('span');
+            cell.className = 'wcl-ftime';
+            btn.replaceWith(cell);
+            const box = kit.timeCombo(cell, { value: d.getHours() * 60 + d.getMinutes(), label: which === 'start' ? 'Start time' : 'End time', inRow: true, onChange: (v) => { setWhen(which, 'time', `${pad(Math.floor(v / 60))}:${pad(v % 60)}`); redo(); } });
+            box.input.focus();
+            box.input.select();
+            // left without a change (and not for its own list): the value is plain text again (only this
+            // cell: the tap that took the focus away must still find its target)
+            box.input.addEventListener('blur', () => setTimeout(() => { if (cell.isConnected && !cell.querySelector('[aria-expanded="true"]')) cell.replaceWith(btn); }, 0));
             return;
         }
         let items = [];
@@ -846,6 +865,9 @@
 
     function mount(p) {
         page = p;
+        // a new page starts on the views: the program may have been ended (Task Manager) with the form open
+        layer = null;
+        form = null;
         p.classList.add('wm-calendar');
         p.innerHTML = `
             <div class="wcl-main">
@@ -886,8 +908,9 @@
                 if (layer === 'form') { void commitForm(); return true; }
                 return false;
             },
-            historyDepth: () => (layer === 'form' ? (fromSummary ? 2 : 1) : layer === 'summary' ? 1 : 0),
+            historyDepth: () => (layer === 'form' ? (fromSummary ? 2 : 1) : layer === 'summary' ? 1 : 0) + (calOpen() ? 1 : 0),
             onBack() {
+                if (calOpen()) { window.wmSettings.ui.closeMonthCalendar(); return true; }
                 if (layer === 'form') { cancelForm(); return true; }
                 if (layer === 'summary') { layer = null; render(); return true; }
                 return false;

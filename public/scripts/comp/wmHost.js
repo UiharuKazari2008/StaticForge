@@ -7,8 +7,9 @@
  * tool windows:
  *
  *   app         each program is its own shell app ('host:<launchId or window id>'), registered when it
- *               first opens: its window's caption is the WM title, X goes back (the program keeps
- *               running, WM's Smart Minimize), Menu > Close closes it the window's own way.
+ *               first opens: its window's caption is the WM title, X ends the program (every window
+ *               it has open is closed its own way, onTitleClose, then the shell ends the app), Menu >
+ *               Close closes the top window the same way.
  *   page        the window is moved into the app's page; wm-host.css drops the frame, the shared WM
  *               form look (wm-studio-tools.css) restyles its content. A window opened from it (its
  *               data-parent-modal-id, or any window that opens while it is on screen) stacks over it

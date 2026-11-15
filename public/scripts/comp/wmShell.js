@@ -13,8 +13,8 @@
  * softKeys() }) and run one at a time with a back stack.
  *
  * The title bar's corner button follows WM 6.1 and is decided in one place (titleKindNow): X on an
- * application's main view (Smart Minimize: the app goes to the background as it is, the screen
- * under it comes back), ok on a form, property page, viewer or edit screen (confirm and close, back
+ * application's main view (X ends the app: its own onTitleClose, then endApp; the screen under it
+ * comes back, the next open starts a fresh page; multitasking is the Start menu), ok on a form, property page, viewer or edit screen (confirm and close, back
  * to the previous screen), nothing on Today, under a message box or an ok bubble, and on a full
  * screen dialog that has its own OK / Cancel soft keys. An app tells the shell what its current
  * layer is with titleKind() -> 'close' | 'ok' | null (or a fixed titleAction), handles ok with
@@ -973,7 +973,7 @@
         if (shell) setTitleAction(titleKindNow());
     }
 
-    /** The corner button: ok confirms the layer and goes back one screen, X minimizes the app. */
+    /** The corner button: ok confirms the layer and goes back one screen, X ends the app (endApp). */
     function pressTitleAction(kind) {
         if (viewerActive) { closeViewer(); return; }
         const app = current && apps.get(current);

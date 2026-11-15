@@ -354,17 +354,15 @@
 
 .wm-xlink .wxl-level {
     display: flex;
-    align-items: center;
+    align-items: flex-end;
     gap: calc(8 * var(--wm-px));
     margin: calc(4 * var(--wm-px)) 0;
 }
 
-.wm-xlink .wxl-range {
+/* the level's trackbar is the shell's (wmSettings.ui.trackbar, .wm-slider) */
+.wm-xlink .wxl-track {
     flex: 1 1 auto;
     min-width: 0;
-    height: calc(22 * var(--wm-px));
-    margin: 0;
-    accent-color: var(--wm-highlight);
 }
 
 .wm-xlink .wxl-level-val {

@@ -47,7 +47,9 @@
     // Fit off: the remote desktop is a 1024 x 768 one to pan round (a desktop's size, like the
     // desktop Remote Desktop Connection's middle Display stop)
     const FULL_SIZE = [1024, 768];
-    const HOLD_MS = 600;
+    // tap-and-hold (the remote right click) takes the shell's own delay (wmShell.holdMs, pen down to
+    // menu); the first 120 ms pass before the ring of dots shows (the pointerdown handler)
+    const HOLD_MS = Math.max(300, ((window.wmShell && window.wmShell.holdMs) || 720) - 120);
     const MOVE_SLOP = 10;
     const MAX_ZOOM = 4;
     const SENTINEL = '​';

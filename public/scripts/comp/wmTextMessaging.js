@@ -967,8 +967,12 @@
         media = a;
         const box = page.querySelector('.wtm-media');
         box.innerHTML = isVideo(a)
-            ? `<video src="${esc(a.url)}" controls playsinline preload="metadata"></video>`
+            ? `<video src="${esc(a.url)}" playsinline preload="metadata"></video>`
             : `<img src="${esc(a.url)}" alt="${esc(a.name || '')}" draggable="false">`;
+        // a video's transport is the kit's (wmSettings.ui.mediaBar), never the browser's controls
+        const video = box.querySelector('video');
+        const kit = window.wmSettings && window.wmSettings.ui;
+        if (video && kit && typeof kit.mediaBar === 'function') kit.mediaBar(box, video);
         page.querySelector('.wtm-media-name').textContent = a.name || attLabel(a);
         push('media');
     }

@@ -528,17 +528,37 @@
     background-image: radial-gradient(circle, #000 0 calc(2.5 * var(--wm-px)), transparent calc(2.5 * var(--wm-px) + 0.5px)) !important;
 }
 
-/* trackbars: WM's slider, a sunken channel and a tint thumb with a 1 px black frame */
+/* trackbars: every part drawn (never the browser's own range look): a white 4-unit channel and a
+   tint thumb, both in a 1-unit frame of the page's ink, as the re-hosted tool windows draw them (wm-studio-tools.css) */
 .wm-browser .wmb-dsap .dsap-smf input[type="range"] {
-    accent-color: var(--wm-highlight);
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    height: calc(20 * var(--wm-px)) !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
     outline: none !important;
 }
 
-.wm-browser .wmb-dsap .dsap-smf input[type="range"]::-webkit-slider-thumb {
-    width: calc(10 * var(--wm-px)) !important;
-    background: var(--wm-tint) !important;
-    border: calc(1 * var(--wm-px)) solid #000 !important;
+.wm-browser .wmb-dsap .dsap-smf input[type="range"]::-webkit-slider-runnable-track {
+    height: calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid currentColor !important;
     border-radius: 0 !important;
+    background: #fff !important;
+    box-shadow: none !important;
+}
+
+.wm-browser .wmb-dsap .dsap-smf input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none !important;
+    width: calc(9 * var(--wm-px)) !important;
+    height: calc(18 * var(--wm-px)) !important;
+    margin-top: calc(-8 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid currentColor !important;
+    border-radius: 0 !important;
+    background: var(--wm-tint) !important;
+    box-shadow: none !important;
 }
 
 /* settings tables (a label and its controls on each row): in portrait the label stands over its

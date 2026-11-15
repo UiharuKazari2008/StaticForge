@@ -349,20 +349,16 @@
                 const a = d.list[i];
                 const sounds = alarmSounds();
                 const modes = window.wmAlarms.modes().map((m) => [m.value, m.label]);
-                const hh = String(Math.floor(a.time / 60)).padStart(2, '0');
-                const mm = String(a.time % 60).padStart(2, '0');
                 el.innerHTML = `<div class="wm-alarm651-edit">
-                        <input class="wm-edit wm-alarm651-time" type="time" value="${hh}:${mm}" aria-label="Time">
+                        <div class="wm-alarm651-time"></div>
                         ${ui.edit('', a.text, 'maxlength="63" placeholder="&lt; Description &gt;" data-f="text" aria-label="Description"')}
                         ${alarmDaysHtml(a, i, true)}
                         <div class="wm-alarm651-sound"><span>Sound</span>${ui.comboHtml('sound', (sounds.find(([v]) => v === a.sound) || sounds[0])[1])}</div>
                         <div class="wm-alarm651-play"><button type="button" class="wm-button" data-act="play">Play</button><button type="button" class="wm-button" data-act="stop">Stop</button></div>
                         ${ui.comboHtml('mode', (modes.find(([v]) => v === a.mode) || modes[2])[1])}
                     </div>`;
-                el.querySelector('.wm-alarm651-time').addEventListener('change', (e) => {
-                    const m = /^(\d{1,2}):(\d{2})/.exec(e.target.value);
-                    if (m) a.time = Number(m[1]) * 60 + Number(m[2]);
-                });
+                // the device's time control with its spin buttons (the kit's, never the browser's time input)
+                ui.timeField(el.querySelector('.wm-alarm651-time'), { value: a.time, label: 'Time', onChange: (v) => { a.time = v; } });
                 el.querySelector('[data-f="text"]').addEventListener('input', (e) => { a.text = e.target.value; });
                 days(el);
                 ui.bindCombo(el.querySelector('[data-act="sound"]'), sounds, a.sound, (v) => { a.sound = v; });
@@ -2845,10 +2841,10 @@
                 el.classList.remove('wm-sys-ws-list');
                 el.innerHTML = `${ui.sub(`${wsMap()[p.id].name || p.id} Properties`)}
                     ${ui.row('Name:', ui.edit(id, p.name, 'maxlength="64" spellcheck="false"'), { for: id })}
-                    ${ui.row('Color:', `<label class="wmsp-color"><input type="color" value="${esc(p.color)}" data-f="color"><span>${esc(p.color.toUpperCase())}</span></label>`)}`;
+                    ${ui.row('Color:', '<div data-f="color"></div>', { wide: true })}`;
                 el.querySelector(`#${id}`).addEventListener('input', (e) => { p.name = e.target.value; });
-                const color = el.querySelector('[data-f="color"]');
-                color.addEventListener('input', () => { p.color = color.value; color.nextElementSibling.textContent = color.value.toUpperCase(); });
+                // the kit's colour choice (the system colours and a typed value), never the browser's colour well
+                ui.colorField(el.querySelector('[data-f="color"]'), { value: p.color, label: 'Color', onChange: (v) => { p.color = v; } });
                 return;
             }
             d.props = null;

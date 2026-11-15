@@ -475,13 +475,23 @@
     // ---------------------------------------------------------------- picture view
 
     /** A slide for PhotoSwipe (lightbox.js openStandalonePhotoSwipe): the file by the app's URL. */
+    // A video slide's transport is the kit's (wmSettings.ui.mediaBar), never the browser's controls.
+    // The viewer builds a slide from its markup whenever it comes near, so the bar is put under each
+    // video as it starts to load (media events do not bubble: caught on the way down).
+    ['loadstart', 'loadedmetadata'].forEach((type) => document.addEventListener(type, (ev) => {
+        const v = ev.target;
+        const box = v && v.tagName === 'VIDEO' && v.closest ? v.closest('.wm-pv-video') : null;
+        const kit = window.wmSettings && window.wmSettings.ui;
+        if (box && kit && typeof kit.mediaBar === 'function' && !box.querySelector('.wm-mediabar')) kit.mediaBar(box, v);
+    }, true));
+
     function slideOf(root, e) {
         const meta = { isStandalone: true, title: e.name, phoneMedia: { root, path: e.path, name: e.name, mime: e.mime, size: e.size, mtime: e.mtime, taken: e.taken, video: !!e.video, width: e.width, height: e.height } };
         const src = e.video ? fileUrl(root, e.path) : viewUrl(root, e);
         if (e.video) {
             // the phone's own frame as the poster: Android's WebView draws a grey play sign until it plays
             const poster = PS() && typeof PS().fileUrl === 'function' ? PS().fileUrl(root, e.path, { thumb: 1024 }) : '';
-            return { html: `<div class="wm-pv-video"><video src="${esc(src)}" poster="${esc(poster)}" controls playsinline preload="metadata"></video></div>`, data: meta };
+            return { html: `<div class="wm-pv-video"><video src="${esc(src)}" poster="${esc(poster)}" playsinline preload="metadata"></video></div>`, data: meta };
         }
         let w = Number(e.width) || 0;
         let h = Number(e.height) || 0;

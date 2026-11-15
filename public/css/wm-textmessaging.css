@@ -286,11 +286,22 @@
     overflow: hidden;
 }
 
+.wm-tm .wtm-media:has(> video) {
+    flex-direction: column;
+}
+
 .wm-tm .wtm-media img,
 .wm-tm .wtm-media video {
+    flex: 0 1 auto;
+    min-height: 0;
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+}
+
+/* a video's transport: the kit's (wmSettings.ui.mediaBar) */
+.wm-tm .wtm-media > .wm-mediabar {
+    flex: 0 0 auto;
 }
 
 .wm-tm .wtm-media-name {

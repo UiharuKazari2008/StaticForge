@@ -1,22 +1,22 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 12800,
+  "colour-literal": 12769,
   "font-literal": 597,
   "theme-negative": 2548,
   "own-control": 717,
   "inline-style": 667,
-  "theme-art-path": 201,
+  "theme-art-path": 169,
   "hand-built-window": 103,
   "toast": 1063,
   "theme-test-copy": 37,
   "own-menubar": 70,
   "colour-in-script": 1500,
-  "native-picker": 20,
-  "native-scrollbar": 51,
-  "native-range": 11,
+  "native-picker": 13,
+  "native-scrollbar": 46,
+  "native-range": 5,
   "native-dialog": 10,
-  "native-widget": 4,
+  "native-widget": 2,
   "native-select": 1
  },
  "files": {
@@ -845,9 +845,7 @@
    "theme-art-path": 6
   },
   "public/css/wm-calendar.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 65,
-   "theme-art-path": 9
+   "colour-literal": 63
   },
   "public/css/wm-characters.css": {
    "colour-literal": 2
@@ -873,7 +871,6 @@
    "own-control": 5
   },
   "public/css/wm-dsap.css": {
-   "native-range": 1,
    "native-scrollbar": 1,
    "colour-literal": 57
   },
@@ -890,8 +887,7 @@
    "own-control": 17
   },
   "public/css/wm-file-explorer.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 25
+   "colour-literal": 15
   },
   "public/css/wm-game-splash.css": {
    "colour-literal": 6
@@ -912,9 +908,8 @@
    "font-literal": 1
   },
   "public/css/wm-mailaccounts.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 3,
-   "theme-art-path": 7
+   "colour-literal": 1,
+   "theme-art-path": 2
   },
   "public/css/wm-media.css": {
    "colour-literal": 11,
@@ -922,9 +917,8 @@
    "own-control": 6
   },
   "public/css/wm-messaging.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 45,
-   "theme-art-path": 25,
+   "colour-literal": 43,
+   "theme-art-path": 16,
    "own-control": 10
   },
   "public/css/wm-minesweeper.css": {
@@ -932,9 +926,8 @@
    "own-control": 1
   },
   "public/css/wm-notes.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 56,
-   "theme-art-path": 10,
+   "colour-literal": 54,
+   "theme-art-path": 1,
    "own-control": 3
   },
   "public/css/wm-paypass.css": {
@@ -964,15 +957,12 @@
    "own-control": 2
   },
   "public/css/wm-settings-personal.css": {
-   "colour-literal": 9,
+   "colour-literal": 7,
    "own-control": 17
   },
   "public/css/wm-settings-system.css": {
    "colour-literal": 33,
    "own-control": 14
-  },
-  "public/css/wm-shell.css": {
-   "native-range": 2
   },
   "public/css/wm-solitaire.css": {
    "colour-literal": 5,
@@ -992,7 +982,6 @@
    "theme-art-path": 4
   },
   "public/css/wm-studio-tools.css": {
-   "native-range": 1,
    "native-scrollbar": 1,
    "colour-literal": 81,
    "font-literal": 1,
@@ -1013,7 +1002,7 @@
    "colour-literal": 6
   },
   "public/css/wm-tasks.css": {
-   "colour-literal": 40,
+   "colour-literal": 29,
    "theme-art-path": 10,
    "own-control": 4
   },
@@ -1037,7 +1026,6 @@
    "own-control": 4
   },
   "public/css/wm-xlink.css": {
-   "native-range": 1,
    "colour-literal": 57,
    "font-literal": 4,
    "theme-art-path": 1
@@ -1866,7 +1854,6 @@
    "theme-art-path": 9
   },
   "public/scripts/comp/wmCalendar.js": {
-   "native-picker": 3,
    "colour-in-script": 2,
    "inline-style": 1,
    "theme-test-copy": 1
@@ -1938,9 +1925,6 @@
    "theme-test-copy": 1,
    "theme-art-path": 5
   },
-  "public/scripts/comp/wmPhoneGallery.js": {
-   "native-widget": 1
-  },
   "public/scripts/comp/wmPrograms.js": {
    "colour-in-script": 1,
    "inline-style": 20,
@@ -1958,7 +1942,6 @@
    "inline-style": 1
   },
   "public/scripts/comp/wmSettingsSystem.js": {
-   "native-picker": 2,
    "colour-in-script": 2,
    "inline-style": 4,
    "theme-test-copy": 1,
@@ -1988,14 +1971,12 @@
    "theme-art-path": 1
   },
   "public/scripts/comp/wmTasks.js": {
-   "native-picker": 2,
    "colour-in-script": 1
   },
   "public/scripts/comp/wmTeleport.js": {
    "colour-in-script": 2
   },
   "public/scripts/comp/wmTextMessaging.js": {
-   "native-widget": 1,
    "inline-style": 1
   },
   "public/scripts/comp/wmTitanium.js": {
@@ -2019,7 +2000,6 @@
    "hand-built-window": 1
   },
   "public/scripts/comp/wmXLink.js": {
-   "native-range": 1,
    "colour-in-script": 4,
    "inline-style": 1
   },
