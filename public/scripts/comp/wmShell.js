@@ -9443,16 +9443,25 @@
 
     /** wmNotes.js's Notes.newest()/list() for Today before the program loads (same folder, same cache rules). */
     function lazyNotesList() {
-        const cache = { at: 0, ws: null, value: null, list: null, busy: false };
+        const cache = { at: 0, ws: null, value: null, list: null, busy: false, ok: false, stale: false };
         const activeWs = () => {
             try { if (typeof activeWorkspace !== 'undefined' && activeWorkspace) return activeWorkspace; } catch (_) { /* not loaded */ } // eslint-disable-line no-undef
             return 'default';
         };
         const vfs = () => { try { return (typeof vfsClient !== 'undefined' ? vfsClient : window.vfsClient) || null; } catch (_) { return null; } }; // eslint-disable-line no-undef
+        // read again only when the Notes folder changed (vfs_updated) or the workspace did: no timed
+        // re-read (rule server-push-not-polling); a failed read retries after 15 s
+        document.addEventListener('wsMessage', (e) => {
+            const d = e.detail || {};
+            if (d.type !== 'vfs_updated') return;
+            const path = String((d.data && d.data.path) || '');
+            if (!path || /\/Notes(\/|$)/i.test(path)) cache.stale = true;
+        });
         function newest() {
             const wsId = activeWs();
             const v = vfs();
-            if (!cache.busy && v && (cache.ws !== wsId || Date.now() - cache.at > 120000)) {
+            if (!cache.busy && v && (cache.ws !== wsId || cache.stale || (!cache.ok && Date.now() - cache.at > 15000))) {
+                cache.stale = false;
                 cache.busy = true;
                 let ok = false;
                 v.listDirectory(`/Workspaces/${wsId}/Notes`, { offset: 0, limit: 1000, sortField: 'name', sortDirection: 'asc', search: '' }).then((res) => {
@@ -9465,7 +9474,8 @@
                     // a failure (early in boot) retries in 15 s, as the program's own
                     .finally(() => {
                         cache.busy = false;
-                        cache.at = ok ? Date.now() : Date.now() - 105000;
+                        cache.ok = ok;
+                        cache.at = Date.now();
                         cache.ws = wsId;
                         if (ok && window.wmShell && window.wmShell.refreshToday) window.wmShell.refreshToday();
                     });

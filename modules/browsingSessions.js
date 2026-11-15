@@ -264,12 +264,16 @@ function ownSession(clientInfo, id) {
 function update(clientInfo, body) {
     load();
     const session = ownSession(clientInfo, text(body.sessionId, 64));
-    session.windows = cleanWindows(body.windows);
+    const windows = cleanWindows(body.windows);
+    // other clients hear about it only when what they list changed (rule server-push-not-polling):
+    // every report announced a change, and each one made every Today re-read the list
+    const changed = session.state !== 'live' || JSON.stringify(windows) !== JSON.stringify(session.windows || []);
+    session.windows = windows;
     session.lastSeenAt = now();
     session.state = 'live';
     session.idleSince = 0;
     save();
-    announceChanged();
+    if (changed) announceChanged();
     return { success: true };
 }
 

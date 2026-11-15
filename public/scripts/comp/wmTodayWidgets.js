@@ -1148,7 +1148,6 @@
      * is on screen, and never within a moment of a tap (the shell would show the wait cursor for
      * it). The phone's volumes (Android app only) come with it, already cached by the bridge.
      */
-    const FILES_MS = 3 * 60 * 1000;
     const FILES_RETRY_MS = 60 * 1000; // a failed read waits a minute (no sub-minute polling, Yukimi Nov 13)
     const FILES_PAGE = 60; // folders list first: enough to reach the files of a workspace's top level
     const FILES_PLACES = { documents: ['', 'My Documents'], downloads: ['/Downloads', 'Downloads'], pictures: ['/Pictures', 'My Pictures'], scraps: ['/Scraps', 'Scraps'] };
@@ -1174,7 +1173,9 @@
         // (a request the server never answers frees the slot after half a minute)
         if ((files.busy && now - files.busy < 30000) || !online() || sh.current !== 'today' || document.hidden) return;
         if (document.documentElement.dataset.wmBoot !== 'done') return; // not while the phone starts
-        if (!files.stale && now - files.at < FILES_MS) return;
+        // read once, then only when something changed (vfs_updated, File Explorer's wmFilesChange):
+        // no timed re-read (rule server-push-not-polling); a failure retries after a minute
+        if (!files.stale && files.at && (files.count != null || now - files.at < FILES_RETRY_MS)) return;
         if (performance.now() - files.tapAt < 800) return; // the next repaint asks
         files.busy = now;
         files.stale = false;
@@ -1187,7 +1188,7 @@
             // on Today now, not at its next 2 s repaint (only this block, as Weather does)
             const el = filesEl;
             if (el && el.isConnected && !el.classList.contains('wm-today-off') && filesOption) el.hidden = renderFiles(el, { option: filesOption }) === false;
-        }).catch(() => { if (files.at === now) files.at = now - FILES_MS + FILES_RETRY_MS; }).finally(() => { if (files.busy === now) files.busy = 0; });
+        }).catch(() => { files.count = null; }).finally(() => { if (files.busy === now) files.busy = 0; });
         f.volumes().then((v) => { files.vols = Array.isArray(v) ? v : []; }).catch(() => { files.vols = []; });
     }
 
@@ -1267,7 +1268,6 @@
      * server's "sessions changed" push, only while Today is on screen.
      */
     const IE_HOME = 'edtx://en.grimoire.jp/index.dtxt'; // the start page of a new window (wmBrowser.js GRIM_HOME_URL)
-    const IE_MS = 3 * 60 * 1000;
     const IE_CHANGED_MS = 15 * 1000;
     const IE_IGNORE_KEY = 'wmTodayIeIgnore';
     const IE_ENGINES = {
@@ -1290,7 +1290,8 @@
         const now = Date.now();
         if ((ie.busy && now - ie.busy < 30000) || !online() || sh.current !== 'today' || document.hidden) return;
         if (document.documentElement.dataset.wmBoot !== 'done') return; // not while the phone starts
-        if (now - ie.at < (ie.stale ? IE_CHANGED_MS : IE_MS)) return;
+        // read once, then only after the server's "sessions changed" push (at most every 15 s)
+        if (ie.at && (!ie.stale || now - ie.at < IE_CHANGED_MS) && (ie.sessions != null || now - ie.at < FILES_RETRY_MS)) return;
         if (performance.now() - files.tapAt < 800) return; // the next repaint asks
         let st = null;
         try { st = b.state(); } catch (_) { st = null; }
@@ -1302,7 +1303,7 @@
             ie.sessions = res && Array.isArray(res.sessions) ? res.sessions : [];
             const el = ieEl;
             if (el && el.isConnected && !el.classList.contains('wm-today-off') && ieOption) el.hidden = renderIe(el, { option: ieOption }) === false;
-        }).catch(() => { if (ie.at === now) ie.at = now - IE_MS + FILES_RETRY_MS; }).finally(() => { if (ie.busy === now) ie.busy = 0; });
+        }).catch(() => { ie.sessions = null; }).finally(() => { if (ie.busy === now) ie.busy = 0; });
     }
 
     /** The sessions put aside with Ignore (their ids, kept on the phone until they end). */
@@ -2186,6 +2187,8 @@
         // Files: off until switched on, as Notes, Remote Desktop and Server Status are
         sh.registerTodayItem({ id: 'files', label: 'Files', icon: 'app-file-explorer', after: 'server', defaultOn: false, render: renderFiles, titanium: filesTitanium, options: FILES_OPTIONS });
         document.addEventListener('wmFilesChange', () => { files.stale = true; });
+        // a change made elsewhere (the desktop, another phone) arrives as vfs_updated
+        document.addEventListener('wsMessage', (e) => { const d = e.detail || {}; if (d.type === 'vfs_updated') files.stale = true; });
         // Internet Explorer and Favorites: off until switched on, as Files is
         sh.registerTodayItem({ id: 'ie', label: 'Internet Explorer', icon: 'app-ie', after: 'files', defaultOn: false, render: renderIe, titanium: ieTitanium, options: IE_OPTIONS });
         sh.registerTodayItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });
