@@ -48,6 +48,7 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_save_rules` | `director_save_rules_response` | admin/destructive | Handler: handleDirectorSaveRules |
 | `director_send_message` | `director_send_message_response` | admin/destructive | Handler: handleDirectorSendMessage. `persona: "xi"` runs the host agent. |
 | `director_streaming_ack` | — | session | Client ack of `director_streaming_update.data.seq`. The server holds the next snapshot until this ack or a deadline scaled from client RTT. |
+| `director_stream_watch` | — | session | `{ sessionId }`: the chat this page has on screen (`''` = none). `director_streaming_update` goes only to clients watching that chat; a client that never sent this gets every update. A chat whose turn is running answers with its newest update at once. |
 | `ledge_checks` | — | session | `{ sessionId, checked: [itemId] }` from the Ledge desk. Server broadcasts `ledge_state`. |
 | `director_tool_diff` | `director_tool_diff_response` | session | `{ sessionId, diffId, persona: "xi" }` → `{ text, name, detail }`. The live trace does not include that body. |
 | `director_tool_payload` | `director_tool_payload_response` | session | `{ sessionId, payloadId }` (or `diffId`) returns a parked tool body: `{ args, result, text, name, detail }`. The public trace omits `args` / `result`; the inspector requests them on demand. |

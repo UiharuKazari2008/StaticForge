@@ -643,6 +643,7 @@ class BannerManager {
             'director_tool_payload': 'Director Tool Payload',
             'director_workspace_switch_result': 'Director Workspace Switch',
             'director_streaming_ack': 'Director Stream Ack',
+            'director_stream_watch': 'Director Stream Watch',
             'director_computer_status': 'Director Computer Status',
             'director_computer_size': 'Director Computer Size',
             'director_cleanup': 'Clean Director',

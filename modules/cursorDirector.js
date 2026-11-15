@@ -4954,12 +4954,36 @@ function emitDirector(handler, ws, type, data, requestId) {
     if (ws && handler) handler.sendToClient(ws, payload);
 }
 
-function streamRttMs(gr) {
+// Who gets a chat's streaming updates (#843). Each update carries every row of the turn so far
+// (175-330 KB in a 250-row turn) and went to every connected client several times a second: a phone
+// on Today, a sleeping phone, a desktop in another chat all received and parsed it and threw it
+// away (the page uses it only for the chat it is showing). A client now says which chat it has on
+// screen (director_stream_watch, director.js syncStreamWatch); the update goes to those clients.
+// A client that has never said (a page from before this) still gets every update.
+function watchesDirectorStream(info, sessionId) {
+    return !info || info.directorWatch === undefined || info.directorWatch === String(sessionId);
+}
+
+// A page opened a chat (or closed it: sessionId ''). A chat whose turn is running sends its newest
+// update at once, so the page does not wait for the next one.
+function watchDirectorStream(handler, ws, clientInfo, sessionId) {
+    if (!clientInfo) return;
+    const id = String(sessionId || '');
+    clientInfo.directorWatch = id;
+    const gate = id ? streamGates.get(id) : null;
+    if (gate && gate.last && handler && ws) {
+        try { handler.sendToClient(ws, { type: 'director_streaming_update', data: gate.last, timestamp: new Date().toISOString() }); } catch (_) { /* the next update reaches it */ }
+    }
+}
+
+function streamRttMs(gr, sessionId) {
     let max = 0;
     try {
         const server = gr && gr.getWebSocketServer && gr.getWebSocketServer();
         if (server && server.clients && typeof server.clients.forEach === 'function') {
             server.clients.forEach((info) => {
+                // only the clients the update goes to pace it (a far phone no longer slows a desktop's stream)
+                if (sessionId && !watchesDirectorStream(info, sessionId)) return;
                 const rtt = info && info.lastClientRttMs;
                 if (Number.isFinite(rtt) && rtt > max) max = rtt;
             });
@@ -5012,9 +5036,10 @@ function flushDirectorStream(sessionId) {
         data: Object.assign({ seq: gate.seq }, data),
         timestamp: new Date().toISOString()
     };
+    gate.last = payload.data;
     let wsServer = null;
     try { wsServer = gate.gr && gate.gr.getWebSocketServer && gate.gr.getWebSocketServer(); } catch (_) { wsServer = null; }
-    if (wsServer && typeof wsServer.broadcast === 'function') wsServer.broadcast(payload);
+    if (wsServer && typeof wsServer.broadcast === 'function') wsServer.broadcast(payload, (info) => watchesDirectorStream(info, sessionId));
     else if (gate.handler && gate.ws) gate.handler.sendToClient(gate.ws, payload);
 }
 
@@ -5038,7 +5063,7 @@ function queueDirectorStream(gr, data, handler, ws) {
     gate.gr = gr || gate.gr;
     gate.handler = handler || gate.handler;
     gate.ws = ws || gate.ws;
-    gate.rtt = streamRttMs(gate.gr);
+    gate.rtt = streamRttMs(gate.gr, sessionId);
     // Mascot cue (#688): rides on the stream payload; the newest payload wins, like the rest of it.
     try {
         // cueFrom is the private rows, result text included. The broadcast rows are stripped.
@@ -8918,6 +8943,7 @@ module.exports = {
     watchGeneratedPrints,
     queueDirectorStream,
     ackDirectorStream,
+    watchDirectorStream,
     computerSize,
     directorStatus,
     sampleDirectorResources,
