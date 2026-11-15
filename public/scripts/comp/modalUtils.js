@@ -7554,9 +7554,13 @@ function melatonNoteRestart(reason) {
     try {
         const prev = JSON.parse(localStorage.getItem(RESTART_NOTE_KEY) || 'null');
         if (prev && Date.now() - prev.at < 3000 && prev.reason !== 'navigate') return;
-        const from = String(new Error().stack || '').split('\n').slice(2, 7)
+        const limit = Error.stackTraceLimit;
+        Error.stackTraceLimit = 20;
+        const stack = String(new Error().stack || '');
+        Error.stackTraceLimit = limit;
+        const from = stack.split('\n').slice(2, 12)
             .map((l) => l.trim().replace(/^at /, '').replace(/https?:\/\/[^/]+\/(scripts\/)?/g, '').replace(/\?sha=[0-9a-f]+/g, ''))
-            .join(' < ').slice(0, 400);
+            .join(' < ').slice(0, 900);
         localStorage.setItem(RESTART_NOTE_KEY, JSON.stringify({
             reason: String(reason || 'restart'), at: Date.now(), from,
             hidden: document.hidden, screenOff: document.documentElement.dataset.screenOff !== undefined
