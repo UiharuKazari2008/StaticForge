@@ -142,33 +142,50 @@ function weekdayMiles(days, { workDays = [1, 2, 3, 4, 5], commuteMiles = null, e
 }
 
 /**
- * The day to refuel by.
- * @returns {{ day, daysLeft, milesLeft, perDay[], reservePct, basis }|null}
- *   day: 'YYYY-MM-DD', the last day that still ends at or above the reserve (today when already under it)
+ * When to refuel: the last chance before a drive would take the tank under the reserve.
+ * A work day is two drives, there and back, so the answer is a day and a side of work:
+ *   stop { day: 'YYYY-MM-DD', part: 'before-work' | 'after-work' | null }
+ * 'before-work' = fill up before the morning drive; 'after-work' = before the drive home (the
+ * morning drive still fits); null = a day off, any time before that day's driving.
+ * @returns {{ stop, day, daysLeft, milesLeft, perDay[], reservePct, beyond, crosses }|null}
+ *   day / daysLeft repeat stop.day; crosses: { day, part, miles, left } the drive that does not fit
  */
-function refuelBy({ fuelPct, milesPerPct, weekday, todayKey, milesToday = 0, reservePct = 15, horizon = 60 }) {
+function refuelBy({ fuelPct, milesPerPct, weekday, todayKey, milesToday = 0, reservePct = 15, horizon = 60, workDays = [] }) {
     if (!valid(fuelPct) || !valid(milesPerPct) || milesPerPct <= 0 || !weekday || !todayKey) return null;
     const milesLeft = Math.max(0, (fuelPct - reservePct) * milesPerPct);
     let left = milesLeft;
     const perDay = [];
-    let day = todayKey;
     for (let i = 0; i < horizon; i++) {
         const key = addDays(todayKey, i);
         const wd = weekdayOf(key);
-        // today: only what is still expected to be driven
-        const need = i === 0 ? Math.max(0, weekday.miles[wd] - milesToday) : weekday.miles[wd];
-        perDay.push({ day: key, miles: need, basis: weekday.basis[wd] });
-        if (need > left) break;
-        left -= need;
-        day = key;
-        if (i === horizon - 1) return { day: null, daysLeft: horizon, milesLeft: Math.round(milesLeft), perDay, reservePct, beyond: true };
+        const dayMiles = weekday.miles[wd];
+        const work = workDays.includes(wd) && dayMiles > 0;
+        let legs;
+        if (work) {
+            const half = dayMiles / 2;
+            // today: the morning drive is behind us once most of it shows on the odometer
+            if (i === 0 && milesToday >= half * 0.8) legs = [{ part: 'after-work', miles: Math.max(0, dayMiles - milesToday) }];
+            else legs = [{ part: 'before-work', miles: i === 0 ? Math.max(0, half - milesToday) : half }, { part: 'after-work', miles: half }];
+        } else legs = [{ part: null, miles: i === 0 ? Math.max(0, dayMiles - milesToday) : dayMiles }];
+        perDay.push({ day: key, miles: Math.round(legs.reduce((a, l) => a + l.miles, 0) * 10) / 10, basis: weekday.basis[wd] });
+        for (const leg of legs) {
+            if (leg.miles > left) {
+                const daysLeft = i;
+                return {
+                    stop: { day: key, part: leg.part },
+                    day: key,
+                    daysLeft,
+                    milesLeft: Math.round(milesLeft),
+                    perDay: perDay.slice(0, 14),
+                    reservePct,
+                    beyond: false,
+                    crosses: { day: key, part: leg.part, miles: Math.round(leg.miles), left: Math.round(left) },
+                };
+            }
+            left -= leg.miles;
+        }
     }
-    // `day` is the last day fully covered; refuel on it (before the next day's driving)
-    const daysLeft = Math.round((Date.parse(day) - Date.parse(todayKey)) / DAY);
-    // the day whose driving would cross the reserve, and how far short the tank is for it
-    const short = perDay[perDay.length - 1];
-    const crosses = short && short.miles > 0 ? { day: short.day, miles: short.miles, left: Math.round(left) } : null;
-    return { day, daysLeft, milesLeft: Math.round(milesLeft), perDay: perDay.slice(0, 14), reservePct, beyond: false, crosses };
+    return { stop: null, day: null, daysLeft: horizon, milesLeft: Math.round(milesLeft), perDay: perDay.slice(0, 14), reservePct, beyond: true, crosses: null };
 }
 
 /**

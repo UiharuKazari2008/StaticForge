@@ -45,12 +45,13 @@ async function makeMask(src) {
 }
 
 /** The emblem as a square icon of `size` px: metal fill, dark edge, a soft shade under it. */
-async function emblemPng(size) {
+async function emblemPng(size, onFloor) {
     const pad = Math.max(1, Math.round(size * 0.03));
     const w = size - pad * 2;
     const mask = await sharp(MASK).resize({ width: w }).png().toBuffer();
     const mh = (await sharp(mask).metadata()).height;
-    const top = Math.round((size - mh) / 2);
+    // onFloor: the mark stands on the square's bottom edge (the 6.5 panel mirrors the art below it)
+    const top = onFloor ? size - mh - Math.max(1, Math.round(size / 24)) : Math.round((size - mh) / 2);
     // a fill cut to the shape: what the mask does not cover is removed (dest-in)
     const tint = async (svgFill) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${mh}">${svgFill}</svg>`)).resize(w, mh).ensureAlpha().composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
     const metal = await tint(`<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#e3e8ee"/><stop offset="0.52" stop-color="#b9c2cc"/><stop offset="1" stop-color="#e9edf2"/></linearGradient></defs><rect width="${w}" height="${mh}" fill="url(#g)"/>`);
@@ -74,7 +75,7 @@ async function panel(k, file) {
     const H = Math.round(113 * k);
     const A = Math.round(76 * k);
     const R = Math.round(26 * k);
-    const art = await emblemPng(A);
+    const art = await emblemPng(A, true);
     const flipped = await sharp(art).flip().extract({ left: 0, top: 0, width: A, height: R }).ensureAlpha().raw().toBuffer();
     for (let y = 0; y < R; y++) {
         const f = 0.4 * (1 - y / R);

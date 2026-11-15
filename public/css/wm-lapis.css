@@ -382,6 +382,14 @@
     .wm-lapis .lps-layer-body:not(.wm-form) { width: min(100%, calc(430 * var(--u))); margin: 0 auto; }
 }
 
+/* ---------------------------------------------------------------- the remote start bubble (title-bar glyph) */
+
+.lps-bub { min-width: calc(150 * var(--wm-px)); }
+.lps-bub-time { margin-bottom: calc(3 * var(--wm-px)); }
+.lps-bub-time b { font-size: 1.5em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lps-bub-rows { display: grid; grid-template-columns: auto 1fr; gap: calc(1 * var(--wm-px)) calc(8 * var(--wm-px)); margin-top: calc(5 * var(--wm-px)); }
+.lps-bub-rows b { font-weight: 600; }
+
 @media (prefers-reduced-motion: reduce) {
     .wm-lapis .lps-dot[data-s="busy"] { animation: none; }
     .wm-lapis .lps-nib { transition: none; }

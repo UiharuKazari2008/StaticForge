@@ -172,10 +172,25 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     car.fuel = 16; car.odo += 10; car.at = '2026-11-15T18:00:00Z'; now = Date.parse('2026-11-15T18:02:00Z');
     await svc.read({ reason: 'poll' });
     assert.strictEqual(notices().filter((n) => n.kind === 'low-fuel').length, 1, 'only once');
+    // 16 %: Monday's drive to work does not fit. Nothing at 1 PM on Sunday; said that evening, once
     svc._test.dailyNotices();
-    assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 1, 'refuel today');
+    assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 0, 'not in the middle of the day before');
+    now = Date.parse('2026-11-16T00:10:00Z'); // 7:10 PM Sunday in New York
+    svc._test.dailyNotices();
+    const refuelNote = notices().filter((n) => n.kind === 'refuel');
+    assert.strictEqual(refuelNote.length, 1, 'the evening before a before-work stop');
+    assert.strictEqual(refuelNote[0].title, 'Get gas tomorrow morning');
     svc._test.dailyNotices();
     assert.strictEqual(notices().filter((n) => n.kind === 'refuel').length, 1);
+
+    // when to refuel: a work day is two drives, so the answer is a day and a side of work
+    const wk = { miles: [5, 100, 100, 100, 100, 100, 5], basis: Array(7).fill('history') };
+    const rb = (fuelPct, extra) => usage.refuelBy(Object.assign({ fuelPct, milesPerPct: 5, weekday: wk, todayKey: '2026-11-15', reservePct: 15, workDays: [1, 2, 3, 4, 5] }, extra)).stop;
+    assert.deepStrictEqual(rb(26), { day: '2026-11-16', part: 'after-work' }, '55 miles: Sunday 5, Monday morning 50, not the drive home');
+    assert.deepStrictEqual(rb(20), { day: '2026-11-16', part: 'before-work' }, '25 miles: not even Monday morning');
+    assert.deepStrictEqual(rb(15.5), { day: '2026-11-15', part: null }, 'a day off: no side of work');
+    assert.deepStrictEqual(rb(36), { day: '2026-11-17', part: 'before-work' }, '105 miles: Sunday and all of Monday');
+    assert.deepStrictEqual(usage.refuelBy({ fuelPct: 20, milesPerPct: 5, weekday: wk, todayKey: '2026-11-16', milesToday: 50, reservePct: 15, workDays: [1, 2, 3, 4, 5] }).stop, { day: '2026-11-16', part: 'after-work' }, 'at work already: the drive home');
     car.fuel = 97; car.at = '2026-11-15T19:00:00Z'; now = Date.parse('2026-11-15T19:02:00Z');
     state = await svc.read({ reason: 'poll' });
     assert.strictEqual(svc._test.live.flags.lowFuel, false);

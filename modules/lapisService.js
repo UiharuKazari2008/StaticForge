@@ -727,7 +727,7 @@ let usageMemo = { key: '', value: null };
 
 function usageModel(s) {
     const status = live.status;
-    const key = `${status ? status.at : 0}|${usage.dayKey(nowFn(), s.timeZone)}|${JSON.stringify([s.workDays, s.commuteMiles, s.tankGal, s.mpg, s.reservePct, s.errandMiles, s.offDayMiles])}`;
+    const key = `${status ? `${status.at}:${status.fuel}:${status.odometer}` : 0}|${usage.dayKey(nowFn(), s.timeZone)}|${JSON.stringify([s.workDays, s.commuteMiles, s.tankGal, s.mpg, s.reservePct, s.errandMiles, s.offDayMiles])}`;
     if (usageMemo.key === key) return usageMemo.value;
     const samples = samplesSince(nowFn() - 120 * DAY);
     const days = usage.daily(samples, s.timeZone);
@@ -741,7 +741,7 @@ function usageModel(s) {
     }
     const weekday = usage.weekdayMiles(days.filter((d) => d.day !== today), { workDays: s.workDays, commuteMiles: commute.miles, errandMiles: s.errandMiles, offDayMiles: s.offDayMiles });
     const todayRow = days.find((d) => d.day === today);
-    const refuel = status && Number.isFinite(status.fuel) ? usage.refuelBy({ fuelPct: status.fuel, milesPerPct: perPct.value, weekday, todayKey: today, milesToday: todayRow ? todayRow.miles : 0, reservePct: s.reservePct }) : null;
+    const refuel = status && Number.isFinite(status.fuel) ? usage.refuelBy({ fuelPct: status.fuel, milesPerPct: perPct.value, weekday, todayKey: today, milesToday: todayRow ? todayRow.miles : 0, reservePct: s.reservePct, workDays: s.workDays }) : null;
     const last7 = days.filter((d) => d.day > usage.addDays(today, -7));
     const value = {
         today,
@@ -780,14 +780,37 @@ function maintenanceState(s) {
     });
 }
 
+/** Minutes since midnight in the settings' time zone. */
+function localMinutes(s) {
+    const parts = new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: s.timeZone || undefined }).formatToParts(new Date(nowFn()));
+    const get = (t) => Number((parts.find((p) => p.type === t) || {}).value) || 0;
+    return (get('hour') % 24) * 60 + get('minute');
+}
+
 // the daily look: refuel day and maintenance notices (from the scheduler, once the day's first read is in)
 function dailyNotices() {
     const s = getSettings();
     if (!live.status) return;
     const u = usageModel(s);
-    if (s.notify.refuel && u.refuel && !u.refuel.beyond && u.refuel.daysLeft <= 0 && live.flags.refuelDay !== u.today) {
-        live.flags.refuelDay = u.today;
-        notice('refuel', 'Refuel today', `${carName()} has ${fmtPct(live.status.fuel)}. Tomorrow's driving would take it under the ${s.reservePct}% reserve.`, ['view']);
+    // refuel: said when it is useful. The evening before a "before work" stop, then that morning
+    // ahead of the leave time; for "after work", ahead of leaving work; on a day off, in the morning.
+    const stop = u.refuel && !u.refuel.beyond ? u.refuel.stop : null;
+    if (s.notify.refuel && stop) {
+        const mins = localMinutes(s);
+        const hhmm = (v, def) => { const m = /^(\d\d):(\d\d)$/.exec(v || ''); return m ? Number(m[1]) * 60 + Number(m[2]) : def; };
+        const fuel = `${carName()} has ${fmtPct(live.status.fuel)}${Number.isFinite(live.status.range) ? ` (${Math.round(live.status.range)} miles)` : ''}.`;
+        const say = (stamp, title, text) => {
+            if (live.flags.refuelDay === stamp) return;
+            live.flags.refuelDay = stamp;
+            notice('refuel', title, text, ['view']);
+        };
+        if (stop.day === u.today) {
+            if (stop.part === 'before-work' && mins >= hhmm(s.leaveHome, 7 * 60) - 60) say(`${u.today}:am`, 'Get gas before work', `${fuel} The drive to work would take it under the ${s.reservePct}% reserve.`);
+            else if (stop.part === 'after-work' && mins >= hhmm(s.leaveWork, 16 * 60) - 30) say(`${u.today}:pm`, 'Get gas after work', `${fuel} The drive home would take it under the ${s.reservePct}% reserve: fill up on the way.`);
+            else if (!stop.part && mins >= 8 * 60) say(`${u.today}:day`, 'Get gas today', `${fuel} Today's driving would take it under the ${s.reservePct}% reserve.`);
+        } else if (stop.day === usage.addDays(u.today, 1) && stop.part === 'before-work' && mins >= 19 * 60) {
+            say(`${u.today}:eve`, 'Get gas tomorrow morning', `${fuel} Tomorrow's drive to work would take it under the ${s.reservePct}% reserve: fill up tonight or before work.`);
+        }
     }
     if (s.notify.service) {
         maintenanceState(s).forEach((m) => {

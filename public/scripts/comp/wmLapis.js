@@ -189,6 +189,8 @@
         todayHtml = '';
         if (shown) render(); else stale = true;
         if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
+        document.dispatchEvent(new CustomEvent('wmLapisChange'));
+        tick();
     }
 
     // ---------------------------------------------------------------- what the status says
@@ -228,29 +230,32 @@
         return { dot: 'ok', head: 'Parked', tail: place ? `at ${place}` : state.parkedSince ? `for ${sinceText(state.parkedSince)}` : '' };
     }
 
-    function refuelText() {
+    /** When to get fuel: "Mon before work", "Today after work", "Sat" ("Not for weeks" when far off). */
+    function refuelText(short) {
         const u = state && state.usage;
         const r = u && u.refuel;
         if (!r) return '';
-        if (r.beyond) return 'Not for weeks';
-        // "Tomorrow" alone read as "the tank is empty tomorrow": the day is named, with today / tomorrow beside it
-        const l = dayLabel(r.day, u.today);
-        const [y, m, d] = r.day.split('-').map(Number);
+        if (r.beyond || !r.stop) return 'Not for weeks';
+        const [y, m, d] = r.stop.day.split('-').map(Number);
+        const diff = Math.round((Date.UTC(y, m - 1, d) - Date.parse(u.today)) / 86400000);
         const wd = DAY_SHORT[new Date(y, m - 1, d).getDay()];
-        return l === 'Today' ? `Today (${wd})` : l === 'Tomorrow' ? `${wd} (tomorrow)` : l;
+        const day = diff === 0 ? 'Today' : diff === 1 && !short ? `Tomorrow (${wd})` : diff < 7 ? wd : fmtShort.format(new Date(y, m - 1, d));
+        const part = r.stop.part === 'before-work' ? ' before work' : r.stop.part === 'after-work' ? ' after work' : '';
+        return `${day}${part}`;
     }
 
-    const tireAlert = () => !!(state && (state.alerts || []).some((a) => a.key === 'tire')) || !!(st() && st().tireLow && st().tireLow.any);
-
-    /** Why that day: the next day's driving would take the tank under the reserve. */
+    /** Why then: the drive that would take the tank under the reserve. */
     function refuelWhy() {
         const u = state && state.usage;
         const r = u && u.refuel;
         if (!r || r.beyond || !r.crosses) return '';
         const [y, m, d] = r.crosses.day.split('-').map(Number);
         const day = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(new Date(y, m - 1, d));
-        return `${r.milesLeft} miles are left above the ${r.reservePct}% reserve. ${day}'s usual ${Math.round(r.crosses.miles)} miles would need more than the ${r.crosses.left} left by then, so fill up before ${day}.`;
+        const drive = r.crosses.part === 'before-work' ? `${day}'s drive to work` : r.crosses.part === 'after-work' ? `${day}'s drive home` : `${day}'s driving`;
+        return `${r.milesLeft} miles are left above the ${r.reservePct}% reserve. ${drive} (${r.crosses.miles} miles) needs more than the ${r.crosses.left} left by then.`;
     }
+
+    const tireAlert = () => !!(state && (state.alerts || []).some((a) => a.key === 'tire')) || !!(st() && st().tireLow && st().tireLow.any);
 
     function nextService() {
         const list = (state && state.maintenance) || [];
@@ -280,6 +285,69 @@
         if (c.defrost) bits.push('defrost');
         return bits.join(', ');
     }
+
+    // ---------------------------------------------------------------- a remote start in progress
+
+    /** The running remote start: { until, total (ms), detail } or null. */
+    function runInfo() {
+        const s = st();
+        const c = state && state.command;
+        if (!s || !s.engine) return null;
+        if (c && c.kind === 'start' && c.state === 'success' && num(c.runsUntil) && c.runsUntil > Date.now()) {
+            const total = ((c.detail && c.detail.minutes) || 10) * 60000;
+            return { until: c.runsUntil, total, detail: c.detail || null };
+        }
+        return s.climate ? { until: null, total: 0, detail: null } : null;
+    }
+
+    const leftText = (ms) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
+    const leftShort = (ms) => { const m = Math.ceil(Math.max(0, ms) / 60000); return `${m} min`; };
+
+    /** What the start set: "80°F, seat heat low, wheel, defrost". */
+    function runSets(d) {
+        const lim = state && state.limits;
+        if (!d) { const s = st(); return s && num(s.setTemp) ? `${tempText(s.setTemp, lim)}${/^\d/.test(tempText(s.setTemp, lim)) ? '°F' : ''}` : 'Climate on'; }
+        const t = tempText(d.temp, lim);
+        const extra = startSets({ seat: d.seat, heating: d.heating, defrost: d.defrost });
+        return `${t}${/^\d/.test(t) ? '°F' : ''}${extra === 'climate only' ? '' : `, ${extra}`}`;
+    }
+
+    /** For the title bar's glyph and its bubble (wmShell): shown while a remote start runs. */
+    function statusState() {
+        const r = canUse() ? runInfo() : null;
+        if (!r) return { running: false };
+        const s = st();
+        const left = r.until ? r.until - Date.now() : null;
+        const blocks = r.until && r.total ? Math.max(0, Math.min(18, Math.round((left / r.total) * 18))) : 18;
+        const html = `<div class="lps-bub">
+            <div class="lps-bub-time">${r.until ? `<b data-lps-cd="${r.until}">${leftText(left)}</b> left, until ${esc(clock(r.until))}` : '<b>Running</b>'}</div>
+            <div class="wm-ds-progress${r.until ? '' : ' is-marquee'}" role="progressbar" aria-label="Time left"><span data-lps-bar="${r.until || ''}" data-lps-total="${r.total}" style="--wm-ds-blocks:${blocks}"></span></div>
+            <div class="lps-bub-rows"><span>Climate</span><b>${esc(runSets(r.detail))}</b><span>Fuel</span><b>${num(s.fuel) ? `${Math.round(s.fuel)}%` : '--'}${num(s.range) ? `, ${Math.round(s.range)} mi` : ''}</b><span>Doors</span><b>${s.locked === false ? 'Unlocked' : s.locked ? 'Locked' : 'Unknown'}</b></div>
+        </div>`;
+        return { running: true, until: r.until, title: carTitle(), html, canStop: isAdmin() };
+    }
+
+    // one second ticker, alive only while a remote start with an end time is running and the page shows:
+    // it moves the countdowns already on screen (no server call) and ends the run when the time is up
+    let ticker = null;
+    let tickN = 0;
+    function tick() {
+        const r = runInfo();
+        const live = !!(r && r.until) && !document.hidden;
+        if (!live) { if (ticker) { clearInterval(ticker); ticker = null; } return; }
+        if (!ticker) ticker = setInterval(onTick, 1000);
+    }
+    function onTick() {
+        const r = runInfo();
+        if (!r || !r.until || document.hidden) { tick(); if (!r) changed(); return; }
+        const left = r.until - Date.now();
+        document.querySelectorAll('[data-lps-cd]').forEach((el) => { el.textContent = leftText(Number(el.dataset.lpsCd) - Date.now()); });
+        document.querySelectorAll('[data-lps-bar]').forEach((el) => { const total = Number(el.dataset.lpsTotal) || 1; el.style.setProperty('--wm-ds-blocks', String(Math.max(0, Math.min(18, Math.round(((Number(el.dataset.lpsBar) - Date.now()) / total) * 18))))); });
+        // Today's superscript counts whole minutes
+        if (++tickN % 15 === 0 && ws && typeof ws.refreshToday === 'function') { todayHtml = ''; ws.refreshToday(); }
+        if (left <= 0) changed();
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
 
     // ---------------------------------------------------------------- commands
 
@@ -408,7 +476,7 @@
         const cmd = state && state.command;
         const running = !!(s && s.engine);
         els.pEng.className = `lps-pill is-r lps-p-eng${running ? ' is-on' : ''}`;
-        els.pEng.innerHTML = `${I.power}${!s ? 'No report' : running ? (cmd && cmd.runsUntil && cmd.runsUntil > Date.now() ? `Until ${clock(cmd.runsUntil)}` : s.climate ? 'Climate on' : 'Engine on') : 'Engine off'}`;
+        els.pEng.innerHTML = `${I.power}${!s ? 'No report' : running ? (cmd && cmd.runsUntil && cmd.runsUntil > Date.now() ? `<span data-lps-cd="${cmd.runsUntil}">${leftText(cmd.runsUntil - Date.now())}</span> left` : s.climate ? 'Climate on' : 'Engine on') : 'Engine off'}`;
 
         // fuel
         const u = state && state.usage;
@@ -417,7 +485,7 @@
         els.fuel.innerHTML = `<div class="lps-card-l">${I.fuel}Fuel</div>
             <div class="lps-card-v">${s && num(s.range) ? Math.round(s.range) : '--'}<small>mi</small></div>
             <div class="lps-bar${low ? ' is-low' : ''}"><i style="transform:scaleX(${s && num(s.fuel) ? Math.max(0.02, Math.min(1, s.fuel / 100)) : 0})"></i></div>
-            <div class="lps-card-s"><span>${s && num(s.fuel) ? `${Math.round(s.fuel)}%` : ''}</span><span>${rt ? `Refuel by <b>${esc(rt.split(/[ ,]/)[0])}</b>` : ''}</span></div>`;
+            <div class="lps-card-s"><span>${s && num(s.fuel) ? `${Math.round(s.fuel)}%` : ''}</span><span>${rt ? `Gas <b>${esc(refuelText(true))}</b>` : ''}</span></div>`;
 
         // climate: what a remote start would set, and the weather it is based on
         const c = state && state.climate;
@@ -448,7 +516,7 @@
         else {
             if (state.error) rows.push(`<div class="lps-pad-note">${esc(state.error.message)}</div>`);
             (state.alerts || []).forEach((a) => rows.push(`<div class="lps-pad-row is-warn" data-open="status"><span>${esc(a.title)}</span><b>${a.key === 'battery12' && s && num(s.battery12) ? `${Math.round(s.battery12)}%` : 'Check'}</b></div>`));
-            if (rt) rows.push(`<div class="lps-pad-row${u.refuel && !u.refuel.beyond && u.refuel.daysLeft <= 0 ? ' is-warn' : ''}" data-open="history"><span>Refuel by</span><b>${esc(rt)}</b></div>`);
+            if (rt) rows.push(`<div class="lps-pad-row${u.refuel && !u.refuel.beyond && u.refuel.daysLeft <= 0 ? ' is-warn' : ''}" data-open="history"><span>Get gas</span><b>${esc(rt)}</b></div>`);
             const cl = climateLine();
             if (cl) rows.push(`<div class="lps-pad-row" data-open="start"><span>Remote start will set</span><b>${esc(cl)}</b></div>`);
             const sv = nextService();
@@ -880,7 +948,7 @@
                     <div class="lps-stat"><b>${h.fillups.length}</b>fill-ups</div>
                 </div>
             </div>
-            ${u.refuel ? `<div class="lps-pad"><div class="lps-pad-row"><span>Refuel by</span><b>${esc(refuelText())}</b></div><div class="lps-pad-note">${esc(refuelWhy() || `${u.refuel.milesLeft} miles before the ${u.refuel.reservePct}% reserve.`)} Expected miles: ${esc(wk)}. Commute: ${u.commute && u.commute.miles ? `${u.commute.miles} mi each way` : 'not set'}.</div></div>` : ''}
+            ${u.refuel ? `<div class="lps-pad"><div class="lps-pad-row"><span>Get gas</span><b>${esc(refuelText())}</b></div><div class="lps-pad-note">${esc(refuelWhy() || `${u.refuel.milesLeft} miles before the ${u.refuel.reservePct}% reserve.`)} Expected miles: ${esc(wk)}. Commute: ${u.commute && u.commute.miles ? `${u.commute.miles} mi each way` : 'not set'}.</div></div>` : ''}
             ${fills ? `<div class="lps-scr"><div class="lps-sbar"><b>Fill-ups</b></div><div class="lps-list">${fills}</div></div>` : ''}
             ${trips ? `<div class="lps-scr"><div class="lps-sbar"><b>Trips</b><span class="lps-sp"></span><span>between reports</span></div><div class="lps-list">${trips}</div></div>` : ''}`;
     }
@@ -1007,6 +1075,7 @@
     const RUNS = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes']];
     const LOWS = [[10, '10%'], [15, '15%'], [20, '20%'], [25, '25%'], [30, '30%']];
     const RESERVES = [[5, '5%'], [10, '10%'], [15, '15%'], [20, '20%'], [25, '25%']];
+    const SUPERS = [['fuel', 'Fuel miles left'], ['issue', 'Issue indicator'], ['lock', 'Lock state'], ['none', 'Nothing']];
     const BATTS = [[0, 'the car\'s own warning level'], [50, '50%'], [60, '60%'], [65, '65%'], [70, '70%'], [75, '75%']];
     const PSIS = [[22, '22 psi'], [24, '24 psi'], [26, '26 psi'], [28, '28 psi'], [30, '30 psi'], [32, '32 psi']];
     const degs = (list) => list.map((v) => [v, `${v}°F`]);
@@ -1036,6 +1105,8 @@
             ${ui.note('The name shows in the title bar in place of "Lapis Remote". Blank uses the car\'s BlueLink name.')}
             ${ui.row('Name:', ui.edit('lpsName', f.name, `placeholder="${esc((state && state.vehicle && state.vehicle.name) || 'Car')}" data-k="name" maxlength="40"`), { for: 'lpsName' })}
             <div class="lps-pic"><img src="${esc(carSrc(false))}" alt=""><div>${ui.buttons([['picChoose', 'Choose Picture...'], ['picReset', 'Built-in Picture', !picture.rev]], false)}</div></div>
+            ${ui.row('Today shows:', ui.comboHtml('todaySuper', label(SUPERS, todaySuperPref())), { wide: true })}
+            ${ui.note('The small text beside the name on the 6.5 home screen (this phone only). A running remote start shows its time left and an unlocked car shows "unlocked", whatever is chosen.')}
             ${ui.gap()}
             ${ui.sub('Places')}
             ${ui.row('Home:', ui.edit('lpsHome', f.home, 'placeholder="latitude, longitude" data-k="home" maxlength="40"'), { for: 'lpsHome' })}
@@ -1100,6 +1171,7 @@
         combo('lowFuelPct', LOWS);
         combo('reservePct', RESERVES);
         combo('batteryLowPct', BATTS);
+        ui.bindCombo(box.querySelector('[data-act="todaySuper"]'), SUPERS, todaySuperPref(), (v) => { try { localStorage.setItem(LS_SUPER, v); } catch (_) { /* private mode */ } if (ws && ws.refreshToday) ws.refreshToday(); });
         combo('tireLowPsi', PSIS);
         box.querySelectorAll('input[data-c]').forEach((el) => el.addEventListener('change', () => { f.climate[el.dataset.c] = el.checked; }));
         Object.keys(CL).forEach((k) => {
@@ -1340,11 +1412,34 @@
         if (!configured()) return { title: 'Lapis Remote', sub: 'Tap to set up your car' };
         if (!s) return { title: (state && state.vehicle && state.vehicle.name) || 'Lapis Remote', sub: 'Waiting for the car\'s report' };
         const cmd = busyCommand();
-        const head = cmd ? `${{ lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind]}...` : s.engine ? (s.climate ? 'Running' : 'Engine on') : s.locked === false ? 'Unlocked' : 'Locked';
+        const head = cmd ? `${{ lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind]}...` : s.engine ? (runInfo() && runInfo().until ? `Running, ${leftShort(runInfo().until - Date.now())} left` : s.climate ? 'Running' : 'Engine on') : s.locked === false ? 'Unlocked' : 'Locked';
         const rt = refuelText();
         const c = state.climate;
-        const sub = [rt ? `Refuel by ${rt.split(/[ ,]/)[0]}` : '', c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°F` : ''].filter(Boolean).join(' · ');
+        const sub = [rt && rt !== 'Not for weeks' ? `Gas ${refuelText(true)}` : '', c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°F` : ''].filter(Boolean).join(' · ');
         return { title: `${head} · ${num(s.range) ? `${Math.round(s.range)} mi` : num(s.fuel) ? `${Math.round(s.fuel)}%` : ''}`, sub, unlocked: s.locked === false, running: !!s.engine };
+    }
+
+    // the 6.5 panel's name (the model's first word, else "car") and the small text beside it
+    const LS_SUPER = 'wmLapisTodaySuper'; // fuel | issue | lock | none (this phone's choice)
+    const todaySuperPref = () => { try { const v = localStorage.getItem(LS_SUPER); return ['fuel', 'issue', 'lock', 'none'].includes(v) ? v : 'fuel'; } catch (_) { return 'fuel'; } };
+    function todayName() {
+        const v = state && state.vehicle;
+        const word = v && v.model ? String(v.model).trim().split(/\s+/)[0].toLowerCase() : '';
+        return word || 'car';
+    }
+    function todaySuper() {
+        const s = st();
+        if (!s) return '';
+        // a running remote start and an unlocked car come first, whatever is chosen
+        const r = runInfo();
+        if (r) return r.until ? leftShort(r.until - Date.now()) : 'running';
+        if (s.locked === false && !s.engine) return 'unlocked';
+        const pref = todaySuperPref();
+        const issues = ((state && state.alerts) || []).length;
+        if (pref === 'issue') return issues ? '!' : '';
+        if (pref === 'lock') return s.locked ? 'locked' : s.locked === false ? 'unlocked' : '';
+        if (pref === 'fuel') return num(s.range) ? `${Math.round(s.range)} mi` : num(s.fuel) ? `${Math.round(s.fuel)}%` : '';
+        return '';
     }
 
     function todayRender(el) {
@@ -1378,7 +1473,7 @@
         const t = todayLine();
         const s = st();
         const go = () => open();
-        if (!configured() || !s) return { label: 'lapis', icon: 'x:app-lapis-lg', pages: [{ title: t.title, line2: t.sub, line3: '' }], softKey: { label: 'Lapis', action: go }, onTap: go };
+        if (!configured() || !s) return { label: todayName(), icon: 'x:app-lapis-lg', pages: [{ title: t.title, line2: t.sub, line3: '' }], softKey: { label: 'Lapis', action: go }, onTap: go };
         const c = state.climate;
         const sv = nextService();
         const admin = isAdmin();
@@ -1386,10 +1481,10 @@
         const running = !!(s.engine && s.climate);
         const pages = [
             { title: t.title, line2: t.sub, line3: state.location && state.location.place ? `Parked at ${state.location.place}` : '', softKey: lockKey, onTap: go },
-            { title: running ? 'Climate is running' : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: () => open('start') }, onTap: () => open('start') }
+            { title: running ? `Running${runInfo() && runInfo().until ? `, ${leftShort(runInfo().until - Date.now())} left` : ''}` : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: () => open('start') }, onTap: () => open('start') }
         ];
         if (sv) pages.push({ title: sv.label, line2: sv.milesLeft <= 0 ? `${Math.abs(sv.milesLeft).toLocaleString()} miles over` : `in ${sv.milesLeft.toLocaleString()} miles`, line3: '', softKey: { label: 'Service', action: () => open('service') }, onTap: () => open('service') });
-        return { label: 'lapis', icon: 'x:app-lapis-lg', pages, softKey: lockKey, onTap: go };
+        return { label: todayName(), count: todaySuper(), icon: 'x:app-lapis-lg', pages, softKey: lockKey, onTap: go };
     }
 
     // ---------------------------------------------------------------- register
@@ -1407,6 +1502,9 @@
     window.wmLapis = {
         open,
         state: () => state,
+        /** A running remote start for the shell's title-bar glyph: { running, until, title, html, canStop }. */
+        statusState,
+        stop: () => doStop(),
         /** Read what the server holds again (lapis_get). */
         reload: () => load()
     };
