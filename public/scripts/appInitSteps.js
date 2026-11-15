@@ -291,15 +291,41 @@ if (window.wsClient) {
         return t5Ok;
     }
 
-    let phoneTokenizersQueued = false;
+    // The desktop too (#817): this step held every boot for the tokenizers (1.7 s of the boot in
+    // the headless profile: ~6 MB fetched and parsed, the Qwen tables built on the page's thread)
+    // although only Studio's token counts read them, and those take a missing tokenizer (T5
+    // readers check for it, Qwen readers await ensurePromptTokenizerForModel, which loads on demand).
+    // They load once the desktop is up (desktopBoot's 'desktopBootDone') and the page is idle; a
+    // page with no desktop boot (app mode) loads them after the init steps. Once per page: the
+    // step runs again on every reconnect and used to load both again.
+    function afterDesktopBoot(fn) {
+        let ran = false;
+        const run = () => {
+            if (ran) return;
+            ran = true;
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => fn(), { timeout: 3000 });
+            else setTimeout(fn, 500);
+        };
+        // getClientDesktopState: public/scripts/comp/desktopBoot.js
+        const state = typeof window.getClientDesktopState === 'function' ? window.getClientDesktopState() : 'ready';
+        if (state === 'desktop' || state === 'ready') { run(); return; }
+        document.addEventListener('desktopBootDone', run, { once: true });
+        // a boot that never reports (a lock or a fault dialog held it): still load them
+        setTimeout(run, 60000);
+    }
+
+    let tokenizersQueued = false;
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
-        if (phoneShell()) {
-            if (phoneTokenizersQueued) return;
-            phoneTokenizersQueued = true;
-            afterPhoneBoot(() => { void loadPromptTokenizers(); });
-            return;
-        }
-        return loadPromptTokenizers();
+        if (tokenizersQueued) return;
+        tokenizersQueued = true;
+        const load = () => {
+            loadPromptTokenizers().then((ok) => {
+                if (!ok) tokenizersQueued = false; // the next reconnect tries again
+                document.dispatchEvent(new CustomEvent('promptTokenizersLoaded', { detail: { ok } }));
+            }, () => { tokenizersQueued = false; });
+        };
+        if (phoneShell()) afterPhoneBoot(load);
+        else afterDesktopBoot(load);
     }, true);
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
