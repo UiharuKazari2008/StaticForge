@@ -22,7 +22,10 @@
 
     const DEVICE_KEY = 'dreamscape.deviceId';
     const REPORT_DELAY_MS = 800;
-    const POLL_MS = 4000;
+    // the net under changed(): browser windows say when they change (grimoireRemoteBrowser.js,
+    // wmBrowser.js, browsingRestore.js). It looked every 4 seconds, listing and serialising every
+    // window each time, on pages that never opened a browser too (#849).
+    const POLL_MS = 60000;
 
     const listeners = { ready: [], changed: [], tabTaken: [] };
     const providers = [];
@@ -137,6 +140,8 @@
 
     function report(force) {
         if (!helloOk) return;
+        // no program has registered browser windows on this page: nothing to list or send
+        if (!force && !providers.length && lastReport === '[]') return;
         const windows = snapshot();
         const text = JSON.stringify(windows);
         if (!force && text === lastReport) return;

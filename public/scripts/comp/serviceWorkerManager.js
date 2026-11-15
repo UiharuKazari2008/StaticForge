@@ -15,6 +15,11 @@ function isAuthGatedManifestFile(file) {
 // manifest: 9,400 rows) is its own pathname up to the query: no URL object for it. Building the
 // path map and the update check parsed each row with new URL(): ~90 ms of a phone boot (#817).
 const PLAIN_STATIC_PATH = /^\/(?!\/)[A-Za-z0-9_\-.~@+%\/]*$/;
+// The worker's health check: a ping a minute; silent for a ping and a half = not responding; a
+// worker that has never answered gets the first ping's time plus a margin.
+const SW_HEALTH_PING_MS = 60000;
+const SW_HEALTH_SILENT_MS = 95000;
+const SW_HEALTH_GRACE_MS = 20000;
 function normalizeStaticFilePath(url) {
     if (typeof url === 'string') {
         const q = url.search(/[?#]/);
@@ -3382,11 +3387,13 @@ class ServiceWorkerManager {
         // Don't initialize lastPingResponseTime - wait for first actual response
         // This way we can detect if service worker never responds
         
-        // Send health check ping every 10 seconds
+        // One ping a minute (#849). It was one every 10 seconds, which woke the page and kept the
+        // worker's thread from ever going idle, on every client and for as long as the page lived.
+        // The limits that read the answers moved with it (SW_HEALTH_SILENT_MS, SW_HEALTH_GRACE_MS).
         this.healthCheckInterval = setInterval(() => {
             if (document.hidden) return;
             this._runMeasuredHealthCheckPing();
-        }, 10000);
+        }, SW_HEALTH_PING_MS);
         
         // Send initial ping immediately
         this._runMeasuredHealthCheckPing();
@@ -3425,7 +3432,7 @@ class ServiceWorkerManager {
             // Check if service worker is responding (if we haven't received a response in 15 seconds, it's likely stopped)
             if (this.lastPingResponseTime) {
                 const timeSinceLastResponse = Date.now() - this.lastPingResponseTime;
-                if (timeSinceLastResponse > 15000) {
+                if (timeSinceLastResponse > SW_HEALTH_SILENT_MS) {
                     console.warn(`Service worker not responding - last response ${Math.round(timeSinceLastResponse / 1000)}s ago`);
                 }
             }
@@ -3460,13 +3467,13 @@ class ServiceWorkerManager {
         if (this.lastPingResponseTime) {
             timeSinceLastPingResponse = Date.now() - this.lastPingResponseTime;
             // If we haven't received a ping response in 15 seconds, service worker is likely stopped
-            isResponding = timeSinceLastPingResponse < 15000;
+            isResponding = timeSinceLastPingResponse < SW_HEALTH_SILENT_MS;
         } else if (hasActive && this.healthCheckInterval && this.healthCheckStartTime) {
             // If we have an active service worker but no ping response time yet, check grace period
             const timeSinceHealthCheckStart = Date.now() - this.healthCheckStartTime;
             // Give 20 seconds grace period after starting health check before marking as not responding
             // This accounts for initial delay and potential slow responses
-            if (timeSinceHealthCheckStart > 20000) {
+            if (timeSinceHealthCheckStart > SW_HEALTH_GRACE_MS) {
                 // Grace period expired, service worker is not responding
                 isResponding = false;
                 timeSinceLastPingResponse = timeSinceHealthCheckStart;

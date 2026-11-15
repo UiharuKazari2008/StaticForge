@@ -1389,6 +1389,8 @@ function initializeBackgrounds() {
 }
 
 // Start automatic background system that cycles through gallery images
+let automaticBackgroundListening = false;
+let lastBackgroundHash = null;
 async function startAutomaticBackgroundSystem() {
     // Clear any existing interval
     if (automaticBackgroundInterval) {
@@ -1409,10 +1411,16 @@ async function startAutomaticBackgroundSystem() {
         }
     }
     
-    // Set up interval to change background every 10 seconds
+    // The backdrop follows the newest print. It asked every 10 seconds, decoding that print's
+    // BlurHash into a picture each time just to find it unchanged (#849). It now looks when the
+    // gallery says it changed, with one look a minute as the net, and decodes only a new hash.
     automaticBackgroundInterval = setInterval(async () => {
         await updateAutomaticBackground();
-    }, 10000); // 10 seconds
+    }, 60000);
+    if (!automaticBackgroundListening) {
+        automaticBackgroundListening = true;
+        document.addEventListener('galleryUpdated', () => { void updateAutomaticBackground(); });
+    }
     
     // Initial background update - but only if gallery is ready.
     // Desktop gallery load is non-blocking (appInitSteps.js step 31), so this often runs first.
@@ -1468,12 +1476,14 @@ async function updateAutomaticBackground() {
         
         // BlurHash only for soft backdrop (CSS filter supplies the blur)
         let backgroundUrl = null;
+        // the same hash is the same picture: the one already shown
+        if (firstImage.blurhash && firstImage.blurhash === lastBackgroundHash && lastBackgroundUrl) return;
         if (firstImage.blurhash) {
             backgroundUrl = blurhashToDataUrl(firstImage.blurhash, 32, 32);
         }
         if (!backgroundUrl) return;
         
-        if (lastBackgroundUrl && lastBackgroundUrl === backgroundUrl) return;
+        if (lastBackgroundUrl && lastBackgroundUrl === backgroundUrl) { lastBackgroundHash = firstImage.blurhash; return; }
         
         // Preload the image to ensure smooth transition
         await preloadImage(backgroundUrl);
@@ -1485,6 +1495,7 @@ async function updateAutomaticBackground() {
         await performBackgroundTransition(backgroundUrl);
         setDefaultBackgroundForWorkspace(backgroundUrl);
         lastBackgroundUrl = backgroundUrl;
+        lastBackgroundHash = firstImage.blurhash;
         
     } catch (error) {
         backgroundLoadFailCount++;

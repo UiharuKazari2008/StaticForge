@@ -171,7 +171,14 @@
         if (!isDesktopTab()) return;
         wire();
         // window.textMessaging may be swapped later (tests); and the tray exists only after the desktop builds
-        const timer = setInterval(wire, 5000);
+        // (#849) every 5 seconds until it is wired, then once a minute for a swapped client: it
+        // asked every 5 seconds for the life of the page
+        let timer = setInterval(() => {
+            wire();
+            if (!wiredTo) return;
+            clearInterval(timer);
+            timer = setInterval(wire, 60000);
+        }, 5000);
         setTimeout(() => void syncIcon(), 15000);
         root.addEventListener('pagehide', () => clearInterval(timer), { once: true });
     }

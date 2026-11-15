@@ -8502,14 +8502,15 @@ class WebSocketClient {
                 showBanner: false,
                 timestamp: pingTimestamp,
                 socket: this.ws,
-                counted: true
+                // the keep-alive is not a request the user waits on: it stays out of the pending count, as the
+                // silent requests do (#849: every 30 s it flipped all five ticker badges to 1 and back)
+                counted: false,
+                silentTicker: true
             });
 
             // Store ping timestamp for RTT calculation
             this.pendingPings.set(requestId, pingTimestamp);
 
-            // Increment pending requests count
-            this.incrementPendingRequests();
 
             try {
                 this.send(message);
@@ -8525,7 +8526,6 @@ class WebSocketClient {
                     if (this.pendingRequests.has(requestId)) {
                         this.pendingRequests.delete(requestId);
                         this.pendingPings.delete(requestId);
-                        this.decrementPendingRequests();
 
                         console.warn(`⚠️ Ping request timeout (ID: ${requestId}) after ${timeoutMs}ms`);
                         this._registerMissedPong();
@@ -8542,7 +8542,6 @@ class WebSocketClient {
             } catch (error) {
                 this.pendingRequests.delete(requestId);
                 this.pendingPings.delete(requestId);
-                this.decrementPendingRequests();
                 reject(error);
             }
         });

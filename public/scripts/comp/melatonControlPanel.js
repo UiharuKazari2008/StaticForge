@@ -540,7 +540,7 @@
         }
         current = page;
         addressLoad(0.4);
-        if (page === 'network') pollStatus();
+        if (page === 'network') { pollStatus(); startLiveTimer(); }
         render();
         requestAnimationFrame(() => addressLoad(1));
     }
@@ -1233,8 +1233,23 @@
     function startTimers() {
         stopTimers();
         wireLinkEvents();
+        startLiveTimer();
+        statusTimer = setInterval(() => {
+            snapshot();
+            if (instances.some((i) => isShown(i) && i.current === 'network')) pollStatus();
+        }, STATUS_POLL_MS);
+    }
+
+    // The one-second redraw is the Network Connections page's alone (its counters and state). It
+    // ran for as long as any Control Panel window was open, on whatever page (the Welcome Center is
+    // one: a desktop that keeps it open woke once a second for nothing, #849). It runs while a
+    // shown window is on that page, and go() starts it again when one arrives there.
+    const onNetworkPage = () => instances.some((i) => isShown(i) && (i === active ? current : i.current) === 'network');
+    function startLiveTimer() {
+        if (liveTimer || !onNetworkPage()) return;
         liveTimer = setInterval(() => {
             if (!instances.some(isShown)) { stopTimers(); return; }
+            if (!onNetworkPage()) { clearInterval(liveTimer); liveTimer = null; return; }
             eachOpen(() => {
                 if (current !== 'network') return;
                 // Only the parts that change; keep the selection / focus elsewhere intact
@@ -1246,10 +1261,6 @@
                 if (mainEl.innerHTML !== body) mainEl.innerHTML = body;
             });
         }, LIVE_TICK_MS);
-        statusTimer = setInterval(() => {
-            snapshot();
-            if (instances.some((i) => isShown(i) && i.current === 'network')) pollStatus();
-        }, STATUS_POLL_MS);
     }
 
     function stopTimers() {

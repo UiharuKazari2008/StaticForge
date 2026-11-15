@@ -1056,8 +1056,25 @@ class DirectorMascot {
         }
         const composer = host.querySelector('#directorComposer');
         if (composer) composer.addEventListener('transitionend', () => this.layout());
-        this._tick = setInterval(() => this.tick(), DIRECTOR_MASCOT_TICK_MS);
-        this.scheduleBlink();
+        this.retime();
+    }
+
+    // Her clockwork follows whether she shows (#849). The one-second tick and the blink timer ran for
+    // the life of the page, Director open or not: on a desktop that never opens the Director that is
+    // a wake-up a second and a visibility check every few seconds for nobody. Shown: the tick every
+    // second and the blinks, as before. Not shown: one tick in fifteen seconds (the old timed stage
+    // rules still count while she works unseen) and no blink timer. applyView calls this on each
+    // change; director.js ticks her at once when the phone brings the Director to the front.
+    retime() {
+        const shown = !!this._shown;
+        const every = shown ? DIRECTOR_MASCOT_TICK_MS : DIRECTOR_MASCOT_TICK_MS * 15;
+        if (this._tickEvery !== every) {
+            clearInterval(this._tick);
+            this._tickEvery = every;
+            this._tick = setInterval(() => this.tick(), every);
+        }
+        if (shown && !this._blinkTimer) this.scheduleBlink();
+        if (!shown && this._blinkTimer) { clearTimeout(this._blinkTimer); this._blinkTimer = null; }
     }
 
     setEnabled(on) {
@@ -1088,6 +1105,7 @@ class DirectorMascot {
         const on = this.enabled && !!this.manifest && this.isHosted();
         const was = this._shown;
         this._shown = on;
+        this.retime();
         this.root.classList.toggle('hidden', !on);
         // Her layers are full-canvas sheets (5 x 2726 x 2413 at once, ~130 MB decoded): she holds
         // none while she is not shown (Director docked in Studio, mascot off), idle perf pass 2026-11-04
