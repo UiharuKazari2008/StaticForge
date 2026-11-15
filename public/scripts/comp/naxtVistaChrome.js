@@ -45,7 +45,7 @@
 
         isOn() {
             const b = document.body;
-            return !!b && b.classList.contains('desktop-mode') && !b.classList.contains('windows-classic-theme');
+            return !!b && b.classList.contains('desktop-mode') && window.uiTheme.is('vista');
         }
 
         build() {

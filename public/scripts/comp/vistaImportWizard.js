@@ -39,7 +39,7 @@
     let chosenMode = null;
 
     function isVista() {
-        return !!doc && doc.body.classList.contains('desktop-mode') && !doc.body.classList.contains('windows-classic-theme');
+        return !!doc && doc.body.classList.contains('desktop-mode') && window.uiTheme.is('vista');
     }
 
     /** 3 while content is loaded (data-mode), else 2 after a mode was chosen, else 1. */

@@ -9,13 +9,13 @@
   "theme-art-path": 169,
   "hand-built-window": 103,
   "toast": 1063,
-  "theme-test-copy": 37,
   "own-menubar": 70,
-  "colour-in-script": 1500,
+  "colour-in-script": 1497,
   "native-picker": 13,
   "native-scrollbar": 46,
   "native-range": 5,
-  "native-dialog": 10,
+  "theme-test-copy": 19,
+  "native-dialog": 7,
   "native-widget": 2,
   "native-select": 1
  },
@@ -41,7 +41,6 @@
    "theme-negative": 62
   },
   "apps/calculator/client/calculator.js": {
-   "theme-test-copy": 1,
    "hand-built-window": 1
   },
   "apps/calendar/assets/calendar.css": {
@@ -1119,9 +1118,6 @@
   "public/scripts/comp/characterSearchModal.js": {
    "toast": 2
   },
-  "public/scripts/comp/clientPerfSampler.js": {
-   "theme-test-copy": 1
-  },
   "public/scripts/comp/compareViewManager.js": {
    "colour-in-script": 5,
    "toast": 14
@@ -1194,9 +1190,7 @@
    "hand-built-window": 2
   },
   "public/scripts/comp/desktop-apps/dovecote.js": {
-   "native-dialog": 1,
    "inline-style": 1,
-   "theme-test-copy": 1,
    "hand-built-window": 6,
    "toast": 1
   },
@@ -1322,7 +1316,6 @@
   },
   "public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js": {
    "colour-in-script": 5,
-   "theme-test-copy": 1,
    "hand-built-window": 2
   },
   "public/scripts/comp/desktopIconDialogs.js": {
@@ -1337,7 +1330,6 @@
   "public/scripts/comp/director.js": {
    "colour-in-script": 18,
    "inline-style": 4,
-   "theme-test-copy": 2,
    "hand-built-window": 1,
    "toast": 70
   },
@@ -1354,9 +1346,6 @@
   },
   "public/scripts/comp/dropPasteFallback.js": {
    "toast": 5
-  },
-  "public/scripts/comp/dsapManifests.js": {
-   "theme-test-copy": 1
   },
   "public/scripts/comp/dsapRegistry.js": {
    "inline-style": 1,
@@ -1412,9 +1401,6 @@
    "hand-built-window": 1,
    "toast": 1
   },
-  "public/scripts/comp/explorerVistaChrome.js": {
-   "theme-test-copy": 1
-  },
   "public/scripts/comp/fatalErrorBootstrap.js": {
    "native-dialog": 4,
    "inline-style": 1
@@ -1451,7 +1437,6 @@
    "colour-in-script": 12
   },
   "public/scripts/comp/grimoireIeChrome.js": {
-   "theme-test-copy": 1,
    "hand-built-window": 1,
    "toast": 6
   },
@@ -1565,8 +1550,7 @@
   },
   "public/scripts/comp/mmcDataManagement.js": {
    "colour-in-script": 4,
-   "inline-style": 7,
-   "theme-test-copy": 1
+   "inline-style": 7
   },
   "public/scripts/comp/mmcEnshutsuka.js": {
    "colour-in-script": 9,
@@ -1594,9 +1578,6 @@
   "public/scripts/comp/naxtApplet.js": {
    "inline-style": 1,
    "toast": 29
-  },
-  "public/scripts/comp/naxtVistaChrome.js": {
-   "theme-test-copy": 1
   },
   "public/scripts/comp/notepadManager.js": {
    "colour-in-script": 23,
@@ -1674,7 +1655,6 @@
    "toast": 16
   },
   "public/scripts/comp/requestForm.js": {
-   "theme-test-copy": 1,
    "toast": 2
   },
   "public/scripts/comp/runApplet.js": {
@@ -1700,8 +1680,6 @@
    "toast": 3
   },
   "public/scripts/comp/serviceWorkerManager.js": {
-   "native-dialog": 2,
-   "theme-test-copy": 1,
    "toast": 19
   },
   "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
@@ -1742,7 +1720,6 @@
   "public/scripts/comp/tagWikiSearchModal.js": {
    "colour-in-script": 9,
    "inline-style": 13,
-   "theme-test-copy": 1,
    "hand-built-window": 2,
    "toast": 33
   },
@@ -1759,14 +1736,10 @@
    "toast": 50
   },
   "public/scripts/comp/toastManager.js": {
-   "inline-style": 2,
-   "theme-test-copy": 1
+   "inline-style": 2
   },
   "public/scripts/comp/trayIndicators.js": {
    "toast": 2
-  },
-  "public/scripts/comp/trayRegistry.js": {
-   "theme-test-copy": 1
   },
   "public/scripts/comp/uploadHandlers.js": {
    "toast": 4
@@ -1790,11 +1763,9 @@
    "colour-in-script": 26
   },
   "public/scripts/comp/vistaDialogs.js": {
-   "theme-test-copy": 1,
    "hand-built-window": 2
   },
   "public/scripts/comp/vistaImportWizard.js": {
-   "theme-test-copy": 1,
    "hand-built-window": 1
   },
   "public/scripts/comp/vistaSidebar.js": {
@@ -2013,7 +1984,7 @@
    "hand-built-window": 1
   },
   "public/scripts/comp/workspaceUtils.js": {
-   "colour-in-script": 24,
+   "colour-in-script": 21,
    "inline-style": 5,
    "toast": 7
   },

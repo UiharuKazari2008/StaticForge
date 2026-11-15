@@ -494,7 +494,7 @@ function _isDesktopPopupWiredToast(type, title, showProgress = false) {
 function _getDesktopPopupAnchorForTitle(title) {
     if (title === 'High Latency Detected') {
         // the Vista look shows latency on the network icon (limited globe), not its own icon
-        const classic = document.body.classList.contains('windows-classic-theme');
+        const classic = window.uiTheme.is('classic');
         return (!classic && document.getElementById('modemTrayIcon')) || document.getElementById('pingWarningIndicator');
     }
     if (title === 'Generation Complete') {

@@ -2520,7 +2520,7 @@ const doveSummarizeStrippedCounts = function (counts) {
 let doveFrameScrollbarCss = null;
 const doveFrameScrollbarStyle = async function () {
     const body = document.body;
-    if (!body.classList.contains('desktop-mode') || body.classList.contains('windows-classic-theme')) return '';
+    if (!body.classList.contains('desktop-mode') || !window.uiTheme.is('vista')) return '';
     if (doveFrameScrollbarCss === null) {
         doveFrameScrollbarCss = fetch('/css/vista-scrollbars-frame.css')
             .then((response) => (response.ok ? response.text() : ''))
@@ -2824,7 +2824,8 @@ const doveOwnConfirmation = function (promise) {
 const doveConfirmPermanentDelete = async function (count, inTrash) {
     if (!inTrash && doveCurrentFolderKind() !== 'deleted') return true;
     // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
-    if (typeof showConfirmationDialog !== 'function') return window.confirm('Permanently delete ' + count + ' message(s)?');
+    // without the message box nothing is deleted (never the browser's confirm: no-native-browser-ui.mdc)
+    if (typeof showConfirmationDialog !== 'function') return false;
     const answer = await doveOwnConfirmation(showConfirmationDialog(
         'Permanently delete ' + (count === 1 ? 'this message' : count + ' messages') + '? This cannot be undone.',
         [

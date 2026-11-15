@@ -5862,7 +5862,7 @@ class TagWikiSearchModal extends WikiDisplayBase {
         this.searchInput.value = current || 'edtx://en.grimoire.jp/index.dtxt';
         // On the Vista desktop the box is IE7's: a click puts the caret in and selects the whole
         // address (the VM, 2026-10-13). Touch / mobile keep the no-focus behaviour above.
-        if (document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme')
+        if (document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista')
             && !(window.matchMedia && window.matchMedia('(hover: none)').matches)) {
             this.searchInput.focus({ preventScroll: true });
             this.searchInput.select();

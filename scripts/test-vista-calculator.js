@@ -37,7 +37,7 @@ for (const [file, text] of [['calculator.css', css], ['calculator.js', js], ['de
 assert.ok(js.includes("if (on) modal.dataset.windowClient = 'light';") && js.includes("els.content.classList.toggle('win7', on);") && js.includes("els.content.classList.toggle('dark', !on);"), 'light client: data-window-client="light" + .win7, dark client off the desktop');
 assert.ok(js.includes("modal.classList.toggle('resizeable-window', !on);"), 'not resizable on the Vista desktop');
 assert.ok(js.includes("modal.classList.toggle('toolbar-visible', !on);") && css.includes(`${G} #desktopCalculatorModal .modal-window-title-toolbar {\n    display: none;`), 'the caption toolbar goes off on the Vista desktop');
-assert.ok(js.includes("b.contains('desktop-mode') && !b.contains('windows-classic-theme')"), 'Vista gate reads the body classes');
+assert.ok(js.includes("b.contains('desktop-mode') && window.uiTheme.is('vista')"), 'Vista gate asks uiTheme');
 assert.ok(js.includes("attributeFilter: ['class']"), 'the structure follows body class changes');
 assert.ok(js.includes('DESKTOP_CALCULATOR_VISTA_WIDTHS = { standard: 270,'), "Standard is calc.exe's 270 px window");
 assert.ok(js.includes('modal.style.width = modal.dataset.windowDefaultWidth + \'px\';'), 'the fixed width is applied per mode');

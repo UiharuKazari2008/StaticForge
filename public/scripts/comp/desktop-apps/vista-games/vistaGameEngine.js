@@ -895,7 +895,7 @@
     // ---- window ----------------------------------------------------------------------------
     const isVistaDesktop = () => {
         const b = document.body.classList;
-        return b.contains('desktop-mode') && !b.contains('windows-classic-theme');
+        return b.contains('desktop-mode') && window.uiTheme.is('vista');
     };
     VG.isVistaDesktop = isVistaDesktop;
 

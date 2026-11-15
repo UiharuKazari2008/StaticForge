@@ -5186,7 +5186,7 @@ class Director {
     syncMessagesScrollbar() {
         const box = this.directorChatMessages && this.directorChatMessages.closest('.director-chat-messages-container');
         if (!box) return;
-        const vista = document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+        const vista = document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista');
         if (vista === box.classList.contains('director-native-scroll')) return;
         const el = this.directorScrollEl();
         const fromBottom = el ? el.scrollHeight - el.clientHeight - el.scrollTop : 0;
@@ -6792,7 +6792,7 @@ class Director {
         // variables, since the Studio window paints the ground there.
         // The Vista desktop draws Director in its own light chrome; a session's workspace
         // variables fight it, so there it keeps the current workspace (Yukimi 2026-10-14).
-        const scoped = meta && meta.id && !(document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme'));
+        const scoped = meta && meta.id && !(document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista'));
         const inWindow = this.directorDockedInWindow();
         if (this.directorWindow) {
             if (inWindow && scoped) this.directorWindow.setAttribute('data-workspace', meta.id);

@@ -11,7 +11,7 @@ function requestFormMobile() {
 }
 
 function requestFormVista() {
-    return document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+    return document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista');
 }
 
 function requestFormFieldValue(row) {

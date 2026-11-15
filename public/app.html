@@ -45,6 +45,9 @@
             })();
         })();
     </script>
+    <!-- the named desktop theme (#864): html[data-theme] before first paint, then uiTheme.js owns it and body.theme-* -->
+    <script>document.documentElement.setAttribute('data-theme', 'vista');</script>
+    <script src="/scripts/comp/uiTheme.js"></script>
     <script src="/scripts/comp/fatalErrorBootstrap.js"></script>
     <!-- which asset packages this client keeps (Melaton Mobile's art per version and density), before anything is fetched (#774) -->
     <script src="/scripts/launch/assetPackages.js"></script>
@@ -751,7 +754,7 @@
     <script src="/scripts/utils/androidOrphanGuard.js"></script>
 </head>
 
-<body class="initializing">
+<body class="initializing theme-vista">
     <script>
         (function () {
             try {
@@ -826,7 +829,9 @@
             try {
                 if (localStorage.getItem('dreamscapeUseVistaLogon')) document.body.classList.add('vista-logon');
             } catch (e) { /* Classic */ }
-            document.body.classList.add(document.body.classList.contains('vista-logon') ? 'vista-basic-theme' : 'windows-classic-theme');
+            // Classic takes body.theme-vista off with it (uiTheme.js); Vista Basic is still Vista
+            if (document.body.classList.contains('vista-logon')) document.body.classList.add('vista-basic-theme');
+            else window.uiTheme.setBootTheme('classic');
             // Solid colour behind the logon dialog; desktopBoot.js reveals the layers in stages
             document.body.classList.add('boot-staged');
         };
@@ -2461,8 +2466,6 @@
                                         title="Force Paid Request">
                                         <i class="fas fa-dollar-sign"></i>
                                     </button>
-                                    <input type="color" id="studioTransparencyCustomColor" class="hidden" value="#808080"
-                                        tabindex="-1" aria-hidden="true">
                                     <div id="manualTokenFreeDisplay"
                                         class="inset-badge gen-count-display token-free-display hidden"
                                         style="height: 32px;" title="Prompt tokens free">
@@ -5380,11 +5383,11 @@ Examples:
                     <div class="form-row">
                         <div class="form-group">
                             <label for="workspaceColorInput">Color</label>
-                            <input type="color" id="workspaceColorInput" class="form-control" value="#102040">
+                            <button type="button" id="workspaceColorInput" class="vdt-colorwell" value="#102040" aria-label="Color"><span class="vdt-colorwell-fill"></span></button>
                         </div>
                         <div class="form-group">
                             <label for="workspaceBackgroundColorInput">Background</label>
-                            <input type="color" id="workspaceBackgroundColorInput" class="form-control" value="#0a1a2a">
+                            <button type="button" id="workspaceBackgroundColorInput" class="vdt-colorwell" value="#0a1a2a" aria-label="Background"><span class="vdt-colorwell-fill"></span></button>
                         </div>
 
                     </div>

@@ -145,7 +145,7 @@ function getClientPerfSample(reason = 'manual') {
         page: location.pathname,
         glass: {
             glassOn: !document.documentElement.classList.contains('disable-blur'),
-            classicTheme: document.body.classList.contains('windows-classic-theme')
+            classicTheme: window.uiTheme.is('classic')
         },
         visibility: document.visibilityState,
         frame: getClientPerfFrameSnapshot(),

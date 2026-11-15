@@ -7,6 +7,9 @@
     <meta name="viewport"
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
+    <!-- the named desktop theme (#864): the Vista rules in cache-browser.css and vista-scrollbars.css key on it -->
+    <script>document.documentElement.setAttribute('data-theme', 'vista');</script>
+
     <!-- Launch-only design mode (this file only): / → ?design=1; validation paused; HUD presets = launch DOM only -->
     <script>
         var dreamscapeDesignModeActive = false;
@@ -769,7 +772,7 @@
     </style>
 </head>
 
-<body>
+<body class="theme-vista">
     <!-- Window Controls Overlay API - Titlebar Grab Area -->
     <div id="titlebar-grab-area">
         <div id="titlebar-null-left"></div>

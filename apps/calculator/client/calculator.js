@@ -316,7 +316,7 @@ const calcBuildPad = function (mode) {
 // Vista desktop, not Classic: the gate every rule in vista-calculator.css uses.
 const calcIsVista = function () {
     const b = document.body.classList;
-    return b.contains('desktop-mode') && !b.contains('windows-classic-theme');
+    return b.contains('desktop-mode') && window.uiTheme.is('vista');
 };
 
 const ensureDesktopCalculatorModal = function () {

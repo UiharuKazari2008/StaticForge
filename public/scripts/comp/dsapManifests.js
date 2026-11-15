@@ -23,7 +23,7 @@ const WIKI_DSAP_MANIFEST_URL = 'wiki.dyna.dreamscape.jp';
 /** Melaton's Vista desktop (not Windows Classic, not the phone): the MMC consoles stand in for DSAP pages there. */
 function dsapIsVistaDesktop() {
     const body = document.body;
-    return body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme');
+    return body.classList.contains('desktop-mode') && window.uiTheme.is('vista');
 }
 
 /**

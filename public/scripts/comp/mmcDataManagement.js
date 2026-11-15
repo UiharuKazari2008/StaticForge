@@ -135,7 +135,7 @@
 
     const isDesktop = () => {
         const b = root.document && root.document.body;
-        return !!b && b.classList.contains('desktop-mode') && !b.classList.contains('windows-classic-theme');
+        return !!b && b.classList.contains('desktop-mode') && root.uiTheme.is('vista');
     };
 
     // ---- data ---------------------------------------------------------------------------------

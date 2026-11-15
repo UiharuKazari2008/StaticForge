@@ -63,7 +63,7 @@
     let bodyObserver = null;
 
     function isVista() {
-        return !!doc && doc.body.classList.contains('desktop-mode') && !doc.body.classList.contains('windows-classic-theme');
+        return !!doc && doc.body.classList.contains('desktop-mode') && window.uiTheme.is('vista');
     }
 
     function clientOf(el) {

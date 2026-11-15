@@ -696,8 +696,12 @@ class ServiceWorkerManager {
                 false,
                 '<i class="fas fa-exclamation-triangle"></i>'
             );
+        } else if (typeof dreamscapeLastResortNotice === 'function') {
+            // dreamscapeLastResortNotice: public/scripts/comp/fatalErrorBootstrap.js (the message box if it
+            // has loaded; the browser's own box only when nothing of ours can draw)
+            dreamscapeLastResortNotice(`Dreamscape OS could not start: ${message}`, 'Dreamscape OS');
         } else {
-            alert(`Dreamscape OS could not start: ${message}`);
+            console.error('Dreamscape OS could not start:', message);
         }
     }
 
@@ -1379,7 +1383,7 @@ class ServiceWorkerManager {
         // says it); a balloon only when something needs you, worded as Vista's, and one click
         // opens Melaton Update (cplUpdate.js balloonFor). Classic keeps the old popup.
         this.trayPopup.vistaBalloon = null;
-        const vistaDesktop = document.body.classList.contains('desktop-mode') && !document.body.classList.contains('windows-classic-theme');
+        const vistaDesktop = document.body.classList.contains('desktop-mode') && window.uiTheme.is('vista');
         const showSeq = (this._trayShowSeq = (this._trayShowSeq || 0) + 1);
         if (vistaDesktop && !window.cplUpdate) {
             // The wording lives in Control Panel's update page (the control_panel feature). Until that
@@ -4514,7 +4518,10 @@ class ServiceWorkerManager {
         // runWinlogonPower: public/scripts/comp/winlogonPower.js
         runWinlogonPower('restart').catch((err) => {
             console.error('❌ Restart sequence failed:', err);
-            alert('Restart failed. Please refresh the page manually to apply updates.');
+            // dreamscapeLastResortNotice: public/scripts/comp/fatalErrorBootstrap.js
+            if (typeof dreamscapeLastResortNotice === 'function') {
+                dreamscapeLastResortNotice('Restart failed. Please refresh the page manually to apply updates.', 'Restart');
+            }
         });
     }
 

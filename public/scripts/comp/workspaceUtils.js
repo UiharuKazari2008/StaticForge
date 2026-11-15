@@ -1290,7 +1290,10 @@ async function loadWorkspaces() {
             // runWithThemeSwitchOverlay: public/scripts/comp/themePreferences.js
             await runWithThemeSwitchOverlay(() => {
                 loadBlurPreference();
-                document.body.classList.remove(bootTheme);
+                // Classic off and the desktop theme id on in one step (uiTheme.js); Vista Basic
+                // is still Vista, so its class just comes off
+                if (bootTheme === 'windows-classic-theme') window.uiTheme.setBootTheme(null);
+                else document.body.classList.remove(bootTheme);
                 if (!document.body.classList.contains('windows-startup')) {
                     document.body.classList.remove('no-animation');
                 }
@@ -2556,8 +2559,24 @@ function openWorkspaceDesktopDialog(kind, ...args) {
     return true;
 }
 
+/**
+ * The Color and Background boxes of this form are colour buttons that open the Color dialog
+ * (vistaDialogTemplate.colorWell), not the browser's colour inputs. Until the kit has loaded they
+ * are plain buttons whose value attribute holds the colour.
+ */
+function ensureWorkspaceColorWells() {
+    if (!window.featureLoader) return;
+    window.featureLoader.loadFeature('vista_dialog_templates').then(() => {
+        ['workspaceColorInput', 'workspaceBackgroundColorInput'].forEach((id) => {
+            const el = document.getElementById(id);
+            if (el && window.vistaDialogTemplate) window.vistaDialogTemplate.colorWell(el);
+        });
+    }).catch((error) => console.error('Workspace colour buttons:', error));
+}
+
 function showAddWorkspaceModal() {
     if (openWorkspaceDesktopDialog('create')) return;
+    ensureWorkspaceColorWells();
     currentWorkspaceOperation = { type: 'add' };
     document.getElementById('workspaceNameInput').classList.remove('hidden');
     document.getElementById('workspaceColorInput').classList.remove('hidden');
@@ -2599,6 +2618,7 @@ function refreshExplorerWorkspacesListIfOpen() {
 
 async function editWorkspaceSettings(id) {
     if (openWorkspaceDesktopDialog('properties', id)) return;
+    ensureWorkspaceColorWells();
     currentWorkspaceOperation = { type: 'settings', id };
     document.getElementById('workspaceNameInput').classList.remove('hidden');
     document.getElementById('workspaceColorInput').classList.remove('hidden');
@@ -2620,21 +2640,6 @@ async function editWorkspaceSettings(id) {
         const nickInput = document.getElementById('workspaceNicknamesInput');
         if (nickInput) nickInput.value = '';
 
-        // Ensure color pickers reflect the loaded values visually
-        try {
-            const colorInputEl = document.getElementById('workspaceColorInput');
-            const bgColorInputEl = document.getElementById('workspaceBackgroundColorInput');
-            if (colorInputEl) {
-                colorInputEl.style.background = colorInputEl.value;
-                colorInputEl.style.borderColor = brightenColor(colorInputEl.value, 1.25);
-                colorInputEl.style.color = '#fff';
-            }
-            if (bgColorInputEl) {
-                bgColorInputEl.style.background = bgColorInputEl.value;
-                bgColorInputEl.style.borderColor = brightenColor(bgColorInputEl.value, 1.25);
-                bgColorInputEl.style.color = '#fff';
-            }
-        } catch (e) { /* no-op */ }
     }
 
     const modal = document.getElementById('workspaceEditModal');
@@ -2881,29 +2886,6 @@ function initializeWorkspaceSettingsForm() {
         return;
     }
     workspaceSettingsFormWired = true;
-
-    // Live styling for color pickers themselves (apply chosen color to their background and border)
-    const colorInput = document.getElementById('workspaceColorInput');
-    const bgColorInput = document.getElementById('workspaceBackgroundColorInput');
-
-    const styleColorPicker = (inputEl, hex) => {
-        if (!inputEl || !hex) return;
-        inputEl.style.background = hex; // 100% opacity
-        inputEl.style.borderColor = brightenColor(hex, 1.25); // brighter border
-        inputEl.style.color = '#fff';
-        inputEl.style.borderStyle = 'solid';
-        inputEl.style.borderWidth = '1px';
-    };
-
-    if (colorInput) {
-        styleColorPicker(colorInput, colorInput.value);
-        colorInput.addEventListener('input', (e) => styleColorPicker(colorInput, e.target.value));
-    }
-
-    if (bgColorInput) {
-        styleColorPicker(bgColorInput, bgColorInput.value);
-        bgColorInput.addEventListener('input', (e) => styleColorPicker(bgColorInput, e.target.value));
-    }
 
     // Primary font dropdown setup (selection stored locally; sent on Save)
     const primaryFontBtn = document.getElementById('workspacePrimaryFontDropdownBtn');

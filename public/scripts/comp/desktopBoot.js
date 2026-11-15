@@ -612,6 +612,19 @@
     }
 
     /**
+     * Put a boot theme class on or off. Classic goes through uiTheme.js, which takes the desktop
+     * theme id (body.theme-vista, html[data-theme]) off and on with it in the same step; Vista
+     * Basic is still Vista, so it is a plain class.
+     */
+    function setBootThemeClass(b, cls, on) {
+        if (cls === CLASSIC_THEME_CLASS && win && win.uiTheme && b === doc.body) {
+            win.uiTheme.setBootTheme(on ? 'classic' : null);
+            return;
+        }
+        b.classList.toggle(cls, !!on);
+    }
+
+    /**
      * A lock layer takes the first logon's theme while either lock is up (Vista Basic with Use
      * Vista Logon, Windows Classic otherwise): the restart lock is the logon again, the
      * workstation lock is Vista's locked Welcome screen or Classic's Computer Locked
@@ -623,11 +636,11 @@
         if (!b) return;
         const want = (state.suspended || state.workstationLocked) ? bootThemeClass() : null;
         if (state.lockTheme && state.lockTheme !== want) {
-            b.classList.remove(state.lockTheme);
+            setBootThemeClass(b, state.lockTheme, false);
             state.lockTheme = null;
         }
         if (want && !b.classList.contains(want)) {
-            b.classList.add(want);
+            setBootThemeClass(b, want, true);
             state.lockTheme = want;
         }
     }
@@ -649,8 +662,8 @@
         if (!b.classList.contains('windows-startup')) return;
         const from = state.vistaLogon ? CLASSIC_THEME_CLASS : VISTA_BASIC_THEME_CLASS;
         if (b.classList.contains(from)) {
-            b.classList.remove(from);
-            b.classList.add(bootThemeClass());
+            setBootThemeClass(b, from, false);
+            setBootThemeClass(b, bootThemeClass(), true);
         }
     }
 
