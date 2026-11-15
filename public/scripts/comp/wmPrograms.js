@@ -44,10 +44,12 @@
         todayItems: root.dataset.wmVersion === '6.5' ? 'wmTodayItems65' : 'wmTodayItems',
         // 6.5 Today > Items > "Today timeout": { on, hours }; stored only, nothing reads it yet
         todayTimeout: 'wmTodayTimeout',
-        // 6.5 Today > Wallpaper > Parallax Effect: the picture, zoomed in slightly, follows the list (wmTitanium.js)
+        // 6.5 Today > Effects > Parallax Effect: the picture, zoomed in slightly, follows the list (wmTitanium.js)
         todayParallax: 'wmTodayParallax',
         // ... and how far it moves: 1 (slight) - 10 (a lot), 4 = the first build's 8 % zoom
         todayParallaxLevel: 'wmTodayParallaxLevel',
+        // ... and the other effects, { name: false } for each one switched off (all on by default)
+        todayFx: 'wmTodayFx',
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
@@ -1156,12 +1158,14 @@
     const PAGES = [
         {
             id: 'today', tab: 'personal', label: 'Today', icon: 'set-today',
-            tabs: [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
+            // 6.5's home screen has an Effects tab (Yukimi, Nov 15)
+            tabs: runningVersion() === '6.5' ? [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items'], ['effects', 'Effects']] : [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
             init: () => ({
                 useDesktop: todayUsesDesktop(), source: sh && sh.todayWallSource ? sh.todayWallSource() : (todayUsesDesktop() ? 'workspace' : 'selected'), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
                 parallax: lsGet(K.todayParallax) === '1',
                 parallaxLevel: Math.max(1, Math.min(10, Math.round(Number(lsGet(K.todayParallaxLevel)) || 4))),
+                fx: (() => { try { const v = JSON.parse(lsGet(K.todayFx) || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } })(),
                 screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
             }),
             render(el, tab, d, api) {
@@ -1202,17 +1206,37 @@
                         api.rerender();
                     });
                     pick.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
-                    // 6.5 home screen (Yukimi, Nov 15): the picture zoomed in slightly moves with the list; Start keeps it still
-                    if (runningVersion() === '6.5') {
-                        el.insertAdjacentHTML('beforeend', `<div class="wm-form-gap"></div>${check('wmTodayParallax', 'Parallax Effect', d.parallax)}
-                            <div class="wm-form-sub">Distance</div><div data-f="parallax-level"></div>
-                            <p class="wm-form-note">The picture is zoomed in and moves as the Today screen moves up and down; the farther it moves, the more it is zoomed in.${d.source === 'android' ? " Android's own wallpaper is drawn by Android and stays still." : ''}</p>`);
-                        el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; api.rerender(); });
-                        ui.trackbar(el.querySelector('[data-f="parallax-level"]'), {
-                            steps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: d.parallaxLevel, lo: 'Slight', hi: 'A lot', label: 'Parallax distance',
-                            disabled: !d.parallax, onChange: (v) => { d.parallaxLevel = v; }
-                        });
-                    }
+                    return;
+                }
+                if (tab === 'effects') {
+                    // the home screen's effects (wmTitanium.js): Parallax with its Distance, then the rest as a
+                    // check list that scrolls inside the page (the page itself never scrolls)
+                    const rows = [
+                        ['tilt', 'Tilt the picture with the phone'],
+                        ['breathe', 'Settle the picture as Today comes back'],
+                        ['stagger', 'Cascade the list as Today comes back'],
+                        ['overshoot', 'Spring the list into place'],
+                        ['catch', 'Light the glass as the list lands'],
+                        ['exit', 'Drop the list away when a program opens'],
+                        ['gloss', 'Light the items under the glass'],
+                        ['digits', "Roll the clock's digits"],
+                        ['blur', 'Frosted glass'],
+                        ['haptics', 'Vibrate as items pass the glass']
+                    ];
+                    el.innerHTML = `${check('wmTodayParallax', 'Parallax Effect', d.parallax)}
+                        <div class="wm-form-sub">Distance</div><div data-f="parallax-level"></div>
+                        <div class="wm-form-gap"></div>
+                        <div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0;max-height:calc(150 * var(--wm-px))">${rows.map(([k, l]) => `<div class="wm-listbox-row">${check(`fx-${k}`, l, d.fx[k] !== false, `value="${k}"`)}</div>`).join('')}</div>
+                        <p class="wm-form-note">${d.source === 'android' ? "Android's own wallpaper is drawn by Android: it stays still and the glass is not frosted. " : ''}Moving effects are off while the phone asks for reduced motion.</p>`;
+                    el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; api.rerender(); });
+                    ui.trackbar(el.querySelector('[data-f="parallax-level"]'), {
+                        steps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: d.parallaxLevel, lo: 'Slight', hi: 'A lot', label: 'Parallax distance',
+                        disabled: !d.parallax, onChange: (v) => { d.parallaxLevel = v; }
+                    });
+                    rows.forEach(([k]) => {
+                        const c = el.querySelector(`input[name="fx-${k}"]`);
+                        if (c) c.addEventListener('change', () => { if (c.checked) delete d.fx[k]; else d.fx[k] = false; });
+                    });
                     return;
                 }
                 if (tab === 'items' && d.optsFor) {
@@ -1357,8 +1381,9 @@
                 lsSet(K.titleBar, d.titleBar);
                 lsSet(K.todayParallax, d.parallax ? '1' : null);
                 lsSet(K.todayParallaxLevel, d.parallaxLevel === 4 ? null : d.parallaxLevel);
+                lsSet(K.todayFx, Object.keys(d.fx || {}).length ? JSON.stringify(d.fx) : null);
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayFx];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]

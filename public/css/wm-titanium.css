@@ -332,3 +332,118 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp {
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-entering .wm-ti-list { animation: none; }
     html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp { animation: none; }
 }
+
+/* ---- Settings > Today > Effects (wmTitanium.js; html[data-wm-ti-fx] lists the ones on) ---- */
+
+/* frosted band: the picture blurred once (a small cached image) shown in the glass, under the rows and
+ * the band art, lined up with the picture layer and moved by the same values (wm65.css) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur {
+    position: absolute;
+    left: 0;
+    top: calc(var(--wm-ti-top, 99) * var(--u));
+    width: 100%;
+    height: calc(70 * var(--u));
+    overflow: hidden;
+    pointer-events: none;
+    contain: strict;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur[hidden] {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in {
+    position: absolute;
+    background-color: #000;
+    transform: translate3d(var(--wm-ti-tx, 0%), calc(var(--wm-ti-par, 0) * var(--wm-ti-shift, 0%) + var(--wm-ti-ty, 0%)), 0) scale(var(--wm-ti-zoom, 1));
+    will-change: transform;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur-in.is-breathe {
+    animation: wm-ti-breathe 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* the glass catches the light as the list lands: a highlight over the band's upper glass, in and out */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-band::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: calc(70 * var(--u));
+    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.1) 48%, rgba(255, 255, 255, 0) 100%);
+    opacity: 0;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-catch .wm-ti-band::after {
+    animation: wm-ti-catch 0.42s ease-out both;
+}
+
+@keyframes wm-ti-catch {
+    0% { opacity: 0; }
+    28% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* labels pick up light under the glass: a soft white glow with the usual shadow, a little brighter
+ * than the device's dim */
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="gloss"] .wm-ti-row {
+    transition: opacity 0.12s linear, text-shadow 0.12s linear;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="gloss"] .wm-ti-row.is-under {
+    opacity: 0.8;
+    text-shadow: 0 0 calc(7 * var(--u)) rgba(255, 255, 255, 0.6), calc(1 * var(--u)) calc(1 * var(--u)) calc(1.5 * var(--u)) #000;
+}
+
+/* an item opening a program: the list drops away and the panel fades (170 ms) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-list {
+    animation: wm-ti-exit-list 0.17s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-focus {
+    animation: wm-ti-exit-panel 0.17s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes wm-ti-exit-list {
+    to { transform: translate3d(0, calc(56 * var(--u)), 0); opacity: 0; }
+}
+
+@keyframes wm-ti-exit-panel {
+    to { transform: scale(0.94); opacity: 0; }
+}
+
+/* the clock's changed digits roll over: the old one up and out, the new one up from below */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-dg {
+    position: relative;
+    display: inline-block;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-dg-in {
+    display: inline-block;
+    animation: wm-ti-dg-in 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-dg-out {
+    position: absolute;
+    left: 0;
+    top: 0;
+    animation: wm-ti-dg-out 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes wm-ti-dg-in {
+    from { transform: translateY(0.45em); opacity: 0; }
+    to { transform: none; opacity: 1; }
+}
+
+@keyframes wm-ti-dg-out {
+    from { transform: none; opacity: 1; }
+    to { transform: translateY(-0.45em); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-catch .wm-ti-band::after,
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-list,
+    html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-exiting .wm-ti-focus { animation: none; }
+}
