@@ -1252,6 +1252,22 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([
     to { scale: 1; }
 }
 
+/* Start (Effects > Start > frosted): the band's blurred copy of the picture, full screen under Start's
+ * 50 % sheet (the ::after above it), the full-size picture not drawn under it */
+html.ui-mobile[data-wm-version="6.5"] #wmShell > .wm-wall65 > .wm-wall65-frost {
+    display: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startfrost"][data-wm-app="start"] #wmShell > .wm-wall65.has-frost {
+    background-image: none !important;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-fx~="startfrost"][data-wm-app="start"] #wmShell > .wm-wall65 > .wm-wall65-frost.is-ready {
+    display: block;
+    position: absolute;
+    inset: 0;
+}
+
 html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-today.has-picture {
     background-image: none !important;
     background-color: transparent !important;

@@ -337,12 +337,15 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-zoom-enter .wm-ti-exp {
 
 /* frosted band: the picture blurred once (a small cached image) shown in the glass, under the rows and
  * the band art, lined up with the picture layer and moved by the same values (wm65.css) */
+/* exactly the band art's glass (ti-3000, 82 units: a shadow fade, then the glass from its light top line
+ * at 9 units to its bottom line ending at 69, then a shadow fade); larger, the frost showed above and
+ * below the glass (Yukimi, Nov 15) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-blur {
     position: absolute;
     left: 0;
-    top: calc(var(--wm-ti-top, 99) * var(--u));
+    top: calc((var(--wm-ti-top, 99) + 9) * var(--u));
     width: 100%;
-    height: calc(70 * var(--u));
+    height: calc(60 * var(--u));
     overflow: hidden;
     pointer-events: none;
     contain: strict;
@@ -369,8 +372,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-band::after {
     position: absolute;
     left: 0;
     right: 0;
-    top: 0;
-    height: calc(70 * var(--u));
+    /* the glass only (9 - 69 of the 82-unit art), as the frost */
+    top: calc(9 * var(--u));
+    height: calc(60 * var(--u));
     /* a faint sheen on the glass's upper half, not a flash (Yukimi, Nov 15: the first one read as a white flash) */
     background: linear-gradient(to bottom, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04) 45%, rgba(255, 255, 255, 0) 70%);
     opacity: 0;

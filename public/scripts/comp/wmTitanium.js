@@ -501,8 +501,11 @@
     const PARALLAX_KEY = 'wmTodayParallax';
     const PARALLAX_LEVEL_KEY = 'wmTodayParallaxLevel'; // 1 - 10: zoom 1 + 2 % a step, travel 7/8 of the margin
     const FX_KEY = 'wmTodayFx';
-    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'haptics'];
-    const FX_MOTION = ['tilt', 'breathe', 'stagger', 'overshoot', 'exit', 'digits'];
+    // ... and Start's (wmStart65.js, wm65-start.css): startopen (icons in from the corner), startfrost
+    // (the frosted picture under its dark sheet), startlaunch (a program grows out of its icon),
+    // startticks (a tick a row while it scrolls)
+    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'haptics', 'startopen', 'startfrost', 'startlaunch', 'startticks'];
+    const FX_MOTION = ['tilt', 'breathe', 'stagger', 'overshoot', 'exit', 'digits', 'startopen', 'startlaunch'];
     const fx = {};
     let parallaxOn = false;
     let parallaxZoom = 1.08;
@@ -510,6 +513,7 @@
     let wallEl = null;
     let wallVarsSet = {};
     let fxLayer = null;
+    let frostLayer = null;
     let fxKey = '';
     const sizedCache = new Map();
     let blurClip = null;
@@ -547,6 +551,7 @@
         if (!el) return false;
         if (el !== wallEl && blurMo) { blurMo.disconnect(); blurMo = null; }
         if (el !== wallEl && fxLayer) { fxLayer.remove(); fxLayer = null; fxKey = ''; }
+        if (el !== wallEl && frostLayer) { frostLayer.remove(); frostLayer = null; }
         wallEl = el;
         wallVarsSet = {};
         // the moving copy of the picture: a child of the layer (wm65.css hides the layer's own picture
@@ -556,6 +561,13 @@
             fxLayer.className = 'wm-wall65-fx';
             fxLayer.setAttribute('aria-hidden', 'true');
             wallEl.appendChild(fxLayer);
+        }
+        // Start's frosted picture (Effects > Start): the band's blurred copy, full screen, under the sheet
+        if (!frostLayer) {
+            frostLayer = document.createElement('div');
+            frostLayer.className = 'wm-wall65-frost';
+            frostLayer.setAttribute('aria-hidden', 'true');
+            wallEl.appendChild(frostLayer);
         }
         wallEl.classList.add('has-fx');
         watchWall();
@@ -635,7 +647,12 @@
     // frame; Android's own wallpaper (drawn behind the page) has none.
     function syncBlur() {
         const want = fx.blur && host && !host.hidden && ensureWall();
-        if (!want) { if (blurClip) blurClip.hidden = true; return; }
+        if (!want) {
+            if (blurClip) blurClip.hidden = true;
+            // Start's frost still wants the blurred picture
+            if (fx.startfrost && ensureWall()) { blurKey = ''; blurPicture(); }
+            return;
+        }
         if (!blurClip) {
             blurClip = document.createElement('div');
             blurClip.className = 'wm-ti-blur';
@@ -712,19 +729,22 @@
         return pr;
     }
     function blurPicture() {
-        if (!blurClip || !wallEl || !fx.blur) return;
+        if (!wallEl || !(fx.blur || fx.startfrost)) return;
         const w = wallEl.style;
         const key = `${wallEl.hidden}|${w.backgroundImage}|${w.backgroundSize}|${w.backgroundPosition}|${w.backgroundRepeat}`;
         if (key === blurKey) return; // the per-frame property writes land here too: nothing to redo
         blurKey = key;
         const img = w.backgroundImage;
         const urls = wallEl.hidden || !img ? [] : [...img.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]);
-        if (!urls.length) { blurClip.hidden = true; return; }
+        if (!urls.length) { if (blurClip) blurClip.hidden = true; if (frostLayer) { frostLayer.classList.remove('is-ready'); wallEl.classList.remove('has-frost'); } return; }
         Promise.all(urls.map(blurredUrl)).then((outs) => {
             if (key !== blurKey || !outs.some(Boolean)) return;
             let out = img;
             urls.forEach((u, i) => { if (outs[i]) out = out.split(u).join(outs[i]); });
-            Object.assign(blurInner.style, { backgroundImage: out, backgroundSize: w.backgroundSize, backgroundPosition: w.backgroundPosition, backgroundRepeat: w.backgroundRepeat });
+            const bg = { backgroundImage: out, backgroundSize: w.backgroundSize, backgroundPosition: w.backgroundPosition, backgroundRepeat: w.backgroundRepeat };
+            if (frostLayer) { Object.assign(frostLayer.style, bg); frostLayer.classList.add('is-ready'); wallEl.classList.add('has-frost'); }
+            if (!blurClip || !fx.blur) return;
+            Object.assign(blurInner.style, bg);
             blurClip.hidden = false;
             blurPlace();
         });

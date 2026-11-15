@@ -424,7 +424,15 @@
         y = yNew;
         // one composited layer moves: no layout, no paint of the cells
         list.style.transform = `translate3d(0,${-y}px,0)`;
+        // Settings > Today > Effects > Start: a tick each time a row of icons passes (83 units a row)
+        if (fxOn('startticks')) {
+            const row = Math.floor(Math.max(0, Math.min(maxY, y)) / (83 * (parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1)));
+            if (row !== tickRow) { if (tickRow >= 0 && sh && typeof sh.vibrate === 'function') { try { sh.vibrate('tick'); } catch (_) { /* no motor */ } } tickRow = row; }
+        }
     }
+    let tickRow = -1;
+    /** One of Settings > Today > Effects (wmTitanium.js writes the ones on to html[data-wm-ti-fx]). */
+    const fxOn = (name) => (` ${root.dataset.wmTiFx || ''} `).includes(` ${name} `);
 
     function measure() {
         // fractional: a grid that ends on a middle-column cell is half a unit longer
@@ -591,6 +599,21 @@
         const it = items[i];
         if (!it) return;
         if (it.folder) { openFolder(it); return; }
+        // Effects > Start: a program grows out of its icon (140 ms), then opens
+        if ((it.app || it.launch) && fxOn('startlaunch')) {
+            const cell = list && list.querySelector(`.wm-s65-cell[data-i="${i}"]`);
+            if (cell && !cell.classList.contains('is-launching')) {
+                cell.classList.add('is-launching');
+                return new Promise((resolve) => setTimeout(() => {
+                    cell.classList.remove('is-launching');
+                    resolve(openItemNow(it));
+                }, 140));
+            }
+        }
+        return openItemNow(it);
+    }
+
+    function openItemNow(it) {
         if (it.setting) { openSetting(it.setting); return; }
         if (it.app) { sh.open(it.app, { fromStart: true }); return; }
         // a Dreamscape app page: its own route (Internet Explorer's mobile view), under the wait cursor
@@ -964,6 +987,8 @@
         } catch (err) { console.warn('[wmStart65] lock', err); }
     }
 
+    let openingTimer = 0;
+
     function register() {
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
@@ -1004,8 +1029,17 @@
                 }
                 path.length = 0;
                 render();
+                tickRow = -1;
                 place(0);
                 select(0, false);
+                // Effects > Start: the icons come in from the Start button's corner, row by row
+                if (fxOn('startopen')) {
+                    page.classList.remove('is-opening');
+                    void page.offsetWidth;
+                    page.classList.add('is-opening');
+                    clearTimeout(openingTimer);
+                    openingTimer = setTimeout(() => page.classList.remove('is-opening'), 900);
+                }
             },
             hide() { endDrag(false); stopMotion(); },
             softKeys() {
