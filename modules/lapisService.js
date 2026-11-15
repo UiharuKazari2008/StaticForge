@@ -1221,7 +1221,7 @@ function notice(kind, title, text, actions, extra) {
     try {
         const inboxId = extra && extra.key ? `lapis:${kind}:${extra.key}` : kind === 'run-left' ? 'lapis:run-left' : `lapis:${n.id}`;
         require('./notificationInbox').bind(gr).publish({
-            app: 'lapis', id: inboxId, cls: kind === 'unlocked' ? 'notification' : kind === 'run-left' ? 'lapis-run-left' : 'notification',
+            app: 'lapis', id: inboxId, cls: kind === 'unlocked' ? 'lapis-unlocked' : kind === 'health' ? 'lapis-issue' : kind === 'run-left' ? 'lapis-run-left' : 'notification',
             title, text, actions: n.actions, data: { app: 'lapis', kind, open: kind === 'service' ? 'service' : kind === 'refuel' || kind === 'low-fuel' ? 'history' : kind === 'run-left' ? 'start' : kind === 'health' ? 'status' : null },
             expiresAt: kind === 'run-left' && Number.isFinite(n.until) ? n.until : undefined,
         });
