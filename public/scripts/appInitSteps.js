@@ -332,6 +332,28 @@ if (window.wsClient) {
         'Manual resolution and dropdown listeners', 'Main prompt autocomplete listeners'
     ]);
 
+    // The phone loads them when Studio first opens (#817): loaded 3 s after Today they built the Qwen
+    // tables on the page's thread (over a second on the A53) just as the person starts tapping, and
+    // only Studio and its tool windows read them (T5 readers take a missing one, Qwen readers load on
+    // demand). wmShell's wmAppChange names the program that came to the front.
+    function whenPhoneStudioOpens(fn) {
+        const sh = window.wmShell;
+        if (sh && typeof sh.currentApp === 'function' && sh.currentApp() === 'studio') { fn(); return; }
+        const onApp = (e) => {
+            if (!e.detail || e.detail.id !== 'studio') return;
+            document.removeEventListener('wmAppChange', onApp);
+            // after Studio's first frame
+            requestAnimationFrame(() => setTimeout(fn, 0));
+        };
+        document.addEventListener('wmAppChange', onApp);
+    }
+
+    // the gate the on-demand Qwen load waits behind on the phone (utilities.js ensurePromptTokenizerForModel):
+    // Studio's model dropdown and token bars ask for it while the phone boots
+    if (phoneShell()) {
+        window.melatonTokenizerGate = new Promise((resolve) => whenPhoneStudioOpens(() => { window.melatonTokenizerGate = null; resolve(); }));
+    }
+
     let tokenizersQueued = false;
     window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
         if (tokenizersQueued) return;
@@ -342,7 +364,7 @@ if (window.wsClient) {
                 document.dispatchEvent(new CustomEvent('promptTokenizersLoaded', { detail: { ok } }));
             }, () => { tokenizersQueued = false; });
         };
-        if (phoneShell()) afterPhoneBoot(load);
+        if (phoneShell()) whenPhoneStudioOpens(load);
         else afterDesktopBoot(load);
     }, true);
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {

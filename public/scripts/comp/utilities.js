@@ -771,6 +771,8 @@ async function ensurePromptTokenizerForModel(modelValue) {
     if (qwenTokenizer) return qwenTokenizer;
     if (!qwenTokenizerPromise) {
         qwenTokenizerPromise = (async () => {
+            // Melaton Mobile: not before Studio first opens (appInitSteps.js melatonTokenizerGate, #817)
+            if (window.melatonTokenizerGate) await window.melatonTokenizerGate;
             const tokenizer = new QwenTokenizer();
             await tokenizer.loadFromURL('/protected/qwen35_tokenizer.def');
             qwenTokenizer = tokenizer;
