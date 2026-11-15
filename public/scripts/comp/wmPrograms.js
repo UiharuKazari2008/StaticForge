@@ -1372,9 +1372,14 @@
                     // the phone's notifications in the Super Bar, then each app seen there and its channels
                     const c = d.sbn;
                     c.apps = c.apps || {}; c.channels = c.channels || {};
+                    // a channel's id read as words: 'notification_channel_weekly_report' -> 'Weekly report'
+                    const chLabel = (id) => {
+                        const t = String(id).replace(/^(notification[_-]?)?channel[_-]?/i, '').replace(/[_-]?(notification[_-]?)?channel$/i, '').replace(/[_.-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase();
+                        return t ? t.charAt(0).toUpperCase() + t.slice(1) : String(id);
+                    };
                     const known = Object.entries(c.known || {}).sort((a, b) => String(a[1].app || a[0]).localeCompare(String(b[1].app || b[0]), undefined, { sensitivity: 'base' }));
                     const rows = known.map(([pkg, k]) => `<div class="wm-listbox-row">${check('sb-app', k.app || pkg, c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
-                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row" style="padding-left:calc(18 * var(--wm-px))">${check('sb-ch', ch, c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join('')).join('');
+                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row"><span style="display:inline-block;flex:none;width:calc(18 * var(--wm-px))"></span>${check('sb-ch', chLabel(ch), c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join('')).join('');
                     el.innerHTML = `${check('sbPhone', "Show the phone's notifications", c.phone !== false)}
                         <div class="wm-form-gap"></div><p>Show notifications from:</p>
                         ${rows ? `<div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0">${rows}</div>` : '<p class="wm-form-note">Apps and their channels are listed here once their notifications have shown in the Super Bar.</p>'}`;
