@@ -130,6 +130,29 @@
 .wds-field[data-field="uc"] { height: calc(2 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
 .wds-field.is-empty { color: #848284; }
 
+/* characters: a WM list, one row each: the in-use check, then the name and the first words */
+.wds-chars[hidden] { display: none; }
+.wds-chars .wm-listbox { margin-bottom: calc(2 * var(--wm-px)); }
+.wds-char > .wm-check { flex: 0 0 auto; }
+.wds-char-open {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: calc(17 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.wds-char.is-off .wds-char-open { color: #848284; }
+.wds-char-open:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+
 /* the settings in one row; a tap opens Settings */
 .wds-summary {
     display: block;

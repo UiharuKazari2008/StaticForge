@@ -37,6 +37,28 @@
 
     const TABS = [['prompt', 'Prompt'], ['settings', 'Settings'], ['print', 'Print']];
     const FIELD_NAMES = { prompt: 'Prompt', uc: 'Undesired', negative: 'Inline Negative' };
+    // a prompt field: one of FIELD_NAMES, or a character's, 'c:<place>:prompt' | 'c:<place>:uc'
+    const charOf = (id) => { const m = /^c:(\d+):(prompt|uc)$/.exec(String(id)); return m ? { index: Number(m[1]), part: m[2] } : null; };
+    function fieldName(id) {
+        const c = charOf(id);
+        if (!c) return FIELD_NAMES[id] || 'Prompt';
+        const who = ((read().characters || [])[c.index] || {}).name || `Character ${c.index + 1}`;
+        return c.part === 'uc' ? `${who}: Undesired` : who;
+    }
+    function fieldValue(id) {
+        const c = charOf(id);
+        if (!c) return read()[id] || '';
+        return ((read().characters || [])[c.index] || {})[c.part] || '';
+    }
+    function fieldSet(id, value) {
+        const c = charOf(id);
+        return change(c ? `character:${c.index}:${c.part}` : id, value);
+    }
+    function fieldList() {
+        const out = Object.keys(FIELD_NAMES);
+        (read().characters || []).forEach((_, i) => out.push(`c:${i}:prompt`, `c:${i}:uc`));
+        return out;
+    }
     const ED_BAR = [['undo', 'Undo'], ['redo', 'Redo'], '|', ['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']];
 
     let sh = null;
@@ -176,9 +198,45 @@
             box.classList.toggle('is-empty', !text);
             drawTokens(id, text, $(`.wds-label[data-for="${id}"] > span:last-child`));
         });
+        drawChars(s);
         const sum = $('.wds-summary > span');
         if (sum && s.model !== undefined) sum.textContent = summaryText(s, M.options());
         drawStrip();
+    }
+
+    /** Characters: one row each (in use or not, name, first words); a tap on the text edits it. */
+    function drawChars(s) {
+        const box = $('.wds-chars');
+        if (!box) return;
+        const list = s.characters || [];
+        box.hidden = !list.length;
+        if (!list.length) { box.textContent = ''; return; }
+        box.innerHTML = `<div class="wds-label"><span>Characters</span><span></span></div><div class="wm-listbox">${list.map((c, i) => `<div class="wm-listbox-row wds-char${c.enabled ? '' : ' is-off'}" data-char="${i}"><label class="wm-check"><input type="checkbox" data-char="${i}"${c.enabled ? ' checked' : ''} aria-label="Use ${esc(c.name || `Character ${i + 1}`)}"><span></span></label><button type="button" class="wds-char-open" data-char="${i}"><b>${esc(c.name || `Character ${i + 1}`)}</b> ${esc(c.prompt || '')}</button></div>`).join('')}</div>`;
+    }
+
+    function addCharacter() {
+        const i = M.addCharacter();
+        snap = null;
+        if (i >= 0) openEditor(`c:${i}:prompt`); else paint();
+    }
+
+    function renameCharacter(i) {
+        const cur = ((read().characters || [])[i] || {}).name || `Character ${i + 1}`;
+        sh.messageBox({ title: 'Rename Character', text: 'Name:', input: { value: cur }, modal: true, buttons: [{ text: 'ok', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false })
+            .then((name) => { if (name) { M.setCharacter(i, { name }); snap = null; paint(); if (top() === 'editor') edLoad(); } });
+    }
+
+    function removeCharacter(i) {
+        const cur = ((read().characters || [])[i] || {}).name || `Character ${i + 1}`;
+        sh.messageBox({ title: 'DreamStudio', text: `Remove ${cur} from this session?`, icon: 'question', modal: true, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false })
+            .then((yes) => {
+                if (!yes) return;
+                // the editor may be on this character: leave it without writing the text back
+                if (top() === 'editor' && charOf(edField)) { acHide(); layers.pop(); sh.syncHistory(); }
+                M.removeCharacter(i);
+                snap = null;
+                paint();
+            });
     }
 
     function comboRow(label, act, pairs, value) {
@@ -305,7 +363,7 @@
         if (v === 'home' || v === 'print') { drawHome(); drawPrint(); }
         if (v === 'settings') drawSettings();
         drawTabs();
-        sh.setTitle(v === 'editor' ? FIELD_NAMES[edField] : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio'));
+        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio'));
         sh.refreshTitleAction();
         sh.refreshSoftKeys();
     }
@@ -374,21 +432,21 @@
     function edLoad() {
         const ta = edArea();
         if (!ta) return;
-        ta.value = read()[edField] || '';
+        ta.value = fieldValue(edField);
         const label = $('.wds-ed-head > .wm-combo > span');
-        if (label) label.textContent = FIELD_NAMES[edField];
+        if (label) label.textContent = fieldName(edField);
         edCount();
     }
 
     function edCommit() {
         const ta = edArea();
         if (!ta) return Promise.resolve();
-        if ((read()[edField] || '') === ta.value) return Promise.resolve();
-        return change(edField, ta.value);
+        if (fieldValue(edField) === ta.value) return Promise.resolve();
+        return fieldSet(edField, ta.value);
     }
 
     function openEditor(field) {
-        edField = FIELD_NAMES[field] ? field : 'prompt';
+        edField = FIELD_NAMES[field] || charOf(field) ? field : 'prompt';
         if (top() !== 'editor') layers.push('editor');
         paint();
         edLoad();
@@ -414,7 +472,7 @@
             edField = field;
             snap = null;
             edLoad();
-            sh.setTitle(FIELD_NAMES[edField]);
+            sh.setTitle(fieldName(edField));
             const ta = edArea();
             if (ta) ta.focus();
         });
@@ -597,12 +655,13 @@
         if (v === 'print') rows.push(...printRows(), '-');
         else rows.push({ label: 'Print', submenu: printRows }, '-');
         if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
+        if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
         rows.push({ label: 'New Session', action: newSession });
         return rows;
     }
 
     function editorMenu() {
-        return [
+        const rows = [
             { label: 'Undo', action: () => edCommand('undo') },
             { label: 'Redo', action: () => edCommand('redo') },
             '-',
@@ -614,6 +673,9 @@
             '-',
             { label: 'Generate', action: generate }
         ];
+        const c = charOf(edField);
+        if (c) rows.push('-', { label: 'Rename Character...', action: () => renameCharacter(c.index) }, { label: 'Remove Character', action: () => removeCharacter(c.index) });
+        return rows;
     }
 
     function softKeys() {
@@ -636,6 +698,7 @@
     <div class="wds-field" role="button" tabindex="0" data-field="prompt"></div>
     <div class="wds-label" data-for="uc"><span>Undesired</span><span></span></div>
     <div class="wds-field" role="button" tabindex="0" data-field="uc"></div>
+    <div class="wds-chars" hidden></div>
   </div>
   <button type="button" class="wds-summary"><b>Settings</b><span></span></button>
 </div>
@@ -656,6 +719,9 @@
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
         $('.wds-summary').addEventListener('click', () => openLayer('settings'));
         p.querySelectorAll('.wds-field').forEach((b) => b.addEventListener('click', () => openEditor(b.dataset.field)));
+        const chars = $('.wds-chars');
+        chars.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-char-open'); if (b) openEditor(`c:${b.dataset.char}:prompt`); });
+        chars.addEventListener('change', (e) => { const t = e.target; if (t && t.dataset && t.dataset.char != null && t.type === 'checkbox') { M.setCharacter(Number(t.dataset.char), { enabled: !!t.checked }); snap = null; } });
         $('.wds-tabs').addEventListener('click', (e) => {
             const b = e.target.closest && e.target.closest('.wm-tab');
             if (!b || b.dataset.tab === tab) return;
@@ -680,7 +746,7 @@
         ac.addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wm-listbox-row'); if (r) acPick(r.dataset.key); });
         $('.wds-ed-head > .wm-combo').addEventListener('click', (e) => {
             e.stopPropagation();
-            sh.dropdown(e.currentTarget, Object.keys(FIELD_NAMES).map((id) => ({ label: FIELD_NAMES[id], radio: id === edField, action: () => edSwitch(id) })), 'left');
+            sh.dropdown(e.currentTarget, fieldList().map((id) => ({ label: fieldName(id), radio: id === edField, action: () => edSwitch(id) })), 'left');
         });
 
         // the print: a tap opens it full screen, a flick steps through this visit's prints

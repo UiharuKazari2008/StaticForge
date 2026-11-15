@@ -11,6 +11,9 @@
  *   studioModel.snapshot()              the session as plain data (prompt, uc, negative, model, steps ...)
  *   studioModel.set(id, value)          one value: 'prompt' | 'uc' | 'negative', or a Studio parameter id
  *                                       (studioChangeJson.js STUDIO_CHANGE_PARAM_DEFS)
+ *   studioModel.addCharacter() / removeCharacter(i) / setCharacter(i, { name, enabled })
+ *                                       characters by their place in snapshot().characters; their text is
+ *                                       set('character:<i>:prompt' | ':uc' | ':negative', value)
  *   studioModel.options()               what the lists offer and which controls the chosen model has
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
  *   studioModel.suggest(text)            tag suggestions for a few typed letters: [{ text, count }] (a promise)
@@ -37,7 +40,8 @@
        ensurePromptTokenizerForModel, collectManualFormValues, addSharedFieldsToRequestBody,
        calculateCreditCost, registerWsInboundHandler, findImageByFilename, updateManualPreviewDirectly, getImageMetadata,
        handleManualPreviewImageContextMenuAction, getAutofillSearchSettings, selectedDatasets,
-       applyStudioDatasetConfig, getCurrentDatasetModelKey, datasetAllowedForModel, getStudioUcPresetMenuItems */
+       applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems,
+       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, datasetAllowedForModel, getStudioUcPresetMenuItems */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -82,13 +86,22 @@
         try { out.paid = typeof forcePaidRequest !== 'undefined' && !!forcePaidRequest; } catch (_) { out.paid = false; }
         out.hasBaseImage = !!(window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.sourceFilename && el('manualImg2ImgGroup') && !el('manualImg2ImgGroup').classList.contains('hidden')));
         out.generating = generating();
+        try {
+            out.characters = (typeof getCharacterPrompts === 'function' ? getCharacterPrompts() : []).map((c) => ({
+                name: c.chara_name || '', prompt: c.prompt || '', uc: c.uc || '', negative: c.input_prompt_negative || '', enabled: c.enabled !== false
+            }));
+        } catch (_) { out.characters = []; }
         try { out.datasets = typeof selectedDatasets !== 'undefined' && Array.isArray(selectedDatasets) ? selectedDatasets.slice() : []; } catch (_) { out.datasets = []; }
         return out;
     }
 
     async function set(id, value) {
         if (!ready()) return false;
-        if (id === 'datasets') {
+        const chr = /^character:(\d+):(prompt|uc|negative)$/.exec(String(id));
+        if (chr) {
+            // one field of a character, by its place in the list (studioChangeJson.js field ids)
+            writeStudioFieldValue(`character:${chr[1]}:${chr[2] === 'negative' ? 'promptNegative' : chr[2]}`, value);
+        } else if (id === 'datasets') {
             // the checked datasets, by value (studioChangeJson.js applyStudioDatasetConfig)
             if (typeof applyStudioDatasetConfig === 'function') applyStudioDatasetConfig({ include: Array.isArray(value) ? value : [] });
         } else if (FIELDS[id]) {
@@ -137,6 +150,7 @@
                 effort,
                 uc: !locked('uc'),
                 datasets: !/^v3/.test(model),
+                characters: !/^v3/.test(model),
                 noise: !v5,
                 variety: !v5 && caps.varietyPlus !== false,
                 rescale: !locked('rescale'),
@@ -220,6 +234,40 @@
             const n = Number(c && typeof c === 'object' ? (c.isFree ? c.opus : c.list) : c);
             return Number.isFinite(n) ? n : 0;
         } catch (_) { return 0; }
+    }
+
+    // ---- characters: the desktop's character cards, by their place in the list
+
+    const characterItems = () => (typeof getStudioCharacterItems === 'function' ? getStudioCharacterItems() : []);
+
+    function addCharacter() {
+        if (typeof addCharacterPrompt !== 'function') return -1;
+        const before = characterItems().length;
+        addCharacterPrompt();
+        const n = characterItems().length;
+        emit('change', { id: 'characters' });
+        return n > before ? n - 1 : -1;
+    }
+
+    function removeCharacter(index) {
+        const item = characterItems()[index];
+        if (!item || typeof deleteCharacterPrompt !== 'function') return false;
+        deleteCharacterPrompt(item.id);
+        emit('change', { id: 'characters' });
+        return true;
+    }
+
+    function setCharacter(index, values) {
+        const item = characterItems()[index];
+        if (!item || !values) return false;
+        if (typeof values.name === 'string' && values.name.trim() && typeof setStudioCharacterName === 'function') setStudioCharacterName(index, values.name.trim());
+        if (typeof values.enabled === 'boolean') {
+            const toggle = el(`${item.id}_enabled`);
+            if (toggle) toggle.setAttribute('data-state', values.enabled ? 'on' : 'off');
+            item.classList.toggle('character-prompt-disabled', !values.enabled);
+        }
+        emit('change', { id: 'characters' });
+        return true;
     }
 
     function frameSrc(d) {
@@ -338,7 +386,7 @@
     }
 
     const api = {
-        ready, snapshot, set, options, tokens, suggest, cost, generate, stop, select, action, on, off,
+        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, generate, stop, select, action, on, off,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
