@@ -10,6 +10,56 @@
  * - Touch device compatibility
  */
 
+/**
+ * A bag of menu configs that does not keep rows alive (#849).
+ * attachToElement gave every element a generated id and kept its config under that id in a plain
+ * object for the life of the page. A list that redraws (Director sessions, messages, gallery
+ * tiles, Explorer rows) left the old rows' configs behind, each holding its closures and through
+ * them the discarded row: 92 more with every Director open, hundreds of thousands over days.
+ * Here a generated id leads to its element through a WeakRef and the config hangs on the element
+ * (WeakMap), so both go when the element does. Named configs set by hand (configs['vista-taskbar']
+ * = ...) stay in the object as before. The bag still reads and deletes by id, as every caller does.
+ */
+function makeMenuConfigBag() {
+    if (typeof WeakRef !== 'function' || typeof Proxy !== 'function') {
+        const plain = {};
+        Object.defineProperty(plain, '__attach', { value: (id, element, config) => { plain[id] = config; } });
+        return plain;
+    }
+    const owners = new Map();        // generated id -> WeakRef(element)
+    const byElement = new WeakMap(); // element -> config
+    const gone = typeof FinalizationRegistry === 'function' ? new FinalizationRegistry((id) => { owners.delete(id); }) : null;
+    const elementOf = (id) => { const ref = owners.get(id); return ref ? ref.deref() : undefined; };
+    const attach = (id, element, config) => {
+        if (!owners.has(id)) {
+            owners.set(id, new WeakRef(element));
+            if (gone) gone.register(element, id);
+        }
+        byElement.set(element, config);
+    };
+    return new Proxy({}, {
+        get(target, key) {
+            if (key === '__attach') return attach;
+            if (key === '__size') return owners.size;
+            if (key === '__owner') return elementOf;
+            if (typeof key === 'string' && owners.has(key)) { const el = elementOf(key); return el ? byElement.get(el) : undefined; }
+            return target[key];
+        },
+        has(target, key) {
+            return (typeof key === 'string' && owners.has(key) && !!elementOf(key)) || key in target;
+        },
+        deleteProperty(target, key) {
+            if (typeof key === 'string' && owners.has(key)) {
+                const el = elementOf(key);
+                if (el) byElement.delete(el);
+                owners.delete(key);
+                return true;
+            }
+            return delete target[key];
+        }
+    });
+}
+
 class ContextMenuController {
     constructor() {
         this.menu = null;
@@ -57,7 +107,8 @@ class ContextMenuController {
         this._hideAnimationEndHandler = null;
 
         /** Click/tap menus (separate from right-click / long-press context menus). */
-        this.clickMenuConfigs = {};
+        this.clickMenuConfigs = makeMenuConfigBag();
+        this.configs = makeMenuConfigBag();
         this.activeMenuTrigger = null;
         this._pendingClickMenuTouchTarget = null;
         /** After touch-open, ignore ghost click on trigger and overlay dismiss. */
@@ -3277,15 +3328,21 @@ class ContextMenuController {
     attachToElement(element, config) {
         if (!element || !config) return;
 
-        this.configs = this.configs || {};
+        this.configs = this.configs || makeMenuConfigBag();
         let configId = element.getAttribute('data-context-menu');
-        if (configId && this.configs[configId]) {
-            this.configs[configId] = config;
+        // a copy of a row (cloneNode) carries the original's id: it gets one of its own below
+        const owner = configId && typeof this.configs.__owner === 'function' ? this.configs.__owner(configId) : null;
+        const anothers = !!owner && owner !== element;
+        if (configId && !anothers && this.configs[configId]) {
+            // a generated id: the new config on this element; a named config: replaced under its name
+            if (configId.startsWith('context-menu-config-') && typeof this.configs.__attach === 'function') this.configs.__attach(configId, element, config);
+            else this.configs[configId] = config;
             return;
         }
 
         configId = 'context-menu-config-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        this.configs[configId] = config;
+        if (typeof this.configs.__attach === 'function') this.configs.__attach(configId, element, config);
+        else this.configs[configId] = config;
         element.setAttribute('data-context-menu', configId);
     }
 
@@ -3293,8 +3350,12 @@ class ContextMenuController {
         if (!element || !config) return;
 
         const configId = 'click-menu-config-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
-        this.clickMenuConfigs = this.clickMenuConfigs || {};
-        this.clickMenuConfigs[configId] = config;
+        this.clickMenuConfigs = this.clickMenuConfigs || makeMenuConfigBag();
+        // the config this element had under an earlier id goes with that id
+        const before = element.getAttribute('data-click-menu');
+        if (before && before.startsWith('click-menu-config-')) delete this.clickMenuConfigs[before];
+        if (typeof this.clickMenuConfigs.__attach === 'function') this.clickMenuConfigs.__attach(configId, element, config);
+        else this.clickMenuConfigs[configId] = config;
 
         element.setAttribute('data-click-menu', configId);
     }
