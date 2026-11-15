@@ -473,7 +473,8 @@ body.windows-classic-theme .dark .custom-dropdown-menu .custom-dropdown-separato
 }
 
 /* ---------- a program's Win32 menu bar menus (contextMenu.js .context-menu-win32) ----------
-   Opt-in per menu bar (role="menubar" data-win32-menus). Measured on the Vista VM (WordPad):
+   Every menu opened from a title in a role="menubar" bar is one (contextMenu.js _isWin32MenuTitle;
+   data-win32-menus is not read for this any more). Measured on the Vista VM (WordPad):
    a #979797 border, 2 px of #f5f5f5, the gutter (#f1f1f1, its #e2e3e3 / #fff line) running down
    the whole menu, Segoe UI 9 pt rows of 22 with labels 36 px from the border, separators of 8
    with the etched line 4 down from the gutter to the inner edge, accelerators right-aligned in
@@ -640,7 +641,10 @@ body.desktop-mode:not(.windows-classic-theme) .context-menu.context-menu-win32.c
 /* ---------- a program's Win32 menu bar (role="menubar" data-win32-menus, .naxt-menu-title) ----------
    Vista's themed menu bar as WordPad, Notepad and Registry Editor draw it on the VM: the 19 px
    MENU BARBACKGROUND band, Segoe UI 9 pt titles with 7 px each side, the hot and open title faces.
-   An app's own rules (WordPad, Task Manager) come later and win. */
+   data-win32-menus opts a bar into THIS skin and nothing else (the menus themselves are Win32 for
+   every role="menubar" bar). These rules outrank a program's own class rules (:not(#_)), so a bar
+   with other metrics (MMC's 23 px band: Messaging Bridge, Performance Monitor, mmcConsole.js) must
+   not carry the attribute; a program that repeats these values in its own sheet may. */
 body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus]:not(#_) {
     display: flex;
     flex: none;
@@ -691,7 +695,8 @@ body.desktop-mode:not(.windows-classic-theme) .naxt-menubar[data-win32-menus] .n
     display: none;
 }
 
-/* an inactive window greys its menu titles (the VM's Registry Editor behind another window) */
-body.desktop-mode:not(.windows-classic-theme) .modal:not(.active-window) .naxt-menubar[data-win32-menus] .naxt-menu-title:not(#_) {
+/* an inactive window greys its menu titles (the VM's Registry Editor behind another window):
+   every Win32 menu bar of a light client, whether it takes the skin above or draws its own band */
+body.desktop-mode:not(.windows-classic-theme) :is(.modal[data-window-client="light"]:not(.active-window) .naxt-menubar[role="menubar"], .modal:not(.active-window) .naxt-menubar[data-win32-menus]) .naxt-menu-title:not(#_):not(#__) {
     color: #6d6d6d;
 }

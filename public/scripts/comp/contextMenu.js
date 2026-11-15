@@ -2317,17 +2317,18 @@ class ContextMenuController {
         }
     }
 
-    /**
-     * A title in a program's menu bar (any role="menubar"): its menus are Win32 menus, Vista's metrics
-     * with the accelerators in their own right-aligned column ("Ctrl+N" beside "New", not under it).
-     * Every program menu bar is one; data-win32-menus is no longer needed to opt in.
-     */
     /** "Ctrl+N", "Ctrl+Shift+V", "Alt+F4", "F5", "Del", "Esc": an accelerator, not a description. */
     static isAccelerator(text) {
         const t = String(text == null ? '' : text).trim();
         return /^((Ctrl|Alt|Shift|Win)\s*\+\s*)+.+$/i.test(t) || /^(F\d{1,2}|Del|Delete|Esc|Enter|Ins|Insert|Tab|Backspace|Home|End|PgUp|PgDn|Space)$/i.test(t);
     }
 
+    /**
+     * A title in a program's menu bar (any role="menubar"): its menus are Win32 menus, Vista's metrics
+     * with the accelerators in their own right-aligned column ("Ctrl+N" beside "New", not under it).
+     * Every program menu bar is one. The data-win32-menus attribute is not read here: it only opts
+     * the BAR into the shared 19 px skin (public/css/vista-menus.css).
+     */
     _isWin32MenuTitle(target, trigger) {
         return trigger === 'click' && !!(target && target.closest && target.closest('[role="menubar"]'));
     }

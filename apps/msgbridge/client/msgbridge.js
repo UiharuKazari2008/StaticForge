@@ -139,7 +139,7 @@
                 </div>
                 <div class="modal-content win7 mb-client">
                     <div class="mb-rebar">
-                        <div class="naxt-menubar mb-menubar" role="menubar" data-win32-menus>
+                        <div class="naxt-menubar mb-menubar" role="menubar">
                             ${['File', 'Action', 'View', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-mb-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}
                         </div>
                         <div class="mb-toolbar" role="toolbar"></div>
@@ -203,6 +203,10 @@
             });
             this.wireSplit();
             m.id = 'melatonMessagingBridgeModal';
+            // "has stopped working" names the program and can end or restart it (programFaults.js)
+            if (root.programFaults && root.programFaults.registerProgram) {
+                root.programFaults.registerProgram(m.id, { name: 'Messaging Bridge', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'msgbridge' }) });
+            }
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;

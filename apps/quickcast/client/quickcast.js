@@ -173,7 +173,8 @@
             m.dataset.windowIdentifier = 'melatonQuickCast';
             m.dataset.windowClient = 'light';
             m.dataset.taskbarIcon = `${A}/quickcast-32.png`;
-            m.dataset.windowDefaultWidth = '940';
+            // the console opens 1160 wide (below); its panes need 980 (the minimum), so the default is not under it
+            m.dataset.windowDefaultWidth = '1160';
             m.dataset.windowDefaultHeight = '620';
             m.dataset.windowMinWidth = '980';
             m.dataset.windowMinHeight = '540';

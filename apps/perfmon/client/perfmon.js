@@ -193,6 +193,10 @@
             this.el('.pfm-tree').addEventListener('dblclick', (ev) => { const row = ev.target.closest('[data-node]'); if (row) this.toggle(row.dataset.node); });
             this.el('.pfm-toolbar').addEventListener('click', (ev) => { const b = ev.target.closest('[data-tb]'); if (b && !b.disabled) void this.action(b.dataset.tb); });
             m.id = 'melatonPerfmonModal';
+            // "has stopped working" names the program and can end or restart it (programFaults.js)
+            if (root.programFaults && root.programFaults.registerProgram) {
+                root.programFaults.registerProgram(m.id, { name: 'Reliability and Performance Monitor', terminate: () => this.app.exit(), relaunch: () => root.melatonApps && root.melatonApps.launch({ packageId: 'perfmon' }) });
+            }
             call('openModal', m);
             m.classList.remove('hidden');
             let placed = false;

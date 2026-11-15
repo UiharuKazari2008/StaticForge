@@ -125,7 +125,7 @@
                 </div>
                 <div class="modal-content win7 mmc-client">
                     <div class="mmc-rebar">
-                        <div class="naxt-menubar mmc-menubar" role="menubar" data-win32-menus>
+                        <div class="naxt-menubar mmc-menubar" role="menubar">
                             ${['File', 'Action', 'View', 'Help'].map((t) => `<button type="button" class="naxt-menu-title" data-mmc-menu="${t.toLowerCase()}" role="menuitem">${t}</button>`).join('')}
                         </div>
                         <div class="mmc-toolbar" role="toolbar"></div>
