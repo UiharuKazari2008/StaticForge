@@ -3006,7 +3006,8 @@
     function statusFitKey() {
         const bar = shell.querySelector('.wm-titlebar');
         if (!bar) return '';
-        const parts = [current, viewW(), viewH(), rootPx(), root.dataset.wmVersion || '', root.dataset.wmBezelEdge || '', root.dataset.wmCamera || ''];
+        const parts = [current, viewW(), viewH(), rootPx(), root.dataset.wmVersion || '', root.dataset.wmBezelEdge || '', root.dataset.wmCamera || '',
+            (window.screen && screen.orientation && screen.orientation.angle) || 0]; // a half turn changes no size
         const st = root.style;
         ['--camera-hole-left', '--camera-hole-top', '--camera-hole-width', '--camera-hole-height', '--wm-safe-top'].forEach((n) => parts.push(st.getPropertyValue(n)));
         try { parts.push(localStorage.getItem('wmStatusNoCross'), localStorage.getItem('wmStatusSlots'), localStorage.getItem('wmCameraExtendBar')); } catch (_) { /* storage off */ }
@@ -3305,7 +3306,11 @@
         const br = { top: br0.top + extend / 2, bottom: br0.bottom - extend / 2, right: br0.right, left: br0.left };
         const tl = title.getBoundingClientRect().left;
         const pad = 3 * (rootPx());
-        const inBar = !bezel && !cameraIgnoredNow() && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
+        // a phone's top camera is under the title bar only in the screen's own rotation (angle 0): turned,
+        // it is on a side or at the bottom, whatever --camera-hole-* still says (Fold7 inner screen in
+        // landscape kept the portrait gap after the Bluetooth icon, Nov 15)
+        const upright = !(window.screen && screen.orientation) || !(screen.orientation.angle % 360);
+        const inBar = upright && !bezel && !cameraIgnoredNow() && hole.width > 0 && hole.height > 0 && hole.top < br.bottom && hole.top + hole.height > br.top
             && hole.left - pad > tl && hole.left + hole.width < br.right;
         if (!inBar) {
             if (gap) gap.remove();
@@ -10182,6 +10187,8 @@
         window.addEventListener('resize', () => { syncBezel(); if (noteTrayOpen) renderNotes(); else fitStatusSettled(); });
         // the Android app moved or rotated the camera hole (--camera-hole-*)
         window.addEventListener('dreamscape:cutout', () => { syncBezel(); fitStatusSettled(); });
+        // a turn (a half turn too, which resizes nothing): the camera's place in the bar is fitted again
+        try { if (window.screen && screen.orientation) screen.orientation.addEventListener('change', () => { syncBezel(); fitStatusSettled(); }); } catch (_) { /* no orientation events */ }
         // back on screen (a fold or unfold can land while the page is hidden)
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !noteTrayOpen) { syncBezel(); fitStatusSettled(); } });
         // the app on screen decides whether the volume icon makes room for the camera (fitStatusNow)
