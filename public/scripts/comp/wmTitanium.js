@@ -102,6 +102,7 @@
 
     const fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
     const fmtShort = new Intl.DateTimeFormat(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
+    const fmtLong = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // the Super Bar's date
 
     function timeParts(d) {
         let time = '';
@@ -143,6 +144,8 @@
                 softKey: { label: 'Set', action: () => openSettings('clock') },
                 onTap: () => {
                     if (st.connection && st.connection.tap === 'reconnect' && window.wsClient && typeof window.wsClient.manualReconnect === 'function') window.wsClient.manualReconnect();
+                    // Effects > Super Bar: the clock opens it (Yukimi, Nov 15)
+                    else if (fx.superbar) openSuper();
                     else openSettings('clock');
                 }
             };
@@ -406,6 +409,153 @@
         return out;
     }
 
+    // ---------------------------------------------------------------- the Super Bar (#800)
+
+    /*
+     * A tap on the clock (Effects > Super Bar, Yukimi Nov 15): the band's glass grows to the whole
+     * screen while the clock rises to its top and the list steps away. Under the clock: Today's items
+     * with something to catch up on (weather, the next event, texts, e-mail, tasks...), each opening
+     * as its panel does, then the phone's own notifications (DSApp AndroidPhoneNotifications, through
+     * ActiveSync's notification listener), each opening its app or cleared with its X. The clock, the
+     * Close key, Back or Escape put it away the way it came. The glass is the band's frosted picture.
+     */
+    let superOpen = false;
+    let superEl = null;
+    let superAnim = null;
+    const SUPER_MS = 340;
+    const SUPER_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+
+    function superGlassRect() {
+        const u = unit();
+        const top = (focusTop() + 9) * u; // the band art's glass (wm-titanium.css .wm-ti-blur)
+        const h = host.clientHeight;
+        return { top, bottom: Math.max(0, h - top - 60 * u) };
+    }
+
+    function openSuper() {
+        if (!host || host.hidden || superOpen || slide.active || dragging) return;
+        superOpen = true;
+        if (!superEl) buildSuper();
+        drawSuper();
+        const g = superGlassRect();
+        superEl.hidden = false;
+        host.classList.add('is-super');
+        enterLockUntil = performance.now() + SUPER_MS;
+        if (superAnim) superAnim.forEach((a) => a.cancel());
+        const head = superEl.querySelector('.wm-ti-super-head');
+        const body = superEl.querySelector('.wm-ti-super-body');
+        const u = unit();
+        superAnim = [
+            superEl.animate([{ clipPath: `inset(${g.top}px 0 ${g.bottom}px 0)` }, { clipPath: 'inset(0px 0 0px 0)' }], { duration: SUPER_MS, easing: SUPER_EASE }),
+            // the clock rises from the band to the top
+            head.animate([{ transform: `translateY(${g.top - 6 * u}px)` }, { transform: 'none' }], { duration: SUPER_MS, easing: SUPER_EASE }),
+            body.animate([{ opacity: 0, transform: `translateY(${24 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS, delay: 60, easing: SUPER_EASE, fill: 'backwards' })
+        ];
+        haptic('land');
+        sh.refreshSoftKeys();
+        refreshNotes();
+    }
+
+    function closeSuper() {
+        if (!superOpen || !superEl) return;
+        superOpen = false;
+        const g = superGlassRect();
+        const head = superEl.querySelector('.wm-ti-super-head');
+        const body = superEl.querySelector('.wm-ti-super-body');
+        const u = unit();
+        if (superAnim) superAnim.forEach((a) => a.cancel());
+        const ms = Math.round(SUPER_MS * 0.8);
+        enterLockUntil = performance.now() + ms;
+        superAnim = [
+            superEl.animate([{ clipPath: 'inset(0px 0 0px 0)' }, { clipPath: `inset(${g.top}px 0 ${g.bottom}px 0)` }], { duration: ms, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }),
+            head.animate([{ transform: 'none' }, { transform: `translateY(${g.top - 6 * u}px)` }], { duration: ms, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }),
+            body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.6, fill: 'forwards' })
+        ];
+        host.classList.remove('is-super');
+        superAnim[0].finished.then(() => {
+            if (superOpen) return;
+            superEl.hidden = true;
+            superAnim.forEach((a) => a.cancel());
+            superAnim = null;
+        }).catch(() => { /* cancelled by a new open */ });
+        sh.refreshSoftKeys();
+    }
+
+    function buildSuper() {
+        superEl = document.createElement('div');
+        superEl.className = 'wm-ti-super';
+        superEl.setAttribute('role', 'dialog');
+        superEl.setAttribute('aria-label', 'Super Bar');
+        superEl.hidden = true;
+        superEl.innerHTML = '<div class="wm-ti-super-glass"></div><div class="wm-ti-super-head"></div><div class="wm-ti-super-body"><div class="wm-ti-super-items"></div><div class="wm-ti-super-sub" hidden>notifications</div><div class="wm-ti-super-notes"></div></div>';
+        // the list's own touch handling stays out of the sheet; its rows scroll and take taps
+        ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'contextmenu'].forEach((t) => superEl.addEventListener(t, (e) => e.stopPropagation()));
+        superEl.querySelector('.wm-ti-super-head').addEventListener('click', () => closeSuper());
+        superEl.addEventListener('click', (e) => {
+            const row = e.target.closest('[data-super]');
+            if (!row || performance.now() < enterLockUntil) return;
+            const kind = row.dataset.super;
+            if (kind === 'panel') {
+                const pn = panels.find((x) => x.id === row.dataset.id);
+                const pg = pn && pn.pages[pageIndex(pn)];
+                const act = (pg && pg.onTap) || (pn && pn.onTap);
+                closeSuper();
+                if (typeof act === 'function') setTimeout(() => { try { act(pg); } catch (err) { console.warn('[wmTitanium] super', err); } }, 120);
+                return;
+            }
+            const N = window.AndroidPhoneNotifications;
+            if (!N) return;
+            if (kind === 'access') { try { N.requestAccess(); } catch (_) { /* old app */ } return; }
+            if (kind === 'dismiss') { try { N.dismiss(row.dataset.key); } catch (_) { /* gone */ } row.closest('.wm-ti-super-note')?.remove(); return; }
+            if (kind === 'note') { let ok = false; try { ok = N.open(row.dataset.key); } catch (_) { ok = false; } if (ok) closeSuper(); }
+        });
+        // the glass: the band's frosted picture when there is one, else the band's dark tint
+        host.appendChild(superEl);
+        window.addEventListener('androidnotifications', () => { if (superOpen) refreshNotes(); });
+    }
+
+    function drawSuper() {
+        const glass = superEl.querySelector('.wm-ti-super-glass');
+        if (blurInner && blurInner.style.backgroundImage && wallEl) {
+            const w = wallEl.getBoundingClientRect();
+            const h = host.getBoundingClientRect();
+            Object.assign(glass.style, { backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, backgroundRepeat: 'no-repeat', left: `${w.left - h.left}px`, top: `${w.top - h.top}px`, width: `${w.width}px`, height: `${w.height}px` });
+            glass.classList.add('has-picture');
+        } else glass.classList.remove('has-picture');
+        const clock = panels.find((x) => x.clock);
+        const cp = clock && clock.pages[0];
+        superEl.querySelector('.wm-ti-super-head').innerHTML = cp
+            ? `<div class="wm-ti-super-time">${esc(cp.time)}<span class="wm-ti-super-ampm">${esc(cp.ampm || '')}</span></div><div class="wm-ti-super-date">${esc(fmtLong.format(new Date()))}</div><div class="wm-ti-super-net">${esc(cp.network || '')}</div>`
+            : '';
+        // Today's items with something to say: a count, or a line under their title
+        const rows = panels.filter((x) => !x.clock && x.pages && x.pages.length).map((x) => {
+            const pg = x.pages[pageIndex(x)] || {};
+            const line = [pg.title, pg.line2].filter((v) => v && String(v).trim() && String(v).toLowerCase() !== String(x.label).toLowerCase()).join(' \u00b7 ');
+            return { x, line };
+        }).filter((r) => r.x.count || r.line).slice(0, 7);
+        superEl.querySelector('.wm-ti-super-items').innerHTML = rows.map(({ x, line }) =>
+            `<button type="button" class="wm-ti-super-item" data-super="panel" data-id="${esc(x.id)}"><span class="wm-ti-super-label">${esc(x.label)}${x.count ? `<sup>${esc(x.count)}</sup>` : ''}</span>${line ? `<span class="wm-ti-super-line">${esc(line)}</span>` : ''}</button>`).join('');
+    }
+
+    function refreshNotes() {
+        if (!superEl) return;
+        const box = superEl.querySelector('.wm-ti-super-notes');
+        const sub = superEl.querySelector('.wm-ti-super-sub');
+        const N = window.AndroidPhoneNotifications;
+        if (!N || typeof N.list !== 'function') { sub.hidden = true; box.innerHTML = ''; return; }
+        sub.hidden = false;
+        let ok = false;
+        try { ok = !!N.access(); } catch (_) { ok = false; }
+        if (!ok) { box.innerHTML = '<button type="button" class="wm-ti-super-item" data-super="access"><span class="wm-ti-super-line">Allow notification access to see the phone\'s notifications here.</span></button>'; return; }
+        let list = [];
+        try { list = JSON.parse(N.list() || '[]'); } catch (_) { list = []; }
+        if (!list.length) { box.innerHTML = '<div class="wm-ti-super-empty">No notifications</div>'; return; }
+        const when = (t) => { const d = new Date(Number(t) || 0); return isNaN(d) ? '' : timeParts(d).time + (timeParts(d).ampm ? ` ${timeParts(d).ampm}` : ''); };
+        box.innerHTML = list.slice(0, 30).map((n) => `<div class="wm-ti-super-note">
+            <button type="button" class="wm-ti-super-note-open" data-super="note" data-key="${esc(n.key)}">${n.icon ? `<img src="${esc(n.icon)}" alt="" draggable="false">` : '<span class="wm-ti-super-noicon"></span>'}<span class="wm-ti-super-note-text"><span class="wm-ti-super-note-app">${esc(n.app)} \u00b7 ${esc(when(n.time))}</span><span class="wm-ti-super-note-title">${esc(n.title)}</span>${n.text ? `<span class="wm-ti-super-note-body">${esc(n.text)}</span>` : ''}</span></button>
+            <button type="button" class="wm-ti-super-note-x" data-super="dismiss" data-key="${esc(n.key)}" aria-label="Clear"></button></div>`).join('');
+    }
+
     // ---------------------------------------------------------------- drawing
 
     function unit() {
@@ -504,7 +654,8 @@
     // ... and Start's (wmStart65.js, wm65-start.css): startopen (icons in from the corner), startfrost
     // (the frosted picture under its dark sheet), startlaunch (a program grows out of its icon),
     // startticks (a tick a row while it scrolls)
-    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'haptics', 'startopen', 'startfrost', 'startlaunch', 'startticks'];
+    // superbar: a tap on the clock opens the Super Bar (openSuper)
+    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'haptics', 'startopen', 'startfrost', 'startlaunch', 'startticks', 'superbar'];
     const FX_MOTION = ['tilt', 'breathe', 'stagger', 'overshoot', 'exit', 'digits', 'startopen', 'startlaunch'];
     const fx = {};
     let parallaxOn = false;
@@ -1264,7 +1415,7 @@
         };
         // Effects > exit: the list drops away first (170 ms, no input meanwhile); still on Today after
         // the program's open (a box, a menu) it comes back
-        if (!fx.exit || host.hidden) { run(); return; }
+        if (!fx.exit || host.hidden || (p.clock && fx.superbar)) { run(); return; }
         host.classList.add('is-exiting');
         enterLockUntil = performance.now() + 200;
         setTimeout(() => {
@@ -1427,6 +1578,7 @@
 
     function onKey(e) {
         if (!host || sh.current !== 'today' || !page.classList.contains('is-titanium')) return;
+        if (superOpen) { if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'BrowserBack') { closeSuper(); e.preventDefault(); } return; }
         const t = e.target;
         if (t && t.closest && t.closest('input, textarea, select, [contenteditable="true"]')) return;
         if (document.querySelector('#wmShell > .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return;
@@ -1469,6 +1621,7 @@
         },
         softKeys(keys) {
             if (!host || host.hidden) return keys;
+            if (superOpen) return { left: keys.left, right: { label: 'Close', action: () => closeSuper() } };
             // the key of the panel that has arrived: it stays while the list moves and changes after
             // the next panel has grown in
             const p = panels[skSel] || panels[sel];
@@ -1585,6 +1738,8 @@
         const now = root.dataset.wmApp || '';
         if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(entrance);
         if (now !== 'today' && host) host.classList.remove('is-exiting');
+        // another program came up: the Super Bar is put away at once (Today comes back without it)
+        if (now !== 'today' && superOpen) { superOpen = false; host.classList.remove('is-super'); if (superAnim) superAnim.forEach((a) => a.cancel()); superAnim = null; if (superEl) superEl.hidden = true; }
         lastApp = now;
         syncTilt();
         if (now === 'today' && host) requestAnimationFrame(() => { syncBlur(); blurPlace(); });

@@ -1222,6 +1222,7 @@
                         ['digits', "Roll the clock's digits"],
                         ['blur', 'Frosted glass'],
                         ['haptics', 'Vibrate as items pass the glass'],
+                        ['superbar', 'Tap the clock for the Super Bar'],
                         ['startopen', 'Start: icons come in from the corner'],
                         ['startfrost', 'Start: frosted picture'],
                         ['startlaunch', 'Start: programs grow out of their icon'],
