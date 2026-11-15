@@ -824,8 +824,12 @@ function resolvePresetTableForModel(table, modelKey) {
  * @returns {string}
  */
 function getCurrentSelectedModel() {
-    // Use window references to access variables defined in app.js
-    return manualSelectedModel || manualModelHidden?.value || '';
+    // manualSelectedModel: manualDropdownManager.js; manualModelHidden: manualModalManager.js.
+    // Read only when Studio's scripts have declared them (#844: the kernel asks this at boot and
+    // must not need Studio there); with Studio loaded the answer is what it always was.
+    const selected = typeof manualSelectedModel !== 'undefined' ? manualSelectedModel : '';
+    const hidden = typeof manualModelHidden !== 'undefined' && manualModelHidden ? manualModelHidden.value : '';
+    return selected || hidden || '';
 }
 
 const STUDIO_MODEL_FROM_DETECTED = {

@@ -5,7 +5,7 @@
  * Extracted from public/scripts/app.js; originals remain until manifest removal.
  *
  * Globals used at runtime:
- * focusOverlay (manualModalManager.js), focusCoverEnabled, androidFocusLockActive (app.js)
+ * focusCoverEnabled, androidFocusLockActive (app.js)
  */
 
 let focusOverlayDismissFromKeyboard = null;
@@ -56,6 +56,9 @@ function setupAndroidBiometricLockHandlers() {
 }
 
 function wireFocusOverlayListeners() {
+    // its own lookup: the cover is the shell's (public/app.html #focus-overlay), and this file
+    // read it through a const Studio's manualModalManager.js happened to declare (#844)
+    const focusOverlay = document.getElementById('focus-overlay');
     // Title bar scroll visibility with high-performance throttling
     let scrollTimeout;
     let lastScrollTop = 0;
