@@ -76,6 +76,9 @@ class BannerManager {
 
     // Ticker methods for status display
     showWebSocketTicker(status, message, iconClass = 'fas fa-info-circle', autoHide = true, hideDelay = WebSocketClient.TIMEOUT_UI_DEFAULT) {
+        // Melaton Mobile has no ticker (the WM shell shows its own status): no class and text writes
+        // into hidden elements, no hide timers (#849)
+        if (window.uiShell === 'mobile') return;
         const tickers = document.querySelectorAll('.websocket-ticker');
         const tickerIcons = document.querySelectorAll('.websocket-ticker-icon');
         const tickerTexts = document.querySelectorAll('.websocket-ticker-text');
@@ -135,6 +138,7 @@ class BannerManager {
     }
 
     hideWebSocketTicker() {
+        if (window.uiShell === 'mobile') return;
         const tickers = document.querySelectorAll('.websocket-ticker');
 
         if (tickers.length === 0) {
@@ -1019,8 +1023,6 @@ class WebSocketClient {
         'lapis_history',
         // YouTube (#839): the About box's read of what the server holds (no call to YouTube)
         'youtube_get',
-        // a video opened from the program is marked watched behind the hand-off to the YouTube app
-        'youtube_mark',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
@@ -10012,6 +10014,9 @@ class WebSocketClient {
 
     _isWsFlashVisibilityMutationTarget(node) {
         if (!node || node.nodeType !== 1) return false;
+        // Melaton Mobile shows traffic arrows only inside the two connection dialogs: only their
+        // own class changes matter there, not every window's and <body>'s (#849)
+        if (window.uiShell === 'mobile') return node.id === 'connectionDialModal' || node.id === 'melatonConnectionStatusModal';
         // the arrows' own flash classes never change which arrows are shown
         if (node.matches?.('.websocket-arrow-up, .websocket-arrow-down, #connectionTrafficUp, #connectionTrafficDown')) return false;
         if (node === document.body) return true;
@@ -10452,6 +10457,10 @@ class WebSocketClient {
     // Record WebSocket traffic for a deferred flash — no DOM work on the message path.
     flashWebSocketArrow(direction, duration = this._wsFlashDuration) {
         if (document.hidden) return;
+        // no arrow is on screen (the list _refreshWsFlashTargets keeps): nothing to light, so no
+        // frame and no timers per message (#849; always so on Melaton Mobile outside its
+        // connection dialogs)
+        if (Array.isArray(this._wsFlashTargets) && this._wsFlashTargets.length === 0) return;
         const burstUntil = performance.now() + duration;
         if (direction === 'up') {
             this._wsFlashPendingUp = duration;
@@ -10466,6 +10475,7 @@ class WebSocketClient {
     // Record non-WebSocket HTTP throughput — white pulse + sustained stream tint.
     flashHttpTrafficArrow(direction, duration = this._httpFlashDuration) {
         if (document.hidden) return;
+        if (Array.isArray(this._wsFlashTargets) && this._wsFlashTargets.length === 0) return;
         this._touchHttpStream(direction);
 
         const burstUntil = direction === 'up' ? this._wsBurstUntilUp : this._wsBurstUntilDown;

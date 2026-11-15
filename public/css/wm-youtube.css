@@ -205,6 +205,10 @@
 .wm-youtube .yt-row.is-hero .yt-wl { left: calc(4 * var(--u)); top: calc(4 * var(--u)); width: calc(16 * var(--u)); height: calc(16 * var(--u)); }
 .wm-youtube .yt-row.is-hero .yt-wl svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); }
 
+/* started but not watched: how far it was played, along the picture's foot */
+.wm-youtube .yt-prog { position: absolute; left: 0; right: 0; bottom: 0; height: calc(2 * var(--u)); background: rgba(255, 255, 255, 0.35); z-index: 1; }
+.wm-youtube .yt-prog b { display: block; height: 100%; background: var(--yt-accent); }
+
 /* watched: dimmed (the press glow still shows at full strength) */
 .wm-youtube .yt-row.is-watched:not(:active):not(.is-held) .yt-th img { opacity: 0.38; }
 .wm-youtube .yt-row.is-watched:not(:active):not(.is-held) .yt-t { color: #7d848b; font-weight: normal; }

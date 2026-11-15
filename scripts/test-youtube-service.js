@@ -108,7 +108,17 @@ const feedReads = () => calls.filter((c) => c.path === '/feeds/videos.xml').map(
 let browserMode = 'ok';
 let ytList = [VID(601), VID(602)];
 const edits = [];
-T.setBrowser({ edit: async (action, id) => {
+let ytHistory = [];
+const watchCalls = [];
+T.setBrowser({ watched: async (on, id) => {
+    if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
+    if (browserMode === 'signedout') return { signedIn: false };
+    watchCalls.push(`${on ? 'mark' : 'unmark'} ${id}`);
+    const had = ytHistory.some((x) => x.id === id);
+    ytHistory = ytHistory.filter((x) => x.id !== id);
+    if (on) ytHistory.unshift({ id, pct: 100 });
+    return on ? { signedIn: true, ok: true } : { signedIn: true, ok: had, found: had };
+}, edit: async (action, id) => {
     if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
     if (browserMode === 'signedout') return { signedIn: false };
     edits.push(`${action} ${id}`);
@@ -118,6 +128,7 @@ T.setBrowser({ edit: async (action, id) => {
     if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
     if (browserMode === 'signedout') return { signedIn: false };
     if (kind === 'watch-later') return { signedIn: true, ids: [...ytList, VID(777), 'not-an-id'] };
+    if (kind === 'history') return { signedIn: true, items: ytHistory.slice(), partial: false };
     const bell = (b) => (browserMode === 'nobells' ? '' : b);
     return { signedIn: true, channels: [
         { id: CH(1), title: 'Channel 1', thumb: 'https://yt3.ggpht.com/c1=s88', bell: bell('all') },
@@ -353,21 +364,56 @@ T.setBrowser({ edit: async (action, id) => {
         browserMode = 'ok';
     });
 
-    await ok('watched: marked videos are flagged everywhere and go below the rest of the feed', async () => {
+    await ok('watched: the mark goes to the account\'s YouTube history; watched videos go below the rest of the feed', async () => {
+        await settle();
+        await svc.feed();
         await settle();
         const before = (await svc.feed()).videos.map((v) => v.id);
         const top = before[0];
-        assert.deepStrictEqual(await svc.markWatched(top, true), { id: top, watched: true });
+        assert.deepStrictEqual(await svc.markWatched(top, true), { id: top, watched: true, youtube: 'done' });
+        assert.deepStrictEqual(watchCalls, [`mark ${top}`]);
         const f = await svc.feed();
         assert.strictEqual(f.videos[f.videos.length - 1].id, top, 'the watched video is last');
         assert.strictEqual(f.videos[f.videos.length - 1].watched, true);
         assert.deepStrictEqual(f.videos.slice(0, -1).map((v) => v.id), before.slice(1), 'the rest keep their order');
         assert.ok(f.videos.slice(0, -1).every((v) => v.watched === false));
-        const again = JSON.parse(fs.readFileSync(process.env.YOUTUBE_ACCOUNT_FILE, 'utf8'));
-        assert.ok(again.watched[top] > 0, 'kept with the account');
-        await svc.markWatched(top, false);
+        assert.deepStrictEqual(await svc.markWatched(top, false), { id: top, watched: false, youtube: 'done' });
         assert.deepStrictEqual((await svc.feed()).videos.map((v) => v.id), before);
         await assert.rejects(svc.markWatched('nope', true), (e) => e.code === 'YOUTUBE_BAD_VIDEO');
+    });
+
+    await ok('watched: what was watched in YouTube itself shows here; a started video shows its progress', async () => {
+        await svc.feed();
+        await settle();
+        const list = (await svc.feed()).videos.map((v) => v.id);
+        assert.ok(list.length >= 6);
+        ytHistory = [{ id: list[1], pct: 100 }, { id: list[2], pct: 25 }, { id: list[3], pct: 72 }];
+        const fedAt = svc.getState().feed.at;
+        await wait(5);
+        assert.strictEqual(await T.syncHistory({ maxAge: 1 }), true);
+        assert.ok(svc.getState().feed.at > fedAt, 'the program is told to take the list again');
+        const f = await svc.feed();
+        const by = new Map(f.videos.map((v) => [v.id, v]));
+        assert.strictEqual(by.get(list[1]).watched, true);
+        assert.strictEqual(by.get(list[3]).watched, true, 'played 72 %: watched');
+        assert.strictEqual(by.get(list[2]).watched, false);
+        assert.strictEqual(by.get(list[2]).progress, 25);
+        assert.deepStrictEqual(f.videos.slice(-2).map((v) => v.id).sort(), [list[1], list[3]].sort(), 'both sit below the rest');
+        assert.strictEqual(await T.syncHistory({ maxAge: 1 }), false, 'nothing changed: nothing pushed');
+        // without the browser a mark is kept here, and becomes the account\'s own once the history shows it
+        browserMode = 'offline';
+        assert.deepStrictEqual(await svc.markWatched(list[0], true), { id: list[0], watched: true, youtube: 'browser-offline' });
+        assert.ok(T.state().acct.watched[list[0]] > 0);
+        browserMode = 'ok';
+        ytHistory.unshift({ id: list[0], pct: 100 });
+        await wait(5);
+        await T.syncHistory({ maxAge: 1 });
+        assert.strictEqual(T.state().acct.watched[list[0]], undefined);
+        assert.strictEqual((await svc.feed()).videos.find((v) => v.id === list[0]).watched, true);
+        ytHistory = [];
+        await wait(5);
+        await T.syncHistory({ maxAge: 1 });
+        assert.ok((await svc.feed()).videos.every((v) => !v.watched));
     });
 
     await ok('Watch Later: adding works without the browser, and goes to YouTube\'s list when it can', async () => {
