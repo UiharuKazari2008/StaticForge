@@ -4892,6 +4892,10 @@
         // may draw the notes again; the unchanged signature ends it there)
         const sig = ['mail', 'sms', 'chat'].map((r) => messageNotes(r).length).join(',');
         if (sig !== messageNotesSig) { messageNotesSig = sig; refreshStatus(); }
+        // the bubble follows the notifications at once: the fit that also paints it is skipped while the
+        // bar's own key is unchanged (#849), and that key does not hold the notifications, so a startup
+        // notice that went away left the bubble up, its tap answering "There are no notifications" (Nov 15)
+        paintNotifyIcon();
         fitStatus();
         // Today's left soft key follows whether a notification is waiting
         if ((notes.length > 0) !== (noteKeyCount > 0) && current === 'today' && shell) { noteKeyCount = notes.length; renderSoftKeys(); } else noteKeyCount = notes.length;
