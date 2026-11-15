@@ -452,14 +452,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-primed .wm-ti-focus {
     opacity: 0;
 }
 
-/* ---- the Super Bar (wmTitanium.js openSuper): the band's glass grown to the whole screen, the clock
- * at its top, Today's items and the phone's notifications under it; the list and the panel step away */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-list,
-html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-focus,
+/* ---- the Super Bar (wmTitanium.js openSuper): the band itself, grown by a weather row and risen to the
+ * top, over a darkening (no blur) that holds the phone's notifications. The real band, frost and panel
+ * are hidden only while the card lies exactly over them. */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-band,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-focus,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-super .wm-ti-blur {
-    opacity: 0;
-    transition: opacity 0.2s linear;
+    visibility: hidden;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super {
@@ -467,70 +466,97 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super {
     inset: 0;
     overflow: hidden;
     z-index: 3;
-    display: flex;
-    flex-direction: column;
     touch-action: pan-y;
-    will-change: clip-path;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super[hidden] {
     display: none;
 }
 
-/* the glass: the band's frosted picture under its dark tint (the band art's ~50 % black), or the tint alone */
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-glass {
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-shade {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.72);
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-glass.has-picture {
-    inset: auto;
+/* the card: 82 units as the band (the art's glass 9 - 68), taller by the weather row once open */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: calc(82 * var(--u));
+    will-change: transform;
+}
+
+/* the band's frost, only on the glass (between the art's two lines), as under the band */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-frost {
+    position: absolute;
     background-color: #000;
+    background-repeat: no-repeat;
+    will-change: transform;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-glass.has-picture::after {
-    content: "";
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-card > .wm-ti-super-frostclip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(9 * var(--u));
+    bottom: calc(14 * var(--u));
+    overflow: hidden;
+}
+
+/* the band art as a nine-slice: its shadow above (18 of 164 px), the glass, its bottom line and shadow
+ * below (28 px); at 82 units it draws exactly as the band (background-size 100% 100%) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-art {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.5);
+    box-sizing: border-box;
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(9 * var(--u)) 0 calc(14 * var(--u)) 0;
+    border-image-slice: 10.9756% 0 17.0732% 0 fill;
+    border-image-repeat: stretch;
+    pointer-events: none;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-head {
-    position: relative;
-    flex: none;
-    padding: calc(6 * var(--u)) calc(10 * var(--u)) calc(8 * var(--u));
-    border-bottom: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.35);
-    background: linear-gradient(to bottom, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0));
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-panel {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: calc(70 * var(--u));
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-time {
-    font-size: calc(56 * var(--u));
-    line-height: 1.1;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-ampm {
-    margin-left: calc(4 * var(--u));
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-extra {
+    position: absolute;
+    left: calc(10 * var(--u));
+    right: calc(10 * var(--u));
+    top: calc(68 * var(--u));
     font-size: calc(14 * var(--u));
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-date,
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-net {
-    font-size: calc(12 * var(--u));
     line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    opacity: 0;
 }
 
+/* the notifications, below the card (its bottom shadow fades onto them) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-body {
-    position: relative;
-    flex: 1 1 auto;
-    min-height: 0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(96 * var(--u));
+    bottom: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     padding-bottom: calc(10 * var(--u));
     scrollbar-width: none;
+    opacity: 0;
 }
 
-/* no scroll bar on the glass (the page's WM bar showed as a pink strip, A53) */
+/* no scroll bar on it (the page's WM bar showed as a pink strip, A53) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-body::-webkit-scrollbar {
     display: none;
 }
@@ -550,38 +576,18 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open {
     -webkit-tap-highlight-color: transparent;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-item {
-    flex-direction: column;
-}
-
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-item:active,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open:active {
     background: rgba(255, 255, 255, 0.12);
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-label {
-    font-size: calc(22 * var(--u));
-    line-height: 1.15;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-label sup {
-    margin-left: calc(3 * var(--u));
-    font-size: calc(13 * var(--u));
-    vertical-align: top;
-}
-
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-line {
     font-size: calc(12 * var(--u));
     line-height: 1.3;
-    opacity: 0.85;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100%;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-sub {
-    margin: calc(8 * var(--u)) calc(10 * var(--u)) calc(2 * var(--u));
+    margin: calc(4 * var(--u)) calc(10 * var(--u)) calc(2 * var(--u));
     padding-bottom: calc(2 * var(--u));
     border-bottom: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.35);
     font-size: calc(16 * var(--u));

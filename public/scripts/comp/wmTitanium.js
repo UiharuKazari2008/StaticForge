@@ -102,7 +102,6 @@
 
     const fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
     const fmtShort = new Intl.DateTimeFormat(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
-    const fmtLong = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }); // the Super Bar's date
 
     function timeParts(d) {
         let time = '';
@@ -422,66 +421,109 @@
     let superOpen = false;
     let superEl = null;
     let superAnim = null;
-    const SUPER_MS = 340;
-    // the Today items the Super Bar shows first (panel ids), then others with a count
-    const SUPER_ITEMS = ['weather', 'calendar', 'text', 'messages', 'tasks', 'traffic', 'music', 'director', 'prints', 'lapis', 'youtube'];
-    const rank = (id) => { const i = SUPER_ITEMS.indexOf(id); return i < 0 ? SUPER_ITEMS.length : i; };
+    let superBusy = false;
+    const SUPER_MS = 360;
     const SUPER_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
+    const SUPER_BACK = 'cubic-bezier(0.5, 0, 0.75, 0)';
+    const SUPER_GROW = 26; // units the card grows by: the weather row
 
-    function superGlassRect() {
-        const u = unit();
-        const top = (focusTop() + 9) * u; // the band art's glass (wm-titanium.css .wm-ti-blur)
-        const h = host.clientHeight;
-        return { top, bottom: Math.max(0, h - top - 60 * u) };
-    }
-
+    /*
+     * The card is the band itself: the band art as a nine-slice (its glass lines stay put as it grows),
+     * the band's frost under it lined up with the picture, and the clock panel's own markup. Its first
+     * frame is the band and panel exactly, so they are hidden only while it lies over them, and shown
+     * again only once it is back (Yukimi, Nov 15: no glitch, no jump). It rises to the top as it grows
+     * by the weather row; below it the phone's notifications, on a darkening that fades in (no blur).
+     */
     function openSuper() {
-        if (!host || host.hidden || superOpen || slide.active || dragging) return;
-        superOpen = true;
+        if (!host || host.hidden || superOpen || superBusy || slide.active || dragging) return;
+        const clock = panels.find((x) => x.clock);
+        if (!clock) return;
         if (!superEl) buildSuper();
-        drawSuper();
-        const g = superGlassRect();
-        superEl.hidden = false;
-        host.classList.add('is-super');
-        enterLockUntil = performance.now() + SUPER_MS;
-        if (superAnim) superAnim.forEach((a) => a.cancel());
-        const head = superEl.querySelector('.wm-ti-super-head');
-        const body = superEl.querySelector('.wm-ti-super-body');
+        superOpen = true;
+        superBusy = true;
         const u = unit();
+        const bandTop = focusTop() * u;
+        drawSuper(clock);
+        const card = superEl.querySelector('.wm-ti-super-card');
+        const frost = superEl.querySelector('.wm-ti-super-frost');
+        const extra = superEl.querySelector('.wm-ti-super-extra');
+        const shade = superEl.querySelector('.wm-ti-super-shade');
+        const body = superEl.querySelector('.wm-ti-super-body');
+        const T = frostTransform();
+        const y0 = bandTop;
+        const y1 = -9 * u; // the art's glass at the top edge
+        const h0 = 82 * u;
+        const h1 = (82 + SUPER_GROW) * u;
+        if (superAnim) superAnim.forEach((a) => a.cancel());
+        superEl.hidden = false;
+        // the first frame: the card exactly where the band is, before the band goes
+        card.style.transform = `translateY(${y0}px)`;
+        card.style.height = `${h0}px`;
+        frost.style.transform = `translateY(${-y0}px) ${T}`;
+        host.classList.add('is-super');
+        enterLockUntil = performance.now() + SUPER_MS + 40;
+        const opt = { duration: SUPER_MS, easing: SUPER_EASE, fill: 'forwards' };
         superAnim = [
-            superEl.animate([{ clipPath: `inset(${g.top}px 0 ${g.bottom}px 0)` }, { clipPath: 'inset(0px 0 0px 0)' }], { duration: SUPER_MS, easing: SUPER_EASE }),
-            // the clock rises from the band to the top
-            head.animate([{ transform: `translateY(${g.top - 6 * u}px)` }, { transform: 'none' }], { duration: SUPER_MS, easing: SUPER_EASE }),
-            body.animate([{ opacity: 0, transform: `translateY(${24 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS, delay: 60, easing: SUPER_EASE, fill: 'backwards' })
+            card.animate([{ transform: `translateY(${y0}px)`, height: `${h0}px` }, { transform: `translateY(${y1}px)`, height: `${h1}px` }], opt),
+            frost.animate([{ transform: `translateY(${-y0}px) ${T}` }, { transform: `translateY(${-y1}px) ${T}` }], opt),
+            extra.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'linear', fill: 'both' }),
+            shade.animate([{ opacity: 0 }, { opacity: 1 }], opt),
+            body.animate([{ opacity: 0, transform: `translateY(${18 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS, delay: 80, easing: SUPER_EASE, fill: 'both' }),
+            host.querySelector('.wm-ti-list').animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.5, easing: 'linear', fill: 'forwards' })
         ];
+        superAnim[0].finished.then(() => { superBusy = false; }).catch(() => { superBusy = false; });
         haptic('land');
         sh.refreshSoftKeys();
         refreshNotes();
     }
 
-    function closeSuper() {
+    function closeSuper(now) {
         if (!superOpen || !superEl) return;
         superOpen = false;
-        const g = superGlassRect();
-        const head = superEl.querySelector('.wm-ti-super-head');
-        const body = superEl.querySelector('.wm-ti-super-body');
-        const u = unit();
         if (superAnim) superAnim.forEach((a) => a.cancel());
-        const ms = Math.round(SUPER_MS * 0.8);
-        enterLockUntil = performance.now() + ms;
-        superAnim = [
-            superEl.animate([{ clipPath: 'inset(0px 0 0px 0)' }, { clipPath: `inset(${g.top}px 0 ${g.bottom}px 0)` }], { duration: ms, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }),
-            head.animate([{ transform: 'none' }, { transform: `translateY(${g.top - 6 * u}px)` }], { duration: ms, easing: 'cubic-bezier(0.4, 0, 0.2, 1)', fill: 'forwards' }),
-            body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.6, fill: 'forwards' })
-        ];
-        host.classList.remove('is-super');
-        superAnim[0].finished.then(() => {
+        const finish = () => {
             if (superOpen) return;
+            // the card lies on the band again: the band and panel come back under it, then it goes
+            host.classList.remove('is-super');
             superEl.hidden = true;
-            superAnim.forEach((a) => a.cancel());
+            if (superAnim) superAnim.forEach((a) => a.cancel());
             superAnim = null;
-        }).catch(() => { /* cancelled by a new open */ });
+            superBusy = false;
+            sh.refreshSoftKeys();
+        };
+        if (now) { finish(); return; }
+        superBusy = true;
+        const u = unit();
+        const card = superEl.querySelector('.wm-ti-super-card');
+        const frost = superEl.querySelector('.wm-ti-super-frost');
+        const extra = superEl.querySelector('.wm-ti-super-extra');
+        const shade = superEl.querySelector('.wm-ti-super-shade');
+        const body = superEl.querySelector('.wm-ti-super-body');
+        const T = frostTransform();
+        const y0 = focusTop() * u;
+        const y1 = -9 * u;
+        const h0 = 82 * u;
+        const h1 = (82 + SUPER_GROW) * u;
+        const ms = Math.round(SUPER_MS * 0.85);
+        enterLockUntil = performance.now() + ms + 40;
+        const opt = { duration: ms, easing: SUPER_EASE, fill: 'forwards' };
+        superAnim = [
+            card.animate([{ transform: `translateY(${y1}px)`, height: `${h1}px` }, { transform: `translateY(${y0}px)`, height: `${h0}px` }], opt),
+            frost.animate([{ transform: `translateY(${-y1}px) ${T}` }, { transform: `translateY(${-y0}px) ${T}` }], opt),
+            extra.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' }),
+            shade.animate([{ opacity: 1 }, { opacity: 0 }], opt),
+            body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' }),
+            host.querySelector('.wm-ti-list').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.7, delay: ms * 0.3, easing: 'linear', fill: 'both' })
+        ];
+        superAnim[0].finished.then(finish).catch(() => { /* a new open took over */ });
         sh.refreshSoftKeys();
+    }
+
+    /** The band's frost as it stands (parallax, tilt, zoom): the card's copy matches it exactly. */
+    function frostTransform() {
+        if (!blurInner) return '';
+        const t = getComputedStyle(blurInner).transform;
+        return t && t !== 'none' ? t : '';
     }
 
     function buildSuper() {
@@ -490,57 +532,44 @@
         superEl.setAttribute('role', 'dialog');
         superEl.setAttribute('aria-label', 'Super Bar');
         superEl.hidden = true;
-        superEl.innerHTML = '<div class="wm-ti-super-glass"></div><div class="wm-ti-super-head"></div><div class="wm-ti-super-body"><div class="wm-ti-super-items"></div><div class="wm-ti-super-sub" hidden>notifications</div><div class="wm-ti-super-notes"></div></div>';
+        superEl.innerHTML = '<div class="wm-ti-super-shade"></div>'
+            + '<div class="wm-ti-super-body"><div class="wm-ti-super-sub" hidden>notifications</div><div class="wm-ti-super-notes"></div></div>'
+            + '<div class="wm-ti-super-card"><div class="wm-ti-super-frostclip"><div class="wm-ti-super-frost"></div></div><div class="wm-ti-super-art"></div><div class="wm-ti-super-panel"></div><div class="wm-ti-super-extra"></div></div>';
+        superEl.querySelector('.wm-ti-super-art').style.borderImageSource = artImageSet('ti-3000');
         // the list's own touch handling stays out of the sheet; its rows scroll and take taps
         ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'contextmenu'].forEach((t) => superEl.addEventListener(t, (e) => e.stopPropagation()));
-        superEl.querySelector('.wm-ti-super-head').addEventListener('click', () => closeSuper());
+        superEl.querySelector('.wm-ti-super-card').addEventListener('click', () => { if (!superBusy) closeSuper(); });
         superEl.addEventListener('click', (e) => {
             const row = e.target.closest('[data-super]');
-            if (!row || performance.now() < enterLockUntil) return;
+            if (!row || superBusy) return;
             const kind = row.dataset.super;
-            if (kind === 'panel') {
-                const pn = panels.find((x) => x.id === row.dataset.id);
-                const pg = pn && pn.pages[pageIndex(pn)];
-                const act = (pg && pg.onTap) || (pn && pn.onTap);
-                closeSuper();
-                if (typeof act === 'function') setTimeout(() => { try { act(pg); } catch (err) { console.warn('[wmTitanium] super', err); } }, 120);
-                return;
-            }
             const N = window.AndroidPhoneNotifications;
             if (!N) return;
             if (kind === 'access') { try { N.requestAccess(); } catch (_) { /* old app */ } return; }
             if (kind === 'dismiss') { try { N.dismiss(row.dataset.key); } catch (_) { /* gone */ } row.closest('.wm-ti-super-note')?.remove(); return; }
-            if (kind === 'note') { let ok = false; try { ok = N.open(row.dataset.key); } catch (_) { ok = false; } if (ok) closeSuper(); }
+            if (kind === 'note') { let ok = false; try { ok = N.open(row.dataset.key); } catch (_) { ok = false; } if (ok) closeSuper(true); }
         });
-        // the glass: the band's frosted picture when there is one, else the band's dark tint
         host.appendChild(superEl);
         window.addEventListener('androidnotifications', () => { if (superOpen) refreshNotes(); });
     }
 
-    function drawSuper() {
-        const glass = superEl.querySelector('.wm-ti-super-glass');
-        if (blurInner && blurInner.style.backgroundImage && wallEl) {
-            const w = wallEl.getBoundingClientRect();
-            const h = host.getBoundingClientRect();
-            Object.assign(glass.style, { backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, backgroundRepeat: 'no-repeat', left: `${w.left - h.left}px`, top: `${w.top - h.top}px`, width: `${w.width}px`, height: `${w.height}px` });
-            glass.classList.add('has-picture');
-        } else glass.classList.remove('has-picture');
-        const clock = panels.find((x) => x.clock);
-        const cp = clock && clock.pages[0];
-        superEl.querySelector('.wm-ti-super-head').innerHTML = cp
-            ? `<div class="wm-ti-super-time">${esc(cp.time)}<span class="wm-ti-super-ampm">${esc(cp.ampm || '')}</span></div><div class="wm-ti-super-date">${esc(fmtLong.format(new Date()))}</div><div class="wm-ti-super-net">${esc(cp.network || '')}</div>`
-            : '';
-        // Today's items worth catching up on, in this order (Yukimi, Nov 15: weather, the next event,
-        // messages...), then any other item showing a count; never the fixed ones (owner, search...)
-        const rows = panels.filter((x) => !x.clock && x.pages && x.pages.length && (SUPER_ITEMS.includes(x.id) || x.count)).map((x) => {
-            const pg = x.pages[pageIndex(x)] || {};
-            const line = [pg.title, pg.line2].filter((v) => v && String(v).trim() && String(v).toLowerCase() !== String(x.label).toLowerCase()).join(' \u00b7 ');
-            return { x, line };
-        }).filter((r) => r.x.count || r.line)
-            .sort((a, b) => rank(a.x.id) - rank(b.x.id))
-            .slice(0, 8);
-        superEl.querySelector('.wm-ti-super-items').innerHTML = rows.map(({ x, line }) =>
-            `<button type="button" class="wm-ti-super-item" data-super="panel" data-id="${esc(x.id)}"><span class="wm-ti-super-label">${esc(x.label)}${x.count ? `<sup>${esc(x.count)}</sup>` : ''}</span>${line ? `<span class="wm-ti-super-line">${esc(line)}</span>` : ''}</button>`).join('');
+    function drawSuper(clock) {
+        const cp = clock.pages[0];
+        // the clock panel's own markup and classes: it draws exactly as the panel in the band
+        superEl.querySelector('.wm-ti-super-panel').innerHTML = `<div class="wm-ti-pg">${pageHtml(clock, cp)}</div>`;
+        // the weather (Today's weather item, when it is on): what it shows, under the clock
+        const w = panels.find((x) => x.id === 'weather');
+        const wp = w && w.pages[pageIndex(w)];
+        const wLine = wp ? [wp.title, wp.line2].filter((v) => v && String(v).trim()).join(' · ') : '';
+        superEl.querySelector('.wm-ti-super-extra').innerHTML = wLine ? `<span class="wm-ti-super-weather">${esc(wLine)}</span>` : '';
+        // the frost: the band's blurred copy, placed on the picture as the band's is (the card's own
+        // translate is undone on it while it moves, so it stays lined up with the picture)
+        const frost = superEl.querySelector('.wm-ti-super-frost');
+        if (fx.blur && blurInner && blurInner.style.backgroundImage && blurClip && !blurClip.hidden && wallEl) {
+            const wr = wallEl.getBoundingClientRect();
+            const hr = host.getBoundingClientRect();
+            Object.assign(frost.style, { display: '', backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, left: `${wr.left - hr.left}px`, top: `${wr.top - hr.top - 9 * unit()}px`, width: `${wr.width}px`, height: `${wr.height}px` });
+        } else frost.style.display = 'none';
     }
 
     function refreshNotes() {
@@ -548,7 +577,7 @@
         const box = superEl.querySelector('.wm-ti-super-notes');
         const sub = superEl.querySelector('.wm-ti-super-sub');
         const N = window.AndroidPhoneNotifications;
-        if (!N || typeof N.list !== 'function') { sub.hidden = true; box.innerHTML = ''; return; }
+        if (!N || typeof N.list !== 'function') { sub.hidden = true; box.innerHTML = '<div class="wm-ti-super-empty">The phone\'s notifications show here with the Dreamscape app.</div>'; return; }
         sub.hidden = false;
         let ok = false;
         try { ok = !!N.access(); } catch (_) { ok = false; }
@@ -556,9 +585,9 @@
         let list = [];
         try { list = JSON.parse(N.list() || '[]'); } catch (_) { list = []; }
         if (!list.length) { box.innerHTML = '<div class="wm-ti-super-empty">No notifications</div>'; return; }
-        const when = (t) => { const d = new Date(Number(t) || 0); return isNaN(d) ? '' : timeParts(d).time + (timeParts(d).ampm ? ` ${timeParts(d).ampm}` : ''); };
+        const when = (t) => { const d = new Date(Number(t) || 0); if (isNaN(d)) return ''; const p = timeParts(d); return p.time + (p.ampm ? ` ${p.ampm}` : ''); };
         box.innerHTML = list.slice(0, 30).map((n) => `<div class="wm-ti-super-note">
-            <button type="button" class="wm-ti-super-note-open" data-super="note" data-key="${esc(n.key)}">${n.icon ? `<img src="${esc(n.icon)}" alt="" draggable="false">` : '<span class="wm-ti-super-noicon"></span>'}<span class="wm-ti-super-note-text"><span class="wm-ti-super-note-app">${esc(n.app)} \u00b7 ${esc(when(n.time))}</span><span class="wm-ti-super-note-title">${esc(n.title)}</span>${n.text ? `<span class="wm-ti-super-note-body">${esc(n.text)}</span>` : ''}</span></button>
+            <button type="button" class="wm-ti-super-note-open" data-super="note" data-key="${esc(n.key)}">${n.icon ? `<img src="${esc(n.icon)}" alt="" draggable="false">` : '<span class="wm-ti-super-noicon"></span>'}<span class="wm-ti-super-note-text"><span class="wm-ti-super-note-app">${esc(n.app)} · ${esc(when(n.time))}</span><span class="wm-ti-super-note-title">${esc(n.title)}</span>${n.text ? `<span class="wm-ti-super-note-body">${esc(n.text)}</span>` : ''}</span></button>
             <button type="button" class="wm-ti-super-note-x" data-super="dismiss" data-key="${esc(n.key)}" aria-label="Clear"></button></div>`).join('');
     }
 
@@ -1745,7 +1774,7 @@
         if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(entrance);
         if (now !== 'today' && host) host.classList.remove('is-exiting');
         // another program came up: the Super Bar is put away at once (Today comes back without it)
-        if (now !== 'today' && superOpen) { superOpen = false; host.classList.remove('is-super'); if (superAnim) superAnim.forEach((a) => a.cancel()); superAnim = null; if (superEl) superEl.hidden = true; }
+        if (now !== 'today' && superOpen) closeSuper(true);
         lastApp = now;
         syncTilt();
         if (now === 'today' && host) requestAnimationFrame(() => { syncBlur(); blurPlace(); });
