@@ -171,7 +171,14 @@
     function openItem(v) {
         if (!v) return false;
         if (srcOf(v) === 'kick') return openUrl(v.url || `https://kick.com/${String(v.id).replace(/^kick:/, '')}`, true, KICK_PACKAGE);
-        if (srcOf(v) === 'app') return launchApp(v.package, v.channel);
+        if (srcOf(v) === 'app') {
+            // on the phone that posted the notification: what a tap on the notification itself opens (the stream)
+            const A = window.AndroidActiveSync;
+            try {
+                if (v.key && A && typeof A.openNotification === 'function' && (!v.device || typeof A.getDeviceId !== 'function' || A.getDeviceId() === v.device) && A.openNotification(v.key) === true) return true;
+            } catch (_) { /* the app itself below */ }
+            return launchApp(v.package, v.channel);
+        }
         return openVideo(v.id);
     }
 

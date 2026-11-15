@@ -48,7 +48,9 @@ Logic in `modules/videosSources.js`. Items look like videos with `source` (`yout
 - Kick: `{ id: 'kick:<slug>', source: 'kick', live: 'live', title, channel, thumb, at (stream start), viewers, note (category), url }`,
   only while the channel is live. Kick's published API with the app key, one call for up to 50 channels, at most
   every 3 minutes and only while a phone shows the feed or Today.
-- App notifications: `{ id: 'app:<n>', source: 'app', title, channel (the app's name), note (the text), at, package }`.
+- App notifications: `{ id: 'app:<n>', source: 'app', title, channel (the app's name), note (the text), at, package, key, device }`.
+  `key` and `device` are set when the phone said the notification `opens` something (DSApp `notify.open` /
+  `AndroidActiveSync.openNotification(key)`): on that phone a tap opens what the notification opens; elsewhere it starts the app.
 
 `youtube_feed` answers one list: what is live first (Kick, and YouTube videos that are live), then uploads and
 imported notifications by time, watched or read ones after the rest. `youtube_mark` on a `kick:` or `app:` id is

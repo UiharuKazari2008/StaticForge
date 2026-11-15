@@ -575,13 +575,16 @@ T.setBrowser({ watched: async (on, id) => {
         await wait(5);
         assert.strictEqual(note({ key: 'k1', title: 'someone is live', text: 'Playing a game' }), true);
         assert.strictEqual(note({ key: 'k1', title: 'someone is live', text: 'Playing a game' }), false, 'posted again: one item');
-        assert.strictEqual(note({ key: 'k2', title: 'other went live', text: '' }), true);
+        assert.strictEqual(src.takeNotification({ package: 'tv.twitch.android.app', app: 'Twitch', time: Date.now(), key: 'k2', title: 'other went live', text: '', opens: true }, 'phone-1'), true);
         assert.ok(svc.getState().feed.at > at, 'the program is told to take the feed again');
         const f = await svc.feed();
         const items = f.videos.filter((v) => v.source === 'app');
         assert.deepStrictEqual(items.map((v) => v.title).sort(), ['other went live', 'someone is live']);
         assert.strictEqual(items[0].channel, 'Twitch');
         assert.strictEqual(items[0].package, 'tv.twitch.android.app');
+        const opens = items.find((v) => v.title === 'other went live');
+        assert.deepStrictEqual([opens.key, opens.device], ['k2', 'phone-1'], 'the phone can open what the notification opens');
+        assert.strictEqual(items.find((v) => v.title === 'someone is live').key, '', 'no key when the phone did not say it opens');
         assert.ok(f.videos.findIndex((v) => v.source === 'app') === 0, 'newest first with the uploads (they are from this minute)');
         const one = items.find((v) => v.title === 'someone is live');
         assert.deepStrictEqual(await svc.markWatched(one.id, true), { id: one.id, watched: true, youtube: '' });

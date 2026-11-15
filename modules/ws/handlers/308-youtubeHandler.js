@@ -74,7 +74,7 @@ function registerPackets(handlersCtx) {
     youtubeService.defineFeed(statusHub);
     // Melaton Videos (#861): the notifications a partnered phone relays feed the chosen apps' items
     const sources = youtubeService.sources();
-    activeSync.onDeviceEvent((name, detail) => { if (name === 'notify.posted') sources.takeNotification(detail); });
+    activeSync.onDeviceEvent((name, detail, device) => { if (name === 'notify.posted') sources.takeNotification(detail, device && device.id); });
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await fn(handlersCtx, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);

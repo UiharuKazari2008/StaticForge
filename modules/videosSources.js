@@ -11,7 +11,9 @@
  *                  is quiet and the last known state stays for a while.
  *   App notices    the phone relays its notifications over ActiveSync when "Send notifications" is on
  *                  (modules/activeSync.js, event notify.posted: package, app, title, text, time). The
- *                  notifications of the apps chosen here are kept as feed items; a tap starts the app.
+ *                  notifications of the apps chosen here are kept as feed items. A tap on the phone that
+ *                  posted one opens what the notification itself opens (its key, when the phone said
+ *                  `opens`); elsewhere it starts the app.
  *                  Every app that posted lately is remembered by name so it can be chosen from a list.
  *
  * Items look like the YouTube program's videos, with `source` ('kick' | 'app'), and ids that cannot be
@@ -238,7 +240,7 @@ function prune(s) {
 }
 
 /** A notification the phone relayed (ActiveSync notify.posted detail). Kept when its app was chosen. */
-function takeNotification(detail) {
+function takeNotification(detail, deviceId) {
     const d = detail && typeof detail === 'object' ? detail : null;
     if (!d || !PACKAGE.test(String(d.package || ''))) return false;
     const s = load();
@@ -255,10 +257,10 @@ function takeNotification(detail) {
     const same = s.notices.find((n) => n.package === pkg && ((d.key && n.key === d.key) || (n.title === title && n.text === text && Math.abs(n.at - at) < 30 * MIN)));
     if (same) {
         if (same.title === title && same.text === text) return false;
-        Object.assign(same, { title, text, at });
+        Object.assign(same, { title, text, at, key: String(d.key || same.key || '').slice(0, 200), device: String(deviceId || same.device || ''), opens: !!d.opens });
     } else {
         s.serial += 1;
-        s.notices.unshift({ n: s.serial, key: String(d.key || '').slice(0, 200), package: pkg, app: label, title, text, at });
+        s.notices.unshift({ n: s.serial, key: String(d.key || '').slice(0, 200), device: String(deviceId || ''), opens: !!d.opens, package: pkg, app: label, title, text, at });
     }
     s.notices.sort((a, b) => b.at - a.at);
     prune(s);
@@ -269,7 +271,9 @@ function takeNotification(detail) {
 
 const noticeItems = () => load().notices.map((n) => ({
     id: `app:${n.n}`, source: 'app', title: n.title || n.text, channel: n.app, channelId: `app:${n.package}`, thumb: '', at: n.at, length: null, live: '',
-    note: n.title ? n.text : '', package: n.package
+    note: n.title ? n.text : '', package: n.package,
+    // what a tap on the notification opens, for the phone that posted it (DSApp AndroidActiveSync.openNotification)
+    key: n.opens ? n.key : '', device: n.opens ? n.device || '' : ''
 }));
 
 function noticeRemove(id) {
