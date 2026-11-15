@@ -4349,6 +4349,11 @@ class WebSocketClient {
                     continue;
                 }
                 this.currentInitStep++;
+                // Melaton Mobile (#817): a step Today does not need waits until it is up
+                if (this._deferInitStepOnPhone(step)) {
+                    this._deferredInitSteps.push(step);
+                    continue;
+                }
                 const stepSkipped = this.initializationCompleted && !step.runOnReconnect;
                 // Calculate progress over the steps this window runs
                 const stepProgress = range.base + ((this.currentInitStep / this.totalInitSteps) * range.span);
@@ -4442,6 +4447,7 @@ class WebSocketClient {
             this.initializationLock = false; // Release initialization lock
             // serviceWorkerManager.flushUpdatesAfterDesktop: public/scripts/comp/serviceWorkerManager.js
             if (window.serviceWorkerManager) window.serviceWorkerManager.flushUpdatesAfterDesktop();
+            this._runDeferredInitSteps();
 
             // Hide overlay after all steps complete
             setTimeout(async () => {
@@ -4461,6 +4467,64 @@ class WebSocketClient {
                 await this.hideProgressNotification();
             }, 2000);
         }
+    }
+
+    /**
+     * Init steps put off on Melaton Mobile (#817). The phone boots to Today, and about thirty of
+     * the boot's steps only prepare Studio (its toolbars, tool windows, listener scopes, SmartText
+     * and autofill settings): ~300 ms of the step phase in the headless profile, about a second
+     * on the Galaxy A53. A step whose label is in phoneDeferredInitSteps (appInitSteps.js fills
+     * it) is skipped by the first boot's loop on the phone shell and runs right after the boot,
+     * in the same order, one per idle slice. wmShell.open waits on whenDeferredInitDone(), so no
+     * program opens before they are done. Reconnects run their steps in the loop as before.
+     */
+    _deferInitStepOnPhone(step) {
+        if (this.initializationCompleted || window.uiShell !== 'mobile') return false;
+        if (!this.phoneDeferredInitSteps || !this.phoneDeferredInitSteps.has(step.message)) return false;
+        if (!this._deferredInitSteps) this._deferredInitSteps = [];
+        return !this._deferredInitSteps.includes(step) && !step._bootCompleted;
+    }
+
+    get deferredInitPending() {
+        return !!(this._deferredInitRun || (this._deferredInitSteps && this._deferredInitSteps.length));
+    }
+
+    whenDeferredInitDone() {
+        if (!this.deferredInitPending) return Promise.resolve();
+        // still booting: they start when the boot's own steps are through
+        if (!this.initializationCompleted) return new Promise((resolve) => document.addEventListener('deferredInitDone', () => resolve(), { once: true }));
+        // a program asked for before the idle slices got there: no more waiting between steps
+        this._deferredInitHurry = true;
+        return this._deferredInitRun || this._runDeferredInitSteps();
+    }
+
+    _runDeferredInitSteps() {
+        if (this._deferredInitRun) return this._deferredInitRun;
+        if (!this._deferredInitSteps || !this._deferredInitSteps.length) return Promise.resolve();
+        const idle = () => new Promise((resolve) => {
+            if (this._deferredInitHurry) { resolve(); return; }
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => resolve(), { timeout: 300 });
+            else setTimeout(resolve, 30);
+        });
+        this._deferredInitRun = (async () => {
+            while (this._deferredInitSteps.length) {
+                await idle();
+                const step = this._deferredInitSteps.shift();
+                const t0 = performance.now();
+                try {
+                    await step.stepFunction();
+                    step._bootCompleted = true;
+                } catch (error) {
+                    console.error(`❌ Error in deferred init step "${step.message}":`, error);
+                }
+                if (!this._bootTrace) this._bootTrace = [];
+                if (this._bootTrace.length < 1500) this._bootTrace.push({ kind: 'late', name: step.message, at: Math.round(t0), ms: Math.round(performance.now() - t0) });
+            }
+            this._deferredInitRun = null;
+            this._deferredInitHurry = false;
+            document.dispatchEvent(new CustomEvent('deferredInitDone'));
+        })();
+        return this._deferredInitRun;
     }
 
     // Advance to next step in step-by-step mode
