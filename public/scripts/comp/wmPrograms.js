@@ -1317,13 +1317,15 @@
             // 6.5.1 (#850): Windows Mobile 6.5.3 names this applet Home (window title and Start item)
             id: 'today', tab: 'personal', label: runningRelease() === '6.5.1' ? 'Home' : 'Today', icon: 'set-today',
             // 6.5's home screen has an Effects tab (Yukimi, Nov 15)
-            tabs: runningVersion() === '6.5' ? [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items'], ['effects', 'Effects']] : [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
+            tabs: runningVersion() === '6.5' ? [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items'], ['effects', 'Effects'], ['superbar', 'Super Bar']] : [['appearance', 'Appearance'], ['wallpaper', 'Wallpaper'], ['items', 'Items']],
             init: () => ({
                 useDesktop: todayUsesDesktop(), source: sh && sh.todayWallSource ? sh.todayWallSource() : (todayUsesDesktop() ? 'workspace' : 'selected'), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
                 parallax: lsGet(K.todayParallax) === '1',
                 parallaxLevel: Math.max(1, Math.min(10, Math.round(Number(lsGet(K.todayParallaxLevel)) || 4))),
                 fx: (() => { try { const v = JSON.parse(lsGet(K.todayFx) || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } })(),
+                // Super Bar: the phone's notifications, and apps / channels hidden from it (wmTitanium.js keeps the known ones)
+                sbn: (() => { try { const v = JSON.parse(lsGet('wmSuperBarNotes') || 'null'); return v && typeof v === 'object' ? v : {}; } catch (_) { return {}; } })(),
                 screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
             }),
             render(el, tab, d, api) {
@@ -1364,6 +1366,21 @@
                         api.rerender();
                     });
                     pick.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
+                    return;
+                }
+                if (tab === 'superbar') {
+                    // the phone's notifications in the Super Bar, then each app seen there and its channels
+                    const c = d.sbn;
+                    c.apps = c.apps || {}; c.channels = c.channels || {};
+                    const known = Object.entries(c.known || {}).sort((a, b) => String(a[1].app || a[0]).localeCompare(String(b[1].app || b[0]), undefined, { sensitivity: 'base' }));
+                    const rows = known.map(([pkg, k]) => `<div class="wm-listbox-row">${check('sb-app', k.app || pkg, c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
+                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row" style="padding-left:calc(18 * var(--wm-px))">${check('sb-ch', ch, c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join('')).join('');
+                    el.innerHTML = `${check('sbPhone', "Show the phone's notifications", c.phone !== false)}
+                        <div class="wm-form-gap"></div><p>Show notifications from:</p>
+                        ${rows ? `<div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0">${rows}</div>` : '<p class="wm-form-note">Apps and their channels are listed here once their notifications have shown in the Super Bar.</p>'}`;
+                    el.querySelector('input[name="sbPhone"]').addEventListener('change', (e) => { if (e.target.checked) delete c.phone; else c.phone = false; api.rerender(); });
+                    el.querySelectorAll('input[name="sb-app"]').forEach((i) => i.addEventListener('change', () => { if (i.checked) delete c.apps[i.value]; else c.apps[i.value] = false; api.rerender(); }));
+                    el.querySelectorAll('input[name="sb-ch"]').forEach((i) => i.addEventListener('change', () => { if (i.checked) delete c.channels[i.value]; else c.channels[i.value] = false; }));
                     return;
                 }
                 if (tab === 'effects') {
@@ -1545,8 +1562,9 @@
                 lsSet(K.todayParallax, d.parallax ? '1' : null);
                 lsSet(K.todayParallaxLevel, d.parallaxLevel === 4 ? null : d.parallaxLevel);
                 lsSet(K.todayFx, Object.keys(d.fx || {}).length ? JSON.stringify(d.fx) : null);
+                if (d.sbn && Object.keys(d.sbn).length) lsSet('wmSuperBarNotes', JSON.stringify(d.sbn));
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayFx];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax, K.todayParallaxLevel, K.todayFx, 'wmSuperBarNotes'];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]

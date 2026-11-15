@@ -696,6 +696,29 @@
         box.innerHTML = html;
     }
 
+    const SUPER_NOTES_KEY = 'wmSuperBarNotes'; // { phone, apps: { pkg: false }, channels: { 'pkg|ch': false }, known: { pkg: { app, channels } } }
+    function superNotesCfg() {
+        let c = null;
+        try { c = JSON.parse(localStorage.getItem(SUPER_NOTES_KEY) || 'null'); } catch (_) { c = null; }
+        c = c && typeof c === 'object' ? c : {};
+        return { phone: c.phone, apps: c.apps || {}, channels: c.channels || {}, known: c.known || {} };
+    }
+    /** Keep the apps and their channels seen in the bar (for the settings page), written only when new ones come. */
+    function rememberNotes(cfg, list) {
+        let changed = false;
+        for (const n of list) {
+            if (!n.package) continue;
+            const k = cfg.known[n.package] || (cfg.known[n.package] = { app: n.app || n.package, channels: [] });
+            if (!cfg.known[n.package].app || k.app !== (n.app || k.app)) { k.app = n.app || k.app; changed = true; }
+            if (!k.seen) { k.seen = true; changed = true; }
+            if (n.channel && !k.channels.includes(n.channel) && k.channels.length < 24) { k.channels.push(n.channel); changed = true; }
+        }
+        if (!changed) return;
+        const pkgs = Object.keys(cfg.known);
+        if (pkgs.length > 80) pkgs.slice(0, pkgs.length - 80).forEach((p) => delete cfg.known[p]);
+        try { localStorage.setItem(SUPER_NOTES_KEY, JSON.stringify(cfg)); } catch (_) { /* storage off */ }
+    }
+
     function refreshNotes() {
         if (!superEl) return;
         const box = superEl.querySelector('.wm-ti-super-notes');
@@ -708,6 +731,12 @@
         if (!ok) { box.innerHTML = '<button type="button" class="wm-ti-super-item" data-super="access"><span class="wm-ti-super-line">Allow notification access to see the phone\'s notifications here.</span></button>'; return; }
         let list = [];
         try { list = JSON.parse(N.list() || '[]'); } catch (_) { list = []; }
+        // Settings > Today > Super Bar: the phone's notifications off, or some apps or channels hidden;
+        // the apps and channels seen are kept for that page to list
+        const cfg = superNotesCfg();
+        rememberNotes(cfg, list);
+        if (cfg.phone === false) { sub.hidden = true; box.innerHTML = ''; return; }
+        list = list.filter((n) => cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
         if (!list.length) { box.innerHTML = '<div class="wm-ti-super-empty">No notifications</div>'; return; }
         const when = (t) => { const d = new Date(Number(t) || 0); if (isNaN(d)) return ''; const p = timeParts(d); return p.time + (p.ampm ? ` ${p.ampm}` : ''); };
         box.innerHTML = list.slice(0, 30).map((n) => `<div class="wm-ti-super-note">
@@ -1157,6 +1186,7 @@
     document.addEventListener('wmSettingsChange', (e) => {
         const keys = (e && e.detail && e.detail.keys) || [];
         if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY) || keys.includes(FX_KEY)) { readEffects(); if (host && !host.hidden) place(); }
+        if (keys.includes('wmSuperBarNotes') && superOpen) refreshNotes();
     });
 
     /** Place every row for the list position `pos` (rows) around the band. */
@@ -1319,6 +1349,7 @@
         const pg = p.pages[at];
         const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.smallIcon, pg.icon, pg.wx, pg.cells]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
+        if (n > 1 && key !== expKey) arrowsAwake();
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows
         // Effects > digits: the clock in the band at rest keeps its time and only the changed digits
         // roll; a forced redraw (expKey cleared: the entrance, Home) or another panel just draws
@@ -1351,9 +1382,22 @@
     // the width and it carries on to the next page, short of it the page slides back.
     const slide = { active: false, dir: 0, x: 0, raf: 0 };
 
+    /**
+     * A panel's page arrows fade 5 s after it arrives or its page turns, and come back with the next
+     * swipe or turn (Yukimi, Nov 15: on all items).
+     */
+    let arrowsTimer = 0;
+    function arrowsAwake() {
+        if (!host) return;
+        host.classList.remove('arrows-idle');
+        clearTimeout(arrowsTimer);
+        arrowsTimer = setTimeout(() => { if (host) host.classList.add('arrows-idle'); }, 5000);
+    }
+
     function slideBegin(dir) {
         const p = panels[sel];
         if (!p || p.pages.length < 2) return false;
+        arrowsAwake();
         const exp = host.querySelector('.wm-ti-exp');
         const cur = exp.querySelector('.wm-ti-pg');
         if (!cur) return false;

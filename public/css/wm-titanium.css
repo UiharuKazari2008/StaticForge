@@ -503,7 +503,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-card > .wm-ti-super-frostclip
     left: 0;
     right: 0;
     top: calc(9 * var(--u));
-    bottom: calc(14 * var(--u));
+    /* down through the art's bottom light line (68 - 69 of 82), as the band's frost: ending at 68 left
+       that line's see-through pixels showing the sharp picture (Yukimi, Nov 15) */
+    bottom: calc(13 * var(--u));
     overflow: hidden;
 }
 
@@ -1042,4 +1044,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-cell > span:last-child {
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-cell i {
     font-style: normal;
     opacity: 0.7;
+}
+
+/* a panel's page arrows fade 5 s after it arrives or its page turns (wmTitanium.js arrowsAwake) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest .wm-ti-arrow {
+    transition: opacity 0.4s linear;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti.is-rest.arrows-idle .wm-ti-arrow {
+    opacity: 0;
 }
