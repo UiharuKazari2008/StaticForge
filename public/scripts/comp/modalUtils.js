@@ -7588,6 +7588,13 @@ function fileBoot() {
             desktopMs: window.wsClient && window.wsClient._desktopReadyAt || null
         });
         localStorage.setItem(BOOT_LOG_KEY, JSON.stringify(log.slice(-80)));
+        // and one line in the server's log (client_boot_note, fire-and-forget), so why phones restart
+        // can be read there without touching the phone
+        const entry = log[log.length - 1];
+        const ws = window.wsClient;
+        if (ws && typeof ws.send === 'function' && typeof ws.isConnected === 'function' && ws.isConnected()) {
+            ws.send({ type: 'client_boot_note', shell: window.uiShell || '', entry });
+        }
     } catch (_) { /* storage off */ }
 }
 window.melatonBootLog = () => { try { return JSON.parse(localStorage.getItem(BOOT_LOG_KEY) || '[]'); } catch (_) { return []; } };
