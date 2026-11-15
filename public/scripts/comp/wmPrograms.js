@@ -1377,9 +1377,21 @@
                         const t = String(id).replace(/^(notification[_-]?)?channel[_-]?/i, '').replace(/[_-]?(notification[_-]?)?channel$/i, '').replace(/[_.-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim().toLowerCase();
                         return t ? t.charAt(0).toUpperCase() + t.slice(1) : String(id);
                     };
+                    // the channels' real names, as the app shows them in Android's settings (DSApp reads them
+                    // from dumpsys notification; asked once per visit, the page draws again when they come)
+                    const N = window.AndroidPhoneNotifications;
+                    let names = {};
+                    try { names = N && typeof N.channelNames === 'function' ? JSON.parse(N.channelNames() || '{}') : {}; } catch (_) { names = {}; }
+                    if (N && typeof N.requestChannelNames === 'function' && !d.sbnAsked) {
+                        d.sbnAsked = true;
+                        const again = () => { window.removeEventListener('androidnotificationchannels', again); api.rerender(); };
+                        window.addEventListener('androidnotificationchannels', again);
+                        try { N.requestChannelNames(); } catch (_) { /* older app */ }
+                    }
+                    const chName = (pkg, id) => (names[pkg] && names[pkg][id]) || chLabel(id);
                     const known = Object.entries(c.known || {}).sort((a, b) => String(a[1].app || a[0]).localeCompare(String(b[1].app || b[0]), undefined, { sensitivity: 'base' }));
                     const rows = known.map(([pkg, k]) => `<div class="wm-listbox-row">${check('sb-app', k.app || pkg, c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
-                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row"><span style="display:inline-block;flex:none;width:calc(18 * var(--wm-px))"></span>${check('sb-ch', chLabel(ch), c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join('')).join('');
+                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row is-indent">${check('sb-ch', chName(pkg, ch), c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join('')).join('');
                     el.innerHTML = `${check('sbPhone', "Show the phone's notifications", c.phone !== false)}
                         <div class="wm-form-gap"></div><p>Show notifications from:</p>
                         ${rows ? `<div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0">${rows}</div>` : '<p class="wm-form-note">Apps and their channels are listed here once their notifications have shown in the Super Bar.</p>'}`;
