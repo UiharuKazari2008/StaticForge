@@ -125,7 +125,7 @@ function loadFiles() {
     }
     const c = readJson(CACHE_FILE);
     if (c && typeof c === 'object') {
-        cache = { subs: c.subs || null, uploads: c.uploads && typeof c.uploads === 'object' ? c.uploads : {}, details: c.details && typeof c.details === 'object' ? c.details : {} };
+        cache = { subs: c.subs || null, uploads: c.uploads && typeof c.uploads === 'object' ? c.uploads : {}, details: c.details && typeof c.details === 'object' ? c.details : {}, history: c.history && typeof c.history === 'object' && c.history.map ? c.history : null };
     }
 }
 
@@ -657,13 +657,19 @@ async function channelCounts(ids) {
 
 // ---- marks: watched, and Watch Later
 //
-// YouTube gives no program its watch history, so "watched" is this program's own mark (the hold menu, or a
-// video opened from here), kept with the account. Watch Later is kept here too, so adding works whether
-// or not the server's browser is signed in; when it is, the change also goes to the account's own list on
-// YouTube and that list is shown with it.
+// Watched is the account's own watch history on YouTube (Yukimi, Nov 15 2026: she watches with friends and
+// in the YouTube app, and the mark must be the real one). No API gives it, so the server's browser reads
+// the history page (which videos, and how far each was played) and Mark as Watched / Unwatched changes the
+// history itself (modules/youtubeAlchemy.js). A mark made while the browser cannot be reached is kept here
+// so the list still shows it. Watch Later is kept here too, so adding works whether or not the browser is
+// signed in; when it is, the change also goes to the account's own list and that list is shown with it.
 
 const MAX_WATCHED = 5000;
+const WATCHED_PCT = 60; // played this far counts as watched; less shows as a progress bar
+const HISTORY_TTL = 10 * MIN;
 let ytLater = null; // { at, ids: Set }: the account's own Watch Later list as the browser last read it
+let historyBusy = null;
+let historyChangedAt = 0;
 
 function watchedMap() {
     if (!acct.watched || typeof acct.watched !== 'object') acct.watched = {};
@@ -674,11 +680,15 @@ function laterList() {
     return acct.later;
 }
 const inLater = (id) => laterList().some((x) => x.id === id) || !!(ytLater && ytLater.ids.has(id));
+const playedPct = (id) => (cache.history && cache.history.map && typeof cache.history.map[id] === 'number' ? cache.history.map[id] : 0);
+const isWatched = (id) => !!watchedMap()[id] || playedPct(id) >= WATCHED_PCT;
 
-/** Copies of these videos with `watched` and `later` set. */
+/** Copies of these videos with `watched`, `progress` (percent played when started but not watched) and `later`. */
 function marked(videos) {
-    const w = watchedMap();
-    return (videos || []).map((v) => Object.assign({}, v, { watched: !!w[v.id], later: inLater(v.id) }));
+    return (videos || []).map((v) => {
+        const watched = isWatched(v.id);
+        return Object.assign({}, v, { watched, progress: watched ? 0 : playedPct(v.id), later: inLater(v.id) });
+    });
 }
 /** Marked, and the watched ones after the rest (each part keeps its order). */
 function unwatchedFirst(videos) {
@@ -686,15 +696,74 @@ function unwatchedFirst(videos) {
     return m.filter((v) => !v.watched).concat(m.filter((v) => v.watched));
 }
 
+/**
+ * Reads the account's watch history in the server's browser when what is held is older than 10 minutes.
+ * Never fails a caller: without the browser the held history stays. Pushes when the watched set changed.
+ */
+function syncHistory(opts = {}) {
+    if (!signedIn()) return Promise.resolve(false);
+    if (cache.history && Date.now() - cache.history.at < (opts.maxAge || HISTORY_TTL)) return Promise.resolve(false);
+    if (historyBusy) return historyBusy;
+    historyBusy = (async () => {
+        try {
+            const r = await browserRead('history');
+            if (r.why) { if (cache.history) cache.history.at = Date.now() - HISTORY_TTL + 2 * MIN; return false; }
+            const map = {};
+            (r.items || []).forEach((it) => { if (VIDEO_ID.test(String(it.id))) map[it.id] = typeof it.pct === 'number' ? it.pct : 100; });
+            const before = cache.history ? JSON.stringify(cache.history.map) : '';
+            // the page shows the newest part of the history: older entries read before are kept
+            const merged = Object.assign({}, r.partial && cache.history ? cache.history.map : {}, map);
+            cache.history = { at: Date.now(), map: merged };
+            // a mark kept here because the browser could not be reached is the account's own once it shows there
+            const w = watchedMap();
+            let dropped = false;
+            Object.keys(w).forEach((id) => { if (merged[id] >= WATCHED_PCT) { delete w[id]; dropped = true; } });
+            if (dropped) saveAccount();
+            saveCacheSoon();
+            if (JSON.stringify(merged) === before) return false;
+            historyChangedAt = Date.now();
+            poke();
+            return true;
+        } catch (e) {
+            console.warn(`[youtube] watch history not read: ${e.message}`);
+            return false;
+        } finally {
+            historyBusy = null;
+        }
+    })();
+    return historyBusy;
+}
+
+/**
+ * Mark as Watched / Unwatched, on the account itself: `youtube` says what happened there
+ * (done | failed | not-found | browser-signin | browser-offline). When the browser cannot be reached the
+ * mark is kept here.
+ */
 async function markWatched(id, on) {
     if (!VIDEO_ID.test(String(id || ''))) throw fail('That is not a video', 'YOUTUBE_BAD_VIDEO');
+    let youtube = '';
+    try {
+        const r = await browser.watched(!!on, id);
+        youtube = !r || !r.signedIn ? 'browser-signin' : r.ok ? 'done' : r.found === false ? 'not-found' : 'failed';
+    } catch (e) {
+        youtube = e && e.code === 'ALCHEMY_OFFLINE' ? 'browser-offline' : 'failed';
+    }
     const w = watchedMap();
-    if (on) w[id] = Date.now(); else delete w[id];
+    if (!cache.history) cache.history = { at: 0, map: {} };
+    if (on) {
+        if (youtube === 'done') { cache.history.map[id] = 100; delete w[id]; } else w[id] = Date.now();
+    } else {
+        delete w[id];
+        // gone from the account's history (or not in the part of it YouTube shows any more)
+        if (youtube === 'done' || youtube === 'not-found') delete cache.history.map[id];
+    }
     const ids = Object.keys(w);
     if (ids.length > MAX_WATCHED) ids.sort((a, b) => w[a] - w[b]).slice(0, ids.length - MAX_WATCHED).forEach((k) => { delete w[k]; });
     saveAccount();
+    saveCacheSoon();
+    historyChangedAt = Date.now();
     poke();
-    return { id, watched: !!on };
+    return { id, watched: isWatched(id), youtube };
 }
 
 /**
@@ -750,6 +819,7 @@ function refreshFeed() {
     if (feedBusy) return feedBusy;
     feedBusy = (async () => {
         try {
+            void syncHistory();
             const channels = await subscriptions({ maxAge: FEED_TTL });
             const r = await syncUploads(channels.map((c) => c.id), (cache.subs && cache.subs.counts) || {});
             if (r.failed && r.failed === r.read && r.read === channels.length) throw r.error;
@@ -773,7 +843,8 @@ function refreshFeed() {
 async function feed(opts = {}) {
     if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
     const age = feedMemo ? Date.now() - feedMemo.at : Infinity;
-    const out = (f, refreshing) => Object.assign({}, f, { refreshing, videos: unwatchedFirst(f.videos) });
+    const out = (f, refreshing) => Object.assign({}, f, { refreshing, at: Math.max(f.at || 0, historyChangedAt), videos: unwatchedFirst(f.videos) });
+    void syncHistory();
     if (feedMemo && age < (opts.fresh ? 2 * MIN : FEED_TTL)) return out(feedMemo, !!feedBusy);
     const held = cache.subs && cache.subs.list && cache.subs.list.some((c) => cache.uploads[c.id] && cache.uploads[c.id].at);
     if (!held) return out(await refreshFeed(), false);
@@ -983,7 +1054,8 @@ function accountView() {
 
 function hubItems() {
     refreshLatest(false);
-    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? marked(latestVideos()) : [] }, settings: settings(), feed: { at: feedMemo ? feedMemo.at : 0 } };
+    void syncHistory();
+    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? marked(latestVideos()) : [] }, settings: settings(), feed: { at: Math.max(feedMemo ? feedMemo.at : 0, historyChangedAt) } };
 }
 
 function getState() {
@@ -1027,5 +1099,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy || historyBusy, syncHistory, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {}, history: null }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; historyBusy = null; historyChangedAt = 0; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };

@@ -18,8 +18,9 @@
  * are read when their page is opened, on Refresh, or when they are older than 15 minutes on return.
  *
  * Holding a video offers Mark as Watched / Unwatched and Add to / Remove from Watch Later. Watched is the
- * program's own mark (YouTube gives no program its history; a video opened from here is marked too): those
- * videos are dimmed and sit below the rest of the Subscriptions list. A clock on the picture says a video
+ * account's own YouTube watch history (Yukimi: she watches with friends and in the YouTube app): the server's
+ * browser reads it and makes the mark there. Watched videos are dimmed and sit below the rest of the
+ * Subscriptions list; a started one shows how far it was played. A clock on the picture says a video
  * is in Watch Later.
  *
  * A video opens in the phone's YouTube app through the Dreamscape app's link bridge
@@ -146,13 +147,8 @@
         } catch (_) { /* the plain way below */ }
         try { window.open(url, '_blank', 'noopener'); return true; } catch (_) { return false; }
     }
-    /** Opens the video in the YouTube app; a video opened from here counts as watched. */
-    function openVideo(id) {
-        const ok = openUrl(videoUrl(id));
-        const v = seen.get(id);
-        if (ok && isAdmin() && !(v && v.watched)) setWatched(id, true, true);
-        return ok;
-    }
+    /** Opens the video in the YouTube app (which records the viewing itself: the server reads the account's history). */
+    const openVideo = (id) => openUrl(videoUrl(id));
 
     async function copyText(text) {
         try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* older WebView */ }
@@ -392,16 +388,31 @@
         todayHtml = '';
     }
 
-    async function setWatched(id, on, quiet) {
-        if (!isAdmin()) { if (!quiet) box('Only the administrator can mark videos.', 'info'); return; }
-        eachVideo(id, (v) => { v.watched = on; });
-        // a video just opened stays where it is until the list is next read: the page is behind the YouTube app
-        if (!quiet) { sinkWatched(); redraw(); }
+    const WATCH_WHY = {
+        'browser-signin': 'YouTube was not told: the server\'s browser is not signed in to YouTube. Open youtube.com in Internet Explorer and sign in there.',
+        'browser-offline': 'YouTube was not told: the server\'s browser (Internet Explorer) is not running.',
+        failed: 'YouTube did not take the change.',
+        'not-found': ''
+    };
+    /** Mark as Watched / Unwatched: in the account's own YouTube history (the server's browser does it). */
+    async function setWatched(id, on) {
+        if (!isAdmin()) { box('Only the administrator can mark videos.', 'info'); return; }
+        const was = new Map();
+        eachVideo(id, (v) => { was.set(v, [v.watched, v.progress]); v.watched = on; if (on) v.progress = 0; });
+        sinkWatched();
+        redraw();
         try {
-            await ask('youtube_mark', { id, watched: on });
+            const d = await ws.busy(ask('youtube_mark', { id, watched: on }, 60000), { delay: 400, timeout: 60000 });
+            eachVideo(id, (v) => { v.watched = !!d.watched; });
+            sinkWatched();
+            redraw();
+            if (on && d.youtube !== 'done') box(`Marked here. ${WATCH_WHY[d.youtube] || WATCH_WHY.failed}`, 'info');
+            else if (!on && d.watched) box(`It is still marked watched on YouTube. ${WATCH_WHY[d.youtube] || WATCH_WHY.failed}`, 'info');
         } catch (e) {
-            eachVideo(id, (v) => { v.watched = !on; });
-            if (!quiet) { sinkWatched(); redraw(); box(failText(e, 'The mark could not be saved')); }
+            was.forEach(([w, p], v) => { v.watched = w; v.progress = p; });
+            sinkWatched();
+            redraw();
+            box(failText(e, 'The mark could not be saved'));
         }
     }
 
@@ -496,7 +507,7 @@
         const big = hero ? `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/hqdefault.jpg` : v.thumb;
         const sub = [v.channel, age(v.at)].filter(Boolean);
         return `<div class="yt-row${hero ? ' is-hero' : ''}${v.watched ? ' is-watched' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
-            <span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>
+            <span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${v.progress > 0 && !v.watched ? `<i class="yt-prog"><b style="width:${Math.min(100, Math.round(v.progress))}%"></b></i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>
             <span class="yt-tx"><span class="yt-t">${isNew(v) && !v.watched ? '<i class="yt-new">NEW</i>' : ''}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(age(v.at))}</span>`}</span>
         </div>`;
     }
