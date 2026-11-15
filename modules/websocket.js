@@ -722,6 +722,12 @@ class WebSocketServer {
             return;
         }
 
+        // a sleeping phone page that asks for something is awake (a missed wake report must never leave
+        // its status pushes held, Yukimi Nov 15: status icons not updating): what was held goes now
+        if (clientInfo.dormant && message && message.type !== 'client_dormant' && message.type !== 'pong') {
+            this.setDormant(ws, false, `request ${String(message.type || '').slice(0, 40)}`);
+        }
+
         // Get message handlers from globalResources
         try {
             const handlers = this.globalResources.getWebSocketMessageHandlers();
@@ -789,12 +795,18 @@ class WebSocketServer {
     }
 
     /** The page went to sleep (on) or woke (off): on waking, what was held goes out in order. */
-    setDormant(ws, on) {
+    setDormant(ws, on, why = '') {
         const info = this.clients.get(ws);
         if (!info) return;
+        const was = !!info.dormant;
         info.dormant = !!on;
+        const held = !on && this._dormantHeld ? this._dormantHeld.get(ws) : null;
+        if (was !== !!on) {
+            const ua = String(info.userAgent || '');
+            const device = /SM-F9\d\d/.test(ua) ? 'Fold' : /SM-A53/.test(ua) ? 'A53' : (/Android/.test(ua) ? 'Android' : 'other');
+            console.log(`📱 ${on ? 'asleep' : 'awake'} ${device} ip=${info.ip || info.clientIP || '?'}${on ? '' : ` held=${held ? held.size : 0}`}${why ? ` (${why})` : ''}`);
+        }
         if (on) return;
-        const held = this._dormantHeld && this._dormantHeld.get(ws);
         if (!held) return;
         this._dormantHeld.delete(ws);
         for (const m of held.values()) {
