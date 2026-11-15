@@ -11,6 +11,86 @@ self.addEventListener('fetch', (event) => {
   if (SW_BYPASS_HOSTS.has(host)) event.stopImmediatePropagation();
 });
 
+// Fast path for the page's own scripts and stylesheets, asked for by hash (#817).
+// A boot asks for about 410 of them at once. Each went through the Workbox router (every route's
+// matcher), the unified handler's awaits and its own Cache Storage lookup, one after another on
+// the worker's thread: ~6 ms each on the Galaxy A53, so the last file was answered 5 s after the
+// page asked and DOMContentLoaded waited for it (A53, Nov 15: all 410 requested by 0.85 s, median
+// worker start 2.93 s, no long task in the page).
+// This listener is registered before Workbox's, answers such a request itself and keeps the event
+// from the router. The rows come from one read of the whole hashed-URL cache (keys + matchAll, two
+// cache operations for the burst instead of one per file), kept for a few seconds; each row is
+// still the Cache Storage response itself, so Chrome's compiled code for it is used. A file not in
+// that read takes hashedScriptRow (one lookup, and the copy from the static cache on first sight).
+const HASHED_FAST_PREFIXES = ['/scripts/', '/css/'];
+const HASHED_SNAPSHOT_FRESH_MS = 8000;
+const HASHED_SNAPSHOT_KEEP_MS = 20000;
+const hashedSnapshot = { map: null, at: 0, building: null, dropTimer: null };
+
+const HASHED_SNAPSHOT_ON = false;
+const HASHED_EMPTY = new Map();
+function hashedSnapshotMap() {
+  if (!HASHED_SNAPSHOT_ON) return Promise.resolve(HASHED_EMPTY);
+  if (hashedSnapshot.map && Date.now() - hashedSnapshot.at < HASHED_SNAPSHOT_FRESH_MS) return Promise.resolve(hashedSnapshot.map);
+  if (hashedSnapshot.building) return hashedSnapshot.building;
+  hashedSnapshot.building = (async () => {
+    const map = new Map();
+    try {
+      const cache = await openScriptCodeCache();
+      // back to back, so no write can come between them; the hash check below covers the rest
+      const [keys, rows] = await Promise.all([cache.keys(), cache.matchAll()]);
+      if (keys.length === rows.length) {
+        for (let i = 0; i < keys.length; i++) {
+          const key = keys[i].url;
+          const at = key.indexOf('?sha=');
+          const row = rows[i];
+          if (at > 0 && row && row.status === 200 && row.headers.get('x-file-hash') === key.slice(at + 5)) map.set(key, row);
+        }
+      }
+    } catch (_err) { /* an empty read: every file takes the single lookup */ }
+    hashedSnapshot.map = map;
+    hashedSnapshot.at = Date.now();
+    hashedSnapshot.building = null;
+    clearTimeout(hashedSnapshot.dropTimer);
+    hashedSnapshot.dropTimer = setTimeout(() => { hashedSnapshot.map = null; }, HASHED_SNAPSHOT_KEEP_MS);
+    return map;
+  })();
+  return hashedSnapshot.building;
+}
+
+async function answerHashedAsset(event, request, url, key) {
+  try {
+    const map = await hashedSnapshotMap();
+    const kept = map.get(key);
+    if (kept) {
+      // a response body is read once: the next request for this file takes its own lookup
+      map.delete(key);
+      return kept;
+    }
+    const row = await hashedScriptRow({ event }, request, url);
+    if (row) return row;
+    // the kept file is another version than the page asked for: what the router answered before
+    const shellHit = await matchStaticShell(url.pathname);
+    if (shellHit) return respondWithSavedAsset(request, shellHit, SHELL_ASSET_CACHE_CONTROL);
+  } catch (_err) { /* the network below */ }
+  return fetch(request);
+}
+
+self.addEventListener('fetch', (event) => {
+  const request = event.request;
+  if (request.method !== 'GET' || (request.destination !== 'script' && request.destination !== 'style')) return;
+  const raw = request.url;
+  const at = raw.indexOf('?sha=');
+  if (at < 0 || request.headers.has('range')) return;
+  let url;
+  try { url = new URL(raw); } catch (_err) { return; }
+  if (url.origin !== self.location.origin || !HASHED_FAST_PREFIXES.some((p) => url.pathname.startsWith(p))) return;
+  const sha = url.searchParams.get('sha');
+  if (!sha || isAuthGatedStaticPath(url.pathname)) return;
+  event.stopImmediatePropagation();
+  event.respondWith(answerHashedAsset(event, request, url, `${url.origin}${url.pathname}?sha=${sha}`));
+});
+
 // Compile-time: auto-apply CSS-only / apply-safe static cache updates without restart prompt
 const CSS_ONLY_AUTO_APPLY = true;
 const SW_SCRIPT_EPOCH = 13; // bump on breaking SW changes
