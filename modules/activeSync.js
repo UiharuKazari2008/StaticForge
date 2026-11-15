@@ -468,7 +468,11 @@ function peersKey(data) {
         if (Array.isArray(v)) return v.map(strip);
         if (!v || typeof v !== 'object') return v;
         const out = {};
-        for (const k of Object.keys(v).sort()) if (!PEER_CLOCKS.has(k)) out[k] = strip(v[k]);
+        for (const k of Object.keys(v).sort()) {
+            if (PEER_CLOCKS.has(k)) continue;
+            // free space moves with every file written; only a 256 MB step counts as a change
+            out[k] = (k === 'free' || k === 'used') && typeof v[k] === 'number' ? Math.round(v[k] / 268435456) : strip(v[k]);
+        }
         return out;
     };
     const byId = (a, b) => String(a.deviceId || a.id || a.clientId || '').localeCompare(String(b.deviceId || b.id || b.clientId || ''));

@@ -1235,6 +1235,12 @@ class WebSocketMessageHandlers {
     }
     sendToClient(ws, message) {
         if (ws.readyState === 1) { // WebSocket.OPEN
+            // a sleeping phone page's status notices are held by the socket server (setDormant)
+            if (!message || !message.requestId) {
+                let server = null;
+                try { server = this.globalResources.getWebSocketServer(); } catch (_) { server = null; }
+                if (server && typeof server._dormantHold === 'function' && server._dormantHold(ws, message)) return;
+            }
             ws.send(JSON.stringify(message));
         }
     }
