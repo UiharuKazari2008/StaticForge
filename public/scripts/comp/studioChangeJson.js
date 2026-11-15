@@ -47,7 +47,7 @@ Rules:
 - expanders: if present, DELETE all request expanders and install only this list. In text use !prefix. Do not repeat expander values.
 - vibes: if present, REPLACE current vibe transfers with this id list (ids Studio already has). Omit to leave vibes unchanged. No image uploads.
 - Default action is replace. remove = delete a span or slot. Omit unused keys. Only include params you want to change.
-- params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field. If the picture needs a different level than Studio has, set it. Do not ask.
+- params.nsfw: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Cleanse. Prefer the id over pasting that level's add/remove tags. dataset_config.nsfw is the same field. If the picture needs a different level than Studio has, set it. Do not ask.
 - presetName: the Studio name field. It is the file label. Set it when the concept changes. Do not ask them to rename.
 - params.append_transparency / n / normalize_vibes / use_coords / save_base_output / skip_pipeline_stages / keep_newlines / bake_newlines / auto_char_numerize / prompt_normalize / deduplicate_tags / auto_clean_uc: existing Studio toggles. n is Studio prints (1–8). use_coords true = Auto Position off.
 - dataset_config: include (replace list), bias, settings (e.g. settings.__quality__.no_text.enabled false for in-image text; keep append_quality on), nsfw, nsfw_bias. Echoed on GET /agent/session/state.
@@ -107,7 +107,7 @@ const STUDIO_CHANGE_NSFW_NAMES = {
     1: 'Allow',
     0: 'Neutral',
     '-1': 'Remove',
-    '-2': 'Clense'
+    '-2': 'Cleanse'
 };
 
 const STUDIO_CHANGE_IMAGE_BIAS_NAMES = ['Start', '⅖', 'Center', '⅘', 'End'];

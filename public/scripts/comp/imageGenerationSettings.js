@@ -1470,7 +1470,7 @@ function studioDatasetStatusLabel() {
 }
 
 function studioNsfwBiasLabel() {
-    const names = { 3: 'Nude', 2: 'Skimpy', 1: 'Allow', 0: 'Neutral', '-1': 'Remove', '-2': 'Clense' };
+    const names = { 3: 'Nude', 2: 'Skimpy', 1: 'Allow', 0: 'Neutral', '-1': 'Remove', '-2': 'Cleanse' };
     return names[String(selectedNsfwValue)] || '';
 }
 

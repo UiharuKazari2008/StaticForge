@@ -2715,7 +2715,7 @@ function getStudioNsfwBiasMenuItems() {
         { value: 1, name: 'Allow' },
         { value: 0, name: 'Neutral' },
         { value: -1, name: 'Remove' },
-        { value: -2, name: 'Clense' }
+        { value: -2, name: 'Cleanse' }
     ];
     return nsfwOptions.map((option) => {
         const selected = selectedNsfwValue === option.value;
@@ -3133,7 +3133,7 @@ function renderNsfwDropdown() {
         { value: 1, name: 'Allow' },
         { value: 0, name: 'Neutral' },
         { value: -1, name: 'Remove' },
-        { value: -2, name: 'Clense' }
+        { value: -2, name: 'Cleanse' }
     ];
 
     nsfwOptions.forEach(option => {
@@ -3277,7 +3277,7 @@ function updateNsfwButtonDisplay() {
         1: 'on',    // Allow
         0: 'neutral', // Neutral
         '-1': 'off', // Remove
-        '-2': 'off'  // Clense
+        '-2': 'off'  // Cleanse
     };
 
     const currentState = stateMap[selectedNsfwValue.toString()] || 'neutral';

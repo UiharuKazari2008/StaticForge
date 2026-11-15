@@ -12,7 +12,7 @@ const NSFW_LEVEL_LABELS = {
     1: 'Allow',
     0: 'Neutral',
     '-1': 'Remove',
-    '-2': 'Clense'
+    '-2': 'Cleanse'
 };
 
 const PRESET_TABLE_MODEL_FALLBACKS = {
@@ -284,7 +284,7 @@ function formatUcDescription(catalog) {
 
 function formatNsfwDescription(catalog) {
     const lines = [
-        'dataset_config.nsfw level. Studio: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Set the level; do not also paste that level\'s add/remove strings into prompt or uc.'
+        'dataset_config.nsfw level. Studio: 3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Cleanse. Set the level; do not also paste that level\'s add/remove strings into prompt or uc.'
     ];
     const levels = catalog && catalog.nsfw && catalog.nsfw.levels;
     if (Array.isArray(levels) && levels.length) {
@@ -398,7 +398,7 @@ function patchParamSchemaSlim(props) {
     }
     if (props.nsfw) {
         props.nsfw.enum = [3, 2, 1, 0, -1, -2];
-        props.nsfw.description = '3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Clense. Ids only — do not paste add/remove strings.';
+        props.nsfw.description = '3 Nude, 2 Skimpy, 1 Allow, 0 Neutral, -1 Remove, -2 Cleanse. Ids only — do not paste add/remove strings.';
     }
     if (props.n) {
         props.n.description = 'Print count 1–8. Default 1. n>1 opens Prints review and can block the next autoGenerate.';

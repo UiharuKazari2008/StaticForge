@@ -2202,7 +2202,7 @@
         { id: 'inspect', label: 'Inspector', kind: 'list', menu: null, row: 'Inspector' }
     ];
 
-    /** The desktop NSFW button's state: on (Nude / Allow), neutral, off (Remove / Clense). */
+    /** The desktop NSFW button's state: on (Nude / Allow), neutral, off (Remove / Cleanse). */
     function nsfwState() {
         const b = document.getElementById('nsfwToggleBtn');
         const v = b && b.getAttribute('data-state');

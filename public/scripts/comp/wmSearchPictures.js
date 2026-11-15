@@ -57,7 +57,7 @@
     const RELATIVE = [['', 'Any time'], ['1d', '1 day'], ['7d', '7 days'], ['30d', '30 days'], ['90d', '90 days'], ['1y', '1 year']];
     const RESOLUTIONS = [['normal', 'Normal'], ['large', 'Large'], ['max', 'Max / wallpaper']];
     const TRI = [['', 'Any'], ['1', 'Yes'], ['0', 'No']];
-    const NSFW = [['', 'Any'], ['-2', 'Clense'], ['-1', 'Remove'], ['0', 'Neutral'], ['1', 'Allow'], ['2', 'Skimpy'], ['3', 'Nude']];
+    const NSFW = [['', 'Any'], ['-2', 'Cleanse'], ['-1', 'Remove'], ['0', 'Neutral'], ['1', 'Allow'], ['2', 'Skimpy'], ['3', 'Nude']];
 
     let ws = null;
     let page = null;

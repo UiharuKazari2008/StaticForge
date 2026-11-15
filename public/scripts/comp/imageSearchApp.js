@@ -79,7 +79,7 @@
         { value: '90d', label: 'Last 3 months' },
         { value: '1y', label: 'Last year' }
     ];
-    const NSFW_LABELS = { '-2': 'Clense', '-1': 'Remove', 0: 'Neutral', 1: 'Allow', 2: 'Skimpy', 3: 'Nude' };
+    const NSFW_LABELS = { '-2': 'Cleanse', '-1': 'Remove', 0: 'Neutral', 1: 'Allow', 2: 'Skimpy', 3: 'Nude' };
     const COLUMNS = [
         { id: 'name', label: 'Name', width: 190 },
         { id: 'date', label: 'Date modified', width: 120 },

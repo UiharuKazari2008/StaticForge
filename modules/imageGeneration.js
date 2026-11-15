@@ -499,7 +499,7 @@ function applyNsfwProcessing(prompt, negativePrompt, characterPrompts, nsfwValue
                 modifications.prompt.push(addedText2);
                 break;
 
-            case -2: // Clense: remove from all first, then add values to base prompt
+            case -2: // Cleanse: remove from all first, then add values to base prompt
                 // STEP 1: Remove from all prompts and UCs first
                 processedPrompt = removeFromText(processedPrompt, ['nsfw']);
                 processedNegativePrompt = removeFromText(processedNegativePrompt, ['nsfw']);

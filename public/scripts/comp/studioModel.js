@@ -132,7 +132,7 @@
                         .map((r) => ({ value: r.value, name: r.text }));
                 } catch (_) { return []; }
             })(),
-            nsfw: [[3, 'Nude'], [2, 'Skimpy'], [1, 'Allow'], [0, 'Neutral'], [-1, 'Remove'], [-2, 'Clense']].map(([value, name]) => ({ value, name })),
+            nsfw: [[3, 'Nude'], [2, 'Skimpy'], [1, 'Allow'], [0, 'Neutral'], [-1, 'Remove'], [-2, 'Cleanse']].map(([value, name]) => ({ value, name })),
             has: {
                 effort,
                 uc: !locked('uc'),
