@@ -1461,6 +1461,7 @@
     // ---------------------------------------------------------------- register
 
     let windowKey = '';
+    let todayTickKey = '';
     function watchLeaveWindow() {
         setInterval(() => {
             if (!loaded || document.hidden) return;
@@ -1468,7 +1469,11 @@
             const key = w ? `${w.direction}:${w.leaveAt}` : '';
             if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
             // a report going stale (30 min) or the commute switching direction: Today's panel lamp follows
-            if (ws && ws.refreshToday) ws.refreshToday();
+            // (only when the lamp or the line changed: an unconditional repaint every minute redrew
+            // every Today item, #849)
+            let tk = '';
+            try { tk = `${levelSuffix()}|${JSON.stringify(todayLine(commuteNow() || direction()))}`; } catch (_) { tk = String(Date.now()); }
+            if (tk !== todayTickKey) { todayTickKey = tk; if (ws && ws.refreshToday) ws.refreshToday(); }
             // driving: the phone's position each minute, then the time left everywhere it shows
             if (driveWindow()) { readPosition(); if (driving()) changed(); }
             armNativeWatch();

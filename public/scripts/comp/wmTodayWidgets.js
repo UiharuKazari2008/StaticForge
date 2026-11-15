@@ -130,7 +130,8 @@
         }
         // a picture that failed to load (a deleted print's preview) stays hidden on later redraws: its
         // src is unchanged, so no second error event would hide it again
-        img.hidden = !src || (img.complete && img.naturalWidth === 0);
+        const hide = !src || (img.complete && img.naturalWidth === 0);
+        if (img.hidden !== hide) img.hidden = hide; // (only when it differs: every Today draw, #849)
     }
 
     // ================================================================ Calendar
@@ -201,11 +202,29 @@
     const director = { asked: 0, status: null, lists: { wren: null, kabuki: null, xi: null }, at: { wren: 0, kabuki: 0, xi: 0 }, wired: false };
     const toTime = (v) => (typeof v === 'number' ? (v < 1e12 ? v * 1000 : v) : (Date.parse(v) || 0));
 
+    // An item whose data came in by itself asks Today to repaint: Today no longer repaints on every
+    // server message (wmShell refreshStatus, #849), so these say so (one repaint for a burst)
+    let todaySoon = null;
+    function repaintToday() {
+        if (todaySoon) return;
+        todaySoon = setTimeout(() => {
+            todaySoon = null;
+            if (sh && sh.current === 'today' && typeof sh.refreshToday === 'function') sh.refreshToday();
+        }, 150);
+    }
+
     function wireDirector() {
         const c = ws();
         if (director.wired || !c || typeof c.on !== 'function') return;
         director.wired = true;
-        c.on('director_computer_status', (m) => { director.status = (m && (m.data || m)) || director.status; });
+        // the status comes round periodically: Today repaints only when it says something new (clocks aside)
+        let statusKey = '';
+        c.on('director_computer_status', (m) => {
+            director.status = (m && (m.data || m)) || director.status;
+            let k = '';
+            try { k = JSON.stringify(director.status, (key, v) => (/^(at|ts|time|timestamp|updatedAt|checkedAt|lastSeen|now|uptime\w*)$/i.test(key) ? undefined : v)); } catch (_) { k = String(Date.now()); }
+            if (k !== statusKey) { statusKey = k; repaintToday(); }
+        });
         // a session made a print: its picture on Today at once
         c.on('director_session_image', (m) => {
             const d = m && (m.data || m);
@@ -214,8 +233,9 @@
                 const s = director.lists[p] && director.lists[p].find((x) => String(x.id) === String(d.chatId));
                 if (s) { s.filename = d.filename; s.image_type = ''; s.updated_at = new Date().toISOString(); }
             }
+            repaintToday();
         });
-        c.on('director_get_sessions_response', (m) => noteSessions(m));
+        c.on('director_get_sessions_response', (m) => { noteSessions(m); repaintToday(); });
     }
 
     function noteSessions(m, asked) {
@@ -762,9 +782,9 @@
         setText(el.querySelector('.wtw-title'), title);
         const sub = el.querySelector('.wtw-sub');
         setText(sub, prompt);
-        sub.hidden = !prompt;
+        if (sub.hidden !== !prompt) sub.hidden = !prompt;
         const bar = el.querySelector('.wtw-bar');
-        bar.hidden = pct < 0;
+        if (bar.hidden !== (pct < 0)) bar.hidden = pct < 0;
         if (pct >= 0) {
             const fill = el.querySelector('.wtw-bar-fill');
             const w = `${pct}%`;
@@ -772,7 +792,7 @@
         }
         el.classList.toggle('is-printing', !!n);
         const acts = el.querySelector('.wtw-actions');
-        acts.hidden = !last;
+        if (acts.hidden !== !last) acts.hidden = !last;
         const item = last ? printItem(last) : null;
         acts.querySelector('[data-act="reroll"]').disabled = !fnOf('rerollImage');
         acts.querySelector('[data-act="edit"]').disabled = !fnOf('openManualModalWithContent') || !item;
@@ -792,7 +812,7 @@
             const key = frame.length + frame.slice(-24);
             if (studio.frameKey !== key) { studio.frameKey = key; setImg(img, frame); }
         } else {
-            img.dataset.file = last ? last.filename : '';
+            if (img.dataset.file !== (last ? last.filename : '')) img.dataset.file = last ? last.filename : '';
             setImg(img, printPicture(last));
         }
         el.querySelector('.wtw-thumb-box').classList.toggle('is-empty', img.hidden);
@@ -983,7 +1003,7 @@
         const text = n ? previewOf(n, noteBody(n)) : '';
         notesPanel = { title: n ? n.name : 'No notes', text, tap: () => el.click() };
         setText(pv, text);
-        pv.hidden = !text;
+        if (pv.hidden !== !text) pv.hidden = !text;
         if (pv.style.getPropertyValue('--wtw-lines') !== String(lines)) pv.style.setProperty('--wtw-lines', String(lines));
         return true;
     }
@@ -1248,7 +1268,8 @@
         const last = recent[0] || null;
         setText(el.querySelector('.wtw-sub'), last ? last.name : '');
         setText(el.querySelector('.wtw-files-date'), last ? f.fmtDate(last.modifiedAt) : '');
-        el.querySelector('.wtw-files-last').hidden = !last;
+        const filesLast = el.querySelector('.wtw-files-last');
+        if (filesLast.hidden !== !last) filesLast.hidden = !last;
         return true;
     }
 
@@ -1286,7 +1307,7 @@
     function loadRemote() {
         const b = window.browsingSessions;
         if (!b || typeof b.list !== 'function') return;
-        if (!ie.wired && typeof b.on === 'function') { ie.wired = true; b.on('changed', () => { ie.stale = true; }); }
+        if (!ie.wired && typeof b.on === 'function') { ie.wired = true; b.on('changed', () => { ie.stale = true; repaintToday(); }); }
         const now = Date.now();
         if ((ie.busy && now - ie.busy < 30000) || !online() || sh.current !== 'today' || document.hidden) return;
         if (document.documentElement.dataset.wmBoot !== 'done') return; // not while the phone starts
@@ -1463,7 +1484,7 @@
         const engine = IE_ENGINES[option('engine')] ? option('engine') : 'bing';
         if (el.dataset.wtwBuilt !== 'wtw-ie') {
             el.dataset.wtwBuilt = 'wtw-ie';
-            el.classList.add('wtw', 'wtw-ie');
+            if (!el.classList.contains('wtw-ie')) el.classList.add('wtw', 'wtw-ie');
             // the search box is Today's own (wm-shell.css .wm-today-search), with the Grimoire's button before the web's
             el.innerHTML = `
                 <form class="wm-today-search wtw-ie-search" role="search">
@@ -1723,7 +1744,7 @@
         favPanel = items;
         if (el.dataset.wtwBuilt !== 'wtw-favs') {
             el.dataset.wtwBuilt = 'wtw-favs';
-            el.classList.add('wtw', 'wtw-favs');
+            if (!el.classList.contains('wtw-favs')) el.classList.add('wtw', 'wtw-favs');
             el.innerHTML = `<button type="button" class="wtw-favs-none"><img ${imgSrcset('ie-favorite')} alt=""><span class="wtw-title">Tap here to add favorites</span></button>
                 <span class="wtw-favs-strip"></span><span class="wtw-favs-name"></span>`;
             el.querySelector('.wtw-favs-none').addEventListener('click', favOptions);
@@ -2186,9 +2207,9 @@
         });
         // Files: off until switched on, as Notes, Remote Desktop and Server Status are
         sh.registerTodayItem({ id: 'files', label: 'Files', icon: 'app-file-explorer', after: 'server', defaultOn: false, render: renderFiles, titanium: filesTitanium, options: FILES_OPTIONS });
-        document.addEventListener('wmFilesChange', () => { files.stale = true; });
+        document.addEventListener('wmFilesChange', () => { files.stale = true; repaintToday(); });
         // a change made elsewhere (the desktop, another phone) arrives as vfs_updated
-        document.addEventListener('wsMessage', (e) => { const d = e.detail || {}; if (d.type === 'vfs_updated') files.stale = true; });
+        document.addEventListener('wsMessage', (e) => { const d = e.detail || {}; if (d.type === 'vfs_updated') { files.stale = true; repaintToday(); } });
         // Internet Explorer and Favorites: off until switched on, as Files is
         sh.registerTodayItem({ id: 'ie', label: 'Internet Explorer', icon: 'app-ie', after: 'files', defaultOn: false, render: renderIe, titanium: ieTitanium, options: IE_OPTIONS });
         sh.registerTodayItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });

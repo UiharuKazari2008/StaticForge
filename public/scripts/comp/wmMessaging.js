@@ -3408,7 +3408,19 @@
         wireTm();
         // and the IMAP accounts (#789): their rows, and their new mail's notification while Messaging is closed
         wireImap();
-        setInterval(() => { wireTm(); wireImap(); }, 3000);
+        // the clients may come after this script, or be replaced (a test fake): tried until both are
+        // bound, then again on a reconnect or a program change - not every 3 s for the life of the page
+        // with Messaging closed (#849 idle profile)
+        const rewire = () => { wireTm(); wireImap(); };
+        let tries = 0;
+        const untilBound = () => {
+            rewire();
+            if ((tmWiredTo && imapWiredTo && imapLoaded) || ++tries > 40) return;
+            setTimeout(untilBound, 3000);
+        };
+        setTimeout(untilBound, 3000);
+        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', rewire);
+        document.addEventListener('wmAppChange', rewire);
         ws.registerApp({
             id: APP_ID,
             title: 'Messaging',
