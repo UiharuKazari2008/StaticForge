@@ -61,10 +61,12 @@
     cursor: var(--c-col-resize, col-resize) !important;
 }
 
+/* regedit's panes scroll natively in both directions: vista-scrollbars.css paints the bars
+   (the overlay customScrollbar is vertical only and its re-init moved the panes, dropping focus) */
 #configEditorModal :is(.config-editor-tree-scroll-shell, .config-editor-values-scroll-shell) {
     flex: 1;
     min-height: 0;
-    overflow: hidden;
+    overflow: auto;
 }
 
 #configEditorModal :is(.config-editor-tree-scrollable, .config-editor-values-scrollable) {

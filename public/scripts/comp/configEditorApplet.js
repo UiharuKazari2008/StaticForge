@@ -555,38 +555,64 @@ class ConfigEditorApplet {
         tree.addEventListener('blur', () => this.syncFocus());
     }
 
-    /** The tree from Computer down, every expanded key loaded first. */
-    async renderTree() {
-        const build = async (loc, depth) => {
-            const key = this.locKey(loc);
-            this.locs.set(key, loc);
-            const kids = await this.treeChildren(loc, this.expanded.has(key));
-            const open = this.expanded.has(key) && kids.list !== null;
-            const row = document.createElement('div');
-            row.className = 'config-editor-tree-item';
-            if (loc.kind === 'computer') row.classList.add('config-editor-tree-computer');
-            row.dataset.loc = key;
-            row.setAttribute('role', 'treeitem');
-            const icon = loc.kind === 'computer' ? '/static_images/vista-explorer/computer-16.png' : '/static_images/vista-icons/explorer/folder-16.png';
-            const exp = kids.has
-                ? `<span class="config-editor-tree-expand" aria-hidden="true"><i class="fas ${open ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
-                : '<span class="config-editor-tree-spacer" aria-hidden="true"></span>';
-            row.innerHTML = `${exp}<span class="config-editor-tree-label"><img class="config-editor-tree-icon" src="${icon}" alt=""><span>${configEditorEscapeHtml(this.locName(loc))}</span></span>`;
-            const frag = [row];
-            if (open && kids.list && kids.list.length) {
-                const box = document.createElement('div');
-                box.className = 'config-editor-tree-children';
-                box.setAttribute('role', 'group');
-                for (const k of kids.list) {
-                    for (const el of await build(k, depth + 1)) box.appendChild(el);
-                }
-                frag.push(box);
+    /** One key's row and, when it is open, its loaded children (rows for that branch only). */
+    async buildBranch(loc) {
+        const key = this.locKey(loc);
+        this.locs.set(key, loc);
+        const kids = await this.treeChildren(loc, this.expanded.has(key));
+        const open = this.expanded.has(key) && kids.list !== null;
+        const row = document.createElement('div');
+        row.className = 'config-editor-tree-item';
+        if (loc.kind === 'computer') row.classList.add('config-editor-tree-computer');
+        row.dataset.loc = key;
+        row.setAttribute('role', 'treeitem');
+        const icon = loc.kind === 'computer' ? '/static_images/vista-explorer/computer-16.png' : '/static_images/vista-icons/explorer/folder-16.png';
+        const exp = kids.has
+            ? `<span class="config-editor-tree-expand" aria-hidden="true"><i class="fas ${open ? 'fa-chevron-down' : 'fa-chevron-right'}"></i></span>`
+            : '<span class="config-editor-tree-spacer" aria-hidden="true"></span>';
+        row.innerHTML = `${exp}<span class="config-editor-tree-label"><img class="config-editor-tree-icon" src="${icon}" alt=""><span>${configEditorEscapeHtml(this.locName(loc))}</span></span>`;
+        const frag = [row];
+        if (open && kids.list && kids.list.length) {
+            const box = document.createElement('div');
+            box.className = 'config-editor-tree-children';
+            box.setAttribute('role', 'group');
+            for (const k of kids.list) {
+                for (const el of await this.buildBranch(k)) box.appendChild(el);
             }
-            return frag;
-        };
+            frag.push(box);
+        }
+        return frag;
+    }
+
+    /** The tree from Computer down, every expanded key loaded first (keeps the scroll position). */
+    async renderTree() {
+        const sc = this.treeScrollShell || this.treeEl;
+        const top = sc.scrollTop;
+        const left = sc.scrollLeft;
         this.locs.clear();
-        const els = await build({ kind: 'computer' }, 0);
+        const els = await this.buildBranch({ kind: 'computer' });
         this.treeEl.replaceChildren(...els);
+        sc.scrollTop = top;
+        sc.scrollLeft = left;
+        this.paintTreeSelection();
+        this.reinitScroll(this.treeScrollShell);
+    }
+
+    /**
+     * Expanding or collapsing redraws only that key's branch, as a tree view does: the rest of the
+     * tree, its scroll position and the keyboard focus stay as they are. Falls back to a full
+     * render when the row is not on screen.
+     */
+    async renderBranch(loc) {
+        const key = this.locKey(loc);
+        const row = this.treeEl.querySelector(`.config-editor-tree-item[data-loc="${CSS.escape(key)}"]`);
+        if (!row) { await this.renderTree(); return; }
+        const next = row.nextElementSibling;
+        const oldBox = next && next.classList.contains('config-editor-tree-children') ? next : null;
+        const els = await this.buildBranch(loc);
+        if (!row.isConnected) { await this.renderTree(); return; }
+        if (oldBox) oldBox.remove();
+        row.replaceWith(...els);
         this.paintTreeSelection();
         this.reinitScroll(this.treeScrollShell);
     }
@@ -638,12 +664,12 @@ class ConfigEditorApplet {
             // collapsing a branch that holds the selection selects the branch, as a tree view does
             const sel = this.locKey(this.selLoc);
             if (sel !== key && this.isUnder(this.selLoc, loc)) {
-                await this.renderTree();
+                await this.renderBranch(loc);
                 await this.selectLoc(loc);
                 return;
             }
         }
-        await this.renderTree();
+        await this.renderBranch(loc);
     }
 
     isUnder(loc, branch) {
@@ -1058,7 +1084,8 @@ class ConfigEditorApplet {
     }
 
     reinitScroll(shell) {
-        if (!shell || !window.customScrollbar) return;
+        // only panes that use the overlay scrollbar (the tree and the list scroll natively)
+        if (!shell || !window.customScrollbar || !shell.hasAttribute('data-custom-scrollbar')) return;
         setTimeout(() => { try { window.customScrollbar.forceReinit(shell); } catch (_) { /* gone */ } }, 0);
     }
 
