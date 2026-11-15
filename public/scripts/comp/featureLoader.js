@@ -10,6 +10,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/activeSyncDeviceArt.js']
     },
     spellbook: {
+        html: 'templates/spellbook.html',
         styles: ['css/spellbook.css'],
         scripts: ['scripts/comp/spellbookModal.js']
     },

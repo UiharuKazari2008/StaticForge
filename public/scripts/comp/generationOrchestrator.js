@@ -195,7 +195,9 @@ async function generateImage(event = null) {
     updateImageGenerationIndicator();
     updateManualGenerateBtnState();
 
-    const selectedValue = presetSelect.value;
+    // Spellbook's hidden preset field (templates/spellbook.html, there once Spellbook has loaded)
+    const presetSelect = document.getElementById('presetSelect');
+    const selectedValue = presetSelect ? presetSelect.value : '';
     if (!selectedValue) {
         showError('Please select a preset');
         return;

@@ -124,7 +124,8 @@ const manualForm = document.getElementById('manualForm');
 const dynamicGenerationProgressCancelBtn = document.getElementById('dynamicGenerationProgressCancelBtn');
 const closeManualBtn = document.getElementById('closeManualBtn');
 const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
-const presetSelect = document.getElementById('presetSelect');
+// presetSelect (Spellbook's hidden preset field) is no longer captured here: Spellbook's window
+// comes from templates/spellbook.html with its feature (#817); generationOrchestrator.js looks it up.
 const gallery = document.getElementById('gallery');
 const cacheGallery = document.getElementById('cacheGallery');
 const confettiContainer = document.getElementById('confettiContainer');
