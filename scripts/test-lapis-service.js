@@ -42,9 +42,9 @@ function statusBody() {
     return {
         vehicleStatus: {
             dateTime: car.at, doorLock: car.locked, engine: car.engine, airCtrlOn: car.engine, defrost: false, fuelLevel: car.fuel, lowFuelLight: car.fuel < 12,
-            dte: { value: Math.round(car.fuel * 6.2), unit: 3 }, odometer: car.odo, battery: { batSoc: 84 }, airTemp: { value: 'LO', unit: 1 },
+            dte: { value: Math.round(car.fuel * 6.2), unit: 3 }, odometer: car.odo, battery: { batSoc: car.health ? car.health.battery : 84, batSignalReferenceValue: { batWarning: car.health ? car.health.warnAt : 65 } }, tirePressure: car.health ? { tirePressureFrontLeft: car.health.psi.fl, tirePressureFrontRight: car.health.psi.fr, tirePressureRearLeft: car.health.psi.rl, tirePressureRearRight: car.health.psi.rr } : undefined, airTemp: { value: 'LO', unit: 1 },
             doorOpen: { frontLeft: 0, frontRight: 0, backLeft: 0, backRight: 0 }, windowOpen: { frontLeft: 0, frontRight: 0, backLeft: 0, backRight: 0 },
-            trunkOpen: false, hoodOpen: false, tirePressureLamp: { tirePressureWarningLampAll: 0, tirePressureWarningLampRearLeft: 1 },
+            trunkOpen: false, hoodOpen: false, tirePressureLamp: { tirePressureWarningLampAll: 0, tirePressureWarningLampRearLeft: car.lampOff ? 0 : 1 },
             seatHeaterVentState: { flSeatHeatState: 2, frSeatHeatState: 2, rlSeatHeatState: 2, rrSeatHeatState: 2 },
         },
     };
@@ -109,6 +109,9 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     assert.strictEqual(statusCall.headers.REFRESH, undefined, 'a poll does not wake the car');
     assert.strictEqual(statusCall.headers.blueLinkServicePin, '1234');
     assert.strictEqual(car.tokens, 1);
+
+    assert.strictEqual(notices().filter((n) => n.kind === 'health' && n.key === 'tire').length, 1, 'the tire lamp is said on the first read');
+    car.lampOff = true;
 
     // ---- remote start with the automatic climate
     car.calls.length = 0;
@@ -177,6 +180,34 @@ const settle = () => new Promise((r) => setImmediate(() => setImmediate(() => se
     state = await svc.read({ reason: 'poll' });
     assert.strictEqual(svc._test.live.flags.lowFuel, false);
     assert.ok(state.usage.refuel.daysLeft >= 3, 'a full tank pushes the refuel day out');
+
+    // ---- vehicle health: said at once, again when worse, kept in state until a report clears it
+    sent.length = 0;
+    car.health = { battery: 41, warnAt: 65, psi: { fl: 30, fr: 30, rl: 28, rr: 30 } };
+    car.at = '2026-11-15T20:00:00Z'; now = Date.parse('2026-11-15T20:02:00Z');
+    state = await svc.read({ reason: 'poll' });
+    let health = notices().filter((n) => n.kind === 'health');
+    assert.strictEqual(health.length, 1, 'the 12 V battery under the car\'s level');
+    assert.strictEqual(health[0].key, 'battery12');
+    assert.match(health[0].text, /41%.*warning level 65%/);
+    assert.match(health[0].text, /It was 84% at/);
+    assert.strictEqual(state.alerts.length, 1);
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(notices().filter((n) => n.kind === 'health').length, 1, 'not repeated while unchanged');
+    car.health.battery = 38; car.at = '2026-11-15T21:00:00Z'; now = Date.parse('2026-11-15T21:02:00Z');
+    await svc.read({ reason: 'poll' });
+    assert.strictEqual(notices().filter((n) => n.kind === 'health').length, 2, 'again after another 10 points bucket');
+    car.health.psi.rl = 22; car.at = '2026-11-15T22:00:00Z'; now = Date.parse('2026-11-15T22:02:00Z');
+    state = await svc.read({ reason: 'poll' });
+    health = notices().filter((n) => n.kind === 'health');
+    assert.strictEqual(health.length, 3);
+    assert.match(health[2].text, /rear left 22 psi/);
+    assert.deepStrictEqual(state.alerts.map((a) => a.key).sort(), ['battery12', 'tire']);
+    assert.deepStrictEqual(svc._test.lowTires({ tirePsi: { fl: 35, fr: 35, rl: 30, rr: 35 }, tireLow: {} }, { tireLowPsi: 26 }), ['rl'], 'one tire 4 psi under the others');
+    car.health = { battery: 90, warnAt: 65, psi: { fl: 33, fr: 33, rl: 33, rr: 33 } }; car.at = '2026-11-15T23:00:00Z'; now = Date.parse('2026-11-15T23:02:00Z');
+    state = await svc.read({ reason: 'poll' });
+    assert.strictEqual(state.alerts.length, 0, 'cleared by a good report');
+    assert.deepStrictEqual(svc._test.live.flags.health, {});
 
     // ---- the record
     const hist = svc.getHistory('month');

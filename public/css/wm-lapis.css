@@ -65,7 +65,7 @@
     position: relative;
     z-index: 3;
 }
-.wm-lapis .lps-gem { width: calc(12 * var(--u)); height: calc(12 * var(--u)); flex: 0 0 auto; }
+.wm-lapis .lps-gem { width: calc(24 * var(--u)); height: calc(15 * var(--u)); flex: 0 0 auto; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 .wm-lapis .lps-wm { font-size: calc(8.5 * var(--u)); letter-spacing: calc(2.5 * var(--u)); font-weight: 700; color: #cfd6de; }
 .wm-lapis .lps-car-name { flex: 1 1 auto; min-width: 0; text-align: right; font-size: calc(10 * var(--u)); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .wm-lapis .lps-updated { flex: 0 0 auto; font-size: calc(8 * var(--u)); opacity: 0.7; }
@@ -120,6 +120,16 @@
 .wm-lapis .lps-pill.is-warn { border-color: rgba(255, 179, 71, 0.7); color: #ffd9a0; }
 .wm-lapis .lps-pill.is-warn svg { color: var(--lps-amber); }
 .wm-lapis .lps-pill.is-on { border-color: rgba(0, 170, 210, 0.8); }
+
+/* the map in place of the car picture, and the switch between them */
+.wm-lapis .lps-stage.is-map .lps-carimg,
+.wm-lapis .lps-stage.is-map .lps-horizon { display: none; }
+.wm-lapis .lps-stage-map[hidden] { display: none; }
+.wm-lapis .lps-stage.is-map .lps-pill { background: rgba(5, 8, 13, 0.78); z-index: 3; }
+.wm-lapis .lps-key.lps-view { position: absolute; right: calc(5 * var(--u)); bottom: calc(5 * var(--u)); width: calc(26 * var(--u)); height: calc(24 * var(--u)); z-index: 4; box-shadow: 0 0 0 1px #9299a2, inset 0 1px rgba(255, 255, 255, 0.32); }
+.wm-lapis .lps-key.lps-view[hidden] { display: none; }
+.wm-lapis .lps-key.lps-view svg { width: calc(15 * var(--u)); height: calc(15 * var(--u)); }
+.wm-lapis .lps-card-sets b { overflow: hidden; text-overflow: ellipsis; }
 
 /* cards */
 .wm-lapis .lps-cards { display: flex; gap: calc(4 * var(--u)); padding: calc(4 * var(--u)); }

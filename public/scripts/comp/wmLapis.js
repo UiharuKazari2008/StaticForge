@@ -55,6 +55,9 @@
     let map = null;
     let holdTimer = null;
     let todayHtml = '';
+    let heroMap = null; // the map shown in place of the car picture
+    const LS_VIEW = 'wmLapisHeroView'; // 'car' | 'map'
+    let heroView = (() => { try { return localStorage.getItem(LS_VIEW) === 'map' ? 'map' : 'car'; } catch (_) { return 'car'; } })();
 
     const esc = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const canUse = () => { try { return /^(admin|dev_admin)$/.test(localStorage.getItem('userType') || ''); } catch (_) { return false; } };
@@ -115,6 +118,7 @@
         seat: L('<path d="M7 3.500c-1.500 3-1 6 0 9h6.500a1.500 1.500 0 0 1 0 3H6.500c-2 0-2.500-1-3-3M10.500 4.500c-1 1.500 1 2.500 0 4M13.500 4.500c-1 1.500 1 2.500 0 4"/>'),
         seatCool: L('<path d="M7 3.500c-1.500 3-1 6 0 9h6.500a1.500 1.500 0 0 1 0 3H6.500c-2 0-2.500-1-3-3M12 3.500v5M9.800 4.700l4.400 2.600M14.200 4.700 9.800 7.300"/>'),
         wheel: L('<circle cx="10" cy="10" r="6.500"/><circle cx="10" cy="10" r="1.500"/><path d="M3.700 9h4.800M11.500 9h4.800M10 11.500v5"/>'),
+        car: L('<path d="M2.500 13.500h15M4 13.500V11l1.500-.700 1.800-3.800h5.400l1.800 3.800 1.500.700v2.500M6.200 10.300h7.600"/><circle cx="6.500" cy="14" r="1.500"/><circle cx="13.500" cy="14" r="1.500"/>'),
         wrench: L('<path d="M12.500 3a4 4 0 0 0-3.700 5.500L3 14.300 5.700 17l5.800-5.800A4 4 0 0 0 17 7.500l-2.500 2.500-2-.5-.5-2z"/>'),
         hood: L('<path d="M2.500 14h15M3.500 14c0-3 2-5 6.500-5s6.500 2 6.500 5M6 9.500 9 5h5"/>'),
         drop: L('<path d="M10 3c3 4 4.500 6.300 4.500 8.500a4.500 4.500 0 0 1-9 0C5.500 9.300 7 7 10 3z"/>'),
@@ -123,7 +127,8 @@
         clock: L('<circle cx="10" cy="10" r="6.500"/><path d="M10 6v4l2.500 2"/>'),
         warn: L('<path d="M10 3 18 16.500H2zM10 8v4.500"/><circle cx="10" cy="14.500" r=".4"/>', 1.5),
         arrow: '<svg class="lps-arrow" viewBox="0 0 44 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path d="M1 5h41M38 1.500 42 5l-4 3.500"/></svg>',
-        gem: '<svg class="lps-gem" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 .8 13 5 7 13.200 1 5z" fill="#2447c9" stroke="#dfe4ea" stroke-width=".9"/><path d="M4.500 5 7 .8 9.500 5z" fill="#9db8ff"/><path d="M1 5h12M4.500 5 7 13.200 9.500 5" fill="none" stroke="rgba(255,255,255,.55)" stroke-width=".5"/></svg>',
+        // the maker's emblem on the plate (the slanted H in its oval), as the program icon draws it
+        gem: '<svg class="lps-gem" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="20" rx="31" ry="19" fill="#dfe5ec"/><ellipse cx="32" cy="20" rx="27" ry="15.200" fill="#10233f"/><g fill="#f4f7fa"><path d="M19.500 30.300C14.500 22.800 17.500 14.300 27 9.600l2.800 1.800C23.500 15.800 22 22.300 25 29.100z"/><path d="M44.500 9.700c5 7.500 2 16-7.500 20.700l-2.800-1.800c6.300-4.400 7.800-10.900 4.800-17.700z"/><path d="M22.300 24c6.700-.6 13.700-3.400 19.300-8.800l.4 3.200c-5.200 5.200-12.200 8.400-19.100 9z"/></g></svg>',
         pin: '<svg viewBox="0 0 22 28" aria-hidden="true"><path d="M11 27S1.500 17 1.500 10.500a9.500 9.500 0 0 1 19 0C20.500 17 11 27 11 27z" fill="#00aad2" stroke="#fff" stroke-width="1.5"/><path d="M5.500 12.500h11M6.500 12.500l1.200-3.500h6.600l1.200 3.500M6 12.500v2M16 12.500v2" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     };
 
@@ -147,6 +152,7 @@
         const rev = (state.settings && state.settings.picture && state.settings.picture.rev) || '';
         if (rev !== picture.rev) loadPicture(rev);
         changed();
+        catchUpAlerts();
     }
 
     async function load() {
@@ -167,6 +173,16 @@
             const d = await ask('lapis_picture_get', {});
             if (d && d.dataUrl && picture.rev === rev) { picture.url = d.dataUrl; changed(); }
         } catch (_) { /* the built-in picture stays */ }
+    }
+
+    // health alerts this phone has already shown, as key:stamp (a missed one shows when the phone connects)
+    const LS_SEEN = 'wmLapisAlertsSeen';
+    function seenAlerts() { try { const a = JSON.parse(localStorage.getItem(LS_SEEN) || '[]'); return Array.isArray(a) ? a : []; } catch (_) { return []; } }
+    function markSeen(id) { try { const a = seenAlerts().filter((x) => x !== id); a.push(id); localStorage.setItem(LS_SEEN, JSON.stringify(a.slice(-30))); } catch (_) { /* private mode */ } }
+    function catchUpAlerts() {
+        if (!state || !Array.isArray(state.alerts) || !canUse()) return;
+        const seen = seenAlerts();
+        state.alerts.forEach((a) => { if (!seen.includes(`${a.key}:${a.stamp}`)) onNotice({ data: { kind: 'health', title: a.title, text: a.text, actions: ['view'], key: a.key, stamp: a.stamp } }); });
     }
 
     const carSrc = (small) => picture.url || (small ? CAR_ART_SM : CAR_ART);
@@ -190,6 +206,15 @@
         return { doors: pick(s.doors), windows: pick(s.windows) };
     }
 
+    /** The title bar's text: the car's name (Settings > Name, else its BlueLink name), else the program's. */
+    const carTitle = () => (state && state.vehicle && state.vehicle.name) || TITLE;
+    /** "SONATA HYBRID" 2024 as "2024 Sonata Hybrid". */
+    function modelText(v) {
+        if (!v || !v.model) return '';
+        const name = String(v.model).toLowerCase().replace(/\b[a-z]/g, (c) => c.toUpperCase());
+        return `${v.year ? `${v.year} ` : ''}${name}`;
+    }
+
     function parkLine() {
         const s = st();
         if (!s) return { dot: 'warn', head: configured() ? 'No report yet' : 'Not set up', tail: '' };
@@ -197,6 +222,7 @@
         if (cmd) return { dot: 'busy', head: { lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind] || 'Sending', tail: 'waiting for the car' };
         const place = state.location && state.location.place;
         if (s.engine) return { dot: 'run', head: s.climate ? 'Running' : 'Engine on', tail: place ? `at ${place}` : '' };
+        if ((state.alerts || []).length) return { dot: 'warn', head: 'Parked', tail: `${state.alerts.length === 1 ? state.alerts[0].title : `${state.alerts.length} alerts`}` };
         return { dot: 'ok', head: 'Parked', tail: place ? `at ${place}` : state.parkedSince ? `for ${sinceText(state.parkedSince)}` : '' };
     }
 
@@ -205,7 +231,23 @@
         const r = u && u.refuel;
         if (!r) return '';
         if (r.beyond) return 'Not for weeks';
-        return dayLabel(r.day, u.today);
+        // "Tomorrow" alone read as "the tank is empty tomorrow": the day is named, with today / tomorrow beside it
+        const l = dayLabel(r.day, u.today);
+        const [y, m, d] = r.day.split('-').map(Number);
+        const wd = DAY_SHORT[new Date(y, m - 1, d).getDay()];
+        return l === 'Today' ? `Today (${wd})` : l === 'Tomorrow' ? `${wd} (tomorrow)` : l;
+    }
+
+    const tireAlert = () => !!(state && (state.alerts || []).some((a) => a.key === 'tire')) || !!(st() && st().tireLow && st().tireLow.any);
+
+    /** Why that day: the next day's driving would take the tank under the reserve. */
+    function refuelWhy() {
+        const u = state && state.usage;
+        const r = u && u.refuel;
+        if (!r || r.beyond || !r.crosses) return '';
+        const [y, m, d] = r.crosses.day.split('-').map(Number);
+        const day = new Intl.DateTimeFormat(undefined, { weekday: 'long' }).format(new Date(y, m - 1, d));
+        return `${r.milesLeft} miles are left above the ${r.reservePct}% reserve. ${day}'s usual ${Math.round(r.crosses.miles)} miles would need more than the ${r.crosses.left} left by then, so fill up before ${day}.`;
     }
 
     function nextService() {
@@ -213,6 +255,18 @@
         const withMiles = list.filter((m) => m.milesLeft !== null);
         if (!withMiles.length) return null;
         return withMiles.slice().sort((a, b) => a.milesLeft - b.milesLeft)[0];
+    }
+
+    /** The extras a remote start would switch on now: "seat heat low, wheel, defrost". */
+    function startSets(c) {
+        if (!c) return '--';
+        const bits = [];
+        if (c.seat >= 6) bits.push(`seat heat ${['low', 'med', 'high'][c.seat - 6]}`);
+        else if (c.seat >= 3) bits.push(`seat cool ${['low', 'med', 'high'][c.seat - 3]}`);
+        if (c.heating === 4) bits.push('wheel + glass');
+        else if (c.heating === 3) bits.push('wheel');
+        if (c.defrost) bits.push('defrost');
+        return bits.length ? bits.join(', ') : 'climate only';
     }
 
     function climateLine() {
@@ -278,7 +332,7 @@
                 <div class="lps-scroll">
                     <div class="lps-scr lps-hero" data-open="status">
                         <div class="lps-sbar"><i class="lps-dot"></i><b class="lps-park"></b><span class="lps-where"></span><span class="lps-sp"></span><span class="lps-odo"></span></div>
-                        <div class="lps-stage"><img class="lps-carimg" alt="" draggable="false" decoding="async"><div class="lps-horizon"></div><span class="lps-pill is-l lps-p-lock"></span><span class="lps-pill is-r lps-p-eng"></span></div>
+                        <div class="lps-stage"><img class="lps-carimg" alt="" draggable="false" decoding="async"><div class="lps-horizon"></div><div class="lps-map lps-stage-map" hidden></div><span class="lps-pill is-l lps-p-lock"></span><span class="lps-pill is-r lps-p-eng"></span><button type="button" class="lps-key lps-view" aria-label="Show the map"></button></div>
                     </div>
                     <div class="lps-scr">
                         <div class="lps-cards">
@@ -300,10 +354,16 @@
         const q = (s) => page.querySelector(s);
         els = {
             root: q('.lps-root'), name: q('.lps-car-name'), updated: q('.lps-updated'), dot: q('.lps-dot'), park: q('.lps-park'), where: q('.lps-where'), odo: q('.lps-odo'),
-            img: q('.lps-carimg'), pLock: q('.lps-p-lock'), pEng: q('.lps-p-eng'), fuel: q('.lps-c-fuel'), clim: q('.lps-c-clim'), tiles: q('.lps-tiles'), pad: q('.lps-pad'),
+            img: q('.lps-carimg'), stage: q('.lps-stage'), stageMap: q('.lps-stage-map'), view: q('.lps-view'), pLock: q('.lps-p-lock'), pEng: q('.lps-p-eng'), fuel: q('.lps-c-fuel'), clim: q('.lps-c-clim'), tiles: q('.lps-tiles'), pad: q('.lps-pad'),
             cmd: q('.lps-cmd'), layer: q('.lps-layer'), body: q('.lps-layer-body')
         };
-        q('.lps-scroll').addEventListener('click', (e) => { const b = e.target.closest('[data-open]'); if (b) openLayer(b.dataset.open); });
+        q('.lps-scroll').addEventListener('click', (e) => {
+            // the car / map switch, and the map itself (dragging it is not a tap on the display)
+            if (e.target.closest('.lps-view')) { heroView = heroView === 'map' ? 'car' : 'map'; try { localStorage.setItem(LS_VIEW, heroView); } catch (_) { /* private mode */ } renderHero(); return; }
+            if (e.target.closest('.lps-stage-map')) return;
+            const b = e.target.closest('[data-open]');
+            if (b) openLayer(b.dataset.open);
+        });
         els.cmd.addEventListener('click', (e) => {
             const b = e.target.closest('[data-cmd]');
             if (!b || b.disabled) return;
@@ -325,7 +385,9 @@
         const s = st();
         const lim = state && state.limits;
         const v = state && state.vehicle;
-        els.name.textContent = (v && v.name) || 'No vehicle';
+        // the car's name is the title bar's; the plate names the model
+        els.name.textContent = modelText(v) || 'No vehicle';
+        if (!layers.length && ws) ws.setTitle(carTitle());
         els.updated.textContent = s && s.at ? when(s.at) : '';
         const pl = parkLine();
         els.dot.dataset.s = pl.dot;
@@ -334,6 +396,7 @@
         els.odo.textContent = s && num(s.odometer) ? miles(s.odometer) : '';
         const src = carSrc(false);
         if (els.img.getAttribute('src') !== src) els.img.src = src;
+        renderHero();
 
         const locked = s ? s.locked : null;
         els.pLock.className = `lps-pill is-l lps-p-lock${locked === false ? ' is-warn' : ''}`;
@@ -350,15 +413,15 @@
         els.fuel.innerHTML = `<div class="lps-card-l">${I.fuel}Fuel</div>
             <div class="lps-card-v">${s && num(s.range) ? Math.round(s.range) : '--'}<small>mi</small></div>
             <div class="lps-bar${low ? ' is-low' : ''}"><i style="transform:scaleX(${s && num(s.fuel) ? Math.max(0.02, Math.min(1, s.fuel / 100)) : 0})"></i></div>
-            <div class="lps-card-s"><span>${s && num(s.fuel) ? `${Math.round(s.fuel)}%` : ''}</span><span>${rt ? `Refuel by <b>${esc(rt === 'Today' || rt === 'Tomorrow' ? rt : rt.split(',')[0])}</b>` : ''}</span></div>`;
+            <div class="lps-card-s"><span>${s && num(s.fuel) ? `${Math.round(s.fuel)}%` : ''}</span><span>${rt ? `Refuel by <b>${esc(rt.split(/[ ,]/)[0])}</b>` : ''}</span></div>`;
 
         // climate: what a remote start would set, and the weather it is based on
         const c = state && state.climate;
         const tt = c ? tempText(c.temp, lim) : '--';
         els.clim.innerHTML = `<div class="lps-card-l">${I.fan}Climate${state && state.settings && state.settings.autoClimate ? ' · Auto' : ''}</div>
             <div class="lps-card-v">${tt}${/^\d/.test(tt) ? '<small>°F</small>' : ''}</div>
-            <div class="lps-card-s"><span>Outside</span><b>${c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°F` : '--'}</b></div>
-            <div class="lps-card-s"><span>Cabin, about</span><b>${c && num(c.interiorF) ? `${Math.round(c.interiorF)}°F` : '--'}</b></div>`;
+            <div class="lps-card-s"><span>Outside ${c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°` : '--'}</span><span>cabin <b>${c && num(c.interiorF) ? `${Math.round(c.interiorF)}°F` : '--'}</b></span></div>
+            <div class="lps-card-s lps-card-sets"><span>Start sets</span><b>${esc(startSets(c))}</b></div>`;
 
         // tiles
         const o = openList(s);
@@ -367,7 +430,7 @@
             : tile(I.door, o.doors.length ? 'Open' : 'Closed', o.doors.length > 0)
             + tile(I.win, o.windows.length ? 'Open' : 'Up', o.windows.length > 0)
             + tile(I.trunk, s.trunk ? 'Open' : 'Shut', s.trunk === true)
-            + tile(I.tire, s.tireLow && s.tireLow.any ? 'Low' : 'OK', !!(s.tireLow && s.tireLow.any))
+            + tile(I.tire, tireAlert() ? 'Low' : 'OK', tireAlert())
             + tile(I.batt, num(s.battery12) ? `${Math.round(s.battery12)}%` : 'OK', battLow(s));
 
         // the leather pad
@@ -377,6 +440,7 @@
         else if (!configured()) rows.push('<div class="lps-pad-note">No BlueLink account is saved. Add it in Dreamscape CardSpace &gt; Service keys &gt; Hyundai BlueLink, then tap Refresh.</div>');
         else {
             if (state.error) rows.push(`<div class="lps-pad-note">${esc(state.error.message)}</div>`);
+            (state.alerts || []).forEach((a) => rows.push(`<div class="lps-pad-row is-warn" data-open="status"><span>${esc(a.title)}</span><b>${a.key === 'battery12' && s && num(s.battery12) ? `${Math.round(s.battery12)}%` : 'Check'}</b></div>`));
             if (rt) rows.push(`<div class="lps-pad-row${u.refuel && !u.refuel.beyond && u.refuel.daysLeft <= 0 ? ' is-warn' : ''}" data-open="history"><span>Refuel by</span><b>${esc(rt)}</b></div>`);
             const cl = climateLine();
             if (cl) rows.push(`<div class="lps-pad-row" data-open="start"><span>Remote start will set</span><b>${esc(cl)}</b></div>`);
@@ -399,6 +463,26 @@
         key('start').classList.toggle('is-running', running);
         if (layers.length) renderLayer();
         if (ws) ws.refreshSoftKeys();
+    }
+
+    /** The top display: the car's picture, or (the switch at its corner) the map with the car on it. */
+    function renderHero() {
+        if (!els) return;
+        const loc = state && state.location;
+        const showMap = heroView === 'map' && !!loc;
+        els.stage.classList.toggle('is-map', showMap);
+        els.stageMap.hidden = !showMap;
+        els.view.innerHTML = showMap ? I.car : I.find;
+        els.view.setAttribute('aria-label', showMap ? 'Show the car' : 'Show the map');
+        els.view.hidden = !loc;
+        if (!showMap) { if (heroMap) { heroMap = null; els.stageMap.innerHTML = ''; } return; }
+        const key = `${loc.lat},${loc.lon}`;
+        if (heroMap && heroMap.key === key) return;
+        const s = (state && state.settings) || {};
+        const places = [];
+        if (s.home) places.push({ ...s.home, letter: 'H' });
+        if (s.work) places.push({ ...s.work, letter: 'W' });
+        heroMap = TileMap(els.stageMap, loc, places, 15);
     }
 
     // ---------------------------------------------------------------- layers
@@ -428,7 +512,7 @@
         els.layer.hidden = !top;
         els.layer.dataset.layer = top || '';
         if (top) { els.body.dataset.for = ''; renderLayer(); }
-        ws.setTitle(top ? LAYER_TITLES[top] : TITLE);
+        ws.setTitle(top ? LAYER_TITLES[top] : carTitle());
         ws.syncHistory();
         ws.refreshSoftKeys();
         ws.refreshTitleAction();
@@ -581,6 +665,7 @@
         const lowTires = [['fl', 'front left'], ['fr', 'front right'], ['rl', 'rear left'], ['rr', 'rear right']].filter(([k]) => tires[k]).map(([, n]) => n);
         return `<div class="lps-scr">
             <div class="lps-sbar"><b>Reported ${esc(when(s.at))}</b><span class="lps-sp"></span><span>${state.seenAt ? `read ${esc(clock(state.seenAt))}` : ''}</span></div>
+            ${(state.alerts || []).length ? `<div class="lps-list">${state.alerts.map((a) => `<div class="lps-row is-warn">${I.warn}<span class="lps-row-t">${esc(a.title)}<small style="white-space:normal">${esc(a.text)}</small></span></div>`).join('')}</div>` : ''}
             <div class="lps-list">
                 ${row(s.locked === false ? I.unlock : I.lock, 'Doors', s.locked === null ? 'Unknown' : s.locked ? 'Locked' : 'Unlocked', s.locked === false ? 'is-warn' : '', o.doors.length ? `Open: ${o.doors.join(', ')}` : 'All closed')}
                 ${row(I.win, 'Windows', o.windows.length ? 'Open' : 'Up', o.windows.length ? 'is-warn' : '', o.windows.length ? o.windows.join(', ') : '')}
@@ -588,7 +673,7 @@
                 ${row(I.hood, 'Hood', s.hood ? 'Open' : 'Shut', s.hood ? 'is-warn' : '')}
                 ${row(I.power, 'Engine', s.engine ? 'Running' : 'Off', '', s.climate ? `Climate on${num(s.setTemp) ? `, ${tempText(s.setTemp, state.limits)}` : ''}${s.defrost ? ', defrost' : ''}` : '')}
                 ${row(I.fuel, 'Fuel', num(s.fuel) ? `${Math.round(s.fuel)}%` : '--', s.fuelLow ? 'is-warn' : '', num(s.range) ? `${Math.round(s.range)} miles of range` : '')}
-                ${row(I.tire, 'Tire pressure', tires.any ? 'Low' : 'OK', tires.any ? 'is-warn' : '', lowTires.length ? `Low: ${lowTires.join(', ')}` : psiText(s))}
+                ${row(I.tire, 'Tire pressure', tireAlert() ? 'Low' : 'OK', tireAlert() ? 'is-warn' : '', psiText(s) || (lowTires.length ? `Low: ${lowTires.join(', ')}` : ''))}
                 ${row(I.batt, '12 V battery', num(s.battery12) ? `${Math.round(s.battery12)}%` : '--', battLow(s) ? 'is-warn' : '', battLow(s) ? `The car warns under ${num(s.battery12WarnAt) ? s.battery12WarnAt : 50}%` : '')}
                 ${row(I.drop, 'Washer fluid', s.washerLow ? 'Low' : 'OK', s.washerLow ? 'is-warn' : '')}
                 ${row(I.drop, 'Brake fluid', s.brakeFluidLow ? 'Low' : 'OK', s.brakeFluidLow ? 'is-warn' : '')}
@@ -767,7 +852,7 @@
                     <div class="lps-stat"><b>${h.fillups.length}</b>fill-ups</div>
                 </div>
             </div>
-            ${u.refuel ? `<div class="lps-pad"><div class="lps-pad-row"><span>Refuel by</span><b>${esc(refuelText())}</b></div><div class="lps-pad-note">${u.refuel.milesLeft} miles before the ${u.refuel.reservePct}% reserve. Expected miles: ${esc(wk)}. Commute: ${u.commute && u.commute.miles ? `${u.commute.miles} mi each way` : 'not set'}.</div></div>` : ''}
+            ${u.refuel ? `<div class="lps-pad"><div class="lps-pad-row"><span>Refuel by</span><b>${esc(refuelText())}</b></div><div class="lps-pad-note">${esc(refuelWhy() || `${u.refuel.milesLeft} miles before the ${u.refuel.reservePct}% reserve.`)} Expected miles: ${esc(wk)}. Commute: ${u.commute && u.commute.miles ? `${u.commute.miles} mi each way` : 'not set'}.</div></div>` : ''}
             ${fills ? `<div class="lps-scr"><div class="lps-sbar"><b>Fill-ups</b></div><div class="lps-list">${fills}</div></div>` : ''}
             ${trips ? `<div class="lps-scr"><div class="lps-sbar"><b>Trips</b><span class="lps-sp"></span><span>between reports</span></div><div class="lps-list">${trips}</div></div>` : ''}`;
     }
@@ -786,8 +871,8 @@
     };
 
     /** A small slippy map over the server's street tiles: drag to pan, the keys zoom. */
-    function TileMap(host, car, places) {
-        const view = { lat: car.lat, lon: car.lon, z: 15 };
+    function TileMap(host, car, places, zoom) {
+        const view = { lat: car.lat, lon: car.lon, z: zoom || 15 };
         host.innerHTML = '<div class="lps-map-pane"></div>';
         const pane = host.querySelector('.lps-map-pane');
         function layout() {
@@ -882,7 +967,9 @@
             reservePct: s.reservePct == null ? 15 : s.reservePct,
             tankGal: String(s.tankGal || ''),
             mpg: String(s.mpg || ''),
-            notify: Object.assign({ unlocked: true, lowFuel: true, refuel: true, service: true }, s.notify || {}),
+            notify: Object.assign({ unlocked: true, lowFuel: true, refuel: true, service: true, health: true }, s.notify || {}),
+            tireLowPsi: s.tireLowPsi || 26,
+            batteryLowPct: s.batteryLowPct || 0,
             climate: Object.assign({ comfort: 74, coldAt: 33, hotAt: 95, seatHeatBelow: 56, seatCoolAbove: 76, defrostBelow: 41, wheel: true, seats: true }, s.climate || {})
         };
         return form;
@@ -892,6 +979,8 @@
     const RUNS = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes']];
     const LOWS = [[10, '10%'], [15, '15%'], [20, '20%'], [25, '25%'], [30, '30%']];
     const RESERVES = [[5, '5%'], [10, '10%'], [15, '15%'], [20, '20%'], [25, '25%']];
+    const BATTS = [[0, 'the car\'s own warning level'], [50, '50%'], [60, '60%'], [65, '65%'], [70, '70%'], [75, '75%']];
+    const PSIS = [[22, '22 psi'], [24, '24 psi'], [26, '26 psi'], [28, '28 psi'], [30, '30 psi'], [32, '32 psi']];
     const degs = (list) => list.map((v) => [v, `${v}°F`]);
     const CL = {
         comfort: degs([68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78]),
@@ -916,6 +1005,7 @@
         box.innerHTML = `
             ${ui.sub('Car')}
             ${configured() ? '' : ui.note('No BlueLink account is saved yet: add it in Dreamscape CardSpace > Service keys > Hyundai BlueLink (e-mail, password and PIN).')}
+            ${ui.note('The name shows in the title bar in place of "Lapis Remote". Blank uses the car\'s BlueLink name.')}
             ${ui.row('Name:', ui.edit('lpsName', f.name, `placeholder="${esc((state && state.vehicle && state.vehicle.name) || 'Car')}" data-k="name" maxlength="40"`), { for: 'lpsName' })}
             <div class="lps-pic"><img src="${esc(carSrc(false))}" alt=""><div>${ui.buttons([['picChoose', 'Choose Picture...'], ['picReset', 'Built-in Picture', !picture.rev]], false)}</div></div>
             ${ui.gap()}
@@ -958,6 +1048,10 @@
             ${ui.check('lpsNRe', 'It is the day to refuel', f.notify.refuel, 'data-n="refuel"')}
             ${ui.row('Reserve:', ui.comboHtml('reservePct', label(RESERVES, f.reservePct)), { wide: true })}
             ${ui.check('lpsNSv', 'Maintenance is coming up or due', f.notify.service, 'data-n="service"')}
+            ${ui.check('lpsNHe', 'Vehicle health: 12 V battery, tires, fluids, key battery', f.notify.health, 'data-n="health"')}
+            ${ui.row('12 V under:', ui.comboHtml('batteryLowPct', label(BATTS, f.batteryLowPct)), { wide: true })}
+            ${ui.row('A tire under:', ui.comboHtml('tireLowPsi', label(PSIS, f.tireLowPsi)), { wide: true })}
+            ${ui.note('Health alerts come the moment the car reports the problem, and again if it gets worse. A tire also counts as low when the car\'s own lamp is on or it is 4 psi under the other three.')}
             ${ui.gap()}
             ${ui.sub('Fuel')}
             ${ui.row('Tank:', ui.edit('lpsTank', f.tankGal, 'placeholder="gallons" data-k="tankGal" maxlength="5" inputmode="decimal"'), { for: 'lpsTank' })}
@@ -977,6 +1071,8 @@
         combo('lockRemindMin', MINUTES);
         combo('lowFuelPct', LOWS);
         combo('reservePct', RESERVES);
+        combo('batteryLowPct', BATTS);
+        combo('tireLowPsi', PSIS);
         box.querySelectorAll('input[data-c]').forEach((el) => el.addEventListener('change', () => { f.climate[el.dataset.c] = el.checked; }));
         Object.keys(CL).forEach((k) => {
             const tail = k === 'coldAt' ? ' cabin or colder' : k === 'hotAt' ? ' cabin or hotter' : '';
@@ -1065,7 +1161,7 @@
         const f = formOf();
         const s = (state && state.settings) || {};
         const bad = (text) => { ws.messageBox({ title: 'Lapis Settings', icon: 'warning', text }); };
-        const next = { name: f.name.trim(), workDays: f.workDays, autoClimate: f.autoClimate, runMinutes: f.runMinutes, lockRemindMin: f.lockRemindMin, lowFuelPct: f.lowFuelPct, reservePct: f.reservePct, notify: f.notify, climate: f.climate };
+        const next = { name: f.name.trim(), workDays: f.workDays, autoClimate: f.autoClimate, runMinutes: f.runMinutes, lockRemindMin: f.lockRemindMin, lowFuelPct: f.lowFuelPct, reservePct: f.reservePct, notify: f.notify, climate: f.climate, tireLowPsi: f.tireLowPsi, batteryLowPct: f.batteryLowPct };
         for (const k of ['home', 'work']) {
             const t = f[k].trim();
             if (!t) { if (s[`${k}Own`]) next[k] = null; continue; }
@@ -1095,7 +1191,13 @@
     function onNotice(pk) {
         const n = (pk && (pk.data || pk)) || {};
         if (!n.title || !canUse()) return;
-        const view = () => { if (note && note.close) note.close(); open(n.kind === 'service' ? 'service' : n.kind === 'refuel' || n.kind === 'low-fuel' ? 'history' : null); };
+        if (n.kind === 'health' && n.key) {
+            // one note per alert and step, whether it came as a push or was waiting in the state
+            const id = `${n.key}:${n.stamp}`;
+            if (seenAlerts().includes(id)) return;
+            markSeen(id);
+        }
+        const view = () => { if (note && note.close) note.close(); open(n.kind === 'service' ? 'service' : n.kind === 'health' ? 'status' : n.kind === 'refuel' || n.kind === 'low-fuel' ? 'history' : null); };
         const lock = () => { if (note && note.close) note.close(); send('lock'); };
         const wantsLock = (n.actions || []).includes('lock') && isAdmin();
         let note = null;
@@ -1213,7 +1315,7 @@
         const head = cmd ? `${{ lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind]}...` : s.engine ? (s.climate ? 'Running' : 'Engine on') : s.locked === false ? 'Unlocked' : 'Locked';
         const rt = refuelText();
         const c = state.climate;
-        const sub = [rt ? `Refuel by ${rt === 'Today' || rt === 'Tomorrow' ? rt.toLowerCase() : rt.split(',')[0]}` : '', c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°F` : ''].filter(Boolean).join(' · ');
+        const sub = [rt ? `Refuel by ${rt.split(/[ ,]/)[0]}` : '', c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°F` : ''].filter(Boolean).join(' · ');
         return { title: `${head} · ${num(s.range) ? `${Math.round(s.range)} mi` : num(s.fuel) ? `${Math.round(s.fuel)}%` : ''}`, sub, unlocked: s.locked === false, running: !!s.engine };
     }
 

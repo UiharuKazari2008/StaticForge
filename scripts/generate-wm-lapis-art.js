@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Art for Melaton Mobile's Lapis Remote (wmLapis.js, Yozora #835), our own design: a cut lapis lazuli
- * stone (stepped blue facets, two gold flecks) in a silver claw setting. Limited colours, stepped
- * shading, no rounded-square plate (2009 WM style).
+ * Art for Melaton Mobile's Lapis Remote (wmLapis.js, Yozora #835): the car maker's emblem, the slanted
+ * H in its oval, as a bright metal badge on a dark field (Yukimi asked for it as the program icon and
+ * on the app's plate). Limited colours, stepped shading, no rounded-square plate (2009 WM style).
  *
  *   node scripts/generate-wm-lapis-art.js [car-picture]
  *
@@ -25,43 +25,28 @@ const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
 const OUT65 = path.resolve(__dirname, '..', 'public', 'static_images', 'wm65');
 const OUT_LAPIS = path.resolve(__dirname, '..', 'public', 'static_images', 'lapis');
 
+// The emblem (Yukimi, Nov 15 2026: "use the hyundai logo as the icon and in the top of the app"): the
+// slanted H in its oval, drawn here as the car's own badge is: bright metal on a dark field.
+const emblem = (ring, metal, shade, field) => `
+<ellipse cx="32" cy="32" rx="30" ry="18.500" fill="${shade}"/>
+<ellipse cx="32" cy="31.200" rx="30" ry="18" fill="${ring}"/>
+<ellipse cx="32" cy="31.200" rx="26.200" ry="14.600" fill="${field}"/>
+<g fill="${metal}">
+  <path d="M19.500 41.500 C14.500 34 17.500 25.500 27 20.800 L29.800 22.600 C23.500 27 22 33.500 25 40.300 Z"/>
+  <path d="M44.500 20.900 C49.500 28.400 46.500 36.900 37 41.600 L34.200 39.800 C40.500 35.400 42 28.900 39 22.100 Z"/>
+  <path d="M22.300 35.200 C29 34.600 36 31.800 41.600 26.400 L42 29.600 C36.800 34.800 29.800 38 22.900 38.600 Z"/>
+</g>`;
+
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-<!-- setting: silver band and claws -->
-<path d="M8 25 L20 9 L44 9 L56 25 L32 58 Z" fill="#59616b"/>
-<path d="M10.5 25 L21.2 11 L42.8 11 L53.5 25 L32 54.5 Z" fill="#0b1d6e"/>
-<!-- crown facets (stepped blues) -->
-<path d="M21.2 11 L42.8 11 L38 25 L26 25 Z" fill="#4f7df0"/>
-<path d="M21.2 11 L26 25 L10.5 25 Z" fill="#2b53d0"/>
-<path d="M42.8 11 L53.5 25 L38 25 Z" fill="#1c3aa8"/>
-<path d="M21.2 11 L32 11 L26 25 Z" fill="#7da2ff"/>
-<!-- pavilion facets -->
-<path d="M10.5 25 L26 25 L32 54.5 Z" fill="#1f41b8"/>
-<path d="M26 25 L38 25 L32 54.5 Z" fill="#2f5be0"/>
-<path d="M38 25 L53.5 25 L32 54.5 Z" fill="#11267e"/>
-<!-- girdle line and table shine -->
-<path d="M10.5 25 H53.5" stroke="#a9c2ff" stroke-width="1.2"/>
-<path d="M23.5 13 L31 13 L27.5 21.5 Z" fill="#d6e3ff"/>
-<!-- pyrite flecks -->
-<path d="M40 16 l2.4 1.2 l-1 2.4 l-2.4 -1.2 z" fill="#e6c25a"/>
-<path d="M29 33 l2 1 l-0.8 2 l-2 -1 z" fill="#e6c25a"/>
-<path d="M36.5 39 l1.4 0.7 l-0.6 1.4 l-1.4 -0.7 z" fill="#c9a23c"/>
-<!-- claws -->
-<path d="M17.5 8 L23 8 L22 14 L18 14 Z" fill="#e8edf2" stroke="#59616b" stroke-width="0.8"/>
-<path d="M41 8 L46.5 8 L46 14 L42 14 Z" fill="#c5ccd4" stroke="#59616b" stroke-width="0.8"/>
-<path d="M6 23 L11.5 21.5 L13 27 L7.5 28 Z" fill="#e8edf2" stroke="#59616b" stroke-width="0.8"/>
-<path d="M58 23 L52.5 21.5 L51 27 L56.5 28 Z" fill="#aab2bb" stroke="#59616b" stroke-width="0.8"/>
-<path d="M29 56 L35 56 L32 61 Z" fill="#c5ccd4" stroke="#59616b" stroke-width="0.8"/>
+${emblem('#dfe5ec', '#f4f7fa', '#5d6670', '#10233f')}
+<path d="M6.500 26 C11 18.500 20 14.200 32 14.200 C44 14.200 53 18.500 57.500 26" fill="none" stroke="#ffffff" stroke-width="1.200" opacity="0.8"/>
 </svg>`;
 
-// 16 px: the stone alone, four tones
+// 16 px: the oval and the H, three tones
 const svgSmall = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-<path d="M1.5 6 L5 1.5 L11 1.5 L14.5 6 L8 15 Z" fill="#12277f" stroke="#59616b" stroke-width="0.8"/>
-<path d="M5 2 L11 2 L9.5 6 L6.5 6 Z" fill="#5a86f2"/>
-<path d="M5 2 L6.5 6 L2.2 6 Z" fill="#2b53d0"/>
-<path d="M6.5 6 L9.5 6 L8 14 Z" fill="#2f5be0"/>
-<path d="M2.2 6 L6.5 6 L8 14 Z" fill="#1f41b8"/>
-<path d="M5.8 2.8 L7.6 2.8 L6.8 5 Z" fill="#d6e3ff"/>
-<rect x="10" y="3.5" width="1" height="1" fill="#e6c25a"/>
+<ellipse cx="8" cy="8" rx="7.600" ry="5" fill="#dfe5ec"/>
+<ellipse cx="8" cy="8" rx="6.300" ry="3.800" fill="#10233f"/>
+<path d="M5 10.500 C4 8.500 4.800 6.500 6.800 5.300 L7.600 5.900 C6.300 7 6 8.500 6.600 10.200 Z M11 5.500 C12 7.500 11.200 9.500 9.200 10.700 L8.400 10.100 C9.700 9 10 7.500 9.400 5.800 Z M5.900 9 C7.600 8.800 9.200 8.100 10.300 7 L10.400 8 C9.200 9.100 7.700 9.800 6 9.900 Z" fill="#f4f7fa"/>
 </svg>`;
 
 async function render(src, size, file) {

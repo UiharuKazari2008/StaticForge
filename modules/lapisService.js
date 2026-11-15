@@ -23,7 +23,11 @@
  *
  * Broadcasts to admin clients:
  *   lapis_updated   { state }                       after every read, command step or settings change
- *   lapis_notice    { id, kind, title, text, actions[] }   kind: unlocked | low-fuel | refuel | service | command
+ *   lapis_notice    { id, kind, title, text, actions[], key?, stamp? }   kind: unlocked | low-fuel | refuel | service | command | health
+ *
+ * Health alerts (the 12 V battery under the car's warning level, a low tire, low washer or brake fluid, a
+ * weak smart key battery) are raised the moment a report shows them, again when they get worse, and
+ * stay in state.alerts until a report clears them: a phone that was not connected shows them when it is.
  *
  * Commands are never retried and never sent by tests against the real car (scripts/test-lapis-service.js
  * swaps the request function).
@@ -57,7 +61,9 @@ const DEFAULTS = {
     mpg: 47, // rated combined; replaced by the measured figure once the record has enough driving
     runMinutes: 10,
     autoClimate: true,
-    notify: { unlocked: true, lowFuel: true, refuel: true, service: true },
+    notify: { unlocked: true, lowFuel: true, refuel: true, service: true, health: true },
+    tireLowPsi: 26, // a tire under this is low even before the car's own lamp; also one 4 psi under the other three
+    batteryLowPct: 0, // 0: the level the car itself warns at (50 % when it does not say)
     errandMiles: 4,
     offDayMiles: 12,
     radiusKm: 0.3,
@@ -96,7 +102,7 @@ const live = {
     lastError: null,
     command: null,
     parkedSince: 0, // when the car was first seen parked with the engine off
-    flags: { unlockedFor: 0, lowFuel: false, refuelDay: '', service: {} },
+    flags: { unlockedFor: 0, lowFuel: false, refuelDay: '', service: {}, health: {} },
 };
 const sched = { timer: null, nextPollAt: 0, lockCheckAt: 0, backoff: 0, busy: false, weatherAt: 0 };
 
@@ -229,7 +235,9 @@ function getSettings() {
         errandMiles: num(c.errandMiles, 0, 200, DEFAULTS.errandMiles),
         offDayMiles: num(c.offDayMiles, 0, 500, DEFAULTS.offDayMiles),
         radiusKm: num(c.radiusKm, 0.05, 5, DEFAULTS.radiusKm),
-        notify: { unlocked: notify.unlocked !== false, lowFuel: notify.lowFuel !== false, refuel: notify.refuel !== false, service: notify.service !== false },
+        notify: { unlocked: notify.unlocked !== false, lowFuel: notify.lowFuel !== false, refuel: notify.refuel !== false, service: notify.service !== false, health: notify.health !== false },
+        tireLowPsi: int(c.tireLowPsi, 15, 45, DEFAULTS.tireLowPsi),
+        batteryLowPct: int(c.batteryLowPct, 0, 90, DEFAULTS.batteryLowPct),
         maintenance: cleanMaintenance(c.maintenance),
         picture: c.picture && typeof c.picture === 'object' && c.picture.rev ? { rev: String(c.picture.rev), type: String(c.picture.type || 'image/webp') } : null,
     };
@@ -279,10 +287,12 @@ async function saveSettings(next = {}) {
     delete out.climateTable; // the step table of the first version
     if ('errandMiles' in next) out.errandMiles = num(next.errandMiles, 0, 200, DEFAULTS.errandMiles);
     if ('offDayMiles' in next) out.offDayMiles = num(next.offDayMiles, 0, 500, DEFAULTS.offDayMiles);
+    if ('tireLowPsi' in next) out.tireLowPsi = int(next.tireLowPsi, 15, 45, DEFAULTS.tireLowPsi);
+    if ('batteryLowPct' in next) out.batteryLowPct = int(next.batteryLowPct, 0, 90, DEFAULTS.batteryLowPct);
     if ('radiusKm' in next) out.radiusKm = num(next.radiusKm, 0.05, 5, DEFAULTS.radiusKm);
     if (next.notify && typeof next.notify === 'object') {
         out.notify = Object.assign({}, out.notify || {});
-        ['unlocked', 'lowFuel', 'refuel', 'service'].forEach((k) => {
+        ['unlocked', 'lowFuel', 'refuel', 'service', 'health'].forEach((k) => {
             if (k in next.notify) out.notify[k] = next.notify[k] !== false;
         });
     }
@@ -598,6 +608,95 @@ function afterRead(before, status, reason) {
         live.flags.lowFuel = true;
         if (s.notify.lowFuel) notice('low-fuel', 'Fuel is low', `${carName()} has ${fmtPct(status.fuel)} of a tank${Number.isFinite(status.range) ? `, about ${Math.round(status.range)} miles` : ''}.`, ['view']);
     } else if (!low && Number.isFinite(status.fuel) && status.fuel > s.lowFuelPct + 5) live.flags.lowFuel = false;
+
+    healthNotices(s);
+}
+
+// ------------------------------------------------------------------------------------------ vehicle health
+
+const TIRE_NAME = { fl: 'front left', fr: 'front right', rl: 'rear left', rr: 'rear right' };
+
+/** The tires that are low: the car's lamp, under the set pressure, or 4 psi under the other three. */
+function lowTires(status, s) {
+    const lamp = status.tireLow || {};
+    const psi = status.tirePsi || {};
+    const keys = Object.keys(TIRE_NAME);
+    return keys.filter((k) => {
+        if (lamp[k] === true) return true;
+        const v = psi[k];
+        if (!Number.isFinite(v) || v <= 0) return false;
+        if (v < s.tireLowPsi) return true;
+        const others = keys.filter((o) => o !== k).map((o) => psi[o]).filter((x) => Number.isFinite(x) && x > 0);
+        return others.length === 3 && v <= others.reduce((a, b) => a + b, 0) / 3 - 4;
+    });
+}
+
+/** The highest 12 V reading of the last day and when, for "it was 73 % at 2:00 AM". */
+function batteryPeak() {
+    const v = live.vehicle;
+    if (!v) return null;
+    try {
+        return database().prepare('SELECT t, battery12 FROM samples WHERE vehicle = ? AND t >= ? AND battery12 IS NOT NULL ORDER BY battery12 DESC, t DESC LIMIT 1').get(v.id, nowFn() - DAY) || null;
+    } catch (_e) {
+        return null;
+    }
+}
+
+const clockAt = (t, s) => new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: s.timeZone || undefined }).format(new Date(t));
+
+/**
+ * What is wrong with the car right now: [{ key, stamp, title, text }]. `stamp` changes when the
+ * condition gets worse, which is when it is said again.
+ */
+function healthAlerts(s) {
+    const status = live.status;
+    if (!status) return [];
+    const out = [];
+    const where = placeName(live.location, s);
+    const parked = status.engine === false ? ` while parked${where ? ` at ${where}` : ''}` : '';
+    const warnAt = s.batteryLowPct || (Number.isFinite(status.battery12WarnAt) ? status.battery12WarnAt : 50);
+    if (Number.isFinite(status.battery12) && status.battery12 < warnAt) {
+        const peak = batteryPeak();
+        const fell = peak && peak.battery12 - status.battery12 >= 8 ? ` It was ${Math.round(peak.battery12)}% at ${clockAt(peak.t, s)}.` : '';
+        out.push({
+            key: 'battery12',
+            // said again for every further 10 points it falls
+            stamp: `b${Math.floor(status.battery12 / 10)}`,
+            title: '12 V battery is low',
+            text: `${carName()}'s 12 V battery is at ${Math.round(status.battery12)}%${parked} (warning level ${warnAt}%).${fell} Something may be drawing power: check for an inverter, a charger or a light left on.`,
+        });
+    }
+    const tires = lowTires(status, s);
+    if (tires.length || (status.tireLow && status.tireLow.any)) {
+        const psi = status.tirePsi || {};
+        const list = tires.map((k) => `${TIRE_NAME[k]}${Number.isFinite(psi[k]) ? ` ${psi[k]} psi` : ''}`);
+        const lowest = Math.min(...tires.map((k) => psi[k]).filter(Number.isFinite), 99);
+        out.push({
+            key: 'tire',
+            // said again when another tire joins or the lowest loses 3 more psi
+            stamp: `t${tires.join('')}:${lowest === 99 ? 'x' : Math.floor(lowest / 3)}`,
+            title: tires.length > 1 ? 'Tire pressures are low' : 'Tire pressure is low',
+            text: list.length ? `${carName()}${parked}: ${list.join(', ')}. Inflate ${tires.length > 1 ? 'them' : 'it'}, and check for a puncture if it keeps falling.` : `${carName()}'s tire pressure warning is on${parked}.`,
+        });
+    }
+    if (status.brakeFluidLow === true) out.push({ key: 'brake', stamp: 'on', title: 'Brake fluid is low', text: `${carName()} reports low brake fluid. Have it checked before driving far.` });
+    if (status.washerLow === true) out.push({ key: 'washer', stamp: 'on', title: 'Washer fluid is low', text: `${carName()} reports low washer fluid.` });
+    if (status.keyBatteryLow === true) out.push({ key: 'key', stamp: 'on', title: 'Smart key battery is low', text: `${carName()} reports a weak smart key battery. Replace the key's coin cell.` });
+    return out;
+}
+
+function healthNotices(s) {
+    const alerts = healthAlerts(s);
+    const active = new Set(alerts.map((a) => a.key));
+    Object.keys(live.flags.health).forEach((k) => {
+        if (!active.has(k)) delete live.flags.health[k];
+    });
+    alerts.forEach((a) => {
+        const seen = live.flags.health[a.key];
+        if (seen && seen.stamp === a.stamp) return;
+        live.flags.health[a.key] = { stamp: a.stamp, since: (seen && seen.since) || nowFn(), at: nowFn() };
+        if (s.notify.health) notice('health', a.title, a.text, ['view'], { key: a.key, stamp: a.stamp });
+    });
 }
 
 const fmtPct = (v) => (Number.isFinite(v) ? `${Math.round(v)}%` : 'little');
@@ -814,6 +913,8 @@ function getState() {
         climate: climatePick(s),
         usage: u,
         maintenance: status ? maintenanceState(s) : [],
+        // what is wrong right now (a phone that missed the notice shows these when it connects)
+        alerts: s.notify.health ? healthAlerts(s).map((a) => ({ ...a, since: (live.flags.health[a.key] && live.flags.health[a.key].since) || null })) : [],
         command: publicCommand(live.command),
         error: live.lastError,
         nextReadAt: sched.nextPollAt || null,
@@ -985,7 +1086,7 @@ function loadLatest() {
         ['vehicle', 'status', 'statusSeenAt', 'location', 'locationOdo', 'parkedSince', 'weather'].forEach((k) => {
             if (o[k] !== undefined && o[k] !== null) live[k] = o[k];
         });
-        if (o.flags && typeof o.flags === 'object') live.flags = Object.assign(live.flags, o.flags, { service: Object.assign({}, o.flags.service || {}) });
+        if (o.flags && typeof o.flags === 'object') live.flags = Object.assign(live.flags, o.flags, { service: Object.assign({}, o.flags.service || {}), health: Object.assign({}, o.flags.health || {}) });
     } catch (_e) {
         /* first run */
     }
@@ -1014,8 +1115,8 @@ function pushState() {
 
 let noticeSeq = 0;
 
-function notice(kind, title, text, actions) {
-    const n = { id: `${nowFn().toString(36)}-${++noticeSeq}`, kind, title, text, actions: actions || [] };
+function notice(kind, title, text, actions, extra) {
+    const n = Object.assign({ id: `${nowFn().toString(36)}-${++noticeSeq}`, kind, title, text, actions: actions || [] }, extra || {});
     logEvent('notice', { kind, title, text });
     broadcast({ type: 'lapis_notice', data: n });
     return n;
@@ -1047,6 +1148,8 @@ module.exports = {
         weatherAt,
         usageModel,
         maintenanceState,
+        healthAlerts,
+        lowTires,
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
         },

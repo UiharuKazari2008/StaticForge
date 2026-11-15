@@ -165,7 +165,10 @@ function refuelBy({ fuelPct, milesPerPct, weekday, todayKey, milesToday = 0, res
     }
     // `day` is the last day fully covered; refuel on it (before the next day's driving)
     const daysLeft = Math.round((Date.parse(day) - Date.parse(todayKey)) / DAY);
-    return { day, daysLeft, milesLeft: Math.round(milesLeft), perDay: perDay.slice(0, 14), reservePct, beyond: false };
+    // the day whose driving would cross the reserve, and how far short the tank is for it
+    const short = perDay[perDay.length - 1];
+    const crosses = short && short.miles > 0 ? { day: short.day, miles: short.miles, left: Math.round(left) } : null;
+    return { day, daysLeft, milesLeft: Math.round(milesLeft), perDay: perDay.slice(0, 14), reservePct, beyond: false, crosses };
 }
 
 /**

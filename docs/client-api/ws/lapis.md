@@ -29,7 +29,7 @@ glass and mirrors. `seat`: 0 off, 6-8 heat low to high, 3-5 cool low to high.
 
 ## State
 
-`{ configured, vehicle, status, seenAt, location, parkedSince, climate, usage, maintenance, command, error, nextReadAt, limits, settings }`
+`{ configured, vehicle, status, seenAt, location, parkedSince, climate, usage, maintenance, alerts, command, error, nextReadAt, limits, settings }`
 
 - `status`: `{ at, locked, engine, climate, defrost, setTemp, fuel, fuelLow, range, odometer, battery12, doors, windows, trunk, hood, tireLow, washerLow, brakeFluidLow, keyBatteryLow }` (miles, °F)
 - `location`: `{ lat, lon, heading, at, readAt, place }` (`place` is `Home`, `Work` or null)
@@ -41,4 +41,4 @@ glass and mirrors. `seat`: 0 off, 6-8 heat low to high, 3-5 cool low to high.
 ## Broadcasts (admin clients)
 
 - `lapis_updated` `{ state }` after every read, command step and settings change
-- `lapis_notice` `{ id, kind, title, text, actions[] }`; `kind`: `unlocked` (action `lock`), `low-fuel`, `refuel`, `service`, `command`
+- `lapis_notice` `{ id, kind, title, text, actions[] }`; `kind`: `unlocked` (action `lock`), `low-fuel`, `refuel`, `service`, `command`, `health` (with `key` and `stamp`; active ones are also in `state.alerts` until a report clears them)
