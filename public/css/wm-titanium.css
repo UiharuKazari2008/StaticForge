@@ -530,6 +530,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-body {
     scrollbar-width: none;
 }
 
+/* no scroll bar on the glass (the page's WM bar showed as a pink strip, A53) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-body::-webkit-scrollbar {
+    display: none;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-item,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open {
     display: flex;

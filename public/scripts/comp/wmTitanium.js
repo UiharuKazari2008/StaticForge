@@ -423,6 +423,9 @@
     let superEl = null;
     let superAnim = null;
     const SUPER_MS = 340;
+    // the Today items the Super Bar shows first (panel ids), then others with a count
+    const SUPER_ITEMS = ['weather', 'calendar', 'text', 'messages', 'tasks', 'traffic', 'music', 'director', 'prints', 'lapis', 'youtube'];
+    const rank = (id) => { const i = SUPER_ITEMS.indexOf(id); return i < 0 ? SUPER_ITEMS.length : i; };
     const SUPER_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
     function superGlassRect() {
@@ -527,12 +530,15 @@
         superEl.querySelector('.wm-ti-super-head').innerHTML = cp
             ? `<div class="wm-ti-super-time">${esc(cp.time)}<span class="wm-ti-super-ampm">${esc(cp.ampm || '')}</span></div><div class="wm-ti-super-date">${esc(fmtLong.format(new Date()))}</div><div class="wm-ti-super-net">${esc(cp.network || '')}</div>`
             : '';
-        // Today's items with something to say: a count, or a line under their title
-        const rows = panels.filter((x) => !x.clock && x.pages && x.pages.length).map((x) => {
+        // Today's items worth catching up on, in this order (Yukimi, Nov 15: weather, the next event,
+        // messages...), then any other item showing a count; never the fixed ones (owner, search...)
+        const rows = panels.filter((x) => !x.clock && x.pages && x.pages.length && (SUPER_ITEMS.includes(x.id) || x.count)).map((x) => {
             const pg = x.pages[pageIndex(x)] || {};
             const line = [pg.title, pg.line2].filter((v) => v && String(v).trim() && String(v).toLowerCase() !== String(x.label).toLowerCase()).join(' \u00b7 ');
             return { x, line };
-        }).filter((r) => r.x.count || r.line).slice(0, 7);
+        }).filter((r) => r.x.count || r.line)
+            .sort((a, b) => rank(a.x.id) - rank(b.x.id))
+            .slice(0, 8);
         superEl.querySelector('.wm-ti-super-items').innerHTML = rows.map(({ x, line }) =>
             `<button type="button" class="wm-ti-super-item" data-super="panel" data-id="${esc(x.id)}"><span class="wm-ti-super-label">${esc(x.label)}${x.count ? `<sup>${esc(x.count)}</sup>` : ''}</span>${line ? `<span class="wm-ti-super-line">${esc(line)}</span>` : ''}</button>`).join('');
     }
