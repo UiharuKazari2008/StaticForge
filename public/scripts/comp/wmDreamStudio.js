@@ -200,6 +200,16 @@
             drawTokens(id, text, $(`.wds-label[data-for="${id}"] > span:last-child`));
         });
         drawChars(s);
+        const base = $('.wds-base');
+        if (base) {
+            base.hidden = !s.hasBaseImage;
+            if (s.hasBaseImage) {
+                const img = base.querySelector('img');
+                const src = thumbUrl(s.baseImage);
+                if (src) { if (img.getAttribute('src') !== src) img.src = src; img.hidden = false; } else { img.hidden = true; img.removeAttribute('src'); }
+                base.querySelector('span').textContent = `Strength ${Number(s.strength).toFixed(2)}, noise ${Number(s.noise).toFixed(2)}`;
+            }
+        }
         const sum = $('.wds-summary > span');
         if (sum && s.model !== undefined) sum.textContent = summaryText(s, M.options());
         drawStrip();
@@ -306,6 +316,11 @@
         rows.push(ui.row('', ui.check('seedLock', 'Keep this seed', !!s.seedLock, 'data-check="seedLock"')));
         rows.push(comboRow('Prints:', 'n', [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, String(n)]), Number(s.n) || 1));
         rows.push(ui.row('', ui.check('upscale', 'Upscale each print', !!s.upscale, 'data-check="upscale"')));
+        if (s.hasBaseImage) {
+            rows.push(ui.sub('Base Image'));
+            rows.push(ui.row('Strength:', num('strength', s.strength)));
+            rows.push(ui.row('Noise:', num('noise', s.noise)));
+        }
         // what is added around the prompt: the desktop's Prompt menu lists
         rows.push(ui.sub('Prompt'));
         const picked = new Set(s.datasets || []);
@@ -726,6 +741,17 @@
         }).catch((err) => console.warn('[wmDreamStudio] action', name, err)), { delay: 250 });
     }
 
+    /** The print becomes the picture the next prints start from; back on the page its row shows it. */
+    function useAsBase() {
+        const f = shownPrint();
+        if (!f || !M.setBaseImage(f)) return;
+        snap = null;
+        layers = [];
+        tab = 'prompt';
+        paint();
+        sh.syncHistory();
+    }
+
     /** Delete cannot be taken back (Scrap can): the phone asks first, as WM does before it deletes a file. */
     function deletePrint() {
         sh.messageBox({
@@ -762,6 +788,7 @@
             '-',
             { label: 'Favorite', disabled: none, action: () => printAction('toggle-favorite') },
             { label: 'Use Its Settings', disabled: none, action: () => printAction('modify-preview') },
+            { label: 'Use as Base Image', disabled: none, action: useAsBase },
             { label: 'Upscale', disabled: none, action: () => printAction('upscale') },
             { label: 'Expand Canvas...', disabled: none, action: () => printAction('expand-canvas') },
             { label: 'Save to Phone', disabled: none, action: () => printAction('download') },
@@ -779,6 +806,7 @@
         else rows.push({ label: 'Print', submenu: printRows }, '-');
         if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
+        if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
         rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Preset...', action: () => openLayer('presets') }, { label: 'Save as Preset...', action: savePresetAs });
         return rows;
     }
@@ -827,6 +855,7 @@
     <div class="wds-label" data-for="uc"><span>Undesired</span><span></span></div>
     <div class="wds-field" role="button" tabindex="0" data-field="uc"></div>
     <div class="wds-chars" hidden></div>
+    <button type="button" class="wds-base" hidden><img alt=""><div><b>Base image</b><span></span></div></button>
   </div>
   <button type="button" class="wds-summary"><b>Settings</b><span></span></button>
 </div>
@@ -847,6 +876,7 @@
 
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
         $('.wds-summary').addEventListener('click', () => openLayer('settings'));
+        $('.wds-base').addEventListener('click', () => openLayer('settings'));
         p.querySelectorAll('.wds-field').forEach((b) => b.addEventListener('click', () => openEditor(b.dataset.field)));
         $('.wds-presets').addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wm-listbox-row'); if (r) openPreset(r.dataset.key); });
         const chars = $('.wds-chars');

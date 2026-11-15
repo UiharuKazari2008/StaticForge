@@ -155,6 +155,29 @@
 .wds-char.is-off .wds-char-open { color: #848284; }
 .wds-char-open:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 
+/* the base image: its picture and its two numbers in a row; a tap opens Settings */
+.wds-base {
+    display: flex;
+    align-items: center;
+    gap: calc(5 * var(--wm-px));
+    flex: 0 0 auto;
+    width: calc(100% - 10 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) 0;
+    padding: calc(2 * var(--wm-px)) 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #000;
+    font: inherit;
+    text-align: left;
+}
+.wds-base[hidden] { display: none; }
+.wds-base:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-base > img { flex: 0 0 auto; width: calc(30 * var(--wm-px)); height: calc(30 * var(--wm-px)); border: calc(1 * var(--wm-px)) solid #000; box-sizing: border-box; object-fit: cover; }
+.wds-base > img[hidden] { display: none; }
+.wds-base > div { flex: 1 1 auto; min-width: 0; }
+.wds-base b, .wds-base span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 /* the settings in one row; a tap opens Settings */
 .wds-summary {
     display: block;

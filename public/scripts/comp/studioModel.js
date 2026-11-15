@@ -14,6 +14,8 @@
  *   studioModel.addCharacter() / removeCharacter(i) / setCharacter(i, { name, enabled })
  *                                       characters by their place in snapshot().characters; their text is
  *                                       set('character:<i>:prompt' | ':uc' | ':negative', value)
+ *   studioModel.setBaseImage(filename) / clearBaseImage()
+ *                                       the gallery picture a print starts from (snapshot().baseImage)
  *   studioModel.presets() / sessionName() / openPreset(name) / savePreset(name)
  *                                       the saved presets' names, this session's name, load one, save as one
  *   studioModel.options()               what the lists offer and which controls the chosen model has
@@ -44,7 +46,7 @@
        handleManualPreviewImageContextMenuAction, getAutofillSearchSettings, selectedDatasets,
        applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems, hasManagedEmphasisGroupIds, expandEmphasisGroupIds,
        resolveEmphasisBagForTextarea,
-       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, handleManualSave, datasetAllowedForModel, getStudioUcPresetMenuItems */
+       addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, handleManualSave, applyImageAsVariationBase, handleDeleteBaseImage, datasetAllowedForModel, getStudioUcPresetMenuItems */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -106,6 +108,9 @@
         Object.keys(FIELDS).forEach((id) => { out[id] = visibleText(el(FIELDS[id][0])); });
         try { out.paid = typeof forcePaidRequest !== 'undefined' && !!forcePaidRequest; } catch (_) { out.paid = false; }
         out.hasBaseImage = !!(window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.sourceFilename && el('manualImg2ImgGroup') && !el('manualImg2ImgGroup').classList.contains('hidden')));
+        // the base image, when it is a picture of the gallery: its file name
+        const src = window.uploadedImageData && typeof window.uploadedImageData.image_source === 'string' ? window.uploadedImageData.image_source : '';
+        out.baseImage = out.hasBaseImage ? (src.startsWith('file:') ? src.slice(5) : '') : '';
         out.generating = generating();
         try {
             const items = typeof getStudioCharacterItems === 'function' ? getStudioCharacterItems() : [];
@@ -294,6 +299,22 @@
         return true;
     }
 
+    // ---- base image: the picture a print starts from (strength and noise are parameters)
+
+    function setBaseImage(filename) {
+        if (!filename || typeof applyImageAsVariationBase !== 'function') return false;
+        applyImageAsVariationBase({ filename });
+        emit('change', { id: 'baseImage' });
+        return true;
+    }
+
+    function clearBaseImage() {
+        if (typeof handleDeleteBaseImage !== 'function') return false;
+        handleDeleteBaseImage();
+        emit('change', { id: 'baseImage' });
+        return true;
+    }
+
     // ---- presets: a session kept under a name on the server
 
     function presets() {
@@ -438,7 +459,7 @@
     }
 
     const api = {
-        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, generate, stop, select, action, on, off,
+        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, generate, stop, select, action, on, off,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
