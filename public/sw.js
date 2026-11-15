@@ -42,8 +42,9 @@ function isKeptProtectedPath(pathname) {
 // Explorer file previews (Yozora #643): /<vfs uuid>/previews/<fileId>?v=<version> and
 // /cache/preview/<hash>.webp. Its own limits, apart from the Gallery's IMAGE_CACHE.
 const EXPLORER_PREVIEW_CACHE = 'explorer-preview-cache-v1';
-// Page scripts keyed by the URL the page asks with (path?sha=hash), so Chrome can keep V8's compiled
-// code beside each row (#817, hashedScriptRow below). Copies of STATIC_CACHE rows; safe to delete.
+// Page scripts and stylesheets keyed by the URL the page asks with (path?sha=hash), so Chrome can
+// keep V8's compiled code beside each script row (#817, hashedScriptRow below). Copies of
+// STATIC_CACHE rows; safe to delete.
 const SCRIPT_CODE_CACHE = 'script-code-cache-v1';
 const EXPLORER_PREVIEW_POLICY = {
   maxEntries: 5000,
@@ -359,7 +360,9 @@ function openScriptCodeCache() {
 }
 
 async function hashedScriptRow(handler, request, url) {
-  if (request.destination !== 'script' || request.headers.get('range')) return null;
+  // Stylesheets asked for by hash take the same road: no compiled code to keep, but a lookup in
+  // this small cache instead of the 9,000-row static one, and no copy of the body per hit.
+  if ((request.destination !== 'script' && request.destination !== 'style') || request.headers.get('range')) return null;
   const sha = url.searchParams.get('sha');
   if (!sha) return null;
   try {
