@@ -79,12 +79,17 @@
         bezelLedNotify: 'wmBezelLedNotify',
         bezelLedBattery: 'wmBezelLedBattery',
         bezelLedCharge: 'wmBezelLedCharge',
-        version: 'wmVersion'
+        version: 'wmVersion',
+        bars651: 'wmBars651'
     };
     // The UI version this page runs (app.html sets html[data-wm-version] before the first paint)
     // and the one stored for the next start: Melaton Update > Version changes the stored one.
-    const VERSIONS = [['6.1', 'Melaton Mobile 6.1'], ['6.5', 'Melaton Mobile 6.5']];
+    // 6.5.1 (#850): 6.5 with the Windows Mobile 6.5.3 changes Yukimi chose. It RUNS as version 6.5
+    // (data-wm-version="6.5", wmShell.version '6.5') with data-wm-rev="6.5.1" on top, so
+    // runningVersion() stays '6.5' for every 6.5 branch; runningRelease() tells the two apart.
+    const VERSIONS = [['6.1', 'Melaton Mobile 6.1'], ['6.5', 'Melaton Mobile 6.5'], ['6.5.1', 'Melaton Mobile 6.5.1']];
     const runningVersion = () => (root.dataset.wmVersion === '6.5' ? '6.5' : '6.1');
+    const runningRelease = () => (root.dataset.wmRev === '6.5.1' ? '6.5.1' : runningVersion());
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     // Settings > Screen > Bezel: logo height and model text size, in % of the band (wmShell syncBezel)
     const BEZEL_LOGO_SIZES = [40, 50, 60, 70, 80, 90, 100];
@@ -333,9 +338,9 @@
         return { source: 'wm', text: 'Start', icon: MELATON_EMBLEM };
     }
 
-    const storedVersion = () => (lsGet(K.version) === '6.5' ? '6.5' : '6.1');
+    const storedVersion = () => { const v = lsGet(K.version); return v === '6.5' || v === '6.5.1' ? v : '6.1'; };
 
-    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scales: SCALES, versions: VERSIONS, version: runningVersion, storedVersion };
+    window.wmSettings = { keys: K, startButton, todayUsesDesktop, titleBarStyle, cameraStyle, applyScale, scales: SCALES, versions: VERSIONS, version: runningVersion, release: runningRelease, storedVersion, bottomBars: () => root.dataset.wmBars === 'bottom', storedBottomBars: () => lsGet(K.bars651) === 'bottom' };
 
     // ---------------------------------------------------------------- helpers
 

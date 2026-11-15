@@ -269,7 +269,7 @@
                 // version and density, not every version's (app.html re-checks it at each boot)
                 try {
                     var wmv = '6.1';
-                    try { if (localStorage.getItem('wmVersion') === '6.5') wmv = '6.5'; } catch (e2) { /* 6.1 */ }
+                    try { var wmStored = localStorage.getItem('wmVersion'); if (wmStored === '6.5' || wmStored === '6.5.1') wmv = '6.5'; } catch (e2) { /* 6.1 */ }
                     if (window.melatonPackages) window.melatonPackages.noteBoot({ shell: 'mobile', version: wmv, touch: (navigator.maxTouchPoints || 0) > 0 });
                 } catch (e3) { /* no packages: everything */ }
                 // a phone start: the maker's logo on black (as the Android app's boot cover), and the

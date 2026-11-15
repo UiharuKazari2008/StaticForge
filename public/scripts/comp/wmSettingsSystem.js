@@ -1716,7 +1716,7 @@
     }
 
     function updateInit() {
-        const d = { view: { message: '', progress: 0, filesTotal: 0, ...updateInitialState() }, version: wmSettings.storedVersion() };
+        const d = { view: { message: '', progress: 0, filesTotal: 0, ...updateInitialState() }, version: wmSettings.storedVersion(), bars: wmSettings.storedBottomBars() };
         // cplUpdate.js's classify turns the service worker's state words into the page's
         return whenLoaded(d, ['scripts/comp/cplUpdate.js']);
     }
@@ -1812,18 +1812,33 @@
         const names = new Map(wmSettings.versions);
         el.innerHTML = `${ui.sub('Select the version of Melaton Mobile to use:')}
             ${wmSettings.versions.map(([id, name]) => ui.radio('wm-version', id, name, id === d.version)).join('')}
+            <div class="wm-version-bars"${d.version === '6.5.1' ? '' : ' hidden'}>${ui.check('wm-bars651', 'Start and soft keys as buttons at the bottom, thin title bar', d.bars)}</div>
             ${ui.gap()}
-            ${ui.value('Current version:', names.get(wmSettings.version()), { wide: true })}
+            ${ui.value('Current version:', names.get(wmSettings.release()), { wide: true })}
             ${ui.gap()}
             ${ui.note('Melaton Mobile restarts to change its version, and installs the new version\'s pictures as it starts. Your settings and programs are kept.')}`;
-        el.querySelectorAll('input[name="wm-version"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.version = r.value; }));
+        // 6.5.1's bottom button bar and thin title bar (#850, Windows Mobile 6.5.3's): one choice
+        // for both, off unless ticked; read before the first paint like the version, so it restarts too
+        const barsRow = el.querySelector('.wm-version-bars');
+        const barsBox = el.querySelector('input[name="wm-bars651"]');
+        if (barsBox) barsBox.addEventListener('change', () => { d.bars = barsBox.checked; });
+        el.querySelectorAll('input[name="wm-version"]').forEach((r) => r.addEventListener('change', () => {
+            if (!r.checked) return;
+            d.version = r.value;
+            if (barsRow) barsRow.hidden = d.version !== '6.5.1';
+        }));
     }
 
     async function versionCommit(d) {
-        if (!d.version || d.version === wmSettings.storedVersion()) return [];
-        try { localStorage.setItem(wmSettings.keys.version, d.version); } catch (_) { return []; }
-        if (d.version === wmSettings.version()) return [wmSettings.keys.version]; // back to the running one
-        const name = new Map(wmSettings.versions).get(d.version);
+        const barsChanged = d.version === '6.5.1' && !!d.bars !== wmSettings.storedBottomBars();
+        if (!d.version || (d.version === wmSettings.storedVersion() && !barsChanged)) return [];
+        try {
+            localStorage.setItem(wmSettings.keys.version, d.version);
+            if (d.version === '6.5.1') localStorage.setItem(wmSettings.keys.bars651, d.bars ? 'bottom' : 'top');
+        } catch (_) { return []; }
+        // back to what this page already runs: nothing to restart for
+        if (d.version === wmSettings.release() && (d.version !== '6.5.1' || !!d.bars === wmSettings.bottomBars())) return [wmSettings.keys.version];
+        const name = d.version === wmSettings.release() ? 'the other button layout' : new Map(wmSettings.versions).get(d.version);
         const yes = await ui.messageBox({
             title: 'Melaton Update', icon: 'question',
             text: `Melaton Mobile must restart to change to ${name}. Restart now?`,

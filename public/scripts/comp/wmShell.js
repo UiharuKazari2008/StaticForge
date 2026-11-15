@@ -46,6 +46,11 @@
     // swaps the Start menu for the Start screen (wmStart65.js, app id 'start') and Today's rows
     // for the Melaton Default home screen (wmTitanium.js, setTodayView); wm65.css restyles the rest.
     const WM65 = root.dataset.wmVersion === '6.5';
+    // 6.5.1 (#850): 6.5 plus the Windows Mobile 6.5.3 changes Yukimi chose. WM65 is true as well.
+    // BARS651: its bottom button bar and thin title bar, one separate choice (Settings > System >
+    // Melaton Update > Version), off unless chosen.
+    const WM651 = WM65 && root.dataset.wmRev === '6.5.1';
+    const BARS651 = WM651 && root.dataset.wmBars === 'bottom';
     const FLAG65 = '/static_images/wm65/start-flag.png';
     // The Start mark: 6.1's flag was in colour, so 6.1 shows the four-colour Melaton emblem (19 /
     // 38 / 76 px files for the 19-unit box of the flag's cell, wm-shell.css .wm-start.is-melaton);
@@ -9803,6 +9808,9 @@
         todayState: () => { const t = apps.get('today'); return t && typeof t.state === 'function' ? t.state() : null; },
         setTodayView,
         version: WM65 ? '6.5' : '6.1',
+        /** '6.5.1' when the page runs 6.5 with the 6.5.3 changes (#850); version stays '6.5' then. */
+        release: WM651 ? '6.5.1' : (WM65 ? '6.5' : '6.1'),
+        bottomBars: BARS651,
         /** A Today row's options: defs (Settings > Today > Items > Options...), and a stored value. */
         todayOptionDefs: (id) => todayOptionDefs(id),
         todayOption: (id, key) => todayOption(id, key),

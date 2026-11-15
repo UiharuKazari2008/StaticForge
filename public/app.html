@@ -211,9 +211,23 @@
         // Windows Mobile 6.1 style or the 6.5 one (wm65*.css, wmStart65.js, wmTitanium.js). Read
         // once per load, before the first paint; a change restarts Melaton Mobile.
         if (globalThis.uiShell === 'mobile') {
+            // 6.5.1 (#850) is 6.5 with the Windows Mobile 6.5.3 changes Yukimi chose: it runs as
+            // version 6.5 (every 6.5 rule and branch holds) plus data-wm-rev="6.5.1". Its bottom
+            // button bar and thin top bar are a separate choice (wmBars651 = 'bottom'), off unless set.
             let wmVersion = '6.1';
-            try { if (localStorage.getItem('wmVersion') === '6.5') wmVersion = '6.5'; } catch (e) { /* storage off: 6.1 */ }
+            let wmRev = '';
+            let wmBars = '';
+            try {
+                const stored = localStorage.getItem('wmVersion');
+                if (stored === '6.5' || stored === '6.5.1') wmVersion = '6.5';
+                if (stored === '6.5.1') {
+                    wmRev = '6.5.1';
+                    if (localStorage.getItem('wmBars651') === 'bottom') wmBars = 'bottom';
+                }
+            } catch (e) { /* storage off: 6.1 */ }
             document.documentElement.dataset.wmVersion = wmVersion;
+            if (wmRev) document.documentElement.dataset.wmRev = wmRev;
+            if (wmBars) document.documentElement.dataset.wmBars = wmBars;
         }
         // html.wm-touch drives the 1.5x finger scale of wm-shell.css; it never changes while the page lives.
         // Phone shell only: a desktop touch tablet carries no Melaton Mobile class. There a touch
