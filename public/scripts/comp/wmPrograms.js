@@ -44,6 +44,8 @@
         todayItems: root.dataset.wmVersion === '6.5' ? 'wmTodayItems65' : 'wmTodayItems',
         // 6.5 Today > Items > "Today timeout": { on, hours }; stored only, nothing reads it yet
         todayTimeout: 'wmTodayTimeout',
+        // 6.5 Today > Wallpaper > Parallax Effect: the picture, zoomed in slightly, follows the list (wmTitanium.js)
+        todayParallax: 'wmTodayParallax',
         startMenu: 'wmStartMenu',
         startSource: 'wmStartSource',
         startText: 'wmStartText',
@@ -1156,6 +1158,7 @@
             init: () => ({
                 useDesktop: todayUsesDesktop(), source: sh && sh.todayWallSource ? sh.todayWallSource() : (todayUsesDesktop() ? 'workspace' : 'selected'), picture: lsGet(K.todayBackground) || '', titleBar: titleBarStyle(), items: todayItems(), sel: 0, browsing: false, wall: initWall(), opts: todayOptionsStored(), optsFor: null, timeout: todayTimeout(),
                 // rotation of Today (Yukimi, Nov 13: it applies to the Today screen only, so it lives here)
+                parallax: lsGet(K.todayParallax) === '1',
                 screen: screenInfo(), rotate: homeRotateAllowed(screenInfo()), rotateCover: lsGet(K.homeRotateCover) === '1', rotateMain: lsGet(K.homeRotateMain) !== '0'
             }),
             render(el, tab, d, api) {
@@ -1196,6 +1199,12 @@
                         api.rerender();
                     });
                     pick.querySelector('[data-act="browse"]').addEventListener('click', () => { d.browsing = true; api.rerender(); });
+                    // 6.5 home screen (Yukimi, Nov 15): the picture zoomed in slightly moves with the list; Start keeps it still
+                    if (runningVersion() === '6.5') {
+                        el.insertAdjacentHTML('beforeend', `<div class="wm-form-gap"></div>${check('wmTodayParallax', 'Parallax Effect', d.parallax)}
+                            <p class="wm-form-note">The picture is zoomed in slightly and moves as the Today screen moves up and down.${d.source === 'android' ? " Android's own wallpaper is drawn by Android and stays still." : ''}</p>`);
+                        el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; });
+                    }
                     return;
                 }
                 if (tab === 'items' && d.optsFor) {
@@ -1338,8 +1347,9 @@
                 lsSet(K.todayItems, JSON.stringify(d.items.map((r) => ({ id: r.id, on: r.on }))));
                 lsSet(TODAY_OPTIONS_KEY, JSON.stringify(d.opts || {}));
                 lsSet(K.titleBar, d.titleBar);
+                lsSet(K.todayParallax, d.parallax ? '1' : null);
                 applyTitleBar();
-                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY];
+                const keys = [K.todayUseDesktop, K.todayBackground, K.todayWallSource, K.todayItems, K.titleBar, TODAY_OPTIONS_KEY, K.todayParallax];
                 // Rotation (a foldable's per-screen choices, or the one for a phone)
                 const rot = d.screen && d.screen.foldable
                     ? [[K.homeRotateCover, d.rotateCover ? '1' : null], [K.homeRotateMain, d.rotateMain ? null : '0']]

@@ -473,8 +473,42 @@
         for (const el of list.children) rowEl.set(el.dataset.id, el);
     }
 
+    /*
+     * Parallax Effect (Settings > Today > Wallpaper, Yukimi Nov 15): the picture layer (.wm-wall65) is
+     * zoomed in slightly and moves with the list, slower than it: the first item puts the picture at
+     * its lowest, the last at its highest. Only on Today (wm65.css gates it on data-wm-app), so Start
+     * shows the picture still. One custom property on the layer itself, so only it restyles.
+     */
+    const PARALLAX_KEY = 'wmTodayParallax';
+    let parallaxOn = false;
+    let parallaxWall = null;
+    let parallaxAt = '';
+    function readParallax() {
+        try { parallaxOn = localStorage.getItem(PARALLAX_KEY) === '1'; } catch (_) { parallaxOn = false; }
+        if (parallaxOn) root.dataset.wmParallax = '';
+        else delete root.dataset.wmParallax;
+    }
+    readParallax();
+    document.addEventListener('wmSettingsChange', (e) => {
+        const keys = (e && e.detail && e.detail.keys) || [];
+        if (keys.includes(PARALLAX_KEY)) { readParallax(); parallaxAt = ''; if (parallaxOn && host && !host.hidden) place(); }
+    });
+    /** The list stands at row `at` (fractions while it moves): -0.5 at the first item, 0.5 at the last. */
+    function parallax(at) {
+        if (!parallaxOn) return;
+        if (!parallaxWall || !parallaxWall.isConnected) parallaxWall = document.querySelector('#wmShell > .wm-wall65');
+        if (!parallaxWall) return;
+        const n = panels.length;
+        const f = n > 1 ? Math.max(-0.55, Math.min(0.55, at / (n - 1) - 0.5)) : 0;
+        const v = f.toFixed(4);
+        if (v === parallaxAt) return;
+        parallaxAt = v;
+        parallaxWall.style.setProperty('--wm-ti-par', v);
+    }
+
     /** Place every row for the list position `pos` (rows) around the band. */
     function place() {
+        parallax(pos);
         const top = focusTop();
         const e = (pos - sel) * ROW;
         const rest = !dragging && !settle;
@@ -721,6 +755,7 @@
     function placeTween(p, fade) {
         const top = focusTop();
         const ys = tweenYs(top, p);
+        parallax(tw.n ? tw.a + (tw.b - tw.a) * p : tw.a + tw.e0 * (1 - p) / ROW);
         host.style.setProperty('--wm-ti-top', String(top));
         host.classList.remove('is-rest');
         // the entrance (#800) fades every row in to the dimness it keeps at rest (its distance from the
