@@ -887,9 +887,11 @@
         if (typeof act !== 'function') return;
         // the panel opens on the pen's lift; the click that follows it must not land on the program
         // that has just come up (a tap on the IE panel went on to follow a link on IE's start page)
-        const eat = (e) => { e.stopPropagation(); e.preventDefault(); };
-        window.addEventListener('click', eat, { capture: true, once: true });
-        setTimeout(() => window.removeEventListener('click', eat, { capture: true }), 400);
+        // (the finger's own click only: a panel whose tap is its Today row's click, as Notes', sends a
+        // made one, and eating that left the panel dead)
+        const eat = (e) => { if (!e.isTrusted) return; window.removeEventListener('click', eat, true); e.stopPropagation(); e.preventDefault(); };
+        window.addEventListener('click', eat, true);
+        setTimeout(() => window.removeEventListener('click', eat, true), 400);
         try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); }
     }
 
@@ -914,12 +916,37 @@
         let downAt = 0;
         // the entrance takes no input until it is over (Yukimi, Nov 14): touches on the list, the
         // arrows and the panel are swallowed here, before any other handler sees them
-        const eatWhileEntering = (e) => { if (entryLocked()) { e.stopImmediatePropagation(); e.preventDefault(); } };
+        const eatWhileEntering = (e) => {
+            if (!entryLocked()) return;
+            // the lift of a press that began before the entrance (a finger already down as Today came
+            // back): no tap, but the press ends here. Swallowed whole it left the list waiting on a
+            // finger that was gone, and Today took no taps until a restart (Fold, Nov 15). A drag that
+            // took the entrance over ends as any drag does.
+            if (e.type === 'pointerup' && e.pointerId === id) { if (axis) return; id = null; }
+            e.stopImmediatePropagation();
+            e.preventDefault();
+        };
         ['pointerdown', 'pointerup', 'click', 'contextmenu'].forEach((t) => host.addEventListener(t, eatWhileEntering, { capture: true }));
+        // a press whose lift never arrives is dropped: nothing may be left waiting for a finger that
+        // is gone (the page hidden under it; its lift lost some other way)
+        let lastSeen = 0; // time of the tracked pointer's last event
+        const drop = () => {
+            if (id == null) return;
+            const was = axis;
+            id = null;
+            axis = '';
+            if (was === 'x') slideEnd(false);
+            else if (was === 'y') { dragging = false; startTween(sel, sel, {}); }
+        };
+        document.addEventListener('visibilitychange', () => { if (document.hidden) drop(); });
         host.addEventListener('pointerdown', (e) => {
+            // a new first finger, or any press half a second after the last sign of the old one: the
+            // old one is gone (as on Start, wmStart65.js)
+            if (id != null && (e.isPrimary || e.timeStamp - lastSeen > 500)) drop();
             if (id != null || (e.pointerType === 'mouse' && e.button !== 0)) return;
             if (e.target.closest('.wm-ti-arrow') || slide.active) return;
             id = e.pointerId;
+            lastSeen = e.timeStamp;
             downAt = Date.now();
             y0 = e.clientY;
             x0 = lastX = e.clientX;
@@ -936,6 +963,7 @@
         });
         host.addEventListener('pointermove', (e) => {
             if (e.pointerId !== id) return;
+            lastSeen = e.timeStamp;
             const u = unit();
             const dy = (e.clientY - y0) / u;
             const dx = (e.clientX - x0) / u;
