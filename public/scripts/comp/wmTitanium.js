@@ -462,6 +462,7 @@
         const fxl = superEl.querySelector('.wm-ti-super-fx');
         if (superAnim) superAnim.forEach((a) => a.cancel());
         superEl.hidden = false;
+        ensureClockTick(); // its live clock turns while the bar is open
         // the first frame: the card exactly where the band is, before the band goes
         card.style.transform = `translateY(${y0}px)`;
         card.style.height = `${h0}px`;
@@ -576,7 +577,7 @@
     function drawSuper(clock) {
         const cp = clock.pages[0];
         // the clock panel's own markup and classes: it draws exactly as the panel in the band
-        superEl.querySelector('.wm-ti-super-panel').innerHTML = `<div class="wm-ti-pg">${pageHtml(clock, cp)}</div>`;
+        superEl.querySelector('.wm-ti-super-panel').innerHTML = `<div class="wm-ti-pg">${pageHtml(clock, cp, { live: true })}</div>`;
         // the weather (Melaton Weather's selected place): its condition icon, temperature and condition,
         // then the next hours; a tap opens Weather. Without data: Today's weather line, or nothing
         const W = window.wmWeather;
@@ -1136,12 +1137,12 @@
     }
 
     /** One page of a panel as markup (positions are the layout's, inside the 480 x 164 expanded box). */
-    function pageHtml(p, pg) {
+    function pageHtml(p, pg, opts = {}) {
         const icon = pg.icon || p.icon;
-        // the clock's icon is a real clock (Yukimi, Nov 15): the art's face without its hands
-        // (ti-2051-face) and three hands turned by CSS animations set to the time (the compositor
-        // runs them; the panel draws again each minute, which sets them again)
-        const iconHtml = icon === 'ti-2051' && pg.time ? liveClockHtml()
+        // the clock's icon: the live analog clock (the art's face without its hands, ti-2051-face, and
+        // three hands turned once a second) only in the Super Bar; the idle Today shows the device's
+        // own static clock icon (Yukimi, Nov 15: the live one kept the phones drawing and hot)
+        const iconHtml = icon === 'ti-2051' && pg.time && opts.live ? liveClockHtml()
             : icon ? `<img class="wm-ti-icon" src="${esc(artUrl(icon))}" srcset="${esc(artSet(icon))}" alt="" draggable="false">` : '';
         if (p.clock) {
             return `${iconHtml}<div class="wm-ti-time">${esc(pg.time)}</div><div class="wm-ti-ampm">${esc(pg.ampm)}</div>
@@ -1155,14 +1156,61 @@
             ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
     }
 
-    function liveClockHtml() {
-        const d = new Date();
-        const s = d.getSeconds() + d.getMilliseconds() / 1000;
+    // The live clock's hands move once a second (#800 look kept: the hour and minute hands where they
+    // belong, the second hand stepping with its quartz jiggle). Its hands were three infinite CSS
+    // animations, and an infinite animation draws a frame on every display refresh: both phones ran
+    // Today at 120 fps untouched and reached thermal status 2 (Yukimi, Nov 15: "the fold is getting
+    // pretty hot"). Now one timer per second, only while a clock is on screen; the jiggle is a 220 ms
+    // animation, so the phone draws for a fifth of each second.
+    function clockAngles(d) {
+        const s = d.getSeconds();
         const m = d.getMinutes() * 60 + s;
         const h = (d.getHours() % 12) * 3600 + m;
-        return `<span class="wm-ti-icon wm-ti-aclock" aria-hidden="true" style="--ah:-${h.toFixed(2)}s;--am:-${m.toFixed(2)}s;--as:-${s.toFixed(2)}s">`
+        return { h: (h / 43200) * 360, m: (m / 3600) * 360, s: s * 6 };
+    }
+    const TICK_FRAMES = [[0, -6], [50, 1.6], [100, -0.7], [160, 0.25], [220, 0]];
+    let clockTimer = null;
+    function clocksOnScreen() {
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return [];
+        return Array.from(document.querySelectorAll('.wm-ti-aclock')).filter((c) => c.isConnected && !c.closest('[hidden]'));
+    }
+    function tickClocks() {
+        clockTimer = null;
+        const clocks = clocksOnScreen();
+        if (!clocks.length) return; // started again when one is drawn or the screen comes back
+        const a = clockAngles(new Date());
+        for (const c of clocks) {
+            const ah = c.querySelector('.wm-ti-ah');
+            const am = c.querySelector('.wm-ti-am');
+            const as = c.querySelector('.wm-ti-as');
+            const set = (el, deg) => { const t = `rotate(${deg.toFixed(2)}deg)`; if (el && el.style.transform !== t) el.style.transform = t; };
+            set(ah, a.h);
+            set(am, a.m);
+            if (as) {
+                set(as, a.s);
+                if (typeof as.animate === 'function' && c.dataset.lastSec !== String(a.s)) {
+                    c.dataset.lastSec = String(a.s);
+                    as.animate(TICK_FRAMES.map(([at, off]) => ({ offset: at / 220, transform: `rotate(${(a.s + off).toFixed(2)}deg)` })), { duration: 220, easing: 'linear' });
+                }
+            }
+        }
+        clockTimer = setTimeout(tickClocks, 1000 - (Date.now() % 1000) + 5);
+    }
+    function ensureClockTick() {
+        if (clockTimer) return;
+        clockTimer = setTimeout(tickClocks, 0);
+    }
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) ensureClockTick(); });
+    window.addEventListener('melatonscreen', (e) => { if (e && e.detail && e.detail.on) ensureClockTick(); });
+    document.addEventListener('wmAppChange', () => ensureClockTick());
+
+    function liveClockHtml() {
+        const a = clockAngles(new Date());
+        ensureClockTick();
+        const rot = (deg) => `transform:rotate(${deg.toFixed(2)}deg)`;
+        return `<span class="wm-ti-icon wm-ti-aclock" aria-hidden="true">`
             + `<img src="${esc(artUrl('ti-2051-face'))}" srcset="${esc(artSet('ti-2051-face'))}" alt="" draggable="false">`
-            + '<i class="wm-ti-ah"></i><i class="wm-ti-am"></i><i class="wm-ti-as"></i><b></b>'
+            + `<i class="wm-ti-ah" style="${rot(a.h)}"></i><i class="wm-ti-am" style="${rot(a.m)}"></i><i class="wm-ti-as" style="${rot(a.s)}"></i><b></b>`
             // the art's glass sheen (its light wedge and two fine lines) over the hands, as on a real clock
             + `<img class="wm-ti-aglass" src="${esc(artUrl('ti-2051-gloss'))}" srcset="${esc(artSet('ti-2051-gloss'))}" alt="" draggable="false"></span>`;
     }

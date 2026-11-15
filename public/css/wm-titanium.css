@@ -762,8 +762,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-x::after {
 /* ---- the clock panel's live clock (wmTitanium.js liveClockHtml): the art's face without its hands
  * (ti-2051-face, 43 x 57 units, face centre at 21.5, 24) and the hands as the art draws them (4x art:
  * hour 36 px, minute 48 px, both dark grey and 5 px wide; the second hand orange, 50 px with an 18 px
- * tail; an orange hub with a white centre). Each turns by an endless CSS animation whose negative
- * delay is the time of day: compositor-only, nothing runs per frame in script. */
+ * tail; an orange hub with a white centre). wmTitanium.js turns them once a second (tickClocks). */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock {
     display: block;
 }
@@ -789,23 +788,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > i {
     border-radius: calc(var(--w) / 2);
     transform-origin: 50% 100%;
     box-shadow: calc(0.4 * var(--u)) calc(0.5 * var(--u)) calc(0.6 * var(--u)) rgba(0, 0, 0, 0.28);
-    animation: wm-ti-turn var(--period) linear infinite;
-    will-change: transform;
+    /* the hands are turned by wmTitanium.js once a second (tickClocks): an infinite animation here drew
+     * a frame on every display refresh, 120 fps on an idle Today (#800 heat, Nov 15) */
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-ah {
     --w: calc(1.3 * var(--u));
     --len: calc(9 * var(--u));
-    --period: 43200s;
-    animation-delay: var(--ah);
     background: linear-gradient(to right, #3a3a3a, #1c1c1c);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-am {
     --w: calc(1.2 * var(--u));
     --len: calc(12 * var(--u));
-    --period: 3600s;
-    animation-delay: var(--am);
     background: linear-gradient(to right, #3a3a3a, #1c1c1c);
 }
 
@@ -813,12 +808,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-am {
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-as {
     --w: calc(0.55 * var(--u));
     --len: calc(12.5 * var(--u));
-    --period: 60s;
     height: calc(17 * var(--u));
     transform-origin: 50% calc(12.5 * var(--u));
-    /* a quartz tick: a step each whole second with a small overshoot and settle (wm-ti-tick) */
-    animation-name: wm-ti-tick;
-    animation-delay: var(--as);
+    /* a quartz tick: a step each whole second with a small overshoot and settle (wmTitanium.js TICK_FRAMES) */
     background: #f7931e;
     box-shadow: calc(0.3 * var(--u)) calc(0.4 * var(--u)) calc(0.5 * var(--u)) rgba(0, 0, 0, 0.22);
 }
@@ -834,316 +826,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > b {
     box-shadow: calc(0.3 * var(--u)) calc(0.4 * var(--u)) calc(0.5 * var(--u)) rgba(0, 0, 0, 0.25);
 }
 
-@keyframes wm-ti-turn {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
-/* the second hand's quartz tick (generated: each second the hand leaves the last mark, passes the new
- * one by 1.6 degrees at 50 ms, swings back 0.7 at 100 ms, settles by 220 ms, then holds) */
-@keyframes wm-ti-tick {
-    0.0000% { transform: rotate(-6deg); }
-    0.0833% { transform: rotate(1.6deg); }
-    0.1667% { transform: rotate(-0.7deg); }
-    0.2667% { transform: rotate(0.25deg); }
-    0.3667% { transform: rotate(0deg); }
-    1.6667% { transform: rotate(0deg); }
-    1.7500% { transform: rotate(7.6deg); }
-    1.8333% { transform: rotate(5.3deg); }
-    1.9333% { transform: rotate(6.25deg); }
-    2.0333% { transform: rotate(6deg); }
-    3.3333% { transform: rotate(6deg); }
-    3.4167% { transform: rotate(13.6deg); }
-    3.5000% { transform: rotate(11.3deg); }
-    3.6000% { transform: rotate(12.25deg); }
-    3.7000% { transform: rotate(12deg); }
-    5.0000% { transform: rotate(12deg); }
-    5.0833% { transform: rotate(19.6deg); }
-    5.1667% { transform: rotate(17.3deg); }
-    5.2667% { transform: rotate(18.25deg); }
-    5.3667% { transform: rotate(18deg); }
-    6.6667% { transform: rotate(18deg); }
-    6.7500% { transform: rotate(25.6deg); }
-    6.8333% { transform: rotate(23.3deg); }
-    6.9333% { transform: rotate(24.25deg); }
-    7.0333% { transform: rotate(24deg); }
-    8.3333% { transform: rotate(24deg); }
-    8.4167% { transform: rotate(31.6deg); }
-    8.5000% { transform: rotate(29.3deg); }
-    8.6000% { transform: rotate(30.25deg); }
-    8.7000% { transform: rotate(30deg); }
-    10.0000% { transform: rotate(30deg); }
-    10.0833% { transform: rotate(37.6deg); }
-    10.1667% { transform: rotate(35.3deg); }
-    10.2667% { transform: rotate(36.25deg); }
-    10.3667% { transform: rotate(36deg); }
-    11.6667% { transform: rotate(36deg); }
-    11.7500% { transform: rotate(43.6deg); }
-    11.8333% { transform: rotate(41.3deg); }
-    11.9333% { transform: rotate(42.25deg); }
-    12.0333% { transform: rotate(42deg); }
-    13.3333% { transform: rotate(42deg); }
-    13.4167% { transform: rotate(49.6deg); }
-    13.5000% { transform: rotate(47.3deg); }
-    13.6000% { transform: rotate(48.25deg); }
-    13.7000% { transform: rotate(48deg); }
-    15.0000% { transform: rotate(48deg); }
-    15.0833% { transform: rotate(55.6deg); }
-    15.1667% { transform: rotate(53.3deg); }
-    15.2667% { transform: rotate(54.25deg); }
-    15.3667% { transform: rotate(54deg); }
-    16.6667% { transform: rotate(54deg); }
-    16.7500% { transform: rotate(61.6deg); }
-    16.8333% { transform: rotate(59.3deg); }
-    16.9333% { transform: rotate(60.25deg); }
-    17.0333% { transform: rotate(60deg); }
-    18.3333% { transform: rotate(60deg); }
-    18.4167% { transform: rotate(67.6deg); }
-    18.5000% { transform: rotate(65.3deg); }
-    18.6000% { transform: rotate(66.25deg); }
-    18.7000% { transform: rotate(66deg); }
-    20.0000% { transform: rotate(66deg); }
-    20.0833% { transform: rotate(73.6deg); }
-    20.1667% { transform: rotate(71.3deg); }
-    20.2667% { transform: rotate(72.25deg); }
-    20.3667% { transform: rotate(72deg); }
-    21.6667% { transform: rotate(72deg); }
-    21.7500% { transform: rotate(79.6deg); }
-    21.8333% { transform: rotate(77.3deg); }
-    21.9333% { transform: rotate(78.25deg); }
-    22.0333% { transform: rotate(78deg); }
-    23.3333% { transform: rotate(78deg); }
-    23.4167% { transform: rotate(85.6deg); }
-    23.5000% { transform: rotate(83.3deg); }
-    23.6000% { transform: rotate(84.25deg); }
-    23.7000% { transform: rotate(84deg); }
-    25.0000% { transform: rotate(84deg); }
-    25.0833% { transform: rotate(91.6deg); }
-    25.1667% { transform: rotate(89.3deg); }
-    25.2667% { transform: rotate(90.25deg); }
-    25.3667% { transform: rotate(90deg); }
-    26.6667% { transform: rotate(90deg); }
-    26.7500% { transform: rotate(97.6deg); }
-    26.8333% { transform: rotate(95.3deg); }
-    26.9333% { transform: rotate(96.25deg); }
-    27.0333% { transform: rotate(96deg); }
-    28.3333% { transform: rotate(96deg); }
-    28.4167% { transform: rotate(103.6deg); }
-    28.5000% { transform: rotate(101.3deg); }
-    28.6000% { transform: rotate(102.25deg); }
-    28.7000% { transform: rotate(102deg); }
-    30.0000% { transform: rotate(102deg); }
-    30.0833% { transform: rotate(109.6deg); }
-    30.1667% { transform: rotate(107.3deg); }
-    30.2667% { transform: rotate(108.25deg); }
-    30.3667% { transform: rotate(108deg); }
-    31.6667% { transform: rotate(108deg); }
-    31.7500% { transform: rotate(115.6deg); }
-    31.8333% { transform: rotate(113.3deg); }
-    31.9333% { transform: rotate(114.25deg); }
-    32.0333% { transform: rotate(114deg); }
-    33.3333% { transform: rotate(114deg); }
-    33.4167% { transform: rotate(121.6deg); }
-    33.5000% { transform: rotate(119.3deg); }
-    33.6000% { transform: rotate(120.25deg); }
-    33.7000% { transform: rotate(120deg); }
-    35.0000% { transform: rotate(120deg); }
-    35.0833% { transform: rotate(127.6deg); }
-    35.1667% { transform: rotate(125.3deg); }
-    35.2667% { transform: rotate(126.25deg); }
-    35.3667% { transform: rotate(126deg); }
-    36.6667% { transform: rotate(126deg); }
-    36.7500% { transform: rotate(133.6deg); }
-    36.8333% { transform: rotate(131.3deg); }
-    36.9333% { transform: rotate(132.25deg); }
-    37.0333% { transform: rotate(132deg); }
-    38.3333% { transform: rotate(132deg); }
-    38.4167% { transform: rotate(139.6deg); }
-    38.5000% { transform: rotate(137.3deg); }
-    38.6000% { transform: rotate(138.25deg); }
-    38.7000% { transform: rotate(138deg); }
-    40.0000% { transform: rotate(138deg); }
-    40.0833% { transform: rotate(145.6deg); }
-    40.1667% { transform: rotate(143.3deg); }
-    40.2667% { transform: rotate(144.25deg); }
-    40.3667% { transform: rotate(144deg); }
-    41.6667% { transform: rotate(144deg); }
-    41.7500% { transform: rotate(151.6deg); }
-    41.8333% { transform: rotate(149.3deg); }
-    41.9333% { transform: rotate(150.25deg); }
-    42.0333% { transform: rotate(150deg); }
-    43.3333% { transform: rotate(150deg); }
-    43.4167% { transform: rotate(157.6deg); }
-    43.5000% { transform: rotate(155.3deg); }
-    43.6000% { transform: rotate(156.25deg); }
-    43.7000% { transform: rotate(156deg); }
-    45.0000% { transform: rotate(156deg); }
-    45.0833% { transform: rotate(163.6deg); }
-    45.1667% { transform: rotate(161.3deg); }
-    45.2667% { transform: rotate(162.25deg); }
-    45.3667% { transform: rotate(162deg); }
-    46.6667% { transform: rotate(162deg); }
-    46.7500% { transform: rotate(169.6deg); }
-    46.8333% { transform: rotate(167.3deg); }
-    46.9333% { transform: rotate(168.25deg); }
-    47.0333% { transform: rotate(168deg); }
-    48.3333% { transform: rotate(168deg); }
-    48.4167% { transform: rotate(175.6deg); }
-    48.5000% { transform: rotate(173.3deg); }
-    48.6000% { transform: rotate(174.25deg); }
-    48.7000% { transform: rotate(174deg); }
-    50.0000% { transform: rotate(174deg); }
-    50.0833% { transform: rotate(181.6deg); }
-    50.1667% { transform: rotate(179.3deg); }
-    50.2667% { transform: rotate(180.25deg); }
-    50.3667% { transform: rotate(180deg); }
-    51.6667% { transform: rotate(180deg); }
-    51.7500% { transform: rotate(187.6deg); }
-    51.8333% { transform: rotate(185.3deg); }
-    51.9333% { transform: rotate(186.25deg); }
-    52.0333% { transform: rotate(186deg); }
-    53.3333% { transform: rotate(186deg); }
-    53.4167% { transform: rotate(193.6deg); }
-    53.5000% { transform: rotate(191.3deg); }
-    53.6000% { transform: rotate(192.25deg); }
-    53.7000% { transform: rotate(192deg); }
-    55.0000% { transform: rotate(192deg); }
-    55.0833% { transform: rotate(199.6deg); }
-    55.1667% { transform: rotate(197.3deg); }
-    55.2667% { transform: rotate(198.25deg); }
-    55.3667% { transform: rotate(198deg); }
-    56.6667% { transform: rotate(198deg); }
-    56.7500% { transform: rotate(205.6deg); }
-    56.8333% { transform: rotate(203.3deg); }
-    56.9333% { transform: rotate(204.25deg); }
-    57.0333% { transform: rotate(204deg); }
-    58.3333% { transform: rotate(204deg); }
-    58.4167% { transform: rotate(211.6deg); }
-    58.5000% { transform: rotate(209.3deg); }
-    58.6000% { transform: rotate(210.25deg); }
-    58.7000% { transform: rotate(210deg); }
-    60.0000% { transform: rotate(210deg); }
-    60.0833% { transform: rotate(217.6deg); }
-    60.1667% { transform: rotate(215.3deg); }
-    60.2667% { transform: rotate(216.25deg); }
-    60.3667% { transform: rotate(216deg); }
-    61.6667% { transform: rotate(216deg); }
-    61.7500% { transform: rotate(223.6deg); }
-    61.8333% { transform: rotate(221.3deg); }
-    61.9333% { transform: rotate(222.25deg); }
-    62.0333% { transform: rotate(222deg); }
-    63.3333% { transform: rotate(222deg); }
-    63.4167% { transform: rotate(229.6deg); }
-    63.5000% { transform: rotate(227.3deg); }
-    63.6000% { transform: rotate(228.25deg); }
-    63.7000% { transform: rotate(228deg); }
-    65.0000% { transform: rotate(228deg); }
-    65.0833% { transform: rotate(235.6deg); }
-    65.1667% { transform: rotate(233.3deg); }
-    65.2667% { transform: rotate(234.25deg); }
-    65.3667% { transform: rotate(234deg); }
-    66.6667% { transform: rotate(234deg); }
-    66.7500% { transform: rotate(241.6deg); }
-    66.8333% { transform: rotate(239.3deg); }
-    66.9333% { transform: rotate(240.25deg); }
-    67.0333% { transform: rotate(240deg); }
-    68.3333% { transform: rotate(240deg); }
-    68.4167% { transform: rotate(247.6deg); }
-    68.5000% { transform: rotate(245.3deg); }
-    68.6000% { transform: rotate(246.25deg); }
-    68.7000% { transform: rotate(246deg); }
-    70.0000% { transform: rotate(246deg); }
-    70.0833% { transform: rotate(253.6deg); }
-    70.1667% { transform: rotate(251.3deg); }
-    70.2667% { transform: rotate(252.25deg); }
-    70.3667% { transform: rotate(252deg); }
-    71.6667% { transform: rotate(252deg); }
-    71.7500% { transform: rotate(259.6deg); }
-    71.8333% { transform: rotate(257.3deg); }
-    71.9333% { transform: rotate(258.25deg); }
-    72.0333% { transform: rotate(258deg); }
-    73.3333% { transform: rotate(258deg); }
-    73.4167% { transform: rotate(265.6deg); }
-    73.5000% { transform: rotate(263.3deg); }
-    73.6000% { transform: rotate(264.25deg); }
-    73.7000% { transform: rotate(264deg); }
-    75.0000% { transform: rotate(264deg); }
-    75.0833% { transform: rotate(271.6deg); }
-    75.1667% { transform: rotate(269.3deg); }
-    75.2667% { transform: rotate(270.25deg); }
-    75.3667% { transform: rotate(270deg); }
-    76.6667% { transform: rotate(270deg); }
-    76.7500% { transform: rotate(277.6deg); }
-    76.8333% { transform: rotate(275.3deg); }
-    76.9333% { transform: rotate(276.25deg); }
-    77.0333% { transform: rotate(276deg); }
-    78.3333% { transform: rotate(276deg); }
-    78.4167% { transform: rotate(283.6deg); }
-    78.5000% { transform: rotate(281.3deg); }
-    78.6000% { transform: rotate(282.25deg); }
-    78.7000% { transform: rotate(282deg); }
-    80.0000% { transform: rotate(282deg); }
-    80.0833% { transform: rotate(289.6deg); }
-    80.1667% { transform: rotate(287.3deg); }
-    80.2667% { transform: rotate(288.25deg); }
-    80.3667% { transform: rotate(288deg); }
-    81.6667% { transform: rotate(288deg); }
-    81.7500% { transform: rotate(295.6deg); }
-    81.8333% { transform: rotate(293.3deg); }
-    81.9333% { transform: rotate(294.25deg); }
-    82.0333% { transform: rotate(294deg); }
-    83.3333% { transform: rotate(294deg); }
-    83.4167% { transform: rotate(301.6deg); }
-    83.5000% { transform: rotate(299.3deg); }
-    83.6000% { transform: rotate(300.25deg); }
-    83.7000% { transform: rotate(300deg); }
-    85.0000% { transform: rotate(300deg); }
-    85.0833% { transform: rotate(307.6deg); }
-    85.1667% { transform: rotate(305.3deg); }
-    85.2667% { transform: rotate(306.25deg); }
-    85.3667% { transform: rotate(306deg); }
-    86.6667% { transform: rotate(306deg); }
-    86.7500% { transform: rotate(313.6deg); }
-    86.8333% { transform: rotate(311.3deg); }
-    86.9333% { transform: rotate(312.25deg); }
-    87.0333% { transform: rotate(312deg); }
-    88.3333% { transform: rotate(312deg); }
-    88.4167% { transform: rotate(319.6deg); }
-    88.5000% { transform: rotate(317.3deg); }
-    88.6000% { transform: rotate(318.25deg); }
-    88.7000% { transform: rotate(318deg); }
-    90.0000% { transform: rotate(318deg); }
-    90.0833% { transform: rotate(325.6deg); }
-    90.1667% { transform: rotate(323.3deg); }
-    90.2667% { transform: rotate(324.25deg); }
-    90.3667% { transform: rotate(324deg); }
-    91.6667% { transform: rotate(324deg); }
-    91.7500% { transform: rotate(331.6deg); }
-    91.8333% { transform: rotate(329.3deg); }
-    91.9333% { transform: rotate(330.25deg); }
-    92.0333% { transform: rotate(330deg); }
-    93.3333% { transform: rotate(330deg); }
-    93.4167% { transform: rotate(337.6deg); }
-    93.5000% { transform: rotate(335.3deg); }
-    93.6000% { transform: rotate(336.25deg); }
-    93.7000% { transform: rotate(336deg); }
-    95.0000% { transform: rotate(336deg); }
-    95.0833% { transform: rotate(343.6deg); }
-    95.1667% { transform: rotate(341.3deg); }
-    95.2667% { transform: rotate(342.25deg); }
-    95.3667% { transform: rotate(342deg); }
-    96.6667% { transform: rotate(342deg); }
-    96.7500% { transform: rotate(349.6deg); }
-    96.8333% { transform: rotate(347.3deg); }
-    96.9333% { transform: rotate(348.25deg); }
-    97.0333% { transform: rotate(348deg); }
-    98.3333% { transform: rotate(348deg); }
-    98.4167% { transform: rotate(355.6deg); }
-    98.5000% { transform: rotate(353.3deg); }
-    98.6000% { transform: rotate(354.25deg); }
-    98.7000% { transform: rotate(354deg); }
-    100% { transform: rotate(354deg); }
-}
 
 /* ---- weather inside the Super Bar (wmTitanium.js drawWeatherFx): behind the notifications, over the
  * darkening; transform and opacity only. --fall: the drop distance (set from the screen's height). */
