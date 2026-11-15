@@ -4,7 +4,7 @@
  * H in its oval, as a bright metal badge on a dark field (Yukimi asked for it as the program icon and
  * on the app's plate). Limited colours, stepped shading, no rounded-square plate (2009 WM style).
  *
- *   node scripts/generate-wm-lapis-art.js [car-picture]
+ *   node scripts/generate-wm-lapis-art.js [car-picture] [--emblem <picture of the mark>]
  *
  * Writes public/static_images/wm61/app-lapis.png (16, @2x 32, @4x 64) and app-lapis-lg.png (32, @2x 64,
  * @4x 128); for 6.5 the Start icon wm65/start-lapis.png (45, @2x 90, @4x 180) and the home screen panel
@@ -25,32 +25,46 @@ const OUT = path.resolve(__dirname, '..', 'public', 'static_images', 'wm61');
 const OUT65 = path.resolve(__dirname, '..', 'public', 'static_images', 'wm65');
 const OUT_LAPIS = path.resolve(__dirname, '..', 'public', 'static_images', 'lapis');
 
-// The emblem (Yukimi, Nov 15 2026: "use the hyundai logo as the icon and in the top of the app"): the
-// slanted H in its oval, drawn here as the car's own badge is: bright metal on a dark field.
-const emblem = (ring, metal, shade, field) => `
-<ellipse cx="32" cy="32" rx="30" ry="18.500" fill="${shade}"/>
-<ellipse cx="32" cy="31.200" rx="30" ry="18" fill="${ring}"/>
-<ellipse cx="32" cy="31.200" rx="26.200" ry="14.600" fill="${field}"/>
-<g fill="${metal}">
-  <path d="M19.500 41.500 C14.500 34 17.500 25.500 27 20.800 L29.800 22.600 C23.500 27 22 33.500 25 40.300 Z"/>
-  <path d="M44.500 20.900 C49.500 28.400 46.500 36.900 37 41.600 L34.200 39.800 C40.500 35.400 42 28.900 39 22.100 Z"/>
-  <path d="M22.300 35.200 C29 34.600 36 31.800 41.600 26.400 L42 29.600 C36.800 34.800 29.800 38 22.900 38.600 Z"/>
-</g>`;
+// The emblem (Yukimi, Nov 15 2026: "use the hyundai logo as the icon and in the top of the app"; she then
+// supplied the mark itself). Its shape is kept as a mask, public/static_images/lapis/emblem-mask.png
+// (white on transparent, made once from her picture with --emblem <picture>); the icons are that shape
+// in bright metal with a dark edge, so it reads on the dark title bar and on a light Programs list.
+const MASK = path.join(OUT_LAPIS, 'emblem-mask.png');
 
-const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-${emblem('#dfe5ec', '#f4f7fa', '#5d6670', '#10233f')}
-<path d="M6.500 26 C11 18.500 20 14.200 32 14.200 C44 14.200 53 18.500 57.500 26" fill="none" stroke="#ffffff" stroke-width="1.200" opacity="0.8"/>
-</svg>`;
+/** Her picture of the mark (dark on white) as a white-on-transparent mask, trimmed, 1024 px wide. */
+async function makeMask(src) {
+    const { data, info } = await sharp(src).flatten({ background: '#ffffff' }).greyscale().raw().toBuffer({ resolveWithObject: true });
+    const out = Buffer.alloc(info.width * info.height * 4);
+    for (let i = 0; i < info.width * info.height; i++) {
+        out[i * 4] = 255; out[i * 4 + 1] = 255; out[i * 4 + 2] = 255;
+        out[i * 4 + 3] = Math.max(0, Math.min(255, Math.round((200 - data[i]) * 2.2)));
+    }
+    fs.mkdirSync(OUT_LAPIS, { recursive: true });
+    await sharp(out, { raw: { width: info.width, height: info.height, channels: 4 } }).trim().resize({ width: 1024 }).png().toFile(MASK);
+    console.log('emblem-mask.png');
+}
 
-// 16 px: the oval and the H, three tones
-const svgSmall = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
-<ellipse cx="8" cy="8" rx="7.600" ry="5" fill="#dfe5ec"/>
-<ellipse cx="8" cy="8" rx="6.300" ry="3.800" fill="#10233f"/>
-<path d="M5 10.500 C4 8.500 4.800 6.500 6.800 5.300 L7.600 5.900 C6.300 7 6 8.500 6.600 10.200 Z M11 5.500 C12 7.500 11.200 9.500 9.200 10.700 L8.400 10.100 C9.700 9 10 7.500 9.400 5.800 Z M5.900 9 C7.600 8.800 9.200 8.100 10.300 7 L10.400 8 C9.200 9.100 7.700 9.800 6 9.900 Z" fill="#f4f7fa"/>
-</svg>`;
+/** The emblem as a square icon of `size` px: metal fill, dark edge, a soft shade under it. */
+async function emblemPng(size) {
+    const pad = Math.max(1, Math.round(size * 0.03));
+    const w = size - pad * 2;
+    const mask = await sharp(MASK).resize({ width: w }).png().toBuffer();
+    const mh = (await sharp(mask).metadata()).height;
+    const top = Math.round((size - mh) / 2);
+    // a fill cut to the shape: what the mask does not cover is removed (dest-in)
+    const tint = async (svgFill) => sharp(Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${mh}">${svgFill}</svg>`)).resize(w, mh).ensureAlpha().composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+    const metal = await tint(`<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="0.5" stop-color="#e3e8ee"/><stop offset="0.52" stop-color="#b9c2cc"/><stop offset="1" stop-color="#e9edf2"/></linearGradient></defs><rect width="${w}" height="${mh}" fill="url(#g)"/>`);
+    const edge = await tint(`<rect width="${w}" height="${mh}" fill="#0b1f3f"/>`);
+    const e = Math.max(1, Math.round(size / 48));
+    const layers = [];
+    // the dark edge: the shape nudged a step every way
+    for (const [dx, dy] of [[-e, 0], [e, 0], [0, -e], [0, e], [-e, -e], [e, e], [-e, e], [e, -e], [0, e * 2]]) layers.push({ input: edge, left: pad + dx, top: top + dy });
+    layers.push({ input: metal, left: pad, top });
+    return sharp({ create: { width: size, height: size, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } }).composite(layers).png().toBuffer();
+}
 
-async function render(src, size, file) {
-    await sharp(Buffer.from(src), { density: Math.max(72, Math.round((72 * size) / 16)) }).resize(size, size).png().toFile(file);
+async function render(_src, size, file) {
+    await sharp(await emblemPng(size)).toFile(file);
     console.log(path.basename(file), size);
 }
 
@@ -60,7 +74,7 @@ async function panel(k, file) {
     const H = Math.round(113 * k);
     const A = Math.round(76 * k);
     const R = Math.round(26 * k);
-    const art = await sharp(Buffer.from(svg), { density: Math.round((72 * A) / 64) * 2 }).resize(A, A).png().toBuffer();
+    const art = await emblemPng(A);
     const flipped = await sharp(art).flip().extract({ left: 0, top: 0, width: A, height: R }).ensureAlpha().raw().toBuffer();
     for (let y = 0; y < R; y++) {
         const f = 0.4 * (1 - y / R);
@@ -97,17 +111,22 @@ async function carPicture(src) {
 }
 
 (async () => {
-    await render(svgSmall, 16, path.join(OUT, 'app-lapis.png'));
-    await render(svg, 32, path.join(OUT, 'app-lapis@2x.png'));
-    await render(svg, 64, path.join(OUT, 'app-lapis@4x.png'));
-    await render(svg, 32, path.join(OUT, 'app-lapis-lg.png'));
-    await render(svg, 64, path.join(OUT, 'app-lapis-lg@2x.png'));
-    await render(svg, 128, path.join(OUT, 'app-lapis-lg@4x.png'));
-    await render(svg, 45, path.join(OUT65, 'start-lapis.png'));
-    await render(svg, 90, path.join(OUT65, 'start-lapis@2x.png'));
-    await render(svg, 180, path.join(OUT65, 'start-lapis@4x.png'));
+    const em = process.argv.indexOf('--emblem');
+    if (em > 0 && process.argv[em + 1]) await makeMask(process.argv[em + 1]);
+    await render(null, 16, path.join(OUT, 'app-lapis.png'));
+    await render(null, 32, path.join(OUT, 'app-lapis@2x.png'));
+    await render(null, 64, path.join(OUT, 'app-lapis@4x.png'));
+    await render(null, 32, path.join(OUT, 'app-lapis-lg.png'));
+    await render(null, 64, path.join(OUT, 'app-lapis-lg@2x.png'));
+    await render(null, 128, path.join(OUT, 'app-lapis-lg@4x.png'));
+    await render(null, 45, path.join(OUT65, 'start-lapis.png'));
+    await render(null, 90, path.join(OUT65, 'start-lapis@2x.png'));
+    await render(null, 180, path.join(OUT65, 'start-lapis@4x.png'));
     await panel(0.5, 'ti-x-app-lapis-lg.png');
     await panel(1, 'ti-x-app-lapis-lg@2x.png');
     await panel(2, 'ti-x-app-lapis-lg@4x.png');
-    if (process.argv[2]) await carPicture(process.argv[2]);
+    // the plate's mark: the shape in white, 2x and 4x of its 24 px width
+    await sharp(MASK).resize({ width: 192 }).png().toFile(path.join(OUT_LAPIS, 'emblem.png'));
+    const car = process.argv.slice(2).find((a, n, all) => !a.startsWith('--') && all[n - 1] !== '--emblem');
+    if (car) await carPicture(car);
 })();

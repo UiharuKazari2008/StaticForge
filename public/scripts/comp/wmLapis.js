@@ -127,8 +127,6 @@
         clock: L('<circle cx="10" cy="10" r="6.500"/><path d="M10 6v4l2.500 2"/>'),
         warn: L('<path d="M10 3 18 16.500H2zM10 8v4.500"/><circle cx="10" cy="14.500" r=".4"/>', 1.5),
         arrow: '<svg class="lps-arrow" viewBox="0 0 44 10" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><path d="M1 5h41M38 1.500 42 5l-4 3.500"/></svg>',
-        // the maker's emblem on the plate (the slanted H in its oval), as the program icon draws it
-        gem: '<svg class="lps-gem" viewBox="0 0 64 40" aria-hidden="true"><ellipse cx="32" cy="20" rx="31" ry="19" fill="#dfe5ec"/><ellipse cx="32" cy="20" rx="27" ry="15.200" fill="#10233f"/><g fill="#f4f7fa"><path d="M19.500 30.300C14.500 22.800 17.500 14.300 27 9.600l2.800 1.800C23.500 15.800 22 22.300 25 29.100z"/><path d="M44.500 9.700c5 7.500 2 16-7.500 20.700l-2.800-1.800c6.300-4.400 7.800-10.900 4.800-17.700z"/><path d="M22.300 24c6.700-.6 13.700-3.400 19.300-8.800l.4 3.200c-5.200 5.200-12.200 8.400-19.100 9z"/></g></svg>',
         pin: '<svg viewBox="0 0 22 28" aria-hidden="true"><path d="M11 27S1.500 17 1.500 10.500a9.500 9.500 0 0 1 19 0C20.500 17 11 27 11 27z" fill="#00aad2" stroke="#fff" stroke-width="1.5"/><path d="M5.500 12.500h11M6.500 12.500l1.200-3.500h6.600l1.200 3.500M6 12.500v2M16 12.500v2" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>'
     };
 
@@ -207,7 +205,11 @@
     }
 
     /** The title bar's text: the car's name (Settings > Name, else its BlueLink name), else the program's. */
-    const carTitle = () => (state && state.vehicle && state.vehicle.name) || TITLE;
+    const LS_NAME = 'wmLapisCarName';
+    function carTitle() {
+        const name = state && state.vehicle && state.vehicle.name;
+        try { if (name) { if (localStorage.getItem(LS_NAME) !== name) localStorage.setItem(LS_NAME, name); return name; } return localStorage.getItem(LS_NAME) || TITLE; } catch (_) { return name || TITLE; }
+    }
     /** "SONATA HYBRID" 2024 as "2024 Sonata Hybrid". */
     function modelText(v) {
         if (!v || !v.model) return '';
@@ -328,7 +330,7 @@
     function build() {
         page.innerHTML = `
             <div class="lps-root">
-                <div class="lps-plate">${I.gem}<span class="lps-wm">LAPIS</span><span class="lps-car-name"></span><span class="lps-updated"></span></div>
+                <div class="lps-plate"><img class="lps-gem" src="/static_images/lapis/emblem.png" alt="" draggable="false"><span class="lps-car-name"></span><span class="lps-updated"></span></div>
                 <div class="lps-scroll">
                     <div class="lps-scr lps-hero" data-open="status">
                         <div class="lps-sbar"><i class="lps-dot"></i><b class="lps-park"></b><span class="lps-where"></span><span class="lps-sp"></span><span class="lps-odo"></span></div>
@@ -341,6 +343,7 @@
                         </div>
                         <div class="lps-tiles" data-open="status"></div>
                     </div>
+                    <div class="lps-scr lps-roomy" data-open="status"><div class="lps-sbar"><b>Tires</b><span class="lps-sp"></span><span class="lps-tires-note"></span></div><div class="lps-tires-host"></div></div>
                     <div class="lps-pad"></div>
                 </div>
                 <div class="lps-cmd">
@@ -355,6 +358,7 @@
         els = {
             root: q('.lps-root'), name: q('.lps-car-name'), updated: q('.lps-updated'), dot: q('.lps-dot'), park: q('.lps-park'), where: q('.lps-where'), odo: q('.lps-odo'),
             img: q('.lps-carimg'), stage: q('.lps-stage'), stageMap: q('.lps-stage-map'), view: q('.lps-view'), pLock: q('.lps-p-lock'), pEng: q('.lps-p-eng'), fuel: q('.lps-c-fuel'), clim: q('.lps-c-clim'), tiles: q('.lps-tiles'), pad: q('.lps-pad'),
+            tiresHost: q('.lps-tires-host'), tiresNote: q('.lps-tires-note'),
             cmd: q('.lps-cmd'), layer: q('.lps-layer'), body: q('.lps-layer-body')
         };
         q('.lps-scroll').addEventListener('click', (e) => {
@@ -432,6 +436,9 @@
             + tile(I.trunk, s.trunk ? 'Open' : 'Shut', s.trunk === true)
             + tile(I.tire, tireAlert() ? 'Low' : 'OK', tireAlert())
             + tile(I.batt, num(s.battery12) ? `${Math.round(s.battery12)}%` : 'OK', battLow(s));
+
+        els.tiresHost.innerHTML = tiresHtml(s);
+        els.tiresNote.textContent = s && tireAlert() ? 'Low pressure' : s ? 'psi' : '';
 
         // the leather pad
         const rows = [];
@@ -651,6 +658,26 @@
 
     // ---------------------------------------------------------------- vehicle status
 
+    /** The car from above with each tire's pressure beside it (the low ones in amber). */
+    function tiresHtml(s) {
+        const p = (s && s.tirePsi) || {};
+        const lamp = (s && s.tireLow) || {};
+        const lows = new Set();
+        ((state && state.alerts) || []).filter((a) => a.key === 'tire').forEach((a) => { ['fl', 'fr', 'rl', 'rr'].forEach((k) => { if (a.stamp.split(':')[0].includes(k)) lows.add(k); }); });
+        ['fl', 'fr', 'rl', 'rr'].forEach((k) => { if (lamp[k]) lows.add(k); });
+        const o = openList(s);
+        const tag = (k) => `<span class="lps-psi is-${k}${lows.has(k) ? ' is-low' : ''}">${num(p[k]) ? `${p[k]}<small>psi</small>` : '--'}</span>`;
+        const wheel = (k, x, y) => `<rect class="${lows.has(k) ? 'is-low' : ''}" x="${x}" y="${y}" width="9" height="24" rx="3"/>`;
+        return `<div class="lps-tires">
+            <svg viewBox="0 0 100 180" fill="none" stroke="currentColor" stroke-width="1.300" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+                <g class="lps-tires-wheels">${wheel('fl', 12, 32)}${wheel('fr', 79, 32)}${wheel('rl', 12, 122)}${wheel('rr', 79, 122)}</g>
+                <path class="lps-tires-body" d="M30 14C36 6 64 6 70 14C76 22 78 40 78 62V132C78 156 76 166 70 172C62 177 38 177 30 172C24 166 22 156 22 132V62C22 40 24 22 30 14Z"/>
+                <path d="M28 58C40 52 60 52 72 58L68 80C56 77 44 77 32 80ZM32 80V124M68 80V124M32 124C44 127 56 127 68 124L71 144C58 149 42 149 29 144ZM22 66 16 62V70L22 72M78 66 84 62V70L78 72M38 164C46 166 54 166 62 164"/>
+                ${s && s.hood ? '<path class="is-open" d="M32 16C42 11 58 11 68 16L70 40C58 36 42 36 30 40Z"/>' : ''}${s && s.trunk ? '<path class="is-open" d="M30 150C42 155 58 155 70 150L68 170C58 174 42 174 32 170Z"/>' : ''}
+            </svg>${tag('fl')}${tag('fr')}${tag('rl')}${tag('rr')}
+            ${o.doors.length ? `<span class="lps-tires-doors">${esc(`Open: ${o.doors.join(', ')}`)}</span>` : ''}</div>`;
+    }
+
     function psiText(s) {
         const p = (s && s.tirePsi) || {};
         return ['fl', 'fr', 'rl', 'rr'].every((k) => num(p[k])) ? `Front ${p.fl} / ${p.fr} psi, rear ${p.rl} / ${p.rr} psi` : '';
@@ -665,6 +692,7 @@
         const lowTires = [['fl', 'front left'], ['fr', 'front right'], ['rl', 'rear left'], ['rr', 'rear right']].filter(([k]) => tires[k]).map(([, n]) => n);
         return `<div class="lps-scr">
             <div class="lps-sbar"><b>Reported ${esc(when(s.at))}</b><span class="lps-sp"></span><span>${state.seenAt ? `read ${esc(clock(state.seenAt))}` : ''}</span></div>
+            <div class="lps-tires-host">${tiresHtml(s)}</div>
             ${(state.alerts || []).length ? `<div class="lps-list">${state.alerts.map((a) => `<div class="lps-row is-warn">${I.warn}<span class="lps-row-t">${esc(a.title)}<small style="white-space:normal">${esc(a.text)}</small></span></div>`).join('')}</div>` : ''}
             <div class="lps-list">
                 ${row(s.locked === false ? I.unlock : I.lock, 'Doors', s.locked === null ? 'Unknown' : s.locked ? 'Locked' : 'Unlocked', s.locked === false ? 'is-warn' : '', o.doors.length ? `Open: ${o.doors.join(', ')}` : 'All closed')}
