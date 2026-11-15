@@ -775,6 +775,11 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > img {
     height: 100%;
 }
 
+/* the glass sheen lies over the hands and the hub (ti-2051-gloss: the art's own, lifted off its face) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > .wm-ti-aglass {
+    pointer-events: none;
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-aclock > i {
     position: absolute;
     left: calc(21.5 * var(--u) - var(--w) / 2);

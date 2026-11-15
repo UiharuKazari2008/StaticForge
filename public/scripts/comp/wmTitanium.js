@@ -1162,7 +1162,9 @@
         const h = (d.getHours() % 12) * 3600 + m;
         return `<span class="wm-ti-icon wm-ti-aclock" aria-hidden="true" style="--ah:-${h.toFixed(2)}s;--am:-${m.toFixed(2)}s;--as:-${s.toFixed(2)}s">`
             + `<img src="${esc(artUrl('ti-2051-face'))}" srcset="${esc(artSet('ti-2051-face'))}" alt="" draggable="false">`
-            + '<i class="wm-ti-ah"></i><i class="wm-ti-am"></i><i class="wm-ti-as"></i><b></b></span>';
+            + '<i class="wm-ti-ah"></i><i class="wm-ti-am"></i><i class="wm-ti-as"></i><b></b>'
+            // the art's glass sheen (its light wedge and two fine lines) over the hands, as on a real clock
+            + `<img class="wm-ti-aglass" src="${esc(artUrl('ti-2051-gloss'))}" srcset="${esc(artSet('ti-2051-gloss'))}" alt="" draggable="false"></span>`;
     }
 
     function pageIndex(p) {
