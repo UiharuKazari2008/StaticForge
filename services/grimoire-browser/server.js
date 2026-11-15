@@ -75,6 +75,7 @@ const MAX_SESSIONS = Math.max(1, Number(process.env.MAX_SESSIONS || 4));
 const ALCHEMY_CDP_PORT = Math.max(0, Number(process.env.ALCHEMY_CDP_PORT || 9339) || 0);
 // modules/alchemyOwnedTab.js opens its tab with this marker; it is never closed for being over the window cap.
 const ALCHEMY_OWNED_MARKER = '#alchemy-owned';
+const ALCHEMY_QUIET_MARKER = '#alchemy-quiet';
 const DIALOG_MS = 5 * 60 * 1000;
 // Owned sessions (Yozora #756): Dreamscape's browsing-session registry (modules/browsingSessions.js) keeps them
 // alive with leases while the owning device is connected or inside its idle time. A new session gets this long
@@ -1744,6 +1745,8 @@ async function adoptOrphan(target) {
     if (target.type() !== 'page') return;
     const opener = target.opener();
     if (opener && opener.type() === 'page') return;
+    // a tab the server opens to read a page and close again (modules/youtubeAlchemy.js): never shown to a viewer
+    if (String(target.url() || '').includes(ALCHEMY_QUIET_MARKER)) return;
     const owned = String(target.url() || '').includes(ALCHEMY_OWNED_MARKER);
     await new Promise((resolve) => setTimeout(resolve, 1000));
     const page = await target.page().catch(() => null);

@@ -563,6 +563,7 @@ class BannerManager {
             'youtube_subscriptions': 'YouTube Channels',
             'youtube_feed': 'YouTube Subscriptions',
             'youtube_watch_later': 'Watch Later',
+            'youtube_import_bell': 'Import Favourite Channels',
             'youtube_search': 'YouTube Search',
             'youtube_channel': 'YouTube Channel',
             'youtube_favourite': 'Favourite Channel',
@@ -9993,12 +9994,25 @@ class WebSocketClient {
         this._wsFlashTargets = targets;
     }
 
+    // At most one refresh per WS_FLASH_REFRESH_MIN_MS, the last change always followed by one (#817).
+    // Each refresh asks checkVisibility for every arrow, which makes the browser finish its pending
+    // style work first; a boot changes a window's or <body>'s class in almost every frame, and
+    // a refresh per frame cost 74 ms of a phone boot in checkVisibility alone, plus the style
+    // passes it forced. The arrows' list is at most that long behind what is on screen.
     _scheduleWsFlashVisibilityRefresh() {
-        if (this._wsFlashVisibilityRefreshRaf) return;
-        this._wsFlashVisibilityRefreshRaf = requestAnimationFrame(() => {
-            this._wsFlashVisibilityRefreshRaf = null;
-            this._refreshWsFlashTargets();
-        });
+        if (this._wsFlashVisibilityRefreshRaf || this._wsFlashVisibilityRefreshTimer) return;
+        const run = () => {
+            this._wsFlashVisibilityRefreshTimer = null;
+            this._wsFlashVisibilityRefreshRaf = requestAnimationFrame(() => {
+                this._wsFlashVisibilityRefreshRaf = null;
+                this._wsFlashVisibilityRefreshedAt = performance.now();
+                this._refreshWsFlashTargets();
+            });
+        };
+        const WS_FLASH_REFRESH_MIN_MS = 250;
+        const since = performance.now() - (this._wsFlashVisibilityRefreshedAt || 0);
+        if (since >= WS_FLASH_REFRESH_MIN_MS) run();
+        else this._wsFlashVisibilityRefreshTimer = setTimeout(run, WS_FLASH_REFRESH_MIN_MS - since);
     }
 
     _startWsFlashVisibilityWatcher() {
@@ -10037,6 +10051,10 @@ class WebSocketClient {
         if (this._wsFlashVisibilityRefreshRaf) {
             cancelAnimationFrame(this._wsFlashVisibilityRefreshRaf);
             this._wsFlashVisibilityRefreshRaf = null;
+        }
+        if (this._wsFlashVisibilityRefreshTimer) {
+            clearTimeout(this._wsFlashVisibilityRefreshTimer);
+            this._wsFlashVisibilityRefreshTimer = null;
         }
         if (this._wsFlashRafId) {
             cancelAnimationFrame(this._wsFlashRafId);

@@ -2,8 +2,9 @@
 /**
  * modules/youtubeService.js (Yozora #839) without live calls: the device sign-in, token renewal,
  * subscriptions, uploads (long videos first, the plain list as fallback), video details, the merged
- * subscriptions feed, favourites and the Today list, search, Watch Later (ids from the app interface,
- * or "unavailable"), and the daily unit budget. Google and YouTube are answered by a fake fetch.
+ * subscriptions feed, favourites and the Today list, search, Watch Later and the bell import (the
+ * Alchemy browser stood in for; its in-page reader run on sample page data), and the daily unit budget.
+ * Google and YouTube are answered by a fake fetch.
  *
  *   node scripts/test-youtube-service.js
  */
@@ -43,7 +44,6 @@ const CH = (n) => `UC${String(n).padStart(22, 'a')}`;
 const VID = (n) => `v${String(n).padStart(10, '0')}`;
 const calls = [];
 let authorised = false;
-let wlMode = 'tiles';
 let longListMissing = false;
 const day = (n) => new Date(Date.UTC(2026, 10, n, 12)).toISOString();
 
@@ -85,20 +85,25 @@ global.fetch = async (url, opts = {}) => {
             { id: { kind: 'youtube#channel', channelId: CH(7) }, snippet: { title: 'Cartoons', channelTitle: 'Cartoons', thumbnails: { default: { url: 'https://yt3.ggpht.com/c7=s88' } } } }
         ] });
     }
-    if (u.pathname.endsWith('/browse')) {
-        if (wlMode === 'refused') return json(400, {});
-        if (wlMode === 'empty') return json(200, { contents: {} });
-        return json(200, { contents: { grid: [
-            { tileRenderer: { contentType: 'TILE_CONTENT_TYPE_VIDEO', contentId: VID(601) } },
-            { lockupViewModel: { contentType: 'LOCKUP_CONTENT_TYPE_VIDEO', contentId: VID(602) } },
-            { playlistVideoRenderer: { videoId: VID(777) } },
-            { tileRenderer: { contentType: 'TILE_CONTENT_TYPE_CHANNEL', contentId: CH(1) } },
-            { tileRenderer: { contentType: 'TILE_CONTENT_TYPE_VIDEO', contentId: VID(601) } }
-        ] } });
-    }
     return json(500, {});
 };
 const count = (p) => calls.filter((c) => c.path.endsWith(p)).length;
+
+// the Alchemy browser, stood in for
+let browserMode = 'ok';
+T.setBrowser({ read: async (kind) => {
+    if (browserMode === 'offline') throw Object.assign(new Error('not running'), { code: 'ALCHEMY_OFFLINE' });
+    if (browserMode === 'signedout') return { signedIn: false };
+    if (kind === 'watch-later') return { signedIn: true, ids: [VID(601), VID(602), VID(777), 'not-an-id', VID(601)].filter((v, i, a) => a.indexOf(v) === i) };
+    const bell = (b) => (browserMode === 'nobells' ? '' : b);
+    return { signedIn: true, channels: [
+        { id: CH(1), title: 'Channel 1', thumb: 'https://yt3.ggpht.com/c1=s88', bell: bell('all') },
+        { id: CH(2), title: 'Channel 2', thumb: 'https://yt3.ggpht.com/c2=s88', bell: bell('all') },
+        { id: CH(3), title: 'Channel 3', thumb: '', bell: bell('some') },
+        { id: CH(4), title: 'Channel 4', thumb: '', bell: bell('all') },
+        { id: CH(5), title: 'Channel 5', thumb: '', bell: bell('none') }
+    ] };
+} });
 
 (async () => {
     await ok('helpers', () => {
@@ -207,19 +212,59 @@ const count = (p) => calls.filter((c) => c.path.endsWith(p)).length;
         await assert.rejects(svc.search('  '), (e) => e.code === 'YOUTUBE_BAD_QUERY');
     });
 
-    await ok('Watch Later: ids in order from any list shape, gone videos dropped', async () => {
+    await ok('Watch Later: ids from the browser, details from the API, gone videos dropped', async () => {
         const w = await svc.watchLater();
         assert.strictEqual(w.unavailable, false);
         assert.deepStrictEqual(w.videos.map((v) => v.id), [VID(601), VID(602)]);
         assert.strictEqual(w.videos[0].title, `Title ${VID(601)}`);
     });
 
-    await ok('Watch Later: says unavailable when YouTube keeps the list', async () => {
-        wlMode = 'refused';
-        const w = await svc.watchLater({ fresh: true });
-        assert.deepStrictEqual(w, { videos: [], unavailable: true });
-        wlMode = 'empty';
-        assert.strictEqual((await svc.watchLater({ fresh: true })).unavailable, true);
+    await ok('Watch Later: says why when the browser is signed out or not running', async () => {
+        browserMode = 'signedout';
+        assert.deepStrictEqual(await svc.watchLater({ fresh: true }), { videos: [], unavailable: true, why: 'browser-signin' });
+        browserMode = 'offline';
+        assert.strictEqual((await svc.watchLater({ fresh: true })).why, 'browser-offline');
+        browserMode = 'ok';
+    });
+
+    await ok('import: channels with the bell on All become favourites, the rest stay out', async () => {
+        const before = svc.getState().favourites.map((f) => f.id);
+        assert.deepStrictEqual(before, [CH(1)]);
+        const r = await svc.importBellFavourites();
+        assert.strictEqual(r.found, 3);
+        assert.strictEqual(r.added, 2, 'one of the three was a favourite already');
+        assert.deepStrictEqual(r.favourites.map((f) => f.id), [CH(1), CH(2), CH(4)]);
+        assert.strictEqual((await svc.importBellFavourites()).added, 0, 'a second import adds nothing');
+        browserMode = 'signedout';
+        assert.strictEqual((await svc.importBellFavourites()).why, 'browser-signin');
+        browserMode = 'nobells';
+        await assert.rejects(svc.importBellFavourites(), (e) => e.code === 'YOUTUBE_BROWSER_SHAPE');
+        browserMode = 'ok';
+        await svc.setFavourite({ id: CH(2) }, false);
+        await svc.setFavourite({ id: CH(4) }, false);
+    });
+
+    await ok('the in-page reader: playlist ids, bell states, signed-out pages', async () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'youtubeAlchemy.js'), 'utf8');
+        const code = eval('`' + /const IN_PAGE = `([\s\S]*?)`;\n/.exec(src)[1] + '`'); // eslint-disable-line no-eval
+        const run = (kind, win, loc) => new Function('window', 'location', 'document', 'crypto', 'fetch', `return ${code}(${JSON.stringify(kind)})`)(win, loc || { hostname: 'www.youtube.com', origin: 'https://www.youtube.com' }, { cookie: '' }, null, null);
+        const cfg = (logged) => ({ get: (k) => (k === 'LOGGED_IN' ? logged : null) });
+        const bell = (cur) => ({ subscribeButtonRenderer: { notificationPreferenceButton: { subscriptionNotificationToggleButtonRenderer: { currentStateId: cur, states: [
+            { stateId: 2, state: { buttonRenderer: { icon: { iconType: 'NOTIFICATIONS_ACTIVE' } } } },
+            { stateId: 3, state: { buttonRenderer: { icon: { iconType: 'NOTIFICATIONS_NONE' } } } },
+            { stateId: 0, state: { buttonRenderer: { icon: { iconType: 'NOTIFICATIONS_OFF' } } } }] } } } });
+        const chan = (n, cur) => ({ channelRenderer: { channelId: CH(n), title: { simpleText: `Channel ${n}` }, thumbnail: { thumbnails: [{ url: '//yt3.ggpht.com/a=s88' }, { url: '//yt3.ggpht.com/a=s176' }] }, subscribeButton: cur === null ? {} : bell(cur) } });
+        assert.strictEqual(await run('bells', {}, { hostname: '' }), null, 'nothing before the page has loaded');
+        assert.deepStrictEqual(await run('bells', {}, { hostname: 'accounts.google.com' }), { signedIn: false });
+        assert.deepStrictEqual(await run('bells', { ytcfg: cfg(false), ytInitialData: {} }), { signedIn: false });
+        const b = await run('bells', { ytcfg: cfg(true), ytInitialData: { contents: { items: [chan(1, 2), chan(2, 3), chan(3, 0), chan(4, null), chan(1, 2)] } } });
+        assert.deepStrictEqual(b.channels.map((c) => c.bell), ['all', 'some', 'none', '']);
+        assert.strictEqual(b.channels[0].thumb, 'https://yt3.ggpht.com/a=s176');
+        const w = await run('watch-later', { ytcfg: cfg(true), ytInitialData: { side: { lockupViewModel: { contentType: 'LOCKUP_CONTENT_TYPE_VIDEO', contentId: VID(900) } }, main: { playlistVideoListRenderer: { contents: [
+            { playlistVideoRenderer: { videoId: VID(1) } }, { lockupViewModel: { contentType: 'LOCKUP_CONTENT_TYPE_VIDEO', contentId: VID(2) } }, { playlistVideoRenderer: { videoId: VID(1) } },
+            { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: 'more' } } } }] } } } });
+        assert.deepStrictEqual(w.ids, [VID(1), VID(2)], 'the list\'s own videos, in order, not the ones beside it');
+        assert.strictEqual(w.partial, true, 'a further part that could not be asked for is reported');
     });
 
     await ok('the unit budget stops calls with a plain message', async () => {

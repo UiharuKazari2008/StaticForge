@@ -20,10 +20,13 @@
  *                  "UULF" + id = the channel's long videos only (the Leave Out Shorts setting)
  *   details        videos.list (1 unit per 50 videos): length, live state; kept for good
  *   search         search.list (100 units), each answer kept 10 minutes
- *   Watch Later    the Data API does not give this list to any program (it answers empty since 2016).
- *                  watchLater() asks YouTube's own app interface with the same sign-in for the video
- *                  ids and reads their details through the Data API. When YouTube refuses, the answer
- *                  says so ({ unavailable: true }) and the program offers the list in the YouTube app.
+ *   Watch Later    the Data API does not give this list to any program (it answers empty since 2016)
+ *                  and YouTube's app interface refuses this sign-in (403, tested Nov 15 2026), so the
+ *                  ids are read in the server's Alchemy browser (modules/youtubeAlchemy.js, #840) and
+ *                  their details through the Data API. { unavailable: true, why } when Alchemy is not
+ *                  signed in to YouTube or not running.
+ *   bells          importBellFavourites(): the same browser reads each subscribed channel's
+ *                  notification bell; the ones set to All become Today favourites.
  *
  * Quota: the project's 10,000 units a day are shared with VisionCaster. Units are counted per Pacific
  * day in .cache/youtube-usage.json and stop at settings.budget (6,000) with a plain message.
@@ -43,7 +46,6 @@ const path = require('path');
 
 const GOOGLE = process.env.YOUTUBE_GOOGLE_BASE || 'https://oauth2.googleapis.com';
 const API = process.env.YOUTUBE_API_BASE || 'https://www.googleapis.com/youtube/v3';
-const APP_API = process.env.YOUTUBE_APP_BASE || 'https://www.youtube.com/youtubei/v1';
 const SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
 const CACHE_DIR = path.join(__dirname, '..', '.cache');
 const ACCOUNT_FILE = process.env.YOUTUBE_ACCOUNT_FILE || path.join(CACHE_DIR, 'youtube-account.json');
@@ -596,51 +598,56 @@ async function search(query, page) {
     return data;
 }
 
-// ------------------------------------------------------------------------------------------ Watch Later
+// ------------------------------------------------------------------------------------------ Watch Later and the bells (Alchemy)
 
-/** Video ids in list order out of an app-interface answer, whatever list shape it used. */
-function listedVideoIds(node, out = [], seen = new Set()) {
-    if (!node || typeof node !== 'object') return out;
-    if (Array.isArray(node)) { node.forEach((n) => listedVideoIds(n, out, seen)); return out; }
-    const take = (id) => { if (typeof id === 'string' && VIDEO_ID.test(id) && !seen.has(id)) { seen.add(id); out.push(id); } };
-    for (const k of Object.keys(node)) {
-        const v = node[k];
-        if (k === 'tileRenderer' && v && /VIDEO/.test(String(v.contentType || 'VIDEO'))) { take(v.contentId || (v.onSelectCommand && v.onSelectCommand.watchEndpoint && v.onSelectCommand.watchEndpoint.videoId)); continue; }
-        if (k === 'lockupViewModel' && v && /VIDEO/.test(String(v.contentType || ''))) { take(v.contentId); continue; }
-        if ((k === 'playlistVideoRenderer' || k === 'playlistPanelVideoRenderer' || k === 'compactVideoRenderer' || k === 'videoRenderer' || k === 'gridVideoRenderer') && v) { take(v.videoId); continue; }
-        listedVideoIds(v, out, seen);
+// What only a signed-in browser is shown (modules/youtubeAlchemy.js, #840). `why` says what is missing:
+// 'browser-signin' (Alchemy is not signed in to YouTube) or 'browser-offline' (Alchemy is not running).
+let browser = require('./youtubeAlchemy');
+
+async function browserRead(kind) {
+    try {
+        const r = await browser.read(kind);
+        return r && r.signedIn ? Object.assign({ why: '' }, r) : { why: 'browser-signin' };
+    } catch (e) {
+        if (e && e.code === 'ALCHEMY_OFFLINE') return { why: 'browser-offline' };
+        throw fail((e && e.message) || 'The server\'s browser could not read YouTube', (e && e.code) || 'YOUTUBE_BROWSER');
     }
-    return out;
 }
-
-const APP_CLIENTS = [
-    { clientName: 'TVHTML5', clientVersion: '7.20250219.14.00' },
-    { clientName: 'WEB', clientVersion: '2.20251110.00.00' }
-];
 
 async function watchLater(opts = {}) {
     if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
     if (watchLater.memo && !opts.fresh && Date.now() - watchLater.memo.at < UPLOADS_TTL) return watchLater.memo.data;
-    const token = await accessToken();
-    let ids = [];
-    for (const client of APP_CLIENTS) {
-        try {
-            const res = await fetch(`${APP_API}/browse?prettyPrint=false`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                body: JSON.stringify({ context: { client: Object.assign({ hl: 'en', gl: 'US' }, client) }, browseId: 'VLWL' }),
-                signal: AbortSignal.timeout(20000)
-            });
-            if (res.status !== 200) continue;
-            ids = listedVideoIds(await res.json().catch(() => null));
-            if (ids.length) break;
-        } catch (_e) { /* the next shape, then the plain answer below */ }
-    }
-    const data = ids.length
-        ? { videos: await withDetails(ids.slice(0, 100).map((id) => ({ id, title: '', channel: '', channelId: '', thumb: '', at: null, length: null, live: '' }))), unavailable: false }
-        : { videos: [], unavailable: true };
-    if (ids.length) watchLater.memo = { at: Date.now(), data };
+    const r = await browserRead('watch-later');
+    if (r.why) return { videos: [], unavailable: true, why: r.why };
+    const ids = (r.ids || []).filter((id) => VIDEO_ID.test(String(id))).slice(0, 300);
+    const data = { videos: await withDetails(ids.map((id) => ({ id, title: '', channel: '', channelId: '', thumb: '', at: null, length: null, live: '' }))), unavailable: false, why: '', partial: !!r.partial };
+    watchLater.memo = { at: Date.now(), data };
     return data;
+}
+
+/**
+ * Import favourites: every subscribed channel whose bell is set to All becomes a Today favourite
+ * (Yukimi, Nov 15 2026). Favourites already chosen stay; the list holds MAX_FAVOURITES.
+ */
+async function importBellFavourites() {
+    if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
+    const r = await browserRead('bells');
+    if (r.why) return { why: r.why, favourites: acct.favourites.slice(), found: 0, added: 0, left: 0 };
+    const channels = (r.channels || []).map((c) => Object.assign({ bell: c.bell }, cleanChannel(c) || {})).filter((c) => c.id);
+    if (channels.length && !channels.some((c) => c.bell)) throw fail('YouTube\'s subscriptions page did not show the notification bells in a form this program reads.', 'YOUTUBE_BROWSER_SHAPE');
+    const ringing = channels.filter((c) => c.bell === 'all');
+    const have = new Set(acct.favourites.map((f) => f.id));
+    let added = 0;
+    let left = 0;
+    for (const c of ringing) {
+        if (have.has(c.id)) continue;
+        if (acct.favourites.length >= MAX_FAVOURITES) { left++; continue; }
+        acct.favourites.push({ id: c.id, title: c.title, thumb: c.thumb });
+        have.add(c.id);
+        added++;
+    }
+    if (added) { saveAccount(); poke(); }
+    return { why: '', favourites: acct.favourites.slice(), channels: channels.length, found: ringing.length, added, left, partial: !!r.partial };
 }
 
 // ------------------------------------------------------------------------------------------ favourites on Today
@@ -730,6 +737,7 @@ module.exports = {
     subscriptions,
     feed,
     watchLater,
+    importBellFavourites,
     search,
     channelPage,
     setFavourite,
@@ -738,5 +746,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, listedVideoIds, latestVideos, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };
