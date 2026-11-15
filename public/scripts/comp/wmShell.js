@@ -3956,6 +3956,20 @@
     const MESSAGE_CLASS = { mail: 'mail', sms: 'sms', chat: 'chat' };
     const messageClassOf = (n) => MESSAGE_CLASS[noteEvent(n)] || null;
     const notesForBubbleIcon = () => notes.filter((n) => !isUpdateNote(n) && !messageClassOf(n));
+    // how many notifications Android shows (DSApp AndroidPhoneNotifications, #800): read when Android
+    // says they changed and when the page comes back, never on a timer
+    let phoneNotes = 0;
+    function countPhoneNotes() {
+        const N = window.AndroidPhoneNotifications;
+        let n = 0;
+        try { if (N && typeof N.list === 'function' && N.access()) n = (JSON.parse(N.list() || '[]') || []).length; } catch (_) { n = 0; }
+        if (n === phoneNotes) return;
+        phoneNotes = n;
+        if (shell) { paintNotifyIcon(); fitStatus(); }
+    }
+    window.addEventListener('androidnotifications', countPhoneNotes);
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') countPhoneNotes(); });
+    setTimeout(countPhoneNotes, 2500);
     const messageNotes = (role) => notes.filter((n) => messageClassOf(n) === role);
     const noteShownNote = () => noteOf(noteShown);
 
@@ -4730,7 +4744,9 @@
         const icon = shell.querySelector('[data-role="notify"]');
         // update notices stand on the update icon, not here
         const notes = notesForBubbleIcon();
-        const count = notes.length + statusFolded.length;
+        // the phone's own notifications count too (DSApp AndroidPhoneNotifications, #800): the bubble
+        // shows while Android has some, and its tap opens Today's Super Bar when they are all there is
+        const count = notes.length + statusFolded.length + phoneNotes;
         icon.hidden = !count;
         // the most serious pending kind shows, also with several waiting
         const worst = notes.find((n) => n.type === 'error') || notes.find((n) => n.type === 'warning');
@@ -4746,10 +4762,14 @@
             delete icon.dataset.icon;
             icon.style.backgroundImage = noteIcon(notes[0]);
             icon.setAttribute('aria-label', `Notification: ${noteTitle(notes[0])}`);
-        } else if (count) {
+        } else if (statusFolded.length) {
             delete icon.dataset.icon;
             icon.style.backgroundImage = artImageSet(STATUS_APP_ICONS[statusFolded[0]]);
             icon.setAttribute('aria-label', STATUS_APP_LABEL[statusFolded[0]]);
+        } else if (phoneNotes) {
+            delete icon.dataset.icon;
+            icon.style.backgroundImage = noteIcon({ type: 'info' });
+            icon.setAttribute('aria-label', 'A notification on the phone');
         }
     }
 
@@ -5026,6 +5046,8 @@
         closeMenus(true);
         // the speech bubble's own notifications (update notices are the update icon's)
         const mine = notesForBubbleIcon();
+        // only the phone's: Today's Super Bar lists them (#800)
+        if (!mine.length && !statusFolded.length && phoneNotes && window.wmTitanium && typeof window.wmTitanium.superBar === 'function' && window.wmTitanium.superBar()) return;
         const bub = shell.querySelector('.wm-bubble');
         if (!mine.length && statusFolded.length === 1 && !bub.hidden && bub.dataset.role === statusFolded[0]) { closeBubble(); return; }
         closeBubble();
