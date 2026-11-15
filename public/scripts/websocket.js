@@ -544,6 +544,17 @@ class BannerManager {
             'traffic_advise': 'Leave Advisor',
             'traffic_settings_save': 'Save Traffic Settings',
 
+            // Lapis Remote (#835)
+            'lapis_get': 'Lapis Remote',
+            'lapis_refresh': 'Read the Car',
+            'lapis_command': 'Car Command',
+            'lapis_history': 'Driving Record',
+            'lapis_vehicles': 'Vehicles',
+            'lapis_settings_save': 'Save Lapis Settings',
+            'lapis_service_done': 'Maintenance Done',
+            'lapis_picture_get': 'Car Picture',
+            'lapis_picture_save': 'Save Car Picture',
+
             // Cursor accounts
             'get_cursor_accounts': 'Get Cursor Accounts',
             'switch_cursor_account': 'Switch Cursor Account',
@@ -981,6 +992,10 @@ class WebSocketClient {
         'paypass_wait',
         // Traffic (#795): the Today item's read of the last reports (no provider call)
         'traffic_get',
+        // Lapis Remote (#835): reads of what the server already holds (no call to the car)
+        'lapis_get',
+        'lapis_picture_get',
+        'lapis_history',
     ]);
 
     static GENERATION_QUIPS_MESSAGE_TYPES = new Set([
