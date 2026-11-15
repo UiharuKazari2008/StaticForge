@@ -1979,8 +1979,14 @@
     function startTextShell() {
         registerTextToday();
         tmBind();
-        // the client may come after this script, or be replaced (the test fake): bind again then
-        setInterval(tmBind, 3000);
+        // the client may come after this script, or be replaced (the test fake): tried until it is
+        // bound, then again on a reconnect or a program change - not every 3 s for the life of the
+        // page (#849 idle profile)
+        let tries = 0;
+        const untilBound = () => { tmBind(); if (tmBound || ++tries > 40) return; setTimeout(untilBound, 3000); };
+        if (!tmBound) setTimeout(untilBound, 3000);
+        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', tmBind);
+        document.addEventListener('wmAppChange', tmBind);
     }
 
     /** For wmShell (title bar glyph, Today's Messaging row, the status bubble). */

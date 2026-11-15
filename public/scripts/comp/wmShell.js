@@ -849,7 +849,10 @@
         if (root.dataset.wmBar && text !== glassTitle && text !== titleText) delete root.dataset.wmBar;
         titleText = text;
         if (stage && stage.mask.title) return; // its step draws it (staged drawing)
-        if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open')) shell.querySelector('.wm-title').textContent = text;
+        // only when it differs: the same text written again replaces the title's text node (a childList
+        // record for every observer and a relayout of the bar), on every status pass (#849)
+        const t = shell.querySelector('.wm-title');
+        if (!shell.querySelector('.wm-titlebar').classList.contains('is-start-open') && t.textContent !== text) t.textContent = text;
     }
 
     /** WM 6.1's open-Start title bar: glow, the Start text in the menu's rule colour (wm-shell.css). */
@@ -887,13 +890,17 @@
         // 6.1's colour emblem: the file nearest the box's device size (19 units wide)
         const emblem61 = !WM65 && b.icon === EMBLEM61;
         if (img && emblem61) {
-            img.setAttribute('sizes', `${19 * (rootPx())}px`);
+            const sizes = `${19 * (rootPx())}px`;
+            if (img.getAttribute('sizes') !== sizes) img.setAttribute('sizes', sizes);
             if (img.getAttribute('srcset') !== EMBLEM61_SRCSET) img.setAttribute('srcset', EMBLEM61_SRCSET);
-        } else if (img) img.removeAttribute('sizes');
-        shell.querySelector('.wm-start').classList.toggle('is-melaton', emblem61);
+        } else if (img && img.hasAttribute('sizes')) img.removeAttribute('sizes');
+        // written only when they differ (each write wakes the page's observers, #849)
+        const startBtn = shell.querySelector('.wm-start');
+        if (startBtn.classList.contains('is-melaton') !== emblem61) startBtn.classList.toggle('is-melaton', emblem61);
         // the Windows flag keeps WM's own colours and Start-cell metrics (wm-shell.css)
-        shell.querySelector('.wm-start').classList.toggle('is-flag', b.icon === art('start-flag'));
-        shell.querySelector('.wm-start').setAttribute('aria-label', b.text);
+        const isFlag = b.icon === art('start-flag');
+        if (startBtn.classList.contains('is-flag') !== isFlag) startBtn.classList.toggle('is-flag', isFlag);
+        if (startBtn.getAttribute('aria-label') !== b.text) startBtn.setAttribute('aria-label', b.text);
         if (current === 'today' && !viewerActive && root.dataset.wmBoot !== 'install') setTitle(b.text);
     }
 
@@ -2578,6 +2585,10 @@
      */
     const STATUS_SAFETY_MS = 120000;
     let statusTimer = null;
+    let statusTodayKey = '';
+    let statusTodayBump = 0;
+    // a source whose Today item may have changed (not a tap): Today repaints on the next status pass
+    const statusDirtyToday = () => { statusTodayBump++; statusDirty(); };
     function statusDirty() {
         if (statusTimer || !shell) return;
         // screen off or page hidden: nothing paints; screen on and visibilitychange repaint at once
@@ -2585,16 +2596,16 @@
     }
     function watchStatusSignals() {
         const ws = window.wsClient;
-        if (ws && typeof ws.on === 'function') { ws.on('connected', statusDirty); ws.on('disconnected', statusDirty); }
+        if (ws && typeof ws.on === 'function') { ws.on('connected', statusDirtyToday); ws.on('disconnected', statusDirtyToday); }
         // a setting, a sound mode, an app opened: taps and keys (volume keys reach the page as keys)
         document.addEventListener('click', statusDirty, { capture: true, passive: true });
         document.addEventListener('keyup', statusDirty, { capture: true, passive: true });
-        document.addEventListener('wmSettingsChange', statusDirty);
-        document.addEventListener('wmWeatherChange', statusDirty);
-        document.addEventListener('wmTrafficChange', statusDirty);
-        document.addEventListener('wmLapisChange', statusDirty);
+        document.addEventListener('wmSettingsChange', statusDirtyToday);
+        document.addEventListener('wmWeatherChange', statusDirtyToday);
+        document.addEventListener('wmTrafficChange', statusDirtyToday);
+        document.addEventListener('wmLapisChange', statusDirtyToday);
         // the other window of the app (DeX) changed a shared setting
-        window.addEventListener('storage', statusDirty);
+        window.addEventListener('storage', statusDirtyToday);
         // back on screen: paint now
         window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) refreshStatus(); });
         document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshStatus(); });
@@ -2711,8 +2722,17 @@
         if (!bubble.hidden && bubble.dataset.role === 'traffic' && shell.querySelector('[data-role="traffic"]').hidden) closeBubble();
         if (!bubble.hidden && bubble.dataset.role === 'lapis' && shell.querySelector('[data-role="lapis"]').hidden) closeBubble();
         if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(statusFolded.includes(bubble.dataset.role) ? '[data-role="notify"]' : `.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
+        // Today repaints from here only when a row it takes from the status changed (the connection,
+        // unread counts, tasks) or an item's own source said so (statusTodayBump): a tap or a key marks
+        // the status dirty too, and redrew every Today block and row each time (#849, A53: 6 full
+        // redraws in 30 s untouched)
         const today = apps.get('today');
-        if (today && typeof today.refresh === 'function' && current === 'today') today.refresh();
+        if (today && typeof today.refresh === 'function' && current === 'today') {
+            let st = null;
+            try { st = typeof today.state === 'function' ? today.state() : null; } catch (_) { st = null; }
+            const tk = st ? [st.connection && st.connection.text, st.mailUnread, st.smsUnread, st.chatUnread, st.tasks, st.owner, st.workspace, !!(dir && dir.running), printsInProgress(), statusTodayBump].join('|') : String(Math.random());
+            if (tk !== statusTodayKey) { statusTodayKey = tk; today.refresh(); }
+        }
         // notifications held back during startup or a takeover come up once it ends
         if (notes.length && !noteShown && notesMayPop()) refreshNotes();
     }
@@ -2840,16 +2860,43 @@
         fitQueued = true;
         afterPaint().then(() => {
             fitQueued = false;
-            syncIconUnit(); fitStatusNow(); snapStatusIcons();
+            // the fit clears every icon's wm-shed and sheds again while measuring: class writes and a
+            // layout pass on every status refresh even when nothing the bar shows moved (#849 idle
+            // profile: ~84 class writes a minute). It runs only when what it fits changed.
+            const key = statusFitKey();
+            if (key !== lastStatusFitKey || fitForce) {
+                fitForce = false;
+                syncIconUnit(); fitStatusNow(); snapStatusIcons();
+                lastStatusFitKey = statusFitKey();
+            }
             if (fitAgain) { fitAgain = false; fitStatus(); }
         });
+    }
+    let lastStatusFitKey = '';
+    let fitForce = false;
+    /** What the title bar's fit depends on, read without layout: its children, the icons, the screen. */
+    function statusFitKey() {
+        const bar = shell.querySelector('.wm-titlebar');
+        if (!bar) return '';
+        const parts = [current, viewW(), viewH(), rootPx(), root.dataset.wmVersion || '', root.dataset.wmBezelEdge || '', root.dataset.wmCamera || ''];
+        const st = root.style;
+        ['--camera-hole-left', '--camera-hole-top', '--camera-hole-width', '--camera-hole-height', '--wm-safe-top'].forEach((n) => parts.push(st.getPropertyValue(n)));
+        try { parts.push(localStorage.getItem('wmStatusNoCross'), localStorage.getItem('wmStatusSlots'), localStorage.getItem('wmCameraExtendBar')); } catch (_) { /* storage off */ }
+        for (const c of bar.children) {
+            // the icons' own wm-shed is the fit's output, not its input
+            parts.push(c.className, c.hidden ? 1 : 0, c.classList.contains('wm-title') ? c.textContent : '');
+        }
+        bar.querySelectorAll('.wm-status-icon, .wm-start img').forEach((i) => {
+            parts.push(i.dataset.role || '', i.hidden ? 1 : 0, i.dataset.icon || '', i.getAttribute('src') || '', i.className.replace(/\bwm-shed\b/g, ''));
+        });
+        return parts.join('|');
     }
     /** The screen changed (fold, turn, cutout): fit now and again as Android's insets and screen info settle. */
     let fitSettleTimers = [];
     function fitStatusSettled() {
         fitStatus();
         fitSettleTimers.forEach(clearTimeout);
-        fitSettleTimers = [300, 1000].map((ms) => setTimeout(() => { syncBezel(); fitStatus(); }, ms));
+        fitSettleTimers = [300, 1000].map((ms) => setTimeout(() => { syncBezel(); fitForce = true; fitStatus(); }, ms));
     }
 
     /*
@@ -7413,8 +7460,11 @@
                 }
                 const tasks = tasksText();
                 setText(page.querySelector('[data-f="tasks"]'), tasks);
-                page.querySelector('[data-row="tasks"]').hidden = tasks === 'No tasks' && todayOption('tasks', 'empty') === 'hide';
-                if (mailUnread != null) page.querySelector('[data-row="messages"]').hidden = !(mailUnread + imapUnread() + smsUnread() + chatUnread()) && todayOption('messages', 'empty') === 'hide';
+                // (hidden and style written only when they differ: the same value written again is a
+                // mutation record and a style invalidation every draw, #849)
+                const setHidden = (el, v) => { if (el && el.hidden !== v) el.hidden = v; };
+                setHidden(page.querySelector('[data-row="tasks"]'), tasks === 'No tasks' && todayOption('tasks', 'empty') === 'hide');
+                if (mailUnread != null) setHidden(page.querySelector('[data-row="messages"]'), !(mailUnread + imapUnread() + smsUnread() + chatUnread()) && todayOption('messages', 'empty') === 'hide');
                 // the Director, NovelAI balance and calendar items are widgets now (wmTodayWidgets.js,
                 // wmAccounts.js: registerTodayItem)
                 const wsEl = page.querySelector('[data-f="workspace"]');
@@ -7428,8 +7478,8 @@
                 // Options: picture size and rows
                 const tile = TODAY_PRINT_SIZE[todayOption('prints', 'size')] || 44;
                 const rows = Number(todayOption('prints', 'rows')) || 1;
-                strip.style.setProperty('--wm-today-tile', String(tile));
-                strip.style.setProperty('--wm-today-rows', String(rows));
+                if (strip.style.getPropertyValue('--wm-today-tile') !== String(tile)) strip.style.setProperty('--wm-today-tile', String(tile));
+                if (strip.style.getPropertyValue('--wm-today-rows') !== String(rows)) strip.style.setProperty('--wm-today-rows', String(rows));
                 // exactly the tiles that fit the rows (extra ones would add empty grid rows and gaps)
                 const width = stripWidth - 6 * pxv;
                 const cols = Math.max(1, Math.floor((width + 2 * pxv) / ((tile + 2) * pxv)));
@@ -7439,7 +7489,7 @@
                     recentKey = key;
                     strip.innerHTML = prints.map((p) => `<button type="button" class="wm-today-print" data-filename="${escapeHtml(p.filename || p.original || '')}" aria-label="${escapeHtml(p.filename || 'Print')}" style="background-image:url('${escapeHtml(previewUrl(p))}')"></button>`).join('');
                 }
-                strip.hidden = !prints.length;
+                setHidden(strip, !prints.length);
                 paintTodayWidgets(page);
                 drawTodaySearch(page);
                 applyTodayItems(page);
@@ -7517,24 +7567,25 @@
                     // render(el, { option }) returns false to hide the block; it repaints only what changed
                     let shown = true;
                     try { shown = w.render(row, { option: (key) => todayOption(w.id, key) }) !== false; } catch (err) { shown = false; console.warn('[wmShell] today block', w.id, err); }
-                    row.hidden = !shown;
+                    if (row.hidden !== !shown) row.hidden = !shown;
                     continue;
                 }
                 let text = '';
                 try { text = String(w.text() || ''); } catch (_) { text = ''; }
-                row.hidden = !text;
+                if (row.hidden !== !text) row.hidden = !text;
                 setText(row.querySelector('.wm-today-text'), text);
             }
         }
 
         /** The last row on screen draws no rule under it (rows hide and switch off, so CSS cannot tell). */
         function markTodayLast(page) {
+            // classList.remove / add write the attribute even when nothing changes (each a mutation
+            // record and a style invalidation, every draw, #849): the last row is found first, then
+            // toggle(force) writes only the rows that change
+            const rows = page.querySelectorAll(':scope > [data-row]');
             let last = null;
-            page.querySelectorAll(':scope > [data-row]').forEach((row) => {
-                row.classList.remove('is-last');
-                if (!row.hidden && !row.classList.contains('wm-today-off')) last = row;
-            });
-            if (last) last.classList.add('is-last');
+            rows.forEach((row) => { if (!row.hidden && !row.classList.contains('wm-today-off')) last = row; });
+            rows.forEach((row) => row.classList.toggle('is-last', row === last));
         }
 
         // Settings > Today > Items: order and on / off of the rows (wmTodayItems = [{ id, on }])
@@ -9492,7 +9543,16 @@
         };
         new MutationObserver(() => { layerScan(); layerSoon(); }).observe(document.body, { childList: true });
         layerScan();
-        setInterval(() => { if (screenOn()) { layerScan(); checkTakeover(); checkViewer(); } }, 2000);
+        // what changes without either follows a tap or a key (an app's own view switch): the pass runs
+        // just after one, not every 2 s for the life of the page (#849 idle profile)
+        let passTimer = null;
+        const passSoon = () => {
+            clearTimeout(passTimer);
+            passTimer = setTimeout(() => { if (screenOn()) { layerScan(); checkTakeover(); checkViewer(); } }, 350);
+        };
+        document.addEventListener('pointerup', passSoon, { capture: true, passive: true });
+        document.addEventListener('keyup', passSoon, { capture: true, passive: true });
+        document.addEventListener('wmAppChange', passSoon);
         window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) { checkTakeover(); checkViewer(); } });
         // ActiveSync Received Items (#803): the status icon follows the agent's list
         (function wireReceived(tries) {

@@ -980,8 +980,9 @@
         const a = acct();
         if (!a.configured || (!signedIn() && !isAdmin())) return false;
         if (!el.dataset.ytBound) bindToday(el);
-        el.setAttribute('role', 'button');
-        el.tabIndex = 0;
+        // (only when they differ: written on every Today draw they were mutation records, #849)
+        if (el.getAttribute('role') !== 'button') el.setAttribute('role', 'button');
+        if (el.tabIndex !== 0) el.tabIndex = 0;
         const vids = latest();
         if (todayAt >= vids.length) todayAt = 0;
         const v = signedIn() ? vids[todayAt] : null;

@@ -366,6 +366,11 @@
         const id = window.showGlassToast('info', esc(windowTitle(win, h.title)), 'Opened in the background.', false, false, null,
             [{ text: 'Show', onClick: () => { behind.delete(win); if (byWin.get(win) === h) ws.open(h.id); } }]);
         if (id) behind.set(win, id);
+        // a notified window lives in its page, not <body>: its own class change (closed) clears the note
+        if (id && !win.wmhBehindWatch) {
+            win.wmhBehindWatch = new MutationObserver(() => { if (behind.has(win) && (!isOpen(win) || !win.isConnected)) unnotify(win); });
+            win.wmhBehindWatch.observe(win, { attributes: true, attributeFilter: ['class'] });
+        }
     }
 
     function unnotify(win) {
@@ -514,10 +519,51 @@
         // (featureLoader may come after this file: wrapped at the first tap, before its handlers run)
         document.addEventListener('click', (e) => { if (e.isTrusted) { lastTapAt = Date.now(); watchTapLoads(); } }, true);
         watchTapLoads();
-        // not while the screen is off (#798: the ticks share the renderer with a DeX window); a pass at screen on
-        setInterval(() => { if (document.documentElement.dataset.screenOff === undefined) sweep(); }, 1500);
+        // a window appearing (added to <body>, or a body child's class opening it) is hosted when it
+        // happens - no 1.5 s sweep of <body> and 2 s check of the notified windows for the life of the
+        // page (#849 idle profile); a pass at screen on, at boot's end and when Studio is left
+        watchWindows();
         window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) sweep(); });
-        setInterval(() => { for (const w of behind.keys()) if (!isOpen(w) || !w.isConnected) unnotify(w); }, 2000);
+        document.addEventListener('wmBootDone', () => sweep());
+        document.addEventListener('wmAppChange', (e) => { if (e.detail && e.detail.prev === 'studio') sweep(); checkBehind(); });
+    }
+
+    function checkBehind() {
+        for (const w of behind.keys()) if (!isOpen(w) || !w.isConnected) unnotify(w);
+    }
+
+    let sweepQueued = false;
+    function queueSweep() {
+        if (sweepQueued) return;
+        sweepQueued = true;
+        // after the code that opened it has finished (it may add the title, footers or the class last)
+        setTimeout(() => {
+            sweepQueued = false;
+            if (document.documentElement.dataset.screenOff !== undefined) return; // the screen-on pass takes it
+            sweep();
+            checkBehind();
+        }, 50);
+    }
+
+    const NEVER_WINDOW = /^(SCRIPT|STYLE|LINK|TEMPLATE|NOSCRIPT)$/;
+    function watchWindows() {
+        const seen = new WeakSet();
+        const classes = new MutationObserver(() => queueSweep());
+        const hook = (el) => {
+            if (!el || el.nodeType !== 1 || seen.has(el) || NEVER_WINDOW.test(el.tagName) || el.id === 'wmShell' || el.id === 'toastContainer') return;
+            seen.add(el);
+            classes.observe(el, { attributes: true, attributeFilter: ['class'] });
+        };
+        Array.from(document.body.children).forEach(hook);
+        new MutationObserver((records) => {
+            let any = false;
+            for (const r of records) {
+                r.addedNodes.forEach((n) => { if (n.nodeType === 1) { hook(n); any = true; } });
+                if (r.removedNodes.length) any = true;
+            }
+            if (any) queueSweep();
+        }).observe(document.body, { childList: true });
+        sweep();
     }
 
     window.wmHost = {
