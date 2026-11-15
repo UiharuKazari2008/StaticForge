@@ -2213,7 +2213,10 @@ async function ensureDirectorBrowser() {
     const child = spawn(chrome, [
         '--headless=new',
         '--no-sandbox',
-        '--disable-dev-shm-usage',
+        // no --disable-dev-shm-usage: that flag puts Chrome's shared memory in /tmp, and this host's
+        // /tmp (a 6.8 GB tmpfs shared with every agent's scratch files) fills up; the browser then
+        // exits with FILE_ERROR_NO_SPACE in the middle of a page (Nov 15 2026, #849, three times in
+        // an hour). /dev/shm here is its own 6.8 GB tmpfs and all but empty.
         '--disable-gpu',
         `--remote-debugging-port=${DIRECTOR_BROWSER_PORT}`,
         `--user-data-dir=${dir}`,
