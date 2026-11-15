@@ -1057,7 +1057,8 @@
             case 'string':
                 return `<input type="text" class="cpl-vedit cpl-ss-text"${attrs}${num('maxLength').replace('maxLength', 'maxlength')} value="${esc(value == null ? '' : value)}">`;
             case 'time':
-                return `<input type="time" class="cpl-vedit cpl-ss-time"${attrs} value="${typeof value === 'string' && SS_TIME.test(value) ? value : ''}">`;
+                // Vista's time picker (DTS_TIMEFORMAT: the fields and an up-down), not the browser's time input
+                return root.vistaDialogTemplate.pickerHtml({ type: 'time', value: typeof value === 'string' && SS_TIME.test(value) ? value : '00:00', cls: 'cpl-ss-time', attrs: attrs.trim() });
             case 'days': {
                 const on = new Set(Array.isArray(value) ? value : []);
                 return `<span class="cpl-ss-days"${attrs}>${SS_WEEKDAYS.map(([s, name], i) => `<label class="cpl-ss-day" title="${name}"><input type="checkbox" data-ss-day="${i}"${on.has(i) ? ' checked' : ''}><span>${s}</span></label>`).join('')}</span>`;
@@ -1080,7 +1081,7 @@
             case 'int':
             case 'number': return String(el.value).trim() === '' ? null : Number(el.value);
             case 'string': return String(el.value);
-            case 'time': return String(el.value);
+            case 'time': return root.vistaDialogTemplate.pickerValue(el);
             case 'days': return Array.from(el.querySelectorAll('[data-ss-day]:checked')).map((i) => Number(i.dataset.ssDay));
             default: return undefined;
         }

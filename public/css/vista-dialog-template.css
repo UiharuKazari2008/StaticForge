@@ -1027,3 +1027,75 @@ body.desktop-mode .modal.vdt-wizard .vdt-client .vdt-wizard-instruction {
     border: 1px solid #a0a0a0;
     box-sizing: border-box;
 }
+
+/* ---- the colour button (vistaDialogTemplate.colorWell): Internet Properties > Colors' owner-drawn
+   push button, the kit's button art round the colour. It carries its own faces so that it looks the
+   same in a window outside the kit scope. ---- */
+
+button.vdt-colorwell:not(#_) {
+    --vista-button-face: url("/static_images/vista-controls/button-normal.png");
+    display: inline-block;
+    box-sizing: border-box;
+    width: 40px;
+    height: 23px;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 4px 5px;
+    background: none;
+    border: 1px solid transparent;
+    border-image: var(--vista-button-face) 4 fill / 4px / 0 stretch;
+    border-radius: 0;
+    box-shadow: none;
+    outline: none;
+    opacity: 1;
+    transform: none;
+    transition: none;
+    vertical-align: middle;
+    cursor: default;
+}
+
+button.vdt-colorwell:not(#_)::before,
+button.vdt-colorwell:not(#_)::after {
+    content: none;
+}
+
+button.vdt-colorwell > .vdt-colorwell-fill {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    border: 1px solid #808080;
+    background: var(--c, #000);
+    pointer-events: none;
+}
+
+@media (hover: hover) {
+    button.vdt-colorwell:not(#_):hover:not(:disabled) {
+        --vista-button-face: url("/static_images/vista-controls/button-hot.png");
+    }
+}
+
+button.vdt-colorwell:not(#_):active:not(:disabled) {
+    --vista-button-face: url("/static_images/vista-controls/button-pressed.png");
+}
+
+/* the focus rectangle: dotted, 4 px in as on the kit's push buttons, in place of the shell's focus glow
+   (app.css takes every button's outline away with !important) */
+button.vdt-colorwell:not(#_):is(:focus, :focus-visible) {
+    box-shadow: none;
+    animation: none;
+}
+
+button.vdt-colorwell:not(#_):focus-visible {
+    outline: 1px dotted #000 !important;
+    outline-offset: -4px !important;
+}
+
+button.vdt-colorwell:not(#_):disabled {
+    --vista-button-face: url("/static_images/vista-controls/button-disabled.png");
+}
+
+button.vdt-colorwell:disabled > .vdt-colorwell-fill {
+    opacity: .5;
+}

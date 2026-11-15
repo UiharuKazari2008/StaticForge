@@ -1527,7 +1527,7 @@ body.desktop-mode:not(.windows-classic-theme) .dm-client .naxt-menubar.dm-menuba
     white-space: nowrap;
 }
 
-:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-items input.cpl-ss-time {
+:is(#melatonControlPanelModal, .cpl-instance) .cpl-ss-items .cpl-ss-time {
     width: 84px;
 }
 

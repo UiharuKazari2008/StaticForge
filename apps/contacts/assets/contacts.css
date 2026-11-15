@@ -42,10 +42,8 @@
 
 /* the date pickers stand in the Family page's blank statics */
 .vdt-client .wcon-date {
-    box-sizing: border-box;
     width: 100%;
     height: 100%;
-    font: inherit;
 }
 
 /* Import / Export's format list */

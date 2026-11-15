@@ -1931,7 +1931,7 @@
             csRender();
             const pane = csEl('.cs-panel > .cs-host');
             if (pane) pane.scrollTop = 0;
-            const first = target.querySelector('input:not([type=hidden]):not([type=checkbox]):not([type=color]), textarea');
+            const first = target.querySelector('input:not([type=hidden]):not([type=checkbox]), textarea');
             if (first && typeof first.focus === 'function') first.focus({ preventScroll: true });
             return;
         }

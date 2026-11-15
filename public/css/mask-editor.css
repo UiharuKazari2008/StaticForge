@@ -1302,25 +1302,6 @@ body.editor-open .gallery-container {
 }
 
 /* Workspace Edit Modal Styles */
-#workspaceColorInput,
-#workspaceBackgroundColorInput {
-    width: 64px;
-    padding: 4px 8px;
-    border: 1px solid var(--glass-border-2);
-    border-radius: var(--border-radius-md);
-    background: var(--glass-layer-2);
-    color: var(--text-primary);
-    font-size: 1rem;
-    height: 33px;
-}
-
-#workspaceColorInput:focus,
-#workspaceBackgroundColorInput:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 2px rgba(255, 69, 0, 0.2);
-}
-
 /* Workspace Settings Form Styles */
 
 

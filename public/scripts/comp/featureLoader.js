@@ -359,7 +359,8 @@ const FEATURE_MANIFEST = {
     },
     // Image Search (Yozora #828), the desktop program that replaced the Global Search DSAP
     image_search: {
-        depends: ['image_search_lib'],
+        // vista_dialog_templates: the date pickers of the advanced pane
+        depends: ['image_search_lib', 'vista_dialog_templates'],
         styles: ['css/image-search.css'],
         scripts: ['scripts/comp/imageSearchApp.js']
     },

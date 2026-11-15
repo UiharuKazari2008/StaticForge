@@ -653,12 +653,6 @@
 }
 [data-dsap] .sec-color-swatch {
     flex: 0 0 auto;
-    width: 32px;
-    height: 26px;
-    padding: 0;
-    border: 1px solid var(--dsap-smf-border, #555);
-    background: none;
-    cursor: var(--c-pointer);
 }
 
 /* Data Management: Remote workers */

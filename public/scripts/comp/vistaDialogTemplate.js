@@ -312,12 +312,31 @@
         return `<div class="${o.cls ? `${o.cls} ` : ''}vdt-dtp${o.updown || o.fmt === 'time' ? ' is-updown' : ''}${o.showNone ? ' has-none' : ''}" ${o.attrs || ''} data-vdt-fmt="${o.fmt}"${o.right ? ' data-vdt-right="1"' : ''}${o.disabled ? ' aria-disabled="true"' : ''} tabindex="${o.disabled ? -1 : 0}">${none}<span class="vdt-dtp-text"></span>${tail}</div>`;
     }
 
+    /** A picker written as markup (pickerHtml) takes its first value from data-vdt-value. */
+    function dtpInit(el) {
+        if (el._vdtDate || !el.dataset || !el.dataset.vdtValue) return;
+        const d = pickerParse(el.dataset.vdtValue);
+        if (d) el._vdtDate = d;
+    }
+
+    /** 'YYYY-MM-DD' or 'HH:MM' (what the browser's date and time inputs held) to a local Date. */
+    function pickerParse(text) {
+        const s = String(text || '').trim();
+        let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+        if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+        m = /^(\d{1,2}):(\d{2})/.exec(s);
+        if (m) { const d = dayOnly(new Date()); d.setHours(Number(m[1]), Number(m[2])); return d; }
+        return null;
+    }
+
     function dtpValue(el) {
+        dtpInit(el);
         if (el.classList.contains('is-none')) return null;
         return new Date((el._vdtDate || dayOnly(new Date())).getTime());
     }
 
     function dtpFields(el) {
+        dtpInit(el);
         const d = el._vdtDate || dayOnly(new Date());
         if (el.dataset.vdtFmt === 'time') {
             return [['h', String(d.getHours() % 12 || 12)], [':', ':'], ['n', String(d.getMinutes()).padStart(2, '0')], [' ', ' '], ['a', d.getHours() < 12 ? 'AM' : 'PM']];
@@ -344,6 +363,12 @@
             : `<span>${esc(v)}</span>`)).join('');
     }
 
+    /** "change" for every picker; a markup picker (pickerHtml) also says "input", as the input it replaced did. */
+    function dtpChanged(el) {
+        if (el.dataset.vdtPicker) el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     function dtpSet(el, value, quiet) {
         if (value === null && el.classList.contains('has-none')) {
             const was = el.classList.contains('is-none');
@@ -351,7 +376,7 @@
             const box = el.querySelector('.vdt-dtp-none');
             if (box) box.checked = false;
             dtpDraw(el);
-            if (!was && !quiet) el.dispatchEvent(new Event('change', { bubbles: true }));
+            if (!was && !quiet) dtpChanged(el);
             return;
         }
         const d = value instanceof Date ? value : new Date(value);
@@ -365,7 +390,7 @@
         const box = el.querySelector('.vdt-dtp-none');
         if (box) box.checked = true;
         dtpDraw(el);
-        if (changed && !quiet) el.dispatchEvent(new Event('change', { bubbles: true }));
+        if (changed && !quiet) dtpChanged(el);
     }
 
     function dtpStep(el, field, delta) {
@@ -430,6 +455,43 @@
         el.getValue = () => dtpValue(el);
         el.setValue = (v) => dtpSet(el, v, true);
         return el;
+    }
+
+    /**
+     * The picker as markup, for pages that are written as one string: { type: 'date' | 'time',
+     * value ('YYYY-MM-DD' / 'HH:MM', or '' for none), showNone (the check box; a date without a
+     * value needs it), cls, attrs, disabled, right }. It stands where a page used the browser's
+     * <input type="date"> or type="time"; read it with pickerValue(el), which answers in the same
+     * text form. It fires "change" (and "input") like the input did.
+     */
+    function pickerHtml(o = {}) {
+        dtpWire();
+        const time = o.type === 'time';
+        const start = pickerParse(o.value);
+        const el = datePicker({ format: time ? 'time' : 'short', showNone: !time && (o.showNone || !start), value: start || (time ? pickerParse('00:00') : null), right: o.right, disabled: o.disabled, className: o.cls || '' });
+        if (start || time) el.dataset.vdtValue = time ? `${String((start || pickerParse('00:00')).getHours()).padStart(2, '0')}:${String((start || pickerParse('00:00')).getMinutes()).padStart(2, '0')}` : String(o.value).trim().slice(0, 10);
+        el.dataset.vdtPicker = time ? 'time' : 'date';
+        const box = el.querySelector('.vdt-dtp-none');
+        if (box && el.classList.contains('is-none')) box.removeAttribute('checked');
+        const html = el.outerHTML;
+        return o.attrs ? html.replace(/^<div /, `<div ${o.attrs} `) : html;
+    }
+
+    /** The value of a picker in the text form of the input it replaced: 'YYYY-MM-DD', 'HH:MM', or ''. */
+    function pickerValue(el) {
+        const d = el ? dtpValue(el) : null;
+        if (!d) return '';
+        const two = (n) => String(n).padStart(2, '0');
+        return el.dataset.vdtFmt === 'time' ? `${two(d.getHours())}:${two(d.getMinutes())}` : `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`;
+    }
+
+    /** Sets a picker from that text form ('' clears one that has the check box). */
+    function pickerSet(el, text) {
+        if (!el) return;
+        dtpInit(el);
+        const d = pickerParse(text);
+        if (d) dtpSet(el, d, true);
+        else if (el.classList.contains('has-none')) { if (!el._vdtDate) el._vdtDate = dayOnly(new Date()); dtpSet(el, null, true); }
     }
 
     function monthCalHtml(view, selected) {
@@ -501,6 +563,7 @@
             const el = ev.target.closest && ev.target.closest('.vdt-dtp');
             if (dtpPopup && !(el && el === dtpPopup.el)) dtpClose(false);
             if (!el || el.getAttribute('aria-disabled') === 'true') return;
+            dtpInit(el);
             if (ev.target.closest('.vdt-dtp-none')) {
                 ev.preventDefault();
                 el.focus();
@@ -522,6 +585,9 @@
             el._vdtTyped = '';
             dtpDraw(el);
         }, true);
+        // the check box (DTS_SHOWNONE) is set by the mousedown above; the click's own toggle would
+        // flip it back and leave it clear beside a live value
+        doc.addEventListener('click', (ev) => { if (ev.target.classList && ev.target.classList.contains('vdt-dtp-none')) ev.preventDefault(); }, true);
         doc.addEventListener('focusin', (ev) => { if (ev.target.classList && ev.target.classList.contains('vdt-dtp')) dtpDraw(ev.target); });
         doc.addEventListener('focusout', (ev) => {
             const el = ev.target;
@@ -530,6 +596,7 @@
         doc.addEventListener('keydown', (ev) => {
             const el = ev.target;
             if (!el.classList || !el.classList.contains('vdt-dtp')) return;
+            dtpInit(el);
             const order = dtpFields(el).filter(([k]) => /[a-z]/.test(k)).map(([k]) => k).filter((k) => k !== 'w');
             const field = order.includes(el._vdtField) ? el._vdtField : order[0];
             let handled = true;
@@ -1281,11 +1348,14 @@
 
     /**
      * opts: { id, title ('Color' by default, Paint says 'Edit Colors'), owner, color, custom (16
-     * colours), onCustom(custom) to keep them, full (open with the custom half shown) }
+     * colours; left out, the session's shared set is used), onCustom(custom) to keep them, full (open with the custom half shown) }
      */
     function chooseColor(opts = {}) {
         return new Promise((resolve) => {
-            const custom = (opts.custom && opts.custom.length === 16 ? opts.custom : Array(16).fill('#ffffff')).slice();
+            // a caller that keeps no custom colours of its own shares the session's
+            const shared = !opts.custom && typeof opts.onCustom !== 'function';
+            const given = shared ? ccSession : opts.custom;
+            const custom = (given && given.length === 16 ? given : Array(16).fill('#ffffff')).slice();
             let color = ccHex(...ccRgb(opts.color || '#000000'));
             let customSlot = 0;
             let done = false;
@@ -1378,7 +1448,8 @@
                         const cell = content.querySelector(`.vdt-cc-cell[data-slot="${customSlot}"]`);
                         if (cell) { cell.dataset.c = color; cell.style.setProperty('--c', color); }
                         customSlot = (customSlot + 1) % 16;
-                        if (typeof opts.onCustom === 'function') opts.onCustom(custom.slice());
+                        if (shared) ccSession = custom.slice();
+                        else if (typeof opts.onCustom === 'function') opts.onCustom(custom.slice());
                     });
                     paint();
                 },
@@ -1389,5 +1460,71 @@
         });
     }
 
-    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, chooseColor, datePicker, renderControls, size, units, rect, label };
+    // ---- the colour button (a BS_OWNERDRAW push button that holds a colour) ----------------------
+    //
+    // Internet Properties > Colors has them: a push-button face with the colour inside, and a click
+    // opens the Color dialog. It stands wherever a page used the browser's <input type="color">
+    // (no-native-browser-ui.mdc), and answers like one: el.value (#rrggbb), el.disabled, and it fires
+    // "input" and "change" when the user picks. Custom colours are kept for the session, as a
+    // program's static CHOOSECOLOR array is.
+    let ccSession = null;
+
+    function colorWellPaint(el) {
+        const fill = el.querySelector('.vdt-colorwell-fill');
+        if (fill) fill.style.setProperty('--c', el._vdtColor);
+    }
+
+    /** Markup for a colour button; pass it through colorWell(el) once it is in the page. */
+    function colorWellHtml(o = {}) {
+        return `<button type="button" class="${o.cls ? `${o.cls} ` : ''}vdt-colorwell"${o.id ? ` id="${esc(o.id)}"` : ''} data-color="${esc(o.value || ccHex(0, 0, 0))}"${o.title ? ` data-color-title="${esc(o.title)}"` : ''}${o.label ? ` aria-label="${esc(o.label)}"` : ''}${o.attrs ? ` ${o.attrs}` : ''}${o.disabled ? ' disabled' : ''}><span class="vdt-colorwell-fill"></span></button>`;
+    }
+
+    /**
+     * Makes el (a <button class="vdt-colorwell">, or anything colorWellHtml wrote) a colour button,
+     * or builds one from opts { value, title, label, className, disabled }. Returns the element.
+     */
+    function colorWell(target = {}) {
+        let el = target;
+        if (!(target instanceof root.Element)) {
+            const holder = doc.createElement('div');
+            holder.innerHTML = colorWellHtml({ cls: target.className, value: target.value, title: target.title, label: target.label, disabled: target.disabled });
+            el = holder.firstElementChild;
+        }
+        if (el._vdtColorWell) return el;
+        el._vdtColorWell = true;
+        el.classList.add('vdt-colorwell');
+        if (!el.querySelector('.vdt-colorwell-fill')) el.innerHTML = '<span class="vdt-colorwell-fill"></span>';
+        el._vdtColor = ccHex(...ccRgb(el.getAttribute('value') || el.dataset.color || 'black'));
+        Object.defineProperty(el, 'value', {
+            configurable: true,
+            get() { return el._vdtColor; },
+            set(v) {
+                if (!/^(#[0-9a-f]{3}|#?[0-9a-f]{6})$/i.test(String(v || '').trim())) return;
+                el._vdtColor = ccHex(...ccRgb(String(v).trim()));
+                colorWellPaint(el);
+            }
+        });
+        colorWellPaint(el);
+        el.addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            if (el.disabled || el._vdtColorOpen) return;
+            el._vdtColorOpen = true;
+            let picked = null;
+            try {
+                picked = await chooseColor({
+                    id: 'vdtColorWellDialog',
+                    owner: el.closest('.modal') || undefined,
+                    title: el.dataset.colorTitle || 'Color',
+                    color: el._vdtColor
+                });
+            } finally { el._vdtColorOpen = false; }
+            if (!picked || picked.toLowerCase() === el._vdtColor) return;
+            el.value = picked;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        return el;
+    }
+
+    root.vistaDialogTemplate = { openSheet, openDialog, openWizard, chooseColor, colorWell, colorWellHtml, datePicker, pickerHtml, pickerValue, pickerSet, renderControls, size, units, rect, label };
 })(typeof window !== 'undefined' ? window : globalThis);

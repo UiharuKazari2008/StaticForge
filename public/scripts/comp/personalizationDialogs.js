@@ -791,9 +791,9 @@
             ${text(7, 44, 62, 8, '<u>N</u>ame:')}
             <input type="text" class="tbp-ctl tbp-edit cpl-th-name" style="${dlu(72, 42, 173, 14)}" maxlength="50" aria-label="Name">
             ${text(7, 64, 62, 8, '<u>A</u>ccent color:')}
-            <input type="color" class="tbp-ctl cpl-th-color" style="${dlu(72, 62, 40, 14)}" aria-label="Accent color">
+            ${root.vistaDialogTemplate.colorWellHtml({ cls: 'tbp-ctl cpl-th-color', label: 'Accent color', attrs: `style="${dlu(72, 62, 40, 14)}"` })}
             ${text(7, 82, 62, 8, '<u>G</u>lass color:')}
-            <input type="color" class="tbp-ctl cpl-th-bg" style="${dlu(72, 80, 40, 14)}" aria-label="Glass color">
+            ${root.vistaDialogTemplate.colorWellHtml({ cls: 'tbp-ctl cpl-th-bg', label: 'Glass color', attrs: `style="${dlu(72, 80, 40, 14)}"` })}
             ${text(7, 104, 62, 8, '<u>P</u>rimary font:')}
             ${combo('cpl-th-font', 72, 102, 173, 'Primary font')}
             ${text(7, 124, 62, 8, 'Te<u>x</u>tarea font:')}
@@ -882,6 +882,8 @@
         const name = c.querySelector('.cpl-th-name');
         name.value = saved.name;
         name.disabled = id === 'default';
+        // Vista's colour buttons in place of the browser's colour inputs (they open the Color dialog)
+        c.querySelectorAll('.vdt-colorwell').forEach((w) => root.vistaDialogTemplate.colorWell(w));
         c.querySelector('.cpl-th-color').value = saved.color;
         c.querySelector('.cpl-th-bg').value = saved.backgroundColor;
         c.addEventListener('input', (ev) => {

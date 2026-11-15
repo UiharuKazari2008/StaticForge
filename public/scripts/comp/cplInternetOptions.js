@@ -492,7 +492,7 @@
         const overrides = {};
         Object.entries(SW).forEach(([id]) => {
             const label = { 108: '&Text:', 109: '&Background:', 111: 'V&isited:', 110: 'U&nvisited:', 112: 'H&over:' }[id];
-            overrides[id] = { html: `<label class="cpl-inet-swatch"><span>${V().label(label)}</span><input type="color" value="${esc(values[id])}"></label>` };
+            overrides[id] = { html: `<label class="cpl-inet-swatch"><span>${V().label(label)}</span>${V().colorWellHtml({ value: values[id] })}</label>` };
         });
         return regDialog({
             id: 'cplInetColors',
@@ -505,10 +505,11 @@
                 { id: 107, name: 'Use System Colors', type: 'check', def: true }
             ],
             init(ctx) {
+                Object.keys(SW).forEach((id) => { const w = ctx.holder(Number(id)).querySelector('.vdt-colorwell'); if (w) V().colorWell(w); });
                 const sync = () => {
                     const sys = !!ctx.get(107);
-                    [108, 109].forEach((id) => { const i = ctx.holder(id).querySelector('input'); if (i) i.disabled = sys; });
-                    const hover = ctx.holder(112).querySelector('input');
+                    [108, 109].forEach((id) => { const i = ctx.holder(id).querySelector('.vdt-colorwell'); if (i) i.disabled = sys; });
+                    const hover = ctx.holder(112).querySelector('.vdt-colorwell');
                     if (hover) hover.disabled = !ctx.get(1524);
                 };
                 ctx.on(107, 'change', sync);
@@ -518,7 +519,7 @@
             async ok(ctx) {
                 const patch = {};
                 Object.entries(SW).forEach(([id, [name]]) => {
-                    const i = ctx.holder(Number(id)).querySelector('input');
+                    const i = ctx.holder(Number(id)).querySelector('.vdt-colorwell');
                     if (i) patch[name] = i.value;
                 });
                 if (R()) await R().set(KEY.colors, patch);

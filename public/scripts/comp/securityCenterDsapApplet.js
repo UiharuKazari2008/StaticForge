@@ -327,7 +327,7 @@ ${dsapSmfBuildHeader({
       <input type="hidden" id="secCursorAccountIdInput" value="">
       <label>Profile Name<input type="text" id="secCursorAccountNameInput" class="sec-input" placeholder="e.g. Main Account, Work Account"></label>
       <div class="sec-readonly-row"><span class="sec-dsap-setting-hint">Display name</span> <span id="secCursorAccountDisplayName" class="sec-readonly-value">—</span></div>
-      <label>Badge color<span class="sec-color-row"><input type="color" id="secCursorAccountColorPicker" class="sec-color-swatch" value="#5b8def" aria-label="Badge color picker"><input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7" spellcheck="false"></span></label>
+      <label>Badge color<span class="sec-color-row"><button type="button" id="secCursorAccountColorPicker" class="sec-color-swatch vdt-colorwell" data-color="#5b8def" data-color-title="Badge Color" aria-label="Badge color"><span class="vdt-colorwell-fill"></span></button><input type="text" id="secCursorAccountColorInput" class="sec-input" placeholder="#5b8def" maxlength="7" spellcheck="false"></span></label>
       <label>Email Address<input type="text" id="secCursorAccountEmailInput" class="sec-input" placeholder="user@example.com (auto-detected if token is pasted)"></label>
       <label>Credential type<select id="secCursorAccountTokenKind" class="sec-input">
         <option value="">Auto (API key or session token)</option>
@@ -1098,6 +1098,12 @@ const securityDsapDriver = {
         const colorText = root.querySelector('#secCursorAccountColorInput');
         if (colorPicker && colorText && colorPicker.dataset.secWired !== '1') {
             colorPicker.dataset.secWired = '1';
+            // Vista's colour button and Color dialog (vistaDialogTemplate.colorWell), not the browser's picker
+            if (window.featureLoader) {
+                window.featureLoader.loadFeature('vista_dialog_templates')
+                    .then(() => window.vistaDialogTemplate.colorWell(colorPicker))
+                    .catch((error) => console.error('Badge color button:', error));
+            }
             colorPicker.addEventListener('input', () => { colorText.value = colorPicker.value; });
             colorText.addEventListener('input', () => {
                 const v = colorText.value.trim();
@@ -2256,7 +2262,17 @@ ${r.lastInvalidAttempt ? `<div><strong>Last invalid attempt:</strong> ${security
     async _logoutCursorProfile(root, accountId, btn) {
         if (!accountId || !(await this._ensureWs())) return;
         const acc = (this._state.cursorAccounts?.accounts || []).find((row) => row.id === accountId);
-        if (!window.confirm(`Log out ${acc?.name || accountId}? This clears its saved Cursor login and API key.`)) return;
+        // showConfirmationDialog: public/scripts/comp/confirmationDialog.js
+        const ok = await showConfirmationDialog(
+            `Log out ${acc?.name || accountId}? This clears its saved Cursor login and API key.`,
+            [
+                { text: 'Log Out', value: true, className: 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ],
+            null,
+            { title: 'Cursor Account' }
+        );
+        if (!ok) return;
         if (btn) btn.disabled = true;
         try {
             const response = await wsClient.sendMessage('logout_cursor_account_profile', { accountId });

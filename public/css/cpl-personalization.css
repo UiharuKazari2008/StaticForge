@@ -1047,9 +1047,3 @@ body.desktop-mode .modal.tbp-window[data-vista-dialog] > .modal-content.tbp-clie
     bottom: 10px;
 }
 
-.tbp-client input[type="color"].tbp-ctl {
-    padding: 1px;
-    border: 1px solid #707070;
-    border-radius: 2px;
-    background: #fff;
-}

@@ -337,7 +337,20 @@
                 // Family: the date pickers stand where the template's blank statics are
                 const g = ctx.el(108, P.family);
                 if (g && g.tagName === 'SELECT') g.innerHTML = ['Unspecified', 'Male', 'Female'].map((x) => `<option${(c.gender || 'Unspecified') === x ? ' selected' : ''}>${x}</option>`).join('');
-                const dateBox = (id, v) => { const host = ctx.holder(id, P.family); if (host) { host.innerHTML = `<input type="date" class="tbp-edit wcon-date" value="${esc(v)}">`; host.querySelector('input').addEventListener('change', () => ctx.dirty()); } };
+                // Vista's date picker with its check box (DTS_SHOWNONE: clear = no date), not the browser's date input
+                const dateBox = (id, v) => {
+                    const host = ctx.holder(id, P.family);
+                    if (!host) return;
+                    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+                    const el = root.vistaDialogTemplate.datePicker({ showNone: true, value: m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null, className: 'wcon-date' });
+                    host.textContent = '';
+                    host.appendChild(el);
+                    // the template's placeholder (a black frame, not WS_VISIBLE) only marks the place: the
+                    // picker made there is shown, the frame is not drawn
+                    Array.from(host.classList).filter((n) => n.startsWith('vdt-frame')).forEach((n) => host.classList.remove(n));
+                    host.hidden = false;
+                    el.addEventListener('change', () => ctx.dirty());
+                };
                 dateBox(6061, c.birthday);
                 dateBox(6063, c.anniversary);
                 set(ctx, 6054, c.spouse, P.family);
@@ -372,10 +385,17 @@
                     [w.street, w.city, w.region, w.postal, w.country, w.company, w.title, w.department, w.office, w.phone, w.fax, w.pager, w.url] = [2571, 2572, 2573, 2574, 2575, 2569, 2570, 2579, 2580, 2577, 2578, 2581, 2576].map((id) => get(ctx, id, P.work));
                     const g = ctx.el(108, P.family);
                     c.gender = g && g.value !== 'Unspecified' ? g.value : '';
+                    // the pickers answer a Date or null (check box clear); kept as YYYY-MM-DD text
+                    const dateText = (host, was) => {
+                        const el = host && host.querySelector('.vdt-dtp');
+                        if (!el || typeof el.getValue !== 'function') return was;
+                        const d = el.getValue();
+                        return d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : '';
+                    };
                     const bd = ctx.holder(6061, P.family);
                     const an = ctx.holder(6063, P.family);
-                    c.birthday = bd && bd.querySelector('input') ? bd.querySelector('input').value : c.birthday;
-                    c.anniversary = an && an.querySelector('input') ? an.querySelector('input').value : c.anniversary;
+                    c.birthday = dateText(bd, c.birthday);
+                    c.anniversary = dateText(an, c.anniversary);
                     c.spouse = get(ctx, 6054, P.family);
                     c.notes = (ctx.el(2463, P.notes) || {}).value || '';
                 }

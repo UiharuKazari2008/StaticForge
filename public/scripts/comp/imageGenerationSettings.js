@@ -152,8 +152,6 @@ function syncImageGenerationSettingsUI() {
     if (hideGalleryBtn) {
         hideGalleryBtn.dataset.state = s.hideQuickstartGallery ? 'on' : 'off';
     }
-    const custom = document.getElementById('studioTransparencyCustomColor');
-    if (custom) custom.value = s.transparencyCustomColor;
 }
 
 function applyImageGenerationSettingsToClient(settings) {
@@ -2297,17 +2295,24 @@ function getStudioImageGenerationSettingsMenuConfig() {
     };
 }
 
-function openStudioTransparencyCustomColorPicker() {
-    const input = document.getElementById('studioTransparencyCustomColor');
-    if (!input) return;
-    input.value = imageGenerationSettingsState.transparencyCustomColor;
-    if (input.showPicker) {
-        try {
-            input.showPicker();
-            return;
-        } catch (_err) { /* native picker unavailable */ }
+/** Custom transparency colour: Vista's Color dialog (vistaDialogTemplate.chooseColor), never the browser's picker. */
+async function openStudioTransparencyCustomColorPicker() {
+    if (!window.featureLoader) return;
+    try {
+        await window.featureLoader.loadFeature('vista_dialog_templates');
+        const picked = await window.vistaDialogTemplate.chooseColor({
+            id: 'studioTransparencyColorDialog',
+            owner: document.getElementById('manualModal') || undefined,
+            color: imageGenerationSettingsState.transparencyCustomColor
+        });
+        if (!picked) return;
+        void persistImageGenerationSettingsPatch({
+            transparencyBackground: 'custom',
+            transparencyCustomColor: normalizeImageGenerationCustomColorClient(picked)
+        });
+    } catch (error) {
+        console.error('Transparency colour:', error);
     }
-    input.click();
 }
 
 let studioMenuActionDepth = 0;
@@ -2953,16 +2958,6 @@ function wireImageGenerationSettingsControls() {
     }
 
     wireStudioGalleryModebarStuck();
-
-    const custom = document.getElementById('studioTransparencyCustomColor');
-    if (custom) {
-        custom.addEventListener('input', () => {
-            void persistImageGenerationSettingsPatch({
-                transparencyBackground: 'custom',
-                transparencyCustomColor: normalizeImageGenerationCustomColorClient(custom.value)
-            });
-        });
-    }
 
     wireStudioImageGenerationSettingsMenu();
     wireStudioMenuBar();

@@ -332,8 +332,8 @@
                             <label class="isx-adv-row"><span class="isx-adv-label">Before</span><select class="isx-f-before isx-wide" title="Created before">${opt(RELATIVE_DATES, 'any')}</select></label>
                         </div>
                         <div class="isx-date-exact" hidden>
-                            <label class="isx-adv-row"><span class="isx-adv-label">From</span><input type="date" class="isx-f-from isx-wide"></label>
-                            <label class="isx-adv-row"><span class="isx-adv-label">To</span><input type="date" class="isx-f-to isx-wide"></label>
+                            <div class="isx-adv-row"><span class="isx-adv-label">From</span>${root.vistaDialogTemplate.pickerHtml({ type: 'date', showNone: true, cls: 'isx-f-from isx-wide' })}</div>
+                            <div class="isx-adv-row"><span class="isx-adv-label">To</span>${root.vistaDialogTemplate.pickerHtml({ type: 'date', showNone: true, cls: 'isx-f-to isx-wide' })}</div>
                         </div>
                         <label class="isx-adv-row"><span class="isx-adv-label">Upscaled</span><select class="isx-f-upscaled isx-wide">${tri}</select></label>
                         <label class="isx-adv-row"><span class="isx-adv-label">Replacements</span><select class="isx-f-dynRepl isx-wide" title="Dynamic replacements">${tri}</select></label>
@@ -769,8 +769,9 @@
             q('datemode').value = f.dateMode === 'exact' ? 'exact' : 'relative';
             q('after').value = (f.dateAfter && f.dateAfter.relative) || '';
             q('before').value = (f.dateBefore && f.dateBefore.relative) || '';
-            q('from').value = f.dateRange && f.dateRange.start ? String(f.dateRange.start).slice(0, 10) : '';
-            q('to').value = f.dateRange && f.dateRange.end ? String(f.dateRange.end).slice(0, 10) : '';
+            // Vista's date pickers (vistaDialogTemplate.pickerHtml): unchecked = no bound on that side
+            root.vistaDialogTemplate.pickerSet(q('from'), f.dateRange && f.dateRange.start ? String(f.dateRange.start).slice(0, 10) : '');
+            root.vistaDialogTemplate.pickerSet(q('to'), f.dateRange && f.dateRange.end ? String(f.dateRange.end).slice(0, 10) : '');
             ['stepsMin', 'stepsMax', 'guidanceMin', 'guidanceMax', 'rescaleMin', 'rescaleMax'].forEach((k) => { q(k).value = f[k] != null ? String(f[k]) : ''; });
             q('compiled').checked = s.promptSourceCompiled !== false;
             q('input').checked = s.promptSourceInput !== false;
@@ -836,8 +837,8 @@
             const f = { ...omegasearchDsapDefaultFilters(), models: s.filters.models || [], resolutionPreset: s.filters.resolutionPreset || [] };
             f.dateMode = q('datemode').value === 'exact' ? 'exact' : 'relative';
             if (f.dateMode === 'exact') {
-                const a = q('from').value.trim();
-                const b = q('to').value.trim();
+                const a = root.vistaDialogTemplate.pickerValue(q('from'));
+                const b = root.vistaDialogTemplate.pickerValue(q('to'));
                 f.dateRange = a || b ? { start: a || undefined, end: b || undefined } : null;
             } else {
                 f.dateAfter = q('after').value ? { relative: q('after').value } : null;

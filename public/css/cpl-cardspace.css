@@ -839,13 +839,8 @@
 }
 
 /* the profile form's colour box: a swatch beside its hex field, not a stretched bar */
-#dreamscapeCardSpaceModal .cs-host .sec-color-row input[type="color"] {
+#dreamscapeCardSpaceModal .cs-host .sec-color-row .sec-color-swatch {
     flex: none;
-    width: 34px;
-    height: 21px;
-    padding: 1px;
-    border: 1px solid #abadb3;
-    background: #fff;
 }
 
 /* E-mail account cards (Yozora #789): a server line is host, port and security side by side;
