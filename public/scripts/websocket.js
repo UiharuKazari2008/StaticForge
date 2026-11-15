@@ -11141,8 +11141,14 @@ window.wsClient = new WebSocketClient();
         if (!ws || ws.readyState !== 1) return;
         try { ws.send(JSON.stringify({ type: 'client_dormant', on })); sent = on; } catch (_) { /* closing */ }
     };
-    document.addEventListener('visibilitychange', () => tell(false));
-    window.addEventListener('melatonscreen', () => setTimeout(() => tell(false), 0));
+    // coming back on screen always says so, even if the page thinks it already did (a lost report
+    // must never leave the server holding its status pushes, Yukimi Nov 15: status icons not updating);
+    // a touch or a key on a page that last said asleep says awake as well
+    document.addEventListener('visibilitychange', () => tell(document.visibilityState === 'visible'));
+    window.addEventListener('melatonscreen', (e) => setTimeout(() => tell(!!(e && e.detail && e.detail.on)), 0));
+    const touched = () => { if (sent === true && !dormant()) tell(true); };
+    document.addEventListener('pointerdown', touched, { capture: true, passive: true });
+    document.addEventListener('keydown', touched, { capture: true, passive: true });
     // a new socket starts awake on the server: say it again only when sleeping
     c.on('connected', () => { sent = false; if (dormant()) tell(true); });
 })();
