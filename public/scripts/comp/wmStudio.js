@@ -1884,30 +1884,8 @@
         });
     }
 
-    // ---------------------------------------------------------------- the app icon at dpr 3
-
-    /**
-     * The shell's art table (HD_ART, wmShell.js) has no app-studio yet, so its srcset stops at @2x and
-     * the icon is scaled up on dpr-3 phones. Until the shell lists it, its images get the @4x art
-     * (app-studio@4x.png, app-studio-lg@4x.png) here.
-     */
-    function hdIcon() {
-        const shell = document.getElementById('wmShell');
-        if (!shell) return;
-        const fix = (scope) => {
-            scope.querySelectorAll('img[src*="/app-studio"]').forEach((img) => {
-                const m = /\/(app-studio(?:-lg)?)\.png(?:$|\?)/.exec(img.getAttribute('src') || '');
-                const set = img.getAttribute('srcset') || '';
-                if (!m || / 4x/.test(set)) return;
-                img.setAttribute('srcset', `${set ? `${set}, ` : ''}/static_images/wm61/${m[1]}@4x.png 4x`);
-            });
-        };
-        fix(shell);
-        if (typeof MutationObserver !== 'function') return;
-        new MutationObserver((muts) => {
-            for (const mu of muts) mu.addedNodes.forEach((n) => { if (n.nodeType === 1) fix(n.tagName === 'IMG' ? n.parentNode || shell : n); });
-        }).observe(shell, { childList: true, subtree: true });
-    }
+    // (the app icon's @4x art: the shell's art table lists app-studio now (HD_ART), so its srcset
+    // carries 4x itself; the subtree observer that patched every added image is gone, #849)
 
     // ---------------------------------------------------------------- the prompt editor
 
@@ -2559,7 +2537,6 @@
         wrapEntryPoints();
         watchWindows();
         wrapOpenModal();
-        hdIcon();
         // the shell puts the app title back when the picture view closes: a tool page keeps its own
         if (typeof MutationObserver === 'function') {
             new MutationObserver(() => { if (!root.hasAttribute('data-wm-viewer')) refreshTitle(); })
