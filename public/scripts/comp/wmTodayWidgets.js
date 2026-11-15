@@ -688,6 +688,7 @@
             '-',
             { label: 'Copy Prompt', disabled: !p, action: () => copyPrompt(p) },
             { label: 'Copy Picture', disabled: !p || !fnOf('copyImageToClipboard'), action: () => { try { window.copyImageToClipboard(item); } catch (err) { console.warn('[wmTodayWidgets] copy', err); } } },
+            { label: 'Copy Lookback', disabled: !p || !fnOf('copyLookbackImage'), action: () => window.copyLookbackImage(p.filename) },
             '-',
             { label: 'Open Studio', action: () => open('studio') }
         ];

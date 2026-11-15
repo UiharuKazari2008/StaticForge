@@ -8707,6 +8707,8 @@
                 '-',
                 // the desktop gallery's Ask Wren (galleryView.js 'ask-wren'): the Director app opens with it attached
                 { label: 'Ask Wren', disabled: !fn('askWrenAboutImage'), action: () => run('askWrenAboutImage', name) },
+                // the desktop gallery's Copy Lookback (copyLookback.js): a ref to paste to a model
+                { label: 'Copy Lookback', disabled: !fn('copyLookbackImage'), action: () => run('copyLookbackImage', name) },
                 '-',
                 { label: 'Set as Today Background', action: () => setTodayBackground(name) },
                 { label: 'Move To', disabled: !item, submenu: () => moveToItems(name) },
@@ -9157,6 +9159,7 @@
                             { label: 'Switch Workspace', submenu: workspaceSubmenu },
                             '-',
                             { label: 'Set as Today Background', disabled: !selectedName, action: () => setTodayBackground(selectedName) },
+                            { label: 'Copy Lookback', disabled: !selectedName || typeof window.copyLookbackImage !== 'function', action: () => window.copyLookbackImage(selectedName) },
                             '-',
                             ...(hasTodayBackground() ? [{ label: 'Clear Today Background', action: () => setTodayBackground(null) }] : []),
                             '-',
@@ -9566,6 +9569,8 @@
                             { label: 'Director', disabled: !canDirector, action: () => window.askWrenAboutImage(editPic) }
                         ] });
                     }
+                    // Glancewell's Copy Lookback (imageViewer.js): a ref to paste to a model
+                    if (shown && typeof window.copyLookbackImage === 'function') items.push({ label: 'Copy Lookback', action: () => window.copyLookbackImage(shown) });
                     // the device's Menu: ... Edit | Properties | Options...: Pictures & Videos'
                     // Properties page (wmFileExplorer.js); ok / Cancel bring the picture back
                     const facts = viewerPictureFacts();

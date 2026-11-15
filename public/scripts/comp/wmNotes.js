@@ -977,6 +977,7 @@
                 { label: 'Rename/Move...', disabled: !list.length || ro, action: () => renameNote(list) },
                 { label: 'Delete', disabled: !list.length || ro, action: () => deleteNote(list) },
                 { label: 'Create Copy', disabled: !one || ro, action: () => copyNote(one) },
+                { label: 'Copy Lookback', disabled: !one || typeof window.copyLookbackNote !== 'function', action: () => window.copyLookbackNote(one.noteId) },
                 '-',
                 { label: 'Select All', disabled: !items.length, action: selectAll },
                 '-',
@@ -1032,6 +1033,11 @@
             // device (Rename/Move..., Delete | Send..., Beam...)
             const writing = !!(editing && editing.mode === 'writing');
             const ink = editing ? editing.ink.strokes.length : 0;
+            // the text selected on the page (a textarea keeps its selection while the menu is up)
+            const lookbackSelection = () => {
+                const a = page.querySelector('.nt-text');
+                return a && !writing ? a.value.slice(a.selectionStart, a.selectionEnd) : '';
+            };
             return [
                 { label: 'View Recording Toolbar', checked: vbShown(), action: toggleVoicebar },
                 { label: 'Draw', checked: writing, disabled: ro, action: toggleDraw },
@@ -1046,6 +1052,8 @@
                 { label: 'Cut', disabled: ro || writing, action: () => editCmd('cut') },
                 { label: 'Copy', disabled: writing, action: () => editCmd('copy') },
                 { label: 'Paste', disabled: ro || writing, action: paste },
+                // Notepad's Copy Lookback (notepadManager.js): the note, or the selected text in it
+                { label: 'Copy Lookback', disabled: !cur || typeof window.copyLookbackNote !== 'function', action: () => window.copyLookbackNote(cur.noteId, lookbackSelection()) },
                 { label: 'Edit', submenu: [
                     { label: 'Select All', disabled: writing, action: () => { const a = page.querySelector('.nt-text'); a.focus(); a.select(); } },
                     { label: 'Clear All', disabled: ro, action: clearAll }

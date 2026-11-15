@@ -476,6 +476,8 @@
         return [
             { label: 'Use in Studio', disabled: !it, submenu: () => useItems(it) },
             { label: 'Properties', disabled: !it || view() === 'details', action: () => openDetails(it) },
+            // Reference Manager's Copy Lookback (referenceContextMenu.js): a ref to paste to a model
+            { label: 'Copy Lookback', disabled: !it || typeof window.copyLookbackReference !== 'function', action: () => window.copyLookbackReference(it) },
             '-',
             { label: 'Move To', disabled: !it, submenu: () => moveItems(it) },
             { label: 'Delete', disabled: !it, action: () => remove(it) }

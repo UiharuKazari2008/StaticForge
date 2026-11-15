@@ -546,6 +546,7 @@
             { label: 'Director', disabled: !canDirector, action: () => director(file) }
         ] });
         out.push({ label: 'Send', submenu: () => sendItems(file) });
+        out.push({ label: 'Copy Lookback', disabled: !fn('copyLookbackImage'), action: () => window.copyLookbackImage(file) });
         if (!inViewer) out.push({ label: 'Save', action: () => save(file) });
         out.push('-');
         out.push({ label: 'Set as Today Background', action: () => ws.setTodayBackground(file, imageOf(file)) });
@@ -752,6 +753,7 @@
                     return [
                         { label: 'Copy Prompt', disabled: !f.mainPrompt, action: () => copyText(f.mainPrompt || '') },
                         { label: 'Copy Undesired Content', disabled: !f.mainUc, action: () => copyText(f.mainUc || '') },
+                        { label: 'Copy Lookback', disabled: !fn('copyLookbackImage'), action: () => window.copyLookbackImage(file) },
                         '-',
                         { label: pinned(file) ? 'Remove from Favorites' : 'Add to Favorites', disabled: !fn('togglePinImage'), action: async () => { await toggleFavorite(file); renderDetail(); } },
                         { label: 'Edit', submenu: () => [

@@ -1887,6 +1887,26 @@
         return out;
     }
 
+    /**
+     * The desktop Explorer's Copy Lookback (explorerApplet.js 'copy-lookback'): a picture, note or
+     * reference as a [label](dsap://lookback/...) ref to paste to a model (copyLookback.js).
+     */
+    function lookbackItem(sel) {
+        const one = sel.length === 1 ? sel[0] : null;
+        if (!one || isPhoneItem(one)) return null;
+        const k = one.targetKind;
+        let run = null;
+        if ((k === 'image' || k === 'scrap') && typeof window.copyLookbackImage === 'function') {
+            const name = one.previewImageFilename || one.targetId;
+            if (name) run = () => window.copyLookbackImage(name);
+        } else if (k === 'note' && one.targetId && typeof window.copyLookbackNote === 'function') {
+            run = () => window.copyLookbackNote(one.targetId);
+        } else if ((k === 'reference' || k === 'vibe') && one.targetId && typeof window.copyLookbackReference === 'function') {
+            run = () => window.copyLookbackReference(one.targetId);
+        }
+        return run ? { label: 'Copy Lookback', action: run } : null;
+    }
+
     function mainMenu() {
         const sel = selectedItems();
         return [
@@ -1935,6 +1955,8 @@
         ];
         const director = directorItems(sel);
         if (director.length) list.push('-', ...director);
+        const lookback = lookbackItem(sel);
+        if (lookback) list.push(...(director.length ? [] : ['-']), lookback);
         // the phone's own items: Android's app for a file, and the bridge's facts
         const one = sel.length === 1 ? sel[0] : null;
         // a Dreamscape file out to Android (a download: the app's notification opens it)
