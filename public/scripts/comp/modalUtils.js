@@ -6678,10 +6678,10 @@ function buildToolsSubmenuItems() {
         { launchId: 'mmc-print-management', icon: 'fas fa-print', imageIcon: 'vista-print-management.png', text: 'Print Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openPrintManagementSnapin(); } },
         { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('director'); } },
         { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Profile', fullName: 'Enshutsuka - Profile', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
-        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
+        { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Registry Editor', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
         // Characters: the Character Database MMC console on the desktop (#831), the old window elsewhere (manageCharacterDb: public/scripts/comp/dsapManifests.js)
         { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'vista-character-database.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: () => { manageCharacterDb(); } },
-        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
+        { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Event Viewer', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         // Accessories > Welcome Center (public/scripts/comp/welcomeCenter.js)
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
         // Windows SideShow > Device Simulator 3.0 (Yozora #655; public/scripts/comp/desktop-apps/sideshow/sideshowSimulator.js)
@@ -7880,17 +7880,16 @@ const START_MENU_PACKAGE_APPS = [
     ['character-db', 'Characters'],
     ['expanders', 'Expanders'],
     ['presets', 'Spellbook'],
-    // Yukimi, Nov 11: the server's own tools are the suite's too, not Accessories
-    ['server-manager', 'Server Manager'],
-    ['data-management', 'Data Management'],
-    ['config-editor', 'Runes'],
-    ['event-viewer', 'Periscope'],
+    // Nov 14 (#831): the server's tools moved to Administrative Tools under their Vista names
+    // (Server Manager, Computer Management, Registry Editor, Event Viewer: START_MENU_SYSTEM_PLACES)
     ['emotion', 'eMotion LIVE'],
     ['import', 'Import']
 ];
 // Other publishers' program folders, the same way (Yozora #719: the AmusementVISION suite's XLink)
 const START_MENU_VENDOR_FOLDERS = [
-    { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['paypass', 'PayPass Operator'], ['quickcast', 'VisionCaster'], ['xlink', 'XLink Operator Console']] }
+    { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['paypass', 'PayPass Operator'], ['quickcast', 'VisionCaster'], ['xlink', 'XLink Operator Console']] },
+    // Exchange 2007's own program folder, as its setup made it (#831)
+    { folderId: 'exchange-2007', text: 'Microsoft Exchange Server 2007', apps: [['mmc-exchange', 'Exchange Management Console']] }
 ];
 const START_MENU_PACKAGE_IDS = new Set(START_MENU_PACKAGE_APPS.concat(...START_MENU_VENDOR_FOLDERS.map((f) => f.apps)).map((pair) => pair[0]));
 
@@ -7928,14 +7927,19 @@ const START_MENU_SYSTEM_PLACES = {
     memories: { at: 'administrative-tools' },
     'mmc-data-management': { at: 'administrative-tools' },   // "Computer Management"
     'mmc-device-manager': { at: 'administrative-tools' },
-    'mmc-dynamic-quips': { at: 'administrative-tools' },
-    'mmc-autofill-ranking': { at: 'administrative-tools' },
+    // Yukimi, Nov 14: not in the Start menu (still launchable: Control Panel, Run, agents)
+    'mmc-dynamic-quips': { at: 'hidden' },
+    'mmc-autofill-ranking': { at: 'hidden' },
     'mmc-front-gate': { at: 'administrative-tools' },
     'mmc-key-manager': { at: 'administrative-tools' },
-    'mmc-exchange': { at: 'administrative-tools' },       // Exchange 2007 puts its console in its own folder; here beside the other consoles
     'mmc-wiki-caches': { at: 'administrative-tools' },
     'mmc-print-management': { at: 'administrative-tools' },
     'mmc-server-manager': { at: 'administrative-tools' },  // Server Manager, as on Windows Server 2008
+    'config-editor': { at: 'administrative-tools' },     // "Registry Editor" (Runes)
+    'event-viewer': { at: 'administrative-tools' },      // "Event Viewer" (Periscope), as on Vista
+    // the old suite-folder entries now stand for the consoles above (launch ids kept for agents and Run)
+    'server-manager': { at: 'hidden' },
+    'data-management': { at: 'hidden' },
     'sideshow-simulator-landscape': { at: 'sideshow-simulator', label: 'Device Simulator (Landscape)' },
     'sideshow-simulator-portrait': { at: 'sideshow-simulator', label: 'Device Simulator (Portrait)' }
 };

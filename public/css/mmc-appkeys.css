@@ -149,6 +149,8 @@
     inset: 0;
     overflow: auto;
     white-space: normal;
+    /* the dialog's statics ignore the pointer (vista-dialog-template.css); this box scrolls */
+    pointer-events: auto;
 }
 
 .vdt-client .akm-howto ol {
