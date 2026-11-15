@@ -20,6 +20,10 @@ const DORMANT_HOLD = new Map([
     ['runtime_compile_progress', 'last'],
     ['vfs_updated', 'path'],
     ['xlink_status', 'all'],
+    ['lapis_updated', 'last'],
+    ['traffic_updated', (d) => `dir:${d.direction || ''}`],
+    // mail accounts: sync / flags / folders / account changes wait; new mail ('new') goes at once
+    ['ma_event', (d) => (d.event === 'new' ? null : `${d.event || ''}:${d.accountId || ''}`)],
     ['service_worker_cache_update', 'all'],
     ['runtime_compile_complete', 'all']
 ]);
@@ -765,17 +769,19 @@ class WebSocketServer {
             rid = !!message.requestId;
         }
         if (!type || rid || !DORMANT_HOLD.has(type)) return false;
+        const mode = DORMANT_HOLD.get(type);
+        const dataOf = () => { try { const o = typeof message === 'string' ? JSON.parse(message) : message; return (o && o.data) || {}; } catch (_) { return {}; } };
+        let key;
+        if (mode === 'last') key = type;
+        else if (mode === 'path') key = `${type}|${dataOf().path || ''}`;
+        else if (typeof mode === 'function') {
+            const k = mode(dataOf());
+            if (k == null) return false; // this one goes at once
+            key = `${type}|${k}`;
+        } else key = `${type}|${(this._dormantSeq = (this._dormantSeq || 0) + 1)}`;
         if (!this._dormantHeld) this._dormantHeld = new WeakMap();
         let held = this._dormantHeld.get(ws);
         if (!held) { held = new Map(); this._dormantHeld.set(ws, held); }
-        const mode = DORMANT_HOLD.get(type);
-        let key;
-        if (mode === 'last') key = type;
-        else if (mode === 'path') {
-            let path = '';
-            try { const o = typeof message === 'string' ? JSON.parse(message) : message; path = (o.data && o.data.path) || ''; } catch (_) { path = ''; }
-            key = `${type}|${path}`;
-        } else key = `${type}|${(this._dormantSeq = (this._dormantSeq || 0) + 1)}`;
         held.delete(key); // a newer copy goes to the end
         held.set(key, message);
         if (held.size > DORMANT_HOLD_MAX) held.delete(held.keys().next().value);
@@ -1017,9 +1023,9 @@ class WebSocketServer {
         });
         // a dormant phone page: held for it (setDormant), not sent over its carrier now
         if (message && DORMANT_HOLD.has(message.type) && !message.requestId) {
-            const sleeping = to.filter((ws) => this._isDormantPhone(ws));
+            // only the sockets whose copy was really held leave the list (new mail is not held)
+            const sleeping = to.filter((ws) => this._isDormantPhone(ws) && this._dormantHold(ws, message));
             if (sleeping.length) {
-                sleeping.forEach((ws) => this._dormantHold(ws, message));
                 const awake = to.filter((ws) => !sleeping.includes(ws));
                 to.length = 0;
                 to.push(...awake);
