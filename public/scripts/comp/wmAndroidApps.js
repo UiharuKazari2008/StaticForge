@@ -102,12 +102,41 @@
     const dropRead = () => { readCache = null; };
     window.addEventListener('androidapps', dropRead);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') dropRead(); });
+    // While Melaton Mobile boots, the list is the one kept from last time: the bridge call held the
+    // boot's main thread 0.75-1.3 s on the A53 (it loads every program's icon to see if it is themed)
+    // for a Start menu nobody has opened yet. The phone's own list comes once the boot is over and the
+    // phone is idle (refresh: Programs and Start redraw if it changed).
+    const LIST_KEY = 'wmAndroidAppsList';
+    let bootRefreshQueued = false;
+    function keptList() {
+        try { const v = JSON.parse(localStorage.getItem(LIST_KEY) || 'null'); return Array.isArray(v) && v.length ? v : null; } catch (_) { return null; }
+    }
+    function queueBootRefresh() {
+        if (bootRefreshQueued) return;
+        bootRefreshQueued = true;
+        const run = () => {
+            const go = () => { const before = JSON.stringify(readCache || []); dropRead(); read(); if (JSON.stringify(readCache || []) !== before) refresh(); };
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(go, { timeout: 5000 }); else setTimeout(go, 1000);
+        };
+        if (document.documentElement.dataset.wmBoot === 'done') run();
+        else document.addEventListener('wmBootDone', run, { once: true });
+    }
     function read() {
         if (readCache && Date.now() - readAt < READ_TTL) return readCache.slice();
+        if (!readCache && !bootRefreshQueued && document.documentElement.dataset.wmBoot !== 'done') {
+            const kept = keptList();
+            if (kept) {
+                readCache = kept;
+                readAt = Date.now();
+                queueBootRefresh();
+                return readCache.slice();
+            }
+        }
         try {
             const list = JSON.parse(bridge.list());
             readCache = withCameraRole(Array.isArray(list) ? list.filter((a) => a && typeof a.id === 'string' && a.label) : []);
             readAt = Date.now();
+            try { localStorage.setItem(LIST_KEY, JSON.stringify(readCache)); } catch (_) { /* no room: the next boot asks the bridge */ }
             return readCache.slice();
         } catch (_) { return []; }
     }
