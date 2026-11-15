@@ -674,7 +674,12 @@ class Director {
         this.mascot = new DirectorMascot({
             // The Studio-docked Director shows her too (Yukimi 2026-11-06); Show Mascot still turns her off,
             // and her layers are released whenever she is hidden (applyView).
-            isHosted: () => true,
+            // Only while the chat she stands in is on screen (#817): this answered true always, so
+            // every boot loaded her full-canvas sheets (~130 MB decoded), built her WebGL body and
+            // laid her out 33 times behind a closed Director window (~250 ms of the desktop's boot
+            // in forced style and texture uploads). Her tick sees a change within a second;
+            // openDirectorWindow asks at once.
+            isHosted: () => this.mascotHostOnScreen(),
             renderResult: (message) => this.createMascotResult(message),
             actions: {
                 prints: () => this.togglePrintsPane(),
@@ -683,6 +688,14 @@ class Director {
         });
         this.mascot.mount(host);
         void this.mascot.setPersona(this.persona);
+    }
+
+    // The chat the mascot stands in is shown: neither it nor anything around it is hidden (a closed
+    // Director window, a closed Studio or panel, a phone page that is not the open one). Classes
+    // and attributes only: no layout read.
+    mascotHostOnScreen() {
+        const host = document.getElementById('directorSessionChat');
+        return !!(host && host.isConnected && !host.closest('.hidden, .hidden-alt, [hidden]'));
     }
 
     async init() {
@@ -3106,6 +3119,8 @@ class Director {
         this.fadeInComposer();
         // openModal: public/scripts/comp/modalUtils.js
         openModal(this.directorWindow);
+        // she shows with the window, in the same frame (isHosted follows the window now)
+        if (this.mascot) this.mascot.applyView();
         this.paintPersonaToggle();
         this.requestDirectorModels();
         this.updateTrayChrome();
@@ -4394,6 +4409,7 @@ class Director {
         if (this.directorSessionChat) {
             this.directorSessionChat.classList.remove('hidden');
         }
+        if (this.mascot) this.mascot.applyView();
         this.placeComposer(false, true);
         this._scrollAfterLoad = true;
         const liveKeys = [];
@@ -5700,6 +5716,7 @@ class Director {
         this.hideAllViews();
         this.closeSessionOverlay();
         if (this.directorSessionChat) this.directorSessionChat.classList.remove('hidden');
+        if (this.mascot) this.mascot.applyView();
         this.placeComposer(true, true);
         this.updateHeaderForView('sessionChat');
         if (this.directorSessionTitle) {
