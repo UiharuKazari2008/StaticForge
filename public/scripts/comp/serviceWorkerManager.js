@@ -3924,7 +3924,11 @@ class ServiceWorkerManager {
         console.log('Refreshing server cache and checking for updates...');
         this._refreshAndCheckRunning = (async () => {
             try {
-                if (!this.agentSession) {
+                if (!this.agentSession && window.uiShell === 'mobile') {
+                    // Melaton Mobile has its own Melaton Update page (wmSettingsSystem.js); the desktop
+                    // Control Panel applet opened squeezed into a phone window ("Opened in the background")
+                    if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('update');
+                } else if (!this.agentSession) {
                     await featureLoader.loadFeature('control_panel');
                     if (window.cplUpdate && typeof window.cplUpdate.beginPrepare === 'function') {
                         window.cplUpdate.beginPrepare();

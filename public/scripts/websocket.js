@@ -1402,7 +1402,9 @@ class WebSocketClient {
     }
 
     _connectionTheaterSkipped() {
-        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden');
+        // Melaton Mobile shows no Connection dialog (its splash is the logo and wait wheel), so the
+        // dial beats were ~3.5 s of waiting with nothing on screen on every phone boot
+        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden' || window.uiShell === 'mobile');
     }
 
     // Dial beats are a visible first-connect animation. A hidden or resumed tab must not
