@@ -14,6 +14,8 @@
     color: #000;
     font: var(--wm-fs) var(--wm-font);
     container: wds / inline-size;
+    /* the views scroll themselves; the page never does */
+    overflow: hidden;
 }
 
 .wds-body {
@@ -209,7 +211,19 @@
 
 /* ---------------------------------------------------------------- presets: a list that fills the page */
 
-.wds-presets > .wm-listbox { flex: 1 1 0; min-height: 0; border: 0; }
+.wds-presets > .wm-listbox { flex: 1 1 0; min-height: 0; border: 0; overflow: hidden; touch-action: pan-y; }
+/* a page of rows a finger can hit: 26 units each (the shared row is 17, a stylus row) */
+.wds-presets .wm-listbox-row { min-height: calc(26 * var(--wm-px)); height: calc(26 * var(--wm-px)); border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0; }
+.wds-presets .wm-listbox-row > span { overflow: hidden; text-overflow: ellipsis; }
+.wds-presets > .wds-pager {
+    flex: 0 0 auto;
+    height: calc(18 * var(--wm-px));
+    line-height: calc(18 * var(--wm-px));
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    text-align: center;
+}
+.wds-presets > .wds-pager[hidden] { display: none; }
 .wds-presets > .wm-listbox[hidden] { display: none; }
 .wds-presets > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); color: #848284; }
 

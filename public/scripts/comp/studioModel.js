@@ -193,7 +193,10 @@
         const model = (snapshot() || {}).model || '';
         try {
             if (typeof ensurePromptTokenizerForModel === 'function') await ensurePromptTokenizerForModel(model);
-            if (typeof countTokensForText === 'function') return countTokensForText(String(text || ''));
+            // a weighted group counts as its words: the `1.2::` and `::` around them are not sent as
+            // tokens (the desktop counts its marked text the same way, presetTokenCount.js)
+            const plain = String(text || '').replace(/(-?\d+(?:\.\d+)?)::([\s\S]*?)::/g, '$2');
+            if (typeof countTokensForText === 'function') return countTokensForText(plain);
         } catch (_) { /* no tokenizer yet */ }
         return null;
     }

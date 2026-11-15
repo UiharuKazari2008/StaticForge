@@ -217,15 +217,48 @@
 
     // ---- presets: Open Preset is a list page; Save as Preset asks for the name
 
+    // the list is shown a page at a time, in rows a finger can hit: as many as the page holds
+    let presetPage = 0;
+    let presetPages = 1;
+
     function drawPresets() {
+        const pane = $('.wds-presets');
         const box = $('.wds-presets > .wm-listbox');
         const none = $('.wds-presets > .wds-none');
+        const foot = $('.wds-presets > .wds-pager');
         if (!box) return;
         const names = M.presets();
         const cur = M.sessionName();
         none.hidden = names.length > 0;
         box.hidden = !names.length;
-        box.innerHTML = names.map((n) => `<button type="button" class="wm-listbox-row${n === cur ? ' is-selected' : ''}" data-key="${esc(n)}"><span>${esc(n)}</span></button>`).join('');
+        foot.hidden = !names.length;
+        if (!names.length) { box.textContent = ''; presetPages = 1; return; }
+        const unit = parseFloat(getComputedStyle(page).getPropertyValue('--wm-px')) || 1;
+        const rowH = 26 * unit;
+        const room = pane.clientHeight - foot.offsetHeight;
+        const per = Math.max(1, Math.floor(room / rowH));
+        presetPages = Math.max(1, Math.ceil(names.length / per));
+        presetPage = Math.max(0, Math.min(presetPages - 1, presetPage));
+        box.innerHTML = names.slice(presetPage * per, presetPage * per + per).map((n) => `<button type="button" class="wm-listbox-row${n === cur ? ' is-selected' : ''}" data-key="${esc(n)}"><span>${esc(n)}</span></button>`).join('');
+        foot.textContent = `Page ${presetPage + 1} of ${presetPages}`;
+    }
+
+    function presetStep(dir) {
+        const next = Math.max(0, Math.min(presetPages - 1, presetPage + dir));
+        if (next === presetPage) return;
+        presetPage = next;
+        drawPresets();
+        sh.refreshSoftKeys();
+    }
+
+    /** Opens the list on the page that holds the session's own preset. */
+    function showPresets() {
+        presetPage = 0;
+        openLayer('presets');
+        const names = M.presets();
+        const at = names.indexOf(M.sessionName());
+        const rows = $('.wds-presets > .wm-listbox').children.length;
+        if (at >= 0 && rows > 0) { presetPage = Math.floor(at / rows); drawPresets(); sh.refreshSoftKeys(); }
     }
 
     function openPreset(name) {
@@ -807,7 +840,7 @@
         if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
         if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
-        rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Preset...', action: () => openLayer('presets') }, { label: 'Save as Preset...', action: savePresetAs });
+        rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs });
         return rows;
     }
 
@@ -834,8 +867,8 @@
 
     function softKeys() {
         if (top() === 'editor') return { left: { label: 'Done', action: closeEditor }, right: { label: 'Menu', menu: editorMenu } };
-        // a list to pick from: a tap opens, the left key backs out
-        if (top() === 'presets') return { left: { label: 'Cancel', action: popLayer }, right: null };
+        // a list to pick from, a page at a time: a tap opens, the keys turn the pages, ok backs out
+        if (top() === 'presets') return { left: { label: 'Previous', disabled: presetPage <= 0, action: () => presetStep(-1) }, right: { label: 'Next', disabled: presetPage >= presetPages - 1, action: () => presetStep(1) } };
         if (running()) return { left: { label: 'Generate', disabled: true }, right: { label: 'Stop', action: stop } };
         return { left: { label: 'Generate', disabled: !M || !M.ready(), action: generate }, right: { label: 'Menu', menu: mainMenu } };
     }
@@ -864,7 +897,7 @@
   <div class="wds-stage"><img alt="" hidden><div class="wds-grid" hidden></div><div class="wds-empty">No print yet. Generate makes one.</div></div>
   <div class="wds-status" hidden><span></span><div class="wds-bar"><span></span></div></div>
 </div>
-<div class="wds-pane wds-presets"><div class="wm-listbox"></div><p class="wds-none" hidden>No presets have been saved yet.</p></div>
+<div class="wds-pane wds-presets"><div class="wm-listbox"></div><div class="wds-pager" hidden></div><p class="wds-none" hidden>No presets have been saved yet.</p></div>
 <div class="wds-pane wds-editor">
   <div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
@@ -878,7 +911,21 @@
         $('.wds-summary').addEventListener('click', () => openLayer('settings'));
         $('.wds-base').addEventListener('click', () => openLayer('settings'));
         p.querySelectorAll('.wds-field').forEach((b) => b.addEventListener('click', () => openEditor(b.dataset.field)));
-        $('.wds-presets').addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wm-listbox-row'); if (r) openPreset(r.dataset.key); });
+        const presetPane = $('.wds-presets');
+        let presetX = null;
+        let presetFlicked = false;
+        presetPane.addEventListener('pointerdown', (e) => { presetX = e.clientX; presetFlicked = false; });
+        presetPane.addEventListener('pointerup', (e) => {
+            if (presetX == null) return;
+            const dx = e.clientX - presetX;
+            presetX = null;
+            if (Math.abs(dx) > 50) { presetFlicked = true; presetStep(dx < 0 ? 1 : -1); }
+        });
+        presetPane.addEventListener('click', (e) => {
+            if (presetFlicked) { presetFlicked = false; return; }
+            const r = e.target.closest && e.target.closest('.wm-listbox-row');
+            if (r) openPreset(r.dataset.key);
+        });
         const chars = $('.wds-chars');
         chars.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-char-open'); if (b) openEditor(`c:${b.dataset.char}:prompt`); });
         chars.addEventListener('change', (e) => { const t = e.target; if (t && t.dataset && t.dataset.char != null && t.type === 'checkbox') { M.setCharacter(Number(t.dataset.char), { enabled: !!t.checked }); snap = null; } });
