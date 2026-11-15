@@ -426,7 +426,8 @@
     // phone that drops a frame showed as a jump (A53 recording, Nov 15)
     const SUPER_MS = 420;
     const SUPER_EASE = 'cubic-bezier(0.45, 0, 0.2, 1)';
-    const SUPER_GROW = 26; // units the card grows by: the weather row
+    let superGrow = 0; // units the card grows by: the weather (drawSuper)
+    const CLOCK_TO = { y: 31, scale: 0.62 }; // the analog clock's move beside the digital one (units, size)
 
     /*
      * The card is the band itself: the band art as a nine-slice (its glass lines stay put as it grows),
@@ -452,9 +453,13 @@
         const body = superEl.querySelector('.wm-ti-super-body');
         const T = frostTransform();
         const y0 = bandTop;
-        const y1 = 0; // at the top (9 units higher hid the art's shadow but cut the clock icon in half)
+        // the glass's top line meets the title bar (the art's shadow above it goes off the top); the
+        // analog clock moves down beside the digital one, so nothing is cut (Yukimi, Nov 15)
+        const y1 = -9 * u;
         const h0 = 82 * u;
-        const h1 = (82 + SUPER_GROW) * u;
+        const h1 = (82 + superGrow) * u;
+        const aclock = superEl.querySelector('.wm-ti-super-panel .wm-ti-aclock');
+        const fxl = superEl.querySelector('.wm-ti-super-fx');
         if (superAnim) superAnim.forEach((a) => a.cancel());
         superEl.hidden = false;
         // the first frame: the card exactly where the band is, before the band goes
@@ -472,8 +477,10 @@
             shade.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.5, delay: SUPER_MS * 0.6, easing: 'linear', fill: 'both' }),
             // the notifications come once the card is on its way, not under the band before it moves
             body.animate([{ opacity: 0, transform: `translateY(${18 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'cubic-bezier(0.2, 0, 0.2, 1)', fill: 'both' }),
-            host.querySelector('.wm-ti-list').animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.5, easing: 'linear', fill: 'forwards' })
+            host.querySelector('.wm-ti-list').animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.5, easing: 'linear', fill: 'forwards' }),
+            fxl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS, delay: SUPER_MS * 0.6, easing: 'linear', fill: 'both' })
         ];
+        if (aclock) superAnim.push(aclock.animate([{ transform: 'none' }, { transform: `translateY(${CLOCK_TO.y * u}px) scale(${CLOCK_TO.scale})` }], opt));
         superAnim[0].finished.then(() => { superBusy = false; }).catch(() => { superBusy = false; });
         haptic('land');
         sh.refreshSoftKeys();
@@ -504,9 +511,11 @@
         const body = superEl.querySelector('.wm-ti-super-body');
         const T = frostTransform();
         const y0 = focusTop() * u;
-        const y1 = 0;
+        const y1 = -9 * u;
         const h0 = 82 * u;
-        const h1 = (82 + SUPER_GROW) * u;
+        const h1 = (82 + superGrow) * u;
+        const aclock = superEl.querySelector('.wm-ti-super-panel .wm-ti-aclock');
+        const fxl = superEl.querySelector('.wm-ti-super-fx');
         const ms = Math.round(SUPER_MS * 0.85);
         enterLockUntil = performance.now() + ms + 40;
         const opt = { duration: ms, easing: SUPER_EASE, fill: 'forwards' };
@@ -516,8 +525,10 @@
             extra.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' }),
             shade.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.45, easing: 'linear', fill: 'forwards' }),
             body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' }),
-            host.querySelector('.wm-ti-list').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.7, delay: ms * 0.3, easing: 'linear', fill: 'both' })
+            host.querySelector('.wm-ti-list').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.7, delay: ms * 0.3, easing: 'linear', fill: 'both' }),
+            fxl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' })
         ];
+        if (aclock) superAnim.push(aclock.animate([{ transform: `translateY(${CLOCK_TO.y * u}px) scale(${CLOCK_TO.scale})` }, { transform: 'none' }], opt));
         superAnim[0].finished.then(finish).catch(() => { /* a new open took over */ });
         sh.refreshSoftKeys();
     }
@@ -535,17 +546,23 @@
         superEl.setAttribute('role', 'dialog');
         superEl.setAttribute('aria-label', 'Super Bar');
         superEl.hidden = true;
-        superEl.innerHTML = '<div class="wm-ti-super-shade"></div>'
+        superEl.innerHTML = '<div class="wm-ti-super-shade"></div><div class="wm-ti-super-fx" aria-hidden="true"></div>'
             + '<div class="wm-ti-super-body"><div class="wm-ti-super-sub" hidden>notifications</div><div class="wm-ti-super-notes"></div></div>'
             + '<div class="wm-ti-super-card"><div class="wm-ti-super-frostclip"><div class="wm-ti-super-frost"></div></div><div class="wm-ti-super-art"></div><div class="wm-ti-super-panel"></div><div class="wm-ti-super-extra"></div></div>';
         superEl.querySelector('.wm-ti-super-art').style.borderImageSource = artImageSet('ti-3000');
         // the list's own touch handling stays out of the sheet; its rows scroll and take taps
         ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'contextmenu'].forEach((t) => superEl.addEventListener(t, (e) => e.stopPropagation()));
-        superEl.querySelector('.wm-ti-super-card').addEventListener('click', () => { if (!superBusy) closeSuper(); });
+        // the card puts the bar away; its weather opens Weather (the delegate below)
+        superEl.querySelector('.wm-ti-super-card').addEventListener('click', (e) => { if (!superBusy && !e.target.closest('[data-super]')) closeSuper(); });
         superEl.addEventListener('click', (e) => {
             const row = e.target.closest('[data-super]');
             if (!row || superBusy) return;
             const kind = row.dataset.super;
+            if (kind === 'weather') {
+                closeSuper(true);
+                if (window.wmWeather && typeof window.wmWeather.open === 'function') window.wmWeather.open();
+                return;
+            }
             const N = window.AndroidPhoneNotifications;
             if (!N) return;
             if (kind === 'access') { try { N.requestAccess(); } catch (_) { /* old app */ } return; }
@@ -560,11 +577,31 @@
         const cp = clock.pages[0];
         // the clock panel's own markup and classes: it draws exactly as the panel in the band
         superEl.querySelector('.wm-ti-super-panel').innerHTML = `<div class="wm-ti-pg">${pageHtml(clock, cp)}</div>`;
-        // the weather (Today's weather item, when it is on): what it shows, under the clock
-        const w = panels.find((x) => x.id === 'weather');
-        const wp = w && w.pages[pageIndex(w)];
-        const wLine = wp ? [wp.title, wp.line2].filter((v) => v && String(v).trim()).join(' · ') : '';
-        superEl.querySelector('.wm-ti-super-extra').innerHTML = wLine ? `<span class="wm-ti-super-weather">${esc(wLine)}</span>` : '';
+        // the weather (Melaton Weather's selected place): its condition icon, temperature and condition,
+        // then the next hours; a tap opens Weather. Without data: Today's weather line, or nothing
+        const W = window.wmWeather;
+        let cur = null; let hours = [];
+        try { cur = W && typeof W.current === 'function' ? W.current() : null; hours = cur && typeof W.hourly === 'function' ? W.hourly(6) : []; } catch (_) { cur = null; hours = []; }
+        const extra = superEl.querySelector('.wm-ti-super-extra');
+        if (cur) {
+            const hiLo = cur.hi != null && cur.lo != null ? `H ${cur.hi}° L ${cur.lo}°` : '';
+            const line = [cur.condition, cur.place, hiLo].filter(Boolean).join(' · ');
+            extra.innerHTML = `<button type="button" class="wm-ti-super-wx" data-super="weather" aria-label="Weather">
+                <span class="wm-ti-super-wxnow"><img src="${esc(cur.iconUrl)}" srcset="${esc(cur.iconUrl)} 1x, ${esc(cur.iconUrl2x)} 2x" alt="" draggable="false"><span class="wm-ti-super-wxt">${esc(cur.temp != null ? `${cur.temp}°` : '')}</span><span class="wm-ti-super-wxc">${esc(line)}</span></span>
+                ${hours.length ? `<span class="wm-ti-super-hours">${hours.map((h) => `<span class="wm-ti-super-hour"><span>${esc(h.label)}</span><img src="${esc(h.iconUrl)}" srcset="${esc(h.iconUrl)} 1x, ${esc(h.iconUrl2x)} 2x" alt="" draggable="false"><span>${esc(h.temp)}</span></span>`).join('')}</span>` : ''}
+            </button>`;
+            superGrow = hours.length ? 74 : 28;
+        } else {
+            const w = panels.find((x) => x.id === 'weather');
+            const wp = w && w.pages[pageIndex(w)];
+            const wLine = wp ? [wp.title, wp.line2].filter((v) => v && String(v).trim()).join(' · ') : '';
+            extra.innerHTML = wLine ? `<button type="button" class="wm-ti-super-wx" data-super="weather"><span class="wm-ti-super-wxc">${esc(wLine)}</span></button>` : '';
+            superGrow = wLine ? 28 : 0;
+        }
+        const uu = unit();
+        superEl.querySelector('.wm-ti-super-body').style.top = `${(62 + superGrow) * uu}px`;
+        superEl.style.setProperty('--fall', `${Math.round(host.clientHeight * 1.15)}px`);
+        drawWeatherFx(cur);
         // the frost: the band's blurred copy, placed on the picture as the band's is (the card's own
         // translate is undone on it while it moves, so it stays lined up with the picture)
         const frost = superEl.querySelector('.wm-ti-super-frost');
@@ -573,6 +610,38 @@
             const hr = host.getBoundingClientRect();
             Object.assign(frost.style, { display: '', backgroundImage: blurInner.style.backgroundImage, backgroundSize: blurInner.style.backgroundSize, backgroundPosition: blurInner.style.backgroundPosition, left: `${wr.left - hr.left}px`, top: `${wr.top - hr.top - 9 * unit()}px`, width: `${wr.width}px`, height: `${wr.height}px` });
         } else frost.style.display = 'none';
+    }
+
+    /**
+     * The weather inside the bar (Yukimi, Nov 15): rain or drizzle falling, snow drifting, sleet both,
+     * a storm's flashes, fog banks and clouds drifting, the sun's glow and turning rays by day, stars by
+     * night. A few dozen small layers on transform / opacity animations, made when the bar opens.
+     */
+    function drawWeatherFx(cur) {
+        const box = superEl.querySelector('.wm-ti-super-fx');
+        let still = false;
+        try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { /* no media queries */ }
+        const scene = cur && cur.scene;
+        if (!scene || still) { box.innerHTML = ''; box.dataset.scene = ''; return; }
+        if (box.dataset.scene === `${scene}|${cur.isDay}`) return;
+        box.dataset.scene = `${scene}|${cur.isDay}`;
+        const rnd = (a, b) => a + Math.random() * (b - a);
+        const drops = (n, slow) => Array.from({ length: n }, () => `<i class="wm-wx-drop" style="left:${rnd(-5, 105).toFixed(1)}%;--t:${rnd(slow ? 0.9 : 0.55, slow ? 1.4 : 0.85).toFixed(2)}s;--d:-${rnd(0, 2).toFixed(2)}s;--l:${rnd(7, 13).toFixed(1)}"></i>`).join('');
+        const flakes = (n) => Array.from({ length: n }, () => `<i class="wm-wx-flake" style="left:${rnd(-3, 103).toFixed(1)}%;--t:${rnd(7, 12).toFixed(1)}s;--d:-${rnd(0, 12).toFixed(1)}s;--s:${rnd(1.4, 3.2).toFixed(1)};--x:${rnd(-6, 6).toFixed(1)}"></i>`).join('');
+        const clouds = (n, a) => Array.from({ length: n }, (_, i) => `<i class="wm-wx-cloud" style="top:${(8 + i * 22 + rnd(-4, 4)).toFixed(0)}%;--t:${rnd(38, 60).toFixed(0)}s;--d:-${rnd(0, 60).toFixed(0)}s;--a:${a}"></i>`).join('');
+        let html = '';
+        if (scene === 'storm') html = drops(60) + '<i class="wm-wx-flash"></i>';
+        else if (scene === 'heavy') html = drops(60);
+        else if (scene === 'rain') html = drops(40);
+        else if (scene === 'drizzle') html = drops(24, true);
+        else if (scene === 'snow') html = flakes(40);
+        else if (scene === 'sleet') html = drops(18, true) + flakes(20);
+        else if (scene === 'fog') html = '<i class="wm-wx-fog"></i><i class="wm-wx-fog" style="--d:-14s;top:55%"></i>';
+        else if (scene === 'cloudy') html = clouds(4, 0.14);
+        else if (scene === 'partly') html = (cur.isDay ? '<i class="wm-wx-sun"></i>' : '') + clouds(3, 0.11);
+        else if (cur.isDay) html = '<i class="wm-wx-sun"></i><i class="wm-wx-rays"></i>';
+        else html = Array.from({ length: 32 }, () => `<i class="wm-wx-star" style="left:${rnd(2, 98).toFixed(1)}%;top:${rnd(2, 70).toFixed(1)}%;--t:${rnd(2.5, 5).toFixed(1)}s;--d:-${rnd(0, 5).toFixed(1)}s"></i>`).join('');
+        box.innerHTML = html;
     }
 
     function refreshNotes() {

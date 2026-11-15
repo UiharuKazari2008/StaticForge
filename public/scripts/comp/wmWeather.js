@@ -2935,6 +2935,9 @@
                 code: cur.code,
                 condition: cond.text,
                 icon: cond.icon,
+                // the sky's kind (clear, fair, partly, cloudy, fog, drizzle, sleet, rain, heavy, snow, storm):
+                // the 6.5 Super Bar's weather effects (#800)
+                scene: cond.scene,
                 iconUrl: iconUrl(cond.icon),
                 iconUrl2x: iconUrl(cond.icon, true),
                 isDay: cur.isDay !== false,
@@ -2944,6 +2947,22 @@
                 lo: today ? tempOf(loC(today)) : null,
                 updatedAt: (cache[keyOf(p)] || {}).at || null
             };
+        },
+        /**
+         * The next hours for the selected place, as the app's hourly rail shows them: [{ label ('Now',
+         * then the hour), temp ('52°'), condition, icon, iconUrl, iconUrl2x, rain (%) }] (the 6.5 Super Bar, #800).
+         */
+        hourly(n = 6) {
+            const p = selected();
+            const data = dataOf(p);
+            const hours = data && Array.isArray(data.hourly) ? data.hourly : [];
+            if (!hours.length) return [];
+            const now = placeNow(data);
+            const from = Math.max(0, hours.findIndex((h) => localMs(h.time) + 3600000 > now));
+            return hours.slice(from, from + n).map((h, i) => {
+                const cond = condOf(h, h.isDay);
+                return { label: i === 0 ? 'Now' : hourLabel(h.time), temp: temp(mainC(h)), condition: cond.text, icon: cond.icon, iconUrl: iconUrl(cond.icon), iconUrl2x: iconUrl(cond.icon, true), rain: num(h.rain) };
+            });
         },
         /** The days after today for the selected place: [{ day, condition, iconUrl, iconUrl2x, hi, lo, rain }] (6.5 home screen pages). */
         forecast() {
