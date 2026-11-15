@@ -416,6 +416,605 @@
     window.addEventListener('keyup', onKey, true);
     window.addEventListener('keypress', onKey, true);
 
+    // ================================================================ 6.5.1 (#850)
+    /*
+     * Windows Mobile 6.5.3's lock screen pages, measured on the 6.5.3 emulator (480 x 640, thin 36 px
+     * title bar) against the 6.5 one, with the ROM's LS_AlarmScene / LS_SimplePinScene layouts:
+     *
+     * The alarm page. An alarm that comes due while the device is locked takes the lock scene's
+     *   place: the alarm clock (144 px), the alarm's time (Tahoma 22 pt, regular) and "Alarm: "
+     *   plus its description ("No description" without one), a green Snooze slide and a red Dismiss
+     *   slide, each a 200 x 88 px handle that runs 200 px to the right over three large chevrons.
+     *   No slide handle, caption or time band while it is up. Pressing either handle fades both
+     *   rows' chevrons out and shows its dark art; let go before the end and it runs back; at the
+     *   end the lock scene is back in the next frame (the device stays locked). Snooze brings the
+     *   same page back later with the alarm's own time (HKCU ControlPanel\Notifications\Reminders
+     *   SnoozeTime 600 s; seen again 10 to 11 device minutes later).
+     *   6.5 has the same page with a bold time that does not fit its box ("12:..."), a 192 px
+     *   handle and small chevrons. Unlocked, both versions show the classic reminder bubble
+     *   ("12:03 | Reminder", Dismiss | Menu) instead: wmShell.js draws that one.
+     * The simple PIN page. With a password set (Settings > Lock), the slide's end shows the keypad
+     *   in place of the lock scene: a 416 x 36 px entry bar with one dot a digit, keys 1-9, a
+     *   backspace arrow, 0 and an X that goes back to the lock scene, and a row of three keys that
+     *   check the PIN: unlock, unlock into Contacts, unlock into Messaging. A wrong PIN: the box
+     *   "Password Incorrect" / "The password you typed is incorrect.", then an empty entry bar.
+     *   6.5's page is the same one, 16 px lower under its taller title bar.
+     *   The device's line "Emergency phone calls can be made." is left out: Melaton makes no calls
+     *   from here, so it would not be true.
+     * The PIN is kept as a salted PBKDF2-SHA-256 hash in this browser's storage (never the digits).
+     * It keeps the screen private from someone who picks the phone up; it does not protect the
+     * data behind it.
+     *
+     * Alarms (Settings > Clock & Alarms > Alarms, wmSettingsSystem.js) live on this device
+     * (localStorage wmAlarms651): three, each with a time, the days, a description, a sound and how
+     * it plays. One timer waits for the next one due; nothing polls. A page that was asleep at the
+     * time rings when it wakes (within a day).
+     */
+    const escHtml = (t) => String(t == null ? '' : t).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const fmtAlarm = (ms) => { try { return fmtTime.format(new Date(ms)); } catch (_) { return ''; } };
+
+    // ---------------------------------------------------------------- 6.5.1: the simple PIN
+    const PIN_KEY = 'wmLockPin651';
+    // the device's "Prompt if phone unused for" list, in minutes
+    const PIN_WAITS = [0, 1, 5, 15, 30, 60, 90, 120, 720, 1440];
+    const PIN_ITER = 100000;
+    let pinDigits = '';
+    let pinOpts = null;
+    let pinBusy = false;
+    let idleAt = Date.now();
+    let idleTimer = 0;
+    let idleWatching = false;
+
+    function pinState() {
+        try {
+            const p = JSON.parse(localStorage.getItem(PIN_KEY) || 'null');
+            return p && typeof p.hash === 'string' && typeof p.salt === 'string' && p.hash && p.salt ? p : null;
+        } catch (_) { return null; }
+    }
+    const toB64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+    const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+    const pinCanHash = () => !!(window.crypto && crypto.subtle && typeof crypto.subtle.deriveBits === 'function');
+
+    async function pinHash(pin, salt, iter) {
+        const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pin)), 'PBKDF2', false, ['deriveBits']);
+        return toB64(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: iter }, key, 256));
+    }
+
+    /** Why a PIN cannot be used ('' when it can): the device's rule and its wording. */
+    function pinProblem(pin) {
+        const s = String(pin || '');
+        let simple = s.length < 4 || !/^\d+$/.test(s);
+        if (!simple) {
+            const d = [...s].map(Number);
+            const step = d[1] - d[0];
+            // one digit repeated, or a run up or down (1111, 1234, 4321)
+            if ((step === 0 || step === 1 || step === -1) && d.every((v, i) => i === 0 || v - d[i - 1] === step)) simple = true;
+        }
+        return simple ? 'Please enter another password. The password must be at least 4 characters and not contain a simple sequence (e.g. 1111 or 1234).' : '';
+    }
+
+    /** Set (or change) the PIN: only its salted hash is stored. opts { wait (minutes), hint }. */
+    async function pinSet(pin, opts) {
+        if (!pinCanHash() || pinProblem(pin)) return false;
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const old = pinState();
+        const o = opts || {};
+        const rec = {
+            v: 1, salt: toB64(salt), iter: PIN_ITER, hash: await pinHash(pin, salt, PIN_ITER),
+            wait: PIN_WAITS.includes(o.wait) ? o.wait : (old ? old.wait : 0),
+            hint: typeof o.hint === 'string' ? o.hint.slice(0, 200) : (old ? old.hint || '' : '')
+        };
+        try { localStorage.setItem(PIN_KEY, JSON.stringify(rec)); } catch (_) { return false; }
+        idleSync();
+        return true;
+    }
+
+    /** The wait and the hint of a PIN that is set. */
+    function pinUpdate(opts) {
+        const p = pinState();
+        if (!p) return false;
+        if (opts && PIN_WAITS.includes(opts.wait)) p.wait = opts.wait;
+        if (opts && typeof opts.hint === 'string') p.hint = opts.hint.slice(0, 200);
+        try { localStorage.setItem(PIN_KEY, JSON.stringify(p)); } catch (_) { return false; }
+        idleSync();
+        return true;
+    }
+
+    function pinClear() {
+        try { localStorage.removeItem(PIN_KEY); } catch (_) { /* nothing stored */ }
+        idleSync();
+    }
+
+    async function pinVerify(pin) {
+        const p = pinState();
+        if (!p) return true;
+        if (!pinCanHash()) return false;
+        try { return (await pinHash(pin, fromB64(p.salt), Number(p.iter) || PIN_ITER)) === p.hash; } catch (_) { return false; }
+    }
+
+    /** The slide reached its end: unlocked, or the PIN page first. */
+    function slideUnlock(opts) {
+        if (R651 && pinState()) { showPin(opts || null); return; }
+        unlock(opts);
+    }
+
+    function paintPin() {
+        el.pinDots.textContent = '';
+        for (let i = 0; i < pinDigits.length; i++) el.pinDots.appendChild(document.createElement('i'));
+    }
+
+    function showPin(opts) {
+        pinOpts = opts;
+        pinDigits = '';
+        paintPin();
+        el.list.hidden = true;
+        el.pin.hidden = false;
+        layer.classList.add('is-pin');
+    }
+
+    /** The X key: back to the lock scene. */
+    function hidePin() {
+        if (!el || el.pin.hidden) return;
+        el.pin.hidden = true;
+        pinDigits = '';
+        pinOpts = null;
+        layer.classList.remove('is-pin');
+        if (locked && !unlocking && el.alarm.hidden) enter(el.slider);
+    }
+
+    async function pinTry(app) {
+        if (pinBusy || unlocking) return;
+        pinBusy = true;
+        let ok = false;
+        try { ok = await pinVerify(pinDigits); } finally { pinBusy = false; }
+        if (!locked || el.pin.hidden) return;
+        if (ok) {
+            const o = Object.assign({}, pinOpts || {}, app ? { app } : {});
+            pinDigits = '';
+            unlock(o.app ? o : undefined);
+            return;
+        }
+        // device: the box, then an empty entry bar
+        pinDigits = '';
+        shell.classList.add('wm-lock65-box');
+        try {
+            await sh.messageBox({ title: 'Password Incorrect', text: 'The password you typed is incorrect.', buttons: [{ text: 'OK', value: true }] });
+        } catch (_) { /* no box: the bar is empty again */ }
+        shell.classList.remove('wm-lock65-box');
+        paintPin();
+    }
+
+    function pinKey(key) {
+        if (pinBusy || unlocking) return;
+        if (/^\d$/.test(key)) { if (pinDigits.length < 16) pinDigits += key; paintPin(); }
+        else if (key === 'clear') { pinDigits = pinDigits.slice(0, -1); paintPin(); }
+        else if (key === 'back') hidePin();
+        else if (key === 'unlock') pinTry('');
+        else if (key === 'contacts') pinTry('contacts');
+        else if (key === 'messaging') pinTry('messaging');
+    }
+
+    // "Prompt if phone unused for": one timer for the time left, pushed back by a tap or a key;
+    // 0 minutes locks when the screen goes off or the page is put away
+    const idleTouch = () => { idleAt = Date.now(); };
+    function idleArm() {
+        clearTimeout(idleTimer);
+        idleTimer = 0;
+        const p = pinState();
+        if (!p || locked || !(p.wait > 0)) return;
+        const left = p.wait * 60000 - (Date.now() - idleAt);
+        idleTimer = setTimeout(() => {
+            idleTimer = 0;
+            const q = pinState();
+            if (!q || locked || !(q.wait > 0)) return;
+            if (Date.now() - idleAt >= q.wait * 60000) lock(); else idleArm();
+        }, Math.min(Math.max(1000, left), 0x7fffffff));
+    }
+    function idleSync() {
+        const on = !!pinState();
+        if (on && !idleWatching) {
+            window.addEventListener('pointerdown', idleTouch, { capture: true, passive: true });
+            window.addEventListener('keydown', idleTouch, { capture: true, passive: true });
+            idleWatching = true;
+            idleAt = Date.now();
+        } else if (!on && idleWatching) {
+            window.removeEventListener('pointerdown', idleTouch, { capture: true });
+            window.removeEventListener('keydown', idleTouch, { capture: true });
+            idleWatching = false;
+        }
+        idleArm();
+    }
+    /** The screen went off or came back (the page hidden or shown). */
+    function idleScreen(on) {
+        const p = pinState();
+        if (!p || locked) return;
+        if (!on) { if (p.wait === 0) lock(); return; }
+        if (p.wait > 0 && Date.now() - idleAt >= p.wait * 60000) lock(); else idleArm();
+    }
+
+    // ---------------------------------------------------------------- 6.5.1: alarms
+    const ALARM_KEY = 'wmAlarms651';
+    const DAY_MS = 86400000;
+    // the device's list on Alarm Settings (AlarmNotFlags), its default the third
+    const ALARM_MODES = [['once', 'Play once'], ['repeat', 'Repeat'], ['repeat-vibrate', 'Repeat and Vibrate'], ['vibrate', 'Vibrate only']];
+    const ALARM_SNOOZE_MIN = 10;      // the Snooze slide: SnoozeTime 600 s
+    const ALARM_RING_MS = 120000;     // the sound gives up after two minutes; the alarm stays on screen
+    // device defaults: 6:00 AM, Monday, Alarm-01, Repeat and Vibrate, off
+    const alarmBlank = () => ({ on: false, time: 360, text: '', days: 2, sound: 'Alarm-01.mp3', mode: 'repeat-vibrate', since: 0, last: 0 });
+    let alarmTimer = 0;
+    let ringing = [];       // alarms on screen: { i, due, text, sound, mode, note }
+    let ringSound = null;
+
+    function alarmStore() {
+        let s = null;
+        try { s = JSON.parse(localStorage.getItem(ALARM_KEY) || 'null'); } catch (_) { s = null; }
+        s = s && typeof s === 'object' ? s : {};
+        const list = Array.isArray(s.list) ? s.list : [];
+        return {
+            list: [0, 1, 2].map((i) => {
+                const a = Object.assign(alarmBlank(), list[i] && typeof list[i] === 'object' ? list[i] : {});
+                a.time = Math.max(0, Math.min(1439, Math.round(Number(a.time)) || 0));
+                a.days = (Number(a.days) || 0) & 127;
+                if (!ALARM_MODES.some(([m]) => m === a.mode)) a.mode = 'repeat-vibrate';
+                return a;
+            }),
+            loud: s.loud === true,
+            snoozed: Array.isArray(s.snoozed) ? s.snoozed.filter((z) => z && Number.isFinite(z.at)) : []
+        };
+    }
+    function alarmSave(s) {
+        try { localStorage.setItem(ALARM_KEY, JSON.stringify(s)); } catch (_) { /* this session only */ }
+    }
+
+    /** The alarm's occurrence next after (dir 1) or last at or before (dir -1) a time; days 0 = any day. */
+    function alarmOccurrence(a, from, dir) {
+        for (let d = 0; d <= 7; d++) {
+            const t = new Date(from);
+            t.setDate(t.getDate() + d * dir);
+            t.setHours(Math.floor(a.time / 60), a.time % 60, 0, 0);
+            const ms = t.getTime();
+            if (dir > 0 ? ms <= from : ms > from) continue;
+            if (!a.days || (a.days & (1 << t.getDay()))) return ms;
+        }
+        return 0;
+    }
+
+    /** Ring what is due and wait for the next one (one timer; also run when the page wakes). */
+    function alarmCheck() {
+        clearTimeout(alarmTimer);
+        alarmTimer = 0;
+        const s = alarmStore();
+        const now = Date.now();
+        let next = Infinity;
+        let dirty = false;
+        const due = [];
+        s.list.forEach((a, i) => {
+            if (!a.on) return;
+            const prev = alarmOccurrence(a, now, -1);
+            if (prev && prev > Math.max(a.since || 0, a.last || 0, now - DAY_MS)) {
+                a.last = prev;
+                dirty = true;
+                due.push({ i, due: prev, text: a.text, sound: a.sound, mode: a.mode });
+            }
+            const n = alarmOccurrence(a, now, 1);
+            if (n) next = Math.min(next, n);
+        });
+        s.snoozed = s.snoozed.filter((z) => {
+            if (z.at > now) { next = Math.min(next, z.at); return true; }
+            dirty = true;
+            due.push({ i: z.i, due: z.due, text: z.text, sound: z.sound, mode: z.mode });
+            return false;
+        });
+        // stored before it rings: a second tab that looks next finds it taken
+        if (dirty) alarmSave(s);
+        due.forEach(alarmRing);
+        if (next < Infinity) alarmTimer = setTimeout(alarmCheck, Math.min(next - now + 50, 0x7fffffff));
+    }
+
+    function alarmSoundStop() {
+        const me = ringSound;
+        ringSound = null;
+        if (!me) return;
+        clearTimeout(me.timer);
+        try { if (me.src) { me.src.onended = null; me.src.stop(); } } catch (_) { /* ended */ }
+    }
+
+    /** The alarm's sound: once, or again a second after it ends ("Repeat"), with the motor where asked. */
+    function alarmSoundStart(r) {
+        alarmSoundStop();
+        const api = sh && sh.sounds;
+        const me = { src: null, timer: 0, until: Date.now() + ALARM_RING_MS };
+        ringSound = me;
+        const audible = r.mode !== 'vibrate' && !!r.sound;
+        const buzz = r.mode === 'vibrate' || r.mode === 'repeat-vibrate';
+        const repeat = r.mode !== 'once';
+        const turn = async () => {
+            me.timer = 0;
+            if (ringSound !== me) return;
+            if (buzz) { try { sh.vibrate('reminder'); } catch (_) { /* no motor */ } }
+            let src = null;
+            if (audible && api && typeof api.alarm === 'function') {
+                try { src = await api.alarm(r.sound, alarmStore().loud); } catch (_) { src = null; }
+            }
+            if (ringSound !== me) { try { if (src) src.stop(); } catch (_) { /* ended */ } return; }
+            me.src = src;
+            if (!repeat || Date.now() > me.until) return;
+            const again = () => { if (ringSound === me && !me.timer && Date.now() <= me.until) me.timer = setTimeout(turn, 1000); };
+            // no sound came (silent mode, audio not unlocked yet): the next turn in four seconds
+            if (src) src.onended = again; else me.timer = setTimeout(turn, 4000);
+        };
+        turn();
+    }
+
+    function alarmRing(r) {
+        if (!ready()) return;
+        ringing.push(r);
+        alarmSoundStart(r);
+        if (locked) alarmToLock(); else alarmNote(r);
+    }
+
+    /** Unlocked: the classic reminder notification, Dismiss | Menu (device, both versions). */
+    function alarmNote(r) {
+        if (r.note || typeof sh.appNote !== 'function') return;
+        const at = timeParts(new Date()).time;
+        r.note = sh.appNote({
+            title: `${at} | Reminder`,
+            html: `<span class="wm-alarm651-note"><b>${escHtml(`Alarm: ${r.text || 'No description'}`)}</b><br>${escHtml(fmtAlarm(r.due))}</span>`,
+            icon: 'status-reminder',
+            silent: true,
+            softKeys: () => ({
+                left: { label: 'Dismiss', icon: 'dismiss', action: () => alarmDone(r) },
+                right: { label: 'Menu', icon: 'menu', menu: () => alarmMenu(r) }
+            })
+        });
+    }
+
+    /** The reminder's Menu, as the device lists it (the two it greys out stay grey: an alarm has no item to open). */
+    function alarmMenu(r) {
+        const snooze = (label, min) => ({ label, action: () => alarmDone(r, min) });
+        return [
+            { label: 'Dismiss All', action: () => ringing.slice().forEach((x) => alarmDone(x)) },
+            { label: 'Remind 5 mins before', disabled: true },
+            snooze('Snooze 5 minutes', 5), snooze('Snooze 10 minutes', 10), snooze('Snooze 15 minutes', 15),
+            snooze('Snooze 1 hour', 60), snooze('Snooze 1 day', 1440),
+            '-',
+            { label: 'View Item', disabled: true }
+        ];
+    }
+
+    /** Dismiss the alarm, or (minutes) put it off: it rings again then, with its own time. */
+    function alarmDone(r, minutes) {
+        const at = ringing.indexOf(r);
+        if (at < 0) return;
+        ringing.splice(at, 1);
+        alarmSoundStop();
+        if (r.note) { try { r.note.close(); } catch (_) { /* gone */ } r.note = null; }
+        if (minutes > 0) {
+            const s = alarmStore();
+            s.snoozed.push({ i: r.i, at: Date.now() + minutes * 60000, due: r.due, text: r.text, sound: r.sound, mode: r.mode });
+            alarmSave(s);
+            alarmCheck();
+        }
+        if (ringing.length) alarmSoundStart(ringing[ringing.length - 1]);
+        if (locked) alarmToLock();
+    }
+
+    /** Locked: the alarm page for the first alarm ringing, or the lock scene again when none is. */
+    function alarmToLock() {
+        if (!el || !el.alarm) return;
+        const r = ringing[0];
+        if (!r) {
+            if (el.alarm.hidden) return;
+            el.alarm.hidden = true;
+            layer.classList.remove('is-alarm');
+            if (locked && !unlocking && el.pin.hidden) enter(el.slider);
+            return;
+        }
+        ringing.forEach((x) => { if (x.note) { try { x.note.close(); } catch (_) { /* gone */ } x.note = null; } });
+        if (!el.pin.hidden) hidePin();
+        el.list.hidden = true;
+        el.alarmTime.textContent = fmtAlarm(r.due);
+        el.alarmText.textContent = `Alarm: ${r.text || 'No description'}`;
+        el.alarm.classList.remove('is-held');
+        el.alarm.querySelectorAll('.wm-lock65-aslide').forEach((sl) => {
+            if (sl._reset) sl._reset();
+            sl.classList.remove('is-pressed', 'is-entry');
+            void sl.offsetWidth;
+            sl.classList.add('is-entry');
+        });
+        el.alarm.hidden = false;
+        layer.classList.add('is-alarm');
+    }
+
+    /** An alarm page slide: the handle follows the pointer to the right, 100 units at most. */
+    function bindAlarmSlide(slide, onEnd) {
+        const handle = slide.querySelector('.wm-lock65-ahandle');
+        let id = null;
+        let startX = 0;
+        let dx = 0;
+        let max = 0;
+        let frame = 0;
+        const place = () => { frame = 0; handle.style.transform = `translate3d(${dx}px, 0, 0)`; };
+        const settle = (e) => {
+            if (id == null || (e && e.pointerId !== id)) return;
+            try { handle.releasePointerCapture(id); } catch (_) { /* already released */ }
+            id = null;
+            if (frame) { cancelAnimationFrame(frame); place(); }
+            const done = e && e.type === 'pointerup' && max > 0 && dx >= max - (max / 100) * 0.5;
+            slide.classList.remove('is-pressed');
+            el.alarm.classList.remove('is-held');
+            handle.classList.add('is-returning');
+            handle.style.transform = '';
+            if (done) onEnd();
+        };
+        handle.addEventListener('pointerdown', (e) => {
+            if (!locked || unlocking || id != null || (e.pointerType === 'mouse' && e.button !== 0)) return;
+            e.preventDefault();
+            id = e.pointerId;
+            try { handle.setPointerCapture(id); } catch (_) { /* moves still arrive while over the layer */ }
+            // one unit in CSS px, from the 44-unit slide
+            max = 100 * (slide.getBoundingClientRect().height / 44 || 1);
+            startX = e.clientX;
+            dx = 0;
+            handle.classList.remove('is-returning');
+            slide.classList.remove('is-entry');
+            slide.classList.add('is-pressed');
+            el.alarm.classList.add('is-held');
+        });
+        handle.addEventListener('pointermove', (e) => {
+            if (e.pointerId !== id) return;
+            dx = Math.max(0, Math.min(max, e.clientX - startX));
+            if (!frame) frame = requestAnimationFrame(place);
+        });
+        handle.addEventListener('pointerup', settle);
+        handle.addEventListener('pointercancel', settle);
+        handle.addEventListener('lostpointercapture', settle);
+        slide._reset = () => { id = null; dx = 0; if (frame) { cancelAnimationFrame(frame); frame = 0; } handle.classList.remove('is-returning'); handle.style.transform = ''; };
+    }
+
+    // ---------------------------------------------------------------- 6.5.1: the two pages in the layer
+    function build651() {
+        const scene = layer.querySelector('.wm-lock65-scene');
+        const aslide = (kind, label) => `<div class="wm-lock65-aslide" data-kind="${kind}">
+                <div class="wm-lock65-apath"><i></i></div>
+                <div class="wm-lock65-ahandle" aria-label="Slide to ${label.toLowerCase()}"><i data-art="up"></i><i data-art="dn"></i><span>${label}</span></div>
+            </div>`;
+        const key = (k, cls, inner, label) => `<button type="button" class="wm-lock65-key ${cls}" data-key="${k}" aria-label="${label}">${inner}</button>`;
+        const digit = (n) => key(n, `is-d${n}`, n, n);
+        scene.insertAdjacentHTML('beforeend', `<div class="wm-lock65-alarm" hidden>
+                <div class="wm-lock65-form">
+                    <i class="wm-lock65-alarm-art"></i>
+                    <span class="wm-lock65-alarm-time"></span>
+                    <span class="wm-lock65-alarm-text"></span>
+                    ${aslide('snooze', 'Snooze')}
+                    ${aslide('dismiss', 'Dismiss')}
+                </div>
+            </div>
+            <div class="wm-lock65-pin" hidden>
+                <div class="wm-lock65-form">
+                    <div class="wm-lock65-pin-area"><span class="wm-lock65-pin-dots"></span></div>
+                    <div class="wm-lock65-keys">
+                        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => digit(String(n))).join('')}
+                        ${key('clear', 'is-clear', '<i></i>', 'Backspace')}${digit('0')}${key('back', 'is-back', '<i></i>', 'Cancel')}
+                    </div>
+                    <div class="wm-lock65-unlock">
+                        ${key('unlock', 'is-unlock', '<i></i>', 'Unlock')}${key('contacts', 'is-contacts', '<i></i>', 'Unlock to Contacts')}${key('messaging', 'is-messaging', '<i></i>', 'Unlock to Messaging')}
+                    </div>
+                </div>
+            </div>`);
+        el.alarm = layer.querySelector('.wm-lock65-alarm');
+        el.alarmTime = layer.querySelector('.wm-lock65-alarm-time');
+        el.alarmText = layer.querySelector('.wm-lock65-alarm-text');
+        el.pin = layer.querySelector('.wm-lock65-pin');
+        el.pinDots = layer.querySelector('.wm-lock65-pin-dots');
+        bindAlarmSlide(el.alarm.querySelector('[data-kind="snooze"]'), () => { if (ringing[0]) alarmDone(ringing[0], ALARM_SNOOZE_MIN); });
+        bindAlarmSlide(el.alarm.querySelector('[data-kind="dismiss"]'), () => { if (ringing[0]) alarmDone(ringing[0]); });
+        el.pin.querySelectorAll('.wm-lock65-key').forEach((b) => {
+            // the layer swallows clicks: the keys act on the pen coming up over them
+            b.addEventListener('click', () => pinKey(b.dataset.key));
+        });
+    }
+
+    /** The lock screen came up: its plain scene, the tall form's layout, a ringing alarm's page. */
+    function lock651() {
+        el.pin.hidden = true;
+        el.alarm.hidden = true;
+        layer.classList.remove('is-pin', 'is-alarm');
+        pinDigits = '';
+        pinOpts = null;
+        clearTimeout(idleTimer);
+        idleTimer = 0;
+        // the forms of 800 px and taller put the keypad lower (LS_SimplePinScene_480x854: scene 409 units)
+        const sc = layer.querySelector('.wm-lock65-scene').getBoundingClientRect();
+        const unit = (el.slider.getBoundingClientRect().height / 40) || 1;
+        layer.classList.toggle('is-tall', sc.height / unit >= 400);
+        if (ringing.length) alarmToLock();
+    }
+
+    function unlock651() {
+        if (el && el.pin) {
+            el.pin.hidden = true;
+            el.alarm.hidden = true;
+            layer.classList.remove('is-pin', 'is-alarm');
+        }
+        shell.classList.remove('wm-lock65-box');
+        pinDigits = '';
+        pinOpts = null;
+        idleAt = Date.now();
+        idleArm();
+        // an alarm still ringing shows as its notification again
+        ringing.forEach((r) => alarmNote(r));
+    }
+
+    function start651() {
+        /** Run once the shell has started and no splash or takeover has the screen. */
+        const whenUp = (fn) => {
+            const up = () => !!window.wmShell && (!root.dataset.wmBoot || root.dataset.wmBoot === 'done');
+            if (up()) { fn(); return; }
+            const mo = new MutationObserver(() => { if (up()) { mo.disconnect(); fn(); } });
+            mo.observe(root, { attributes: true, attributeFilter: ['data-wm-boot'] });
+            document.addEventListener('wmShellReady', () => { if (up()) { mo.disconnect(); fn(); } }, { once: true });
+        };
+        let started = false;
+        whenUp(() => {
+            if (started || !ready()) return;
+            started = true;
+            // a phone that starts with a password set starts locked
+            if (pinState()) lock();
+            idleSync();
+            alarmCheck();
+        });
+        window.addEventListener('melatonscreen', (e) => { if (!started || !e.detail) return; idleScreen(!!e.detail.on); if (e.detail.on) alarmCheck(); });
+        document.addEventListener('visibilitychange', () => { if (!started) return; idleScreen(!document.hidden); if (!document.hidden) alarmCheck(); });
+        // another tab of this browser changed the alarms or the PIN
+        window.addEventListener('storage', (e) => { if (!started) return; if (e.key === ALARM_KEY) alarmCheck(); else if (e.key === PIN_KEY) idleSync(); });
+
+        Object.assign(window.wmLock, {
+            /** The simple PIN (6.5.1): only a salted hash is kept, on this device. */
+            pin: {
+                isSet: () => !!pinState(),
+                canSet: pinCanHash,
+                problem: pinProblem,
+                set: pinSet,
+                verify: pinVerify,
+                update: pinUpdate,
+                clear: pinClear,
+                waits: () => PIN_WAITS.slice(),
+                settings: () => { const p = pinState(); return { on: !!p, wait: p ? Number(p.wait) || 0 : 0, hint: p ? p.hint || '' : '' }; }
+            }
+        });
+        /** Alarms (6.5.1): Settings > Clock & Alarms > Alarms reads and writes them here. */
+        window.wmAlarms = {
+            modes: () => ALARM_MODES.map(([value, label]) => ({ value, label })),
+            get: () => { const s = alarmStore(); return { list: s.list.map((a) => ({ on: a.on, time: a.time, text: a.text, days: a.days, sound: a.sound, mode: a.mode })), loud: s.loud }; },
+            /** Store the three alarms and the "even when silent" switch; an alarm that changed counts from now. */
+            set(next) {
+                const s = alarmStore();
+                const now = Date.now();
+                (next && Array.isArray(next.list) ? next.list : []).slice(0, 3).forEach((n, i) => {
+                    const a = s.list[i];
+                    const was = JSON.stringify([a.on, a.time, a.days]);
+                    Object.assign(a, { on: !!n.on, time: Math.max(0, Math.min(1439, Math.round(Number(n.time)) || 0)), text: String(n.text || '').slice(0, 63), days: (Number(n.days) || 0) & 127, sound: String(n.sound || ''), mode: n.mode });
+                    if (JSON.stringify([a.on, a.time, a.days]) !== was) { a.since = now; s.snoozed = s.snoozed.filter((z) => z.i !== i); }
+                });
+                if (next && typeof next.loud === 'boolean') s.loud = next.loud;
+                alarmSave(s);
+                alarmCheck();
+            },
+            check: alarmCheck,
+            ringing: () => ringing.map((r) => ({ i: r.i, due: r.due, text: r.text })),
+            /** The alarm due next: { i, at } or null. */
+            next() {
+                const s = alarmStore();
+                const now = Date.now();
+                let best = null;
+                s.list.forEach((a, i) => { if (!a.on) return; const n = alarmOccurrence(a, now, 1); if (n && (!best || n < best.at)) best = { i, at: n }; });
+                s.snoozed.forEach((z) => { if (!best || z.at < best.at) best = { i: z.i, at: z.at }; });
+                return best;
+            }
+        };
+    }
+
     window.wmLock = {
         lock,
         unlock,

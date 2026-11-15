@@ -5071,7 +5071,9 @@
         const closable = !!(n && n.toast.querySelector('.toast-close'));
         return {
             left: { label: 'Hide', action: hideNote },
-            right: closable ? { label: 'Dismiss', action: () => dismissNote(n) } : null
+            // 6.5.1 (#850) notices: on the bottom button bar Dismiss is the device's picture button
+            // (classicblue_bubble_dismiss, the reminder bubble's); Hide stays a text bubble (device)
+            right: closable ? { label: 'Dismiss', icon: BARS651 ? 'dismiss' : undefined, action: () => dismissNote(n) } : null
         };
     }
 
@@ -5904,7 +5906,7 @@
             if (b.hidden) return;
             const role = b.dataset.role;
             // the group icon stands for its own notifications here: what is folded into it has an item of its own
-            if (role === 'notify' && !notesForBubbleIcon().length) return;
+            if (role === 'notify' && !notesForBubbleIcon().length && statusFolded.length) return;
             // the network type and the signal are one phone item (both open the Phone bubble)
             const kind = role === 'cell' ? 'signal' : role;
             if (kind === 'signal') { if (phone) return; phone = true; }
@@ -6453,6 +6455,15 @@
         { id: 'weather-severe', label: 'Weather: Severe alert', kind: 'note', sound: 'WeatherSevere.wav', repeatable: true, repeat: true, desktop: 'warning' },
         { id: 'rain-alarm', label: 'Weather: Rain alarm', kind: 'note', sound: 'RainAlarm.wav', desktop: 'balloon' }
     ];
+    // 6.5.1 (#850) notices: Windows Mobile 6.5.3's new sounds, WMA to MP3 like the others (Alarm-01 .. -10,
+    // Remind-01 .. -05; copied off the 6.5.3 emulator's \Windows). Its Sound lists offer them and its
+    // Reminders class plays Remind-01 where 6.5 played notify (HKCU ControlPanel\Notifications
+    // {15F11F90}: Wave \Windows\Remind-01.wma). 6.1 and 6.5 neither list nor play them.
+    if (WM651) {
+        for (let i = 1; i <= 10; i++) WM_SOUNDS.push(`Alarm-${String(i).padStart(2, '0')}.mp3`);
+        for (let i = 1; i <= 5; i++) WM_SOUNDS.push(`Remind-${String(i).padStart(2, '0')}.mp3`);
+        SND_EVENTS.find((e) => e.id === 'reminder').sound = 'Remind-01.mp3';
+    }
     const SND_EVENT = new Map(SND_EVENTS.map((e) => [e.id, e]));
     // the gwes / PlaySound names callers use, as phone events
     const SND_ALIAS = {
@@ -10564,7 +10575,18 @@
             eventPrefs: (id) => eventPrefs(id),
             setPrefs: (p) => { saveSoundPrefs(p); sndUnlock(); },
             preview: previewSound,
-            stop: stopPreview
+            stop: stopPreview,
+            // 6.5.1 (#850) notices: an alarm's own sound (wmLock65.js rings it): the file once at the
+            // Ringer level; nothing in silent or vibrate mode unless the alarm may sound then (loud).
+            // Resolves to the playing source (stop() ends it, onended tells) or null.
+            alarm: async (file, loud) => {
+                try {
+                    if (!WM_SOUNDS.includes(file) || !snd.ctx || ringerLevel() <= 0 || (!loud && sndSilentNow())) return null;
+                    if (snd.ctx.state !== 'running') await snd.ctx.resume().catch(() => {});
+                    sndNote('alarm', '', `wm61/${file}`, Date.now());
+                    return (await sndPlayFile(file)) || null;
+                } catch (_) { return null; }
+            }
         },
         /** Buzz a named pattern ('notification' | 'reminder' | 'alert' | 'ring' | 'mode'); opts { level, force, ms }. */
         vibrate: (kind, opts) => vibrate(kind, opts || {}),

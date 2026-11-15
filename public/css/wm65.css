@@ -1462,7 +1462,7 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"][data-wm-camera="clear
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-title {
-    padding-left: calc(4 * var(--wm-px));
+    padding-left: calc(3 * var(--wm-px));
     line-height: calc(15 * var(--wm-px));
     text-overflow: clip;
 }
@@ -1479,10 +1479,10 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-status {
 html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-clock651 {
     flex: 0 0 auto;
     align-self: stretch;
-    margin: 0 calc(5.5 * var(--wm-px)) 0 calc(7 * var(--wm-px));
+    margin: 0 calc(5 * var(--wm-px)) 0 calc(7 * var(--wm-px));
     font-size: var(--wm-fs);
     font-weight: bold;
-    line-height: calc(16 * var(--wm-px));
+    line-height: calc(16.5 * var(--wm-px));
     white-space: nowrap;
     pointer-events: none;
 }
@@ -1989,8 +1989,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row {
 
 /* drop-down: 70 px tall in the 2 px black frame, the value 3 px inside the frame, and the grey
  * narrow arrow button (26 x 64) inside the frame's right end, 1 px clear above and below (GPS:
- * frame x 6 - 443, y 236 - 305, the art x 416 - 441, y 239 - 302). The wide arrow art (64 x 64)
- * was not seen on any page of the device (every drop-down list of Settings draws the narrow one).
+ * frame x 6 - 443, y 236 - 305, the art x 416 - 441, y 239 - 302). A drop-down list (no typing) draws the narrow button: every one in Settings.
  * Pressed (its list open) it takes the pushed art, disabled the inactive one. */
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo {
     height: calc(35 * var(--wm-px));
@@ -2015,12 +2014,32 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo:disabled::after {
     background-image: url('/static_images/wm65/v651-combo-arrow-narrow-inactive@2x.png');
 }
 
+/* an editable drop-down (Tasks > New Task > Subject: frame 302 x 70, the edit 228 x 64 inside)
+ * takes the wide arrow button, 64 x 64, 1 px inside the frame's right end */
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-edit {
     height: calc(35 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo {
-    width: calc(15 * var(--wm-px));
+    width: calc(33.5 * var(--wm-px));
+    border-left: 0 !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo::after,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo[aria-expanded="true"]::after {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    margin: 0 calc(0.5 * var(--wm-px)) 0 auto;
+    background: url('/static_images/wm65/v651-combo-arrow@2x.png') center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo:active:not(:disabled)::after,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo[aria-expanded="true"]::after {
+    background-image: url('/static_images/wm65/v651-combo-arrow-pushed@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo:disabled::after {
+    background-image: url('/static_images/wm65/v651-combo-arrow-inactive@2x.png');
 }
 
 /* a drop-down's label stands above it (Sounds & Notifications > Notifications, Phone, Clock &
@@ -2281,6 +2300,44 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-listbox-row.is-selected {
     background-color: transparent !important;
     color: #fff;
 }
+
+/* list views on Settings pages (Buttons: the header 66 px, rows 70 px apart, the selector art over
+ * the chosen row's first column; Task Manager's header 64 px over a 2 px rule) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-sys-lv-head,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-head {
+    height: calc(33 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-sys-lv-row {
+    height: calc(35 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-sys-lv-row.is-selected {
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+    background: none;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-row {
+    min-height: calc(35 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-row.is-selected .wmsp-btn-name {
+    height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-row.is-selected .wmsp-btn-name > span {
+    background: none;
+    color: #fff;
+}
 /* ---- end 6.5.1 controls ---- */
 
 /* ---- 6.5.1 pivot: tabs as a sliding band under the title bar ---- */
@@ -2289,11 +2346,11 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-listbox-row.is-selected {
  * 12 between two arrows (classicblue_pivot_*arrow.png, 18 x 32) and the pages before and after in
  * plain Tahoma at either side, white, cut with an ellipsis ("Notificatio...", "Storage C...").
  * Layout read from eleven Settings pages:
- *   - the middle block is arrow 18 + 6.5 + name (71 at least, centred) + 6.5 + arrow 18 = 120
- *     units at least, centred; a longer name pushes both arrows out ("Program Buttons": arrows
+ *   - the middle block is arrow 18 + 6.5 + name (71 at least, centred) + 6 + arrow 18 = 119.5
+ *     units at least, from 60 units; a longer name pushes both arrows out ("Program Buttons": arrows
  *     at 46.5 and 177.5);
  *   - the left name is centred in the box from 2 units to 3 units before the block, the right
- *     name in the box from 2.5 units after the block to 4.5 units before the edge.
+ *     name in the box from 3 units after the block to 4.5 units before the edge.
  * The band's picture: Classic Blue's pivot background is not among the unpacked ROM files (the
  * other themes' are 8 x 64 strips), so its rows are read from a device grab: a black row, a
  * light row, a slate fall to row 34, a step down at row 35, near black to row 50, then a rise.
@@ -2386,7 +2443,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="-1"] {
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="1"] {
-    margin-left: calc(2.5 * var(--wm-px)) !important;
+    margin-left: calc(3 * var(--wm-px)) !important;
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side > span {
@@ -2415,7 +2472,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-cur {
     flex: 0 1 auto;
     box-sizing: content-box;
     min-width: calc(71 * var(--wm-px));
-    padding: 0 calc(6.5 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) 0 calc(6.5 * var(--wm-px));
     overflow: hidden;
     text-overflow: ellipsis;
     text-align: center;

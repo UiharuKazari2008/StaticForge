@@ -339,3 +339,312 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-date {
     font-size: calc(14.67 * var(--wm-px));
     line-height: calc(19 * var(--wm-px));
 }
+
+/* ---- Melaton Mobile 6.5.1 (#850): the alarm page and the simple PIN page (wmLock65.js) ----
+ * Windows Mobile 6.5.3's LS_AlarmScene_480x640 / LS_SimplePinScene_480x640 (and the 480x854 forms
+ * for tall screens), one unit = 2 device px, checked against the 6.5.3 emulator. Both take the
+ * lock scene's place: no slide handle, caption, notification rows or time band while one is up. */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-slider,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-caption,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-list,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-time,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-slider,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-caption,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-list,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-time {
+    display: none;
+}
+
+/* with the bottom button bar the title bar is the thin one (18 units): the scene starts under it */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-lock65-scene {
+    top: calc(18 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin {
+    position: absolute;
+    inset: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm[hidden],
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin[hidden] {
+    display: none;
+}
+
+/* the 240-unit form, centred on a wider screen */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-form {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: calc(240 * var(--wm-px));
+    margin-left: calc(-120 * var(--wm-px));
+}
+
+/* ---- the alarm page: LS_Alarm 72 x 72 at 20, 37; the time in 136.5 x 26 at 96, 48 (Tahoma 22 pt,
+ * regular: 6.5's bold did not fit its box); the description in 136.5 x 16 at 96, 82 (8 pt) ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm-art {
+    position: absolute;
+    left: calc(20 * var(--wm-px));
+    top: calc(37 * var(--wm-px));
+    width: calc(72 * var(--wm-px));
+    height: calc(72 * var(--wm-px));
+    background: url('/static_images/wm65/ls-alarm@2x.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/ls-alarm.png') 1x, url('/static_images/wm65/ls-alarm@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm-time,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm-text {
+    position: absolute;
+    left: calc(96 * var(--wm-px));
+    width: calc(136.5 * var(--wm-px));
+    overflow: hidden;
+    white-space: nowrap;
+    text-shadow: calc(0.5 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) #000, calc(0.5 * var(--wm-px)) calc(0.5 * var(--wm-px)) calc(1.5 * var(--wm-px)) #000;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm-time {
+    top: calc(48 * var(--wm-px));
+    height: calc(26 * var(--wm-px));
+    font-size: calc(29.33 * var(--wm-px));
+    line-height: calc(26 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm-text {
+    top: calc(82 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    font-size: calc(10.67 * var(--wm-px));
+    line-height: calc(16 * var(--wm-px));
+    text-overflow: ellipsis;
+}
+
+/* the slides: 200 x 44 from x 20, Dismiss 42.5 units over the screen's bottom and Snooze 64 above
+ * it (cpr 480x640: tops 303 / 431 of the 604 px scene; 480x854: 463 / 591 of 818: the same gap) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide {
+    position: absolute;
+    left: calc(20 * var(--wm-px));
+    bottom: calc(42.5 * var(--wm-px));
+    width: calc(200 * var(--wm-px));
+    height: calc(44 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide[data-kind="snooze"] {
+    bottom: calc(106.5 * var(--wm-px));
+}
+
+/* the large chevrons: a 47 x 21 window at 104.5, 11.5 on a strip of the ROM's frames
+ * (arwR_lrg_enter_001-021, then arwR_lrg_loop_001-004), 25 cells on a 48-unit pitch */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-apath {
+    position: absolute;
+    left: calc(104.5 * var(--wm-px));
+    top: calc(11.5 * var(--wm-px));
+    width: calc(47 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    overflow: hidden;
+    opacity: 1;
+    transition: opacity 200ms linear;
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-apath > i {
+    position: absolute;
+    top: 0;
+    left: calc(-0.5 * var(--wm-px));
+    width: calc(1200 * var(--wm-px));
+    height: 100%;
+    background: image-set(url('/static_images/wm65/v651-ls-arrows-lrg@2x.png') 2x, url('/static_images/wm65/v651-ls-arrows-lrg@4x.png') 4x) 0 0 / 100% 100% no-repeat;
+    /* at rest: the last loop frame, all three chevrons */
+    transform: translateX(-96%);
+    will-change: transform;
+}
+
+/* the page comes up: the 21 entry frames at 28 a second (the same keyframes as the lock slide) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide.is-entry .wm-lock65-apath > i {
+    animation: wm-lock65-entry 750ms steps(21, jump-none) both;
+}
+
+/* either handle held: both rows' chevrons go out (device recording) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm.is-held .wm-lock65-apath {
+    opacity: 0;
+}
+
+/* the handle: 100 x 44 at the left end, 100 units of travel to the right */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: calc(100 * var(--wm-px));
+    height: calc(44 * var(--wm-px));
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
+    touch-action: none;
+    cursor: pointer;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle.is-returning {
+    transition: transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle > i {
+    position: absolute;
+    inset: 0;
+    background: url('/static_images/wm65/v651-ls-slider-green@2x.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/v651-ls-slider-green.png') 1x, url('/static_images/wm65/v651-ls-slider-green@2x.png') 2x);
+    pointer-events: none;
+    transition: opacity 200ms linear;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle > i[data-art="dn"] {
+    background-image: url('/static_images/wm65/v651-ls-slider-green-dwn@2x.png');
+    background-image: image-set(url('/static_images/wm65/v651-ls-slider-green-dwn.png') 1x, url('/static_images/wm65/v651-ls-slider-green-dwn@2x.png') 2x);
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide[data-kind="dismiss"] .wm-lock65-ahandle > i[data-art="up"] {
+    background-image: url('/static_images/wm65/v651-ls-slider-red@2x.png');
+    background-image: image-set(url('/static_images/wm65/v651-ls-slider-red.png') 1x, url('/static_images/wm65/v651-ls-slider-red@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide[data-kind="dismiss"] .wm-lock65-ahandle > i[data-art="dn"] {
+    background-image: url('/static_images/wm65/v651-ls-slider-red-dwn@2x.png');
+    background-image: image-set(url('/static_images/wm65/v651-ls-slider-red-dwn.png') 1x, url('/static_images/wm65/v651-ls-slider-red-dwn@2x.png') 2x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide.is-pressed .wm-lock65-ahandle > i[data-art="up"] {
+    opacity: 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-aslide.is-pressed .wm-lock65-ahandle > i[data-art="dn"] {
+    opacity: 1;
+}
+
+/* "Snooze" / "Dismiss": centred in 73 x 44 at x 13.5, Tahoma 8 pt, white at 0.8 */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle > span {
+    position: absolute;
+    top: 0;
+    left: calc(13.5 * var(--wm-px));
+    width: calc(73 * var(--wm-px));
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(10.67 * var(--wm-px));
+    white-space: nowrap;
+    opacity: 0.8;
+    pointer-events: none;
+}
+
+/* ---- the simple PIN page: the keypad 208 wide from x 16, y 40: the entry bar 208 x 18, keys
+ * 67 x 38 on a 70.5 x 41.5 pitch from y 31, the unlock row at y 241.5 (480x640 form) ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-area {
+    position: absolute;
+    left: calc(16 * var(--wm-px));
+    top: calc(40 * var(--wm-px));
+    width: calc(208 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    background: url('/static_images/wm65/ls-pinarea@2x.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/ls-pinarea.png') 1x, url('/static_images/wm65/ls-pinarea@2x.png') 2x);
+}
+
+/* one dot a digit: 7.5 units across on a 10.5-unit pitch, centred (device: 15 px dots 21 px apart, 206 207 239) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-dots {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: calc(3 * var(--wm-px));
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-dots > i {
+    flex: 0 0 auto;
+    width: calc(7.5 * var(--wm-px));
+    height: calc(7.5 * var(--wm-px));
+    border-radius: 50%;
+    background: #cecfef;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-keys,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock {
+    position: absolute;
+    left: calc(16 * var(--wm-px));
+    top: calc(71 * var(--wm-px));
+    width: calc(208 * var(--wm-px));
+    display: grid;
+    grid-template-columns: repeat(3, calc(67 * var(--wm-px)));
+    grid-auto-rows: calc(38 * var(--wm-px));
+    gap: calc(3.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock {
+    top: calc(241.5 * var(--wm-px));
+}
+
+/* the tall forms (480x854): entry bar at y 58, keys from y 100, the unlock row at y 292.5 */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-tall .wm-lock65-pin-area { top: calc(58 * var(--wm-px)); }
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-tall .wm-lock65-keys { top: calc(100 * var(--wm-px)); }
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-tall .wm-lock65-unlock { top: calc(292.5 * var(--wm-px)); }
+
+/* a key: LS_KeypadButton 67 x 38, its digit Tahoma bold 20 pt in 206 207 239; held: LS_KeypadButton_Dwn */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key {
+    position: relative;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/wm65/ls-keypadbutton@2x.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/ls-keypadbutton.png') 1x, url('/static_images/wm65/ls-keypadbutton@2x.png') 2x);
+    box-shadow: none;
+    color: #cecfef;
+    font: bold calc(26.67 * var(--wm-px)) / calc(38 * var(--wm-px)) var(--wm-font);
+    text-align: center;
+    touch-action: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key:active {
+    background-image: url('/static_images/wm65/ls-keypadbutton-dwn@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-keypadbutton-dwn.png') 1x, url('/static_images/wm65/ls-keypadbutton-dwn@2x.png') 2x);
+}
+
+/* backspace and cancel: LS_Clear / LS_Back 24 x 24 at 21.5, 7 */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key > i {
+    position: absolute;
+    left: calc(21.5 * var(--wm-px));
+    top: calc(7 * var(--wm-px));
+    width: calc(24 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    background: url('/static_images/wm65/ls-clear@2x.png') 0 0 / 100% 100% no-repeat;
+    background-image: image-set(url('/static_images/wm65/ls-clear.png') 1x, url('/static_images/wm65/ls-clear@2x.png') 2x);
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key.is-back > i {
+    background-image: url('/static_images/wm65/ls-back@2x.png');
+    background-image: image-set(url('/static_images/wm65/ls-back.png') 1x, url('/static_images/wm65/ls-back@2x.png') 2x);
+}
+
+/* the unlock row's pictures: icn_hm_up / icn_con_up / icn_em_up 37 x 32 at 15, 3 */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key > i {
+    left: calc(15 * var(--wm-px));
+    top: calc(3 * var(--wm-px));
+    width: calc(37 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    background-image: image-set(url('/static_images/wm65/v651-ls-icn-hm-up@2x.png') 2x, url('/static_images/wm65/v651-ls-icn-hm-up@4x.png') 4x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key.is-contacts > i {
+    background-image: image-set(url('/static_images/wm65/v651-ls-icn-con-up@2x.png') 2x, url('/static_images/wm65/v651-ls-icn-con-up@4x.png') 4x);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key.is-messaging > i {
+    background-image: image-set(url('/static_images/wm65/ls-icn-em-up@2x.png') 2x, url('/static_images/wm65/ls-icn-em-up@4x.png') 4x);
+}
+
+/* the "Password Incorrect" box comes over the lock screen */
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell.wm-lock65-box > .wm-msgbox-layer {
+    z-index: 29;
+}
