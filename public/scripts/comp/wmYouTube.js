@@ -12,6 +12,8 @@
  * Google's device flow: the program shows a code to enter on google.com/device and the server waits
  * for Google. Status (account, favourite channels, their latest uploads, settings) is pushed through
  * the statusHub feed `youtube` while Today's item or this program is on screen; this file never polls.
+ * The Subscriptions list is answered at once from what the server holds; when its look for new uploads
+ * finishes, the status feed's `feed.at` moves and the list is read again (no call to YouTube).
  * Lists (youtube_feed, youtube_watch_later, youtube_search, youtube_subscriptions, youtube_channel)
  * are read when their page is opened, on Refresh, or when they are older than 15 minutes on return.
  *
@@ -64,7 +66,7 @@
     let hub = { account: null, favourites: [], latest: { videos: [] }, settings: {} };
     let tab = (() => { try { const t = localStorage.getItem(LS_TAB); return TABS.some((x) => x.id === t) ? t : 'subs'; } catch (_) { return 'subs'; } })();
     const data = {
-        subs: { videos: null, at: 0, loading: false, error: '', note: '' },
+        subs: { videos: null, at: 0, loading: false, error: '', note: '', refreshing: false, feedAt: 0 },
         later: { videos: null, at: 0, loading: false, error: '', unavailable: false, why: '' },
         search: { query: '', videos: null, channels: [], next: '', loading: false, error: '' },
         channels: { list: null, at: 0, loading: false, error: '' }
@@ -184,6 +186,11 @@
         if (!items || typeof items !== 'object') return;
         const was = signedIn();
         ['account', 'favourites', 'latest', 'settings'].forEach((k) => { if (items[k] !== undefined && items[k] !== null) hub[k] = items[k]; });
+        // the server finished a look for new uploads: take the Subscriptions list it now holds (no call to YouTube)
+        if (items.feed && typeof items.feed.at === 'number') {
+            const t = data.subs;
+            if (signedIn() && t.videos && !t.loading && items.feed.at > (t.feedAt || 0)) loadTab('subs', false, true);
+        }
         loaded = true;
         if (was !== signedIn()) {
             // another account's lists are not this one's
@@ -234,18 +241,20 @@
 
     // ---------------------------------------------------------------- lists
 
-    async function loadTab(id, fresh) {
+    async function loadTab(id, fresh, quiet) {
         const t = data[id];
         if (!t || t.loading || !signedIn() || id === 'search') return;
         t.loading = true;
         t.error = '';
-        renderPane(id);
+        if (!quiet) renderPane(id);
         const work = (async () => {
             try {
                 if (id === 'subs') {
                     const d = await ask('youtube_feed', { fresh: !!fresh }, 120000);
                     t.videos = d.videos || [];
                     t.note = d.partial ? 'Some channels could not be read' : `${d.channels || 0} channels`;
+                    t.refreshing = !!d.refreshing;
+                    t.feedAt = d.at || 0;
                 } else if (id === 'later') {
                     const d = await ask('youtube_watch_later', { fresh: !!fresh }, 60000);
                     t.videos = d.videos || [];
@@ -264,7 +273,7 @@
                 renderHead();
             }
         })();
-        if (ws && shown) ws.busy(work, { delay: 250, timeout: 120000 }).catch(() => {});
+        if (ws && shown && !quiet) ws.busy(work, { delay: 250, timeout: 120000 }).catch(() => {});
         return work;
     }
 
@@ -596,7 +605,7 @@
         const d = data[tab];
         let note = '';
         if (layer) note = favIds().has(layer.id) ? 'On Today' : '';
-        else if (tab === 'subs') note = d.loading ? 'Reading...' : d.videos ? d.note : '';
+        else if (tab === 'subs') note = d.loading && !d.videos ? 'Reading...' : d.refreshing ? 'Looking for new videos...' : d.videos ? d.note : '';
         else if (tab === 'later') note = d.videos && !d.unavailable ? `${d.videos.length} video${d.videos.length === 1 ? '' : 's'}` : '';
         else if (tab === 'channels') note = d.list ? `${(hub.favourites || []).length} on Today` : '';
         else if (tab === 'search') note = d.videos ? `"${d.query}"` : '';
