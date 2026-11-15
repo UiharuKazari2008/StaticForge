@@ -119,6 +119,12 @@
         if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
     }
 
+    window.wmNotificationInbox = {
+        /** Re-list the inbox and show what was missed (also runs on connect and on resume). */
+        catchUp,
+        shown: () => [...shownNotes.keys()],
+    };
+
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
 })();
