@@ -1,5 +1,5 @@
 /**
- * Melaton Mobile Settings: Personal pages (Buttons, Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility, Workspace) (Yozora #709).
+ * Melaton Mobile Settings: Personal pages (Buttons, Sounds & Notifications, Input, Lock, Owner Information, Screen accessibility) (Yozora #709).
  * Pages for the Settings app (wmPrograms.js), added through window.wmSettings.registerPage /
  * extendPage and drawn with window.wmSettings.ui so they look like WM 6.1's own pages. Every
  * value is read and saved through the desktop's own store (one source of truth):
@@ -20,8 +20,7 @@
  *                           Accounts; meletonAccounts follows)
  *   Screen                  + Accessibility: Ease of Access Center's registry key
  *                           (melatonRegistry, melatonAccessibility.apply)
- *   Workspace               Theme Settings' Themes tab (another workspace's look, copied whole) and
- *                           the accent colour + Window Color and Appearance's swatches
+ *   (Workspace was removed, #831: workspaces are managed at Settings > System > Workspaces)
  *
  *   Buttons                 the Today screen's soft keys (a phone browser has no program buttons
  *                           of its own; Back is the shell's), per device: wmShell.todaySoftKeys
@@ -758,136 +757,6 @@
             }
             if (window.melatonAccessibility) window.melatonAccessibility.apply();
             if (window.cplPages2 && typeof window.cplPages2.applyAccess === 'function') window.cplPages2.applyAccess();
-            return [];
-        }
-    });
-
-    // ======================================================================== Workspace
-
-    const wsList = () => (typeof workspaces !== 'undefined' && workspaces ? workspaces : null);
-    const wsActive = () => (typeof activeWorkspace !== 'undefined' && activeWorkspace) || window.currentWorkspace || 'default';
-
-    /** A workspace's desktop background (the Theme Settings sample, personalizationDialogs.js). */
-    function wallpaperUrlFor(w) {
-        const path = w && w.wallpaper;
-        if (!path) return '/static_images/wallpapers/aurora.webp';
-        const [type, ...rest] = String(path).split(':');
-        const id = rest.join(':');
-        switch (type) {
-            case 'url': return /^(\/|https?:)/.test(id) ? id : '';
-            case 'wallpaper': return `/cache/wallpapers/${encodeURIComponent(`${id}.png`)}`;
-            case 'file': return fn('localGalleryImageUrl') ? call('localGalleryImageUrl', id) : `/images/${encodeURIComponent(id)}`;
-            case 'cache': return fn('localCacheUploadUrl') ? call('localCacheUploadUrl', id) : '';
-            case 'cache-preview': return fn('localCachePreviewUrl') ? call('localCachePreviewUrl', id) : '';
-            case 'vibe': return `/cache/vibe/${id}`;
-            default: return '/static_images/wallpapers/aurora.webp';
-        }
-    }
-
-    const cssUrl = (u) => `url("${String(u).replace(/["\\\n]/g, encodeURIComponent)}")`;
-
-    wmSettings.registerPage({
-        id: 'workspace', tab: 'personal', label: 'Workspace', icon: 'set-workspace',
-        tabs: [['theme', 'Theme'], ['color', 'Color']],
-        available: () => !!(wsList() && P() && ws() && typeof ws().updateWorkspaceSettings === 'function'),
-        init() {
-            const id = wsActive();
-            const w = wsList()[id] || {};
-            const p = P().get();
-            const d = { id, theme: '', color: w.color || '#102040', windowColor: p.windowColor, intensity: p.intensity, transparency: p.transparency };
-            d.saved = { color: d.color, windowColor: d.windowColor, intensity: d.intensity, transparency: d.transparency };
-            return d;
-        },
-        render(el, tab, d, api) {
-            const list = wsList() || {};
-            if (tab === 'color') {
-                const pp = P();
-                const sws = (pp.SWATCHES || []).filter((s) => s.id !== 'custom');
-                const custom = d.windowColor === 'custom';
-                const steps = [];
-                for (let i = pp.INTENSITY_MIN || 10; i <= (pp.INTENSITY_MAX || 85); i += 5) steps.push(i);
-                if (!steps.includes(d.intensity)) { steps.push(d.intensity); steps.sort((a, b) => a - b); }
-                const wsColor = (list[d.id] && (list[d.id].backgroundColor || list[d.id].color)) || '#0a1a2a';
-                el.innerHTML = `${ui.row('Accent color:', `<label class="wmsp-color"><input type="color" value="${esc(d.color)}" data-f="accent"><span>${esc(d.color.toUpperCase())}</span></label>`, { wide: true })}
-                    ${ui.note('The phone\'s title bars and highlights follow the accent color.')}
-                    ${ui.sub('Window color (desktop)')}
-                    <div class="wm-picker is-icons wmsp-swatches">${sws.map((s) => `<button type="button" class="wm-picker-cell${d.windowColor === s.id ? ' is-selected' : ''}" data-sw="${esc(s.id)}" title="${esc(s.name)}" aria-label="${esc(s.name)}">${s.id === 'workspace'
-                        ? `<span class="wmsp-swatch-ws" style="background:${esc(wsColor)}"></span>`
-                        : `<img src="/static_images/vista-personalization/swatch-${esc(s.id)}.png" alt="" draggable="false">`}</button>`).join('')}</div>
-                    ${custom ? ui.note('A custom color from the desktop\'s color mixer is in use.') : ''}
-                    <div data-f="intensity"></div>
-                    ${ui.check('transparency', 'Enable transparency', d.transparency)}`;
-                const accent = el.querySelector('[data-f="accent"]');
-                accent.addEventListener('input', () => { d.color = accent.value; accent.nextElementSibling.textContent = accent.value.toUpperCase(); });
-                el.querySelectorAll('[data-sw]').forEach((b) => b.addEventListener('click', () => {
-                    d.windowColor = b.dataset.sw;
-                    // Vista: a swatch brings its own intensity
-                    const def = pp.swatch(d.windowColor);
-                    if (def && def.intensity) d.intensity = def.intensity;
-                    api.rerender();
-                }));
-                const host = el.querySelector('[data-f="intensity"]');
-                host.insertAdjacentHTML('beforeend', ui.sub('Color intensity'));
-                ui.trackbar(host, { steps, value: d.intensity, lo: 'Low', hi: 'High', label: 'Color intensity', onChange: (v) => { d.intensity = v; } });
-                el.querySelector('input[name="transparency"]').addEventListener('change', (e) => { d.transparency = e.target.checked; });
-                return;
-            }
-            const rows = [{ key: '', label: `${(list[d.id] && list[d.id].name) || 'This workspace'} (current)` }]
-                .concat(Object.keys(list).filter((k) => k !== d.id).map((k) => ({ key: k, label: list[k].name || k })));
-            el.innerHTML = `${ui.text('Select a theme for this workspace:')}
-                <div class="wm-listbox-side">
-                    ${ui.listbox(rows.map((r) => ({ ...r, selected: r.key === d.theme })), { maxHeight: 190 })}
-                    <div class="wm-preview-box" data-f="preview"></div>
-                </div>
-                ${ui.gap()}
-                ${ui.note('Another workspace\'s theme copies its colors, fonts, desktop background, window color, sounds and screen saver to this workspace. Changes on the Color tab are kept on top of it.')}`;
-            const prev = el.querySelector('[data-f="preview"]');
-            const url = wallpaperUrlFor(list[d.theme || d.id]);
-            if (url) prev.style.backgroundImage = cssUrl(url);
-            ui.bindListbox(el.querySelector('.wm-listbox'), (key) => {
-                d.theme = key;
-                const u = wallpaperUrlFor(list[d.theme || d.id]);
-                prev.style.backgroundImage = u ? cssUrl(u) : '';
-            });
-            const sel = el.querySelector('.wm-listbox-row.is-selected');
-            if (sel) sel.scrollIntoView({ block: 'nearest' });
-        },
-        async commit(d) {
-            const list = wsList() || {};
-            const client = ws();
-            const pp = P();
-            const settings = {};
-            let look = null;
-            const win = { windowColor: d.windowColor, intensity: d.intensity, transparency: d.transparency };
-            const winEdited = !same(win, { windowColor: d.saved.windowColor, intensity: d.saved.intensity, transparency: d.saved.transparency });
-            if (d.theme && list[d.theme]) {
-                // Theme Settings' Apply (personalizationDialogs.js applyTheme): another workspace's look, copied whole
-                const src = list[d.theme];
-                ['color', 'backgroundColor', 'primaryFont', 'textareaFont', 'wallpaper', 'wallpaperPosition'].forEach((k) => {
-                    settings[k] = src[k] === undefined ? null : src[k];
-                });
-                look = { ...pp.read(d.theme) };
-                // Color tab edits of the same visit go on top of the copied theme
-                if (d.color !== d.saved.color) settings.color = d.color;
-                if (winEdited) Object.assign(look, win);
-                settings.personalization = look;
-            } else if (d.color !== d.saved.color) {
-                settings.color = d.color;
-            }
-            if (Object.keys(settings).length) {
-                try {
-                    // the server's settings_updated broadcast repaints this workspace (workspaceUtils.js)
-                    await client.updateWorkspaceSettings(d.id, settings);
-                } catch (err) {
-                    await box({ title: 'Workspace', icon: 'error', text: `The theme could not be saved: ${(err && err.message) || err}` });
-                    return false;
-                }
-                if (look) { pp.update(look, { id: d.id }); return []; }
-            }
-            if (winEdited) {
-                // Window Color and Appearance's OK: the page's own fields only
-                pp.update(win, { save: true });
-            }
             return [];
         }
     });
