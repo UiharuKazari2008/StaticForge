@@ -137,6 +137,14 @@ function sampleManifestFiles(files, count) {
 const MELATON_INSTALL_STATE_KEY = 'melatonInstall';
 // Parallel cache lookups in getFilesNeedingUpdate (the boot update check)
 const CACHE_CHECK_PARALLEL = 32;
+// The manifest rows last seen in the static cache with their hash ({ at, rows: { url: hash } }): a
+// check only looks up rows that are new or changed since. 9,365 lookups took 8.3 s on the A53 at
+// every phone boot, even with nothing to update (Nov 14 2026). A full lookup runs in the background
+// once a day (a row the service worker dropped is then fetched again).
+const CACHE_VERIFIED_KEY = 'melatonCacheVerified';
+const CACHE_VERIFIED_FULL_MS = 24 * 60 * 60 * 1000;
+// 16 hex digits of a row's hash are kept: enough to see it change, half the record's size
+const verifiedHash = (h) => String(h || '').slice(0, 16);
 const MELATON_INSTALL_RECORD_KEY = 'melatonInstallRecord';
 
 /** Files the last install could not keep. They must not reopen Setup on the next boot. */
@@ -2133,7 +2141,46 @@ class ServiceWorkerManager {
         return (Array.isArray(files) ? files : []).filter((f) => f && f.url && f.hash && loaded.has(f.url) && loaded.get(f.url) !== f.hash);
     }
 
-    async getFilesNeedingUpdate(files) {
+    _readCacheVerified() {
+        try {
+            const v = JSON.parse(localStorage.getItem(CACHE_VERIFIED_KEY) || 'null');
+            return v && v.rows && typeof v.rows === 'object' ? v : null;
+        } catch (_) { return null; }
+    }
+
+    /** Rows looked up and found current join the record; rows that need an update leave it. */
+    _writeCacheVerified(verified, list, needs, checked, full) {
+        const rows = (verified && verified.rows) || {};
+        let changed = false;
+        list.forEach((file, i) => {
+            if (!file || !checked[i]) return;
+            if (needs[i]) { if (rows[file.url] !== undefined) { delete rows[file.url]; changed = true; } }
+            else if (rows[file.url] !== verifiedHash(file.hash)) { rows[file.url] = verifiedHash(file.hash); changed = true; }
+        });
+        const at = full || !verified ? Date.now() : verified.at;
+        if (!changed && verified && at === verified.at) return;
+        try { localStorage.setItem(CACHE_VERIFIED_KEY, JSON.stringify({ at, rows })); } catch (_) {
+            // no room: every check looks every row up, as before
+            try { localStorage.removeItem(CACHE_VERIFIED_KEY); } catch (__) { /* storage off */ }
+        }
+    }
+
+    /** The once-a-day full lookup, off the boot path: when the phone is idle a minute after it was asked. */
+    _scheduleFullCacheVerify(list) {
+        if (this._fullVerifyQueued) return;
+        this._fullVerifyQueued = true;
+        const run = () => {
+            this.getFilesNeedingUpdate(list, { full: true })
+                .catch(() => { /* the next check tries again */ })
+                .finally(() => { this._fullVerifyQueued = false; });
+        };
+        setTimeout(() => {
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(run, { timeout: 30000 });
+            else run();
+        }, 60000);
+    }
+
+    async getFilesNeedingUpdate(files, opts = {}) {
         const prev = this._diffTail || Promise.resolve();
         let release;
         const gate = new Promise((resolve) => { release = resolve; });
@@ -2148,6 +2195,9 @@ class ServiceWorkerManager {
         // and the list keeps the manifest's order.
         const list = Array.isArray(files) ? files : [];
         const needs = new Array(list.length).fill(false);
+        const verified = this._readCacheVerified();
+        const known = (!opts.full && verified) ? verified.rows : null;
+        const checked = new Array(list.length).fill(false);
         let next = 0;
         const checkOne = async (file) => {
             try {
@@ -2181,10 +2231,15 @@ class ServiceWorkerManager {
                 const i = next++;
                 const file = list[i];
                 if (isAuthGatedManifestFile(file)) continue;
+                // seen in the cache with this hash before: no lookup
+                if (known && file && known[file.url] === verifiedHash(file.hash)) continue;
                 needs[i] = await checkOne(file);
+                checked[i] = true;
             }
         };
         await Promise.all(Array.from({ length: Math.min(CACHE_CHECK_PARALLEL, list.length) }, lane));
+        this._writeCacheVerified(verified, list, needs, checked, !!opts.full);
+        if (!opts.full && verified && Date.now() - (verified.at || 0) > CACHE_VERIFIED_FULL_MS) this._scheduleFullCacheVerify(list);
         return list.filter((file, i) => needs[i]);
         } finally {
             release();
