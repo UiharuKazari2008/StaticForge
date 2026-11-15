@@ -774,6 +774,41 @@
         }).catch((err) => console.warn('[wmDreamStudio] action', name, err)), { delay: 250 });
     }
 
+    /** WM's Open dialog on the gallery (wmFileDialogs.js): the picked picture's file name to `then`. */
+    function choosePicture(title, then) {
+        const fd = window.wmFileDialogs;
+        if (!fd || typeof fd.open !== 'function') return;
+        const pictureOf = (item) => {
+            if (!item || item.kind === 'folder') return '';
+            if (item.targetKind === 'image') return item.previewImageFilename || item.targetId || '';
+            if (item.shortcutType === 'image' && item.shortcutData && item.shortcutData.filename) return item.shortcutData.filename;
+            return '';
+        };
+        fd.open({
+            title,
+            appTitle: 'DreamStudio',
+            typeLabel: 'Pictures',
+            pictures: true,
+            accept: (item) => !!pictureOf(item),
+            onPick(item) { const f = pictureOf(item); if (f) then(f); return true; }
+        });
+    }
+
+    function chooseBase() {
+        choosePicture('Base Image', (f) => { if (M.setBaseImage(f)) { snap = null; layers = []; tab = 'prompt'; if (sh.current !== APP_ID) sh.open(APP_ID); paint(); } });
+    }
+
+    function openPictureSession() {
+        choosePicture('Open Picture', (f) => { sh.busy(M.openPicture(f).catch((err) => console.warn('[wmDreamStudio] picture', err)), { delay: 250 }); });
+    }
+
+    function syncRows() {
+        const list = M.peers();
+        if (!list.length) return [];
+        const rows = (fn) => list.map((d) => ({ label: d.name, disabled: d.online === false, action: () => fn(d.id) }));
+        return [{ label: 'Send To', submenu: () => rows((id) => M.sendTo(id)) }, { label: 'Get Session From', submenu: () => rows((id) => M.getFrom(id)) }];
+    }
+
     /** The print becomes the picture the next prints start from; back on the page its row shows it. */
     function useAsBase() {
         const f = shownPrint();
@@ -839,8 +874,9 @@
         else rows.push({ label: 'Print', submenu: printRows }, '-');
         if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
+        rows.push({ label: 'Base Image...', action: chooseBase });
         if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
-        rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs });
+        rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Picture...', action: openPictureSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs }, ...syncRows());
         return rows;
     }
 

@@ -16,6 +16,9 @@
  *                                       set('character:<i>:prompt' | ':uc' | ':negative', value)
  *   studioModel.setBaseImage(filename) / clearBaseImage()
  *                                       the gallery picture a print starts from (snapshot().baseImage)
+ *   studioModel.openPicture(filename)   a gallery picture's own settings as the session
+ *   studioModel.peers() / sendTo(id) / getFrom(id)
+ *                                       the devices ActiveSync can pass a session to or fetch one from
  *   studioModel.presets() / sessionName() / openPreset(name) / savePreset(name)
  *                                       the saved presets' names, this session's name, load one, save as one
  *   studioModel.options()               what the lists offer and which controls the chosen model has
@@ -318,6 +321,19 @@
         return true;
     }
 
+    // ---- a session from a picture, and to / from another device (activeSyncStudio.js)
+
+    function openPicture(filename) {
+        if (!filename || typeof window.openManualModalWithContent !== 'function') return Promise.resolve(false);
+        const image = (typeof findImageByFilename === 'function' && findImageByFilename(filename)) || { filename };
+        return Promise.resolve(window.openManualModalWithContent({ type: 'image', image, metadata: null })).then(() => true);
+    }
+
+    const sync = () => window.activeSyncStudio || null;
+    function peers() { try { return sync() ? sync().targets() : []; } catch (_) { return []; } }
+    function sendTo(id) { return sync() ? sync().sendTo(id) : Promise.resolve(null); }
+    function getFrom(id) { return sync() ? sync().getFrom(id) : Promise.resolve(null); }
+
     // ---- presets: a session kept under a name on the server
 
     function presets() {
@@ -462,7 +478,7 @@
     }
 
     const api = {
-        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, generate, stop, select, action, on, off,
+        ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
