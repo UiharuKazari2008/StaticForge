@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-14T07:15:00-05:00",
+  "updated_at": "2026-11-15T07:10:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov14 7am loop on host dreamscape. Live tree b6dd9d5c = origin = GitHub, clean; only lock .agent-claude-wm732 (Nov10). Lands from detached worktree ~/wt/n14. Docs for 9295a6f1..b6dd9d5c: rest-api ActiveSync ADB/shell/displays/shot/install routes (#795 #818 #823), MCP device_screenshot/device_shell/device_packages, /api/wm-certificates (#805). open=[].",
+  "cake_note": "Nov15 7am loop on host dreamscape. origin a46f699c and live tree f74b13f6 diverged at 559b958c (origin carries 31 rewritten copies; live tree has 2 more: doubles glass f81a8ee0, lapis 6.5 icons cea9dd01). Cherry-picked those 2 onto origin in ~/wt/n15 so origin tree == live tree. Docs: ws/statusHub.md (status_subscribe/unsubscribe, client_boot_note, client_dormant), rest-api GET /api/search-suggest (#830). open=[].",
   "eaten": [
     {
       "id": "sf-22",
