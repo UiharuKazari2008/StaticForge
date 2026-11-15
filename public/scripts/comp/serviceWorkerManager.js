@@ -1412,6 +1412,8 @@ class ServiceWorkerManager {
                 const cacheNames = await caches.keys();
                 await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
             }
+            // the rows the record says are cached are gone with the caches: the next check looks every row up
+            this._forgetCacheVerified();
 
             document.body.classList.remove('initializing');
             if (globalThis.isLoginPage) {
@@ -2157,11 +2159,68 @@ class ServiceWorkerManager {
         return (Array.isArray(files) ? files : []).filter((f) => f && f.url && f.hash && loaded.has(f.url) && loaded.get(f.url) !== f.hash);
     }
 
-    _readCacheVerified() {
-        try {
-            const v = JSON.parse(localStorage.getItem(CACHE_VERIFIED_KEY) || 'null');
-            return v && v.rows && typeof v.rows === 'object' ? v : null;
-        } catch (_) { return null; }
+    // The record lives in IndexedDB (9,500 rows, ~0.66 MB as JSON): in localStorage every boot read
+    // and parsed it on the page's thread and every check wrote it back whole (#849). It is read once
+    // per page and kept in memory; writes go to IndexedDB in the background. The old localStorage
+    // copy is taken over once and removed.
+    _verifiedDb() {
+        if (!this._verifiedDbP) {
+            this._verifiedDbP = new Promise((resolve) => {
+                try {
+                    const r = indexedDB.open(CACHE_VERIFIED_KEY, 1);
+                    r.onupgradeneeded = () => r.result.createObjectStore('v');
+                    r.onsuccess = () => resolve(r.result);
+                    r.onerror = () => resolve(null);
+                    r.onblocked = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+        }
+        return this._verifiedDbP;
+    }
+
+    async _readCacheVerified() {
+        if (this._verifiedMem !== undefined) return this._verifiedMem;
+        let v = null;
+        const db = await this._verifiedDb();
+        if (db) {
+            v = await new Promise((resolve) => {
+                try {
+                    const g = db.transaction('v').objectStore('v').get('record');
+                    g.onsuccess = () => resolve(g.result || null);
+                    g.onerror = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+        }
+        if (!v) {
+            // the localStorage copy of earlier builds, once
+            try {
+                const raw = localStorage.getItem(CACHE_VERIFIED_KEY);
+                if (raw) {
+                    v = JSON.parse(raw);
+                    localStorage.removeItem(CACHE_VERIFIED_KEY);
+                    if (v && v.rows) this._saveCacheVerified(v);
+                }
+            } catch (_) { v = null; }
+        }
+        this._verifiedMem = v && v.rows && typeof v.rows === 'object' ? v : null;
+        return this._verifiedMem;
+    }
+
+    _forgetCacheVerified() {
+        this._verifiedMem = null;
+        try { localStorage.removeItem(CACHE_VERIFIED_KEY); } catch (_) { /* storage off */ }
+        void this._verifiedDb().then((db) => {
+            if (!db) return;
+            try { db.transaction('v', 'readwrite').objectStore('v').delete('record'); } catch (_) { /* gone */ }
+        });
+    }
+
+    _saveCacheVerified(record) {
+        this._verifiedMem = record;
+        void this._verifiedDb().then((db) => {
+            if (!db) return;
+            try { db.transaction('v', 'readwrite').objectStore('v').put(record, 'record'); } catch (_) { /* the next check writes again */ }
+        });
     }
 
     /** Rows looked up and found current join the record; rows that need an update leave it. */
@@ -2175,10 +2234,7 @@ class ServiceWorkerManager {
         });
         const at = full || !verified ? Date.now() : verified.at;
         if (!changed && verified && at === verified.at) return;
-        try { localStorage.setItem(CACHE_VERIFIED_KEY, JSON.stringify({ at, rows })); } catch (_) {
-            // no room: every check looks every row up, as before
-            try { localStorage.removeItem(CACHE_VERIFIED_KEY); } catch (__) { /* storage off */ }
-        }
+        this._saveCacheVerified({ at, rows });
     }
 
     /** The once-a-day full lookup, off the boot path: when the phone is idle a minute after it was asked. */
@@ -2219,7 +2275,7 @@ class ServiceWorkerManager {
         // and the list keeps the manifest's order.
         const list = Array.isArray(files) ? files : [];
         const needs = new Array(list.length).fill(false);
-        const verified = this._readCacheVerified();
+        const verified = await this._readCacheVerified();
         const known = (!opts.full && verified) ? verified.rows : null;
         const checked = new Array(list.length).fill(false);
         let next = 0;
