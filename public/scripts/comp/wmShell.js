@@ -2285,7 +2285,7 @@
      * user's level, very low at 40 % of it (10 % as shipped, never under 3). Each comes up once
      * with the ROM's low battery glyph (shellres.192.dll 5078: scripts/extract-wm-battery-low-icon.py)
      * and its own sound class (battery-low / battery-very-low: WM's class plays lowbatt.wma, which
-     * the ROM images lack; the files are the desktop's Battery Low / Critical sounds). The charger
+     * the ROM images lack; our own BatteryLow / BatteryCritical play, #848). The charger
      * takes the notification away and arms both again.
      */
     let batteryLowNote = null;
@@ -4607,6 +4607,8 @@
         const own = n && appNotes.get(n.id);
         if (own && own.event && SND_EVENT.has(own.event)) return own.event;
         if (n.type === 'reminder') return 'reminder';
+        // the update icon's notice has its own class; a stalled download or a failed check stays a warning / error
+        if (isUpdateNote(n) && n.type !== 'error' && !/stalled|failed/i.test(t)) return 'update';
         if (/^(you have mail|new mail|new e-?mail)/i.test(t)) return 'mail';
         if (/^(generation|print|upscal\w*) (failed|error)/i.test(t)) return 'print-error';
         if (/^generation complete/i.test(t)) return 'print';
@@ -5714,7 +5716,11 @@
         'LapisCountdown.wav',
         // the low battery class's Wave (HKCU ControlPanel\Notifications {A877D663}: lowbatt.wma) is
         // missing from the ROM images: the desktop's Battery Low / Battery Critical sounds (#829)
-        'lowbatt.wav', 'critbatt.wav'
+        'lowbatt.wav', 'critbatt.wav',
+        // our own notification sounds for the battery, weather and update classes
+        // (scripts/generate-wm-notification-sounds.py, #848)
+        'BatteryLow.wav', 'BatteryCritical.wav', 'BatteryFull.wav', 'WeatherAlert.wav', 'WeatherSevere.wav',
+        'RainAlarm.wav', 'SoftwareUpdate.wav'
     ];
     // WM's Sound list names a file without its extension, first letter capital ("Notify", "Type")
     const wmSoundLabel = (file) => {
@@ -5734,9 +5740,9 @@
         { id: 'connect', label: 'Connection established', kind: 'note', sound: 'Infbeg.wav', play: false, desktop: 'balloon' },
         { id: 'disconnect', label: 'Connection disconnected', kind: 'note', sound: 'Infend.wav', play: false, desktop: 'balloon' },
         // #829: the main battery low / very low (WM's low battery class) and fully charged
-        { id: 'battery-full', label: 'Battery: Fully charged', kind: 'note', sound: 'Alarm2.wav', desktop: 'balloon' },
-        { id: 'battery-low', label: 'Battery: Main battery low', kind: 'note', sound: 'lowbatt.wav', desktop: 'balloon' },
-        { id: 'battery-very-low', label: 'Battery: Main battery very low', kind: 'note', sound: 'critbatt.wav', desktop: 'warning' },
+        { id: 'battery-full', label: 'Battery: Fully charged', kind: 'note', sound: 'BatteryFull.wav', desktop: 'balloon' },
+        { id: 'battery-low', label: 'Battery: Main battery low', kind: 'note', sound: 'BatteryLow.wav', desktop: 'balloon' },
+        { id: 'battery-very-low', label: 'Battery: Main battery very low', kind: 'note', sound: 'BatteryCritical.wav', desktop: 'warning' },
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
         { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: false, desktop: 'balloon' },
         // #779: Dreamscape Messenger (the chat personas) and Text Messaging notify in classes of their own
@@ -5748,6 +5754,8 @@
         { id: 'notification', label: 'Other notifications', kind: 'note', sound: 'Alarm2.wav', repeatable: true, desktop: 'balloon' },
         { id: 'question', label: 'Questions', kind: 'event', sound: 'Alarm2.wav', desktop: 'dialog' },
         { id: 'reminder', label: 'Reminders', kind: 'note', sound: 'notify.mp3', repeatable: true, repeat: true, desktop: 'balloon' },
+        // #848: the update icon's notification (updates downloaded and ready, applied, available)
+        { id: 'update', label: 'Software update', kind: 'note', sound: 'SoftwareUpdate.wav', desktop: 'balloon' },
         { id: 'startup', label: 'Start up', kind: 'event', sound: 'Alarm2.wav', desktop: 'logon' },
         { id: 'print', label: 'Studio: Print finished', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-complete' },
         { id: 'print-error', label: 'Studio: Print failed', kind: 'note', sound: 'Alarm2.wav', desktop: 'print-error' },
@@ -5758,9 +5766,9 @@
         { id: 'lapis-run-left', label: 'Lapis Remote: Remote start ending', kind: 'note', sound: 'LapisCountdown.wav', desktop: 'balloon' },
         { id: 'warning', label: 'Warnings', kind: 'event', sound: 'Alarm2.wav', desktop: 'warning' },
         // Weather (#792): alerts for Home / Work, severe and extreme ones keep sounding until seen; the rain alarm
-        { id: 'weather-alert', label: 'Weather: Alert', kind: 'note', sound: 'Alarm5.wav', desktop: 'balloon' },
-        { id: 'weather-severe', label: 'Weather: Severe alert', kind: 'note', sound: 'Alarm5.wav', repeatable: true, repeat: true, desktop: 'warning' },
-        { id: 'rain-alarm', label: 'Weather: Rain alarm', kind: 'note', sound: 'Alarm4.mp3', desktop: 'balloon' }
+        { id: 'weather-alert', label: 'Weather: Alert', kind: 'note', sound: 'WeatherAlert.wav', desktop: 'balloon' },
+        { id: 'weather-severe', label: 'Weather: Severe alert', kind: 'note', sound: 'WeatherSevere.wav', repeatable: true, repeat: true, desktop: 'warning' },
+        { id: 'rain-alarm', label: 'Weather: Rain alarm', kind: 'note', sound: 'RainAlarm.wav', desktop: 'balloon' }
     ];
     const SND_EVENT = new Map(SND_EVENTS.map((e) => [e.id, e]));
     // the gwes / PlaySound names callers use, as phone events
