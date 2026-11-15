@@ -1218,15 +1218,17 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="start"] #wmShell > .wm-wall65
     display: block;
 }
 
-/* Parallax Effect (Settings > Today > Wallpaper; wmTitanium.js sets --wm-ti-par, -0.55 to 0.55, from
- * where the list stands; --wm-ti-zoom and --wm-ti-shift from its Distance, 1.02 - 1.2): a copy of the
- * picture (the layer's own inline background, inherited), zoomed in, moves up to 0.55 x 7/8 of its margin, slower than the list and never past its zoomed edge. The
- * layer clips it, so the system bar bands stay black. Today only: Start keeps the picture still. */
-html.ui-mobile[data-wm-version="6.5"][data-wm-parallax][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65 {
+/* Settings > Today > Effects (wmTitanium.js): parallax, tilt and the entrance's settle move a copy of the
+ * picture (the layer's own inline background, inherited), zoomed in by --wm-ti-zoom; the layer clips it,
+ * so the system bar bands stay black. --wm-ti-par (-0.55 .. 0.55, where the list stands) times
+ * --wm-ti-shift is the parallax travel, --wm-ti-tx / --wm-ti-ty the lean; both stay inside the zoomed
+ * margin. The settle animates `scale`, which composes with the transform. Today only: Start keeps the
+ * picture still. The band's frosted copy (.wm-ti-blur-in, wm-titanium.css) takes the same values. */
+html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65 {
     overflow: hidden;
 }
 
-html.ui-mobile[data-wm-version="6.5"][data-wm-parallax][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65::before {
+html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65::before {
     content: "";
     position: absolute;
     inset: 0;
@@ -1235,8 +1237,17 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-parallax][data-wm-app="today"]:not
     background-size: inherit;
     background-position: inherit;
     background-repeat: inherit;
-    transform: translate3d(0, calc(var(--wm-ti-par, 0) * var(--wm-ti-shift, -7%)), 0) scale(var(--wm-ti-zoom, 1.08));
+    transform: translate3d(var(--wm-ti-tx, 0%), calc(var(--wm-ti-par, 0) * var(--wm-ti-shift, 0%) + var(--wm-ti-ty, 0%)), 0) scale(var(--wm-ti-zoom, 1));
     will-change: transform;
+}
+
+html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([data-wm-viewer]) #wmShell > .wm-wall65.is-breathe::before {
+    animation: wm-ti-breathe 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes wm-ti-breathe {
+    from { scale: 1.035; }
+    to { scale: 1; }
 }
 
 html.ui-mobile[data-wm-version="6.5"] #wmShell.has-wall65 .wm-today.has-picture {

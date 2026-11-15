@@ -446,6 +446,7 @@
             sh.menuAt(e.clientX, e.clientY, m);
         });
         page.appendChild(host);
+        requestAnimationFrame(() => syncBlur());
     }
 
     function focusTop() {
@@ -481,48 +482,256 @@
     }
 
     /*
-     * Parallax Effect (Settings > Today > Wallpaper, Yukimi Nov 15): the picture layer (.wm-wall65) is
-     * zoomed in slightly and moves with the list, slower than it: the first item puts the picture at
-     * its lowest, the last at its highest. Only on Today (wm65.css gates it on data-wm-app), so Start
-     * shows the picture still. One custom property on the layer itself, so only it restyles.
+     * Settings > Today > Effects (Yukimi, Nov 15): what 2009's hardware could not draw, kept in the
+     * 6.5 look. All are on unless switched off (wmTodayFx { name: false }); the moving ones are off
+     * under prefers-reduced-motion. Everything runs on transform / opacity of a few layers, and the
+     * frosted band is a picture blurred once (cached), not a backdrop filter run every frame.
+     *   parallax  the picture, zoomed in, follows the list (wmTodayParallax, Distance wmTodayParallaxLevel)
+     *   tilt      ... and leans with the phone (deviceorientation, only while Today is on screen)
+     *   breathe   the picture settles from a slight zoom as Today comes back
+     *   stagger   the list comes back stretched and closes up as it lands (a cascade)
+     *   overshoot ... passing the band by a few pixels and settling back
+     *   catch     the glass band lights up as the list lands
+     *   exit      the list drops away when an item opens a program
+     *   gloss     labels pick up light as they pass under the glass
+     *   digits    the clock's changed digits roll over
+     *   blur      the band frosts the picture behind it
+     *   haptics   a tick as items cross the band, a firmer one when the list lands
      */
     const PARALLAX_KEY = 'wmTodayParallax';
     const PARALLAX_LEVEL_KEY = 'wmTodayParallaxLevel'; // 1 - 10: zoom 1 + 2 % a step, travel 7/8 of the margin
+    const FX_KEY = 'wmTodayFx';
+    const FX_NAMES = ['tilt', 'breathe', 'stagger', 'overshoot', 'catch', 'exit', 'gloss', 'digits', 'blur', 'haptics'];
+    const FX_MOTION = ['tilt', 'breathe', 'stagger', 'overshoot', 'exit', 'digits'];
+    const fx = {};
     let parallaxOn = false;
     let parallaxZoom = 1.08;
-    let parallaxWall = null;
-    let parallaxAt = '';
-    function readParallax() {
+    let wallZoom = 1;
+    let wallEl = null;
+    let wallVarsSet = {};
+    let blurClip = null;
+    let blurInner = null;
+    let blurMo = null;
+    let blurKey = '';
+    const blurCache = new Map();
+    function readEffects() {
         try { parallaxOn = localStorage.getItem(PARALLAX_KEY) === '1'; } catch (_) { parallaxOn = false; }
         let lv = 4;
         try { lv = Math.max(1, Math.min(10, Math.round(Number(localStorage.getItem(PARALLAX_LEVEL_KEY)) || 4))); } catch (_) { /* default */ }
         parallaxZoom = 1 + 0.02 * lv;
-        parallaxWall = null; // the next call sets the new zoom on the layer
-        if (parallaxOn) root.dataset.wmParallax = '';
-        else delete root.dataset.wmParallax;
+        let st = null;
+        try { st = JSON.parse(localStorage.getItem(FX_KEY) || 'null'); } catch (_) { st = null; }
+        st = st && typeof st === 'object' ? st : {};
+        let still = false;
+        try { still = window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (_) { /* no media queries */ }
+        FX_NAMES.forEach((n) => { fx[n] = st[n] !== false && !(still && FX_MOTION.includes(n)); });
+        // the picture's margin: the parallax Distance, or a little for the tilt alone
+        wallZoom = parallaxOn ? parallaxZoom : (fx.tilt ? 1.04 : 1);
+        if (parallaxOn || fx.tilt || fx.breathe) root.dataset.wmWallfx = '';
+        else delete root.dataset.wmWallfx;
+        const on = FX_NAMES.filter((n) => fx[n]).join(' ');
+        if (root.dataset.wmTiFx !== on) root.dataset.wmTiFx = on;
+        wallEl = null; // the next use sets the zoom and travel again
+        ensureWall();
+        syncTilt();
+        if (host) syncBlur();
     }
-    readParallax();
-    document.addEventListener('wmSettingsChange', (e) => {
-        const keys = (e && e.detail && e.detail.keys) || [];
-        if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY)) { readParallax(); parallaxAt = ''; if (parallaxOn && host && !host.hidden) place(); }
-    });
+
+    /** The picture layer (.wm-wall65, wmShell.js) with this setting's zoom and travel on it. */
+    function ensureWall() {
+        if (wallEl && wallEl.isConnected) return true;
+        const el = document.querySelector('#wmShell > .wm-wall65');
+        if (!el) return false;
+        if (el !== wallEl && blurMo) { blurMo.disconnect(); blurMo = null; }
+        wallEl = el;
+        wallVarsSet = {};
+        wallVar('--wm-ti-zoom', wallZoom.toFixed(2));
+        // 0.55 of the parallax travel stays inside the zoomed margin, with room left for the tilt
+        wallVar('--wm-ti-shift', parallaxOn ? `${(-(wallZoom - 1) * 87.5).toFixed(2)}%` : '0%');
+        if (!parallaxOn) wallVar('--wm-ti-par', '0');
+        if (!fx.tilt) { wallVar('--wm-ti-tx', '0%'); wallVar('--wm-ti-ty', '0%'); }
+        return true;
+    }
+
+    /** One custom property on the picture layer and on the band's frosted copy of it (only they restyle). */
+    function wallVar(name, v) {
+        if (wallVarsSet[name] === v) return;
+        wallVarsSet[name] = v;
+        if (wallEl) wallEl.style.setProperty(name, v);
+        if (blurInner) blurInner.style.setProperty(name, v);
+    }
+
     /** The list stands at row `at` (fractions while it moves): -0.5 at the first item, 0.5 at the last. */
     function parallax(at) {
-        if (!parallaxOn) return;
-        if (!parallaxWall || !parallaxWall.isConnected) {
-            parallaxWall = document.querySelector('#wmShell > .wm-wall65');
-            if (!parallaxWall) return;
-            // the zoom and the travel at the list's ends (0.55 of it stays inside the zoomed margin)
-            parallaxWall.style.setProperty('--wm-ti-zoom', parallaxZoom.toFixed(2));
-            parallaxWall.style.setProperty('--wm-ti-shift', `${(-(parallaxZoom - 1) * 87.5).toFixed(2)}%`);
-        }
+        if (!parallaxOn || !ensureWall()) return;
         const n = panels.length;
         const f = n > 1 ? Math.max(-0.55, Math.min(0.55, at / (n - 1) - 0.5)) : 0;
-        const v = f.toFixed(4);
-        if (v === parallaxAt) return;
-        parallaxAt = v;
-        parallaxWall.style.setProperty('--wm-ti-par', v);
+        wallVar('--wm-ti-par', f.toFixed(4));
     }
+
+    // ---- tilt: the phone's lean, against a resting hold that drifts in slowly (so any way of holding
+    // it is the middle); smoothed per frame, written only when it moves by a hundredth of a percent
+    let tiltOn = false;
+    let tiltBase = null;
+    let tiltRaw = null;
+    const tiltNow = { x: 0, y: 0 };
+    let tiltRaf = 0;
+    function tiltWanted() {
+        return !!(fx.tilt && host && !host.hidden && root.dataset.wmApp === 'today' && document.visibilityState === 'visible' && root.dataset.screenOff === undefined);
+    }
+    function syncTilt() {
+        const want = tiltWanted();
+        if (want === tiltOn) return;
+        tiltOn = want;
+        if (want) { window.addEventListener('deviceorientation', onOrient); return; }
+        window.removeEventListener('deviceorientation', onOrient);
+        tiltBase = null;
+        tiltRaw = null;
+        tiltNow.x = 0; tiltNow.y = 0;
+        cancelAnimationFrame(tiltRaf); tiltRaf = 0;
+        wallVar('--wm-ti-tx', '0%');
+        wallVar('--wm-ti-ty', '0%');
+    }
+    function onOrient(e) {
+        if (e.beta == null || e.gamma == null) return;
+        const angle = (screen.orientation && screen.orientation.angle) || 0;
+        // the screen's own axes: a turned phone swaps them
+        let x = e.gamma; let y = e.beta;
+        if (angle === 90) { x = e.beta; y = -e.gamma; } else if (angle === 270) { x = -e.beta; y = e.gamma; } else if (angle === 180) { x = -e.gamma; y = -e.beta; }
+        if (!tiltBase) tiltBase = { x, y };
+        tiltBase.x += (x - tiltBase.x) * 0.01;
+        tiltBase.y += (y - tiltBase.y) * 0.01;
+        const c = (v) => Math.max(-1, Math.min(1, v / 18));
+        tiltRaw = { x: c(x - tiltBase.x), y: c(y - tiltBase.y) };
+        if (!tiltRaf) tiltRaf = requestAnimationFrame(tiltFrame);
+    }
+    function tiltFrame() {
+        tiltRaf = 0;
+        if (!tiltOn || !tiltRaw || !ensureWall()) return;
+        tiltNow.x += (tiltRaw.x - tiltNow.x) * 0.2;
+        tiltNow.y += (tiltRaw.y - tiltNow.y) * 0.2;
+        const k = (wallZoom - 1) * 15; // 0.3 of the margin each way
+        wallVar('--wm-ti-tx', `${(-tiltNow.x * k).toFixed(2)}%`);
+        wallVar('--wm-ti-ty', `${(-tiltNow.y * k).toFixed(2)}%`);
+        if (Math.abs(tiltRaw.x - tiltNow.x) > 0.01 || Math.abs(tiltRaw.y - tiltNow.y) > 0.01) tiltRaf = requestAnimationFrame(tiltFrame);
+    }
+
+    // ---- the frosted band: the picture blurred once into a small cached image, shown in the band's
+    // glass and lined up with the picture layer (the same zoom, travel and tilt). No filter runs per
+    // frame; Android's own wallpaper (drawn behind the page) has none.
+    function syncBlur() {
+        const want = fx.blur && host && !host.hidden && ensureWall();
+        if (!want) { if (blurClip) blurClip.hidden = true; return; }
+        if (!blurClip) {
+            blurClip = document.createElement('div');
+            blurClip.className = 'wm-ti-blur';
+            blurClip.setAttribute('aria-hidden', 'true');
+            blurClip.hidden = true;
+            blurInner = document.createElement('div');
+            blurInner.className = 'wm-ti-blur-in';
+            blurClip.appendChild(blurInner);
+            host.insertBefore(blurClip, host.firstChild);
+        }
+        for (const [k, v] of Object.entries(wallVarsSet)) blurInner.style.setProperty(k, v);
+        if (!blurMo) {
+            blurMo = new MutationObserver(blurPicture);
+            blurMo.observe(wallEl, { attributes: true, attributeFilter: ['style', 'hidden'] });
+        }
+        blurKey = '';
+        blurPicture();
+    }
+    function blurPicture() {
+        if (!blurClip || !wallEl || !fx.blur) return;
+        const w = wallEl.style;
+        const key = `${wallEl.hidden}|${w.backgroundImage}|${w.backgroundSize}|${w.backgroundPosition}|${w.backgroundRepeat}`;
+        if (key === blurKey) return; // the per-frame property writes land here too: nothing to redo
+        blurKey = key;
+        const img = w.backgroundImage;
+        const urls = wallEl.hidden || !img ? [] : [...img.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]);
+        if (!urls.length) { blurClip.hidden = true; return; }
+        Promise.all(urls.map(blurredUrl)).then((outs) => {
+            if (key !== blurKey || !outs.some(Boolean)) return;
+            let out = img;
+            urls.forEach((u, i) => { if (outs[i]) out = out.split(u).join(outs[i]); });
+            Object.assign(blurInner.style, { backgroundImage: out, backgroundSize: w.backgroundSize, backgroundPosition: w.backgroundPosition, backgroundRepeat: w.backgroundRepeat });
+            blurClip.hidden = false;
+            blurPlace();
+        });
+    }
+    /** The picture at 320 px wide, blurred 5 px with its edges carried out (no dark rim), as a WebP blob. */
+    function blurredUrl(u) {
+        if (blurCache.has(u)) return blurCache.get(u);
+        const pr = new Promise((resolve) => {
+            const im = new Image();
+            im.decoding = 'async';
+            im.onload = () => {
+                try {
+                    const W = Math.max(1, Math.min(320, im.naturalWidth));
+                    const H = Math.max(1, Math.round(im.naturalHeight * W / im.naturalWidth));
+                    const m = 12;
+                    const c = document.createElement('canvas');
+                    c.width = W + 2 * m; c.height = H + 2 * m;
+                    const x = c.getContext('2d');
+                    x.drawImage(im, m, m, W, H);
+                    x.drawImage(c, m, m, 1, H, 0, m, m, H);
+                    x.drawImage(c, m + W - 1, m, 1, H, m + W, m, m, H);
+                    x.drawImage(c, 0, m, c.width, 1, 0, 0, c.width, m);
+                    x.drawImage(c, 0, m + H - 1, c.width, 1, 0, m + H, c.width, m);
+                    const o = document.createElement('canvas');
+                    o.width = W; o.height = H;
+                    const y = o.getContext('2d');
+                    y.filter = 'blur(5px)';
+                    y.drawImage(c, -m, -m);
+                    o.toBlob((b) => resolve(b ? URL.createObjectURL(b) : null), 'image/webp', 0.85);
+                } catch (_) { resolve(null); }
+            };
+            im.onerror = () => resolve(null);
+            im.src = u;
+        });
+        blurCache.set(u, pr);
+        return pr;
+    }
+    /** Line the band's copy up with the picture layer (on show, resize and a new picture only). */
+    function blurPlace() {
+        if (!blurClip || blurClip.hidden || !wallEl) return;
+        const w = wallEl.getBoundingClientRect();
+        const c = blurClip.getBoundingClientRect();
+        if (!w.width || !c.width) return;
+        Object.assign(blurInner.style, { left: `${w.left - c.left}px`, top: `${w.top - c.top}px`, width: `${w.width}px`, height: `${w.height}px` });
+    }
+
+    /** The picture settles from a slight zoom (the entrance). */
+    function breathe() {
+        if (!fx.breathe || !ensureWall()) return;
+        for (const el of [wallEl, blurInner]) {
+            if (!el) continue;
+            el.classList.remove('is-breathe');
+            void el.offsetWidth;
+            el.classList.add('is-breathe');
+        }
+        setTimeout(() => { for (const el of [wallEl, blurInner]) if (el) el.classList.remove('is-breathe'); }, 1000);
+    }
+
+    /** The glass catches the light as the list lands. */
+    function catchLight() {
+        if (!fx.catch || !host) return;
+        host.classList.remove('is-catch');
+        void host.offsetWidth;
+        host.classList.add('is-catch');
+        setTimeout(() => host.classList.remove('is-catch'), 450);
+    }
+
+    /** Haptics: 'tick' as an item crosses the band, 'land' when the list stops (the Vibration tab's level). */
+    function haptic(kind) {
+        if (!fx.haptics || !sh || typeof sh.vibrate !== 'function') return;
+        try { sh.vibrate(kind); } catch (_) { /* no motor */ }
+    }
+
+    readEffects();
+    document.addEventListener('wmSettingsChange', (e) => {
+        const keys = (e && e.detail && e.detail.keys) || [];
+        if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY) || keys.includes(FX_KEY)) { readEffects(); if (host && !host.hidden) place(); }
+    });
 
     /** Place every row for the list position `pos` (rows) around the band. */
     function place() {
@@ -584,10 +793,29 @@
         const key = JSON.stringify([p.id, p.icon, at, n, pg.time, pg.ampm, pg.date, pg.network, pg.title, pg.line2, pg.line3, pg.image, pg.bare, pg.smallIcon, pg.icon]);
         host.querySelectorAll('.wm-ti-arrow').forEach((a) => { a.hidden = n < 2; });
         if (slide.active || key === expKey) return; // a page on its way keeps what it shows
+        // Effects > digits: the clock in the band at rest keeps its time and only the changed digits
+        // roll; a forced redraw (expKey cleared: the entrance, Home) or another panel just draws
+        const oldTime = expKey && p.clock && exp.dataset.panel === p.id ? (exp.dataset.time || '') : '';
         expKey = key;
+        exp.dataset.panel = p.id;
+        exp.dataset.time = p.clock ? (pg.time || '') : '';
         exp.innerHTML = `<div class="wm-ti-pg">${pageHtml(p, pg)}</div>`;
+        if (fx.digits && oldTime && pg.time && oldTime !== pg.time && host.classList.contains('is-rest') && !zoomTimer) rollDigits(exp.querySelector('.wm-ti-time'), oldTime, pg.time);
         // the pages either side slide in with their picture already loaded
         if (n > 1) for (const d of [1, -1]) { const im = p.pages[(at + d + n) % n].image; if (im) { const pre = new Image(); pre.decoding = 'async'; pre.src = im; } }
+    }
+
+    /** The time's changed characters roll: the old one up and out, the new one up from below (right aligned: compared from the end). */
+    function rollDigits(el, from, to) {
+        if (!el) return;
+        const a = [...from];
+        const b = [...to];
+        const off = b.length - a.length;
+        el.innerHTML = b.map((ch, i) => {
+            const old = a[i - off];
+            if (old === ch) return esc(ch);
+            return `<span class="wm-ti-dg"><span class="wm-ti-dg-in">${esc(ch)}</span>${old != null ? `<span class="wm-ti-dg-out">${esc(old)}</span>` : ''}</span>`;
+        }).join('');
     }
 
     // Left / right on a panel with pages (emulator, "getting started", sampled every 15-40 px): after
@@ -717,7 +945,11 @@
         const e = (pos - a) * ROW; // where the finger left the list: units past a's place, + toward later items
         // the clock starts when the finger left the glass, not when the event got here
         const back = (o && o.backMs) || BACK_MS;
-        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: back, back, ease: (o && o.ease) || null, t0: (o && o.at) || performance.now(), open: false, nv: n };
+        tw = { a, b, n, e0: e, D: 0, p: 0, p0: 0, gain: 1, Tv: 0, end: back, back, ease: (o && o.ease) || null, t0: (o && o.at) || performance.now(), open: false, nv: n, entry: null, x: 0 };
+        // the entrance's effects: rows spread below (the cascade, S units more per row, closing up as
+        // they land) and a spring past the band (bump units at most, in the run's last 40 %; the list is still a few units
+        // short of the band then, so it passes it by about half the bump)
+        if (o && o.entry && !n) tw.entry = { spread: o.entry.stagger ? 14 : 0, bump: o.entry.overshoot ? 10 : 0 };
         if (n) {
             const nv = Math.max(n, (o && o.nv) || n);
             tw.D = b > a ? BAND + ROW * (n - 1) : ROW * n;                 // b's row to the band top, from a's rest layout
@@ -738,7 +970,7 @@
         const t = Math.max(0, now - tw.t0);
         let p;
         if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
-        else if (tw.ease) p = tw.ease(Math.min(1, t / (tw.back || BACK_MS)));
+        else if (tw.ease) { tw.x = Math.min(1, t / (tw.back || BACK_MS)); p = tw.ease(tw.x); }
         else { const k = Math.pow(Math.min(1, t / (tw.back || BACK_MS)), 1.3); p = k * k * (3 - 2 * k); } // 13 %, 65 %, 100 % of the way at 103, 206, 310 ms
         if (t >= tw.end || p >= 1) { arrive(); return; }
         tw.p = p;
@@ -751,8 +983,15 @@
         const { a, b, n } = tw;
         const ys = new Array(panels.length);
         if (a === b) {
-            const e = tw.e0 * (1 - p);
-            for (let i = 0; i < ys.length; i++) ys[i] = i <= a ? top - e - ROW * (a - i) : top - e + BAND + ROW * (i - a - 1);
+            let e = tw.e0 * (1 - p);
+            const en = tw.entry;
+            const sg = Math.sign(tw.e0) || -1;
+            if (en && en.bump) { const u = Math.max(0, Math.min(1, (tw.x - 0.6) / 0.4)); e -= sg * en.bump * Math.sin(Math.PI * u); }
+            for (let i = 0; i < ys.length; i++) {
+                // the cascade: each row further out by `spread` units than the one above, gone as p reaches 1
+                const ei = en && en.spread ? e + sg * en.spread * i * (1 - p) : e;
+                ys[i] = i <= a ? top - ei - ROW * (a - i) : top - ei + BAND + ROW * (i - a - 1);
+            }
             return ys;
         }
         const grow = ROW + EXTRA * p;         // b's slot
@@ -779,12 +1018,14 @@
         // the entrance (#800) fades every row in to the dimness it keeps at rest (its distance from the
         // band), not to full, so nothing drops darker once the list has settled (Yukimi, Nov 15)
         const entering = host.classList.contains('is-entering');
+        let underNow = -1;
         panels.forEach((pn, i) => {
             const el = rowEl.get(pn.id);
             if (!el) return;
             const y = ys[i];
             el.style.transform = `translate3d(0, calc(${y} * var(--wm-px)), 0)`;
             const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
+            if (under) underNow = i;
             el.classList.toggle('is-under', under);
             el.classList.remove('is-sel');
             const far = entering ? String(Math.min(Math.abs(i - tw.b), 3)) : '0';
@@ -792,7 +1033,11 @@
             const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';
             if (el.style.opacity !== o) el.style.opacity = o;
         });
+        // a tick as another item crosses into the glass (not while Today comes back)
+        if (!entering && underNow >= 0 && underNow !== lastUnder) haptic('tick');
+        lastUnder = underNow;
     }
+    let lastUnder = -1;
 
     /** The move is over: b is in the band, its panel grows in. */
     function arrive() {
@@ -807,6 +1052,9 @@
         pos = b;
         place();
         drawExpanded();
+        if (entering || homeArrival) catchLight();
+        haptic('land');
+        lastUnder = -1;
         zoomIn(open, entering);
     }
 
@@ -891,15 +1139,28 @@
         // made one, and eating that left the panel dead)
         const eat = (e) => { if (!e.isTrusted) return; window.removeEventListener('click', eat, true); e.stopPropagation(); e.preventDefault(); };
         window.addEventListener('click', eat, true);
-        setTimeout(() => window.removeEventListener('click', eat, true), 400);
-        try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); }
+        const run = () => {
+            setTimeout(() => window.removeEventListener('click', eat, true), 400);
+            try { act(pg); } catch (err) { console.warn('[wmTitanium] tap', p.id, err); }
+        };
+        // Effects > exit: the list drops away first (170 ms, no input meanwhile); still on Today after
+        // the program's open (a box, a menu) it comes back
+        if (!fx.exit || host.hidden) { run(); return; }
+        host.classList.add('is-exiting');
+        enterLockUntil = performance.now() + 200;
+        setTimeout(() => {
+            run();
+            setTimeout(() => { if (root.dataset.wmApp === 'today' && document.visibilityState === 'visible') host.classList.remove('is-exiting'); }, 450);
+        }, 170);
     }
 
     /** List position p (rows): the selection moves on once the next item has travelled a whole row. */
     function moveTo(p) {
         pos = Math.max(0, Math.min(panels.length - 1, p));
+        const was = sel;
         while (pos - sel >= 1) sel++;
         while (pos - sel <= -1) sel--;
+        if (sel !== was) haptic('tick');
     }
 
     function bindPointer() {
@@ -1104,7 +1365,7 @@
         sh = window.wmShell;
         if (!sh || typeof sh.setTodayView !== 'function') return;
         document.addEventListener('keydown', onKey);
-        window.addEventListener('resize', () => { if (host && !host.hidden) place(); });
+        window.addEventListener('resize', () => { if (host && !host.hidden) { place(); requestAnimationFrame(blurPlace); } });
         sh.setTodayView(view);
     }
 
@@ -1167,8 +1428,12 @@
         const screenUnits = (host.clientHeight || window.innerHeight) / unit();
         const below = screenUnits - (focusTop() - ROW * at) + ROW;
         pos = at - below / ROW;
+        host.classList.remove('is-exiting');
         enterLockUntil = performance.now() + ENTER_MS + ENTER_ZOOM_MS + KEY_MS;
-        startTween(at, at, { backMs: ENTER_MS, ease: enterEase });
+        startTween(at, at, { backMs: ENTER_MS, ease: enterEase, entry: { stagger: fx.stagger, overshoot: fx.overshoot } });
+        breathe();
+        syncTilt();
+        if (blurClip && !blurClip.hidden) requestAnimationFrame(blurPlace);
         sh.refreshSoftKeys();
     }
 
@@ -1191,8 +1456,13 @@
     new MutationObserver(() => {
         const now = root.dataset.wmApp || '';
         if (now === 'today' && lastApp && lastApp !== 'today') requestAnimationFrame(entrance);
+        if (now !== 'today' && host) host.classList.remove('is-exiting');
         lastApp = now;
+        syncTilt();
+        if (now === 'today' && host) requestAnimationFrame(() => { syncBlur(); blurPlace(); });
     }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
+    document.addEventListener('visibilitychange', syncTilt);
+    window.addEventListener('melatonscreen', () => setTimeout(syncTilt, 0));
 
     window.wmTitanium = {
         enabled, home, select: (i) => select(i, true),

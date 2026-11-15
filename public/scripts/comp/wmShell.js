@@ -5940,7 +5940,10 @@
         reminder: { on: [400, 200, 400, 200, 400], usage: 'notification' },
         alert: { on: [250], usage: 'notification' },
         ring: { on: [1000, 2000], usage: 'ring', repeat: true, maxMs: 30000 },
-        mode: { on: [200], usage: 'touch' }
+        mode: { on: [200], usage: 'touch' },
+        // Settings > Today > Effects > haptics (wmTitanium.js): an item crossing the band, the list landing
+        tick: { on: [6], usage: 'touch' },
+        land: { on: [14], usage: 'touch' }
     };
     const vib = { log: [], last: {}, stop: null, caps: null };
 
@@ -6018,7 +6021,7 @@
                 if (kind === 'ring' && mode === 'on' && !p.calls) return false;
             }
             const now = Date.now();
-            if (!opts.force && now - (vib.last[kind] || 0) < 300) return false;
+            if (!opts.force && now - (vib.last[kind] || 0) < (kind === 'tick' ? 40 : 300)) return false; // list ticks come fast: 40 ms apart at most
             vib.last[kind] = now;
             const amp = Math.round((255 * level) / VIB_LEVELS);
             const b = hapticsBridge();
