@@ -28,6 +28,8 @@
  * in dataManagementDsapApplet.js) call mmcDataManagement.refresh(kind) too.
  *
  *   window.openDataManagementConsole(node?)   node: a node id below, or an old DSAP tab id
+ *   window.mmcDataManagement.partDef(part, { skip })   'storage' | 'workers' | 'replication' as a def of
+ *                             its own (Storage with its snap-ins hosted), for Server Manager's compose
  */
 (function (root) {
     'use strict';
@@ -95,12 +97,16 @@
         workersError: '',
         workersLoaded: false,
         favLoaded: false,
+        favPending: false,
         replLoading: false,
         replError: '',
         replHtml: null      // { sub, html }: the hosted replication page, built once per visit
     };
 
-    let current = null; // the open console
+    // the consoles showing this snap-in: its own window, and Server Manager's Storage / Workers /
+    // Replication (each part is hosted on its own, partDef below)
+    const currents = new Set();
+    const firstCurrent = () => { for (const c of currents) { if (c.modal && c.modal.isConnected) return c; } return null; };
 
     async function send(type, data) {
         const client = root.wsClient;
@@ -196,12 +202,20 @@
         } finally {
             state.sysLoading = false;
         }
-        if (c) c.refresh();
+        // every console showing it (its own window, Server Manager), the one that asked first
+        const top = (x) => { let h = x; while (h && h.host) h = h.host; return h; };
+        const done = new Set();
+        [c].concat(Array.from(currents)).forEach((x) => {
+            const t = x && top(x);
+            if (!t || done.has(t) || !t.modal || !t.modal.isConnected) return;
+            done.add(t);
+            t.refresh();
+        });
     }
 
     function loadSysSoon() {
         clearTimeout(state.sysTimer);
-        state.sysTimer = setTimeout(() => { if (current) void loadSys(current); }, 1500);
+        state.sysTimer = setTimeout(() => { const c = firstCurrent(); if (c) void loadSys(c); }, 1500);
     }
 
     function mergeWorkers(incoming) {
@@ -241,10 +255,12 @@
     }
 
     async function loadFavorites(c) {
+        state.favPending = true;
         if (has('loadFavorites')) {
             try { await root.loadFavorites(); } catch (_) { /* the list shows what is there */ }
         }
         state.favLoaded = true;
+        state.favPending = false;
         if (c) c.refresh();
     }
 
@@ -321,13 +337,13 @@
     }
 
     /** Storage: its items, as Computer Management's Storage lists Disk Management. */
-    function storagePage(c) {
+    function storagePage(c, skip) {
         const cols = [
             { t: 'Name', w: 180, key: 'name', text: (d) => d.name },
             { t: 'Description', w: 340, key: 'desc', text: (d) => d.desc || '' }
         ];
         const icons = new Map(EMBEDS.map(([key, , , icon]) => [key, icon]));
-        const rows = storageItems().map((n) => {
+        const rows = storageItems().filter((n) => !(skip && skip.has(n.embed || n.id))).map((n) => {
             const key = n.embed || n.id;
             return { key, data: n, icon: n.icon || icons.get(key), open: itemId(key) };
         });
@@ -1054,8 +1070,10 @@
                 switch (node.id) {
                     case 'storage': return storagePage(c);
                     case 'workspaces': return workspacesPage(c);
-                    case 'workers': return workersPage(c);
-                    case 'favorites': return favoritesPage(c);
+                    // a host that selects nodes itself (Server Manager) loads them here; this window's
+                    // own select() does it first (onOpen)
+                    case 'workers': if (!state.workersLoaded && !state.workersBusy.size) setTimeout(() => void loadWorkers(c), 0); return workersPage(c);
+                    case 'favorites': if (!state.favLoaded && !state.favPending) { state.favPending = true; setTimeout(() => void loadFavorites(c), 0); } return favoritesPage(c);
                     case 'root': return rootPage(c);
                     default: return EMBEDS.some((e) => e[0] === node.id) ? launcherPage(c, node) : replPage(c, node);
                 }
@@ -1072,7 +1090,7 @@
             status,
             about: { version: '1.0.0', lines: ['Data Management keeps Dreamscape\'s account, workspaces, favorites, presets, expanders, Director\'s data, workers and replication.'] },
             onOpen: (c) => {
-                current = c;
+                currents.add(c);
                 const pane = c.el('.mmc-result');
                 const mine = () => !String(c.node || '').includes('::');
                 // a partition in the graphical view picks its volume like a row of the list
@@ -1100,13 +1118,46 @@
                 if (c.node === 'workers') void loadWorkers(c);
                 if (c.node === 'favorites') void loadFavorites(c);
             },
-            onClose: () => {
+            onClose: (c) => {
+                currents.delete(c);
+                if (currents.size) return;
                 unmountRepl();
                 state.replHtml = null;
-                current = null;
                 clearTimeout(state.sysTimer);
             }
         };
+    }
+
+    /**
+     * One part of this console for a host that spreads Computer Management over its own tree (Server
+     * Manager: Storage, Diagnostics > Workers, Configuration > Replication): that node and its children
+     * as the root, the same pages and commands. skip: Storage snap-ins the host keeps elsewhere.
+     */
+    function partDef(part, opts = {}) {
+        const skip = new Set(opts.skip || []);
+        const base = def();
+        const pick = () => {
+            const n = nodes()[0].children.find((x) => x.id === part) || null;
+            if (!n || part !== 'storage' || !skip.size) return n;
+            return Object.assign({}, n, { children: n.children.filter((k) => !skip.has(k.embed || k.id)) });
+        };
+        return Object.assign({}, base, {
+            id: `${ID}-${part}`,
+            expanded: [part],
+            nodes: () => { const n = pick(); return n ? [n] : []; },
+            page: (node, c) => (node.id === 'storage' && skip.size ? storagePage(c, skip) : base.page(node, c))
+        });
+    }
+
+    /** partDef with the Storage snap-ins it lists hosted in it (mmcConsole.compose), for a host's compose. */
+    function hostedPart(part, opts = {}) {
+        if (!root.mmcConsole || typeof root.mmcConsole.compose !== 'function') return partDef(part, opts);
+        if (part !== 'storage') return partDef(part, opts);
+        const skip = new Set(opts.skip || []);
+        const list = embeds().filter((e) => !skip.has(e.key));
+        // the hosted keys decide which Storage items are trees; the same snap-ins load in every console
+        list.forEach((e) => embedded.add(e.key));
+        return list.length ? root.mmcConsole.compose(partDef(part, opts), list) : partDef(part, opts);
     }
 
     /** The DSAP's own scripts: the replication pages and the account helpers live there. */
@@ -1152,15 +1203,28 @@
 
     /** The refresh hooks: kind 'workspaces' | 'status' | 'favorites' | 'account' | 'usage' | 'replication'. */
     function refresh(kind) {
-        const c = current;
-        if (!c || !c.modal || !c.modal.isConnected) return;
-        if (kind === 'status') { loadSysSoon(); return; }
-        if ((kind === 'account' || kind === 'usage') && c.node !== 'root') return;
+        currents.forEach((c) => {
+            if (!c.modal || !c.modal.isConnected) currents.delete(c);
+        });
+        if (kind === 'status') { if (currents.size) loadSysSoon(); return; }
         if (kind === 'favorites') state.favLoaded = true;
+        // one refresh per window (Server Manager hosts three parts of this console)
+        const seen = new Set();
+        currents.forEach((c) => {
+            let t = c;
+            while (t && t.host) t = t.host;
+            if (seen.has(t)) return;
+            seen.add(t);
+            refreshOne(c, kind);
+        });
+    }
+
+    function refreshOne(c, kind) {
+        if ((kind === 'account' || kind === 'usage') && c.node !== 'root') return;
         if (kind === 'workspaces' && c.sel && c.node === 'workspaces' && !wsRows().some((r) => String(r.id) === String(c.sel))) c.sel = null;
         c.refresh();
     }
 
     root.openDataManagementConsole = openDataManagementConsole;
-    root.mmcDataManagement = { open: openDataManagementConsole, refresh, nodeFor, isDesktop, _state: state };
+    root.mmcDataManagement = { open: openDataManagementConsole, refresh, nodeFor, isDesktop, partDef: hostedPart, ensureAssets, _state: state };
 })(typeof window !== 'undefined' ? window : globalThis);

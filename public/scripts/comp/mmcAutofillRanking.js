@@ -17,6 +17,7 @@
  * Saves go through update_autofill_ranking; autofill_ranking_updated brings every change back.
  *
  *   window.openAutofillRankingConsole(node?)   node: 'root' | 'test' | 'scoring' | 'types'
+ *   window.mmcAutofillRanking.def()             the snap-in's def, for a console that hosts it (Server Manager)
  */
 (function (root) {
     'use strict';
@@ -726,5 +727,5 @@
     }
 
     root.openAutofillRankingConsole = openAutofillRankingConsole;
-    root.mmcAutofillRanking = { open: openAutofillRankingConsole, _state: state };
+    root.mmcAutofillRanking = { open: openAutofillRankingConsole, def, _state: state };
 })(typeof window !== 'undefined' ? window : globalThis);

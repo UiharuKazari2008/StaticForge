@@ -2,8 +2,9 @@
    (mmc-console.css). Workspaces is Disk Management, measured on the Vista VM (mmc-ref/dm.png): the volume
    list, a 5 px splitter, the graphical view (100 px disk labels, 80 px rows, a 13 px partition strip,
    the hatched selected volume) and the legend; the replication pages hosted from the DSAP. */
+/* Server Manager (mmcServerManager.js) hosts its Storage, Workers and Replication: the rules apply there too (#831). */
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-swatch {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-swatch {
     flex: none;
     display: inline-block;
     width: 10px;
@@ -16,13 +17,13 @@
 
 /* ---- Workspaces: Disk Management ---- */
 
-.mmc-window[data-mmc-snapin="dataManagement"] .mmc-result.is-split {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .mmc-result.is-split {
     border: 0;
     box-shadow: none;
     background: #f0f0f0;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-vol {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-vol {
     display: flex;
     flex: none;
     flex-direction: column;
@@ -33,20 +34,20 @@
     background: #fff;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-vol > .mmc-list {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-vol > .mmc-list {
     flex: 1;
     min-height: 0;
     overflow: auto;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-hsplit {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-hsplit {
     flex: none;
     height: 5px;
     cursor: row-resize;
     background: #f0f0f0;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-graph {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-graph {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -59,14 +60,14 @@
     font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-map {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-map {
     flex: 1;
     min-height: 0;
     overflow: auto;
     padding: 6px 4px 2px 3px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk {
     display: flex;
     min-width: 330px;
     height: 80px;
@@ -74,7 +75,7 @@
 }
 
 /* the disk's label: a raised #f0f0f0 box, the disk icon, bold name */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-label {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk-label {
     display: flex;
     flex: none;
     flex-direction: column;
@@ -88,19 +89,19 @@
     overflow: hidden;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-label > b {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk-label > b {
     display: flex;
     align-items: center;
     gap: 1px;
     margin-bottom: 1px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-label > b > img {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk-label > b > img {
     width: 16px;
     height: 16px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk-area {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk-area {
     display: flex;
     flex: 1;
     min-width: 0;
@@ -111,7 +112,7 @@
     padding: 3px 3px 3px 3px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -122,30 +123,30 @@
 /* the one disk: its partitions side by side, each as wide as its share of the usage (flex-grow, set per
    partition) but never narrower than 44 px, so a small one can still be clicked; past that the map
    scrolls sideways */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk.is-single {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk.is-single {
     min-width: calc(110px + var(--dm-parts, 1) * 47px);
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk.is-single .dm-part {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk.is-single .dm-part {
     flex: 1 0 0;
     min-width: 44px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-disk.is-single .dm-part + .dm-part {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-disk.is-single .dm-part + .dm-part {
     margin-left: 3px;
 }
 
 /* the kind's strip above the volume (Disk Management's partition colours) */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-strip {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part-strip {
     flex: none;
     height: 13px;
     background: #0000ff;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part.is-active .dm-part-strip { background: #000080; }
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part.is-empty .dm-part-strip { background: #000; }
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part.is-active .dm-part-strip { background: #000080; }
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part.is-empty .dm-part-strip { background: #000; }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part-body {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -160,32 +161,32 @@
 }
 
 /* selected: the 5 px frame (#a0a0a0, #bcbcbc, #a0a0a0) and the #a0a0a0 hatching, 8 px apart */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part.is-selected .dm-part-body {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part.is-selected .dm-part-body {
     padding: 2px 4px 0 7px;
     border: 2px solid #a0a0a0;
     box-shadow: inset 0 0 0 3px #bcbcbc, inset 0 0 0 4px #a0a0a0;
     background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' shape-rendering='crispEdges'%3E%3Cpath d='M0 8L8 0M-1 1L1 -1M7 9L9 7' stroke='%23a0a0a0'/%3E%3C/svg%3E") 0 0 / 8px 8px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > b {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part-body > b {
     display: flex;
     align-items: center;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > span {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part-body > span {
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > *,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-part-body > b {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part-body > *,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-part-body > b {
     background: transparent;
 }
 
 /* the legend: 10x12 sunken keys */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-legend {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-legend {
     display: flex;
     flex: none;
     flex-wrap: wrap;
@@ -194,13 +195,13 @@
     line-height: 14px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-legend > span {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-legend > span {
     display: inline-flex;
     align-items: center;
     white-space: nowrap;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-key {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-key {
     display: inline-block;
     width: 12px;
     height: 14px;
@@ -212,7 +213,7 @@
 
 /* ---- Storage: the share bar in Generations by Workspace ---- */
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-share {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-share {
     flex: none;
     position: relative;
     width: 80px;
@@ -222,7 +223,7 @@
     background: #fff;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-share > span {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-share > span {
     position: absolute;
     left: 0;
     top: 0;
@@ -231,11 +232,11 @@
 
 /* ---- Account ---- */
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-usage {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-usage {
     margin: 8px 0 0;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-ban {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-ban {
     padding: 6px 8px;
     border: 1px solid #a0a0a0;
     background: #fff;
@@ -246,21 +247,21 @@
 
 /* ---- Replication: the DSAP's pages, in the console's look ---- */
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl {
     padding-bottom: 10px;
     line-height: 16px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .hidden {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .hidden {
     display: none !important;
 }
 
 /* the tree is the navigation: no breadcrumb */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-breadcrumb {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-breadcrumb {
     display: none;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-section-hdr {
     position: relative;
     height: 22px;
     margin: 0;
@@ -273,43 +274,43 @@
     text-overflow: ellipsis;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr ~ * {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-section-hdr ~ * {
     background-color: transparent;
 }
 
 /* a section's content sits on #f0f0f0 like .mmc-sec-body */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl > :not(.dsap-smf-section-hdr):not(.hidden):not(input),
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-panel-host > * {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl > :not(.dsap-smf-section-hdr):not(.hidden):not(input),
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-panel-host > * {
     box-sizing: border-box;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-layout,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplNavHost,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplChildrenHost:not(:empty),
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplChildSummaryHost table,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl #dataMgmtReplProgressPageHost,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-panel-host,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sep-bundle-wizard {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-layout,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl #dataMgmtReplNavHost,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl #dataMgmtReplChildrenHost:not(:empty),
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl #dataMgmtReplChildSummaryHost table,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl #dataMgmtReplProgressPageHost,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-panel-host,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-settings-row,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .replication-sep-bundle-wizard {
     margin: 0 0 10px;
     padding: 8px 13px 10px;
     background: #f0f0f0;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr + * {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-section-hdr + * {
     margin-top: 0;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-lead,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-muted,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-nav-note,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sync-hint,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-clone-hint {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-lead,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-muted,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-nav-note,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .replication-sync-hint,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-clone-hint {
     margin: 0 0 8px;
     color: #6d6d6d;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-lead {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-lead {
     color: #000;
     padding: 8px 13px 0;
     margin: 0;
@@ -317,7 +318,7 @@
 }
 
 /* stats tables and data tables: a framed white grid with Vista header items */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl table {
     width: 100%;
     border: 1px solid #828790;
     border-collapse: collapse;
@@ -325,8 +326,8 @@
     font: inherit;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table th,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table td {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl table th,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl table td {
     padding: 2px 6px;
     border: 0;
     text-align: left;
@@ -334,62 +335,62 @@
     vertical-align: top;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl table thead th {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl table thead th {
     height: 18px;
     border-right: 1px solid #e3e8ef;
     border-bottom: 1px solid #d5d5d5;
     background: linear-gradient(#fff, #fff 50%, #f7f8fa 50%, #f1f2f4);
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stats td {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-stats td {
     text-align: left;
     border-right: 1px solid #e3e8ef;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stat-label,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stats-label {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-stat-label,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-stats-label {
     color: #6d6d6d;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-stat-value {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-stat-value {
     font-weight: normal;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl code {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl code {
     font: 11px Consolas, "Lucida Console", monospace;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-avail.ok,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-val.ok { color: #000; }
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-avail.warn,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-val.warn { color: #8a6100; }
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-avail.error,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-val.error,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-maint-active { color: #c00; }
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-avail.ok,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-service-val.ok { color: #000; }
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-avail.warn,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-service-val.warn { color: #8a6100; }
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-avail.error,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-service-val.error,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-maint-active { color: #c00; }
 
 /* the delegated services: label: value rows */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-services {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-services {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 4px 12px;
     margin-top: 8px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-service {
     display: flex;
     gap: 6px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-service-label::after {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-service-label::after {
     content: ':';
 }
 
 /* toolbars and button rows: push buttons in a row */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-toolbar,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-nav-grid,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-cargo-toolbar,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sync-toolbar {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-toolbar,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-nav-grid,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-settings-row,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .replication-cargo-toolbar,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .replication-sync-toolbar {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -400,7 +401,7 @@
     background: transparent;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-settings-row {
     flex-direction: column;
     align-items: flex-start;
     padding: 8px 13px 10px;
@@ -409,14 +410,14 @@
 }
 
 /* Save defaults: on the section, under its menu buttons */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-settings-row + .dsap-smf-toolbar {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-settings-row + .dsap-smf-toolbar {
     margin: 0 0 10px;
     padding: 0 13px 10px;
     background: #f0f0f0;
 }
 
 /* the embedded separation panel: no frame of its own */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .replication-sep-panel {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .replication-sep-panel {
     margin: 0;
     padding: 0;
     border: 0;
@@ -424,7 +425,7 @@
     font: inherit;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-btn {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -435,13 +436,13 @@
     white-space: nowrap;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-btn:disabled,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-nav-disabled {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-btn:disabled,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-nav-disabled {
     color: #838383;
 }
 
 /* a menu button's arrow */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dm-caret {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dm-caret {
     width: 0;
     height: 0;
     border: 3px solid transparent;
@@ -450,7 +451,7 @@
     margin-top: 1px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-crumb-link {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-crumb-link {
     min-width: 0;
     border: 0;
     background: none;
@@ -460,30 +461,30 @@
     cursor: pointer;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-crumb-link::before {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-crumb-link::before {
     display: none;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-crumb-link:hover {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-crumb-link:hover {
     text-decoration: underline;
 }
 
 /* status boxes: Vista's information band */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-status-box,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-statusbox,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-cta {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-status-box,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-statusbox,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-cta {
     margin: 0 0 10px;
     padding: 6px 8px;
     border: 1px solid #a0a0a0;
     background: #ffffe1;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-cta p {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-cta p {
     margin: 0 0 8px;
 }
 
 /* inputs: Vista edit boxes */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl :is(input[type="text"], input[type="number"], input[type="password"], input:not([type]), textarea, .dsap-smf-input) {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl :is(input[type="text"], input[type="number"], input[type="password"], input:not([type]), textarea, .dsap-smf-input) {
     box-sizing: border-box;
     height: 21px;
     padding: 1px 4px;
@@ -494,11 +495,11 @@
     font: 12px "Segoe UI", Tahoma, sans-serif;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl textarea {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl textarea {
     height: auto;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl pre {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl pre {
     padding: 6px 8px;
     border: 1px solid #a0a0a0;
     background: #fff;
@@ -507,31 +508,31 @@
     overflow-wrap: anywhere;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-dialog-field {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-dialog-field {
     display: flex;
     align-items: center;
     gap: 8px;
     margin: 0 0 6px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-clone-grid {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-clone-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     gap: 4px 12px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-clone-grid label {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-clone-grid label {
     display: flex;
     align-items: center;
     gap: 5px;
 }
 
 /* operation progress: Vista's progress bar colours on a plain track */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-phase {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-progress-phase {
     margin: 0 0 6px;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-bar {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-progress-bar {
     position: relative;
     max-width: 300px;
     height: 15px;
@@ -541,28 +542,28 @@
     overflow: hidden;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-fill {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-progress-fill {
     height: 100%;
     background: linear-gradient(#c1f3a0, #37d33a 45%, #23b31f 55%, #6ce36c);
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-count,
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-progress-path {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-progress-count,
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-progress-path {
     margin-top: 4px;
     color: #6d6d6d;
     overflow-wrap: anywhere;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl a {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl a {
     color: #0066cc;
 }
 
 /* a panel's own headings inside a section: Vista's blue sub-headings, not a second band */
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .dsap-smf-section-hdr {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .dsap-smf-section-hdr {
     font-weight: normal;
 }
 
-.mmc-window[data-mmc-snapin="dataManagement"] .dm-repl .data-mgmt-repl-panel-host .dsap-smf-section-hdr {
+.mmc-window:is([data-mmc-snapin="dataManagement"], [data-mmc-snapin="serverManager"]) .dm-repl .data-mgmt-repl-panel-host .dsap-smf-section-hdr {
     height: 20px;
     margin: 4px 0 6px;
     padding: 0;

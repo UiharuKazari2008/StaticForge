@@ -92,6 +92,8 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['persona', 'character', 'linkxi'], launchIds: ['linkxi-persona'] },
     // Key Manager (#831): application keys and service keys (certmgr.msc's place)
     { aliases: ['api', 'keys', 'keychain', 'credentials', 'key manager', 'keymgr', 'keymgr.msc', 'certmgr', 'certmgr.msc', 'application keys', 'app keys', 'service keys', 'api keys'], launchIds: ['mmc-key-manager'] },
+    // Server Manager (#831 slice 5): every console in one tree (servermanager.msc on Windows Server 2008)
+    { aliases: ['server manager', 'servermanager', 'servermanager.msc', 'servermanagerlauncher', 'servermanagerlauncher.exe', 'server-manager'], launchIds: ['mmc-server-manager', 'server-manager'] },
     { aliases: ['preset manager', 'manage presets'], launchIds: ['presets'] },
     { aliases: ['mstsc', 'rdp', 'remote desktop connection', 'ssh', 'vnc', 'quick connect'], launchIds: ['remote-desktop-connection'] },
     { aliases: ['guacamole', 'guac', 'remote desktop manager', 'connections'], launchIds: ['remote-desktop'] }

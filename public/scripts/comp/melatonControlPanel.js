@@ -192,10 +192,11 @@
     });
     registerItem({
         id: 'dreamscape-services',
-        name: 'Management Tools',
-        image: '/static_images/vista-cpl/management-tools-32.png',
-        description: 'Data management, security and the other Dreamscape service pages.',
-        open: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/')
+        name: 'Server Manager',
+        image: '/static_images/app_icons/64/vista-server-manager.webp',
+        description: 'Every Dreamscape console in one tree: roles, features, diagnostics, configuration and storage.',
+        // the Server Manager console (#831 slice 5) replaced the old dashboard page (openServerManagerConsole: dsapManifests.js)
+        open: () => callGlobal('openServerManagerConsole')
     });
 
     // ---- window ----------------------------------------------------------------------------

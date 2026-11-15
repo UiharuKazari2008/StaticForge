@@ -15,6 +15,7 @@
  * checks the PIN and the phrase (modules/siteHomepageAdmin.js); admin only.
  *
  *   window.openFrontGate(node?)   node: 'root' | 'covers' | 'phrase'
+ *   window.mmcFrontGate.def()     the snap-in's def, for a console that hosts it (Server Manager)
  */
 (function (root) {
     'use strict';
@@ -494,6 +495,7 @@
             onOpen: (c) => {
                 // the cover panel is not a list: a tile picks like a row
                 const pick = (ev) => {
+                    if (c.isActive && !c.isActive()) return;
                     const tile = ev.target.closest('[data-cover]');
                     if (!tile) return;
                     c.selectRow(tile.dataset.cover);
@@ -502,6 +504,7 @@
                 c.el('.mmc-result').addEventListener('click', pick);
                 c.el('.mmc-result').addEventListener('mousedown', (ev) => { if (ev.button === 2) pick(ev); });
                 c.el('.mmc-result').addEventListener('dblclick', (ev) => {
+                    if (c.isActive && !c.isActive()) return;
                     const tile = ev.target.closest('[data-cover]');
                     if (tile) void action('preview', c).catch(() => {});
                 });
@@ -518,5 +521,5 @@
     }
 
     root.openFrontGate = openFrontGate;
-    root.mmcFrontGate = { open: openFrontGate, _state: state };
+    root.mmcFrontGate = { open: openFrontGate, def, _state: state };
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -365,14 +365,14 @@
         { id: 'sideshow', name: 'Melaton SideShow', art: 'sideshow', cats: ['hardware', 'programs'], tip: 'Set up a secondary display to use with Melaton SideShow.', open: 'page:sideshow' },
         { id: 'meleton-update', name: 'Melaton Update', art: 'update', cats: ['system', 'security'], tip: 'Check for updates and change update settings.' },
         // Vista's Programs page has "Get Programs Online" (Windows Marketplace): Melaton sends it
-        // to the Dreamscape services homepage. It is not a Classic View icon, as in Vista.
-        { id: 'get-programs', name: 'Get Programs Online', art: 'programs-and-features', cats: [], hidden: true, tip: 'Get new programs online.', open: 'call:openDsapInGrimoire:dsap://dreamscape.jp/' },
+        // to Server Manager's Features (#831; was the old dashboard page). It is not a Classic View icon, as in Vista.
+        { id: 'get-programs', name: 'Get Programs Online', art: 'programs-and-features', cats: [], hidden: true, tip: 'Get new programs online.', open: 'call:openServerManagerConsole:features' },
         // Melaton's own
         { id: 'remote-access', cats: ['system', 'network'] },
         { id: 'mail', cats: ['users', 'additional'] },
         { id: 'chat', cats: ['users', 'additional'] },
         { id: 'runes', cats: ['system', 'additional'] },
-        // Management Tools (the Dreamscape service pages) is listed in Administrative Tools
+        // Server Manager (was Management Tools, the old dashboard page) is listed in Administrative Tools
         { id: 'dreamscape-services', cats: ['system', 'additional'], hidden: true },
         { id: 'authentication', cats: ['users'] },
         // Window Color and Appearance is Personalization's page in Vista, not an icon of its own

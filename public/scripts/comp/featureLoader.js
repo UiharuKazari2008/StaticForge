@@ -361,7 +361,7 @@ const FEATURE_MANIFEST = {
     // The MMC consoles that replaced the management DSAPs (Yozora #828): the shell, then the snap-ins
     mmc_snapins: {
         depends: ['vista_dialog_templates', 'workspace_dialogs', 'print_queue'],
-        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css'],
+        styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css'],
         scripts: [
             'scripts/comp/mmcConsole.js',
             'scripts/comp/mmcFrontGate.js',
@@ -375,7 +375,9 @@ const FEATURE_MANIFEST = {
             'scripts/comp/mmcExchange.js',
             'scripts/comp/mmcAppKeys.js',
             'scripts/comp/mmcDataManagement.js',
-            'scripts/comp/mmcPrintManagement.js'
+            'scripts/comp/mmcPrintManagement.js',
+            // Server Manager hosts the consoles above: after them
+            'scripts/comp/mmcServerManager.js'
         ]
     },
     // Print queue windows (#831): one per printer (generation backend); the tray icon is printQueue.js

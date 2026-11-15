@@ -151,7 +151,8 @@
             id: 'live', name: 'Go online to learn about Melaton Live', tip: 'Learn about Melaton Live: an innovative set of products and services that brings your online world together.',
             title: 'Melaton Live', start: 'Learn more online',
             body: [['Melaton Live is an innovative set of services that brings your online world together. Finally, the information you need, the people you care about, and powerful protection-all at your fingertips.'], ['Go online to learn how Melaton Live products and services can help you:'], ['Find the information you\'re looking for, fast', 1], ['Connect and share with friends and family', 1], ['Protect your PC', 1]],
-            run: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/')
+            // the Dreamscape services' home: Server Manager (#831; was the old dashboard page)
+            run: () => callGlobal('openServerManagerConsole')
         },
         {
             id: 'search', name: 'Go online to find it fast with Melaton Live', tip: 'Search your way. Get all the search tools you need in one place with Melaton Live.',

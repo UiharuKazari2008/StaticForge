@@ -6670,6 +6670,11 @@ function buildToolsSubmenuItems() {
         { launchId: 'mmc-exchange', icon: 'fas fa-building-columns', imageIcon: 'vista-exchange-management-console.png', text: 'Exchange Management Console', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openExchangeConsole(); } },
         { launchId: 'mmc-wiki-caches', icon: 'fas fa-books', imageIcon: 'vista-wiki-caches.png', text: 'Wiki Caches', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openWikiCachesConsole(); } },
         // Print Management (#831): the generation backends as printers (openPrintManagementSnapin: dsapManifests.js)
+        // Server Manager (#831 slice 5): every console in one tree (openServerManagerConsole: dsapManifests.js);
+        // the suite folder's "Server Manager" is the old dashboard's entry (dreamscapeHomeDsap.js), which opens it too
+        { launchId: 'mmc-server-manager', icon: 'fas fa-server', imageIcon: 'vista-server-manager.png', text: 'Server Manager', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openServerManagerConsole(); } },
+        // 'control-panel' is Control Panel for agents' open_application (Server Manager had the id until #831); not listed
+        { launchId: 'control-panel', icon: 'fas fa-sliders', imageIcon: 'vista-control-panel.png', text: 'Control Panel', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: async () => { await featureLoader.loadFeature('control_panel'); if (window.melatonControlPanel) window.melatonControlPanel.open('home'); } },
         { launchId: 'mmc-print-management', icon: 'fas fa-print', imageIcon: 'vista-print-management.png', text: 'Print Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openPrintManagementSnapin(); } },
         { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('director'); } },
         { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Profile', fullName: 'Enshutsuka - Profile', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
@@ -7876,7 +7881,7 @@ const START_MENU_PACKAGE_APPS = [
     ['expanders', 'Expanders'],
     ['presets', 'Spellbook'],
     // Yukimi, Nov 11: the server's own tools are the suite's too, not Accessories
-    ['control-panel', 'Server Manager'],
+    ['server-manager', 'Server Manager'],
     ['data-management', 'Data Management'],
     ['config-editor', 'Runes'],
     ['event-viewer', 'Periscope'],
@@ -7930,6 +7935,7 @@ const START_MENU_SYSTEM_PLACES = {
     'mmc-exchange': { at: 'administrative-tools' },       // Exchange 2007 puts its console in its own folder; here beside the other consoles
     'mmc-wiki-caches': { at: 'administrative-tools' },
     'mmc-print-management': { at: 'administrative-tools' },
+    'mmc-server-manager': { at: 'administrative-tools' },  // Server Manager, as on Windows Server 2008
     'sideshow-simulator-landscape': { at: 'sideshow-simulator', label: 'Device Simulator (Landscape)' },
     'sideshow-simulator-portrait': { at: 'sideshow-simulator', label: 'Device Simulator (Portrait)' }
 };

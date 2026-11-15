@@ -185,13 +185,14 @@
         { id: 'print-management', name: 'Print Management', icon: '/static_images/app_icons/16/vista-print-management.webp', open: () => callGlobal('openPrintManagementSnapin') },
         { id: 'reliability', name: 'Reliability and Performance Monitor', icon: '/static_images/app_icons/16/vista-performance.webp', open: () => launch('perfmon') || launch('event-viewer') },
         { id: 'security-config', name: 'Security Configuration Management', icon: `${ITEMS}/security-center-16.png`, open: () => CP().doAction('item:security-center') },
+        // Server Manager (#831 slice 5) replaced the Management Tools shortcut (the old dashboard page)
+        { id: 'server-manager', name: 'Server Manager', icon: '/static_images/app_icons/16/vista-server-manager.webp', open: () => callGlobal('openServerManagerConsole') },
         { id: 'services', name: 'Services', icon: `${ITEMS}/administrative-tools-16.png`, open: () => launch('services') || CP().doAction('item:network') },
         { id: 'msconfig', name: 'System Configuration', icon: `${ITEMS}/system-16.png`, open: () => CP().doAction('item:system') },
         { id: 'task-scheduler', name: 'Task Scheduler', icon: `${ITEMS}/administrative-tools-16.png`, open: () => launch('task-scheduler') || msg('Task Scheduler is coming in a later update of Melaton.', 'Task Scheduler') },
         { id: 'wiki-caches', name: 'Wiki Caches', icon: '/static_images/app_icons/16/vista-wiki-caches.webp', open: () => callGlobal('openWikiCachesConsole') },
         { id: 'firewall-adv', name: 'Melaton Firewall with Advanced Security', icon: `${ITEMS}/firewall-16.png`, open: () => CP().doAction('item:firewall') },
-        { id: 'powershell', name: 'Melaton PowerShell Modules', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('Melaton PowerShell is not installed.', 'Melaton PowerShell Modules') },
-        { id: 'management-tools', name: 'Management Tools', icon: '/static_images/vista-cpl/management-tools-32.png', open: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/') }
+        { id: 'powershell', name: 'Melaton PowerShell Modules', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('Melaton PowerShell is not installed.', 'Melaton PowerShell Modules') }
     ];
 
     function launch(id) {

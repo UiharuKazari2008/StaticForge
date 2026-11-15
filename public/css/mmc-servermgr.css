@@ -1,0 +1,100 @@
+/* ---- Server Manager (mmcServerManager.js): Windows Server 2008's summary pages - an intro line, then
+        sections whose blocks keep the facts on the left and the tasks (icon + link) on the right ---- */
+
+.mmc-window .sm-intro {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    padding: 0 3px;
+}
+
+.mmc-window .sm-intro > img {
+    flex: none;
+    width: 32px;
+    height: 32px;
+}
+
+.mmc-window .sm-intro > p {
+    margin: 0;
+}
+
+.mmc-window .sm-block + .sm-block {
+    margin-top: 12px;
+}
+
+.mmc-window .sm-sub {
+    margin: 0 0 6px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid #c8c8c8;
+    font-weight: bold;
+}
+
+.mmc-window .sm-split {
+    display: flex;
+    gap: 16px;
+    align-items: flex-start;
+}
+
+.mmc-window .sm-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.mmc-window .sm-main > p {
+    margin: 0 0 6px;
+}
+
+.mmc-window .sm-tasks {
+    flex: none;
+    width: 210px;
+}
+
+.mmc-window .sm-task {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 18px;
+    margin-bottom: 3px;
+    white-space: nowrap;
+}
+
+.mmc-window .sm-task > img,
+.mmc-window .sm-task-pad {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.mmc-window .sm-task > .mmc-link {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window .sm-items {
+    padding-left: 2px;
+}
+
+/* the bottom bar: Last Refresh and Refresh */
+.mmc-window .sm-footer {
+    display: flex;
+    flex: none;
+    gap: 14px;
+    align-items: center;
+    height: 22px;
+    padding: 0 10px;
+    border-top: 1px solid #a0a0a0;
+    background: #f0f0f0;
+    white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+    .mmc-window .sm-split {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .mmc-window .sm-tasks {
+        width: auto;
+    }
+}

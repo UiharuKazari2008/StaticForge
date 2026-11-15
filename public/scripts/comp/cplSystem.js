@@ -519,7 +519,7 @@
                 <div class="cpl-task-group cpl-sys-tasks">
                     <h3 class="cpl-task-heading">Tasks</h3>
                     <ul class="cpl-task-list">
-                        ${shieldLink('Device Manager', 'item', 'dreamscape-services')}
+                        ${shieldLink('Device Manager', 'item', 'device-manager')}
                         ${shieldLink('Remote settings', 'item', 'remote-access')}
                         ${shieldLink('System protection', 'item', 'windows-defender')}
                         ${shieldLink('Advanced system settings', 'item', 'runes')}

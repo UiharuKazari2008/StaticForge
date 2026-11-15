@@ -37,7 +37,7 @@ const RESERVED_LAUNCH_IDS = new Set([
     'run', 'import', 'presets', 'expanders', 'memories', 'config-editor',
     'character-db', 'event-viewer', 'explore-gallery', 'dynamic-quips',
     'novels', 'security-center', 'data-management', 'autofill-ranking',
-    'ispy', 'menma', 'pantry', 'wiki-manager', 'zanzou', 'control-panel', 'keychain',
+    'ispy', 'menma', 'pantry', 'wiki-manager', 'zanzou', 'control-panel', 'server-manager', 'keychain',
     'nax-vibes', 'favorites', 'desktop-settings'
 ]);
 

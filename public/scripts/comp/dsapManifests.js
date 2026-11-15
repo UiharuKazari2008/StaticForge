@@ -170,6 +170,17 @@ async function openFrontGateConsole(node) {
     return null;
 }
 
+/**
+ * Server Manager (#831 slice 5): the console that holds every other console in one tree, loading the
+ * MMC snap-ins first; node: a console node or a role / tool key ('frontgate', 'eventvwr', 'storage' ...).
+ */
+async function openServerManagerConsole(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openServerManager: public/scripts/comp/mmcServerManager.js
+    if (typeof openServerManager === 'function') return openServerManager(node);
+    return null;
+}
+
 /** Print Management (#831): the generation backends as printers; printerId selects one under Printers. */
 async function openPrintManagementSnapin(printerId) {
     await featureLoader.loadFeature('mmc_snapins');

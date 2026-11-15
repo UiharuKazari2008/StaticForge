@@ -61,17 +61,28 @@ function registerDreamscapeHomeDsap() {
                 baseBackground: '#eeeeee'
             };
         },
+        // on the Vista desktop the dashboard is the Server Manager console (#831 slice 5:
+        // mmcServerManager.js); elsewhere (phones, Windows Classic) the page stays
+        opensApp() {
+            if (typeof dsapIsVistaDesktop !== 'function' || !dsapIsVistaDesktop()) return false;
+            // openServerManagerConsole: public/scripts/comp/dsapManifests.js
+            if (typeof openServerManagerConsole !== 'function') return false;
+            void openServerManagerConsole();
+            return true;
+        },
         menuEntry: {
-            // not the desktop's Control Panel: the server's administration home (Yukimi, Nov 10)
-            launchId: 'control-panel',
+            // not the desktop's Control Panel: the server's administration home (Yukimi, Nov 10); its
+            // own id since #831 ('control-panel' is Control Panel: modalUtils.js buildToolsSubmenuItems)
+            launchId: 'server-manager',
             icon: 'fas fa-gauge',
-            imageIcon: 'server-manager.png',
+            imageIcon: 'vista-server-manager.png',
             text: 'Server Manager',
             fullName: 'Dreamscape Server Manager',
             appMenu: false,
             startMenu: true,
             startMenuIndex: 5,
             launch() {
+                // the console on the Vista desktop (the entry's opensApp), the page elsewhere
                 openDsapInGrimoire(`dsap://${DREAMSCAPE_HOME_URL}/`);
             }
         }
