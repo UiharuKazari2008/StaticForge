@@ -3472,7 +3472,10 @@
         // a foldable's unfolded inner screen has the room: no icon steps aside or folds into the group
         // there, those right of the camera that do not fit carry on left of it (Yukimi, Nov 15)
         if (unfoldedScreen()) {
-            if (cameraInBar) { setReserve(0); relayout(); }
+            // nor is room kept for notifications: turned, with the camera out of the bar, the two empty
+            // slots read as the camera's gap moved into the landscape bar (Yukimi, Nov 15)
+            setReserve(0);
+            if (cameraInBar) relayout();
             return;
         }
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
