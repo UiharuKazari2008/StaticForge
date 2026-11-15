@@ -303,8 +303,10 @@ async function saveSettings(next = {}) {
     const saved = gr.modifyConfig('config').assign(['lapis'], out);
     if (saved && typeof saved.then === 'function') await saved;
     if ('vehicleId' in next) live.vehicle = null;
-    live.weather = null;
+    // the weather stays until the new reading is in (a place may have changed): clearing it here left
+    // the phones on "The weather at the car is not known yet" until the next half-hourly refresh
     pushState();
+    refreshWeather(true).then(() => pushState()).catch(() => {});
     return getSettings();
 }
 
