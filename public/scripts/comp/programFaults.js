@@ -53,6 +53,10 @@
  *   programFaults.attribute({ stack, filename, eventWindow, eventShell }) -> program | null
  *   programFaults.registerProgram(windowId, { name, launchId, relaunch, terminate, core })
  *
+ * Faults no dialog takes are not lost: fatalErrorBootstrap.js's dreamscapeErrorCapture reports them
+ * to the same store (Spectator faults, and report() calls for shell handlers, as "swallowed"), and
+ * every upload says which shell it came from (surface desktop | mobile), Yozora #833.
+ *
  * Test: scripts/test-program-faults.js
  */
 (function (root) {
@@ -799,6 +803,15 @@
         return out;
     }
 
+    function isPhoneShell() {
+        try {
+            const d = doc && doc.documentElement;
+            return root.uiShell === 'mobile' || !!(d && d.classList && d.classList.contains('ui-mobile'));
+        } catch (_) {
+            return false;
+        }
+    }
+
     function clientInfo() {
         let desktopState = '';
         try {
@@ -832,6 +845,9 @@
         return {
             occurrenceId: state.occurrenceId,
             at: d.timestamp || new Date().toISOString(),
+            // the fault store tells desktop and phone faults apart (#833)
+            surface: isPhoneShell() ? 'mobile' : 'desktop',
+            kind: 'dialog',
             program: {
                 key: p.key,
                 name: p.name,
@@ -1129,7 +1145,13 @@
             source: (options && options.source) || '',
             timestamp: new Date().toISOString()
         };
-        return present(detail, { error: err, appsOnly: !(options && options.core) });
+        // dreamscapeErrorCapture: public/scripts/comp/fatalErrorBootstrap.js (#833). A fault no dialog
+        // takes (a shell handler's) is still reported, as "swallowed", instead of staying a console line.
+        const capture = root.dreamscapeErrorCapture;
+        if (capture) capture.markSeen(err);
+        const took = present(detail, { error: err, appsOnly: !(options && options.core) });
+        if (!took && capture) capture.capture(detail, { kind: 'swallowed', error: err, source: detail.source });
+        return took;
     }
 
     function init() {

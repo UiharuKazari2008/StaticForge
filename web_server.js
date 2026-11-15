@@ -2272,7 +2272,12 @@ app.use((req, res, next) => {
 mountGrimoireBrowserBridge(app, authMiddleware);
 mountGuacRemoteBridge(app, authMiddleware);
 // modules/programFaultReports.js — the desktop's "has stopped working" dialogs, one report per fault
-require('./modules/programFaultReports').mountProgramFaultReports(app, authMiddleware);
+// Yozora #833: every captured error (desktop, phone, server) lands there too, and the fixer acts on it.
+const faultReportStore = require('./modules/programFaultReports').mountProgramFaultReports(app, authMiddleware);
+// modules/serverFaultCapture.js — route errors, rejections, crashes, logger.error/console.error with our Errors
+require('./modules/serverFaultCapture').install({ store: faultReportStore, logger: require('./modules/logger') });
+// modules/faultAutoFix.js — a headless Claude Code run per new fault (config faultAutoFix), status routes
+require('./modules/faultAutoFix').mount(app, authMiddleware, { store: faultReportStore, getConfig: () => globalResources.getConfig() || {} });
 // modules/slideshowDevices.js — Melaton SideShow device previews (frame, mask, live screen), admin only
 require('./modules/slideshowDevices').mountPreviewRoutes(app, authMiddleware, globalResources);
 // modules/activeSyncTransfers.js — ActiveSync file bodies between a phone and the desktop (Yozora #747)
@@ -4734,6 +4739,8 @@ async function handleAdminUnixSocketMessage(message, socket) {
             }
             const missing = err.code === 'ENOENT' || err.code === 'ENOTDIR' || err.status === 404 || err.statusCode === 404;
             if (!missing) {
+                // captureRoute: modules/serverFaultCapture.js (Yozora #833)
+                require('./modules/serverFaultCapture').captureRoute(err, req);
                 console.error('Unhandled route error:', err.message);
                 return res.status(500).json({
                     success: false,
@@ -4869,6 +4876,8 @@ async function gracefulShutdown() {
 
     flushAllBlockedLogFloods();
     cleanupAllScheduledTimeouts();
+    // throttled server faults still in their window go to the fault spool (#833)
+    try { require('./modules/serverFaultCapture').flushPendingSync(); } catch (_) { /* optional */ }
 
     if (globalResources.shutdown) {
         await globalResources.shutdown();
@@ -4893,9 +4902,13 @@ process.on('uncaughtException', (error) => {
         globalResources?.logger?.warn('Recovered PM2 client error, connection reset:', error.message);
         return;
     }
+    // crash: modules/serverFaultCapture.js - spooled synchronously, read back on the next start (#833)
+    require('./modules/serverFaultCapture').crash(error);
     globalResources.logger.error('Uncaught exception:', error);
     process.exit(1);
 });
 process.on('unhandledRejection', (error) => {
+    // capture: modules/serverFaultCapture.js (#833)
+    require('./modules/serverFaultCapture').capture(error, 'rejection', { source: 'unhandledRejection' });
     globalResources.logger.error('Unhandled rejection:', error);
 });

@@ -923,6 +923,21 @@ One JSON file per fault under `data/fault-reports/<id>.json` (gitignored). Kept:
 reports, none unseen for 30 days (pruned after each new report and when the server starts).
 These posts are left out of the request log.
 
+Since Yozora #833 the store takes **every** captured error, not only dialogs, and a headless
+Claude Code run can fix each new one (see [Fault auto-fix](#fault-auto-fix) below):
+
+| Surface | Kinds | Captured by |
+|---------|-------|-------------|
+| `desktop`, `mobile` | `dialog` | `programFaults.js` (its own posts) |
+| `desktop`, `mobile` | `uncaught`, `rejection`, `swallowed`, `resource`, `logged` | `dreamscapeErrorCapture` in `public/scripts/comp/fatalErrorBootstrap.js`: errors no dialog took, `programFaults.report()` / init-step errors, our scripts or stylesheets failing to load (online only), `console.error(…, error)` with a frame of ours |
+| `server` | `crash`, `rejection`, `route`, `logged` | `modules/serverFaultCapture.js`: `uncaughtException` (spooled synchronously to `data/fault-reports/.spool.ndjson`, read back on the next start), `unhandledRejection`, the final Express error handler (500s), `logger.error` / `console.error` with an Error whose top frame is ours (not `node_modules`) |
+
+The client posts one fault once per page load and later repeats again with the same
+`occurrenceId` (at most every 30 s, and on `pagehide` via `sendBeacon`), at most 25 distinct
+faults per page load. The server writes a fault at once and counts its repeats for 30 s. A report
+keeps its most serious kind (`crash` > `uncaught` > `rejection` > `route` > `dialog` > `swallowed` >
+`resource` > `logged`); `surface` and `kind` are not part of the signature.
+
 ### `POST /api/fault-reports`
 
 **Auth required; not for read-only (user PIN) sessions.** Inserts the fault, or folds the post
@@ -940,9 +955,16 @@ values ignored) + the top three frames of our scripts (line and column ignored).
   "fileLine": "", "source": "ws:...", "scripts": ["/scripts/comp/desktop-apps/calculator.js"],
   "page": "checking", "action": null, "repeats": 1,
   "extraFaults": [{ "message": "...", "stack": "..." }],
-  "client": { "url": "/app", "userAgent": "...", "viewport": "1920x1200", "uptimeMs": 27000, "desktopState": "desktop", "windows": ["Calculator (#desktopCalculatorModal)"] }
+  "client": { "url": "/app", "userAgent": "...", "viewport": "1920x1200", "uptimeMs": 27000, "desktopState": "desktop", "windows": ["Calculator (#desktopCalculatorModal)"], "shell": "desktop" },
+  "surface": "desktop",
+  "kind": "dialog"
 }
 ```
+
+Optional (#833): `surface` (`desktop` default, `mobile`, `server`), `kind` (`dialog` default; see the
+table above), and for server faults `request` (`{ method, path, status }`) and `server`
+(`{ pid, uptimeS, node, commit }`). A fault with no program uses `shell:desktop` /
+`shell:mobile` (Melaton Desktop / Melaton Mobile) or `server:<file of the top frame>`.
 
 `program` and one of `message` / `stack` are required. One dialog is one `occurrenceId`: the
 client posts it when the dialog opens and again (at most every 10 s) when more faults were
@@ -965,14 +987,15 @@ the full error, as for any report it could not save.
 **Auth required.** `?limit=` (default 50, max 200). Newest first, from the in-memory index:
 
 ```json
-{ "ok": true, "reports": [{ "id": "fault_…", "program": "Calculator", "message": "…", "count": 3, "repeats": 7, "status": "open", "firstSeen": "…", "lastSeen": "…" }] }
+{ "ok": true, "reports": [{ "id": "fault_…", "program": "Calculator", "surface": "desktop", "kind": "dialog", "message": "…", "count": 3, "repeats": 7, "status": "open", "fix": null, "firstSeen": "…", "lastSeen": "…" }] }
 ```
 
 ### `GET /api/fault-reports/:id`
 
 **Auth required.** The whole report: `id`, `program`, `errorName`, `message`, `firstSeen`,
-`lastSeen`, `count`, `repeats`, `status` (`open`; set `fixed` by hand in the file once fixed: a
-later post turns it `regressed`), `latest` (the newest occurrence in full) and `recent` (the last
+`lastSeen`, `count`, `repeats`, `status` (`open`; `fixed` once fixed, by hand or by a live
+auto-fix run: a later post turns it `regressed`; `not-a-bug` from an auto-fix run), `surface`,
+`kind`, `fix` (auto-fix state, below), `latest` (the newest occurrence in full) and `recent` (the last
 ten, newest first).
 
 ```json
@@ -980,6 +1003,62 @@ ten, newest first).
 ```
 
 **404:** `{ "ok": false, "error": "No such fault report" }` (also for an id that is not `fault_` + 12 hex).
+
+### Fault auto-fix
+
+`modules/faultAutoFix.js` (Yozora #833). A new fault, or a `fixed` one that came back
+(`regressed`), is queued for a headless Claude Code run (`claude -p`, host launch through
+`modules/xiLaunch.js` with the CardSpace Claude account, detached with `setsid` so a server restart
+does not end it). The run gets the report, the minified code around each client frame (served
+scripts are terser copies in `.cache/runtime-assets/` without source maps) and the repo rules: it
+opens or reuses a `[Fault] …` Yozora issue, fixes the cause (or decides it is not a bug / needs a
+person), posts the Done comment, and ends with
+`FAULT_FIX_RESULT {"status": …, "issue": …, "commit": …, "branch": …, "summary": …}`, which is
+written to the report's `fix` field (`state`: `queued`, `running`, `proposed`, `fixed`,
+`not-a-bug`, `needs-human`, `blocked`, `failed`; plus `attempts`, `issue`, `commit`, `branch`,
+`runs[]` with each run's log under `data/fault-reports/autofix-logs/`).
+
+`config.json` → `faultAutoFix` (all optional; defaults shown):
+
+```json
+{
+  "enabled": true,
+  "mode": "worktree",
+  "surfaces": ["desktop", "mobile", "server"],
+  "kinds": ["crash", "uncaught", "rejection", "route", "dialog", "swallowed"],
+  "includeHeadless": false,
+  "settleMs": 120000,
+  "maxRunsPerDay": 8,
+  "maxAttemptsPerFault": 2,
+  "cooldownMs": 21600000,
+  "runTimeoutMs": 2700000,
+  "effort": "high",
+  "model": "",
+  "ignore": []
+}
+```
+
+- `mode: "worktree"`: the run works in `.claude/worktrees/autofix-<id>` on branch
+  `autofix/<id>` (from the live HEAD, `node_modules` linked), commits there and does not push; a
+  fix is `proposed` until someone lands the branch. Nothing live is touched.
+- `mode: "live"`: the run works in the live tree like any other agent (busy lock, commit whole
+  files, push to Yozora main as `claude`, SW notify / idle-checked restart as the rules say); a fix
+  is `fixed` and sets the report `fixed`, so the fault coming back reopens it and queues another
+  attempt (up to `maxAttemptsPerFault`).
+- Skipped automatically: kinds/surfaces not listed (`resource` and `logged` are off by default),
+  known noise (network drops, aborts, ResizeObserver, `Script error.`, …), extension frames,
+  faults from `HeadlessChrome` test tabs (unless `includeHeadless`), faults with no frame of ours,
+  `ignore` patterns (regex on the message or stack), a fault whose last run said `needs-human` or
+  `not-a-bug`, or that ran out of attempts or is cooling down. One run at a time.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| GET | `/api/fault-autofix` | `{ ok, config, active, queue, today }` |
+| POST | `/api/fault-reports/:id/fix` | **Admin.** Queue that report now (skips the filters and the daily cap); **409** with `reason` when it cannot |
+| POST | `/api/fault-autofix/cancel` | **Admin.** Stop the active run (`{ ok, cancelled }`) |
+
+State (queue, active run, daily count) lives in `data/fault-reports/.autofix-state.json`; a run
+that outlived a restart is picked up again and finished from its log.
 
 ---
 

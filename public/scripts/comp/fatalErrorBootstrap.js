@@ -500,15 +500,254 @@
         };
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Error capture (Yozora #833): every client fault reaches the server's fault store
+    // (POST /api/fault-reports, modules/programFaultReports.js), desktop and phone alike, so
+    // modules/faultAutoFix.js can start a Claude run on it. The "has stopped working" dialog
+    // (programFaults.js) saves its own faults; this covers the rest:
+    //   uncaught   window errors no program dialog took (Spectator's list)
+    //   rejection  unhandled promise rejections no program dialog took
+    //   swallowed  errors a catch block handed over (programFaults.report, init steps)
+    //   resource   one of our scripts / stylesheets failed to load (online only)
+    //   logged     console.error(...) with an Error that has a frame of ours
+    // One fault (program + error + message + top frame) is posted once per page load; repeats
+    // are counted and posted again with the same occurrenceId at most every REPEAT_MS, so the
+    // server folds them into that occurrence. At most MAX_FAULTS distinct faults per page load.
+    // Lives here, not in its own file, so a cached app.html still gets it with SW updates.
+    //   window.dreamscapeErrorCapture.capture(detail, { kind, error, program, source })
+    //   window.dreamscapeErrorCapture.captureError(error, { kind, source })
+    // ---------------------------------------------------------------------------------------
+    var errorCapture = (function () {
+        var REPORT_URL = '/api/fault-reports';
+        var FIRST_POST_MS = 1500;
+        var REPEAT_MS = 30000;
+        var MAX_FAULTS = 25;
+        var faults = {};
+        var faultCount = 0;
+        var flushTimer = 0;
+        var seq = 0;
+        var seen = typeof WeakSet === 'function' ? new WeakSet() : null;
+        var posting = false;
+
+        function markSeen(err) {
+            try { if (seen && err && typeof err === 'object') seen.add(err); } catch (e) { /* frozen */ }
+        }
+
+        function wasSeen(err) {
+            try { return !!(seen && err && typeof err === 'object' && seen.has(err)); } catch (e) { return false; }
+        }
+
+        function surface() {
+            try {
+                var d = document.documentElement;
+                if (window.uiShell === 'mobile' || (d && d.classList && d.classList.contains('ui-mobile'))) return 'mobile';
+            } catch (e) { /* desktop */ }
+            return 'desktop';
+        }
+
+        function ownFrames(stack) {
+            var out = [];
+            var lines = String(stack || '').split('\n');
+            for (var i = 0; i < lines.length && out.length < 3; i++) {
+                var m = lines[i].match(/(?:https?:\/\/[^\/\s)]+)?(\/(?:scripts|apps|css)\/[^\s?):]+)/);
+                if (m) out.push(m[1]);
+            }
+            return out;
+        }
+
+        function programFor(stack, surf) {
+            try {
+                if (window.programFaults && typeof window.programFaults.attribute === 'function') {
+                    var p = window.programFaults.attribute({ stack: stack || '' });
+                    if (p && (p.key || p.name)) {
+                        return { key: p.key || p.name, name: p.name || p.key, launchId: p.launchId || null, game: p.game || null, core: !!p.core };
+                    }
+                }
+            } catch (e) { /* the attribution itself may be what broke */ }
+            return surf === 'mobile'
+                ? { key: 'shell:mobile', name: 'Melaton Mobile', core: true }
+                : { key: 'shell:desktop', name: 'Melaton Desktop', core: true };
+        }
+
+        function errorNameOf(message, err) {
+            if (err && typeof err === 'object' && err.name && err.name !== 'Error') return String(err.name);
+            var m = /^([A-Z][A-Za-z]*(?:Error|Exception))\b/.exec(String(message || ''));
+            return m ? m[1] : 'Error';
+        }
+
+        function clientInfo(surf) {
+            var desktopState = '';
+            try { if (typeof window.getClientDesktopState === 'function') desktopState = String(window.getClientDesktopState()); } catch (e) { /* ignore */ }
+            var nav = window.navigator || {};
+            return {
+                url: location.pathname,
+                userAgent: nav.userAgent || '',
+                viewport: window.innerWidth ? window.innerWidth + 'x' + window.innerHeight : '',
+                uptimeMs: window.performance && performance.now ? Math.round(performance.now()) : null,
+                desktopState: desktopState,
+                shell: surf
+            };
+        }
+
+        function post(entry, final) {
+            entry.sent = entry.repeats;
+            entry.sentAt = Date.now();
+            entry.body.repeats = entry.repeats;
+            var body;
+            try { body = JSON.stringify(entry.body); } catch (e) { return; }
+            if (body.length > 60000) {
+                entry.body.stack = String(entry.body.stack || '').slice(0, 8000);
+                body = JSON.stringify(entry.body);
+            }
+            posting = true;
+            try {
+                if (final && navigator.sendBeacon && typeof Blob === 'function') {
+                    navigator.sendBeacon(REPORT_URL, new Blob([body], { type: 'application/json' }));
+                } else if (typeof fetch === 'function') {
+                    fetch(REPORT_URL, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: body, keepalive: body.length < 60000 })
+                        .catch(function () { entry.sent = 0; });
+                }
+            } catch (e) { /* the report is best effort */ }
+            posting = false;
+        }
+
+        function flush(final) {
+            flushTimer = 0;
+            var now = Date.now();
+            var wait = 0;
+            for (var k in faults) {
+                if (!Object.prototype.hasOwnProperty.call(faults, k)) continue;
+                var f = faults[k];
+                if (f.repeats <= f.sent) continue;
+                var due = f.sent === 0 ? 0 : (f.sentAt + REPEAT_MS - now);
+                if (final || due <= 0) post(f, final);
+                else wait = wait ? Math.min(wait, due) : due;
+            }
+            if (wait && !final) flushTimer = setTimeout(function () { flush(false); }, wait);
+        }
+
+        function scheduleFlush(ms) {
+            if (flushTimer) return;
+            flushTimer = setTimeout(function () { flush(false); }, ms);
+        }
+
+        function capture(detail, opts) {
+            try {
+                if (posting) return false;
+                var d = detail || {};
+                var o = opts || {};
+                var err = o.error;
+                if (err && wasSeen(err) && o.kind === 'logged') return false;
+                markSeen(err);
+                var message = String(d.message || (err && err.message) || '');
+                var reason = String(d.reason || '');
+                if (reason && reason !== message && message.indexOf(reason) < 0) message = message ? message + ': ' + reason : reason;
+                var stack = String(d.stack || (err && err.stack) || '');
+                if (!message && !stack) return false;
+                if (isResizeObserverLoopNotice(message)) return false;
+                var surf = surface();
+                var program = o.program || programFor(stack, surf);
+                var frames = ownFrames(stack);
+                var errorName = errorNameOf(message, err);
+                var sig = [program.key, errorName, message.replace(/\d+/g, '#').slice(0, 200), frames[0] || d.fileLine || ''].join('|');
+                var entry = faults[sig];
+                if (entry) {
+                    entry.repeats += 1;
+                    scheduleFlush(REPEAT_MS);
+                    return true;
+                }
+                if (faultCount >= MAX_FAULTS) return false;
+                faultCount += 1;
+                faults[sig] = {
+                    repeats: 1,
+                    sent: 0,
+                    sentAt: 0,
+                    body: {
+                        occurrenceId: Date.now().toString(36) + '-c' + (++seq).toString(36) + '-' + Math.random().toString(36).slice(2, 7),
+                        at: d.timestamp || new Date().toISOString(),
+                        surface: surf,
+                        kind: o.kind || 'uncaught',
+                        program: program,
+                        errorName: errorName,
+                        message: message.slice(0, 2000),
+                        stack: stack,
+                        fileLine: d.fileLine && d.fileLine !== '(unknown)' ? d.fileLine : '',
+                        source: o.source || d.source || '',
+                        scripts: frames,
+                        page: 'capture',
+                        client: clientInfo(surf)
+                    }
+                };
+                scheduleFlush(FIRST_POST_MS);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        function captureError(error, opts) {
+            var err = error instanceof Error ? error : new Error(String(error));
+            return capture({ message: err.message, stack: err.stack || '' }, Object.assign({ error: err }, opts || {}));
+        }
+
+        // our scripts / stylesheets failing to load (capture phase: these events do not bubble)
+        window.addEventListener('error', function (ev) {
+            try {
+                var t = ev && ev.target;
+                if (!t || t === window || !t.tagName) return;
+                var tag = t.tagName.toUpperCase();
+                var url = tag === 'SCRIPT' ? t.src : (tag === 'LINK' && /stylesheet/i.test(t.rel || '') ? t.href : '');
+                if (!url || url.indexOf(location.origin) !== 0) return;
+                if (navigator.onLine === false) return;
+                var p = url.slice(location.origin.length).split('?')[0];
+                if (!/^\/(scripts|css|apps)\//.test(p)) return;
+                capture({ message: 'Failed to load ' + (tag === 'SCRIPT' ? 'script ' : 'stylesheet ') + p, fileLine: p }, { kind: 'resource' });
+            } catch (e) { /* ignore */ }
+        }, true);
+
+        // console.error(..., error) from catch blocks: kind "logged" (not auto-fixed by default)
+        try {
+            var origConsoleError = console.error;
+            if (origConsoleError && !origConsoleError.__dreamscapeCapture) {
+                var wrappedConsoleError = function () {
+                    try {
+                        for (var i = 0; i < arguments.length; i++) {
+                            var a = arguments[i];
+                            if (a instanceof Error && ownFrames(a.stack).length) {
+                                var note = '';
+                                for (var j = 0; j < arguments.length; j++) if (typeof arguments[j] === 'string') note += (note ? ' ' : '') + arguments[j];
+                                capture({ message: a.message, stack: a.stack || '' }, { kind: 'logged', error: a, source: note.slice(0, 120) || 'console.error' });
+                                break;
+                            }
+                        }
+                    } catch (e) { /* never break logging */ }
+                    return origConsoleError.apply(console, arguments);
+                };
+                wrappedConsoleError.__dreamscapeCapture = true;
+                console.error = wrappedConsoleError;
+            }
+        } catch (e) { /* console is read-only here */ }
+
+        window.addEventListener('pagehide', function () { flush(true); });
+        document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flush(true); });
+
+        return { capture: capture, captureError: captureError, markSeen: markSeen, flush: flush, _faults: function () { return faults; } };
+    })();
+    window.dreamscapeErrorCapture = errorCapture;
+
     function presentFatal(detail, context) {
         try {
             var entry = registerError(detail);
+            var ctx = context || {};
+            errorCapture.markSeen(ctx.error);
             // A fault in one desktop program: Vista's "<program> has stopped working" for that
             // program (programFaults.js). It stays in Spectator's list for the details.
+            // The dialog saves its own report; anything else is captured here (#833).
             if (window.programFaults && window.programFaults.present(detail, context)) {
                 renderErrorList();
                 return;
             }
+            errorCapture.capture(detail, { kind: ctx.kind || 'uncaught', error: ctx.error, source: ctx.source || '' });
             presentErrorUI(entry);
         } catch (e2) {
             try {
@@ -1034,7 +1273,7 @@
                 return;
             }
             var errorUrl = parseScriptUrlFromStack(stack);
-            presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl), { error: r });
+            presentFatal(normalizeDetail(message, reason, '', '', '', stack, errorUrl), { error: r, kind: 'rejection' });
         } catch (e) { /* ignore */ }
     }
 
@@ -1053,7 +1292,7 @@
                     '',
                     'Fence state: ' + String(f[keys[k]]),
                     ''
-                ));
+                ), { kind: 'resource' });
                 return;
             }
         }
@@ -1083,7 +1322,7 @@
             '',
             errStack,
             parseScriptUrlFromStack(errStack)
-        ));
+        ), { kind: 'swallowed', source: 'presentDreamscapeApplicationError' });
     };
 
     // Boot / network connectivity failure — simple UI with expandable technical details

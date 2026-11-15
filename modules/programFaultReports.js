@@ -18,6 +18,20 @@
  *   GET  /api/fault-reports      -> { ok, reports }           newest first, from the in-memory index
  *   GET  /api/fault-reports/:id  -> { ok, report, file } | 404
  *
+ * Not only dialogs (Yozora #833): every captured error lands here, from three surfaces -
+ *   surface  desktop | mobile | server
+ *   kind     dialog (a "has stopped working" dialog), uncaught, rejection, swallowed (a catch block
+ *            handed it over), resource (one of our scripts/styles failed to load), route (an Express
+ *            route threw), logged (logger.error / console.error with an Error of ours), crash
+ *            (the server died of it; spooled synchronously, read back on the next start)
+ * public/scripts/comp/errorCapture.js posts the client ones, modules/serverFaultCapture.js the
+ * server ones (in process, through upsert). modules/faultAutoFix.js listens for 'change' events
+ * and records its runs on the report's `fix` field through patch().
+ *
+ *   store.events.on('change', ({ id, created, regressed, report }) => ...)  one per new occurrence
+ *   store.patch(id, (report) => { ... })   serialized with the upserts of that report
+ *   spoolSync(body)                        for a process about to exit; drained by load()
+ *
  * Limits: posts over MAX_BODY_BYTES are refused; each session may post RATE_MAX times per
  * RATE_WINDOW_MS; at most MAX_REPORTS files are kept, and reports not seen for MAX_AGE_MS are
  * pruned (both checked after every new report and once at start). All file IO is async; writes
@@ -30,6 +44,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
+const { EventEmitter } = require('events');
 
 const DEFAULT_DIR = path.join(__dirname, '..', 'data', 'fault-reports');
 const REPO_ROOT = path.join(__dirname, '..');
@@ -44,6 +59,10 @@ const MAX_AGE_MS = 30 * 24 * 3600 * 1000;
 const RATE_MAX = 30;
 const RATE_WINDOW_MS = 60 * 1000;
 const ID_RE = /^fault_[0-9a-f]{12}$/;
+const SURFACES = new Set(['desktop', 'mobile', 'server']);
+const KINDS = new Set(['dialog', 'uncaught', 'rejection', 'swallowed', 'resource', 'route', 'logged', 'crash']);
+const SPOOL_NAME = '.spool.ndjson';
+const KIND_RANK = ['crash', 'uncaught', 'rejection', 'route', 'dialog', 'swallowed', 'resource', 'logged'];
 
 function clip(value, max = MAX_TEXT) {
     if (value == null) return '';
@@ -62,7 +81,9 @@ function frameKeys(stack) {
         const m = line.match(/at\s+(?:(.*?)\s+\()?(?:https?:\/\/[^/\s)]+)?(\/[^\s):?]+)[^\s)]*:\d+:\d+\)?/)
             || line.match(/^\s*(?:([^@\s]*)@)(?:https?:\/\/[^/\s)]+)?(\/[^\s:?]+)[^\s]*:\d+:\d+/);
         if (!m) continue;
-        keys.push(`${m[1] || '?'}@${m[2]}`);
+        const file = m[2].startsWith(REPO_ROOT + '/') ? m[2].slice(REPO_ROOT.length) : m[2];
+        if (/\/node_modules\/|^\/?internal\//.test(file)) continue;
+        keys.push(`${m[1] || '?'}@${file}`);
         if (keys.length >= 3) break;
     }
     return keys;
@@ -83,7 +104,12 @@ function normalizeOccurrence(body, now) {
     const b = body && typeof body === 'object' ? body : {};
     const program = b.program && typeof b.program === 'object' ? b.program : {};
     const client = b.client && typeof b.client === 'object' ? b.client : {};
+    const request = b.request && typeof b.request === 'object' ? b.request : null;
+    const surface = SURFACES.has(b.surface) ? b.surface : 'desktop';
+    const kind = KINDS.has(b.kind) ? b.kind : 'dialog';
     return {
+        surface,
+        kind,
         occurrenceId: clip(b.occurrenceId, 80) || crypto.randomBytes(6).toString('hex'),
         at: clip(b.at, 40) || now,
         receivedAt: now,
@@ -104,6 +130,17 @@ function normalizeOccurrence(body, now) {
         scripts: clipList(b.scripts, 20),
         page: clip(b.page, 40),
         action: clip(b.action, 40) || null,
+        request: request ? {
+            method: clip(request.method, 10),
+            path: clip(request.path, 300),
+            status: Number(request.status) || null
+        } : null,
+        server: b.server && typeof b.server === 'object' ? {
+            pid: Number(b.server.pid) || null,
+            uptimeS: Number(b.server.uptimeS) || null,
+            node: clip(b.server.node, 40),
+            commit: clip(b.server.commit, 60) || null
+        } : null,
         repeats: Math.max(1, Math.min(1e6, Number(b.repeats) || 1)),
         extraFaults: Array.isArray(b.extraFaults) ? b.extraFaults.slice(0, 3).map((f) => ({
             message: clip(f && f.message, 500),
@@ -116,13 +153,43 @@ function normalizeOccurrence(body, now) {
             uptimeMs: Number(client.uptimeMs) || null,
             desktopState: clip(client.desktopState, 40),
             build: clip(client.build, 120) || null,
+            clientId: clip(client.clientId, 40) || null,
+            shell: clip(client.shell, 40) || null,
             windows: clipList(client.windows, 30, 160)
         }
     };
 }
 
 function summary(r) {
-    return { id: r.id, program: r.program && r.program.name, message: r.message, count: r.count, repeats: r.repeats, status: r.status, firstSeen: r.firstSeen, lastSeen: r.lastSeen };
+    return {
+        id: r.id,
+        program: r.program && r.program.name,
+        surface: r.surface || 'desktop',
+        kind: r.kind || 'dialog',
+        message: r.message,
+        count: r.count,
+        repeats: r.repeats,
+        status: r.status,
+        fix: r.fix ? { state: r.fix.state, attempts: r.fix.attempts || 0, issue: r.fix.issue || null, commit: r.fix.commit || null } : null,
+        firstSeen: r.firstSeen,
+        lastSeen: r.lastSeen
+    };
+}
+
+/**
+ * For a process about to exit (uncaughtException): one line appended synchronously, so the fault is
+ * on disk before process.exit. load() folds the spool into the store on the next start.
+ */
+function spoolSync(body, dir = DEFAULT_DIR) {
+    try {
+        fs.mkdirSync(dir, { recursive: true });
+        let line = JSON.stringify(Object.assign({}, body, { at: (body && body.at) || new Date().toISOString() }));
+        if (Buffer.byteLength(line) > MAX_BODY_BYTES) line = JSON.stringify(Object.assign({}, body, { stack: clip(body && body.stack, 8000), extraFaults: [] }));
+        fs.appendFileSync(path.join(dir, SPOOL_NAME), line + '\n', 'utf8');
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 function httpError(status, message) {
@@ -134,6 +201,8 @@ function createStore(options = {}) {
     const maxReports = options.maxReports || MAX_REPORTS;
     const maxAgeMs = options.maxAgeMs || MAX_AGE_MS;
     const clock = options.now || (() => Date.now());
+    const events = new EventEmitter();
+    events.setMaxListeners(20);
     const index = new Map(); // id -> summary, every report on disk
     const chains = new Map(); // id -> the write in flight for that report
     let loaded = null;
@@ -165,9 +234,35 @@ function createStore(options = {}) {
                     if (r && r.id) index.set(r.id, summary(r));
                 }
                 await prune();
-            })();
+            })().then(() => drainSpool());
         }
         return loaded;
+    }
+
+    /** Faults a dying process wrote with spoolSync, folded in once the index is up. */
+    async function drainSpool() {
+        const spool = path.join(dir, SPOOL_NAME);
+        const taken = `${spool}.${process.pid}.${Date.now()}`;
+        try {
+            await fsp.rename(spool, taken);
+        } catch (_) {
+            return 0;
+        }
+        let n = 0;
+        try {
+            const lines = (await fsp.readFile(taken, 'utf8')).split('\n').filter(Boolean);
+            for (const line of lines.slice(-200)) {
+                let body = null;
+                try { body = JSON.parse(line); } catch (_) { continue; }
+                try {
+                    await upsertLoaded(body);
+                    n += 1;
+                } catch (_) { /* a bad line is dropped */ }
+            }
+        } finally {
+            await fsp.unlink(taken).catch(() => {});
+        }
+        return n;
     }
 
     async function prune() {
@@ -209,6 +304,8 @@ function createStore(options = {}) {
         const report = existing || {
             id,
             program: occ.program,
+            surface: occ.surface,
+            kind: occ.kind,
             errorName: occ.errorName,
             message: occ.message,
             firstSeen: now,
@@ -220,6 +317,7 @@ function createStore(options = {}) {
             recent: []
         };
         const prev = report.recent.find((o) => o.occurrenceId === occ.occurrenceId);
+        let regressed = false;
         if (prev) {
             // the same dialog again: more faults counted into it, or the button that closed it
             report.repeats += Math.max(0, occ.repeats - (prev.repeats || 1));
@@ -242,14 +340,45 @@ function createStore(options = {}) {
             report.recent.length = Math.min(report.recent.length, RECENT_KEPT);
             report.latest = occ;
             // a fault that comes back after it was marked fixed is open again
-            if (report.status === 'fixed') report.status = 'regressed';
+            if (report.status === 'fixed') {
+                report.status = 'regressed';
+                regressed = true;
+            }
         }
         report.lastSeen = now;
         report.program = occ.program;
+        if (!report.surface) report.surface = occ.surface;
+        // the report keeps its most serious kind: a fault first seen as a log line that later crashed is a crash
+        if (!report.kind || KIND_RANK.indexOf(occ.kind) < KIND_RANK.indexOf(report.kind)) report.kind = occ.kind;
         const file = await write(report);
         index.set(id, summary(report));
         if (!existing && index.size > maxReports) await prune();
-        return { id, count: report.count, repeats: report.repeats, file: path.relative(REPO_ROOT, file), report, created: !existing };
+        const result = { id, count: report.count, repeats: report.repeats, file: path.relative(REPO_ROOT, file), report, created: !existing, regressed, update: !!prev };
+        if (!prev) {
+            try { events.emit('change', result); } catch (err) { console.error('Fault reports: change listener failed:', err && err.message); }
+        }
+        return result;
+    }
+
+    /** Change a stored report (the fixer's `fix` field, status); runs after that report's pending writes. */
+    async function patch(id, mutate) {
+        if (!ID_RE.test(String(id || ''))) return null;
+        await load();
+        const run = (chains.get(id) || Promise.resolve()).catch(() => {}).then(async () => {
+            const report = await readFile(id);
+            if (!report) return null;
+            const out = await mutate(report);
+            if (out === false) return report;
+            await write(report);
+            index.set(id, summary(report));
+            return report;
+        });
+        chains.set(id, run);
+        try {
+            return await run;
+        } finally {
+            if (chains.get(id) === run) chains.delete(id);
+        }
     }
 
     /** Insert the fault, or fold this occurrence into its existing report. */
@@ -259,6 +388,18 @@ function createStore(options = {}) {
         if (!occ.program.key && !occ.program.name) throw httpError(400, 'program is required');
         if (!occ.message && !occ.stack) throw httpError(400, 'message or stack is required');
         await load();
+        return upsertOcc(occ, now);
+    }
+
+    /** The spool drain runs inside load(), so it must not wait for load() again. */
+    async function upsertLoaded(body) {
+        const now = new Date(clock()).toISOString();
+        const occ = normalizeOccurrence(body, now);
+        if ((!occ.program.key && !occ.program.name) || (!occ.message && !occ.stack)) return null;
+        return upsertOcc(occ, now);
+    }
+
+    async function upsertOcc(occ, now) {
         const id = faultId(occ);
         const run = (chains.get(id) || Promise.resolve()).catch(() => {}).then(() => apply(occ, id, now));
         chains.set(id, run);
@@ -276,7 +417,7 @@ function createStore(options = {}) {
             .slice(0, limit);
     }
 
-    return { dir, upsert, read, list, prune, load, fileFor, size: () => index.size };
+    return { dir, events, upsert, patch, read, list, prune, load, drainSpool, fileFor, size: () => index.size };
 }
 
 /** Posts per session in a sliding window (application keys and IPs stand in for sessions). */
@@ -307,8 +448,16 @@ function requesterKey(req) {
     return 'ip:' + (req.ip || (req.socket && req.socket.remoteAddress) || '?');
 }
 
+let sharedStore = null;
+
+/** The one store of this process (data/fault-reports): the routes, server capture and the fixer share it. */
+function defaultStore() {
+    if (!sharedStore) sharedStore = createStore();
+    return sharedStore;
+}
+
 function mountProgramFaultReports(app, authMiddleware, options = {}) {
-    const store = options.store || createStore(options);
+    const store = options.store || (options.dir ? createStore(options) : defaultStore());
     const allow = options.allow || createRateLimiter(options);
     const auth = authMiddleware || ((req, res, next) => next());
     store.load().catch((err) => console.error('Fault reports: index failed:', err.message));
@@ -351,6 +500,8 @@ function mountProgramFaultReports(app, authMiddleware, options = {}) {
 
 module.exports = {
     createStore,
+    defaultStore,
+    spoolSync,
     createRateLimiter,
     mountProgramFaultReports,
     faultId,
@@ -358,6 +509,8 @@ module.exports = {
     messageKey,
     DEFAULT_DIR,
     MAX_BODY_BYTES,
+    SURFACES,
+    KINDS,
     MAX_REPORTS,
     MAX_AGE_MS,
     RATE_MAX,
