@@ -452,7 +452,7 @@
         const body = superEl.querySelector('.wm-ti-super-body');
         const T = frostTransform();
         const y0 = bandTop;
-        const y1 = -9 * u; // the art's glass at the top edge
+        const y1 = 0; // at the top (9 units higher hid the art's shadow but cut the clock icon in half)
         const h0 = 82 * u;
         const h1 = (82 + SUPER_GROW) * u;
         if (superAnim) superAnim.forEach((a) => a.cancel());
@@ -503,7 +503,7 @@
         const body = superEl.querySelector('.wm-ti-super-body');
         const T = frostTransform();
         const y0 = focusTop() * u;
-        const y1 = -9 * u;
+        const y1 = 0;
         const h0 = 82 * u;
         const h1 = (82 + SUPER_GROW) * u;
         const ms = Math.round(SUPER_MS * 0.85);
