@@ -71,7 +71,7 @@ module.exports = {
     },
     // which chat this page has on screen: streaming updates go only there (cursorDirector.js, #843)
     handleDirectorStreamWatch: function (handler, ws, message, clientInfo) {
-        cursor.watchDirectorStream(handler, ws, clientInfo, message && message.sessionId);
+        cursor.watchDirectorStream(handler, ws, clientInfo, message && message.sessionId, message && message.delta);
     },
     handleDirectorComputerSize: cursor.handleDirectorComputerSize,
     handleDirectorComputerStatus: cursor.handleDirectorComputerStatus,
