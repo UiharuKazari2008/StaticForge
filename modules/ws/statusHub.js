@@ -38,6 +38,7 @@ function define({ name, pushType, intervalMs = 60000, allow = () => true, sample
     let running = false;
     let again = false;
     let last = null; // { items: { key: json }, at }
+    const closeHooked = new WeakSet();
 
     const encode = (items) => {
         const out = {};
@@ -87,7 +88,9 @@ function define({ name, pushType, intervalMs = 60000, allow = () => true, sample
         if (!allow(clientInfo)) {
             const err = new Error('Not allowed'); err.code = 'INSUFFICIENT_PERMISSIONS'; throw err;
         }
-        if (!subs.has(ws) && ws && typeof ws.once === 'function') ws.once('close', () => unsubscribe(ws));
+        // one close listener per socket for the feed's lifetime (a phone subscribes again on every
+        // screen-on: a listener per subscribe piled up on its socket, MaxListenersExceededWarning)
+        if (ws && typeof ws.once === 'function' && !closeHooked.has(ws)) { closeHooked.add(ws); ws.once('close', () => unsubscribe(ws)); }
         subs.add(ws);
         if (!last) {
             try { await read(); } catch (error) { console.warn(`[statusHub:${name}] first read failed: ${error.message}`); }
