@@ -7541,7 +7541,61 @@ setTimeout(() => { void refreshMelatonHomeUrl(); }, 5000);
  * logon, Yozora #420), on the desktop and on Melaton Mobile alike. A reload of /app skipped the
  * installer, so a large update asked for a restart again on every one (Yukimi, Nov 13).
  */
+// ---- Why Melaton restarted (Nov 15 2026): the Fold cold-booted 5-9 times an hour and nothing said
+// why. A restart notes its reason (and the code that asked) in localStorage just before it leaves;
+// the next boot files it in a rolling log with how the page came up. A boot with no note was
+// started outside the page: the Android app (renderer gone, process start, HomeKeeper) or the OS.
+// Read it with melatonBootLog() (run_client_js / DevTools).
+const RESTART_NOTE_KEY = 'melatonRestartNote';
+const BOOT_LOG_KEY = 'melatonBootLog';
+function melatonNoteRestart(reason) {
+    try {
+        const prev = JSON.parse(localStorage.getItem(RESTART_NOTE_KEY) || 'null');
+        if (prev && Date.now() - prev.at < 3000 && prev.reason !== 'navigate') return;
+        const from = String(new Error().stack || '').split('\n').slice(2, 7)
+            .map((l) => l.trim().replace(/^at /, '').replace(/https?:\/\/[^/]+\/(scripts\/)?/g, '').replace(/\?sha=[0-9a-f]+/g, ''))
+            .join(' < ').slice(0, 400);
+        localStorage.setItem(RESTART_NOTE_KEY, JSON.stringify({
+            reason: String(reason || 'restart'), at: Date.now(), from,
+            hidden: document.hidden, screenOff: document.documentElement.dataset.screenOff !== undefined
+        }));
+    } catch (_) { /* storage off: the boot is filed without a reason */ }
+}
+window.melatonNoteRestart = melatonNoteRestart;
+// every scripted navigation to the launch page passes here (the navigate event fires inside the
+// location.replace / href call, so the stack names the code that asked)
+try {
+    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+        window.navigation.addEventListener('navigate', (e) => {
+            try { if (e.destination && /\/launch(?:\?|$)/.test(new URL(e.destination.url).pathname + new URL(e.destination.url).search)) melatonNoteRestart('navigate'); } catch (_) { /* not a launch */ }
+        });
+    }
+} catch (_) { /* no Navigation API */ }
+let bootFiled = false;
+function fileBoot() {
+    if (bootFiled) return;
+    bootFiled = true;
+    try {
+        const note = JSON.parse(localStorage.getItem(RESTART_NOTE_KEY) || 'null');
+        localStorage.removeItem(RESTART_NOTE_KEY);
+        const nav = performance.getEntriesByType('navigation')[0];
+        const log = JSON.parse(localStorage.getItem(BOOT_LOG_KEY) || '[]');
+        log.push({
+            at: Date.now(),
+            note: note && Date.now() - note.at < 5 * 60 * 1000 ? note : null,
+            nav: nav ? nav.type : '',
+            ref: String(document.referrer || '').replace(/^https?:\/\/[^/]+/, '').slice(0, 60),
+            desktopMs: window.wsClient && window.wsClient._desktopReadyAt || null
+        });
+        localStorage.setItem(BOOT_LOG_KEY, JSON.stringify(log.slice(-80)));
+    } catch (_) { /* storage off */ }
+}
+window.melatonBootLog = () => { try { return JSON.parse(localStorage.getItem(BOOT_LOG_KEY) || '[]'); } catch (_) { return []; } };
+document.addEventListener('wmBootDone', () => setTimeout(fileBoot, 1000), { once: true });
+document.addEventListener('desktopBootDone', () => setTimeout(fileBoot, 1000), { once: true });
+
 function restartClientNavigate() {
+    melatonNoteRestart('restartClientNavigate');
     try {
         suppressWebSocketReconnectForReload();
     } catch (_) { /* reload anyway */ }
