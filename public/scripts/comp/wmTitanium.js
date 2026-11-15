@@ -509,6 +509,9 @@
     let wallZoom = 1;
     let wallEl = null;
     let wallVarsSet = {};
+    let fxLayer = null;
+    let fxKey = '';
+    const sizedCache = new Map();
     let blurClip = null;
     let blurInner = null;
     let blurMo = null;
@@ -543,8 +546,19 @@
         const el = document.querySelector('#wmShell > .wm-wall65');
         if (!el) return false;
         if (el !== wallEl && blurMo) { blurMo.disconnect(); blurMo = null; }
+        if (el !== wallEl && fxLayer) { fxLayer.remove(); fxLayer = null; fxKey = ''; }
         wallEl = el;
         wallVarsSet = {};
+        // the moving copy of the picture: a child of the layer (wm65.css hides the layer's own picture
+        // under it, so the full-size original is not drawn twice) that wallPicture() fills
+        if (!fxLayer) {
+            fxLayer = document.createElement('div');
+            fxLayer.className = 'wm-wall65-fx';
+            fxLayer.setAttribute('aria-hidden', 'true');
+            wallEl.appendChild(fxLayer);
+        }
+        wallEl.classList.add('has-fx');
+        watchWall();
         wallVar('--wm-ti-zoom', wallZoom.toFixed(2));
         // 0.55 of the parallax travel stays inside the zoomed margin, with room left for the tilt
         wallVar('--wm-ti-shift', parallaxOn ? `${(-(wallZoom - 1) * 87.5).toFixed(2)}%` : '0%');
@@ -557,7 +571,7 @@
     function wallVar(name, v) {
         if (wallVarsSet[name] === v) return;
         wallVarsSet[name] = v;
-        if (wallEl) wallEl.style.setProperty(name, v);
+        if (fxLayer) fxLayer.style.setProperty(name, v);
         if (blurInner) blurInner.style.setProperty(name, v);
     }
 
@@ -633,12 +647,69 @@
             host.insertBefore(blurClip, host.firstChild);
         }
         for (const [k, v] of Object.entries(wallVarsSet)) blurInner.style.setProperty(k, v);
-        if (!blurMo) {
-            blurMo = new MutationObserver(blurPicture);
-            blurMo.observe(wallEl, { attributes: true, attributeFilter: ['style', 'hidden'] });
-        }
+        watchWall();
         blurKey = '';
         blurPicture();
+    }
+    /** The picture layer's own picture changing (wmShell.js applyTodayBackground): the copies follow. */
+    function watchWall() {
+        if (blurMo || !wallEl) return;
+        blurMo = new MutationObserver(() => { wallPicture(); blurPicture(); });
+        blurMo.observe(wallEl, { attributes: true, attributeFilter: ['style', 'hidden'] });
+        wallPicture();
+    }
+    /**
+     * The moving copy draws a screen-sized version of the picture (made once per picture, cached):
+     * the original can be a 4K upscale, and decoding and drawing it again on every return home was a
+     * good part of the wait before Today showed (Fold7 trace, Nov 15: two frames of 94 and 136 ms
+     * with no script). Placement and sizes stay the layer's own, so it lines up exactly.
+     */
+    function wallPicture() {
+        if (!fxLayer || !wallEl) return;
+        const w = wallEl.style;
+        const key = `${w.backgroundImage}|${w.backgroundSize}|${w.backgroundPosition}|${w.backgroundRepeat}|${w.backgroundColor}`;
+        if (key === fxKey) return;
+        fxKey = key;
+        Object.assign(fxLayer.style, { backgroundImage: w.backgroundImage, backgroundSize: w.backgroundSize, backgroundPosition: w.backgroundPosition, backgroundRepeat: w.backgroundRepeat, backgroundColor: w.backgroundColor || '#000' });
+        const img = w.backgroundImage;
+        const urls = img ? [...img.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]) : [];
+        if (!urls.length) return;
+        Promise.all(urls.map(sizedUrl)).then((outs) => {
+            if (key !== fxKey) return;
+            let out = img;
+            urls.forEach((u, i) => { if (outs[i]) out = out.split(u).join(outs[i]); });
+            if (out !== img) fxLayer.style.backgroundImage = out;
+        });
+    }
+    /** The picture at the size the screen can show (its long side cover-fitted to the screen with the zoom's margin), as a WebP blob; null when it is already that small. */
+    function sizedUrl(u) {
+        const dpr = window.devicePixelRatio || 1;
+        const tw = Math.ceil(Math.max(screen.width, screen.height, window.innerWidth, window.innerHeight) * dpr * 1.25);
+        const k = `${u}|${tw}`;
+        if (sizedCache.has(k)) return sizedCache.get(k);
+        const pr = new Promise((resolve) => {
+            const im = new Image();
+            im.decoding = 'async';
+            if (!/^(blob|data):/.test(u)) im.crossOrigin = 'anonymous';
+            im.onload = () => {
+                try {
+                    const nw = im.naturalWidth; const nh = im.naturalHeight;
+                    // cover: the short side must still fill the screen's long side
+                    const scale = Math.min(1, tw / Math.min(nw, nh));
+                    if (scale > 0.85) { resolve(null); return; }
+                    const c = document.createElement('canvas');
+                    c.width = Math.round(nw * scale); c.height = Math.round(nh * scale);
+                    const x = c.getContext('2d');
+                    x.imageSmoothingQuality = 'high';
+                    x.drawImage(im, 0, 0, c.width, c.height);
+                    c.toBlob((b) => resolve(b ? URL.createObjectURL(b) : null), 'image/webp', 0.94);
+                } catch (_) { resolve(null); }
+            };
+            im.onerror = () => resolve(null);
+            im.src = u;
+        });
+        sizedCache.set(k, pr);
+        return pr;
     }
     function blurPicture() {
         if (!blurClip || !wallEl || !fx.blur) return;
@@ -664,6 +735,9 @@
         const pr = new Promise((resolve) => {
             const im = new Image();
             im.decoding = 'async';
+            // the app's Android wallpaper (appassets.androidplatform.net, sent with Allow-Origin *) is
+            // another origin: without CORS the canvas is tainted and gives no blur (Fold7, Nov 15)
+            if (!/^(blob|data):/.test(u)) im.crossOrigin = 'anonymous';
             im.onload = () => {
                 try {
                     const W = Math.max(1, Math.min(320, im.naturalWidth));
@@ -703,13 +777,36 @@
     /** The picture settles from a slight zoom (the entrance). */
     function breathe() {
         if (!fx.breathe || !ensureWall()) return;
-        for (const el of [wallEl, blurInner]) {
+        for (const el of [fxLayer, blurInner]) {
             if (!el) continue;
             el.classList.remove('is-breathe');
             void el.offsetWidth;
             el.classList.add('is-breathe');
         }
-        setTimeout(() => { for (const el of [wallEl, blurInner]) if (el) el.classList.remove('is-breathe'); }, 1000);
+        setTimeout(() => { for (const el of [fxLayer, blurInner]) if (el) el.classList.remove('is-breathe'); }, 1000);
+    }
+
+    /**
+     * Ready the return (Yukimi, Nov 15: no stale frame and jump coming home): Today takes the
+     * entrance's first pose, the picture and the empty band with the list gone, so whatever Android
+     * shows of the page while it comes back (its snapshot, the last frame) is where the entrance
+     * starts. The Android app calls it as Melaton goes behind another program (before the WebView is
+     * paused); the screen going off does too. The next entrance, or Today being shown, clears it.
+     */
+    function prime() {
+        if (!host || host.hidden || root.dataset.wmApp !== 'today') return false;
+        host.classList.add('is-primed');
+        primedAt = Date.now();
+        // nothing went over Melaton after all (a permission prompt pauses the app too): Today shows again
+        const at = primedAt;
+        setTimeout(() => { if (primedAt === at && document.visibilityState === 'visible' && root.dataset.screenOff === undefined) unprime(); }, 2500);
+        return true;
+    }
+    let primedAt = 0;
+    function unprime() {
+        if (!host) return;
+        host.classList.remove('is-primed');
+        primedAt = 0;
     }
 
     /** The glass catches the light as the list lands. */
@@ -1407,9 +1504,11 @@
 
     /** Today comes back (#800): the empty band, the list running up from below into the clock as it fades and grows in. */
     function entrance() {
-        if (!host || host.hidden || !panels.length || dragging) return;
-        if ((root.dataset.wmBoot && root.dataset.wmBoot !== 'done') || root.dataset.screenOff !== undefined) return; // the boot reveal / a dark screen
-        if (Date.now() - screenOnAt < ENTER_RECENT_MS) return; // the screen just came on: no show for that
+        // a readied Today that gets no entrance shows at once (never left with its list hidden)
+        if (!host || host.hidden || !panels.length || dragging) { unprime(); return; }
+        if ((root.dataset.wmBoot && root.dataset.wmBoot !== 'done') || root.dataset.screenOff !== undefined) { if (root.dataset.screenOff === undefined) unprime(); return; } // the boot reveal / a dark screen
+        // the screen just came on: no show for that, unless Today was readied for it (prime: the screen went off on Today)
+        if (Date.now() - screenOnAt < ENTER_RECENT_MS && !host.classList.contains('is-primed')) return;
         if (slide && slide.active) { cancelAnimationFrame(slide.raf); slide.active = false; slide.x = 0; host.classList.remove('is-sliding'); }
         pageAt.clear();
         expKey = '';
@@ -1429,6 +1528,7 @@
         const below = screenUnits - (focusTop() - ROW * at) + ROW;
         pos = at - below / ROW;
         host.classList.remove('is-exiting');
+        unprime();
         enterLockUntil = performance.now() + ENTER_MS + ENTER_ZOOM_MS + KEY_MS;
         startTween(at, at, { backMs: ENTER_MS, ease: enterEase, entry: { stagger: fx.stagger, overshoot: fx.overshoot } });
         breathe();
@@ -1451,6 +1551,7 @@
         hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
         // back from another app (not the blink of a Home press on Today)
         if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) requestAnimationFrame(entrance);
+        else if (host) { unprime(); host.classList.remove('is-exiting'); }
     });
     let lastApp = root.dataset.wmApp || '';
     new MutationObserver(() => {
@@ -1462,12 +1563,22 @@
         if (now === 'today' && host) requestAnimationFrame(() => { syncBlur(); blurPlace(); });
     }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
     document.addEventListener('visibilitychange', syncTilt);
-    window.addEventListener('melatonscreen', () => setTimeout(syncTilt, 0));
+    window.addEventListener('melatonscreen', (e) => {
+        setTimeout(syncTilt, 0);
+        // the screen going off on Today readies the entrance for the unlock; on, it plays (the lock
+        // screen, when there is one, comes first and the entrance runs as Today shows)
+        const on = !!(e && e.detail && e.detail.on);
+        if (!on) prime();
+        else if (host && host.classList.contains('is-primed')) requestAnimationFrame(() => { if (root.dataset.wmApp === 'today' && document.visibilityState === 'visible') entrance(); else unprime(); });
+    });
 
     window.wmTitanium = {
         enabled, home, select: (i) => select(i, true),
         // the coming-back entrance on demand (tests, #800)
-        enter: () => entrance(), panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
+        enter: () => entrance(),
+        // the Android app readies the return before Melaton goes behind another program (#800)
+        prime: () => prime(), unprime: () => unprime(),
+        panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
     };
