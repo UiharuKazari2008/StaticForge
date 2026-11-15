@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
  * modules/youtubeService.js (Yozora #839) without live calls: the device sign-in, token renewal,
- * subscriptions, uploads (long videos first, the plain list as fallback), video details, the merged
- * subscriptions feed, favourites and the Today list, search, Watch Later and the bell import (the
+ * subscriptions, uploads (free channel feeds, long videos first, the API when the feeds are down), video
+ * details, the merged subscriptions feed (answered from what is held, re-read by video count), favourites and the Today list, search, Watch Later and the bell import (the
  * Alchemy browser stood in for; its in-page reader run on sample page data), and the daily unit budget.
  * Google and YouTube are answered by a fake fetch.
  *
@@ -45,6 +45,9 @@ const VID = (n) => `v${String(n).padStart(10, '0')}`;
 const calls = [];
 let authorised = false;
 let longListMissing = false;
+let rssMode = 'ok';
+const videoCount = {};
+const newUpload = {};
 const day = (n) => new Date(Date.UTC(2026, 10, n, 12)).toISOString();
 
 function json(status, body) {
@@ -61,10 +64,20 @@ global.fetch = async (url, opts = {}) => {
         return authorised ? json(200, { access_token: 'a-1', refresh_token: 'r-1', expires_in: 3600 }) : json(428, { error: 'authorization_pending' });
     }
     if (u.pathname === '/revoke') return json(200, {});
+    if (u.pathname === '/feeds/videos.xml') {
+        if (rssMode === 'down') return { status: 500, text: async () => 'no' };
+        const pl = u.searchParams.get('playlist_id');
+        if (pl.startsWith('UULF') && longListMissing) return { status: 404, text: async () => '' };
+        const n = Number(pl.slice(-1));
+        const entry = (k) => `<entry><id>yt:video:${VID(n * 10 + k)}</id><yt:videoId>${VID(n * 10 + k)}</yt:videoId><yt:channelId>${CH(n)}</yt:channelId><title>C${n} &amp; video ${k}</title><author><name>Channel ${n}</name></author><published>${day(10 + n - k * 3)}</published><media:group><media:thumbnail url="https://i2.ytimg.com/vi/x/hqdefault.jpg"/></media:group></entry>`;
+        const extra = newUpload[n] ? `<entry><yt:videoId>${VID(n * 10 + 9)}</yt:videoId><yt:channelId>${CH(n)}</yt:channelId><title>C${n} new</title><author><name>Channel ${n}</name></author><published>${day(14)}</published></entry>` : '';
+        return { status: 200, text: async () => `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">${extra}${entry(0)}${entry(1)}</feed>` };
+    }
+    if (u.pathname.endsWith('/channels') && u.searchParams.get('id')) return json(200, { items: u.searchParams.get('id').split(',').map((id) => ({ id, statistics: { videoCount: String(videoCount[Number(id.slice(-1))] || 2) } })) });
     if (u.pathname.endsWith('/channels')) return json(200, { items: [{ id: CH(99), snippet: { title: 'Yukimi &amp; Co', thumbnails: { default: { url: 'https://yt3.ggpht.com/me=s88' } } } }] });
     if (u.pathname.endsWith('/subscriptions')) {
         const page2 = u.searchParams.get('pageToken') === 'p2';
-        const items = (page2 ? [3] : [1, 2]).map((n) => ({ snippet: { title: `Channel ${n}`, resourceId: { channelId: CH(n) }, thumbnails: { default: { url: `https://yt3.ggpht.com/c${n}=s88` } } } }));
+        const items = (page2 ? [3] : [1, 2]).map((n) => ({ contentDetails: { totalItemCount: videoCount[n] || 2 }, snippet: { title: `Channel ${n}`, resourceId: { channelId: CH(n) }, thumbnails: { default: { url: `https://yt3.ggpht.com/c${n}=s88` } } } }));
         return json(200, page2 ? { items } : { items, nextPageToken: 'p2' });
     }
     if (u.pathname.endsWith('/playlistItems')) {
@@ -88,6 +101,8 @@ global.fetch = async (url, opts = {}) => {
     return json(500, {});
 };
 const count = (p) => calls.filter((c) => c.path.endsWith(p)).length;
+const settle = async () => { let p; while ((p = T.refreshing())) { try { await p; } catch (_) { /* its own test looks */ } } };
+const feedReads = () => calls.filter((c) => c.path === '/feeds/videos.xml').map((c) => c.q.playlist_id);
 
 // the Alchemy browser, stood in for
 let browserMode = 'ok';
@@ -152,17 +167,65 @@ T.setBrowser({ read: async (kind) => {
         assert.strictEqual(count('/subscriptions'), 2);
     });
 
-    await ok('feed: long videos list, merged newest first, details filled, private left out', async () => {
+    await ok('feed: free channel feeds (long videos list), merged newest first, details filled', async () => {
         const f = await svc.feed();
         assert.strictEqual(f.videos.length, 6);
         assert.strictEqual(f.videos[0].id, VID(30));
+        assert.strictEqual(f.videos[0].title, 'C3 & video 0');
         assert.ok(f.videos.every((v, i, a) => !i || a[i - 1].at >= v.at));
         assert.strictEqual(f.videos[0].length, 3723);
-        assert.ok(calls.filter((c) => c.path.endsWith('/playlistItems')).every((c) => c.q.playlistId.startsWith('UULF')));
-        const n = count('/playlistItems');
+        assert.strictEqual(feedReads().length, 3);
+        assert.ok(feedReads().every((pl) => pl.startsWith('UULF')));
+        assert.strictEqual(count('/playlistItems'), 0, 'no quota spent on the lists');
         await svc.feed();
-        assert.strictEqual(count('/playlistItems'), n, 'a second read comes from what is held');
+        assert.strictEqual(feedReads().length, 3, 'a second read comes from what is held');
         assert.strictEqual(count('/videos'), 1);
+        assert.strictEqual(svc.getState().feed.at, f.at);
+        await settle();
+    });
+
+    await ok('feed: answers from what is held, then reads only the channel whose video count moved', async () => {
+        const units = svc.quota().used;
+        calls.length = 0;
+        videoCount[2] = 3;
+        newUpload[2] = true;
+        T.clearFeed();
+        T.state().cache.subs.at = 0; // the subscriptions pass is due again
+        const quick = await svc.feed();
+        assert.strictEqual(quick.refreshing, true);
+        assert.strictEqual(quick.videos.length, 6, 'the held list at once');
+        await settle();
+        assert.deepStrictEqual(feedReads(), [`UULF${CH(2).slice(2)}`], 'one channel read');
+        const f = await svc.feed();
+        assert.strictEqual(f.refreshing, false);
+        assert.strictEqual(f.videos[0].id, VID(29));
+        assert.strictEqual(f.videos.length, 7);
+        assert.strictEqual(svc.quota().used - units, 3, 'two subscription pages and one details call');
+        assert.ok(svc.getState().feed.at >= f.at);
+        // nothing moved: the next look costs the subscriptions pass only
+        calls.length = 0;
+        T.clearFeed();
+        T.state().cache.subs.at = 0;
+        await svc.feed();
+        await settle();
+        assert.deepStrictEqual(feedReads(), []);
+        await settle();
+    });
+
+    await ok('uploads: the API answers while the free feeds are down', async () => {
+        rssMode = 'down';
+        calls.length = 0;
+        videoCount[3] = 5;
+        T.clearFeed();
+        T.state().cache.subs.at = 0;
+        await svc.feed();
+        await settle();
+        assert.strictEqual(feedReads().length, 1, 'one failed feed read, then no more for 10 minutes');
+        assert.deepStrictEqual(calls.filter((c) => c.path.endsWith('/playlistItems')).map((c) => c.q.playlistId), [`UULF${CH(3).slice(2)}`]);
+        assert.strictEqual((await svc.feed()).videos.length, 7);
+        rssMode = 'ok';
+        T.feedsDown(0);
+        await settle();
     });
 
     await ok('favourites and the Today list', async () => {
@@ -170,22 +233,37 @@ T.setBrowser({ read: async (kind) => {
         await svc.setFavourite({ id: CH(2), title: 'Channel 2', thumb: 'https://yt3.ggpht.com/c2=s88' }, true);
         const favs = await svc.setFavourite({ id: CH(1), title: 'Channel 1', thumb: '' }, true);
         assert.deepStrictEqual(favs.map((f) => f.id), [CH(2), CH(1)]);
+        await svc.saveSettings({ rareFirst: false });
         const s = svc.getState();
-        assert.deepStrictEqual(s.latest.videos.map((v) => v.id), [VID(20), VID(10), VID(21), VID(11)]);
+        assert.deepStrictEqual(s.latest.videos.map((v) => v.id), [VID(29), VID(20), VID(10), VID(21), VID(11)]);
         assert.strictEqual(s.latest.videos[0].length, 3723);
         assert.deepStrictEqual((await svc.orderFavourites([CH(1), CH(2)])).map((f) => f.id), [CH(1), CH(2)]);
         assert.deepStrictEqual((await svc.setFavourite({ id: CH(2) }, false)).map((f) => f.id), [CH(1)]);
         assert.deepStrictEqual(svc.getState().latest.videos.map((v) => v.id), [VID(10), VID(11)]);
+        await svc.saveSettings({ rareFirst: true });
+        await settle();
     });
 
-    await ok('a long favourites list is read less often, not cut short', async () => {
-        assert.strictEqual(T.latestTtl(), 15 * 60000);
-        const st = T.state().acct;
-        const keep = st.favourites.slice();
-        for (let n = 100; n < 400; n++) st.favourites.push({ id: `UC${String(n).padStart(22, 'b')}`, title: `F${n}`, thumb: '' });
-        assert.ok(T.latestTtl() > 2 * 3600000 && T.latestTtl() < 3 * 3600000, `301 favourites: ${Math.round(T.latestTtl() / 60000)} min`);
-        st.favourites.length = 0;
-        st.favourites.push(...keep);
+    await ok('favourites: one unit says whether any of 50 channels uploaded; only those are read', async () => {
+        await settle();
+        const st = T.state();
+        st.cache.subs.at = 0; // the subscriptions pass is old: the favourites ask channels.list themselves
+        T.clearFeed();
+        calls.length = 0;
+        const units = svc.quota().used;
+        videoCount[1] = 7;
+        newUpload[1] = true;
+        svc.getState();
+        await settle();
+        assert.strictEqual(calls.filter((c) => c.path.endsWith('/channels') && c.q.id).length, 1);
+        assert.deepStrictEqual(feedReads(), [`UULF${CH(1).slice(2)}`]);
+        assert.strictEqual(svc.getState().latest.videos[0].id, VID(19));
+        assert.ok(svc.quota().used - units <= 2, 'a count call and the new video\'s details');
+        calls.length = 0;
+        svc.getState();
+        await settle();
+        assert.strictEqual(calls.length, 0, 'not again inside 15 minutes');
+        newUpload[1] = false;
     });
 
     await ok('Today order: rare uploaders first, newest first when switched off', async () => {
@@ -220,21 +298,24 @@ T.setBrowser({ read: async (kind) => {
         assert.strictEqual(c.channel.title, 'Channel 1');
         assert.strictEqual(c.favourite, true);
         assert.strictEqual(c.subscribed, true);
-        assert.strictEqual(c.videos.length, 2);
+        assert.strictEqual(c.videos.length, 3);
     });
 
     await ok('Leave Out Shorts off reads the plain uploads list; a missing long list falls back', async () => {
         await svc.saveSettings({ noShorts: false });
+        await settle();
         calls.length = 0;
         await svc.channelPage(CH(1));
-        assert.ok(calls.some((c) => c.q.playlistId === `UU${CH(1).slice(2)}`));
+        assert.ok(feedReads().includes(`UU${CH(1).slice(2)}`));
         await svc.saveSettings({ noShorts: true });
+        await settle();
         longListMissing = true;
         calls.length = 0;
         const c = await svc.channelPage(CH(3));
         assert.strictEqual(c.videos.length, 2);
-        assert.deepStrictEqual(calls.filter((x) => x.path.endsWith('/playlistItems')).map((x) => x.q.playlistId.slice(0, 4)), ['UULF', `UU${CH(3).slice(2, 4)}`]);
+        assert.deepStrictEqual(feedReads().filter((pl) => pl.endsWith(CH(3).slice(2))).map((pl) => pl.slice(0, 4)), ['UULF', `UU${CH(3).slice(2, 4)}`]);
         longListMissing = false;
+        await settle();
     });
 
     await ok('search: entities decoded, channels apart, answers held', async () => {
@@ -315,7 +396,7 @@ T.setBrowser({ read: async (kind) => {
 
     await ok('a sign-in Google ended asks to sign in again', async () => {
         T.setToken({ refreshToken: 'r-dead', accessToken: '', expiresAt: 0 });
-        await assert.rejects(svc.channelPage(CH(2)), (e) => e.code === 'YOUTUBE_SIGNIN');
+        await assert.rejects(svc.search('needs the sign-in'), (e) => e.code === 'YOUTUBE_SIGNIN');
         assert.strictEqual(svc.getState().account.signedIn, false);
     });
 

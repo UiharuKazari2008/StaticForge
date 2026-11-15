@@ -15,9 +15,15 @@
  *                  wait, at Google's interval) until the account is linked. Scope youtube.readonly.
  *                  The token is this program's own (VisionCaster's sign-in is not touched).
  *
- *   subscriptions  subscriptions.list mine=true (1 unit per 50 channels), kept 6 hours
- *   uploads        playlistItems.list of a channel's uploads list (1 unit a channel), kept 20 minutes;
- *                  "UULF" + id = the channel's long videos only (the Leave Out Shorts setting)
+ *   subscriptions  subscriptions.list mine=true (1 unit per 50 channels), kept 6 hours for the Channels
+ *                  tab. Each page also carries every channel's video count, which is how the feed
+ *                  knows who uploaded: one pass (10 units for 473 channels) instead of a call a channel.
+ *   uploads        YouTube's public feed of the channel's list (no quota, no sign-in), playlistItems.list
+ *                  (1 unit) only when the feeds are down; "UULF" + id = the channel's long videos only
+ *                  (Leave Out Shorts). Kept on disk for good and read again only when the channel's
+ *                  video count changed, or after a week.
+ *   feed           answered at once from what is held; a look for new uploads runs behind it at most
+ *                  every 10 minutes and the status feed's `feed.at` tells the program to read again.
  *   details        videos.list (1 unit per 50 videos): length, live state; kept for good
  *   search         search.list (100 units), each answer kept 10 minutes
  *   Watch Later    the Data API does not give this list to any program (it answers empty since 2016)
@@ -34,7 +40,7 @@
  * Push, never poll (rule server-push-not-polling): statusHub feed `youtube` (push type
  * youtube_status) carries { account, favourites, latest, settings }. The feed's one timer runs only
  * while a phone shows the Today item or the program; it re-reads a favourite channel's uploads when
- * they are older than 15 minutes (longer for a long favourites list, see latestTtl) and pushes only
+ * they are older than 15 minutes and pushes only
  * what changed. Today's list is one list: every favourite's uploads together, newest first.
  *
  * Files (all under .cache): youtube-account.json (0600: token, account, favourites, settings),
@@ -57,17 +63,15 @@ const QUICKCAST_CONFIG = process.env.YOUTUBE_QUICKCAST_CONFIG || path.join(CACHE
 const MIN = 60000;
 const SUBS_TTL = 6 * 60 * MIN;
 const UPLOADS_TTL = 20 * MIN;
-const LATEST_TTL = 15 * MIN; // the least; latestTtl() stretches it for a long favourites list
+const LATEST_TTL = 15 * MIN;
 const SEARCH_TTL = 10 * MIN;
 const FEED_MIN_GAP = 5 * MIN; // a Refresh inside this gap answers from what is held
 const HUB_INTERVAL = 5 * MIN;
 const DEVICE_MIN_S = Number(process.env.YOUTUBE_DEVICE_MIN_S || 5);
 const DEFAULTS = { noShorts: true, rareFirst: true, todayCount: 12, budget: 6000 };
 // No small cap on favourites (Yukimi, Nov 15 2026: an import of every channel with its bell on must fit).
-// What a long list costs is the refresh, one unit a channel, so the refresh slows with the list instead:
-// each favourite is read again after latestTtl(), sized so a day of Today on screen stays near 3,000 units.
+// A long list is cheap to watch: one unit tells whether any of 50 channels uploaded (refreshLatest).
 const MAX_FAVOURITES = 1000;
-const LATEST_UNITS_A_DAY = 3000;
 const MAX_DETAILS = 3000;
 
 class YouTubeError extends Error {
@@ -437,36 +441,51 @@ async function loadAccount() {
     return acct.account;
 }
 
+/**
+ * The subscribed channels, A to Z. Each page also says how many videos a channel has
+ * (contentDetails.totalItemCount, equal to the channel's public video count): kept in cache.subs.counts,
+ * it tells which channels uploaded since their list was last read, for 1 unit per 50 channels.
+ * opts.maxAge: answer from what is held when it is younger (default 6 hours; the feed asks for 10 minutes).
+ */
 async function subscriptions(opts = {}) {
     if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
     const held = cache.subs;
-    if (held && Array.isArray(held.list) && !(opts.fresh && Date.now() - held.at > FEED_MIN_GAP) && Date.now() - held.at < SUBS_TTL) return held.list;
-    const list = [];
-    let pageToken = '';
-    for (let page = 0; page < 40; page++) {
-        const p = { part: 'snippet', mine: 'true', maxResults: '50', order: 'alphabetical' };
-        if (pageToken) p.pageToken = pageToken;
-        const d = await api('subscriptions', p);
-        (d.items || []).forEach((it) => {
-            const s = it.snippet || {};
-            const c = cleanChannel({ id: s.resourceId && s.resourceId.channelId, title: plain(s.title), thumb: thumbOf(s.thumbnails) });
-            if (c) list.push(c);
+    const maxAge = opts.maxAge || (opts.fresh ? FEED_MIN_GAP : SUBS_TTL);
+    if (held && Array.isArray(held.list) && Date.now() - held.at < maxAge) return held.list;
+    if (subscriptions.busy) return subscriptions.busy;
+    subscriptions.busy = (async () => {
+        const list = [];
+        const counts = {};
+        let pageToken = '';
+        for (let page = 0; page < 40; page++) {
+            const p = { part: 'snippet,contentDetails', mine: 'true', maxResults: '50', order: 'alphabetical' };
+            if (pageToken) p.pageToken = pageToken;
+            const d = await api('subscriptions', p);
+            (d.items || []).forEach((it) => {
+                const sn = it.snippet || {};
+                const c = cleanChannel({ id: sn.resourceId && sn.resourceId.channelId, title: plain(sn.title), thumb: thumbOf(sn.thumbnails) });
+                if (!c) return;
+                list.push(c);
+                const n = it.contentDetails && Number(it.contentDetails.totalItemCount);
+                if (Number.isFinite(n)) counts[c.id] = n;
+            });
+            pageToken = d.nextPageToken || '';
+            if (!pageToken) break;
+        }
+        cache.subs = { at: Date.now(), list, counts };
+        // a favourite keeps the channel's current name and picture
+        const by = new Map(list.map((c) => [c.id, c]));
+        let touched = false;
+        acct.favourites = acct.favourites.map((f) => {
+            const c = by.get(f.id);
+            if (c && (c.title !== f.title || c.thumb !== f.thumb)) { touched = true; return c; }
+            return f;
         });
-        pageToken = d.nextPageToken || '';
-        if (!pageToken) break;
-    }
-    cache.subs = { at: Date.now(), list };
-    // a favourite keeps the channel's current name and picture
-    const by = new Map(list.map((c) => [c.id, c]));
-    let touched = false;
-    acct.favourites = acct.favourites.map((f) => {
-        const c = by.get(f.id);
-        if (c && (c.title !== f.title || c.thumb !== f.thumb)) { touched = true; return c; }
-        return f;
-    });
-    if (touched) { saveAccount(); poke(); }
-    saveCacheSoon();
-    return list;
+        if (touched) { saveAccount(); poke(); }
+        saveCacheSoon();
+        return list;
+    })();
+    try { return await subscriptions.busy; } finally { subscriptions.busy = null; }
 }
 
 /** Fills length and live state (and anything missing) from videos.list; one unit per 50 videos. */
@@ -499,76 +518,200 @@ async function withDetails(videos) {
     });
 }
 
-async function readUploads(channelId, max) {
-    const tail = channelId.slice(2);
-    const lists = settings().noShorts ? [`UULF${tail}`, `UU${tail}`] : [`UU${tail}`];
-    let d = null;
-    for (const playlistId of lists) {
-        try {
-            d = await api('playlistItems', { part: 'snippet,contentDetails', playlistId, maxResults: String(max) });
-            break;
-        } catch (e) {
-            if (e.code !== 'YOUTUBE_NOT_FOUND') throw e;
-        }
+// ---- a channel's uploads
+//
+// Source 1: YouTube's public feed of a list (feeds/videos.xml?playlist_id=...): the 15 newest entries with
+// exact upload times, no sign-in and no quota. "UULF" + id is the channel's long videos only (Leave Out
+// Shorts), "UU" + id every upload. Source 2, when the feed fails: playlistItems.list (1 unit).
+// What is read is kept for good and read again only when the channel's video count changed (the
+// subscriptions pass or channels.list, 1 unit per 50 channels), or after a week.
+
+const FEEDS = process.env.YOUTUBE_FEEDS_BASE || 'https://www.youtube.com/feeds/videos.xml';
+const UPLOADS_KEPT = 15;
+const UPLOADS_MAX_AGE = 7 * 24 * 60 * MIN;
+const COUNT_LAG = 16 * MIN; // the public feed may trail a new upload by its 15-minute cache
+let feedsDownUntil = 0;
+
+const tagText = (xml, tag) => { const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`).exec(xml); return m ? plain(m[1].trim()) : ''; };
+
+/** The public feed of one list as videos; null when the list has no feed (404); throws when the feeds are down. */
+async function readListFeed(playlistId, channelId) {
+    let res;
+    try {
+        res = await fetch(`${FEEDS}?playlist_id=${encodeURIComponent(playlistId)}`, { headers: { Accept: 'application/atom+xml' }, signal: AbortSignal.timeout(12000) });
+    } catch (e) {
+        throw fail(`YouTube's channel feeds could not be reached (${e.message})`, 'YOUTUBE_FEEDS');
     }
+    if (res.status === 404) return null;
+    if (res.status !== 200) throw fail(`YouTube's channel feeds answered ${res.status}`, 'YOUTUBE_FEEDS');
+    const xml = await res.text();
+    if (!/<feed[\s>]/.test(xml)) throw fail('YouTube\'s channel feeds answered something else', 'YOUTUBE_FEEDS');
     const videos = [];
-    ((d && d.items) || []).forEach((it) => {
-        const s = it.snippet || {};
-        const id = (it.contentDetails && it.contentDetails.videoId) || (s.resourceId && s.resourceId.videoId);
-        if (!id || !VIDEO_ID.test(id) || /^(Private|Deleted) video$/.test(s.title || '')) return;
+    for (const m of xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)) {
+        const e = m[1];
+        const id = tagText(e, 'yt:videoId');
+        if (!VIDEO_ID.test(id)) continue;
         videos.push({
-            id, title: plain(s.title), channel: plain(s.videoOwnerChannelTitle || s.channelTitle), channelId: s.videoOwnerChannelId || s.channelId || channelId,
-            thumb: thumbOf(s.thumbnails, id), at: Date.parse((it.contentDetails && it.contentDetails.videoPublishedAt) || s.publishedAt) || null, length: null, live: ''
+            id, title: tagText(e, 'title'), channel: tagText(e, 'name'), channelId: tagText(e, 'yt:channelId') || channelId,
+            thumb: thumbOf(null, id), at: Date.parse(tagText(e, 'published')) || null, length: null, live: ''
         });
-    });
-    videos.sort((a, b) => (b.at || 0) - (a.at || 0));
+    }
     return videos;
 }
 
-/** A channel's newest uploads, from what is held when that is young enough. */
-async function uploadsOf(channelId, opts = {}) {
-    const max = opts.max || 8;
-    const ttl = opts.ttl || UPLOADS_TTL;
-    const held = cache.uploads[channelId];
-    if (held && Array.isArray(held.videos) && held.max >= max && Date.now() - held.triedAt < ttl) return held.videos.slice(0, max);
-    const entry = cache.uploads[channelId] = Object.assign({ videos: [], max: 0, at: 0 }, held, { triedAt: Date.now() });
-    const videos = await readUploads(channelId, max);
-    entry.videos = videos;
-    entry.max = max;
-    entry.at = Date.now();
-    saveCacheSoon();
-    return videos.slice(0, max);
+async function readListApi(playlistId, channelId) {
+    let d;
+    try {
+        d = await api('playlistItems', { part: 'snippet,contentDetails', playlistId, maxResults: String(UPLOADS_KEPT) });
+    } catch (e) {
+        if (e.code === 'YOUTUBE_NOT_FOUND') return null;
+        throw e;
+    }
+    const videos = [];
+    (d.items || []).forEach((it) => {
+        const sn = it.snippet || {};
+        const id = (it.contentDetails && it.contentDetails.videoId) || (sn.resourceId && sn.resourceId.videoId);
+        if (!id || !VIDEO_ID.test(id) || /^(Private|Deleted) video$/.test(sn.title || '')) return;
+        videos.push({
+            id, title: plain(sn.title), channel: plain(sn.videoOwnerChannelTitle || sn.channelTitle), channelId: sn.videoOwnerChannelId || sn.channelId || channelId,
+            thumb: thumbOf(sn.thumbnails, id), at: Date.parse((it.contentDetails && it.contentDetails.videoPublishedAt) || sn.publishedAt) || null, length: null, live: ''
+        });
+    });
+    return videos;
 }
 
-/** The subscriptions feed: every subscribed channel's newest uploads, newest first. */
-async function feed(opts = {}) {
-    if (feedMemo && !(opts.fresh && Date.now() - feedMemo.at > FEED_MIN_GAP) && Date.now() - feedMemo.at < UPLOADS_TTL) return feedMemo;
-    const channels = await subscriptions();
-    const left = quota().budget - quota().used;
-    let partial = false;
-    const got = await pool(channels, 8, async (c, i) => {
-        const held = cache.uploads[c.id];
-        const fresh = held && Date.now() - held.triedAt < UPLOADS_TTL;
-        if (!fresh && i >= left - 20) { partial = true; return (held && held.videos) || []; }
-        return uploadsOf(c.id, { max: 5 });
+async function readUploads(channelId) {
+    const tail = channelId.slice(2);
+    const lists = settings().noShorts ? [`UULF${tail}`, `UU${tail}`] : [`UU${tail}`];
+    let videos = null;
+    for (const playlistId of lists) {
+        // the free feed first; while the feeds are down (tried again after 10 minutes) the API answers
+        if (Date.now() >= feedsDownUntil) {
+            try {
+                videos = await readListFeed(playlistId, channelId);
+            } catch (e) {
+                if (e.code !== 'YOUTUBE_FEEDS') throw e;
+                feedsDownUntil = Date.now() + 10 * MIN;
+                videos = await readListApi(playlistId, channelId);
+            }
+        } else {
+            videos = await readListApi(playlistId, channelId);
+        }
+        if (videos) break;
+    }
+    return (videos || []).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, UPLOADS_KEPT);
+}
+
+/** Does this channel's list need reading: never read, its video count moved, a lagging feed, or a week old. */
+function uploadsDue(id, count, now) {
+    const e = cache.uploads[id];
+    if (!e || !Array.isArray(e.videos) || !e.at) return true;
+    if (count !== undefined && count !== null && e.count !== count) return true;
+    if (e.again && now >= e.again) return true;
+    return now - e.at > UPLOADS_MAX_AGE;
+}
+
+/**
+ * Brings the held uploads of these channels up to date. counts: { id: video count } for the channels it
+ * is known for; a channel without one is read when its list is older than opts.maxAge. Returns how many
+ * lists were read and how many of those failed.
+ */
+async function syncUploads(ids, counts, opts = {}) {
+    const now = Date.now();
+    const due = ids.filter((id) => {
+        const has = counts && counts[id] !== undefined;
+        if (has) return uploadsDue(id, counts[id], now);
+        const e = cache.uploads[id];
+        return !e || !e.at || now - e.triedAt >= (opts.maxAge || UPLOADS_TTL);
     });
-    let failed = 0;
+    if (!due.length) return { read: 0, failed: 0, error: null };
+    const got = await pool(due, 12, async (id) => {
+        const held = cache.uploads[id];
+        const entry = cache.uploads[id] = Object.assign({ videos: [], at: 0 }, held, { triedAt: Date.now() });
+        const videos = await readUploads(id);
+        const known = new Set((held && held.videos ? held.videos : []).map((v) => v.id));
+        const fresh = videos.some((v) => !known.has(v.id));
+        const moved = !!(counts && counts[id] !== undefined && held && held.count !== undefined && held.count !== counts[id]);
+        entry.videos = videos;
+        entry.at = Date.now();
+        if (counts && counts[id] !== undefined) entry.count = counts[id];
+        // the count moved but the list shows nothing new yet (the feed's cache, or a Short left out): once more later
+        entry.again = moved && !fresh && !entry.again ? Date.now() + COUNT_LAG : 0;
+        return true;
+    });
+    saveCacheSoon();
+    return { read: due.length, failed: got.filter((r) => r instanceof Error).length, error: got.find((r) => r instanceof Error) || null };
+}
+
+/** Video counts of any channels (favourites that are not subscribed too): channels.list, 1 unit per 50. */
+async function channelCounts(ids) {
+    const out = {};
+    for (let i = 0; i < ids.length; i += 50) {
+        const d = await api('channels', { part: 'statistics', id: ids.slice(i, i + 50).join(','), maxResults: '50' });
+        (d.items || []).forEach((c) => { const n = Number(c.statistics && c.statistics.videoCount); if (Number.isFinite(n)) out[c.id] = n; });
+    }
+    return out;
+}
+
+// ---- the subscriptions feed
+
+const FEED_TTL = 10 * MIN; // how old the feed may be before a read looks for new uploads
+const FEED_SIZE = 150;
+let feedBusy = null;
+
+/** The feed from what is held: no call to YouTube. */
+function feedFromCache() {
+    const channels = (cache.subs && cache.subs.list) || [];
     const all = [];
-    got.forEach((r, i) => {
-        if (r instanceof Error) { failed++; const held = cache.uploads[channels[i].id]; if (held && held.videos) all.push(...held.videos.slice(0, 5)); return; }
-        all.push(...r);
-    });
-    if (failed && failed === channels.length && channels.length) throw got.find((r) => r instanceof Error);
+    channels.forEach((c) => { const e = cache.uploads[c.id]; if (e && Array.isArray(e.videos)) all.push(...e.videos.slice(0, 5)); });
     const seen = new Set();
-    const merged = all.filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true))).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, 80);
-    const videos = await withDetails(merged);
-    feedMemo = { at: Date.now(), videos, channels: channels.length, partial: partial || failed > 0 };
-    return feedMemo;
+    return all.filter((v) => (seen.has(v.id) ? false : (seen.add(v.id), true))).sort((a, b) => (b.at || 0) - (a.at || 0)).slice(0, FEED_SIZE);
+}
+
+const detailed = (videos) => videos.filter((v) => !(cache.details[v.id] && cache.details[v.id].gone)).map((v) => {
+    const d = cache.details[v.id];
+    return d ? Object.assign({}, v, { length: d.length, live: d.live }) : v;
+});
+
+/** One look for new uploads: the subscriptions pass (its counts), the changed channels' lists, new details. */
+function refreshFeed() {
+    if (feedBusy) return feedBusy;
+    feedBusy = (async () => {
+        try {
+            const channels = await subscriptions({ maxAge: FEED_TTL });
+            const r = await syncUploads(channels.map((c) => c.id), (cache.subs && cache.subs.counts) || {});
+            if (r.failed && r.failed === r.read && r.read === channels.length) throw r.error;
+            const videos = await withDetails(feedFromCache());
+            feedMemo = { at: Date.now(), videos, channels: channels.length, partial: r.failed > 0, read: r.read };
+            return feedMemo;
+        } finally {
+            feedBusy = null;
+        }
+    })();
+    return feedBusy;
+}
+
+/**
+ * The subscriptions feed: every subscribed channel's newest uploads, newest first. A read that finds the
+ * feed older than 10 minutes answers at once from what is held ({ refreshing: true }) and looks for new
+ * uploads behind it; the status feed's `feed.at` then tells the program to read again. Only the very
+ * first read (nothing held yet) waits. opts.fresh (the Refresh key) looks again after 2 minutes.
+ */
+async function feed(opts = {}) {
+    if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
+    const age = feedMemo ? Date.now() - feedMemo.at : Infinity;
+    if (feedMemo && age < (opts.fresh ? 2 * MIN : FEED_TTL)) return Object.assign({ refreshing: !!feedBusy }, feedMemo);
+    const held = cache.subs && cache.subs.list && cache.subs.list.some((c) => cache.uploads[c.id] && cache.uploads[c.id].at);
+    if (!held) return Object.assign({ refreshing: false }, await refreshFeed());
+    refreshFeed().then(() => poke(), (e) => { lastError = e.message; poke(); });
+    return { at: feedMemo ? feedMemo.at : (cache.subs && cache.subs.at) || 0, videos: detailed(feedFromCache()), channels: cache.subs.list.length, partial: false, refreshing: true };
 }
 
 async function channelPage(id) {
     if (!CHANNEL_ID.test(String(id || ''))) throw fail('That is not a channel', 'YOUTUBE_BAD_CHANNEL');
-    const videos = await withDetails(await uploadsOf(id, { max: 25 }));
+    const r = await syncUploads([id], null, { maxAge: UPLOADS_TTL });
+    if (r.failed && !(cache.uploads[id] && cache.uploads[id].at)) throw r.error;
+    const videos = await withDetails((cache.uploads[id] && cache.uploads[id].videos) || []);
     let channel = (cache.subs && cache.subs.list.find((c) => c.id === id)) || acct.favourites.find((c) => c.id === id) || null;
     if (!channel) {
         const d = await api('channels', { part: 'snippet', id, maxResults: '1' });
@@ -659,11 +802,6 @@ async function importBellFavourites() {
 
 // ------------------------------------------------------------------------------------------ favourites on Today
 
-/** How old a favourite's uploads may get before they are read again: 15 minutes, longer for a long list. */
-function latestTtl() {
-    return Math.max(LATEST_TTL, Math.ceil((acct.favourites.length * 24 * 60 * MIN) / LATEST_UNITS_A_DAY));
-}
-
 const HOUR = 60 * MIN;
 const DAY_MS = 24 * HOUR;
 
@@ -709,20 +847,27 @@ function latestVideos(now = Date.now()) {
         });
 }
 
-/** Reads the favourites whose uploads are older than latestTtl(); pushes when something changed. */
+/**
+ * Looks for new uploads of the favourites, at most every 15 minutes while a phone shows them: their video
+ * counts (the subscriptions pass when it is young, else channels.list: 1 unit per 50 channels), then only
+ * the lists of the channels that uploaded. Pushes when the Today list changed.
+ */
+let latestCheckedAt = 0;
 function refreshLatest(force) {
     if (refreshing || !signedIn() || !acct.favourites.length) return refreshing;
-    const due = acct.favourites.filter((f) => {
-        const held = cache.uploads[f.id];
-        return !held || Date.now() - held.triedAt >= (force ? FEED_MIN_GAP : latestTtl());
-    });
-    if (!due.length) return null;
+    const now = Date.now();
+    const ids = acct.favourites.map((f) => f.id);
+    const unread = ids.some((id) => !(cache.uploads[id] && cache.uploads[id].triedAt));
+    if (!unread && now - latestCheckedAt < (force ? FEED_MIN_GAP : LATEST_TTL)) return null;
+    latestCheckedAt = now;
     const before = JSON.stringify(latestVideos().map((v) => [v.id, v.length, v.live]));
     refreshing = (async () => {
         try {
-            const got = await pool(due, 4, (f) => uploadsOf(f.id, { max: 5, ttl: force ? FEED_MIN_GAP : latestTtl() }));
-            const bad = got.find((r) => r instanceof Error);
-            lastError = bad && got.every((r) => r instanceof Error) ? bad.message : '';
+            let counts = null;
+            if (cache.subs && cache.subs.counts && now - cache.subs.at < LATEST_TTL && ids.every((id) => cache.subs.counts[id] !== undefined)) counts = cache.subs.counts;
+            else { try { counts = await channelCounts(ids); } catch (e) { if (e.code === 'YOUTUBE_SIGNIN') throw e; counts = null; } }
+            const r = await syncUploads(ids, counts, { maxAge: LATEST_TTL });
+            lastError = r.failed && r.failed === r.read ? r.error.message : '';
             await withDetails(latestVideos());
         } catch (e) {
             lastError = e.message;
@@ -748,7 +893,7 @@ function accountView() {
 
 function hubItems() {
     refreshLatest(false);
-    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? latestVideos() : [] }, settings: settings() };
+    return { account: accountView(), favourites: acct.favourites.slice(), latest: { videos: signedIn() ? latestVideos() : [] }, settings: settings(), feed: { at: feedMemo ? feedMemo.at : 0 } };
 }
 
 function getState() {
@@ -790,5 +935,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, latestTtl, cadenceOf, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };
