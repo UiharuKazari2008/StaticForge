@@ -318,6 +318,11 @@ async function handleGetAttachment(handlersCtx, ws, message) {
 const PUSH_INBOX_LIMIT = 50;
 const PUSH_UNREAD_LIMIT = 24;
 
+/** A Melaton Mobile page (it reports itself in client_desktop_state: agentClientBridge info.phone). */
+function isPhoneClient(clientInfo) {
+    return !!(clientInfo && clientInfo.phone && clientInfo.phone.shell === 'mobile');
+}
+
 function isMailboxSnapshotRecipient(clientInfo) {
     if (!clientInfo || clientInfo.authenticated !== true) return false;
     if (clientInfo.authMethod === 'application_key' || clientInfo.authMethod === 'replication_token') return false;
@@ -392,11 +397,28 @@ function bindMailboxPush(handlersCtx) {
             // All-mailbox snapshot: Yukimi's own cookie-session sockets only
             // (browser / user login). Never app-key (sfapp_) or replication
             // sockets; bots use the per-mailbox webhook (#598).
+            const timestamp = new Date().toISOString();
             wsServer.broadcast({
                 type: 'dovecote_mailbox_updated',
                 data: { owners, mailboxes, inbox, inboxMeta, unreadInbox },
-                timestamp: new Date().toISOString()
-            }, isMailboxSnapshotRecipient);
+                timestamp
+            }, (info) => isMailboxSnapshotRecipient(info) && !isPhoneClient(info));
+            // Melaton Mobile (rule server-push-not-polling: phones get only what they use): every
+            // mailbox's counts (the Other Mailboxes tree), but the lists only for the person's own
+            // mailbox, and only when it is among the ones that changed
+            const human = dovecoteMail.HUMAN_OWNER;
+            const mine = owners.includes(human);
+            wsServer.broadcast({
+                type: 'dovecote_mailbox_updated',
+                data: {
+                    owners,
+                    mailboxes,
+                    inbox: mine && inbox[human] ? { [human]: inbox[human] } : {},
+                    inboxMeta: mine && inboxMeta[human] ? { [human]: inboxMeta[human] } : {},
+                    unreadInbox: mine && unreadInbox[human] ? { [human]: unreadInbox[human] } : {}
+                },
+                timestamp
+            }, (info) => isMailboxSnapshotRecipient(info) && isPhoneClient(info));
         } catch (err) {
             console.error('Dovecote mailbox push failed:', err.message);
         }

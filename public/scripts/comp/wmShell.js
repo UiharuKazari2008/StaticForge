@@ -1761,6 +1761,8 @@
         }
         current = id;
         root.dataset.wmApp = id;
+        // a view that shows server data subscribes while it is on screen (rule server-push-not-polling)
+        document.dispatchEvent(new CustomEvent('wmAppChange', { detail: { id, prev: prev && prev !== app ? prev.id : null } }));
         // an app with a scene (the Director) keeps its page full height under the keyboard: only its
         // foreground and the soft keys go up (watchSip)
         root.toggleAttribute('data-wm-sip-overlay', !!app.sipOverlay);
@@ -2341,10 +2343,16 @@
     let mailNewAgain = false;
     const mailTime = (m) => { const t = typeof m.createdAt === 'number' ? m.createdAt : Date.parse(m.createdAt); return Number.isFinite(t) ? t : 0; };
 
-    async function mailNewCheck() {
+    async function mailNewCheck(pushedUnread) {
         if (lsFlag(MAIL_ICON_ALL_KEY, false) && mailMark != null) return;
         // nothing unread: nothing new unread either (the mark is still taken once)
         if (!(shellMailUnread > 0) && mailMark != null) { if (shellMailNew) { shellMailNew = false; refreshStatus(); } return; }
+        // the mailbox push's own unread list (dovecote_mailbox_updated): decided without a read
+        if (Array.isArray(pushedUnread) && mailMark != null) {
+            const now = pushedUnread.some((m) => !m.read && mailTime(m) > mailMark);
+            if (now !== shellMailNew) { shellMailNew = now; refreshStatus(); }
+            return;
+        }
         if (mailNewBusy) { mailNewAgain = true; return; }
         const ws = window.wsClient;
         if (!ws || typeof ws.isConnected !== 'function' || !ws.isConnected()) return;
@@ -7155,9 +7163,15 @@
                     if (!boxes) { loadMail(); return; }
                     const owner = typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi';
                     const mine = boxes.find((b) => b.owner === owner);
+                    const before = mailUnread;
                     mailUnread = mine ? (mine.unread || 0) : 0;
                     shellMailUnread = mailUnread;
-                    mailNewCheck();
+                    // another mailbox changed (an agent's): nothing of the person's moved
+                    const owners = ev.detail && Array.isArray(ev.detail.owners) ? ev.detail.owners : null;
+                    if (owners && !owners.includes(owner) && before === mailUnread) return;
+                    // the push carries the person's unread inbox: no second read of the list
+                    const pushed = ev.detail && ev.detail.unreadInbox && ev.detail.unreadInbox[owner];
+                    mailNewCheck(Array.isArray(pushed) ? pushed : null);
                     refreshStatus();
                 });
                 window.addEventListener('meletonaccountschange', () => today.refresh());
@@ -9465,6 +9479,8 @@
         registerApp,
         registerLazyApp,
         onScreen,
+        /** The program in front ('today' for Today). */
+        currentApp: () => current,
         loadLazyApp,
         /** Take a registered program out again (an Android program that was hidden or uninstalled). */
         removeApp: (id) => { const a = apps.get(id); if (a && typeof a.launch === 'function') apps.delete(id); },

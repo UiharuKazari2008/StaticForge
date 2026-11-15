@@ -235,8 +235,27 @@
             const again = () => { mail.at = 0; if (mail.busy) mail.again = true; else recentMail(); };
             ['new', 'flags', 'removed', 'account'].forEach((e) => M.on(e, again));
         }
-        if (!wireMail.dove) { wireMail.dove = true; document.addEventListener('dovecoteMailboxUpdated', () => { mail.at = 0; if (mail.busy) mail.again = true; else recentMail(); }); }
+        if (!wireMail.dove) { wireMail.dove = true; document.addEventListener('dovecoteMailboxUpdated', (ev) => pushedMail(ev && ev.detail)); }
     }
+    /**
+     * dovecote_mailbox_updated carries the person's unread inbox: the Dreamscape Mail pages come from
+     * it, with no read of the list, and a change to another mailbox (an agent's) is ignored. The IMAP
+     * accounts' pages follow their own events, not this push.
+     */
+    function pushedMail(d) {
+        const owner = typeof DESKTOP_DOVECOTE_HUMAN_OWNER !== 'undefined' ? DESKTOP_DOVECOTE_HUMAN_OWNER : 'yukimi';
+        const owners = d && Array.isArray(d.owners) ? d.owners : null;
+        if (owners && !owners.includes(owner)) return;
+        const unread = d && d.unreadInbox && d.unreadInbox[owner];
+        if (!Array.isArray(unread)) { mail.at = 0; if (mail.busy) mail.again = true; else recentMail(); return; }
+        const W = window.wmMessaging;
+        const dove = unread.filter((m) => !m.read).slice(0, MAIL_PAGES)
+            .map((m) => ({ subject: m.subject, from: mailFrom(m), at: mailWhenMs(m.createdAt), account: 'Dreamscape Mail', open: (go) => { if (W && typeof W.openMail === 'function') W.openMail(m.id); else go(); } }));
+        mail.list = dove.concat(mail.list.filter((m) => m.account !== 'Dreamscape Mail')).sort((x, y) => (y.at || 0) - (x.at || 0)).slice(0, MAIL_PAGES);
+        const key = mail.list.map((m) => `${m.account}|${m.subject}|${m.at}`).join('\n');
+        if (key !== mail.key) { mail.key = key; if (sh && typeof sh.refreshToday === 'function') sh.refreshToday(); }
+    }
+
     function recentMail() {
         wireMail();
         const c = window.wsClient;

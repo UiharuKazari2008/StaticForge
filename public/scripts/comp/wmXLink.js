@@ -176,6 +176,62 @@
         if (t && t.key === s.key && t.kind !== 'log') renderLayer();
     }
 
+    // ---------------------------------------------------------------- the server's status feed
+    // Today's item and the console see the cabinets through one statusHub subscription while either
+    // is on screen; the server reads the cabinets once a minute for everyone and pushes only what
+    // changed (rule server-push-not-polling). No client timer asks the server for status.
+    let hubOn = false;
+    let todayPlaced = false;
+    const screenOn = () => !document.hidden && document.documentElement.dataset.screenOff === undefined;
+    function wantHub() {
+        if (!sh || !isAdminUser() || !screenOn()) return false;
+        const cur = typeof sh.currentApp === 'function' ? sh.currentApp() : null;
+        return (cur === 'today' && todayPlaced) || (cur === APP_ID && shown && autoPoll);
+    }
+    function applyHub(items) {
+        if (!items) return;
+        if (Array.isArray(items['#list'])) {
+            devices = items['#list'];
+            listError = '';
+            loaded = true;
+            loadedAt = Date.now();
+        }
+        Object.keys(items).forEach((k) => {
+            if (k === '#list') return;
+            const it = items[k];
+            if (!it) return;
+            if (it.error) { log('ERROR', `${k}: ${it.error}`, true); return; }
+            log('POLL', `${it.name || k}: ${it.status ? it.status.text : '(no status)'}`, it.status && it.status.failed);
+            absorb({ ...it, cached: true });
+        });
+        today.html = null;
+        renderMain();
+        if (sh && sh.currentApp && sh.currentApp() === 'today' && typeof sh.refreshToday === 'function') sh.refreshToday();
+    }
+    async function syncHub() {
+        const want = wantHub();
+        const ws = window.wsClient;
+        if (want === hubOn || !ws || typeof ws.sendMessage !== 'function') return;
+        hubOn = want;
+        try {
+            const r = await ws.sendMessage(want ? 'status_subscribe' : 'status_unsubscribe', { feed: 'xlink' }, false);
+            if (want && hubOn) applyHub(r && (r.items || (r.data && r.data.items)));
+        } catch (_) {
+            if (want) hubOn = false;
+        }
+    }
+    function wireHub() {
+        const ws = window.wsClient;
+        if (ws && typeof ws.on === 'function') {
+            ws.on('xlink_status', (msg) => { if (hubOn && msg) applyHub(msg.changed || (msg.data && msg.data.changed)); });
+            // the server forgets a dropped socket's subscriptions: subscribe again
+            ws.on('connected', () => { hubOn = false; void syncHub(); });
+        }
+        document.addEventListener('wmAppChange', () => { void syncHub(); });
+        document.addEventListener('visibilitychange', () => { void syncHub(); });
+        window.addEventListener('melatonscreen', () => { void syncHub(); });
+    }
+
     async function poll(key, opts = {}) {
         if (!key) return;
         const run = () => send('xlink_device', { device: key, force: !!opts.force });
@@ -468,11 +524,11 @@
      * line per cabinet: tally LED, name, the state LCD, and its quick control, the cabinet's power
      * selector (a top-level switch named or drawn as power, else its first switch) as small keys, the
      * lit position marked. A key goes through run(): "Send to <cabinet>?" first, then the cabinet's
-     * own interlock warning, as in the app. Status is read (xlink_devices / xlink_device polls, no
-     * commands) every 60 s while Today is on screen; the block repaints only when its markup changes.
+     * own interlock warning, as in the app. Status comes pushed by the server's statusHub feed 'xlink' (read
+     * there once a minute while a view shows it, sent only when it changed); the block repaints only when
+     * its markup changes.
      */
     const TODAY_ID = 'xlink';
-    const TODAY_POLL_MS = 60000;
     const POWER_ICONS = new Set(['light-switch-on', 'power-off', 'leaf']);
     const today = { at: 0, loading: false, failed: false, html: null };
 
@@ -492,27 +548,11 @@
         return first;
     }
 
-    async function todayLoad() {
-        const ws = window.wsClient;
-        if (today.loading || !ws || (typeof ws.isConnected === 'function' && !ws.isConnected())) return;
-        today.loading = true;
-        try {
-            await loadDevices();
-            await Promise.all(devices.map(async (d) => {
-                try { absorb(await send('xlink_device', { device: d.key, force: false })); } catch (err) { log('ERROR', `${d.name}: ${(err && err.message) || ''}`, true); }
-            }));
-            today.failed = false;
-        } catch (_) {
-            today.failed = true;
-        } finally {
-            today.at = Date.now();
-            today.loading = false;
-        }
-    }
 
     function todayRender(el, ctx) {
         if (!isAdminUser()) return false;
-        if (!today.loading && Date.now() - today.at >= TODAY_POLL_MS && !sending) void todayLoad();
+        todayPlaced = true;
+        if (!hubOn) void syncHub();
         if (!el.dataset.wxlBound) {
             el.dataset.wxlBound = '1';
             el.addEventListener('click', (e) => {
@@ -575,7 +615,7 @@
         void sh.messageBox({ title: 'Network Diagnostics', icon: 'info', modal: true, text: `${lines.join('\n') || 'No nodes.'}\n\n${up} of ${devices.length} node(s) responding.`, buttons: [{ text: 'ok', value: true }] });
     }
 
-    const autoPollItem = () => ({ label: 'Auto Poll (60 s)', checked: autoPoll, action: () => { autoPoll = !autoPoll; } });
+    const autoPollItem = () => ({ label: 'Auto Poll (60 s)', checked: autoPoll, action: () => { autoPoll = !autoPoll; void syncHub(); } });
     const logItem = () => ({ label: 'Event Log', action: () => push({ kind: 'log' }) });
 
     function mainMenu() {
@@ -679,18 +719,12 @@
     /** The time of day on the band, and the 60 s auto poll of what is on screen (as the desktop polls). */
     function startTick() {
         clearInterval(tick);
-        let left = POLL_MS / 1000;
         const tod = () => { const e = page && page.querySelector('.wxl-tod'); if (e) e.textContent = clock(Date.now()); };
         tod();
+        // the band's clock only: the cabinets' status comes pushed from the server (syncHub)
         tick = setInterval(() => {
             if (!shown || !(sh.onScreen ? sh.onScreen(page) : !document.hidden)) return;
             tod();
-            if (!autoPoll || !shown || document.hidden || sending || (sh.isBusy && sh.isBusy())) return;
-            if (--left > 0) return;
-            left = POLL_MS / 1000;
-            const t = top();
-            if (t && (t.kind === 'device' || t.kind === 'item')) void poll(t.key, { force: true, quiet: true });
-            else if (!t) void reloadList({ quiet: true });
         }, 1000);
     }
 
@@ -698,6 +732,7 @@
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
         esc = sh.escapeHtml || esc;
+        wireHub();
         sh.registerApp({
             id: APP_ID,
             title: TITLE,
@@ -708,16 +743,18 @@
             show() {
                 shown = true;
                 renderLayer();
-                if (!loaded || Date.now() - loadedAt > 30000) void reloadList({ quiet: loaded });
                 startTick();
+                void syncHub();
             },
             hide() {
                 shown = false;
                 clearInterval(tick);
+                void syncHub();
             },
             onEnd() {
                 shown = false;
                 clearInterval(tick);
+                void syncHub();
                 page = null;
             },
             closeQuestion: () => (sending ? `A command is still on its way to ${sendingTo}. Close XLink?` : null),

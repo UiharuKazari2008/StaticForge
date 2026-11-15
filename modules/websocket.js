@@ -10,6 +10,13 @@ const {
     formatWsDisconnectLog
 } = require('./wsSocketHeartbeat');
 
+/** The ping's status without its clock: two reads with the same key carry the same news. */
+function pingStatusKey(data) {
+    if (!data || typeof data !== 'object') return JSON.stringify(data);
+    const { server_time: _t, ...rest } = data;
+    try { return JSON.stringify(rest); } catch (_) { return String(Date.now()); }
+}
+
 class WebSocketServer {
     constructor(globalResources = null) {
         if (!globalResources) {
@@ -288,6 +295,8 @@ class WebSocketServer {
                 connectionPayload.vfsPathUuid = this.globalResources.getVfsPathUuid();
             }
             this.sendToClient(ws, connectionPayload);
+            // the server status once; after this it comes only when it changes (startPingInterval)
+            if (clientInfo.authenticated) this.sendPingTo(ws);
 
             // (not a Continuity sub-client: its carrier, the same session, just did, #798)
             if (clientInfo.authenticated && !ws.virtual) {
@@ -1065,11 +1074,27 @@ class WebSocketServer {
             clearInterval(this.heartbeatInterval);
         }
 
-        // Send ping every 10 seconds
+        // The server's status (balance, usage, account health, subscription, NovelAI status, queue,
+        // image count) is read every 10 s and broadcast only when it changed (rule
+        // server-push-not-polling): it used to go to every socket every 10 s whatever happened, which
+        // woke every phone's radio 8,640 times a day. A socket that connects gets it once (sendPingTo).
+        this._pingCallback = pingCallback;
+        this._lastPingKey = null;
         this.heartbeatInterval = setInterval(() => {
             const serverData = pingCallback ? pingCallback() : null;
+            const key = pingStatusKey(serverData);
+            if (key === this._lastPingKey) return;
+            this._lastPingKey = key;
             this.broadcastPing(serverData);
         }, 10000);
+    }
+
+    /** The current server status to one socket (a new connection), outside the change broadcast. */
+    sendPingTo(ws) {
+        if (!this._pingCallback || !ws || ws.readyState !== WebSocket.OPEN) return;
+        try {
+            this.sendToClient(ws, { type: 'ping', data: this._pingCallback(), timestamp: new Date().toISOString() });
+        } catch (_err) { /* the next change reaches it */ }
     }
 
     stopPingInterval() {

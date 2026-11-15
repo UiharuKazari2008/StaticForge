@@ -947,6 +947,9 @@ class WebSocketClient {
 
     static SILENT_TICKER_REQUEST_TYPES = new Set([
         'ping',
+        // statusHub (rule server-push-not-polling): a view subscribing to / leaving a pushed status feed
+        'status_subscribe',
+        'status_unsubscribe',
         // ActiveSync (activeSyncAgent.js): the phone link's own traffic, relayed calls included (file
         // listings, status, notifications); it recurs on its own and is not something the user asked for
         'as_hello',
@@ -8470,6 +8473,11 @@ class WebSocketClient {
         // Continuity (#798): the DeX window's shared connection is the phone's; the phone's pings keep it
         // (and the server answers the sub-client's heartbeat itself): no second ping over bus + phone + server
         if (this.ws && this.ws.continuity) {
+            return;
+        }
+        // The Melaton Miniport carries this page (#815): the app's native carrier keeps the link alive
+        // and the server pings it; a page ping on top was a third heartbeat waking the radio every 30 s
+        if (this.ws && this.ws.miniport) {
             return;
         }
 
