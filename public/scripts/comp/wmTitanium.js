@@ -422,9 +422,10 @@
     let superEl = null;
     let superAnim = null;
     let superBusy = false;
-    const SUPER_MS = 360;
-    const SUPER_EASE = 'cubic-bezier(0.16, 1, 0.3, 1)';
-    const SUPER_BACK = 'cubic-bezier(0.5, 0, 0.75, 0)';
+    // an even ease in and out: a fast-start curve put 60 % of the rise in its first 40 ms, which a
+    // phone that drops a frame showed as a jump (A53 recording, Nov 15)
+    const SUPER_MS = 420;
+    const SUPER_EASE = 'cubic-bezier(0.45, 0, 0.2, 1)';
     const SUPER_GROW = 26; // units the card grows by: the weather row
 
     /*
@@ -468,7 +469,8 @@
             frost.animate([{ transform: `translateY(${-y0}px) ${T}` }, { transform: `translateY(${-y1}px) ${T}` }], opt),
             extra.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'linear', fill: 'both' }),
             shade.animate([{ opacity: 0 }, { opacity: 1 }], opt),
-            body.animate([{ opacity: 0, transform: `translateY(${18 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS, delay: 80, easing: SUPER_EASE, fill: 'both' }),
+            // the notifications come once the card is on its way, not under the band before it moves
+            body.animate([{ opacity: 0, transform: `translateY(${18 * u}px)` }, { opacity: 1, transform: 'none' }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'cubic-bezier(0.2, 0, 0.2, 1)', fill: 'both' }),
             host.querySelector('.wm-ti-list').animate([{ opacity: 1 }, { opacity: 0 }], { duration: SUPER_MS * 0.5, easing: 'linear', fill: 'forwards' })
         ];
         superAnim[0].finished.then(() => { superBusy = false; }).catch(() => { superBusy = false; });
