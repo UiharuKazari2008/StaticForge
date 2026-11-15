@@ -1480,10 +1480,10 @@
         const lockKey = !admin ? { label: 'Lapis', action: go } : s.locked === false ? { label: 'Lock', action: () => send('lock') } : { label: 'Unlock', action: doUnlock };
         const running = !!(s.engine && s.climate);
         const pages = [
-            { title: t.title, line2: t.sub, line3: state.location && state.location.place ? `Parked at ${state.location.place}` : '', softKey: lockKey, onTap: go },
-            { title: running ? `Running${runInfo() && runInfo().until ? `, ${leftShort(runInfo().until - Date.now())} left` : ''}` : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: () => open('start') }, onTap: () => open('start') }
+            { icon: 'x:app-lapis-lg', title: t.title, line2: t.sub, line3: state.location && state.location.place ? `Parked at ${state.location.place}` : '', softKey: lockKey, onTap: go },
+            { icon: 'x:lapis-key-lg', title: running ? `Running${runInfo() && runInfo().until ? `, ${leftShort(runInfo().until - Date.now())} left` : ''}` : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: () => open('start') }, onTap: () => open('start') }
         ];
-        if (sv) pages.push({ title: sv.label, line2: sv.milesLeft <= 0 ? `${Math.abs(sv.milesLeft).toLocaleString()} miles over` : `in ${sv.milesLeft.toLocaleString()} miles`, line3: '', softKey: { label: 'Service', action: () => open('service') }, onTap: () => open('service') });
+        if (sv) pages.push({ icon: 'x:lapis-wrench-lg', title: sv.label, line2: sv.milesLeft <= 0 ? `${Math.abs(sv.milesLeft).toLocaleString()} miles over` : `in ${sv.milesLeft.toLocaleString()} miles`, line3: '', softKey: { label: 'Service', action: () => open('service') }, onTap: () => open('service') });
         return { label: todayName(), count: todaySuper(), icon: 'x:app-lapis-lg', pages, softKey: lockKey, onTap: go };
     }
 
