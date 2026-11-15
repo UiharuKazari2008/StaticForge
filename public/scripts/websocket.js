@@ -1000,6 +1000,14 @@ class WebSocketClient {
         'replication_delegation_status',
         // Sidebar live feed (Yozora #653): resubscribed on gadget changes, not user work
         'sidebar_live_subscribe',
+        // the gadgets' own recurring reads (slide show and screen saver pictures every 15 s, exchange
+        // rates, stock quotes, feed headlines): each flipped the five request badges to 1 and back
+        // on an idle desktop and woke every class observer (#849)
+        'sidebar_random_image',
+        'sidebar_fx',
+        'sidebar_quotes',
+        'sidebar_feed',
+        'sidebar_host_metrics',
         // Print queue (#831): read once on connect, then pushed
         'print_queue_get',
         // QuickCast (#734): its status feed (pushed since Nov 13) and the reads around it
