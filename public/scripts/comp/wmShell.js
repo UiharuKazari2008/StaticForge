@@ -626,6 +626,8 @@
             wall.setAttribute('aria-hidden', 'true');
             shell.prepend(wall);
         }
+        // 6.5.1 (#850) bars: Start and the X / ok live on the bottom button bar, the clock ends the thin title bar
+        if (BARS651) bars651Build();
         document.body.appendChild(shell);
 
         shell.querySelector('.wm-start').addEventListener('click', (e) => {
@@ -637,13 +639,16 @@
         // WM opens Start from the title too: a tap on the title bar's left part (the title, up to
         // the status icons) does what the Start button does, the menu, focus and history alike
         shell.querySelector('.wm-title').addEventListener('click', (e) => {
+            // 6.5.1 (#850) bars: the thin title bar is not Start (device: a tap on it opens the status
+            // drawer, wm651-drawer's part: its listener goes on .wm-titlebar, not here)
+            if (BARS651) return;
             const start = shell.querySelector('.wm-start');
             if (start.disabled || !start.getClientRects().length) return;
             e.stopPropagation();
             try { start.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
             start.click();
         });
-        shell.querySelector('.wm-title-action').addEventListener('click', (e) => pressTitleAction(e.currentTarget.dataset.kind));
+        cornerEl().addEventListener('click', (e) => pressTitleAction(e.currentTarget.dataset.kind));
         shell.querySelectorAll('.wm-softkey').forEach((btn) => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -906,12 +911,13 @@
         const isFlag = b.icon === art('start-flag');
         if (startBtn.classList.contains('is-flag') !== isFlag) startBtn.classList.toggle('is-flag', isFlag);
         if (startBtn.getAttribute('aria-label') !== b.text) startBtn.setAttribute('aria-label', b.text);
-        if (current === 'today' && !viewerActive && root.dataset.wmBoot !== 'install') setTitle(b.text);
+        // 6.5.1 (#850) bars: the home screen's thin title bar has no title text (device)
+        if (current === 'today' && !viewerActive && root.dataset.wmBoot !== 'install') setTitle(BARS651 ? '' : b.text);
     }
 
     function setTitleAction(kind) {
         if (stage && stage.mask.corner) return; // its step draws it (staged drawing)
-        const btn = shell.querySelector('.wm-title-action');
+        const btn = cornerEl();
         kind = kind === 'ok' || kind === 'close' ? kind : null;
         if (btn.hidden === !kind && (!kind || btn.dataset.kind === kind)) return;
         btn.hidden = !kind;
@@ -1042,6 +1048,8 @@
             btn.setAttribute('aria-haspopup', key && key.menu ? 'menu' : 'false');
             btn.setAttribute('aria-expanded', 'false');
         }
+        // 6.5.1 (#850) bars: a key that names a picture (key.icon) is a round button, the others text bubbles
+        if (BARS651 && !(stage && stage.mask.keys)) bars651Keys(softKeys);
         if (!(stage && stage.mask.keys)) shell.querySelector('.wm-sip').hidden = !(app && app.sip);
         // the corner follows the same layer as the soft keys
         refreshTitleAction();
@@ -1061,6 +1069,111 @@
         btn.classList.add('is-pressed');
         setTimeout(() => btn.classList.remove('is-pressed'), 120);
         if (typeof key.action === 'function') key.action();
+    }
+
+    // ---------------------------------------------------------------- 6.5.1 (#850) bars
+    /*
+     * Windows Mobile 6.5.3's bottom button bar and thin title bar, only with the bars toggle on
+     * (BARS651; the look is wm65.css "6.5.1 bars"). Measured on the device (480 x 640):
+     * - title bar 36 px: the program's title from x 8 (none on the home screen), the status icons
+     *   (the same 32 px cells as 6.5, at y 2), the clock ending 11 px before the edge. No Start, no X / ok.
+     * - button bar 68 px (classicblue_softkeybar): five 68 px slots on a 98 px pitch from x 10:
+     *   Start, the left soft key, the input panel button, the right soft key, the X / ok. A slot with
+     *   nothing to show stays empty; the others never move.
+     * - a soft key is a text bubble (102 px wide, wider for a long label: its text extent + 18 px,
+     *   both keys then take the wider one's width, each centred on its slot) or a round button
+     *   with a 48 px picture at 10,10. Which one is the PROGRAM's choice, not the label's: Notes,
+     *   Contacts, Calendar, Tasks, Messaging's lists, Phone, Start (lock) and the Settings folders
+     *   (back) show pictures; File Explorer, Task Manager, OneNote ("New" / "Menu" as text), the
+     *   home screen and every older program keep text. So a key asks for one with key.icon (a name
+     *   in BARS651_GLYPHS) in its program's softKeys(); there is no label-to-picture default.
+     * - held: the Selected art (the picture or text unchanged), back to normal when the pen leaves;
+     *   disabled: the Disabled art, the picture at 166 / 255 (60 % for a program's own), text #999.
+     * The status drawer that the title bar opens is wm651-drawer's part.
+     */
+    const BARS651_GLYPHS = ['menu', 'new', 'navback', 'navfwd', 'lock', 'edit', 'delete', 'dismiss', 'contacts', 'phone', 'snooze', 'close', 'ok',
+        'cal-day', 'cal-week', 'cal-month', 'cal-year', 'cal-agenda', 'task-done', 'task-undone'];
+
+    /** The title bar's X / ok button (on the bottom button bar with the 6.5.1 bars; a page may hold a .wm-title-action of its own). */
+    function cornerEl() {
+        return shell.querySelector(BARS651 ? '.wm-softkeys > .wm-title-action' : '.wm-title-action');
+    }
+
+    function bars651Build() {
+        const foot = shell.querySelector('.wm-softkeys');
+        foot.prepend(shell.querySelector('.wm-start'));
+        foot.append(shell.querySelector('.wm-titlebar > .wm-title-action'));
+        const clock = document.createElement('span');
+        clock.className = 'wm-clock651';
+        shell.querySelector('.wm-titlebar').append(clock);
+        bars651Clock();
+    }
+
+    let bars651Fmt = null;
+    /** The title bar's clock: hours and minutes as the home screen writes them, no AM / PM (device: "11:58"). */
+    function bars651Clock() {
+        const el = shell && shell.querySelector('.wm-clock651');
+        if (!el) return;
+        let text = '';
+        try {
+            if (!bars651Fmt) bars651Fmt = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+            for (const p of bars651Fmt.formatToParts(new Date())) if (p.type !== 'dayPeriod') text += p.value;
+        } catch (_) { const d = new Date(); text = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; }
+        text = text.trim();
+        if (el.textContent !== text) el.textContent = text;
+    }
+
+    // a text key's width without a layout pass: its label measured on a canvas in the key's font
+    let bars651Ctx = null;
+    let bars651Font = '';
+    const bars651Widths = new Map();
+    function bars651TextWidth(label) {
+        const px = rootPx();
+        const font = `${10.5 * px}px ${bars651Family()}`;
+        const fontKey = `${font}|${Math.round(bars651Pitch())}`;
+        if (fontKey !== bars651Font) { bars651Font = fontKey; bars651Widths.clear(); }
+        if (bars651Widths.has(label)) return bars651Widths.get(label);
+        let w = 0;
+        try {
+            if (!bars651Ctx) bars651Ctx = document.createElement('canvas').getContext('2d');
+            bars651Ctx.font = font;
+            w = bars651Ctx.measureText(label).width;
+        } catch (_) { w = String(label).length * 5.5 * px; }
+        // device: the bubble is its text + 18 px (9 units), 102 px (51 units) at least; here never past
+        // the room between its two round neighbours (128 px less a 13 px gap each side on the device)
+        w = Math.max(51 * px, Math.min(Math.ceil(w + 9 * px), Math.max(51 * px, bars651Pitch() * 2 - 47 * px)));
+        bars651Widths.set(label, w);
+        return w;
+    }
+    let bars651Fam = '';
+    function bars651Family() {
+        if (!bars651Fam) {
+            try { bars651Fam = getComputedStyle(shell).fontFamily || 'Tahoma, sans-serif'; } catch (_) { bars651Fam = 'Tahoma, sans-serif'; }
+        }
+        return bars651Fam;
+    }
+    /** The slots' pitch in px: five 34-unit slots spread between 5-unit margins (49 units on a 240-unit screen). */
+    function bars651Pitch() {
+        const px = rootPx();
+        return Math.max(49 * px, (viewW() - 44 * px) / 4);
+    }
+
+    /** Draw the two keys: labels (the buttons' text, already written) and their pictures' names. */
+    function bars651Paint(labels, icons) {
+        const foot = shell.querySelector('.wm-softkeys');
+        let w = 0;
+        ['left', 'right'].forEach((side, i) => {
+            const btn = foot.querySelector(`.wm-softkey[data-side="${side}"]`);
+            const icon = icons[i] && BARS651_GLYPHS.includes(icons[i]) ? icons[i] : '';
+            if ((btn.dataset.bkIcon || '') !== icon) { if (icon) btn.dataset.bkIcon = icon; else delete btn.dataset.bkIcon; }
+            if (!icon && labels[i]) w = Math.max(w, bars651TextWidth(String(labels[i])));
+        });
+        const want = w ? `${w}px` : '';
+        if (foot.style.getPropertyValue('--wm-bk-w') !== want) { if (want) foot.style.setProperty('--wm-bk-w', want); else foot.style.removeProperty('--wm-bk-w'); }
+    }
+
+    function bars651Keys(keys) {
+        bars651Paint([keys.left ? keys.left.label : '', keys.right ? keys.right.label : ''], [keys.left ? keys.left.icon : '', keys.right ? keys.right.icon : '']);
     }
 
     let popupOnClose = null;
@@ -1723,7 +1836,7 @@
     /** What the screen shows now, to put back for a tick or two after a switch. */
     function stageSnapshot() {
         if (!shell) return null;
-        const corner = shell.querySelector('.wm-title-action');
+        const corner = cornerEl();
         const keys = [...shell.querySelectorAll('.wm-softkey')];
         const app = current && apps.get(current);
         return {
@@ -1732,6 +1845,8 @@
             title: shell.querySelector('.wm-title').textContent,
             corner: { hidden: corner.hidden, kind: corner.dataset.kind },
             keys: keys.map((b) => b.textContent),
+            // 6.5.1 (#850) bars: the keys' pictures
+            icons: keys.map((b) => b.dataset.bkIcon || ''),
             sip: shell.querySelector('.wm-sip').hidden
         };
     }
@@ -1741,7 +1856,7 @@
         try { if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* staged */ }
         const T = STAGE_TICK;
         const titleEl = shell.querySelector('.wm-title');
-        const corner = shell.querySelector('.wm-title-action');
+        const corner = cornerEl();
         const keyEls = [...shell.querySelectorAll('.wm-softkey')];
         const sip = shell.querySelector('.wm-sip');
         const oldPage = before.page && before.page !== page ? before.page : null;
@@ -1754,8 +1869,9 @@
         const oldCorner = () => { corner.hidden = before.corner.hidden; if (before.corner.kind) corner.dataset.kind = before.corner.kind; };
         const noCorner = () => { corner.hidden = true; };
         const newCorner = () => { if (stage) stage.mask.corner = false; refreshTitleAction(); };
-        const labels = (list) => keyEls.forEach((b, i) => { b.textContent = list[i] || ''; });
-        const oldKeys = () => { labels(before.keys); sip.hidden = before.sip; };
+        // 6.5.1 (#850) bars: a held key keeps its picture (icons: the names bars651Keys wrote)
+        const labels = (list, icons) => { keyEls.forEach((b, i) => { b.textContent = list[i] || ''; }); if (BARS651) bars651Paint(list, icons || []); };
+        const oldKeys = () => { labels(before.keys, before.icons); sip.hidden = before.sip; };
         const newKeys = () => { if (stage) { stage.mask.keys = false; stage.mask.corner = false; } renderSoftKeys(); };
         const finish = () => { showPage(); newTitle(); renderSoftKeys(); stageTokens([]); };
         const toToday = id === 'today';
@@ -1782,12 +1898,12 @@
             const home = apps.get('today');
             let homeKeys = ['', ''];
             try { const k = home.softKeys() || {}; homeKeys = [k.left ? k.left.label : '', k.right ? k.right.label : '']; } catch (_) { /* blank keys */ }
-            hold(todayPage); titleEl.textContent = startButtonPrefs().text; noCorner(); labels(homeKeys); sip.hidden = true;
+            hold(todayPage); titleEl.textContent = BARS651 ? '' : startButtonPrefs().text; noCorner(); labels(homeKeys); sip.hidden = true;
             stageTokens(['body-home', 'title-home', 'keys-home']);
             stageRun([
                 [2 * T, () => { newTitle(); stageTokens(['body-home', 'title-app', 'keys-home']); }],
                 [3 * T, () => { showPage(); stageTokens(['keys-home']); }],
-                [2 * T, () => { stageTokens([]); newCorner(); labels([(softKeys.left || {}).label, (softKeys.right || {}).label]); }],
+                [2 * T, () => { stageTokens([]); newCorner(); labels([(softKeys.left || {}).label, (softKeys.right || {}).label], [(softKeys.left || {}).icon, (softKeys.right || {}).icon]); }],
                 [T, newKeys]
             ], finish);
             return;
@@ -1833,7 +1949,7 @@
         const page = pageFor(app);
         page.hidden = false;
         // Today's title bar reads "Start"; an app shows its name and the X (or ok) at the right
-        setTitle(id === 'today' ? startButtonPrefs().text : (app.title || id));
+        setTitle(id === 'today' ? (BARS651 ? '' : startButtonPrefs().text) : (app.title || id));
         if (typeof app.show === 'function') app.show(page);
         const y = pageScroll.get(page);
         if (y) { page.scrollTop = y; requestAnimationFrame(() => { if (!page.hidden) page.scrollTop = y; }); }
@@ -2620,6 +2736,8 @@
             setTimeout(() => {
                 const today = apps.get('today');
                 if (current === 'today' && document.documentElement.dataset.screenOff === undefined && today && today.page) today.refresh();
+                // 6.5.1 (#850) bars: the title bar's clock rides the same tick
+                if (BARS651 && document.documentElement.dataset.screenOff === undefined) bars651Clock();
                 minute();
             }, 60000 - (Date.now() % 60000) + 50);
         };
@@ -2629,6 +2747,7 @@
     function refreshStatus() {
         if (!shell) return;
         applyStartButton();
+        if (BARS651) bars651Clock(); // 6.5.1 (#850) bars: right again after the screen was off
         // on every change (statusDirty): write only what changed (an attribute write, even of the same value,
         // invalidates the [data-icon] rules and lays the title bar out again)
         const ws = window.wsClient;
@@ -3167,7 +3286,8 @@
         if (extOn && !bezel && !cameraIgnoredNow() && root.dataset.wmBezelEdge === 'top' && hole.width > 0 && hole.height > 0) {
             // down to where the bezel band puts the camera's lower edge (cameraBottom), not Android's box:
             // the box stops short of a punch hole's lens and left a sliver of it under the bar
-            extend = Math.max(0, Math.ceil(cameraBottom(hole) - 26 * pxu));
+            // 6.5.1 (#850) bars: the thin title bar is 18 units
+            extend = Math.max(0, Math.ceil(cameraBottom(hole) - (BARS651 ? 18 : 26) * pxu));
         }
         if (extend > 0) {
             if (root.style.getPropertyValue('--wm-camera-extend') !== `${extend}px`) root.style.setProperty('--wm-camera-extend', `${extend}px`);
@@ -9257,7 +9377,7 @@
         inst.querySelector('.wm-installer-done-note').textContent = 'If you need more storage space, you can remove installed programs.';
         bootTitleKind = 'ok';
         refreshTitleAction();
-        const btn = shell.querySelector('.wm-title-action');
+        const btn = cornerEl();
         const onOk = (e) => {
             e.stopImmediatePropagation();
             btn.removeEventListener('click', onOk, true);

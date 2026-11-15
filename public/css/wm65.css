@@ -1452,9 +1452,572 @@ html.ui-mobile[data-wm-version="6.5"] .wm-today-timeout {
 /* ---- end 6.5.1 drawer ---- */
 
 /* ---- 6.5.1 controls: check boxes, option buttons, drop-downs, buttons, scroll bars, menus, message boxes, list rows ---- */
+/* Windows Mobile 6.5.3's finger-sized common controls (device: VGA emulator, halved to units).
+ * The fonts are 6.5's (Tahoma 21 px = 10.5 on every control asked); what changes is the size of
+ * each control and its art. The rule the device applies to a dialog: a check box, option button,
+ * push button and one-line edit become 64 px (32 units) tall, a drop-down 70 px (35), and each
+ * control below moves down by what the ones above it gained; the gaps of the 6.5 page stay.
+ * Art: the ROM's files (v651-*). Three states are not in the unpacked ROM and are cut from the
+ * device screen over white: radio-off, radio-on-inactive, combo-arrow-narrow. */
+/* check box and option button: 40 x 40 art at the control's left edge, centred in the 64 px
+ * control (Sounds & Notifications: control y 134, art y 146); the label 8 px after the art; rows
+ * 64 to 68 px apart (Sounds: 134, 200, 264, 332, 398) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check {
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input {
+    width: calc(20 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    background: url('/static_images/wm65/v651-check-off@2x.png') center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="checkbox"]:active:not(:disabled) {
+    background-image: url('/static_images/wm65/v651-check-off-pushed@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="checkbox"]:disabled {
+    background-image: url('/static_images/wm65/v651-check-off-inactive@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="checkbox"]:checked {
+    background-image: url('/static_images/wm65/v651-check-on@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="checkbox"]:checked:active:not(:disabled) {
+    background-image: url('/static_images/wm65/v651-check-on-pushed@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="checkbox"]:checked:disabled {
+    background-image: url('/static_images/wm65/v651-check-on-inactive@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="radio"] {
+    margin-right: 0;
+    background-image: url('/static_images/wm65/v651-radio-off@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="radio"]:active:not(:disabled) {
+    background-image: url('/static_images/wm65/v651-radio-off-pushed@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="radio"]:disabled {
+    background-image: url('/static_images/wm65/v651-radio-off-inactive@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="radio"]:checked {
+    background-image: url('/static_images/wm65/v651-radio-on@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="radio"]:checked:active:not(:disabled) {
+    background-image: url('/static_images/wm65/v651-radio-on-pushed@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-check input[type="radio"]:checked:disabled {
+    background-image: url('/static_images/wm65/v651-radio-on-inactive@2x.png');
+}
+
+/* push button: 64 px tall, the PushButton art (60 x 60) as a 9-slice over the whole control
+ * (Screen > Align Screen 182 x 64: slices of 12 px give the least difference from the device, 1.6
+ * of 255 a pixel), the label bold and black; the default / focused button takes PushButtonFocus,
+ * a disabled one PushButtonDisabled with its label grey */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-button {
+    height: calc(32 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px)) !important;
+    border: calc(6 * var(--wm-px)) solid transparent !important;
+    border-image: url('/static_images/wm65/v651-pushbutton-normal@2x.png') 12 fill / calc(6 * var(--wm-px)) stretch !important;
+    background: none !important;
+    color: #000 !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-button:focus-visible,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-button.is-default {
+    border-image-source: url('/static_images/wm65/v651-pushbutton-focus@2x.png') !important;
+    outline: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-button:active:not(:disabled) {
+    border-image-source: url('/static_images/wm65/v651-pushbutton-pushed@2x.png') !important;
+    background: none !important;
+    color: #fff !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-button:disabled {
+    border-image-source: url('/static_images/wm65/v651-pushbutton-disabled@2x.png') !important;
+    border-color: transparent !important;
+    color: #9c9a9c !important;
+}
+
+/* one-line edit: 64 px tall (Owner Information: 104, 170 ... a 66 px pitch), its label still
+ * beside it */
+html.ui-mobile[data-wm-rev="6.5.1"] input.wm-edit {
+    height: calc(32 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row {
+    margin-bottom: calc(1 * var(--wm-px));
+}
+
+/* drop-down: 70 px tall in the 2 px black frame, the value 3 px inside the frame, and the grey
+ * narrow arrow button (26 x 64) inside the frame's right end, 1 px clear above and below (GPS:
+ * frame x 6 - 443, y 236 - 305, the art x 416 - 441, y 239 - 302). The wide arrow art (64 x 64)
+ * was not seen on any page of the device (every drop-down list of Settings draws the narrow one).
+ * Pressed (its list open) it takes the pushed art, disabled the inactive one. */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo {
+    height: calc(35 * var(--wm-px));
+    padding: 0 0 0 calc(1.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo::after,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo[aria-expanded="true"]::after {
+    width: calc(13 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    border-left: 0;
+    transform: none;
+    background: url('/static_images/wm65/v651-combo-arrow-narrow@2x.png') center / 100% 100% no-repeat;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo:active:not(:disabled)::after,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo[aria-expanded="true"]::after {
+    background-image: url('/static_images/wm65/v651-combo-arrow-narrow-pushed@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo:disabled::after {
+    background-image: url('/static_images/wm65/v651-combo-arrow-narrow-inactive@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-edit {
+    height: calc(35 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-combo-edit .wm-combo {
+    width: calc(15 * var(--wm-px));
+}
+
+/* a drop-down's label stands above it (Sounds & Notifications > Notifications, Phone, Clock &
+ * Alarms: the label 30 to 32 px tall, the box 2 px under it and as wide as the page allows, the
+ * next label 6 to 10 px under the box). The device keeps the label beside a short drop-down on a
+ * few pages (Password, Backlight); ours puts every labelled one above. */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row:has(> .wm-combo),
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row:has(> .wm-combo-edit) {
+    display: block;
+    margin-bottom: calc(3 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row:has(> .wm-combo) > :is(label, .wm-form-label),
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-row:has(> .wm-combo-edit) > :is(label, .wm-form-label) {
+    display: block;
+    height: calc(15 * var(--wm-px));
+    margin-bottom: calc(1 * var(--wm-px));
+    line-height: calc(15 * var(--wm-px));
+    text-align: left;
+}
+
+/* a drop-down's list: not hung under its box but centred across the screen, its top 128 px
+ * down the screen whichever box opened it, always five rows tall (324 px with the frame) however
+ * few it has, 17 px wider than its box (wmPrograms.js bindCombo hands the width over); 64 px rows
+ * in the box's face, the current one under the list selector art, the text 9 px inside */
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] {
+    top: calc(var(--wm-safe-top, 0px) + 64 * var(--wm-px)) !important;
+    bottom: auto !important;
+    left: 50% !important;
+    right: auto !important;
+    transform: translateX(-50%);
+    width: var(--wm651-list-w, calc(218.5 * var(--wm-px)));
+    max-width: calc(100% - calc(4 * var(--wm-px))) !important;
+    height: calc(162 * var(--wm-px));
+    max-height: none !important;
+    overflow-y: auto !important;
+    margin: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-image: none;
+    border-radius: 0;
+    background: #fff;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item {
+    height: calc(32 * var(--wm-px));
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+    padding: 0 calc(4 * var(--wm-px)) 0 calc(3.5 * var(--wm-px)) !important;
+    font-size: calc(11.5 * var(--wm-px));
+    font-weight: normal;
+    color: var(--wm65-text);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item.is-radio[aria-checked="true"] {
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+    background: none !important;
+    color: #fff;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"]) .wm-popup[data-side="dropdown"] > .wm-popup-item:hover:not(:disabled):not([aria-checked="true"]) {
+    background: none !important;
+    color: var(--wm65-text);
+}
+
+/* ---- scroll bar: the arrow buttons are 40 px tall with their own 26 x 40 art (6.5: the 26 x 26
+ * art stretched to 39); thumb, track and width as 6.5. File Explorer: up button y 102 - 141, the
+ * thumb from 142. The down button is the ROM's up art turned over. ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button {
+    height: calc(20 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement {
+    background-image: url('/static_images/wm65/v651-scrollbar-up@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+    background-image: var(--wm651-art-scrollbar-up-selected, url('/static_images/wm65/v651-scrollbar-up-selected@2x.png'));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment {
+    background-image: url('/static_images/wm65/v651-scrollbar-down@2x.png');
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+    background-image: var(--wm651-art-scrollbar-down-selected, url('/static_images/wm65/v651-scrollbar-down-selected@2x.png'));
+}
+
+/* ---- menus (soft key, tap-and-hold, submenus): 78 px rows where 6.5 has 62 (File Explorer's
+ * hold menu: Rename to Delete 77.5 px apart, 61.5 on 6.5); the frame, the 8 px above the first
+ * row, the selector, the 2 px separators, the arrow bars and the text's place in its row (3.5 px
+ * above the row's middle) are 6.5's ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-popup:not([data-side="dropdown"]) > .wm-popup-item {
+    height: calc(39 * var(--wm-px));
+}
+
+/* the drop-downs of a folder bar (File Explorer's folder and sort lists) are menus now: the menu
+ * frame and selector, 78 px rows, the first row under the selector until the finger comes; the
+ * frame's top line 12 px under the bar, 13 px in from the left edge or 17 units from the right */
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] {
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: calc(7 * var(--wm-px));
+    border-image: url('/static_images/wm65/theme-classicblue-menuborder-even@2x.png') 26 48 34 28 fill / calc(13 * var(--wm-px)) calc(24 * var(--wm-px)) calc(17 * var(--wm-px)) calc(14 * var(--wm-px)) / calc(6 * var(--wm-px)) calc(17 * var(--wm-px)) calc(10 * var(--wm-px)) calc(7 * var(--wm-px)) stretch;
+    background: none;
+    padding: 0;
+    margin: calc(5 * var(--wm-px)) calc(17 * var(--wm-px)) 0 calc(6.5 * var(--wm-px));
+    min-width: calc(60 * var(--wm-px));
+    overflow-x: hidden;
+    scrollbar-width: none;
+    color: var(--wm-menu-text);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"]::-webkit-scrollbar {
+    display: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-item {
+    width: auto;
+    min-width: calc(100% - calc(7 * var(--wm-px)));
+    height: calc(39 * var(--wm-px));
+    margin: 0 calc(3.5 * var(--wm-px));
+    padding: 0 calc(12.5 * var(--wm-px)) calc(2 * var(--wm-px)) calc((15.5 + 12 * var(--wm-indent, 0)) * var(--wm-px)) !important;
+    font-size: calc(13 * var(--wm-px));
+    font-weight: bold;
+    color: var(--wm-menu-text);
+    background: none !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-item:hover:not(:disabled),
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-item:focus-visible,
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"]:not(:hover) > .wm-popup-item:first-child:not(:disabled) {
+    color: #fff;
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: var(--wm65-art-menuselector, url('/static_images/wm65/theme-classicblue-menuselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-item:disabled {
+    color: var(--wm65-gray);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-sep {
+    height: calc(1 * var(--wm-px));
+    margin: 0 calc(10.5 * var(--wm-px));
+    background: var(--wm-menu-text);
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-item.is-radio[aria-checked="true"]::before {
+    left: calc((6 + 12 * var(--wm-indent, 0)) * var(--wm-px));
+}
+
+/* a row with a picture keeps 6.5's 61 px (the folder list's Storage Card row on the device) */
+html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:not(:has(:is(.wm-combo, .wm-combo-edit)[aria-expanded="true"])) .wm-popup[data-side="dropdown"] > .wm-popup-item.has-icon {
+    height: calc(30.5 * var(--wm-px));
+}
+
+/* ---- message box: 462 px wide (9 px from the screen edges), frame and caption as 6.5; the text
+ * wraps sooner (the device breaks "remove the folder 'A' and / all": between 269 and 300 px of
+ * text width, 293 here); the buttons are the push button art, each 186 x 64, 2 px apart, centred,
+ * under the text as on 6.5, and 80 px of empty box under them (two boxes measured: 3 and 4 lines
+ * of text, 329 and 358 px tall) ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-layer {
+    padding: calc(26 * var(--wm-px)) calc(4.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox,
+html.ui-mobile[data-wm-rev="6.5.1"] body > #confirmationDialog,
+html.ui-mobile[data-wm-rev="6.5.1"] body > #bootMessageBox {
+    max-width: calc(231 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] body > #confirmationDialog,
+html.ui-mobile[data-wm-rev="6.5.1"] body > #bootMessageBox {
+    left: calc(env(safe-area-inset-left) + 4.5 * var(--wm-px)) !important;
+    right: calc(env(safe-area-inset-right) + 4.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-body {
+    padding-right: calc(24 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons {
+    gap: calc(1 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) calc(39.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons button,
+html.ui-mobile[data-wm-rev="6.5.1"] #bootMessageBox .boot-message-box-buttons button,
+html.ui-mobile[data-wm-rev="6.5.1"] #confirmationDialog .modal-content button {
+    min-width: calc(93 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    padding: 0 calc(1 * var(--wm-px)) !important;
+    border: calc(6 * var(--wm-px)) solid transparent !important;
+    border-image: url('/static_images/wm65/v651-pushbutton-normal@2x.png') 12 fill / calc(6 * var(--wm-px)) stretch !important;
+    background: none !important;
+    color: #000 !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons button.is-default,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons button:focus-visible {
+    border-image-source: url('/static_images/wm65/v651-pushbutton-focus@2x.png') !important;
+    box-shadow: none !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons button:active,
+html.ui-mobile[data-wm-rev="6.5.1"] #bootMessageBox .boot-message-box-buttons button:active,
+html.ui-mobile[data-wm-rev="6.5.1"] #confirmationDialog .modal-content button:active {
+    border-image-source: url('/static_images/wm65/v651-pushbutton-pushed@2x.png') !important;
+    background: none !important;
+    color: #fff !important;
+}
+
+/* ---- list rows: a list view's row gains 16 px (8 units). Measured: File Explorer and Task
+ * Manager 70 px (6.5: 54), Messaging's two-line account rows 94 (78), a row with a check box 82
+ * (Home > Items), a list box row 64 to 66 (Home > Appearance); the selector art is drawn at its
+ * own 72 px over a 70 px row, 1 px past it above and below. The other lists follow the rule. ---- */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-fe .fe-list:not(.fe-grid) .fe-row {
+    height: calc(35 * var(--wm-px));
+    contain-intrinsic-size: auto calc(35 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtm-row {
+    height: calc(35 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] :is(.wm-fe .fe-row, .wm-task-manager .wtm-row, .wm-browser .wmb-sub-row).is-selected {
+    border-image-outset: calc(0.5 * var(--wm-px)) 0;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-browser .wmb-sub-row {
+    height: calc(35 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msg .msg-row,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-chat .wch-row {
+    height: calc(46.5 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-notes .nt-row {
+    height: calc(25 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-listbox-row {
+    min-height: calc(33 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-listbox-row:has(.wm-check) {
+    min-height: calc(41 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-listbox-row.is-selected {
+    border-style: solid;
+    border-width: 0;
+    border-color: transparent;
+    border-image: var(--wm65-art-listviewselector, url('/static_images/wm65/theme-classicblue-listviewselector@2x.png')) 14 12 14 8 fill / calc(7 * var(--wm-px)) calc(6 * var(--wm-px)) calc(7 * var(--wm-px)) calc(4 * var(--wm-px)) stretch;
+    background-color: transparent !important;
+    color: #fff;
+}
 /* ---- end 6.5.1 controls ---- */
 
 /* ---- 6.5.1 pivot: tabs as a sliding band under the title bar ---- */
+/* Windows Mobile 6.5.3 (VGA emulator, halved to units): a tabbed page has no tab row; a band 32
+ * units tall under the title bar (ToolbarWindow32 "Pivot") names the current page in Tahoma bold
+ * 12 between two arrows (classicblue_pivot_*arrow.png, 18 x 32) and the pages before and after in
+ * plain Tahoma at either side, white, cut with an ellipsis ("Notificatio...", "Storage C...").
+ * Layout read from eleven Settings pages:
+ *   - the middle block is arrow 18 + 5.5 + name (71 at least, centred) + 7.5 + arrow 18 = 120
+ *     units at least; a longer name pushes both arrows out ("Program Buttons": arrows at 46.5 and
+ *     177.5). The block is centred 1 unit right of the screen's middle;
+ *   - the left name is centred in the box from 2 units to 4 units before the block, the right
+ *     name in the box from 1.5 units after the block to 4.5 units before the edge.
+ * The band's picture: Classic Blue's pivot background is not among the unpacked ROM files (the
+ * other themes' are 8 x 64 strips), so its rows are read from a device grab: a black row, a
+ * light row, a slate fall to row 34, a step down at row 35, near black to row 50, then a rise.
+ * The slate turns with the workspace colour like every Classic Blue value above.
+ * wmPrograms.js (pivotTabs) puts .wm-pivot into every .wm-tabs strip; the program's .wm-tab
+ * buttons stay there, not drawn. A strip not yet fitted announces itself with the 1 ms
+ * animation below (one animationstart, then .wm-pivot-on stops it). */
+@keyframes wm651-pivot-seen { from { outline-color: transparent; } to { outline-color: transparent; } }
+
+html.ui-mobile[data-wm-rev="6.5.1"] {
+    --wm651-pivot-h: calc(201deg + var(--wm65-dh));
+    --wm651-pivot-bg: linear-gradient(to bottom,
+        #000 0 calc(0.5 * var(--wm-px)),
+        hsl(calc(var(--wm651-pivot-h) + 2deg) calc(42.6% * var(--wm65-k)) 77.5%) calc(0.5 * var(--wm-px)) calc(1 * var(--wm-px)),
+        hsl(var(--wm651-pivot-h) calc(20% * var(--wm65-k)) 59.8%) calc(1 * var(--wm-px)) calc(1.25 * var(--wm-px)),
+        hsl(var(--wm651-pivot-h) calc(20% * var(--wm65-k)) 40.2%) calc(5.25 * var(--wm-px)),
+        hsl(var(--wm651-pivot-h) calc(18% * var(--wm65-k)) 27.3%) calc(10.25 * var(--wm-px)),
+        hsl(var(--wm651-pivot-h) calc(16.3% * var(--wm65-k)) 19.2%) calc(14.75 * var(--wm-px)) calc(17.5 * var(--wm-px)),
+        hsl(var(--wm651-pivot-h) calc(34.7% * var(--wm65-k)) 9.6%) calc(17.5 * var(--wm-px)),
+        hsl(calc(var(--wm651-pivot-h) + 9deg) calc(20% * var(--wm65-k)) 7.8%) calc(19.75 * var(--wm-px)) calc(25.25 * var(--wm-px)),
+        hsl(var(--wm651-pivot-h) calc(14.8% * var(--wm65-k)) 22.5%) calc(31.75 * var(--wm-px)));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-tabs {
+    order: -1;
+    position: relative;
+    display: block;
+    flex: 0 0 auto;
+    width: auto;
+    height: calc(32 * var(--wm-px));
+    min-height: calc(32 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    background: var(--wm651-pivot-bg);
+    animation: wm651-pivot-seen 1ms;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-tabs.wm-pivot-on {
+    animation: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-tabs > .wm-tab,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-tabs > .wm-tabs-spin {
+    display: none !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot {
+    display: flex;
+    box-sizing: border-box;
+    height: 100%;
+    padding: 0 calc(4.5 * var(--wm-px)) 0 calc(2 * var(--wm-px));
+    color: #fff;
+    font: bold calc(12 * var(--wm-px)) / calc(32 * var(--wm-px)) var(--wm-font);
+    white-space: nowrap;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot button {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    height: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0;
+    outline: 0;
+    background: none;
+    box-shadow: none;
+    color: inherit !important;
+    font: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side {
+    flex: 1 1 0;
+    overflow: hidden;
+    font-weight: normal !important;
+    text-align: center;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="-1"] {
+    flex-basis: calc(2 * var(--wm-px));
+    margin-right: calc(4 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side[data-dir="1"] {
+    margin-left: calc(1.5 * var(--wm-px)) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-side > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-mid {
+    flex: 0 0 auto;
+    display: flex;
+    max-width: calc(100% - 44 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-arrow {
+    flex: 0 0 calc(18 * var(--wm-px));
+    width: calc(18 * var(--wm-px));
+    background: image-set(url('/static_images/wm65/v651-pivot-left.png') 1x, url('/static_images/wm65/v651-pivot-left@2x.png') 2x) center / calc(18 * var(--wm-px)) calc(32 * var(--wm-px)) no-repeat !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-arrow[data-dir="1"] {
+    background-image: image-set(url('/static_images/wm65/v651-pivot-right.png') 1x, url('/static_images/wm65/v651-pivot-right@2x.png') 2x) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot-cur {
+    flex: 0 1 auto;
+    box-sizing: content-box;
+    min-width: calc(71 * var(--wm-px));
+    padding: 0 calc(7.5 * var(--wm-px)) 0 calc(5.5 * var(--wm-px));
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+}
+
+/* one page: its name alone, no arrows (Contrast, Remove Programs, Encryption ...) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot.is-single .wm-pivot-arrow,
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-pivot.is-single .wm-pivot-side {
+    visibility: hidden;
+}
+
+/* a settings page: the band stands for the heading line; a page without tabs shows its name
+   in the band the same way (the applet's name is in the title bar) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form-hdr.wm-pivot-hdr-off {
+    display: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-set > .wm-form-hdr:not(:has(*)) {
+    justify-content: center;
+    height: calc(32 * var(--wm-px));
+    padding: 0 calc(4 * var(--wm-px));
+    border-bottom: 0;
+    background: var(--wm651-pivot-bg);
+    color: #fff;
+    font: bold calc(12 * var(--wm-px)) / calc(32 * var(--wm-px)) var(--wm-font);
+    text-indent: calc(1 * var(--wm-px));
+}
 /* ---- end 6.5.1 pivot ---- */
 
 /* ---- 6.5.1 notices: notification bubble buttons ---- */

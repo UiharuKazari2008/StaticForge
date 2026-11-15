@@ -416,8 +416,159 @@
      *       held repeats after 575 ms every 170 ms; a tap on the cut tab selects it and scrolls
      *       one tab so it is whole.
      */
+    // ---- 6.5.1 (#850) pivot: Windows Mobile 6.5.3 has no tab row at the bottom of a tabbed page.
+    // A dark band under the title bar (ToolbarWindow32 "Pivot", 480 x 64 device px) names the
+    // current page in bold between two arrows, with the page before and the page after in plain
+    // text at either side. Measured on the 6.5.3 emulator (Settings: About, Power, Memory,
+    // Backlight, Buttons, Sounds & Notifications ...):
+    //   - the pages go round: the first page has the last one at its left; with two pages the
+    //     same name stands at both sides;
+    //   - a tap on an arrow or on a side name changes the page on pen up (no pressed look, no
+    //     repeat while held); a tap on the current name does nothing;
+    //   - a quick sideways stroke on the band OR on the page changes it (right to left = next).
+    //     It is a flick, judged at pen up: 60 px in 100 ms and 80 px in 300 ms change the page,
+    //     60 px in 300 ms, 200 px in 900 ms and a fast stroke that rests before pen up do not
+    //     (about 0.25 device px / ms = 0.125 units / ms at release); a diagonal stroke does not;
+    //   - the change is drawn at once, band and page together: nothing slides (no frame between
+    //     the two states at 17 ms a grab).
+    // The program's own .wm-tab buttons stay in the strip (not drawn) and are clicked for it, so
+    // every program's tab code works as it is. A strip that never reaches fitTabs is picked up
+    // by the animationstart of wm65.css's `wm651-pivot-seen` when it is first drawn.
+    const pivotOn = () => document.documentElement.dataset.wmRev === '6.5.1';
+    const pivotTabsOf = (strip) => [...strip.querySelectorAll('.wm-tab')].filter((t) => !t.disabled && t.getAttribute('aria-disabled') !== 'true');
+    const pivotIsCurrent = (t) => t.getAttribute('aria-selected') === 'true' || t.classList.contains('is-selected');
+
+    /** The tab `dir` steps from the current one, going round; null with one tab or none. */
+    function pivotNeighbour(strip, dir) {
+        const tabs = pivotTabsOf(strip);
+        if (tabs.length < 2) return null;
+        const i = Math.max(0, tabs.findIndex(pivotIsCurrent));
+        return tabs[(i + dir + tabs.length) % tabs.length];
+    }
+
+    function pivotGo(strip, dir) {
+        const t = pivotNeighbour(strip, dir);
+        if (t) t.click();
+    }
+
+    function pivotDraw(strip) {
+        const band = strip.querySelector(':scope > .wm-pivot');
+        if (!band) return;
+        const all = [...strip.querySelectorAll('.wm-tab')];
+        const cur = all.find(pivotIsCurrent) || all[0];
+        const prev = pivotNeighbour(strip, -1);
+        const next = pivotNeighbour(strip, 1);
+        const label = (t) => (t ? t.textContent.trim() : '');
+        const set = (sel, text) => { const el = band.querySelector(sel); if (el.textContent !== text) el.textContent = text; };
+        set('.wm-pivot-cur', label(cur));
+        set('.wm-pivot-side[data-dir="-1"] > span', label(prev));
+        set('.wm-pivot-side[data-dir="1"] > span', label(next));
+        const single = !prev;
+        if (band.classList.contains('is-single') !== single) band.classList.toggle('is-single', single);
+    }
+
+    /** A flick on the band or the page (touch only): judged at the end of the stroke. */
+    function pivotFlick(host) {
+        if (host.wmPivotFlick) return;
+        host.wmPivotFlick = true;
+        let track = null;
+        const stripNow = () => host.querySelector(':scope > .wm-tabs.wm-pivot-on');
+        host.addEventListener('touchstart', (e) => {
+            track = null;
+            if (e.touches.length !== 1 || !stripNow()) return;
+            // not from a control with a sideways drag of its own, nor from text being edited
+            for (let n = e.target; n && n !== host; n = n.parentElement) {
+                if (n.matches('input, textarea, select, canvas, [contenteditable="true"], [role="slider"], .wm-trackbar, [data-no-pivot-flick]')) return;
+                if (n.scrollWidth > n.clientWidth + 1 && /auto|scroll/.test(getComputedStyle(n).overflowX)) return;
+            }
+            const p = e.touches[0];
+            track = [{ x: p.clientX, y: p.clientY, t: e.timeStamp }];
+        }, { passive: true });
+        host.addEventListener('touchmove', (e) => {
+            if (!track) return;
+            if (e.touches.length !== 1) { track = null; return; }
+            const p = e.touches[0];
+            track.push({ x: p.clientX, y: p.clientY, t: e.timeStamp });
+            if (track.length > 24) track.splice(1, track.length - 24);
+        }, { passive: true });
+        host.addEventListener('touchcancel', () => { track = null; }, { passive: true });
+        host.addEventListener('touchend', (e) => {
+            const tr = track;
+            track = null;
+            const strip = stripNow();
+            if (!tr || tr.length < 2 || !strip) return;
+            const unit = parseFloat(getComputedStyle(host).getPropertyValue('--wm-px')) || 1;
+            const first = tr[0];
+            const last = tr[tr.length - 1];
+            const dx = last.x - first.x;
+            const dy = last.y - first.y;
+            // sideways (the device ignored a stroke of 150 across and 120 down), and far enough
+            if (Math.abs(dx) < 20 * unit || Math.abs(dx) < 2 * Math.abs(dy)) return;
+            // the speed over the last 100 ms before the finger left (a rest before lifting = none)
+            const from = tr.find((s) => e.timeStamp - s.t <= 100) || last;
+            const span = e.timeStamp - from.t;
+            const v = span > 0 ? (last.x - from.x) / span : 0;
+            if (Math.abs(v) < 0.125 * unit || Math.sign(v) !== Math.sign(dx)) return;
+            pivotGo(strip, dx < 0 ? 1 : -1);
+        }, { passive: true });
+    }
+
+    function pivotTabs(strip) {
+        if (!strip || !strip.isConnected) return;
+        let band = strip.querySelector(':scope > .wm-pivot');
+        if (!band) {
+            strip.querySelectorAll('.wm-tab').forEach((t) => { t.hidden = false; t.style.width = ''; });
+            band = document.createElement('div');
+            band.className = 'wm-pivot';
+            band.innerHTML = '<button type="button" class="wm-pivot-side" data-dir="-1" tabindex="-1"><span></span></button>'
+                + '<div class="wm-pivot-mid"><button type="button" class="wm-pivot-arrow" data-dir="-1" aria-label="Previous page"></button>'
+                + '<span class="wm-pivot-cur"></span>'
+                + '<button type="button" class="wm-pivot-arrow" data-dir="1" aria-label="Next page"></button></div>'
+                + '<button type="button" class="wm-pivot-side" data-dir="1" tabindex="-1"><span></span></button>';
+            band.addEventListener('click', (e) => {
+                e.stopPropagation(); // the program's strip listener hears only the tab's own click
+                const b = e.target.closest('[data-dir]');
+                if (b) pivotGo(strip, Number(b.dataset.dir));
+            });
+            band.addEventListener('keydown', (e) => {
+                const dir = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+                if (!dir) return;
+                e.preventDefault();
+                e.stopPropagation();
+                pivotGo(strip, dir);
+            });
+            strip.insertBefore(band, strip.firstChild);
+        }
+        if (!strip.wmPivotWatch) {
+            // a program that only flips aria-selected, or refills the strip, redraws the band
+            strip.wmPivotWatch = new MutationObserver(() => {
+                if (!strip.querySelector(':scope > .wm-pivot')) pivotTabs(strip);
+                else pivotDraw(strip);
+            });
+            strip.wmPivotWatch.observe(strip, { childList: true, subtree: true, attributes: true, attributeFilter: ['aria-selected', 'class', 'disabled', 'aria-disabled'] });
+        }
+        strip.classList.add('wm-pivot-on');
+        const host = strip.parentElement;
+        if (host) {
+            host.classList.add('wm-pivot-host');
+            // the band stands for the page heading (the applet's name is in the title bar)
+            const hdr = host.querySelector(':scope > .wm-form-hdr');
+            if (hdr) hdr.classList.add('wm-pivot-hdr-off');
+            pivotFlick(host);
+        }
+        pivotDraw(strip);
+    }
+
+    if (pivotOn()) {
+        document.addEventListener('animationstart', (e) => {
+            if (e.animationName === 'wm651-pivot-seen' && e.target.classList && e.target.classList.contains('wm-tabs')) pivotTabs(e.target);
+        });
+    }
+
     function fitTabs(strip, state) {
         if (!strip) return;
+        // 6.5.1 (#850) pivot: no tab row, the band under the title bar
+        if (pivotOn()) { pivotTabs(strip); return; }
         const v65 = runningVersion() === '6.5';
         const tabs = [...strip.querySelectorAll('.wm-tab')];
         let spin = strip.querySelector('.wm-tabs-spin');
@@ -2211,7 +2362,9 @@
             const { def, tab, draft, tabs } = open;
             // the title bar reads "Settings" on every applet, as on the device (the applet's name is
             // the page heading under it); the applet name there was cut short by the status icons
-            if (sh.current === 'settings') sh.setTitle(def.title || 'Settings'); // a program's own page (Messaging's Options, #757) carries its name
+            // 6.5.1 (#850) pivot: on 6.5.3 the band under the title bar names the page (a tab's name,
+            // or the applet's own on a page without tabs) and the title bar names the applet
+            if (sh.current === 'settings') sh.setTitle(def.title || (pivotOn() ? def.label : 'Settings')); // a program's own page (Messaging's Options, #757) carries its name
             // a redraw (a tap on a list row, a check box) keeps where the page and its lists were
             // scrolled: the same tab redrawn, not a new one (Today > Items read from the top again)
             const keep = page.dataset.setPage === `${def.id}:${tab}`
