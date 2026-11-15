@@ -531,7 +531,8 @@ async function yieldGalleryProgressPaint() {
             requestAnimationFrame(resolve);
         });
     });
-    while (isScrolling || isGalleryWindowHidden()) {
+    // the phone's window is always hidden (it never shows): waiting for it would stop the load for good
+    while (isScrolling || (window.uiShell !== 'mobile' && isGalleryWindowHidden())) {
         await new Promise((resolve) => setTimeout(resolve, 150));
     }
 }
@@ -720,7 +721,9 @@ async function fetchGalleryBlocksInto(viewType, workspaceId, totalItems, probe, 
 async function fetchAndFinalizeGalleryBlocks(viewType, workspaceId, totalItems, probe, serverDestructiveAt, progressCallback, loadLog, loadToken, offsetsToFetch = null) {
     // Hidden desktop Workspaces loads on first open via prepareGalleryWindowContent.
     // Keep startup to the metadata probe instead of fetching and processing every image.
-    if (viewType === 'images' && isGalleryWindowHidden()) {
+    // Not on the phone: its gallery window never opens (wm-shell.css) and Pictures, Today and Search
+    // draw from the list itself (#843 made isGalleryWindowHidden true there; the list never loaded).
+    if (viewType === 'images' && window.uiShell !== 'mobile' && isGalleryWindowHidden()) {
         loadLog.step('block-fetch-deferred', 'Deferred gallery block fetch while Workspaces is closed', {
             expectedTotal: totalItems,
             workspaceId
