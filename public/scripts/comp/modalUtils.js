@@ -4524,6 +4524,14 @@ function waitForGalleryVisiblePreviews(timeoutMs = 10000) {
 // Gallery update functions use this to skip updates when gallery is hidden
 // Similar to how they check for manual modal open state
 function isGalleryWindowHidden() {
+    // Melaton Mobile never shows the desktop gallery (wm-shell.css keeps #galleryWindow out of the
+    // page; Pictures is wmPhoneGallery.js with its own cells), but the window carries neither
+    // .hidden nor .windowed there, so this answered "shown" and the gallery worked as if it were:
+    // it drew its first page and every later batch into a grid nobody sees and took the full
+    // render path on each gallery update (every print of a Director turn). On the Galaxy A53 after
+    // seven hours: 33,000 elements, 3,240 cells, 542 decoded pictures (142 megapixels) (#843).
+    // Hidden means the list is kept current and nothing is drawn, as with the desktop's closed window.
+    if (window.uiShell === 'mobile') return true;
     return galleryWindow && galleryWindow.classList.contains('hidden') && galleryWindow.classList.contains('windowed');
 }
 
