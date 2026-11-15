@@ -16,7 +16,7 @@ function registerPackets() {
         const ua = clip(clientInfo.userAgent, 200);
         const device = /SM-F9\d\d/.test(ua) ? 'Fold' : /SM-A53/.test(ua) ? 'A53' : (/Android/.test(ua) ? 'Android' : 'desktop');
         console.log(`📱 boot ${device} ${clip(message.shell, 10)} ip=${clientInfo.ip || clientInfo.clientIP || '?'} desktopMs=${e.desktopMs || '?'} nav=${clip(e.nav, 12)} `
-            + (note ? `reason=${clip(note.reason, 30)} hidden=${!!note.hidden} screenOff=${!!note.screenOff} from=${clip(note.from, 300)}` : 'reason=none (started outside the page)'));
+            + (note ? `reason=${clip(note.reason, 30)} hidden=${!!note.hidden} screenOff=${!!note.screenOff} from=${clip(note.from, 900)}` : 'reason=none (started outside the page)'));
     }, { owner: 'clientBootNote' });
 
     // client_dormant { on } (Nov 15 2026): a phone page whose screen went off, or that went behind
