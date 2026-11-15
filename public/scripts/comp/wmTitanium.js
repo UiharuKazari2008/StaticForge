@@ -235,7 +235,12 @@
             const again = () => { mail.at = 0; if (mail.busy) mail.again = true; else recentMail(); };
             ['new', 'flags', 'removed', 'account'].forEach((e) => M.on(e, again));
         }
-        if (!wireMail.dove) { wireMail.dove = true; document.addEventListener('dovecoteMailboxUpdated', (ev) => pushedMail(ev && ev.detail)); }
+        if (!wireMail.dove) {
+            wireMail.dove = true;
+            document.addEventListener('dovecoteMailboxUpdated', (ev) => pushedMail(ev && ev.detail));
+            const ws = window.wsClient;
+            if (ws && typeof ws.on === 'function') ws.on('connected', () => { mail.at = 0; });
+        }
     }
     /**
      * dovecote_mailbox_updated carries the person's unread inbox: the Dreamscape Mail pages come from
@@ -259,7 +264,9 @@
     function recentMail() {
         wireMail();
         const c = window.wsClient;
-        if (!mail.busy && Date.now() - mail.at > 60000 && c && typeof c.isConnected === 'function' && c.isConnected() && c.initializationCompleted) {
+        // read once, then only when a change arrives (IMAP events, the mailbox push) or after a
+        // reconnect: no re-read every minute from Today's redraw (rule server-push-not-polling)
+        if (!mail.busy && mail.at === 0 && c && typeof c.isConnected === 'function' && c.isConnected() && c.initializationCompleted) {
             mail.busy = true;
             const M = window.mailAccounts;
             const W = window.wmMessaging;
