@@ -862,7 +862,11 @@
         if (!st) return null;
         return {
             optimised: st.ignoringOptimizations === false,
-            restricted: st.backgroundRestricted === true || Number(st.standbyBucket) >= 40
+            restricted: st.backgroundRestricted === true || Number(st.standbyBucket) >= 40,
+            // DSApp HomeKeeper: without "Display over other apps" (or a shell route) Melaton Mobile
+            // cannot come back by itself when an update or a crash closes it; Android then shows the
+            // phone's old launcher or the last app (A53, Nov 14 2026). Older builds say nothing.
+            noReturn: st.homeReturns === false
         };
     }
     api.powerState = () => { try { return JSON.parse(root.AndroidHome.getPowerState()); } catch (_) { return null; } };
@@ -873,6 +877,7 @@
         try { home = !!(H && typeof H.isHome === 'function' && H.isHome()); } catch (_) { home = false; }
         if (!home) return;
         const p = powerProblems();
+        if (p && !p.optimised && !p.restricted && p.noReturn) { askOverlay(H, force); return; }
         if (!p || (!p.optimised && !p.restricted)) return;
         try { if (!force && Date.now() - (Number(localStorage.getItem(POWER_TOLD)) || 0) < 86400000) return; } catch (_) { /* private mode: tell */ }
         const sh = root.wmShell;
@@ -887,6 +892,19 @@
         sh.notify({ title: 'Battery optimisation', text, icon: 'warning', asNote: true, timeout: false, buttons });
     }
     api.checkPower = checkPower;
+    const OVERLAY_TOLD = 'melatonOverlayToldAt';
+    function askOverlay(H, force) {
+        try { if (!force && Date.now() - (Number(localStorage.getItem(OVERLAY_TOLD)) || 0) < 86400000) return; } catch (_) { /* private mode: tell */ }
+        const sh = root.wmShell;
+        if (!sh || typeof sh.notify !== 'function' || typeof H.requestOverlay !== 'function') return;
+        try { localStorage.setItem(OVERLAY_TOLD, String(Date.now())); } catch (_) { /* best effort */ }
+        sh.notify({
+            title: 'Melaton Mobile',
+            text: 'When an update closes Melaton Mobile, Android shows the phone\'s old home screen until you open it again.\nAllow Display over other apps so it comes back by itself.',
+            icon: 'warning', asNote: true, timeout: false,
+            buttons: [{ text: 'Allow', type: 'primary', closeOnClick: true, onClick: () => { try { H.requestOverlay(); } catch (_) { /* old app */ } } }]
+        });
+    }
 
     // the DeX window: tell the phone it is here (booting), and again when its desktop is up
     if (api.available) {
