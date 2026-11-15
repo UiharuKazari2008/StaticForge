@@ -2293,6 +2293,14 @@
         // page return to that program, as WM's control panel applets started by a program do
         open: (id, tab, opts) => {
             if (!sh || !settingsHost) return false;
+            // boot steps put off until Today was up (#817): the shell opens a program only after
+            // them, so Settings has no page to draw on yet (Today's Set key in the first seconds,
+            // #859). The rest of them first, then this open again
+            const ws = window.wsClient;
+            if (ws && ws.deferredInitPending && typeof ws.whenDeferredInitDone === 'function') {
+                void sh.busy(ws.whenDeferredInitDone()).then(() => { if (!ws.deferredInitPending) window.wmSettings.open(id, tab, opts); });
+                return true;
+            }
             // (6.5: the Settings program shown with no page hands over to Start's Settings folder;
             // not while a page is on its way in)
             settingsHost.opening = true;
@@ -2458,6 +2466,8 @@
         window.addEventListener('resize', () => { if (open) requestAnimationFrame(fitLists); });
 
         function openPage(id, tab, opts) {
+            // Settings is not on screen (the shell put its open off, or another program stands in for it)
+            if (!page) return false;
             const link = SETTINGS_LINKS.find((l) => l.id === id);
             if (link) {
                 page.querySelectorAll('.wm-icongrid-cell.is-selected').forEach((c) => c.classList.remove('is-selected'));
