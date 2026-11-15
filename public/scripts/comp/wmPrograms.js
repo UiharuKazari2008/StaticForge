@@ -1232,7 +1232,7 @@
                         <div class="wm-form-sub">Distance</div><div data-f="parallax-level"></div>
                         <div class="wm-form-gap"></div>
                         <div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0;max-height:calc(150 * var(--wm-px))">${rows.map(([k, l]) => `<div class="wm-listbox-row">${check(`fx-${k}`, l, d.fx[k] !== false, `value="${k}"`)}</div>`).join('')}</div>
-                        <p class="wm-form-note">${d.source === 'android' ? "Android's own wallpaper is drawn by Android: it stays still and the glass is not frosted. " : ''}Moving effects are off while the phone asks for reduced motion.</p>`;
+                        <p class="wm-form-note">Moving effects are off while the phone asks for reduced motion.</p>`;
                     el.querySelector('input[name="wmTodayParallax"]').addEventListener('change', (e) => { d.parallax = e.target.checked; api.rerender(); });
                     ui.trackbar(el.querySelector('[data-f="parallax-level"]'), {
                         steps: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], value: d.parallaxLevel, lo: 'Slight', hi: 'A lot', label: 'Parallax distance',
