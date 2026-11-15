@@ -1861,6 +1861,11 @@
         const hiddenNow = document.visibilityState !== 'visible';
         const span = hiddenNow ? Date.now() - hiddenAt : (Date.now() - shownAt < ENTER_RECENT_MS ? hiddenSpan : 0);
         if (span > AWAY_MS) { if (!hiddenNow && !host.classList.contains('is-entering')) entrance(); return; }
+        // Today is on screen and stays: a press of Home here also paused the app for a moment (Android
+        // calls prime() as it goes behind), which hid the list until a 2.5 s fallback - or for good when
+        // the page was not visible yet at that moment (Yukimi, Nov 15: Home on the home screen hides
+        // everything). The list shows again now; the press's own animation plays over it.
+        unprime();
         // Home while Today is already on screen (#800): the list runs back to the clock (the key's
         // pace, 45 ms an item), then the clock panel grows in
         if (opts && opts.animate) {
@@ -1956,6 +1961,12 @@
         const on = !!(e && e.detail && e.detail.on);
         if (!on) prime();
         else if (host && host.classList.contains('is-primed')) requestAnimationFrame(() => { if (root.dataset.wmApp === 'today' && document.visibilityState === 'visible') entrance(); else unprime(); });
+    });
+    // a readied Today that comes back on screen with no entrance on its way is never left without its
+    // list (prime()'s own fallback only looks once, 2.5 s in, and gives up if the page is hidden then)
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState !== 'visible' || !host || !host.classList.contains('is-primed')) return;
+        setTimeout(() => { if (host.classList.contains('is-primed') && !host.classList.contains('is-entering')) unprime(); }, 600);
     });
 
     window.wmTitanium = {
