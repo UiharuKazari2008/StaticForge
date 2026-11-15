@@ -188,6 +188,33 @@ T.setBrowser({ read: async (kind) => {
         st.favourites.push(...keep);
     });
 
+    await ok('Today order: rare uploaders first, newest first when switched off', async () => {
+        const D = 86400000;
+        const now = Date.UTC(2026, 10, 15);
+        const st = T.state();
+        const keepF = st.acct.favourites.slice();
+        const keepU = Object.assign({}, st.cache.uploads);
+        const up = (ch, days) => ({ videos: days.map((d, i) => ({ id: `${ch}v${String(i).padStart(9, '0')}`, title: ch, channel: ch, channelId: ch, thumb: '', at: now - d * D })), max: 5, at: now, triedAt: now });
+        st.acct.favourites.length = 0;
+        st.acct.favourites.push({ id: 'daily', title: 'Daily' }, { id: 'monthly', title: 'Monthly' }, { id: 'once', title: 'Once' });
+        st.cache.uploads = { daily: up('d', [0.04, 1, 2, 3, 4]), monthly: up('m', [3, 33, 64, 95]), once: up('o', [10]) };
+        assert.strictEqual(T.cadenceOf(st.cache.uploads.daily.videos), D);
+        assert.strictEqual(T.cadenceOf(st.cache.uploads.once.videos), 30 * D);
+        assert.ok(Math.abs(T.cadenceOf(st.cache.uploads.monthly.videos) - 31 * D) < D);
+        const order = T.latestVideos(now).map((v) => v.id.slice(0, 1) + Number(v.id.slice(2)));
+        // an hour-old daily video leads; the monthly channel's 3-day-old one and the lone upload come before yesterday's daily
+        assert.deepStrictEqual(order.slice(0, 4), ['d0', 'm0', 'o0', 'd1']);
+        const m0 = T.latestVideos(now).find((v) => v.id.startsWith('mv'));
+        assert.strictEqual(Math.round(m0.gap / D), 30);
+        assert.strictEqual(m0.rank, undefined);
+        await svc.saveSettings({ rareFirst: false });
+        assert.deepStrictEqual(T.latestVideos(now).map((v) => v.id.slice(0, 1) + Number(v.id.slice(2))).slice(0, 4), ['d0', 'd1', 'd2', 'd3']);
+        await svc.saveSettings({ rareFirst: true });
+        st.acct.favourites.length = 0;
+        st.acct.favourites.push(...keepF);
+        st.cache.uploads = keepU;
+    });
+
     await ok('channel page', async () => {
         const c = await svc.channelPage(CH(1));
         assert.strictEqual(c.channel.title, 'Channel 1');

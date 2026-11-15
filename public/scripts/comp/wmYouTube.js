@@ -113,6 +113,12 @@
         const s = Math.floor(sec % 60);
         return h ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
     }
+    /** "First in 3 weeks" for an upload that came a long while after the channel's one before it. */
+    function rareText(v) {
+        const d = typeof v.gap === 'number' ? Math.floor(v.gap / DAY) : 0;
+        if (d < 14) return '';
+        return d < 60 ? `First in ${Math.floor(d / 7)} weeks` : d < 730 ? `First in ${Math.floor(d / 30.4)} months` : `First in ${Math.floor(d / 365)} years`;
+    }
     const lenText = (v) => (v.live === 'live' ? 'LIVE' : v.live === 'upcoming' ? 'SOON' : clock(v.length));
     const isNew = (v) => !!(v.at && Date.now() - v.at < DAY);
     const videoUrl = (id) => `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`;
@@ -758,6 +764,7 @@
             { label: 'Refresh', disabled: !signedIn(), action: refresh },
             '-',
             { label: 'Leave Out Shorts', checked: s.noShorts !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ noShorts: s.noShorts === false }) },
+            { label: 'Rare Uploads First on Today', checked: s.rareFirst !== false, disabled: !admin || !signedIn(), action: () => saveSettings({ rareFirst: s.rareFirst === false }) },
             { label: 'Videos on Today', disabled: !admin || !signedIn(), submenu: [6, 12, 20, 30].map((k) => ({ label: String(k), radio: n === k, action: () => saveSettings({ todayCount: k }) })) },
             { label: 'Favourite Channels...', disabled: !signedIn(), action: () => setTab('channels') },
             { label: 'Import from Notifications', disabled: !admin || !signedIn(), action: importBells },
@@ -892,7 +899,7 @@
         let inner;
         if (v) {
             const len = lenText(v);
-            inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc([v.channel, age(v.at)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
+            inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc([v.channel, age(v.at), rareText(v)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
         } else {
             const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Tap to choose favourite channels' : a.error ? a.error : 'Looking for new videos...';
             inner = `<img class="yt-td-icon" src="${ws.art.url('app-youtube-lg')}" srcset="${ws.art.srcset('app-youtube-lg')}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">YouTube</span><span class="wtw-sub">${esc(line)}</span></span>`;
@@ -928,7 +935,7 @@
             label: 'youtube',
             count: fresh ? String(fresh) : '',
             icon: 'x:app-youtube-lg',
-            pages: vids.map((v) => ({ image: v.thumb, title: v.title, line2: v.channel || '', line3: [age(v.at), lenText(v)].filter(Boolean).join(' · '), softKey: key, onTap: () => openVideo(v.id) })),
+            pages: vids.map((v) => ({ image: v.thumb, title: v.title, line2: v.channel || '', line3: [age(v.at), rareText(v) || lenText(v)].filter(Boolean).join(' · '), softKey: key, onTap: () => openVideo(v.id) })),
             softKey: key,
             onTap: go
         };
