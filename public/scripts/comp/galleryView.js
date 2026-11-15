@@ -3416,6 +3416,10 @@ function failGalleryRerollSession(requestId) {
 // Helper function to get gallery container dimensions
 function getGalleryContainerDimensions() {
     if (!gallery) return { width: 0, height: 0 };
+    // Melaton Mobile: the desktop gallery window never shows on a phone (wm-shell.css: Pictures draws
+    // the list itself), so the read below gives 0 x 0 anyway - after a forced style and layout pass of
+    // the whole page (50-90 ms while the phone boots, #817). The same answer without the pass.
+    if (window.uiShell === 'mobile') return { width: 0, height: 0 };
 
     // Detect scroll container (gallery-container is always used when available)
     const galleryWindow = document.querySelector('#galleryWindow');
@@ -3441,6 +3445,9 @@ function getGalleryContainerDimensions() {
 // Get item size (width = height since items are square)
 function getItemSize() {
     if (!gallery) return 200; // Fallback
+    // Melaton Mobile: the window is never shown (getGalleryContainerDimensions): the measure below
+    // forces a layout pass and lands on the same fallback
+    if (window.uiShell === 'mobile') return 200;
 
     // Calculate item size from actual rendered items if available
     let items = gallery.querySelectorAll('.gallery-item:not(.gallery-placeholder), .gallery-placeholder.gallery-item');
