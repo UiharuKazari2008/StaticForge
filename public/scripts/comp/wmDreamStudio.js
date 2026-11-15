@@ -436,6 +436,7 @@
         const label = $('.wds-ed-head > .wm-combo > span');
         if (label) label.textContent = fieldName(edField);
         edCount();
+        edWeight();
     }
 
     function edCommit() {
@@ -491,8 +492,98 @@
             return;
         }
         if (id === 'clear') { ta.select(); document.execCommand('delete'); edCount(); return; }
+        if (id === 'weightdown' || id === 'weightup') { stepWeight(id === 'weightup' ? 1 : -1); return; }
+        if (id === 'find') { findAsk(); return; }
         document.execCommand(id);
         edCount();
+    }
+
+    // ---- emphasis: a weighted group is written `1.2::text::`; - and + step the group the caret is
+    // in, or make one of the selection (no selection: of the tag under the caret)
+
+    const WEIGHT_RE = /(-?\d+(?:\.\d+)?)::([\s\S]*?)::/g;
+
+    function weightAt(text, start, end) {
+        WEIGHT_RE.lastIndex = 0;
+        let m;
+        while ((m = WEIGHT_RE.exec(text))) {
+            const from = m.index;
+            const to = from + m[0].length;
+            if (start >= from && end <= to) return { from, to, weight: Number(m[1]), inner: m[2], innerFrom: from + m[1].length + 2 };
+        }
+        return null;
+    }
+
+    /** The tag under the caret: between the commas / line ends around it, without its outer spaces. */
+    function tagAt(text, pos) {
+        let from = Math.max(text.lastIndexOf(',', pos - 1), text.lastIndexOf('\n', pos - 1)) + 1;
+        let to = text.length;
+        [',', '\n'].forEach((ch) => { const i = text.indexOf(ch, pos); if (i >= 0 && i < to) to = i; });
+        while (from < to && /\s/.test(text[from])) from += 1;
+        while (to > from && /\s/.test(text[to - 1])) to -= 1;
+        return to > from ? { from, to } : null;
+    }
+
+    const fmtWeight = (w) => String(Number(w.toFixed(2)));
+
+    function stepWeight(dir) {
+        const ta = edArea();
+        if (!ta) return;
+        ta.focus();
+        const text = ta.value;
+        const hit = weightAt(text, ta.selectionStart, ta.selectionEnd);
+        let from; let to; let inner; let next;
+        if (hit) {
+            ({ from, to, inner } = hit);
+            next = Math.round((hit.weight + dir * 0.1) * 100) / 100;
+        } else {
+            const range = ta.selectionStart !== ta.selectionEnd ? { from: ta.selectionStart, to: ta.selectionEnd } : tagAt(text, ta.selectionStart);
+            if (!range) return;
+            ({ from, to } = range);
+            inner = text.slice(from, to);
+            next = Math.round((1 + dir * 0.1) * 100) / 100;
+        }
+        next = Math.max(-3, Math.min(5, next));
+        // back at 1 the group is plain text again
+        const plain = Math.abs(next - 1) < 0.001;
+        const out = plain ? inner : `${fmtWeight(next)}::${inner}::`;
+        ta.setSelectionRange(from, to);
+        document.execCommand('insertText', false, out);
+        const at = plain ? from : from + fmtWeight(next).length + 2;
+        ta.setSelectionRange(at, at + inner.length);
+        edWeight();
+        edCount();
+    }
+
+    function edWeight() {
+        const ta = edArea();
+        const out = $('.wds-tb-weight');
+        if (!ta || !out) return;
+        const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
+        out.textContent = hit ? hit.weight.toFixed(2) : '1.00';
+    }
+
+    // ---- find: asks for the text once, then steps through its places (round to the start again)
+
+    let findText = '';
+    function findNext() {
+        const ta = edArea();
+        if (!ta || !findText) return;
+        const hay = ta.value.toLowerCase();
+        const needle = findText.toLowerCase();
+        let at = hay.indexOf(needle, ta.selectionEnd);
+        if (at < 0) at = hay.indexOf(needle);
+        if (at < 0) { sh.messageBox({ title: 'Find', text: `Cannot find "${findText}".`, icon: 'info', modal: true }); return; }
+        ta.focus();
+        ta.setSelectionRange(at, at + findText.length);
+        edWeight();
+    }
+
+    function findAsk() {
+        const ta = edArea();
+        const sel = ta && ta.selectionStart !== ta.selectionEnd ? ta.value.slice(ta.selectionStart, ta.selectionEnd) : findText;
+        sh.messageBox({ title: 'Find', text: 'Find what:', input: { value: sel.length <= 60 ? sel : '' }, modal: true, buttons: [{ text: 'Find Next', value: true, default: true }, { text: 'Cancel', value: false }], cancelValue: false })
+            .then((text) => { if (text) { findText = text; findNext(); } });
     }
 
     // ---- autofill: tags for the word being typed, as a WM list docked on the tool bar
@@ -671,6 +762,9 @@
             { label: 'Select All', action: () => edCommand('selectall') },
             { label: 'Clear', action: () => edCommand('clear') },
             '-',
+            { label: 'Find...', action: findAsk },
+            { label: 'Find Next', disabled: !findText, action: findNext },
+            '-',
             { label: 'Generate', action: generate }
         ];
         const c = charOf(edField);
@@ -711,7 +805,7 @@
   <div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
   <div class="wds-ac wm-listbox" hidden></div>
-  <div class="wds-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wds-tb-sep"></span>' : `<button type="button" class="wds-tb-btn" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}</div>
+  <div class="wds-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wds-tb-sep"></span>' : `<button type="button" class="wds-tb-btn" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}<span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightdown" aria-label="Less Weight">\u2212</button><span class="wds-tb-weight" aria-live="polite">1.00</span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightup" aria-label="More Weight">+</button><span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn" data-ed="find" aria-label="Find">${edIcon('find')}</button></div>
 </div>
 </div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
@@ -739,6 +833,7 @@
         bar.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-tb-btn'); if (b) edCommand(b.dataset.ed); });
         let countTimer = 0;
         edArea().addEventListener('input', () => { clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
+        ['keyup', 'pointerup', 'select'].forEach((t) => edArea().addEventListener(t, edWeight));
         edArea().addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== edArea()) acHide(); }, 0));
         // the list keeps the focus (and the keyboard) in the text; a tap on a row puts the tag in
         const ac = $('.wds-ac');

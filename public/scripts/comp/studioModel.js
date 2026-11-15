@@ -40,7 +40,8 @@
        ensurePromptTokenizerForModel, collectManualFormValues, addSharedFieldsToRequestBody,
        calculateCreditCost, registerWsInboundHandler, findImageByFilename, updateManualPreviewDirectly, getImageMetadata,
        handleManualPreviewImageContextMenuAction, getAutofillSearchSettings, selectedDatasets,
-       applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems,
+       applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems, hasManagedEmphasisGroupIds, expandEmphasisGroupIds,
+       resolveEmphasisBagForTextarea,
        addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, datasetAllowedForModel, getStudioUcPresetMenuItems */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
@@ -77,19 +78,40 @@
         try { return typeof isGenerating !== 'undefined' && !!isGenerating; } catch (_) { return false; }
     }
 
+    /**
+     * A field's text as a person writes it. Studio keeps weighted groups in its fields as invisible
+     * marks with the weights held beside them (emphasisGroupIdCodec.js); out here they are the plain
+     * `1.2::text::` form, which Studio turns back into its marks when the text is set.
+     */
+    function visibleText(field) {
+        if (!field) return '';
+        const raw = field.value || '';
+        try {
+            if (typeof hasManagedEmphasisGroupIds === 'function' && hasManagedEmphasisGroupIds(raw) && typeof expandEmphasisGroupIds === 'function') {
+                const bag = typeof resolveEmphasisBagForTextarea === 'function' ? resolveEmphasisBagForTextarea(field) : null;
+                const out = expandEmphasisGroupIds(raw, bag);
+                if (out && typeof out.text === 'string') return out.text;
+            }
+        } catch (_) { /* the stored text */ }
+        return raw;
+    }
+
     function snapshot() {
         if (!ready()) return null;
         const p = getStudioParamSnapshot();
         const out = Object.assign({}, p);
         out.model = String(p.model || '').toLowerCase();
-        Object.keys(FIELDS).forEach((id) => { const f = el(FIELDS[id][0]); out[id] = f ? f.value : ''; });
+        Object.keys(FIELDS).forEach((id) => { out[id] = visibleText(el(FIELDS[id][0])); });
         try { out.paid = typeof forcePaidRequest !== 'undefined' && !!forcePaidRequest; } catch (_) { out.paid = false; }
         out.hasBaseImage = !!(window.uploadedImageData || (window.currentEditMetadata && window.currentEditMetadata.sourceFilename && el('manualImg2ImgGroup') && !el('manualImg2ImgGroup').classList.contains('hidden')));
         out.generating = generating();
         try {
-            out.characters = (typeof getCharacterPrompts === 'function' ? getCharacterPrompts() : []).map((c) => ({
-                name: c.chara_name || '', prompt: c.prompt || '', uc: c.uc || '', negative: c.input_prompt_negative || '', enabled: c.enabled !== false
-            }));
+            const items = typeof getStudioCharacterItems === 'function' ? getStudioCharacterItems() : [];
+            out.characters = (typeof getCharacterPrompts === 'function' ? getCharacterPrompts() : []).map((c, i) => {
+                const id = items[i] && items[i].id;
+                const text = (part, fallback) => { const f = id && el(`${id}_${part}`); return f ? visibleText(f).trim() : (fallback || ''); };
+                return { name: c.chara_name || '', prompt: text('prompt', c.prompt), uc: text('uc', c.uc), negative: text('promptNegative', c.input_prompt_negative), enabled: c.enabled !== false };
+            });
         } catch (_) { out.characters = []; }
         try { out.datasets = typeof selectedDatasets !== 'undefined' && Array.isArray(selectedDatasets) ? selectedDatasets.slice() : []; } catch (_) { out.datasets = []; }
         return out;
@@ -106,7 +128,7 @@
             if (typeof applyStudioDatasetConfig === 'function') applyStudioDatasetConfig({ include: Array.isArray(value) ? value : [] });
         } else if (FIELDS[id]) {
             const f = el(FIELDS[id][0]);
-            if (!f || f.value === String(value == null ? '' : value)) return true;
+            if (!f || visibleText(f) === String(value == null ? '' : value)) return true;
             writeStudioFieldValue(FIELDS[id][1], value);
         } else {
             await applyStudioParam(id, value);

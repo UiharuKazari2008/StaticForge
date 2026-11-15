@@ -324,6 +324,18 @@
 .wds-tb-btn > img { width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); pointer-events: none; }
 .wds-tb-btn:active:not(:disabled) { border-color: #000; background: #fff; }
 
+/* the weight's - and +: the same cells, the sign in bold WM type; its value between them */
+.wds-tb-btn.wds-tb-step { font: bold calc(13 * var(--wm-px)) / 1 var(--wm-font); }
+
+.wds-tb-weight {
+    flex: 0 0 auto;
+    width: calc(30 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 0;
+    text-align: center;
+    font: var(--wm-fs) / calc(21 * var(--wm-px)) var(--wm-font);
+}
+
 .wds-tb-sep {
     flex: 0 0 auto;
     width: calc(1 * var(--wm-px));
