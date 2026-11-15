@@ -34,7 +34,8 @@
  * Push, never poll (rule server-push-not-polling): statusHub feed `youtube` (push type
  * youtube_status) carries { account, favourites, latest, settings }. The feed's one timer runs only
  * while a phone shows the Today item or the program; it re-reads a favourite channel's uploads when
- * they are older than 15 minutes and pushes only what changed.
+ * they are older than 15 minutes (longer for a long favourites list, see latestTtl) and pushes only
+ * what changed. Today's list is one list: every favourite's uploads together, newest first.
  *
  * Files (all under .cache): youtube-account.json (0600: token, account, favourites, settings),
  * youtube-cache.json (subscriptions, uploads, video details), youtube-usage.json.
@@ -56,13 +57,17 @@ const QUICKCAST_CONFIG = process.env.YOUTUBE_QUICKCAST_CONFIG || path.join(CACHE
 const MIN = 60000;
 const SUBS_TTL = 6 * 60 * MIN;
 const UPLOADS_TTL = 20 * MIN;
-const LATEST_TTL = 15 * MIN;
+const LATEST_TTL = 15 * MIN; // the least; latestTtl() stretches it for a long favourites list
 const SEARCH_TTL = 10 * MIN;
 const FEED_MIN_GAP = 5 * MIN; // a Refresh inside this gap answers from what is held
 const HUB_INTERVAL = 5 * MIN;
 const DEVICE_MIN_S = Number(process.env.YOUTUBE_DEVICE_MIN_S || 5);
 const DEFAULTS = { noShorts: true, todayCount: 12, budget: 6000 };
-const MAX_FAVOURITES = 40;
+// No small cap on favourites (Yukimi, Nov 15 2026: an import of every channel with its bell on must fit).
+// What a long list costs is the refresh, one unit a channel, so the refresh slows with the list instead:
+// each favourite is read again after latestTtl(), sized so a day of Today on screen stays near 3,000 units.
+const MAX_FAVOURITES = 1000;
+const LATEST_UNITS_A_DAY = 3000;
 const MAX_DETAILS = 3000;
 
 class YouTubeError extends Error {
@@ -652,6 +657,11 @@ async function importBellFavourites() {
 
 // ------------------------------------------------------------------------------------------ favourites on Today
 
+/** How old a favourite's uploads may get before they are read again: 15 minutes, longer for a long list. */
+function latestTtl() {
+    return Math.max(LATEST_TTL, Math.ceil((acct.favourites.length * 24 * 60 * MIN) / LATEST_UNITS_A_DAY));
+}
+
 function latestVideos() {
     const all = [];
     acct.favourites.forEach((f) => {
@@ -665,18 +675,18 @@ function latestVideos() {
     });
 }
 
-/** Reads the favourites whose uploads are older than 15 minutes; pushes when something changed. */
+/** Reads the favourites whose uploads are older than latestTtl(); pushes when something changed. */
 function refreshLatest(force) {
     if (refreshing || !signedIn() || !acct.favourites.length) return refreshing;
     const due = acct.favourites.filter((f) => {
         const held = cache.uploads[f.id];
-        return !held || Date.now() - held.triedAt >= (force ? FEED_MIN_GAP : LATEST_TTL);
+        return !held || Date.now() - held.triedAt >= (force ? FEED_MIN_GAP : latestTtl());
     });
     if (!due.length) return null;
     const before = JSON.stringify(latestVideos());
     refreshing = (async () => {
         try {
-            const got = await pool(due, 4, (f) => uploadsOf(f.id, { max: 5, ttl: force ? FEED_MIN_GAP : LATEST_TTL }));
+            const got = await pool(due, 4, (f) => uploadsOf(f.id, { max: 5, ttl: force ? FEED_MIN_GAP : latestTtl() }));
             const bad = got.find((r) => r instanceof Error);
             lastError = bad && got.every((r) => r instanceof Error) ? bad.message : '';
             await withDetails(latestVideos());
@@ -746,5 +756,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, latestTtl, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {} }; pending = null; usage = null; feedMemo = null; searches.clear(); watchLater.memo = null; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };

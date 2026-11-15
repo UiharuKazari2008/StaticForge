@@ -23,7 +23,7 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_import_bell` | `{}` -> `{ why, favourites[], channels, found, added, left, partial }`. Every subscribed channel whose notification bell is set to All becomes a favourite (read in the same browser). Admin. |
 | `youtube_search` | `{ query, page? }` -> `{ query, videos[], channels[], next }` (100 quota units a page; answers kept 10 minutes) |
 | `youtube_channel` | `{ id }` -> `{ channel, videos[], favourite, subscribed }` |
-| `youtube_favourite` | `{ channel: { id, title, thumb }, on }` -> `{ favourites[] }` (40 at most). Admin. |
+| `youtube_favourite` | `{ channel: { id, title, thumb }, on }` -> `{ favourites[] }`. Admin. |
 | `youtube_favourites_order` | `{ ids[] }` -> `{ favourites[] }`. Admin. |
 | `youtube_settings_save` | `{ settings: { noShorts?, todayCount? } }` -> `{ settings }`. Admin. |
 
