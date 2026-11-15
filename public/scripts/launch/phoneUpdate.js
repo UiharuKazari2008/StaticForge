@@ -28,6 +28,7 @@
             fetch: win.fetch.bind(win),
             navigator: win.navigator,
             localStorage: (() => { try { return win.localStorage; } catch (_) { return null; } })(),
+            indexedDB: (() => { try { return win.indexedDB; } catch (_) { return null; } })(),
             caches: win.caches || null,
             now: () => Date.now(),
             sleep

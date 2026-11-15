@@ -133,6 +133,41 @@ const BOOT_CACHE_SAMPLE = 200;
 const FULL_CACHE_CHECK_KEY = 'melatonFullCacheCheckAt';
 const FULL_CACHE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+// The stored manifest list, packed: structured clone copies two strings instead of building
+// 9,500 objects, and rows are rebuilt with one split each. `auth` holds the flagged urls.
+function packManifestSnapshot(manifest, hash) {
+    if (!Array.isArray(manifest) || !manifest.length) return null;
+    const urls = [];
+    const hashes = [];
+    const auth = [];
+    for (const file of manifest) {
+        if (!file || !file.url || !file.hash) continue;
+        const url = String(file.url);
+        const h = String(file.hash);
+        if (url.includes('\n') || h.includes('\n')) continue;
+        urls.push(url);
+        hashes.push(h);
+        if (file.auth === true) auth.push(url);
+    }
+    if (!urls.length) return null;
+    return { hash: hash || '', n: urls.length, urls: urls.join('\n'), hashes: hashes.join('\n'), auth };
+}
+
+function unpackManifestSnapshot(packed, syncedHash) {
+    if (!packed || typeof packed.urls !== 'string' || typeof packed.hashes !== 'string') return null;
+    if ((packed.hash || '') !== (syncedHash || '')) return null;
+    const urls = packed.urls.split('\n');
+    const hashes = packed.hashes.split('\n');
+    if (!urls.length || urls.length !== hashes.length || urls.length !== packed.n) return null;
+    const auth = new Set(Array.isArray(packed.auth) ? packed.auth : []);
+    const rows = new Array(urls.length);
+    for (let i = 0; i < urls.length; i++) {
+        rows[i] = auth.has(urls[i]) ? { url: urls[i], hash: hashes[i], auth: true } : { url: urls[i], hash: hashes[i] };
+    }
+    return rows;
+}
+
+
 /** Every route entry plus an evenly spread sample (a random offset, so boots cover different files). */
 function sampleManifestFiles(files, count) {
     const list = Array.isArray(files) ? files : [];
@@ -838,25 +873,60 @@ class ServiceWorkerManager {
         } catch (_) { /* storage off: every boot fetches the full manifest */ }
     }
 
-    _readManifestSnapshot() {
+    // The file list lives in IndexedDB beside the verified record (#849). In localStorage it was
+    // 1.24 MB that every page of the origin loaded whole at its first storage read and every sync
+    // wrote back whole on the page's thread. It is stored packed (two joined strings, not 9,500
+    // objects) under the digest it belongs to: a list whose digest is not the synced one is not used.
+    async _readManifestSnapshot() {
+        const synced = this._readSyncedManifestHash();
+        const db = await this._verifiedDb();
+        if (db) {
+            const packed = await new Promise((resolve) => {
+                try {
+                    const g = db.transaction('v').objectStore('v').get('manifest');
+                    g.onsuccess = () => resolve(g.result || null);
+                    g.onerror = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+            const rows = unpackManifestSnapshot(packed, synced);
+            if (rows) return rows;
+        }
+        // the localStorage copy of earlier builds (and of browsers without IndexedDB)
         try {
             const raw = localStorage.getItem('melatonManifestSnapshot');
             const parsed = raw ? JSON.parse(raw) : null;
             if (!Array.isArray(parsed) || !parsed.length) return null;
-            return parsed.filter((file) => file && file.url && file.hash);
+            const rows = parsed.filter((file) => file && file.url && file.hash);
+            if (db && rows.length) void this._writeManifestSnapshot(rows, synced);
+            return rows;
         } catch (_) {
             return null;
         }
     }
 
-    _writeManifestSnapshot(manifest) {
+    /** Resolves once the list is stored, so the digest is only written after it. */
+    async _writeManifestSnapshot(manifest, hash) {
         try {
-            if (!Array.isArray(manifest) || !manifest.length) return;
+            const packed = packManifestSnapshot(manifest, hash || this._readSyncedManifestHash());
+            if (!packed) return;
+            const db = await this._verifiedDb();
+            const stored = db && await new Promise((resolve) => {
+                try {
+                    const tx = db.transaction('v', 'readwrite');
+                    tx.objectStore('v').put(packed, 'manifest');
+                    tx.oncomplete = () => resolve(true);
+                    tx.onerror = () => resolve(false);
+                    tx.onabort = () => resolve(false);
+                } catch (_) { resolve(false); }
+            });
+            if (stored) {
+                localStorage.removeItem('melatonManifestSnapshot');
+                return;
+            }
             // auth stays: without it the shell pages count as updates on every 304 start
             const rows = manifest.filter((file) => file && file.url && file.hash)
                 .map((file) => (file.auth === true ? { url: file.url, hash: file.hash, auth: true } : { url: file.url, hash: file.hash }));
-            if (!rows.length) return;
-            localStorage.setItem('melatonManifestSnapshot', JSON.stringify(rows));
+            if (rows.length) localStorage.setItem('melatonManifestSnapshot', JSON.stringify(rows));
         } catch (_) { /* next boot fetches the full list */ }
     }
 
@@ -866,7 +936,7 @@ class ServiceWorkerManager {
     // file-for-file check took ~5 s at every boot on an 8500-row cache (Edge, Oct 24); it runs
     // once a day after the desktop is up (_verifyFullCacheLater) and re-downloads what is missing.
     async _cacheMatchesStoredManifest() {
-        const snapshot = this._readManifestSnapshot();
+        const snapshot = await this._readManifestSnapshot();
         if (!snapshot) return false;
         try {
             const needing = await this.getFilesNeedingUpdate(sampleManifestFiles(snapshot, BOOT_CACHE_SAMPLE));
@@ -2169,7 +2239,11 @@ class ServiceWorkerManager {
                 try {
                     const r = indexedDB.open(CACHE_VERIFIED_KEY, 1);
                     r.onupgradeneeded = () => r.result.createObjectStore('v');
-                    r.onsuccess = () => resolve(r.result);
+                    r.onsuccess = () => {
+                        // a reset deletes the database: an open handle would block it
+                        r.result.onversionchange = () => { try { r.result.close(); } catch (_) { /* closed */ } this._verifiedDbP = null; };
+                        resolve(r.result);
+                    };
                     r.onerror = () => resolve(null);
                     r.onblocked = () => resolve(null);
                 } catch (_) { resolve(null); }
@@ -4802,7 +4876,7 @@ class ServiceWorkerManager {
                 // Stragglers are fetched at runtime. They must not open update progress or Setup.
                 if (fresh.length === 0 && !installInProgress) {
                     // Proven against the real file list. The next boot may send the digest.
-                    this._writeManifestSnapshot(manifest);
+                    await this._writeManifestSnapshot(manifest, this._fetchedManifestHash);
                     this._writeSyncedManifestHash(this._fetchedManifestHash);
                     break;
                 }

@@ -27,6 +27,7 @@
         navigator: root.navigator,
         sessionStorage: (() => { try { return root.sessionStorage; } catch (_) { return null; } })(),
         localStorage: (() => { try { return root.localStorage; } catch (_) { return null; } })(),
+        indexedDB: (() => { try { return root.indexedDB; } catch (_) { return null; } })(),
         caches: root.caches || null,
         location: root.location,
         now: () => Date.now(),
