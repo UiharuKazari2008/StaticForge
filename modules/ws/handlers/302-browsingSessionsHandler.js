@@ -10,6 +10,7 @@ function registerPackets(handlersCtx) {
         console.warn('[302-browsingSessionsHandler] registerPackets: missing handlersCtx');
         return;
     }
+    browsingSessions.setSender((ws, payload) => handlersCtx.sendToClient(ws, payload));
     const reply = (ws, type, message, data) => handlersCtx.sendToClient(ws, { type, requestId: message.requestId, data, timestamp: new Date().toISOString() });
     const body = (message) => (message.data && typeof message.data === 'object' ? message.data : message);
     const refused = (error) => ({ success: false, code: error.code || 'ERROR', error: error.message });

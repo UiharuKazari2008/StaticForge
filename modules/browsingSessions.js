@@ -190,9 +190,16 @@ function publicSession(session, cfg, own) {
 
 // ---- sockets ----
 
+// the socket server's sendToClient (set by 302-browsingSessionsHandler): it holds status notices for a
+// sleeping phone page (WebSocketServer.setDormant)
+let sender = null;
+function setSender(fn) { sender = typeof fn === 'function' ? fn : null; }
+
 function send(ws, payload) {
     try {
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify(payload));
+        if (!ws || ws.readyState !== 1) return;
+        if (sender) sender(ws, payload);
+        else ws.send(JSON.stringify(payload));
     } catch (_) { /* gone */ }
 }
 
@@ -545,6 +552,7 @@ function init() {
 }
 
 module.exports = {
+    setSender,
     init,
     hello,
     update,
