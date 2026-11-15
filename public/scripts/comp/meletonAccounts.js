@@ -35,21 +35,101 @@
         }
     }
 
+    // An uploaded picture is a 128x128 PNG data URL (~60 KB). It lives in IndexedDB: in localStorage
+    // every page of the origin loaded it with its first storage read (#849). localStorage keeps the
+    // names, the built-in pictures' paths and an `inline` mark; the picture itself arrives a moment
+    // after this script and apply() puts it on screen. Without IndexedDB it stays in localStorage.
+    const PICTURE_DB = 'meletonAccountPictures';
+    let pictureDbP = null;
+    function pictureDb() {
+        if (!pictureDbP) {
+            pictureDbP = new Promise((resolve) => {
+                try {
+                    if (!root.indexedDB) { resolve(null); return; }
+                    const r = root.indexedDB.open(PICTURE_DB, 1);
+                    r.onupgradeneeded = () => r.result.createObjectStore('p');
+                    r.onsuccess = () => {
+                        r.result.onversionchange = () => { try { r.result.close(); } catch (_) { /* closed */ } pictureDbP = null; };
+                        resolve(r.result);
+                    };
+                    r.onerror = () => resolve(null);
+                    r.onblocked = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+        }
+        return pictureDbP;
+    }
+    const isInline = (url) => typeof url === 'string' && url.startsWith('data:');
+
     let accounts = readCache();
     let loaded = false;
     let loading = null;
     let watching = false;
 
     function writeCache() {
-        try {
-            // an uploaded picture is a 128x128 PNG data URL: small enough to keep with the names
+        const rows = {};
+        Object.keys(accounts).forEach((a) => { rows[a] = { ...(accounts[a] || {}) }; });
+        const slimFor = (inDb) => {
             const slim = {};
-            Object.keys(accounts).forEach((a) => {
-                const row = accounts[a] || {};
-                slim[a] = { name: row.name, url: typeof row.url === 'string' && row.url.length < 400000 ? row.url : null };
+            Object.keys(rows).forEach((a) => {
+                const row = rows[a];
+                const keep = typeof row.url === 'string' && row.url.length < 400000 ? row.url : null;
+                if (inDb && (isInline(keep) || (row.inline && !row.url))) slim[a] = { name: row.name, url: null, inline: 1 };
+                else slim[a] = { name: row.name, url: keep };
             });
-            if (root.localStorage) root.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
-        } catch (_) { /* private mode */ }
+            return slim;
+        };
+        const store = (slim) => {
+            try {
+                if (root.localStorage) root.localStorage.setItem(STORAGE_KEY, JSON.stringify(slim));
+            } catch (_) { /* private mode */ }
+        };
+        if (!root.indexedDB) { store(slimFor(false)); return; }
+        void pictureDb().then((db) => {
+            if (!db) { store(slimFor(false)); return; }
+            try {
+                const tx = db.transaction('p', 'readwrite');
+                const os = tx.objectStore('p');
+                Object.keys(rows).forEach((a) => {
+                    const row = rows[a];
+                    if (isInline(row.url) && row.url.length < 400000) os.put(row.url, a);
+                    else if (!(row.inline && !row.url)) os.delete(a);
+                });
+                // the mark is written only once the pictures are stored
+                tx.oncomplete = () => store(slimFor(true));
+                tx.onerror = () => store(slimFor(false));
+                tx.onabort = () => store(slimFor(false));
+            } catch (_) { store(slimFor(false)); }
+        });
+    }
+
+    // the stored pictures, once per page; a copy still in localStorage (earlier builds) moves over
+    function loadPictures() {
+        const waiting = Object.keys(accounts).filter((a) => accounts[a] && accounts[a].inline && !accounts[a].url);
+        const legacy = Object.keys(accounts).some((a) => accounts[a] && isInline(accounts[a].url));
+        if (legacy && root.indexedDB) writeCache();
+        if (!waiting.length || !root.indexedDB) return;
+        void pictureDb().then((db) => {
+            if (!db) return;
+            let changed = false;
+            let left = waiting.length;
+            const done = () => { left -= 1; if (!left && changed) apply(); };
+            waiting.forEach((a) => {
+                try {
+                    const g = db.transaction('p').objectStore('p').get(a);
+                    g.onsuccess = () => {
+                        const row = accounts[a];
+                        // a server answer that came first wins
+                        if (isInline(g.result) && row && row.inline && !row.url) {
+                            accounts = { ...accounts, [a]: { ...row, url: g.result } };
+                            changed = true;
+                        }
+                        done();
+                    };
+                    g.onerror = done;
+                } catch (_) { done(); }
+            });
+        });
     }
 
     function current() {
@@ -104,6 +184,7 @@
         Object.keys(next).forEach((a) => {
             const row = next[a] || {};
             accounts[a] = { ...(accounts[a] || {}), ...row };
+            if ('url' in row) delete accounts[a].inline;
         });
         loaded = true;
         writeCache();
@@ -148,28 +229,39 @@
     function watch() {
         if (watching) return;
         watching = true;
-        let tries = 0;
-        const timer = setInterval(() => {
+        let started = false;
+        let timer = null;
+        const tryStart = () => {
+            if (started) return true;
             const client = ws();
-            tries += 1;
-            if (client && client.isConnected && client.isConnected() && client.initializationCompleted) {
-                clearInterval(timer);
-                refresh();
-                if (typeof client.on === 'function') {
-                    client.on('account_pictures_changed', (msg) => {
-                        if (msg && msg.data && msg.data.accounts) set(msg.data.accounts);
-                    });
-                }
-            } else if (tries > 300) {
-                clearInterval(timer);
+            if (!(client && client.isConnected && client.isConnected() && client.initializationCompleted)) return false;
+            started = true;
+            if (timer) clearInterval(timer);
+            refresh();
+            if (typeof client.on === 'function') {
+                client.on('account_pictures_changed', (msg) => {
+                    if (msg && msg.data && msg.data.accounts) set(msg.data.accounts);
+                });
             }
-        }, 1000);
+            return true;
+        };
+        if (tryStart()) return;
+        // the shells say when the session is up; this was a 1 s timer for up to five minutes (#849)
+        // (a few spaced tries after them: the last boot steps may still be running)
+        const after = () => [0, 2000, 6000, 15000].forEach((ms) => setTimeout(tryStart, ms));
+        ['desktopBootDone', 'wmBootDone'].forEach((type) => doc.addEventListener(type, after, { once: true }));
+        let tries = 0;
+        timer = setInterval(() => {
+            tries += 1;
+            if (tryStart() || tries > 10) clearInterval(timer);
+        }, 60000);
     }
 
     const api = { current, name, pictureUrl, refresh, setName, set, setLogonName, apply, matchesLogonName, isLoaded: () => loaded, DEFAULT_NAMES };
     root.meletonAccounts = api;
     root.meletonAccountName = (account) => name(account);
 
+    loadPictures();
     if (doc) {
         const start = () => { apply(); watch(); };
         if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', start, { once: true });

@@ -1386,13 +1386,96 @@ class Director {
         return id === 'cursor' ? 'staticforge_director_models' : `staticforge_director_models_${id}`;
     }
 
+    // The model lists live in IndexedDB (two of them were 66 KB in localStorage, which every page of
+    // the origin loads whole with its first storage read; #849). They are read once per page into
+    // modelCatalogs; until that answers a list is empty, as on a first visit, and the pickers repaint
+    // when it arrives. Copies of earlier builds in localStorage move over. Without IndexedDB the
+    // lists stay in localStorage.
+    modelCacheDb() {
+        if (!this._modelCacheDbP) {
+            this._modelCacheDbP = new Promise((resolve) => {
+                try {
+                    if (typeof indexedDB === 'undefined' || !indexedDB) { resolve(null); return; }
+                    const r = indexedDB.open('melatonDirectorModels', 1);
+                    r.onupgradeneeded = () => r.result.createObjectStore('m');
+                    r.onsuccess = () => {
+                        r.result.onversionchange = () => { try { r.result.close(); } catch (_) { /* closed */ } this._modelCacheDbP = null; };
+                        resolve(r.result);
+                    };
+                    r.onerror = () => resolve(null);
+                    r.onblocked = () => resolve(null);
+                } catch (_) { resolve(null); }
+            });
+        }
+        return this._modelCacheDbP;
+    }
+
+    /** Once per page: every stored list into modelCatalogs (a fresher answer already there wins). */
+    loadStoredModelCatalogs() {
+        if (this._modelCacheLoad) return this._modelCacheLoad;
+        this._modelCacheLoad = this.modelCacheDb().then((db) => new Promise((resolve) => {
+            if (!db) { resolve(false); return; }
+            const legacy = [];
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && (key === 'staticforge_director_models' || key.startsWith('staticforge_director_models_'))) legacy.push(key);
+                }
+            } catch (_err) { /* storage off */ }
+            try {
+                const tx = db.transaction('m', 'readwrite');
+                const os = tx.objectStore('m');
+                const moved = new Set();
+                legacy.forEach((key) => {
+                    try {
+                        const raw = JSON.parse(localStorage.getItem(key) || 'null');
+                        if (raw && Array.isArray(raw.models) && raw.models.length) { os.put(raw, key); moved.add(key); }
+                    } catch (_err) { /* a broken copy is dropped */ }
+                });
+                let changed = false;
+                const cur = os.openCursor();
+                cur.onsuccess = () => {
+                    const c = cur.result;
+                    if (!c) return;
+                    const key = String(c.key);
+                    const id = key === 'staticforge_director_models' ? 'cursor' : key.slice('staticforge_director_models_'.length);
+                    const raw = c.value;
+                    if (id && !this.modelCatalogs[id] && raw && Array.isArray(raw.models) && raw.models.length) {
+                        this.modelCatalogs[id] = raw.models;
+                        changed = true;
+                    }
+                    c.continue();
+                };
+                tx.oncomplete = () => {
+                    try { legacy.forEach((key) => localStorage.removeItem(key)); } catch (_err) { /* storage off */ }
+                    if (changed) {
+                        try {
+                            this.loadModelCache();
+                            if (typeof this.fitEngineToPersona === 'function') this.fitEngineToPersona();
+                            if (typeof this.paintPersonaToggle === 'function') this.paintPersonaToggle();
+                            if (typeof this.paintChatPrefs === 'function') this.paintChatPrefs();
+                        } catch (_err) { /* the pickers repaint on their next open */ }
+                    }
+                    resolve(changed);
+                };
+                tx.onerror = () => resolve(false);
+                tx.onabort = () => resolve(false);
+            } catch (_err) { resolve(false); }
+        }));
+        return this._modelCacheLoad;
+    }
+
     catalogFor(engine) {
         const id = this.normalizeEngine(engine);
         if (!this.modelCatalogs[id]) {
-            try {
-                const raw = JSON.parse(localStorage.getItem(this.modelCacheKey(id)) || 'null');
-                if (raw && Array.isArray(raw.models) && raw.models.length) this.modelCatalogs[id] = raw.models;
-            } catch (_err) { /* no cached catalog */ }
+            if (typeof indexedDB !== 'undefined' && indexedDB) {
+                void this.loadStoredModelCatalogs();
+            } else {
+                try {
+                    const raw = JSON.parse(localStorage.getItem(this.modelCacheKey(id)) || 'null');
+                    if (raw && Array.isArray(raw.models) && raw.models.length) this.modelCatalogs[id] = raw.models;
+                } catch (_err) { /* no cached catalog */ }
+            }
         }
         return this.modelCatalogs[id] || [];
     }
@@ -1403,12 +1486,16 @@ class Director {
 
     saveModelCache(engine) {
         const id = engine || this.activeEngine();
-        try {
-            localStorage.setItem(this.modelCacheKey(id), JSON.stringify({
-                at: Date.now(),
-                models: this.modelCatalogs[id] || this.modelCatalog
-            }));
-        } catch (_err) { /* storage can be full */ }
+        const key = this.modelCacheKey(id);
+        const record = { at: Date.now(), models: this.modelCatalogs[id] || this.modelCatalog };
+        const toLocal = () => {
+            try { localStorage.setItem(key, JSON.stringify(record)); } catch (_err) { /* storage can be full */ }
+        };
+        if (typeof indexedDB === 'undefined' || !indexedDB) { toLocal(); return; }
+        void this.modelCacheDb().then((db) => {
+            if (!db) { toLocal(); return; }
+            try { db.transaction('m', 'readwrite').objectStore('m').put(record, key); } catch (_err) { toLocal(); }
+        });
     }
 
     applyModelCatalog(models, engine) {
