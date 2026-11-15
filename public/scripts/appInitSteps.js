@@ -248,18 +248,33 @@ if (window.wsClient) {
         }
     }, true, { logon: true, critical: true, failureText: 'Melaton could not load your application data.' });
 
-    window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
+    // The phone (WM shell) boots to Today, which needs neither the whole gallery list (16,915 items,
+    // ~15 MB on the A53) nor the prompt tokenizers (~6 MB): those load in the background once Today is
+    // up (wmShell 'wmBootDone'), when the phone is idle. Desktop boots are unchanged.
+    const phoneShell = () => window.uiShell === 'mobile';
+    function afterPhoneBoot(fn) {
+        const run = () => {
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => fn(), { timeout: 3000 });
+            else setTimeout(fn, 500);
+        };
+        if (document.documentElement.dataset.wmBoot === 'done') run();
+        else document.addEventListener('wmBootDone', run, { once: true });
+    }
+
+    async function loadPromptTokenizers() {
         // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js
         // V5 (boot default) uses Qwen; start it while T5 JSON loads so the toolbar has a tokenizer.
         const qwenReady = ensurePromptTokenizerForModel('v5');
         let t5Ok = false;
         try {
-            t5Tokenizer = new T5Tokenizer();
+            // published only once loaded: while it loads in the background (phone) a reader sees none
+            const tokenizer = new T5Tokenizer();
 
             // Load tokenizer configuration from protected folder
             const response = await fetch('/protected/t5_tokenizer.json');
             const config = await response.json();
-            await t5Tokenizer.loadFromJSON(config);
+            await tokenizer.loadFromJSON(config);
+            t5Tokenizer = tokenizer;
 
             console.log('✅ T5 Tokenizer loaded successfully');
             t5Ok = true;
@@ -274,6 +289,17 @@ if (window.wsClient) {
         }
 
         return t5Ok;
+    }
+
+    let phoneTokenizersQueued = false;
+    window.wsClient.registerInitStep(5, 'Initializing Tokenizer', async () => {
+        if (phoneShell()) {
+            if (phoneTokenizersQueued) return;
+            phoneTokenizersQueued = true;
+            afterPhoneBoot(() => { void loadPromptTokenizers(); });
+            return;
+        }
+        return loadPromptTokenizers();
     }, true);
     window.wsClient.registerInitStep(10, 'Configuring Application', async () => {
         updateBalanceDisplay(window.optionsData?.balance);
@@ -315,6 +341,27 @@ if (window.wsClient) {
         galleryRows = calculateGalleryRows();
         const galleryToggleGroup = document.getElementById('galleryToggleGroup');
         galleryToggleGroup.setAttribute('data-active', currentGalleryView);
+    });
+
+    // The phone's Today before the whole list is in: the newest prints, kept apart from allImages (a
+    // short allImages would be taken for an incremental sync base). Waits at most 3 s; Today then
+    // fills in when the list arrives (wmShell redraws Today on galleryUpdated).
+    const PHONE_GALLERY_HEAD = 24;
+    async function loadPhoneGalleryHead() {
+        if (typeof allImages !== 'undefined' && Array.isArray(allImages) && allImages.length) return; // eslint-disable-line no-undef
+        try {
+            // loadGalleryChunk: public/scripts/comp/galleryView.js
+            const head = await Promise.race([
+                loadGalleryChunk('images', 0, PHONE_GALLERY_HEAD),
+                new Promise((resolve) => setTimeout(() => resolve(null), 3000))
+            ]);
+            if (head && Array.isArray(head.chunk)) window.galleryHeadItems = head.chunk;
+        } catch (error) {
+            console.warn('Phone gallery head failed (the full list follows):', error);
+        }
+    }
+    document.addEventListener('galleryUpdated', () => {
+        if (typeof allImages !== 'undefined' && Array.isArray(allImages) && allImages.length) window.galleryHeadItems = null; // eslint-disable-line no-undef
     });
 
     // public/scripts/comp/galleryView.js loadGallery, shouldAutoLaunchWorkspace
@@ -395,6 +442,13 @@ if (window.wsClient) {
         if (window.isDesktop) {
             // Fire-and-forget: startup splash and init do not wait; galleryView shows its own progress toast
             beginStartupGalleryLoad();
+            return;
+        }
+        if (phoneShell()) {
+            // Today shows only the newest prints (wmShell newestPrints, wmTodayWidgets lastPrint): one
+            // small read for those now (galleryHeadItems), the whole list after Today is up
+            await loadPhoneGalleryHead();
+            afterPhoneBoot(() => { void beginStartupGalleryLoad(); });
             return;
         }
         await beginStartupGalleryLoad();

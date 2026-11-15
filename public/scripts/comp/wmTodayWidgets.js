@@ -128,7 +128,9 @@
             img.dataset.src = src || '';
             if (src) img.src = src; else img.removeAttribute('src');
         }
-        img.hidden = !src;
+        // a picture that failed to load (a deleted print's preview) stays hidden on later redraws: its
+        // src is unchanged, so no second error event would hide it again
+        img.hidden = !src || (img.complete && img.naturalWidth === 0);
     }
 
     // ================================================================ Calendar

@@ -7020,6 +7020,8 @@
                 if (Array.isArray(window.originalAllImages) && window.originalAllImages.length) list = window.originalAllImages;
                 else if (typeof allImages !== 'undefined' && Array.isArray(allImages)) list = allImages;
             } catch (_) { /* gallery not loaded yet */ }
+            // before the whole list is in (it loads after boot): the newest prints read for Today
+            if (!list.length && Array.isArray(window.galleryHeadItems)) list = window.galleryHeadItems;
             return list.slice(0, n);
         }
 
@@ -7159,6 +7161,8 @@
                     refreshStatus();
                 });
                 window.addEventListener('meletonaccountschange', () => today.refresh());
+                // the gallery list came in after boot (appInitSteps.js): Today's prints (stale if off screen)
+                document.addEventListener('galleryUpdated', () => today.refresh());
                 const back = () => { if (today.stale && current === 'today') today.refresh(); };
                 document.addEventListener('visibilitychange', back);
                 window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) back(); });
@@ -8915,7 +8919,12 @@
     function setBoot(phase) {
         if (root.dataset.wmBoot === phase) return;
         root.dataset.wmBoot = phase;
-        if (phase === 'done') { bootDoneAt = Date.now(); setTimeout(showCrashNotice, 600); }
+        if (phase === 'done') {
+            bootDoneAt = Date.now();
+            setTimeout(showCrashNotice, 600);
+            // Today is up: the gallery list and tokenizers start loading (appInitSteps.js afterPhoneBoot)
+            document.dispatchEvent(new Event('wmBootDone'));
+        }
         const bootWait = shell.querySelector('.wm-boot-wait');
         // the wheel stays from the splash through Today's fill-in (reveal) until done
         if (!(phase === 'reveal' && bootWait && !bootWait.hidden)) {
