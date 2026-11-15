@@ -510,6 +510,7 @@
         superAnim = [
             card.animate([{ transform: `translateY(${y0}px)`, height: `${h0}px` }, { transform: `translateY(${y1}px)`, height: `${h1}px` }], opt),
             frost.animate([{ transform: `translateY(${-y0}px) ${T}` }, { transform: `translateY(${-y1}px) ${T}` }], opt),
+            superEl.querySelector('.wm-ti-super-extra').animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.6, delay: SUPER_MS * 0.4, easing: 'linear', fill: 'both' }),
             // the darkening comes once the card has grown (Yukimi, Nov 15), and is light
             shade.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS * 0.5, delay: SUPER_MS * 0.6, easing: 'linear', fill: 'both' }),
             // the notifications come once the card is on its way, not under the band before it moves
@@ -567,6 +568,7 @@
         superAnim = [
             card.animate([{ transform: `translateY(${y1}px)`, height: `${h1}px` }, { transform: `translateY(${y0}px)`, height: `${h0}px` }], opt),
             frost.animate([{ transform: `translateY(${-y1}px) ${T}` }, { transform: `translateY(${-y0}px) ${T}` }], opt),
+            superEl.querySelector('.wm-ti-super-extra').animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' }),
             shade.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.45, easing: 'linear', fill: 'forwards' }),
             body.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.5, easing: 'linear', fill: 'forwards' }),
             host.querySelector('.wm-ti-list').animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms * 0.7, delay: ms * 0.3, easing: 'linear', fill: 'both' }),
@@ -599,7 +601,7 @@
         superEl.hidden = true;
         superEl.innerHTML = '<div class="wm-ti-super-shade"></div><div class="wm-ti-super-fx" aria-hidden="true"></div>'
             + '<div class="wm-ti-super-body"><div class="wm-ti-super-sub" hidden>notifications</div><div class="wm-ti-super-notes"></div></div>'
-            + '<div class="wm-ti-super-card"><div class="wm-ti-super-frostclip"><div class="wm-ti-super-frost"></div></div><div class="wm-ti-super-art"></div><div class="wm-ti-super-panel"></div></div>';
+            + '<div class="wm-ti-super-card"><div class="wm-ti-super-frostclip"><div class="wm-ti-super-frost"></div></div><div class="wm-ti-super-art"></div><div class="wm-ti-super-panel"></div><div class="wm-ti-super-extra"></div></div>';
         superEl.querySelector('.wm-ti-super-art').style.borderImageSource = artImageSet('ti-3000');
         // the list's own touch handling stays out of the sheet; its rows scroll and take taps
         ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'click', 'contextmenu'].forEach((t) => superEl.addEventListener(t, (e) => e.stopPropagation()));
@@ -629,9 +631,25 @@
         const cp = clock.pages[pageIndex(clock)] || clock.pages[0];
         // the clock panel's own markup and classes: it draws exactly as the panel in the band
         superEl.querySelector('.wm-ti-super-panel').innerHTML = `<div class="wm-ti-pg">${pageHtml(clock, cp, { live: true })}</div>`;
-        let cur = null;
-        try { cur = window.wmWeather && typeof window.wmWeather.current === 'function' ? window.wmWeather.current() : null; } catch (_) { cur = null; }
-        superGrow = 0;
+        // the expanded card's weather (Melaton Weather's selected place): its condition icon, temperature
+        // and condition, then the next hours; the card grows by it; a tap opens Weather
+        const W = window.wmWeather;
+        let cur = null; let hours = [];
+        try { cur = W && typeof W.current === 'function' ? W.current() : null; hours = cur && typeof W.hourly === 'function' ? W.hourly(6) : []; } catch (_) { cur = null; hours = []; }
+        const extra = superEl.querySelector('.wm-ti-super-extra');
+        const wxSet = (u1, u2) => `${esc(u1)} 1x, ${esc(u2 || u1)} 2x, ${esc(String(u2 || u1).replace('@2x.png', '@4x.png'))} 4x`;
+        if (cur) {
+            const hiLo = cur.hi != null && cur.lo != null ? `H ${cur.hi}\u00b0 L ${cur.lo}\u00b0` : '';
+            const line = [cur.condition, cur.place, hiLo].filter(Boolean).join(' \u00b7 ');
+            extra.innerHTML = `<button type="button" class="wm-ti-super-wx" data-super="weather" aria-label="Weather">
+                <span class="wm-ti-super-wxnow"><img src="${esc(cur.iconUrl)}" srcset="${wxSet(cur.iconUrl, cur.iconUrl2x)}" alt="" draggable="false"><span class="wm-ti-super-wxt">${esc(cur.temp != null ? `${cur.temp}\u00b0` : '')}</span><span class="wm-ti-super-wxc">${esc(line)}</span></span>
+                ${hours.length ? `<span class="wm-ti-super-hours">${hours.map((h) => `<span class="wm-ti-super-hour"><span>${esc(h.label)}</span><img src="${esc(h.iconUrl)}" srcset="${wxSet(h.iconUrl, h.iconUrl2x)}" alt="" draggable="false"><span>${esc(h.temp)}</span></span>`).join('')}</span>` : ''}
+            </button>`;
+            superGrow = hours.length ? 74 : 28;
+        } else {
+            extra.innerHTML = '';
+            superGrow = 0;
+        }
         const uu = unit();
         superEl.querySelector('.wm-ti-super-body').style.top = `${(62 + superGrow) * uu}px`;
         superEl.style.setProperty('--fall', `${Math.round(host.clientHeight * 1.15)}px`);

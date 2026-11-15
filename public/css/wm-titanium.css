@@ -536,6 +536,90 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-panel .wm-ti-aclock {
 }
 
 
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-extra {
+    position: absolute;
+    left: calc(6 * var(--u));
+    right: calc(6 * var(--u));
+    top: calc(64 * var(--u));
+    opacity: 0;
+}
+
+/* the weather: the condition icon, temperature and condition on a line, the next hours under it; one
+ * button (Weather opens) */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wx {
+    display: block;
+    width: 100%;
+    margin: 0;
+    padding: 0 calc(4 * var(--u));
+    border: 0;
+    border-radius: calc(3 * var(--u));
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    text-shadow: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wx:active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxnow {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--u));
+    height: calc(24 * var(--u));
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxnow img {
+    flex: none;
+    width: calc(22 * var(--u));
+    height: calc(22 * var(--u));
+    object-fit: contain;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxt {
+    flex: none;
+    font-size: calc(20 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-wxc {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: calc(12 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-hours {
+    display: flex;
+    justify-content: space-between;
+    margin-top: calc(3 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-hour {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1 1 0;
+    min-width: 0;
+    font-size: calc(10 * var(--u));
+    line-height: 1.25;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-hour img {
+    width: calc(18 * var(--u));
+    height: calc(18 * var(--u));
+    margin: calc(1 * var(--u)) 0;
+    object-fit: contain;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-hour > span:last-child {
+    font-size: calc(12 * var(--u));
+}
+
 /* the notifications, below the card (its bottom shadow fades onto them) */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-body {
     position: absolute;
