@@ -508,7 +508,7 @@
         const sub = [v.channel, age(v.at)].filter(Boolean);
         return `<div class="yt-row${hero ? ' is-hero' : ''}${v.watched ? ' is-watched' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
             <span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${v.progress > 0 && !v.watched ? `<i class="yt-prog"><b style="width:${Math.min(100, Math.round(v.progress))}%"></b></i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>
-            <span class="yt-tx"><span class="yt-t">${isNew(v) && !v.watched ? '<i class="yt-new">NEW</i>' : ''}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(age(v.at))}</span>`}</span>
+            <span class="yt-tx"><span class="yt-t">${isNew(v) && !v.watched ? '<i class="yt-new">NEW</i>' : ''}${v.members ? '<i class="yt-new is-members">MEMBERS</i>' : ''}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(age(v.at))}</span>`}</span>
         </div>`;
     }
 

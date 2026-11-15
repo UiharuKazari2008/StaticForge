@@ -18,6 +18,7 @@
  *
  *   read('watch-later')  -> { signedIn, ids[] }                     video ids in list order
  *   read('bells')        -> { signedIn, channels[{ id, title, thumb, bell }] }   bell: all | some | none | ''
+ *   read('memberships')  -> { signedIn, names[] }                      channels with a paid membership (by name)
  *   read('history')      -> { signedIn, items[{ id, pct }] }           the watch history, newest first; pct played
  *   edit('add' | 'remove', videoId) -> { signedIn, ok }
  *   watched(on, videoId) -> { signedIn, ok, found? }                   Mark as Watched / Unwatched on the account
@@ -34,6 +35,7 @@ const PAGES = {
     'watch-later': 'https://www.youtube.com/playlist?list=WL',
     bells: 'https://www.youtube.com/feed/channels',
     history: 'https://www.youtube.com/feed/history',
+    memberships: 'https://www.youtube.com/paid_memberships',
     'later-add': 'https://www.youtube.com/playlist?list=WL',
     'later-remove': 'https://www.youtube.com/playlist?list=WL',
     'watch-mark': 'https://www.youtube.com/feed/history',
@@ -189,6 +191,31 @@ const IN_PAGE = `(async (kind, arg) => {
             await fetch(b.toString(), { mode: 'no-cors', credentials: 'include' });
             return { signedIn: true, ok: true };
         } catch (_) { return { signedIn: true, ok: false }; }
+    }
+
+    // ---- the channels the account pays a membership on: the cards under Memberships, before the inactive ones
+    if (kind === 'memberships') {
+        const names = [];
+        let section = '';
+        const cards = (node, depth) => {
+            if (!node || typeof node !== 'object' || depth > 40) return;
+            if (Array.isArray(node)) { node.forEach((n) => cards(n, depth + 1)); return; }
+            for (const k of Object.keys(node)) {
+                if (k !== 'cardItemRenderer') { cards(node[k], depth + 1); continue; }
+                const texts = [];
+                const grab = (n, d) => {
+                    if (!n || typeof n !== 'object' || d > 20) return;
+                    if (Array.isArray(n)) { n.forEach((x) => grab(x, d + 1)); return; }
+                    for (const key of Object.keys(n)) { if ((key === 'simpleText' || key === 'text') && typeof n[key] === 'string') texts.push(n[key].trim()); else grab(n[key], d + 1); }
+                };
+                grab(node[k], 0);
+                const all = texts.join(' ');
+                if (texts.length === 1) { section = /inactive/i.test(all) ? 'inactive' : /membership/i.test(all) ? 'active' : 'other'; continue; }
+                if (section === 'active' && texts[0] && !/expired/i.test(all)) names.push(texts[0]);
+            }
+        };
+        cards(window.ytInitialData, 0);
+        return { signedIn: true, names };
     }
 
     // ---- lists
