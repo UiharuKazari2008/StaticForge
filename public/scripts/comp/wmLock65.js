@@ -580,7 +580,9 @@
         pinDigits = '';
         shell.classList.add('wm-lock65-box');
         try {
-            await sh.messageBox({ title: 'Password Incorrect', text: 'The password you typed is incorrect.', buttons: [{ text: 'OK', value: true }] });
+            // the device's two lines; ours adds where a forgotten PIN is reset (Yukimi, #850): the
+            // PIN is kept on this device only, so nothing on the phone itself can give it back
+            await sh.messageBox({ title: 'Password Incorrect', text: 'The password you typed is incorrect. If you have forgotten your PIN, go to the Domain Controller to reset the PIN number.', buttons: [{ text: 'OK', value: true }] });
         } catch (_) { /* no box: the bar is empty again */ }
         shell.classList.remove('wm-lock65-box');
         paintPin();
