@@ -475,30 +475,50 @@ if (window.wsClient) {
     let galleryCopyTimer = null;
     let galleryCopyKey = '';
     const galleryCopyKeyOf = (st, n) => JSON.stringify([st && st.workspaceId, st && st.total, st && st.destructiveAt, st && st.updatedAt, st && st.latestFilename, n]);
+    // The copy is written when the page goes behind (screen off, another app, Home): one write of the
+    // whole list blocks the A53's page 155-170 ms (the put clones 16,915 items), and it ran after every
+    // gallery change - once per print batch during a Director turn (#843). Changes only mark it stale;
+    // a phone with no copy yet still writes its first one soon after the load.
+    let galleryCopyStale = false;
+    function savePhoneGalleryNow() {
+        if (!galleryCopyStale) return;
+        galleryCopyStale = false;
+        clearTimeout(galleryCopyTimer);
+        void savePhoneGalleryRun();
+    }
+    function notePhoneGalleryChanged() {
+        galleryCopyStale = true;
+        if (!galleryCopyKey) savePhoneGallerySoon();
+    }
     function savePhoneGallerySoon() {
         clearTimeout(galleryCopyTimer);
         galleryCopyTimer = setTimeout(() => {
-            const run = async () => {
-                try {
-                    const st = typeof galleryImagesSyncState !== 'undefined' ? galleryImagesSyncState : null; // eslint-disable-line no-undef
-                    const list = typeof allImages !== 'undefined' ? allImages : null; // eslint-disable-line no-undef
-                    if (!st || !Array.isArray(list) || !list.length || st.total !== list.length || typeof indexedDB === 'undefined') return;
-                    // the copy already kept is this one (a boot that used it): no second write
-                    const key = galleryCopyKeyOf(st, list.length);
-                    if (key === galleryCopyKey) return;
-                    galleryCopyKey = key;
-                    const db = await galleryCopyDb();
-                    await galleryCopyReq(db, 'readwrite', (store) => store.put({ v: 1, workspaceId: st.workspaceId, syncState: { ...st }, list: list.slice(), at: Date.now() }, 'images'));
-                    db.close();
-                } catch (error) {
-                    console.warn('Phone gallery copy not saved:', error && error.message);
-                }
-            };
-            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => { void run(); }, { timeout: 20000 });
-            else void run();
+            galleryCopyStale = false;
+            if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(() => { void savePhoneGalleryRun(); }, { timeout: 20000 });
+            else void savePhoneGalleryRun();
         }, 5000);
     }
-    if (phoneShell()) document.addEventListener('galleryUpdated', savePhoneGallerySoon);
+    async function savePhoneGalleryRun() {
+        try {
+            const st = typeof galleryImagesSyncState !== 'undefined' ? galleryImagesSyncState : null; // eslint-disable-line no-undef
+            const list = typeof allImages !== 'undefined' ? allImages : null; // eslint-disable-line no-undef
+            if (!st || !Array.isArray(list) || !list.length || st.total !== list.length || typeof indexedDB === 'undefined') return;
+            // the copy already kept is this one (a boot that used it): no second write
+            const key = galleryCopyKeyOf(st, list.length);
+            if (key === galleryCopyKey) return;
+            galleryCopyKey = key;
+            const db = await galleryCopyDb();
+            await galleryCopyReq(db, 'readwrite', (store) => store.put({ v: 1, workspaceId: st.workspaceId, syncState: { ...st }, list: list.slice(), at: Date.now() }, 'images'));
+            db.close();
+        } catch (error) {
+            console.warn('Phone gallery copy not saved:', error && error.message);
+        }
+    }
+    if (phoneShell()) {
+        document.addEventListener('galleryUpdated', notePhoneGalleryChanged);
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') savePhoneGalleryNow(); });
+        window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on === false) savePhoneGalleryNow(); });
+    }
 
     // public/scripts/comp/galleryView.js loadGallery, shouldAutoLaunchWorkspace
     function beginStartupGalleryLoad() {
