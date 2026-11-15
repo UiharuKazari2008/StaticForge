@@ -5711,9 +5711,9 @@
         'online.mp3',
         // Traffic's speed camera alert: our own sound (scripts/generate-traffic-camera-sound.py, #810)
         'TrafficCamera.wav',
-        // Lapis Remote's remote start countdown (5, 3, 2, 1 minutes left): our own chime
-        // (scripts/generate-lapis-countdown-sound.py, #835)
-        'LapisCountdown.wav',
+        // Lapis Remote's own car chimes: the remote start countdown (5, 3, 2, 1 minutes left, #835), the car
+        // left unlocked and an issue found (scripts/generate-wm-notification-sounds.py, #848)
+        'LapisCountdown.wav', 'LapisUnlocked.wav', 'LapisIssue.wav',
         // the low battery class's Wave (HKCU ControlPanel\Notifications {A877D663}: lowbatt.wma) is
         // missing from the ROM images: the desktop's Battery Low / Battery Critical sounds (#829)
         'lowbatt.wav', 'critbatt.wav',
@@ -5764,6 +5764,9 @@
         { id: 'traffic-camera', label: 'Traffic: Speed camera', kind: 'note', sound: 'TrafficCamera.wav', desktop: 'warning' },
         // #835: a remote start on its timer has 5, 3, 2 or 1 minutes left
         { id: 'lapis-run-left', label: 'Lapis Remote: Remote start ending', kind: 'note', sound: 'LapisCountdown.wav', desktop: 'balloon' },
+        // #848: the car was left unlocked; the car reports an issue (a warning light, a recall, a failed check)
+        { id: 'lapis-unlocked', label: 'Lapis Remote: Car left unlocked', kind: 'note', sound: 'LapisUnlocked.wav', desktop: 'warning' },
+        { id: 'lapis-issue', label: 'Lapis Remote: Issue detected', kind: 'note', sound: 'LapisIssue.wav', desktop: 'warning' },
         { id: 'warning', label: 'Warnings', kind: 'event', sound: 'Alarm2.wav', desktop: 'warning' },
         // Weather (#792): alerts for Home / Work, severe and extreme ones keep sounding until seen; the rain alarm
         { id: 'weather-alert', label: 'Weather: Alert', kind: 'note', sound: 'WeatherAlert.wav', desktop: 'balloon' },

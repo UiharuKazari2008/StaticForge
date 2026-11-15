@@ -1333,7 +1333,8 @@
                 title: n.title,
                 html: esc(n.text || ''),
                 icon: 'app-lapis',
-                event: 'notification',
+                // left unlocked and an issue found sound in classes of their own (#848)
+                event: n.kind === 'unlocked' ? 'lapis-unlocked' : n.kind === 'health' ? 'lapis-issue' : 'notification',
                 softKeys: () => ({ left: wantsLock ? { label: 'Lock', action: lock } : { label: 'View', action: view }, right: { label: 'Dismiss', action: () => { if (note) note.close(); } } })
             });
             if (note) return;
