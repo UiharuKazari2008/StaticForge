@@ -98,6 +98,30 @@ class ApiKeyManager {
                     ]
                 }
             },
+            // Yozora #835: Lapis Remote (modules/lapisService.js through modules/bluelinkClient.js). The key
+            // value is the BlueLink account's password; the e-mail and PIN are plain fields on the entry.
+            // No status probe: a check would be a sign-in against Hyundai's limits.
+            bluelink: {
+                label: 'Hyundai BlueLink',
+                description: 'The BlueLink account Lapis Remote reads the car and sends lock, unlock and remote start through',
+                icon: 'fas fa-car-side',
+                requiresRestart: false,
+                keyLabel: 'Password',
+                fields: [
+                    { field: 'username', label: 'E-mail', placeholder: 'the MyHyundai sign-in e-mail', pattern: '^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$' },
+                    { field: 'pin', label: 'BlueLink PIN', placeholder: '4 digits (needed for lock, unlock and remote start)', pattern: '^\\d{4}$' }
+                ],
+                fingerprint: (key) => (key.username ? String(key.username) : null),
+                howTo: {
+                    title: 'Which account this is',
+                    steps: [
+                        'Use the e-mail and password you sign in to the MyHyundai with Bluelink app with (USA accounts).',
+                        'The PIN is the 4-digit Bluelink PIN the app asks for before a remote command.',
+                        'Lapis Remote reads the car\'s last report every 15 minutes, which does not wake the car. It wakes the car only for Refresh, after a command, and once after it was left unlocked.'
+                    ],
+                    links: [['MyHyundai', 'https://owners.hyundaiusa.com/']]
+                }
+            },
             // TomTom Traffic Incident Details (Melaton Traffic, #795): accidents, closures, roadworks, hazards
             // and jams on the commute. Free tier counted per day; no status probe (it would spend a call).
             tomtom: {
