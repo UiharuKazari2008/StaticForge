@@ -3174,6 +3174,13 @@
         if (bar && bar.style.paddingRight !== r) bar.style.paddingRight = r;
     }
 
+    /** A foldable phone on its unfolded (main) screen: AndroidDisplay.getScreenInfo. */
+    function unfoldedScreen() {
+        const D = window.AndroidDisplay;
+        if (!D || typeof D.getScreenInfo !== 'function') return false;
+        try { const i = JSON.parse(D.getScreenInfo() || 'null'); return !!(i && i.foldable && i.screen === 'main'); } catch (_) { return false; }
+    }
+
     function fitStatusNow() {
         if (!shell) return;
         const bar = shell.querySelector('.wm-titlebar');
@@ -3238,6 +3245,12 @@
         };
         const ok = () => fits() && half();
         const step = (fn) => { fn(); relayout(); return ok(); };
+        // a foldable's unfolded inner screen has the room: no icon steps aside or folds into the group
+        // there, those right of the camera that do not fit carry on left of it (Yukimi, Nov 15)
+        if (unfoldedScreen()) {
+            if (cameraInBar) { setReserve(0); relayout(); }
+            return;
+        }
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
         // status icons (Yukimi, Nov 13); Today keeps it
         if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
