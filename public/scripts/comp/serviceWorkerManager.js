@@ -11,7 +11,16 @@ function isAuthGatedManifestFile(file) {
     return STATIC_SHELL_PATHS.has(path) || path.startsWith('/protected/') || path.startsWith('/private/') || path.startsWith('/graphify-out/');
 }
 
+// A plain absolute path made only of characters the URL parser leaves as they are (the whole
+// manifest: 9,400 rows) is its own pathname up to the query: no URL object for it. Building the
+// path map and the update check parsed each row with new URL(): ~90 ms of a phone boot (#817).
+const PLAIN_STATIC_PATH = /^\/(?!\/)[A-Za-z0-9_\-.~@+%\/]*$/;
 function normalizeStaticFilePath(url) {
+    if (typeof url === 'string') {
+        const q = url.search(/[?#]/);
+        const path = q < 0 ? url : url.slice(0, q);
+        if (PLAIN_STATIC_PATH.test(path) && path.indexOf('/.') < 0 && path.indexOf('//') < 0) return path;
+    }
     try {
         return new URL(url, window.location.origin).pathname;
     } catch (_) {
