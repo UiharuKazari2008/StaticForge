@@ -893,7 +893,9 @@
                 return false;
             },
             softKeys() {
-                if (layer === 'form') return { left: null, right: { label: 'Menu', menu: editMenu } };
+                // icon: the key's picture on 6.5.1's bottom button bar (#850 bars; device Calendar: the view key shows
+                // the next view's picture, Menu the menu picture; the summary's Reply picture is not in the ROM dump: text)
+                if (layer === 'form') return { left: null, right: { label: 'Menu', icon: 'menu', menu: editMenu } };
                 if (layer === 'summary') {
                     return {
                         left: { label: 'Reply', disabled: true },
@@ -906,7 +908,8 @@
                         ] }
                     };
                 }
-                return { left: { label: VIEW_LABEL[VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length]], action: nextView }, right: { label: 'Menu', menu: viewMenu } };
+                const nextV = VIEWS[(VIEWS.indexOf(view) + 1) % VIEWS.length];
+                return { left: { label: VIEW_LABEL[nextV], icon: `cal-${nextV}`, action: nextView }, right: { label: 'Menu', icon: 'menu', menu: viewMenu } };
             }
         });
     }

@@ -1606,8 +1606,9 @@
                     softKeys() {
                         // the device's Options and Rename/Move have no soft keys: ok saves, back leaves
                         if (page && page.dataset.view === 'form') return { left: null, right: null };
-                        if (page && page.dataset.view === 'note') return { left: { label: 'New', action: newNote }, right: { label: 'Menu', menu: noteMenu } };
-                        return { left: { label: 'New', disabled: readOnly(), action: newNote }, right: { label: 'Menu', menu: listMenu } };
+                        // icon: the key's picture on 6.5.1's bottom button bar (#850 bars; device Notes: both keys are pictures)
+                        if (page && page.dataset.view === 'note') return { left: { label: 'New', icon: 'new', action: newNote }, right: { label: 'Menu', icon: 'menu', menu: noteMenu } };
+                        return { left: { label: 'New', icon: 'new', disabled: readOnly(), action: newNote }, right: { label: 'Menu', icon: 'menu', menu: listMenu } };
                     }
                 });
             },
@@ -2706,11 +2707,13 @@
                             const c = current && current.c;
                             const canCall = !!(c && (c.home.mobile || c.work.phone || c.home.phone));
                             // 6.5: a card with no number has Edit there
-                            if (is65() && !canCall) return { left: { label: 'Edit', disabled: readOnly(), action: () => openForm(current) }, right: { label: 'Menu', menu: cardMenu } };
-                            return { left: { label: 'Call', disabled: !canCall, action: callDefault }, right: { label: 'Menu', menu: cardMenu } };
+                            // icon: the key's picture on 6.5.1's bottom button bar (#850 bars; device Contacts: list New + Menu,
+                            // card Edit + Menu seen; Call as the phone picture is the theme's own, not seen on the device)
+                            if (is65() && !canCall) return { left: { label: 'Edit', icon: 'edit', disabled: readOnly(), action: () => openForm(current) }, right: { label: 'Menu', icon: 'menu', menu: cardMenu } };
+                            return { left: { label: 'Call', icon: 'phone', disabled: !canCall, action: callDefault }, right: { label: 'Menu', icon: 'menu', menu: cardMenu } };
                         }
-                        if (v === 'edit') return { left: null, right: { label: 'Menu', menu: formMenu } };
-                        return { left: { label: 'New', disabled: readOnly(), action: () => ensureVCard().then((ok) => { if (ok) openForm(null); }) }, right: { label: 'Menu', menu: listMenu } };
+                        if (v === 'edit') return { left: null, right: { label: 'Menu', icon: 'menu', menu: formMenu } };
+                        return { left: { label: 'New', icon: 'new', disabled: readOnly(), action: () => ensureVCard().then((ok) => { if (ok) openForm(null); }) }, right: { label: 'Menu', icon: 'menu', menu: listMenu } };
                     }
                 });
             },

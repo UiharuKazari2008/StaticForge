@@ -982,7 +982,8 @@
                 if (drag !== d) return;
                 d.raf = 0;
                 if (!d.speed) return;
-                const dt = Math.max(0, Math.min(34, now - d.last));
+                // the speed is the device's whatever the frame rate (a slow frame is not cut short)
+                const dt = Math.max(0, Math.min(120, now - d.last));
                 d.last = now;
                 const next = Math.max(0, Math.min(maxY, y + d.speed * dt));
                 if (next !== y) { place(next); move651(d.px, d.py); }
@@ -1230,8 +1231,9 @@
             },
             hide() { endDrag(false); stopMotion(); },
             softKeys() {
-                if (path.length) return { left: { label: 'Back', action: () => { if (closeFolder()) sh.syncHistory(); } }, right: null };
-                return { left: { label: 'Lock', action: lock }, right: null };
+                // icon: the key's picture on 6.5.1's bottom button bar (#850 bars; device: back arrow, padlock)
+                if (path.length) return { left: { label: 'Back', icon: 'navback', action: () => { if (closeFolder()) sh.syncHistory(); } }, right: null };
+                return { left: { label: 'Lock', icon: 'lock', action: lock }, right: null };
             },
             titleKind: () => 'close',
             // a lifted icon is a step of its own: the back key puts it back

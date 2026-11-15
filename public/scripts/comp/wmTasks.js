@@ -956,17 +956,19 @@
         if (view === 'list') {
             const t = current();
             const ok = !!t && !t.print && !barActive();
-            return { left: { label: lastKey, disabled: !ok, action: () => toggleDone(current()) }, right: { label: 'Menu', menu: listMenu } };
+            // icon: the key's picture on 6.5.1's bottom button bar (#850 bars; device Tasks: Complete is the ticked
+            // box, summary Edit + Menu, the form Menu alone; Activate as the empty box is outres.192's other frame)
+            return { left: { label: lastKey, icon: /^activ/i.test(String(lastKey)) ? 'task-undone' : 'task-done', disabled: !ok, action: () => toggleDone(current()) }, right: { label: 'Menu', icon: 'menu', menu: listMenu } };
         }
         if (view === 'summary') {
             const t = current();
             const fixed = !t || t.print;
             return {
-                left: { label: 'Edit', disabled: fixed, action: () => openForm(current()) },
-                right: { label: 'Menu', menu: () => [{ label: 'Beam...', disabled: true }, { label: 'Delete', disabled: fixed, action: () => deleteTask(current()) }] }
+                left: { label: 'Edit', icon: 'edit', disabled: fixed, action: () => openForm(current()) },
+                right: { label: 'Menu', icon: 'menu', menu: () => [{ label: 'Beam...', disabled: true }, { label: 'Delete', disabled: fixed, action: () => deleteTask(current()) }] }
             };
         }
-        if (view === 'form') return { left: null, right: { label: 'Menu', menu: formMenu } };
+        if (view === 'form') return { left: null, right: { label: 'Menu', icon: 'menu', menu: formMenu } };
         return { left: null, right: null };
     }
 

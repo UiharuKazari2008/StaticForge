@@ -2075,6 +2075,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[
     max-width: calc(100% - calc(4 * var(--wm-px))) !important;
     height: calc(162 * var(--wm-px));
     max-height: none !important;
+    overflow-x: hidden !important;
     overflow-y: auto !important;
     margin: 0;
     border: calc(1 * var(--wm-px)) solid #000;
@@ -2087,6 +2088,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[
     height: calc(32 * var(--wm-px));
     width: 100%;
     min-width: 0;
+    overflow: hidden;
     margin: 0;
     padding: 0 calc(4 * var(--wm-px)) 0 calc(3.5 * var(--wm-px)) !important;
     font-size: calc(11.5 * var(--wm-px));
@@ -2115,16 +2117,32 @@ html.ui-mobile[data-wm-rev="6.5.1"] #wmShell:has(:is(.wm-combo, .wm-combo-edit)[
  * 6.5 bar there is a thumb on a bare track), so here the two caps are drawn on the bar itself and
  * the track is held 20 units short at each end; the real buttons are switched off so that a
  * browser that does draw them shows one cap, not two. The caps do not take taps. ---- */
-html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar:vertical {
+/* two Settings list views had no WM bar at all (the browser's own showed): the 6.5 bar for them here */
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(.wm-sys-lv-body, .wm-form .wmsp-btn-list)::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(.wm-sys-lv-body, .wm-form .wmsp-btn-list)::-webkit-scrollbar-thumb {
+    min-height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(12 * var(--wm-px)) 0;
+    border-radius: 0;
+    border-image: url('/static_images/wm65/theme-black-scrollbarthumb@2x.png') 24 0 24 0 fill / calc(12 * var(--wm-px)) 0 stretch;
+    background: none;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-sys-lv-body, .wm-form .wmsp-btn-list, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar:vertical {
     background: url('/static_images/wm65/v651-scrollbar-up@2x.png') top / 100% calc(20 * var(--wm-px)) no-repeat, url('/static_images/wm65/v651-scrollbar-down@2x.png') bottom / 100% calc(20 * var(--wm-px)) no-repeat, #e6e6e6;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar-track:vertical {
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-sys-lv-body, .wm-form .wmsp-btn-list, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar-track:vertical {
     margin: calc(20 * var(--wm-px)) 0;
     background: transparent;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar-button:single-button:vertical {
+html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell .wm-page, .wm-pg-scroll, textarea.wm-edit, textarea.wsk-textarea, textarea.wm-ds-textarea, .wm-set-scroll, .wm-listbox, .wm-picker, .wm-pv-scroll, .wm-popup[data-side="dropdown"], .scrollable-content, .wm-fe .fe-scroll, .wm-fd .wfd-combo-list, .wm-fd .wfd-scroll, .wm-browser .wmb-home, .wm-browser .wmb-gpage, .wm-browser .wmb-core, .wsk .wsk-scroll, .wsk .wsk-body, .wm-chat :is(.wch-scroll, .wch-history, .wch-form-scroll), .wm-spellbook :is(.wsb-scroll, .wsb-card-body, .wsb-form-body), .wm-xlink .wxl-scroll, .wm-paypass .wpp-scroll, .wm-rdm .wrd-scroll, .wm-pvx-grid, [data-wmh-form="inspector"] .image-prompt-inspector-scroll-shell, .wm-sys-lv-body, .wm-form .wmsp-btn-list, .wm-calendar :is(.wcl-alist, .wcl-dscroll, .wcl-wscroll, .wcl-fbody, .wcl-fnotes, .wcl-summary, .wcl-snotes), .wm-msg :is(.msg-scroll, .msg-pick, .msg-read, .msg-text, .msg-form), :is(.wm-notes, .wm-contacts) :is(.nt-scroll, .nt-text, .nt-pagewrap, .ct-scroll, .ct-card-body, .ct-form-body, .ct-form-notes))::-webkit-scrollbar-button:single-button:vertical {
     display: none;
 }
 
@@ -2220,11 +2238,12 @@ html.ui-mobile[data-wm-rev="6.5.1"] body > #bootMessageBox {
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-body {
     padding-right: calc(24 * var(--wm-px));
+    padding-bottom: calc(7 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons {
     gap: calc(1 * var(--wm-px));
-    padding: 0 calc(6 * var(--wm-px)) calc(39.5 * var(--wm-px));
+    padding: 0 calc(6 * var(--wm-px)) calc(40.5 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-msgbox-buttons button,
@@ -2267,6 +2286,11 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtm-row {
     height: calc(35 * var(--wm-px));
 }
 
+/* File Explorer's folder bar is a 64 px toolbar over its 2 px rule (6.5: 46 px) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-fe .fe-bar {
+    height: calc(33 * var(--wm-px));
+}
+
 html.ui-mobile[data-wm-rev="6.5.1"] :is(.wm-fe .fe-row, .wm-task-manager .wtm-row, .wm-browser .wmb-sub-row).is-selected {
     border-image-outset: calc(0.5 * var(--wm-px)) 0;
 }
@@ -2275,9 +2299,25 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-browser .wmb-sub-row {
     height: calc(35 * var(--wm-px));
 }
 
+/* two-line rows gain 13 px: Messaging's account list 94 px a row (6.5: 81), the first line's
+ * middle 34 px down the row, the second 61.5; the message lists follow (not seen with mail on the
+ * device: its inbox is empty) */
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-msg .msg-row,
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-chat .wch-row {
-    height: calc(46.5 * var(--wm-px));
+    height: calc(45 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msg .msg-pick-row.is-two {
+    height: calc(47 * var(--wm-px));
+    padding-top: calc(10 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-msg .msg-pick-row.is-two.is-selected::before {
+    height: calc(44 * var(--wm-px));
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-task-manager .wtm-head {
+    height: calc(32 * var(--wm-px));
 }
 
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-notes .nt-row {
@@ -2337,6 +2377,23 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-row.is-selected .wmsp-btn
 html.ui-mobile[data-wm-rev="6.5.1"] .wm-form .wmsp-btn-row.is-selected .wmsp-btn-name > span {
     background: none;
     color: #fff;
+}
+
+/* the play and stop keys of Sounds & Notifications stay flat on the device (owner-drawn: the 6.5
+ * face in a black frame), 129 x 70 px each, 8 px apart (here as wide as their column lets two be, 129 px at most) */
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form :is(.wmsp-play, .wmsp-stop) {
+    flex: 1 1 0;
+    width: auto;
+    max-width: calc(64.5 * var(--wm-px));
+    height: calc(35 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000 !important;
+    border-image: none !important;
+    background: var(--wm65-face) !important;
+}
+
+html.ui-mobile[data-wm-rev="6.5.1"] .wm-form :is(.wmsp-play, .wmsp-stop):active:not(:disabled) {
+    border-image: none !important;
+    background: var(--wm-highlight) !important;
 }
 /* ---- end 6.5.1 controls ---- */
 

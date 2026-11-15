@@ -6013,9 +6013,7 @@
         btn.type = 'button';
         btn.className = 'wm651-zoom-exit';
         btn.setAttribute('aria-label', 'Zoom out');
-        btn.addEventListener('click', (e) => { e.stopPropagation(); z651Stop(); });
-        btn.addEventListener('contextmenu', (e) => e.preventDefault());
-        root.appendChild(btn);
+        root.appendChild(btn); // its presses are taken in z651Event
         z651.btn = btn;
     }
 
@@ -6052,8 +6050,15 @@
      */
     function z651Event(e) {
         const z = z651;
-        if (!z || !e.isTrusted || z651Mine.has(e) || (z.btn && (e.target === z.btn))) return;
+        if (!z || !e.isTrusted || z651Mine.has(e)) return;
         const stop = () => { e.stopImmediatePropagation(); };
+        // the button is the magnifier's own: the page sees nothing of a press on it (an open menu stays open)
+        if (z.btn && e.target === z.btn) {
+            stop();
+            if (e.type === 'contextmenu') e.preventDefault();
+            if (e.type === 'click') z651Stop();
+            return;
+        }
         const now = performance.now();
         const cx = z651Raw(e, 'clientX');
         const cy = z651Raw(e, 'clientY');
@@ -6126,6 +6131,7 @@
 
     /** A page event's own untouched coordinate (the getters are replaced while zoomed). */
     function z651Raw(e, name) {
+        if (!(e instanceof MouseEvent)) return 0; // a touch event has no position of its own
         const s = z651Saved.find((x) => x[1] === name && x[0] === MouseEvent.prototype);
         const v = s && s[2].get ? s[2].get.call(e) : e[name];
         return typeof v === 'number' ? v : 0;

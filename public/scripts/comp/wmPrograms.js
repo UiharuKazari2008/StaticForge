@@ -472,6 +472,8 @@
         if (host.wmPivotFlick) return;
         host.wmPivotFlick = true;
         let track = null;
+        // capture: scroll areas and some controls stop their touch events on the way up
+        const flickOpts = { passive: true, capture: true };
         const stripNow = () => host.querySelector(':scope > .wm-tabs.wm-pivot-on');
         host.addEventListener('touchstart', (e) => {
             track = null;
@@ -483,15 +485,15 @@
             }
             const p = e.touches[0];
             track = [{ x: p.clientX, y: p.clientY, t: e.timeStamp }];
-        }, { passive: true });
+        }, flickOpts);
         host.addEventListener('touchmove', (e) => {
             if (!track) return;
             if (e.touches.length !== 1) { track = null; return; }
             const p = e.touches[0];
             track.push({ x: p.clientX, y: p.clientY, t: e.timeStamp });
             if (track.length > 24) track.splice(1, track.length - 24);
-        }, { passive: true });
-        host.addEventListener('touchcancel', () => { track = null; }, { passive: true });
+        }, flickOpts);
+        host.addEventListener('touchcancel', () => { track = null; }, flickOpts);
         host.addEventListener('touchend', (e) => {
             const tr = track;
             track = null;
@@ -510,7 +512,7 @@
             const v = span > 0 ? (last.x - from.x) / span : 0;
             if (Math.abs(v) < 0.125 * unit || Math.sign(v) !== Math.sign(dx)) return;
             pivotGo(strip, dx < 0 ? 1 : -1);
-        }, { passive: true });
+        }, flickOpts);
     }
 
     function pivotTabs(strip) {
@@ -2150,7 +2152,10 @@
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (btn.disabled || !sh) return;
-                sh.dropdown(btn.closest('.wm-combo-edit') || btn, options.map(([v, l]) => ({
+                const box = btn.closest('.wm-combo-edit') || btn;
+                // 6.5.1 (#850) controls: the shell's drop-down list, only looked for on that release
+                const list651 = document.documentElement.dataset.wmRev === '6.5.1' ? () => document.querySelector('#wmShell .wm-popup[data-side="dropdown"]') : null;
+                sh.dropdown(box, options.map(([v, l]) => ({
                     label: l,
                     radio: v === current,
                     action: () => {
@@ -2159,7 +2164,16 @@
                         if (span) span.textContent = l;
                         onPick(v);
                     }
-                })), align);
+                })), align, list651 ? () => { const p = list651(); if (p) p.style.removeProperty('--wm651-list-w'); } : null);
+                // 6.5.1 (#850) controls: the list is 17 px (8.5 units) wider than its box (device:
+                // a 420 px box opens a 437 px list, 392 opens 409, 140 opens 157); wm65.css centres
+                // it and takes the width from this property, which goes when the list closes (a
+                // list opened by other code gets the stylesheet's width)
+                if (list651 && box.getAttribute('aria-expanded') === 'true') {
+                    const pop = list651();
+                    const unit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+                    if (pop) pop.style.setProperty('--wm651-list-w', `${box.getBoundingClientRect().width + 8.5 * unit}px`);
+                }
             });
         },
         /** Section heading inside a page (WM's bold sub-header). */
