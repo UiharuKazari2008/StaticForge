@@ -617,6 +617,15 @@ if (window.wsClient) {
         await beginStartupGalleryLoad();
     }, true, window.isDesktop ? { nonBlocking: true } : undefined);
 
+    // app.html raises the resource timing buffer to 2,000 entries so a boot's ~600 requests can all be
+    // read back (boot reports, the A53 measurements). Those entries then stayed for the life of the
+    // page and the buffer kept filling to its 2,000. Five minutes after the boot they are let go
+    // and the buffer returns to the browser's own size; observers (wmShell's data arrows) get new
+    // entries either way (#849).
+    setTimeout(() => {
+        try { performance.clearResourceTimings(); performance.setResourceTimingBufferSize(250); } catch (_) { /* no resource timing */ }
+    }, 5 * 60 * 1000);
+
     window.wsClient.registerInitStep(100, 'Finalizing', async () => {
         // Activate the Android notification bridge now that all scripts have loaded.
         // This must run last so that window.AndroidNotification (injected by the host)
