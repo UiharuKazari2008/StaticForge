@@ -919,6 +919,10 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
     return sent;
 }
 
+const deviceEventTaps = [];
+/** fn(eventName, detail, device) for every event a partnered device sends (after its permission check). */
+function onDeviceEvent(fn) { if (typeof fn === 'function') deviceEventTaps.push(fn); }
+
 /** as_event: a peer's own news (storage changed, session changed) to the other kind, no reply. */
 function event(globalResources, wsServer, clientInfo, data) {
     const me = clientInfo && clientInfo.as;
@@ -933,6 +937,8 @@ function event(globalResources, wsServer, clientInfo, data) {
         const need = OP_GROUP[opGroupName(name)];
         if (need && !sess.permissions.includes(need)) return 0;
     }
+    // server modules that take a device's news themselves (Melaton Videos imports notify.posted, #861)
+    if (me.kind === 'device') for (const tap of deviceEventTaps) { try { tap(name, src.detail == null ? null : src.detail, me); } catch (_) { /* the tap's own fault */ } }
     const msg = { type: 'as_event', data: { from: fromOf(clientInfo), event: name, detail: src.detail == null ? null : src.detail }, timestamp: new Date().toISOString() };
     let n = 0;
     for (const s of liveSockets(server, me.kind === 'device' ? 'computer' : 'device')) {
@@ -1187,6 +1193,7 @@ function resetForTests(databasesPath) {
 }
 
 module.exports = {
+    onDeviceEvent,
     AsError,
     PERMISSIONS,
     GUEST_PERMISSIONS,

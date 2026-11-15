@@ -1,5 +1,7 @@
 /**
- * Melaton Mobile YouTube (Yozora #839): the server side of the phone's YouTube program. Yukimi,
+ * Melaton Videos, first Melaton Mobile YouTube (Yozora #839, #861): the server side of the phone's videos
+ * program. Kick live streams and imported app notifications come from modules/videosSources.js and are
+ * mixed into the feed here. Yukimi,
  * Nov 15 2026: sign in, see your subscriptions, Watch Later and Search; a Today item (6.1 and 6.5)
  * that pages through the latest uploads of a chosen list of favourite channels.
  *
@@ -41,7 +43,7 @@
  * day in .cache/youtube-usage.json and stop at settings.budget (6,000) with a plain message.
  *
  * Push, never poll (rule server-push-not-polling): statusHub feed `youtube` (push type
- * youtube_status) carries { account, favourites, latest, settings }. The feed's one timer runs only
+ * youtube_status) carries { account, favourites, latest, live, sources, settings, feed }. The feed's one timer runs only
  * while a phone shows the Today item or the program; it re-reads a favourite channel's uploads when
  * they are older than 15 minutes and pushes only
  * what changed. Today's list is one list: every favourite's uploads together, newest first.
@@ -149,6 +151,9 @@ function bind(globalResources) {
     if (globalResources && !gr) {
         gr = globalResources;
         loadFiles();
+        sources.bind(globalResources);
+        // someone went live or off, or an app's notification came in: the program takes the feed again
+        sources.onChange(() => { historyChangedAt = Date.now(); poke(); });
     }
     return module.exports;
 }
@@ -718,6 +723,7 @@ async function channelCounts(ids) {
 // signed in; when it is, the change also goes to the account's own list and that list is shown with it.
 
 const MAX_WATCHED = 5000;
+const OTHER_ID = /^(kick|app):[\w.-]{1,80}$/;
 const WATCHED_PCT = 60; // played this far counts as watched; less shows as a progress bar
 const HISTORY_TTL = 10 * MIN;
 let ytLater = null; // { at, ids: Set }: the account's own Watch Later list as the browser last read it
@@ -793,6 +799,15 @@ function syncHistory(opts = {}) {
  * mark is kept here.
  */
 async function markWatched(id, on) {
+    // a Kick stream or an app's notification: the mark is this program's own
+    if (OTHER_ID.test(String(id || ''))) {
+        const w = watchedMap();
+        if (on) w[id] = Date.now(); else delete w[id];
+        saveAccount();
+        historyChangedAt = Date.now();
+        poke();
+        return { id, watched: !!on, youtube: '' };
+    }
     if (!VIDEO_ID.test(String(id || ''))) throw fail('That is not a video', 'YOUTUBE_BAD_VIDEO');
     let youtube = '';
     try {
@@ -867,6 +882,19 @@ const detailed = (videos) => videos.filter((v) => !(cache.details[v.id] && cache
     return d ? Object.assign({}, v, { length: d.length, live: d.live }) : v;
 });
 
+/**
+ * The program's one feed (Yukimi's choice, #861): what is live now first (Kick channels, and YouTube videos
+ * that are live), then YouTube uploads and the imported app notifications together by time, the watched
+ * ones after the rest.
+ */
+function mixedFeed(videos) {
+    const yt = videos || [];
+    const liveYt = yt.filter((v) => v.live === 'live').map((v) => Object.assign({ source: 'youtube' }, v));
+    const rest = yt.filter((v) => v.live !== 'live').map((v) => Object.assign({ source: 'youtube' }, v)).concat(sources.noticeItems());
+    rest.sort((a, b) => (b.at || 0) - (a.at || 0));
+    return marked(sources.liveItems().concat(liveYt)).concat(unwatchedFirst(rest));
+}
+
 /** One look for new uploads: the subscriptions pass (its counts), the changed channels' lists, new details. */
 function refreshFeed() {
     if (feedBusy) return feedBusy;
@@ -897,7 +925,7 @@ function refreshFeed() {
 async function feed(opts = {}) {
     if (!signedIn()) throw fail('Sign in to YouTube first', 'YOUTUBE_SIGNIN');
     const age = feedMemo ? Date.now() - feedMemo.at : Infinity;
-    const out = (f, refreshing) => Object.assign({}, f, { refreshing, at: Math.max(f.at || 0, historyChangedAt), videos: unwatchedFirst(f.videos) });
+    const out = (f, refreshing) => Object.assign({}, f, { refreshing, at: Math.max(f.at || 0, historyChangedAt), videos: mixedFeed(f.videos) });
     void syncHistory();
     if (feedMemo && age < (opts.fresh ? 2 * MIN : FEED_TTL)) return out(feedMemo, !!feedBusy);
     const held = cache.subs && cache.subs.list && cache.subs.list.some((c) => cache.uploads[c.id] && cache.uploads[c.id].at);
@@ -952,6 +980,8 @@ async function search(query, page) {
 // What only a signed-in browser is shown (modules/youtubeAlchemy.js, #840). `why` says what is missing:
 // 'browser-signin' (Alchemy is not signed in to YouTube) or 'browser-offline' (Alchemy is not running).
 let browser = require('./youtubeAlchemy');
+// the sources beside YouTube: Kick live streams and imported app notifications (Melaton Videos, #861)
+let sources = require('./videosSources');
 
 async function browserRead(kind) {
     try {
@@ -1118,7 +1148,7 @@ function latestView() {
 function hubItems() {
     refreshLatest(false);
     void syncHistory();
-    return { account: accountView(), favourites: acct.favourites.slice(), latest: latestView(), settings: settings(), feed: { at: Math.max(feedMemo ? feedMemo.at : 0, historyChangedAt) } };
+    return { account: accountView(), favourites: acct.favourites.slice(), latest: latestView(), live: { items: signedIn() ? marked(sources.liveItems()) : [] }, sources: sources.view(), settings: settings(), feed: { at: Math.max(feedMemo ? feedMemo.at : 0, historyChangedAt) } };
 }
 
 function getState() {
@@ -1153,6 +1183,7 @@ module.exports = {
     watchLater,
     markWatched,
     setLater,
+    sources: () => sources,
     importBellFavourites,
     search,
     channelPage,
@@ -1162,5 +1193,5 @@ module.exports = {
     refreshLatest,
     quota,
     YouTubeError,
-    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy || historyBusy || membersBusy, syncHistory, syncMemberships, setBrowser(b) { browser = b; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {}, history: null, members: null }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; historyBusy = null; historyChangedAt = 0; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
+    _test: { seconds, plain, latestVideos, cadenceOf, feedFromCache, feedsDown(ms) { feedsDownUntil = ms; }, clearFeed() { feedMemo = null; latestCheckedAt = 0; }, refreshing: () => refreshing || feedBusy || historyBusy || membersBusy, syncHistory, syncMemberships, setBrowser(b) { browser = b; }, setSources(x) { sources = x; }, cleanChannel, pacificDay, reset() { acct = { token: {}, account: null, favourites: [], settings: {} }; cache = { subs: null, uploads: {}, details: {}, history: null, members: null }; pending = null; usage = null; feedMemo = null; latestCheckedAt = 0; feedsDownUntil = 0; searches.clear(); watchLater.memo = null; ytLater = null; historyBusy = null; historyChangedAt = 0; lastError = ''; }, setToken(t) { acct.token = t; }, setUsage(n) { usage = { day: pacificDay(), units: n }; }, state: () => ({ acct, cache }) }
 };

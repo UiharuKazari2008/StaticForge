@@ -1,5 +1,10 @@
 /**
- * Melaton Mobile: YouTube (Yozora #839). Yukimi, Nov 15 2026: "a youtube app for mobile that you login
+ * Melaton Videos (Yozora #861), first Melaton Mobile: YouTube (Yozora #839). Since #861 the program is
+ * called Videos: its Feed mixes YouTube with Kick live streams (channels added by name under Channels) and
+ * the notifications of chosen Android apps (relayed by the phone over ActiveSync); what is live now leads
+ * the Feed and Today. The program's id, files and packets keep the name youtube.
+ *
+ * The first brief: Yukimi, Nov 15 2026: "a youtube app for mobile that you login
  * to and it shows you polished HTC Sense like UI where you can see your subscriptions, Watch Later,
  * Search"; tapping a video opens it in Android's YouTube app; a Today item for 6.1 and 6.5 pages left
  * and right through the latest uploads of a chosen list of favourite channels.
@@ -38,7 +43,8 @@
     if (!MOBILE) return;
 
     const APP_ID = 'youtube';
-    const TITLE = 'YouTube';
+    const TITLE = 'Videos';
+    const KICK_PACKAGE = 'com.kick.mobile';
     const YT_PACKAGE = 'com.google.android.youtube';
     const STALE_MS = 15 * 60000;
     const DAY = 86400000;
@@ -52,12 +58,13 @@
         channels: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.6l1.9 4 4.4.6-3.2 3 .8 4.4L8 11.5l-3.9 2.1.8-4.4-3.2-3 4.4-.6z"/></svg>',
         star: '<svg viewBox="0 0 20 20"><path d="M10 2l2.4 5 5.5.7-4 3.8 1 5.5-4.9-2.7L5.1 17l1-5.5-4-3.8L7.6 7z"/></svg>',
         later: '<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="6" cy="6" r="4.6"/><path d="M6 3.4V6l1.9 1.2"/></svg>',
+        bell: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M8 1.8a4 4 0 0 0-4 4v2.6L2.6 11h10.8L12 8.4V5.8a4 4 0 0 0-4-4z"/><path d="M6.5 13.2a1.6 1.6 0 0 0 3 0" stroke-linecap="round"/></svg>',
         clock: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.4V8l2.6 1.6"/></svg>',
         left: '<svg viewBox="0 0 7 11"><path d="M6 0.5L1 5.5l5 5z" fill="currentColor"/></svg>',
         right: '<svg viewBox="0 0 7 11"><path d="M1 0.5l5 5-5 5z" fill="currentColor"/></svg>'
     };
     const TABS = [
-        { id: 'subs', label: 'Subscriptions', icon: I.subs },
+        { id: 'subs', label: 'Feed', icon: I.subs },
         { id: 'later', label: 'Watch Later', icon: I.later },
         { id: 'search', label: 'Search', icon: I.search },
         { id: 'channels', label: 'Channels', icon: I.channels }
@@ -70,7 +77,7 @@
     let stale = true; // the page was not drawn since the last change (hidden screens never draw)
     let wired = false;
     let loaded = false; // the server's status has arrived at least once
-    let hub = { account: null, favourites: [], latest: { videos: [] }, settings: {} };
+    let hub = { account: null, favourites: [], latest: { videos: [] }, live: { items: [] }, sources: { kick: [], apps: [], seenApps: [], kickReady: false }, settings: {} };
     let tab = (() => { try { const t = localStorage.getItem(LS_TAB); return TABS.some((x) => x.id === t) ? t : 'subs'; } catch (_) { return 'subs'; } })();
     const data = {
         subs: { videos: null, at: 0, loading: false, error: '', note: '', refreshing: false, feedAt: 0 },
@@ -93,6 +100,10 @@
     const signedIn = () => !!acct().signedIn;
     const favIds = () => new Set((hub.favourites || []).map((f) => f.id));
     const latest = () => (hub.latest && Array.isArray(hub.latest.videos) ? hub.latest.videos : []);
+    const liveNow = () => (hub.live && Array.isArray(hub.live.items) ? hub.live.items.filter((v) => !v.watched) : []);
+    /** Today's pages: who is live now first, then the favourites' uploads still to watch. */
+    const todayList = () => liveNow().concat(latest());
+    const srcOf = (v) => v.source || 'youtube';
 
     // ---------------------------------------------------------------- formatting
 
@@ -136,11 +147,11 @@
     // ---------------------------------------------------------------- opening things on the phone
 
     /** Hands a link to Android's YouTube app, else to whichever app or browser takes it. */
-    function openUrl(url, native) {
+    function openUrl(url, native, pkg) {
         const L = window.AndroidLinks;
         try {
             if (L && typeof L.openNative === 'function') {
-                if (native !== false && L.openNative(url, YT_PACKAGE) === true) return true;
+                if (native !== false && L.openNative(url, pkg || YT_PACKAGE) === true) return true;
                 if (native !== false && L.openNative(url, '') === true) return true;
                 if (typeof L.openBrowser === 'function' && L.openBrowser(url) === true) return true;
             }
@@ -149,6 +160,20 @@
     }
     /** Opens the video in the YouTube app (which records the viewing itself: the server reads the account's history). */
     const openVideo = (id) => openUrl(videoUrl(id));
+    /** Starts an Android program by its package (an app whose notification is in the feed). */
+    function launchApp(pkg, name) {
+        let ok = false;
+        try { ok = !!(window.AndroidApps && window.AndroidApps.launch(pkg) === true); } catch (_) { ok = false; }
+        if (!ok) box(`${name || 'That program'} can only be started on the phone it is installed on.`, 'info');
+        return ok;
+    }
+    /** A feed item, by where it comes from: YouTube's app, Kick's app (or its site), or the app that posted. */
+    function openItem(v) {
+        if (!v) return false;
+        if (srcOf(v) === 'kick') return openUrl(v.url || `https://kick.com/${String(v.id).replace(/^kick:/, '')}`, true, KICK_PACKAGE);
+        if (srcOf(v) === 'app') return launchApp(v.package, v.channel);
+        return openVideo(v.id);
+    }
 
     async function copyText(text) {
         try { await navigator.clipboard.writeText(text); return true; } catch (_) { /* older WebView */ }
@@ -193,7 +218,7 @@
     function applyHub(items) {
         if (!items || typeof items !== 'object') return;
         const was = signedIn();
-        ['account', 'favourites', 'latest', 'settings'].forEach((k) => { if (items[k] !== undefined && items[k] !== null) hub[k] = items[k]; });
+        ['account', 'favourites', 'latest', 'live', 'sources', 'settings'].forEach((k) => { if (items[k] !== undefined && items[k] !== null) hub[k] = items[k]; });
         // the server finished a look for new uploads: take the Subscriptions list it now holds (no call to YouTube)
         if (items.feed && typeof items.feed.at === 'number') {
             const t = data.subs;
@@ -208,7 +233,7 @@
             layer = null;
             if (signedIn() && shown) ensureTab();
         }
-        if (latest().length <= todayAt) todayAt = 0;
+        if (todayList().length <= todayAt) todayAt = 0;
         changed();
     }
     async function syncHub() {
@@ -406,6 +431,7 @@
             eachVideo(id, (v) => { v.watched = !!d.watched; });
             sinkWatched();
             redraw();
+            if (/^(kick|app):/.test(id)) return;
             if (on && d.youtube !== 'done') box(`Marked here. ${WATCH_WHY[d.youtube] || WATCH_WHY.failed}`, 'info');
             else if (!on && d.watched) box(`It is still marked watched on YouTube. ${WATCH_WHY[d.youtube] || WATCH_WHY.failed}`, 'info');
         } catch (e) {
@@ -500,15 +526,25 @@
 
     // ---------------------------------------------------------------- rows
 
+    const people = (n) => (n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K` : String(n || 0));
+    const SOURCE_TAG = { kick: 'KICK' };
+
     function videoRow(v, hero) {
         seen.set(v.id, v);
+        const src = srcOf(v);
         const len = lenText(v);
         const live = v.live === 'live' || v.live === 'upcoming';
-        const big = hero ? `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/hqdefault.jpg` : v.thumb;
-        const sub = [v.channel, age(v.at)].filter(Boolean);
+        const big = hero && src === 'youtube' ? `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/hqdefault.jpg` : v.thumb;
+        // the lines under the title: who, then when (a live stream: how many watch and what; a notification: its text)
+        const second = src === 'kick' ? [v.viewers ? `${people(v.viewers)} watching` : '', v.note].filter(Boolean).join(' · ') : src === 'app' ? [v.note, age(v.at)].filter(Boolean).join(' · ') : age(v.at);
+        const sub = [v.channel, second].filter(Boolean);
+        const tags = `${isNew(v) && !v.watched && !live ? '<i class="yt-new">NEW</i>' : ''}${SOURCE_TAG[src] ? `<i class="yt-new is-src">${SOURCE_TAG[src]}</i>` : ''}${v.members ? '<i class="yt-new is-members">MEMBERS</i>' : ''}`;
+        const pic = src === 'app' && !v.thumb
+            ? `<span class="yt-th is-app">${I.bell}<b>${esc(v.channel || '')}</b></span>`
+            : `<span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${v.progress > 0 && !v.watched ? `<i class="yt-prog"><b style="width:${Math.min(100, Math.round(v.progress))}%"></b></i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>`;
         return `<div class="yt-row${hero ? ' is-hero' : ''}${v.watched ? ' is-watched' : ''}" role="button" tabindex="0" data-v="${esc(v.id)}">
-            <span class="yt-th"><img src="${esc(big || v.thumb)}" data-alt="${esc(v.thumb)}" alt="" loading="lazy" decoding="async" draggable="false">${v.later ? `<i class="yt-wl" title="In Watch Later">${I.later}</i>` : ''}${v.progress > 0 && !v.watched ? `<i class="yt-prog"><b style="width:${Math.min(100, Math.round(v.progress))}%"></b></i>` : ''}${len ? `<i class="yt-len${live ? ' is-live' : ''}">${esc(len)}</i>` : ''}</span>
-            <span class="yt-tx"><span class="yt-t">${isNew(v) && !v.watched ? '<i class="yt-new">NEW</i>' : ''}${v.members ? '<i class="yt-new is-members">MEMBERS</i>' : ''}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(age(v.at))}</span>`}</span>
+            ${pic}
+            <span class="yt-tx"><span class="yt-t">${tags}${esc(v.title)}</span>${hero ? `<span class="yt-s">${esc(sub.join(' · '))}</span>` : `<span class="yt-s">${esc(v.channel || '')}</span><span class="yt-s">${esc(second)}</span>`}</span>
         </div>`;
     }
 
@@ -530,15 +566,88 @@
     };
     const emptyHtml = (head, text, extra) => `<div class="yt-empty"><b>${esc(head)}</b>${esc(text || '')}${extra || ''}</div>`;
     const errorHtml = (text, act) => emptyHtml('YouTube did not answer', text, `<br><button type="button" class="yt-btn" data-act="${act}">Try Again</button>`);
-    const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0 && !v.watched)).join('');
+    const videosHtml = (list) => list.map((v, i) => videoRow(v, i === 0 && !v.watched && srcOf(v) !== 'app')).join('');
+    /** The feed: what is live now under its own heading, then the rest. */
+    function feedHtml(list) {
+        const live = list.filter((v) => v.live === 'live');
+        if (!live.length) return videosHtml(list);
+        const rest = list.filter((v) => v.live !== 'live');
+        return `<div class="yt-sec is-live">Live now (${live.length})</div>${live.map((v, i) => videoRow(v, i === 0 && !v.watched)).join('')}<div class="yt-sec">Latest</div>${rest.map((v) => videoRow(v, false)).join('')}`;
+    }
+
+    /** Channels: the Kick channels (added by name) and the apps whose notifications join the feed. */
+    function sourcesHtml() {
+        const so = hub.sources || {};
+        const kick = so.kick || [];
+        const apps = so.apps || [];
+        const chosen = new Set(apps.map((a) => a.package));
+        const offered = apps.concat((so.seenApps || []).filter((a) => !chosen.has(a.package)));
+        const kickRows = kick.map((c) => `<div class="yt-row is-chan is-plain" data-kick="${esc(c.slug)}">
+            <img class="yt-av" src="${esc(c.thumb || '')}" alt="" loading="lazy" decoding="async" draggable="false">
+            <span class="yt-tx"><span class="yt-t">${c.live ? '<i class="yt-new is-livetag">LIVE</i>' : ''}${esc(c.name)}</span><span class="yt-s">kick.com/${esc(c.slug)}</span></span>
+            <button type="button" class="yt-x" data-kick-remove="${esc(c.slug)}" aria-label="Remove ${esc(c.name)}">&times;</button>
+        </div>`).join('');
+        const appRows = offered.map((a) => `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-app="${esc(a.package)}" data-label="${esc(a.label)}">
+            <span class="yt-th is-app is-small">${I.bell}</span>
+            <span class="yt-tx"><span class="yt-t">${esc(a.label)}</span><span class="yt-s">${chosen.has(a.package) ? 'Its notifications are in the feed' : 'Tap to bring its notifications into the feed'}</span></span>
+            <span class="yt-check${chosen.has(a.package) ? ' is-on' : ''}" aria-hidden="true"></span>
+        </div>`).join('');
+        return `<div class="yt-sec">Kick (${kick.length})</div>
+            ${so.kickReady ? `<form class="yt-search yt-kick-form" action="#" autocomplete="off"><label class="yt-field"><input class="yt-q yt-kick-q" type="text" enterkeyhint="done" placeholder="Kick channel name" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="60"></label><button type="submit" class="yt-btn is-go">Add</button></form>` : '<div class="yt-empty">Kick needs a key first: the administrator adds one on the desktop under Service keys &gt; Kick.</div>'}
+            ${kickRows}
+            <div class="yt-sec">Apps in the feed (${apps.length})</div>
+            ${appRows || '<div class="yt-empty">An app shows here once it has posted a notification while ActiveSync\'s Send notifications is on. Tap it to bring its notifications into the feed.</div>'}`;
+    }
+
+    async function addKick(name) {
+        if (!isAdmin()) { box('Only the administrator can change the channels.', 'info'); return; }
+        const n = String(name || '').trim();
+        if (!n) return;
+        try {
+            const d = await ws.busy(ask('youtube_kick_add', { name: n }, 30000), { delay: 250, timeout: 30000 });
+            if (d.channels) { hub.sources = Object.assign({}, hub.sources, { kick: d.channels.map((c) => Object.assign({ live: d.channel && c.slug === d.channel.slug && d.live }, c)) }); changed(); }
+        } catch (e) {
+            box(failText(e, 'The Kick channel could not be added'));
+        }
+    }
+    async function removeKick(slug) {
+        if (!isAdmin()) { box('Only the administrator can change the channels.', 'info'); return; }
+        try {
+            const d = await ask('youtube_kick_remove', { slug });
+            if (d.channels) { hub.sources = Object.assign({}, hub.sources, { kick: d.channels }); changed(); }
+        } catch (e) {
+            box(failText(e, 'The Kick channel could not be removed'));
+        }
+    }
+    async function toggleApp(pkg, label) {
+        if (!isAdmin()) { box('Only the administrator can change the apps.', 'info'); return; }
+        const apps = ((hub.sources && hub.sources.apps) || []).slice();
+        const at = apps.findIndex((a) => a.package === pkg);
+        if (at >= 0) apps.splice(at, 1); else apps.push({ package: pkg, label });
+        try {
+            const d = await ask('youtube_apps_save', { apps });
+            if (d.apps) { hub.sources = Object.assign({}, hub.sources, { apps: d.apps }); Object.assign(data.subs, { at: 0 }); changed(); }
+        } catch (e) {
+            box(failText(e, 'The apps could not be saved'));
+        }
+    }
+    async function removeNotice(id) {
+        try {
+            await ask('youtube_notice_remove', { id });
+            if (data.subs.videos) data.subs.videos = data.subs.videos.filter((v) => v.id !== id);
+            redraw();
+        } catch (e) {
+            box(failText(e, 'The item could not be removed'));
+        }
+    }
 
     function paneHtml(id) {
         const t = data[id];
         if (id === 'subs') {
             if (t.error && !t.videos) return errorHtml(t.error, 'retry');
-            if (!t.videos) return emptyHtml('Subscriptions', t.loading ? 'Reading your channels\' newest videos...' : '');
+            if (!t.videos) return emptyHtml('Feed', t.loading ? 'Reading your channels\' newest videos...' : '');
             if (!t.videos.length) return emptyHtml('Nothing new', 'The channels you subscribe to have no videos to show. Find channels with Search.');
-            return videosHtml(t.videos) + (t.error ? `<div class="yt-foot">${esc(t.error)}</div>` : '');
+            return feedHtml(t.videos) + (t.error ? `<div class="yt-foot">${esc(t.error)}</div>` : '');
         }
         if (id === 'later') {
             if (t.error && !t.videos) return errorHtml(t.error, 'retry');
@@ -556,7 +665,8 @@
             const favs = (hub.favourites || []).map((f) => t.list.find((c) => c.id === f.id) || f);
             const rest = t.list.filter((c) => !fav.has(c.id));
             return `<div class="yt-sec">On Today (${favs.length})</div>${favs.length ? favs.map((c) => channelRow(c, subIds.has(c.id) ? '' : 'Not subscribed')).join('') : '<div class="yt-empty">Tap a channel\'s star to see its newest videos on Today, or bring in every channel whose bell is set to All notifications.<br><button type="button" class="yt-btn is-go" data-act="import-bells">Import from Notifications</button></div>'}
-                <div class="yt-sec">Subscriptions (${t.list.length})</div>${rest.length ? rest.map((c) => channelRow(c)).join('') : (t.list.length ? '' : '<div class="yt-empty">You do not subscribe to a channel yet. Find some with Search.</div>')}`;
+                ${sourcesHtml()}
+                <div class="yt-sec">YouTube subscriptions (${t.list.length})</div>${rest.length ? rest.map((c) => channelRow(c)).join('') : (t.list.length ? '' : '<div class="yt-empty">You do not subscribe to a channel yet. Find some with Search.</div>')}`;
         }
         // search
         if (t.error && !t.videos) return errorHtml(t.error, 'search-again');
@@ -612,6 +722,17 @@
             if (img && img.tagName === 'IMG' && img.dataset.alt && img.src !== img.dataset.alt) { const alt = img.dataset.alt; img.dataset.alt = ''; img.src = alt; }
         }, true);
         els.form.addEventListener('submit', (e) => { e.preventDefault(); runSearch(); });
+        // the Kick form is drawn with the Channels list: its Add comes through the panes
+        els.panes.addEventListener('submit', (e) => {
+            const f = e.target.closest('.yt-kick-form');
+            if (!f) return;
+            e.preventDefault();
+            const q = f.querySelector('.yt-kick-q');
+            const name = q.value;
+            q.value = '';
+            q.blur();
+            addKick(name);
+        });
         els.q.addEventListener('input', () => { els.clear.hidden = !els.q.value; });
         els.clear.addEventListener('click', () => { clearSearch(); els.q.focus(); });
         wireTabs();
@@ -769,8 +890,14 @@
         if (act && !act.disabled) { doAct(act.dataset.act); return; }
         const rec = e.target.closest('[data-recent]');
         if (rec) { runSearch(rec.dataset.recent); return; }
+        const kx = e.target.closest('[data-kick-remove]');
+        if (kx) { removeKick(kx.dataset.kickRemove); return; }
+        const app = e.target.closest('[data-app]');
+        if (app) { toggleApp(app.dataset.app, app.dataset.label); return; }
+        const kc = e.target.closest('[data-kick]');
+        if (kc) { openUrl(`https://kick.com/${kc.dataset.kick}`, true, KICK_PACKAGE); return; }
         const v = e.target.closest('[data-v]');
-        if (v) { openVideo(v.dataset.v); return; }
+        if (v) { openItem(seen.get(v.dataset.v) || { id: v.dataset.v }); return; }
         const ch = e.target.closest('[data-ch]');
         if (ch) openChannel(ch.dataset.ch);
     }
@@ -794,7 +921,19 @@
         e.preventDefault();
         const fav = favIds();
         let items;
-        if (row.dataset.v) {
+        if (row.dataset.v && seen.get(row.dataset.v) && srcOf(seen.get(row.dataset.v)) !== 'youtube') {
+            const v = seen.get(row.dataset.v);
+            const kick = srcOf(v) === 'kick';
+            items = [
+                { label: kick ? 'Watch on Kick' : `Open ${v.channel || 'the App'}`, action: () => openItem(v) },
+                kick ? { label: 'Open in Browser', action: () => openUrl(v.url, false) } : null,
+                '-',
+                { label: v.watched ? (kick ? 'Show Again' : 'Mark as Unread') : (kick ? 'Hide This Stream' : 'Mark as Read'), disabled: !isAdmin(), action: () => setWatched(v.id, !v.watched) },
+                kick ? null : { label: 'Remove from the Feed', disabled: !isAdmin(), action: () => removeNotice(v.id) },
+                kick ? '-' : null,
+                kick ? { label: 'Copy Link', action: () => copyText(v.url) } : null
+            ];
+        } else if (row.dataset.v) {
             const v = seen.get(row.dataset.v);
             if (!v) return;
             const c = v.channelId ? { id: v.channelId, title: v.channel || 'Channel', thumb: (seen.get(v.channelId) || {}).thumb || '' } : null;
@@ -835,7 +974,7 @@
         ws.messageBox({
             title: TITLE,
             icon: 'info',
-            text: `YouTube for Melaton Mobile\nVersion 1.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nVideos, channels and search: the YouTube Data API. YouTube is a trademark of Google LLC; videos play in the YouTube app.${q ? `\n\nToday's use: ${q.used.toLocaleString()} of ${q.budget.toLocaleString()} units.` : ''}`
+            text: `Melaton Videos\nVersion 2.0\n\nCopyright © 2026 Xyridian Corporation. All rights reserved.\n\nYouTube videos, channels and search: the YouTube Data API. Kick live streams: the Kick API. YouTube is a trademark of Google LLC and Kick of Kick Streaming Pty Ltd; videos and streams play in their own apps.${q ? `\n\nToday's use: ${q.used.toLocaleString()} of ${q.budget.toLocaleString()} units.` : ''}`
         });
     }
 
@@ -859,6 +998,7 @@
             { label: 'Import from Notifications', disabled: !admin || !signedIn(), action: importBells },
             '-',
             { label: 'Open YouTube', action: () => openUrl('https://www.youtube.com/') },
+            { label: 'Kick Channels and Apps...', disabled: !signedIn(), action: () => setTab('channels') },
             signedIn() ? { label: 'Sign Out', disabled: !admin, action: signOut } : { label: 'Sign In', disabled: !admin || !acct().configured || !!acct().signIn, action: signIn },
             { label: 'About', action: about }
         ];
@@ -919,7 +1059,7 @@
     // ---------------------------------------------------------------- Today (6.1 row, 6.5 panel)
 
     function todayStep(d) {
-        const n = latest().length;
+        const n = todayList().length;
         if (n < 2) return;
         todayAt = (todayAt + d + n) % n;
         todayDir = d > 0 ? 'r' : 'l';
@@ -941,7 +1081,7 @@
             if (!down || e.pointerId !== down.id) return;
             const dx = e.clientX - down.x;
             if (!down.on) {
-                if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(e.clientY - down.y) * 1.3 || latest().length < 2) return;
+                if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(e.clientY - down.y) * 1.3 || todayList().length < 2) return;
                 down.on = true;
                 try { el.setPointerCapture(e.pointerId); } catch (_) { /* a synthetic pointer */ }
             }
@@ -965,8 +1105,8 @@
             if (Date.now() - swiped < 350) { e.stopPropagation(); return; }
             const a = e.target.closest('.yt-td-arrow');
             if (a) { e.stopPropagation(); todayStep(a.dataset.dir === 'next' ? 1 : -1); return; }
-            const v = latest()[todayAt];
-            if (signedIn() && v) openVideo(v.id);
+            const v = todayList()[todayAt];
+            if (signedIn() && v) openItem(v);
             else open(signedIn() ? ((hub.favourites || []).length ? 'subs' : 'channels') : null);
         });
     }
@@ -983,16 +1123,16 @@
         // (only when they differ: written on every Today draw they were mutation records, #849)
         if (el.getAttribute('role') !== 'button') el.setAttribute('role', 'button');
         if (el.tabIndex !== 0) el.tabIndex = 0;
-        const vids = latest();
+        const vids = todayList();
         if (todayAt >= vids.length) todayAt = 0;
         const v = signedIn() ? vids[todayAt] : null;
         let inner;
         if (v) {
             const len = lenText(v);
-            inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines${v.watched ? ' is-watched' : ''}"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc([v.channel, age(v.at), rareText(v)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
+            inner = `<span class="yt-td-th"><img src="${esc(v.thumb)}" alt="" decoding="async" draggable="false">${len ? `<i>${esc(len)}</i>` : ''}</span><span class="wtw-lines${v.watched ? ' is-watched' : ''}"><span class="wtw-title">${esc(v.title)}</span><span class="wtw-sub">${esc(v.live === 'live' ? [v.channel, v.viewers ? `${people(v.viewers)} watching` : '', v.note].filter(Boolean).join(' · ') : [v.channel, age(v.at), rareText(v)].filter(Boolean).join(' · '))}</span></span><span class="yt-td-n">${todayAt + 1}/${vids.length}</span>`;
         } else {
             const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Tap to choose favourite channels' : hub.latest && hub.latest.caughtUp ? 'You have watched everything new' : a.error ? a.error : 'Looking for new videos...';
-            inner = `<img class="yt-td-icon" src="${ws.art.url('app-youtube-lg')}" srcset="${ws.art.srcset('app-youtube-lg')}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">YouTube</span><span class="wtw-sub">${esc(line)}</span></span>`;
+            inner = `<img class="yt-td-icon" src="${ws.art.url('app-youtube-lg')}" srcset="${ws.art.srcset('app-youtube-lg')}" alt="" draggable="false"><span class="wtw-lines"><span class="wtw-title">Videos</span><span class="wtw-sub">${esc(line)}</span></span>`;
         }
         const many = !!v && vids.length > 1;
         const html = `<button type="button" class="yt-td-arrow" data-dir="prev" aria-label="Previous video"${many ? '' : ' disabled'}>${I.left}</button><div class="yt-td-slide">${inner}</div><button type="button" class="yt-td-arrow" data-dir="next" aria-label="Next video"${many ? '' : ' disabled'}>${I.right}</button>`;
@@ -1013,19 +1153,20 @@
         const a = acct();
         if (!a.configured || (!signedIn() && !isAdmin())) return null;
         const go = () => open();
-        const key = { label: 'YouTube', action: go };
-        const vids = signedIn() ? latest() : [];
+        const key = { label: 'Videos', action: go };
+        const vids = signedIn() ? todayList() : [];
         if (!vids.length) {
             const line = !signedIn() ? 'Tap to sign in' : !(hub.favourites || []).length ? 'Choose favourite channels' : hub.latest && hub.latest.caughtUp ? 'You have watched everything new' : 'Looking for new videos...';
             const to = () => open(signedIn() ? ((hub.favourites || []).length ? 'subs' : 'channels') : null);
-            return { label: 'youtube', icon: 'x:app-youtube-lg', pages: [{ title: 'YouTube', line2: line, line3: '' }], softKey: key, onTap: to };
+            return { label: 'videos', icon: 'x:app-youtube-lg', pages: [{ title: 'Videos', line2: line, line3: '' }], softKey: key, onTap: to };
         }
-        const fresh = vids.filter(isNew).length;
+        const fresh = vids.filter((v) => isNew(v) && v.live !== 'live').length;
+        const liveCount = vids.filter((v) => v.live === 'live').length;
         return {
-            label: 'youtube',
-            count: fresh ? String(fresh) : '',
+            label: 'videos',
+            count: liveCount ? 'live' : fresh ? String(fresh) : '',
             icon: 'x:app-youtube-lg',
-            pages: vids.map((v) => ({ image: v.thumb, title: v.title, line2: v.channel || '', line3: [age(v.at), rareText(v) || lenText(v)].filter(Boolean).join(' · '), softKey: key, onTap: () => openVideo(v.id) })),
+            pages: vids.map((v) => ({ image: v.thumb, title: v.title, line2: v.channel || '', line3: v.live === 'live' ? ['LIVE', v.viewers ? `${people(v.viewers)} watching` : '', v.note].filter(Boolean).join(' · ') : [age(v.at), rareText(v) || lenText(v)].filter(Boolean).join(' · '), softKey: key, onTap: () => openItem(v) })),
             softKey: key,
             onTap: go
         };
@@ -1038,7 +1179,7 @@
         if (!ws) return;
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
-            ws.registerTodayItem({ id: 'youtube', label: 'YouTube', icon: 'app-youtube', after: 'lapis', render: todayRender, titanium: todayTitanium });
+            ws.registerTodayItem({ id: 'youtube', label: 'Videos', icon: 'app-youtube', after: 'lapis', render: todayRender, titanium: todayTitanium });
         }
         // the socket may come up after the shell: wire once it exists (a local wait, no server call)
         if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }

@@ -250,6 +250,66 @@
     vertical-align: calc(1 * var(--u));
 }
 
+/* where an item comes from (Kick), and a channel that is live now */
+.wm-youtube .yt-new.is-src { background: linear-gradient(#7dff5a, #2fb513); color: #062400; }
+.wm-youtube .yt-new.is-livetag { background: linear-gradient(#ff7466, var(--yt-accent-deep)); color: #fff; }
+.wm-youtube .yt-sec.is-live { background: linear-gradient(#b3140e, #6d0b07); color: #fff; }
+
+/* an app's notification has no picture: a dark tile with a bell and the app's name */
+.wm-youtube .yt-th.is-app {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(2 * var(--u));
+    background: linear-gradient(#3a3e44, #17191c);
+    color: #c9ced4;
+}
+.wm-youtube .yt-th.is-app svg { width: calc(14 * var(--u)); height: calc(14 * var(--u)); }
+.wm-youtube .yt-th.is-app b { max-width: 92%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(7 * var(--u)); font-weight: normal; }
+.wm-youtube .yt-th.is-app.is-small { width: calc(32 * var(--u)); aspect-ratio: 1; border-radius: calc(4 * var(--u)); }
+
+/* Channels: rows that are settings (a Kick channel, an app), their remove key and check box */
+.wm-youtube .yt-row.is-plain[data-kick] { cursor: default; }
+.wm-youtube .yt-x {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(30 * var(--u));
+    height: calc(30 * var(--u));
+    margin-right: calc(-4 * var(--u));
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #8b9198;
+    font-size: calc(16 * var(--u));
+    line-height: 1;
+}
+.wm-youtube .yt-x:active { color: #fff; }
+.wm-youtube .yt-check {
+    flex: 0 0 auto;
+    width: calc(15 * var(--u));
+    height: calc(15 * var(--u));
+    margin-right: calc(4 * var(--u));
+    border-radius: calc(3 * var(--u));
+    border: 1px solid #000;
+    background: linear-gradient(#0c0d0f, #25282c);
+    box-shadow: inset 0 calc(1 * var(--u)) calc(2 * var(--u)) #000, 0 1px rgba(255, 255, 255, 0.2);
+    position: relative;
+}
+.wm-youtube .yt-check.is-on::after {
+    content: '';
+    position: absolute;
+    left: 27%;
+    top: 8%;
+    width: 32%;
+    height: 58%;
+    border: solid var(--yt-accent);
+    border-width: 0 calc(2 * var(--u)) calc(2 * var(--u)) 0;
+    transform: rotate(40deg);
+}
+.wm-youtube .yt-kick-form .yt-field { border-radius: calc(4 * var(--u)); }
+
 /* a members-only video of a channel the account is a member of */
 .wm-youtube .yt-new.is-members { background: linear-gradient(#8fe08a, #2f8f3a); }
 

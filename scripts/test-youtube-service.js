@@ -21,6 +21,7 @@ process.env.YOUTUBE_CACHE_FILE = path.join(tmp, 'cache.json');
 process.env.YOUTUBE_USAGE_FILE = path.join(tmp, 'usage.json');
 process.env.YOUTUBE_QUICKCAST_CONFIG = path.join(tmp, 'quickcast.json');
 process.env.YOUTUBE_DEVICE_MIN_S = '0.05';
+process.env.VIDEOS_SOURCES_FILE = path.join(tmp, 'sources.json');
 
 const svc = require('../modules/youtubeService');
 const T = svc._test;
@@ -33,6 +34,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- a fake server, Google and YouTube
 const keys = { youtube: [{ clientId: 'cid.apps.googleusercontent.com', apiKey: 'secret' }] };
+const kickLive = { streamer_one: true, quiet_two: false };
 svc.bind({
     getApiKeyManager: () => ({ getServiceKeys: (s) => keys[s] || [], getSelectedIndex: () => 0 }),
     getConfig: () => undefined
@@ -64,6 +66,12 @@ global.fetch = async (url, opts = {}) => {
         return authorised ? json(200, { access_token: 'a-1', refresh_token: 'r-1', expires_in: 3600 }) : json(428, { error: 'authorization_pending' });
     }
     if (u.pathname === '/revoke') return json(200, {});
+    if (u.hostname === 'id.kick.com') return body.client_secret === 'k-secret' ? json(200, { access_token: 'kick-token', expires_in: 3600 }) : json(401, {});
+    if (u.hostname === 'api.kick.com') {
+        if (!/kick-token/.test((opts.headers && opts.headers.Authorization) || '')) return json(401, {});
+        if (u.pathname.endsWith('/users')) return json(200, { data: u.searchParams.getAll('id').map((id) => ({ user_id: Number(id), name: `Name${id}`, profile_picture: `https://files.kick.com/p${id}.webp` })) });
+        return json(200, { data: u.searchParams.getAll('slug').filter((x) => x in kickLive).map((slug, i) => ({ broadcaster_user_id: 100 + Object.keys(kickLive).indexOf(slug), slug, stream_title: `${slug} title`, category: { name: 'Just Chatting' }, stream: { is_live: kickLive[slug], viewer_count: 1200, start_time: day(15), thumbnail: `https://images.kick.com/${slug}.webp` } })) });
+    }
     if (u.pathname === '/feeds/videos.xml') {
         if (rssMode === 'down') return { status: 500, text: async () => 'no' };
         const pl = u.searchParams.get('playlist_id');
@@ -555,6 +563,61 @@ T.setBrowser({ watched: async (on, id) => {
         assert.ok(/^SAPISIDHASH \d+_010203$/.test(sent[0][2]));
         assert.deepStrictEqual(await run('later-add', { ytcfg: cfg(false), ytInitialData: {} }, null, VID(5)), { signedIn: false });
         page.doc = { cookie: '' };
+    });
+
+    await ok('Videos: an app\'s notifications become feed items once the app is chosen', async () => {
+        const src = svc.sources();
+        const note = (o) => src.takeNotification(Object.assign({ package: 'tv.twitch.android.app', app: 'Twitch', time: Date.now() }, o));
+        assert.strictEqual(note({ key: 'k1', title: 'someone is live', text: 'Playing a game' }), false, 'not a chosen app: not kept');
+        assert.deepStrictEqual(src.view().seenApps, [{ package: 'tv.twitch.android.app', label: 'Twitch' }], 'but offered for choosing');
+        assert.deepStrictEqual(src.appsSave([{ package: 'tv.twitch.android.app' }, { package: 'not a package' }]), [{ package: 'tv.twitch.android.app', label: 'Twitch' }]);
+        const at = svc.getState().feed.at;
+        await wait(5);
+        assert.strictEqual(note({ key: 'k1', title: 'someone is live', text: 'Playing a game' }), true);
+        assert.strictEqual(note({ key: 'k1', title: 'someone is live', text: 'Playing a game' }), false, 'posted again: one item');
+        assert.strictEqual(note({ key: 'k2', title: 'other went live', text: '' }), true);
+        assert.ok(svc.getState().feed.at > at, 'the program is told to take the feed again');
+        const f = await svc.feed();
+        const items = f.videos.filter((v) => v.source === 'app');
+        assert.deepStrictEqual(items.map((v) => v.title).sort(), ['other went live', 'someone is live']);
+        assert.strictEqual(items[0].channel, 'Twitch');
+        assert.strictEqual(items[0].package, 'tv.twitch.android.app');
+        assert.ok(f.videos.findIndex((v) => v.source === 'app') === 0, 'newest first with the uploads (they are from this minute)');
+        const one = items.find((v) => v.title === 'someone is live');
+        assert.deepStrictEqual(await svc.markWatched(one.id, true), { id: one.id, watched: true, youtube: '' });
+        const g = await svc.feed();
+        assert.strictEqual(g.videos[g.videos.length - 1].id, one.id, 'a dismissed item sinks like a watched video');
+        assert.strictEqual(src.noticeRemove(one.id), true);
+        assert.ok(!(await svc.feed()).videos.some((v) => v.id === one.id));
+        src.appsSave([]);
+        assert.ok(!(await svc.feed()).videos.some((v) => v.source === 'app'), 'an app taken off the list takes its items with it');
+    });
+
+    await ok('Videos: Kick channels by name; who is live leads the feed and Today\'s live list', async () => {
+        const src = svc.sources();
+        await assert.rejects(src.kickAdd('streamer_one'), (e) => e.code === 'KICK_NO_KEY');
+        assert.strictEqual(src.view().kickReady, false);
+        keys.kick = [{ clientId: 'kick-client', apiKey: 'k-secret' }];
+        await assert.rejects(src.kickAdd('bad name!'), (e) => e.code === 'KICK_BAD_NAME');
+        await assert.rejects(src.kickAdd('nobody_here'), (e) => e.code === 'KICK_NOT_FOUND');
+        const a = await src.kickAdd('https://kick.com/Streamer_One');
+        assert.deepStrictEqual([a.channel.slug, a.channel.name, a.live], ['streamer_one', 'Name100', true]);
+        assert.strictEqual((await src.kickAdd('quiet_two')).live, false);
+        const f = await svc.feed();
+        assert.strictEqual(f.videos[0].id, 'kick:streamer_one');
+        assert.deepStrictEqual([f.videos[0].source, f.videos[0].live, f.videos[0].viewers, f.videos[0].note, f.videos[0].url], ['kick', 'live', 1200, 'Just Chatting', 'https://kick.com/streamer_one']);
+        assert.strictEqual(f.videos.filter((v) => v.source === 'kick').length, 1, 'only the live one');
+        const st = svc.getState();
+        assert.deepStrictEqual(st.live.items.map((v) => v.id), ['kick:streamer_one']);
+        assert.deepStrictEqual(st.sources.kick.map((c) => [c.slug, c.live]), [['streamer_one', true], ['quiet_two', false]]);
+        // the stream ends: a later look takes it out and says so
+        kickLive.streamer_one = false;
+        Object.values(src._test.live()).forEach((x) => { x.tried = 0; });
+        src.liveItems();
+        await src._test.busy();
+        assert.deepStrictEqual(svc.getState().live.items, []);
+        assert.strictEqual(count('/oauth/token'), 1, 'one token for all of it');
+        assert.deepStrictEqual(src.kickRemove('quiet_two').map((c) => c.slug), ['streamer_one']);
     });
 
     await ok('the unit budget stops calls with a plain message', async () => {

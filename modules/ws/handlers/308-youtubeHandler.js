@@ -1,8 +1,10 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const statusHub = require('../statusHub');
 const youtubeService = require('../../youtubeService');
+const activeSync = require('../../activeSync');
 
-// Melaton Mobile YouTube (Yozora #839): the phone's YouTube program and its Today item. Everything
+// Melaton Videos, first Melaton Mobile YouTube (Yozora #839, #861): the phone's videos program and its Today item.
+// Beside YouTube it shows Kick live streams and the notifications of chosen Android apps (modules/videosSources.js). Everything
 // goes through modules/youtubeService.js (YouTube Data API with the household's own Google sign-in
 // client). The account is the administrator's: admin (and dev_admin test tabs) may read; only admins
 // sign in or out and save.
@@ -17,6 +19,10 @@ const youtubeService = require('../../youtubeService');
 //   youtube_mark             { id, watched }           admins; Mark as Watched / Unwatched in the account's own YouTube history -> { id, watched, youtube }
 //   youtube_later            { id, on }                admins; add to / remove from Watch Later -> { id, later, youtube }
 //                                                      youtube: done | failed | browser-signin | browser-offline (the account's own list)
+//   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
+//   youtube_kick_remove      { slug }                  admins -> { channels[] }
+//   youtube_apps_save        { apps[{ package, label }] }  admins; the apps whose phone notifications become feed items -> { apps[] }
+//   youtube_notice_remove    { id }                    admins; takes an imported notification out of the feed -> { removed }
 //   youtube_import_bell      {}                        admins; channels whose bell is set to All become favourites -> { why, favourites[], found, added, left }
 //   youtube_search           { query, page? }          { query, videos[], channels[], next } (100 quota units a page)
 //   youtube_channel          { id }                    { channel, videos[], favourite, subscribed }
@@ -66,6 +72,9 @@ function registerPackets(handlersCtx) {
     }
     youtubeService.bind(handlersCtx.globalResources);
     youtubeService.defineFeed(statusHub);
+    // Melaton Videos (#861): the notifications a partnered phone relays feed the chosen apps' items
+    const sources = youtubeService.sources();
+    activeSync.onDeviceEvent((name, detail) => { if (name === 'notify.posted') sources.takeNotification(detail); });
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             await fn(handlersCtx, ctx.ws, ctx.message, ctx.clientInfo, ctx.wsServer);
@@ -80,6 +89,10 @@ function registerPackets(handlersCtx) {
     reg('youtube_watch_later', packet(false, 'Watch Later could not be read', async (m) => youtubeService.watchLater({ fresh: !!m.fresh })));
     reg('youtube_mark', packet(true, 'The mark could not be saved', async (m) => youtubeService.markWatched(String(m.id || ''), m.watched !== false)));
     reg('youtube_later', packet(true, 'Watch Later could not be changed', async (m) => youtubeService.setLater(String(m.id || ''), m.on !== false)));
+    reg('youtube_kick_add', packet(true, 'The Kick channel could not be added', async (m) => sources.kickAdd(m.name)));
+    reg('youtube_kick_remove', packet(true, 'The Kick channel could not be removed', async (m) => ({ channels: sources.kickRemove(m.slug) })));
+    reg('youtube_apps_save', packet(true, 'The apps could not be saved', async (m) => ({ apps: sources.appsSave(m.apps) })));
+    reg('youtube_notice_remove', packet(true, 'The item could not be removed', async (m) => ({ removed: sources.noticeRemove(m.id) })));
     reg('youtube_import_bell', packet(true, 'The channels could not be imported', async () => youtubeService.importBellFavourites()));
     reg('youtube_search', packet(false, 'The search failed', async (m) => youtubeService.search(m.query, m.page)));
     reg('youtube_channel', packet(false, 'The channel could not be read', async (m) => youtubeService.channelPage(String(m.id || ''))));

@@ -98,6 +98,29 @@ class ApiKeyManager {
                     ]
                 }
             },
+            // Yozora #861: Melaton Videos' Kick source (modules/videosSources.js). A Kick developer app's Client ID
+            // and client secret; its own token reads public channel data (who is live). No status probe.
+            kick: {
+                label: 'Kick',
+                description: 'A Kick developer app\'s key, with which Melaton Videos sees which of the added Kick channels are live',
+                icon: 'fas fa-video',
+                requiresRestart: false,
+                keyLabel: 'Client secret',
+                fields: [
+                    { field: 'clientId', label: 'Client ID', placeholder: 'from the app on kick.com', pattern: '^[A-Za-z0-9_-]{8,80}$' }
+                ],
+                fingerprint: (key) => (key.clientId ? String(key.clientId).slice(0, 6) : null),
+                howTo: {
+                    title: 'How to get a Kick key',
+                    steps: [
+                        'Sign in to kick.com, open Settings and then the Developer tab.',
+                        'Create an app (any name; a redirect address such as http://localhost is fine, it is not used).',
+                        'Copy its Client ID and Client Secret and paste them below.',
+                        'Melaton Videos only reads public channel data with it: one request for all added channels, at most every 3 minutes while the feed or Today is on screen.'
+                    ],
+                    links: [['Kick developer settings', 'https://kick.com/settings/developer'], ['Kick API documentation', 'https://docs.kick.com/']]
+                }
+            },
             // Yozora #839: Melaton Mobile YouTube (modules/youtubeService.js). A Google OAuth client of type
             // "TVs and Limited Input devices"; the key value is the client secret. Optional on a server where
             // VisionCaster already holds such a client: the YouTube program uses that one when no key is here.

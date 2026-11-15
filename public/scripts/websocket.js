@@ -563,8 +563,8 @@ class BannerManager {
             'inbox_list': 'Notifications',
             'inbox_ack': 'Notification',
 
-            // Melaton Mobile YouTube (#839)
-            'youtube_get': 'YouTube',
+            // Melaton Videos, first Melaton Mobile YouTube (#839, #861)
+            'youtube_get': 'Videos',
             'youtube_signin': 'YouTube Sign-in',
             'youtube_signin_cancel': 'Cancel YouTube Sign-in',
             'youtube_signout': 'YouTube Sign-out',
@@ -573,6 +573,10 @@ class BannerManager {
             'youtube_watch_later': 'Watch Later',
             'youtube_import_bell': 'Import Favourite Channels',
             'youtube_mark': 'Mark Video',
+            'youtube_kick_add': 'Add Kick Channel',
+            'youtube_kick_remove': 'Remove Kick Channel',
+            'youtube_apps_save': 'Apps in the Feed',
+            'youtube_notice_remove': 'Remove Feed Item',
             'youtube_later': 'Watch Later',
             'youtube_search': 'YouTube Search',
             'youtube_channel': 'YouTube Channel',

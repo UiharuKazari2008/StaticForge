@@ -1,4 +1,4 @@
-# WebSocket: YouTube
+# WebSocket: Melaton Videos (YouTube, Kick, app notifications)
 
 Server handler: `modules/ws/handlers/308-youtubeHandler.js` (logic in `modules/youtubeService.js`; YouTube Data API v3). Yozora #839.
 Client: Melaton Mobile YouTube and its Today items (6.1 / 6.5), `public/scripts/comp/wmYouTube.js`.
@@ -21,6 +21,10 @@ VisionCaster holds), scope `youtube.readonly`. Tokens never go to a client.
 | `youtube_feed` | `{ fresh? }` -> `{ videos[], at, channels, partial, refreshing }`: the newest uploads of every subscribed channel, newest first, the ones marked watched after the rest. Answered at once from what the server holds; when that is older than 10 minutes (2 with `fresh`) a look for new uploads runs behind it (`refreshing: true`) and the status feed's `feed.at` moves when it is done. Cost of a look: the subscriptions pass (1 unit per 50 channels, it carries each channel's video count); only channels whose count moved are read, from YouTube's public channel feeds (no quota; `playlistItems` when the feeds are down). |
 | `youtube_watch_later` | `{ fresh? }` -> `{ videos[], unavailable, why, partial }`: the videos added through `youtube_later`, with the account's own list when the server's Alchemy browser can read it (`modules/youtubeAlchemy.js`: a hidden tab, closed again; no cookie leaves the browser). `why`: `browser-signin` (Alchemy is not signed in to YouTube) or `browser-offline`; the list is then only what was added here, and `unavailable` is true when that is nothing. |
 | `youtube_import_bell` | `{}` -> `{ why, favourites[], channels, found, added, left, partial }`. Every subscribed channel whose notification bell is set to All becomes a favourite (read in the same browser). Admin. |
+| `youtube_kick_add` | `{ name }` -> `{ channel: { slug, name, thumb }, live, channels[] }`. A Kick channel by the name in its address; needs Service key `kick` (a Kick developer app's Client ID and secret; errors `KICK_NO_KEY`, `KICK_KEY`, `KICK_NOT_FOUND`, `KICK_BAD_NAME`). Admin. |
+| `youtube_kick_remove` | `{ slug }` -> `{ channels[] }`. Admin. |
+| `youtube_apps_save` | `{ apps: [{ package, label }] }` -> `{ apps[] }`: the Android apps whose notifications (relayed by a partnered phone over ActiveSync, `notify.posted`) become feed items. Admin. |
+| `youtube_notice_remove` | `{ id }` -> `{ removed }`: takes an imported notification (`app:<n>`) out of the feed. Admin. |
 | `youtube_mark` | `{ id, watched }` -> `{ id, watched, youtube }`. Mark as Watched / Unwatched in the account's own YouTube watch history, through the Alchemy browser (watched: the two reports the player makes for a video played to its end; unwatched: the history entry's Remove from watch history). `youtube`: `done`, `failed`, `not-found`, `browser-signin`, `browser-offline`; a mark is kept on the server while the browser cannot be reached. Admin. |
 | `youtube_later` | `{ id, on }` -> `{ id, later, youtube }`. Add to / remove from Watch Later: always kept on the server; `youtube` says what happened on the account's own list through the Alchemy browser: `done`, `failed`, `browser-signin`, `browser-offline`. Admin. |
 | `youtube_search` | `{ query, page? }` -> `{ query, videos[], channels[], next }` (100 quota units a page; answers kept 10 minutes) |
@@ -37,10 +41,23 @@ Errors carry a code: `YOUTUBE_SIGNIN` (not signed in, or Google ended the sign-i
 `YOUTUBE_API_OFF`, `YOUTUBE_NOT_FOUND`, `YOUTUBE_NETWORK`, `YOUTUBE_BAD_CHANNEL`, `YOUTUBE_BAD_QUERY`,
 `YOUTUBE_FAVOURITES_FULL`.
 
+## Sources beside YouTube (Yozora #861)
+
+Logic in `modules/videosSources.js`. Items look like videos with `source` (`youtube`, `kick`, `app`):
+
+- Kick: `{ id: 'kick:<slug>', source: 'kick', live: 'live', title, channel, thumb, at (stream start), viewers, note (category), url }`,
+  only while the channel is live. Kick's published API with the app key, one call for up to 50 channels, at most
+  every 3 minutes and only while a phone shows the feed or Today.
+- App notifications: `{ id: 'app:<n>', source: 'app', title, channel (the app's name), note (the text), at, package }`.
+
+`youtube_feed` answers one list: what is live first (Kick, and YouTube videos that are live), then uploads and
+imported notifications by time, watched or read ones after the rest. `youtube_mark` on a `kick:` or `app:` id is
+the program's own mark (hide a stream, mark a notification read).
+
 ## Status feed (pushed, never polled)
 
 `status_subscribe { feed: 'youtube' }` while the Today item or the program is on screen answers
-`{ items: { account, favourites, latest, settings, feed } }` once; after that `youtube_status { changed }` carries only
+`{ items: { account, favourites, latest, live, sources, settings, feed } }` once; after that `youtube_status { changed }` carries only
 the keys that changed (a sign-in starting or finishing, a favourite added, a new upload). `status_unsubscribe`
 when the view goes. The feed's one server timer runs only while someone is subscribed; every 15 minutes it asks for the
 favourites' video counts (1 unit per 50 channels) and reads only the channels that uploaded.
@@ -48,5 +65,7 @@ favourites' video counts (1 unit per 50 channels) and reads only the channels th
 - `account`: `{ configured, signedIn, account: { id, title, thumb } | null, signIn: { userCode, url, expiresAt } | null, error }`
 - `favourites[]`: the channels whose uploads Today shows
 - `latest`: `{ videos[], caughtUp }`, the favourites' uploads that are not watched yet, as one list (`settings.todayCount` at most; `caughtUp` when there are uploads but all were watched). With `settings.rareFirst` (default) a video's age counts in units of its channel's usual gap between uploads, so channels that upload seldom come first; off: newest first. Each video also has `gap` (ms since that channel's upload before it, or null).
+- `live`: `{ items[] }`, the Kick channels that are live now (Today shows them first)
+- `sources`: `{ kickReady, kick: [{ slug, name, thumb, live }], apps: [{ package, label }], seenApps: [{ package, label }] }` (`seenApps`: apps that posted a notification lately, offered for choosing)
 - `settings`: `{ noShorts, rareFirst, todayCount, budget }`
 - `feed`: `{ at }`, when the subscriptions feed or the watched marks last changed (read `youtube_feed` again when it moves)
