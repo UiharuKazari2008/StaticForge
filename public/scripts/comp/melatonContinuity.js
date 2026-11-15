@@ -877,9 +877,11 @@
         try { home = !!(H && typeof H.isHome === 'function' && H.isHome()); } catch (_) { home = false; }
         if (!home) return;
         const p = powerProblems();
-        if (p && !p.optimised && !p.restricted && p.noReturn) { askOverlay(H, force); return; }
-        if (!p || (!p.optimised && !p.restricted)) return;
-        try { if (!force && Date.now() - (Number(localStorage.getItem(POWER_TOLD)) || 0) < 86400000) return; } catch (_) { /* private mode: tell */ }
+        if (!p) return;
+        // one note at a time, each at most once a day: battery first, else Display over other apps
+        let batteryDue = p.optimised || p.restricted;
+        try { if (batteryDue && !force && Date.now() - (Number(localStorage.getItem(POWER_TOLD)) || 0) < 86400000) batteryDue = false; } catch (_) { /* private mode: tell */ }
+        if (!batteryDue) { if (p.noReturn) askOverlay(H, force); return; }
         const sh = root.wmShell;
         if (!sh || typeof sh.notify !== 'function') return;
         try { localStorage.setItem(POWER_TOLD, String(Date.now())); } catch (_) { /* best effort */ }
