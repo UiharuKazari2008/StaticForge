@@ -462,6 +462,7 @@
         const fxl = superEl.querySelector('.wm-ti-super-fx');
         if (superAnim) superAnim.forEach((a) => a.cancel());
         superEl.hidden = false;
+        if (aclock) aclock.dataset.swing = '1'; // set before the tick can touch it; swingHands below
         ensureClockTick(); // its live clock turns while the bar is open
         // the first frame: the card exactly where the band is, before the band goes
         card.style.transform = `translateY(${y0}px)`;
@@ -482,6 +483,8 @@
             fxl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: SUPER_MS, delay: SUPER_MS * 0.6, easing: 'linear', fill: 'both' })
         ];
         if (aclock) superAnim.push(aclock.animate([{ transform: 'none' }, { transform: `translateY(${CLOCK_TO.y * u}px) scale(${CLOCK_TO.scale})` }], opt));
+        // the hands leave the icon's resting places for the time
+        if (aclock) superAnim.push(...swingHands(aclock, true, { duration: SUPER_MS, easing: SUPER_EASE }));
         superAnim[0].finished.then(() => { superBusy = false; }).catch(() => { superBusy = false; });
         haptic('land');
         sh.refreshSoftKeys();
@@ -530,6 +533,8 @@
             fxl.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.4, easing: 'linear', fill: 'forwards' })
         ];
         if (aclock) superAnim.push(aclock.animate([{ transform: `translateY(${CLOCK_TO.y * u}px) scale(${CLOCK_TO.scale})` }, { transform: 'none' }], opt));
+        // and go back to the icon's resting places, so the static icon under it matches when it goes
+        if (aclock) superAnim.push(...swingHands(aclock, false, opt));
         superAnim[0].finished.then(finish).catch(() => { /* a new open took over */ });
         sh.refreshSoftKeys();
     }
@@ -1180,6 +1185,7 @@
         if (!clocks.length) return; // started again when one is drawn or the screen comes back
         const a = clockAngles(new Date());
         for (const c of clocks) {
+            if (c.dataset.swing) continue; // its hands are swinging to the time or home (swingHands)
             const ah = c.querySelector('.wm-ti-ah');
             const am = c.querySelector('.wm-ti-am');
             const as = c.querySelector('.wm-ti-as');
@@ -1196,6 +1202,33 @@
         }
         clockTimer = setTimeout(tickClocks, 1000 - (Date.now() % 1000) + 5);
     }
+    // Where the static clock icon's hands point (ti-2051 art: hour at 9, minute at 1:30, second at 25 s).
+    // Opening the Super Bar swings the live hands from there to the time; closing swings them home
+    // (Yukimi, Nov 15), over the bar's own opening / closing time.
+    const CLOCK_HOME = { h: 270, m: 45, s: 151 };
+    const HAND_SEL = { h: '.wm-ti-ah', m: '.wm-ti-am', s: '.wm-ti-as' };
+    function swingHands(aclock, toTime, opt) {
+        if (!aclock || typeof aclock.animate !== 'function') return [];
+        const now = clockAngles(new Date());
+        const fwd = (a, b) => ((b - a) % 360 + 360) % 360; // clockwise distance a -> b
+        aclock.dataset.swing = '1';
+        const anims = [];
+        for (const k of Object.keys(HAND_SEL)) {
+            const el = aclock.querySelector(HAND_SEL[k]);
+            if (!el) continue;
+            // forward to the time on open; back the same way on close
+            const from = toTime ? CLOCK_HOME[k] : now[k];
+            const to = toTime ? CLOCK_HOME[k] + fwd(CLOCK_HOME[k], now[k]) : now[k] - fwd(CLOCK_HOME[k], now[k]);
+            el.style.transform = `rotate(${to.toFixed(2)}deg)`;
+            anims.push(el.animate([{ transform: `rotate(${from.toFixed(2)}deg)` }, { transform: `rotate(${to.toFixed(2)}deg)` }], opt));
+        }
+        Promise.all(anims.map((a) => a.finished)).then(() => {
+            delete aclock.dataset.swing;
+            if (toTime) { anims.forEach((a) => a.cancel()); ensureClockTick(); }
+        }, () => { delete aclock.dataset.swing; });
+        return anims;
+    }
+
     function ensureClockTick() {
         if (clockTimer) return;
         clockTimer = setTimeout(tickClocks, 0);
