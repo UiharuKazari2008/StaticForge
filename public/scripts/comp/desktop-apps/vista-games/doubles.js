@@ -1,7 +1,7 @@
 // Doubles: a slide-and-join number puzzle that sits with the Windows Vista games (Yozora #836).
 // Vista never shipped one, so this is a Melaton game built as Block Drop and Brick Breaker are: on
 // the shared engine (public/scripts/comp/desktop-apps/vista-games/vistaGameEngine.js), drawn by the
-// game itself (glass tiles on Vista's blue; no sprite pack), with the real games' sounds and Vista's
+// game itself (slabs of coloured glass on a frosted tray, light and shadow painted once and kept; no sprite pack), with the real games' sounds and Vista's
 // dialog wording. Icons and the Games Explorer thumbnail: scripts/build-new-games-art.js.
 //
 //   - a square board (3 x 3, 4 x 4 or 5 x 5, Options) of numbered tiles. An arrow key (or W A S D,
@@ -138,22 +138,23 @@
             && g.cells.every((t) => t === null || (t && t.v >= 2 && Number.isInteger(Math.log2(t.v))));
     }
 
-    // ---- look (above the export: scripts/build-new-games-art.js paints the same tiles in node) ----
+    // ---- look (above the export: scripts/build-new-games-art.js paints the same glass in node, and
+    // the phone's game carries a copy of this block) ----
     const FONT = '"Segoe UI", Tahoma, sans-serif';
-    // glass tiles in Aero's colours: [top, bottom, edge, text], by power of two
+    // slabs of coloured glass: [top, bottom, edge, text], by power of two
     const TILE_COLORS = [
-        ['#f6fafe', '#cfdff1', '#8fa9c8', '#1e3a5f'], // 2
-        ['#dcedfc', '#a5c9ee', '#6f9bcb', '#1e3a5f'], // 4
-        ['#8ed6f4', '#3d9fd8', '#256fa4', '#ffffff'], // 8
-        ['#62d1cb', '#1b9796', '#0f6c6c', '#ffffff'], // 16
-        ['#7ad685', '#2c9a42', '#1b6f2d', '#ffffff'], // 32
-        ['#c0de58', '#7ea81a', '#587a0c', '#ffffff'], // 64
-        ['#f9d95c', '#dc9e10', '#a47206', '#ffffff'], // 128
-        ['#f9ae4e', '#de700e', '#a44e04', '#ffffff'], // 256
-        ['#f47c68', '#cf3626', '#96200f', '#ffffff'], // 512
-        ['#ee6dab', '#bb256e', '#84124a', '#ffffff'], // 1024
-        ['#b08af0', '#683cc4', '#44208e', '#ffffff'], // 2048
-        ['#5c6a80', '#1d2532', '#0a0e16', '#ffd866']  // 4096 and up
+        ['#f8fbff', '#c9dcf2', '#7f9cc0', '#1e3a5f'], // 2
+        ['#d6eaff', '#93bfee', '#5a8cc4', '#1e3a5f'], // 4
+        ['#86d8fb', '#2b97d8', '#17639a', '#ffffff'], // 8
+        ['#5cdcd2', '#12908f', '#086262', '#ffffff'], // 16
+        ['#7fe08a', '#23933b', '#126626', '#ffffff'], // 32
+        ['#c8e85c', '#76a312', '#4d7206', '#ffffff'], // 64
+        ['#ffe066', '#dc9a08', '#9a6a02', '#ffffff'], // 128
+        ['#ffb655', '#de6a06', '#9a4400', '#ffffff'], // 256
+        ['#ff8470', '#cf2e1e', '#8e1a0c', '#ffffff'], // 512
+        ['#f777b6', '#b81e69', '#7c0e44', '#ffffff'], // 1024
+        ['#b995fa', '#6234c4', '#3c1a88', '#ffffff'], // 2048
+        ['#66768e', '#1b2330', '#080b12', '#ffd866']  // 4096 and up
     ];
     const tileColors = (v) => TILE_COLORS[Math.min(TILE_COLORS.length - 1, Math.max(0, Math.round(Math.log2(v)) - 1))];
 
@@ -167,66 +168,249 @@
         ctx.closePath();
     }
 
-    // one tile, painted s px square (device pixels)
+    // a four-point glint
+    function glint(ctx, x, y, r) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.quadraticCurveTo(x + r * 0.12, y - r * 0.12, x + r, y);
+        ctx.quadraticCurveTo(x + r * 0.12, y + r * 0.12, x, y + r);
+        ctx.quadraticCurveTo(x - r * 0.12, y + r * 0.12, x - r, y);
+        ctx.quadraticCurveTo(x - r * 0.12, y - r * 0.12, x, y - r);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // One tile, painted s px square (device pixels): a slab of thick coloured glass. Light comes
+    // through it from below, the upper half carries the room's reflection, a bright spot sits at
+    // the top left, and a rim of light runs round the inside of its edge.
     function paintTile(ctx, s, v, goal) {
         const [top, bottom, edge, text] = tileColors(v);
-        const r = s * 0.11;
-        const inset = Math.max(1, s * 0.012);
+        const r = s * 0.15;
+        const u = Math.max(1, s * 0.012);
         ctx.clearRect(0, 0, s, s);
-        // edge, body
         roundRect(ctx, 0, 0, s, s, r);
         ctx.fillStyle = edge;
         ctx.fill();
-        roundRect(ctx, inset, inset, s - inset * 2, s - inset * 2, r - inset);
-        const g = ctx.createLinearGradient(0, 0, 0, s);
-        g.addColorStop(0, top);
-        g.addColorStop(1, bottom);
-        ctx.fillStyle = g;
+        roundRect(ctx, u, u, s - u * 2, s - u * 2, r - u);
+        const body = ctx.createLinearGradient(0, 0, 0, s);
+        body.addColorStop(0, top);
+        body.addColorStop(0.5, bottom);
+        body.addColorStop(1, edge);
+        ctx.fillStyle = body;
         ctx.fill();
-        // the glass: a light upper half with a curved lower edge, and a thin inner rim
         ctx.save();
-        roundRect(ctx, inset, inset, s - inset * 2, s - inset * 2, r - inset);
+        roundRect(ctx, u, u, s - u * 2, s - u * 2, r - u);
         ctx.clip();
-        const gl = ctx.createLinearGradient(0, 0, 0, s * 0.55);
-        gl.addColorStop(0, 'rgba(255,255,255,0.62)');
-        gl.addColorStop(1, 'rgba(255,255,255,0.08)');
-        ctx.fillStyle = gl;
+        // light through the glass, pooling at the bottom
+        const through = ctx.createRadialGradient(s * 0.5, s * 1.08, s * 0.05, s * 0.5, s * 1.08, s * 0.8);
+        through.addColorStop(0, 'rgba(255,255,255,0.62)');
+        through.addColorStop(0.45, 'rgba(255,255,255,0.2)');
+        through.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = through;
+        ctx.fillRect(0, 0, s, s);
+        // the reflection: the upper part, ending in a curve
+        const gloss = ctx.createLinearGradient(0, 0, 0, s * 0.56);
+        gloss.addColorStop(0, 'rgba(255,255,255,0.74)');
+        gloss.addColorStop(0.6, 'rgba(255,255,255,0.2)');
+        gloss.addColorStop(1, 'rgba(255,255,255,0.06)');
+        ctx.fillStyle = gloss;
         ctx.beginPath();
         ctx.moveTo(0, 0);
         ctx.lineTo(s, 0);
-        ctx.lineTo(s, s * 0.4);
-        ctx.quadraticCurveTo(s * 0.5, s * 0.58, 0, s * 0.4);
+        ctx.lineTo(s, s * 0.36);
+        ctx.quadraticCurveTo(s * 0.5, s * 0.6, 0, s * 0.42);
         ctx.closePath();
         ctx.fill();
-        const low = ctx.createLinearGradient(0, s * 0.7, 0, s);
-        low.addColorStop(0, 'rgba(255,255,255,0)');
-        low.addColorStop(1, 'rgba(255,255,255,0.22)');
-        ctx.fillStyle = low;
-        ctx.fillRect(0, s * 0.7, s, s * 0.3);
+        // the bright spot
+        const spot = ctx.createRadialGradient(s * 0.26, s * 0.2, 0, s * 0.26, s * 0.2, s * 0.26);
+        spot.addColorStop(0, 'rgba(255,255,255,0.7)');
+        spot.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = spot;
+        ctx.fillRect(0, 0, s * 0.6, s * 0.5);
         ctx.restore();
-        roundRect(ctx, inset * 2, inset * 2, s - inset * 4, s - inset * 4, r - inset * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = inset;
+        // the rim of light inside the edge: bright along the top, faint at the foot
+        roundRect(ctx, u * 1.8, u * 1.8, s - u * 3.6, s - u * 3.6, r - u * 1.8);
+        const rim = ctx.createLinearGradient(0, 0, 0, s);
+        rim.addColorStop(0, 'rgba(255,255,255,0.95)');
+        rim.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+        rim.addColorStop(1, 'rgba(255,255,255,0.5)');
+        ctx.strokeStyle = rim;
+        ctx.lineWidth = u * 1.2;
         ctx.stroke();
         if (v >= goal) {
-            roundRect(ctx, inset * 3.5, inset * 3.5, s - inset * 7, s - inset * 7, r - inset * 3);
-            ctx.strokeStyle = 'rgba(255,224,120,0.95)';
-            ctx.lineWidth = inset * 2;
+            // the goal and beyond: a band of gold, and two glints
+            roundRect(ctx, u * 4, u * 4, s - u * 8, s - u * 8, r - u * 3.5);
+            ctx.strokeStyle = 'rgba(255,220,110,0.95)';
+            ctx.lineWidth = u * 2;
             ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            glint(ctx, s * 0.84, s * 0.17, s * 0.09);
+            glint(ctx, s * 0.15, s * 0.82, s * 0.05);
         }
-        // the number
+        // the number, cut into the glass
         const label = String(v);
-        const size = s * (label.length <= 2 ? 0.46 : label.length === 3 ? 0.38 : label.length === 4 ? 0.3 : 0.24);
-        ctx.font = '600 ' + size + 'px ' + FONT;
+        const size = s * (label.length <= 2 ? 0.48 : label.length === 3 ? 0.39 : label.length === 4 ? 0.31 : 0.25);
+        ctx.font = '700 ' + size + 'px ' + FONT;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillStyle = text === '#1e3a5f' ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.35)';
-        ctx.fillText(label, s / 2, s * 0.53 + Math.max(1, s * 0.012));
+        const dark = text === '#1e3a5f';
+        ctx.save();
+        ctx.shadowColor = dark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = dark ? 0 : s * 0.07;
+        ctx.shadowOffsetY = Math.max(1, s * 0.016);
         ctx.fillStyle = text;
         ctx.fillText(label, s / 2, s * 0.53);
+        ctx.restore();
     }
 
-    const rules = { DISPLAY_NAME, SIZES, GOALS, DIRS, mulberry32, lanes, addTile, createGame, canMove, move, cloneGame, validGame, paintTile, roundRect };
+    // the soft shadow a tile throws on the tray (s px across; the tile sits in its middle 10/13)
+    function paintShadow(ctx, s) {
+        const t = s / 1.3;
+        const o = (s - t) / 2;
+        ctx.clearRect(0, 0, s, s);
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,6,24,0.6)';
+        ctx.shadowBlur = t * 0.1;
+        ctx.shadowOffsetY = t * 0.045;
+        roundRect(ctx, o + t * 0.04, o + t * 0.04, t * 0.92, t * 0.92, t * 0.14);
+        ctx.fillStyle = 'rgba(0,6,24,0.55)';
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // The table the glass lies on: deep blue with pools of coloured light, soft discs out of focus,
+    // shafts of light across it and darker corners. w x h px; seed fixes where the discs fall.
+    function paintBackdrop(ctx, w, h) {
+        const base = ctx.createLinearGradient(0, 0, w * 0.3, h);
+        base.addColorStop(0, '#16407f');
+        base.addColorStop(0.5, '#0c2a66');
+        base.addColorStop(1, '#061236');
+        ctx.fillStyle = base;
+        ctx.fillRect(0, 0, w, h);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const pool = (x, y, r, c) => {
+            const g = ctx.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * w);
+            g.addColorStop(0, c);
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, w, h);
+        };
+        pool(0.12, 0.02, 0.85, 'rgba(96,170,255,0.55)');
+        pool(0.95, 0.3, 0.6, 'rgba(60,220,200,0.2)');
+        pool(0.25, 0.95, 0.7, 'rgba(120,90,255,0.24)');
+        pool(0.8, 1.02, 0.55, 'rgba(40,150,255,0.26)');
+        const rnd = mulberry32(2048);
+        for (let i = 0; i < 16; i++) {
+            const x = rnd() * w;
+            const y = rnd() * h;
+            const r = (0.03 + rnd() * 0.07) * w;
+            const g = ctx.createRadialGradient(x, y, r * 0.55, x, y, r);
+            const a = 0.05 + rnd() * 0.07;
+            g.addColorStop(0, 'rgba(170,215,255,' + a + ')');
+            g.addColorStop(0.9, 'rgba(170,215,255,' + a * 1.3 + ')');
+            g.addColorStop(1, 'rgba(170,215,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        for (let i = 0; i < 3; i++) {
+            const x = (0.1 + i * 0.3) * w;
+            const g = ctx.createLinearGradient(x, 0, x + w * 0.22, 0);
+            g.addColorStop(0, 'rgba(255,255,255,0)');
+            g.addColorStop(0.5, 'rgba(255,255,255,0.06)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + w * 0.22, 0);
+            ctx.lineTo(x + w * 0.22 - h * 0.45, h);
+            ctx.lineTo(x - h * 0.45, h);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+        const dim = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+        dim.addColorStop(0, 'rgba(0,0,0,0)');
+        dim.addColorStop(1, 'rgba(0,4,20,0.5)');
+        ctx.fillStyle = dim;
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    // A pane of frosted glass (the tray, the score panels): x, y, w, h, corner r, in the context's units
+    function paintPane(ctx, x, y, w, h, r, px) {
+        roundRect(ctx, x, y, w, h, r);
+        const g = ctx.createLinearGradient(0, y, 0, y + h);
+        g.addColorStop(0, 'rgba(255,255,255,0.2)');
+        g.addColorStop(0.12, 'rgba(255,255,255,0.08)');
+        g.addColorStop(1, 'rgba(255,255,255,0.04)');
+        ctx.fillStyle = 'rgba(4,14,44,0.42)';
+        ctx.fill();
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,225,255,0.55)';
+        ctx.lineWidth = px;
+        ctx.stroke();
+        // the light caught along its top edge
+        ctx.save();
+        roundRect(ctx, x, y, w, h, r);
+        ctx.clip();
+        const edge = ctx.createLinearGradient(0, y, 0, y + Math.min(h * 0.5, 26 * px));
+        edge.addColorStop(0, 'rgba(255,255,255,0.22)');
+        edge.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = edge;
+        ctx.fillRect(x, y, w, h * 0.5);
+        ctx.restore();
+    }
+
+    // a square of the tray where a tile can lie: sunk, darker, a line of light along its foot
+    function paintWell(ctx, x, y, s) {
+        const r = s * 0.15;
+        roundRect(ctx, x, y, s, s, r);
+        const g = ctx.createLinearGradient(0, y, 0, y + s);
+        g.addColorStop(0, 'rgba(0,6,30,0.5)');
+        g.addColorStop(0.25, 'rgba(6,20,60,0.3)');
+        g.addColorStop(1, 'rgba(40,80,160,0.2)');
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(0,4,20,0.5)';
+        ctx.lineWidth = s * 0.04;
+        roundRect(ctx, x, y + s * 0.015, s, s, r);
+        ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(190,220,255,0.16)';
+        ctx.lineWidth = Math.max(1, s * 0.012);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y + s);
+        ctx.lineTo(x + s - r, y + s);
+        ctx.stroke();
+    }
+
+    // A join: a ring of light opening from the tile and eight glints thrown outward. u 0..1 through
+    // its life; x, y the tile's middle, s the tile's size, color the new tile's light tone.
+    function paintBurst(ctx, x, y, s, u, color) {
+        const out = 1 - Math.pow(1 - u, 2);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.max(0, 1 - u) * 0.8;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = s * 0.07 * (1 - u) + 1;
+        ctx.beginPath();
+        ctx.arc(x, y, s * (0.5 + out * 0.42), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 8; i++) {
+            const a = i * Math.PI / 4 + 0.4;
+            const d = s * (0.5 + out * 0.55);
+            glint(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d, s * 0.085 * (1 - u) + 0.5);
+        }
+        ctx.restore();
+    }
+
+    const rules = { DISPLAY_NAME, SIZES, GOALS, DIRS, mulberry32, lanes, addTile, createGame, canMove, move, cloneGame, validGame, paintTile, paintShadow, paintBackdrop, paintPane, paintWell, paintBurst, roundRect };
     if (typeof module === 'object' && module.exports) module.exports = rules;
 
     const VG = root.VistaGames;
@@ -245,6 +429,7 @@
     const NATIVE_H = BY + BOARD + PAD;
     const SLIDE_MS = 110;
     const POP_MS = 150;
+    const BURST_MS = 460;
 
     const CMD = { NEW: 40006, UNDO: 40009, STATS: 40003, OPTIONS: 40004, EXIT: 40005, HELP: 40008, ABOUT: 40007 };
     const MENU = [
@@ -463,6 +648,9 @@
                 ]))
             ];
             this.tileCache = new Map();
+            this.fx = []; // the light of joins in flight: { cell, at, color, big }
+            this.layer = null;
+            this.layerKey = '';
             this.anim = null;
             this.gain = null;
             this.prev = null;
@@ -482,7 +670,7 @@
                 accelerators: 'game',
                 nativeW: NATIVE_W,
                 nativeH: NATIVE_H,
-                fill: '#0d2c63',
+                fill: '#071a40',
                 maximizable: true,
                 onCommand: (id) => this.command(id),
                 menuState: (id) => (id === CMD.UNDO ? { disabled: !this.canUndo() } : {}),
@@ -513,6 +701,7 @@
             this.g = createGame(this.s.size, Math.random);
             this.anim = null;
             this.gain = null;
+            this.fx = [];
             this.prev = null;
             this.pending = null;
             this.recorded = false;
@@ -559,6 +748,7 @@
             this.prev = before;
             this.play(r.merges.length ? 'Join' : 'Slide');
             if (r.gained) this.gain = { v: r.gained, at: VG.now() };
+            if (this.s.animations) r.merges.forEach((m) => this.fx.push({ cell: m.at, at: VG.now() + SLIDE_MS, color: tileColors(m.tile.v)[0], big: m.tile.v >= this.g.goal }));
             if (this.s.animations) {
                 this.anim = { at: VG.now(), r };
                 this.pending = r;
@@ -672,10 +862,40 @@
             if (!c) {
                 if (this.tileCache.size > 80) this.tileCache.clear();
                 c = document.createElement('canvas');
-                c.width = c.height = px;
-                paintTile(c.getContext('2d'), px, v, this.g.goal);
+                if (v === 0) {
+                    // the shadow under a tile
+                    c.width = c.height = Math.round(px * 1.3);
+                    paintShadow(c.getContext('2d'), c.width);
+                } else {
+                    c.width = c.height = px;
+                    paintTile(c.getContext('2d'), px, v, this.g.goal);
+                }
                 this.tileCache.set(key, c);
             }
+            return c;
+        }
+
+        // everything that stays put (the table, the score panes, the tray and its wells), painted
+        // once for a window size and board size
+        staticLayer(st) {
+            const k = st.pixelScale;
+            const key = Math.round(k * 1000) + '/' + this.g.n;
+            if (this.layer && this.layerKey === key) return this.layer;
+            const c = this.layer || document.createElement('canvas');
+            c.width = Math.max(1, Math.round(NATIVE_W * k));
+            c.height = Math.max(1, Math.round(NATIVE_H * k));
+            const ctx = c.getContext('2d');
+            paintBackdrop(ctx, c.width, c.height);
+            ctx.setTransform(k, 0, 0, k, 0, 0);
+            const pw = 96;
+            paintPane(ctx, NATIVE_W - PAD - pw * 2 - 8, PAD, pw, HEAD_H, 8, 1);
+            paintPane(ctx, NATIVE_W - PAD - pw, PAD, pw, HEAD_H, 8, 1);
+            paintPane(ctx, BX, BY, BOARD, BOARD, 13, 1);
+            const geo = this.geometry();
+            for (let i = 0; i < geo.n * geo.n; i++) paintWell(ctx, geo.x(i), geo.y(i), geo.tile);
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            this.layer = c;
+            this.layerKey = key;
             return c;
         }
 
@@ -689,101 +909,84 @@
                 if (now - this.gain.at > 700) this.gain = null;
                 else again = true;
             }
+            if (this.fx.length) {
+                this.fx = this.fx.filter((f) => now - f.at < BURST_MS);
+                if (this.fx.length) again = true;
+            }
             if (this.overAt && now - this.overAt < 600) again = true;
             return again;
         }
 
-        drawPanel(ctx, x, y, w, h, label, value) {
-            roundRect(ctx, x, y, w, h, 5);
-            const g = ctx.createLinearGradient(0, y, 0, y + h);
-            g.addColorStop(0, 'rgba(4,16,44,0.78)');
-            g.addColorStop(1, 'rgba(10,32,78,0.62)');
-            ctx.fillStyle = g;
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(170,205,255,0.45)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+        drawPanel(ctx, x, y, w, label, value) {
             ctx.textAlign = 'center';
             ctx.textBaseline = 'alphabetic';
-            ctx.font = '11px ' + FONT;
-            ctx.fillStyle = '#a9c8f4';
+            ctx.font = '600 10px ' + FONT;
+            ctx.fillStyle = 'rgba(200,225,255,0.85)';
             ctx.fillText(label, x + w / 2, y + 17);
-            ctx.font = '600 22px ' + FONT;
+            ctx.font = '700 23px ' + FONT;
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,10,40,0.7)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 1;
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(String(value), x + w / 2, y + 43);
+            ctx.fillText(String(value), x + w / 2, y + 44);
+            ctx.restore();
         }
 
         draw(ctx, st) {
             const g = this.g;
             const now = VG.now();
-            // Vista's blue, lit from the top left
-            const bg = ctx.createLinearGradient(0, 0, 0, NATIVE_H);
-            bg.addColorStop(0, '#3f7fd0');
-            bg.addColorStop(0.45, '#1f56a8');
-            bg.addColorStop(1, '#0d2c63');
-            ctx.fillStyle = bg;
-            ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
-            const glow = ctx.createRadialGradient(NATIVE_W * 0.2, -40, 10, NATIVE_W * 0.2, -40, NATIVE_W * 0.9);
-            glow.addColorStop(0, 'rgba(190,225,255,0.5)');
-            glow.addColorStop(1, 'rgba(190,225,255,0)');
-            ctx.fillStyle = glow;
-            ctx.fillRect(0, 0, NATIVE_W, NATIVE_H);
+            ctx.drawImage(this.staticLayer(st), 0, 0, NATIVE_W, NATIVE_H);
 
-            // the header: the goal and the move count on the left, score and best in panels
+            // the header: the goal and the move count on the left, score and best on their panes
             ctx.textAlign = 'left';
             ctx.textBaseline = 'alphabetic';
+            ctx.save();
+            ctx.shadowColor = 'rgba(0,10,40,0.7)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetY = 1;
             ctx.font = '600 15px ' + FONT;
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(fmt(STR.goal, g.goal), PAD + 2, PAD + 22);
+            ctx.fillText(fmt(STR.goal, g.goal), PAD + 2, PAD + 24);
             ctx.font = '12px ' + FONT;
             ctx.fillStyle = '#cfe2fb';
-            ctx.fillText(fmt(STR.movesShort, g.moves), PAD + 2, PAD + 42);
+            ctx.fillText(fmt(STR.movesShort, g.moves), PAD + 2, PAD + 44);
+            ctx.restore();
             const pw = 96;
-            this.drawPanel(ctx, NATIVE_W - PAD - pw * 2 - 8, PAD, pw, HEAD_H, 'SCORE', g.score);
-            this.drawPanel(ctx, NATIVE_W - PAD - pw, PAD, pw, HEAD_H, 'BEST', this.bestScore());
+            this.drawPanel(ctx, NATIVE_W - PAD - pw * 2 - 8, PAD, pw, 'SCORE', g.score);
+            this.drawPanel(ctx, NATIVE_W - PAD - pw, PAD, pw, 'BEST', this.bestScore());
             if (this.gain) {
                 const u = Math.min(1, (now - this.gain.at) / 700);
                 ctx.globalAlpha = 1 - u;
-                ctx.font = '600 15px ' + FONT;
+                ctx.font = '700 15px ' + FONT;
                 ctx.textAlign = 'center';
                 ctx.fillStyle = '#ffe27a';
                 ctx.fillText('+' + this.gain.v, NATIVE_W - PAD - pw * 1.5 - 8, PAD + 30 - u * 26);
                 ctx.globalAlpha = 1;
             }
 
-            // the board: a sunken glass tray with a square for every cell
-            roundRect(ctx, BX, BY, BOARD, BOARD, 9);
-            const tray = ctx.createLinearGradient(0, BY, 0, BY + BOARD);
-            tray.addColorStop(0, 'rgba(3,14,40,0.72)');
-            tray.addColorStop(1, 'rgba(8,28,70,0.55)');
-            ctx.fillStyle = tray;
-            ctx.fill();
-            ctx.strokeStyle = 'rgba(170,205,255,0.5)';
-            ctx.lineWidth = 1;
-            ctx.stroke();
             const geo = this.geometry();
-            for (let i = 0; i < geo.n * geo.n; i++) {
-                roundRect(ctx, geo.x(i), geo.y(i), geo.tile, geo.tile, geo.tile * 0.11);
-                ctx.fillStyle = 'rgba(160,200,255,0.13)';
-                ctx.fill();
-            }
-
             const px = Math.max(8, Math.round(geo.tile * st.pixelScale));
+            const shadow = this.tileImage(0, px);
             const put = (v, x, y, scale, alpha) => {
-                const img = this.tileImage(v, px);
                 const s = geo.tile * scale;
+                const o = (geo.tile - s) / 2;
                 ctx.globalAlpha = alpha;
-                ctx.drawImage(img, x + (geo.tile - s) / 2, y + (geo.tile - s) / 2, s, s);
+                if (alpha > 0.5) ctx.drawImage(shadow, x + o - s * 0.15, y + o - s * 0.15, s * 1.3, s * 1.3);
+                ctx.drawImage(this.tileImage(v, px), x + o, y + o, s, s);
                 ctx.globalAlpha = 1;
             };
             const a = this.anim;
             const t = a ? now - a.at : 0;
             if (a && t < SLIDE_MS) {
-                // the tiles as they were, on their way
+                // the tiles as they were, on their way, each trailing a little of itself
                 const u = 1 - Math.pow(1 - t / SLIDE_MS, 2);
+                const at = (s, k) => [geo.x(s.from) + (geo.x(s.to) - geo.x(s.from)) * k, geo.y(s.from) + (geo.y(s.to) - geo.y(s.from)) * k];
                 a.r.slides.forEach((s) => {
-                    put(s.v, geo.x(s.from) + (geo.x(s.to) - geo.x(s.from)) * u, geo.y(s.from) + (geo.y(s.to) - geo.y(s.from)) * u, 1, 1);
+                    if (s.from === s.to) return;
+                    [[0.3, 0.14], [0.15, 0.26]].forEach(([back, alpha]) => { const p = at(s, Math.max(0, u - back)); put(s.v, p[0], p[1], 1, alpha); });
                 });
+                a.r.slides.forEach((s) => { const p = at(s, u); put(s.v, p[0], p[1], 1, 1); });
             } else {
                 const u = a ? Math.min(1, (t - SLIDE_MS) / POP_MS) : 1;
                 const popped = a ? new Set(a.r.merges.map((m) => m.tile.id)) : null;
@@ -795,11 +998,17 @@
                     else put(tile.v, geo.x(i), geo.y(i), 1, 1);
                 });
             }
+            // the light a join throws
+            this.fx.forEach((f) => {
+                const u = (now - f.at) / BURST_MS;
+                if (u < 0 || u >= 1) return;
+                paintBurst(ctx, geo.x(f.cell) + geo.tile / 2, geo.y(f.cell) + geo.tile / 2, geo.tile * (f.big ? 1.25 : 1), u, f.color);
+            });
 
             if (g.over && !a) {
                 const u = this.overAt ? Math.min(1, (now - this.overAt) / 600) : 1;
-                roundRect(ctx, BX, BY, BOARD, BOARD, 9);
-                ctx.fillStyle = 'rgba(6,20,52,' + (0.62 * u) + ')';
+                roundRect(ctx, BX, BY, BOARD, BOARD, 13);
+                ctx.fillStyle = 'rgba(4,12,40,' + (0.66 * u) + ')';
                 ctx.fill();
                 ctx.globalAlpha = u;
                 ctx.textAlign = 'center';
