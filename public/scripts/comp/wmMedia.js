@@ -67,7 +67,8 @@
         }
     };
     const PUSHED_W = { portrait: [724, 86], landscape: [602, 62] };
-    const DISABLED_W = { portrait: [292, 86], landscape: [292, 62] };
+    // the strips' own sizes in VGA units (disabled-landscape.png is 122 x 31: 244, not portrait's 292)
+    const DISABLED_W = { portrait: [292, 86], landscape: [244, 62] };
 
     let ws = null;
     let page = null;
@@ -585,6 +586,23 @@
     const BAR_TOP = 396; // portrait: the control bar's top edge in the background (VGA units)
     function skinLayout() {
         const L = LAYOUT[orient];
+        // a landscape screen wider than the skin's 640x376 (#829: phones are about 20:9): the control
+        // strip stays centred at its own size, the album art and the title lines take the full width,
+        // the ratings follow the right edge (the background's plain edge columns fill the sides)
+        if (orient === 'landscape' && skinExtra) {
+            const e = skinExtra;
+            const mid = (r) => [r[0] + e / 2, r[1]].concat(r.slice(2));
+            const buttons = {};
+            Object.entries(L.buttons).forEach(([k, b]) => { buttons[k] = mid(b); });
+            return {
+                ...L, size: [L.size[0] + e, L.size[1]],
+                art: [L.art[0], L.art[1], L.art[2] + e, L.art[3]],
+                marquee: [L.marquee[0], L.marquee[1], L.marquee[2] + e].concat(L.marquee.slice(3)),
+                status: [L.status[0], L.status[1], L.status[2] + e].concat(L.status.slice(3)),
+                ratings: [L.ratings[0] + e].concat(L.ratings.slice(1)),
+                time: mid(L.time), vol: mid(L.vol), seek: mid(L.seek), buttons
+            };
+        }
         if (orient !== 'portrait' || !skinExtra) return L;
         const d = skinExtra;
         const down = (r) => [r[0], r[1] + d].concat(r.slice(2));
@@ -600,7 +618,8 @@
             return `<button type="button" class="wmp-btn" data-b="${k}" style="${box(b)};--px:${u(-b[4])};--px2:${u(-(b[5] || b[4]))};--px3:${u(-(b[6] || b[4]))}" aria-label="${k}"></button>`;
         };
         const stretch = orient === 'portrait' && skinExtra ? `;--wmp-extra:${skinExtra};--wmp-bar:${BAR_TOP}` : '';
-        return `<div class="wmp-skin is-${orient}${stretch ? ' is-stretched' : ''}" style="width:${u(L.size[0])};height:${u(L.size[1])}${stretch};--bg:image-set(url('${SKIN}${L.bg}.png') 1x, url('${SKIN}${L.bg}@2x.png') 2x);--pushed:image-set(url('${SKIN}${L.pushed}.png') 1x, url('${SKIN}${L.pushed}@2x.png') 2x);--pw:${u(PUSHED_W[orient][0])};--ph:${u(PUSHED_W[orient][1])};--disabled:image-set(url('${SKIN}${L.disabled}.png') 1x, url('${SKIN}${L.disabled}@2x.png') 2x);--dw:${u(DISABLED_W[orient][0])};--dh:${u(DISABLED_W[orient][1])}">
+        const wide = orient === 'landscape' && skinExtra ? `;--wmp-wx:${skinExtra}` : '';
+        return `<div class="wmp-skin is-${orient}${stretch ? ' is-stretched' : ''}${wide ? ' is-wide' : ''}" style="width:${u(L.size[0])};height:${u(L.size[1])}${stretch}${wide};--bg:image-set(url('${SKIN}${L.bg}.png') 1x, url('${SKIN}${L.bg}@2x.png') 2x);--pushed:image-set(url('${SKIN}${L.pushed}.png') 1x, url('${SKIN}${L.pushed}@2x.png') 2x);--pw:${u(PUSHED_W[orient][0])};--ph:${u(PUSHED_W[orient][1])};--disabled:image-set(url('${SKIN}${L.disabled}.png') 1x, url('${SKIN}${L.disabled}@2x.png') 2x);--dw:${u(DISABLED_W[orient][0])};--dh:${u(DISABLED_W[orient][1])}">
             <div class="wmp-art" style="${box(L.art)}"></div>
             <div class="wmp-marquee" style="${box(L.marquee)};font-size:${u(L.marquee[4])}"></div>
             <div class="wmp-status" style="${box(L.status)};font-size:${u(L.status[4])}"></div>
@@ -623,7 +642,8 @@
         // the skin keeps its shape and fills the screen (its VGA units scaled to fit)
         const unit = Math.min(w / L.size[0], h / L.size[1]);
         // portrait on a tall screen: the skin fills the height too (skinLayout)
-        const extra = o === 'portrait' ? Math.max(0, Math.floor(h / unit - L.size[1])) : 0;
+        // landscape on a wide screen: the skin fills the width too
+        const extra = o === 'portrait' ? Math.max(0, Math.floor(h / unit - L.size[1])) : Math.max(0, Math.floor(w / unit - L.size[0]));
         host.style.setProperty('--wmp-u', `${unit}px`);
         if (o !== orient || extra !== skinExtra || !host.querySelector('.wmp-skin')) {
             orient = o;
@@ -1134,6 +1154,8 @@
             const v = media.el;
             return { title: it.name, artist: it.artist || (it.kind === 'audio' ? it.folder || '' : ''), art: it.kind === 'audio' ? it.art || '' : '', albumArt: it.kind === 'audio' ? it.albumArt || '' : '', playing: !!(v && !v.paused && !v.ended), status: media.status, index: media.index, count: media.queue.length };
         },
+        // Options (#829): open Melaton Media on its Options page (which programs Now Playing may show)
+        options: () => { if (!ws) return false; if (ws.current !== APP_ID) ws.open(APP_ID); openOptions(); return true; },
         playPause: () => playPause(),
         next: () => next(false),
         previous: () => prev(),

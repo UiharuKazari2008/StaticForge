@@ -75,6 +75,16 @@
     color: #fff;
 }
 
+/* a landscape screen wider than the skin (#829, wmMedia.js skinLayout): the 640-wide background stays
+   centred at its own size; each side band is the background's plain edge column drawn out (its
+   first / last 2-unit column scaled to the band's width) */
+.wm-media .wmp-skin.is-wide {
+    background:
+        var(--bg) 50% 0 / calc(640 * var(--wmp-u)) 100% no-repeat,
+        var(--bg) 0 0 / calc(160 * var(--wmp-wx) * var(--wmp-u)) 100% no-repeat,
+        var(--bg) 100% 0 / calc(160 * var(--wmp-wx) * var(--wmp-u)) 100% no-repeat;
+}
+
 /* a tall portrait screen (wmMedia.js skinLayout): the control bar sits at the bottom at its own size and
    the gradient above it stretches over the extra height, so no empty band is left under the skin */
 .wm-media .wmp-skin.is-stretched {

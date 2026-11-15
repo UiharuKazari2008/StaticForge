@@ -168,7 +168,10 @@ function normalizeWorkspaceMobileToday(raw) {
             if (!str(id, 60) || !o || typeof o !== 'object' || Array.isArray(o)) continue;
             const one = {};
             for (const [k, v] of Object.entries(o).slice(0, 20)) {
-                if (str(k, 40) && (str(v, 120) !== null || typeof v === 'number' || typeof v === 'boolean')) one[k] = v;
+                // lists ride in one string (#829: Music's "show" is every hidden player's package name,
+                // comma-joined, and ran past the old 120 characters, so the choice was dropped and lost
+                // on the next boot)
+                if (str(k, 40) && (str(v, 4000) !== null || typeof v === 'number' || typeof v === 'boolean')) one[k] = v;
             }
             opts[id] = one;
         }
