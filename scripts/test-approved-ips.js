@@ -183,6 +183,18 @@ async function main() {
     assert.strictEqual(applyApprovedIpLogin(existing, resources(home)).applied, false);
     assert.strictEqual(existing.session.userType, 'readonly');
 
+    console.log('a dev-login session stored as dev_admin is an administrator (#838)');
+    const oldDev = request({ remoteAddress: '127.0.0.1', session: { authenticated: true, userType: 'dev_admin' } });
+    const oldDevAuth = await runAuth(resources([]), oldDev);
+    assert.strictEqual(oldDevAuth.continued, true);
+    assert.strictEqual(oldDev.userType, 'admin');
+    assert.strictEqual(oldDev.devLogin, true);
+    assert.strictEqual(oldDev.session.userType, 'admin', 'the stored session is upgraded');
+    assert.strictEqual(oldDev.session.devLogin, true);
+    const plainAdmin = request({ remoteAddress: '127.0.0.1', session: { authenticated: true, userType: 'admin' } });
+    await runAuth(resources([]), plainAdmin);
+    assert.strictEqual(plainAdmin.devLogin, false, 'a PIN admin is not the test login');
+
     console.log('header login key downloads; query string is rejected');
     const grHeader = resources(home);
     const download = request({

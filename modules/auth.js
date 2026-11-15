@@ -216,7 +216,13 @@ function createAuthMiddleware(globalResources) {
         }
 
         if (req.session && req.session.authenticated) {
+            // a dev-login session stored before #838 as 'dev_admin' is an administrator too
+            if (req.session.userType === 'dev_admin') {
+                req.session.userType = 'admin';
+                req.session.devLogin = true;
+            }
             req.userType = req.session.userType || 'admin';
+            req.devLogin = !!req.session.devLogin;
             req.authMethod = 'session';
             req.sessionId = req.session.id;
             return next();
@@ -394,11 +400,15 @@ function createDevAuthMiddleware(globalResources) {
             return res.status(403).json({ error: 'Invalid development authentication token' });
         }
 
-        req.userType = 'dev_admin';
+        // The dev login is a real administrator (#838): every admin check passes for test tabs.
+        // devLogin marks it for the few places that need to know it is the test login.
+        req.userType = 'admin';
+        req.devLogin = true;
         req.authMethod = 'dev_login_key';
         if (req.session) {
             req.session.authenticated = true;
-            req.session.userType = 'dev_admin';
+            req.session.userType = 'admin';
+            req.session.devLogin = true;
         }
         return next();
     };
@@ -419,8 +429,9 @@ function createAgentAssetAuthMiddleware(globalResources) {
             return res.status(404).json({ error: 'Development mode not enabled' });
         }
 
-        if (req.session && req.session.authenticated && req.session.userType === 'dev_admin') {
-            req.userType = 'dev_admin';
+        if (req.session && req.session.authenticated && (req.session.devLogin || req.session.userType === 'dev_admin')) {
+            req.userType = 'admin';
+            req.devLogin = true;
             req.authMethod = 'dev_admin_session';
             return next();
         }
@@ -443,7 +454,8 @@ function createAgentAssetAuthMiddleware(globalResources) {
             return res.status(403).json({ error: 'Invalid development authentication token' });
         }
 
-        req.userType = 'dev_admin';
+        req.userType = 'admin';
+        req.devLogin = true;
         req.authMethod = 'dev_login_key';
         return next();
     };

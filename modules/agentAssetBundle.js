@@ -63,7 +63,8 @@ function invalidate() {
 }
 
 function isDevAdminSession(req) {
-    return Boolean(req.session && req.session.authenticated && req.session.userType === 'dev_admin');
+    // devLogin since #838 (the dev login is userType admin); 'dev_admin' for sessions from before
+    return Boolean(req.session && req.session.authenticated && (req.session.devLogin || req.session.userType === 'dev_admin'));
 }
 
 function requestHasShaQuery(req) {

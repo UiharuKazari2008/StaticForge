@@ -1935,7 +1935,7 @@ function handleRouteError(res, error, fallback) {
 }
 
 function resolveAgentAuthScopes(req) {
-    if (req.authMethod === 'dev_login_key' || req.userType === 'dev_admin') {
+    if (req.authMethod === 'dev_login_key' || req.devLogin || req.userType === 'dev_admin') {
         return ['universal'];
     }
     const scopes = req.applicationAuth && req.applicationAuth.applicationScopes;

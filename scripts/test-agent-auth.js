@@ -33,6 +33,7 @@ async function runMiddleware({
     };
     const response = {
         statusCode: 200,
+        on() {}, // noteApplicationRequest listens for finish
         body: null,
         setHeader() {},
         status(code) {
@@ -103,7 +104,11 @@ async function main() {
     });
     assert.strictEqual(accepted.continued, true);
     assert.strictEqual(accepted.req.session.authenticated, true);
-    assert.strictEqual(accepted.req.session.userType, 'dev_admin');
+    // #838: the dev login is a real administrator, marked as the test login
+    assert.strictEqual(accepted.req.session.userType, 'admin');
+    assert.strictEqual(accepted.req.session.devLogin, true);
+    assert.strictEqual(accepted.req.userType, 'admin');
+    assert.strictEqual(accepted.req.devLogin, true);
 
     let seenOptions = null;
     const loopbackAppKey = await runMiddleware({
@@ -126,7 +131,7 @@ async function main() {
     });
     assert.strictEqual(loopbackAppKey.continued, true);
     assert.strictEqual(loopbackAppKey.req.authMethod, 'application_key');
-    assert.deepStrictEqual(seenOptions, { allowRefreshOverdue: true, skipUserAgent: true });
+    assert.deepStrictEqual(seenOptions, { allowRefreshOverdue: true, skipUserAgent: true, clientIp: '127.0.0.1' });
 
     const remoteAppKey = await runMiddleware({
         remoteAddress: '192.0.2.10',
