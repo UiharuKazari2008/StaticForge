@@ -198,6 +198,7 @@
     // (data-net), not on .desktop-taskbar, whose class flips restyled every taskbar icon
     // (idle perf pass 2026-11-04). Both ways at once shows receiving, as the old class rules did.
     let netGlyph = null;
+    let netBar = null;
     function setDesktopTaskbarNetFlags(flags) {
         // no taskbar on Melaton Mobile (#849)
         if (window.uiShell === 'mobile') return;
@@ -210,8 +211,9 @@
             }
         }
         if (flags.limited !== undefined) {
-            const bar = document.querySelector('.desktop-taskbar');
-            if (bar) setClass(bar, 'net-limited', !!flags.limited);
+            // the taskbar is one element for the life of the page: looked up once, not per message
+            if (!netBar || !netBar.isConnected) netBar = document.querySelector('.desktop-taskbar');
+            if (netBar) setClass(netBar, 'net-limited', !!flags.limited);
         }
     }
 

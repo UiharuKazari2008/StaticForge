@@ -454,6 +454,9 @@ class FeatureLoader {
             added.push(el);
         });
         document.body.appendChild(holder.content);
+        // a window can bring a request badge of its own (the log viewer's): websocket.js looks its
+        // kept list of badges up again (updateTickerBadge)
+        if (window.wsClient) window.wsClient._tickerBadges = null;
         if (typeof window.observeTaskbarModal === 'function') {
             added.forEach((el) => { if (el.classList.contains('modal')) window.observeTaskbarModal(el); });
         }
