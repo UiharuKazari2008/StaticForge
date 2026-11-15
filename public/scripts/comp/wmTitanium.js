@@ -1881,21 +1881,6 @@
         enter: () => entrance(),
         // the Android app readies the return before Melaton goes behind another program (#800)
         prime: () => prime(), unprime: () => unprime(),
-        // the Super Bar from elsewhere (the title bar's notification bubble, #800): Today first when it
-        // is not on screen, then the bar once its list has settled; false when 6.5 Today is not in use
-        superBar() {
-            if (!enabled() || !sh) return false;
-            if (sh.current !== 'today') sh.open('today');
-            const t0 = performance.now();
-            const go = () => {
-                if (superOpen) return;
-                const ready = host && !host.hidden && host.classList.contains('is-rest') && !tw && !zoomTimer && performance.now() >= enterLockUntil;
-                if (ready) { openSuper(); return; }
-                if (performance.now() - t0 < 2500) requestAnimationFrame(go);
-            };
-            requestAnimationFrame(go);
-            return true;
-        },
         panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })
