@@ -605,6 +605,7 @@
             <div class="wm-popup" role="menu" hidden></div>
             <div class="wm-msgbox-layer" hidden></div>
             <div class="wm-busy" role="status" aria-live="polite" hidden><img class="wm-busy-wait" alt="Please wait" draggable="false" hidden></div>
+            <div class="wm-notify-scrim" aria-hidden="true" hidden></div>
             <div class="wm-bubble" role="dialog" hidden></div>
             <div class="wm-volume" role="dialog" aria-label="Volume" hidden></div>
             <div class="wm-notify-tray" role="listbox" aria-label="Notifications" hidden></div>
@@ -690,6 +691,20 @@
         document.addEventListener('wmSipChange', (e) => {
             sipBtn.setAttribute('aria-pressed', e.detail && e.detail.height > 0 ? 'true' : 'false');
         });
+        const scrim = shell.querySelector('.wm-notify-scrim');
+        // the touch surface is on top, so nothing behind it gets the tap; it only keeps its presses from
+        // the shell's own gestures (hold ring, swipes). No preventDefault: that would cancel the click
+        ['pointerdown', 'touchstart', 'mousedown'].forEach((t) => scrim.addEventListener(t, (e) => e.stopPropagation(), { passive: true }));
+        scrim.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const nb = shell.querySelector('.wm-notify');
+            if (nb && !nb.hidden && noteShown) hideNote();
+            const bub = shell.querySelector('.wm-bubble');
+            if (bub && !bub.hidden) closeBubble();
+            syncScrim();
+        });
+        window.addEventListener('resize', () => syncScrim());
         document.addEventListener('click', (e) => {
             // a tap outside an open bubble hides it (its own buttons and links close it too)
             const bub = shell.querySelector('.wm-bubble');
@@ -3736,6 +3751,7 @@
         }
         el.hidden = false;
         refreshTitleAction();
+        syncScrim();
         // the tail points at the status icon
         if (anchor) {
             const sr = shell.getBoundingClientRect();
@@ -3751,6 +3767,28 @@
         const el = shell && shell.querySelector('.wm-bubble');
         if (el) { el.hidden = true; el.dataset.role = ''; el.dataset.modal = ''; }
         refreshTitleAction();
+        syncScrim();
+    }
+
+    /**
+     * A transparent touch surface over the content area while a notification or a status bubble is up
+     * (Yukimi, Nov 15): a tap outside them hides them and does not reach the program behind. It covers
+     * only the content area, so the title bar icons and the soft keys (Hide / Dismiss / Menu) keep their taps.
+     */
+    function syncScrim() {
+        if (!shell) return;
+        const sc = shell.querySelector('.wm-notify-scrim');
+        if (!sc) return;
+        const nb = shell.querySelector('.wm-notify');
+        const bub = shell.querySelector('.wm-bubble');
+        const up = (nb && !nb.hidden && !!noteShown) || (bub && !bub.hidden);
+        if (!up) { sc.hidden = true; return; }
+        const main = shell.querySelector('.wm-content');
+        const a = main.getBoundingClientRect();
+        const b = shell.getBoundingClientRect();
+        sc.style.top = `${Math.round(a.top - b.top)}px`;
+        sc.style.height = `${Math.round(a.height)}px`;
+        sc.hidden = false;
     }
 
     // ---------------------------------------------------------------- notifications
@@ -4718,6 +4756,7 @@
             el.hidden = true;
             noteSnapshot = '';
             root.removeAttribute('data-wm-note');
+            syncScrim();
             return;
         }
         // a notification on screen: the soft key bar is black (WM 6.1, Yukimi Nov 14; wm-shell.css)
@@ -4726,6 +4765,7 @@
         const snap = `${n.id}\u0001${at}/${notes.length}\u0001${n.toast.innerHTML}`;
         const cameUp = el.hidden;
         el.hidden = false;
+        syncScrim();
         if (snap === noteSnapshot) { if (cameUp) noteZoom(el); return; }
         noteSnapshot = snap;
         el.textContent = '';

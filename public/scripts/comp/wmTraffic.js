@@ -1297,6 +1297,27 @@
         return `arrive ${clock(Date.now() + r.preferred.durationSec * 1000)}`;
     }
 
+    /** At Home with no commute to track: "At Home", and when tracking starts again. */
+    function idleLine(now = new Date()) {
+        const s = settings || {};
+        const days = Array.isArray(s.days) ? s.days : [];
+        const lh = minutesOf(s.leaveHome);
+        let next = '';
+        if (days.length && lh != null) {
+            for (let i = 0; i < 8; i++) {
+                const d = new Date(now);
+                d.setDate(d.getDate() + i);
+                if (!days.includes(d.getDay())) continue;
+                d.setHours(Math.floor(lh / 60), lh % 60, 0, 0);
+                if (d.getTime() <= now.getTime()) continue;
+                const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : DAY_SHORT[d.getDay()];
+                next = `To Work ${when} at ${clock(d.getTime())}`;
+                break;
+            }
+        }
+        return { title: 'At Home', sub: next ? `Next: ${next}` : 'No commute scheduled', level: 'none', idle: true };
+    }
+
     function todayLine(d) {
         const r = latest[d];
         const label = d === 'work' ? 'To Work' : 'To Home';
@@ -1397,16 +1418,16 @@
         if (!configured() && !isAdmin()) return false;
         readPosition();
         const d = configured() ? commuteNow() : direction();
-        // at Home on a day off or after work: nothing to show, and no checks
-        if (configured() && !d) return false;
+        // at Home on a day off or after work: "At Home" and when tracking starts again; no checks
+        const idle = configured() && !d;
         // Today on screen with an old report: one fresh check (at most every 15 min; the server caches too),
         // never while driving the route (the time left comes from the report already here)
-        const r0 = latest[d];
-        if (configured() && !driving() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS || (d === 'home' && hereMoved()))) {
+        const r0 = idle ? null : latest[d];
+        if (!idle && configured() && !driving() && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r0 || Date.now() - Date.parse(r0.at) > TODAY_CHECK_MS || (d === 'home' && hereMoved()))) {
             todayCheckAt = Date.now();
             quietCheck(d);
         }
-        const t = todayLine(d);
+        const t = idle ? idleLine() : todayLine(d);
         if (!el.dataset.trfBound) {
             el.dataset.trfBound = '1';
             el.classList.add('wtw', 'trf-today');
@@ -1422,7 +1443,11 @@
     function todayTitanium() {
         if (!canUse() || !loaded) return null;
         const first = configured() ? commuteNow() : direction();
-        if (configured() && !first) return null;
+        if (configured() && !first) {
+            const t = idleLine();
+            const go = () => open(direction());
+            return { label: 'traffic', icon: 'x:app-traffic-lg-none', pages: [{ title: t.title, line2: t.sub, line3: '' }], softKey: { label: 'Traffic', action: go }, onTap: go };
+        }
         const go = () => open(first);
         const pages = [first].map((d) => {
             const t = todayLine(d);

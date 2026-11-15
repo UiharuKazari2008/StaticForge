@@ -1881,6 +1881,22 @@ html.ui-mobile:not([data-wm-version="6.5"]) #bootMessageBox .boot-message-box-bu
     color: #fff !important;
 }
 
+/* the transparent touch surface under a notification or a status bubble (wmShell syncScrim sets its top
+ * and height to the content area): a tap outside them hides them and never reaches the program behind */
+.wm-notify-scrim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 9;
+    background: transparent;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-notify-scrim[hidden] {
+    display: none;
+}
+
 /* ---- toasts: WM notifications (wmShell.js reads #toastContainer and draws .wm-notify) ---- */
 html.ui-mobile body > #toastContainer {
     display: none !important;

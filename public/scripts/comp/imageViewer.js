@@ -1942,7 +1942,10 @@ class ImageViewer {
         const galleryWindow = document.getElementById('galleryWindow');
         if (galleryWindow) {
             // isGalleryWindowHidden, showGalleryWindow, bringModalToFront: public/scripts/comp/modalUtils.js
-            if (isGalleryWindowHidden()) {
+            // Melaton Mobile has no desktop gallery window to open (it counts as hidden there, #843)
+            if (window.uiShell === 'mobile') {
+                /* nothing to bring up */
+            } else if (isGalleryWindowHidden()) {
                 openModal(galleryWindow);
                 if (typeof window.isGalleryHidden !== 'undefined') {
                     window.isGalleryHidden = false;
