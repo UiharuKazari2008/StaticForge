@@ -10064,7 +10064,11 @@ class WebSocketClient {
             targets.push({ arrow: this._melatonTrafficDown, timeoutKey: 'downHttpTimeout', timeoutStore: this._melatonTrafficTimeouts });
         }
 
+        // an arrow that just came on screen takes the stream state it missed; one that left drops it
+        const changed = !this._wsFlashTargets || this._wsFlashTargets.length !== targets.length
+            || targets.some((t, i) => this._wsFlashTargets[i].arrow !== t.arrow);
         this._wsFlashTargets = targets;
+        if (changed && (this._httpStreamUpActive || this._httpStreamDownActive)) this._syncHttpStreamClasses();
     }
 
     // At most one refresh per WS_FLASH_REFRESH_MIN_MS, the last change always followed by one (#817).
@@ -10303,18 +10307,21 @@ class WebSocketClient {
     }
 
     _syncHttpStreamClasses() {
+        // Only the arrows that are on screen (the list _refreshWsFlashTargets keeps; the taskbar's
+        // count while the tray globe shows), and only a class that really changes (#849). Every
+        // arrow of every indicator was written on each change, hidden ones included (the menu
+        // bar's and the overlay's on a desktop), and classList.add / remove of a class already in
+        // that state still wakes every class observer on the page: 69 writes on hidden arrows
+        // against 111 on the shown ones in 30 seconds of traffic. An arrow that is not on screen
+        // only has a stale stream class taken off; it gets the current one when it shows
+        // (_refreshWsFlashTargets calls this again).
+        const shown = new Set((this._wsFlashTargets || []).map((t) => t.arrow));
+        const setClass = (arrow, name, on) => { if (arrow.classList.contains(name) !== on) arrow.classList.toggle(name, on); };
         const applyStream = (arrow, streamClass, stalledClass, active, stalled) => {
             if (!arrow) return;
-            if (active) {
-                arrow.classList.add(streamClass);
-                if (stalled) {
-                    arrow.classList.add(stalledClass);
-                } else {
-                    arrow.classList.remove(stalledClass);
-                }
-            } else {
-                arrow.classList.remove(streamClass, stalledClass);
-            }
+            const on = active && shown.has(arrow);
+            setClass(arrow, streamClass, !!on);
+            setClass(arrow, stalledClass, !!(on && stalled));
         };
 
         this.websocketIndicators.forEach(indicator => {
