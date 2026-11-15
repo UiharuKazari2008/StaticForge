@@ -1473,6 +1473,20 @@ MCP (module `core_generation`): `device_screenshot { device?, display?, detect? 
 
 ---
 
+### `GET /api/search-suggest`
+
+`modules/searchSuggest.js` (Yozora #830). Search predictions for Melaton Mobile's Internet Search,
+fetched server-side because a page cannot read the engines' suggestion lists across origins.
+
+Query: `engine=google|bing` (anything else → `google`), `q` (trimmed, max 200 chars). Auth required.
+
+```json
+{ "success": true, "engine": "google", "q": "dream", "suggestions": ["dreamscape", "…"] }
+```
+
+Answers are cached 5 minutes (at most 500 queries; `Cache-Control: private, max-age=300`). An
+empty `q`, or an engine that does not answer within 2.5 s, gives `suggestions: []`, never an error.
+
 ## Replication
 
 Routes registered by `modules/replication/registerRoutes.js` from `modules/replication/routes/*.js`. Operational guide: [README-CHILD.md](../../README-CHILD.md). WS mirror: [ws/replication.md](./ws/replication.md).
