@@ -98,6 +98,36 @@ class ApiKeyManager {
                     ]
                 }
             },
+            // Yozora #839: Melaton Mobile YouTube (modules/youtubeService.js). A Google OAuth client of type
+            // "TVs and Limited Input devices"; the key value is the client secret. Optional on a server where
+            // VisionCaster already holds such a client: the YouTube program uses that one when no key is here.
+            // No status probe: the client is only proven by a sign-in.
+            youtube: {
+                label: 'YouTube',
+                description: 'The Google sign-in client the Melaton Mobile YouTube program signs in with (subscriptions, search and favourite channels through the YouTube Data API)',
+                icon: 'fab fa-youtube',
+                requiresRestart: false,
+                keyLabel: 'Client secret',
+                fields: [
+                    { field: 'clientId', label: 'Client ID', placeholder: '1234567890-abc.apps.googleusercontent.com', pattern: '^[\\w.-]+\\.apps\\.googleusercontent\\.com$' }
+                ],
+                fingerprint: (key) => (key.clientId ? String(key.clientId).split('-')[0] : null),
+                howTo: {
+                    title: 'How to get a Google sign-in client',
+                    steps: [
+                        'A server that streams with VisionCaster already has one: leave this empty and just sign in from the phone\'s YouTube program.',
+                        'Otherwise sign in to the Google Cloud console and create a project (or pick one you have).',
+                        'In APIs & Services > Library, find "YouTube Data API v3" and click Enable.',
+                        'In APIs & Services > OAuth consent screen, set the app up for yourself (External, with your own Google account as a test user).',
+                        'In APIs & Services > Credentials, click Create credentials > OAuth client ID and choose "TVs and Limited Input devices".',
+                        'Paste the Client ID and the client secret below. The YouTube program then shows a code to enter on google.com/device.'
+                    ],
+                    links: [
+                        ['Enable the YouTube Data API', 'https://console.cloud.google.com/apis/library/youtube.googleapis.com'],
+                        ['Credentials (create the client)', 'https://console.cloud.google.com/apis/credentials']
+                    ]
+                }
+            },
             // Yozora #835: Lapis Remote (modules/lapisService.js through modules/bluelinkClient.js). The key
             // value is the BlueLink account's password; the e-mail and PIN are plain fields on the entry.
             // No status probe: a check would be a sign-in against Hyundai's limits.
