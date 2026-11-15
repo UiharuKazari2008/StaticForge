@@ -101,6 +101,7 @@ const {
     handleGenerationRequestsHttp,
     handleMcpGalleryImageDownload
 } = require('./generationRequestLog');
+const { describeDocument: describePrintDocument, ownerFromCaller: printOwnerFromCaller } = require('./printSpooler');
 const {
     rememberApplyGenerateJob,
     getApplyGenerateJob,
@@ -7658,12 +7659,17 @@ async function runQueuedMcpGenerate(globalResources, req, name, packetType, payl
     const workspace = payload.workspace || null;
     const extra = extras && typeof extras === 'object' ? extras : {};
     const holder = { job: null };
+    // the print queue's document and owner (modules/printSpooler.js, #831)
+    const printDoc = describePrintDocument(name, payload);
+    const printOwner = printOwnerFromCaller(who.caller);
     const job = queue.submit({
         type: name,
         source: 'mcp',
         destPath: destPathHint || null,
         caller: who.caller,
         workspace,
+        owner: printOwner,
+        document: printDoc,
         run: async () => {
             const id = holder.job.id;
             try {
@@ -7737,6 +7743,8 @@ async function runQueuedMcpGenerate(globalResources, req, name, packetType, payl
             caller: who.caller,
             callerId: who.callerId,
             workspace,
+            pages: printDoc.pages,
+            owner: printOwner,
             createdAt: Date.now()
         });
     } catch (_err) { /* history must not block the print */ }

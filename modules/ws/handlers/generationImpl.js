@@ -20,6 +20,7 @@ const {
     patchGenerationRequest,
     urlsForFilenames
 } = require('../../generationRequestLog');
+const printSpooler = require('../../printSpooler');
 
 function takeSkipGenerationQueue(message) {
     if (!message || !message.skipGenerationQueue) return false;
@@ -54,12 +55,17 @@ async function runOnGenerationFifo(handlers, ws, message, type, workFn, clientIn
     const workspace = message.workspace || message.workspaceId || null;
     handlers.startKeepAliveInterval(ws, requestId, 15000);
     const holder = { job: null };
+    // the print queue's document and owner (modules/printSpooler.js, #831)
+    const printDoc = printSpooler.describeDocument(type, message);
+    const printOwner = printSpooler.ownerFromClient(clientInfo);
     const job = handlers.globalResources.getGenerationJobQueue().submit({
         type,
         source: 'ws',
         requestId,
         caller,
         workspace,
+        owner: printOwner,
+        document: printDoc,
         run: async () => {
             const id = holder.job && holder.job.id;
             if (id) {
@@ -101,6 +107,8 @@ async function runOnGenerationFifo(handlers, ws, message, type, workFn, clientIn
             source: 'ws',
             caller,
             workspace,
+            pages: printDoc.pages,
+            owner: printOwner,
             createdAt: Date.now()
         });
     } catch (_err) { /* history must not block the print */ }

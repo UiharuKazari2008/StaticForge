@@ -168,23 +168,27 @@
 
     const TOOLS = [
         { id: 'autofill-ranking', name: 'Autofill Ranking', icon: '/static_images/app_icons/16/vista-autofill-ranking.webp', open: () => callGlobal('openAutofillRankingSnapin') },
+        { id: 'character-database', name: 'Character Database', icon: '/static_images/app_icons/16/vista-character-database.png', open: () => callGlobal('openCharacterDbSnapin') },
         // Data Management stands in for Computer Management (#828); Device Manager has its own shortcut
         { id: 'computer-management', name: 'Computer Management', icon: '/static_images/app_icons/16/vista-computer-management.webp', open: () => callGlobal('openDataManagementSnapin') },
         { id: 'odbc', name: 'Data Sources (ODBC)', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('No ODBC data sources are configured. Dreamscape keeps its data in the server\'s own databases.', 'ODBC Data Source Administrator') },
         { id: 'device-manager', name: 'Device Manager', icon: `${ITEMS}/device-manager-16.png`, open: () => callGlobal('openDeviceManager') },
         { id: 'dynamic-quips', name: 'Dynamic Quips', icon: '/static_images/app_icons/16/vista-dynamic-quips.webp', open: () => callGlobal('openDynamicQuipsSnapin') },
-        { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka.webp', open: () => callGlobal('openEnshutsukaSnapin') },
+        { id: 'enshutsuka', name: 'Enshutsuka', icon: '/static_images/app_icons/16/vista-enshutsuka-2.webp', open: () => callGlobal('openEnshutsukaSnapin') },
         { id: 'event-viewer', name: 'Event Viewer', icon: '/static_images/app_icons/16/vista-event-viewer.webp', open: () => launch('event-viewer') },
+        { id: 'exchange', name: 'Exchange Management Console', icon: '/static_images/app_icons/16/vista-exchange-management-console.webp', open: () => callGlobal('openExchangeConsole') },
         { id: 'front-gate', name: 'Front Gate', icon: `${ITEMS}/firewall-16.png`, open: () => callGlobal('openFrontGateConsole') },
         { id: 'iscsi', name: 'iSCSI Initiator', icon: `${ITEMS}/iscsi-initiator-16.png`, open: () => root.cplDialogs && root.cplDialogs.open('iscsi') },
+        { id: 'key-manager', name: 'Key Manager', icon: '/static_images/vista-certmgr/keymgr-16.png', open: () => callGlobal('openKeyManagerConsole') },
         { id: 'memory', name: 'Memory Diagnostics Tool', icon: `${ITEMS}/administrative-tools-16.png`, open: () => memoryDiagnostics() },
         { id: 'messaging-bridge', name: 'Messaging Bridge', icon: '/melaton-apps/msgbridge/assets/msgbridge-16.png', open: () => { if (root.melatonApps) root.melatonApps.launch({ packageId: 'msgbridge' }).catch(() => {}); } },
-        { id: 'print-management', name: 'Print Management', icon: `${ITEMS}/printers-16.png`, open: () => CP().doAction('item:printers') },
+        { id: 'print-management', name: 'Print Management', icon: '/static_images/app_icons/16/vista-print-management.webp', open: () => callGlobal('openPrintManagementSnapin') },
         { id: 'reliability', name: 'Reliability and Performance Monitor', icon: '/static_images/app_icons/16/vista-performance.webp', open: () => launch('perfmon') || launch('event-viewer') },
         { id: 'security-config', name: 'Security Configuration Management', icon: `${ITEMS}/security-center-16.png`, open: () => CP().doAction('item:security-center') },
         { id: 'services', name: 'Services', icon: `${ITEMS}/administrative-tools-16.png`, open: () => launch('services') || CP().doAction('item:network') },
         { id: 'msconfig', name: 'System Configuration', icon: `${ITEMS}/system-16.png`, open: () => CP().doAction('item:system') },
         { id: 'task-scheduler', name: 'Task Scheduler', icon: `${ITEMS}/administrative-tools-16.png`, open: () => launch('task-scheduler') || msg('Task Scheduler is coming in a later update of Melaton.', 'Task Scheduler') },
+        { id: 'wiki-caches', name: 'Wiki Caches', icon: '/static_images/app_icons/16/vista-wiki-caches.webp', open: () => callGlobal('openWikiCachesConsole') },
         { id: 'firewall-adv', name: 'Melaton Firewall with Advanced Security', icon: `${ITEMS}/firewall-16.png`, open: () => CP().doAction('item:firewall') },
         { id: 'powershell', name: 'Melaton PowerShell Modules', icon: `${ITEMS}/administrative-tools-16.png`, open: () => msg('Melaton PowerShell is not installed.', 'Melaton PowerShell Modules') },
         { id: 'management-tools', name: 'Management Tools', icon: '/static_images/vista-cpl/management-tools-32.png', open: () => callGlobal('openDsapInGrimoire', 'dsap://dreamscape.jp/') }
@@ -301,16 +305,21 @@
             const arg = CP() && CP().pageArg('printers');
             if (arg === 'add') setTimeout(() => handlers.printers.add(), 0);
             const def = reg(PRINT, 'Device', 'xps');
+            // the generation backends as printers (#831; printQueue.js): double-click opens the queue
+            const pq = root.printQueue;
+            const gen = pq ? pq.printers().map((p) => ({ id: `pq:${p.id}`, icon: '/static_images/vista-cpl/items/printers-32.png', cells: [p.name, String(p.jobs || 0), p.status] })) : [];
             return folder([{ t: 'Add a printer', v: 'add', icon: '/static_images/vista-cpl/items/printers-16.png' }],
                 [{ t: 'Name', w: 200 }, { t: 'Documents', w: 70 }, { t: 'Status', w: 70 }, { t: 'Comments', w: 80 }, { t: 'Location', w: 80 }, { t: 'Model', w: 160 }],
-                PRINTERS.map((p) => ({ id: p.id, icon: p.icon, check: p.id === def, cells: [p.name, '0', 'Ready'] })),
+                PRINTERS.map((p) => ({ id: p.id, icon: p.icon, check: p.id === def, cells: [p.name, '0', 'Ready'] })).concat(gen),
                 { icons: true, sel: handlers.printers.sel, topic: 'printers' });
         }
     };
     handlers.printers = {
         sel: null,
         pick(t) { handlers.printers.sel = t.dataset.id; markSel(t); },
-        open() {
+        open(id) {
+            // a generation backend: its print queue window (printQueue.js, #831)
+            if (id && String(id).startsWith('pq:') && root.printQueue) { void root.printQueue.open(String(id).slice(3)); return; }
             // print the active window's page through the browser
             root.print();
         },

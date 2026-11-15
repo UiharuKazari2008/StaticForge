@@ -362,11 +362,17 @@ function updateImageGenerationIndicator(options = {}) {
     const isManualGenerating = typeof isGenerating !== 'undefined' && isGenerating;
     const isSpellbookGenerating = window.spellbookModalManager?.isGenerating || false;
     const isMcpGenerating = !!window.mcpRemoteGenerating;
-    const isAnyGenerating = isManualGenerating || isSpellbookGenerating || isMcpGenerating;
+    const isLocalGenerating = isManualGenerating || isSpellbookGenerating || isMcpGenerating;
+    // Vista's printer icon (#831): shown while any printer has documents (the server's print queue,
+    // printQueue.js), while this tab prints, or while a print queue window is open
+    const pq = window.printQueue;
+    const isAnyGenerating = pq ? pq.iconWanted(isLocalGenerating) : isLocalGenerating;
+    if (pq) indicator.title = pq.tooltip();
 
     if (isAnyGenerating && reveal) {
         indicator.classList.remove('hidden');
-        indicator.classList.add('active');
+        // active = documents printing (desktopTaskMonitor reads it), not just a queue window open
+        indicator.classList.toggle('active', isLocalGenerating || !!(pq && pq.pendingCount() > 0));
     } else {
         indicator.classList.remove('active');
         indicator.classList.add('hidden');

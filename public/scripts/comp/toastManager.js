@@ -97,6 +97,10 @@ function _progressDialogCancelButton(buttons) {
 
 // Connection and startup status are not work under way: the desktop has the connection dial and
 // the startup window for them (websocket.js), so these stay as they are
+// generation progress toasts the printer shows on the desktop instead (#831): Studio presets, Recast,
+// Spellbook, desktop preset shortcuts
+const PRINT_QUEUE_PROGRESS_TITLES = new Set(['Generating Image', 'Recasting Image', 'Generating...']);
+const printQueueDroppedToasts = new Set();
 const PROGRESS_DIALOG_EXCLUDED_TITLES = new Set(['Connecting', 'Connected', 'Connection Error', 'Connection Warning', 'Dreamscape']);
 
 // the service worker's update toasts belong to the phone's update icon (wmShell), never a box
@@ -901,6 +905,16 @@ function showGlassToast(type, title, message, showProgress = false, timeout = 50
 
     // the desktop: Vista's progress dialog in place of a progress toast, and the result of one
     // that just ended in that dialog rather than beside it
+    // a print on the desktop: the printer tray icon and its queue window show it (printQueue.js, #831),
+    // and its balloon says when it is done; an error still comes through as a message box
+    if (showProgress && type === 'info' && PRINT_QUEUE_PROGRESS_TITLES.has(title)
+        && window.printQueue && typeof window.printQueue.active === 'function' && window.printQueue.active()) {
+        activeToasts.delete(toastId);
+        if (policyDroppedToasts.size > 200) policyDroppedToasts.clear();
+        policyDroppedToasts.add(toastId);
+        printQueueDroppedToasts.add(toastId);
+        return toastId;
+    }
     if (showProgress && type === 'info' && _openProgressDialogForToast(toastId, title, message, buttons)) {
         // a progress toast that was meant to dismiss itself: its dialog closes then too
         if (resolvedTimeout !== false) _setToastDismissTimer(toastId, resolvedTimeout);
@@ -1791,6 +1805,19 @@ function updateGlassToastComplete(toastId, options = {}) {
             _endProgressDialog(toastId, { type, title, message, buttons });
             return;
         }
+    }
+    // a dropped progress toast (the printer showed the print, #831): only an error still says it
+    if (printQueueDroppedToasts.has(toastId)) {
+        if (type === 'error' || type === 'warning') {
+            printQueueDroppedToasts.delete(toastId);
+            policyDroppedToasts.delete(toastId);
+            const route = _toastPolicyRoute(type, title, message, false, null);
+            if (route.kind === 'dialog') _showToastAsDialog(toastId, type, title, message, null);
+        } else if (type === 'success' || showProgress === false) {
+            printQueueDroppedToasts.delete(toastId);
+            policyDroppedToasts.delete(toastId);
+        }
+        return;
     }
 
     const storedBefore = activeToasts.get(toastId);

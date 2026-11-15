@@ -103,7 +103,10 @@ function publicRecord(row) {
         finishedAt: iso(row.finishedAt),
         imageIds: row.imageIds.slice(),
         imageUrls: row.imageUrls.slice(),
-        error: row.error || null
+        error: row.error || null,
+        // the print queue's document (Print Management's job history, #831); never the prompt
+        pages: row.pages || null,
+        owner: row.owner || null
     };
 }
 
@@ -142,7 +145,9 @@ function createGenerationRequestLog(options) {
                     finishedAt: parseTime(row.finishedAt),
                     imageIds: cleanImageIds(row.imageIds),
                     imageUrls: cleanImageUrls(row.imageUrls),
-                    error: row.error ? clip(row.error, 300) : null
+                    error: row.error ? clip(row.error, 300) : null,
+                    pages: Math.max(0, Math.floor(Number(row.pages) || 0)),
+                    owner: clip(row.owner, 120)
                 });
             });
         } catch (_err) {
@@ -185,7 +190,9 @@ function createGenerationRequestLog(options) {
             imageUrls: src.imageUrls !== undefined ? cleanImageUrls(src.imageUrls) : ((existing && existing.imageUrls) || []),
             error: Object.prototype.hasOwnProperty.call(src, 'error')
                 ? (src.error ? clip(src.error, 300) : null)
-                : ((existing && existing.error) || null)
+                : ((existing && existing.error) || null),
+            pages: src.pages != null ? Math.max(0, Math.floor(Number(src.pages) || 0)) : ((existing && existing.pages) || 0),
+            owner: src.owner != null ? clip(src.owner, 120) : ((existing && existing.owner) || '')
         };
         records.set(jobId, row);
         trim();

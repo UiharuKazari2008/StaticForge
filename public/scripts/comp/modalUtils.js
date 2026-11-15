@@ -6658,18 +6658,24 @@ function buildToolsSubmenuItems() {
         { launchId: 'presets', icon: 'fas fa-book-spells', imageIcon: 'presetbook.png', text: 'Spellbook', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/dsapManifests.js */ manageSpellbook(); } },
         { launchId: 'expanders', icon: 'fas fa-book-font', imageIcon: 'expanders.png', text: 'Expanders', appMenuLocation: 'tools', action: () => { /* public/scripts/comp/dsapManifests.js */ manageTextExpanders(); } },
         // Enshutsuka: the MMC console on the desktop, the memories DSAP elsewhere (openKnowledgeMemoriesModal: public/scripts/comp/dsapManifests.js)
-        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka.png', text: 'Enshutsuka', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openKnowledgeMemoriesModal('default'); } },
+        { launchId: 'memories', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Enshutsuka', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openKnowledgeMemoriesModal('default'); } },
         // the other MMC consoles (#828), listed under Administrative Tools (START_MENU_SYSTEM_PLACES);
         // loaders in public/scripts/comp/dsapManifests.js
         { launchId: 'mmc-data-management', icon: 'fas fa-database', imageIcon: 'vista-computer-management.png', text: 'Computer Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDataManagementSnapin(); } },
         { launchId: 'mmc-device-manager', icon: 'fas fa-microchip', imageIcon: 'vista-device-manager.png', text: 'Device Manager', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: async () => { await featureLoader.loadFeature('control_panel'); openDeviceManager(); } },
         { launchId: 'mmc-dynamic-quips', icon: 'fas fa-comment-heart', imageIcon: 'vista-dynamic-quips.png', text: 'Dynamic Quips', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openDynamicQuipsSnapin(); } },
         { launchId: 'mmc-autofill-ranking', icon: 'fas fa-arrow-down-wide-short', imageIcon: 'vista-autofill-ranking.png', text: 'Autofill Ranking', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openAutofillRankingSnapin(); } },
+        { launchId: 'mmc-key-manager', icon: 'fas fa-key', imageIcon: 'vista-key-manager.png', text: 'Key Manager', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openKeyManagerConsole(); } },
         { launchId: 'mmc-front-gate', icon: 'fas fa-globe', imageIcon: 'vista-front-gate.png', text: 'Front Gate', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openFrontGateConsole(); } },
-        { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('director'); } },
-        { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka.png', text: 'Profile', fullName: 'Enshutsuka - Profile', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
+        { launchId: 'mmc-exchange', icon: 'fas fa-building-columns', imageIcon: 'vista-exchange-management-console.png', text: 'Exchange Management Console', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openExchangeConsole(); } },
+        { launchId: 'mmc-wiki-caches', icon: 'fas fa-books', imageIcon: 'vista-wiki-caches.png', text: 'Wiki Caches', appMenuLocation: 'tools', desktopOnly: true, adminOnly: true, appMenu: false, action: () => { openWikiCachesConsole(); } },
+        // Print Management (#831): the generation backends as printers (openPrintManagementSnapin: dsapManifests.js)
+        { launchId: 'mmc-print-management', icon: 'fas fa-print', imageIcon: 'vista-print-management.png', text: 'Print Management', appMenuLocation: 'tools', desktopOnly: true, appMenu: false, action: () => { openPrintManagementSnapin(); } },
+        { launchId: 'enshutsuka-rules', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Director Rules', fullName: 'Enshutsuka - Director Rules', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openKnowledgeMemoriesModal('director'); } },
+        { launchId: 'linkxi-persona', icon: 'fas fa-box-open-full', imageIcon: 'vista-enshutsuka-2.png', text: 'Profile', fullName: 'Enshutsuka - Profile', appMenuLocation: 'tools', startMenu: false, appMenu: false, action: () => { openLinkXiPersonaDsap(); } },
         { launchId: 'config-editor', icon: 'fas fa-binary', imageIcon: 'vista-regedit.png', text: 'Runes', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('config_editor'); configEditorApplet.open(); } },
-        { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'characters.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('character_db'); characterDbApplet.open(); } },
+        // Characters: the Character Database MMC console on the desktop (#831), the old window elsewhere (manageCharacterDb: public/scripts/comp/dsapManifests.js)
+        { launchId: 'character-db', icon: 'fas fa-users', imageIcon: 'vista-character-database.png', text: 'Characters', desktopOnly: true, appMenuLocation: 'tools', action: () => { manageCharacterDb(); } },
         { launchId: 'event-viewer', icon: 'fas fa-wave-square', imageIcon: 'vista-performance.png', text: 'Periscope', desktopOnly: true, appMenuLocation: 'tools', action: async () => { /* public/scripts/comp/featureLoader.js */ await featureLoader.loadFeature('log_viewer'); logViewerApplet.open(); } },
         // Accessories > Welcome Center (public/scripts/comp/welcomeCenter.js)
         { launchId: 'welcome-center', icon: 'fas fa-house', imageIcon: 'vista-welcome-center.png', text: 'Welcome Center', appMenuLocation: 'tools', action: () => { window.openWelcomeCenter(); } },
@@ -7920,6 +7926,10 @@ const START_MENU_SYSTEM_PLACES = {
     'mmc-dynamic-quips': { at: 'administrative-tools' },
     'mmc-autofill-ranking': { at: 'administrative-tools' },
     'mmc-front-gate': { at: 'administrative-tools' },
+    'mmc-key-manager': { at: 'administrative-tools' },
+    'mmc-exchange': { at: 'administrative-tools' },       // Exchange 2007 puts its console in its own folder; here beside the other consoles
+    'mmc-wiki-caches': { at: 'administrative-tools' },
+    'mmc-print-management': { at: 'administrative-tools' },
     'sideshow-simulator-landscape': { at: 'sideshow-simulator', label: 'Device Simulator (Landscape)' },
     'sideshow-simulator-portrait': { at: 'sideshow-simulator', label: 'Device Simulator (Portrait)' }
 };

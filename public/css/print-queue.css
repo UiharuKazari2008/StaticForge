@@ -1,0 +1,319 @@
+/* Print queue window (Yozora #831; public/scripts/comp/printQueueWindow.js): Vista's printui queue
+   window, measured on the Vista VM's "Microsoft XPS Document Writer" queue at 900x300: menu bar
+   19 px (Aero gradient, #b6bccc rule), a 1 px #f0f0f0 gap, the list in a 1 px #828790 frame with
+   23 px Vista header items and 19 px rows, the 23 px status bar split in half. */
+
+.print-queue-window.print-queue-window > .modal-content.pq-client {
+    display: flex !important;
+    flex-direction: column !important;
+    flex: 1;
+    min-height: 0;
+    width: auto !important;
+    height: auto !important;
+    padding: 0 !important;
+    background: #f0f0f0;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    color: #000;
+}
+
+/* ---- the menu bar ---- */
+
+.print-queue-window.print-queue-window .pq-menubar {
+    display: flex;
+    flex: none;
+    align-items: stretch;
+    height: 19px;
+    margin: 0 0 1px;
+    padding: 0 0 0 1px;
+    border: 0;
+    border-bottom: 1px solid #b6bccc;
+    background: linear-gradient(#fefeff, #e5eaf5 7px, #d4dbed 7px, #e1e6f6);
+    box-sizing: content-box;
+}
+
+.print-queue-window.print-queue-window .win7 .pq-menubar .naxt-menu-title:not(#_) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    height: 19px;
+    min-height: 0;
+    margin: 0;
+    padding: 0 6px 1px;
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    color: #000;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    text-shadow: none;
+    box-sizing: border-box;
+}
+
+.print-queue-window.print-queue-window .win7 .pq-menubar .naxt-menu-title:is(:hover, :focus-visible):not(#_) {
+    border-color: #a8d8eb;
+    background: linear-gradient(#f2f9fd, #dcf1fb);
+    outline: none;
+}
+
+.print-queue-window.print-queue-window .win7 .pq-menubar .naxt-menu-title.context-open:not(#_) {
+    border-color: #6d8bab;
+    background: linear-gradient(#e3eaf3, #cfdcec);
+}
+
+.print-queue-window .pq-menubar .naxt-menu-title::before,
+.print-queue-window .pq-menubar .naxt-menu-title::after {
+    content: none;
+    display: none;
+}
+
+/* ---- the list ---- */
+
+.print-queue-window .pq-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid #828790;
+    background: #fff;
+    font: 12px "Segoe UI", Tahoma, sans-serif;
+    outline: none;
+}
+
+.print-queue-window .pq-lhead,
+.print-queue-window .pq-row {
+    display: grid;
+    grid-template-columns: var(--cols);
+    min-width: max-content;
+}
+
+.print-queue-window .pq-lhead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #fff;
+}
+
+.print-queue-window .pq-col {
+    box-sizing: border-box;
+    min-width: 0;
+    height: 23px;
+    padding: 3px 0 0 6px;
+    overflow: hidden;
+    border: 0;
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 2 0 1 fill / 0 2px 0 1px stretch;
+    color: #000;
+    font: 12px/15px "Segoe UI", Tahoma, sans-serif;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.print-queue-window .pq-col:hover:not(.pq-col-rest) {
+    border-image-source: url('/static_images/vista-controls/header-item-hot.png');
+}
+
+.print-queue-window .pq-col.pq-col-rest {
+    border-image: url('/static_images/vista-controls/header-item-normal.png') 0 0 0 1 fill / 0 0 0 1px stretch;
+}
+
+.print-queue-window .pq-lbody {
+    min-width: max-content;
+    padding-top: 1px;
+}
+
+.print-queue-window .pq-row {
+    height: 19px;
+    align-items: center;
+    cursor: default;
+}
+
+.print-queue-window .pq-row > span {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow: hidden;
+    padding: 0 6px;
+    white-space: nowrap;
+}
+
+.print-queue-window .pq-row > span:first-child {
+    gap: 2px;
+    padding-left: 4px;
+}
+
+.print-queue-window .pq-row > span:first-child > img {
+    flex: none;
+    width: 16px;
+    height: 16px;
+}
+
+.print-queue-window .pq-row > span > i {
+    overflow: hidden;
+    font-style: normal;
+    text-overflow: ellipsis;
+}
+
+.print-queue-window .pq-row > span:first-child > i {
+    padding: 0 2px;
+    border: 1px solid transparent;
+}
+
+/* Vista's ListView in details view with LVS_EX_FULLROWSELECT off: only the first column's label
+   takes the selection (the VM's queue: a #3399ff box, white text, while the list has focus) */
+.print-queue-window .pq-row.is-selected > span:first-child > i {
+    border-color: #d9d9d9;
+    background: #d9d9d9;
+}
+
+.print-queue-window .pq-list:focus .pq-row.is-selected > span:first-child > i {
+    border-color: #3399ff;
+    background: #3399ff;
+    color: #fff;
+}
+
+/* ---- the status bar ---- */
+
+.print-queue-window .pq-status {
+    display: grid;
+    flex: none;
+    grid-template-columns: 50% 50%;
+    box-sizing: border-box;
+    height: 23px;
+    border-top: 1px solid #919191;
+    border-bottom: 1px solid #fff;
+    box-shadow: inset 0 1px #fff;
+    padding-top: 1px;
+    background: #f1eded;
+}
+
+.print-queue-window.no-status .pq-status {
+    display: none;
+}
+
+.print-queue-window .pq-status > span {
+    overflow: hidden;
+    padding: 0 6px;
+    border-right: 1px solid #d7d7d7;
+    line-height: 20px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.print-queue-window .pq-status > span:last-child {
+    border-right: 0;
+}
+
+/* the tray balloon of a document that failed: "Click here to open the print queue" */
+.popover .print-balloon-link {
+    cursor: pointer;
+}
+
+/* ---- Print Management (mmcPrintManagement.js): Show Extended View, measured on the VM's console:
+   the printer list over a 2 px splitter band, the printer's name on a #f0f0f0 band, a "Jobs" tab,
+   and the jobs list with grid lines ---- */
+
+.mmc-window .mmc-result.is-split:has(> .pm-ext) {
+    border: 0;
+    box-shadow: none;
+    background: #f0f0f0;
+}
+
+.mmc-window .pm-ext {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.mmc-window .pm-ext-top {
+    display: flex;
+    flex: 0 0 58%;
+    flex-direction: column;
+    min-height: 60px;
+    box-sizing: border-box;
+    border: 1px solid #828790;
+    background: #fff;
+}
+
+.mmc-window .pm-ext-top > .mmc-list,
+.mmc-window .pm-ext-jobs > .mmc-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.mmc-window .pm-ext-pane {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 3px;
+    border: 1px solid #828790;
+    background: #f0f0f0;
+}
+
+.mmc-window .pm-ext-title {
+    flex: none;
+    height: 20px;
+    padding: 0 4px;
+    border-bottom: 1px solid #a0a0a0;
+    line-height: 19px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mmc-window .pm-ext-tabs {
+    display: flex;
+    flex: none;
+    height: 22px;
+    padding: 2px 0 0 4px;
+    box-sizing: border-box;
+    border-bottom: 1px solid #898c95;
+}
+
+.mmc-window .pm-ext-tab {
+    position: relative;
+    top: 1px;
+    height: 20px;
+    padding: 0 12px 0 8px;
+    box-sizing: border-box;
+    border: 1px solid #898c95;
+    border-bottom: 0;
+    background: #fff;
+    line-height: 18px;
+}
+
+.mmc-window .pm-ext-jobs {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    margin: 0 2px 2px;
+    padding: 6px 4px 4px;
+    border: 1px solid #898c95;
+    border-top: 0;
+    background: #fff;
+}
+
+.mmc-window .pm-ext-jobs > .mmc-list {
+    border: 1px solid #828790;
+    background: #fff linear-gradient(#f0f0f0 1px, transparent 1px) 0 24px / 100% 19px;
+}
+
+.mmc-window .pm-ext-jobs .mmc-row > span + span {
+    border-left: 1px solid #f0f0f0;
+}
+
+.mmc-window .pm-ext-jobs .mmc-row {
+    border-bottom: 1px solid #f0f0f0;
+    box-sizing: border-box;
+}
+
+/* printui's confirmations are task dialogs: the question is Vista's blue main instruction */
+#confirmationDialog .pq-instruction {
+    margin: 0;
+    color: #003399;
+    font-size: 12pt;
+    font-weight: 400;
+    line-height: 21px;
+    text-align: left;
+}

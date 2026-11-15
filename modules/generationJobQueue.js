@@ -41,6 +41,20 @@ function createGenerationJobQueue(options) {
     let pumping = false;
     let cooldownUntil = 0;
     let lastFinishedAt = 0;
+    // change listeners (modules/printSpooler.js pushes the print queue from these; #831)
+    const listeners = new Set();
+
+    function emit(job) {
+        listeners.forEach((fn) => {
+            try { fn(job); } catch (_err) { /* a listener must not break the FIFO */ }
+        });
+    }
+
+    function onChange(fn) {
+        if (typeof fn !== 'function') return () => {};
+        listeners.add(fn);
+        return () => listeners.delete(fn);
+    }
 
     function prune() {
         const cutoff = nowFn() - jobTtlMs;
@@ -85,6 +99,8 @@ function createGenerationJobQueue(options) {
             destPath: job.destPath || flat.dest_path || null,
             caller: job.caller || null,
             workspace: job.workspace || null,
+            owner: job.owner || null,
+            document: job.document || null,
             seed: flat.seed || result.seed || null,
             error: job.status === 'failed'
                 ? (job.error && job.error.message) || flat.error || 'generation failed'
@@ -114,6 +130,7 @@ function createGenerationJobQueue(options) {
                 const waitMs = Math.max(0, cooldownUntil - nowFn());
                 if (waitMs > 0) {
                     job.status = 'delayed';
+                    emit(job);
                     await sleep(waitMs);
                 }
                 if (job.status === 'cancelled') {
@@ -122,6 +139,7 @@ function createGenerationJobQueue(options) {
                 }
                 job.status = 'running';
                 job.startedAt = nowFn();
+                emit(job);
                 try {
                     job.result = await job.run();
                     job.status = 'completed';
@@ -129,6 +147,7 @@ function createGenerationJobQueue(options) {
                     lastFinishedAt = job.finishedAt;
                     cooldownUntil = lastFinishedAt + randomDelayMs(delayMinMs, delayMaxMs);
                     settle(job, null);
+                    emit(job);
                 } catch (err) {
                     job.error = err;
                     job.status = 'failed';
@@ -136,6 +155,7 @@ function createGenerationJobQueue(options) {
                     lastFinishedAt = job.finishedAt;
                     cooldownUntil = lastFinishedAt + randomDelayMs(delayMinMs, delayMaxMs);
                     settle(job, err);
+                    emit(job);
                 }
                 running = null;
             }
@@ -158,6 +178,9 @@ function createGenerationJobQueue(options) {
             destPath: info.destPath || info.dest_path || null,
             caller: info.caller || null,
             workspace: info.workspace || null,
+            // the print queue's view of it (printSpooler.describeDocument): { name, pages, width, height }
+            owner: info.owner || null,
+            document: info.document && typeof info.document === 'object' ? info.document : null,
             status: 'queued',
             createdAt: nowFn(),
             startedAt: null,
@@ -182,6 +205,7 @@ function createGenerationJobQueue(options) {
         jobs.set(job.id, job);
         pending.push(job);
         setImmediate(pump);
+        emit(job);
         return {
             id: job.id,
             status: job.status,
@@ -243,6 +267,7 @@ function createGenerationJobQueue(options) {
         err.code = 'GENERATION_JOB_CANCELLED';
         job.error = err;
         settle(job, err);
+        emit(job);
         return true;
     }
 
@@ -277,6 +302,7 @@ function createGenerationJobQueue(options) {
         cancelByRequestId,
         snapshot,
         listPublic,
+        onChange,
         _state: () => ({ pending: pending.length, running: running && running.id, cooldownUntil, lastFinishedAt })
     };
 }

@@ -960,6 +960,8 @@ class WebSocketClient {
         'replication_delegation_status',
         // Sidebar live feed (Yozora #653): resubscribed on gadget changes, not user work
         'sidebar_live_subscribe',
+        // Print queue (#831): read once on connect, then pushed
+        'print_queue_get',
         // QuickCast (#734): its status feed (pushed since Nov 13) and the reads around it
         'quickcast_status',
         'quickcast_subscribe',
@@ -1480,6 +1482,8 @@ class WebSocketClient {
         if (type === 'sidebar_live' || type === 'sidebar_live_subscribe' || type === 'sidebar_live_subscribe_response') {
             return true;
         }
+        // the print queue (printQueue.js, #831): its state pushes and the read on connect
+        if (type === 'print_queue_state' || type === 'print_queue_get' || type === 'print_queue_get_response') return true;
         return false;
     }
 

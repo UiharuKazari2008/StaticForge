@@ -621,6 +621,19 @@ async function upscaleBufferWithLocalWorker(globalResources, imageBuffer, option
     try {
         busyJobId = require('./busyStatus').beginLocalJob('upscale', jobId);
     } catch (_err) { /* idle snapshot is optional */ }
+    // the print queue: this worker is a printer, the job one document (modules/printSpooler.js, #831)
+    let spoolId = null;
+    let spoolError = null;
+    try {
+        spoolId = require('./printSpooler').beginLocalJob({
+            kind: 'upscale',
+            workerId: target.worker.id,
+            workerJobId: jobId,
+            name: options.documentName || `Upscale ${scale}x - ${model}`,
+            size: imageBuffer ? imageBuffer.length : 0,
+            owner: options.owner
+        });
+    } catch (_err) { /* the print queue is optional */ }
     const deadline = Date.now() + (options.timeoutMs || 15 * 60 * 1000);
     let last = null;
     try {
@@ -641,6 +654,9 @@ async function upscaleBufferWithLocalWorker(globalResources, imageBuffer, option
             continue;
         }
         last = status.body;
+        if (spoolId) {
+            try { require('./printSpooler').updateLocalJob(spoolId, status.body.status); } catch (_err) { /* */ }
+        }
         if (typeof options.onProgress === 'function') {
             const progress = Number(status.body.progress);
             options.onProgress(Number.isFinite(progress) ? progress : 0, status.body.status, jobId, { workerName });
@@ -665,9 +681,15 @@ async function upscaleBufferWithLocalWorker(globalResources, imageBuffer, option
     }
     const bytes = Buffer.from(await result.arrayBuffer());
     return { buffer: bytes, jobId, model, scale, workerId: target.worker.id };
+    } catch (err) {
+        spoolError = err || new Error('upscale failed');
+        throw err;
     } finally {
         if (busyJobId != null) {
             try { require('./busyStatus').endLocalJob(busyJobId); } catch (_err) { /* */ }
+        }
+        if (spoolId) {
+            try { require('./printSpooler').endLocalJob(spoolId, spoolError); } catch (_err) { /* */ }
         }
     }
 }
@@ -771,6 +793,19 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
     try {
         busyJobId = require('./busyStatus').beginLocalJob('animate', jobId);
     } catch (_err) { /* idle snapshot is optional */ }
+    let spoolId = null;
+    let spoolError = null;
+    try {
+        spoolId = require('./printSpooler').beginLocalJob({
+            kind: 'animate',
+            workerId: target.id,
+            workerJobId: jobId,
+            name: options.documentName || `Animate - ${motionPrompt}`,
+            pages: frames,
+            size: imageBuffer ? imageBuffer.length : 0,
+            owner: options.owner
+        });
+    } catch (_err) { /* the print queue is optional */ }
     const deadline = Date.now() + (options.timeoutMs || 30 * 60 * 1000);
     let last = null;
     let lastPreviewSeq = 0;
@@ -793,6 +828,9 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
             continue;
         }
         last = status.body;
+        if (spoolId) {
+            try { require('./printSpooler').updateLocalJob(spoolId, status.body.status); } catch (_err) { /* */ }
+        }
         let previewBase64 = null;
         const seq = Number(status.body.preview_seq) || 0;
         if (seq > lastPreviewSeq) {
@@ -829,9 +867,15 @@ async function animateBufferWithLocalWorker(globalResources, imageBuffer, option
         }
     }
     return { buffers, jobId, motionPrompt, frames, fps, loop, backend, workerId: target.id };
+    } catch (err) {
+        spoolError = err || new Error('animate failed');
+        throw err;
     } finally {
         if (busyJobId != null) {
             try { require('./busyStatus').endLocalJob(busyJobId); } catch (_err) { /* */ }
+        }
+        if (spoolId) {
+            try { require('./printSpooler').endLocalJob(spoolId, spoolError); } catch (_err) { /* */ }
         }
     }
 }

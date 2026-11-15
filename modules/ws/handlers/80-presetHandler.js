@@ -608,10 +608,14 @@ async function handleGeneratePreset(handlers, ws, message, clientInfo, wsServer)
     }
     const requestId = message.requestId || 'unknown';
     handlers.startKeepAliveInterval(ws, requestId, 15000);
+    const printSpooler = require('../../printSpooler');
     const job = handlers.globalResources.getGenerationJobQueue().submit({
         type: 'generate_preset',
         source: 'ws',
         requestId,
+        caller: clientInfo && clientInfo.sessionId ? `session:${clientInfo.sessionId}` : null,
+        owner: printSpooler.ownerFromClient(clientInfo),
+        document: printSpooler.describeDocument('generate_preset', message),
         run: () => handleGeneratePresetWork(handlers, ws, message, clientInfo, wsServer)
     });
     notifyGenerationQueued(handlers, ws, requestId, job);

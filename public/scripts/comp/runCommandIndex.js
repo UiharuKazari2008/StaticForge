@@ -69,6 +69,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['agora', 'explore', 'explore gallery', 'image gallery', 'community gallery', 'novelai explore'], launchIds: ['explore-gallery'] },
     // Image Search (#828): the desktop program that was the Global Search DSAP (I Spy, omegasearch)
     { aliases: ['image search', 'search-ms', 'search-ms:', 'ispy', 'i spy', 'omegasearch', 'global search', 'prompt search', 'find images'], launchIds: ['ispy'] },
+    { aliases: ['characters', 'character database', 'character db', 'chardb', 'characters.msc'], launchIds: ['character-db'] },
     { aliases: ['expanders', 'text replacement', 'expander', 'prefix', 'prefixes'], launchIds: ['expanders'] },
     { aliases: ['import', 'upload' ,'vibe', 'style'], launchIds: ['import'] },
     { aliases: ['phasewalker', 'phase', 'bracket', 'stages'], launchIds: ['bracket-generation'] },
@@ -79,11 +80,17 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['wallpaper', 'desktop', 'background'], launchIds: ['desktop-settings'] },
     { aliases: ['websocket', 'ws', 'network monitor', 'requests'], launchIds: ['websocket-requests'] },
     { aliases: ['data management'], launchIds: ['data-management'] },
+    // Exchange Management Console (#831): the MMC console that replaced the Exchange Server DSAP
+    { aliases: ['exchange', 'exchange server', 'exchange management console', 'emc', 'exchange.msc', 'mailboxes', 'mail server'], launchIds: ['mmc-exchange'] },
     { aliases: ['planets', 'planet switcher', 'switch planet', 'switch workspace', 'orrery', 'ring'], launchIds: ['planet-switcher'] },
     { aliases: ['memories', 'knowledge', 'dna', 'enshutsuka', 'enshutsuka.msc'], launchIds: ['memories'] },
+    { aliases: ['wiki caches', 'wikicaches.msc', 'wiki manager', 'fandom wikis', 'wiki import'], launchIds: ['mmc-wiki-caches'] },
+    // Print Management (#831): the generation backends as printers, their queues and printed documents
+    { aliases: ['print management', 'printmanagement', 'printmanagement.msc', 'print queue', 'generation queue'], launchIds: ['mmc-print-management'] },
     { aliases: ['rules', 'director', 'director rules'], launchIds: ['enshutsuka-rules'] },
     { aliases: ['persona', 'character', 'linkxi'], launchIds: ['linkxi-persona'] },
-    { aliases: ['api', 'keys', 'keychain', 'credentials'], launchIds: ['keychain'] },
+    // Key Manager (#831): application keys and service keys (certmgr.msc's place)
+    { aliases: ['api', 'keys', 'keychain', 'credentials', 'key manager', 'keymgr', 'keymgr.msc', 'certmgr', 'certmgr.msc', 'application keys', 'app keys', 'service keys', 'api keys'], launchIds: ['mmc-key-manager'] },
     { aliases: ['preset manager', 'manage presets'], launchIds: ['presets'] },
     { aliases: ['mstsc', 'rdp', 'remote desktop connection', 'ssh', 'vnc', 'quick connect'], launchIds: ['remote-desktop-connection'] },
     { aliases: ['guacamole', 'guac', 'remote desktop manager', 'connections'], launchIds: ['remote-desktop'] }

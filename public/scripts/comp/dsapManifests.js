@@ -26,7 +26,18 @@ function dsapIsVistaDesktop() {
     return body.classList.contains('desktop-mode') && !body.classList.contains('windows-classic-theme');
 }
 
+/**
+ * Melaton Mobile (#831): Image Search is the phone's Search Pictures program (wmSearchPictures.js,
+ * a lazy program: wmShell's stand-in loads it). opts as openImageSearchWindow's. true when it opened.
+ */
+function dsapPhoneSearchPictures(opts) {
+    if (window.uiShell !== 'mobile' || !window.wmSearchPictures || typeof window.wmSearchPictures.open !== 'function') return false;
+    void window.wmSearchPictures.open(opts || {});
+    return true;
+}
+
 function openDataManagementDsap(tabId) {
+    if (tabId === 'search' && dsapPhoneSearchPictures()) return;
     // the Data Management MMC snap-in on the desktop (#828: public/scripts/comp/mmcDataManagement.js);
     // Search is the Image Search program's now
     if (dsapIsVistaDesktop()) {
@@ -56,6 +67,8 @@ function openDataManagementDsap(tabId) {
  * The DSAP's script loads first: the program uses its search helpers and sessions.
  */
 async function openImageSearchWindow(opts) {
+    // the phone: its own program, Search Pictures (#831: public/scripts/comp/wmSearchPictures.js)
+    if (dsapPhoneSearchPictures(opts)) return null;
     const entry = resolveDsap(`dsap://${ISPY_DSAP_MANIFEST_URL}/`);
     // loadDsapEntryAssets: public/scripts/comp/dsapRegistry.js
     if (entry) await loadDsapEntryAssets(entry.entry);
@@ -109,11 +122,70 @@ async function openDataManagementSnapin(node) {
     return null;
 }
 
+/**
+ * Wiki Caches (#831), the Wiki Manager's MMC snap-in, loading the MMC snap-ins first. It lives in
+ * Computer Management under Storage (mmcDataManagement.js hosts it), so this opens that console at it;
+ * node: 'root' | 'sites' | 'imports'; opts.wizard starts New Import... (the old Import tab). Only when
+ * Computer Management did not host it does it open in its own window.
+ */
+async function openWikiCachesSnapin(node, opts = {}) {
+    await featureLoader.loadFeature('mmc_snapins');
+    const sub = ['sites', 'imports'].includes(node) ? node : 'root';
+    let c = null;
+    // openDataManagementConsole: public/scripts/comp/mmcDataManagement.js
+    if (typeof openDataManagementConsole === 'function') {
+        c = await openDataManagementConsole(`wiki::${sub}`);
+        if (c && typeof c.node === 'string' && !c.node.startsWith('wiki::')) c = null;
+    }
+    // openWikiManagerConsole: public/scripts/comp/mmcWikiManager.js
+    if (!c && typeof openWikiManagerConsole === 'function') return openWikiManagerConsole(sub, opts);
+    if (c && opts.wizard && window.mmcWikiManager) window.mmcWikiManager.newImport(c);
+    return c;
+}
+
+/** Wiki Caches in its own window (Administrative Tools, Run wikicaches.msc). */
+async function openWikiCachesConsole(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    if (typeof openWikiManagerConsole === 'function') return openWikiManagerConsole(node);
+    return null;
+}
+
+/**
+ * Key Manager (#831): application keys (their home; CardSpace links here) and service keys, loading
+ * the MMC snap-ins first; node: 'root' | 'app' | 'issued' | 'pending' | 'failed' | 'revoked' | 'log' |
+ * 'svc' | 'svc:<service id>'.
+ */
+async function openKeyManagerConsole(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openKeyManager: public/scripts/comp/mmcAppKeys.js
+    if (typeof openKeyManager === 'function') return openKeyManager(node);
+    return null;
+}
+
 /** Front Gate (#828), loading the MMC snap-ins first (featureLoader 'mmc_snapins'). */
 async function openFrontGateConsole(node) {
     await featureLoader.loadFeature('mmc_snapins');
     // openFrontGate: public/scripts/comp/mmcFrontGate.js
     if (typeof openFrontGate === 'function') return openFrontGate(node);
+    return null;
+}
+
+/** Print Management (#831): the generation backends as printers; printerId selects one under Printers. */
+async function openPrintManagementSnapin(printerId) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // mmcPrintManagement.open: public/scripts/comp/mmcPrintManagement.js
+    if (window.mmcPrintManagement) return window.mmcPrintManagement.open(printerId);
+    return null;
+}
+
+/**
+ * Exchange Management Console (#831), loading the MMC snap-ins first; node: a console node or an old
+ * Exchange Server DSAP tab ('mailboxes', 'aliases', 'toggles', 'signatures', 'relay', 'spam').
+ */
+async function openExchangeConsole(node) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openExchangeManagementConsole: public/scripts/comp/mmcExchange.js
+    if (typeof openExchangeManagementConsole === 'function') return openExchangeManagementConsole(node);
     return null;
 }
 
@@ -141,6 +213,24 @@ async function openTextExpandersSnapin(node, opts) {
     await featureLoader.loadFeature('mmc_snapins');
     // openTextExpandersConsole: public/scripts/comp/mmcExpanders.js
     if (typeof openTextExpandersConsole === 'function') return openTextExpandersConsole(node, opts);
+    return null;
+}
+
+/** Character Database (#831), loading the MMC snap-ins first; node: 'root' | a copyright's name. */
+async function openCharacterDbSnapin(node, opts) {
+    await featureLoader.loadFeature('mmc_snapins');
+    // openCharacterDbConsole: public/scripts/comp/mmcCharacterDb.js
+    if (typeof openCharacterDbConsole === 'function') return openCharacterDbConsole(node, opts);
+    return null;
+}
+
+/** "Characters": the Character Database console on the Vista desktop, the old window elsewhere
+ *  (characterDbApplet.js; on phones wmCharacters.js replaces it). */
+async function manageCharacterDb(node, opts) {
+    if (dsapIsVistaDesktop()) return openCharacterDbSnapin(node, opts);
+    await featureLoader.loadFeature('character_db');
+    // characterDbApplet: public/scripts/comp/characterDbApplet.js
+    if (typeof characterDbApplet !== 'undefined') characterDbApplet.open();
     return null;
 }
 
@@ -327,6 +417,8 @@ function registerDsapManifests() {
             const path = String((match && match.displayPath) || '').split('?')[0].split('/').filter(Boolean);
             const view = path[1] || 'home';
             const page = { blocked: 'quarantine', honeypot: 'honeypot', telemetry: 'history', approved: 'allowed', home: 'home' }[view] || 'home';
+            // /appkeys: the application keys live in Key Manager (#831)
+            if (view === 'appkeys' || view === 'keys') { void openKeyManagerConsole(view === 'keys' ? 'svc' : 'issued'); return true; }
             void featureLoader.loadFeature('control_panel').then(() => {
                 if (view === 'auth' && window.cplAuthentication) window.cplAuthentication.open();
                 else if (window.windowsDefender) window.windowsDefender.open(page);
@@ -460,10 +552,13 @@ function registerDsapManifests() {
         // the Image Search program on the Vista desktop (#828: public/scripts/comp/imageSearchApp.js):
         // a link's search (blocks, filters, view, file, frame) opens in it; elsewhere the page stays
         opensApp(match) {
-            if (!dsapIsVistaDesktop()) return false;
             const path = String((match && match.displayPath) || '');
             const q = path.indexOf('?');
-            void openImageSearchWindow({ url: `dsap://${ISPY_DSAP_MANIFEST_URL}/${q >= 0 ? path.slice(q) : ''}` });
+            const url = `dsap://${ISPY_DSAP_MANIFEST_URL}/${q >= 0 ? path.slice(q) : ''}`;
+            // the phone: Search Pictures (#831)
+            if (dsapPhoneSearchPictures({ url })) return true;
+            if (!dsapIsVistaDesktop()) return false;
+            void openImageSearchWindow({ url });
             return true;
         },
         menuEntry: {
@@ -474,6 +569,7 @@ function registerDsapManifests() {
             appMenu: false,
             startMenuIndex: 1,
             launch() {
+                if (dsapPhoneSearchPictures()) return;
                 if (dsapIsVistaDesktop()) {
                     void openImageSearchWindow();
                     return;
@@ -560,10 +656,20 @@ function registerDsapManifests() {
         assets: {
             scripts: ['scripts/comp/fandomWikiManagerDsapApplet.js']
         },
+        // on the Vista desktop the Wiki Manager is Wiki Caches, under Storage in Computer Management
+        // (#831: mmcWikiManager.js): /import starts New Import..., /library (and the rest) opens the
+        // snap-in; phones and Windows Classic keep the page
+        opensApp(match) {
+            if (!dsapIsVistaDesktop()) return false;
+            const pathPart = String((match && match.displayPath) || '').split('?')[0];
+            const segs = pathPart.split('/').filter(Boolean);
+            void openWikiCachesSnapin('root', { wizard: segs.includes('import') });
+            return true;
+        },
         menuEntry: {
             launchId: 'wiki-manager',
             icon: 'fas fa-books',
-            imageIcon: 'fandom.png',
+            imageIcon: 'vista-wiki-caches.png',
             text: 'Wiki Manager',
             appMenu: false,
             startMenu: false,
@@ -592,15 +698,23 @@ function registerDsapManifests() {
             ],
             styles: ['css/desktop-apps/exchange.css']
         },
+        // On the Vista desktop the Exchange Management Console (#831: mmcExchange.js) replaced the page;
+        // its addresses open the console on that tab's node (/mailboxes, /aliases, /spam ...)
+        opensApp(match) {
+            if (!dsapIsVistaDesktop()) return false;
+            void openExchangeConsole(String((match && match.displayPath) || ''));
+            return true;
+        },
         menuEntry: {
             launchId: 'exchange',
             icon: 'fas fa-building-columns',
-            imageIcon: 'vista-mail.png',
-            text: 'Exchange Server',
+            imageIcon: 'vista-exchange-management-console.png',
+            text: 'Exchange Management Console',
             appMenu: false,
             startMenu: false,
             adminOnly: true,
             launch() {
+                if (dsapIsVistaDesktop()) { void openExchangeConsole(); return; }
                 // openDsapInGrimoire: public/scripts/comp/dsapRegistry.js
                 openDsapInGrimoire(`dsap://${EXCHANGE_DSAP_MANIFEST_URL}/`);
             }
