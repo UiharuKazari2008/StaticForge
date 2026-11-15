@@ -178,6 +178,16 @@ T.setBrowser({ read: async (kind) => {
         assert.deepStrictEqual(svc.getState().latest.videos.map((v) => v.id), [VID(10), VID(11)]);
     });
 
+    await ok('a long favourites list is read less often, not cut short', async () => {
+        assert.strictEqual(T.latestTtl(), 15 * 60000);
+        const st = T.state().acct;
+        const keep = st.favourites.slice();
+        for (let n = 100; n < 400; n++) st.favourites.push({ id: `UC${String(n).padStart(22, 'b')}`, title: `F${n}`, thumb: '' });
+        assert.ok(T.latestTtl() > 2 * 3600000 && T.latestTtl() < 3 * 3600000, `301 favourites: ${Math.round(T.latestTtl() / 60000)} min`);
+        st.favourites.length = 0;
+        st.favourites.push(...keep);
+    });
+
     await ok('channel page', async () => {
         const c = await svc.channelPage(CH(1));
         assert.strictEqual(c.channel.title, 'Channel 1');

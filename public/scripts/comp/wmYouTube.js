@@ -356,7 +356,7 @@
             let text = !d.found ? 'None of your channels has its bell set to All notifications.'
                 : d.added ? `${n(d.added, 'channel')} with the bell set to All ${d.added === 1 ? 'was' : 'were'} added to Today.`
                     : `The ${n(d.found, 'channel')} with the bell set to All ${d.found === 1 ? 'is' : 'are'} on Today already.`;
-            if (d.left) text += `\n\n${n(d.left, 'more channel')} did not fit: Today holds 40 favourites.`;
+            if (d.left) text += `\n\n${n(d.left, 'more channel')} did not fit in the favourites list.`;
             if (d.partial) text += '\n\nYouTube did not show the whole subscriptions list, so some channels may be missing.';
             box(text, 'info');
         } catch (e) {
