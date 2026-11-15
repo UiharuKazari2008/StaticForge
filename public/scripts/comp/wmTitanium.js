@@ -723,6 +723,9 @@
         const ys = tweenYs(top, p);
         host.style.setProperty('--wm-ti-top', String(top));
         host.classList.remove('is-rest');
+        // the entrance (#800) fades every row in to the dimness it keeps at rest (its distance from the
+        // band), not to full, so nothing drops darker once the list has settled (Yukimi, Nov 15)
+        const entering = host.classList.contains('is-entering');
         panels.forEach((pn, i) => {
             const el = rowEl.get(pn.id);
             if (!el) return;
@@ -731,7 +734,8 @@
             const under = y + ROW / 2 > top && y + ROW / 2 < top + BAND;
             el.classList.toggle('is-under', under);
             el.classList.remove('is-sel');
-            if (el.dataset.far !== '0') el.dataset.far = '0';
+            const far = entering ? String(Math.min(Math.abs(i - tw.b), 3)) : '0';
+            if (el.dataset.far !== far) el.dataset.far = far;
             const o = i === tw.b && fade < 1 ? String(Math.round(fade * (under ? 55 : 100)) / 100) : '';
             if (el.style.opacity !== o) el.style.opacity = o;
         });
