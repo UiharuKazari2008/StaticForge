@@ -397,7 +397,7 @@ function getGenerateStageMenuItems() {
             text: label.text,
             subtext: subtext || undefined,
             action: `generate-stage-${stageIndex}`,
-            disabled: !!window.isGenerating
+            disabled: !!isGenerating
         });
     }
     return items;
@@ -5601,6 +5601,13 @@ async function handleManualGeneration(e, options = {}) {
         if (error && error.code === 'CLIENT_CANCELLED') {
             stopPreviewAnimation();
             hideDynamicGenerationProgressOverlayImmediate();
+            // The steps drawn so far go; the print that was there before comes back
+            // (manualPreviewManager.js)
+            if (window.currentManualPreviewImage) {
+                void updateManualPreviewDirectly(window.currentManualPreviewImage, window.currentEditMetadata || null);
+            } else {
+                resetManualPreview();
+            }
             return;
         }
         if (window.wsClient) {

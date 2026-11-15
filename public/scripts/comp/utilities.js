@@ -3243,7 +3243,8 @@ function updateManualGenerateBtnState() {
         const icon = document.getElementById(iconId);
         if (!icon) return;
 
-        if (window.isGenerating) {
+        // isGenerating: public/scripts/comp/generationOrchestrator.js (a top-level let, so not on window)
+        if (typeof isGenerating !== 'undefined' && isGenerating) {
             // Generating state - show sparkles icon and rainbow animation
             setClassNameIfChanged(icon, 'nai-sparkles fa-bounce');
             setClassIfChanged(button, 'generating-effect', true);

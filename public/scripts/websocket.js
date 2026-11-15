@@ -7228,6 +7228,7 @@ class WebSocketClient {
 
     handleImageGenerationProgress(message) {
         const { data, requestId } = message;
+        if (this.cancelledGenerationIds && this.cancelledGenerationIds.has(requestId)) return;
 
         // Reset timeout for this request to prevent timeouts during long generations
         // This is critical for multi-stage generations (especially enhance) that can take longer than the default timeout
@@ -8864,6 +8865,7 @@ class WebSocketClient {
             const err = new Error(reason);
             err.code = 'CLIENT_CANCELLED';
             cancelledIds.push(requestId);
+            this.noteCancelledGeneration(requestId);
             this.resolveRequest(requestId, null, err);
         }
         if (cancelledIds.length > 0) {
@@ -8881,6 +8883,19 @@ class WebSocketClient {
     }
 
     // Abort a single pending request from the connection status UI (public/scripts/websocket.js)
+    /**
+     * A print the user gave up: the server may still send its steps for a moment, and one arriving
+     * after the stop put the window back into its streaming view for good.
+     */
+    noteCancelledGeneration(requestId) {
+        if (!requestId) return;
+        if (!this.cancelledGenerationIds) this.cancelledGenerationIds = new Set();
+        this.cancelledGenerationIds.add(requestId);
+        if (this.cancelledGenerationIds.size > 32) {
+            this.cancelledGenerationIds.delete(this.cancelledGenerationIds.values().next().value);
+        }
+    }
+
     abortPendingRequest(requestId, reason = 'Request aborted') {
         if (!this.pendingRequests || !this.pendingRequests.has(requestId)) {
             return false;
@@ -8892,6 +8907,7 @@ class WebSocketClient {
         err.requestId = requestId;
 
         if (generationTypes.has(request.type)) {
+            this.noteCancelledGeneration(requestId);
             this.clearStreamingStepQueues(null, true);
             this.releaseGenerationCloseGuard(requestId);
             try {
