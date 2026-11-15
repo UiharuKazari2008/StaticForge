@@ -290,7 +290,6 @@
     box-sizing: border-box;
 }
 
-
 #explorerModal .explorer-grid-host.explorer-marquee-active {
     user-select: none;
     cursor: var(--c-crosshair);
@@ -344,7 +343,6 @@
     line-height: 1;
 }
 
-
 #explorerModal .explorer-status-text {
     flex: 1;
     min-width: 0;
@@ -394,7 +392,6 @@
     pointer-events: none;
 }
 
-
 .explorer-item.explorer-item-opening {
     opacity: 0.55;
     pointer-events: none;
@@ -427,25 +424,6 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     scrollbar-color: var(--glass-layer-5) transparent;
-}
-
-.explorer-grid-scroll::-webkit-scrollbar {
-    width: 8px;
-}
-
-.explorer-grid-scroll::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.explorer-grid-scroll::-webkit-scrollbar-thumb {
-    background: var(--glass-layer-5);
-    border-radius: 4px;
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .explorer-grid-scroll::-webkit-scrollbar-thumb:hover:not(:disabled) {
-        background: var(--primary-color-light);
-    }
 }
 
 .explorer-grid-content {

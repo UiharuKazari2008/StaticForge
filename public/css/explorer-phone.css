@@ -46,7 +46,74 @@
 }
 
 #explorerModal .explorer-phone-preview-audio {
-    width: 100%;
+    display: none;
+}
+
+/* the pane's transport (Windows Media Player's Play / Pause art, the kit's trackbar) */
+#explorerModal .explorer-phone-transport {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+}
+
+#explorerModal .explorer-phone-play:not(#_) {
+    flex: none;
+    width: 30px;
+    height: 30px;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    border-image: none;
+    border-radius: 50%;
+    /* Windows Media Player's Play orb (38x39 art drawn at 30) under its glyph */
+    background:
+        url('/static_images/vista-wmp/play.png') no-repeat center / 17px auto,
+        url('/static_images/vista-wmp/orb.png') no-repeat center / 30px auto;
+    box-shadow: none;
+    animation: none;
+    transition: none;
+}
+
+#explorerModal .explorer-phone-play:not(#_)::before,
+#explorerModal .explorer-phone-play:not(#_)::after {
+    content: none;
+}
+
+#explorerModal .explorer-phone-play.is-playing:not(#_) {
+    background-image: url('/static_images/vista-wmp/pause.png'), url('/static_images/vista-wmp/orb.png');
+}
+
+#explorerModal .explorer-phone-play:not(#_):hover:not(:disabled) {
+    background-image: url('/static_images/vista-wmp/play.png'), url('/static_images/vista-wmp/orb-hot.png');
+}
+
+#explorerModal .explorer-phone-play.is-playing:not(#_):hover:not(:disabled) {
+    background-image: url('/static_images/vista-wmp/pause.png'), url('/static_images/vista-wmp/orb-hot.png');
+}
+
+#explorerModal .explorer-phone-play:not(#_):active:not(:disabled) {
+    background-image: url('/static_images/vista-wmp/play.png'), url('/static_images/vista-wmp/orb-down.png');
+}
+
+#explorerModal .explorer-phone-play.is-playing:not(#_):active:not(:disabled) {
+    background-image: url('/static_images/vista-wmp/pause.png'), url('/static_images/vista-wmp/orb-down.png');
+}
+
+#explorerModal .explorer-phone-play:not(#_):disabled {
+    background-image: url('/static_images/vista-wmp/play-disabled.png'), url('/static_images/vista-wmp/orb.png');
+    opacity: .6;
+}
+
+#explorerModal .explorer-phone-play:not(#_):focus-visible {
+    outline: 1px dotted currentColor !important;
+    outline-offset: 1px;
+}
+
+#explorerModal .explorer-phone-seek {
+    flex: 1 1 auto;
+    min-width: 0;
 }
 
 #explorerModal .explorer-phone-preview-frame {

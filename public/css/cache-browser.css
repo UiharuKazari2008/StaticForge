@@ -75,25 +75,6 @@
     max-height: 55vh;
 }
 
-/* Custom scrollbar for cache gallery */
-.cache-gallery::-webkit-scrollbar {
-    width: 8px;
-}
-
-.cache-gallery::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-}
-
-.cache-gallery::-webkit-scrollbar-thumb {
-    background: var(--primary-color);
-    border-radius: 4px;
-}
-
-.cache-gallery::-webkit-scrollbar-thumb:hover:not(:disabled) {
-    background: var(--primary-color-light);
-}
-
 /* Stretch items when there are few items */
 .cache-gallery.few-items {
     align-content: stretch;
@@ -372,7 +353,6 @@
     justify-content: space-between;
 }
 
-
 .vibe-reference-ie-control {
     display: flex;
     align-items: center;
@@ -559,7 +539,6 @@ img.loading {
     font-weight: 600;
 }
 
-
 .bias-controls-section {
     flex: none;
     display: flex;
@@ -641,8 +620,6 @@ img.loading {
     gap: 16px;
     min-height: 0;
 }
-
-
 
 .client-preview-image {
     position: absolute;
@@ -1256,7 +1233,6 @@ body:not(.windows-classic-theme) [role=progressbar].marquee:before {
     text-transform: none;
 }
 
-
 .default-workspace-badge {
     background: rgba(255, 255, 255, 0.8);
     color: #000000;
@@ -1298,7 +1274,6 @@ body:not(.windows-classic-theme) [role=progressbar].marquee:before {
     align-items: center;
     box-shadow: 0 0 17px 0px #860000c4;
 }
-
 
 /* Upload Progress Styles */
 .upload-progress {

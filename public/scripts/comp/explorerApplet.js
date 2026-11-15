@@ -2292,6 +2292,7 @@ class ExplorerApplet {
                 return true;
             }
             case 'explorer-rename': {
+                // no browser prompt (no-native-browser-ui.mdc): without the input dialog there is no rename
                 const newName = typeof showInputDialog === 'function'
                     ? await showInputDialog(
                         'Rename Shortcut',
@@ -2303,7 +2304,7 @@ class ExplorerApplet {
                         ],
                         event?.detail?.event
                     )
-                    : prompt('Rename to:', item.name);
+                    : null;
                 if (newName && newName !== item.name) {
                     await desktopShortcuts.renameShortcut(item.id, newName);
                 }
@@ -5154,7 +5155,20 @@ class ExplorerApplet {
             await explorerPhoneDrive.rename(this, item);
             return;
         }
-        const newName = prompt('Rename to:', item.name);
+        // showInputDialog: public/scripts/comp/confirmationDialog.js (the Vista input box, not the browser's prompt)
+        if (typeof showInputDialog !== 'function') return;
+        const answer = await showInputDialog(
+            'Type a new name for this item:',
+            item.name,
+            'Enter a new name',
+            [
+                { text: 'Rename', value: true, className: 'btn-primary' },
+                { text: 'Cancel', value: false, className: 'btn-secondary' }
+            ],
+            null,
+            { title: 'Rename' }
+        );
+        const newName = typeof answer === 'string' ? answer.trim() : '';
         if (!newName || newName === item.name) return;
         if (item.targetKind === 'vfs-folder') {
             await vfsClient.renameFolder(item.targetId, newName);

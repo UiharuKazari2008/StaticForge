@@ -395,7 +395,6 @@
     transition: var(--transition-glass-surface);
 }
 
-
 /* Form row layout updates */
 .form-row {
     display: flex;
@@ -457,7 +456,6 @@
 #manualPresetPlaceholderText {
     white-space: nowrap;
 }
-
 
 .modal-actions.btn-group {
     justify-content: flex-end;
@@ -585,7 +583,6 @@
     min-height: 32px;
 }
 
-
 /* Remove the old layer1 seed toggle group styles since it's now integrated */
 #layer1SeedToggleGroup {
     display: none;
@@ -689,24 +686,6 @@
     max-height: min(800px, calc(100svh - var(--menubar-height, 8.5em) - var(--spacing-xxl)));
 }
 
-/* Custom scrollbar styling for webkit browsers */
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar {
-    width: 6px;
-}
-
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-thumb {
-    background: var(--glass-border-2);
-    border-radius: 3px;
-}
-
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-thumb:hover:not(:disabled) {
-    background: var(--glass-border-1);
-}
-
 #fileSearchAutofillList .character-autocomplete-item.more-indicator {
     order: -10;
 }
@@ -779,7 +758,6 @@
     width: 100%;
     font-size: 1rem;
 }
-
 
 /* Emphasis highlighting styles — outline via inset shadow only (no border/padding; those offset overlay text). */
 .emphasis-highlight {
@@ -981,5 +959,4 @@
 .cache-manager-tabs {
     margin-bottom: var(--spacing-sm);
 }
-
 

@@ -9,23 +9,6 @@
     text-transform: uppercase;
 }
 
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar {
-    width: 6px;
-}
-
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-thumb {
-    background: var(--glass-border-2);
-    border-radius: 3px;
-}
-
-#fileSearchAutofill .character-autocomplete-list::-webkit-scrollbar-thumb:hover:not(:disabled) {
-    background: var(--glass-border-1);
-}
-
 #fileSearchAutofillList .character-autocomplete-item.more-indicator {
     order: -10;
 }
@@ -153,7 +136,6 @@
     }
 }
 
-
 .auto-position-toggle {
     display: flex;
     align-items: center;
@@ -183,7 +165,6 @@
 .text-overlays-container {
     margin-bottom: var(--spacing-md);
 } */
-
 
 .character-prompt-header {
     display: flex;
@@ -228,7 +209,6 @@
     font-weight: 500;
     text-transform: none;
 }
-
 
 .character-prompts-title-group {
     display: flex;
@@ -474,7 +454,6 @@
     opacity: 0.75;
     transition: var(--transition-hover-show);
 }
-
 
 .hover-show:hover:not(:disabled) span#manualPresetToggleText {
     opacity: 1;
@@ -826,7 +805,6 @@
     width: calc(calc(100% / 3) - 2px);
 }
 
-
 #manualModal .character-prompt-tabs .gallery-toggle-group {
     position: relative;
     display: grid;
@@ -892,7 +870,6 @@
     gap: var(--spacing-sm);
     margin-left: auto;
 }
-
 
 .tab-btn {
     padding: var(--spacing-sm) var(--spacing-lg);
@@ -1028,7 +1005,6 @@
     justify-content: center;
     transition: var(--transition-toggle);
 }
-
 
 .btn-secondary:disabled,
 .pswp__button--custom:disabled {
@@ -1244,7 +1220,6 @@ div#manualResolutionDropdownMenu {
 .price-label {
     font-weight: 500;
 }
-
 
 /* File Search Autofill Styles - Now using main autocomplete CSS */
 .suggestion-type-badge {

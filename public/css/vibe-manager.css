@@ -4,7 +4,6 @@
     margin-bottom: var(--spacing-sm);
 }
 
-
 /* Vibe Manager Styles */
 
 .vibe-manager-gallery-container {
@@ -27,27 +26,6 @@
     width: 100%;
     max-height: 60vh;
     min-height: 200px;
-}
-
-/* Custom scrollbar for vibe manager gallery */
-.vibe-manager-gallery::-webkit-scrollbar {
-    width: 8px;
-}
-
-.vibe-manager-gallery::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-}
-
-.vibe-manager-gallery::-webkit-scrollbar-thumb {
-    background: var(--primary-color);
-    border-radius: 4px;
-}
-
-@supports not ((-webkit-touch-callout: none) or (hover: hover)) {
-    .vibe-manager-gallery::-webkit-scrollbar-thumb:hover:not(:disabled) {
-        background: var(--primary-color-light);
-    }
 }
 
 /* Disabled vibe transfer elements during inpainting */

@@ -1,7 +1,7 @@
 {
  "note": "Counts may only go down. See docs/design/ui-standard.md and scripts/check-ui-standard.js.",
  "totals": {
-  "colour-literal": 12769,
+  "colour-literal": 12751,
   "font-literal": 597,
   "theme-negative": 2548,
   "own-control": 717,
@@ -11,12 +11,10 @@
   "toast": 1063,
   "own-menubar": 70,
   "colour-in-script": 1497,
-  "native-picker": 13,
-  "native-scrollbar": 46,
-  "native-range": 5,
+  "native-scrollbar": 39,
+  "native-range": 4,
   "theme-test-copy": 19,
-  "native-dialog": 7,
-  "native-widget": 2,
+  "native-dialog": 1,
   "native-select": 1
  },
  "files": {
@@ -58,7 +56,6 @@
    "colour-literal": 2
   },
   "apps/contacts/client/contacts.js": {
-   "native-picker": 1,
    "colour-in-script": 2,
    "inline-style": 6
   },
@@ -160,9 +157,6 @@
    "inline-style": 1,
    "hand-built-window": 2
   },
-  "public/app.html": {
-   "native-picker": 3
-  },
   "public/css/about-melaton.css": {
    "colour-literal": 21,
    "font-literal": 2,
@@ -184,8 +178,7 @@
    "theme-negative": 14
   },
   "public/css/autocomplete.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 103,
+   "colour-literal": 100,
    "own-control": 1
   },
   "public/css/blockContainer.css": {
@@ -200,8 +193,7 @@
    "colour-literal": 2
   },
   "public/css/cache-browser.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 137,
+   "colour-literal": 136,
    "theme-negative": 3,
    "own-control": 4
   },
@@ -236,7 +228,7 @@
    "theme-negative": 27
   },
   "public/css/cpl-cardspace.css": {
-   "colour-literal": 76,
+   "colour-literal": 74,
    "font-literal": 4,
    "own-control": 4
   },
@@ -245,7 +237,7 @@
    "theme-negative": 2
   },
   "public/css/cpl-dialogs.css": {
-   "colour-literal": 19
+   "colour-literal": 14
   },
   "public/css/cpl-indexing.css": {
    "colour-literal": 11,
@@ -261,7 +253,7 @@
    "own-menubar": 2
   },
   "public/css/cpl-personalization.css": {
-   "colour-literal": 133,
+   "colour-literal": 131,
    "font-literal": 3,
    "own-control": 6
   },
@@ -338,7 +330,7 @@
    "own-control": 2
   },
   "public/css/dsap-smf.css": {
-   "colour-literal": 65,
+   "colour-literal": 64,
    "font-literal": 1,
    "own-control": 9
   },
@@ -347,7 +339,6 @@
    "font-literal": 2
   },
   "public/css/emphasis-manager.css": {
-   "native-scrollbar": 1,
    "colour-literal": 28,
    "own-control": 7
   },
@@ -364,7 +355,6 @@
    "font-literal": 1
   },
   "public/css/explorer.css": {
-   "native-scrollbar": 1,
    "colour-literal": 44
   },
   "public/css/fatal-error.css": {
@@ -376,8 +366,7 @@
    "colour-literal": 1
   },
   "public/css/gallery-core.css": {
-   "native-range": 1,
-   "colour-literal": 44,
+   "colour-literal": 43,
    "own-control": 2
   },
   "public/css/gallery-move.css": {
@@ -476,13 +465,11 @@
    "own-control": 4
   },
   "public/css/manual-modal-preview-tools.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 61,
+   "colour-literal": 60,
    "theme-negative": 12,
    "own-control": 6
   },
   "public/css/manual-modal-prompt-form.css": {
-   "native-scrollbar": 1,
    "colour-literal": 51,
    "font-literal": 1,
    "own-control": 20
@@ -503,7 +490,7 @@
    "own-control": 42
   },
   "public/css/mask-editor.css": {
-   "colour-literal": 124,
+   "colour-literal": 123,
    "font-literal": 2,
    "theme-negative": 18,
    "own-control": 2
@@ -671,8 +658,7 @@
    "own-control": 1
   },
   "public/css/vibe-manager.css": {
-   "native-scrollbar": 1,
-   "colour-literal": 56,
+   "colour-literal": 55,
    "own-control": 4
   },
   "public/css/virtual-keyboard.css": {
@@ -1136,7 +1122,6 @@
    "toast": 6
   },
   "public/scripts/comp/cplAuthentication.js": {
-   "native-picker": 1,
    "hand-built-window": 1,
    "toast": 3
   },
@@ -1153,13 +1138,11 @@
    "inline-style": 2
   },
   "public/scripts/comp/cplInternetOptions.js": {
-   "native-picker": 1,
    "colour-in-script": 5,
    "inline-style": 6,
    "toast": 1
   },
   "public/scripts/comp/cplPages2.js": {
-   "native-picker": 1,
    "colour-in-script": 4,
    "inline-style": 13
   },
@@ -1384,7 +1367,6 @@
    "toast": 12
   },
   "public/scripts/comp/explorerApplet.js": {
-   "native-dialog": 2,
    "colour-in-script": 4,
    "inline-style": 3,
    "toast": 59
@@ -1397,12 +1379,11 @@
    "inline-style": 1
   },
   "public/scripts/comp/explorerPhoneDrive.js": {
-   "native-widget": 2,
    "hand-built-window": 1,
    "toast": 1
   },
   "public/scripts/comp/fatalErrorBootstrap.js": {
-   "native-dialog": 4,
+   "native-dialog": 1,
    "inline-style": 1
   },
   "public/scripts/comp/fileOperationProgress.js": {
@@ -1450,7 +1431,6 @@
    "toast": 20
   },
   "public/scripts/comp/imageGenerationSettings.js": {
-   "native-picker": 1,
    "colour-in-script": 9,
    "toast": 4
   },
@@ -1459,7 +1439,6 @@
    "toast": 4
   },
   "public/scripts/comp/imageSearchApp.js": {
-   "native-picker": 2,
    "inline-style": 12,
    "hand-built-window": 2
   },
@@ -1599,7 +1578,6 @@
    "toast": 1
   },
   "public/scripts/comp/personalizationDialogs.js": {
-   "native-picker": 2,
    "colour-in-script": 2,
    "inline-style": 20,
    "hand-built-window": 1
@@ -1670,8 +1648,6 @@
    "colour-in-script": 15
   },
   "public/scripts/comp/securityCenterDsapApplet.js": {
-   "native-picker": 1,
-   "native-dialog": 1,
    "colour-in-script": 5,
    "inline-style": 5,
    "toast": 77

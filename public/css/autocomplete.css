@@ -905,7 +905,6 @@ textarea {
     color: var(--text-muted);
 }
 
-
 .character-autocomplete-item .tag-count-dots {
     display: flex;
     align-items: center;
@@ -1696,7 +1695,6 @@ textarea {
     font-style: italic;
 }
 
-
 .character-enhancers strong {
     color: #ff4500;
     display: block;
@@ -1717,25 +1715,6 @@ textarea {
     max-height: none;
     flex: 1;
     overflow-y: visible;
-}
-
-/* Custom scrollbar for enhancers list */
-.enhancers-list::-webkit-scrollbar {
-    width: 6px;
-}
-
-.enhancers-list::-webkit-scrollbar-track {
-    background: #1a1a1a;
-    border-radius: 3px;
-}
-
-.enhancers-list::-webkit-scrollbar-thumb {
-    background: #ff4500;
-    border-radius: 3px;
-}
-
-.enhancers-list::-webkit-scrollbar-thumb:hover:not(:disabled) {
-    background: #ff6347;
 }
 
 .enhancer-group {

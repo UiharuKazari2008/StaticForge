@@ -406,7 +406,6 @@
     color: inherit;
 }
 
-
 /* Director mark — Anysphere Cursor icon */
 .xai-icon {
     font-size: 1.125rem;
@@ -457,7 +456,6 @@ button#layer1SeedToggle {
     grid-template-columns: repeat(5, 1fr);
     grid-template-rows: repeat(3, 1fr);
 }
-
 
 /* Portrait: 3 columns, 5 rows */
 .mask-bias-grid[data-bias="custom"][data-orientation="portrait"],
@@ -753,7 +751,6 @@ button#layer1SeedToggle {
     object-fit: contain;
 }
 
-
 #maskBrushPreviewCanvas {
     position: absolute;
     pointer-events: none;
@@ -952,7 +949,6 @@ button#layer1SeedToggle {
     display: inline-flex;
 }
 
-
 .character-prompt-preview:hover:not(:disabled) {
     background: var(--glass-layer-4);
     border-color: var(--glass-border-4);
@@ -1017,7 +1013,6 @@ button#layer1SeedToggle {
     min-height: auto;
 }
 
-
 .left-controls {
     display: flex;
     gap: var(--spacing-md);
@@ -1039,7 +1034,6 @@ button#layer1SeedToggle {
 body.desktop-mode .page-background {
     display: none;
 }
-
 
 .header-left,
 .header-right {
@@ -1135,25 +1129,6 @@ body.desktop-mode .page-background {
 
 .modal-body .cache-gallery {
     max-height: 55vh;
-}
-
-/* Custom scrollbar for cache gallery */
-.cache-gallery::-webkit-scrollbar {
-    width: 8px;
-}
-
-.cache-gallery::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 4px;
-}
-
-.cache-gallery::-webkit-scrollbar-thumb {
-    background: var(--primary-color);
-    border-radius: 4px;
-}
-
-.cache-gallery::-webkit-scrollbar-thumb:hover:not(:disabled) {
-    background: var(--primary-color-light);
 }
 
 /* Stretch items when there are few items */
@@ -1434,7 +1409,6 @@ body.desktop-mode .page-background {
     justify-content: space-between;
 }
 
-
 .vibe-reference-ie-control {
     display: flex;
     align-items: center;
@@ -1621,7 +1595,6 @@ img.loading {
     font-weight: 600;
 }
 
-
 .bias-controls-section {
     flex: none;
     display: flex;
@@ -1703,8 +1676,6 @@ img.loading {
     gap: 16px;
     min-height: 0;
 }
-
-
 
 .client-preview-image {
     position: absolute;
@@ -1802,7 +1773,6 @@ img.loading {
     background: rgba(255, 255, 255, 0.1);
     transform: scale(1.05);
 }
-
 
 /* Bias Adjustment Confirmation Dialog */
 .bias-confirm-content {

@@ -812,28 +812,48 @@
         return Promise.resolve(false);
     }
 
+    /**
+     * A notice from the fault and boot paths. The Vista message box (showConfirmationDialog,
+     * confirmationDialog.js) shows it whenever that script has loaded and no other box is up.
+     * The browser's own alert() is kept as the last resort on purpose (no-native-browser-ui.mdc
+     * exception): this file runs when the application failed to load, so there may be no script,
+     * stylesheet or window manager of ours left to draw anything, and saying nothing is worse.
+     * This is the only native dialog call left in the desktop client.
+     */
+    function lastResortNotice(text, title) {
+        try {
+            var box = document.getElementById('confirmationDialog');
+            var free = !box || box.classList.contains('hidden');
+            // showConfirmationDialog: public/scripts/comp/confirmationDialog.js (one dialog: a second
+            // call would take it over and leave the first caller's promise unsettled, so only when free)
+            if (free && typeof showConfirmationDialog === 'function' && document.body && document.body.classList.contains('desktop-mode')) {
+                showConfirmationDialog(String(text), [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: title || 'Dreamscape OS' })
+                    .catch(function () { /* closed */ });
+                return;
+            }
+        } catch (e) { /* fall through to the browser's box */ }
+        try {
+            window.alert(`${text}`);
+        } catch (e2) { /* ignore */ }
+    }
+    window.dreamscapeLastResortNotice = lastResortNotice;
+
     function repairAllScripts() {
         var urls = collectRepairUrls();
         if (!urls.length) {
-            try {
-                alert('No script URLs found in the error list. Use Reinstall to reset the application.');
-            } catch (e) { /* ignore */ }
+            lastResortNotice('No script URLs found in the error list. Use Reinstall to reset the application.', 'Repair');
             return;
         }
 
         var swm = typeof serviceWorkerManager !== 'undefined' ? serviceWorkerManager : null;
         if (!swm || typeof swm.deleteAndPrecache !== 'function') {
-            try {
-                alert('Service worker manager is not ready. Use Reinstall or Restart.');
-            } catch (e2) { /* ignore */ }
+            lastResortNotice('Service worker manager is not ready. Use Reinstall or Restart.', 'Repair');
             return;
         }
 
         ensureServiceWorkerReady(swm).then(function (ready) {
             if (!ready) {
-                try {
-                    alert('Service worker is not ready. Use Reinstall or Restart.');
-                } catch (e3) { /* ignore */ }
+                lastResortNotice('Service worker is not ready. Use Reinstall or Restart.', 'Repair');
                 return;
             }
 
@@ -854,9 +874,7 @@
                 restartApplication();
             });
         }).catch(function () {
-            try {
-                alert('Repair failed for one or more files. Try Reinstall.');
-            } catch (e4) { /* ignore */ }
+            lastResortNotice('Repair failed for one or more files. Try Reinstall.', 'Repair');
         });
     }
 

@@ -915,6 +915,35 @@
         return item && item.phone ? PS().fileUrl(item.phone.root, item.phone.path, opts) : '';
     }
 
+    const PREVIEW_TRANSPORT = '<div class="explorer-phone-transport"><button type="button" class="explorer-phone-play" aria-label="Play" disabled></button><input type="range" class="explorer-phone-seek" min="0" max="1000" step="1" value="0" aria-label="Seek" disabled></div>';
+
+    /** The preview pane's transport: Play / Pause and a seek trackbar for its <video> or <audio>. */
+    function wirePreviewTransport(pane) {
+        const media = pane.querySelector('.explorer-phone-preview video, .explorer-phone-preview audio');
+        const bar = pane.querySelector('.explorer-phone-transport');
+        if (!media || !bar) return;
+        const play = bar.querySelector('.explorer-phone-play');
+        const seek = bar.querySelector('.explorer-phone-seek');
+        let dragging = false;
+        const paint = () => {
+            const on = !media.paused && !media.ended;
+            play.classList.toggle('is-playing', on);
+            play.setAttribute('aria-label', on ? 'Pause' : 'Play');
+        };
+        const toggle = () => { if (media.paused || media.ended) void media.play().catch(() => {}); else media.pause(); };
+        media.addEventListener('loadedmetadata', () => { play.disabled = false; seek.disabled = !(media.duration > 0 && Number.isFinite(media.duration)); });
+        media.addEventListener('error', () => { play.disabled = true; seek.disabled = true; });
+        ['play', 'pause', 'ended'].forEach((n) => media.addEventListener(n, paint));
+        media.addEventListener('timeupdate', () => {
+            if (!dragging && media.duration > 0 && Number.isFinite(media.duration)) seek.value = String(Math.round((media.currentTime / media.duration) * 1000));
+        });
+        play.addEventListener('click', toggle);
+        if (media.tagName === 'VIDEO') media.addEventListener('click', toggle);
+        seek.addEventListener('pointerdown', () => { dragging = true; });
+        seek.addEventListener('input', () => { if (media.duration > 0 && Number.isFinite(media.duration)) media.currentTime = (Number(seek.value) / 1000) * media.duration; });
+        seek.addEventListener('change', () => { dragging = false; });
+    }
+
     function previewKind(item) {
         const mime = String(item.mimeType || '');
         const ext = String(item.name || '').split('.').pop().toLowerCase();
@@ -973,12 +1002,14 @@
         const url = one.phone.dir ? '' : fileUrl(one);
         let media = '';
         if (kind === 'image') media = `<img class="explorer-phone-preview-media" src="${esc(url)}" alt="" decoding="async">`;
-        else if (kind === 'video') media = `<video class="explorer-phone-preview-media" src="${esc(url)}" controls preload="metadata" playsinline></video>`;
-        else if (kind === 'audio') media = `<audio class="explorer-phone-preview-audio" src="${esc(url)}" controls preload="metadata"></audio>`;
+        // video and sound play through the pane's own transport (Play / Pause and the Vista trackbar), never the browser's controls
+        else if (kind === 'video') media = `<video class="explorer-phone-preview-media" src="${esc(url)}" preload="metadata" playsinline></video>${PREVIEW_TRANSPORT}`;
+        else if (kind === 'audio') media = `<div class="explorer-phone-preview-icon explorer-item-icon-box explorer-item-icon-box-md"></div><audio class="explorer-phone-preview-audio" src="${esc(url)}" preload="metadata"></audio>${PREVIEW_TRANSPORT}`;
         else if (kind === 'pdf' || kind === 'text') media = `<iframe class="explorer-phone-preview-frame" src="${esc(url)}" title="Preview"></iframe>`;
         else media = `<div class="explorer-phone-preview-icon explorer-item-icon-box explorer-item-icon-box-md"></div>`;
         pane.innerHTML = `<div class="explorer-phone-preview" data-kind="${kind}">${media}
             <div class="explorer-phone-preview-name">${esc(one.name)}</div>${facts}</div>`;
+        wirePreviewTransport(pane);
         const box = pane.querySelector('.explorer-phone-preview-icon');
         if (box && typeof app._populateIconBox === 'function') app._populateIconBox(box, one);
         if (naiCandidate(one)) {
@@ -1668,6 +1699,6 @@
         renderNav,
         computerDrives,
         openComputerDrive,
-        _test: { sortItems, entryToItem, blocker, seconds }
+        _test: { sortItems, entryToItem, blocker, seconds, wirePreviewTransport, PREVIEW_TRANSPORT }
     };
 })(typeof window !== 'undefined' ? window : globalThis);
