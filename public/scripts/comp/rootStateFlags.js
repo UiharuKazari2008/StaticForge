@@ -59,6 +59,8 @@
             ? new RegExp('(^|\\s)(' + flag.watch.join('|') + ')(\\s|$)')
             : null;
         flag.watchSelector = flag.watch.map((name) => '.' + name).join(', ');
+        // only these read <body>'s own classes: a body class change cannot move any other flag
+        flag.bodyDependent = /(^|[\s,>+~(])body\b/.test(flag.selector);
     });
 
     // Union of every flag's watch list: most mutations (text, unrelated classes) stop at this check
@@ -142,7 +144,10 @@
 
     function mutationTouchesFlag(mutation, flag) {
         if (mutation.type === 'attributes') {
-            if (mutation.target === document.body) return true;
+            // <body>'s class changes many times during a boot. Every flag used to be checked again
+            // on each one, the per-window flags over all ~90 windows (137 ms of a phone boot in
+            // selector queries, #817); only a flag whose selector names body can change with it.
+            if (mutation.target === document.body && flag.bodyDependent) return true;
             if (!flag.watchClass) return false;
             return flag.watchClass.test(mutation.target.getAttribute('class') || '')
                 || flag.watchClass.test(mutation.oldValue || '');
@@ -167,7 +172,7 @@
             for (let i = 0; i < mutations.length; i++) {
                 const mutation = mutations[i];
                 if (!mutationTouchesFlag(mutation, flag)) continue;
-                if (!scoped || mutation.target === document.body) {
+                if (!scoped) {
                     syncFlag(flag);
                     break;
                 }

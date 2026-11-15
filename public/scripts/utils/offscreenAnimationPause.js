@@ -95,11 +95,18 @@
         unwatchIfDone(event.target);
     }, true);
 
-    // Animations that started before this script ran
+    // Animations that started before this script ran. Not while the page is still being parsed:
+    // document.getAnimations() makes the browser style the half-built document on the spot
+    // (~75 ms of a phone boot, #817). In the first frame after the document is in, that style
+    // work is the frame's own; anything starting in between fires animationstart above.
     if (typeof document.getAnimations === 'function') {
-        document.getAnimations().forEach((animation) => {
-            const target = animation.effect && animation.effect.target;
-            if (target) watch(target);
+        const sweep = () => requestAnimationFrame(() => {
+            document.getAnimations().forEach((animation) => {
+                const target = animation.effect && animation.effect.target;
+                if (target) watch(target);
+            });
         });
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', sweep, { once: true });
+        else sweep();
     }
 })();

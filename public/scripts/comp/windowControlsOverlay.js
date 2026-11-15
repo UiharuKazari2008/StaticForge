@@ -377,9 +377,20 @@ function isWindowControlsOverlayAvailable() {
 
 window.isWindowControlsOverlayAvailable = isWindowControlsOverlayAvailable;
 
-// Run an initial pass in case values are already present at DOMContentLoaded
-updateWindowControlsOverlayClasses();
-updateAndroidCaptionControlsOverlay();
+// Run an initial pass in case values are already present at DOMContentLoaded.
+// Melaton Mobile (#817): after the document is in, in its first frame. The pass reads computed
+// style, which during parsing makes the browser style the half-built page there and then (50-75 ms
+// of a phone boot); the phone shows its boot screen meanwhile and has no title bar to place early.
+// The desktop keeps the pass here, before its first paint.
+if (window.uiShell === 'mobile' && document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => {
+        updateWindowControlsOverlayClasses();
+        updateAndroidCaptionControlsOverlay();
+    }), { once: true });
+} else {
+    updateWindowControlsOverlayClasses();
+    updateAndroidCaptionControlsOverlay();
+}
 
 // Wire up native WCO geometry change event if the API is available
 if ('windowControlsOverlay' in navigator &&
