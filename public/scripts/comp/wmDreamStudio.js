@@ -127,6 +127,8 @@
         const parts = [model ? model.name : s.model, size ? size.name : (s.width && s.height ? `${s.width} x ${s.height}` : ''), `${s.steps} steps`];
         if (s.n > 1) parts.push(`${s.n} prints`);
         if (s.seedLock) parts.push('seed kept');
+        const cost = M.cost();
+        if (cost > 0) parts.push(`${cost} Anlas`);
         return parts.filter(Boolean).join(', ');
     }
 
@@ -373,6 +375,7 @@
     }
 
     function closeEditor() {
+        acHide();
         const ta = edArea();
         if (ta) ta.blur();
         edCommit().then(() => {
@@ -411,6 +414,61 @@
         edCount();
     }
 
+    // ---- autofill: tags for the word being typed, as a WM list docked on the tool bar
+
+    let acTimer = 0;
+    let acSeq = 0;
+
+    /** The tag under the caret: from the comma (or line start) before it up to the caret. */
+    function acToken() {
+        const ta = edArea();
+        if (!ta || ta.selectionStart !== ta.selectionEnd) return null;
+        const end = ta.selectionStart;
+        const before = ta.value.slice(0, end);
+        const cut = Math.max(before.lastIndexOf(','), before.lastIndexOf('\n'), before.lastIndexOf('|'), before.lastIndexOf('{'), before.lastIndexOf('['), before.lastIndexOf('::'));
+        let start = cut < 0 ? 0 : cut + (before.startsWith('::', cut) ? 2 : 1);
+        while (start < end && /\s/.test(before[start])) start += 1;
+        const text = before.slice(start);
+        return text.trim().length >= 2 ? { start, end, text: text.trim() } : null;
+    }
+
+    function acHide() {
+        acSeq += 1;
+        clearTimeout(acTimer);
+        const box = $('.wds-ac');
+        if (box && !box.hidden) { box.hidden = true; box.textContent = ''; }
+    }
+
+    function acQueue() {
+        clearTimeout(acTimer);
+        const tok = acToken();
+        if (!tok) { acHide(); return; }
+        acTimer = setTimeout(() => {
+            const seq = ++acSeq;
+            M.suggest(tok.text).then((list) => {
+                const now = acToken();
+                if (seq !== acSeq || top() !== 'editor' || !now || now.text !== tok.text) return;
+                const box = $('.wds-ac');
+                if (!list.length) { box.hidden = true; box.textContent = ''; return; }
+                box.innerHTML = list.slice(0, 30).map((r) => `<button type="button" class="wm-listbox-row" data-key="${esc(r.text)}"><span>${esc(r.text)}</span></button>`).join('');
+                box.hidden = false;
+                box.scrollTop = 0;
+            });
+        }, 250);
+    }
+
+    function acPick(tag) {
+        const ta = edArea();
+        const tok = acToken();
+        if (!ta || !tok || !tag) { acHide(); return; }
+        ta.focus();
+        ta.setSelectionRange(tok.start, tok.end);
+        const after = ta.value.slice(tok.end);
+        document.execCommand('insertText', false, /^\s*,/.test(after) ? tag : `${tag}, `);
+        acHide();
+        edCount();
+    }
+
     function edIcon(name) {
         return `<img alt="" src="/static_images/wm61/ed-${name}.png" srcset="/static_images/wm61/ed-${name}@2x.png 2x, /static_images/wm61/ed-${name}@4x.png 4x">`;
     }
@@ -421,7 +479,9 @@
         if (!M.ready() || running()) return;
         const go = () => {
             viewing = '';
-            if (layout() === 'tabs') { tab = 'print'; paint(); } else openLayer('print');
+            // a wide screen already has the print beside the page: nothing to open
+            const beside = view() === 'home' && $('.wds-print').getClientRects().length > 0;
+            if (layout() === 'tabs') { tab = 'print'; paint(); } else if (!beside) openLayer('print'); else paint();
             const stage = $('.wds-stage');
             const rect = stage ? stage.getBoundingClientRect() : null;
             const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -462,6 +522,18 @@
         }).catch((err) => console.warn('[wmDreamStudio] action', name, err)), { delay: 250 });
     }
 
+    /** Delete cannot be taken back (Scrap can): the phone asks first, as WM does before it deletes a file. */
+    function deletePrint() {
+        sh.messageBox({
+            title: 'DreamStudio',
+            text: 'This print will be permanently deleted. Continue?',
+            icon: 'question',
+            modal: true,
+            buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }],
+            cancelValue: false
+        }).then((yes) => { if (yes) printAction('delete-preview', true); });
+    }
+
     function viewFull() {
         const f = shownPrint();
         if (f && typeof sh.viewPicture === 'function') sh.viewPicture({ data: { filename: f } });
@@ -492,7 +564,7 @@
             { label: 'Properties', disabled: none, action: () => printAction('view-image-data') },
             '-',
             { label: 'Scrap', disabled: none, action: () => printAction('scrap-preview', true) },
-            { label: 'Delete', disabled: none, action: () => printAction('delete-preview', true) }
+            { label: 'Delete', disabled: none, action: deletePrint }
         ];
     }
 
@@ -533,6 +605,7 @@
         page = p;
         p.classList.add('wm-dreamstudio');
         p.innerHTML = `
+<div class="wds-body">
 <div class="wds-pane wds-home">
   <button type="button" class="wds-strip"><img class="wds-strip-thumb" alt="" hidden><div class="wds-strip-text"><b></b><span></span><div class="wds-bar" hidden><span></span></div></div></button>
   <div class="wds-fields">
@@ -551,7 +624,9 @@
 <div class="wds-pane wds-editor">
   <div class="wds-ed-head"><button type="button" class="wm-combo"><span></span></button><span></span></div>
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+  <div class="wds-ac wm-listbox" hidden></div>
   <div class="wds-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wds-tb-sep"></span>' : `<button type="button" class="wds-tb-btn" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}</div>
+</div>
 </div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
 
@@ -574,7 +649,12 @@
         bar.addEventListener('mousedown', (e) => e.preventDefault());
         bar.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-tb-btn'); if (b) edCommand(b.dataset.ed); });
         let countTimer = 0;
-        edArea().addEventListener('input', () => { clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); });
+        edArea().addEventListener('input', () => { clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
+        edArea().addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== edArea()) acHide(); }, 0));
+        // the list keeps the focus (and the keyboard) in the text; a tap on a row puts the tag in
+        const ac = $('.wds-ac');
+        ac.addEventListener('mousedown', (e) => e.preventDefault());
+        ac.addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wm-listbox-row'); if (r) acPick(r.dataset.key); });
         $('.wds-ed-head > .wm-combo').addEventListener('click', (e) => {
             e.stopPropagation();
             sh.dropdown(e.currentTarget, Object.keys(FIELD_NAMES).map((id) => ({ label: FIELD_NAMES[id], radio: id === edField, action: () => edSwitch(id) })), 'left');

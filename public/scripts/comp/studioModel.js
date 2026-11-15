@@ -13,6 +13,7 @@
  *                                       (studioChangeJson.js STUDIO_CHANGE_PARAM_DEFS)
  *   studioModel.options()               what the lists offer and which controls the chosen model has
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
+ *   studioModel.suggest(text)            tag suggestions for a few typed letters: [{ text, count }] (a promise)
  *   studioModel.cost()                  Anlas the next Generate would ask for (0 = free)
  *   studioModel.generate()              one Generate; resolves when it is over (done, failed or stopped)
  *   studioModel.stop()                  give up the print in hand
@@ -35,7 +36,7 @@
        v5FullSupportsEffort, mediumControlIsLocked, isV5Model, getForgeModelFeatures, countTokensForText,
        ensurePromptTokenizerForModel, collectManualFormValues, addSharedFieldsToRequestBody,
        calculateCreditCost, registerWsInboundHandler, findImageByFilename, updateManualPreviewDirectly, getImageMetadata,
-       handleManualPreviewImageContextMenuAction */
+       handleManualPreviewImageContextMenuAction, getAutofillSearchSettings */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -128,6 +129,61 @@
             if (typeof countTokensForText === 'function') return countTokensForText(String(text || ''));
         } catch (_) { /* no tokenizer yet */ }
         return null;
+    }
+
+    // ---- tag suggestions: the server's autofill search, asked under a session of this file's own so
+    // the desktop's autofill (autocompleteUtils.js) neither sees these answers nor loses its own
+    const SUGGEST_SESSION = 'studioModel';
+    const suggestWaiting = new Map();
+    let suggestSeq = 0;
+    let suggestWired = false;
+
+    function wireSuggest() {
+        if (suggestWired || typeof window.handleSearchResponse !== 'function') return suggestWired;
+        suggestWired = true;
+        const orig = window.handleSearchResponse;
+        window.handleSearchResponse = function (message) {
+            if (!message || message.autofillSessionId !== SUGGEST_SESSION) return orig.apply(this, arguments);
+            if (message.type !== 'search_characters_complete') return undefined;
+            const done = suggestWaiting.get(message.requestId);
+            if (!done) return undefined;
+            suggestWaiting.delete(message.requestId);
+            const seen = new Set();
+            const out = [];
+            ((message.data && message.data.results) || []).forEach((r) => {
+                const text = r && typeof r.tag === 'string' ? r.tag.trim() : '';
+                if (!text || seen.has(text.toLowerCase())) return;
+                seen.add(text.toLowerCase());
+                out.push({ text, count: Number(r.count) || 0 });
+            });
+            done(out);
+            return undefined;
+        };
+        return true;
+    }
+
+    function suggest(text) {
+        const query = String(text || '').trim();
+        if (!query || !wireSuggest() || !window.wsClient || typeof window.wsClient.sendAcklessMessage !== 'function') return Promise.resolve([]);
+        const requestId = `${SUGGEST_SESSION}-${++suggestSeq}`;
+        const modelEl = el('manualModel');
+        return new Promise((resolve) => {
+            suggestWaiting.set(requestId, resolve);
+            // a search overtaken by the next one is never answered: it ends empty
+            setTimeout(() => { if (suggestWaiting.delete(requestId)) resolve([]); }, 6000);
+            try {
+                window.wsClient.sendAcklessMessage('search_characters', {
+                    query,
+                    model: (modelEl && modelEl.value) || 'nai-diffusion-4-5-full',
+                    requestId,
+                    autofillSessionId: SUGGEST_SESSION,
+                    spellCheckText: query,
+                    isContinuation: false,
+                    autofillSettings: typeof getAutofillSearchSettings === 'function' ? getAutofillSearchSettings() : null,
+                    modelMode: 'anime'
+                });
+            } catch (_) { suggestWaiting.delete(requestId); resolve([]); }
+        });
     }
 
     function cost() {
@@ -258,7 +314,7 @@
     }
 
     const api = {
-        ready, snapshot, set, options, tokens, cost, generate, stop, select, action, on, off,
+        ready, snapshot, set, options, tokens, suggest, cost, generate, stop, select, action, on, off,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */

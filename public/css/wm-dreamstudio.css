@@ -16,18 +16,26 @@
     container: wds / inline-size;
 }
 
-.wm-dreamstudio > .wds-pane {
+.wds-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+}
+
+.wds-body > .wds-pane {
     display: none;
     flex: 1 1 0;
+    min-width: 0;
     min-height: 0;
     box-sizing: border-box;
 }
 
 /* one view at a time: the home page, Settings, the print, the editor */
-.wm-dreamstudio[data-view="home"] > .wds-home,
-.wm-dreamstudio[data-view="settings"] > .wds-settings,
-.wm-dreamstudio[data-view="print"] > .wds-print,
-.wm-dreamstudio[data-view="editor"] > .wds-editor {
+.wm-dreamstudio[data-view="home"] .wds-home,
+.wm-dreamstudio[data-view="settings"] .wds-settings,
+.wm-dreamstudio[data-view="print"] .wds-print,
+.wm-dreamstudio[data-view="editor"] .wds-editor {
     display: flex;
     flex-direction: column;
 }
@@ -84,7 +92,8 @@
 
 .wds-strip .wds-bar { margin-top: calc(2 * var(--wm-px)); }
 
-.wds-fields { flex: 0 0 auto; padding: calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) 0; }
+/* the form's own margins (wm-programs.css .wm-form: 7 units above, 5 at the sides) */
+.wds-fields { flex: 0 0 auto; padding: calc(7 * var(--wm-px)) calc(5 * var(--wm-px)) 0; }
 
 .wds-label {
     display: flex;
@@ -96,7 +105,9 @@
 .wds-label > span:last-child { color: #555; }
 .wds-label > span.is-over { color: #c00000; }
 
-/* a prompt as WM's multi-line edit shows text: framed, white, from the top-left; a tap edits it */
+/* a prompt as WM's multi-line edit shows text (wm-programs.css textarea.wm-edit, measured on Owner
+ * Information > Address): 1-unit black frame, 2 x 3 units of padding, 13-unit lines, grey #848284
+ * for the empty hint; a tap edits it */
 .wds-field {
     display: block;
     width: 100%;
@@ -108,24 +119,24 @@
     background: #fff;
     color: #000;
     font: inherit;
-    line-height: calc(14 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
     text-align: left;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     overflow: hidden;
 }
 
-.wds-field[data-field="prompt"] { height: calc(5 * 14 * var(--wm-px) + 6 * var(--wm-px)); }
-.wds-field[data-field="uc"] { height: calc(2 * 14 * var(--wm-px) + 6 * var(--wm-px)); }
-.wds-field.is-empty { color: #808080; }
+.wds-field[data-field="prompt"] { height: calc(5 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
+.wds-field[data-field="uc"] { height: calc(2 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
+.wds-field.is-empty { color: #848284; }
 
 /* the settings in one row; a tap opens Settings */
 .wds-summary {
     display: block;
     flex: 0 0 auto;
-    width: calc(100% - 8 * var(--wm-px));
+    width: calc(100% - 10 * var(--wm-px));
     min-height: calc(20 * var(--wm-px));
-    margin: calc(6 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
+    margin: calc(6 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px));
     padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
     box-sizing: border-box;
     border: 0;
@@ -312,24 +323,40 @@
     background: #fff;
     color: #000;
     font: var(--wm-fs) var(--wm-font);
-    line-height: calc(15 * var(--wm-px));
+    line-height: calc(13 * var(--wm-px));
     user-select: text;
     -webkit-user-select: text;
 }
 
+/* tags for the word being typed: a WM list box docked on the tool bar, four rows tall, scrolling */
+.wds-ac {
+    flex: 0 0 auto;
+    max-height: calc(4 * 17 * var(--wm-px) + 2 * var(--wm-px));
+    margin: 0;
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    box-sizing: border-box;
+    background: #fff;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.wds-ac[hidden] { display: none; }
+.wds-ac > .wm-listbox-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+
 /* ---------------------------------------------------------------- wide screens: home beside the print */
 
-@container wds (min-width: 60em) {
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"],
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] {
+@container wds (min-width: 40em) {
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"] > .wds-body,
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] > .wds-body {
         flex-direction: row;
     }
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"] > .wds-print,
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] > .wds-home {
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"] .wds-print,
+    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] .wds-home {
         display: flex;
         flex-direction: column;
     }
-    .wm-dreamstudio:not([data-layout="tabs"]) > .wds-home { order: 1; border-right: calc(1 * var(--wm-px)) solid #000; }
-    .wm-dreamstudio:not([data-layout="tabs"]) > .wds-print { order: 2; }
+    .wm-dreamstudio:not([data-layout="tabs"]) .wds-home { order: 1; border-right: calc(1 * var(--wm-px)) solid #000; }
+    .wm-dreamstudio:not([data-layout="tabs"]) .wds-print { order: 2; }
     .wm-dreamstudio:not([data-layout="tabs"]) .wds-strip { display: none; }
 }
