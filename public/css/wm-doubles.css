@@ -187,3 +187,20 @@ html.ui-mobile[data-wm-version="6.5"] .wm-doubles .wdb-checks .wm-check {
 .wm-doubles .wdb-stats-type {
     margin: 0 0 calc(3 * var(--wm-px));
 }
+
+/* the game page is the desktop game's dark glass: the status row over it is a strip of the same
+ * (pale labels, white numbers), not Bubble Breaker's white row */
+.wm-page.wm-doubles[data-view="main"] {
+    background: #071a40;
+}
+
+.wm-doubles .wdb-status {
+    border-bottom: calc(0.5 * var(--wm-px)) solid rgba(200, 225, 255, 0.4);
+    background: linear-gradient(#1c4a94, #0e2f6e);
+    color: #fff;
+}
+
+.wm-doubles .wdb-status b {
+    color: #b9d6ff;
+}
+

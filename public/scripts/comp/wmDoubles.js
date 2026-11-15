@@ -1,8 +1,8 @@
 /**
  * Melaton Mobile: Doubles (Yozora #836), the desktop's slide-and-join number puzzle
  * (public/scripts/comp/desktop-apps/vista-games/doubles.js; Academy City Research P.S.R.) drawn as a
- * Windows Mobile 6 program would have been (the device's Bubble Breaker is the style: white page,
- * blue Tahoma status row, GDI-shaded pieces, soft keys New Game | Menu).
+ * phone program with the desktop game's own look: slabs of coloured glass on a frosted tray over a
+ * table of blue light (soft keys New Game | Menu; the form pages are the shell's).
  *
  * Play: flick the board (or press the d-pad) to slide every tile that way. Two tiles of the same
  * number that meet join into one of twice the number, which is added to the score; each move puts a
@@ -25,6 +25,7 @@
     const KEY = 'wmGame:doubles';
     const SLIDE_MS = 110;
     const POP_MS = 150;
+    const BURST_MS = 460;
     const SIZE_NAMES = { 3: 'Small (3 x 3)', 4: 'Standard (4 x 4)', 5: 'Large (5 x 5)' };
 
     // ---- rules: copied from desktop-apps/vista-games/doubles.js (keep them in step) ----
@@ -153,6 +154,7 @@
     let L = null; // layout
     let raf = 0;
     let anim = null; // { at, r } while tiles move
+    let fx = []; // the light of joins in flight: { cell, at, color, big }
     let press = null;
     let audio = null;
     let busyBox = false; // a message box is up
@@ -244,6 +246,7 @@
         save();
         renderStatus();
         anim = { at: performance.now(), r };
+        r.merges.forEach((m) => fx.push({ cell: m.at, at: anim.at + SLIDE_MS, color: tileColors(m.tile.v)[0], big: m.tile.v >= G.goal }));
         loop();
         ws.refreshSoftKeys();
     }
@@ -335,63 +338,310 @@
 
     // ---------------------------------------------------------------- drawing
     //
-    // GDI-style pieces: a black outline with clipped corners, a flat face, one lighter band along the
-    // top and left and one darker along the bottom and right (the device's stepped shading), the
-    // number in bold Tahoma. Each value is painted once per size (a sprite); a frame is blits.
+    // The desktop game's glass (desktop-apps/vista-games/doubles.js, its look block copied here):
+    // slabs of coloured glass on a frosted tray over a table of blue light. What stays put is painted
+    // once per size (a layer); each tile value once per size (a sprite); a frame is blits.
 
-    // face, light, dark, text
-    const COLORS = [
-        ['#ffffff', '#ffffff', '#b4bfcc', '#000000'], // 2
-        ['#cfe3fa', '#eef6ff', '#86a4c8', '#000000'], // 4
-        ['#52aee6', '#a4d8f8', '#1f6ea6', '#ffffff'], // 8
-        ['#22a6a4', '#7fdcd6', '#0c6a6a', '#ffffff'], // 16
-        ['#35a94c', '#8ade95', '#17702a', '#ffffff'], // 32
-        ['#8fba1e', '#cbe46c', '#587c08', '#ffffff'], // 64
-        ['#eab016', '#ffe07a', '#a67400', '#ffffff'], // 128
-        ['#ee8218', '#ffbe6a', '#a85000', '#ffffff'], // 256
-        ['#de4432', '#ff8e7c', '#981c0e', '#ffffff'], // 512
-        ['#cc3382', '#f690c0', '#86124c', '#ffffff'], // 1024
-        ['#7a4cd6', '#b99cf6', '#44208e', '#ffffff'], // 2048
-        ['#2a3442', '#66768c', '#0a0e16', '#ffd866']  // 4096 and up
+    const FONT = 'Tahoma, "Segoe UI", Verdana, sans-serif';
+    // slabs of coloured glass: [top, bottom, edge, text], by power of two
+    const TILE_COLORS = [
+        ['#f8fbff', '#c9dcf2', '#7f9cc0', '#1e3a5f'], // 2
+        ['#d6eaff', '#93bfee', '#5a8cc4', '#1e3a5f'], // 4
+        ['#86d8fb', '#2b97d8', '#17639a', '#ffffff'], // 8
+        ['#5cdcd2', '#12908f', '#086262', '#ffffff'], // 16
+        ['#7fe08a', '#23933b', '#126626', '#ffffff'], // 32
+        ['#c8e85c', '#76a312', '#4d7206', '#ffffff'], // 64
+        ['#ffe066', '#dc9a08', '#9a6a02', '#ffffff'], // 128
+        ['#ffb655', '#de6a06', '#9a4400', '#ffffff'], // 256
+        ['#ff8470', '#cf2e1e', '#8e1a0c', '#ffffff'], // 512
+        ['#f777b6', '#b81e69', '#7c0e44', '#ffffff'], // 1024
+        ['#b995fa', '#6234c4', '#3c1a88', '#ffffff'], // 2048
+        ['#66768e', '#1b2330', '#080b12', '#ffd866']  // 4096 and up
     ];
-    const colorsOf = (v) => COLORS[Math.min(COLORS.length - 1, Math.max(0, Math.round(Math.log2(v)) - 1))];
+    const tileColors = (v) => TILE_COLORS[Math.min(TILE_COLORS.length - 1, Math.max(0, Math.round(Math.log2(v)) - 1))];
 
-    function tileSprite(v) {
-        const s = L.tilePx;
-        const key = `${v}@${s}/${G.goal}`;
+    function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }
+
+    // a four-point glint
+    function glint(ctx, x, y, r) {
+        ctx.beginPath();
+        ctx.moveTo(x, y - r);
+        ctx.quadraticCurveTo(x + r * 0.12, y - r * 0.12, x + r, y);
+        ctx.quadraticCurveTo(x + r * 0.12, y + r * 0.12, x, y + r);
+        ctx.quadraticCurveTo(x - r * 0.12, y + r * 0.12, x - r, y);
+        ctx.quadraticCurveTo(x - r * 0.12, y - r * 0.12, x, y - r);
+        ctx.closePath();
+        ctx.fill();
+    }
+
+    // One tile, painted s px square (device pixels): a slab of thick coloured glass. Light comes
+    // through it from below, the upper half carries the room's reflection, a bright spot sits at
+    // the top left, and a rim of light runs round the inside of its edge.
+    function paintTile(ctx, s, v, goal) {
+        const [top, bottom, edge, text] = tileColors(v);
+        const r = s * 0.15;
+        const u = Math.max(1, s * 0.012);
+        ctx.clearRect(0, 0, s, s);
+        roundRect(ctx, 0, 0, s, s, r);
+        ctx.fillStyle = edge;
+        ctx.fill();
+        roundRect(ctx, u, u, s - u * 2, s - u * 2, r - u);
+        const body = ctx.createLinearGradient(0, 0, 0, s);
+        body.addColorStop(0, top);
+        body.addColorStop(0.5, bottom);
+        body.addColorStop(1, edge);
+        ctx.fillStyle = body;
+        ctx.fill();
+        ctx.save();
+        roundRect(ctx, u, u, s - u * 2, s - u * 2, r - u);
+        ctx.clip();
+        // light through the glass, pooling at the bottom
+        const through = ctx.createRadialGradient(s * 0.5, s * 1.08, s * 0.05, s * 0.5, s * 1.08, s * 0.8);
+        through.addColorStop(0, 'rgba(255,255,255,0.62)');
+        through.addColorStop(0.45, 'rgba(255,255,255,0.2)');
+        through.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = through;
+        ctx.fillRect(0, 0, s, s);
+        // the reflection: the upper part, ending in a curve
+        const gloss = ctx.createLinearGradient(0, 0, 0, s * 0.56);
+        gloss.addColorStop(0, 'rgba(255,255,255,0.74)');
+        gloss.addColorStop(0.6, 'rgba(255,255,255,0.2)');
+        gloss.addColorStop(1, 'rgba(255,255,255,0.06)');
+        ctx.fillStyle = gloss;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(s, 0);
+        ctx.lineTo(s, s * 0.36);
+        ctx.quadraticCurveTo(s * 0.5, s * 0.6, 0, s * 0.42);
+        ctx.closePath();
+        ctx.fill();
+        // the bright spot
+        const spot = ctx.createRadialGradient(s * 0.26, s * 0.2, 0, s * 0.26, s * 0.2, s * 0.26);
+        spot.addColorStop(0, 'rgba(255,255,255,0.7)');
+        spot.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = spot;
+        ctx.fillRect(0, 0, s * 0.6, s * 0.5);
+        ctx.restore();
+        // the rim of light inside the edge: bright along the top, faint at the foot
+        roundRect(ctx, u * 1.8, u * 1.8, s - u * 3.6, s - u * 3.6, r - u * 1.8);
+        const rim = ctx.createLinearGradient(0, 0, 0, s);
+        rim.addColorStop(0, 'rgba(255,255,255,0.95)');
+        rim.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+        rim.addColorStop(1, 'rgba(255,255,255,0.5)');
+        ctx.strokeStyle = rim;
+        ctx.lineWidth = u * 1.2;
+        ctx.stroke();
+        if (v >= goal) {
+            // the goal and beyond: a band of gold, and two glints
+            roundRect(ctx, u * 4, u * 4, s - u * 8, s - u * 8, r - u * 3.5);
+            ctx.strokeStyle = 'rgba(255,220,110,0.95)';
+            ctx.lineWidth = u * 2;
+            ctx.stroke();
+            ctx.fillStyle = 'rgba(255,255,255,0.95)';
+            glint(ctx, s * 0.84, s * 0.17, s * 0.09);
+            glint(ctx, s * 0.15, s * 0.82, s * 0.05);
+        }
+        // the number, cut into the glass
+        const label = String(v);
+        const size = s * (label.length <= 2 ? 0.48 : label.length === 3 ? 0.39 : label.length === 4 ? 0.31 : 0.25);
+        ctx.font = '700 ' + size + 'px ' + FONT;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const dark = text === '#1e3a5f';
+        ctx.save();
+        ctx.shadowColor = dark ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.45)';
+        ctx.shadowBlur = dark ? 0 : s * 0.07;
+        ctx.shadowOffsetY = Math.max(1, s * 0.016);
+        ctx.fillStyle = text;
+        ctx.fillText(label, s / 2, s * 0.53);
+        ctx.restore();
+    }
+
+    // the soft shadow a tile throws on the tray (s px across; the tile sits in its middle 10/13)
+    function paintShadow(ctx, s) {
+        const t = s / 1.3;
+        const o = (s - t) / 2;
+        ctx.clearRect(0, 0, s, s);
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,6,24,0.6)';
+        ctx.shadowBlur = t * 0.1;
+        ctx.shadowOffsetY = t * 0.045;
+        roundRect(ctx, o + t * 0.04, o + t * 0.04, t * 0.92, t * 0.92, t * 0.14);
+        ctx.fillStyle = 'rgba(0,6,24,0.55)';
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // The table the glass lies on: deep blue with pools of coloured light, soft discs out of focus,
+    // shafts of light across it and darker corners. w x h px; seed fixes where the discs fall.
+    function paintBackdrop(ctx, w, h) {
+        const base = ctx.createLinearGradient(0, 0, w * 0.3, h);
+        base.addColorStop(0, '#16407f');
+        base.addColorStop(0.5, '#0c2a66');
+        base.addColorStop(1, '#061236');
+        ctx.fillStyle = base;
+        ctx.fillRect(0, 0, w, h);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const pool = (x, y, r, c) => {
+            const g = ctx.createRadialGradient(x * w, y * h, 0, x * w, y * h, r * w);
+            g.addColorStop(0, c);
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = g;
+            ctx.fillRect(0, 0, w, h);
+        };
+        pool(0.12, 0.02, 0.85, 'rgba(96,170,255,0.55)');
+        pool(0.95, 0.3, 0.6, 'rgba(60,220,200,0.2)');
+        pool(0.25, 0.95, 0.7, 'rgba(120,90,255,0.24)');
+        pool(0.8, 1.02, 0.55, 'rgba(40,150,255,0.26)');
+        const rnd = mulberry32(2048);
+        for (let i = 0; i < 16; i++) {
+            const x = rnd() * w;
+            const y = rnd() * h;
+            const r = (0.03 + rnd() * 0.07) * w;
+            const g = ctx.createRadialGradient(x, y, r * 0.55, x, y, r);
+            const a = 0.05 + rnd() * 0.07;
+            g.addColorStop(0, 'rgba(170,215,255,' + a + ')');
+            g.addColorStop(0.9, 'rgba(170,215,255,' + a * 1.3 + ')');
+            g.addColorStop(1, 'rgba(170,215,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(x, y, r, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        for (let i = 0; i < 3; i++) {
+            const x = (0.1 + i * 0.3) * w;
+            const g = ctx.createLinearGradient(x, 0, x + w * 0.22, 0);
+            g.addColorStop(0, 'rgba(255,255,255,0)');
+            g.addColorStop(0.5, 'rgba(255,255,255,0.06)');
+            g.addColorStop(1, 'rgba(255,255,255,0)');
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x + w * 0.22, 0);
+            ctx.lineTo(x + w * 0.22 - h * 0.45, h);
+            ctx.lineTo(x - h * 0.45, h);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+        const dim = ctx.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.35, w / 2, h / 2, Math.max(w, h) * 0.75);
+        dim.addColorStop(0, 'rgba(0,0,0,0)');
+        dim.addColorStop(1, 'rgba(0,4,20,0.5)');
+        ctx.fillStyle = dim;
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    // A pane of frosted glass (the tray, the score panels): x, y, w, h, corner r, in the context's units
+    function paintPane(ctx, x, y, w, h, r, px) {
+        roundRect(ctx, x, y, w, h, r);
+        const g = ctx.createLinearGradient(0, y, 0, y + h);
+        g.addColorStop(0, 'rgba(255,255,255,0.2)');
+        g.addColorStop(0.12, 'rgba(255,255,255,0.08)');
+        g.addColorStop(1, 'rgba(255,255,255,0.04)');
+        ctx.fillStyle = 'rgba(4,14,44,0.42)';
+        ctx.fill();
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,225,255,0.55)';
+        ctx.lineWidth = px;
+        ctx.stroke();
+        // the light caught along its top edge
+        ctx.save();
+        roundRect(ctx, x, y, w, h, r);
+        ctx.clip();
+        const edge = ctx.createLinearGradient(0, y, 0, y + Math.min(h * 0.5, 26 * px));
+        edge.addColorStop(0, 'rgba(255,255,255,0.22)');
+        edge.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = edge;
+        ctx.fillRect(x, y, w, h * 0.5);
+        ctx.restore();
+    }
+
+    // a square of the tray where a tile can lie: sunk, darker, a line of light along its foot
+    function paintWell(ctx, x, y, s) {
+        const r = s * 0.15;
+        roundRect(ctx, x, y, s, s, r);
+        const g = ctx.createLinearGradient(0, y, 0, y + s);
+        g.addColorStop(0, 'rgba(0,6,30,0.5)');
+        g.addColorStop(0.25, 'rgba(6,20,60,0.3)');
+        g.addColorStop(1, 'rgba(40,80,160,0.2)');
+        ctx.fillStyle = g;
+        ctx.fill();
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(0,4,20,0.5)';
+        ctx.lineWidth = s * 0.04;
+        roundRect(ctx, x, y + s * 0.015, s, s, r);
+        ctx.stroke();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(190,220,255,0.16)';
+        ctx.lineWidth = Math.max(1, s * 0.012);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y + s);
+        ctx.lineTo(x + s - r, y + s);
+        ctx.stroke();
+    }
+
+    // A join: a ring of light opening from the tile and eight glints thrown outward. u 0..1 through
+    // its life; x, y the tile's middle, s the tile's size, color the new tile's light tone.
+    function paintBurst(ctx, x, y, s, u, color) {
+        const out = 1 - Math.pow(1 - u, 2);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.max(0, 1 - u) * 0.8;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = s * 0.07 * (1 - u) + 1;
+        ctx.beginPath();
+        ctx.arc(x, y, s * (0.5 + out * 0.42), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        for (let i = 0; i < 8; i++) {
+            const a = i * Math.PI / 4 + 0.4;
+            const d = s * (0.5 + out * 0.55);
+            glint(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d, s * 0.085 * (1 - u) + 0.5);
+        }
+        ctx.restore();
+    }
+
+    function sprite(key, size, paint) {
         let c = sprites.get(key);
         if (c) return c;
         if (sprites.size > 60) sprites.clear();
         c = document.createElement('canvas');
-        c.width = c.height = s;
-        const x = c.getContext('2d');
-        const [face, light, dark, text] = colorsOf(v);
-        const u = Math.max(1, Math.round(L.unit * L.dpr * 0.5)); // one VGA pixel
-        const band = Math.max(u, Math.round(s * 0.07));
-        // outline, corners clipped by one VGA pixel
-        x.fillStyle = '#000';
-        x.fillRect(u, 0, s - u * 2, s);
-        x.fillRect(0, u, s, s - u * 2);
-        x.fillStyle = dark;
-        x.fillRect(u, u, s - u * 2, s - u * 2);
-        x.fillStyle = light;
-        x.fillRect(u, u, s - u * 2 - band, s - u * 2 - band);
-        x.fillStyle = face;
-        x.fillRect(u + band, u + band, s - u * 2 - band * 2, s - u * 2 - band * 2);
-        if (v >= G.goal) {
-            x.strokeStyle = '#ffd400';
-            x.lineWidth = u;
-            x.strokeRect(u + band + u * 1.5, u + band + u * 1.5, s - (u + band) * 2 - u * 3, s - (u + band) * 2 - u * 3);
-        }
-        const label = String(v);
-        const size = Math.round(s * (label.length <= 2 ? 0.46 : label.length === 3 ? 0.36 : label.length === 4 ? 0.28 : 0.22));
-        x.font = `bold ${size}px Tahoma, Verdana, sans-serif`;
-        x.textAlign = 'center';
-        x.textBaseline = 'middle';
-        x.fillStyle = text;
-        x.fillText(label, s / 2, s / 2 + Math.round(size * 0.04));
+        c.width = c.height = size;
+        paint(c.getContext('2d'), size);
         sprites.set(key, c);
         return c;
+    }
+
+    const tileSprite = (v) => sprite(`${v}@${L.tilePx}/${G.goal}`, L.tilePx, (x, s) => paintTile(x, s, v, G.goal));
+    const shadowSprite = () => sprite(`shadow@${L.tilePx}`, Math.round(L.tilePx * 1.3), (x, s) => paintShadow(x, s));
+
+    let layer = null;
+    let layerKey = '';
+
+    /** The table, the tray and its wells for this size of screen and board. */
+    function staticLayer() {
+        const key = `${cv.width}x${cv.height}/${L.n}/${L.ox}/${L.oy}`;
+        if (layer && layerKey === key) return layer;
+        layer = layer || document.createElement('canvas');
+        layer.width = cv.width;
+        layer.height = cv.height;
+        const x = layer.getContext('2d');
+        paintBackdrop(x, layer.width, layer.height);
+        paintPane(x, L.ox, L.oy, L.boardPx, L.boardPx, L.tilePx * 0.16, Math.max(1, L.dpr * 0.5));
+        for (let i = 0; i < L.n * L.n; i++) paintWell(x, cellX(i), cellY(i), L.tilePx);
+        layerKey = key;
+        return layer;
     }
 
     function layout() {
@@ -409,12 +659,10 @@
         const gapPx = Math.max(2, Math.round((n === 5 ? 3 : 4) * unit * dpr));
         const tilePx = Math.floor((side * dpr - gapPx * (n + 1)) / n);
         const boardPx = tilePx * n + gapPx * (n + 1);
-        const cs = getComputedStyle(page);
         L = {
             n, dpr, unit, w, h, gapPx, tilePx, boardPx,
             ox: Math.round((w * dpr - boardPx) / 2),
-            oy: Math.round(Math.min((h * dpr - boardPx) / 2, margin * dpr * 2 + (h * dpr - boardPx) * 0.25)),
-            tint: cs.getPropertyValue('--wm-tint').trim() || '#d6ebce'
+            oy: Math.round(Math.min((h * dpr - boardPx) / 2, margin * dpr * 2 + (h * dpr - boardPx) * 0.25))
         };
         if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
             cv.width = Math.round(w * dpr);
@@ -431,51 +679,56 @@
     function draw() {
         if (!ctx || !L || !G || L.n !== G.n) return;
         const now = performance.now();
-        const u = Math.max(1, Math.round(L.unit * L.dpr * 0.5));
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, cv.width, cv.height);
-        // the board: a black frame around the theme's tint, a white well for every square
-        ctx.fillStyle = '#000';
-        ctx.fillRect(L.ox, L.oy, L.boardPx, L.boardPx);
-        ctx.fillStyle = L.tint;
-        ctx.fillRect(L.ox + u, L.oy + u, L.boardPx - u * 2, L.boardPx - u * 2);
-        for (let i = 0; i < L.n * L.n; i++) {
-            ctx.fillStyle = '#808080';
-            ctx.fillRect(cellX(i), cellY(i), L.tilePx, L.tilePx);
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(cellX(i) + u, cellY(i) + u, L.tilePx - u, L.tilePx - u);
-        }
-        const put = (v, x, y, scale) => {
+        ctx.globalAlpha = 1;
+        ctx.drawImage(staticLayer(), 0, 0);
+        const shadow = shadowSprite();
+        const put = (v, x, y, scale, alpha) => {
             const s = Math.round(L.tilePx * scale);
             const o = Math.round((L.tilePx - s) / 2);
+            ctx.globalAlpha = alpha;
+            if (alpha > 0.5) ctx.drawImage(shadow, Math.round(x + o - s * 0.15), Math.round(y + o - s * 0.15), Math.round(s * 1.3), Math.round(s * 1.3));
             ctx.drawImage(tileSprite(v), Math.round(x) + o, Math.round(y) + o, s, s);
+            ctx.globalAlpha = 1;
         };
         const t = anim ? now - anim.at : 0;
         if (anim && t < SLIDE_MS) {
+            // the tiles as they were, on their way, each trailing a little of itself
             const k = 1 - Math.pow(1 - t / SLIDE_MS, 2);
-            anim.r.slides.forEach((s) => put(s.v, cellX(s.from) + (cellX(s.to) - cellX(s.from)) * k, cellY(s.from) + (cellY(s.to) - cellY(s.from)) * k, 1));
+            const at = (s, u) => [cellX(s.from) + (cellX(s.to) - cellX(s.from)) * u, cellY(s.from) + (cellY(s.to) - cellY(s.from)) * u];
+            anim.r.slides.forEach((s) => {
+                if (s.from === s.to) return;
+                [[0.3, 0.14], [0.15, 0.26]].forEach(([back, alpha]) => { const p = at(s, Math.max(0, k - back)); put(s.v, p[0], p[1], 1, alpha); });
+            });
+            anim.r.slides.forEach((s) => { const p = at(s, k); put(s.v, p[0], p[1], 1, 1); });
         } else {
             const k = anim ? Math.min(1, (t - SLIDE_MS) / POP_MS) : 1;
             const popped = anim ? new Set(anim.r.merges.map((m) => m.tile.id)) : null;
             const spawnId = anim && anim.r.spawn ? anim.r.spawn.tile.id : 0;
             G.cells.forEach((tile, i) => {
                 if (!tile) return;
-                if (anim && tile.id === spawnId) put(tile.v, cellX(i), cellY(i), 0.3 + 0.7 * k);
-                else if (anim && popped.has(tile.id)) put(tile.v, cellX(i), cellY(i), 1 + 0.14 * Math.sin(Math.PI * k));
-                else put(tile.v, cellX(i), cellY(i), 1);
+                if (anim && tile.id === spawnId) put(tile.v, cellX(i), cellY(i), 0.3 + 0.7 * k, k);
+                else if (anim && popped.has(tile.id)) put(tile.v, cellX(i), cellY(i), 1 + 0.14 * Math.sin(Math.PI * k), 1);
+                else put(tile.v, cellX(i), cellY(i), 1, 1);
             });
         }
+        // the light a join throws
+        fx.forEach((f) => {
+            const u = (now - f.at) / BURST_MS;
+            if (u < 0 || u >= 1) return;
+            paintBurst(ctx, cellX(f.cell) + L.tilePx / 2, cellY(f.cell) + L.tilePx / 2, L.tilePx * (f.big ? 1.25 : 1), u, f.color);
+        });
     }
 
     function loop() {
         if (raf) return;
         const step = () => {
             raf = 0;
-            if (!anim) return;
-            if (performance.now() - anim.at >= SLIDE_MS + POP_MS) { settle(); return; }
+            const now = performance.now();
+            if (anim && now - anim.at >= SLIDE_MS + POP_MS) settle();
+            fx = fx.filter((f) => now - f.at < BURST_MS);
             draw();
-            raf = requestAnimationFrame(step);
+            if (anim || fx.length) raf = requestAnimationFrame(step);
         };
         raf = requestAnimationFrame(step);
     }
@@ -604,7 +857,7 @@
             lc.width = lc.height = Math.round(css * dpr);
             const c = lc.getContext('2d');
             const s = Math.floor(lc.width / 2);
-            [[2, 0, 0], [4, s, 0], [8, 0, s], [16, s, s]].forEach(([v, x, y]) => c.drawImage(tileSprite(v), x + 1, y + 1, s - 2, s - 2));
+            [[2, 0, 0], [8, s, 0], [32, 0, s], [128, s, s]].forEach(([v, x, y]) => c.drawImage(tileSprite(v), x + 2, y + 2, s - 4, s - 4));
         });
     }
 
@@ -648,6 +901,7 @@
         // an animation in flight ends at once (a game that just ended still goes into the statistics;
         // its board is there, finished, on the way back)
         if (anim) { const r = anim.r; anim = null; if (r.over) record(); }
+        fx = [];
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         save();
     }
