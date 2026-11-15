@@ -65,6 +65,7 @@ function setState(account, key, value) {
 // ---- folders ----
 
 function putFolder(account, f) {
+    statsChanged(account);
     d().prepare(`INSERT INTO folders (account, path, name, delimiter, special, uidvalidity, total, unseen, updated)
         VALUES (@account, @path, @name, @delimiter, @special, @uidvalidity, @total, @unseen, @now)
         ON CONFLICT(account, path) DO UPDATE SET name = excluded.name, delimiter = excluded.delimiter, special = excluded.special,
@@ -82,6 +83,7 @@ function getFolder(account, p) {
 }
 
 function setFolderSynced(account, p, synced) {
+    statsChanged(account);
     d().prepare('UPDATE folders SET synced = ? WHERE account = ? AND path = ?').run(synced ? 1 : 0, account, p);
 }
 
@@ -93,6 +95,7 @@ function recount(account, p) {
 }
 
 function removeFolder(account, p) {
+    statsChanged(account);
     d().transaction(() => {
         d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ?').run(account, p);
         d().prepare('DELETE FROM messages WHERE account = ? AND folder = ?').run(account, p);
@@ -102,6 +105,7 @@ function removeFolder(account, p) {
 
 /** UIDVALIDITY changed at the server: the folder's copy is void. */
 function clearFolder(account, p) {
+    statsChanged(account);
     d().transaction(() => {
         d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ?').run(account, p);
         d().prepare('DELETE FROM messages WHERE account = ? AND folder = ?').run(account, p);
@@ -112,6 +116,7 @@ function clearFolder(account, p) {
 
 /** rows: [{ uid, msgid, date, sender, recipients, subject, flags[], size, snippet, att[], env{}, text, html, body }] */
 function putMessages(account, folder, rows) {
+    statsChanged(account);
     const ins = d().prepare(`INSERT INTO messages (account, folder, uid, msgid, date, sender, recipients, subject, flags, seen, flagged, size, snippet, has_att, env, att, text, html, body)
         VALUES (@account, @folder, @uid, @msgid, @date, @sender, @recipients, @subject, @flags, @seen, @flagged, @size, @snippet, @has_att, @env, @att, @text, @html, @body)
         ON CONFLICT(account, folder, uid) DO UPDATE SET msgid = excluded.msgid, date = excluded.date, sender = excluded.sender, recipients = excluded.recipients,
@@ -150,6 +155,7 @@ function flagMap(account, folder) {
 }
 
 function deleteMessages(account, folder, list) {
+    statsChanged(account);
     if (!list || !list.length) return 0;
     const delM = d().prepare('DELETE FROM messages WHERE account = ? AND folder = ? AND uid = ?');
     const delF = d().prepare('DELETE FROM messages_fts WHERE account = ? AND folder = ? AND uid = ?');
@@ -192,13 +198,24 @@ function search(term, { account = null, limit = 40 } = {}) {
     return d().prepare(sql).all(...args);
 }
 
+// An account's counts, kept until one of the writes below changes them (#849). Each call walked
+// every message row of the account (~80 ms on the server's main thread for a large mailbox), and
+// every listing of the accounts asks for every account's: each client's boot and each mail push.
+const statsKept = new Map();
+function statsChanged(account) { statsKept.delete(account); }
+
 function stats(account) {
+    const kept = statsKept.get(account);
+    if (kept) return { ...kept };
     const m = d().prepare('SELECT COUNT(*) AS n, SUM(CASE WHEN body = 1 THEN 1 ELSE 0 END) AS b FROM messages WHERE account = ?').get(account);
     const f = d().prepare('SELECT COUNT(*) AS n, SUM(synced) AS s FROM folders WHERE account = ?').get(account);
-    return { messages: m.n || 0, bodies: m.b || 0, folders: f.n || 0, syncedFolders: f.s || 0 };
+    const out = { messages: m.n || 0, bodies: m.b || 0, folders: f.n || 0, syncedFolders: f.s || 0 };
+    statsKept.set(account, out);
+    return { ...out };
 }
 
 function forgetAccount(account) {
+    statsChanged(account);
     d().transaction(() => {
         for (const t of ['messages_fts', 'messages', 'folders', 'state']) d().prepare(`DELETE FROM ${t} WHERE account = ?`).run(account);
     })();
@@ -210,7 +227,7 @@ function sizeOnDisk() {
     return n;
 }
 
-function _close() { if (db) { db.close(); db = null; } }
+function _close() { statsKept.clear(); if (db) { db.close(); db = null; } }
 
 module.exports = {
     open, getState, setState, putFolder, listFolders, getFolder, setFolderSynced, recount, removeFolder, clearFolder,
