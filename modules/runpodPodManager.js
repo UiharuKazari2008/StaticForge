@@ -250,10 +250,12 @@ class RunpodPodManager {
         if (this._tickBusy) return;
         this._tickBusy = true;
         try {
-            const before = JSON.stringify(this._snapshot);
+            // fetchedAt is the read's own clock: it made every tick a "change" (rule server-push-not-polling)
+            const key = (s) => { const { fetchedAt: _f, ...rest } = s || {}; return JSON.stringify(rest); };
+            const before = key(this._snapshot);
             const snap = await this.getSnapshot({ refresh: true });
             await this._maybeAutoStop(snap);
-            const after = JSON.stringify(this._snapshot);
+            const after = key(this._snapshot);
             if (after !== before) {
                 this.broadcast();
             }
@@ -269,7 +271,8 @@ class RunpodPodManager {
                 type: 'runpod_pods_status_update',
                 data: this._snapshot,
                 timestamp: new Date().toISOString()
-            }, (clientInfo) => !!(clientInfo && clientInfo.authenticated));
+            // Melaton Mobile shows no RunPod tray: phones never get it
+            }, (clientInfo) => !!(clientInfo && clientInfo.authenticated && !(clientInfo.phone && clientInfo.phone.shell === 'mobile')));
         } catch (_err) {
             // WebSocket server not ready yet
         }
