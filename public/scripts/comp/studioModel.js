@@ -34,6 +34,7 @@
  *                                       steps, print, prints, frame, files[] }
  *   studioModel.prints()                this visit's finished prints, oldest first (file names)
  *   studioModel.forget(filename)        drop a print from that list (it was scrapped or deleted)
+ *   studioModel.heldPicture(filename)   an in-memory address of that print's picture while Studio holds it
  *   studioModel.select(filename)        make a print the one Studio's picture actions work on
  *   studioModel.action(name)            a picture action on the selected print (the desktop's own handler)
  *   studioModel.on(type, fn) / off      'change' (the session changed), 'start', 'progress', 'end'
@@ -460,6 +461,16 @@
         return (p && (p.filename || p.upscaled || p.original)) || '';
     }
 
+    /**
+     * The picture Studio already holds in memory for a print (the one a generation just delivered):
+     * an address that shows at once, with no request. '' when Studio holds another picture.
+     */
+    function heldPicture(filename) {
+        const img = el('manualPreviewImage');
+        const src = img ? (img.getAttribute('src') || '') : '';
+        return filename && previewName() === filename && /^blob:/.test(src) ? src : '';
+    }
+
     async function generate() {
         if (!ready() || generating() || (current && current.active)) return current;
         wire();
@@ -522,6 +533,7 @@
             if (j >= 0) { current.files.splice(j, 1); current.prints = Math.max(1, current.prints - 1); }
         },
         selected: previewName,
+        heldPicture,
         generating,
         has,
         stepPreviewSize: null,

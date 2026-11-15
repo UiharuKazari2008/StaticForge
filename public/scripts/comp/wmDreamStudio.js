@@ -103,8 +103,31 @@
         return typeof localGalleryPreviewUrl === 'function' ? localGalleryPreviewUrl(`${stem(f)}.webp`) : `/previews/${encodeURIComponent(stem(f))}.webp`;
     }
 
+    // a print asked for the instant it is saved can beat the server's display copy of it (seen on
+    // the A53: the first request failed, the same address answered a moment later): its address is
+    // asked again a few times, then the saved picture itself stands in
+    const pictureTries = new Map();
+    const pictureFull = new Set();
+
+    function pictureFailed(img) {
+        const f = img.dataset.file;
+        const src = img.getAttribute('src') || '';
+        if (!f || src.startsWith('data:') || pictureFull.has(f)) return;
+        // an in-memory address Studio has since let go of: the picture's own address takes over
+        if (src.startsWith('blob:')) { if (img.isConnected) img.src = pictureUrl(f); return; }
+        const n = (pictureTries.get(f) || 0) + 1;
+        pictureTries.set(f, n);
+        if (n > 3) { pictureFull.add(f); if (img.isConnected) img.src = pictureUrl(f); return; }
+        setTimeout(() => { if (img.isConnected && img.dataset.file === f) img.src = `${pictureUrl(f)}${pictureUrl(f).includes('?') ? '&' : '?'}again=${n}`; }, 600);
+    }
+
     function pictureUrl(f) {
         if (!f) return '';
+        // the print a generation just delivered is in memory: no request, it shows at once (on the A53
+        // picture requests stood still for some seconds after a print)
+        const held = M && typeof M.heldPicture === 'function' ? M.heldPicture(f) : '';
+        if (held) return held;
+        if (pictureFull.has(f)) return typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(f) : `/images/${encodeURIComponent(f)}`;
         const studio = typeof localStudioPreviewUrl === 'function' ? localStudioPreviewUrl(f) : '';
         if (studio) return studio;
         return typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(f) : `/images/${encodeURIComponent(f)}`;
@@ -459,7 +482,7 @@
             for (let i = 0; i < r.prints; i += 1) {
                 const f = r.files[i];
                 const live = !f && active && i === r.files.length && r.frame;
-                cells.push(`<button type="button" data-file="${esc(f || '')}"${f ? '' : ' disabled'}>${f ? `<img alt="" src="${esc(pictureUrl(f))}">` : (live ? `<img alt="" src="${esc(r.frame)}">` : esc(String(i + 1)))}</button>`);
+                cells.push(`<button type="button" data-file="${esc(f || '')}"${f ? '' : ' disabled'}>${f ? `<img alt="" data-file="${esc(f)}" src="${esc(pictureUrl(f))}">` : (live ? `<img alt="" src="${esc(r.frame)}">` : esc(String(i + 1)))}</button>`);
             }
             // as many columns as keep the cells near the screen's own shape
             const tall = stage.clientHeight >= stage.clientWidth;
@@ -471,7 +494,13 @@
         }
         const f = shownPrint();
         const src = many ? '' : (active ? (r.frame || pictureUrl(f)) : pictureUrl(f));
-        if (src) { if (img.getAttribute('src') !== src) img.src = src; img.hidden = false; } else { img.hidden = true; img.removeAttribute('src'); }
+        const live = active && !!r.frame;
+        const key = live ? '' : (src ? f : '');
+        if (src) {
+            if (live ? img.getAttribute('src') !== src : (img.dataset.file !== key || !img.getAttribute('src') || img.getAttribute('src').startsWith('data:'))) img.src = src;
+            img.dataset.file = key;
+            img.hidden = false;
+        } else { img.hidden = true; img.removeAttribute('src'); img.dataset.file = ''; }
         img.style.opacity = active && !r.frame && !many ? '0.35' : '';
         empty.hidden = !!src || many;
         status.hidden = !active;
@@ -1081,6 +1110,8 @@
             else if (e.target.tagName === 'IMG') viewFull();
         });
         stage.addEventListener('pointercancel', () => { downX = null; });
+        // 'error' does not bubble: caught on the way down
+        stage.addEventListener('error', (e) => { if (e.target && e.target.tagName === 'IMG') pictureFailed(e.target); }, true);
     }
 
     // ---------------------------------------------------------------- the desktop Studio behind it
