@@ -2324,6 +2324,7 @@ function studioIsPreviewMenuAction(action) {
         || action === 'expand-canvas'
         || action === 'enhance'
         || action === 'upscale'
+        || action === 'create-animation'
         || action === 'start-chat'
         || action === 'copy-lookback'
         || action === 'ask-wren'
@@ -2579,6 +2580,14 @@ function handleImageGenerationSettingsMenuAction(action, target, item) {
         }
         return true;
     }
+    if (action === 'studio-stop-generation') {
+        // The print in hand is given up here; Rentan's own overlay goes with it (manualModalManager.js)
+        if (window.wsClient && typeof window.wsClient.cancelClientImageGeneration === 'function') {
+            window.wsClient.cancelClientImageGeneration();
+        }
+        if (typeof hideDynamicGenerationProgressOverlayImmediate === 'function') hideDynamicGenerationProgressOverlayImmediate();
+        return true;
+    }
     if (action === 'studio-stage-results') {
         // stageResultsReviewManager: public/scripts/comp/stageResultsReview.js
         void stageResultsReviewManager.openFromStudio();
@@ -2790,6 +2799,14 @@ function studioMenuBarItems(menu) {
     }
     if (menu === 'Generate') {
         return [
+            {
+                icon: 'fas fa-stop',
+                text: 'Stop',
+                action: 'studio-stop-generation',
+                // isGenerating: public/scripts/comp/generationOrchestrator.js
+                disabled: function () { return !isGenerating; }
+            },
+            sep,
             ...studioToggleRowsFromIcons(),
             sep,
             ...studioPickMenuRows(getStudioEditMenuItems(), ['Recent Seeds']),

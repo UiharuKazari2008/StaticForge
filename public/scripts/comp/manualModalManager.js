@@ -127,7 +127,6 @@ const manualPreviewCloseBtn = document.getElementById('manualPreviewCloseBtn');
 // presetSelect (Spellbook's hidden preset field) is no longer captured here: Spellbook's window
 // comes from templates/spellbook.html with its feature (#817); generationOrchestrator.js looks it up.
 const gallery = document.getElementById('gallery');
-const cacheGallery = document.getElementById('cacheGallery');
 const confettiContainer = document.getElementById('confettiContainer');
 
 const PRINTS_COUNT_STORAGE_KEY = 'studioPrintsCount';
@@ -272,7 +271,6 @@ const manualNoiseOverlay = manualNoiseValue?.parentElement?.querySelector('.perc
 const manualPresetPlaceholder = document.getElementById('manualPresetPlaceholder');
 const manualPresetPlaceholderText = document.getElementById('manualPresetPlaceholderText');
 const loadSeedBtn = document.getElementById('loadSeedBtn');
-const manualPresetManagerBtn = document.getElementById('manualPresetManagerBtn');
 const manualPreviewImage = document.getElementById('manualPreviewImage');
 const manualPreviewImageContainerInner = document.getElementById('manualPreviewImageContainerInner');
 const textReplacementLockBtn = document.getElementById('textReplacementLockBtn');
@@ -299,14 +297,11 @@ const todBtn = document.getElementById('todBtn');
 const weatherBtn = document.getElementById('weatherBtn');
 const seasonBtn = document.getElementById('seasonBtn');
 const creativeBtn = document.getElementById('creativeBtn');
-const dynamicGenerationUndoBtn = document.getElementById('dynamicGenerationUndoBtn');
 const dynamicCarousel = document.getElementById('dynamicCarousel');
 
 // Director Reference Elements
 const directorReferenceSection = document.getElementById('directorReferenceSection');
-const directorReferenceGroup = document.getElementById('directorReferenceGroup');
 const directorReferenceImage = document.getElementById('directorReferenceImage');
-const addDirectorReferenceBtn = document.getElementById('addDirectorReferenceBtn');
 const clearDirectorReferenceBtn = document.getElementById('clearDirectorReferenceBtn');
 const directorReferenceStyleBtn = document.getElementById('directorReferenceStyleBtn');
 const directorReferenceFidelityInput = document.getElementById('directorReferenceFidelityInput');
@@ -5319,6 +5314,9 @@ async function handleManualGeneration(e, options = {}) {
 
         if (!requestBody.image) {
             showError('No source image found for variation');
+            isGenerating = false;
+            updateImageGenerationIndicator();
+            updateManualGenerateBtnState();
             return;
         }
 

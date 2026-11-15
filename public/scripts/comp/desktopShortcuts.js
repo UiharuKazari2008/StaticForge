@@ -2656,10 +2656,25 @@ class DesktopShortcutsManager {
                 mask_compressed: requestBody.mask_compressed,
                 strength: requestBody.strength,
                 noise: requestBody.noise,
-                variety: requestBody.variety
+                variety: requestBody.variety,
+                input_prompt_negative: requestBody.input_prompt_negative
             };
 
             await openManualModalWithContent({ type: 'metadata', data: metadata });
+            // What the form loader does not take from a request: print count, effort and the
+            // prompt syntax options (manualModalManager.js, promptTextareaToolbar.js)
+            const prints = parseInt(requestBody.n, 10);
+            if (typeof setManualPrintsCount === 'function') setManualPrintsCount(prints > 1 ? Math.min(8, prints) : 1);
+            if (requestBody.effort && typeof setManualEffort === 'function') setManualEffort(requestBody.effort);
+            if (requestBody.keep_newlines !== undefined) window.keepPromptNewlines = !!requestBody.keep_newlines;
+            if (requestBody.bake_newlines !== undefined) window.bakePromptNewlines = !!requestBody.bake_newlines && !!window.keepPromptNewlines;
+            if (requestBody.auto_char_numerize !== undefined) window.autoCharNumerize = !!requestBody.auto_char_numerize;
+            if (requestBody.prompt_normalize !== undefined) window.promptNormalize = !!requestBody.prompt_normalize;
+            if (requestBody.deduplicate_tags !== undefined) window.deduplicateTags = !!requestBody.deduplicate_tags;
+            if (window.promptTextareaToolbar && typeof window.promptTextareaToolbar.syncKeepNewlinesButtons === 'function') {
+                window.promptTextareaToolbar.syncKeepNewlinesButtons();
+            }
+            if (typeof updatePromptStatusIcons === 'function') updatePromptStatusIcons();
         } catch (error) {
             console.error('Failed to open request in editor:', error);
             showGlassToast('error', 'Error', 'Failed to load request', false, 5000, '<i class="fas fa-exclamation-triangle"></i>');

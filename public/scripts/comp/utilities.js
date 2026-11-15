@@ -1177,14 +1177,13 @@ function updateV3ModelVisibility() {
     }
 
     // V5: hide vibe / precise reference surfaces when caps say so
-    const vibeSection = document.getElementById('vibeReferencesSection')
-        || document.getElementById('vibeTransferSection')
-        || document.querySelector('.vibe-references-section');
+    // The vibe rows' holder (app.html); referenceManager.js shows it only while it has rows
+    const vibeSection = document.getElementById('vibeReferencesContainer');
     const directorSection = document.getElementById('directorReferenceSection');
     if (vibeSection) {
         if (caps && caps.vibeTransfer === false) {
             vibeSection.classList.add('hidden');
-        } else if (!isV3Selected) {
+        } else if (!isV3Selected && vibeSection.querySelector('.vibe-reference-item')) {
             vibeSection.classList.remove('hidden');
         }
     }
