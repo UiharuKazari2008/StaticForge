@@ -119,6 +119,7 @@
     const running = () => { const r = M && M.run(); return !!(r && r.active); };
 
     function view() {
+        if (String(top() || '').startsWith('x:')) return top();
         if (top() === 'editor') return 'editor';
         if (top() === 'presets') return 'presets';
         if (top() === 'ref') return 'ref';
@@ -249,10 +250,14 @@
             drawTokens(id, text, $(`.wds-label[data-for="${id}"] > span:last-child`));
         });
         drawChars(s);
-        drawRefs(s);
-        const none = $('.wds-refs-none');
-        if (none) none.hidden = !!((s.references || []).length || s.hasBaseImage);
-        drawInspector(s);
+        // a part of its own may draw a tab's pane (wmDreamStudio.extend: reg.pane)
+        const xpane = (id) => { const spec = ext.panes[id]; const el = page.querySelector(`.wds-tabpane[data-tab="${id}"]`); if (!spec || !el) return false; try { spec.draw(el, api); } catch (err) { console.warn('[wmDreamStudio] pane', id, err); } return true; };
+        if (!xpane('refs')) {
+            drawRefs(s);
+            const none = $('.wds-refs-none');
+            if (none) none.hidden = !!((s.references || []).length || s.hasBaseImage);
+        }
+        if (!xpane('inspector')) drawInspector(s);
         const base = $('.wds-base');
         if (base) {
             base.hidden = !s.hasBaseImage;
@@ -509,7 +514,9 @@
         if (!shown) { stale = true; return; }
         stale = false;
         const v = view();
-        page.dataset.view = v;
+        page.dataset.view = v.startsWith('x:') ? 'x' : v;
+        page.dataset.xview = v.startsWith('x:') ? v.slice(2) : '';
+        page.querySelectorAll('.wds-xview').forEach((el) => el.classList.toggle('is-current', v === `x:${el.dataset.xview}`));
         const box = v === 'editor' ? boxOf(edField) : null;
         page.dataset.ed = v === 'editor' ? (box ? 'box' : 'own') : '';
         page.querySelectorAll('.wds-field').forEach((b) => b.classList.toggle('is-editing', b === box));
@@ -517,12 +524,19 @@
         if (v === 'presets') drawPresets();
         if (v === 'ref') drawRef();
         hlDraw();
+        if (v.startsWith('x:')) {
+            const spec = ext.views[v.slice(2)];
+            const el = page.querySelector(`.wds-xview[data-xview="${v.slice(2)}"]`);
+            if (spec && el && spec.draw) { try { spec.draw(el, api); } catch (err) { console.warn('[wmDreamStudio] view', v, err); } }
+        }
         if (v === 'home' || v === 'print') drawGenbar();
         else if (ui) ui.closePopPanels();
         drawTabs();
-        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'ref' ? 'Reference' : v === 'presets' ? 'Open Preset' : 'DreamStudio'));
+        const xspec = v.startsWith('x:') ? ext.views[v.slice(2)] : null;
+        sh.setTitle(xspec ? (typeof xspec.title === 'function' ? xspec.title() : xspec.title || 'DreamStudio') : v === 'editor' ? fieldName(edField) : (v === 'ref' ? 'Reference' : v === 'presets' ? 'Open Preset' : 'DreamStudio'));
         sh.refreshTitleAction();
         sh.refreshSoftKeys();
+        extHook('paint', v);
     }
 
     // ---------------------------------------------------------------- changes
@@ -808,6 +822,8 @@
             '-',
             { label: 'Reset Emphasis...', disabled: !hasGroups, action: resetEmphasis }
         );
+        const more = extRows('toolbox');
+        if (more.length) rows.push('-', ...more);
         sh.dropdown(btn, rows, 'left');
     }
 
@@ -1850,6 +1866,86 @@
         });
     }
 
+    // ---------------------------------------------------------------- extensions
+    //
+    // Parts of DreamStudio that live in files of their own (#860 migration, Nov 16): each calls
+    //   wmDreamStudio.extend(name, (api, reg) => { ... })
+    // and gets the program's helpers (api) and the places it can fill (reg):
+    //   reg.pane(tabId, { draw(el, api) })      draws a home tab's pane in place of the built-in one
+    //                                          ('refs', 'inspector', or 'prompt' extras: see below)
+    //   reg.view(name, { title, mount(el), draw(el), softKeys(), menu() })
+    //                                          a full page of its own; api.openView(name) shows it,
+    //                                          ok / Back steps out of it
+    //   reg.menu(section, () => rows)          menu rows added to a section: 'main' (Menu), 'add'
+    //                                          (Menu > Add), 'print' (the print's rows), 'toolbox'
+    //                                          (the editor's toolbox), 'editor' (the editor's Menu)
+    //   reg.hook(event, fn)                    'paint' (after every paint: fn(view)), 'show', 'hide'
+    // Everything a part reads or changes in Studio goes through api.M (studioModel), as here.
+
+    const ext = { panes: {}, views: {}, menus: { main: [], add: [], print: [], toolbox: [], editor: [] }, hooks: { paint: [], show: [], hide: [] }, pending: [] };
+    const extRows = (section) => {
+        const out = [];
+        ext.menus[section].forEach((fn) => { try { const rows = fn(); if (Array.isArray(rows) && rows.length) out.push(...rows); } catch (err) { console.warn('[wmDreamStudio] menu', section, err); } });
+        return out;
+    };
+    const extHook = (event, arg) => ext.hooks[event].forEach((fn) => { try { fn(arg); } catch (err) { console.warn('[wmDreamStudio] hook', event, err); } });
+
+    const api = {
+        get M() { return M; },
+        get ui() { return ui; },
+        get sh() { return sh; },
+        get page() { return page; },
+        get tab() { return tab; },
+        esc,
+        toolIcon,
+        $,
+        read,
+        /** Forget the cached snapshot (after a change made behind the model's back). */
+        refresh() { snap = null; },
+        change,
+        paint,
+        view: () => view(),
+        openDlg,
+        closeDlg,
+        dlgJog,
+        weightJog,
+        thumbUrl,
+        pictureUrl,
+        choosePicture,
+        openEditor,
+        edArea,
+        fieldValue,
+        fieldSet,
+        fieldName,
+        WEIGHT_RE,
+        weightAt,
+        fmtWeight,
+        setTab(id) { tab = id; layers = []; paint(); sh.syncHistory(); },
+        openView(name) { if (!ext.views[name]) return; if (top() !== `x:${name}`) layers.push(`x:${name}`); paint(); sh.syncHistory(); },
+        closeView() { if (String(top()).startsWith('x:')) popLayer(); }
+    };
+
+    function extend(name, setup) {
+        if (!page || !sh) { ext.pending.push([name, setup]); return; }
+        const reg = {
+            pane(id, spec) { ext.panes[id] = spec; },
+            view(vname, spec) {
+                ext.views[vname] = spec;
+                const body = $('.wds-body');
+                if (body && !body.querySelector(`.wds-xview[data-xview="${vname}"]`)) {
+                    const el = document.createElement('div');
+                    el.className = 'wds-pane wds-xview';
+                    el.dataset.xview = vname;
+                    body.appendChild(el);
+                    try { if (spec.mount) spec.mount(el, api); } catch (err) { console.warn('[wmDreamStudio] view', vname, err); }
+                }
+            },
+            menu(section, fn) { if (ext.menus[section]) ext.menus[section].push(fn); },
+            hook(event, fn) { if (ext.hooks[event]) ext.hooks[event].push(fn); }
+        };
+        try { setup(api, reg); } catch (err) { console.warn('[wmDreamStudio] extension', name, err); }
+    }
+
     // ---------------------------------------------------------------- menus / keys
 
     function newSession() {
@@ -1878,7 +1974,8 @@
             { label: 'Properties', disabled: none, action: () => printAction('view-image-data') },
             '-',
             { label: 'Scrap', disabled: none, action: () => printAction('scrap-preview', true) },
-            { label: 'Delete', disabled: none, action: deletePrint }
+            { label: 'Delete', disabled: none, action: deletePrint },
+            ...(() => { const r = extRows('print'); return r.length ? ['-', ...r] : []; })()
         ];
     }
 
@@ -1891,13 +1988,16 @@
         const s = read();
         rows.push({ label: 'Upscale Each Print', checked: !!s.upscale, action: () => change('upscale', !s.upscale).then(paint) });
         rows.push({ label: 'Syntax Handling...', action: syntaxDialog });
-        rows.push({ label: 'Weight Rack...', action: () => { openEditor('prompt'); setTimeout(() => { const b = $('.wds-toolbar [data-ed="toolbox"]'); if (b) weightRack(b); }, 120); } });
         rows.push('-');
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
         if (M.options().has.references) rows.push({ label: 'Add Reference...', action: addReference });
         rows.push({ label: 'Base Image...', action: () => (read().hasBaseImage ? baseDialog() : chooseBase()) });
         if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
+        const add = extRows('add');
+        if (add.length) rows.push({ label: 'Add', submenu: () => extRows('add') });
         rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Picture...', action: openPictureSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs }, ...syncRows());
+        const more = extRows('main');
+        if (more.length) rows.push('-', ...more);
         return rows;
     }
 
@@ -1919,10 +2019,17 @@
         ];
         const c = charOf(edField);
         if (c) rows.push('-', { label: 'Rename Character...', action: () => renameCharacter(c.index) }, { label: 'Remove Character', action: () => removeCharacter(c.index) });
+        const more = extRows('editor');
+        if (more.length) rows.push('-', ...more);
         return rows;
     }
 
     function softKeys() {
+        const xspec = String(top() || '').startsWith('x:') ? ext.views[String(top()).slice(2)] : null;
+        if (xspec) {
+            if (typeof xspec.softKeys === 'function') return xspec.softKeys();
+            return { left: { label: 'Done', action: popLayer }, right: { label: 'Menu', menu: () => (typeof xspec.menu === 'function' ? xspec.menu() : mainMenu()) } };
+        }
         if (top() === 'editor') return { left: { label: 'Done', action: closeEditor }, right: { label: 'Menu', menu: editorMenu } };
         if (top() === 'ref') return { left: { label: 'Done', action: popLayer }, right: { label: 'Remove', action: removeReference } };
         // a list to pick from, a page at a time: a tap opens, the keys turn the pages, ok backs out
@@ -2161,10 +2268,13 @@
             M.ownsPrints = true;
             wrapEntryPoints();
             snap = null;
+            // parts that asked to join before the page was there join now
+            if (ext.pending.length) { const list = ext.pending.splice(0); list.forEach(([n, f]) => extend(n, f)); }
+            extHook('show');
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
-        hide() { shown = false; if (ui) { ui.closePopPanels(); ui.closePad(); } closeQa(false); closeSize(); closeDlg(); },
+        hide() { extHook('hide'); shown = false; if (ui) { ui.closePopPanels(); ui.closePad(); } closeQa(false); closeSize(); closeDlg(); },
         historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0) + (qaDlg ? 1 : 0) + (szDlg ? 1 : 0) + (dlg ? 1 : 0) + (ui && ui.padOpen() ? 1 : 0),
         onBack: () => ((ui && ui.closePad()) || (qaDlg ? qaBack() : closeSize() || closeDlg() || (ui && ui.closePopPanel()) || popLayer())),
         titleKind: () => (layers.length ? 'ok' : 'close'),
@@ -2233,7 +2343,7 @@
 
     // wmStudio.js stands aside for this program when the switch is on, and other programs' "show the
     // prompt" (Phasewalker's Compile) lands here
-    window.wmDreamStudio = { active: NEXT, show(name) { if (!NEXT || !sh) return; layers = name === 'print' ? ['print'] : []; tab = 'prompt'; sh.open(APP_ID); paint(); } };
+    window.wmDreamStudio = { active: NEXT, extend, show(name) { if (!NEXT || !sh) return; layers = name === 'print' ? ['print'] : []; tab = 'prompt'; sh.open(APP_ID); paint(); } };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });
