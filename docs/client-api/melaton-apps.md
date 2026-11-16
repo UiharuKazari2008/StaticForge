@@ -173,6 +173,41 @@ The flow:
 `client.owns` (system packages only, up to 16 CSS selectors) names DOM the app owns besides its
 tagged windows, for things it builds outside `app.openWindow` / `overlay` / `tray`.
 
+Helpers for code that is not `start(app)`:
+
+| | |
+| --- | --- |
+| `melatonApps.packageSignal()` | At a package's top level: its own AbortSignal (ends when the package is unloaded), for package-level listeners and fetches |
+| `melatonSegments.callerSignal()` | In a shared helper that builds something for an app (the Vista games engine wiring a game window's keys): the calling app's signal, or null for page-lifetime callers |
+| `melatonSegments.windowsOf(key)` / `report()` | An app's windows on screen; every segment and whether it was reclaimed |
+
+A window a shared helper builds for an app (found from the call stack when it is appended to
+`<body>`) belongs to that app: the update waits for it and it goes with the old copy.
+
+### Hot features
+
+featureLoader features update live too when their `FEATURE_MANIFEST` entry says `hot: true`
+(35 so far: the Vista games, Paint, Charmap, Media Player, MMC snap-ins ...). Their scripts load as one
+segment that owns their template markup; their stylesheets stay page stylesheets (features share
+them). An update to a hot feature's scripts or template is a `segments` update
+(`serviceWorkerManager.applySegmentUpdate`): CSS applies live and `featureLoader.swapFeature`
+unloads and reloads the feature, waiting while one of its windows is open.
+
+A feature may be marked hot only when `node scripts/check-app-scope.js --features` lists it (no other
+file, none of its own other scripts and not its template uses a name it puts on the page implicitly;
+nothing depends on it; it overrides nothing shared) **and** it passed a live swap (loaded, swapped, old
+copy reclaimed, no exceptions). `--features` exits 1 when a hot feature stops being eligible. Rule:
+`.cursor/rules/app-scope-ownership.mdc`.
+
+### Update history
+
+Melaton Update > View update history (Vista's "Review your update history") lists live updates
+(`Update for <program>`, Recommended) and the updates a restart installed (`Melaton update (n files)`,
+Important), newest first, from `serviceWorkerManager.updateHistory()` (localStorage
+`melatonUpdateHistory`, 200 rows). An update that waits for a program shows one Melaton Update tray
+balloon ("Update waiting: <program> will finish updating when you close it.") and a waiting row that
+turns Successful when it installs.
+
 Static files follow the same idea (`serviceWorkerManager.classifyStaticCacheUpdate`): a changed file
 this page never fetched (app.html records every same-origin resource) and no `<script>` / `<link>` or
 loaded feature uses is `unused`, and applies without a restart. Only files the page runs decide
