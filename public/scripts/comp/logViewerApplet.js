@@ -2040,3 +2040,7 @@ class LogViewerApplet {
 
 const logViewerApplet = new LogViewerApplet();
 logViewerApplet.init();
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+window.logViewerApplet = logViewerApplet;

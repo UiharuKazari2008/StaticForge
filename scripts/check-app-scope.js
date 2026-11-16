@@ -190,7 +190,10 @@ function scanFile(rel) {
         walk.simple(ast, {
             AssignmentExpression(n) {
                 const d = dotted(n.left);
-                if (d && /^(window|globalThis|self)\.[A-Za-z_$][\w$]*$/.test(d)) add('page-global', n, d);
+                if (!d || !/^(window|globalThis|self)\.[A-Za-z_$][\w$]*$/.test(d)) return;
+                // window.x = x re-exports a top-level name on purpose (counted once, as the declaration)
+                if (n.right.type === 'Identifier' && n.right.name === d.split('.')[1]) return;
+                add('page-global', n, d);
             }
         });
     }
@@ -217,19 +220,28 @@ function featureManifest() {
 function topLevelNames(rel) {
     const src = fs.readFileSync(path.join(root, rel), 'utf8');
     const ast = parse(src);
-    const names = new Map();
-    if (ast.sourceType !== 'script') return names;
+    const names = new Map(); // name -> exported (bool)
+    const kinds = new Map(); // name -> 'function' | 'class' | 'const' | 'let' | 'var'
+    if (ast.sourceType !== 'script') { names.kinds = kinds; return names; }
     for (const st of ast.body) {
-        if (st.type === 'VariableDeclaration') st.declarations.forEach((d) => { if (d.id && d.id.name) names.set(d.id.name, false); });
-        else if ((st.type === 'FunctionDeclaration' || st.type === 'ClassDeclaration') && st.id) names.set(st.id.name, false);
+        if (st.type === 'VariableDeclaration') st.declarations.forEach((d) => { if (d.id && d.id.name) { names.set(d.id.name, false); kinds.set(d.id.name, st.kind); } });
+        else if ((st.type === 'FunctionDeclaration' || st.type === 'ClassDeclaration') && st.id) { names.set(st.id.name, false); kinds.set(st.id.name, st.type === 'ClassDeclaration' ? 'class' : 'function'); }
     }
     walk.simple(ast, {
         AssignmentExpression(n) {
             const d = dotted(n.left);
             const m = d && /^(window|globalThis|self|root)\.([A-Za-z_$][\w$]*)$/.exec(d);
             if (m) names.set(m[2], true);
+        },
+        // Object.defineProperty(window, 'x', ...): exported too (a live getter for a let / var)
+        CallExpression(n) {
+            if (dotted(n.callee) !== 'Object.defineProperty') return;
+            const target = dotted(n.arguments[0]);
+            const key = literalOf(n.arguments[1]);
+            if (key && /^(window|globalThis|self|root)$/.test(target || '')) names.set(key, true);
         }
     });
+    names.kinds = kinds;
     return names;
 }
 
@@ -251,6 +263,7 @@ function featureReport() {
     const rows = [];
     for (const [name, f] of Object.entries(manifest)) {
         const blockers = [];
+        const exportsNeeded = [];
         let overrides = 0;
         for (const s of f.scripts || []) {
             const rel = `public/${s}`;
@@ -262,14 +275,20 @@ function featureReport() {
                 if (exported) continue; // put on the page on purpose: a segment keeps that working
                 // each script runs in its own scope: the feature's other scripts and its template count too
                 const users = Array.from(words.get(n) || []).filter((u) => u !== rel);
-                if (users.length) blockers.push(`${n} <- ${users.slice(0, 3).join(', ')}${users.length > 3 ? ` +${users.length - 3}` : ''}`);
+                if (users.length) {
+                    blockers.push(`${n} <- ${users.slice(0, 3).join(', ')}${users.length > 3 ? ` +${users.length - 3}` : ''}`);
+                    exportsNeeded.push({ script: rel, name: n, kind: names.kinds.get(n) });
+                }
             }
         }
         if (overrides) blockers.push(`${overrides} global override(s)`);
         // a feature others depend on keeps its code for them: not swapped under them
-        const dependents = Object.entries(manifest).filter(([, g]) => (g.depends || []).includes(name)).map(([n]) => n);
-        if (dependents.length) blockers.push(`depended on by ${dependents.join(', ')}`);
-        rows.push({ feature: name, scripts: (f.scripts || []).length, hot: f.hot === true, eligible: !blockers.length && (f.scripts || []).length > 0, blockers });
+        // a feature others depend on swaps with them (featureLoader.swapFeature cascades): only when
+        // every dependent is hot itself
+        const dependents = Object.entries(manifest).filter(([, g]) => (g.depends || []).includes(name));
+        const coldDependents = dependents.filter(([, g]) => g.hot !== true).map(([n]) => n);
+        if (coldDependents.length) blockers.push(`depended on by features that are not hot: ${coldDependents.join(', ')}`);
+        rows.push({ feature: name, scripts: (f.scripts || []).length, hot: f.hot === true, eligible: !blockers.length && (f.scripts || []).length > 0, blockers, exportsNeeded, dependents: dependents.map(([n]) => n) });
     }
     return rows;
 }
@@ -279,6 +298,32 @@ function featureReport() {
 function main() {
     const argv = process.argv.slice(2);
     const flag = (f) => argv.includes(f);
+    const exportAt = argv.indexOf('--export');
+    if (exportAt >= 0) {
+        // codemod: export the names other files use, so the feature can run as a segment
+        const want = new Set(argv.slice(exportAt + 1).filter((a) => !a.startsWith('--')));
+        const rows = featureReport().filter((r) => want.has(r.feature));
+        for (const r of rows) {
+            const byScript = new Map();
+            for (const e of r.exportsNeeded) {
+                if (!byScript.has(e.script)) byScript.set(e.script, []);
+                byScript.get(e.script).push(e);
+            }
+            for (const [rel, list] of byScript) {
+                const lines = list.map((e) => (e.kind === 'let' || e.kind === 'var')
+                    // a live binding: other files read (and may set) the current value, not a copy
+                    ? `if (!Object.getOwnPropertyDescriptor(window, '${e.name}') || Object.getOwnPropertyDescriptor(window, '${e.name}').configurable) Object.defineProperty(window, '${e.name}', { configurable: true, enumerable: true, get: () => ${e.name}, set: (v) => { ${e.name} = v; } });`
+                    : `window.${e.name} = ${e.name};`);
+                const block = `\n// Names other files use, put on the page on purpose (#872): the feature can then run as a\n// segment (its own scope) and update live. check-app-scope.js --features lists them.\n${lines.join('\n')}\n`;
+                const abs = path.join(root, rel);
+                const src = fs.readFileSync(abs, 'utf8');
+                fs.writeFileSync(abs, src.replace(/\s*$/, '\n') + block);
+                console.log(`${rel}: exported ${list.map((e) => e.name).join(', ')}`);
+            }
+        }
+        return;
+    }
+
     if (flag('--features')) {
         const rows = featureReport();
         const json = flag('--json');

@@ -2573,7 +2573,14 @@ class ServiceWorkerManager {
         this._staticHashByPath = null;
         await this.applyStaticCacheUpdate(files, { silent: true, fromPhone: options.fromPhone });
         const results = {};
+        // a feature swapped as another's dependent (featureLoader cascades) is not swapped twice
+        const fl = window.featureLoader;
+        const covered = new Set();
         for (const name of features) {
+            if (fl && typeof fl._loadedDependents === 'function') fl._loadedDependents(name).forEach((d) => covered.add(d));
+        }
+        for (const name of features) {
+            if (covered.has(name)) { results[name] = { withDependency: true }; continue; }
             try { results[name] = await window.featureLoader.swapFeature(name); } catch (err) {
                 console.error(`[update] ${name} could not be swapped; it updates at the next restart`, err);
                 results[name] = { error: err.message };

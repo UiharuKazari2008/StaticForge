@@ -1941,3 +1941,8 @@ window.invalidateRunStaticCache = invalidateRunStaticCache;
 window.RUN_CATEGORY_LABELS = RUN_CATEGORY_LABELS;
 window.RUN_CATEGORY_ICONS = RUN_CATEGORY_ICONS;
 window.RUN_SEARCH_PREFIX_HINT = RUN_SEARCH_PREFIX_HINT;
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+window.getRunNoteEntriesCached = getRunNoteEntriesCached;
+window.searchRunCommandsPrefix = searchRunCommandsPrefix;

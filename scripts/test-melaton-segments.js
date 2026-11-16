@@ -100,8 +100,11 @@ window.closeModal = (m) => { m.classList.add('hidden'); setTimeout(() => documen
 <script src="/scripts/comp/melatonSegments.js"></script>
 <script src="/scripts/comp/melatonApps.js"></script>
 <script src="/scripts/comp/featureLoader.js"></script>
-<script>FEATURE_MANIFEST.demo_feature = { hot: true, html: 'templates/demo-feature.html', scripts: ['scripts/demo/a.js', 'scripts/demo/b.js'] };
+<script>FEATURE_MANIFEST.demo_dep = { hot: true, scripts: ['scripts/demo/dep.js'] };
+FEATURE_MANIFEST.demo_feature = { hot: true, depends: ['demo_dep'], html: 'templates/demo-feature.html', scripts: ['scripts/demo/a.js', 'scripts/demo/b.js'] };
 // a shared helper that builds a window for whoever asks (the Vista games engine does this for each game)
+// a page stub the feature replaces (featureLoader's openExplorerApplet, replaced by Explorer's)
+window.demoOpen = function demoOpenStub() { return 'stub'; };
 window.coreMakeWindow = function (id) { const m = document.createElement('div'); m.id = id; m.className = 'modal'; document.body.appendChild(m); return m; };</script>
 </body></html>`;
 }
@@ -156,7 +159,8 @@ async function main(served) {
         if (served && served[url.pathname]) return js(served[url.pathname]);
         if (url.pathname === '/templates/demo-feature.html') return req.respond({ status: 200, contentType: 'text/html', body: `<div id="demoFeatureWin" class="modal hidden">demo ${featureVersion}</div>` });
         if (url.pathname === '/scripts/demo/a.js') return js(`const DEMO_BIG = new Array(50000).fill('f').join(''); window.demoFeature = { version: ${featureVersion}, size: () => DEMO_BIG.length }; document.addEventListener('demo-feature', () => { window.__featureHits = (window.__featureHits || 0) + 1; });`);
-        if (url.pathname === '/scripts/demo/b.js') return js(`window.demoFeature.b = true; window.demoFeature.open = () => coreMakeWindow('demoHelperWin');`);
+        if (url.pathname === '/scripts/demo/dep.js') return js(`window.demoDep = { version: ${featureVersion} };`);
+        if (url.pathname === '/scripts/demo/b.js') return js(`function demoOpen() { return 'feature ${featureVersion}'; } window.demoOpen = demoOpen; window.demoFeature.b = true; window.demoFeature.open = () => coreMakeWindow('demoHelperWin');`);
         if (url.pathname.startsWith('/scripts/')) return js(read(`public${url.pathname}`));
         if (url.pathname === '/seg/demo.js') return js(SEGMENT_V1);
         if (url.pathname === '/melaton-apps/single/client/single.js') return js(SINGLE_V1.replace('single v1', `single v${singleVersion}`).replace("concat('v1')", `concat('v${singleVersion}')`));
@@ -365,6 +369,21 @@ async function main(served) {
     }
     console.log('feature reclaimed after gc rounds:', oldFeature);
     assert.ok(oldFeature !== false, 'old feature code reclaimed');
+
+    // a dependency swaps with its loaded dependents (they hold its exports)
+    featureVersion = 3;
+    const cascade = await page.evaluate(async () => {
+        const before = melatonSegments.get('feature:demo_feature').id;
+        const r = await featureLoader.swapFeature('demo_dep');
+        return { r: r.swapped === true, dep: window.demoDep.version, feature: window.demoFeature.version, reloaded: melatonSegments.get('feature:demo_feature').id !== before, order: featureLoader.isLoaded('demo_feature') && featureLoader.isLoaded('demo_dep') };
+    });
+    assert.deepStrictEqual(cascade, { r: true, dep: 3, feature: 3, reloaded: true, order: true }, 'the dependency and its dependent both reloaded');
+    const restored = await page.evaluate(() => {
+        const replacedNow = window.demoOpen();
+        featureLoader.unloadFeature('demo_feature', 'test');
+        return { replacedNow, afterUnload: window.demoOpen() };
+    });
+    assert.deepStrictEqual(restored, { replacedNow: 'feature 3', afterUnload: 'stub' }, 'a page global the feature replaced is put back on unload');
 
     // a singleton window survives the swap: the old window's late 'closed' does not end the new instance
     await page.evaluate(() => melatonApps.launch({ packageId: 'single' }));

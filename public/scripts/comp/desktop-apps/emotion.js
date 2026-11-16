@@ -925,3 +925,10 @@ const ensureDesktopEmotionModal = function () {
 
     return modal;
 };
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+window.LOCAL_ANIMATE_BACKENDS = LOCAL_ANIMATE_BACKENDS;
+window.fetchLocalAnimateStatus = fetchLocalAnimateStatus;
+window.openDesktopEmotion = openDesktopEmotion;
+window.emotionReadStudioCurrentFilename = emotionReadStudioCurrentFilename;

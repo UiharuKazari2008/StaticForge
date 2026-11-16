@@ -1240,3 +1240,15 @@ function openDesktopGuacFrame(opts) {
 document.addEventListener('click', () => {
     document.querySelectorAll('.desktop-guac-downloads.open').forEach((el) => el.classList.remove('open'));
 });
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+if (!Object.getOwnPropertyDescriptor(window, 'desktopGuacDialog') || Object.getOwnPropertyDescriptor(window, 'desktopGuacDialog').configurable) Object.defineProperty(window, 'desktopGuacDialog', { configurable: true, enumerable: true, get: () => desktopGuacDialog, set: (v) => { desktopGuacDialog = v; } });
+window.openDesktopGuac = openDesktopGuac;
+window.toggleDesktopGuacCover = toggleDesktopGuacCover;
+window.noteDesktopGuacPreview = noteDesktopGuacPreview;
+window.noteDesktopGuacDownload = noteDesktopGuacDownload;
+window.openDesktopGuacSession = openDesktopGuacSession;
+window.openDesktopGuacHome = openDesktopGuacHome;
+window.mirrorDesktopGuacFrame = mirrorDesktopGuacFrame;
+window.openDesktopGuacFrame = openDesktopGuacFrame;

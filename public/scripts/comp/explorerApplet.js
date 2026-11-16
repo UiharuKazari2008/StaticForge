@@ -5717,3 +5717,12 @@ function openExplorerApplet(path) {
     const app = initializeExplorerApplet();
     if (app) app.open(path);
 }
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+window.EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS = EXPLORER_IMAGE_GALLERY_CONTEXT_ACTIONS;
+window.wireStudioVfsDrop = wireStudioVfsDrop;
+window.isDesktopSurfaceContextTarget = isDesktopSurfaceContextTarget;
+if (!Object.getOwnPropertyDescriptor(window, 'explorerApplet') || Object.getOwnPropertyDescriptor(window, 'explorerApplet').configurable) Object.defineProperty(window, 'explorerApplet', { configurable: true, enumerable: true, get: () => explorerApplet, set: (v) => { explorerApplet = v; } });
+window.initializeExplorerApplet = initializeExplorerApplet;
+window.openExplorerApplet = openExplorerApplet;

@@ -490,7 +490,20 @@ class FeatureLoader {
 
     isHot(name) {
         const f = FEATURE_MANIFEST[name];
-        return !!(f && f.hot === true && window.melatonSegments);
+        return !!(f && (f.hot === true || this._trialHot().has(name)) && window.melatonSegments);
+    }
+
+    /**
+     * Test tabs only: localStorage melatonHotTrial = 'a,b' loads those features as segments from the
+     * first load on (features loaded at boot cannot be switched later), to try them before hot: true.
+     */
+    _trialHot() {
+        if (!this._trial) {
+            let raw = '';
+            try { raw = localStorage.getItem('melatonHotTrial') || ''; } catch (_) { raw = ''; }
+            this._trial = new Set(raw.split(',').map((x) => x.trim()).filter(Boolean));
+        }
+        return this._trial;
     }
 
     /** The loaded hot feature a static file belongs to (a script or its template), else null. */
@@ -516,11 +529,31 @@ class FeatureLoader {
      * Swap a loaded hot feature for the code in the cache (after an update): unload it and load it
      * again. Waits (pendingSwaps) while one of its windows is on screen.
      */
+    /** Loaded features that depend on name, directly or through others, dependents last. */
+    _loadedDependents(name) {
+        const out = [];
+        const visit = (n) => {
+            for (const [k, f] of Object.entries(FEATURE_MANIFEST)) {
+                if (!(f.depends || []).includes(n) || !this.loadedFeatures.has(k) || out.includes(k)) continue;
+                out.push(k);
+                visit(k);
+            }
+        };
+        visit(name);
+        return out;
+    }
+
     async swapFeature(name, opts = {}) {
         if (!this.isHot(name)) return { notHot: true };
         if (this.loadingPromises.has(name)) { try { await this.loadingPromises.get(name); } catch (_) { /* swapped anyway */ } }
         if (!this.loadedFeatures.has(name)) return { notLoaded: true };
-        const wins = window.melatonSegments.windowsOf(`feature:${name}`);
+        // a feature others depend on goes with them: they hold its exports (the games hold the engine)
+        const dependents = this._loadedDependents(name);
+        if (dependents.some((d) => !this.isHot(d))) {
+            // check-app-scope --features keeps this from being marked hot; never swap it under cold code
+            return { blocked: `depended on by ${dependents.filter((d) => !this.isHot(d)).join(', ')}` };
+        }
+        const wins = [name, ...dependents].flatMap((n) => window.melatonSegments.windowsOf(`feature:${n}`));
         const sw = window.serviceWorkerManager;
         if (!opts.force && wins.length) {
             this.pendingSwaps.add(name);
@@ -534,8 +567,11 @@ class FeatureLoader {
         this.pendingSwaps.delete(name);
         const title = (this.swapTitles && this.swapTitles.get(name)) || this._featureTitle(name, wins[0]);
         if (this.swapTitles) this.swapTitles.delete(name);
+        // dependents first (they use the feature), then the feature; load back in the other order
+        for (const d of dependents.slice().reverse()) this.unloadFeature(d, 'update');
         const released = this.unloadFeature(name, 'update');
         await this.loadFeature(name);
+        for (const d of dependents) await this.loadFeature(d);
         if (sw && typeof sw.noteUpdateInstalled === 'function') sw.noteUpdateInstalled(`feature:${name}`, title);
         try { document.dispatchEvent(new CustomEvent('melaton:feature-updated', { detail: { feature: name } })); } catch (_) { /* no listeners */ }
         return { swapped: true, released };
@@ -558,7 +594,8 @@ class FeatureLoader {
             // after the closing window's own lifecycle handlers
             setTimeout(() => {
                 for (const name of Array.from(this.pendingSwaps)) {
-                    if (!window.melatonSegments.windowsOf(`feature:${name}`).length) void this.swapFeature(name);
+                    const all = [name, ...this._loadedDependents(name)];
+                    if (!all.some((n) => window.melatonSegments.windowsOf(`feature:${n}`).length)) void this.swapFeature(name);
                 }
             }, 50);
         });

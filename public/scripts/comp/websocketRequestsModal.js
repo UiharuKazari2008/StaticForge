@@ -527,3 +527,7 @@ function initWebSocketRequestsModal() {
 }
 
 initWebSocketRequestsModal();
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+if (!Object.getOwnPropertyDescriptor(window, 'websocketRequestsModal') || Object.getOwnPropertyDescriptor(window, 'websocketRequestsModal').configurable) Object.defineProperty(window, 'websocketRequestsModal', { configurable: true, enumerable: true, get: () => websocketRequestsModal, set: (v) => { websocketRequestsModal = v; } });

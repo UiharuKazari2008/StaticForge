@@ -3742,3 +3742,10 @@ function securityDsapOpenDefender(view) {
     const pages = { home: 'home', blocked: 'quarantine', honeypot: 'honeypot', telemetry: 'history', approved: 'allowed' };
     return defender.open(pages[view] || 'home') !== false;
 }
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+window.securityDsapNormalizeView = securityDsapNormalizeView;
+window.securityDsapBuildHtml = securityDsapBuildHtml;
+window.securityDsapDriver = securityDsapDriver;
+window.securityDsapOpenDefender = securityDsapOpenDefender;

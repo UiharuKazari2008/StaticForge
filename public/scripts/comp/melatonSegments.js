@@ -317,6 +317,16 @@
         return new Set(Object.getOwnPropertyNames(root));
     }
 
+    /** The data values of the window's own properties (accessors skipped: reading them can act). */
+    function windowValues() {
+        const out = new Map();
+        for (const k of Object.getOwnPropertyNames(root)) {
+            const d = Object.getOwnPropertyDescriptor(root, k);
+            if (d && 'value' in d) out.set(k, d.value);
+        }
+        return out;
+    }
+
     async function runScript(seg, url) {
         const abs = absolute(url);
         const res = await root.fetch(abs, { credentials: 'same-origin', cache: 'no-cache' });
@@ -333,14 +343,20 @@
             err.message = `${seg.label}: ${new URL(abs).pathname}: ${err.message}`;
             throw err;
         }
-        const before = windowKeys();
+        const before = windowValues();
+        const beforeKeys = windowKeys();
         evaluating = seg;
         try {
             fn.apply(root, names.map((n) => scope[n]));
         } finally {
             evaluating = null;
             for (const k of Object.getOwnPropertyNames(root)) {
-                if (!before.has(k)) seg.globals.add(k);
+                if (!beforeKeys.has(k)) { seg.globals.add(k); continue; }
+                // an existing global it replaced (featureLoader's openExplorerApplet stub, replaced by
+                // Explorer's): put back on unload, or the page keeps calling the unloaded copy
+                if (!before.has(k) || seg.replaced.has(k)) continue;
+                const d = Object.getOwnPropertyDescriptor(root, k);
+                if (d && 'value' in d && d.value !== before.get(k)) seg.replaced.set(k, { was: before.get(k), now: d.value });
             }
         }
     }
@@ -379,6 +395,7 @@
             id: ++seq,
             ctl: new AbortController(),
             globals: new Set(),
+            replaced: new Map(), // existing global -> { was, now } (restored on unload)
             styles: new Set(),
             nodes: new Set(),
             owns: Array.isArray(s.owns) ? s.owns.slice() : [],
@@ -488,6 +505,12 @@
                 released.kept.push(k);
             }
         }
+        released.restored = [];
+        for (const [k, v] of seg.replaced) {
+            // only if it still holds what the segment put there (someone else may have replaced it since)
+            try { if (root[k] === v.now) { root[k] = v.was; released.restored.push(k); } } catch (_) { /* read-only */ }
+        }
+        seg.replaced.clear();
         if (released.kept.length) console.warn(`[segments] ${seg.label}: globals that could not be deleted:`, released.kept);
 
         // forget everything; only the watch row (a WeakRef) points at the record now

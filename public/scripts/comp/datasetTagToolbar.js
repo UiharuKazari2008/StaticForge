@@ -1221,3 +1221,13 @@ function handleTagNavigateRight(level, value) {
         }
     }, 100);
 }
+
+// Names other files use, put on the page on purpose (#872): the feature can then run as a
+// segment (its own scope) and update live. check-app-scope.js --features lists them.
+if (!Object.getOwnPropertyDescriptor(window, 'datasetTagToolbar') || Object.getOwnPropertyDescriptor(window, 'datasetTagToolbar').configurable) Object.defineProperty(window, 'datasetTagToolbar', { configurable: true, enumerable: true, get: () => datasetTagToolbar, set: (v) => { datasetTagToolbar = v; } });
+if (!Object.getOwnPropertyDescriptor(window, 'currentTarget') || Object.getOwnPropertyDescriptor(window, 'currentTarget').configurable) Object.defineProperty(window, 'currentTarget', { configurable: true, enumerable: true, get: () => currentTarget, set: (v) => { currentTarget = v; } });
+if (!Object.getOwnPropertyDescriptor(window, 'currentPath') || Object.getOwnPropertyDescriptor(window, 'currentPath').configurable) Object.defineProperty(window, 'currentPath', { configurable: true, enumerable: true, get: () => currentPath, set: (v) => { currentPath = v; } });
+if (!Object.getOwnPropertyDescriptor(window, 'searchResults') || Object.getOwnPropertyDescriptor(window, 'searchResults').configurable) Object.defineProperty(window, 'searchResults', { configurable: true, enumerable: true, get: () => searchResults, set: (v) => { searchResults = v; } });
+window.exitSearchMode = exitSearchMode;
+window.handleSearchInput = handleSearchInput;
+window.handleSearchKeydown = handleSearchKeydown;
