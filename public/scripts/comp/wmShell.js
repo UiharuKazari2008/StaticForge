@@ -5839,11 +5839,13 @@
                 const total = up.total + down.total;
                 const pct = total ? Math.min(100, Math.round(((up.done + down.done) / total) * 100)) : (asx.active ? 0 : 100);
                 const files = asx.files > 1 ? ` ${Math.min(asx.files, asx.filesDone + (asx.active ? 1 : 0))} of ${asx.files} files.` : '';
-                const lines = [`ActiveSync: ${asx.active ? 'Synchronizing...' : 'Complete.'}${files}`];
-                if (up.total) lines.push(`Sent ${size(up.done)} of ${size(up.total)}.`);
-                if (down.total) lines.push(`Received ${size(down.done)} of ${size(down.total)}.`);
+                // data-live: the app's own copy of this popup fills these in from its transfer counts
+                // (melaton-bars-native-layouts: message handling), as this page is frozen behind a program
+                const lines = [[`ActiveSync: ${asx.active ? 'Synchronizing...' : 'Complete.'}${files}`, 'as-head']];
+                if (up.total) lines.push([`Sent ${size(up.done)} of ${size(up.total)}.`, 'as-sent']);
+                if (down.total) lines.push([`Received ${size(down.done)} of ${size(down.total)}.`, 'as-recv']);
                 const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-                sections.push({ html: `${lines.map((l) => `<div>${esc(l)}</div>`).join('')}<div class="wm-progress-bar wm-as-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:calc(${pct} * (100% - 2 * var(--wm-px)) / 100)"></span></div>` });
+                sections.push({ html: `${lines.map(([l, k]) => `<div data-live="${k}">${esc(l)}</div>`).join('')}<div class="wm-progress-bar wm-as-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span data-live="as-bar" style="width:calc(${pct} * (100% - 2 * var(--wm-px)) / 100)"></span></div>` });
             }
             // the install / update download the connecting icon also stands for
             const inst = swDownloading();

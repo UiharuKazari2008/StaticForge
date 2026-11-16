@@ -495,6 +495,10 @@
         };
         const walk = (el, inherited) => {
             if (!el.getClientRects().length) return;
+            // a live field (data-live): what the app fills in itself while the popup is up (ActiveSync's
+            // numbers and bar from its own transfer counts: this page is frozen behind a program)
+            const lv = el.dataset ? el.dataset.live : null;
+            const n0 = out.length;
             const cs = getComputedStyle(el);
             if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) return;
             // opacity multiplies down the tree (the unlit signal bars at .45)
@@ -559,6 +563,16 @@
                 }
                 flush();
             });
+            if (lv) {
+                let full;
+                if (lv.endsWith('-bar') && el.parentElement) {
+                    // the bar's whole width: the frame's inside less the fill's own inset (wm-progress-bar)
+                    const pe = el.parentElement; const pcs = getComputedStyle(pe); const pb = pe.getBoundingClientRect();
+                    const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+                    full = R(pb.width - px(pcs.borderLeftWidth) - px(pcs.borderRightWidth) - px(pcs.paddingLeft) - px(pcs.paddingRight) - 2 * wmpx);
+                }
+                for (let i = n0; i < out.length; i++) { out[i].lv = lv; if (full != null) out[i].full = full; }
+            }
             [...el.children].forEach((c) => walk(c, alpha));
             const ci = clickable.indexOf(el);
             if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
