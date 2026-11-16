@@ -1013,8 +1013,16 @@
                 let o = null;
                 try { o = JSON.parse(role.slice(11)); } catch (_) { o = null; }
                 if (o && window.wmStart65 && window.wmStart65.activate) window.wmStart65.activate(o.key, o.folders || []);
-                // the app keeps its Start over the screen until the program is drawn here
-                requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
+                // the app keeps its Start over the screen until the program is up and drawn here (a
+                // program loaded on demand takes a moment: the screen under it showed through)
+                const want = o && typeof o.key === 'string' && o.key.startsWith('a:') ? o.key.slice(2) : null;
+                const t0 = performance.now();
+                const done = () => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } };
+                const wait = () => requestAnimationFrame(() => {
+                    const up = want ? current === want && !shell.querySelector('.wm-busy:not([hidden])') : performance.now() - t0 > 300;
+                    if (up || performance.now() - t0 > 2800) requestAnimationFrame(done); else wait();
+                });
+                wait();
                 return;
             }
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); return; }
