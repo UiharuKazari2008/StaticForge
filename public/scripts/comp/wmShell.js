@@ -5676,9 +5676,14 @@
         const now = Date.now();
         if (now - volumeBeepAt < 120) return;
         volumeBeepAt = now;
+        // in the app: WM's Quietest / Default / Loudest by the new step, on that slider's Android output
+        if (AV && typeof AV.beep === 'function') { try { AV.beep(kind === 'notify' ? 'notification' : kind === 'ringer' ? 'ring' : 'media'); return; } catch (_) { /* older app */ } }
         const usage = kind === 'media' ? 'media' : kind === 'notify' ? 'notification' : 'ring';
-        if (avPlay(`${SND_BASE}Default.wav`, usage)) return;
-        try { if (snd.ctx && snd.ctx.state === 'running') sndPlayFile('Default.wav', kind === 'media' ? mediaLevel() / VOL_STEPS : 1); } catch (_) { /* no sound */ }
+        if (avPlay(`${SND_BASE}${levelOf(kind) <= 3 ? 'Quietest' : levelOf(kind) <= 7 ? 'Default' : 'Loudest'}.wav`, usage)) return;
+        const lv = levelOf(kind);
+        if (lv <= 0) return;
+        const file = lv <= 3 ? 'Quietest.wav' : lv <= 7 ? 'Default.wav' : 'Loudest.wav';
+        try { if (snd.ctx && snd.ctx.state === 'running') sndPlayFile(file, kind === 'media' ? lv / VOL_STEPS : 1); } catch (_) { /* no sound */ }
     }
 
     // Android's levels changed (a slider, the keys, Android's own panel): the popup, the icon and the app's copy follow
@@ -5696,7 +5701,9 @@
             const el = shell && shell.querySelector('.wm-volume');
             if (!el) return;
             if (el.hidden) toggleVolume(null);
-            volumeFocus = 'media';
+            // the key moved the focused slider (the app keeps which one); the focus stays on it
+            const k = e && e.detail && e.detail.kind;
+            volumeFocus = k === 'notification' ? 'notify' : k === 'ring' ? 'ringer' : 'media';
             if (volumePaint) volumePaint();
             refreshStatus();
             clearTimeout(volumeKeyTimer);
@@ -5713,6 +5720,8 @@
         volumePaint = null;
         clearTimeout(volumeKeyTimer);
         volumeKeyTimer = null;
+        // closed: the volume keys move Media again
+        try { if (AV && typeof AV.keyTarget === 'function') AV.keyTarget('media'); } catch (_) { /* older app */ }
     }
 
     function toggleVolume(anchor) {
@@ -5742,6 +5751,8 @@
                 if (th) th.dataset.live = `vol-thumb:${c.dataset.kind}:${v}`;
                 c.classList.toggle('is-focus', c.dataset.kind === volumeFocus);
             });
+            // while the box is up the volume keys move the focused slider (Yukimi, Nov 16)
+            try { if (AV && typeof AV.keyTarget === 'function') AV.keyTarget(volumeFocus === 'notify' ? 'notification' : volumeFocus === 'ringer' ? 'ring' : 'media'); } catch (_) { /* older app */ }
             const mode = soundMode();
             el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => { r.checked = r.value === mode; });
         };

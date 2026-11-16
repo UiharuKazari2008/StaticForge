@@ -400,6 +400,29 @@
         el.querySelector('[data-act="vib-test"]').addEventListener('click', () => { if (VIB()) VIB().vibrate('notification', { level: v.level, force: true }); });
     }
 
+    /**
+     * Volume (Yukimi, Nov 16): the phone's own levels in 10 steps, each on WM's trackbar - Media,
+     * Assistant, Ringer, Alarms, Notifications, System (window.AndroidVolume; a level the phone does not
+     * have is left out). A change is made at once (no OK needed) and beeps at the new level on its own
+     * output, as WM's volume box does; the ringer at 0 is Off.
+     */
+    const VOL_ROWS = [['media', 'Media'], ['assistant', 'Assistant'], ['ring', 'Ringer'], ['alarm', 'Alarms'], ['notification', 'Notifications'], ['system', 'System']];
+    function renderVolumeTab(el) {
+        const av = window.AndroidVolume;
+        let st = null;
+        try { st = av && typeof av.get === 'function' ? JSON.parse(av.get()) : null; } catch (_) { st = null; }
+        if (!st) { el.innerHTML = ui.note('The volume levels are the phone\'s: open Melaton Mobile on the phone to set them here.'); return; }
+        const rows = VOL_ROWS.filter(([k]) => Number.isFinite(st[k]));
+        el.innerHTML = rows.map(([k, label]) => `${ui.sub(label)}<div data-f="vol-${k}"></div>`).join('');
+        const steps = Array.from({ length: 11 }, (_, i) => i);
+        rows.forEach(([k, label]) => {
+            ui.trackbar(el.querySelector(`[data-f="vol-${k}"]`), {
+                steps, value: st[k], lo: 'Silent', hi: 'Loud', label: `${label} volume`,
+                onChange: (n) => { try { av.set(k, n); if (typeof av.beep === 'function') av.beep(k); } catch (_) { /* older app */ } }
+            });
+        });
+    }
+
     async function commitSounds(d) {
         const v = d.saved;
         if (SND()) SND().stop();
@@ -423,11 +446,12 @@
 
     wmSettings.registerPage({
         id: 'sounds', tab: 'personal', label: 'Sounds & Notifications', icon: 'set-sounds',
-        tabs: [['sounds', 'Sounds'], ['notifications', 'Notifications'], ['vibration', 'Vibration']],
+        tabs: [['volume', 'Volume'], ['sounds', 'Sounds'], ['notifications', 'Notifications'], ['vibration', 'Vibration']],
         available: () => !!(P() && typeof P().get === 'function' && typeof P().update === 'function'),
         init: readSounds,
         render(el, tab, d, api) {
-            if (tab === 'vibration') { if (d.vib) renderVibrationTab(el, d, api); else el.innerHTML = ui.note('This device cannot vibrate.'); }
+            if (tab === 'volume') renderVolumeTab(el);
+            else if (tab === 'vibration') { if (d.vib) renderVibrationTab(el, d, api); else el.innerHTML = ui.note('This device cannot vibrate.'); }
             else if (tab === 'notifications') renderNotifyTab(el, d, api);
             else renderSoundsTab(el, d, api);
         },
