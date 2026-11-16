@@ -478,6 +478,8 @@
                 const at = el.attributes[i];
                 // not a name XML takes (`@click`, `:class`), or one that does nothing here
                 if (at.name === 'style' || at.name === 'xmlns' || at.name.startsWith('on') || !/^[A-Za-z_][\w.-]*$/.test(at.name)) continue;
+                // the page's suspended states (behind another program, screen off) are not what the copy shows
+                if (at.name === 'data-wm-behind' || at.name === 'data-screen-off') continue;
                 attrs += ` ${at.name}="${escAttr(at.value)}"`;
             }
             if (el === parent) attrs += ` style="${escAttr(inherit)}"`;

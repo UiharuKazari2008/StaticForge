@@ -845,6 +845,10 @@ html.wm-art-4x .wm-title-action[data-kind="ok"] { --wm-title-glyph: var(--wm-art
 
 .wm-titlebar > .wm-title-action {
     margin-right: round(var(--wm-bar-edge), var(--wm-dpx-step));
+    /* centred on the row like the status icons (the same spot in a 26-unit bar; in a bar grown to the
+       camera, or with icons drawn at a larger whole multiple, a top margin left it high: the Fold, Nov 16) */
+    align-self: center;
+    margin-top: 0;
 }
 
 .wm-title-action[hidden] {
@@ -4109,6 +4113,24 @@ html[data-screen-off] body::after {
     z-index: 2147483647;
     background: #000;
     pointer-events: none;
+}
+
+/* ---- Melaton Bars (#871): the page is behind an Android program (wmShell setBarsExternal). Yukimi, Nov 16:
+ * everything open in Melaton Mobile is suspended - animations and transitions stand still, no blur or
+ * filters, no promoted GPU layers, nothing painted. The bars' copies leave this attribute out
+ * (windowCapture), so they still show the page as it looks in front. ---- */
+html[data-wm-behind] *,
+html[data-wm-behind] *::before,
+html[data-wm-behind] *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    will-change: auto !important;
+}
+
+html[data-wm-behind] body > * {
+    visibility: hidden !important;
 }
 
 /* Settings > Today > Wallpaper > Use: Android Wallpaper (#799). The app's window shows the phone's own

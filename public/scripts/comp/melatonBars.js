@@ -289,6 +289,8 @@
             const openRole = bub && !bub.hidden && bub.dataset.role ? bub.dataset.role : tray && !tray.hidden ? 'notify' : vol && !vol.hidden ? 'volume' : (ctx.role || '');
             out({
                 role: openRole,
+                // a popup with a running clock in it (the VPN's connected time): the app copies it again every second while it is up
+                live: layers.some((l) => !!l.querySelector('.wm-vpn-time')),
                 layers: pics.filter(Boolean),
                 top: topPic ? packAt(topPic, top.getBoundingClientRect(), dpr) : null,
                 bottom: softPic ? packAt(softPic, soft.getBoundingClientRect(), dpr) : null,

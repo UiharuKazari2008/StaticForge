@@ -314,6 +314,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-title-action {
 /* the title bar's own corner cell stands --wm-bar-edge in from the screen's side (wm-shell.css) */
 html.ui-mobile[data-wm-version="6.5"] .wm-titlebar > .wm-title-action {
     margin-right: var(--wm-bar-edge);
+    /* centred on the icons' row (wm-shell.css): the top margin left it ~2 px high on the Fold's grown bar */
+    align-self: center;
+    margin-top: 0;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-title-action::before {

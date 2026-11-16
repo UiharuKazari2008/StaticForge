@@ -1696,7 +1696,8 @@
      * the view draws in full when it shows again (Yukimi, Nov 14: nothing draws what is not visible).
      */
     function onScreen(el) {
-        if (document.hidden || root.dataset.screenOff !== undefined) return false;
+        // behind an Android program (Melaton Bars): nothing of the page is seen, its programs stop drawing
+        if (document.hidden || root.dataset.screenOff !== undefined || root.dataset.wmBehind !== undefined) return false;
         if (!el) return true;
         return el.isConnected && !el.closest('[hidden]');
     }
@@ -10799,7 +10800,13 @@
         /** Melaton Bars (#871): set the bars to how they show over an Android program; returns restore(). */
         barsStage: (o) => barsStage(o || {}),
         /** Melaton Bars (#871): the page is behind an Android program (its status changes go to the app). */
-        setBarsExternal: (on) => { barsExternal = !!on; },
+        setBarsExternal: (on) => {
+            const was = barsExternal;
+            barsExternal = !!on;
+            // everything open here suspended while it is behind (wm-shell.css html[data-wm-behind]); programs hear it
+            if (barsExternal) root.dataset.wmBehind = ''; else delete root.dataset.wmBehind;
+            if (was !== barsExternal) document.dispatchEvent(new CustomEvent('wmBehind', { detail: { on: barsExternal } }));
+        },
         barsPopupOpen: (role) => barsPopupOpen(role),
         barsPopupLayers: () => barsPopupLayers(),
         barsPopupClose: () => barsPopupClose(),
