@@ -5840,7 +5840,31 @@
                 if (run.canStop) sections.push({ links: [{ label: 'Stop the Engine', action: () => { closeBubble(); window.wmLapis.stop(); } }], align: 'right' });
                 if (st.cars.length) sections.push({ rule: true });
             }
-            if (!st.cars.length && !(run && run.running)) sections.push('No car is in range of this phone\'s keys.');
+            // my car out of the key's range: what the server knows (Lapis) and Lock / Unlock over BlueLink
+            const keyHasMine = st.cars.some((c) => c.mine);
+            const mkKeys = (onLock, onUnlock, lockOn, unlockOn) => {
+                const keys = document.createElement('div');
+                keys.className = 'wm-carkey-keys';
+                [['Lock', 'today-lock-locked', onLock, lockOn], ['Unlock', 'today-lock', onUnlock, unlockOn]].forEach(([label, art, action, on]) => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'wm-carkey-key';
+                    btn.disabled = !on;
+                    btn.innerHTML = `${imgTag(art)}<span>${escapeHtml(label)}</span>`;
+                    btn.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(); action(); });
+                    keys.appendChild(btn);
+                });
+                return keys;
+            };
+            if (!keyHasMine && lp) {
+                if (run && run.running && st.cars.length === 0) sections.push({ rule: true });
+                sections.push({ text: lp.name, bold: true, links: [] });
+                sections.push(lp.lines.length ? lp.lines[0] : 'No report from the car yet.');
+                if (lp.lines[1]) sections.push(lp.lines[1]);
+                if (window.wmLapis.lock && window.wmLapis.unlock) sections.push({ node: mkKeys(() => window.wmLapis.lock(), () => window.wmLapis.unlock(), true, true) });
+                if (st.cars.length) sections.push({ rule: true });
+            }
+            if (!st.cars.length && !(run && run.running) && !lp) sections.push('No car is in range of this phone\'s keys.');
             st.cars.forEach((car, i) => {
                 if (i) sections.push({ rule: true });
                 const many = st.cars.length > 1;
