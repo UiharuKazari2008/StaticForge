@@ -151,6 +151,8 @@ function publish(notice = {}) {
     }
     const out = rowOut(row);
     broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
+    // the phones' background links too (#876 D): a phone whose page is not running posts it natively
+    try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out)); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
     return out;
 }
 

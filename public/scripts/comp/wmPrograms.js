@@ -1056,7 +1056,8 @@
                 softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home',
                 room: c0.room !== false,
                 hideLandCover: !!c0.hideLandCover,
-                keyguardClear: !!c0.keyguardClear
+                keyguardClear: !!c0.keyguardClear,
+                cutAnimations: !!c0.cutAnimations
             };
         }
         const cfg = d.barsCfg;
@@ -1078,7 +1079,8 @@
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
             ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
             ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
-            ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}`;
+            ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
+            ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}`;
         const q = (sel) => el.querySelector(sel);
         const sync = () => {
             q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
@@ -1088,6 +1090,7 @@
             q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
+            q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
@@ -1096,6 +1099,7 @@
         bind('wmBarsRoom', (v) => { cfg.room = v; });
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
         bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
+        bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
         sync();

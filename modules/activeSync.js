@@ -1126,6 +1126,29 @@ function ringPartners(globalResources, wsServer, reason) {
     return rung;
 }
 
+/**
+ * A notice from the notification inbox (#845) to every partnered phone's background link (Melaton Bars
+ * #876 D, Yukimi Nov 16: Dreamscape notifications still arrive when the app's page is not running -
+ * "it's always ready"). pageConnected says whether a Melaton page of that phone is on its link now (it
+ * shows the notice itself); without one the app posts it as an Android notification. Returns how many
+ * phones it went to.
+ */
+function sendInboxNotice(globalResources, wsServer, notice) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!server || !notice) return 0;
+    let sent = 0;
+    const ids = new Set(liveSockets(server, 'device').map((x) => x.info.as.id));
+    for (const id of ids) {
+        const live = liveSockets(server, 'device', id);
+        if (!live.some((x) => x.info.as.session === 'partner')) continue;
+        const service = live.find((x) => x.info.as.speaker === 'service');
+        if (!service) continue;
+        const pageConnected = live.some((x) => x.info.as.speaker === 'webview');
+        if (sendServerEvent(globalResources, server, service, 'inbox.notice', Object.assign({}, notice, { pageConnected }))) sent += 1;
+    }
+    return sent;
+}
+
 /** An as_event from the server to one socket (a phone's background link). */
 function sendServerEvent(globalResources, wsServer, socket, name, detail) {
     const server = wsServerOf(globalResources, wsServer);
@@ -1232,6 +1255,7 @@ module.exports = {
     logEvent,
     partnerLinks,
     ringPartners,
+    sendInboxNotice,
     sendServerEvent,
     resetForTests
 };
