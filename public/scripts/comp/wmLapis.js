@@ -389,6 +389,10 @@
     /** background: no wait cursor while BlueLink takes the command (a few seconds); the pushed state
      * shows "Starting, waiting for the car" meanwhile, and a failure still comes up as a message. */
     async function send(kind, options, background) {
+        // in range of the phone's car key (#874, wmCarKey.js): Lock / Unlock go over Samsung Digital
+        // Key on the phone itself, no server or BlueLink round trip; the server sees it at its next read
+        const ck = window.wmCarKey;
+        if ((kind === 'lock' || kind === 'unlock') && ck && ck.can(kind) && ck.press(kind)) return true;
         if (!canSend()) return false;
         try {
             const req = ask('lapis_command', { kind, options: options || {} }, 60000);
@@ -1582,7 +1586,18 @@
         /** "Start the car for N minutes at T?" then the remote start with the automatic climate. */
         startPrompt: () => { draft = null; startConfirm(); },
         /** Read what the server holds again (lapis_get). */
-        reload: () => load()
+        reload: () => load(),
+        /** What the server knows of the car for the car key's bubble (#874): { name, lines[] } or null. */
+        keySummary: () => {
+            if (!canUse() || !configured()) return null;
+            const s = st();
+            if (!s) return { name: carTitle(), lines: [] };
+            const t = todayLine();
+            return { name: carTitle(), lines: [t.title, t.sub].filter(Boolean) };
+        },
+        /** Lock / Unlock from elsewhere (the car key's bubble), with Unlock's question. */
+        lock: () => send('lock'),
+        unlock: () => doUnlock()
     };
 
     if (window.wmShell) register();

@@ -1,0 +1,211 @@
+/* Melaton Mobile: Wallet (wmWallet.js, Yozora #874). The Today block (the shell's .wm-today-block
+ * box, data-row="cards") and the Wallet program: list, card / barcode editor, full-screen barcode
+ * (white, for the store's scanner) and the camera scan. Units are WM px (var(--wm-px)). */
+
+.wm-today-block[data-row="cards"] {
+    display: flex;
+    flex-direction: column;
+    gap: calc(4 * var(--wm-px));
+    -webkit-tap-highlight-color: transparent;
+}
+
+.wm-today-block[data-row="cards"][hidden] { display: none !important; }
+
+.wwl-head {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    min-height: calc(16 * var(--wm-px));
+}
+
+.wwl-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-weight: bold;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wwl-pager {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: calc(2 * var(--wm-px));
+}
+
+.wwl-arrow {
+    appearance: none;
+    -webkit-appearance: none;
+    width: calc(20 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: bold calc(16 * var(--wm-px)) / 1 Tahoma, sans-serif;
+}
+
+.wwl-arrow:active { background: var(--wm-highlight); }
+
+.wwl-body {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--wm-px));
+}
+
+.wwl-note { opacity: 0.85; }
+
+/* a card, drawn: the colour runs to black, name at the top, the last 4 and the network at the bottom */
+.wwl-card {
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(86 * var(--wm-px));
+    height: calc(54 * var(--wm-px));
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: calc(5 * var(--wm-px));
+    color: #fff;
+    background: linear-gradient(135deg, var(--wwl-c, #1c2a4a), #000);
+    font: calc(9 * var(--wm-px)) / 1.1 Tahoma, sans-serif;
+    text-align: left;
+}
+
+.wwl-card > span {
+    position: absolute;
+    left: calc(6 * var(--wm-px));
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(74 * var(--wm-px));
+}
+
+.wwl-card-name { top: calc(6 * var(--wm-px)); font-weight: bold; }
+.wwl-card-num { bottom: calc(6 * var(--wm-px)); }
+.wwl-card-net { left: auto !important; right: calc(6 * var(--wm-px)); bottom: calc(6 * var(--wm-px)); font-weight: bold; font-style: italic; max-width: calc(36 * var(--wm-px)) !important; }
+
+.wwl-side {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: calc(4 * var(--wm-px));
+}
+
+/* the barcode, on white with its quiet zone, as wide as the block: the store scans it from here */
+.wwl-code {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(48 * var(--wm-px));
+    padding: calc(4 * var(--wm-px));
+    border: 0;
+    border-radius: calc(3 * var(--wm-px));
+    background: #fff;
+    color: #000;
+}
+
+.wwl-code img {
+    display: block;
+    max-width: 100%;
+    max-height: calc(70 * var(--wm-px));
+    image-rendering: pixelated;
+}
+
+.wwl-code.is-2d img { max-height: calc(110 * var(--wm-px)); }
+
+.wwl-code-wait { font-size: calc(11 * var(--wm-px)); }
+
+.wwl-id {
+    appearance: none;
+    -webkit-appearance: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+}
+
+.wwl-id-sub { opacity: 0.85; }
+
+/* ---- the program */
+
+.wm-wallet .wwl-app { height: 100%; }
+
+.wm-wallet .wwl-list,
+.wm-wallet .wwl-edit {
+    padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px));
+}
+
+.wm-wallet .wwl-list .wm-listbox-row img {
+    width: calc(32 * var(--wm-px));
+    height: calc(20 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wm-wallet .wwl-empty { margin: calc(8 * var(--wm-px)) 0; }
+
+/* full screen barcode: white page, the code as large as fits */
+.wm-wallet.is-show { background: #fff; }
+
+.wm-wallet .wwl-show {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(10 * var(--wm-px));
+    height: 100%;
+    padding: calc(8 * var(--wm-px));
+    box-sizing: border-box;
+    background: #fff;
+    color: #000;
+}
+
+.wm-wallet .wwl-show[hidden] { display: none; }
+
+.wwl-show-name { font-weight: bold; font-size: calc(14 * var(--wm-px)); text-align: center; }
+
+.wwl-show-code img {
+    display: block;
+    width: 100%;
+    max-width: calc(220 * var(--wm-px));
+    image-rendering: pixelated;
+}
+
+.wwl-show-code:not(.is-2d) img { max-width: 100%; width: calc(230 * var(--wm-px)); }
+
+.wwl-show-num { font-size: calc(13 * var(--wm-px)); letter-spacing: 0.08em; }
+
+.wm-wallet .wwl-scan {
+    position: relative;
+    height: 100%;
+    background: #000;
+}
+
+.wm-wallet .wwl-scan[hidden] { display: none; }
+
+.wm-wallet .wwl-scan video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.wwl-scan-note {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(8 * var(--wm-px));
+    margin: 0;
+    text-align: center;
+    color: #fff;
+    text-shadow: 0 1px 2px #000;
+}

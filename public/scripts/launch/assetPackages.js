@@ -61,6 +61,8 @@
     const COMMON_WM61 = /^\/static_images\/wm61\/weather\//;
     function packageOf(url) {
         const u = String(url || '').split('?')[0];
+        // the Wallet's barcode drawing (#874, 1 MB): phones only
+        if (u === '/scripts/vendor/bwip-js.min.js') return 'wmc';
         if (COMMON_WM61.test(u)) return /@4x\.[a-z0-9]+$/i.test(u) ? 'wmc-4x' : /@2x\.[a-z0-9]+$/i.test(u) ? 'wmc-2x' : 'wmc';
         // both versions' art (the Android programs' icons): Melaton Mobile Common
         const c = /^\/static_images\/wm-android\/(.+)$/.exec(u);
