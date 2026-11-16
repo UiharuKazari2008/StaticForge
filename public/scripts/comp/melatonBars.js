@@ -541,7 +541,8 @@
                 const range = document.createRange();
                 const text = n.textContent;
                 let line = null;
-                const flush = () => { if (line && line.s.trim()) out.push(line); line = null; };
+                // w: the line's width as the browser laid it out (the app fits its run to it: its hinted advances differ by a few %)
+                const flush = () => { if (line && line.s.trim()) { line.w = R((line.r - line.l) / dpr); delete line.r; delete line.l; out.push(line); } line = null; };
                 for (let i = 0; i < text.length; i++) {
                     range.setStart(n, i); range.setEnd(n, i + 1);
                     const rr = range.getClientRects()[0];
@@ -553,6 +554,8 @@
                         if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; line.live = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
                     }
                     line.s += text[i];
+                    if (line.l === undefined) line.l = rr.left * dpr;
+                    line.r = rr.right * dpr;
                 }
                 flush();
             });
