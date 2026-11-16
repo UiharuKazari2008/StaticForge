@@ -99,6 +99,8 @@ window.closeModal = (m) => { m.classList.add('hidden'); setTimeout(() => documen
 </script>
 <script src="/scripts/comp/melatonSegments.js"></script>
 <script src="/scripts/comp/melatonApps.js"></script>
+<script src="/scripts/comp/featureLoader.js"></script>
+<script>FEATURE_MANIFEST.demo_feature = { hot: true, html: 'templates/demo-feature.html', scripts: ['scripts/demo/a.js', 'scripts/demo/b.js'] };</script>
 </body></html>`;
 }
 
@@ -138,7 +140,9 @@ async function main(served) {
     const page = await browser.newPage();
     let appVersion = 1;
     let singleVersion = 1;
+    let featureVersion = 1;
     page.on('pageerror', (e) => console.error('pageerror:', e.message));
+    if (process.env.SEG_DEBUG) page.on('console', (m) => console.log('console:', m.type(), m.text().slice(0, 300)));
     await page.setRequestInterception(true);
     page.on('request', (req) => {
         const url = new URL(req.url());
@@ -148,6 +152,9 @@ async function main(served) {
         // SEG_SOURCE: another melatonSegments.js (a mutation check of this test)
         if (url.pathname === '/scripts/comp/melatonSegments.js' && process.env.SEG_SOURCE) return js(fs.readFileSync(process.env.SEG_SOURCE, 'utf8'));
         if (served && served[url.pathname]) return js(served[url.pathname]);
+        if (url.pathname === '/templates/demo-feature.html') return req.respond({ status: 200, contentType: 'text/html', body: `<div id="demoFeatureWin" class="modal hidden">demo ${featureVersion}</div>` });
+        if (url.pathname === '/scripts/demo/a.js') return js(`const DEMO_BIG = new Array(50000).fill('f').join(''); window.demoFeature = { version: ${featureVersion}, size: () => DEMO_BIG.length }; document.addEventListener('demo-feature', () => { window.__featureHits = (window.__featureHits || 0) + 1; });`);
+        if (url.pathname === '/scripts/demo/b.js') return js(`window.demoFeature.b = true;`);
         if (url.pathname.startsWith('/scripts/')) return js(read(`public${url.pathname}`));
         if (url.pathname === '/seg/demo.js') return js(SEGMENT_V1);
         if (url.pathname === '/melaton-apps/single/client/single.js') return js(SINGLE_V1.replace('single v1', `single v${singleVersion}`).replace("concat('v1')", `concat('v${singleVersion}')`));
@@ -297,6 +304,51 @@ async function main(served) {
     assert.deepStrictEqual(late.r, { deferred: 'unsaved' });
     assert.deepStrictEqual(late.loaded, [], 'swap ran after the last window closed (nothing to relaunch)');
     assert.deepStrictEqual(late.pending, []);
+
+    // ---- a hot feature (featureLoader) ----------------------------------------------------------------
+    const f1 = await page.evaluate(async () => {
+        await featureLoader.loadFeature('demo_feature');
+        const w = document.getElementById('demoFeatureWin');
+        openModal(w);
+        return { v: window.demoFeature.version, b: window.demoFeature.b, hot: featureLoader.hotFeatureOf('/scripts/demo/b.js'), markup: !!w };
+    });
+    assert.deepStrictEqual(f1, { v: 1, b: true, hot: 'demo_feature', markup: true }, 'hot feature loaded as a segment');
+    featureVersion = 2;
+    const f2 = await page.evaluate(async () => {
+        const deferred = await featureLoader.swapFeature('demo_feature');
+        closeModal(document.getElementById('demoFeatureWin'));
+        for (let i = 0; i < 40 && (window.demoFeature || {}).version !== 2; i++) await new Promise((r) => setTimeout(r, 50));
+        document.dispatchEvent(new Event('demo-feature'));
+        return {
+            deferred,
+            v: window.demoFeature && window.demoFeature.version,
+            wins: document.querySelectorAll('#demoFeatureWin').length,
+            text: document.getElementById('demoFeatureWin').textContent,
+            hits: window.__featureHits
+        };
+    });
+    assert.deepStrictEqual(f2.deferred, { deferred: 'window open' }, 'swap waits while its window is open');
+    assert.strictEqual(f2.v, 2, 'swapped after the window closed');
+    assert.strictEqual(f2.wins, 1, 'old markup removed, new markup inserted once');
+    assert.strictEqual(f2.text, 'demo 2');
+    assert.strictEqual(f2.hits, 1, 'only the new copy listens');
+    const oldFeature = await page.evaluate(async () => {
+        const id = melatonSegments.report().filter((r) => r.key === 'feature:demo_feature' && r.state !== 'loaded').pop().id;
+        for (let i = 0; i < 120; i++) {
+            window.gc();
+            await new Promise((r) => setTimeout(r, 50));
+            if (melatonSegments.report().find((x) => x.id === id).state === "reclaimed") return i;
+        }
+        return false;
+    });
+    if (!oldFeature && process.env.SEG_HOLD) {
+        // keep the browser up for a retainer walk (~/.cache/claude-run/retainers.js with CDP_WS)
+        const port = new URL(browser.wsEndpoint()).port;
+        console.log(`HOLD page ws: ws://127.0.0.1:${port}/devtools/page/${page.target()._targetId}`);
+        await new Promise((r) => setTimeout(r, 120000));
+    }
+    console.log('feature reclaimed after gc rounds:', oldFeature);
+    assert.ok(oldFeature !== false, 'old feature code reclaimed');
 
     // a singleton window survives the swap: the old window's late 'closed' does not end the new instance
     await page.evaluate(() => melatonApps.launch({ packageId: 'single' }));

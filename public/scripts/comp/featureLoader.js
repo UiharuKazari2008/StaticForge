@@ -432,10 +432,81 @@ const FEATURE_MANIFEST = {
     }
 };
 
+/*
+ * Hot features (Yozora #872): a FEATURE_MANIFEST entry with hot: true loads its scripts as a Melaton
+ * segment (melatonSegments.js), each in a function scope of its own, and its template markup is owned
+ * by that segment. An update to its scripts or template then swaps it without a restart
+ * (swapFeature: unload, load again; it waits while one of its windows is open). Its styles stay
+ * ordinary page stylesheets (features share them); CSS updates apply live anyway.
+ * A feature may be marked hot only when `node scripts/check-app-scope.js --features` lists it: no other
+ * file (nor another of its own scripts, nor its template) uses a name it puts on the page implicitly,
+ * nothing depends on it, it overrides nothing shared.
+ */
 class FeatureLoader {
     constructor() {
         this.loadedFeatures = new Set();
         this.loadingPromises = new Map();
+        // hot features whose update waits for their windows to close
+        this.pendingSwaps = new Set();
+    }
+
+    isHot(name) {
+        const f = FEATURE_MANIFEST[name];
+        return !!(f && f.hot === true && window.melatonSegments);
+    }
+
+    /** The loaded hot feature a static file belongs to (a script or its template), else null. */
+    hotFeatureOf(pathname) {
+        const rel = String(pathname || '').replace(/^\/+/, '');
+        for (const name of this.loadedFeatures) {
+            if (!this.isHot(name)) continue;
+            const f = FEATURE_MANIFEST[name];
+            if ((f.scripts || []).includes(rel) || f.html === rel) return name;
+        }
+        return null;
+    }
+
+    /** Unload a loaded hot feature (its code, globals, listeners, markup). Returns what was released. */
+    unloadFeature(name, reason) {
+        if (!this.isHot(name) || !this.loadedFeatures.has(name)) return null;
+        const released = window.melatonSegments.unload(`feature:${name}`, reason || 'unload');
+        this.loadedFeatures.delete(name);
+        return released;
+    }
+
+    /**
+     * Swap a loaded hot feature for the code in the cache (after an update): unload it and load it
+     * again. Waits (pendingSwaps) while one of its windows is on screen.
+     */
+    async swapFeature(name, opts = {}) {
+        if (!this.isHot(name)) return { notHot: true };
+        if (this.loadingPromises.has(name)) { try { await this.loadingPromises.get(name); } catch (_) { /* swapped anyway */ } }
+        if (!this.loadedFeatures.has(name)) return { notLoaded: true };
+        if (!opts.force && window.melatonSegments.windowsOf(`feature:${name}`).length) {
+            this.pendingSwaps.add(name);
+            this._watchPendingSwaps();
+            return { deferred: 'window open' };
+        }
+        this.pendingSwaps.delete(name);
+        const released = this.unloadFeature(name, 'update');
+        await this.loadFeature(name);
+        try { document.dispatchEvent(new CustomEvent('melaton:feature-updated', { detail: { feature: name } })); } catch (_) { /* no listeners */ }
+        return { swapped: true, released };
+    }
+
+    _watchPendingSwaps() {
+        if (this._pendingWatch) return;
+        this._pendingWatch = true;
+        // app-scope: allow page lifetime (the feature loader lives as long as the page)
+        document.addEventListener('staticforge:modal-lifecycle', (e) => {
+            if (!e.detail || e.detail.type !== 'closed' || !this.pendingSwaps.size) return;
+            // after the closing window's own lifecycle handlers
+            setTimeout(() => {
+                for (const name of Array.from(this.pendingSwaps)) {
+                    if (!window.melatonSegments.windowsOf(`feature:${name}`).length) void this.swapFeature(name);
+                }
+            }, 50);
+        });
     }
 
     /**
@@ -460,6 +531,7 @@ class FeatureLoader {
             added.push(el);
         });
         document.body.appendChild(holder.content);
+        this._lastMarkup = added;
         // a window can bring a request badge of its own (the log viewer's): websocket.js looks its
         // kept list of badges up again (updateTickerBadge)
         if (window.wsClient) window.wsClient._tickerBadges = null;
@@ -508,8 +580,16 @@ class FeatureLoader {
                 }
             }
 
-            // 3. Inject scripts sequentially (to preserve execution order / dependency chain)
-            if (Array.isArray(feature.scripts)) {
+            // 3. Scripts. A hot feature (#872): one segment for its scripts, owning its markup
+            if (this.isHot(name) && Array.isArray(feature.scripts) && feature.scripts.length) {
+                const key = `feature:${name}`;
+                const markup = feature.html ? (this._lastMarkup || []) : [];
+                this._lastMarkup = null;
+                const urls = await Promise.all(feature.scripts.map((s) => this._versionedAssetUrl(s)));
+                const ready = window.melatonSegments.load({ key, label: name, scripts: urls, urlPrefixes: urls.map((u) => u.split('?')[0]) });
+                markup.forEach((el) => window.melatonSegments.adopt(key, el));
+                await ready;
+            } else if (Array.isArray(feature.scripts)) {
                 for (const script of feature.scripts) {
                     await this._loadScript(script);
                 }

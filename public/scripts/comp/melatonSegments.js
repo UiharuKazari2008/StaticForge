@@ -496,6 +496,13 @@
         return released;
     }
 
+    /** Hand a node to a loaded segment: it is removed when the segment unloads (a feature's template markup). */
+    function adopt(key, node) {
+        const seg = segments.get(key);
+        if (seg && node && node.nodeType === 1) seg.nodes.add(node);
+        return !!seg;
+    }
+
     /** The windows (.modal) a loaded segment owns that are on screen: its appended nodes, tagged ones, owns. */
     function windowsOf(key) {
         const seg = segments.get(key);
@@ -519,7 +526,9 @@
         const rows = [];
         for (const seg of segments.values()) rows.push({ key: seg.key, label: seg.label, id: seg.id, state: 'loaded', loadedAt: seg.loadedAt, globals: Array.from(seg.globals) });
         for (const h of history) {
-            if (h.state === 'unloaded' && h.ref && !h.ref.deref()) h.state = 'reclaimed';
+            // only without a FinalizationRegistry: deref() keeps its target alive until the current job
+            // ends, so asking would hold the segment through a garbage collection in the same job
+            if (!reclaimWatch && h.state === 'unloaded' && h.ref && !h.ref.deref()) h.state = 'reclaimed';
             rows.push({ key: h.key, label: h.label, id: h.id, state: h.state, loadedAt: h.loadedAt, unloadedAt: h.unloadedAt, reclaimedAt: h.reclaimedAt || null, released: h.released });
         }
         return rows;
@@ -533,6 +542,7 @@
         ownerOfCaller,
         ensureHooks,
         windowsOf,
+        adopt,
         get: (key) => segments.get(key) || null,
         loaded: () => Array.from(segments.keys()),
         current: () => evaluating

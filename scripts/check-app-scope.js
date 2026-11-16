@@ -250,7 +250,6 @@ function featureReport() {
     }
     const rows = [];
     for (const [name, f] of Object.entries(manifest)) {
-        const own = new Set([...(f.scripts || []).map((s) => `public/${s}`), f.html ? `public/${f.html}` : null].filter(Boolean));
         const blockers = [];
         let overrides = 0;
         for (const s of f.scripts || []) {
@@ -261,11 +260,15 @@ function featureReport() {
             overrides += scanFile(rel).hits.filter((h) => h.rule === 'global-override').length;
             for (const [n, exported] of names) {
                 if (exported) continue; // put on the page on purpose: a segment keeps that working
-                const users = Array.from(words.get(n) || []).filter((u) => !own.has(u));
+                // each script runs in its own scope: the feature's other scripts and its template count too
+                const users = Array.from(words.get(n) || []).filter((u) => u !== rel);
                 if (users.length) blockers.push(`${n} <- ${users.slice(0, 3).join(', ')}${users.length > 3 ? ` +${users.length - 3}` : ''}`);
             }
         }
         if (overrides) blockers.push(`${overrides} global override(s)`);
+        // a feature others depend on keeps its code for them: not swapped under them
+        const dependents = Object.entries(manifest).filter(([, g]) => (g.depends || []).includes(name)).map(([n]) => n);
+        if (dependents.length) blockers.push(`depended on by ${dependents.join(', ')}`);
         rows.push({ feature: name, scripts: (f.scripts || []).length, hot: f.hot === true, eligible: !blockers.length && (f.scripts || []).length > 0, blockers });
     }
     return rows;

@@ -372,6 +372,7 @@
             if (typeof sw._scheduleUpdateCompleteToast === 'function') sw._scheduleUpdateCompleteToast('restart');
             return;
         }
+        if (kind === 'segments' && typeof sw.applySegmentUpdate === 'function') { void sw.applySegmentUpdate(m.files, { fromPhone: true }); return; }
         sw.applyStaticCacheUpdate(m.files, { silent: true, fromPhone: true });
     });
 

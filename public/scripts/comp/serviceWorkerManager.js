@@ -2494,6 +2494,41 @@ class ServiceWorkerManager {
         return true;
     }
 
+    /** { features: Set of loaded hot features the files belong to, rest: the other files } (#872) */
+    splitHotFeatureFiles(files) {
+        const fl = window.featureLoader;
+        const features = new Set();
+        const rest = [];
+        for (const file of files || []) {
+            const name = fl && typeof fl.hotFeatureOf === 'function' ? fl.hotFeatureOf(normalizeStaticFilePath(file.url)) : null;
+            if (name) features.add(name);
+            else rest.push(file);
+        }
+        return { features, rest };
+    }
+
+    /**
+     * A 'segments' update (#872): CSS / assets apply live, each loaded hot feature it touches is
+     * swapped (or waits for its windows to close). Nothing restarts.
+     */
+    async applySegmentUpdate(files, options = {}) {
+        const used = this.filesUsedByPage(files);
+        const { features } = this.splitHotFeatureFiles(used);
+        this._staticHashByPath = null;
+        await this.applyStaticCacheUpdate(files, { silent: true, fromPhone: options.fromPhone });
+        const results = {};
+        for (const name of features) {
+            try { results[name] = await window.featureLoader.swapFeature(name); } catch (err) {
+                console.error(`[update] ${name} could not be swapped; it updates at the next restart`, err);
+                results[name] = { error: err.message };
+                this.tripPendingUpdateFuse(1);
+                this.pendingUpdateKind = 'restart';
+            }
+        }
+        this._noteLiveUpdate && this._noteLiveUpdate({ kind: 'feature', results });
+        return results;
+    }
+
     /** The files of an update this page uses (the rest change nothing until they are next loaded). */
     filesUsedByPage(files) {
         return (files || []).filter((file) => !this._pageNeverUsed(normalizeStaticFilePath(file.url)));
@@ -2507,6 +2542,12 @@ class ServiceWorkerManager {
         const used = this.filesUsedByPage(files);
         if (!used.length) {
             return 'unused';
+        }
+        // files of a loaded hot feature swap with it (featureLoader.swapFeature); the rest decide
+        const { rest } = this.splitHotFeatureFiles(used);
+        if (rest.length < used.length) {
+            if (!rest.length || rest.every((file) => isApplySafeStaticFilePath(normalizeStaticFilePath(file.url)))) return 'segments';
+            return 'restart';
         }
         files = used;
         if (this.hasScriptUpdate(files)) {
@@ -2666,6 +2707,12 @@ class ServiceWorkerManager {
             this._staticHashByPath = null;
             updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
             this.applyStaticCacheUpdate(updatedFiles, { silent: true });
+            return;
+        }
+        if (updateKind === 'segments') {
+            updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
+            this.pendingUpdateKind = null;
+            void this.applySegmentUpdate(updatedFiles);
             return;
         }
         this.pendingUpdateKind = updateKind;
