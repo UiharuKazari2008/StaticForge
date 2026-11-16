@@ -259,6 +259,8 @@
             }
             const layers = sh.barsPopupLayers();
             if (!layers.length) { out({ closed: true }); return; }
+            // 6.5 paints a menu in two ticks (its frame and first row, then the rest): the copy is of the whole menu
+            layers.forEach((l) => { if (l.dataset.wmPaint) delete l.dataset.wmPaint; });
             const list = clickables(layers, shell);
             const regions = list.map((el, idx) => { const r = el.getBoundingClientRect(); return { idx, x0: Math.round(r.left * dpr), y0: Math.round(r.top * dpr), x1: Math.round(r.right * dpr), y1: Math.round(r.bottom * dpr) }; });
             const pics = [];
