@@ -685,8 +685,16 @@
         if (window.wmShell && window.wmShell.setBarsExternal) window.wmShell.setBarsExternal(false);
     });
 
+    let renderQueued = null;
     window.melatonBars = {
-        render: (ctx) => { serial(() => render(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] render', err); }); },
+        // bar copies that wait in the queue are one: the newest ask is the one made (a popup asked for
+        // meanwhile then waits behind one copy at most, not a pile of them)
+        render: (ctx) => {
+            if (renderQueued) { renderQueued.ctx = ctx; return; }
+            const slot = { ctx };
+            renderQueued = slot;
+            serial(() => { if (renderQueued === slot) renderQueued = null; return render(slot.ctx); }).catch((err) => { unstage(); console.warn('[melatonBars] render', err); });
+        },
         renderPopup: (ctx) => { serial(() => renderPopup(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); }); },
         renderLock: (ctx) => { serial(() => renderLock(ctx)).catch((err) => console.warn('[melatonBars] renderLock', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
