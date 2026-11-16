@@ -532,7 +532,7 @@
         const rows = imported.items.map((o, i) => {
             const label = o.kind === 'card' ? `${o.walletName}${o.last4 ? ` \u2022\u2022${o.last4}` : ''}` : `${o.walletName}${o.merchant ? ` (${o.merchant})` : ''}`;
             const img = o.image ? `<img src="${esc(o.image)}" alt="" draggable="false">` : '<span class="wwl-imp-noimg"></span>';
-            return `<label class="wwl-imp-row">${img}<input type="checkbox" data-i="${i}"${imported.picked.has(i) ? ' checked' : ''}><span>${esc(label)}</span></label>`;
+            return `<label class="wm-check wwl-imp-row">${img}<input type="checkbox" data-i="${i}"${imported.picked.has(i) ? ' checked' : ''}><span>${esc(label)}</span></label>`;
         }).join('');
         const n = imported.items.length;
         els.import.innerHTML = `${ui.note(`Found ${n} card${n === 1 ? '' : 's'} in Samsung Wallet. Check the ones to keep on Today; cards already here are updated.`)}
@@ -556,6 +556,22 @@
         } catch (_) { return null; }
     }
 
+    /** A card picture as WebP (keeps the transparent corners; a tenth of the PNG's size) for the store. */
+    async function compact(dataUrl) {
+        if (!dataUrl || !/^data:image\/png/.test(dataUrl)) return dataUrl;
+        try {
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            c.getContext('2d').drawImage(img, 0, 0);
+            const out = c.toDataURL('image/webp', 0.9);
+            return out.startsWith('data:image/webp') && out.length < dataUrl.length ? out : dataUrl;
+        } catch (_) { return dataUrl; }
+    }
+
     async function importSave() {
         if (!imported) return;
         const list = items();
@@ -566,7 +582,7 @@
                 const isNew = !it;
                 if (isNew) it = { id: uid(), kind: o.kind, name: o.walletName, color: COLORS[0][0] };
                 it.walletName = o.walletName;
-                if (o.image) it.photo = o.image;
+                if (o.image) it.photo = await compact(o.image);
                 if (o.kind === 'card') {
                     if (o.last4) it.last4 = o.last4;
                     const net = norm(o.network);
