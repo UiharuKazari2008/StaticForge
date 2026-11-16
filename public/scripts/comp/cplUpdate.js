@@ -328,7 +328,7 @@
         return `<div class="cpl-vpage cpl-vwide">
             <h1 class="cpl-vtitle">Review your update history</h1>
             <p class="cpl-vtext">Check the Status column to ensure all important updates were successful. Updates for programs install while Melaton runs; the others install when Melaton restarts.</p>
-            <table class="cpl-vtable cpl-wu-history"><colgroup><col><col style="width:80px"><col style="width:96px"><col style="width:84px"></colgroup><tr class="is-head"><td>Name</td><td>Status</td><td>Importance</td><td>Date Installed</td></tr>${body || '<tr><td colspan="4">No updates have been installed on this computer yet.</td></tr>'}</table>
+            <table class="cpl-vtable cpl-wu-history"><colgroup><col><col style="width:80px"><col style="width:100px"><col style="width:92px"></colgroup><tr class="is-head"><td>Name</td><td>Status</td><td>Importance</td><td>Date Installed</td></tr>${body || '<tr><td colspan="4">No updates have been installed on this computer yet.</td></tr>'}</table>
         </div>`;
     }
     function registerHistory(cpl) {
