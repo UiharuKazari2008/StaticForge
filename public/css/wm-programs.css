@@ -1540,8 +1540,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     box-shadow: 0 0 0 calc(1 * var(--wm-px)) #1a1a1a;
 }
 
-/* About > Version (#829): "Powered by CafeReady" - a black case-badge sticker on the left; the
- * logo's CafeReady lettering is white, so it sits on the dark face, and its grey "Melaton" is
+/* About > Version (#829): "Powered by CaféReady" - a black case-badge sticker on the left; the
+ * logo's CaféReady lettering is white, so it sits on the dark face, and its grey "Melaton" is
  * inverted for that face (cafe-ready-dark.png) */
 .wm-cafe-badge {
     position: relative;

@@ -29,6 +29,7 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
 @.cursor/rules/no-native-browser-ui.mdc
 @.cursor/rules/app-scope-ownership.mdc
 @.cursor/rules/melaton-bars-native-layouts.mdc
+@.cursor/rules/cafe-ready-name.mdc
 
 ## Yozora access from Claude Code
 

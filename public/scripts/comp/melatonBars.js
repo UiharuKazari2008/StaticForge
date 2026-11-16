@@ -573,7 +573,9 @@
      * AndroidBars.layouts({ role: { role, items } }) when something changed.
      */
     let layoutsSent = '';
-    function pushLayouts(roles) {
+    // the last full set: a push of one popup (an ActiveSync transfer's numbers) replaces only that one
+    let layoutsAll = {};
+    function pushLayouts(roles, partial) {
         const sh = window.wmShell;
         const ab = window.AndroidBars;
         if (!sh || !sh.barsPopupOpen || !ab || typeof ab.layouts !== 'function' || document.visibilityState === 'visible') return;
@@ -594,6 +596,8 @@
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
         try { sh.barsPopupClose(); } catch (_) { /* none open */ }
+        if (partial) { layoutsAll = Object.assign({}, layoutsAll, all); sendLayouts(Object.assign({}, layoutsAll)); return; }
+        layoutsAll = all;
         sendLayouts(all);
     }
 
@@ -1132,7 +1136,7 @@
             ab.layoutResult(JSON.stringify({ role, result }));
         },
         /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
-        pushLayouts: (roles) => pushLayouts(roles || []),
+        pushLayouts: (roles, partial) => pushLayouts(roles || [], !!partial),
         kitSignature: () => kitSignature(),
         renderKit: (ctx) => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },

@@ -1863,7 +1863,7 @@
                         <span>Memory:</span><span>${esc(f.memory)}</span>
                         <span>Expansion slot:</span><span>${esc(f.slot)}</span>
                     </div>
-                    <div class="wm-cafe-badge" role="img" aria-label="Powered by CafeReady"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span></div>`;
+                    <div class="wm-cafe-badge" role="img" aria-label="Powered by CaféReady"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span></div>`;
             },
             async commit(d) {
                 const idApi = window.melatonDeviceIdentity;

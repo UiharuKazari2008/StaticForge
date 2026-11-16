@@ -1793,7 +1793,7 @@
                     ctx.drawImage(logo, Math.round(320 - w / 2), Math.round(238 - h / 2), w, h);
                     ctx.imageSmoothingEnabled = false;
                 }
-                // a CafeReady PC (#815: the app's Melaton Café Miniport): its logo where boards put Energy Star
+                // a CaféReady PC (#815: the app's Melaton Café Miniport): its logo where boards put Energy Star
                 if (screen.cafeReady && cafe && cafe.complete && cafe.naturalWidth) {
                     ctx.drawImage(cafe, 640 - 16 - cafe.naturalWidth, 16);
                 }

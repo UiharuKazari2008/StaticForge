@@ -975,7 +975,7 @@
             corner.hidden = !o.corner;
             if (o.corner) corner.dataset.kind = o.corner === 'ok' ? 'ok' : 'close';
         }
-        // Android's notification tray at the head of the icons (Settings): a list glyph of its own, not WM's
+        // Android's notification tray before the radios (Settings): a list glyph of its own, not WM's
         // notification bubble, which is Melaton's own notifications (Yukimi, Nov 16; a Melaton-only concept,
         // drawn in the ROM glyphs' 1-bit white: static_images/wm65/status-androidtray)
         let tray = shell.querySelector('.wm-status-icon[data-role="androidtray"]');
@@ -986,9 +986,10 @@
             tray.dataset.role = 'androidtray';
             tray.style.backgroundImage = 'image-set(url("/static_images/wm65/status-androidtray.png") 1x, url("/static_images/wm65/status-androidtray@2x.png") 2x, url("/static_images/wm65/status-androidtray@4x.png") 4x)';
             tray.setAttribute('aria-label', 'Android notifications');
+            // just left of where Bluetooth's icon comes (Yukimi, Nov 16): the app icons left of it, the radios right
             const status = shell.querySelector('.wm-status');
-            const reserve = status.querySelector('.wm-status-reserve');
-            if (reserve) reserve.after(tray); else status.prepend(tray);
+            const bt = status.querySelector('.wm-status-icon[data-role="bluetooth"]');
+            if (bt) bt.before(tray); else status.prepend(tray);
         }
         if (keys[0] && typeof o.softLeft === 'string') { keys[0].textContent = o.softLeft; keys[0].hidden = false; keys[0].disabled = !o.softLeft; }
         if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
@@ -2835,14 +2836,14 @@
                 // a server message (or a request going out: prints in progress) may change an icon
                 statusDirty();
                 const after = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : before + 1;
-                // CafeReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
+                // CaféReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
                 // request nor its cached reply reaches the server (Yukimi, Nov 14: the arrows only for that)
                 const cafe = message && ((direction === 'out' && message._mpCache) || (direction === 'in' && message._mpCached));
                 if (after !== before && !cafe && !(message && QUIET_WS.has(message.type))) dataUsed();
             };
         }
         // requests count by the bytes that came over the network (resource timing): a service worker,
-        // HTTP cache or CafeReady answer has none, so it no longer raises the call (Yukimi, Nov 14)
+        // HTTP cache or CaféReady answer has none, so it no longer raises the call (Yukimi, Nov 14)
         if (!dataWatchFetch) dataWatchFetch = true;
         if (dataWatchFetch === true && typeof PerformanceObserver === 'function') {
             dataWatchFetch = 'observed';
@@ -4186,7 +4187,18 @@
             statusDirty();
             const b = shell && shell.querySelector('.wm-bubble');
             if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
+            // behind a program: the app's own Connectivity popup follows the transfer too (its layout again,
+            // at most every 400 ms, the last numbers always sent)
+            if (barsExternal && document.visibilityState !== 'visible') asLayoutSoon(!!d.done);
         });
+    }
+    let asLayoutTimer = null;
+    let asLayoutAt = 0;
+    function asLayoutSoon(now) {
+        const run = () => { asLayoutTimer = null; asLayoutAt = Date.now(); if (window.melatonBars && window.melatonBars.pushLayouts) window.melatonBars.pushLayouts(['data'], true); };
+        if (now) { clearTimeout(asLayoutTimer); run(); return; }
+        if (asLayoutTimer) return;
+        asLayoutTimer = setTimeout(run, Math.max(0, 400 - (Date.now() - asLayoutAt)));
     }
 
     function watchDirector() {
@@ -5755,6 +5767,14 @@
             const dev = deviceView();
             const sections = [];
             const pe = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+            // Bluetooth's icon not in the bar (off, or Show Bluetooth Status hides it): its state as the first
+            // row, before Wi-Fi, worded as the Wi-Fi row (Yukimi, Nov 16)
+            const btIcon = shell.querySelector('.wm-status-icon[data-role="bluetooth"]');
+            const rdo = radiosNow || readRadios();
+            if (rdo && rdo.bluetooth != null && (!btIcon || btIcon.hidden || btIcon.classList.contains('wm-shed'))) {
+                const bst = !rdo.bluetooth ? 'Power Off' : rdo.bluetoothConnected === true ? 'Connected' : 'On';
+                sections.push({ html: `<div class="wm-bubble-pair"><span>Bluetooth: ${bst}</span></div>` });
+            }
             // Wi-Fi as Mobile Broadband (Yukimi, Nov 14): "Wi-Fi: <network / Connected / Disconnected /
             // Power Off>", its signal as bars (1-4) at the right
             const w = dev.wifi;
@@ -5782,7 +5802,7 @@
             // the server still starting: no Mainframe Server box on the phone, this line instead (Yukimi, Nov 13)
             const dcBooting = !!(ws && ws.lastServerStartupStatus && ws.lastServerStartupStatus.isReady === false);
             // the Dreamscape link as one "VPN:" row like the Wi-Fi one, Reconnect at its right (Yukimi, Nov 13)
-            // CafeReady: the Miniport carries the link and its cache answers (#815)
+            // CaféReady: the Miniport carries the link and its cache answers (#815)
             let cafeReady = false;
             try { const mp = window.melatonContinuity && typeof window.melatonContinuity.miniport === 'function' ? window.melatonContinuity.miniport() : null; cafeReady = !!(mp && mp.up && mp.transport === 'miniport'); } catch (_) { cafeReady = false; }
             const vpn = connected
@@ -5791,14 +5811,14 @@
                     : ws && ws.connectionPhase === 'auth' ? 'Logon required.'
                         : ws && (ws.isConnecting || ws.connectionPhase === 'dialing') ? 'Connecting...'
                             : `Not connected to ${host}.`;
-            // connected: two lines (Yukimi, Nov 14) - "VPN: Connected (with CafeReady)" with the time
+            // connected: two lines (Yukimi, Nov 14) - "VPN: Connected (with CaféReady)" with the time
             // connected at the right, then "<host> - RTT: ## ms"
             if (connected) {
                 const since = ws && ws.connectionStats && ws.connectionStats.connectedAt;
                 const secs = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : null;
                 const dur = secs == null ? '' : `${Math.floor(secs / 3600)}:${String(Math.floor(secs / 60) % 60).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
                 const e = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected${cafeReady ? ' (with CafeReady)' : ''}</span><span class="wm-vpn-time">${e(dur)}</span></div><div>${e(host)}${rtt != null ? ` - RTT: ${rtt} ms` : ''}</div>` });
+                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected${cafeReady ? ' (with CaféReady)' : ''}</span><span class="wm-vpn-time">${e(dur)}</span></div><div>${e(host)}${rtt != null ? ` - RTT: ${rtt} ms` : ''}</div>` });
                 vpnClock();
             } else {
                 sections.push({ text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
