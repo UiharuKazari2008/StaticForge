@@ -717,6 +717,10 @@
     let layoutsSent = '';
     // the last full set: a push of one popup (an ActiveSync transfer's numbers) replaces only that one
     let layoutsAll = {};
+    // the popups' own fades and slides finished at once (a capture mid-fade wrote down nothing at opacity 0)
+    function settle(layers) {
+        layers.forEach((l) => { try { l.getAnimations({ subtree: true }).forEach((a) => { try { a.finish(); } catch (_) { /* infinite: left */ } }); } catch (_) { /* old engine */ } });
+    }
     // set while this page opens its popups to write them down (the notification box it opens is not a new one)
     let capturing = false;
     let notesMO = null;
@@ -741,6 +745,8 @@
                 sh.barsPopupOpen(role);
                 // (a waiting notification is the notification icon's own popup, not part of another's)
                 const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (role === 'notify' || !l.classList.contains('wm-notify')));
+                // written down as it ends up, not mid-way through its fade (WM 6.1's notification fades in)
+                settle(layers);
                 if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
@@ -1276,6 +1282,7 @@
                 if (sh.currentApp() !== before) result = 'app';
                 else {
                     const now = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                    settle(now);
                     if (now.length) {
                         const items = layoutOf(now, window.devicePixelRatio || 1);
                         result = 'popup';
