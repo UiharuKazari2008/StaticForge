@@ -1,2 +1,95 @@
 /* Melaton Mobile: DreamStudio part - print (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* ---- the dialogs (Enhance): LCD + jog rows, combos at the row's end, the advanced rows under the wrench */
+#wmShell .wdp-dlg > .wm-msgbox { max-width: calc(250 * var(--wm-px)); }
+.wdp-q { margin: 0 0 calc(3 * var(--wm-px)); }
+.wdp-dlg button.wdp-padlcd { min-width: calc(38 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+.wdp-dlg button.wdp-seed { min-width: calc(80 * var(--wm-px)); }
+.wdp-dlg .wds-wt-row > [data-act] { flex: 0 0 calc(92 * var(--wm-px)); width: calc(92 * var(--wm-px)); min-width: 0; margin: 0; }
+.wdp-dlg .wds-wt-row > .wm-tool { flex: 0 0 auto; margin: 0; }
+.wdp-dlg .wds-wt-row > .wm-tool > i { font-size: calc(11 * var(--wm-px)); line-height: 1; pointer-events: none; }
+/* Scale and Delivery side by side: two short names, two narrow combos */
+.wdp-dlg .wdp-pair > .wds-wt-name { flex: 0 0 auto; }
+.wdp-dlg .wdp-pair > [data-act] { flex: 1 1 0; width: auto; }
+/* a value left blank: shown as the print has it, faint until one is set here */
+.wdp-dlg .wds-wt-row.is-inherited > .wm-lcd { opacity: 0.55; }
+.wdp-adv { border-top: calc(1 * var(--wm-px)) solid currentColor; margin-top: calc(3 * var(--wm-px)); padding-top: calc(2 * var(--wm-px)); }
+.wdp-adv[hidden] { display: none; }
+.wdp-hint { margin: calc(3 * var(--wm-px)) 0 0; opacity: 0.7; }
+
+/* ---- Comparison: the print and its source in one box, the wipe's handle at the split */
+.wds-xview[data-xview="compare"] { padding: calc(2 * var(--wm-px)); box-sizing: border-box; }
+.wds-xview[data-xview="compare"].is-current { overflow: hidden; }
+.wdp-cmp-stage {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    --wdp-split: 50%;
+    touch-action: none;
+}
+.wdp-cmp-stage > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+}
+.wdp-cmp-stage > img[hidden] { display: none; }
+.wdp-cmp-stage > img.is-top { z-index: 1; }
+.wdp-cmp-stage > img.is-clip { clip-path: inset(0 calc(100% - var(--wdp-split)) 0 0); }
+/* the handle: a rule down the split with a raised grip in the middle (the kit's button face) */
+.wdp-cmp-handle {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--wdp-split);
+    z-index: 2;
+    width: calc(1 * var(--wm-px));
+    margin-left: calc(-0.5 * var(--wm-px));
+    background: var(--wm-highlight);
+    pointer-events: none;
+}
+.wdp-cmp-handle[hidden] { display: none; }
+.wdp-cmp-grip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: calc(9 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
+    box-sizing: border-box;
+    transform: translate(-50%, -50%);
+    border: calc(1 * var(--wm-px)) solid var(--wm-highlight);
+    background: var(--wm-highlight-text);
+}
+.wdp-cmp-none { flex: 0 0 auto; margin: calc(6 * var(--wm-px)) calc(3 * var(--wm-px)); opacity: 0.6; }
+.wdp-cmp-none[hidden] { display: none; }
+
+/* ---- Paint: the tool bar, then the print on its canvas as large as the page allows */
+.wds-xview[data-xview="paint"].is-current { overflow: hidden; }
+.wdp-pt-bar { border-top-width: 0; }
+.wdp-pt-bar .wm-tool > i { font-size: calc(13 * var(--wm-px)); line-height: 1; pointer-events: none; }
+.wdp-pt-bar .wm-tool.wm-lcd { justify-content: center; min-width: calc(30 * var(--wm-px)); }
+.wdp-pt-well { width: calc(14 * var(--wm-px)); height: calc(14 * var(--wm-px)); }
+.wdp-pt-stage {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+    overflow: hidden;
+}
+.wdp-pt-canvas { display: block; touch-action: none; }
+.wm-pop.wdp-pt-colors { width: calc(180 * var(--wm-px)); padding: calc(3 * var(--wm-px)); }
+
+/* ---- Print History: a dense row per print (its picture small, when, size, a star when pinned) */
+.wdp-h-list { flex: 1 1 auto; margin: calc(2 * var(--wm-px)); }
+.wdp-h-row { min-height: calc(26 * var(--wm-px)); cursor: pointer; }
+.wdp-h-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wdp-h-row > img { flex: 0 0 auto; width: calc(24 * var(--wm-px)); height: calc(24 * var(--wm-px)); object-fit: cover; }
+.wdp-h-row > .wdp-h-when { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdp-h-row.is-visit > .wdp-h-when { font-weight: bold; }
+.wdp-h-row > .wdp-h-size { flex: 0 0 auto; opacity: 0.6; }
+.wdp-h-row > .wdp-h-mark { flex: 0 0 calc(12 * var(--wm-px)); text-align: center; }
+.wdp-h-row > .wdp-h-mark > i { font-size: calc(10 * var(--wm-px)); }

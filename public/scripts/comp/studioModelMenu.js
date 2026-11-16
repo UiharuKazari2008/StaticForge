@@ -30,10 +30,10 @@
        buildExportOpsFromStudio, describeStudioChangeOp, buildPayloadFromOps, attachStudioSeedEcho,
        copyStudioChangeText, STUDIO_CHANGE_AI_SPEC */
 
-    // desktop rows the phone has no counterpart for: a window of the print (the phone has View Full
-    // Screen), Paint and desktop shortcuts, the Studio Activity log and Text Expanders (desktop list
-    // windows), Set as Wallpaper (Desktop Settings), Enhance (its desktop modal has no phone form and
-    // comes up as squeezed Vista fragments); wmStudio.js leaves most of the same ones out
+    // desktop rows whose desktop window the phone does not show: the phone has its own forms of them
+    // in the other DreamStudio parts (Print: Enhance, Paint, Comparison, Today background, Add to
+    // Start; Session: Studio Activity; Expanders: Text Expanders), or none is needed (Open Result in
+    // Window: the phone has View Full Screen)
     const NO_PHONE = new Set(['open-in-window', 'edit-in-paint', 'create-desktop-shortcut', 'studio-activity', 'studio-text-expanders', 'set-wallpaper', 'enhance']);
     // the previous-print overlay the phone does not draw
     const NO_PHONE_LABELS = new Set(['Comparison']);

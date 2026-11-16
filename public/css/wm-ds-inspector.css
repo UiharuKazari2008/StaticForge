@@ -51,3 +51,88 @@
 /* Compiled Prompts: each text in WM's framed box, read only; the script sizes each to its text */
 .wdi-compiledview { overflow-y: auto; padding-bottom: calc(6 * var(--wm-px)); }
 .wdi-compiledview textarea.wdi-compiled { display: block; box-sizing: border-box; width: 100%; height: calc(5 * 13 * var(--wm-px) + 6 * var(--wm-px)); resize: none; }
+
+/* the seed's LCD is a button (a tap opens the seed box) */
+.wds-insp .wds-wt-row > button.wds-insp-seed { padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+
+/* Recent Seeds: one dense run under the seed row, the seed in the box marked */
+.wds-insp .wdi-seeds {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 calc(4 * var(--wm-px));
+    margin: 0 0 calc(2 * var(--wm-px));
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(14 * var(--wm-px));
+}
+.wds-insp .wdi-seeds[hidden] { display: none; }
+.wds-insp .wdi-seeds-head { opacity: 0.65; }
+.wds-insp .wdi-seed {
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    border: 0;
+    background: none;
+    color: var(--wm-highlight);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+.wds-insp .wdi-seed[aria-pressed="true"],
+.wds-insp .wdi-seed:active { background: var(--wm-highlight); color: var(--wm-highlight-text); text-decoration: none; }
+.wdi-seedsdlg .wm-listbox { max-height: calc(200 * var(--wm-px)); overflow-y: auto; }
+
+/* a Tendai row's mitigations and Research Sources (the desktop row's lists) */
+.wds-insp .wdi-mit > b { font-weight: bold; }
+.wds-insp .wdi-refs { display: flex; flex-direction: column; margin-top: calc(1 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); line-height: calc(11 * var(--wm-px)); opacity: 0.8; overflow-wrap: anywhere; }
+.wds-insp .wdi-refs > span:not(.wdi-refs-head) { padding-left: calc(6 * var(--wm-px)); }
+.wds-insp .wdi-refs-head { font-weight: bold; }
+.wds-insp .wdi-refs i,
+.wdi-timeline i { display: inline-block; width: calc(11 * var(--wm-px)); margin-right: calc(2 * var(--wm-px)); text-align: center; }
+
+/* token figures: input, output, cache, reasoning, total in one run */
+.wdi-tokens { display: flex; flex-wrap: wrap; gap: 0 calc(5 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); line-height: calc(12 * var(--wm-px)); opacity: 0.75; }
+.wdi-tokens i { width: auto; margin-right: calc(1 * var(--wm-px)); }
+
+/* Compiler Timeline & Costs on the Inspector page: one row, a tap opens the page */
+.wds-insp .wdi-usage {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    margin: calc(3 * var(--wm-px)) 0 0;
+    padding: calc(2 * var(--wm-px));
+    border: 0;
+    border-top: calc(1 * var(--wm-px)) dotted currentColor;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.wds-insp .wdi-usage:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-insp .wdi-usage .wdi-val > i { display: inline-block; width: calc(12 * var(--wm-px)); margin-right: calc(2 * var(--wm-px)); text-align: center; }
+
+/* the timeline page: each pass's totals, then each call with its tools */
+.wdi-timeline { overflow-y: auto; padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px)) calc(6 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); line-height: calc(12 * var(--wm-px)); }
+.wdi-timeline .wdi-sub { opacity: 0.65; }
+.wdi-tl-phase { padding: calc(2 * var(--wm-px)) 0; border-bottom: calc(1 * var(--wm-px)) dotted currentColor; }
+.wdi-tl-phase > b { display: block; }
+.wdi-tl-call { display: flex; flex-direction: column; gap: calc(1 * var(--wm-px)); padding: calc(2 * var(--wm-px)) 0; border-bottom: calc(1 * var(--wm-px)) dotted currentColor; }
+.wdi-tl-call > .wdi-val { font-weight: bold; }
+.wdi-tl-tool { display: flex; flex-direction: column; padding-left: calc(8 * var(--wm-px)); overflow-wrap: anywhere; }
+.wdi-tl-name { font-weight: bold; }
+.wdi-tl-reason { opacity: 0.8; overflow-wrap: anywhere; }
+.wdi-tl-tag { padding-left: calc(6 * var(--wm-px)); }
+.wdi-tl-sec { display: flex; flex-direction: column; padding-left: calc(6 * var(--wm-px)); }
+.wdi-tl-sechead { font-style: italic; }
+.wdi-tl-sub { padding-left: calc(4 * var(--wm-px)); opacity: 0.8; }
+.wdi-tl-kv { display: flex; flex-wrap: wrap; gap: 0 calc(4 * var(--wm-px)); }
+.wdi-tl-kv > span:first-child { opacity: 0.65; }
+.wdi-tl-ctx > span.is-muted { opacity: 0.35; }
+.wdi-tl-cat { display: flex; justify-content: space-between; }
+.wdi-tl-change { display: flex; flex-direction: column; padding-left: calc(6 * var(--wm-px)); }
+
+/* Report Issue: the short read-only fields label + box on a line, the two texts full width */
+.wdi-repdlg .wm-form-row { margin: 0 0 calc(2 * var(--wm-px)); }
+.wdi-repdlg textarea.wm-edit { display: block; box-sizing: border-box; width: 100%; resize: none; }
+.wdi-repdlg .wdi-rep-reason { height: calc(2 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
+.wdi-repdlg .wdi-rep-text { height: calc(4 * 13 * var(--wm-px) + 6 * var(--wm-px)); }

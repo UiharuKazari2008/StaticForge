@@ -85,3 +85,43 @@ textarea.wm-edit.wds-stg-directive { display: block; width: 100%; box-sizing: bo
 /* ---- a character's Directive line */
 #wmShell .wds-cdirdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
 textarea.wm-edit.wds-cdir { display: block; width: 100%; box-sizing: border-box; resize: none; }
+
+/* ---- a stage's custom size: the LCDs open the number pad; Custom Ratio's width and height follow */
+.wds-stg-pad > button.wds-wt-lcd { min-width: calc(44 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+.wds-stg-pad.is-follow > button.wds-wt-lcd { cursor: default; opacity: 0.55; }
+
+/* ---- Stage Results while a run goes: the slot's state under its name, WM's bar while it renders */
+.wds-sr-row > .wds-sr-text { flex: 1 1 auto; }
+.wds-sr-row.is-failed .wds-sr-text > span { opacity: 1; }
+.wds-sr-text > .wds-sr-bar { height: calc(9 * var(--wm-px)); margin-top: calc(2 * var(--wm-px)); }
+.wds-sr-text > .wds-sr-bar > span { width: round(down, calc((100% - 2 * var(--wm-px)) * var(--wds-sr-pct, 0)), calc(9 * var(--wm-px))); max-width: none; }
+
+/* ---- the V5 board's overlap warning */
+.wds-posdlg .wds-pos-warn { margin: calc(3 * var(--wm-px)) 0 0; }
+.wds-posdlg .wds-pos-warn[hidden] { display: none; }
+
+/* ---- Text Overlay: the overlays' page, one overlay's dialog */
+.wds-xview[data-xview="overlays"] > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); opacity: 0.6; }
+.wds-ov-list { flex: 1 1 auto; margin: calc(2 * var(--wm-px)); }
+.wds-ov-row { min-height: calc(21 * var(--wm-px)); cursor: pointer; }
+.wds-ov-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-ov-row > .wds-stg-icon { flex: 0 0 auto; width: calc(14 * var(--wm-px)); text-align: center; }
+.wds-ov-row > .wds-ov-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-ov-row > .wds-ov-name.is-blank,
+.wds-ov-row.is-off > .wds-ov-name,
+.wds-ov-row.is-off > .wds-stg-icon { opacity: 0.5; }
+.wds-ov-row > .wds-stg-hex { flex: 0 0 auto; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; opacity: 0.6; }
+.wds-ov-row i,
+.wds-ovdlg .wm-tool > i,
+.wds-ov-combo i { font-size: calc(11 * var(--wm-px)); line-height: 1; pointer-events: none; }
+#wmShell .wds-ovdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
+textarea.wm-edit.wds-ov-text { display: block; width: 100%; box-sizing: border-box; margin-bottom: calc(3 * var(--wm-px)); resize: none; }
+.wds-ovdlg input.wm-edit[data-ov-custom] { display: block; width: 100%; box-sizing: border-box; margin-bottom: calc(3 * var(--wm-px)); }
+.wds-ovdlg .wds-wt-row > .wds-wt-name { flex: 0 0 calc(44 * var(--wm-px)); }
+.wds-ovdlg .wds-wt-row > .wds-ov-combo { flex: 1 1 auto; min-width: 0; }
+.wds-ovdlg .wds-wt-row > .wds-ov-combo > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-ovdlg .wds-wt-row > .wm-tool { flex: 0 0 auto; }
+/* the stage's tool row stays one row with every cell it can show (11 cells, 2 dividers) */
+.wds-stgdlg .wds-stg-tools > .wm-tool { min-width: 0; width: calc(18 * var(--wm-px)); padding: 0; }
+/* the number rows' LCDs one width, so they line up */
+.wds-stgdlg .wds-stg-num > .wds-wt-lcd { min-width: calc(34 * var(--wm-px)); }

@@ -1,13 +1,33 @@
 /* Melaton Mobile: DreamStudio part - rack (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
 
-/* Weight Rack (the page): the form's margins, a field's name as its sub-header, then a row a group */
+/* Weight Rack (the page): the form's margins, a field each: its header, its Normalize bar, a row a target */
 .wds-xview[data-xview="rack"] > .wds-rack-list { flex: 0 0 auto; padding-top: calc(2 * var(--wm-px)); }
-.wds-rack-list > .wm-form-sub:first-child { margin-top: 0; }
-.wds-rack-list > .wds-wt-row { min-height: calc(23 * var(--wm-px)); }
+.wds-rack-field + .wds-rack-field { margin-top: calc(4 * var(--wm-px)); }
 
-/* a group's text: a plain button (a tap opens its tools), one line cut with an ellipsis */
-.wds-rack-list .wds-rack-name {
+/* the header: the field's name (the form's sub-header), then its tool cells at the right */
+.wds-rack-head { display: flex; align-items: center; min-height: calc(23 * var(--wm-px)); }
+.wds-rack-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
+.wds-rack-head > .wm-tool { margin: 0 0 0 calc(1 * var(--wm-px)); }
+
+/* the Normalize bar: the kit tool bar, inside the form's margins */
+.wds-rack-bar { margin: 0 0 calc(2 * var(--wm-px)); }
+.wds-rack-bar .wm-tool.wm-lcd { min-width: calc(36 * var(--wm-px)); justify-content: flex-end; }
+
+/* a row: the text, (Normalize: the weight its share maps to), the LCD, the wheel, two cells */
+.wds-rack-field > .wds-wt-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) calc(50 * var(--wm-px)) calc(78 * var(--wm-px)) calc(22 * var(--wm-px)) calc(18 * var(--wm-px));
+    gap: calc(3 * var(--wm-px));
+    min-height: calc(23 * var(--wm-px));
+}
+.wds-rack-field.is-norm > .wds-wt-row {
+    grid-template-columns: minmax(0, 1fr) calc(28 * var(--wm-px)) calc(42 * var(--wm-px)) calc(64 * var(--wm-px)) calc(22 * var(--wm-px)) calc(22 * var(--wm-px));
+}
+.wds-rack-field > .wds-wt-row > .wm-jog { width: auto; }
+
+/* a target's text: a plain button (a tap opens its tools), one line cut with an ellipsis */
+.wds-rack-field .wds-rack-name {
     display: block;
     margin: 0;
     padding: 0 calc(2 * var(--wm-px));
@@ -20,13 +40,23 @@
 }
 .wds-rack-row.is-selected > .wds-rack-name { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 
-/* the weight's LCD is a button (a tap types it on the number pad) */
-.wds-rack-list .wds-wt-row > .wds-wt-lcd { box-sizing: border-box; width: calc(50 * var(--wm-px)); min-width: 0; margin: 0; padding: 0 calc(3 * var(--wm-px)); text-align: right; }
-.wds-rack-list button.wds-wt-lcd { cursor: pointer; }
-.wds-rack-list .wds-wt-row > .wm-jog { width: calc(80 * var(--wm-px)); }
+/* the LCD is a button (a tap types it on the number pad); a locked group's is greyed */
+.wds-rack-field .wds-wt-row > .wds-wt-lcd { box-sizing: border-box; width: auto; min-width: 0; margin: 0; padding: 0 calc(3 * var(--wm-px)); text-align: right; }
+.wds-rack-field button.wds-wt-lcd { cursor: pointer; }
+.wds-rack-row.is-locked > .wds-wt-lcd { opacity: 0.55; }
+.wm-valuepop-lcd.is-tap { cursor: pointer; }
 
-/* the plain text between groups (the desktop's context cards): dimmed at 1.00, no wheel; the gap
- * keeps its LCD in line with the groups' */
+/* the weight a share maps to (Normalize), in small LCD figures without a frame */
+.wds-rack-wt { position: relative; justify-self: end; display: inline-block; font-size: calc(9 * var(--wm-px)); white-space: nowrap; }
+
+/* the suggested-value cell keeps its place when there is no suggestion to snap to */
+.wds-rack-row > .wm-tool { margin: 0; }
+.wds-rack-row > .wm-tool.is-off { visibility: hidden; }
+.wds-rack-cell { display: flex; align-items: center; justify-content: center; }
+
+/* the plain text between targets (the desktop's context cards): dimmed at 1.00, no wheel */
 .wds-rack-plain { opacity: 0.5; }
 .wds-rack-plain > .wds-wt-name { padding: 0 calc(2 * var(--wm-px)); }
-.wds-rack-gap { flex: 0 0 auto; width: calc(97 * var(--wm-px)); }
+
+/* Rebalance Weights */
+.wds-rack-rebal .wds-wt-row > button.wds-wt-lcd { min-width: calc(44 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }

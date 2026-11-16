@@ -20,6 +20,22 @@
  *   rentanNovelSet(key, value)      Novel's Tone / Style / Explicitness / Persuasiveness / Auto Generate
  *   rentanNovelDo(what)             'generate' | 'undo' | 'resume' (Resume Story Advancement)
  *   rentanAgent()                   Rentan's engine / model / reasoning / fast and their choices
+ *   rentanEraseCache()              Erase Cache without the desktop's confirmation (the phone asks first)
+ *   rentanCompile()                 Compile to Prompts' run (an AI run: the phone confirms first) ->
+ *                                   Promise { ok, error }; the changes go to the desktop's queue
+ *   rentanCompileState()            { inFlight, applying, entries: [{ index, included, change, field,
+ *                                   find, text, category, warn, details: [[label, text]] }] }
+ *   rentanCompileInclude(i, on)     a change ticked / unticked (i < 0: all of them)
+ *   rentanCompileApply(close)       Apply / Apply and Close Rentan -> Promise { success, applied, error }
+ *   rentanNovelList()               Promise [{ id, name }] (this workspace's novel notes)
+ *   rentanNovelSelect(id)           Select Novel Note's pick: loads it and turns Novel on
+ *   rentanNovelNew()                Create New Novel Note
+ *   rentanNovelNote()               the open note: { id, name, content, cursor, undo, busy } | null
+ *   rentanNovelSave(content)        the editor's save -> Promise true | error text
+ *   rentanRules() / rentanSaveRules(list)            Enshutsuka's Director rules (director_load / save_rules)
+ *   rentanMemories(q)               list_knowledge_memories { store, search, page, perPage, sort }
+ *   rentanMemory(name, store)       get_knowledge_memory -> the memory
+ *   rentanMemoryUpdate(name, updates, store) / rentanMemoryDelete(name, store)
  */
 (function () {
     'use strict';
@@ -289,5 +305,279 @@
         };
     }
 
-    M.extend({ rentan, rentanSetEnabled, rentanDisable, rentanToggle, rentanAction, rentanTimeDate, rentanSetTimeDate, rentanLookupCity, rentanSetLocation, rentanNovelSet, rentanNovelDo, rentanNovelOptions, rentanAgent });
+    // ---- Erase Cache (clearCompiledPrompt without its dialog: the phone's message box asks)
+
+    function rentanEraseCache() {
+        const d = window.dynamicGenerationData;
+        if (!d || !d.compiled_prompt) return false;
+        delete d.compiled_prompt;
+        const dc = el('dynamicCarousel');
+        if (dc) dc.setAttribute('data-has-cache', 'false');
+        call('clearDynamicGenerationLockState');
+        if (window.lastGenerationStageSeeds) delete window.lastGenerationStageSeeds;
+        call('updateDynamicGenerationToggleBtn');
+        changed();
+        return true;
+    }
+
+    // ---- Compile to Prompts (compileToPromptsApplet.js): its run, its queue, its Apply. The applet's
+    // top-level lets are shared by name with every classic script (typeof guards: the applet may be absent)
+
+    const ctp = {
+        has: () => typeof compileToPromptsQueue !== 'undefined',
+        queue: () => (typeof compileToPromptsQueue !== 'undefined' && Array.isArray(compileToPromptsQueue) ? compileToPromptsQueue : []),
+        inFlight: () => typeof compileToPromptsInFlight !== 'undefined' && !!compileToPromptsInFlight,
+        applying: () => typeof compileToPromptsApplying !== 'undefined' && !!compileToPromptsApplying
+    };
+
+    async function rentanCompile() {
+        if (!ctp.has() || !fn('buildCompileToPromptsRequestBody')) return { ok: false, error: 'Compile to Prompts is not available.' };
+        if (!call('isDynamicGenerationEnabled')) return { ok: false, error: 'Enable Rentan before compiling to prompts.' };
+        if (ctp.inFlight()) return { ok: false, error: 'Compile already in progress...' };
+        if (!window.wsClient || typeof window.wsClient.compileDynamicGeneration !== 'function') return { ok: false, error: 'WebSocket not connected' };
+        compileToPromptsInFlight = true;
+        changed();
+        try {
+            const body = buildCompileToPromptsRequestBody();
+            compileToPromptsRequestBody = body;
+            call('updateDynamicGenerationProgressOverlay', 'starting');
+            const result = await window.wsClient.compileDynamicGeneration(body);
+            if (!(result && result.success) && result && result.compiled_prompt && result.compiled_prompt.success === false) {
+                throw new Error(result.compiled_prompt.error || result.error || 'Compile failed');
+            }
+            applyCompiledPromptToClient(result.compiled_prompt, result.application_context);
+            buildCompileToPromptsQueue(result.compiled_prompt);
+            if (typeof compileToPromptsSelectedIndex !== 'undefined') compileToPromptsSelectedIndex = compileToPromptsQueue.length ? 0 : -1;
+            return { ok: true };
+        } catch (err) {
+            call('updateDynamicGenerationProgressOverlay', 'error');
+            return { ok: false, error: (err && err.message) || 'Compile to Prompts failed' };
+        } finally {
+            compileToPromptsInFlight = false;
+            changed();
+        }
+    }
+
+    /** One change as the desktop's list row and details pane word it (plain text). */
+    function ctpEntry(entry, index) {
+        const r = entry.replacement || {};
+        const t = (name, ...a) => { const v = call(name, ...a); return v == null ? '' : String(v); };
+        const warnings = fn('getCompileToPromptsWarnings') ? (call('getCompileToPromptsWarnings', entry) || []) : [];
+        const action = String(r.action || '').toLowerCase();
+        const change = t('describeCompileToPromptsAction', r);
+        const field = t('describeCompileToPromptsField', entry);
+        const find = t('getCompileToPromptsFindText', r);
+        const text = t('getCompileToPromptsWrittenText', r);
+        const details = [];
+        const add = (label, v) => { if (v) details.push([label, String(v)]); };
+        add('Change', `${change} in the ${field}`);
+        add('Find', find);
+        add(action === 'delete' ? 'Deletes' : 'Text', text || (action === 'delete' ? r.select_text || '' : ''));
+        const anchor = (r.anchor_details && r.anchor_details.preview) || r.anchor_text || '';
+        if (anchor) add('Anchor', `${anchor}${r.anchor_details && r.anchor_details.source ? ` (${String(r.anchor_details.source).replace(/_/g, ' ')})` : ''}`);
+        add('Category', r.replacement_category || '');
+        add('Reason', r.reason || '');
+        const mit = Array.isArray(r.mitigations) ? r.mitigations : [];
+        if (mit.length) add('Adjusted', mit.map((m) => `${String(m.type || '').replace(/_/g, ' ')}${m.description ? `: ${m.description}` : ''}`).join('\n'));
+        const refs = Array.isArray(r.references) ? r.references : [];
+        if (refs.length) {
+            add('Sources', refs.map((ref) => {
+                if (ref.type === 'web_search') return `Web: ${ref.query || 'Web search'}`;
+                if (ref.type === 'tag_search') return `Tags: ${Array.isArray(ref.tags) ? ref.tags.join(', ') : (ref.query || '')}`;
+                if (ref.type === 'tag_description') return `${ref.description || ref.query || 'Tag description'}${Array.isArray(ref.tags) && ref.tags.length ? ` (${ref.tags.join(', ')})` : ''}`;
+                if (ref.type === 'tokenizer') return ref.description || 'Token analysis';
+                return ref.description || ref.query || ref.type || '';
+            }).filter(Boolean).join('\n'));
+        }
+        if (warnings.length) add('Status', warnings.join('\n'));
+        return { index, included: !!entry.included, change, field, find, text, category: r.replacement_category || '', warn: warnings.length > 0, details };
+    }
+
+    function rentanCompileState() {
+        return { available: ctp.has(), inFlight: ctp.inFlight(), applying: ctp.applying(), entries: ctp.queue().map(ctpEntry) };
+    }
+
+    function rentanCompileInclude(index, on) {
+        const q = ctp.queue();
+        if (index < 0) q.forEach((e) => { e.included = !!on; });
+        else if (q[index]) q[index].included = !!on;
+        changed();
+    }
+
+    /** handleCompileToPromptsApply without its window and toasts (the phone says the result). */
+    async function rentanCompileApply(closeRentan) {
+        if (!ctp.has() || ctp.applying()) return { success: false, error: '' };
+        const selected = call('getCompileToPromptsSelectedReplacements') || [];
+        if (!selected.length) return { success: false, error: 'Select at least one change to apply.' };
+        compileToPromptsApplying = true;
+        changed();
+        let result;
+        try {
+            result = await applyTendaiToEditor(selected, call('getCompileToPromptsApplicationContext'), {
+                requestBody: (typeof compileToPromptsRequestBody !== 'undefined' && compileToPromptsRequestBody) || buildCompileToPromptsRequestBody()
+            });
+        } catch (err) {
+            result = { success: false, error: (err && err.message) || String(err) };
+        } finally {
+            compileToPromptsApplying = false;
+        }
+        if (!result || !result.success) { changed(); return { success: false, error: (result && result.error) || `Failed to apply ${(result && result.failed) || ''} change(s)` }; }
+        if (closeRentan) {
+            delete window.dynamicGenerationData;
+            const tg = el('dynamicGenerationToggleBtn');
+            const grp = el('dynamicGenerationGroup');
+            const dc = el('dynamicCarousel');
+            if (tg) tg.setAttribute('data-state', 'off');
+            if (grp) grp.classList.add('hidden');
+            if (dc) dc.setAttribute('data-use-cache', 'true');
+            call('clearDynamicGenerationLockState');
+            call('updateDynamicGenerationToggleBtn');
+            if (window.lockedDynamicReplacements) window.lockedDynamicReplacements = [];
+            call('updateMainLockButtonState');
+            compileToPromptsQueue = [];
+        } else {
+            // the applied changes leave the list; what was left unticked stays for another pass
+            compileToPromptsQueue = compileToPromptsQueue.filter((e) => !e.included);
+        }
+        call('refreshTokenBarCounts');
+        changed();
+        return { success: true, applied: result.applied };
+    }
+
+    // ---- Novel notes (novelContextMenu.js / novelManager.js)
+
+    let novelWatched = false;
+    /** The novel code repaints its desktop editor on every change: the phone hears it there too. */
+    function watchNovel() {
+        if (novelWatched) return;
+        novelWatched = true;
+        ['refreshNovelEditorContent', 'setNovelEditorGenerateDisabled'].forEach((name) => {
+            const orig = window[name];
+            if (typeof orig !== 'function' || orig._wmRentan) return;
+            const wrapped = function (...args) { const r = orig.apply(this, args); M._emit('change', { id: 'novel' }); return r; };
+            wrapped._wmRentan = true;
+            window[name] = wrapped;
+        });
+    }
+    const workspace = () => (typeof activeWorkspace !== 'undefined' ? activeWorkspace : 'default');
+
+    async function rentanNovelList() {
+        if (!window.wsClient || typeof window.wsClient.novelList !== 'function') return [];
+        const r = await window.wsClient.novelList(workspace());
+        const list = (r && (r.novels || (r.data && r.data.novels))) || [];
+        return list.map((n) => ({ id: n.id, name: n.name || 'Untitled', updated: n.updated_at || n.updatedAt || '' }));
+    }
+
+    function novelOn() {
+        const b = el('novelBtn');
+        if (b) { b.dataset.state = 'on'; b.classList.add('active'); }
+    }
+
+    async function rentanNovelSelect(id) {
+        watchNovel();
+        if (!id || !fn('novelLoadNote')) return false;
+        const note = await novelLoadNote(id);
+        if (note) novelOn();
+        changed();
+        return !!note;
+    }
+
+    async function rentanNovelNew() {
+        watchNovel();
+        if (!fn('novelEnsureNote')) return false;
+        window.novelSession = null;
+        const note = await novelEnsureNote(workspace());
+        changed();
+        return !!note;
+    }
+
+    function rentanNovelNote() {
+        watchNovel();
+        const s = window.novelSession;
+        if (!s || !s.noteId) return null;
+        const note = s.note || {};
+        const content = note.content || '';
+        const meta = fn('novelNormalizeMetadata') ? novelNormalizeMetadata(note.metadata) : (note.metadata || {});
+        const lines = fn('novelCountStoryLines') ? novelCountStoryLines(content) : content.split('\n').length;
+        const c = meta.story_cursor_line || 0;
+        // novelUpdateEditorCursorLabel's words
+        const cursor = c <= 0 ? 'Story cursor: start' : c >= lines ? `Story cursor: end (line ${c})` : `Story cursor: line ${c} of ${lines}`;
+        return {
+            id: s.noteId,
+            name: note.name || '',
+            content,
+            cursor,
+            undo: !!(meta.undo_stack && meta.undo_stack.length),
+            busy: typeof novelGenerateInFlight !== 'undefined' && !!novelGenerateInFlight
+        };
+    }
+
+    async function rentanNovelSave(content) {
+        const s = window.novelSession;
+        if (!s || !s.noteId) return '';
+        if (!window.wsClient || !window.wsClient.isConnected()) return 'Not connected';
+        try {
+            await window.wsClient.novelUpdate(s.noteId, { content });
+            if (s.note) s.note.content = content;
+            // the desktop editor (if it is open there) follows
+            const ta = document.getElementById('novelEditorTextarea');
+            if (ta && ta.value !== content) ta.value = content;
+            return true;
+        } catch (err) {
+            return 'Could not save the story';
+        }
+    }
+
+    // ---- Enshutsuka: Director rules and knowledge memories (mmcEnshutsuka.js's calls)
+
+    async function send(type, data) {
+        const client = window.wsClient;
+        if (!client || typeof client.sendMessage !== 'function') throw new Error('Melaton is not connected to the server.');
+        const r = await client.sendMessage(type, data || {}, false);
+        // the Director's handlers answer { data: { success, ... } } inside the reply
+        return r && r.data && typeof r.data === 'object' && r.data.success !== undefined && r.success === undefined ? r.data : r;
+    }
+    const ok = (r, text) => { if (!(r && r.success)) throw new Error((r && (r.error || r.message)) || text); return r; };
+
+    async function rentanRules() {
+        const r = ok(await send('director_load_rules', {}), 'The rules could not be read.');
+        return Array.isArray(r.rules) ? r.rules : [];
+    }
+
+    async function rentanSaveRules(list) {
+        const r = await send('director_save_rules', { rules: list });
+        if (r && r.success === false) throw new Error(r.error || r.message || 'The rules were not saved.');
+        return true;
+    }
+
+    async function rentanMemories(q = {}) {
+        const r = ok(await send('list_knowledge_memories', {
+            page: q.page || 1,
+            perPage: q.perPage || 25,
+            search: q.search || '',
+            category: q.category || null,
+            sort: q.sort || undefined,
+            store: q.store || undefined
+        }), 'The memories could not be read.');
+        const cats = ((r.stats && r.stats.categories) || []).map((x) => (x && typeof x === 'object' ? x.category : x)).filter(Boolean);
+        return { memories: Array.isArray(r.memories) ? r.memories : [], total: Number(r.total) || 0, page: Number(r.page) || q.page || 1, categories: cats };
+    }
+
+    async function rentanMemory(name, store) {
+        const r = ok(await send('get_knowledge_memory', { name, store: store || undefined }), `The memory "${name}" could not be loaded.`);
+        if (!r.memory) throw new Error(`The memory "${name}" could not be loaded.`);
+        return r.memory;
+    }
+
+    async function rentanMemoryUpdate(name, updates, store) {
+        ok(await send('update_knowledge_memory', { name, updates, store: store || undefined }), 'The memory was not saved.');
+        return true;
+    }
+
+    async function rentanMemoryDelete(name, store) {
+        ok(await send('delete_knowledge_memory', { name, store: store || undefined }), 'The memory was not deleted.');
+        return true;
+    }
+
+    M.extend({ rentan, rentanSetEnabled, rentanDisable, rentanToggle, rentanAction, rentanTimeDate, rentanSetTimeDate, rentanLookupCity, rentanSetLocation, rentanNovelSet, rentanNovelDo, rentanNovelOptions, rentanAgent, rentanEraseCache, rentanCompile, rentanCompileState, rentanCompileInclude, rentanCompileApply, rentanNovelList, rentanNovelSelect, rentanNovelNew, rentanNovelNote, rentanNovelSave, rentanRules, rentanSaveRules, rentanMemories, rentanMemory, rentanMemoryUpdate, rentanMemoryDelete });
 })();

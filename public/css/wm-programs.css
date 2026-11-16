@@ -1994,3 +1994,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 /* a drop-down list (the shell's .wm-popup) opened from a control inside a dialog or panel (an app's
  * .wm-msgbox-layer) is drawn over it, not under it (the list is z-index 11, a dialog 20) */
 #wmShell:has(> .wm-msgbox-layer:not([hidden])) > .wm-popup { z-index: 9050; }
+
+/* a disabled combo looks disabled all over: its frame and drop arrow fade with its text (6.1 / 6.5) */
+.wm-combo:disabled { border-color: #a5a6a5; }
+.wm-combo:disabled::after { opacity: 0.45; }

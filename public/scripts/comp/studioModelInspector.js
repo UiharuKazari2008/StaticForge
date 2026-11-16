@@ -20,6 +20,12 @@
  *   studioModel.hasManagedStages() / deleteManagedStages()
  *                                         the Inspector button menu's Delete Managed
  *   studioModel.compiledPrompts()         the last compile's prompts: { prompt, uc, characters[{ prompt, uc }] }
+ *   studioModel.compilerUsage()           the Inspector's Compiler Timeline & Costs (compiled_prompt.usage):
+ *                                         { twoPasses, phases[{ key, name, totals, calls[] }] } or null
+ *   studioModel.tendaiReport(i, text)     Report Issue (saveDirectorFeedback's director_save_feedback for
+ *                                         that modification): a promise of { ok } or { error }
+ *   studioModel.recentSeeds() / useRecentSeed(seed)
+ *                                         Generate > Recent Seeds (newest first) and its select-seed-* action
  */
 (function () {
     'use strict';
@@ -34,7 +40,9 @@
        copyTextReplacementOptionToSeed, getTextareaForReplacementSource, setTextareaValuePreservingUndo,
        copyTextToClipboard, getReplacementBias, applyBiasToText, hasEmphasisGroupForDisplay,
        validateDynamicReplacementCanApply, hasReplacementStageConfiguration, getStagesDisplayText,
-       hasManagedBracketArtifacts, deleteAllManagedBracketArtifacts, crossoverLabel, crossoverConditionName */
+       hasManagedBracketArtifacts, deleteAllManagedBracketArtifacts, crossoverLabel, crossoverConditionName,
+       getToolIconAndBackground, getToolDisplayName, getContextFieldIcon, manualSeedHistory,
+       handleSproutSeedContextMenuAction */
 
     const changed = (id) => M._emit('change', { id: id || 'genso' });
     const label = (s) => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -112,7 +120,18 @@
             status,
             error: r.error ? String(r.error) : '',
             converted: mit.some((m) => m && m.type === 'converted_to_append'),
-            mitigations: mit.map((m) => ({ type: String(m.type || ''), text: m.description ? String(m.description) : '' })),
+            mitigations: mit.filter(Boolean).map((m) => ({ type: String(m.type || ''), text: m.description ? String(m.description) : '' })),
+            // Research Sources, as the desktop row lists them (web search, tag search, tag description, tokenizer)
+            references: (Array.isArray(r.references) ? r.references : []).filter((f) => f && ['web_search', 'tag_search', 'tag_description', 'tokenizer'].includes(f.type)).map((f) => ({
+                type: f.type,
+                url: f.url ? String(f.url) : '',
+                text: f.type === 'web_search' ? String(f.query || 'Search')
+                    : f.type === 'tag_search' ? (Array.isArray(f.tags) ? f.tags.join(', ') : String(f.query || ''))
+                        : f.type === 'tag_description' ? `${f.description || f.query || 'Tag description'}${Array.isArray(f.tags) && f.tags.length ? ` (${f.tags.join(', ')})` : ''}`
+                            : String(f.description || 'Token analysis')
+            })),
+            // what Report Issue sends (the row's own fields, unweighted)
+            report: { select: r.select_text == null ? '' : String(r.select_text), replace: r.replace_text == null ? '' : String(r.replace_text), action: r.action == null ? '' : String(r.action), reason: r.reason == null ? '' : String(r.reason) },
             emphasis: r.segment_emphasis != null && Number.isFinite(Number(r.segment_emphasis)) ? Number(r.segment_emphasis) : null,
             locked: r.locked === true,
             canApply,
@@ -365,8 +384,159 @@
         };
     }
 
+    // ---- Compiler Timeline & Costs (the usage block under the desktop Inspector's list)
+
+    const num = (v) => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+    /** A usage record as the desktop's formatTokens reads it (a missing total is the sum). */
+    function tokens(u) {
+        if (!u) return null;
+        const t = { input: num(u.input), output: num(u.output), cache: num(u.cache), reasoning: num(u.reasoning) };
+        t.total = u.total !== undefined && u.total !== null ? num(u.total) : t.input + t.output + t.cache + t.reasoning;
+        return t;
+    }
+
+    /** The class of the FA glyph in a desktop icon string ('<i class="fas fa-search"></i>'). */
+    const iconOf = (html) => { const m = /class="([^"]+)"/.exec(String(html || '')); return m ? m[1] : 'fas fa-circle'; };
+
+    function usageTool(t, call) {
+        const name = String((t && t.name) || '');
+        let icon = 'fas fa-circle';
+        try { if (typeof getToolIconAndBackground === 'function') icon = iconOf(getToolIconAndBackground(name, 'completed').icon); } catch (_) { icon = 'fas fa-circle'; }
+        let display = name || 'Tool';
+        try { if (typeof getToolDisplayName === 'function') display = getToolDisplayName(name) || name || 'Tool'; } catch (_) { display = name || 'Tool'; }
+        const p = (t && t.parameters) || {};
+        const out = { name, display, icon, reason: String((t && t.reason) || p.reason || (call && call.reason) || '') };
+        if (name === 'searchTagsBatch' && Array.isArray(p.tags)) out.tags = p.tags.map((x) => ({ name: String((x && x.name) || ''), reason: String((x && x.reason) || '').trim() }));
+        if (name === 'publishAnalysisResults') {
+            const pb = p.prompt_breakdown;
+            const ia = p.image_analysis;
+            const ec = p.existing_context;
+            const list = (a) => (Array.isArray(a) && a.length ? a.join(', ') : '');
+            out.sections = [];
+            if (pb) out.sections.push({ title: 'Prompt Analysis', icon: 'fas fa-file-alt', rows: [['Subject', pb.main_subject], ['Environment', pb.scene_environment], ['Mood', pb.mood_atmosphere], ['Actions', list(pb.actions_poses)], ['Style', list(pb.style_elements)]].filter((r) => r[1]) });
+            if (ia) out.sections.push({ title: 'Image Analysis', icon: 'fas fa-image', rows: [['Time', ia.time_visible], ['Weather', ia.weather_visible], ['Scene Type', ia.scene_type_visible], ['Matches Prompt', ia.matches_prompt ? 'Yes' : 'No'], ['Elements', list(ia.visual_elements)], ['Differences', list(ia.differences)]].filter((r) => r[1]) });
+            if (ec) {
+                const fields = ['time', 'season', 'holiday', 'location', 'weather_condition', 'sky'].map((f) => {
+                    const v = ec[f];
+                    let found = false;
+                    let tip = `${f}: Not found`;
+                    if (v && f === 'location') { const st = v.scene_type || 'unknown'; found = st !== 'unknown'; tip = `Location: ${st}`; } else if (v && v.found && v.value && v.value !== 'none') { found = true; tip = `${f}: ${v.value}`; }
+                    let ic = 'fa-circle';
+                    try { if (typeof getContextFieldIcon === 'function') ic = getContextFieldIcon(f); } catch (_) { ic = 'fa-circle'; }
+                    return { field: f, icon: `fas ${ic}`, found, tip };
+                });
+                const scene = (ec.location && ec.location.scene_type) || 'unknown';
+                out.sections.push({ title: 'Context Detection', icon: 'fas fa-search', detected: fields, rows: scene !== 'unknown' ? [['Scene', scene]] : [] });
+            }
+        }
+        if (name === 'planTextReplacements') {
+            const changes = Array.isArray(p.planned_changes) ? p.planned_changes : [];
+            const research = p.research || {};
+            const groups = [];
+            changes.forEach((c) => {
+                const cat = (c && c.category) || 'Other';
+                let g = groups.find((x) => x.category === cat);
+                if (!g) { g = { category: cat, changes: [] }; groups.push(g); }
+                g.changes.push({
+                    action: String((c && c.action) || 'modify'),
+                    segments: c && Array.isArray(c.target_segments) && c.target_segments.length ? c.target_segments.join(', ') : 'N/A',
+                    reason: String((c && c.reason) || 'No reason provided'),
+                    tags: c && Array.isArray(c.planned_modifications) && c.planned_modifications.length ? c.planned_modifications.join(', ') : '',
+                    emphasis: c && c.emphasis_value !== undefined ? String(c.emphasis_value) : ''
+                });
+            });
+            out.plan = {
+                count: changes.length,
+                groups,
+                completed: (Array.isArray(research.completed) ? research.completed : []).map((x) => ({ topic: String((x && x.topic) || ''), tool: `Tool: ${(x && x.tool_name) || ''} (#${(x && x.call_number) || ''})` })),
+                needed: (Array.isArray(research.needed) ? research.needed : []).map((x) => ({ topic: String((x && x.topic) || ''), tool: x && x.tool_name ? `Planned: ${x.tool_name}` : '' })),
+                conflicts: (Array.isArray(p.conflicts_to_resolve) ? p.conflicts_to_resolve : []).map(String)
+            };
+        }
+        return out;
+    }
+
+    function compilerUsage() {
+        const root = (window.dynamicGenerationData && window.dynamicGenerationData.compiled_prompt && window.dynamicGenerationData.compiled_prompt.usage)
+            || (window.lastGeneration && window.lastGeneration.forge_data && window.lastGeneration.forge_data.dynamic_generation
+                && window.lastGeneration.forge_data.dynamic_generation.compiled_prompt && window.lastGeneration.forge_data.dynamic_generation.compiled_prompt.usage)
+            || null;
+        if (!root || typeof root !== 'object') return null;
+        const twoPasses = !!(root.phase1 && root.phase2);
+        const phases = [];
+        Object.keys(root).forEach((key) => {
+            const ph = root[key];
+            if (!ph) return;
+            const calls = Array.isArray(ph.calls) ? ph.calls : [];
+            // the final snapshot when the totals are a list; the last call's usage when they are empty
+            let tot = ph.total;
+            if (Array.isArray(tot)) tot = tot.length ? tot[tot.length - 1] : null;
+            if ((!tot || tot.total === 0) && calls.length) {
+                const last = [...calls].reverse().find((c) => c && c.usage);
+                tot = last ? last.usage : null;
+            }
+            const t = tokens(tot);
+            const valid = t && (t.total > 0 || t.input > 0 || t.output > 0 || t.cache > 0 || t.reasoning > 0);
+            phases.push({
+                key,
+                name: key === 'phase1' ? 'Pass 1' : key === 'phase2' ? 'Pass 2' : key,
+                titled: twoPasses && (key === 'phase1' || key === 'phase2'),
+                totals: valid ? t : null,
+                calls: calls.filter(Boolean).map((c) => {
+                    const tool = c.callType === 'tool_call' && Array.isArray(c.tools) && c.tools.length > 0;
+                    return {
+                        kind: c.callType === 'tool_call' ? 'tool' : c.callType === 'request' ? 'request' : 'other',
+                        title: tool ? 'Tool Call' : c.callType === 'request' ? 'Structured Build Data' : String(c.functionName || c.callType || 'Call'),
+                        reason: tool ? '' : String(c.reason || ''),
+                        usage: tokens(c.usage || {}),
+                        tools: tool ? c.tools.map((t2) => usageTool(t2, c)) : []
+                    };
+                })
+            });
+        });
+        return phases.length ? { twoPasses, phases } : null;
+    }
+
+    /** saveDirectorFeedback for one Tendai modification, past the form (the phone asks for the text). */
+    function tendaiReport(i, description) {
+        const x = tendaiList()[i];
+        const text = String(description || '').trim();
+        if (!x) return Promise.resolve({ error: 'Could not find replacement' });
+        if (!text) return Promise.resolve({ error: 'Please describe what went wrong with this replacement.' });
+        const r = x.rep;
+        if (!window.wsClient || typeof window.wsClient.isConnected !== 'function' || !window.wsClient.isConnected()) return Promise.resolve({ error: 'Failed to save feedback: WebSocket not connected' });
+        return Promise.resolve(window.wsClient.sendMessage('director_save_feedback', {
+            select_text: r.select_text,
+            replace_text: r.replace_text,
+            action: r.action || 'replace',
+            ai_reason: r.reason,
+            user_feedback: text,
+            timestamp: new Date().toISOString()
+        })).then((res) => {
+            if (res && res.data && res.data.success) return { ok: true };
+            return { error: `Failed to save feedback: ${(res && res.data && res.data.message) || 'Failed to save feedback'}` };
+        }, (err) => ({ error: `Failed to save feedback: ${(err && err.message) || err}` }));
+    }
+
+    function recentSeeds() {
+        try { return typeof manualSeedHistory !== 'undefined' && Array.isArray(manualSeedHistory) ? manualSeedHistory.slice().reverse().map(String) : []; } catch (_) { return []; }
+    }
+
+    /** Recent Seeds' select-seed-* (handleSproutSeedContextMenuAction: the seed in the box, kept). */
+    function useRecentSeed(seed) {
+        const n = parseInt(seed, 10);
+        if (!Number.isFinite(n) || typeof handleSproutSeedContextMenuAction !== 'function') return false;
+        handleSproutSeedContextMenuAction(`select-seed-${n}`);
+        changed('seed');
+        return true;
+    }
+
     M.extend({
         inspector,
+        compilerUsage,
+        tendaiReport,
+        recentSeeds,
+        useRecentSeed,
         gensoLockAt,
         gensoOptions,
         gensoResolve,

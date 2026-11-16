@@ -1,2 +1,58 @@
 /* Melaton Mobile: DreamStudio part - expanders (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* ---- the pages: Global Expanders (find box, type, favorites over the list), Local Expanders */
+.wds-xview[data-xview^="expanders"] > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); opacity: 0.6; }
+.wds-xview[data-xview^="expanders"].is-current { overflow: hidden; }
+.wdx-bar { flex: 0 0 auto; display: flex; align-items: center; gap: calc(2 * var(--wm-px)); padding: calc(2 * var(--wm-px)) calc(2 * var(--wm-px)) 0; }
+.wdx-bar > .wm-edit { flex: 1 1 auto; min-width: 0; }
+.wdx-bar > [data-act="type"] { flex: 0 0 calc(84 * var(--wm-px)); min-width: 0; }
+.wdx-bar > .wm-tool { margin: 0; }
+.wdx-list { flex: 1 1 auto; min-height: 0; margin: calc(2 * var(--wm-px)); }
+.wdx-list > .wds-none { margin: calc(6 * var(--wm-px)) calc(3 * var(--wm-px)); white-space: normal; opacity: 0.6; }
+.wdx-row { min-height: calc(19 * var(--wm-px)); cursor: pointer; }
+.wdx-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wdx-row > b { flex: 0 1 auto; max-width: 45%; overflow: hidden; text-overflow: ellipsis; }
+.wdx-row .wdx-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: 0.65; }
+.wdx-row.is-gone > b { text-decoration: line-through; }
+.wdx-marks { flex: 0 0 auto; display: inline-flex; align-items: center; gap: calc(3 * var(--wm-px)); }
+.wdx-row i,
+.wdx-dlg .wm-tool > i,
+.wdx-bar .wm-tool > i { font-size: calc(11 * var(--wm-px)); line-height: 1; pointer-events: none; }
+
+/* a local row: name and its marks over the text */
+.wdx-lrow { flex-direction: column; align-items: stretch !important; gap: 0 !important; padding-top: calc(1 * var(--wm-px)) !important; padding-bottom: calc(1 * var(--wm-px)) !important; }
+.wdx-lhead { display: flex; align-items: center; gap: calc(3 * var(--wm-px)); min-width: 0; }
+.wdx-lhead > b { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wdx-lrow.is-managed { opacity: 0.7; }
+.wdx-stages { min-width: calc(14 * var(--wm-px)); text-align: right; opacity: 0.65; }
+
+/* ---- the dialogs: name, the choices' tools, a framed box per choice */
+#wmShell .wdx-dlg > .wm-msgbox { width: calc(232 * var(--wm-px)); max-width: calc(240 * var(--wm-px)); }
+.wdx-name { display: flex; align-items: center; gap: calc(2 * var(--wm-px)); margin-bottom: calc(2 * var(--wm-px)); }
+.wdx-name > span { flex: 0 0 auto; font-weight: bold; }
+.wdx-name > .wm-edit { flex: 1 1 auto; min-width: 0; }
+.wdx-name > .wm-tool { margin: 0; }
+.wdx-tools { display: flex; align-items: center; margin: calc(2 * var(--wm-px)) 0; padding: 0; border: 0; background: none; }
+.wdx-kind { flex: 1 1 auto; text-align: right; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdx-choices { display: flex; flex-direction: column; gap: calc(2 * var(--wm-px)); max-height: calc(150 * var(--wm-px)); overflow-y: auto; overscroll-behavior: contain; }
+textarea.wm-edit.wdx-choice { display: block; flex: 0 0 auto; width: 100%; height: calc(34 * var(--wm-px)); min-height: 0; box-sizing: border-box; resize: none; }
+/* the choice the tools work on */
+textarea.wm-edit.wdx-choice.is-sel { outline: calc(1 * var(--wm-px)) dotted currentColor; outline-offset: calc(1 * var(--wm-px)); }
+.wdx-ro { margin: 0; white-space: pre-wrap; word-break: break-word; }
+.wdx-ruledlg .wds-wt-row > [data-act="stmode"] { flex: 0 0 calc(110 * var(--wm-px)); min-width: 0; }
+.wdx-stagebox:empty { display: none; }
+.wdx-stagebox { margin-top: calc(2 * var(--wm-px)); }
+.wdx-stagebox .wds-wt-lcd { min-width: calc(30 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+
+/* ---- Make Global */
+.wdx-mgdlg .wm-form-note { margin: 0 0 calc(3 * var(--wm-px)); }
+.wdx-mgdlg .wdx-mglist .wm-listbox-row > label > span { overflow: hidden; text-overflow: ellipsis; }
+.wdx-mgclash[hidden],
+.wdx-mgnote[hidden] { display: none; }
+.wdx-mgclash { margin-top: calc(3 * var(--wm-px)); }
+.wdx-mgdlg .wdx-mgnote { margin: calc(3 * var(--wm-px)) 0 0; }
+
+/* ---- a dialog's error line (over its buttons) */
+.wdx-dlg .wdx-err { margin: calc(3 * var(--wm-px)) 0 0; }
+.wdx-dlg .wdx-err[hidden] { display: none; }
