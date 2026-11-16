@@ -463,8 +463,15 @@
         const radii = (cs) => [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => R(px(v)));
         const bgImage = (cs, box, clip, alpha) => {
             // WM's block bar: repeating-linear-gradient(to right, c 0, c Apx, transparent Apx, transparent Bpx)
-            const g = /repeating-linear-gradient\(\s*(?:to right|90deg)\s*,\s*(rgba?\([^)]*\))[^,]*,\s*rgba?\([^)]*\)\s+([\d.]+)px\s*,[^,]*,\s*[^,]*?([\d.]+)px\s*\)/.exec(cs.backgroundImage || '');
-            if (g) { out.push({ k: 'stripes', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), color: rgba(g[1], alpha), on: R(+g[2]), period: R(+g[3]) }); return; }
+            // (its stops read one by one: Chrome writes transparent as rgba(0, 0, 0, 0), commas and all)
+            const rg = /^repeating-linear-gradient\(\s*(?:to right|90deg)\s*,(.*)\)$/.exec(cs.backgroundImage || '');
+            if (rg) {
+                const stops = [...rg[1].matchAll(/(rgba?\([^)]*\)|transparent)\s+(-?[\d.]+)px/g)].map((m) => ({ c: m[1], at: +m[2] }));
+                if (stops.length >= 4) {
+                    out.push({ k: 'stripes', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), color: rgba(stops[0].c, alpha), on: R(stops[1].at), period: R(stops[stops.length - 1].at) });
+                    return;
+                }
+            }
             const m = /url\(\s*["']?([^"')]+)/.exec(cs.backgroundImage || '');
             if (!m) return;
             const url = new URL(m[1], location.href).href;
