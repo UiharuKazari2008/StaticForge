@@ -23,6 +23,13 @@
 
     const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const isPhone = () => root.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
+    /** The notification inbox's copy (#876): used or dismissed here, gone from the inbox and Android too. */
+    function inboxDone(id, how) {
+        const ni = root.wmNotificationInbox;
+        if (!ni) return;
+        if (how === 'acted' && typeof ni.acted === 'function') ni.acted(id);
+        else if (typeof ni.clear === 'function') ni.clear(id);
+    }
 
     /** 'YYYY-MM-DDTHH:MM' (the place's wall clock) -> "Fri 11:00 AM". */
     function when(iso) {
@@ -88,6 +95,8 @@
         const severe = alert.severity === 'extreme' || alert.severity === 'severe';
         // a WM notification of its own sound class (Settings > Sounds & Notifications: Weather: Alert /
         // Weather: Severe alert), View and Dismiss on the soft keys; it stays until dismissed (#792)
+        // the server's copy for when the page is not running has this id (#876): done here, done there
+        const inboxId = `wx:${(data.place && data.place.id) || 'place'}:${alert.id}`;
         if (isPhone() && root.wmShell && typeof root.wmShell.appNote === 'function') {
             const label = data.place && data.place.label ? `${data.place.label}: ` : '';
             const note = root.wmShell.appNote({
@@ -96,8 +105,8 @@
                 icon: 'status-weather-alert',
                 event: severe ? 'weather-severe' : 'weather-alert',
                 softKeys: () => ({
-                    left: { label: 'View', action: () => { if (note) note.close(); details(lastAlert); } },
-                    right: { label: 'Dismiss', action: () => { if (note) note.close(); } }
+                    left: { label: 'View', action: () => { if (note) note.close(); inboxDone(inboxId, 'acted'); details(lastAlert); } },
+                    right: { label: 'Dismiss', action: () => { if (note) note.close(); inboxDone(inboxId, 'cleared'); } }
                 })
             });
             if (note) return;
@@ -140,8 +149,8 @@
                 icon: 'status-rain-alarm',
                 event: 'rain-alarm',
                 softKeys: () => ({
-                    left: { label: 'Weather', action: () => { if (note) note.close(); if (root.wmWeather) root.wmWeather.open(); } },
-                    right: { label: 'Dismiss', action: () => { if (note) note.close(); } }
+                    left: { label: 'Weather', action: () => { if (note) note.close(); inboxDone(`rain:${d.place.id || 'place'}`, 'acted'); if (root.wmWeather) root.wmWeather.open(); } },
+                    right: { label: 'Dismiss', action: () => { if (note) note.close(); inboxDone(`rain:${d.place.id || 'place'}`, 'cleared'); } }
                 })
             });
             if (note) return;

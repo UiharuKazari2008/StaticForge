@@ -555,12 +555,43 @@
         const x = imapFresh[i];
         if (!x) { openImapFresh(); return; }
         imapFresh.splice(i, 1);
+        inboxClear([x]);
         // the others stay in the tray, the bubble goes (the message comes up)
         if (imapFresh.length) { updateImapNote(); if (imapNote) imapNote.hide(); } else closeImapNote(false);
         openImapMessage(x.accountId, x.folder, x.uid);
     }
+    // the server keeps its own copy of each arrival for when this page is not running (#876): the same
+    // id here, so a dismissed or opened arrival is cleared there too (and on Android)
+    const inboxMailId = (x) => `mail:${x.accountId}:${x.folder || 'INBOX'}:${x.uid}`;
+    function inboxClear(list) {
+        const ni = window.wmNotificationInbox;
+        if (!ni || typeof ni.clear !== 'function') return;
+        list.forEach((x) => ni.clear(inboxMailId(x)));
+    }
+    const inAndroidApp = () => !!(window.AndroidActiveSync || window.AndroidNotification || window.AndroidDevice);
+    /** A missed arrival from the inbox (wmNotificationInbox catch-up): into this note, as if it came now. */
+    let adoptTimer = null;
+    function inboxAdopt(n) {
+        const d = (n && n.data) || {};
+        if (!d.accountId || d.uid == null) return false;
+        const f = d.folder || 'INBOX';
+        if (!imapFresh.some((x) => x.accountId === d.accountId && x.folder === f && String(x.uid) === String(d.uid))) {
+            imapFresh.push({ accountId: d.accountId, folder: f, uid: d.uid, from: d.from || '', subject: d.subject || '(no subject)' });
+            if (imapFresh.length > 50) imapFresh.shift();
+            imapPending.add(pendKey(d.accountId, f, d.uid));
+        }
+        // several at once (a catch-up): one notification for them all; Android already sounded
+        clearTimeout(adoptTimer);
+        adoptTimer = setTimeout(() => { showImapNote({ silent: inAndroidApp() }); shellStatus(); }, 0);
+        return true;
+    }
+    /** Cleared elsewhere (read on another device): out of this note. */
+    function inboxDrop(n) {
+        const d = (n && n.data) || {};
+        if (d.accountId && d.uid != null) dropFresh(d.accountId, d.folder || 'INBOX', [d.uid]);
+    }
     function closeImapNote(clear) {
-        if (clear) imapFresh.length = 0;
+        if (clear) { inboxClear(imapFresh); imapFresh.length = 0; }
         if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } }
         imapNote = null;
         shellStatus();
@@ -574,7 +605,7 @@
         if (list.length === 1) openImapMessage(last.accountId, last.folder, last.uid);
         else goTo(`imap:${one ? last.accountId : list[0].accountId}`);
     }
-    function showImapNote() {
+    function showImapNote(o) {
         // each arrival is a new notification: it sounds and comes up again
         if (imapNote) { try { imapNote.close(); } catch (_) { /* gone */ } imapNote = null; }
         if (!imapFresh.length || !ws || typeof ws.appNote !== 'function') return;
@@ -584,6 +615,7 @@
             html: parts.html,
             icon: 'status-mail',
             event: 'mail',
+            silent: !!(o && o.silent),
             softKeys: () => ({
                 left: { label: 'Dismiss', action: () => closeImapNote(true) },
                 right: { label: 'Menu', menu: () => [
@@ -3403,6 +3435,9 @@
         // "Select an Account" (the Today panels' Messaging key, Yukimi Nov 13)
         showAccounts,
         imapNew: () => imapPending.size,
+        // the server's copies of new mail (#876): a missed one joins the note; one read elsewhere leaves it
+        inboxAdopt,
+        inboxDrop,
         imapAccounts: () => imapAccts.map((a) => ({ id: a.id, name: imapName(a), email: a.email, unread: imapUnread(a.id) }))
     };
 

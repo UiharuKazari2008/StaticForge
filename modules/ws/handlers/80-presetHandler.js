@@ -615,6 +615,7 @@ async function handleGeneratePreset(handlers, ws, message, clientInfo, wsServer)
         requestId,
         caller: clientInfo && clientInfo.sessionId ? `session:${clientInfo.sessionId}` : null,
         owner: printSpooler.ownerFromClient(clientInfo),
+        userType: (clientInfo && clientInfo.userType) || null,
         document: printSpooler.describeDocument('generate_preset', message),
         run: () => handleGeneratePresetWork(handlers, ws, message, clientInfo, wsServer)
     });

@@ -65,6 +65,7 @@ async function runOnGenerationFifo(handlers, ws, message, type, workFn, clientIn
         caller,
         workspace,
         owner: printOwner,
+        userType: (clientInfo && clientInfo.userType) || null,
         document: printDoc,
         run: async () => {
             const id = holder.job && holder.job.id;

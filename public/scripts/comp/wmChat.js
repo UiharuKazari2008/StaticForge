@@ -754,9 +754,31 @@
      * bubble shows and vibration (wmShell noteEvent / playSystemSound). Tapping the text opens that
      * conversation; with several waiting it opens the list.
      */
-    const fresh = new Map(); // chatId -> { said, at }: replies not read yet, in arrival order
+    const fresh = new Map(); // chatId -> { said, at, who? }: replies not read yet, in arrival order
     let smsNote = null;
     const SMS_ICON = 'status-messenger';
+
+    // the server keeps its own copy of each notification for when this page is not running (#876):
+    // chat:<chatId> and sms:<account>:<chat>, the ids used here, so read or dismissed here is cleared there
+    // (and on Android) too
+    function inboxClear(id) {
+        const ni = window.wmNotificationInbox;
+        if (ni && typeof ni.clear === 'function') ni.clear(id);
+    }
+    const freshKey = (id) => { for (const k of fresh.keys()) if (String(k) === String(id)) return k; return null; };
+    /** A missed reply from the inbox (wmNotificationInbox catch-up): into the note, as if it came now. */
+    let chatAdoptTimer = null;
+    function adoptChat(n) {
+        const d = (n && n.data) || {};
+        if (d.chatId == null || !d.said) return false;
+        const k = freshKey(d.chatId);
+        if (k != null) fresh.delete(k);
+        fresh.set(k != null ? k : d.chatId, { said: d.said, at: Number(n.createdAt) || Date.now(), who: d.from || '' });
+        clearTimeout(chatAdoptTimer);
+        chatAdoptTimer = setTimeout(() => { showSmsNote({ silent: inAndroidApp() }); if (typeof sh.refreshStatus === 'function') sh.refreshStatus(); }, 0);
+        return true;
+    }
+    const whoOf = (id, x) => (sessionById(id) ? personaOf(sessionById(id)) : ((x && x.who) || personaOf(null)));
 
     function arrived(id, said, events) {
         void events;
@@ -776,7 +798,7 @@
         smsNote = null;
     }
 
-    function showSmsNote() {
+    function showSmsNote(o) {
         closeSmsNote(); // a new arrival is a new notification: it sounds and comes up again
         if (!fresh.size || typeof sh.appNote !== 'function') return;
         const n = fresh.size;
@@ -788,8 +810,9 @@
             html,
             icon,
             event: 'chat',
+            silent: !!(o && o.silent),
             softKeys: () => ({
-                left: { label: 'Dismiss', action: () => closeSmsNote() },
+                left: { label: 'Dismiss', action: () => { [...fresh.keys()].forEach((k) => inboxClear(`chat:${k}`)); closeSmsNote(); } },
                 right: { label: 'Menu', menu: () => [
                     { label: n === 1 ? 'Reply' : 'View', action: open },
                     { label: 'Hide', action: () => { if (smsNote) smsNote.hide(); } }
@@ -815,14 +838,16 @@
         const n = fresh.size;
         const all = [...fresh.entries()];
         const [id, last] = all[all.length - 1];
-        if (n === 1) return `<button type="button" class="wch-note-open" data-chat="${esc(String(id))}"><span class="wch-note-from">From: ${esc(personaOf(sessionById(id)))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`;
-        const items = all.slice(-3).reverse().map(([k, x]) => `<button type="button" class="wch-note-open wch-note-item" data-chat="${esc(String(k))}"><span class="wch-note-from">${esc(personaOf(sessionById(k)))}</span><span class="wch-note-text">${esc(x.said)}</span></button>`).join('');
+        if (n === 1) return `<button type="button" class="wch-note-open" data-chat="${esc(String(id))}"><span class="wch-note-from">From: ${esc(whoOf(id, last))}</span><span class="wch-note-text">${esc(last.said)}</span></button>`;
+        const items = all.slice(-3).reverse().map(([k, x]) => `<button type="button" class="wch-note-open wch-note-item" data-chat="${esc(String(k))}"><span class="wch-note-from">${esc(whoOf(k, x))}</span><span class="wch-note-text">${esc(x.said)}</span></button>`).join('');
         return `<button type="button" class="wch-note-open"><span class="wch-note-text">You have ${n} new messages.</span></button>${items}`;
     }
 
     /** A conversation read: its replies are no longer new (the notification follows). */
     function readFresh(id) {
-        if (!fresh.delete(id)) return;
+        if (id != null && id !== 'new') inboxClear(`chat:${id}`);
+        const k = freshKey(id);
+        if (k == null || !fresh.delete(k)) return;
         if (fresh.size) showSmsNoteQuiet(); else closeSmsNote();
         if (typeof sh.refreshStatus === 'function') sh.refreshStatus();
     }
@@ -1796,6 +1821,31 @@
 
     const inAndroidApp = () => !!(window.AndroidActiveSync || window.AndroidNotification || window.AndroidDevice);
 
+    /** A missed text from the inbox (wmNotificationInbox catch-up): into the note, as if it came now. */
+    let tmAdoptTimer = null;
+    function adoptSms(n) {
+        const d = (n && n.data) || {};
+        if (!d.accountId || !d.chatGuid) return false;
+        // the conversation's newest line: one entry per conversation from the inbox
+        if (!tmFresh.some((f) => f.accountId === d.accountId && f.chatGuid === d.chatGuid && f.text === (d.text || ''))) {
+            tmFresh.push({ accountId: d.accountId, chatGuid: d.chatGuid, from: d.from || 'Unknown', text: d.text || '' });
+            if (tmFresh.length > 50) tmFresh.shift();
+        }
+        clearTimeout(tmAdoptTimer);
+        tmAdoptTimer = setTimeout(() => tmShowNote({ silent: inAndroidApp() }), 0);
+        return true;
+    }
+
+    /** A notice the inbox cleared elsewhere (read on another device): out of the note. */
+    function inboxDrop(n) {
+        const d = (n && n.data) || {};
+        if (d.kind === 'sms' && d.chatGuid) { tmOnRead({ accountId: d.accountId, chatGuid: d.chatGuid }); return; }
+        if (d.kind === 'chat' && d.chatId != null) {
+            const k = freshKey(d.chatId);
+            if (k != null && fresh.delete(k)) { if (fresh.size) showSmsNoteQuiet(); else closeSmsNote(); if (typeof sh.refreshStatus === 'function') sh.refreshStatus(); }
+        }
+    }
+
     function tmOnRead(d) {
         if (!d) return;
         tmRefreshSoon();
@@ -1851,7 +1901,7 @@
     }
 
     function tmCloseNote(clear) {
-        if (clear) tmFresh.length = 0;
+        if (clear) { new Set(tmFresh.map((f) => `sms:${f.accountId}:${f.chatGuid}`)).forEach(inboxClear); tmFresh.length = 0; }
         if (tmNote) { try { tmNote.close(); } catch (_) { /* gone */ } }
         tmNote = null;
         if (sh && typeof sh.refreshStatus === 'function') sh.refreshStatus();
@@ -1877,6 +1927,7 @@
         if (!x) { tmOpenFresh(); return; }
         // that conversation's arrivals are all read by opening it
         for (let k = tmFresh.length - 1; k >= 0; k--) if (tmFresh[k].accountId === x.accountId && tmFresh[k].chatGuid === x.chatGuid) tmFresh.splice(k, 1);
+        inboxClear(`sms:${x.accountId}:${x.chatGuid}`);
         // the others stay in the tray, the bubble goes (the program comes up)
         if (tmFresh.length && tmNote) { tmNote.update(tmNoteParts()); tmNote.hide(); } else tmCloseNote(false);
         const ui = tmUi();
@@ -2005,6 +2056,14 @@
      * conversation with that persona (Contacts' Send Text Message); unread() is the account picker's count.
      */
     window.wmChatApp = {
+        // the server's copies of texts and Messenger replies (#876): a missed one joins its note
+        inboxAdopt(n) {
+            const kind = n && n.data && n.data.kind;
+            if (kind === 'sms') return adoptSms(n);
+            if (kind === 'chat') return adoptChat(n);
+            return false;
+        },
+        inboxDrop,
         showList() {
             if (!sh) return;
             sh.open(APP_ID);

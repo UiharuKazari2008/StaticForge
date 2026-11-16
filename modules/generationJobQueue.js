@@ -180,6 +180,8 @@ function createGenerationJobQueue(options) {
             workspace: info.workspace || null,
             // the print queue's view of it (printSpooler.describeDocument): { name, pages, width, height }
             owner: info.owner || null,
+            // whose notification inbox hears of it (notificationInboxSources, #876): admin / dev_admin
+            userType: info.userType || null,
             document: info.document && typeof info.document === 'object' ? info.document : null,
             status: 'queued',
             createdAt: nowFn(),

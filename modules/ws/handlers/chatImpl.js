@@ -837,6 +837,12 @@ async function handleSendChatMessage(handler, ws, message, clientInfo, wsServer)
                 });
             }
 
+            // Dreamscape Messenger's new message also reaches the phone when its page is not running
+            // (#876): a reply to the phone (or to a socket that has gone) goes to the notification inbox
+            try {
+                require('../../notificationInboxSources').onChatReply({ chatId, session, parsed: null, raw: typeof responseContent === 'string' ? responseContent : JSON.stringify(responseContent), clientInfo, ws });
+            } catch (inboxErr) { console.warn('[chat] inbox notice failed:', inboxErr.message); }
+
             // Stop keep-alive when complete
             handler.stopKeepAliveInterval(message.requestId);
             // the persona may have renamed itself (a myname event): its card follows

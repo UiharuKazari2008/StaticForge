@@ -1149,6 +1149,26 @@ function sendInboxNotice(globalResources, wsServer, notice) {
     return sent;
 }
 
+/**
+ * A notice is done with (read, dismissed or used anywhere, or expired; #876): as_event 'inbox.cleared'
+ * { id } to every partnered phone's background link, so the app cancels its Android notification.
+ */
+function sendInboxCleared(globalResources, wsServer, notice) {
+    const server = wsServerOf(globalResources, wsServer);
+    const id = notice && notice.id ? String(notice.id) : '';
+    if (!server || !id) return 0;
+    let sent = 0;
+    const ids = new Set(liveSockets(server, 'device').map((x) => x.info.as.id));
+    for (const devId of ids) {
+        const live = liveSockets(server, 'device', devId);
+        if (!live.some((x) => x.info.as.session === 'partner')) continue;
+        const service = live.find((x) => x.info.as.speaker === 'service');
+        if (!service) continue;
+        if (sendServerEvent(globalResources, server, service, 'inbox.cleared', { id })) sent += 1;
+    }
+    return sent;
+}
+
 /** An as_event from the server to one socket (a phone's background link). */
 function sendServerEvent(globalResources, wsServer, socket, name, detail) {
     const server = wsServerOf(globalResources, wsServer);
@@ -1256,6 +1276,7 @@ module.exports = {
     partnerLinks,
     ringPartners,
     sendInboxNotice,
+    sendInboxCleared,
     sendServerEvent,
     resetForTests
 };

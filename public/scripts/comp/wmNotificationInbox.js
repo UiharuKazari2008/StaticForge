@@ -14,6 +14,12 @@
  * The native app (DreamScapeForegroundService) reads the same inbox to post Android notifications while
  * the WebView is paused; nothing is mirrored to Android while the shell is up (toastManager keeps the
  * bridge off on the phone), so there is no double notification.
+ *
+ * Since #876 the server also raises mail, text messages, Dreamscape Messenger, Director, prints and
+ * weather (modules/notificationInboxSources.js) with the ids the apps use themselves (mail:<account>:
+ * <folder>:<uid>, sms:<account>:<chat>, chat:<chatId>, wx:/rain:<place>...). A missed one of those goes
+ * into its app's own grouped notification (wmMessaging / wmChatApp inboxAdopt: the same title, lines,
+ * icon and sound class), and the apps clear the id when their note is dismissed or the item is read.
  */
 (function () {
     'use strict';
@@ -53,16 +59,47 @@
         const app = d.app || notice.app;
         if (app === 'lapis' && window.wmLapis) { window.wmLapis.open(d.open || undefined); return; }
         if (app === 'traffic' && window.wmTraffic) { window.wmTraffic.open(d.open || undefined); return; }
+        if (app === 'weather' && window.wmWeather && typeof window.wmWeather.open === 'function') { window.wmWeather.open(); return; }
         if (window.wmShell && app) { try { window.wmShell.open(app); return; } catch (_) { /* no such app */ } }
+    }
+
+    /** The app that groups this kind of notice in a notification of its own (mail, texts, Messenger). */
+    function adopter(notice) {
+        const kind = notice.data && notice.data.kind;
+        if (kind === 'mail' && window.wmMessaging && typeof window.wmMessaging.inboxAdopt === 'function') return window.wmMessaging;
+        if ((kind === 'sms' || kind === 'chat') && window.wmChatApp && typeof window.wmChatApp.inboxAdopt === 'function') return window.wmChatApp;
+        return null;
+    }
+
+    const ICON_BY_CLASS = {
+        mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', director: 'app-director', print: 'app-studio', 'print-error': 'app-studio',
+        'weather-alert': 'status-weather-alert', 'weather-severe': 'status-weather-alert', 'rain-alarm': 'status-rain-alarm'
+    };
+    function iconFor(notice) {
+        const app = notice.data && notice.data.app;
+        if (app === 'traffic') return 'app-traffic';
+        if (app === 'lapis') return 'app-lapis';
+        return ICON_BY_CLASS[notice.cls] || 'app-programs';
     }
 
     /** Show one missed notice as a WM notification; View opens its app, Dismiss clears it. */
     function show(notice) {
         if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
+        // its app's own grouped notification (it clears the id when dismissed or read)
+        const app = adopter(notice);
+        if (app) {
+            let taken = false;
+            try { taken = app.inboxAdopt(notice) !== false; } catch (_) { taken = false; }
+            if (taken) {
+                shownNotes.set(notice.id, { close() { try { if (typeof app.inboxDrop === 'function') app.inboxDrop(notice); } catch (_) { /* gone */ } } });
+                ack(notice.id, 'seen');
+                return;
+            }
+        }
         const note = ws.appNote({
             title: notice.title,
-            html: esc(notice.text || ''),
-            icon: notice.data && notice.data.app === 'traffic' ? 'app-traffic' : notice.data && notice.data.app === 'lapis' ? 'app-lapis' : 'app-programs',
+            html: esc(notice.text || '').replace(/\n/g, '<br>'),
+            icon: iconFor(notice),
             event: notice.cls || 'notification',
             softKeys: () => ({
                 left: { label: 'View', action: () => { ack(notice.id, 'acted'); close(notice.id); openFor(notice); } },
@@ -122,6 +159,10 @@
     window.wmNotificationInbox = {
         /** Re-list the inbox and show what was missed (also runs on connect and on resume). */
         catchUp,
+        /** An app's notice is done with (read, opened or dismissed): cleared here, elsewhere and on Android. */
+        clear: (id) => { if (!id) return; shownNotes.delete(id); ack(String(id), 'cleared'); },
+        /** An app's notice was used (View / Reply). */
+        acted: (id) => { if (!id) return; shownNotes.delete(id); ack(String(id), 'acted'); },
         shown: () => [...shownNotes.keys()],
     };
 

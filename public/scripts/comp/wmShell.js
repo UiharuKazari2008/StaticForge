@@ -1087,6 +1087,8 @@
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
+            // the app's lock screen was unlocked with its keypad's Contacts / Messaging key (#875)
+            if (role === 'app:contacts' || role === 'app:messaging') { open(role.slice(4)); doneSoon(); return; }
             if (role === 'start' || role === 'title') {
                 const menu = shell.querySelector('.wm-startmenu');
                 if (menu && menu.hidden) toggleStartMenu();
@@ -4043,6 +4045,9 @@
         const ws = window.wsClient;
         if (!ws || typeof ws.on !== 'function') return;
         ws.on('director_computer_status', (d) => { shellDirectorStatus = (d && (d.data || d)) || shellDirectorStatus; refreshStatus(); });
+        // the notification classes shown without a message, for the server's own copies (#876)
+        ws.on('connected', () => setTimeout(() => sendInboxPrefs(true), 1500));
+        setTimeout(() => sendInboxPrefs(true), 1500);
     }
 
     function printsInProgress() {
@@ -6817,6 +6822,27 @@
 
     function saveSoundPrefs(p) {
         try { localStorage.setItem(SND_PREFS_KEY, JSON.stringify(p)); } catch (_) { /* private mode: this session only */ }
+        sendInboxPrefs();
+    }
+
+    /**
+     * The server raises the phone's notifications too, for when this page is not running (#876): it is
+     * told which classes have Display message on screen off, so those are kept quiet (never posted as
+     * Android notifications). Sent on every connect and when Sounds & Notifications changes.
+     */
+    let inboxPrefsSent = '';
+    function sendInboxPrefs(force) {
+        const ws = window.wsClient;
+        if (!ws || typeof ws.sendMessage !== 'function' || (typeof ws.isConnected === 'function' && !ws.isConnected())) return;
+        let user = '';
+        try { user = localStorage.getItem('userType') || ''; } catch (_) { user = ''; }
+        if (!/^(admin|dev_admin)$/.test(user)) return;
+        const prefs = soundPrefs();
+        const quiet = SND_EVENTS.filter((e) => e.kind === 'note').filter((e) => { const p = eventPrefs(e.id, prefs); return p && !p.display; }).map((e) => e.id);
+        const sig = quiet.join(',');
+        if (!force && sig === inboxPrefsSent) return;
+        inboxPrefsSent = sig;
+        Promise.resolve(ws.sendMessage('inbox_prefs', { quiet }, false)).catch(() => { inboxPrefsSent = ''; });
     }
 
     const dovecoteMail = () => {

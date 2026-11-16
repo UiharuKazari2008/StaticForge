@@ -77,6 +77,8 @@ function broadcast(payload) {
     if (server && typeof server.broadcast === 'function') {
         server.broadcast({ type: 'ma_event', data: payload, timestamp: new Date().toISOString() }, (info) => !!(info && info.authenticated && info.userType === 'admin'));
     }
+    // the phone's New E-mail Message also when its page is not running (#876): the inbox
+    try { require('./notificationInboxSources').onMailEvent(payload); } catch (error) { log(`inbox: ${error.message}`); }
 }
 
 // ---- runtime per account ----

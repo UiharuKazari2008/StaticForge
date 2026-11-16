@@ -8,6 +8,7 @@ const inbox = require('../../notificationInbox');
 //
 //   inbox_list   { since?, includeCleared? }   -> { notices } (newest first, not expired)
 //   inbox_ack    { id, state: 'seen'|'acted'|'cleared', device? }   -> { ok }
+//   inbox_prefs  { quiet: [class...] }   -> { ok, quiet } (the phone's Display message off classes)
 //
 // Broadcast to the same userType's clients:
 //   inbox_updated  { reason: 'new'|'ack', notice? | id, state?, device? }
@@ -24,6 +25,12 @@ function registerPackets(handlersCtx) {
         return;
     }
     inbox.bind(handlersCtx.globalResources);
+    // the phone's print notifications come from the FIFO itself (#876)
+    try {
+        const gr = handlersCtx.globalResources;
+        const queue = gr && typeof gr.getGenerationJobQueue === 'function' ? gr.getGenerationJobQueue() : require('../../generationJobQueue').getSharedGenerationJobQueue();
+        require('../../notificationInboxSources').bindPrintQueue(queue);
+    } catch (e) { console.warn(`[294-notificationInboxHandler] print queue: ${e.message}`); }
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             if (!canUse(ctx.clientInfo)) {
@@ -42,6 +49,13 @@ function registerPackets(handlersCtx) {
         const ok = inbox.ack(inbox.userOf(ctx.clientInfo), String(m.id || ''), String(m.state || ''), m.device || ctx.clientInfo.clientId);
         reply(handlersCtx, ctx.ws, m, { ok });
     }, { destructive: true });
+    // the phone's Sounds & Notifications "Display message on screen" choices: classes shown without a
+    // message are stored seen and never posted on Android (#876)
+    reg('inbox_prefs', (ctx) => {
+        const m = ctx.message;
+        const quiet = inbox.setQuiet(inbox.userOf(ctx.clientInfo), Array.isArray(m.quiet) ? m.quiet : []);
+        reply(handlersCtx, ctx.ws, m, { ok: !!quiet, quiet: quiet || [] });
+    });
 }
 
 module.exports = { registerPackets };

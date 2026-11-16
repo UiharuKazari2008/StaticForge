@@ -1297,6 +1297,8 @@ async function pollPlace(id, p, changes) {
     if (fresh.length) {
         saveSeen();
         fresh.forEach((alert) => broadcast({ type: 'weather_alert_issued', data: { alert, place: tag, source: monitor.byPlace[id].source } }));
+        // and the phone's notification inbox, for a phone whose page is not running (#876)
+        fresh.forEach((alert) => { try { require('./notificationInboxSources').onWeatherAlert({ alert, place: tag }); } catch (_e) { /* best effort */ } });
         console.log(`[weather] ${fresh.length} new alert(s) for ${tag.label}: ${fresh.map((a) => a.title).join(', ')}`);
     }
     if (alerts.map((a) => a.id).join('|') !== before) changes.alerts = true;
@@ -1311,6 +1313,7 @@ async function pollPlace(id, p, changes) {
             st.alarmed = true;
             const data = { place: tag, startsInMin: r.startsInMin, endsInMin: r.endsInMin, peakMmh: r.peakMmh, kind: rainWord(r.peakMmh), summary: r.summary };
             broadcast({ type: 'weather_rain_alarm', data });
+            try { require('./notificationInboxSources').onRainAlarm(data); } catch (_e) { /* best effort (#876) */ }
             console.log(`[weather] rain alarm for ${tag.label}: ${data.kind} in ${r.startsInMin} min`);
         }
         const was = st.outlook ? `${st.outlook.wet}|${st.outlook.startsInMin}` : '';

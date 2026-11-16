@@ -31,8 +31,16 @@ let gr = null;
 let db = null;
 let nowFn = () => Date.now();
 
+let pruneTimer = null;
 function bind(globalResources) {
-    if (globalResources && !gr) gr = globalResources;
+    if (globalResources && !gr) {
+        gr = globalResources;
+        // expired notices go (and leave the phones) even when nothing new is published
+        if (!pruneTimer && !process.env.NOTIFICATION_INBOX_NO_TIMER) {
+            pruneTimer = setInterval(() => { prune('admin'); prune('dev_admin'); }, 10 * 60 * 1000);
+            if (pruneTimer.unref) pruneTimer.unref();
+        }
+    }
     return module.exports;
 }
 
@@ -72,6 +80,12 @@ function database() {
             PRIMARY KEY (user, id)
         );
         CREATE INDEX IF NOT EXISTS notices_user_created ON notices (user, createdAt);
+        CREATE TABLE IF NOT EXISTS prefs (
+            user TEXT NOT NULL,
+            key TEXT NOT NULL,
+            value TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (user, key)
+        );
     `);
     return db;
 }
@@ -120,18 +134,22 @@ function publish(notice = {}) {
     const now = nowFn();
     const expiresAt = Number.isFinite(Number(notice.ttlMs)) && Number(notice.ttlMs) > 0 ? now + Number(notice.ttlMs) : (Number.isFinite(Number(notice.expiresAt)) ? Number(notice.expiresAt) : null);
     if (expiresAt && expiresAt <= now) return null;
+    const cls = String(notice.cls || notice.kind || '').slice(0, 60);
+    // a class the phone shows without a message (Sounds & Notifications: Display message on screen off):
+    // kept for the title bar's state, never popped on resume nor posted on Android
+    const quiet = !!cls && quietClasses(user).has(cls);
     const row = {
         user,
         id,
         app: String(notice.app || '').slice(0, 40),
-        cls: String(notice.cls || notice.kind || '').slice(0, 60),
+        cls,
         title: title.slice(0, 200),
         text: String(notice.text || '').slice(0, 2000),
         actions: JSON.stringify(Array.isArray(notice.actions) ? notice.actions.slice(0, 6) : []),
         data: JSON.stringify(notice.data && typeof notice.data === 'object' ? notice.data : {}),
         createdAt: now,
         expiresAt,
-        state: 'new',
+        state: quiet ? 'seen' : 'new',
         actedBy: null,
         updatedAt: now,
     };
@@ -141,7 +159,7 @@ function publish(notice = {}) {
                 `INSERT INTO notices (user, id, app, cls, title, text, actions, data, createdAt, expiresAt, state, actedBy, updatedAt)
                  VALUES (@user, @id, @app, @cls, @title, @text, @actions, @data, @createdAt, @expiresAt, @state, @actedBy, @updatedAt)
                  ON CONFLICT (user, id) DO UPDATE SET app=excluded.app, cls=excluded.cls, title=excluded.title, text=excluded.text,
-                     actions=excluded.actions, data=excluded.data, expiresAt=excluded.expiresAt, state='new', actedBy=NULL, updatedAt=excluded.updatedAt`
+                     actions=excluded.actions, data=excluded.data, expiresAt=excluded.expiresAt, state=excluded.state, actedBy=NULL, updatedAt=excluded.updatedAt`
             )
             .run(row);
         prune(user);
@@ -152,7 +170,9 @@ function publish(notice = {}) {
     const out = rowOut(row);
     broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
     // the phones' background links too (#876 D): a phone whose page is not running posts it natively
-    try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out)); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
+    if (!quiet) {
+        try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out)); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
+    }
     return out;
 }
 
@@ -181,13 +201,86 @@ function ack(user, id, state, device) {
         // never step back (acted/cleared outrank seen)
         const rank = { new: 0, seen: 1, acted: 2, cleared: 3 };
         const next = rank[state] >= rank[cur.state] ? state : cur.state;
+        if (next === cur.state) return true; // nothing changes: no write, no broadcast
         database().prepare('UPDATE notices SET state = ?, actedBy = COALESCE(?, actedBy), updatedAt = ? WHERE user = ? AND id = ?').run(next, device ? String(device).slice(0, 60) : null, nowFn(), u, String(id || ''));
         broadcast(u, { type: 'inbox_updated', data: { reason: 'ack', id: String(id || ''), state: next, device: device || null } });
+        // done with (dismissed, read or used anywhere): the phones take down their Android copy
+        if (rank[next] >= 2 && rank[cur.state] < 2) phonesCleared(u, String(id || ''));
         return true;
     } catch (e) {
         console.warn(`[notify-inbox] ack failed: ${e.message}`);
         return false;
     }
+}
+
+/** Cleared: read, dismissed or gone at its source (mail read, a conversation opened). */
+function clear(user, id, device) {
+    return ack(user, id, 'cleared', device);
+}
+
+/**
+ * Clear every notice whose id starts with prefix (an account read to the end: 'mail:<account>:').
+ * @returns how many were cleared
+ */
+function clearWhere(user, prefix, device) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const p = String(prefix || '');
+    if (!p) return 0;
+    let ids = [];
+    try {
+        ids = database()
+            .prepare("SELECT id FROM notices WHERE user = ? AND substr(id, 1, ?) = ? AND state NOT IN ('acted', 'cleared')")
+            .all(u, p.length, p)
+            .map((r) => r.id);
+    } catch (_e) {
+        return 0;
+    }
+    let n = 0;
+    for (const id of ids) if (clear(u, id, device)) n += 1;
+    return n;
+}
+
+/** The notice is done with: every partnered phone cancels its Android notification (#876). */
+function phonesCleared(user, id) {
+    if (!gr || !id) return;
+    try { require('./activeSync').sendInboxCleared(gr, null, { user, id }); } catch (e) { console.warn(`[notify-inbox] phones (cleared): ${e.message}`); }
+}
+
+// ---- the phone's display choices (Settings > Sounds & Notifications: Display message on screen) ----
+
+// as shipped: the Director's turn finished plays its sound only (wmShell SND_EVENTS display: false)
+const DEFAULT_QUIET = ['director'];
+const quietCache = new Map();
+
+function quietClasses(user) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    if (quietCache.has(u)) return quietCache.get(u);
+    let list = DEFAULT_QUIET;
+    try {
+        const r = database().prepare("SELECT value FROM prefs WHERE user = ? AND key = 'quiet'").get(u);
+        if (r) list = safeJson(r.value, DEFAULT_QUIET);
+    } catch (_e) {
+        list = DEFAULT_QUIET;
+    }
+    const set = new Set(Array.isArray(list) ? list.map(String) : DEFAULT_QUIET);
+    quietCache.set(u, set);
+    return set;
+}
+
+/** The phone page reports the classes it shows without a message; they are stored seen and never posted. */
+function setQuiet(user, classes) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const list = [...new Set((Array.isArray(classes) ? classes : []).map((c) => String(c || '').trim()).filter((c) => /^[a-z0-9-]{1,40}$/.test(c)))].slice(0, 80);
+    try {
+        database()
+            .prepare("INSERT INTO prefs (user, key, value) VALUES (?, 'quiet', ?) ON CONFLICT (user, key) DO UPDATE SET value = excluded.value")
+            .run(u, JSON.stringify(list));
+    } catch (e) {
+        console.warn(`[notify-inbox] prefs failed: ${e.message}`);
+        return null;
+    }
+    quietCache.set(u, new Set(list));
+    return list;
 }
 
 /** Drop a user's expired notices, and old or surplus ones (keep the newest MAX_PER_USER). */
@@ -196,6 +289,12 @@ function prune(user) {
     const now = nowFn();
     try {
         const d = database();
+        // expired ones a phone may still show: it takes them down
+        const gone = d
+            .prepare("SELECT id FROM notices WHERE user = ? AND state NOT IN ('acted', 'cleared') AND ((expiresAt IS NOT NULL AND expiresAt <= ?) OR createdAt < ?)")
+            .all(u, now, now - KEEP_MS)
+            .map((r) => r.id);
+        gone.forEach((id) => phonesCleared(u, id));
         d.prepare('DELETE FROM notices WHERE user = ? AND ((expiresAt IS NOT NULL AND expiresAt <= ?) OR createdAt < ?)').run(u, now, now - KEEP_MS);
         d.prepare('DELETE FROM notices WHERE user = ? AND id NOT IN (SELECT id FROM notices WHERE user = ? ORDER BY createdAt DESC LIMIT ?)').run(u, u, MAX_PER_USER);
     } catch (_e) {
@@ -223,6 +322,10 @@ module.exports = {
     publish,
     list,
     ack,
+    clear,
+    clearWhere,
+    setQuiet,
+    quietClasses,
     prune,
     userOf,
     _test: {
@@ -232,6 +335,7 @@ module.exports = {
         reset: () => {
             if (db) db.close();
             db = null;
+            quietCache.clear();
         },
     },
 };
