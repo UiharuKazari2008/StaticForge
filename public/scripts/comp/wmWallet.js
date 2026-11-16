@@ -557,7 +557,19 @@
             img.src = dataUrl;
             await img.decode();
             const det = new window.BarcodeDetector({ formats: (await window.BarcodeDetector.getSupportedFormats()).filter((f) => DETECTED[f]) });
-            const r = await det.detect(img);
+            // Wallet's barcode picture is cut tight to the bars: give it a white quiet zone and double it
+            // (without one the reader missed 10 of 12 on the Fold; with it all 12, every value matching)
+            const k = 2;
+            const pad = 60;
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth * k + pad * 2;
+            c.height = img.naturalHeight * k + pad * 2;
+            const g = c.getContext('2d');
+            g.fillStyle = '#ffffff';
+            g.fillRect(0, 0, c.width, c.height);
+            g.imageSmoothingEnabled = false;
+            g.drawImage(img, pad, pad, img.naturalWidth * k, img.naturalHeight * k);
+            const r = await det.detect(c);
             return r && r[0] && DETECTED[r[0].format] ? { format: DETECTED[r[0].format], value: r[0].rawValue } : null;
         } catch (_) { return null; }
     }
