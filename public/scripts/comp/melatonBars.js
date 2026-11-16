@@ -717,6 +717,11 @@
     let layoutsSent = '';
     // the last full set: a push of one popup (an ActiveSync transfer's numbers) replaces only that one
     let layoutsAll = {};
+    // the notification box is up (a waiting notification stays through barsPopupClose)
+    function noteUp() {
+        const n = document.querySelector('#wmShell > .wm-notify');
+        return !!(n && !n.hidden && n.getClientRects().length);
+    }
     // the popups' own fades and slides finished at once (a capture mid-fade wrote down nothing at opacity 0)
     function settle(layers) {
         layers.forEach((l) => { try { l.getAnimations({ subtree: true }).forEach((a) => { try { a.finish(); } catch (_) { /* infinite: left */ } }); } catch (_) { /* old engine */ } });
@@ -742,7 +747,8 @@
                     if (!ni || ni.hidden) continue;
                 }
                 sh.barsPopupClose();
-                sh.barsPopupOpen(role);
+                // a notification already up is not opened again (that toggles it away mid-capture)
+                if (!(role === 'notify' && noteUp())) sh.barsPopupOpen(role);
                 // (a waiting notification is the notification icon's own popup, not part of another's)
                 const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (role === 'notify' || !l.classList.contains('wm-notify')));
                 // written down as it ends up, not mid-way through its fade (WM 6.1's notification fades in)
@@ -1272,7 +1278,7 @@
             capturing = true;
             try {
                 sh.barsPopupClose();
-                sh.barsPopupOpen(role);
+                if (!(role === 'notify' && noteUp())) sh.barsPopupOpen(role);
                 const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
                 const list = [];
                 layers.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!list.includes(el)) list.push(el); }));
