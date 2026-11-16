@@ -3123,10 +3123,12 @@
             });
         };
         (a.sections || []).forEach((sec) => {
-            if (typeof sec === 'string') { out.sec.push({ t: 'text', s: sec }); return; }
+            // first: where each .wm-bubble-section starts (its own padding above and below; the parts of one
+            // section are one block)
+            if (typeof sec === 'string') { out.sec.push({ t: 'text', s: sec, first: true }); return; }
             if (!sec) return;
-            if (sec.rule) { out.sec.push({ t: 'rule' }); return; }
-            if (sec.links) { out.sec.push({ t: 'links', s: sec.text || '', b: !!sec.bold, right: sec.align === 'right', links: sec.links.map((l) => l.label) }); return; }
+            if (sec.rule) { out.sec.push({ t: 'rule', first: true }); return; }
+            if (sec.links) { out.sec.push({ t: 'links', s: sec.text || '', b: !!sec.bold, right: sec.align === 'right', links: sec.links.map((l) => l.label), first: true }); return; }
             const box = document.createElement('div');
             if (sec.html) box.innerHTML = sec.html; else if (sec.node) box.appendChild(sec.node.cloneNode(true));
             const start = out.sec.length;
