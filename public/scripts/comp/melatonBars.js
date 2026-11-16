@@ -238,6 +238,8 @@
             if (corner && hidden) corner.hidden = true;
         };
         try {
+            // from a clean page: a bubble left open by an earlier copy would make this tap close it instead
+            if (!ctx.current) { try { sh.barsPopupClose(); } catch (_) { /* none */ } }
             if (!ctx.current && ctx.role === 'softmenu') {
                 const right = shell.querySelector('.wm-softkeys .wm-softkey[data-side="right"]');
                 sh.menu('right', softMenuRows(), right);
