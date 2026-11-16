@@ -244,3 +244,9 @@
 
 .wwl-imp-row input { flex: 0 0 auto; margin: 0; }
 .wwl-imp-row span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Car Keys: a key's name with its Forget button */
+.wm-wallet .wwl-keys { padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)); }
+.wm-wallet .wwl-keys[hidden] { display: none; }
+.wwl-key-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
+.wwl-key-row .wm-buttons { margin: 0; }

@@ -5851,6 +5851,8 @@
                     sections.push({ node: keys });
                 }
             });
+            // which key is my car and which are friends' (Wallet > Car Keys), whatever is in range now
+            if (window.wmWallet && window.wmWallet.carKeys) sections.push({ rule: true }, { links: [{ label: 'Car Keys...', action: () => window.wmWallet.carKeys() }], align: 'right' });
             const buttons = [];
             if (lp && window.wmLapis.open) buttons.push({ text: 'Open', left: true, action: () => window.wmLapis.open() });
             buttons.push({ text: 'Hide' });

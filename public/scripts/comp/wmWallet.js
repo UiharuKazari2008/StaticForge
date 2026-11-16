@@ -62,7 +62,7 @@
     let data = { v: 1, items: [] };
     let loaded = false;
     let storeNote = ''; // why the store cannot be read now ('' when it can)
-    let layers = []; // 'edit' | 'show' | 'scan' | 'import'
+    let layers = []; // 'edit' | 'show' | 'scan' | 'import' | 'keys'
     let imported = null; // { running, items, picked: Set(index), reason } while an import runs or is offered
     let form = null; // the item being edited (a copy) and whether it is new
     let showing = null; // the item shown full screen
@@ -312,6 +312,7 @@
             <div class="wwl-edit wm-form" data-layer="edit" hidden></div>
             <div class="wwl-show" data-layer="show" hidden></div>
             <div class="wwl-import wm-form" data-layer="import" hidden></div>
+            <div class="wwl-keys wm-form" data-layer="keys" hidden></div>
             <div class="wwl-scan" data-layer="scan" hidden><video playsinline muted></video><span class="wwl-scan-guide"></span><p class="wwl-scan-note">Hold the barcode inside the frame.</p></div>
         </div>`;
         els = {
@@ -319,6 +320,7 @@
             edit: page.querySelector('[data-layer="edit"]'),
             show: page.querySelector('[data-layer="show"]'),
             import: page.querySelector('[data-layer="import"]'),
+            keys: page.querySelector('[data-layer="keys"]'),
             scan: page.querySelector('[data-layer="scan"]'),
             video: page.querySelector('.wwl-scan video')
         };
@@ -329,13 +331,14 @@
     function sync() {
         if (!els) return;
         const t = top();
-        for (const k of ['list', 'edit', 'show', 'scan', 'import']) els[k].hidden = k !== t;
+        for (const k of ['list', 'edit', 'show', 'scan', 'import', 'keys']) els[k].hidden = k !== t;
         page.classList.toggle('is-show', t === 'show');
         brightness(t === 'show');
         if (t !== 'scan') stopScan();
         if (t === 'list') renderList();
         else if (t === 'show') renderShow();
         else if (t === 'import') renderImport();
+        else if (t === 'keys') renderKeys();
         if (sh) { if (sh.refreshSoftKeys) sh.refreshSoftKeys(); if (sh.refreshTitleAction) sh.refreshTitleAction(); }
     }
 
@@ -466,7 +469,10 @@
 
     async function importStart() {
         const b = importer();
-        if (!b) return;
+        if (!b) {
+            sh.messageBox({ title: TITLE, icon: 'info', text: 'Import from Samsung Wallet needs the newest Melaton app on this phone. It reads Samsung Wallet through Melaton Bars, which the app update adds. Install the update, then try again.' });
+            return;
+        }
         let av = {};
         try { av = JSON.parse(b.available()); } catch (_) { av = {}; }
         if (!av.service) {
@@ -616,6 +622,38 @@
     // back from Wallet: what a paused page missed
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && imported && imported.running) importTake(); });
 
+    // ---------------------------------------------------------------- car keys (wmCarKey.js)
+
+    /** Which of the phone's Samsung Digital Key keys is my car (Lapis uses it) and which are friends'. */
+    function renderKeys() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        const ck = window.wmCarKey;
+        if (!ui || !els) return;
+        const list = ck && typeof ck.known === 'function' ? ck.known() : [];
+        if (!list.length) {
+            els.keys.innerHTML = `${ui.sub('Car Keys')}${ui.note('No car keys yet. Each car whose Samsung Digital Key this phone holds shows here once the phone has been near it (its "Car in range" notification).')}`;
+            return;
+        }
+        els.keys.innerHTML = `${ui.sub('My car')}
+            ${list.map((k, i) => ui.radio('wwlMine', String(i), `${k.car}${k.inRange ? '  (in range)' : ''}`, k.mine)).join('')}
+            ${ui.radio('wwlMine', '-', 'None of these', !list.some((k) => k.mine))}
+            ${ui.note('Your car is the one Lapis Remote controls (its Lock and Unlock use this key when the car is in range). Every other key is kept as a friend\'s car: the car key bubble still locks and unlocks it.')}
+            ${ui.sub('Forget a key')}
+            ${list.map((k, i) => `<div class="wwl-key-row"><span>${esc(k.car)}${k.mine ? ' (my car)' : ' (friend\'s)'}</span>${ui.buttons([[`forget-${i}`, 'Forget']])}</div>`).join('')}`;
+        els.keys.querySelectorAll('input[name="wwlMine"]').forEach((r) => r.addEventListener('change', () => {
+            if (!r.checked) return;
+            if (r.value === '-') { const m = list.find((k) => k.mine); if (m) ck.setFriend(m.car); try { localStorage.removeItem('wmCarKeyMine'); } catch (_) { /* storage off */ } } else ck.setMine(list[Number(r.value)].car);
+            renderKeys();
+        }));
+        els.keys.querySelectorAll('[data-act^="forget-"]').forEach((b) => b.addEventListener('click', () => { ck.forget(list[Number(b.dataset.act.slice(7))].car); renderKeys(); }));
+    }
+
+    function openKeys() {
+        if (!sh) return;
+        sh.open(APP_ID);
+        if (top() !== 'keys') push('keys'); else renderKeys();
+    }
+
     // ---------------------------------------------------------------- camera scan
 
     async function startScan(mode) {
@@ -714,6 +752,7 @@
             const t = top();
             if (t === 'edit') return { left: { label: 'Save', action: saveEdit }, right: { label: 'Cancel', action: pop } };
             if (t === 'import') return { left: { label: 'Add', action: importSave }, right: { label: 'Cancel', action: pop } };
+            if (t === 'keys') return { left: { label: 'Done', action: pop }, right: { label: '', action: () => {} } };
             if (t === 'scan') return { left: scan && scan.photo ? { label: 'Capture', action: capture } : { label: '', action: () => {} }, right: { label: 'Cancel', action: pop } };
             if (t === 'show') {
                 const list = items().filter((x) => x.kind === 'barcode');
@@ -731,7 +770,8 @@
                         { label: 'New Card...', action: () => editItem(null, 'card') },
                         { label: 'New Barcode...', action: () => editItem(null, 'barcode') },
                         { label: 'New ID...', action: () => editItem(null, 'id') },
-                        ...(importer() ? [{ label: 'Import from Samsung Wallet...', action: importStart }] : []),
+                        { label: 'Import from Samsung Wallet...', action: importStart },
+                        { label: 'Car Keys...', action: openKeys },
                         '-',
                         { label: 'Edit...', disabled: !sel, action: () => editItem(sel) },
                         { label: 'Move Up', disabled: !sel || i <= 0, action: () => move(-1) },
@@ -757,7 +797,7 @@
     // the phone was unlocked: a store that was locked can be read now
     window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on && storeNote === 'locked') { load(); todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); } });
 
-    window.wmWallet = { open: () => sh && sh.open(APP_ID), pay: (i) => pay(items()[i]), show: (i) => show(items()[i]) };
+    window.wmWallet = { open: () => sh && sh.open(APP_ID), carKeys: () => openKeys(), pay: (i) => pay(items()[i]), show: (i) => show(items()[i]) };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

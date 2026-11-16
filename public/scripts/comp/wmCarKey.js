@@ -17,7 +17,8 @@
  *
  * window.wmCarKey: state() -> { inRange (any car), cars: [{ key, car, mine, canLock, canUnlock }],
  * mine (my car's entry or null) }, can(kind) / press(kind) (my car; kind 'lock' | 'unlock'),
- * pressCar(key, kind), setMine(name), isMine(name). Fires document `wmCarKeyChange` on every change.
+ * pressCar(key, kind), setMine(name), setFriend(name), forget(name), known() (every key seen, for
+ * Wallet > Car Keys), isMine(name). Fires document `wmCarKeyChange` on every change.
  */
 (function () {
     'use strict';
@@ -26,6 +27,7 @@
 
     const MINE_KEY = 'wmCarKeyMine';
     const FRIENDS_KEY = 'wmCarKeyFriends';
+    const SEEN_KEY = 'wmCarKeysSeen'; // every car name a key was seen for, so it can be set when out of range
     let raw = { cars: [] };
     let state = { inRange: false, cars: [], mine: null };
     const asked = new Set();
@@ -64,8 +66,35 @@
         return { inRange: cars.length > 0, cars, mine: cars.find((c) => c.mine) || null };
     }
 
+    function seen() { try { return JSON.parse(lsGet(SEEN_KEY) || '[]') || []; } catch (_) { return []; } }
+    function remember(cars) {
+        const list = seen();
+        let changed = false;
+        cars.forEach((c) => { if (c.car && !list.map(norm).includes(norm(c.car))) { list.push(c.car); changed = true; } });
+        if (changed) lsSet(SEEN_KEY, JSON.stringify(list.slice(-20)));
+    }
+
+    /** Every key this phone has seen: [{ car, mine, friend, inRange }] (Wallet > Car Keys). */
+    function known() {
+        const mine = norm(lsGet(MINE_KEY));
+        const fr = friends().map(norm);
+        const names = seen();
+        state.cars.forEach((c) => { if (!names.map(norm).includes(norm(c.car))) names.push(c.car); });
+        return names.map((n) => ({ car: n, mine: norm(n) === mine, friend: fr.includes(norm(n)) || (!!mine && norm(n) !== mine), inRange: state.cars.some((c) => norm(c.car) === norm(n)) }));
+    }
+
+    /** Forgets a key (Wallet > Car Keys): not mine, not a friend's, not remembered. */
+    function forget(name) {
+        lsSet(SEEN_KEY, JSON.stringify(seen().filter((n) => norm(n) !== norm(name))));
+        lsSet(FRIENDS_KEY, JSON.stringify(friends().filter((n) => norm(n) !== norm(name))));
+        if (norm(lsGet(MINE_KEY)) === norm(name)) lsSet(MINE_KEY, null);
+        state = { inRange: false, cars: [], mine: null };
+        take(raw);
+    }
+
     function take(s) {
         raw = s && typeof s === 'object' ? s : { cars: [] };
+        if (Array.isArray(raw.cars)) remember(raw.cars); else if (raw.inRange && raw.car) remember([{ car: raw.car }]);
         const next = build();
         const key = (o) => JSON.stringify(o.cars.map((c) => [c.key, c.car, c.mine, c.canLock, c.canUnlock]));
         const changed = key(next) !== key(state);
@@ -134,5 +163,5 @@
     document.addEventListener('wmLapisChange', () => { if (!lsGet(MINE_KEY) && raw.cars && raw.cars.length) take(raw); });
     read();
 
-    window.wmCarKey = { state: () => state, can, press, pressCar, setMine, isMine: (n) => norm(n) === norm(lsGet(MINE_KEY)) };
+    window.wmCarKey = { state: () => state, can, press, pressCar, setMine, setFriend: markFriend, forget, known, isMine: (n) => norm(n) === norm(lsGet(MINE_KEY)) };
 })();
