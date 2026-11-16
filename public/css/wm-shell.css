@@ -3829,6 +3829,56 @@ html.ui-mobile #confirmationDialog #confirmationMessage::after {
     display: none !important;
 }
 
+/* the opened Fold (#870, wmShell.js renderViewgrid): a two-column grid of the viewer's pictures down
+ * the left side, between the title bar and the strip, on the strip's face colour; the picture on
+ * screen framed in the highlight colour. Only the rows in sight are in the page. */
+.wm-viewgrid {
+    position: absolute;
+    z-index: 3;
+    left: var(--wm-safe-left);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--wm-tint);
+    box-sizing: border-box;
+}
+
+.wm-viewgrid[hidden] {
+    display: none !important;
+}
+
+.wm-viewgrid-in {
+    position: relative;
+}
+
+.wm-viewgrid-cell {
+    position: absolute;
+    display: block !important;
+    margin: 0;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #000 !important;
+    overflow: hidden;
+}
+
+.wm-viewgrid-cell img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.wm-viewgrid-cell {
+    box-sizing: border-box;
+}
+
+.wm-viewgrid-cell.is-selected {
+    padding: calc(2 * var(--wm-px)) !important;
+    background: var(--wm-highlight) !important;
+}
+
 .wm-viewbar-sep {
     flex: 0 0 auto;
     width: calc(5 * var(--wm-px));

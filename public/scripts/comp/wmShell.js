@@ -605,6 +605,7 @@
                 <button type="button" class="wm-softkey" data-side="right"></button>
             </footer>
             <div class="wm-viewbar" role="toolbar" aria-label="Picture" hidden></div>
+            <div class="wm-viewgrid wm-pg-scroll" role="listbox" aria-label="Pictures" hidden><div class="wm-viewgrid-in"></div></div>
             <div class="wm-startmenu-pic" aria-hidden="true" hidden><div></div></div>
             <nav class="wm-startmenu" role="menu" hidden></nav>
             <div class="wm-popup" role="menu" hidden></div>
@@ -9422,6 +9423,7 @@
         const bar = shell && shell.querySelector('.wm-viewbar');
         if (!bar) return;
         bar.hidden = !viewerActive;
+        renderViewgrid();
         if (!viewerActive) return;
         if (!bar.firstChild) {
             bar.innerHTML = VIEWBAR.map((b) => (b === '|' ? '<span class="wm-viewbar-sep" aria-hidden="true"></span>'
@@ -9494,8 +9496,126 @@
             if (k && k.height) pad.bottom = Math.max(0, window.innerHeight - k.top + (WM65 ? 23 : 24) * px);
             if (t && t.width) { pad.left = Math.max(0, t.left); pad.right = Math.max(0, window.innerWidth - t.right); }
         } catch (_) { /* the bars alone */ }
+        // the opened Fold (#870): the side grid of the viewer's pictures takes the left of the screen
+        if (viewgridOn()) pad.left += viewgridWidth();
         return pad;
     }
+
+    /*
+     * The opened Fold (#870, Yukimi: "it starts off normal full view but an image has a small grid on
+     * the side"): on a screen 600 CSS px wide or more the picture view keeps a two-column grid of the
+     * viewer's pictures down its left side, between the title bar and the strip; the one on screen is
+     * framed in the highlight colour and kept in sight, a tap shows that picture. Only the rows in
+     * sight are drawn (a gallery holds thousands). The closed phone has no grid.
+     */
+    const VIEWGRID_MIN = 600;
+    const VIEWGRID_COLS = 2;
+    const VIEWGRID_CELL = 56; // units
+    const VIEWGRID_GAP = 3;
+    let viewgridFor = null; // the PhotoSwipe the grid lists
+    let viewgridSel = -1;
+
+    let viewgridBar = 0; // the grid's own scroll bar, measured once it is on screen
+    /** The grid's width, CSS px: two cells, three gaps and its scroll bar. */
+    function viewgridWidth() {
+        const px = rootPx();
+        return VIEWGRID_COLS * VIEWGRID_CELL * px + (VIEWGRID_COLS + 1) * VIEWGRID_GAP * px + viewgridBar;
+    }
+
+    function viewgridOn() {
+        return !!viewerActive && window.innerWidth >= VIEWGRID_MIN && viewerSlides() > 1;
+    }
+
+    function viewgridThumb(p, i) {
+        let d = null;
+        try { d = p.getItemData(i); } catch (_) { d = null; }
+        if (!d) return '';
+        const x = d.data || {};
+        // a gallery print: its small preview (/previews/<base>.webp), not the full picture
+        if (x.base && typeof resolveGalleryPreviewUrl === 'function') {
+            const u = resolveGalleryPreviewUrl({ base: x.base });
+            if (u) return u;
+        }
+        return d.msrc || d.src || '';
+    }
+
+    function renderViewgrid(reveal) {
+        const grid = shell && shell.querySelector('.wm-viewgrid');
+        if (!grid) return;
+        const on = viewgridOn();
+        grid.hidden = !on;
+        const p = on ? viewerPswp() : null;
+        if (!p) { viewgridFor = null; viewgridSel = -1; return; }
+        const px = rootPx();
+        const cell = VIEWGRID_CELL * px;
+        const gap = VIEWGRID_GAP * px;
+        const pad = viewerPadding();
+        grid.style.top = `${pad.top}px`;
+        grid.style.bottom = `${pad.bottom}px`;
+        grid.style.width = `${viewgridWidth()}px`;
+        // the scroll bar comes out of the box's width: the cells keep theirs and the picture moves over
+        const bar = grid.offsetWidth - grid.clientWidth;
+        if (bar !== viewgridBar && grid.offsetWidth) {
+            viewgridBar = bar;
+            grid.style.width = `${viewgridWidth()}px`;
+            try { const q = viewerPswp(); if (q && typeof q.updateSize === 'function') q.updateSize(true); } catch (_) { /* sized at the next resize */ }
+        }
+        const inner = grid.firstElementChild;
+        const n = viewerSlides();
+        const rows = Math.ceil(n / VIEWGRID_COLS);
+        const pitch = cell + gap;
+        inner.style.height = `${rows * pitch + gap}px`;
+        if (!grid.dataset.wired) {
+            grid.dataset.wired = '1';
+            grid.addEventListener('scroll', () => renderViewgrid(false), { passive: true });
+            grid.addEventListener('click', (e) => {
+                const c = e.target.closest('.wm-viewgrid-cell');
+                const q = viewerPswp();
+                if (!c || !q || typeof q.goTo !== 'function') return;
+                e.stopPropagation();
+                closeMenus(true);
+                q.goTo(Number(c.dataset.i));
+            });
+        }
+        const cur = typeof p.currIndex === 'number' ? p.currIndex : 0;
+        const fresh = viewgridFor !== p;
+        if (fresh) { viewgridFor = p; inner.replaceChildren(); }
+        // the picture on screen stays in sight (a swipe in the viewer, a tap here, the first look)
+        if (reveal !== false && (fresh || cur !== viewgridSel)) {
+            const top = Math.floor(cur / VIEWGRID_COLS) * pitch;
+            if (top < grid.scrollTop || top + pitch > grid.scrollTop + grid.clientHeight) {
+                grid.scrollTop = Math.max(0, top - (grid.clientHeight - pitch) / 2);
+            }
+        }
+        viewgridSel = cur;
+        const first = Math.max(0, Math.floor(grid.scrollTop / pitch) - 3);
+        const last = Math.min(rows - 1, Math.ceil((grid.scrollTop + grid.clientHeight) / pitch) + 3);
+        const want = new Set();
+        for (let r = first; r <= last; r++) for (let c = 0; c < VIEWGRID_COLS; c++) { const i = r * VIEWGRID_COLS + c; if (i < n) want.add(i); }
+        for (const el of [...inner.children]) { if (!want.has(Number(el.dataset.i))) el.remove(); }
+        const have = new Set([...inner.children].map((el) => Number(el.dataset.i)));
+        for (const i of want) {
+            if (have.has(i)) continue;
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'wm-viewgrid-cell';
+            b.dataset.i = String(i);
+            b.setAttribute('role', 'option');
+            b.style.left = `${gap + (i % VIEWGRID_COLS) * pitch}px`;
+            b.style.top = `${gap + Math.floor(i / VIEWGRID_COLS) * pitch}px`;
+            b.style.width = b.style.height = `${cell}px`;
+            const src = viewgridThumb(p, i);
+            b.innerHTML = src ? `<img src="${escapeHtml(src)}" alt="" decoding="async" draggable="false">` : '';
+            inner.appendChild(b);
+        }
+        for (const el of inner.children) {
+            const on2 = Number(el.dataset.i) === cur;
+            el.classList.toggle('is-selected', on2);
+            el.setAttribute('aria-selected', on2 ? 'true' : 'false');
+        }
+    }
+    // folding / unfolding with a picture open: the grid comes or goes (PhotoSwipe asks viewerPadding again)
+    window.addEventListener('resize', () => { if (viewerActive) renderViewgrid(); }, { passive: true });
 
     /**
      * One picture viewer on the phone (#748): the Pictures program's (lightbox.js PhotoSwipe under
