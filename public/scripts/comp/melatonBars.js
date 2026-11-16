@@ -453,6 +453,35 @@
         if (a <= 0) return null;
         return '#' + [m[1], m[2], m[3]].map((v) => Math.round(+v).toString(16).padStart(2, '0')).join('') + Math.round(a * 255).toString(16).padStart(2, '0');
     }
+    // color-mix(in srgb, A p%, B [q%]) as plain rgba (Chrome keeps it unresolved inside a gradient)
+    function mixColor(c) {
+        const m = /^color-mix\(in srgb,\s*(rgba?\([^)]*\))\s*([\d.]+)?%?\s*,\s*(rgba?\([^)]*\))\s*([\d.]+)?%?\s*\)$/.exec(String(c || '').trim());
+        if (!m) return c;
+        const num = (x) => (/rgba?\(([^)]*)\)/.exec(x)[1].split(',').map(Number));
+        const a = num(m[1]); const b = num(m[3]);
+        const pa = m[2] != null ? +m[2] / 100 : m[4] != null ? 1 - +m[4] / 100 : 0.5;
+        const ch = [0, 1, 2].map((i) => Math.round(a[i] * pa + b[i] * (1 - pa)));
+        const al = (a[3] == null ? 1 : a[3]) * pa + (b[3] == null ? 1 : b[3]) * (1 - pa);
+        return `rgba(${ch.join(', ')}, ${al})`;
+    }
+    // a gradient's / polygon's arguments split at the commas outside brackets
+    function topSplit(v, sep) {
+        const out = []; let d = 0; let cur = '';
+        for (const ch of String(v || '')) { if (ch === '(') d++; if (ch === ')') d--; if (ch === sep && d === 0) { out.push(cur.trim()); cur = ''; } else cur += ch; }
+        if (cur.trim()) out.push(cur.trim());
+        return out;
+    }
+    // a length of a polygon point: px, %, calc(a% +/- bpx) against [of]
+    function lenOf(v, of) {
+        v = String(v || '').trim();
+        if (/^calc\(/.test(v)) {
+            let sum = 0;
+            v.slice(5, -1).replace(/\s*-\s*/g, ' + -').split(' + ').forEach((t) => { t = t.trim(); if (t.endsWith('%')) sum += (parseFloat(t) / 100) * of; else sum += parseFloat(t) || 0; });
+            return sum;
+        }
+        if (v.endsWith('%')) return (parseFloat(v) / 100) * of;
+        return parseFloat(v) || 0;
+    }
     function layoutOf(roots, dpr) {
         const out = [];
         const R = (v) => Math.round(v * dpr * 100) / 100;
@@ -461,7 +490,29 @@
         roots.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!clickable.includes(el)) clickable.push(el); }));
         const isHide = (el) => (el.tagName === 'BUTTON' || el.classList.contains('wm-softkey')) && /^hide$/i.test((el.textContent || '').trim());
         const radii = (cs) => [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => R(px(v)));
+        // clip-path: polygon(...) as device-px points (the volume box's tail, its sliders' arrow thumbs)
+        const polyOf = (clipPath, box) => {
+            const m = /^polygon\((.*)\)$/.exec(String(clipPath || '').trim());
+            if (!m) return null;
+            const pts = topSplit(m[1].replace(/^(nonzero|evenodd)\s*,/, ''), ',').map((pt) => {
+                const xy = topSplit(pt, ' ');
+                return [R(box.left + lenOf(xy[0], box.width)), R(box.top + lenOf(xy[1], box.height))];
+            });
+            return pts.length >= 3 ? pts : null;
+        };
         const bgImage = (cs, box, clip, alpha) => {
+            // a plain linear-gradient (the volume box's title band): its stops, top to bottom or left to right
+            const lg = /^linear-gradient\((.*)\)$/.exec(cs.backgroundImage || '');
+            if (lg) {
+                const args = topSplit(lg[1], ',');
+                let dir = 'v';
+                if (/^(to |[\d.]+deg)/.test(args[0])) { const a = args.shift(); dir = /to (right|left)|90deg|270deg/.test(a) ? 'h' : 'v'; if (/to (top|left)|0deg|270deg/.test(a)) args.reverse(); }
+                const stops = args.map((a, i) => {
+                    const mm = /^(.*?)(?:\s+([\d.]+)%)?$/.exec(a);
+                    return [rgba(mixColor(mm[1]), alpha), mm[2] != null ? +mm[2] / 100 : i / Math.max(1, args.length - 1)];
+                }).filter((st) => st[0]);
+                if (stops.length >= 2) { out.push({ k: 'grad', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), r: radii(cs), dir, stops }); return; }
+            }
             // WM's block bar: repeating-linear-gradient(to right, c 0, c Apx, transparent Apx, transparent Bpx)
             // (its stops read one by one: Chrome writes transparent as rgba(0, 0, 0, 0), commas and all)
             const rg = /^repeating-linear-gradient\(\s*(?:to right|90deg)\s*,(.*)\)$/.exec(cs.backgroundImage || '');
@@ -532,6 +583,8 @@
                 const bc = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor].map((c) => rgba(c, alpha));
                 if (bc.some(Boolean)) out.push({ k: 'border', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, bw, color: bc });
             }
+            const ownPoly = polyOf(cs.clipPath, b);
+            if (ownPoly) for (let i = n0; i < out.length; i++) out[i].poly = ownPoly;
             // pseudo-elements with a picture or colour (radio dots, the warning glyph, the keyboard key)
             ['::before', '::after'].forEach((pe) => {
                 const ps = getComputedStyle(el, pe);
@@ -543,8 +596,11 @@
                 const box = { left: b.left + px(ps.left), top: b.top + px(ps.top), width: w, height: h };
                 const pa = alpha * (+ps.opacity || 1);
                 const pf = rgba(ps.backgroundColor, pa);
+                const p0 = out.length;
                 if (pf) out.push({ k: 'rect', x: R(box.left), y: R(box.top), w: R(w), h: R(h), r: radii(ps), fill: pf });
                 if (ps.backgroundImage && ps.backgroundImage !== 'none') bgImage(ps, box, clip, pa);
+                const pp = polyOf(ps.clipPath, box);
+                if (pp) for (let i = p0; i < out.length; i++) out[i].poly = pp;
             });
             // its own text, line by line (a line: the characters on one row), in its font
             [...el.childNodes].forEach((n) => {
