@@ -54,7 +54,6 @@
 
 /* one view at a time: the home page, Settings, the print, the editor */
 .wm-dreamstudio[data-view="home"] .wds-home,
-.wm-dreamstudio[data-view="settings"] .wds-settings,
 .wm-dreamstudio[data-view="print"] .wds-print,
 .wm-dreamstudio[data-view="ref"] .wds-ref,
 .wm-dreamstudio[data-view="presets"] .wds-presets,
@@ -121,7 +120,6 @@
 }
 
 .wm-dreamstudio[data-layout="tabs"] .wds-strip,
-.wm-dreamstudio[data-layout="tabs"] .wds-summary { display: none; }
 
 .wds-strip:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 
@@ -234,35 +232,6 @@
 .wds-base > img[hidden] { display: none; }
 .wds-base > div { flex: 1 1 auto; min-width: 0; }
 .wds-base b, .wds-base span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* the settings in one row; a tap opens Settings */
-.wds-summary {
-    display: block;
-    flex: 0 0 auto;
-    width: calc(100% - 10 * var(--wm-px));
-    min-height: calc(20 * var(--wm-px));
-    margin: calc(6 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px));
-    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
-    box-sizing: border-box;
-    border: 0;
-    border-top: calc(1 * var(--wm-px)) solid #848284;
-    border-radius: 0;
-    background: transparent;
-    color: #000;
-    font: inherit;
-    text-align: left;
-}
-
-.wds-summary:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
-.wds-summary > b { display: block; }
-.wds-summary > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-/* ---------------------------------------------------------------- settings */
-
-.wds-settings { overflow-y: auto; overscroll-behavior: contain; }
-.wds-settings > .wm-form { flex: 0 0 auto; }
-.wds-settings .wds-sublabel { margin: calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px)); }
-.wds-settings .wm-listbox { margin-bottom: calc(4 * var(--wm-px)); }
 
 /* ---------------------------------------------------------------- one reference: its picture over a form */
 
@@ -550,6 +519,15 @@
 .wds-wt-row > .wds-wt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-pop.wds-ucpop { width: calc(200 * var(--wm-px)); }
 .wm-pop.wds-rack { width: calc(300 * var(--wm-px)); }
+
+/* the small dialogs (Base Image, Syntax Handling): the message box's frame round LCD + jog rows or
+ * check boxes */
+#wmShell .wds-dlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
+.wds-dlg .wm-msgbox-title > .wm-title-action { flex: 0 0 auto; }
+.wds-dlg-body { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(6 * var(--wm-px)); }
+.wds-dlg-body .wds-wt-row > .wm-jog { width: calc(90 * var(--wm-px)); }
+.wds-dlg-body > .wm-msgbox-buttons { padding: calc(6 * var(--wm-px)) 0 0; }
+.wds-base-pic { display: block; max-width: 100%; max-height: calc(90 * var(--wm-px)); margin: 0 auto calc(4 * var(--wm-px)); border: calc(1 * var(--wm-px)) solid currentColor; object-fit: contain; }
 
 /* Custom Resolution / Ratio: a message box of LCD + jog rows; the size follows the ratio in ratio mode */
 #wmShell .wds-szdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }

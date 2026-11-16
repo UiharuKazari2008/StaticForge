@@ -4,13 +4,12 @@
  * changes goes through studioModel.js.
  *
  * Four views, one loop (write, Generate, look, adjust):
- *   home      the print in hand as a strip, Prompt, Undesired, the settings in one row
+ *   home      the print in hand as a strip, Prompt, Undesired, characters, references, base image
  *   editor    one prompt field, full screen, with an edit tool bar
- *   settings  the generation settings as a WM form
  *   print     the picture, full screen; the steps stream here while a print runs
  * Settings > System > DreamStudio picks how they are laid out: one page (the strip and the row open
- * Print and Settings) or WM tabs (Prompt | Settings | Print). A wide screen puts home beside the print.
- * Under home, Settings and the print the generation settings stay on a tool bar at the foot of the
+ * Print) or WM tabs (Prompt | Print). A wide screen puts home beside the print.
+ * Under home and the print the generation settings stay on a tool bar at the foot of the
  * page (Yukimi, Nov 15): Model | Drafting | Size | Prints, Datasets | Adjustments | UC, Steps |
  * Guidance | Variety+ | Rescale | Sampler | Seed. Numbers open a trackbar, the lists a drop-down
  * or a panel of check rows with their weights; Seed locks on a tap and opens its box on a hold.
@@ -39,7 +38,7 @@
     const NEXT = stored(NEXT_KEY) === '1';
     const layout = () => (stored(LAYOUT_KEY) === 'tabs' ? 'tabs' : 'page');
 
-    const TABS = [['prompt', 'Prompt'], ['settings', 'Settings'], ['print', 'Print']];
+    const TABS = [['prompt', 'Prompt'], ['print', 'Print']];
     const FIELD_NAMES = { prompt: 'Prompt', uc: 'Undesired', negative: 'Inline Negative' };
     // a prompt field: one of FIELD_NAMES, or a character's, 'c:<place>:prompt' | 'c:<place>:uc'
     const charOf = (id) => { const m = /^c:(\d+):(prompt|uc)$/.exec(String(id)); return m ? { index: Number(m[1]), part: m[2] } : null; };
@@ -205,17 +204,6 @@
         return one * 100;
     }
 
-    function summaryText(s, o) {
-        const model = [].concat(...o.models.map((g) => g.options)).find((m) => m.value === s.model);
-        const size = [].concat(...o.resolutions.map((g) => g.options.map((x) => ({ value: x.value, name: sizeName(g, x) })))).find((x) => x.value === s.resolution);
-        const parts = [model ? model.name : s.model, size ? size.name : (s.width && s.height ? `${s.width} x ${s.height}` : ''), `${s.steps} steps`];
-        if (s.n > 1) parts.push(`${s.n} prints`);
-        if (s.seedLock) parts.push('seed kept');
-        const cost = M.cost();
-        if (cost > 0) parts.push(`${cost} Anlas`);
-        return parts.filter(Boolean).join(', ');
-    }
-
     function sizeName(group, option) {
         const name = String(option.name || option.value);
         if (group.group === 'Custom' || name.toLowerCase().includes(String(group.group).toLowerCase())) return name;
@@ -272,8 +260,6 @@
                 base.querySelector('span').textContent = `Strength ${Number(s.strength).toFixed(2)}, noise ${Number(s.noise).toFixed(2)}`;
             }
         }
-        const sum = $('.wds-summary > span');
-        if (sum && s.model !== undefined) sum.textContent = summaryText(s, M.options());
         drawStrip();
     }
 
@@ -431,77 +417,6 @@
             });
     }
 
-    function comboRow(label, act, pairs, value) {
-        const cur = pairs.find((p) => p[0] === value);
-        return ui.row(label, ui.comboHtml(act, cur ? cur[1] : String(value == null ? '' : value)));
-    }
-
-    function drawSettings() {
-        const host = $('.wds-settings > .wm-form');
-        if (!host || !ui) return;
-        // a value being typed is not redrawn under the finger
-        if (host.contains(document.activeElement) && document.activeElement.tagName === 'INPUT' && document.activeElement.type === 'text') return;
-        const s = read();
-        const o = M.options();
-        const models = [].concat(...o.models.map((g) => g.options.map((m) => [m.value, m.name])));
-        const sizes = [].concat(...o.resolutions.map((g) => g.options.map((x) => [x.value, sizeName(g, x)])));
-        const custom = /^custom/.test(String(s.resolution || ''));
-        const dims = o.sizes[s.resolution];
-        const num = (id, value, more = '') => ui.edit('', value == null ? '' : value, `data-set="${id}" inputmode="decimal" ${more}`);
-        const rows = [];
-        rows.push(comboRow('Model:', 'model', models, s.model));
-        if (o.has.effort) rows.push(ui.row('', ui.check('effort', 'Drafting (faster, fewer steps)', s.effort === 'medium', 'data-check="effort"')));
-        rows.push(comboRow('Size:', 'resolution', sizes, s.resolution));
-        if (custom) {
-            rows.push(ui.row('Width:', num('width', s.width || '')));
-            rows.push(ui.row('Height:', num('height', s.height || '')));
-        } else if (dims) {
-            rows.push(ui.value('', `${dims[0]} x ${dims[1]}`));
-        }
-        rows.push(o.has.steps ? ui.row('Steps:', num('steps', s.steps)) : ui.value('Steps:', String(s.steps)));
-        rows.push(ui.row('Guidance:', num('guidance', s.guidance)));
-        if (o.has.rescale) rows.push(ui.row('Rescale:', num('rescale', s.rescale)));
-        if (o.has.sampler) rows.push(comboRow('Sampler:', 'sampler', o.samplers.map((x) => [x.value, x.name]), s.sampler));
-        if (o.has.noise) rows.push(comboRow('Noise:', 'noiseScheduler', o.noise.map((x) => [x.value, x.name]), s.noiseScheduler));
-        rows.push(ui.row('Seed:', ui.edit('', s.seedLock && s.seed != null ? s.seed : '', 'data-set="seed" inputmode="numeric" placeholder="Random"')));
-        rows.push(ui.row('', ui.check('seedLock', 'Keep this seed', !!s.seedLock, 'data-check="seedLock"')));
-        rows.push(comboRow('Prints:', 'n', [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, String(n)]), Number(s.n) || 1));
-        rows.push(ui.row('', ui.check('upscale', 'Upscale each print', !!s.upscale, 'data-check="upscale"')));
-        if (s.hasBaseImage) {
-            rows.push(ui.sub('Base Image'));
-            rows.push(ui.row('Strength:', num('strength', s.strength)));
-            rows.push(ui.row('Noise:', num('noise', s.noise)));
-        }
-        // what is added around the prompt: the desktop's Prompt menu lists
-        rows.push(ui.sub('Prompt'));
-        const picked = new Set(s.datasets || []);
-        if (o.has.datasets && o.datasets.length) {
-            rows.push('<div class="wds-sublabel">Datasets:</div>');
-            rows.push(ui.listbox(o.datasets.map((d) => ({ key: d.value, label: d.name, checked: picked.has(d.value) }))));
-        }
-        rows.push(ui.row('', ui.check('append_quality', 'Add quality tags', !!s.append_quality, 'data-check="append_quality"')));
-        const ucs = o.ucPresets.map((x) => [x.value, x.name]);
-        if (o.has.uc && ucs.length) rows.push(comboRow('UC Preset:', 'append_uc', ucs, Number(s.append_uc) || 0));
-        const nsfw = o.nsfw.map((x) => [x.value, x.name]);
-        rows.push(comboRow('NSFW:', 'nsfw', nsfw, Number(s.nsfw) || 0));
-        rows.push(ui.sub('Syntax Options'));
-        [['keep_newlines', 'Keep Newlines'], ['bake_newlines', 'Bake New Lines'], ['auto_char_numerize', 'Auto Char Numerize'], ['prompt_normalize', 'Prompt Normalize'], ['deduplicate_tags', 'Deduplicate']].forEach(([id, label]) => {
-            rows.push(ui.check(id, label, !!s[id], `data-check="${id}"${id === 'bake_newlines' && !s.keep_newlines ? ' disabled' : ''}`));
-        });
-        host.innerHTML = rows.join('');
-        ui.bindListbox(host.querySelector('.wm-listbox'), () => {}, (key, on) => {
-            const next = new Set(read().datasets || []);
-            if (on) next.add(key); else next.delete(key);
-            change('datasets', Array.from(next));
-        });
-        const lists = { model: models, resolution: sizes, sampler: o.samplers.map((x) => [x.value, x.name]), noiseScheduler: o.noise.map((x) => [x.value, x.name]), n: [1, 2, 3, 4, 5, 6, 7, 8].map((n) => [n, String(n)]), append_uc: ucs, nsfw };
-        host.querySelectorAll('.wm-combo[data-act]').forEach((btn) => {
-            const id = btn.dataset.act;
-            const numeric = id === 'n' || id === 'append_uc' || id === 'nsfw';
-            ui.bindCombo(btn, lists[id] || [], numeric ? (Number(s[id]) || (id === 'n' ? 1 : 0)) : s[id], (v) => change(id, v));
-        });
-    }
-
     function drawPrint() {
         const stage = $('.wds-stage');
         if (!stage) return;
@@ -567,14 +482,13 @@
         page.dataset.ed = v === 'editor' ? (box ? 'box' : 'own') : '';
         page.querySelectorAll('.wds-field').forEach((b) => b.classList.toggle('is-editing', b === box));
         if (v === 'home' || v === 'print') { drawHome(); drawPrint(); }
-        if (v === 'settings') drawSettings();
         if (v === 'presets') drawPresets();
         if (v === 'ref') drawRef();
         hlDraw();
-        if (v === 'home' || v === 'print' || v === 'settings') drawGenbar();
+        if (v === 'home' || v === 'print') drawGenbar();
         else if (ui) ui.closePopPanels();
         drawTabs();
-        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'ref' ? 'Reference' : v === 'presets' ? 'Open Preset' : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio')));
+        sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'ref' ? 'Reference' : v === 'presets' ? 'Open Preset' : 'DreamStudio'));
         sh.refreshTitleAction();
         sh.refreshSoftKeys();
     }
@@ -584,31 +498,6 @@
     function change(id, value) {
         snap = null;
         return Promise.resolve(M.set(id, value)).catch((err) => console.warn('[wmDreamStudio] set', id, err));
-    }
-
-    function onSettingsInput(e) {
-        const t = e.target;
-        if (!t || !t.dataset) return;
-        if (t.closest && t.closest('.wm-listbox')) return;
-        if (t.dataset.check) {
-            const id = t.dataset.check;
-            if (id === 'effort') change('effort', t.checked ? 'medium' : 'high');
-            else change(id, !!t.checked);
-        } else if (t.dataset.set && e.type === 'change') {
-            const id = t.dataset.set;
-            const raw = String(t.value || '').trim();
-            if (id === 'seed') {
-                if (raw === '') change('seedLock', false);
-                else change('seed', raw).then(() => change('seedLock', true));
-            } else if (raw !== '' && Number.isFinite(Number(raw))) {
-                t.blur();
-                change(id, Number(raw));
-            } else {
-                t.blur();
-                snap = null;
-                drawSettings();
-            }
-        }
     }
 
     // ---------------------------------------------------------------- layers
@@ -884,6 +773,7 @@
         rows.push(
             { label: 'Lowercase', disabled: !ta || !ta.value, action: lowercaseText },
             { label: 'Weight Rack...', disabled: !hasGroups, action: () => weightRack(btn) },
+            { label: 'Syntax Handling...', action: syntaxDialog },
             '-',
             { label: 'Reset Emphasis...', disabled: !hasGroups, action: resetEmphasis }
         );
@@ -1604,6 +1494,70 @@
         setTimers.set(id, setTimeout(() => { setTimers.delete(id); change(id, v); }, 120));
     }
 
+    // ---- small WM dialogs (the message box's frame): one at a time; the title bar's ok closes it, as
+    // does the phone's Back key
+
+    let dlg = null;
+
+    function closeDlg() { if (!dlg) return false; dlg.remove(); dlg = null; sh.refreshTitleAction(); sh.syncHistory(); paint(); return true; }
+
+    function openDlg(title, cls, bodyHtml) {
+        closeDlg();
+        const host = document.getElementById('wmShell') || document.body;
+        dlg = document.createElement('div');
+        dlg.className = `wm-msgbox-layer wds-dlg ${cls}`;
+        dlg.innerHTML = `<div class="wm-msgbox" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="wm-msgbox-title"><span>${esc(title)}</span><button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button></div><div class="wds-dlg-body">${bodyHtml}</div></div>`;
+        host.appendChild(dlg);
+        dlg.querySelector('.wm-title-action').addEventListener('click', closeDlg);
+        sh.refreshTitleAction();
+        sh.syncHistory();
+        return dlg;
+    }
+
+    /** A dialog row's LCD and jog (dialogs' own rows: no write-back delay games, the value goes at once). */
+    function dlgJog(row, { label, value, min, max, step, fineStep = 0, onChange }) {
+        const lcd = row.querySelector('.wm-lcd');
+        const dg = (String(fineStep || step).split('.')[1] || '').length;
+        ui.segText(lcd, Number(value).toFixed(dg));
+        let timer = 0;
+        ui.jogWheel(row, { label, value, min, max, step, fineStep, stepPx: 18, zeroStop: 0, onChange: (v) => { ui.segText(lcd, Number(v).toFixed(dg)); clearTimeout(timer); timer = setTimeout(() => onChange(v), 120); } });
+    }
+
+    /**
+     * Base Image (Yukimi, Nov 16): from the base image row and Menu > Base Image: its picture, Strength
+     * and Noise as LCD + jog rows, Change... and Remove.
+     */
+    function baseDialog() {
+        const s = read();
+        if (!s.hasBaseImage) { chooseBase(); return; }
+        const src = thumbUrl(s.baseImage);
+        const el = openDlg('Base Image', 'wds-basedlg', `${src ? `<img class="wds-base-pic" alt="" src="${esc(src)}">` : ''}`
+            + '<div class="wds-wt-row is-on" data-b="strength"><span class="wds-wt-name">Strength</span><span class="wds-wt-lcd wm-lcd"></span></div>'
+            + '<div class="wds-wt-row is-on" data-b="noise"><span class="wds-wt-name">Noise</span><span class="wds-wt-lcd wm-lcd"></span></div>'
+            + '<div class="wm-msgbox-buttons"><button type="button" data-b-act="change">Change...</button><button type="button" data-b-act="remove">Remove</button></div>');
+        dlgJog(el.querySelector('[data-b="strength"]'), { label: 'Strength', value: Number(s.strength) || 0, min: 0, max: 1, step: 0.05, fineStep: 0.01, onChange: (v) => change('strength', v) });
+        dlgJog(el.querySelector('[data-b="noise"]'), { label: 'Noise', value: Number(s.noise) || 0, min: 0, max: 1, step: 0.05, fineStep: 0.01, onChange: (v) => change('noise', v) });
+        el.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('[data-b-act]');
+            if (!b) return;
+            if (b.dataset.bAct === 'remove') { M.clearBaseImage(); snap = null; closeDlg(); } else { closeDlg(); chooseBase(); }
+        });
+    }
+
+    /** Syntax Handling (Yukimi, Nov 16): Studio's syntax options as check boxes; each goes at once. */
+    const SYNTAX = [['keep_newlines', 'Keep Newlines'], ['bake_newlines', 'Bake New Lines'], ['auto_char_numerize', 'Auto Char Numerize'], ['prompt_normalize', 'Prompt Normalize'], ['deduplicate_tags', 'Deduplicate']];
+    function syntaxDialog() {
+        const el = openDlg('Syntax Handling', 'wds-syndlg', '');
+        const body = el.querySelector('.wds-dlg-body');
+        const fill = () => {
+            snap = null;
+            const s = read();
+            body.innerHTML = SYNTAX.map(([id, label]) => ui.check(`wdsSyn-${id}`, label, !!s[id], `data-syn="${id}"${id === 'bake_newlines' && !s.keep_newlines ? ' disabled' : ''}`)).join('');
+        };
+        fill();
+        body.addEventListener('change', (e) => { const t = e.target; if (t && t.dataset && t.dataset.syn) change(t.dataset.syn, !!t.checked).then(fill); });
+    }
+
     // ---- Custom Resolution / Custom Ratio (Yukimi, Nov 15): a WM dialog with jog wheels, each value an
     // LCD that opens the number pad; the area limit (Normal, Large, Max) as a button
 
@@ -1902,10 +1856,15 @@
         const rows = [];
         if (v === 'print') rows.push(...printRows(), '-');
         else rows.push({ label: 'Print', submenu: printRows }, '-');
-        if (layout() !== 'tabs' && v !== 'settings') rows.push({ label: 'Settings', action: () => openLayer('settings') });
+        // what has no place of its own on the bar (Yukimi, Nov 16)
+        const s = read();
+        rows.push({ label: 'Upscale Each Print', checked: !!s.upscale, action: () => change('upscale', !s.upscale).then(paint) });
+        rows.push({ label: 'Syntax Handling...', action: syntaxDialog });
+        rows.push({ label: 'Weight Rack...', action: () => { openEditor('prompt'); setTimeout(() => { const b = $('.wds-toolbar [data-ed="toolbox"]'); if (b) weightRack(b); }, 120); } });
+        rows.push('-');
         if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
         if (M.options().has.references) rows.push({ label: 'Add Reference...', action: addReference });
-        rows.push({ label: 'Base Image...', action: chooseBase });
+        rows.push({ label: 'Base Image...', action: () => (read().hasBaseImage ? baseDialog() : chooseBase()) });
         if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
         rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Picture...', action: openPictureSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs }, ...syncRows());
         return rows;
@@ -1960,9 +1919,7 @@
     <div class="wds-refs" hidden></div>
     <button type="button" class="wds-base" hidden><img alt=""><div><b>Base image</b><span></span></div></button>
   </div>
-  <button type="button" class="wds-summary"><b>Settings</b><span></span></button>
 </div>
-<div class="wds-pane wds-settings"><div class="wm-form"></div></div>
 <div class="wds-pane wds-print">
   <div class="wds-stage"><img alt="" hidden><div class="wds-grid" hidden></div><div class="wds-empty">No print yet. Generate makes one.</div></div>
   <div class="wds-status" hidden><span></span><div class="wds-bar"><span></span></div></div>
@@ -1980,8 +1937,7 @@
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
 
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
-        $('.wds-summary').addEventListener('click', () => openLayer('settings'));
-        $('.wds-base').addEventListener('click', () => openLayer('settings'));
+        $('.wds-base').addEventListener('click', () => baseDialog());
         // the boxes are real text fields: the one that is touched becomes the editor (see edArea)
         p.querySelectorAll('.wds-field').forEach((b) => {
             // after the touch is over: a box that changes size under the finger gets no keyboard
@@ -2022,9 +1978,6 @@
             tab = b.dataset.tab;
             paint();
         });
-        const form = $('.wds-settings');
-        form.addEventListener('change', onSettingsInput);
-        form.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target && e.target.dataset && e.target.dataset.set) e.target.blur(); });
 
         // the editor: the bar keeps the focus (and the keyboard) in the text
         const bar = $('.wds-toolbar');
@@ -2151,9 +2104,9 @@
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
-        hide() { shown = false; if (ui) { ui.closePopPanels(); ui.closePad(); } closeQa(false); closeSize(); },
-        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0) + (qaDlg ? 1 : 0) + (szDlg ? 1 : 0) + (ui && ui.padOpen() ? 1 : 0),
-        onBack: () => ((ui && ui.closePad()) || (qaDlg ? qaBack() : closeSize() || (ui && ui.closePopPanel()) || popLayer())),
+        hide() { shown = false; if (ui) { ui.closePopPanels(); ui.closePad(); } closeQa(false); closeSize(); closeDlg(); },
+        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0) + (qaDlg ? 1 : 0) + (szDlg ? 1 : 0) + (dlg ? 1 : 0) + (ui && ui.padOpen() ? 1 : 0),
+        onBack: () => ((ui && ui.closePad()) || (qaDlg ? qaBack() : closeSize() || closeDlg() || (ui && ui.closePopPanel()) || popLayer())),
         titleKind: () => (layers.length ? 'ok' : 'close'),
         onTitleOk: () => popLayer(),
         closeQuestion: () => (running() ? 'A print is being made. It goes on if you minimize.' : null),
@@ -2194,7 +2147,7 @@
                 const u = S.ui;
                 el.innerHTML = u.sub('Layout')
                     + u.radio('wdsLayout', 'page', 'One page: the print as a strip at the top', d.layout === 'page')
-                    + u.radio('wdsLayout', 'tabs', 'Tabs: Prompt, Settings, Print', d.layout === 'tabs')
+                    + u.radio('wdsLayout', 'tabs', 'Tabs: Prompt, Print', d.layout === 'tabs')
                     + u.gap()
                     + u.sub('Program')
                     + u.check('wdsNext', 'Use the new DreamStudio', d.next)
