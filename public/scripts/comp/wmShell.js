@@ -5539,8 +5539,8 @@
             noteTrayOpen = false;
             renderNotes();
             const up = shell.querySelector('.wm-status-icon[data-role="update"]');
+            // nothing at all: nothing happens (Yukimi, Nov 16: the "There are no notifications." box only annoyed)
             if (notes.some(isUpdateNote) && up) statusBubble('update', up);
-            else messageBox({ title: 'Notifications', icon: 'info', text: 'There are no notifications.' });
             return;
         }
         noteTrayOpen = !noteTrayOpen;
@@ -9678,7 +9678,6 @@
                 label: 'Notifications',
                 action: () => {
                     if (notes.length || statusFolded.length) noteIconTap();
-                    else messageBox({ title: 'Notifications', icon: 'info', text: 'There are no notifications.' });
                 }
             };
         }

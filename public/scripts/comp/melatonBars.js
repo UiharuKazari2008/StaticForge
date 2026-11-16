@@ -576,6 +576,11 @@
         const all = {};
         for (const role of roles) {
             try {
+                // the notification icon with nothing waiting opens nothing: no layout (and no box popped in the page)
+                if (role === 'notify') {
+                    const ni = document.querySelector('#wmShell .wm-status-icon[data-role="notify"]');
+                    if (!ni || ni.hidden) continue;
+                }
                 sh.barsPopupClose();
                 sh.barsPopupOpen(role);
                 // (a waiting notification is the notification icon's own popup, not part of another's)
