@@ -6010,7 +6010,9 @@
                 else if (!b.charging && b.remainingMs) more.push(`About ${batteryDuration(b.remainingMs)} left.`);
                 if (b.temperatureC != null) more.push(`Temperature: ${batteryTemp(b.temperatureC)}`);
                 if (b.saver) more.push('Battery saver is on.');
-                lines.push({ html: `<div>Main battery: ${b.level}%</div><div class="wm-ds-progress wm-bat-bar" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><span style="--wm-ds-blocks:${Math.round(b.level / 100 * 18)}"></span></div>${more.map((t) => `<div>${escapeHtml(t)}</div>`).join('')}` });
+                // data-live: the app's copy fills these from Android's battery while this page sleeps behind a
+                // program (melaton-bars-native-layouts: message handling); the bar's 18 blocks of 9 units
+                lines.push({ html: `<div data-live="bat-level">Main battery: ${b.level}%</div><div class="wm-ds-progress wm-bat-bar" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><span data-live="bat-bar" data-full="162" style="--wm-ds-blocks:${Math.round(b.level / 100 * 18)}"></span></div>${more.map((t, i) => `<div data-live="bat-more-${i}">${escapeHtml(t)}</div>`).join('')}` });
             }
             const powerSettings = () => { const st = window.wmSettings; if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings'); };
             bubble({ title: 'Power', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: powerSettings }], buttons: [{ text: 'Hide' }] });

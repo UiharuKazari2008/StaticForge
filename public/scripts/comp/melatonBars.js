@@ -628,7 +628,9 @@
             });
             if (lv) {
                 let full;
-                if (lv.endsWith('-bar') && el.parentElement) {
+                // a bar with a set travel (data-full, in WM units: the Power box's 18 blocks of 9)
+                if (el.dataset.full) full = R((+el.dataset.full) * (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1));
+                else if (lv.endsWith('-bar') && el.parentElement) {
                     // the bar's whole width: the frame's inside less the fill's own inset (wm-progress-bar)
                     const pe = el.parentElement; const pcs = getComputedStyle(pe); const pb = pe.getBoundingClientRect();
                     const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
