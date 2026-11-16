@@ -14,14 +14,17 @@
  *             opens Wallet.
  *
  * Client-side only (Yukimi, Nov 16 2026): everything stays on the phone, in the Android app's
- * encrypted store (window.AndroidWalletStore: AES-256-GCM under an Android Keystore key, not backed
- * up; DSApp WalletStore.kt). Nothing goes to the server, localStorage or IndexedDB; the server keeps
- * only Settings > Today's on / off for the item. Without the app (a test tab) the list lives in this
- * page's memory and is gone on reload.
+ * encrypted store under the namespace 'wallet' (window.AndroidSecureStore: AES-256-GCM under an
+ * Android Keystore key, not backed up; DSApp SecureStore.kt, docs/ANDROID_BRIDGE.md). Nothing goes to
+ * the server, localStorage or IndexedDB; the server keeps only Settings > Today's on / off for the
+ * item. Without the app (a test tab) the list lives in this page's memory and is gone on reload.
+ * A card's picture is a photo taken here with the camera (cropped to a card, kept in the store) or
+ * drawn from its colour.
  *
- * Today: registerTodayItem 'cards' (label Wallet). 6.1: a block with the selected card or barcode,
- * < > to page, Pay Now on cards, the barcode big enough to scan. 6.5: a Titanium panel, a page each,
- * right soft key Pay Now / Show. Program: Wallet (Start > Programs) lists, adds, edits and orders
+ * Today: registerTodayItem 'cards' (label Wallet). 6.1: a block, the selected item as
+ * [card picture] nickname / its name in Wallet ••last 4 (a tap pays), < > to page; a barcode drawn
+ * big enough to scan under its name. 6.5: a Titanium panel, a page each (the card's picture,
+ * nickname, name ••last 4), right soft key Pay Now / Show. Program: Wallet (Start > Programs) lists, adds, edits and orders
  * them. Styles: public/css/wm-wallet.css. Phones only.
  */
 (function () {
@@ -63,14 +66,15 @@
 
     // ---------------------------------------------------------------- store (on the phone only)
 
-    function store() { return window.AndroidWalletStore || null; }
+    const NS = 'wallet';
+    function store() { return window.AndroidSecureStore || null; }
 
     function load() {
         loaded = true;
         const s = store();
-        if (!s || typeof s.read !== 'function') { storeNote = 'memory'; return; }
+        if (!s || typeof s.get !== 'function') { storeNote = 'memory'; return; }
         let text = '';
-        try { text = String(s.read() || ''); } catch (_) { text = '!error'; }
+        try { text = String(s.get(NS) || ''); } catch (_) { text = '!error'; }
         if (text === '!locked') { storeNote = 'locked'; loaded = false; return; }
         if (text.startsWith('!error')) { storeNote = 'error'; return; }
         storeNote = '';
@@ -83,9 +87,9 @@
 
     function save() {
         const s = store();
-        if (s && typeof s.write === 'function' && storeNote !== 'error') {
+        if (s && typeof s.put === 'function' && storeNote !== 'error') {
             let ok = false;
-            try { ok = s.write(JSON.stringify(data)) === true; } catch (_) { ok = false; }
+            try { ok = s.put(NS, JSON.stringify(data)) === true; } catch (_) { ok = false; }
             if (!ok && sh) sh.messageBox({ title: TITLE, icon: 'error', text: 'The wallet could not be saved on this phone. Unlock the phone, then try again.' });
         }
         cardArt.clear();
@@ -151,6 +155,7 @@
     // a card's picture for the 6.5 panel and the list (canvas: the panel takes an image)
     const cardArt = new Map();
     function cardUrl(it) {
+        if (it.photo) return it.photo;
         const k = JSON.stringify([it.name, it.last4, it.network, it.color]);
         if (cardArt.has(k)) return cardArt.get(k);
         const c = document.createElement('canvas');
@@ -170,7 +175,7 @@
         g.font = 'bold 15px Tahoma, Segoe UI, sans-serif';
         g.fillText(String(it.name || 'Card').slice(0, 18), 12, 26);
         g.font = '15px Tahoma, Segoe UI, sans-serif';
-        g.fillText(`•••• ${it.last4 || ''}`, 12, 92);
+        g.fillText(`\u2022\u2022\u2022\u2022 ${it.last4 || ''}`, 12, 92);
         g.font = 'bold italic 14px Tahoma, Segoe UI, sans-serif';
         g.textAlign = 'right';
         g.fillText(it.network && it.network !== 'other' ? label(NETWORKS, it.network).toUpperCase().replace('AMERICAN EXPRESS', 'AMEX') : '', 160, 92);
@@ -210,51 +215,56 @@
         sync();
     }
 
+    let bright = false;
     function brightness(full) {
-        const s = store();
-        try { if (s && typeof s.setBrightness === 'function') s.setBrightness(!!full); } catch (_) { /* older app */ }
+        if (bright === !!full) return;
+        bright = !!full;
+        const d = window.AndroidDisplay;
+        try { if (d && typeof d.setFullBrightness === 'function') d.setFullBrightness(bright); } catch (_) { /* older app */ }
     }
 
     // ---------------------------------------------------------------- Today
 
     function lineOf(it) {
-        if (it.kind === 'card') return `${it.name || 'Card'}${it.last4 ? ` ••${it.last4}` : ''}`;
+        if (it.kind === 'card') return it.name || it.walletName || 'Card';
         if (it.kind === 'barcode') return it.name || 'Membership';
         return it.name || 'ID';
+    }
+    /** The second line: a card's name in Wallet (else its network) and the last 4; a barcode's number. */
+    function subOf(it) {
+        if (it.kind === 'card') return [it.walletName || (it.network && it.network !== 'other' ? label(NETWORKS, it.network) : ''), it.last4 ? `\u2022\u2022${it.last4}` : ''].filter(Boolean).join(' ');
+        if (it.kind === 'barcode') return it.number || (TWO_D.has(it.format) ? '' : it.value) || '';
+        return 'Open in Samsung Wallet';
     }
 
     let todayKey = '';
     function todayRender(el) {
         const list = items();
-        if (storeNote === 'locked') { if (todayKey !== 'locked') { todayKey = 'locked'; el.innerHTML = `<div class="wwl-head">${headHtml('', 0, 0)}</div><div class="wwl-note">Unlock the phone to show your cards.</div>`; } return true; }
+        if (storeNote === 'locked') { if (todayKey !== 'locked') { todayKey = 'locked'; el.innerHTML = `<div class="wwl-row"><span class="wwl-lines"><span class="wwl-title">${TITLE}</span><span class="wwl-sub">Unlock the phone to show your cards.</span></span></div>`; } return true; }
         if (!list.length) return false;
         if (todayAt >= list.length) todayAt = 0;
         const it = list[todayAt];
         const art = it.kind === 'barcode' ? barcodeUrl(it, false) : null;
-        const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.format, art]);
+        const pic = it.kind === 'card' ? cardUrl(it) : '';
+        const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length]);
         if (key === todayKey) return true;
         todayKey = key;
-        let body = '';
-        if (it.kind === 'card') {
-            body = `<button type="button" class="wwl-card" data-act="pay" style="--wwl-c:${esc(it.color || COLORS[0][0])}">
-                    <span class="wwl-card-name">${esc(it.name || 'Card')}</span>
-                    <span class="wwl-card-num">•••• ${esc(it.last4 || '')}</span>
-                    <span class="wwl-card-net">${esc(it.network && it.network !== 'other' ? label(NETWORKS, it.network) : '')}</span>
-                </button>
-                <div class="wwl-side"><span>${esc(it.walletName ? 'Opens on this card' : 'Opens on the default card')}</span><button type="button" class="wm-button" data-act="pay">Pay Now</button></div>`;
-        } else if (it.kind === 'barcode') {
-            body = `<button type="button" class="wwl-code${TWO_D.has(it.format) ? ' is-2d' : ''}" data-act="show" aria-label="Show ${esc(it.name || 'barcode')} full screen">
-                    ${art && art !== 'bad' ? `<img src="${art}" alt="">` : `<span class="wwl-code-wait">${art === 'bad' ? 'This number cannot be drawn as the chosen barcode.' : 'Drawing the barcode...'}</span>`}
-                </button>`;
-        } else {
-            body = `<button type="button" class="wwl-id" data-act="id"><span>${esc(it.name || 'ID')}</span><span class="wwl-id-sub">Open in Samsung Wallet</span></button>`;
-        }
-        el.innerHTML = `<div class="wwl-head">${headHtml(lineOf(it), todayAt, list.length)}</div><div class="wwl-body is-${esc(it.kind)}">${body}</div>`;
+        // [card picture] nickname / its name in Wallet ••last 4; a tap on it pays (or shows, or opens)
+        const act = it.kind === 'card' ? 'pay' : it.kind === 'barcode' ? 'show' : 'id';
+        const lead = it.kind === 'card' ? `<img class="wwl-pic" src="${esc(pic)}" alt="" draggable="false">` : `<img class="wwl-pic is-icon" src="/static_images/wm61/${ICON}.png" srcset="/static_images/wm61/${ICON}@2x.png 2x, /static_images/wm61/${ICON}@4x.png 4x" alt="" draggable="false">`;
+        const row = `<div class="wwl-row">
+                <button type="button" class="wwl-item" data-act="${act}">${lead}<span class="wwl-lines"><span class="wwl-title">${esc(lineOf(it))}</span><span class="wwl-sub">${esc(subOf(it))}</span></span></button>
+                ${list.length > 1 ? `<span class="wwl-pager"><button type="button" class="wwl-arrow" data-act="prev" aria-label="Previous">\u2039</button><button type="button" class="wwl-arrow" data-act="next" aria-label="Next">\u203a</button></span>` : ''}
+            </div>`;
+        const code = it.kind === 'barcode' ? `<button type="button" class="wwl-code${TWO_D.has(it.format) ? ' is-2d' : ''}" data-act="show" aria-label="Show ${esc(it.name || 'barcode')} full screen">
+                ${art && art !== 'bad' ? `<img src="${art}" alt="">` : `<span class="wwl-code-wait">${art === 'bad' ? 'This number cannot be drawn as the chosen barcode.' : 'Drawing the barcode...'}</span>`}
+            </button>` : '';
+        el.innerHTML = row + code;
         if (!el.dataset.wired) {
             el.dataset.wired = '1';
             el.addEventListener('click', (e) => {
                 const b = e.target.closest('[data-act]');
-                if (!b) { if (e.target.closest('.wwl-head')) sh.open(APP_ID); return; }
+                if (!b) return;
                 const cur = items()[todayAt];
                 const act = b.dataset.act;
                 if (act === 'prev' || act === 'next') { const n = items().length; todayAt = (todayAt + (act === 'next' ? 1 : -1) + n) % n; todayRender(el); return; }
@@ -266,9 +276,6 @@
         return true;
     }
 
-    function headHtml(line, at, n) {
-        return `<span class="wwl-title">${esc(line || TITLE)}</span>${n > 1 ? `<span class="wwl-pager"><button type="button" class="wwl-arrow" data-act="prev" aria-label="Previous">‹</button><span>${at + 1}/${n}</span><button type="button" class="wwl-arrow" data-act="next" aria-label="Next">›</button></span>` : ''}`;
-    }
 
     function todayTitanium() {
         const list = items();
@@ -280,7 +287,7 @@
             pages: list.map((it) => {
                 const go = () => activate(it);
                 const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? (barcodeUrl(it, false) || undefined) : undefined;
-                const line2 = it.kind === 'card' ? (it.walletName ? 'Pay Now opens this card' : 'Pay Now opens the default card') : it.kind === 'barcode' ? (it.number || it.value) : 'Open in Samsung Wallet';
+                const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
                 return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card', softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
@@ -293,7 +300,7 @@
             <div class="wwl-list" data-layer="list"></div>
             <div class="wwl-edit wm-form" data-layer="edit" hidden></div>
             <div class="wwl-show" data-layer="show" hidden></div>
-            <div class="wwl-scan" data-layer="scan" hidden><video playsinline muted></video><p class="wwl-scan-note">Hold the barcode inside the frame.</p></div>
+            <div class="wwl-scan" data-layer="scan" hidden><video playsinline muted></video><span class="wwl-scan-guide"></span><p class="wwl-scan-note">Hold the barcode inside the frame.</p></div>
         </div>`;
         els = {
             list: page.querySelector('[data-layer="list"]'),
@@ -358,12 +365,14 @@
         if (!ui || !f) return;
         let html = '';
         if (f.kind === 'card') {
-            html = `${ui.row('Name:', ui.edit('wwlName', f.name || '', 'maxlength="32"'), { for: 'wwlName' })}
+            html = `<div class="wwl-edit-pic"><img src="${esc(cardUrl(f))}" alt="" draggable="false"></div>
+                ${ui.buttons([['photo', 'Take Picture...'], ['nophoto', 'Remove Picture', !f.photo]])}
+                ${ui.row('Nickname:', ui.edit('wwlName', f.name || '', 'maxlength="32"'), { for: 'wwlName' })}
+                ${ui.row('Card name:', ui.edit('wwlWallet', f.walletName || '', 'maxlength="40"'), { for: 'wwlWallet' })}
                 ${ui.row('Last 4:', ui.edit('wwlLast4', f.last4 || '', 'maxlength="4" inputmode="numeric"'), { for: 'wwlLast4' })}
                 ${ui.row('Network:', ui.comboHtml('net', label(NETWORKS, f.network)))}
                 ${ui.row('Colour:', ui.comboHtml('color', label(COLORS, f.color)))}
-                ${ui.row('In Wallet:', ui.edit('wwlWallet', f.walletName || '', 'maxlength="40"'), { for: 'wwlWallet' })}
-                ${ui.note('The card\'s name in Samsung Wallet, or a word of it ("X" for X Card). Pay Now opens the pay sheet on it when the card is one of Wallet\'s Quick Access cards; blank opens the default card. Only the last 4 digits are kept here, never the card number.')}`;
+                ${ui.note('Card name is the card\'s name in Samsung Wallet ("X Card"). Pay Now opens the pay sheet on it when it is one of Wallet\'s Quick Access cards; blank opens the default card. Only the last 4 digits are kept, never the card number. The picture is a photo of the card taken here, else one drawn in the colour.')}`;
         } else if (f.kind === 'barcode') {
             html = `${ui.row('Name:', ui.edit('wwlName', f.name || '', 'maxlength="32"'), { for: 'wwlName' })}
                 ${ui.row('Barcode:', ui.comboHtml('format', label(FORMATS, f.format)))}
@@ -382,6 +391,10 @@
         bind('format', FORMATS, 'format');
         const sc = els.edit.querySelector('[data-act="scan"]');
         if (sc) sc.addEventListener('click', () => { readEdit(); startScan(); });
+        const ph = els.edit.querySelector('[data-act="photo"]');
+        if (ph) ph.addEventListener('click', () => { readEdit(); startScan('photo'); });
+        const np = els.edit.querySelector('[data-act="nophoto"]');
+        if (np) np.addEventListener('click', () => { readEdit(); delete f.photo; renderEdit(); });
     }
 
     function readEdit() {
@@ -402,7 +415,7 @@
         const f = form && form.item;
         if (!f) return;
         if (f.kind === 'barcode' && !f.value) { sh.messageBox({ title: TITLE, icon: 'info', text: 'Enter the code the barcode holds, or scan it.' }); return; }
-        if (f.kind === 'card' && !f.name) { sh.messageBox({ title: TITLE, icon: 'info', text: 'Enter a name for the card.' }); return; }
+        if (f.kind === 'card' && !f.name && !f.walletName) { sh.messageBox({ title: TITLE, icon: 'info', text: 'Enter a nickname or the card\'s name.' }); return; }
         const list = items();
         const i = list.findIndex((x) => x.id === f.id);
         if (i >= 0) list[i] = f; else list.push(f);
@@ -417,7 +430,7 @@
         if (!all && !it) return;
         const ok = await sh.messageBox({ title: TITLE, icon: 'question', text: all ? 'Delete every card, barcode and ID from this phone\'s wallet?' : `Delete "${lineOf(it)}"?`, buttons: [{ text: 'Delete', value: true }, { text: 'Cancel', value: false }] });
         if (!ok) return;
-        if (all) { data.items = []; storeNote = storeNote === 'error' ? '' : storeNote; const s = store(); try { if (s && s.clear) s.clear(); } catch (_) { /* ignore */ } } else data.items = list.filter((x) => x !== it);
+        if (all) { data.items = []; storeNote = storeNote === 'error' ? '' : storeNote; const s = store(); try { if (s && s.remove) s.remove(NS); } catch (_) { /* ignore */ } } else data.items = list.filter((x) => x !== it);
         selected = null;
         save();
         renderList();
@@ -435,23 +448,31 @@
 
     // ---------------------------------------------------------------- camera scan
 
-    async function startScan() {
-        if (!('BarcodeDetector' in window)) return;
+    async function startScan(mode) {
+        const photo = mode === 'photo';
+        if (!photo && !('BarcodeDetector' in window)) return;
         push('scan');
+        els.scan.classList.toggle('is-photo', photo);
+        const note = els.scan.querySelector('.wwl-scan-note');
+        if (note) note.textContent = photo ? 'Fill the frame with the card, then Capture.' : 'Hold the barcode inside the frame.';
         let det = null;
         try {
-            const supported = await window.BarcodeDetector.getSupportedFormats();
-            det = new window.BarcodeDetector({ formats: Object.keys(DETECTED).filter((f) => supported.includes(f)) });
+            if (!photo) {
+                const supported = await window.BarcodeDetector.getSupportedFormats();
+                det = new window.BarcodeDetector({ formats: Object.keys(DETECTED).filter((f) => supported.includes(f)) });
+            }
             const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
-            scan = { stream, timer: null };
+            scan = { stream, timer: null, photo };
             els.video.srcObject = stream;
             await els.video.play();
+            if (sh.refreshSoftKeys) sh.refreshSoftKeys();
         } catch (err) {
             stopScan();
             if (top() === 'scan') pop();
             sh.messageBox({ title: TITLE, icon: 'error', text: 'The camera could not be started.' });
             return;
         }
+        if (photo) return; // Capture (the left soft key) takes the picture
         const look = async () => {
             if (!scan || top() !== 'scan') return;
             let found = null;
@@ -468,6 +489,30 @@
             scan.timer = setTimeout(look, 250);
         };
         look();
+    }
+
+    /** The camera's frame inside the card-shaped guide, as the card's picture (344 x 216, JPEG). */
+    function capture() {
+        const v = els && els.video;
+        if (!scan || !v || !v.videoWidth || !form || !form.item) return;
+        const vw = v.videoWidth;
+        const vh = v.videoHeight;
+        // the guide on screen (wm-wallet.css: 7 % in from each side, 1.586 : 1, centred) mapped into
+        // the camera frame, which the video shows scaled to cover its box
+        const r = v.getBoundingClientRect();
+        const scale = Math.max(r.width / vw, r.height / vh);
+        const gw = r.width * 0.86;
+        const gh = gw / 1.586;
+        const sx = (r.width * 0.07 - (r.width - vw * scale) / 2) / scale;
+        const sy = ((r.height - gh) / 2 - (r.height - vh * scale) / 2) / scale;
+        const c = document.createElement('canvas');
+        c.width = 344;
+        c.height = 216;
+        c.getContext('2d').drawImage(v, sx, sy, gw / scale, gh / scale, 0, 0, c.width, c.height);
+        form.item.photo = c.toDataURL('image/jpeg', 0.8);
+        stopScan();
+        pop();
+        renderEdit();
     }
 
     function stopScan() {
@@ -497,7 +542,7 @@
         softKeys() {
             const t = top();
             if (t === 'edit') return { left: { label: 'Save', action: saveEdit }, right: { label: 'Cancel', action: pop } };
-            if (t === 'scan') return { left: { label: '', action: () => {} }, right: { label: 'Cancel', action: pop } };
+            if (t === 'scan') return { left: scan && scan.photo ? { label: 'Capture', action: capture } : { label: '', action: () => {} }, right: { label: 'Cancel', action: pop } };
             if (t === 'show') {
                 const list = items().filter((x) => x.kind === 'barcode');
                 const next = () => { const i = list.indexOf(showing); showing = list[(i + 1) % list.length]; renderShow(); };

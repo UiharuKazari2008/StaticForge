@@ -11,89 +11,86 @@
 
 .wm-today-block[data-row="cards"][hidden] { display: none !important; }
 
-.wwl-head {
+/* the item: [card picture] nickname / its name in Wallet ••last 4, < > to page */
+.wwl-row {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(32 * var(--wm-px));
+}
+
+.wwl-item {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: calc(6 * var(--wm-px));
-    min-height: calc(16 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
 }
 
-.wwl-title {
+.wwl-item:active { background: var(--wm-highlight); }
+
+.wwl-pic {
+    flex: 0 0 auto;
+    width: calc(46 * var(--wm-px));
+    height: calc(29 * var(--wm-px));
+    object-fit: cover;
+    border-radius: calc(3 * var(--wm-px));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.wwl-pic.is-icon {
+    width: calc(32 * var(--wm-px));
+    height: calc(32 * var(--wm-px));
+    margin: 0 calc(7 * var(--wm-px));
+    object-fit: contain;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.wwl-lines {
     flex: 1 1 auto;
     min-width: 0;
-    font-weight: bold;
+    display: flex;
+    flex-direction: column;
+}
+
+.wwl-title,
+.wwl-sub {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+.wwl-title { font-weight: bold; }
 
 .wwl-pager {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    gap: calc(2 * var(--wm-px));
 }
 
 .wwl-arrow {
     appearance: none;
     -webkit-appearance: none;
-    width: calc(20 * var(--wm-px));
-    height: calc(18 * var(--wm-px));
+    width: calc(22 * var(--wm-px));
+    height: calc(28 * var(--wm-px));
     padding: 0;
     border: 0;
     background: transparent;
     color: inherit;
-    font: bold calc(16 * var(--wm-px)) / 1 Tahoma, sans-serif;
+    font: bold calc(18 * var(--wm-px)) / 1 Tahoma, sans-serif;
 }
 
 .wwl-arrow:active { background: var(--wm-highlight); }
-
-.wwl-body {
-    display: flex;
-    align-items: center;
-    gap: calc(8 * var(--wm-px));
-}
-
-.wwl-note { opacity: 0.85; }
-
-/* a card, drawn: the colour runs to black, name at the top, the last 4 and the network at the bottom */
-.wwl-card {
-    appearance: none;
-    -webkit-appearance: none;
-    position: relative;
-    flex: 0 0 auto;
-    width: calc(86 * var(--wm-px));
-    height: calc(54 * var(--wm-px));
-    padding: 0;
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: calc(5 * var(--wm-px));
-    color: #fff;
-    background: linear-gradient(135deg, var(--wwl-c, #1c2a4a), #000);
-    font: calc(9 * var(--wm-px)) / 1.1 Tahoma, sans-serif;
-    text-align: left;
-}
-
-.wwl-card > span {
-    position: absolute;
-    left: calc(6 * var(--wm-px));
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: calc(74 * var(--wm-px));
-}
-
-.wwl-card-name { top: calc(6 * var(--wm-px)); font-weight: bold; }
-.wwl-card-num { bottom: calc(6 * var(--wm-px)); }
-.wwl-card-net { left: auto !important; right: calc(6 * var(--wm-px)); bottom: calc(6 * var(--wm-px)); font-weight: bold; font-style: italic; max-width: calc(36 * var(--wm-px)) !important; }
-
-.wwl-side {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: calc(4 * var(--wm-px));
-}
 
 /* the barcode, on white with its quiet zone, as wide as the block: the store scans it from here */
 .wwl-code {
@@ -122,21 +119,6 @@
 
 .wwl-code-wait { font-size: calc(11 * var(--wm-px)); }
 
-.wwl-id {
-    appearance: none;
-    -webkit-appearance: none;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-}
-
-.wwl-id-sub { opacity: 0.85; }
-
 /* ---- the program */
 
 .wm-wallet .wwl-app { height: 100%; }
@@ -153,6 +135,16 @@
 }
 
 .wm-wallet .wwl-empty { margin: calc(8 * var(--wm-px)) 0; }
+
+.wwl-edit-pic { display: flex; justify-content: center; margin: calc(2 * var(--wm-px)) 0 calc(4 * var(--wm-px)); }
+
+.wwl-edit-pic img {
+    width: calc(120 * var(--wm-px));
+    height: calc(76 * var(--wm-px));
+    object-fit: cover;
+    border-radius: calc(5 * var(--wm-px));
+    box-shadow: 0 0 0 1px #808080;
+}
 
 /* full screen barcode: white page, the code as large as fits */
 .wm-wallet.is-show { background: #fff; }
@@ -199,6 +191,23 @@
     object-fit: cover;
 }
 
+.wwl-scan-guide { display: none; }
+
+/* Take Picture: the card-shaped frame (86 % wide, 1.586 : 1, as wmWallet.js capture() crops) */
+.wwl-scan.is-photo .wwl-scan-guide {
+    display: block;
+    position: absolute;
+    left: 7%;
+    right: 7%;
+    top: 50%;
+    aspect-ratio: 1.586;
+    transform: translateY(-50%);
+    border: 2px solid #fff;
+    border-radius: calc(8 * var(--wm-px));
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+}
+
 .wwl-scan-note {
     position: absolute;
     left: 0;
@@ -208,4 +217,5 @@
     text-align: center;
     color: #fff;
     text-shadow: 0 1px 2px #000;
+    z-index: 1;
 }
