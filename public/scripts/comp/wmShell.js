@@ -1007,6 +1007,14 @@
     function barsTap(role) {
         if (!shell || !role) return;
         afterPaint().then(() => {
+            // the native Start's item (Melaton Bars): 'start-item:' + { key, folders }
+            if (role.startsWith('start-item:')) {
+                let o = null;
+                try { o = JSON.parse(role.slice(11)); } catch (_) { o = null; }
+                if (o && window.wmStart65 && window.wmStart65.activate) window.wmStart65.activate(o.key, o.folders || []);
+                return;
+            }
+            if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); return; }
             if (role === 'start' || role === 'title') {
                 const menu = shell.querySelector('.wm-startmenu');
                 if (menu && menu.hidden) toggleStartMenu();
@@ -9968,6 +9976,8 @@
         if (phase === 'done') {
             bootDoneAt = Date.now();
             setTimeout(showCrashNotice, 600);
+            // Melaton Bars (#871): a tap on the bars that started the app (it had been closed)
+            try { const t = window.AndroidBars && window.AndroidBars.takePendingTap ? window.AndroidBars.takePendingTap() : ''; if (t) barsTap(t); } catch (_) { /* older app */ }
             // Today is up: the gallery list and tokenizers start loading (appInitSteps.js afterPhoneBoot)
             document.dispatchEvent(new Event('wmBootDone'));
         }

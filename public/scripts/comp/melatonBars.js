@@ -125,6 +125,84 @@
         });
     }
 
+    function packAt(canvas, rect, dpr, extra) {
+        const o = pack(canvas, []);
+        if (!o) return null;
+        delete o.regions;
+        o.x = Math.round(rect.left * dpr);
+        o.y = Math.round(rect.top * dpr);
+        return Object.assign(o, extra || {});
+    }
+
+    /**
+     * The 6.5 Start screen for the app's native copy (melatonBars.renderStart({ reqId, folders })):
+     * its layers as the page stacks them (the shell's picture, Start's page without the grid, the
+     * whole grid, the selection glow, the two bars in Start's state), where each sits on the screen,
+     * and each cell's box in the grid. AndroidBars.publishStart({ reqId, folders, title, wall, page,
+     * view, list, glow, cells, top, bottom }) in device pixels.
+     */
+    async function renderStart(ctx) {
+        ctx = ctx || {};
+        const reqId = Number(ctx.reqId) || 0;
+        const folders = Array.isArray(ctx.folders) ? ctx.folders : [];
+        const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishStart) window.AndroidBars.publishStart(JSON.stringify(Object.assign({ reqId, folders }, o))); } catch (err) { console.warn('[melatonBars] publishStart', err); } };
+        const S = window.wmStart65;
+        const shell = document.getElementById('wmShell');
+        if (!S || !S.barsPrep || !shell) { out({ unsupported: 'no-start' }); return; }
+        if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
+        if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
+        const dpr = window.devicePixelRatio || 1;
+        const prep = S.barsPrep(folders);
+        if (!prep) { out({ unsupported: 'no-start' }); return; }
+        const top = shell.querySelector('.wm-titlebar');
+        const soft = shell.querySelector('.wm-softkeys');
+        const wall = shell.querySelector(':scope > .wm-wall65');
+        const { list, glow, view, page } = prep;
+        const listVis = list.style.visibility;
+        const glowHidden = glow ? glow.hidden : true;
+        try {
+            const lr = list.getBoundingClientRect();
+            const vr = view.getBoundingClientRect();
+            const rel = (r) => ({ x0: Math.round((r.left - lr.left) * dpr), y0: Math.round((r.top - lr.top) * dpr), x1: Math.round((r.right - lr.left) * dpr), y1: Math.round((r.bottom - lr.top) * dpr) });
+            const cells = prep.cells.map((c) => {
+                const el = list.querySelector(`.wm-s65-cell[data-i="${c.i}"]`);
+                return el ? Object.assign({}, c, rel(el.getBoundingClientRect())) : null;
+            }).filter(Boolean);
+            // the glow's box against its cell's (it follows the selected cell)
+            let glowAt = null;
+            const cell0 = list.querySelector('.wm-s65-cell[data-i="0"]');
+            if (glow && !glow.hidden && cell0) {
+                const g = glow.getBoundingClientRect();
+                const c = cell0.getBoundingClientRect();
+                glowAt = { dx: Math.round((g.left - c.left) * dpr), dy: Math.round((g.top - c.top) * dpr) };
+            }
+            const snap = (el, before) => window.windowCapture.snapshot(el, { scale: dpr, before });
+            const wallPic = wall && !wall.hidden && wall.getClientRects().length ? await snap(wall) : null;
+            const pagePic = await snap(page, () => { list.style.visibility = 'hidden'; });
+            const glowPic = glow && glowAt ? await snap(glow, () => { list.style.visibility = listVis; }) : null;
+            const listPic = await snap(list, () => { list.style.visibility = listVis; if (glow) glow.hidden = true; list.style.transform = 'none'; });
+            const topPic = await snap(top);
+            const softPic = soft ? await snap(soft) : null;
+            out({
+                title: prep.title,
+                widthPx: Math.round(shell.getBoundingClientRect().width * dpr),
+                wall: wallPic ? packAt(wallPic, wall.getBoundingClientRect(), dpr) : null,
+                page: packAt(pagePic, page.getBoundingClientRect(), dpr),
+                view: { x: Math.round(vr.left * dpr), y: Math.round(vr.top * dpr), w: Math.round(vr.width * dpr), h: Math.round(vr.height * dpr) },
+                list: packAt(listPic, lr, dpr),
+                glow: glowPic ? packAt(glowPic, glow.getBoundingClientRect(), dpr, glowAt) : null,
+                cells,
+                top: packAt(topPic, top.getBoundingClientRect(), dpr, { regions: regionsOf(top, TOP_MAP, dpr) }),
+                bottom: softPic ? packAt(softPic, soft.getBoundingClientRect(), dpr, { regions: regionsOf(soft, SOFT_MAP, dpr) }) : null
+            });
+        } finally {
+            list.style.visibility = listVis;
+            list.style.transform = '';
+            if (glow) glow.hidden = glowHidden;
+            try { prep.restore(); } catch (err) { console.warn('[melatonBars] start restore', err); }
+        }
+    }
+
     function unstage() {
         const r = restoreNow;
         restoreNow = null;
@@ -140,6 +218,7 @@
 
     window.melatonBars = {
         render: (ctx) => { render(ctx).catch((err) => { unstage(); console.warn('[melatonBars] render', err); }); },
+        renderStart: (ctx) => { renderStart(ctx).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
         unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
     };

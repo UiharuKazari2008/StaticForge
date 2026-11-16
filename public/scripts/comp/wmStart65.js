@@ -404,6 +404,8 @@
     function saveLayout(l) {
         try { localStorage.setItem(LAYOUT_KEY, JSON.stringify({ v: 1, top: l.top, order: l.order })); } catch (_) { /* this session only */ }
         try { document.dispatchEvent(new CustomEvent('wmSettingsChange', { detail: { keys: [LAYOUT_KEY] } })); } catch (_) { /* no listener */ }
+        // Melaton Bars (#871): the Android app's copy of Start is out of date
+        try { if (window.AndroidBars && window.AndroidBars.startStale) window.AndroidBars.startStale(); } catch (_) { /* older app */ }
     }
 
     const FOLDER_IDS = ['games', 'dreamscape', 'settings', 'settings:connections', 'settings:personal', 'settings:system'];
@@ -1232,6 +1234,9 @@
         new MutationObserver(() => { shownApp = root.dataset.wmApp || ''; }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
         // the X ends Start (its page is made again on the next open): listeners outside the page are set once
         // a program came, went or moved (wmAndroidApps.js after a hold menu command or an install)
+        // Melaton Bars (#871): the Android app's copy of Start is out of date
+        const barsStale = () => { try { if (window.AndroidBars && window.AndroidBars.startStale) window.AndroidBars.startStale(); } catch (_) { /* older app */ } };
+        document.addEventListener('wmAppsChanged', barsStale);
         document.addEventListener('wmAppsChanged', () => { if (page && page.isConnected && !page.hidden && !drag) { render(); place(Math.max(0, Math.min(maxY, y))); } });
         window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
         sh.registerApp({
@@ -1307,6 +1312,62 @@
          * screen for it here either.
          */
         order: () => layout(),
+        /**
+         * Melaton Bars (#871): Start opened in `folders` (ids, outermost first) for the Android app's
+         * native copy while the page is behind another program: { page, view, list, glow, cells,
+         * title, restore() }. restore() leaves Start and puts the program that was up back.
+         */
+        barsPrep(folders) {
+            if (!sh || root.dataset.wmVersion !== '6.5') return null;
+            const prev = sh.currentApp();
+            if (prev !== 'start') sh.open('start', { fromStart: true });
+            if (!page) return null;
+            path.length = 0;
+            render();
+            for (const id of folders || []) {
+                const i = items.findIndex((it) => it.folder === id);
+                if (i < 0) break;
+                selected = i;
+                path.push({ id, label: items[i].label, parentKey: items[i].key, parentSel: i });
+                render();
+            }
+            stopMotion();
+            place(0);
+            select(0, false);
+            page.classList.remove('is-opening');
+            if (sh.current === 'start' || sh.currentApp() === 'start') sh.setTitle(path.length ? path[path.length - 1].label : 'Start');
+            sh.refreshSoftKeys();
+            const kind = (it) => (it.folder ? 'folder' : it.app ? 'app' : it.setting ? 'setting' : it.launch ? 'launch' : 'none');
+            return {
+                page, view, list, glow,
+                title: path.length ? path[path.length - 1].label : 'Start',
+                cells: items.map((it, i) => ({ i, key: it.key, kind: kind(it), folder: it.folder || '', app: it.app || '', label: it.label })),
+                restore: () => {
+                    path.length = 0;
+                    if (prev !== 'start' && sh.currentApp() === 'start') sh.back();
+                }
+            };
+        },
+        /** Melaton Bars (#871): a tap on the native Start's item `key` (in `folders`): what the tap does here. */
+        activate(key, folders) {
+            if (!sh) return false;
+            if (sh.currentApp() !== 'start') sh.open('start', { fromStart: true });
+            path.length = 0;
+            render();
+            for (const id of folders || []) {
+                const i = items.findIndex((it) => it.folder === id);
+                if (i < 0) break;
+                path.push({ id, label: items[i].label, parentKey: items[i].key, parentSel: i });
+                render();
+            }
+            const i = items.findIndex((it) => it.key === key);
+            if (i < 0) return false;
+            select(i, false);
+            openItemNow(items[i]);
+            return true;
+        },
+        /** Melaton Bars (#871): Start's Lock soft key from the native copy. */
+        lockNow: () => lock(),
         resetOrder() {
             saveLayout({ top: [], order: {} });
             if (page && page.isConnected && sh && sh.current === 'start') { endDrag(false); render(); place(Math.max(0, Math.min(maxY, y))); select(selected, false); }

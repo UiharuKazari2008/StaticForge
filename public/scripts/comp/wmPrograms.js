@@ -1049,7 +1049,8 @@
         if (!d.barsCfg) {
             d.barsCfg = {
                 enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: !!c0.androidTray,
-                softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home'
+                softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home',
+                room: c0.room !== false
             };
         }
         const cfg = d.barsCfg;
@@ -1068,18 +1069,21 @@
             ${check('wmBarsTray', 'Button for Android\'s notification tray', cfg.androidTray)}
             <div class="wm-form-gap"></div>
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
-            <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>`;
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
+            ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}`;
         const q = (sel) => el.querySelector(sel);
         const sync = () => {
             q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
             el.querySelectorAll('input[name="wmBarsTray"], input[name="wmBarsSoft"], [data-act="barscorner"]').forEach((i) => { i.disabled = !cfg.enabled; });
             const r = q('[data-act="barsright"]');
             if (r) r.disabled = !cfg.enabled || !cfg.softkeys;
+            q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
         bind('wmBarsTray', (v) => { cfg.androidTray = v; });
         bind('wmBarsSoft', (v) => { cfg.softkeys = v; });
+        bind('wmBarsRoom', (v) => { cfg.room = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
         sync();
