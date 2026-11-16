@@ -136,7 +136,8 @@
                 softLeft: ctx.softkeys ? (SOFT_LABELS[ctx.softLeft] ?? 'Back') : undefined,
                 softRight: ctx.softkeys ? (SOFT_LABELS[ctx.softRight] ?? '') : undefined,
                 sip: ctx.softkeys ? !!ctx.ime : undefined,
-            transparent: !!ctx.transparent
+            transparent: !!ctx.transparent,
+            softHeight: ctx.softHeightPx > 0 ? ctx.softHeightPx / (window.devicePixelRatio || 1) : 0
             });
             regions = { top: regionsOf(top, TOP_MAP, dpr), bottom: soft ? regionsOf(soft, SOFT_MAP, dpr) : [] };
         };
@@ -229,7 +230,8 @@
             softLeft: ctx.softkeys ? (SOFT_LABELS[ctx.softLeft] ?? 'Back') : undefined,
             softRight: ctx.softkeys ? (SOFT_LABELS[ctx.softRight] ?? '') : undefined,
             sip: ctx.softkeys ? !!ctx.ime : undefined,
-            transparent: !!ctx.transparent
+            transparent: !!ctx.transparent,
+            softHeight: ctx.softHeightPx > 0 ? ctx.softHeightPx / (window.devicePixelRatio || 1) : 0
         };
         restoreNow = sh.barsStage(stageOpts);
         let opened = false;

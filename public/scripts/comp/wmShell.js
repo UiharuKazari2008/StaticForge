@@ -962,7 +962,8 @@
             wmBar: root.dataset.wmBar,
             wmApp: root.dataset.wmApp,
             barBg: bar.style.background,
-            barRule: bar.style.borderBottomColor
+            barRule: bar.style.borderBottomColor,
+            softCss: shell.querySelector('.wm-softkeys') ? shell.querySelector('.wm-softkeys').style.cssText : ''
         };
         bar.classList.remove('is-start-open');
         // 6.5's see-through bar belongs to Today and Start: a program's bar is solid
@@ -991,6 +992,13 @@
         if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
         // the keyboard key is always there over Android programs (any of them may take text)
         if (sip && typeof o.sip === 'boolean') { sip.hidden = false; sip.setAttribute('aria-pressed', o.sip ? 'true' : 'false'); }
+        // over Android's navigation buttons the soft key bar is exactly their height (it covers them and none of the program)
+        const softEl = shell.querySelector('.wm-softkeys');
+        if (softEl && o.softHeight > 0) {
+            softEl.style.setProperty('height', `${o.softHeight}px`, 'important');
+            softEl.style.setProperty('padding-bottom', '0px', 'important');
+            softEl.style.setProperty('margin-bottom', '0px', 'important');
+        }
         // the phone's lock screen with Transparent Statusbar at keyguard: the icons on the lock screen's own picture
         if (o.transparent) { bar.style.background = 'transparent'; bar.style.borderBottomColor = 'transparent'; }
         syncIconUnit(); fitStatusNow(); snapStatusIcons();
@@ -1008,6 +1016,7 @@
             if (before.wmApp !== undefined) root.dataset.wmApp = before.wmApp; else delete root.dataset.wmApp;
             bar.style.background = before.barBg;
             bar.style.borderBottomColor = before.barRule;
+            if (softEl) softEl.style.cssText = before.softCss;
             fitForce = true;
             fitStatus();
         };
