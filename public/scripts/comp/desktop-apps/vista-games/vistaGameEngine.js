@@ -1132,8 +1132,14 @@
             if (e.key === 'Alt') win.modal.classList.remove('vista-game-alt');
             if (spec.onKeyUp && win.isActive()) spec.onKeyUp(e);
         };
-        document.addEventListener('keydown', win.onKeyDown, true);
-        document.addEventListener('keyup', win.onKeyUp, true);
+        // the game's own lifetime: a game loaded as a hot feature (#872) takes these with it when it is
+        // unloaded for an update (they hold its onCommand, so the old game would stay in memory)
+        const owner = window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' ? window.melatonSegments.callerSignal() : null;
+        const opts = owner ? { capture: true, signal: owner } : true;
+        // app-scope: allow tied to the calling game's segment when there is one, else page lifetime
+        document.addEventListener('keydown', win.onKeyDown, opts);
+        // app-scope: allow same owner as keydown
+        document.addEventListener('keyup', win.onKeyUp, opts);
     };
 
     // window chrome around the surface (caption, borders, menu bar), measured

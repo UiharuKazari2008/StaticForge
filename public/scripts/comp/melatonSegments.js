@@ -564,6 +564,17 @@
         ensureHooks,
         windowsOf,
         adopt,
+        /**
+         * For shared helpers that make things on an app's behalf (the Vista games engine's document
+         * key listeners for a game's window): the AbortSignal of the segment that called into the helper
+         * (any frame in the stack), or null when no app is in the stack (page-lifetime code). Pass it as
+         * the listener's signal. Explicit on purpose: a helper's own one-time page listeners must not
+         * go with whichever app happened to trigger them.
+         */
+        callerSignal: () => {
+            const seg = ownerInStack();
+            return seg ? seg.ctl.signal : null;
+        },
         get: (key) => segments.get(key) || null,
         loaded: () => Array.from(segments.keys()),
         current: () => evaluating
