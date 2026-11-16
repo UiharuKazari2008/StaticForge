@@ -287,6 +287,11 @@ const FEATURE_MANIFEST = {
     window_capture: {
         scripts: ['scripts/comp/windowCapture.js']
     },
+    // Melaton Bars (#871): the phone's title / soft key bars copied for the Android app to draw over other programs
+    melaton_bars: {
+        depends: ['window_capture'],
+        scripts: ['scripts/comp/melatonBars.js']
+    },
     // Windows Flip 3D, Vista's Win+Tab (keyboardShortcuts.js, taskbarSettings.js Quick Launch)
     flip3d: {
         depends: ['window_capture'],

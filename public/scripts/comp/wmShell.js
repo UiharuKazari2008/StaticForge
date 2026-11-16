@@ -934,6 +934,84 @@
         fitStatus();
     }
 
+    /**
+     * Melaton Bars (#871): the Android app draws this page's title bar (and soft key bar) over other
+     * Android programs. While the page is behind one, the bars are set to what they show there for
+     * one copy and put back after: barsStage({ title, corner: 'close' | 'ok', androidTray, softLeft,
+     * softRight, sip }) returns the function that restores them. Nothing is on screen meanwhile.
+     */
+    let barsExternal = false;
+    let barsKey = '';
+    function barsStage(o) {
+        const bar = shell.querySelector('.wm-titlebar');
+        const title = shell.querySelector('.wm-title');
+        const corner = cornerEl();
+        const keys = shell.querySelectorAll('.wm-softkeys > .wm-softkey');
+        const sip = shell.querySelector('.wm-sip');
+        refreshStatus();
+        const before = {
+            startOpen: bar.classList.contains('is-start-open'),
+            title: title ? title.textContent : '',
+            cornerHidden: corner ? corner.hidden : true,
+            cornerKind: corner ? corner.dataset.kind : '',
+            keys: Array.from(keys).map((k) => ({ text: k.textContent, disabled: k.disabled, hidden: k.hidden })),
+            sip: sip ? sip.getAttribute('aria-pressed') : null,
+            wmBar: root.dataset.wmBar
+        };
+        bar.classList.remove('is-start-open');
+        // 6.5's see-through bar belongs to Today and Start: a program's bar is solid
+        if (root.dataset.wmBar) delete root.dataset.wmBar;
+        if (title && typeof o.title === 'string') title.textContent = o.title;
+        if (corner) {
+            corner.hidden = !o.corner;
+            if (o.corner) corner.dataset.kind = o.corner === 'ok' ? 'ok' : 'close';
+        }
+        // Android's notification tray: WM's notification glyph at the head of the icons (Settings)
+        let tray = shell.querySelector('.wm-status-icon[data-role="androidtray"]');
+        if (o.androidTray && !tray) {
+            tray = document.createElement('button');
+            tray.type = 'button';
+            tray.className = 'wm-status-icon';
+            tray.dataset.role = 'androidtray';
+            tray.dataset.icon = 'notify-many';
+            tray.setAttribute('aria-label', 'Android notifications');
+            const status = shell.querySelector('.wm-status');
+            const reserve = status.querySelector('.wm-status-reserve');
+            if (reserve) reserve.after(tray); else status.prepend(tray);
+        }
+        if (keys[0] && typeof o.softLeft === 'string') { keys[0].textContent = o.softLeft; keys[0].hidden = false; keys[0].disabled = !o.softLeft; }
+        if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
+        if (sip && typeof o.sip === 'boolean') sip.setAttribute('aria-pressed', o.sip ? 'true' : 'false');
+        syncIconUnit(); fitStatusNow(); snapStatusIcons();
+        return () => {
+            if (tray) tray.remove();
+            if (title) title.textContent = before.title;
+            bar.classList.toggle('is-start-open', before.startOpen);
+            if (corner) { corner.hidden = before.cornerHidden; if (before.cornerKind) corner.dataset.kind = before.cornerKind; }
+            keys.forEach((k, i) => { const b = before.keys[i]; k.textContent = b.text; k.disabled = b.disabled; k.hidden = b.hidden; });
+            if (sip && before.sip != null) sip.setAttribute('aria-pressed', before.sip);
+            if (before.wmBar) root.dataset.wmBar = before.wmBar;
+            fitForce = true;
+            fitStatus();
+        };
+    }
+
+    /** A tap on the bars over an Android program, once the app has brought the page up: what the same tap does here. */
+    function barsTap(role) {
+        if (!shell || !role) return;
+        afterPaint().then(() => {
+            if (role === 'start' || role === 'title') {
+                const menu = shell.querySelector('.wm-startmenu');
+                if (menu && menu.hidden) toggleStartMenu();
+                return;
+            }
+            const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
+            // an icon folded into the notification group, or gone since the copy: the group's tray
+            if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return; }
+            icon.click();
+        });
+    }
+
     // the boot screens' own corner: none while wceload copies, ok on its last page
     let bootTitleKind = null;
 
@@ -2718,6 +2796,9 @@
     // a source whose Today item may have changed (not a tap): Today repaints on the next status pass
     const statusDirtyToday = () => { statusTodayBump++; statusDirty(); };
     function statusDirty() {
+        // behind an Android program (Melaton Bars, #871) the page's timers are paused: the app copies
+        // the bars again when asked (it resumes the page for that), and coalesces the asks
+        if (barsExternal && window.AndroidBars && shell) { refreshStatus(); return; }
         if (statusTimer || !shell) return;
         // screen off or page hidden: nothing paints; screen on and visibilitychange repaint at once
         statusTimer = setTimeout(() => { statusTimer = null; if (onScreen()) refreshStatus(); }, 250);
@@ -2866,6 +2947,12 @@
         }
         // notifications held back during startup or a takeover come up once it ends
         if (notes.length && !noteShown && notesMayPop()) refreshNotes();
+        // behind an Android program (Melaton Bars, #871): the app copies the bars again when their
+        // markup changed (a signal push that moved nothing asks for no copy)
+        if (barsExternal && window.AndroidBars) {
+            const key = shell.querySelector('.wm-titlebar').innerHTML + (shell.querySelector('.wm-softkeys') || {}).innerHTML;
+            if (key !== barsKey) { barsKey = key; try { window.AndroidBars.requestRender(); } catch (_) { /* older app */ } }
+        }
     }
 
     /**
@@ -10437,6 +10524,12 @@
     }
 
     window.wmShell = {
+        /** Melaton Bars (#871): set the bars to how they show over an Android program; returns restore(). */
+        barsStage: (o) => barsStage(o || {}),
+        /** Melaton Bars (#871): the page is behind an Android program (its status changes go to the app). */
+        setBarsExternal: (on) => { barsExternal = !!on; },
+        /** Melaton Bars (#871): a tap on a bar the app draws over an Android program: 'start' | 'title' | an icon's role. */
+        barsTap: (role) => barsTap(role),
         registerApp,
         registerLazyApp,
         onScreen,

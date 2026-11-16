@@ -1033,6 +1033,58 @@
         return out;
     };
 
+    // ---- Settings > Screen > Android (Melaton Bars, #871) ----
+
+    /** The Android app's Melaton Bars state: { config, service, elevated, locked } or null. */
+    function barsState() {
+        try { return window.AndroidBars ? JSON.parse(window.AndroidBars.getState()) : null; } catch (_) { return null; }
+    }
+
+    const BARS_CORNERS = [['close', 'X goes Home'], ['ok', 'ok goes Back']];
+    const BARS_SOFT_RIGHT = [['home', 'Home'], ['recents', 'Recent'], ['start', 'Start'], ['notifications', 'Notification'], ['none', '(none)']];
+
+    function renderBarsTab(el, d) {
+        const st = d.barsState || {};
+        const c0 = st.config || {};
+        if (!d.barsCfg) {
+            d.barsCfg = {
+                enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: !!c0.androidTray,
+                softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home'
+            };
+        }
+        const cfg = d.barsCfg;
+        let why = '';
+        try { why = window.melatonBars ? window.melatonBars.unsupported() : ''; } catch (_) { why = ''; }
+        if (!why) {
+            const camera = document.documentElement.dataset.wmCamera;
+            if (camera === 'bezel' || lsGet(K.cameraExtend) !== '1') why = 'extend-off';
+        }
+        const label = (list, v) => (list.find(([k]) => k === v) || list[0])[1];
+        const note = why ? 'Needs Bezel > Top of screen: Windows Status Bar, with Extend Status Bar to edge of Camera.'
+            : st.elevated === false ? 'Needs Shizuku or Localhost ADB (Android Bridge) to keep Android\'s status bar away.' : '';
+        el.innerHTML = `${check('wmBarsOn', 'Use the title bar in Android programs', cfg.enabled)}
+            ${note ? `<p>${esc(note)}</p>` : ''}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Corner button:</span>${ui.comboHtml('barscorner', label(BARS_CORNERS, cfg.corner))}</div>
+            ${check('wmBarsTray', 'Button for Android\'s notification tray', cfg.androidTray)}
+            <div class="wm-form-gap"></div>
+            ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
+            <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>`;
+        const q = (sel) => el.querySelector(sel);
+        const sync = () => {
+            q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
+            el.querySelectorAll('input[name="wmBarsTray"], input[name="wmBarsSoft"], [data-act="barscorner"]').forEach((i) => { i.disabled = !cfg.enabled; });
+            const r = q('[data-act="barsright"]');
+            if (r) r.disabled = !cfg.enabled || !cfg.softkeys;
+        };
+        const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
+        bind('wmBarsOn', (v) => { cfg.enabled = v; });
+        bind('wmBarsTray', (v) => { cfg.androidTray = v; });
+        bind('wmBarsSoft', (v) => { cfg.softkeys = v; });
+        ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
+        ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
+        sync();
+    }
+
     function check(name, label, checked, attrs = '') {
         return `<label class="wm-check"><input type="checkbox" name="${esc(name)}"${checked ? ' checked' : ''} ${attrs}><span>${esc(label)}</span></label>`;
     }
@@ -1831,8 +1883,10 @@
         },
         {
             id: 'screen', tab: 'system', label: 'Screen', icon: 'set-screen',
-            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel']],
+            // Melaton Bars (#871): with an Android app that can draw them over other programs
+            tabs: [['textsize', 'Text Size'], ['bezel', 'Bezel']].concat(window.AndroidBars ? [['bars', 'Android']] : []),
             init: () => ({
+                barsState: barsState(),
                 scale: currentScale(), camera: cameraStyle(), portraitOnly: lsGet(K.cameraPortraitOnly) === '1', bars: systemBars(),
                 extend: lsGet(K.cameraExtend) === '1',
                 softExtend: lsGet(K.softkeyExtend) === '1',
@@ -1850,6 +1904,8 @@
                 ledCharge: lsGet(K.bezelLedCharge) !== '0'
             }),
             render(el, tab, d) {
+                // Android (#871): these bars over Android's programs, Android's status bar locked away
+                if (tab === 'bars') { renderBarsTab(el, d); return; }
                 // Bezel: the top of the phone's screen. Hiding the phone's status bar (Android app) is
                 // what lets the screen handle its camera: a black bezel band with the maker's printed logo,
                 // model text and a notification LED, or a title bar kept clear of the camera.
@@ -1987,6 +2043,9 @@
             },
             commit(d) {
                 const keys = [];
+                if (d.barsState && d.barsCfg && JSON.stringify(d.barsCfg) !== JSON.stringify(d.barsState.config || {})) {
+                    try { window.AndroidBars.setConfig(JSON.stringify(d.barsCfg)); } catch (_) { /* older app */ }
+                }
                 const bars = systemBars();
                 if (d.bars && bars && (d.bars.hideStatus !== bars.hideStatus || d.bars.hideNavigation !== bars.hideNavigation)) {
                     try { window.AndroidDisplay.setSystemBars(!!d.bars.hideStatus, !!d.bars.hideNavigation); } catch (_) { /* older app */ }
@@ -2494,7 +2553,8 @@
          * Jog wheel rendered into `host`: a ridged thumbwheel seen edge-on in a sunken frame (the
          * ridges crowd and darken towards both ends, as on a cylinder); a sideways drag rolls it,
          * one step of the value per `stepPx` WM units rolled, each step a detent (the shell's touch
-         * tick), with no ends to the wheel itself (the value stops at min / max). Left / Right step it, Home / End go to the ends. opts: value,
+         * tick), with no ends to the wheel itself (the value stops at min / max); a flick rolls on
+         * and slows (inertia). Left / Right step it, Home / End go to the ends. opts: value,
          * min, max, step, fineStep (a slower roll than fineSpeed WM units a second, 40, steps by this
          * instead: fine adjust), label (accessible name), stepPx (8), onChange(value) on every step,
          * onStep(dir, fine) instead of a value (a wheel that steps something else: emphasis), disabled.
@@ -2538,6 +2598,32 @@
                 draw();
                 if (onChange) onChange(cur);
             };
+            // inertia after a flick: the speed (px a ms) falls by a share each frame until it is slow
+            const GLIDE_MIN = 120; // WM units a second
+            let glideRaf = 0;
+            const cancelGlide = () => { if (glideRaf) cancelAnimationFrame(glideRaf); glideRaf = 0; el.classList.remove('is-rolling'); };
+            const glide = (v0, per, width, rest0) => {
+                let v = v0;
+                let rest = rest0;
+                let last = performance.now();
+                const unit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+                el.classList.add('is-rolling');
+                const frame = (now) => {
+                    const dt = Math.min(50, Math.max(1, now - last));
+                    last = now;
+                    const dx = v * dt;
+                    phase += (2 * dx * RIDGES) / (width * Math.PI);
+                    rest += dx;
+                    const n = Math.trunc(rest / per);
+                    rest -= n * per;
+                    draw();
+                    move(n);
+                    v *= Math.pow(0.994, dt);
+                    if (!el.isConnected || Math.abs(v) / unit * 1000 < 25) { glideRaf = 0; el.classList.remove('is-rolling'); return; }
+                    glideRaf = requestAnimationFrame(frame);
+                };
+                glideRaf = requestAnimationFrame(frame);
+            };
             draw();
             if (!disabled) {
                 el.addEventListener('pointerdown', (e) => {
@@ -2552,7 +2638,9 @@
                     let lastX = e.clientX;
                     let lastT = e.timeStamp || performance.now();
                     let speed = 0; // WM units a second, smoothed
+                    let vel = 0; // px a ms, signed, smoothed (the flick's speed at release)
                     let rest = 0;
+                    cancelGlide();
                     const mv = (ev) => {
                         ev.stopPropagation();
                         const dx = ev.clientX - lastX;
@@ -2561,6 +2649,8 @@
                         const dt = Math.max(1, t - lastT);
                         lastT = t;
                         speed = speed * 0.6 + (Math.abs(dx) / unit / dt) * 1000 * 0.4;
+                        vel = vel * 0.5 + (dx / dt) * 0.5;
+                        lastMoveT = t;
                         // the ridges follow the finger at the wheel's middle: x = w/2 sin(a), so
                         // da = 2 dx / w there, and one ridge spacing is pi / RIDGES of turn
                         phase += (2 * dx * RIDGES) / (width * Math.PI);
@@ -2570,7 +2660,16 @@
                         draw();
                         move(n, speed < fineSpeed);
                     };
-                    const up = () => { el.classList.remove('is-rolling'); el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+                    let lastMoveT = lastT;
+                    const up = (ev) => {
+                        el.classList.remove('is-rolling');
+                        el.removeEventListener('pointermove', mv);
+                        el.removeEventListener('pointerup', up);
+                        el.removeEventListener('pointercancel', up);
+                        // a flick: the wheel rolls on and slows (a finger that rested before lifting does not)
+                        const idle = (ev && ev.timeStamp ? ev.timeStamp : performance.now()) - lastMoveT;
+                        if (ev && ev.type === 'pointerup' && idle < 80 && Math.abs(vel) / unit * 1000 > GLIDE_MIN) glide(vel, per, width, rest);
+                    };
                     el.addEventListener('pointermove', mv);
                     el.addEventListener('pointerup', up);
                     el.addEventListener('pointercancel', up);
@@ -2600,9 +2699,13 @@
             const fmt = (v) => Number(v).toFixed(dg);
             const clamp = (v) => Math.max(min, Math.min(max, Number(Number(v).toFixed(dg))));
             let cur = clamp(Number(value) || 0);
+            // the LCD it opened from blinks its figures while it is open (twice a second, by a class)
+            const lcd = anchor && anchor.classList && anchor.classList.contains('wm-lcd') ? anchor : null;
+            const blink = lcd ? setInterval(() => lcd.classList.toggle('is-blink'), 500) : 0;
             return ui.popPanel(anchor, {
                 label,
                 className: 'wm-valuepop',
+                onClose: () => { clearInterval(blink); if (lcd) lcd.classList.remove('is-blink'); },
                 build(el) {
                     el.innerHTML = `<div class="wm-valuepop-head"><span>${escUi(label)}</span><b></b></div><div class="wm-valuepop-row"></div>`;
                     const out = el.querySelector('.wm-valuepop-head > b');

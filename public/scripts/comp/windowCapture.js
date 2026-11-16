@@ -310,6 +310,9 @@
     /** image-set() / -webkit-image-set() as the one url() closest to this screen's density. */
     function flattenImageSets(css) {
         const want = Math.min(2, root.devicePixelRatio || 1);
+        // an exact snapshot (snapshot()) takes what the browser itself shows: the smallest
+        // candidate at or above the screen's density, else the largest
+        const dpr = exact ? exact.scale : 0;
         let out = '';
         let i = 0;
         for (;;) {
@@ -329,7 +332,8 @@
                 const u = /url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3/.exec(part);
                 if (!u) return;
                 const x = /([\d.]+)x\s*$/.exec(part.trim());
-                const d = Math.abs((x ? Number(x[1]) : 1) - want);
+                const r = x ? Number(x[1]) : 1;
+                const d = dpr ? (r >= dpr - 0.001 ? r - dpr : 1000 - r) : Math.abs(r - want);
                 if (!best || d < best.d) best = { d, url: u[2] || u[4] };
             });
             out += css.slice(i, hit.index) + (best ? `url("${best.url}")` : 'none');
@@ -479,8 +483,10 @@
 
     function imageDataUrl(img, w, h) {
         const s = Math.min(2, root.devicePixelRatio || 1);
-        const cw = Math.max(1, Math.min(2048, Math.round(w * s)));
-        const ch = Math.max(1, Math.min(2048, Math.round(h * s)));
+        // an exact snapshot keeps the file the page shows at its own size: the picture scales it
+        // into the box as the page does, with nothing resampled on the way
+        const cw = exact ? Math.max(1, Math.min(2048, img.naturalWidth)) : Math.max(1, Math.min(2048, Math.round(w * s)));
+        const ch = exact ? Math.max(1, Math.min(2048, img.naturalHeight)) : Math.max(1, Math.min(2048, Math.round(h * s)));
         const key = `${img.currentSrc || img.src}|${cw}x${ch}`;
         if (dataUrls.has(key)) return dataUrls.get(key);
         let out = '';
@@ -597,9 +603,10 @@
 
     /** The window as a picture: { base (a canvas, with the rim), overlays, w, h, scale }. */
     async function rasterize(win) {
-        const rect = windowRect(win);
-        const W = Math.max(1, Math.round(rect.width));
-        const H = Math.max(1, Math.round(rect.height));
+        const rect = exact ? win.getBoundingClientRect() : windowRect(win);
+        // exact: the element's own fractional size (a bar 33.43 px tall is 88 device px, not 87 or 89)
+        const W = exact ? Math.max(1, rect.width) : Math.max(1, Math.round(rect.width));
+        const H = exact ? Math.max(1, rect.height) : Math.max(1, Math.round(rect.height));
         // window.__windowCaptureDebug = {} collects each step's time and the last SVG (profiling)
         const dbg = root.__windowCaptureDebug;
         // debug: each step's own time (the waits between them left out)
@@ -655,6 +662,14 @@
         lap('encode');
         const img = await loadImage(src);
         lap('load');
+        if (exact) {
+            // device pixels, no rim, no texture cap: what the screen shows of the element
+            const c = doc.createElement('canvas');
+            c.width = Math.max(1, Math.round(W * exact.scale));
+            c.height = Math.max(1, Math.round(H * exact.scale));
+            c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+            return { base: c, overlays, w: W, h: H, scale: exact.scale };
+        }
         await yieldTask();
         resume();
         const scale = Math.min(Math.min(1.5, root.devicePixelRatio || 1), MAX_TEX / W, MAX_TEX / H);
@@ -818,6 +833,30 @@
         });
     }
 
+    // an exact snapshot in progress ({ scale }): image-sets, pictures and the size follow the screen
+    let exact = null;
+    let snapChain = Promise.resolve();
+
+    /**
+     * Any element (not only a window) at the screen's own pixels, for a native copy of it (Melaton
+     * Bars, #871): Promise of a canvas of round(width * scale) x round(height * scale) without the
+     * rim, or null. The element is copied as it is when its turn comes; snapshots run one at a time.
+     * opts.before() runs right before the copy (after the ones queued ahead of it).
+     */
+    function snapshot(el, opts = {}) {
+        const run = async () => {
+            if (opts.before) opts.before();
+            exact = { scale: opts.scale || root.devicePixelRatio || 1 };
+            try { return (await rasterize(el)).base; } catch (err) {
+                console.warn('Window capture: snapshot failed', err && err.message);
+                return null;
+            } finally { exact = null; }
+        };
+        const p = snapChain.then(run, run);
+        snapChain = p.catch(() => null);
+        return p;
+    }
+
     let prewarmQueue = [];
     let prewarmTimer = 0;
 
@@ -843,6 +882,7 @@
 
     const api = {
         capture,
+        snapshot,
         cached,
         fresh,
         composite,
