@@ -467,7 +467,8 @@
         const { layer, slider, handle, time, wall, pin, area, keys } = prep;
         const all = ctx.parts === 'all';
         // v: the pieces' make (the app drops copies of an older make: v2 leaves the layer's black out for the phone wallpaper)
-        const o = { v: 2, widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
+        // phoneWall: made for the phone's own wallpaper under it (the app draws that picture first)
+        const o = { v: 2, phoneWall: !!ctx.phoneWall, widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
         try {
             await Promise.race([
                 Promise.all([...layer.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null)))),
