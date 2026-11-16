@@ -296,7 +296,7 @@
         const chars = {};
         const list = [];
         for (let c = 32; c < 127; c++) list.push(String.fromCharCode(c));
-        '…ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ–—‘’“”•™®©'.split('').forEach((ch) => list.push(ch));
+        '…ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ–—‘’“”•™®©°·×÷±µ§¢£€¥¿¡½¼¾²³¹←→↑↓'.split('').forEach((ch) => list.push(ch));
         // the regular weight too (the bubbles' text), black on the bubble's white
         const charsRegular = {};
         try {
@@ -315,7 +315,8 @@
             t.textContent = keep.text;
             if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
         }
-        out({ widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr) });
+        // kv: the kit's make (2: the degree sign and more symbols; the app asks again for an older one)
+        out({ kv: 2, widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr) });
     }
 
     /*
