@@ -642,7 +642,11 @@
 
     function makeWindow(id, title, opts = {}) {
         const old = doc.getElementById(id);
-        if (old) old.remove();
+        if (old) {
+            // the window stacks (modalUtils.js) would keep the replaced window and all it holds (#872)
+            callGlobal('forgetModalElement', old);
+            old.remove();
+        }
         const modal = doc.createElement('div');
         modal.className = 'modal hidden on-top tbp-window vdt-window';
         modal.id = id;

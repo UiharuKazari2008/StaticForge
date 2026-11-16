@@ -3916,6 +3916,19 @@ function bumpModalZIndexToFront(modal) {
  * live update (melatonSegments.js, #872). The stacks would keep the element, and with it every
  * listener and closure of the unloaded app.
  */
+/**
+ * Windows that left the document without closeModal (removed by their owner, replaced by id) drop
+ * out of the stacks at the next stack change, so a detached window is not kept alive by them.
+ */
+function pruneDetachedModals() {
+    for (let i = modalStack.length - 1; i >= 0; i--) {
+        if (!modalStack[i] || !modalStack[i].isConnected) modalStack.splice(i, 1);
+    }
+    for (let i = windowUsageStack.length - 1; i >= 0; i--) {
+        if (!windowUsageStack[i] || !windowUsageStack[i].isConnected) windowUsageStack.splice(i, 1);
+    }
+}
+
 function forgetModalElement(el) {
     if (!el || el.nodeType !== 1) return;
     const gone = [el, ...el.querySelectorAll('.modal')];
@@ -3931,6 +3944,7 @@ function forgetModalElement(el) {
 window.forgetModalElement = forgetModalElement;
 
 function bringModalToFront(modal) {
+    pruneDetachedModals();
     if (!modal) return;
 
     const modalIndex = modalStack.indexOf(modal);
@@ -3954,6 +3968,7 @@ function bringModalToFront(modal) {
 }
 
 function updateModalStackZIndexes(options) {
+    pruneDetachedModals();
     const opts = options || {};
     // Separate modals into regular and on-top groups
     const regularModals = [];
