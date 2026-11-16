@@ -557,7 +557,7 @@
             const ci = clickable.indexOf(el);
             if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
         };
-        roots.forEach(walk);
+        roots.forEach((r) => walk(r));
         return out;
     }
 
