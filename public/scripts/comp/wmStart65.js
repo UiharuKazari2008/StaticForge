@@ -543,6 +543,10 @@
     }
 
     let cols = 3;
+    // the open Fold (#870, Yukimi): the screen holds two sets of the device's three columns, one
+    // each side of the crease, each laid out as the portrait grid of its half (6 across, 3 closed)
+    let sets = 1;
+    const SPLIT_MAX = 1200;
     function columnsFor() {
         const unit = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
         const w = (view && view.clientWidth) || window.innerWidth || 0;
@@ -557,9 +561,11 @@
             if (land) return 3;
         }
         // a phone-width screen keeps the device's three columns whatever its unit (Yukimi: the
-        // Fold7 cover screen, 480 CSS px at a small --wm-px, got four); wider screens (the Fold
-        // opened, a tablet) take as many as fit at the 72-unit pitch
+        // Fold7 cover screen, 480 CSS px at a small --wm-px, got four); the Fold opened (#870) takes
+        // two sets of three, one each side of the crease; a wider screen still (DeX, a monitor)
+        // takes as many as fit at the 72-unit pitch
         if (w < 600) return 3;
+        if (w < SPLIT_MAX) return 6;
         return Math.max(3, Math.floor((w / unit - 24) / 72));
     }
 
@@ -570,13 +576,27 @@
         // the device's three columns are 72 units apart (the last cell 96 wide): a wider screen
         // takes as many as fit at that pitch, every second one half a row down
         cols = columnsFor();
-        list.style.setProperty('--s65-pitch', `${100 / (cols + 1 / 3)}%`);
+        sets = cols === 6 && (view.clientWidth || window.innerWidth || 0) < SPLIT_MAX ? 2 : 1;
+        const per = cols / sets;
+        page.classList.toggle('is-split', sets > 1);
+        list.style.setProperty('--s65-per', String(per));
+        list.style.setProperty('--s65-setw', `${100 / sets}%`);
+        if (sets > 1) {
+            // each half is the closed phone's grid: the device's 72-unit pitch (less if the half is
+            // narrower), centred in its half, so the crease runs through the space between the sets
+            list.style.setProperty('--s65-pitch', `min(${100 / sets / (per + 1 / 3)}%, calc(72 * var(--wm-px)))`);
+            list.style.setProperty('--s65-inset', `calc((${100 / sets}% - var(--s65-pitch) * ${per + 1 / 3}) / 2)`);
+        } else {
+            list.style.setProperty('--s65-pitch', `${100 / (per + 1 / 3)}%`);
+            list.style.removeProperty('--s65-inset');
+        }
         const cells = items.map((it, i) => {
             const c = i % cols;
             const r = Math.floor(i / cols);
-            half = Math.max(half, 2 * r + (c % 2 === 1 ? 1 : 0) + 2);
+            const m = (c % per) % 2;
+            half = Math.max(half, 2 * r + m + 2);
             const ic = it.img;
-            return `<button type="button" class="wm-s65-cell" role="listitem" data-i="${i}" style="--c:${c};--r:${r};--m:${c % 2 === 1 ? 1 : 0}">`
+            return `<button type="button" class="wm-s65-cell" role="listitem" data-i="${i}" style="--c:${c};--r:${r};--m:${m}">`
                 + `<img class="wm-s65-icon" src="${esc(ic.src)}"${ic.srcset ? ` srcset="${esc(ic.srcset)}"` : ''} alt="" draggable="false" decoding="async">`
                 + `<span class="wm-s65-label">${esc(it.label)}</span></button>`;
         });
@@ -613,14 +633,23 @@
         sh.refreshSoftKeys();
     }
 
+    /** One set's share of a list w px wide: its width, column pitch and the space before its first column (CSS px). */
+    function setGeo(w, per) {
+        const setW = w / sets;
+        const pitch = sets > 1 ? Math.min(setW / (per + 1 / 3), 72 * unit()) : setW / (per + 1 / 3);
+        return { setW, pitch, inset: (setW - pitch * (per + 1 / 3)) / 2 };
+    }
+
     /** Where item k of the grid is: its column, row and box in the list, CSS px. */
     function slotPos(k) {
         const u = unit();
         const c = k % cols;
         const r = Math.floor(k / cols);
-        const m = c % 2 === 1 ? 1 : 0;
-        const pitch = list.clientWidth / (cols + 1 / 3);
-        return { c, r, m, left: c * pitch, top: (r * 83 + m * 41.5) * u, w: pitch * 4 / 3, h: 83 * u };
+        const per = cols / sets;
+        const lc = c % per;
+        const m = lc % 2;
+        const { setW, pitch, inset } = setGeo(list.clientWidth, per);
+        return { c, r, m, left: Math.floor(c / per) * setW + inset + lc * pitch, top: (r * 83 + m * 41.5) * u, w: pitch * 4 / 3, h: 83 * u };
     }
 
     /**
@@ -926,11 +955,17 @@
         const x = px - lr.left;
         if (!(x >= 0 && x < lr.width)) return -1;
         const u = unit();
-        const pitch = lr.width / (cols + 1 / 3);
+        // the open Fold: each side of the crease is a grid of its own (#870)
+        const per = cols / sets;
+        const { setW, pitch, inset } = setGeo(lr.width, per);
+        const s = Math.min(sets - 1, Math.floor(x / setW));
+        const xs = x - s * setW - inset;
+        if (sets > 1 && (xs < 0 || xs >= pitch * (per + 1 / 3))) return -1;
         // an even column owns its whole cell (4/3 of the pitch), the odd one after it what is left
-        const pair = Math.floor(x / (2 * pitch));
-        const c = Math.min(cols - 1, x - pair * 2 * pitch < pitch * 4 / 3 ? pair * 2 : pair * 2 + 1);
-        const yy = py - lr.top + (BAND_UP - (c % 2 === 1 ? 41.5 : 0)) * u;
+        const pair = Math.floor(xs / (2 * pitch));
+        const lc = Math.min(per - 1, xs - pair * 2 * pitch < pitch * 4 / 3 ? pair * 2 : pair * 2 + 1);
+        const c = s * per + lc;
+        const yy = py - lr.top + (BAND_UP - (lc % 2 === 1 ? 41.5 : 0)) * u;
         if (yy < 0) return -1;
         const i = Math.floor(yy / (83 * u)) * cols + c;
         return i < items.length ? i : -1;

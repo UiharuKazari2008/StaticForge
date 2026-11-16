@@ -52,6 +52,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-list {
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-cell {
     position: absolute;
     left: calc(var(--c) * var(--s65-pitch, 30%));
+    /* the open Fold (#870): --c counts across both sets of three; the set's own column is --c mod
+     * --s65-per, the set starts at its share of the width (--s65-setw) plus --s65-inset (each set
+     * centred in its half at the device's pitch, wmStart65.js render). One set: the same place */
+    left: calc(round(down, var(--c) / var(--s65-per, 99), 1) * var(--s65-setw, 100%) + var(--s65-inset, 0px) + mod(var(--c), var(--s65-per, 99)) * var(--s65-pitch, 30%));
     /* the half unit of the middle column's 41.5 is a transform: Chrome places a box on whole CSS
      * pixels (25.5 was painted at 26), a transform is not snapped */
     top: calc((var(--r) * 83 + var(--m) * 41) * var(--wm-px));
@@ -129,6 +133,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-s65-label {
 html.ui-mobile[data-wm-version="6.5"] .wm-s65-glow {
     position: absolute;
     left: calc(var(--c) * var(--s65-pitch, 30%) + var(--s65-pitch, 30%) * 2 / 3 - 48 * var(--wm-px));
+    left: calc(round(down, var(--c) / var(--s65-per, 99), 1) * var(--s65-setw, 100%) + var(--s65-inset, 0px) + mod(var(--c), var(--s65-per, 99)) * var(--s65-pitch, 30%) + var(--s65-pitch, 30%) * 2 / 3 - 48 * var(--wm-px));
     top: calc((var(--r) * 83 + var(--m) * 41 - 15) * var(--wm-px));
     transform: translateY(calc(var(--m) * 0.5 * var(--wm-px)));
     width: calc(96 * var(--wm-px));
