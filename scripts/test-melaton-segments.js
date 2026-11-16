@@ -49,6 +49,21 @@ const APP_V1 = `
 })(window);
 `;
 const APP_V2 = APP_V1.replace(/v1/g, 'v2');
+// a singleton window the package builds itself (Calculator's desktopCalculatorModal): same id in every
+// version; its 'closed' ends the instance
+const SINGLE_V1 = `
+(function (root) {
+    root.melatonApps.define('single', (app) => {
+        let m = document.getElementById('singleWin');
+        if (!m) { m = document.createElement('div'); m.id = 'singleWin'; m.className = 'modal hidden'; document.body.appendChild(m); }
+        m.textContent = 'single v1';
+        root.openModal(m);
+        root.__singleStarts = (root.__singleStarts || []).concat('v1');
+        document.addEventListener('staticforge:modal-lifecycle', (e) => { if (e.detail.id === 'singleWin' && e.detail.type === 'closed') app.exit(); }, { signal: app.signal });
+        app.onExit(() => { const w = document.getElementById('singleWin'); if (w && !w.classList.contains('hidden')) root.closeModal(w); });
+    });
+})(window);
+`;
 
 function harness() {
     return `<!doctype html><html><head><meta charset="utf-8"></head><body>
@@ -61,11 +76,15 @@ window.wsClient = {
     emit(t, msg) { (this.handlers.get(t) || []).slice().forEach((fn) => fn(msg)); },
     count(t) { return (this.handlers.get(t) || []).length; },
     tree: 'aaaaaaaaaaaa1111',
+    singleTree: '0001ssssssssssss',
     sent: [],
     async sendMessage(type, data) {
         this.sent.push({ type, data });
         const pkg = { id: 'demo', title: 'Demo', version: '1', base: '/melaton-apps/demo/', styles: [],
             clientEntry: '/melaton-apps/demo/client/demo.js?v=' + this.tree.slice(0, 12), treeHash: this.tree, owns: [] };
+        if (data && data.packageId === 'single') {
+            Object.assign(pkg, { id: 'single', title: 'Single', base: '/melaton-apps/single/', clientEntry: '/melaton-apps/single/client/single.js?v=' + this.singleTree.slice(0, 12), treeHash: this.singleTree });
+        }
         if (type === 'app_launch') return { instanceId: 'i' + this.sent.length, runner: null, server: false, package: pkg };
         if (type === 'app_describe') return { package: pkg };
         return {};
@@ -75,7 +94,8 @@ window.wsClient = {
 (function () { const nativeAdd = document.addEventListener.bind(document); document.addEventListener = function patchedDocumentAddEventListener(t, l, o) { return nativeAdd(t, l, o); }; })();
 window.programFaults = { reg: new Map(), registerProgram(id, o) { this.reg.set(id, o); }, unregisterProgram(id) { return this.reg.delete(id); } };
 window.openModal = (m) => m.classList.remove('hidden');
-window.closeModal = (m) => { m.classList.add('hidden'); document.dispatchEvent(new CustomEvent('staticforge:modal-lifecycle', { detail: { type: 'closed', id: m.id } })); };
+// like modalUtils: hidden at once, 'closed' reported after the close animation
+window.closeModal = (m) => { m.classList.add('hidden'); setTimeout(() => document.dispatchEvent(new CustomEvent('staticforge:modal-lifecycle', { detail: { type: 'closed', id: m.id } })), 300); };
 </script>
 <script src="/scripts/comp/melatonSegments.js"></script>
 <script src="/scripts/comp/melatonApps.js"></script>
@@ -117,6 +137,7 @@ async function main(served) {
     const browser = await launchBrowser();
     const page = await browser.newPage();
     let appVersion = 1;
+    let singleVersion = 1;
     page.on('pageerror', (e) => console.error('pageerror:', e.message));
     await page.setRequestInterception(true);
     page.on('request', (req) => {
@@ -129,6 +150,7 @@ async function main(served) {
         if (served && served[url.pathname]) return js(served[url.pathname]);
         if (url.pathname.startsWith('/scripts/')) return js(read(`public${url.pathname}`));
         if (url.pathname === '/seg/demo.js') return js(SEGMENT_V1);
+        if (url.pathname === '/melaton-apps/single/client/single.js') return js(SINGLE_V1.replace('single v1', `single v${singleVersion}`).replace("concat('v1')", `concat('v${singleVersion}')`));
         if (url.pathname === '/melaton-apps/demo/client/demo.js') return js(appVersion === 1 ? APP_V1 : APP_V2.replace(/v2/g, `v${appVersion}`));
         return req.respond({ status: 404, body: '' });
     });
@@ -275,6 +297,20 @@ async function main(served) {
     assert.deepStrictEqual(late.r, { deferred: 'unsaved' });
     assert.deepStrictEqual(late.loaded, [], 'swap ran after the last window closed (nothing to relaunch)');
     assert.deepStrictEqual(late.pending, []);
+
+    // a singleton window survives the swap: the old window's late 'closed' does not end the new instance
+    await page.evaluate(() => melatonApps.launch({ packageId: 'single' }));
+    singleVersion = 2;
+    const single = await page.evaluate(async () => {
+        wsClient.singleTree = '0002ssssssssssss';
+        const r = await melatonApps.applyPackageUpdate('single', { treeHash: wsClient.singleTree });
+        await new Promise((res) => setTimeout(res, 600));
+        const w = document.getElementById('singleWin');
+        return { r: r.swapped && r.relaunched, starts: window.__singleStarts, running: melatonApps.running().map((a) => a.packageId), text: w && w.textContent, open: !!(w && !w.classList.contains('hidden')) };
+    });
+    assert.deepStrictEqual(single.starts, ['v1', 'v2'], JSON.stringify(single));
+    assert.deepStrictEqual(single.running, ['single'], `the new instance keeps running: ${JSON.stringify(single)}`);
+    assert.ok(single.open && single.text === 'single v2', 'its window is the new one, open');
 
     await browser.close();
 }

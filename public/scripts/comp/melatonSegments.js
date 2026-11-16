@@ -496,6 +496,25 @@
         return released;
     }
 
+    /** The windows (.modal) a loaded segment owns that are on screen: its appended nodes, tagged ones, owns. */
+    function windowsOf(key) {
+        const seg = segments.get(key);
+        if (!seg) return [];
+        const doc = root.document;
+        const all = new Set();
+        const add = (n) => {
+            if (!n || n.nodeType !== 1 || !n.isConnected) return;
+            if (n.classList.contains('modal')) all.add(n);
+            n.querySelectorAll('.modal').forEach((m) => all.add(m));
+        };
+        seg.nodes.forEach(add);
+        doc.querySelectorAll(`[data-melaton-segment="${CSS.escape(key)}"]`).forEach(add);
+        for (const sel of seg.owns) {
+            try { doc.querySelectorAll(sel).forEach(add); } catch (_) { /* bad selector */ }
+        }
+        return Array.from(all).filter((m) => !m.classList.contains('hidden'));
+    }
+
     function report() {
         const rows = [];
         for (const seg of segments.values()) rows.push({ key: seg.key, label: seg.label, id: seg.id, state: 'loaded', loadedAt: seg.loadedAt, globals: Array.from(seg.globals) });
@@ -513,6 +532,7 @@
         report,
         ownerOfCaller,
         ensureHooks,
+        windowsOf,
         get: (key) => segments.get(key) || null,
         loaded: () => Array.from(segments.keys()),
         current: () => evaluating

@@ -169,10 +169,26 @@
             }
             pendingSwaps.delete(base);
             const specs = running.map((a) => a._spec);
-            const hadWindows = running.some((a) => a._windowCount() > 0);
+            // the package's windows on screen: the swap waits for each one's 'closed' (closeModal reports
+            // it after its animation). A singleton window (Calculator's desktopCalculatorModal) has the
+            // same id in the new version, whose instance would take the old window's late 'closed' as
+            // its own and exit.
+            const open = root.melatonSegments ? root.melatonSegments.windowsOf(segmentKey(base)).map((m) => m.id).filter(Boolean) : [];
+            const closing = open.length ? new Promise((resolve) => {
+                const left = new Set(open);
+                const ctl = new AbortController();
+                const done = () => { ctl.abort(); resolve(); };
+                document.addEventListener('staticforge:modal-lifecycle', (e) => {
+                    const d = e.detail || {};
+                    if (d.type === 'closed' && left.delete(d.id) && !left.size) done();
+                }, { signal: ctl.signal });
+                setTimeout(done, 1500);
+            }) : null;
             for (const app of running) app._endFor('update');
-            // let the windows finish closing (closeModal's animation) before their DOM is taken
-            if (hadWindows) await delay(650);
+            if (closing) {
+                await closing;
+                await delay(30);
+            }
             const released = root.melatonSegments ? root.melatonSegments.unload(segmentKey(base), o.reason || 'update') : null;
             factories.delete(base);
             loading.delete(base);
