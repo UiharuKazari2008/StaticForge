@@ -261,11 +261,11 @@
 
 /* ---------------------------------------------------------------- presets: a list that fills the page */
 
-:is(.wds-presets, .wds-qadlg .wm-msgbox) > .wm-listbox { flex: 1 1 0; min-height: 0; border: 0; overflow: hidden; touch-action: pan-y; }
+.wds-presets > .wm-listbox { flex: 1 1 0; min-height: 0; border: 0; overflow: hidden; touch-action: pan-y; }
 /* a page of rows a finger can hit: 26 units each (the shared row is 17, a stylus row) */
-:is(.wds-presets, .wds-qadlg) .wm-listbox-row { min-height: calc(26 * var(--wm-px)); height: calc(26 * var(--wm-px)); border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0; }
-:is(.wds-presets, .wds-qadlg) .wm-listbox-row > span { overflow: hidden; text-overflow: ellipsis; }
-:is(.wds-presets, .wds-qadlg .wm-msgbox) > .wds-pager {
+.wds-presets .wm-listbox-row { min-height: calc(26 * var(--wm-px)); height: calc(26 * var(--wm-px)); border-bottom: calc(1 * var(--wm-px)) solid #c0c0c0; }
+.wds-presets .wm-listbox-row > span { overflow: hidden; text-overflow: ellipsis; }
+.wds-presets > .wds-pager {
     flex: 0 0 auto;
     height: calc(18 * var(--wm-px));
     line-height: calc(18 * var(--wm-px));
@@ -273,30 +273,33 @@
     background: var(--wm-tab-strip);
     text-align: center;
 }
-:is(.wds-presets, .wds-qadlg .wm-msgbox) > .wds-pager[hidden] { display: none; }
-:is(.wds-presets, .wds-qadlg .wm-msgbox) > .wm-listbox[hidden] { display: none; }
-:is(.wds-presets, .wds-qadlg .wm-msgbox) > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); color: #848284; }
+.wds-presets > .wds-pager[hidden] { display: none; }
+.wds-presets > .wm-listbox[hidden] { display: none; }
+.wds-presets > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); color: #848284; }
 
-/* ---------------------------------------------------------------- Quick Access: a WM dialog (the
- * message box's frame, wmShell .wm-msgbox) as wide and tall as the page leaves it: the find box over a
- * page of rows (the preset list's 26-unit rows and pager), Back / Previous / Next under them */
+/* ---------------------------------------------------------------- Quick Access: a dense WM dialog (the
+ * message box's frame, wmShell .wm-msgbox), 240 units wide: Quick Access as its title, the
+ * breadcrumbs, Back beside the find box, then 20-unit rows, ten in view and scrolling; smaller when
+ * the keyboard leaves less room */
 
-/* a message box's width (a little wider: 240 units), as tall as eight rows; smaller when the
- * keyboard leaves less room */
 #wmShell .wds-qadlg > .wm-msgbox { display: flex; flex-direction: column; width: 100%; max-width: calc(240 * var(--wm-px)); max-height: 100%; }
-#wmShell .wds-qadlg > .wm-msgbox > .wm-listbox { flex: 0 1 auto; height: calc(8 * 26 * var(--wm-px)); min-height: calc(26 * var(--wm-px)); }
-.wds-qadlg .wds-pager { display: flex; align-items: center; justify-content: space-between; padding: 0 calc(1 * var(--wm-px)); }
-.wds-qadlg .wds-pager > .wm-tool { margin: 0; height: calc(17 * var(--wm-px)); }
-.wds-qadlg .wds-pager > .wm-tool > i { font-size: calc(12 * var(--wm-px)); pointer-events: none; }
+#wmShell .wds-qadlg > .wm-msgbox > .wm-listbox { flex: 0 1 auto; max-height: calc(10 * 20 * var(--wm-px) + 1 * var(--wm-px)); min-height: calc(21 * var(--wm-px)); border: 0; border-top: calc(1 * var(--wm-px)) solid currentColor; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.wds-qadlg .wm-msgbox-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wds-qadlg .wm-msgbox-title > .wm-title-action { flex: 0 0 auto; }
-.wds-qadlg .wds-qa-search { flex: 0 0 auto; margin: 0; padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)); }
-.wds-qadlg .wds-qa-search > .wm-edit { flex: 1 1 auto; min-width: 0; }
-.wds-qadlg .wm-msgbox-buttons { flex: 0 0 auto; padding-top: calc(6 * var(--wm-px)); }
-.wds-qadlg .wds-none { flex: 0 0 auto; height: calc(8 * 26 * var(--wm-px)); margin: 0; padding: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); box-sizing: border-box; }
-.wds-qa-row { gap: calc(5 * var(--wm-px)); }
-.wds-qa-row > i { flex: 0 0 auto; width: calc(14 * var(--wm-px)); font-size: calc(11 * var(--wm-px)); text-align: center; pointer-events: none; }
-.wds-qa-row > span { flex: 1 1 auto; min-width: 0; white-space: nowrap; }
+.wds-qa-search { display: flex; align-items: center; flex: 0 0 auto; gap: calc(2 * var(--wm-px)); padding: calc(2 * var(--wm-px)); }
+.wds-qa-search > .wm-edit { flex: 1 1 auto; min-width: 0; margin: 0; }
+/* Back: the kit's push button, as narrow as its word */
+.wds-qa-search > :first-child { flex: 0 0 auto; min-width: 0; height: calc(21 * var(--wm-px)); margin: 0; }
+/* the breadcrumbs: one line that scrolls sideways (to the current level when it changes) */
+.wds-qa-crumbs { display: flex; align-items: center; flex: 0 0 auto; gap: calc(3 * var(--wm-px)); padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) 0; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; touch-action: pan-x; }
+.wds-qa-crumbs > * { flex: 0 0 auto; }
+.wds-qa-crumbs > button { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; }
+.wds-qa-crumbs > button[aria-current="true"], .wds-qa-crumbs > b { font-weight: bold; text-decoration: none; }
+.wds-qadlg .wm-listbox-row.wds-qa-row { min-height: calc(20 * var(--wm-px)); height: calc(20 * var(--wm-px)); gap: calc(4 * var(--wm-px)); padding: 0 calc(4 * var(--wm-px)); }
+.wds-qa-row > i { flex: 0 0 auto; width: calc(12 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); text-align: center; pointer-events: none; }
+.wds-qa-row > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wds-qa-row > small { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: inherit; opacity: 0.7; }
+.wds-qadlg .wds-none { flex: 0 0 auto; height: calc(2 * 20 * var(--wm-px)); margin: 0; padding: calc(6 * var(--wm-px)) calc(5 * var(--wm-px)); box-sizing: border-box; border-top: calc(1 * var(--wm-px)) solid currentColor; }
 
 /* ---------------------------------------------------------------- print */
 

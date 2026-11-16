@@ -831,17 +831,15 @@
         edCount();
     }
 
-    // ---- Quick Access (the desktop's tag library) as a WM dialog over the editor (Yukimi, Nov 15): the
-    // find box, a page of up to eight rows (groups to open, tags to put in) whose strip turns the
-    // pages (or a flick), and Back; Back and the phone's Back key step out to the list before, X closes it. A tag goes in at the caret the
+    // ---- Quick Access (the desktop's tag library) as a dense WM dialog over the editor (Yukimi, Nov 15:
+    // density first): the breadcrumbs (a tap goes back to a level; scrolled to the current one), Back
+    // beside the find box, then the rows (groups to open, tags to put in), ten in view, scrolling. Back and the phone's Back key
+    // step out to the list before, X closes it. A tag goes in at the caret the
     // editor had, with the commas around it, and the dialog closes
 
-    const QA_ROWS = 8;
     let qaDlg = null;
     let qaStack = [];
     let qaRows = [];
-    let qaPage = 0;
-    let qaPages = 1;
     let qaQuery = '';
     let qaSeq = 0;
     let qaBusy = false;
@@ -864,18 +862,18 @@
         qaDlg.className = 'wm-msgbox-layer wds-qadlg';
         qaDlg.innerHTML = `<div class="wm-msgbox" role="dialog" aria-modal="true" aria-label="Quick Access">
 <div class="wm-msgbox-title"><span></span><button type="button" class="wm-title-action" data-kind="close" aria-label="Close"></button></div>
-<div class="wds-qa-search wm-form-row"><span class="wm-form-label">Find:</span><input class="wm-edit" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Tag" aria-label="Find a tag"></div>
+<div class="wds-qa-crumbs"></div>
+<div class="wds-qa-search"><button type="button" class="wm-button" data-qa="back">Back</button><input class="wm-edit" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Find a tag" aria-label="Find a tag"></div>
 <div class="wm-listbox"></div><p class="wds-none" hidden></p>
-<div class="wds-pager"><button type="button" class="wm-tool" data-qa="prev" aria-label="Previous page">${toolIcon('fas fa-chevron-left')}</button><span></span><button type="button" class="wm-tool" data-qa="next" aria-label="Next page">${toolIcon('fas fa-chevron-right')}</button></div>
-<div class="wm-msgbox-buttons"><button type="button" data-qa="back">Back</button></div>
 </div>`;
         host.appendChild(qaDlg);
         qaDlg.querySelector('.wm-title-action').addEventListener('click', () => closeQa(true));
         qaDlg.querySelector('.wm-msgbox').addEventListener('click', (e) => {
             const b = e.target.closest && e.target.closest('[data-qa]');
-            if (!b || b.disabled || !b.closest('.wm-msgbox-buttons, .wds-pager')) return;
-            if (b.dataset.qa === 'back') qaBack();
-            else qaStep(b.dataset.qa === 'next' ? 1 : -1);
+            if (!b || b.disabled) return;
+            if (b.dataset.qa === 'back') { qaBack(); return; }
+            // a breadcrumb goes back to that level
+            if (b.dataset.qa === 'crumb') { const n = Number(b.dataset.n) || 0; if (qaQuery) { qaQuery = ''; const f = qaQ('.wds-qa-search .wm-edit'); if (f) f.value = ''; } qaStack = qaStack.slice(0, n); qaLoad(); }
         });
         qaDlg.querySelector('.wm-listbox').addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wds-qa-row'); if (r) qaPick(Number(r.dataset.i)); });
         const box = qaQ('.wds-qa-search .wm-edit');
@@ -884,11 +882,6 @@
             qaTimer = setTimeout(() => { const q = box.value.trim(); const next = q.length >= 2 ? q : ''; if (next === qaQuery) return; qaQuery = next; qaLoad(); }, 350);
         });
         box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
-        // a flick across the list turns its pages
-        let downX = null;
-        const list = qaQ('.wm-listbox');
-        list.addEventListener('pointerdown', (e) => { downX = e.clientX; });
-        list.addEventListener('pointerup', (e) => { if (downX == null) return; const dx = e.clientX - downX; downX = null; if (Math.abs(dx) > 50) { e.preventDefault(); qaStep(dx < 0 ? 1 : -1); } });
         sh.refreshTitleAction();
         sh.syncHistory();
         qaLoad();
@@ -923,7 +916,6 @@
     function qaLoad() {
         const seq = ++qaSeq;
         qaBusy = true;
-        qaPage = 0;
         drawQa();
         const at = qaStack[qaStack.length - 1];
         let job;
@@ -943,39 +935,29 @@
 
     function drawQa() {
         if (!qaDlg) return;
-        qaQ('.wm-msgbox-title > span').textContent = qaTitle();
+        qaQ('.wm-msgbox-title > span').textContent = 'Quick Access';
+        // the breadcrumbs: each level opened (a tap goes back to it), scrolled to show the current one
+        const crumbs = qaQ('.wds-qa-crumbs');
+        const trail = [{ label: 'All', n: 0 }].concat(qaStack.map((x, i) => ({ label: x.label, n: i + 1 })));
+        crumbs.innerHTML = trail.map((c, i) => `${i ? '<span aria-hidden="true">&gt;</span>' : ''}<button type="button" data-qa="crumb" data-n="${c.n}"${!qaQuery && i === trail.length - 1 ? ' aria-current="true"' : ''}>${esc(c.label)}</button>`).join('') + (qaQuery ? `<span aria-hidden="true">&gt;</span><b>Find: ${esc(qaQuery)}</b>` : '');
+        crumbs.scrollLeft = crumbs.scrollWidth;
         const box = qaQ('.wm-listbox');
         const none = qaQ('.wds-none');
-        const foot = qaQ('.wds-pager');
         const empty = !qaBusy && !qaRows.length;
         none.hidden = !(qaBusy || empty);
         none.textContent = qaBusy ? 'Loading...' : (qaQuery ? `No tags match "${qaQuery}".` : 'Nothing here.');
         box.hidden = qaBusy || empty;
-        let per = 1;
-        if (qaBusy || empty) { box.textContent = ''; qaPages = 1; } else {
-            box.hidden = false;
-            const unit = parseFloat(getComputedStyle(page).getPropertyValue('--wm-px')) || 1;
-            per = Math.max(1, Math.min(QA_ROWS, Math.floor(box.clientHeight / (26 * unit))));
-            qaPages = Math.max(1, Math.ceil(qaRows.length / per));
-            qaPage = Math.max(0, Math.min(qaPages - 1, qaPage));
+        if (qaBusy || empty) box.textContent = '';
+        else {
             const icon = { group: 'fas fa-folder', tag: 'fas fa-tag' };
-            box.innerHTML = qaRows.slice(qaPage * per, qaPage * per + per).map((r, k) => {
+            box.innerHTML = qaRows.map((r, i) => {
                 const right = r.note ? `<small>${esc(r.note)}</small>` : (r.count != null ? `<small>${esc(String(r.count))}</small>` : '');
-                return `<button type="button" class="wm-listbox-row wds-qa-row is-${r.type}" data-i="${qaPage * per + k}">${toolIcon(icon[r.type])}<span>${esc(r.label)}</span>${right}</button>`;
+                return `<button type="button" class="wm-listbox-row wds-qa-row is-${r.type}" data-i="${i}">${toolIcon(icon[r.type])}<span>${esc(r.label)}</span>${right}</button>`;
             }).join('');
+            box.scrollTop = 0;
         }
-        foot.querySelector('span').textContent = `Page ${qaPage + 1} of ${qaPages}`;
-        // Back steps out to the list before (or out of a search); at the top it closes the dialog
-        qaQ('[data-qa="back"]').textContent = qaQuery || qaStack.length ? 'Back' : 'Close';
-        qaQ('[data-qa="prev"]').disabled = qaPage <= 0;
-        qaQ('[data-qa="next"]').disabled = qaPage >= qaPages - 1;
-    }
-
-    function qaStep(dir) {
-        const next = Math.max(0, Math.min(qaPages - 1, qaPage + dir));
-        if (next === qaPage) return;
-        qaPage = next;
-        drawQa();
+        // Back steps out to the list before (or out of a search); there is none at the top
+        qaQ('[data-qa="back"]').disabled = !qaQuery && !qaStack.length;
     }
 
     function qaPick(i) {
