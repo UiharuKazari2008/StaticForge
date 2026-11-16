@@ -23,6 +23,14 @@
     const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', none: '' };
     let lastReq = 0;
     let restoreNow = null;
+    // one copy at a time: a bar copy stages the bars (the program's title) and Start's copy must not
+    // take its title bar while they are staged
+    let chain = Promise.resolve();
+    function serial(fn) {
+        const p = chain.then(fn, fn);
+        chain = p.catch(() => null);
+        return p;
+    }
 
     function lsGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
 
@@ -217,8 +225,8 @@
     });
 
     window.melatonBars = {
-        render: (ctx) => { render(ctx).catch((err) => { unstage(); console.warn('[melatonBars] render', err); }); },
-        renderStart: (ctx) => { renderStart(ctx).catch((err) => console.warn('[melatonBars] renderStart', err)); },
+        render: (ctx) => { serial(() => render(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] render', err); }); },
+        renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
         unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
     };
