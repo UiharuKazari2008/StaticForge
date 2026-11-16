@@ -3824,7 +3824,9 @@
         }
         // the camera in the title bar takes room: away from Today the volume icon steps aside for the
         // status icons (Yukimi, Nov 13); Today keeps it
-        if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
+        // (drawn over an Android program by the app is away from Today too, whatever this page shows behind it:
+        // else the app's bar gained and lost the volume icon as the page changed, Nov 16)
+        if (cameraInBar && (current !== 'today' || barsExternal) && !el('volume').hidden) el('volume').classList.add('wm-shed');
         relayout();
         if (ok()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
