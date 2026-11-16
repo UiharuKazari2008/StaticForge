@@ -1057,7 +1057,9 @@
                 room: c0.room !== false,
                 hideLandCover: !!c0.hideLandCover,
                 keyguardClear: !!c0.keyguardClear,
-                cutAnimations: !!c0.cutAnimations
+                cutAnimations: !!c0.cutAnimations,
+                lockScreen: !!c0.lockScreen,
+                lockPhoneWall: !!c0.lockPhoneWall
             };
         }
         const cfg = d.barsCfg;
@@ -1080,7 +1082,10 @@
             ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
             ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
             ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}
-            ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}`;
+            ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}
+            <div class="wm-form-gap"></div>
+            ${check('wmBarsLock', 'Use the Windows Mobile lock screen (the phone\'s PIN is typed on its keypad)', cfg.lockScreen)}
+            ${check('wmBarsLockWall', 'Use the phone\'s lock screen wallpaper', cfg.lockPhoneWall)}`;
         const q = (sel) => el.querySelector(sel);
         const sync = () => {
             q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
@@ -1091,6 +1096,8 @@
             q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
             q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
+            q('input[name="wmBarsLock"]').disabled = !cfg.enabled;
+            q('input[name="wmBarsLockWall"]').disabled = !cfg.enabled || !cfg.lockScreen;
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
@@ -1100,6 +1107,8 @@
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
         bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
         bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
+        bind('wmBarsLock', (v) => { cfg.lockScreen = v; });
+        bind('wmBarsLockWall', (v) => { cfg.lockPhoneWall = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
         sync();

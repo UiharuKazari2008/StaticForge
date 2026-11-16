@@ -1040,9 +1040,83 @@
         };
     }
 
+    /**
+     * Melaton Bars (#875): the lock screen staged for the app's copy of it (melatonBars.renderLock),
+     * shown over the phone's own lock screen while Melaton Mobile's page is behind it. The layer is
+     * shown in still frames (.is-copy) and put back as it was by restore(); nothing here locks.
+     * Returns { layer, slider, handle, caption, time, wall, pin, area, dots, keys, unit, setTime(ms),
+     * pinDots(n), restore() } or null.
+     */
+    function barsPrep() {
+        if (!ready()) return null;
+        if (!layer) build();
+        // the keypad the phone's own PIN is typed on (6.5's device page is the same as 6.5.1's)
+        if (!el.pin) build651();
+        const slHandle = el.slider.querySelector('.wm-lock65-handle');
+        const was = {
+            hidden: layer.hidden, cls: layer.className, clip: layer.style.clipPath,
+            slider: el.slider.className, handle: slHandle.style.transform, list: el.list.hidden,
+            pin: el.pin.hidden, alarm: el.alarm.hidden, dots: el.pinDots.innerHTML,
+            clock: el.clock.textContent, ampm: el.ampm.textContent, date: el.date.textContent
+        };
+        layer.classList.add('is-copy');
+        layer.classList.remove('is-pin', 'is-alarm', 'is-ask');
+        layer.style.clipPath = '';
+        el.slider.classList.remove('is-entry', 'is-idle', 'is-pressed');
+        slHandle.style.transform = '';
+        el.list.hidden = true;
+        el.pin.hidden = true;
+        el.alarm.hidden = true;
+        layer.hidden = false;
+        // the picture and the mail count as lock() paints them (paint() waits for the screen)
+        lastWall = '\u0000';
+        mailCount = -1;
+        paintWall();
+        paintMail();
+        const sc = layer.querySelector('.wm-lock65-scene').getBoundingClientRect();
+        const unit = (el.slider.getBoundingClientRect().height / 40) || 1;
+        layer.classList.toggle('is-tall', sc.height / unit >= 400);
+        return {
+            layer, slider: el.slider, handle: slHandle, caption: el.caption, wall: el.wall,
+            time: layer.querySelector('.wm-lock65-time'),
+            pin: el.pin, area: layer.querySelector('.wm-lock65-pin-area'), dots: el.pinDots,
+            keys: [...el.pin.querySelectorAll('.wm-lock65-key')],
+            // the handle's travel either way: 66 units of the 13-unit chevron box
+            travel: 66 * (el.slider.querySelector('.wm-lock65-path').getBoundingClientRect().height / 13 || 1),
+            setTime(ms) {
+                const d = new Date(ms);
+                const t = timeParts(d);
+                el.clock.textContent = t.time;
+                el.ampm.textContent = t.ampm;
+                el.date.textContent = fmtShort.format(d);
+            },
+            pinDots(n) {
+                el.pinDots.textContent = '';
+                for (let i = 0; i < n; i++) el.pinDots.appendChild(document.createElement('i'));
+            },
+            restore() {
+                layer.hidden = was.hidden;
+                layer.className = was.cls;
+                layer.style.clipPath = was.clip;
+                el.slider.className = was.slider;
+                slHandle.style.transform = was.handle;
+                el.list.hidden = was.list;
+                el.pin.hidden = was.pin;
+                el.alarm.hidden = was.alarm;
+                el.pinDots.innerHTML = was.dots;
+                el.clock.textContent = was.clock;
+                el.ampm.textContent = was.ampm;
+                el.date.textContent = was.date;
+                lastClock = '';
+                el.pin.querySelectorAll('.wm-lock65-key.is-held').forEach((k) => k.classList.remove('is-held'));
+            }
+        };
+    }
+
     window.wmLock = {
         lock,
         unlock,
+        barsPrep,
         /** true while the lock screen is up. */
         get isLocked() { return locked; },
         locked: () => locked

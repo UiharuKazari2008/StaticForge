@@ -341,17 +341,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-lock65-date {
 }
 
 /* ---- Melaton Mobile 6.5.1 (#850): the alarm page and the simple PIN page (wmLock65.js) ----
+ * The PIN page's rules hold for 6.5 too: its keypad is the Melaton Bars lock screen's (#875, the
+ * phone's own PIN typed through), and 6.5's device page is the same one. The parts exist only once built.
  * Windows Mobile 6.5.3's LS_AlarmScene_480x640 / LS_SimplePinScene_480x640 (and the 480x854 forms
  * for tall screens), one unit = 2 device px, checked against the 6.5.3 emulator. Both take the
  * lock scene's place: no slide handle, caption, notification rows or time band while one is up. */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-slider,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-caption,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-list,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-alarm .wm-lock65-time,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-slider,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-caption,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-list,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-pin .wm-lock65-time {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-alarm .wm-lock65-slider,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-alarm .wm-lock65-caption,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-alarm .wm-lock65-list,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-alarm .wm-lock65-time,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-pin .wm-lock65-slider,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-pin .wm-lock65-caption,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-pin .wm-lock65-list,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-pin .wm-lock65-time {
     display: none;
 }
 
@@ -360,19 +362,19 @@ html.ui-mobile[data-wm-rev="6.5.1"][data-wm-bars="bottom"] .wm-lock65-scene {
     top: calc(18 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-alarm,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-pin {
     position: absolute;
     inset: 0;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-alarm[hidden],
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin[hidden] {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-alarm[hidden],
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-pin[hidden] {
     display: none;
 }
 
 /* the 240-unit form, centred on a wider screen */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-form {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-form {
     position: absolute;
     top: 0;
     bottom: 0;
@@ -537,7 +539,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-ahandle > span {
 
 /* ---- the simple PIN page: the keypad 208 wide from x 16, y 40: the entry bar 208 x 18, keys
  * 67 x 38 on a 70.5 x 41.5 pitch from y 31, the unlock row at y 241.5 (480x640 form) ---- */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-area {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-pin-area {
     position: absolute;
     left: calc(16 * var(--wm-px));
     top: calc(40 * var(--wm-px));
@@ -548,7 +550,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-area {
 }
 
 /* one dot a digit: 7.5 units across on a 10.5-unit pitch, centred (device: 15 px dots 21 px apart, 206 207 239) */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-dots {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-pin-dots {
     position: absolute;
     inset: 0;
     display: flex;
@@ -558,7 +560,7 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-dots {
     overflow: hidden;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-dots > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-pin-dots > i {
     flex: 0 0 auto;
     width: calc(7.5 * var(--wm-px));
     height: calc(7.5 * var(--wm-px));
@@ -566,8 +568,8 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-pin-dots > i {
     background: #cecfef;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-keys,
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-keys,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-unlock {
     position: absolute;
     left: calc(16 * var(--wm-px));
     top: calc(71 * var(--wm-px));
@@ -578,17 +580,17 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock {
     gap: calc(3.5 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-unlock {
     top: calc(241.5 * var(--wm-px));
 }
 
 /* the tall forms (480x854): entry bar at y 58, keys from y 100, the unlock row at y 292.5 */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-tall .wm-lock65-pin-area { top: calc(58 * var(--wm-px)); }
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-tall .wm-lock65-keys { top: calc(100 * var(--wm-px)); }
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-tall .wm-lock65-unlock { top: calc(292.5 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-tall .wm-lock65-pin-area { top: calc(58 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-tall .wm-lock65-keys { top: calc(100 * var(--wm-px)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-tall .wm-lock65-unlock { top: calc(292.5 * var(--wm-px)); }
 
 /* a key: LS_KeypadButton 67 x 38, its digit Tahoma bold 20 pt in 206 207 239; held: LS_KeypadButton_Dwn */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-key {
     position: relative;
     margin: 0;
     padding: 0;
@@ -605,13 +607,14 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key {
     -webkit-tap-highlight-color: transparent;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key:active {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-key:active,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-key.is-held {
     background-image: url('/static_images/wm65/ls-keypadbutton-dwn@2x.png');
     background-image: image-set(url('/static_images/wm65/ls-keypadbutton-dwn.png') 1x, url('/static_images/wm65/ls-keypadbutton-dwn@2x.png') 2x);
 }
 
 /* backspace and cancel: LS_Clear / LS_Back 24 x 24 at 21.5, 7 */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-key > i {
     position: absolute;
     left: calc(21.5 * var(--wm-px));
     top: calc(7 * var(--wm-px));
@@ -622,13 +625,13 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key > i {
     pointer-events: none;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-key.is-back > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-key.is-back > i {
     background-image: url('/static_images/wm65/ls-back@2x.png');
     background-image: image-set(url('/static_images/wm65/ls-back.png') 1x, url('/static_images/wm65/ls-back@2x.png') 2x);
 }
 
 /* the unlock row's pictures: icn_hm_up / icn_con_up / icn_em_up 37 x 32 at 15, 3 */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-unlock .wm-lock65-key > i {
     left: calc(15 * var(--wm-px));
     top: calc(3 * var(--wm-px));
     width: calc(37 * var(--wm-px));
@@ -636,46 +639,47 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key > i {
     background-image: image-set(url('/static_images/wm65/v651-ls-icn-hm-up@2x.png') 2x, url('/static_images/wm65/v651-ls-icn-hm-up@4x.png') 4x);
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key.is-contacts > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-unlock .wm-lock65-key.is-contacts > i {
     background-image: image-set(url('/static_images/wm65/v651-ls-icn-con-up@2x.png') 2x, url('/static_images/wm65/v651-ls-icn-con-up@4x.png') 4x);
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key.is-messaging > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-unlock .wm-lock65-key.is-messaging > i {
     background-image: image-set(url('/static_images/wm65/ls-icn-em-up@2x.png') 2x, url('/static_images/wm65/ls-icn-em-up@4x.png') 4x);
 }
 
 /* the "Password Incorrect" box comes over the lock screen */
-html.ui-mobile[data-wm-rev="6.5.1"] #wmShell.wm-lock65-box > .wm-msgbox-layer {
+html.ui-mobile[data-wm-version="6.5"] #wmShell.wm-lock65-box > .wm-msgbox-layer {
     z-index: 29;
 }
 
 /* 6.5.1 (#850): the PIN asked for by Settings > Lock (device: LS_SimplePinScene "SimplePinOnly"):
  * one key 208 x 38 (LS_KeyPadAppBar) in place of the three, the unlock picture at x 11.5 and
  * "Unlock" centred in 151.5 units from x 45, Tahoma bold 9 pt */
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65-unlock .wm-lock65-key > span {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65-unlock .wm-lock65-key > span {
     display: none;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key:not(.is-unlock) {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key:not(.is-unlock) {
     display: none;
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock {
     grid-column: 1 / span 3;
     background-image: url('/static_images/wm65/ls-keypadappbar@2x.png');
     background-image: image-set(url('/static_images/wm65/ls-keypadappbar.png') 1x, url('/static_images/wm65/ls-keypadappbar@2x.png') 2x);
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock:active {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock:active,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock.is-held {
     background-image: url('/static_images/wm65/ls-keypadappbar-dwn@2x.png');
     background-image: image-set(url('/static_images/wm65/ls-keypadappbar-dwn.png') 1x, url('/static_images/wm65/ls-keypadappbar-dwn@2x.png') 2x);
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock > i {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock > i {
     left: calc(11.5 * var(--wm-px));
 }
 
-html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock > span {
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock65-key.is-unlock > span {
     display: block;
     position: absolute;
     top: 0;
@@ -685,4 +689,12 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-lock65.is-ask .wm-lock65-unlock .wm-lock
     font: bold calc(12 * var(--wm-px)) / calc(38 * var(--wm-px)) var(--wm-font);
     text-align: center;
     pointer-events: none;
+}
+
+/* Melaton Bars (#875): the lock screen copied for the app's own lock screen, in still frames
+ * (the page is behind the phone's lock screen; nothing of it shows) */
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-copy,
+html.ui-mobile[data-wm-version="6.5"] .wm-lock65.is-copy * {
+    transition: none !important;
+    animation: none !important;
 }
