@@ -19,6 +19,8 @@
  *   app.onExit(fn) / app.exit()        fn(reason): 'closed', 'exit', 'fault', 'update', ...
  *   app.onBeforeUpdate(fn)             fn() returns a reason (string) to put a live update off until the
  *                                      app ends (recording, unsaved work), or nothing to let it go ahead
+ *   app.secureStore                    the phone's encrypted store, namespace app.<id>: get / put / remove
+ *                                      text (#874; available false outside the Android app)
  * The app ends when its last window closes (unless it has an overlay or tray icon, which keep it until
  * exit()), on exit(), or when its server half ends. Ending removes its windows, overlay and tray icon,
  * aborts app.signal and sends app_terminate, so the server half stops with it (a service keeps
@@ -219,6 +221,32 @@
         return p;
     }
 
+    /**
+     * app.secureStore (#874): the Android app's encrypted on-phone store (window.AndroidSecureStore,
+     * Android Keystore AES-256-GCM, never sent to the server or backed up), under the namespace
+     * app.<package id>. available is false outside the Android app (desktop, DeX without it): keep
+     * such data in memory then, never in localStorage. get() -> the stored text, null when nothing is
+     * stored; throws 'locked' while the phone is locked, else an Error when it cannot be read.
+     */
+    function secureStoreFor(packageId) {
+        const ns = `app.${String(packageId || '').toLowerCase().replace(/[^a-z0-9._-]/g, '-')}`.slice(0, 64);
+        const bridge = () => root.AndroidSecureStore || null;
+        return {
+            namespace: ns,
+            get available() { return !!bridge(); },
+            get() {
+                const b = bridge();
+                if (!b) return null;
+                const t = String(b.get(ns) || '');
+                if (t === '!locked') throw new Error('locked');
+                if (t.startsWith('!error')) throw new Error(t.slice(1));
+                return t || null;
+            },
+            put: (text) => { const b = bridge(); return !!(b && b.put(ns, String(text))); },
+            remove: () => { const b = bridge(); return !!(b && b.remove(ns)); }
+        };
+    }
+
     /** The server changed an installed package (app_package_updated): swap it if this tab runs it. */
     function applyPackageUpdate(packageId, detail) {
         const d = detail || {};
@@ -287,6 +315,8 @@
                 },
                 onMessage: (fn) => { if (typeof fn === 'function') messageFns.push(fn); }
             },
+            // the phone's encrypted store, this package's namespace only (#874; docs/client-api/melaton-apps.md)
+            secureStore: secureStoreFor(pkg.id),
             onExit: (fn) => { if (typeof fn === 'function') exitFns.push(fn); },
             onBeforeUpdate: (fn) => { if (typeof fn === 'function') beforeUpdateFns.push(fn); },
             exit: () => end(true),
@@ -546,6 +576,15 @@
         running,
         errorCode,
         applyPackageUpdate,
+        /**
+         * The package's own AbortSignal, for package-level code outside start(app) (a listener or a
+         * fetch that lives as long as the package, not one launch): aborted when the package is
+         * unloaded for an update. Call it while the package's code is being evaluated (top level).
+         */
+        packageSignal: () => {
+            const seg = root.melatonSegments && root.melatonSegments.current();
+            return seg ? seg.ctl.signal : new AbortController().signal;
+        },
         loadedPackages: () => Array.from(loadedPkgs.entries()).map(([base, i]) => Object.assign({ base }, i)),
         pendingUpdates: () => Array.from(pendingSwaps.keys())
     };

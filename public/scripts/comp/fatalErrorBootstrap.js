@@ -724,6 +724,7 @@
                     return origConsoleError.apply(console, arguments);
                 };
                 wrappedConsoleError.__dreamscapeCapture = true;
+                // app-scope: allow fault capture for the page's whole life; forwards to the original
                 console.error = wrappedConsoleError;
             }
         } catch (e) { /* console is read-only here */ }

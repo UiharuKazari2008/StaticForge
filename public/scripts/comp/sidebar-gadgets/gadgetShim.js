@@ -53,13 +53,16 @@
 
     // A gadget shares the desktop's thread: a modal alert() would stop all of Dreamscape.
     // The host shows the text without blocking; confirm() says yes, prompt() takes its default.
+    // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
     window.alert = function (text) {
         if (host && host.notice) host.notice(window, text);
     };
+    // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
     window.confirm = function (text) {
         if (host && host.notice) host.notice(window, text);
         return true;
     };
+    // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
     window.prompt = function (_text, value) {
         return value === undefined ? null : String(value);
     };
@@ -136,6 +139,7 @@
     });
     // and IE 7's getElementById ignored case and matched name= too (sDrive1 for 'sdrive1')
     var byId = Document.prototype.getElementById;
+    // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
     Document.prototype.getElementById = function (id) {
         var doc = this instanceof Document ? this : document;
         var hit = byId.call(doc, id);
@@ -211,8 +215,11 @@
         });
     }
     if (!Element.prototype.setCapture) {
+        // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
         Element.prototype.setCapture = function () {};
+        // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
         Element.prototype.releaseCapture = function () {};
+        // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
         Document.prototype.releaseCapture = function () {};
     }
     if (!('filters' in Element.prototype)) {
@@ -253,6 +260,7 @@
         return PROXY + encodeURIComponent(s);
     }
     var xhrOpen = XMLHttpRequest.prototype.open;
+    // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
     XMLHttpRequest.prototype.open = function (method, url) {
         var args = Array.prototype.slice.call(arguments);
         var via = proxied(url);
@@ -281,6 +289,7 @@
         });
     }
     var setAttr = Element.prototype.setAttribute;
+    // app-scope: allow the gadget's own iframe window (IE 7 shim), not the desktop page
     Element.prototype.setAttribute = function (name, value) {
         if (String(name).toLowerCase() === 'src') {
             var via = this.tagName === 'IMG' ? proxied(value) : (this.tagName === 'SCRIPT' ? localOnly(value) : null);

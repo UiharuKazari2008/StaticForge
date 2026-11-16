@@ -7260,6 +7260,7 @@
         };
         // (notify shows a message box when the alert answers a tap)
         phoneAlert.wmRouted = true;
+        // app-scope: allow phone shell: alert() becomes a WM message box for the page's whole life
         window.alert = phoneAlert;
     }
 
@@ -7300,6 +7301,7 @@
                 return p;
             };
             wrapped.wmBusyWrapped = true;
+            // app-scope: allow phone shell busy cursor; forwards every call, so callers keep their own signal
             window.fetch = wrapped;
         }
     }

@@ -550,12 +550,14 @@ function installKeyboardListenerDevPatch() {
     if (document._keyboardRegistryAddEventListenerPatched) return;
     document._keyboardRegistryAddEventListenerPatched = true;
 
-    const nativeAdd = document.addEventListener.bind(document);
+    // Calls whatever the prototype holds at call time, never a copy bound at install: a copy hid
+    // document listeners from the hook that ties them to their app (melatonSegments.js, #872)
+    // app-scope: allow dev warning only; forwards to the live EventTarget.prototype.addEventListener
     document.addEventListener = function patchedDocumentAddEventListener(type, listener, options) {
         if ((type === 'keydown' || type === 'keyup') && listener && !listener._keyboardRegistryInternal) {
             recordDirectKeyboardListenerWarning(type, listener);
         }
-        return nativeAdd(type, listener, options);
+        return EventTarget.prototype.addEventListener.call(this, type, listener, options);
     };
 }
 

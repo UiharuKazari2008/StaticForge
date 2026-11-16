@@ -102,9 +102,37 @@ melatonApps.define('example', async (app) => {
 | `tray({ title, icon, onClick, menu })` | A notification-area icon (`menu`: a contextMenu.js config) |
 | `onExit(fn)` / `exit()` | Ending the app (both halves). `fn(reason)`: `closed`, `exit`, `fault`, `update`, ... |
 | `onBeforeUpdate(fn)` | `fn()` returns a reason (a string) to put a live update off until the app ends (recording, unsaved work), or nothing to let it go ahead |
+| `secureStore` | The phone's encrypted store for this app's private data (below): `available`, `namespace`, `get()`, `put(text)`, `remove()` |
 
 Everything the app made through the context (windows, overlay, tray icon, listeners on `signal`) is
 removed when it ends.
+
+### Private data on the phone: `app.secureStore` (#874)
+
+Use `app.secureStore` for things that must stay on the phone and never reach the server: tokens,
+card or membership numbers, personal notes. It wraps the Android app's encrypted store
+(`window.AndroidSecureStore`; DSApp `docs/ANDROID_BRIDGE.md` has the full contract). The data is
+AES-256-GCM under an Android Keystore key that never leaves the phone and works only while the phone
+is unlocked. It is left out of backups. Each app gets its own namespace, `app.<package id>`.
+
+```js
+const store = app.secureStore;
+if (store.available) {
+    let saved = null;
+    try { saved = store.get(); } catch (e) { if (e.message === 'locked') { /* ask again after unlock */ } }
+    const data = saved ? JSON.parse(saved) : {};
+    store.put(JSON.stringify(data));   // -> true when written; replaces the whole document
+}
+```
+
+- One text document per app (JSON, as a rule), kept small (well under 1 MB). It is read and written
+  whole.
+- `get()` returns `null` when nothing is stored. It throws `Error('locked')` while the phone is
+  locked, and another Error when the data can't be read (the lock screen was reset: start over with
+  `remove()`).
+- `available` is false outside the Android app (the desktop, a browser tab). Keep the data in memory
+  then and say so in the UI. Never fall back to `localStorage`, IndexedDB or the server half.
+- The server half can't reach this store; it is on the phone only.
 
 ## Live updates (#872)
 

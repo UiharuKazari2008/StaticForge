@@ -1,0 +1,1199 @@
+{
+ "apps/alarm/client/alarm.js": {
+  "page-global": 51
+ },
+ "apps/calculator/client/calculator.js": {
+  "page-global": 138
+ },
+ "apps/snipping/client/snipping.js": {
+  "page-global": 1
+ },
+ "apps/wordpad/client/wordpad.js": {
+  "owner-less-listener": 1,
+  "page-global": 4
+ },
+ "public/scripts/app.js": {
+  "owner-less-listener": 1,
+  "page-global": 2
+ },
+ "public/scripts/appInitSteps.js": {
+  "owner-less-listener": 4,
+  "page-global": 8
+ },
+ "public/scripts/appWebSocketHandlers.js": {
+  "owner-less-listener": 1,
+  "owner-less-ws": 6
+ },
+ "public/scripts/blockContainer-example.js": {
+  "owner-less-listener": 5,
+  "page-global": 14
+ },
+ "public/scripts/cacheBuster.js": {
+  "owner-less-listener": 1,
+  "page-global": 3
+ },
+ "public/scripts/comp/accountDataBootstrap.js": {
+  "page-global": 20
+ },
+ "public/scripts/comp/activeSyncAgent.js": {
+  "owner-less-listener": 5,
+  "lost-interval": 1
+ },
+ "public/scripts/comp/activeSyncClipboard.js": {
+  "owner-less-listener": 3
+ },
+ "public/scripts/comp/activeSyncScreen.js": {
+  "owner-less-listener": 6
+ },
+ "public/scripts/comp/activeSyncStudio.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/aeroGlass.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/agentClientBridge.js": {
+  "owner-less-listener": 2,
+  "owner-less-ws": 2,
+  "lost-interval": 1,
+  "page-global": 9
+ },
+ "public/scripts/comp/agentClientUpdateDialog.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/androidNotificationBridge.js": {
+  "page-global": 9
+ },
+ "public/scripts/comp/appBootstrap.js": {
+  "page-global": 15
+ },
+ "public/scripts/comp/appSplash.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/assetPreload.js": {
+  "owner-less-listener": 4,
+  "page-global": 1
+ },
+ "public/scripts/comp/assetUrlResolver.js": {
+  "page-global": 20
+ },
+ "public/scripts/comp/autocompleteRanking.js": {
+  "page-global": 11
+ },
+ "public/scripts/comp/autocompleteUtils.js": {
+  "owner-less-listener": 4,
+  "page-global": 557
+ },
+ "public/scripts/comp/autofill/spellCheck.js": {
+  "page-global": 37
+ },
+ "public/scripts/comp/autofill/wordLookup.js": {
+  "page-global": 35
+ },
+ "public/scripts/comp/autofillRankingConfig.js": {
+  "owner-less-ws": 1,
+  "page-global": 11
+ },
+ "public/scripts/comp/autofillSettings.js": {
+  "page-global": 38
+ },
+ "public/scripts/comp/balanceDisplay.js": {
+  "page-global": 5
+ },
+ "public/scripts/comp/blockContainer.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/bootUiDebug.js": {
+  "owner-less-listener": 1,
+  "page-global": 31
+ },
+ "public/scripts/comp/bracketGenerationApplet.js": {
+  "owner-less-listener": 1,
+  "page-global": 55
+ },
+ "public/scripts/comp/browsingSessions.js": {
+  "lost-interval": 1
+ },
+ "public/scripts/comp/bulkOperationsManager.js": {
+  "page-global": 21
+ },
+ "public/scripts/comp/cacheAndReadOnly.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/characterAutofillToolManager.js": {
+  "owner-less-listener": 2,
+  "page-global": 3
+ },
+ "public/scripts/comp/characterDbApplet.js": {
+  "owner-less-ws": 1,
+  "page-global": 2
+ },
+ "public/scripts/comp/characterPositionToolManager.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/characterPromptManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 50
+ },
+ "public/scripts/comp/characterSearchModal.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/chatSystem.js": {
+  "page-global": 12
+ },
+ "public/scripts/comp/clientPerfSampler.js": {
+  "page-global": 27
+ },
+ "public/scripts/comp/compareViewManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 121
+ },
+ "public/scripts/comp/compileToPromptsApplet.js": {
+  "page-global": 31
+ },
+ "public/scripts/comp/compiledPromptInspector.js": {
+  "owner-less-listener": 1,
+  "page-global": 11
+ },
+ "public/scripts/comp/configEditorApplet.js": {
+  "owner-less-listener": 1,
+  "page-global": 19
+ },
+ "public/scripts/comp/confirmationDialog.js": {
+  "page-global": 28
+ },
+ "public/scripts/comp/connectionManager.js": {
+  "page-global": 13
+ },
+ "public/scripts/comp/contextMenu.js": {
+  "owner-less-listener": 14,
+  "page-global": 9
+ },
+ "public/scripts/comp/copyLookback.js": {
+  "page-global": 11
+ },
+ "public/scripts/comp/cplAuthentication.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplDesktopBackground.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplMail.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplPages.js": {
+  "owner-less-listener": 3
+ },
+ "public/scripts/comp/cplPages2.js": {
+  "owner-less-listener": 3,
+  "owner-less-ws": 2
+ },
+ "public/scripts/comp/cplPages3.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/cplPersonalization.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplSearch.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplSystem.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplUpdate.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/cplUserAccounts.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/creditCostDialog.js": {
+  "page-global": 26
+ },
+ "public/scripts/comp/customScrollbar.js": {
+  "owner-less-listener": 1,
+  "page-global": 2
+ },
+ "public/scripts/comp/dataManagementDsapApplet.js": {
+  "page-global": 100
+ },
+ "public/scripts/comp/datasetTagToolbar.js": {
+  "owner-less-ws": 1,
+  "page-global": 70
+ },
+ "public/scripts/comp/desktop-apps/charmap/charmapApp.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/desktop-apps/desktopAppWindow.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/desktop-apps/dovecote.js": {
+  "owner-less-listener": 2,
+  "owner-less-ws": 1,
+  "page-global": 286
+ },
+ "public/scripts/comp/desktop-apps/emotion.js": {
+  "page-global": 45
+ },
+ "public/scripts/comp/desktop-apps/guacFrameMirror.js": {
+  "lost-interval": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/desktop-apps/guacRemote.js": {
+  "owner-less-listener": 1,
+  "page-global": 64
+ },
+ "public/scripts/comp/desktop-apps/mediaPlayer.js": {
+  "owner-less-listener": 1,
+  "page-global": 83
+ },
+ "public/scripts/comp/desktop-apps/paint/paintApp.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/desktop-apps/startMenuOrganizer.js": {
+  "page-global": 31
+ },
+ "public/scripts/comp/desktop-apps/vista-games/blockdrop.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/desktopHotkeys.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/desktopIconView.js": {
+  "owner-less-listener": 4
+ },
+ "public/scripts/comp/desktopPersonalization.js": {
+  "owner-less-listener": 4
+ },
+ "public/scripts/comp/desktopShortcuts.js": {
+  "owner-less-listener": 3,
+  "page-global": 8
+ },
+ "public/scripts/comp/desktopSounds.js": {
+  "owner-less-listener": 8
+ },
+ "public/scripts/comp/desktopTaskMonitor.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/director.js": {
+  "owner-less-listener": 7,
+  "owner-less-ws": 30,
+  "page-global": 67
+ },
+ "public/scripts/comp/directorLearningAdmin.js": {
+  "page-global": 8
+ },
+ "public/scripts/comp/directorMascot.js": {
+  "page-global": 25
+ },
+ "public/scripts/comp/directorMascotLab.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/directorToolInspector.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/dropPasteFallback.js": {
+  "owner-less-listener": 7
+ },
+ "public/scripts/comp/dropdown.js": {
+  "page-global": 20
+ },
+ "public/scripts/comp/dsapManifests.js": {
+  "page-global": 39
+ },
+ "public/scripts/comp/dsapRegistry.js": {
+  "page-global": 57
+ },
+ "public/scripts/comp/dsapSmfMarkup.js": {
+  "page-global": 18
+ },
+ "public/scripts/comp/dynamicGenerationCarousel.js": {
+  "page-global": 21
+ },
+ "public/scripts/comp/dynamicGenerationLockState.js": {
+  "page-global": 16
+ },
+ "public/scripts/comp/dynamicGenerationManager.js": {
+  "owner-less-listener": 1,
+  "owner-less-ws": 3,
+  "page-global": 52
+ },
+ "public/scripts/comp/dynamicGenerationOverrides.js": {
+  "page-global": 30
+ },
+ "public/scripts/comp/emphasisEditing.js": {
+  "page-global": 27
+ },
+ "public/scripts/comp/emphasisGroupIdCodec.js": {
+  "page-global": 128
+ },
+ "public/scripts/comp/emphasisGroupsToolManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 37
+ },
+ "public/scripts/comp/emphasisHighlight.js": {
+  "owner-less-listener": 3,
+  "page-global": 61
+ },
+ "public/scripts/comp/emphasisParse.js": {
+  "page-global": 83
+ },
+ "public/scripts/comp/emphasisSelection.js": {
+  "owner-less-listener": 5,
+  "page-global": 20
+ },
+ "public/scripts/comp/emphasisSubgroup.js": {
+  "page-global": 10
+ },
+ "public/scripts/comp/emphasisSyntaxToggles.js": {
+  "page-global": 9
+ },
+ "public/scripts/comp/emphasisTokenModal.js": {
+  "owner-less-listener": 2,
+  "page-global": 19
+ },
+ "public/scripts/comp/emphasisWeightMath.js": {
+  "page-global": 35
+ },
+ "public/scripts/comp/errorDisplay.js": {
+  "page-global": 7
+ },
+ "public/scripts/comp/exitConfirmation.js": {
+  "owner-less-listener": 3,
+  "page-global": 8
+ },
+ "public/scripts/comp/exploreDsapApplet.js": {
+  "owner-less-listener": 2,
+  "page-global": 87
+ },
+ "public/scripts/comp/explorerApplet.js": {
+  "owner-less-listener": 1,
+  "page-global": 14
+ },
+ "public/scripts/comp/fatalErrorBootstrap.js": {
+  "owner-less-listener": 6,
+  "page-global": 9
+ },
+ "public/scripts/comp/featureLoader.js": {
+  "owner-less-listener": 2,
+  "page-global": 19
+ },
+ "public/scripts/comp/fileSearch.js": {
+  "owner-less-listener": 5,
+  "page-global": 8
+ },
+ "public/scripts/comp/focusOverlayManager.js": {
+  "owner-less-listener": 4,
+  "page-global": 6
+ },
+ "public/scripts/comp/galleryActions.js": {
+  "page-global": 17
+ },
+ "public/scripts/comp/galleryImagesLoad.js": {
+  "page-global": 65
+ },
+ "public/scripts/comp/galleryJumpIndex.js": {
+  "owner-less-listener": 1,
+  "page-global": 60
+ },
+ "public/scripts/comp/galleryMetadataCache.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/galleryToolbar.js": {
+  "owner-less-listener": 1,
+  "page-global": 26
+ },
+ "public/scripts/comp/galleryView.js": {
+  "owner-less-listener": 5,
+  "page-global": 396
+ },
+ "public/scripts/comp/generationOrchestrator.js": {
+  "page-global": 8
+ },
+ "public/scripts/comp/generationProgress.js": {
+  "page-global": 4
+ },
+ "public/scripts/comp/generationQuips.js": {
+  "page-global": 47
+ },
+ "public/scripts/comp/generationQuipsTray.js": {
+  "owner-less-listener": 1,
+  "owner-less-ws": 2,
+  "page-global": 43
+ },
+ "public/scripts/comp/grimoireCoreDomains.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/grimoireRemoteBrowser.js": {
+  "owner-less-listener": 1,
+  "page-global": 98
+ },
+ "public/scripts/comp/groupGallery.js": {
+  "page-global": 5
+ },
+ "public/scripts/comp/imageBias.js": {
+  "page-global": 108
+ },
+ "public/scripts/comp/imageExpansion.js": {
+  "owner-less-listener": 1,
+  "page-global": 118
+ },
+ "public/scripts/comp/imageGenerationSettings.js": {
+  "owner-less-ws": 1,
+  "page-global": 164
+ },
+ "public/scripts/comp/imageLoupe.js": {
+  "page-global": 36
+ },
+ "public/scripts/comp/imagePromptInspector.js": {
+  "owner-less-listener": 2,
+  "page-global": 4
+ },
+ "public/scripts/comp/imageSearchApp.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/imageViewer.js": {
+  "owner-less-listener": 1,
+  "page-global": 16
+ },
+ "public/scripts/comp/inpaint.js": {
+  "page-global": 77
+ },
+ "public/scripts/comp/ipManagement.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/keyboardPromptChars.js": {
+  "page-global": 11
+ },
+ "public/scripts/comp/keyboardShortcuts.js": {
+  "page-global": 96
+ },
+ "public/scripts/comp/ledgeDesk.js": {
+  "owner-less-ws": 1,
+  "page-global": 21
+ },
+ "public/scripts/comp/lightbox.js": {
+  "owner-less-listener": 1,
+  "page-global": 87
+ },
+ "public/scripts/comp/logViewerApplet.js": {
+  "page-global": 15
+ },
+ "public/scripts/comp/mainMenuManager.js": {
+  "owner-less-listener": 2,
+  "page-global": 8
+ },
+ "public/scripts/comp/manualDropdownManager.js": {
+  "page-global": 209
+ },
+ "public/scripts/comp/manualFormHelpers.js": {
+  "page-global": 4
+ },
+ "public/scripts/comp/manualGenerationParams.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/manualModalManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 347
+ },
+ "public/scripts/comp/manualPreviewManager.js": {
+  "page-global": 83
+ },
+ "public/scripts/comp/manualTabManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 9
+ },
+ "public/scripts/comp/manualUploadHandlers.js": {
+  "page-global": 7
+ },
+ "public/scripts/comp/masterWsBridge.js": {
+  "page-global": 45
+ },
+ "public/scripts/comp/mcpActivityClient.js": {
+  "owner-less-listener": 1,
+  "page-global": 47
+ },
+ "public/scripts/comp/melatonApps.js": {
+  "owner-less-ws": 3
+ },
+ "public/scripts/comp/melatonBars.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/melatonContinuity.js": {
+  "owner-less-listener": 7
+ },
+ "public/scripts/comp/melatonControlPanel.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/menmaDsapApplet.js": {
+  "page-global": 33
+ },
+ "public/scripts/comp/messengerNotify.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/metadataDialogManager.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/mmcSpellbook.js": {
+  "owner-less-ws": 2
+ },
+ "public/scripts/comp/modalKeyboardRegistry.js": {
+  "owner-less-listener": 3,
+  "page-global": 83
+ },
+ "public/scripts/comp/modalListenerScope.js": {
+  "page-global": 11
+ },
+ "public/scripts/comp/modalUtils.js": {
+  "owner-less-listener": 7,
+  "page-global": 548
+ },
+ "public/scripts/comp/naxVibesApplet.js": {
+  "page-global": 14
+ },
+ "public/scripts/comp/naxtApplet.js": {
+  "page-global": 27
+ },
+ "public/scripts/comp/notepadManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 6
+ },
+ "public/scripts/comp/notepadVista.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/novelAiAccountStatus.js": {
+  "page-global": 31
+ },
+ "public/scripts/comp/novelContextMenu.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/novelManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 65
+ },
+ "public/scripts/comp/novelsDsapApplet.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/omegasearchDsapApplet.js": {
+  "page-global": 62
+ },
+ "public/scripts/comp/pinModal.js": {
+  "page-global": 4
+ },
+ "public/scripts/comp/pipelineStageControls.js": {
+  "page-global": 13
+ },
+ "public/scripts/comp/pipelineStageManager.js": {
+  "page-global": 86
+ },
+ "public/scripts/comp/planetSwitcher.js": {
+  "owner-less-listener": 6,
+  "page-global": 23
+ },
+ "public/scripts/comp/popoverManager.js": {
+  "page-global": 14
+ },
+ "public/scripts/comp/presetManager.js": {
+  "owner-less-listener": 1,
+  "owner-less-ws": 4,
+  "page-global": 60
+ },
+ "public/scripts/comp/presetTokenCount.js": {
+  "owner-less-listener": 1,
+  "page-global": 27
+ },
+ "public/scripts/comp/printQueue.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/programFaults.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/promptApplyPipeline.js": {
+  "page-global": 20
+ },
+ "public/scripts/comp/promptStageBlocks.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/promptTextareaContextMenu.js": {
+  "page-global": 102
+ },
+ "public/scripts/comp/promptTextareaToolbar.js": {
+  "owner-less-listener": 6,
+  "page-global": 18
+ },
+ "public/scripts/comp/promptToolWindows.js": {
+  "owner-less-listener": 5,
+  "page-global": 1
+ },
+ "public/scripts/comp/randomPromptManager.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/recentItems.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/reference/pngMetadata.js": {
+  "page-global": 15
+ },
+ "public/scripts/comp/referenceContextMenu.js": {
+  "page-global": 24
+ },
+ "public/scripts/comp/referenceManager.js": {
+  "page-global": 293
+ },
+ "public/scripts/comp/replicationDsapCargo.js": {
+  "page-global": 25
+ },
+ "public/scripts/comp/replicationDsapSeparation.js": {
+  "page-global": 28
+ },
+ "public/scripts/comp/replicationDsapSync.js": {
+  "page-global": 26
+ },
+ "public/scripts/comp/replicationGalleryBanner.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/requestBodyReplacementsModal.js": {
+  "page-global": 42
+ },
+ "public/scripts/comp/requestForm.js": {
+  "owner-less-ws": 3,
+  "page-global": 15
+ },
+ "public/scripts/comp/rootStateFlags.js": {
+  "owner-less-listener": 2,
+  "page-global": 2
+ },
+ "public/scripts/comp/runApplet.js": {
+  "owner-less-listener": 1,
+  "page-global": 6
+ },
+ "public/scripts/comp/runCommandIndex.js": {
+  "owner-less-listener": 1,
+  "page-global": 107
+ },
+ "public/scripts/comp/runpodTray.js": {
+  "page-global": 19
+ },
+ "public/scripts/comp/screenSaver.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/securityCenterDsapApplet.js": {
+  "owner-less-ws": 2,
+  "page-global": 21
+ },
+ "public/scripts/comp/seedSproutManager.js": {
+  "page-global": 17
+ },
+ "public/scripts/comp/serverManagement.js": {
+  "owner-less-ws": 3,
+  "page-global": 1
+ },
+ "public/scripts/comp/serviceWorkerManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 42
+ },
+ "public/scripts/comp/sidebar-gadgets/gadgetShim.js": {
+  "owner-less-listener": 6,
+  "page-global": 5
+ },
+ "public/scripts/comp/similarImageDsapApplet.js": {
+  "page-global": 24
+ },
+ "public/scripts/comp/spellbookModal.js": {
+  "owner-less-listener": 2,
+  "page-global": 6
+ },
+ "public/scripts/comp/stageResultsReview.js": {
+  "page-global": 17
+ },
+ "public/scripts/comp/streamingEventHandler.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/studioActivityTool.js": {
+  "page-global": 45
+ },
+ "public/scripts/comp/studioChangeJson.js": {
+  "owner-less-listener": 1,
+  "page-global": 125
+ },
+ "public/scripts/comp/studioModel.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/studioSession.js": {
+  "page-global": 64
+ },
+ "public/scripts/comp/studioSoftTips.js": {
+  "page-global": 25
+ },
+ "public/scripts/comp/studioVSlider.js": {
+  "owner-less-listener": 1,
+  "page-global": 108
+ },
+ "public/scripts/comp/systemTrayManager.js": {
+  "owner-less-listener": 1,
+  "page-global": 24
+ },
+ "public/scripts/comp/tabVolume.js": {
+  "owner-less-listener": 3,
+  "page-global": 1
+ },
+ "public/scripts/comp/tagSets.js": {
+  "page-global": 136
+ },
+ "public/scripts/comp/tagWikiSearchModal.js": {
+  "owner-less-listener": 1,
+  "page-global": 37
+ },
+ "public/scripts/comp/taskbarClock.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/telemetryClient.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/textDisplayStyles.js": {
+  "page-global": 19
+ },
+ "public/scripts/comp/textMessagingClient.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/textOverlayManager.js": {
+  "page-global": 32
+ },
+ "public/scripts/comp/textReplacementManager.js": {
+  "page-global": 127
+ },
+ "public/scripts/comp/textareaUtils.js": {
+  "owner-less-listener": 1,
+  "page-global": 18
+ },
+ "public/scripts/comp/themePreferences.js": {
+  "page-global": 6
+ },
+ "public/scripts/comp/toastManager.js": {
+  "page-global": 95
+ },
+ "public/scripts/comp/trayIndicators.js": {
+  "owner-less-listener": 1,
+  "page-global": 26
+ },
+ "public/scripts/comp/trayRegistry.js": {
+  "owner-less-listener": 2,
+  "page-global": 53
+ },
+ "public/scripts/comp/uiResize.js": {
+  "owner-less-listener": 2,
+  "page-global": 3
+ },
+ "public/scripts/comp/uiTheme.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/uploadHandlers.js": {
+  "owner-less-listener": 1,
+  "page-global": 4
+ },
+ "public/scripts/comp/usageToolManager.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/utilities.js": {
+  "page-global": 124
+ },
+ "public/scripts/comp/vfsClient.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/vfsImportRouter.js": {
+  "page-global": 2
+ },
+ "public/scripts/comp/vfsSystemOpenRouter.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/vfsVirtualGrid.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/virtualKeyboard.js": {
+  "owner-less-listener": 1,
+  "page-global": 68
+ },
+ "public/scripts/comp/vistaDialogTemplate.js": {
+  "owner-less-listener": 3
+ },
+ "public/scripts/comp/vistaDialogs.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/vistaGadgetHost.js": {
+  "owner-less-listener": 6,
+  "page-global": 69
+ },
+ "public/scripts/comp/vistaImportWizard.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/vistaSidebar.js": {
+  "owner-less-listener": 15,
+  "owner-less-ws": 3,
+  "page-global": 251
+ },
+ "public/scripts/comp/walletTray.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/websocketRequestsModal.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/welcomeCenter.js": {
+  "owner-less-listener": 4
+ },
+ "public/scripts/comp/windowControlsOverlay.js": {
+  "owner-less-listener": 7,
+  "page-global": 8
+ },
+ "public/scripts/comp/windowGeometry.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/windowManagementHelpers.js": {
+  "page-global": 4
+ },
+ "public/scripts/comp/windowsDefender.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/comp/winlogonPower.js": {
+  "page-global": 39
+ },
+ "public/scripts/comp/wmAccounts.js": {
+  "lost-interval": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmActiveSync.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmAndroidApps.js": {
+  "owner-less-listener": 4,
+  "lost-interval": 1,
+  "page-global": 9
+ },
+ "public/scripts/comp/wmAndroidWidgets.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/wmAtelier.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmBinToss.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmBlockDrop.js": {
+  "owner-less-listener": 3,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmBrickBreaker.js": {
+  "owner-less-listener": 3,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmBrowser.js": {
+  "owner-less-listener": 3,
+  "page-global": 4
+ },
+ "public/scripts/comp/wmCalculator.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmCalendar.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmCamera.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmCarKey.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmCharacters.js": {
+  "owner-less-ws": 1
+ },
+ "public/scripts/comp/wmChat.js": {
+  "owner-less-listener": 3,
+  "owner-less-ws": 1,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmDialogs.js": {
+  "page-global": 4
+ },
+ "public/scripts/comp/wmDirector.js": {
+  "owner-less-listener": 15,
+  "owner-less-ws": 3,
+  "page-global": 3
+ },
+ "public/scripts/comp/wmDoubles.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmDreamStudio.js": {
+  "owner-less-listener": 1,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmEmotion.js": {
+  "page-global": 4
+ },
+ "public/scripts/comp/wmExpanders.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmFileDialogs.js": {
+  "page-global": 3
+ },
+ "public/scripts/comp/wmFileExplorer.js": {
+  "owner-less-listener": 2,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmGameSplash.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmGems.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmHost.js": {
+  "owner-less-listener": 4,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmInkBall.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmInternetSearch.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmLapis.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmLock65.js": {
+  "owner-less-listener": 7,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmMedia.js": {
+  "owner-less-listener": 5,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmMessaging.js": {
+  "owner-less-listener": 4,
+  "owner-less-ws": 1,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmMinesweeper.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmNotes.js": {
+  "owner-less-listener": 2,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmNotificationInbox.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmPayPass.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmPhasewalker.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmPhoneGallery.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmPrograms.js": {
+  "owner-less-listener": 7,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmReference.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmRemoteDesktop.js": {
+  "owner-less-listener": 2,
+  "page-global": 6
+ },
+ "public/scripts/comp/wmSearch.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmSearchPictures.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmSettingsApplets.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/wmSettingsDreamscape.js": {
+  "owner-less-ws": 1
+ },
+ "public/scripts/comp/wmSettingsSystem.js": {
+  "owner-less-listener": 1,
+  "page-global": 5
+ },
+ "public/scripts/comp/wmShell.js": {
+  "owner-less-listener": 50,
+  "lost-interval": 1,
+  "page-global": 6
+ },
+ "public/scripts/comp/wmShortcuts.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmSolitaire.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/comp/wmSpellbook.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmSpellcaster.js": {
+  "owner-less-listener": 1,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmStart65.js": {
+  "owner-less-listener": 4,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmStudio.js": {
+  "owner-less-listener": 2,
+  "page-global": 6
+ },
+ "public/scripts/comp/wmSuiteKit.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmTaskManager.js": {
+  "page-global": 1
+ },
+ "public/scripts/comp/wmTasks.js": {
+  "owner-less-listener": 2,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmTeleport.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmTextMessaging.js": {
+  "owner-less-listener": 1,
+  "lost-interval": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmTitanium.js": {
+  "owner-less-listener": 14,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmTodayWidgets.js": {
+  "owner-less-listener": 7,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmTraffic.js": {
+  "owner-less-listener": 1,
+  "lost-interval": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmWallet.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmWeather.js": {
+  "owner-less-listener": 2,
+  "page-global": 2
+ },
+ "public/scripts/comp/wmXLink.js": {
+  "owner-less-listener": 3,
+  "page-global": 1
+ },
+ "public/scripts/comp/wmYouTube.js": {
+  "owner-less-listener": 4,
+  "page-global": 1
+ },
+ "public/scripts/comp/workspaceUtils.js": {
+  "owner-less-listener": 5,
+  "page-global": 151
+ },
+ "public/scripts/comp/workstationLock.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/launch/launchGamesHost.js": {
+  "owner-less-listener": 2
+ },
+ "public/scripts/launch/melatonBoot.js": {
+  "owner-less-listener": 1,
+  "page-global": 1
+ },
+ "public/scripts/login.js": {
+  "owner-less-listener": 3,
+  "page-global": 3
+ },
+ "public/scripts/pwa-install.js": {
+  "owner-less-listener": 3,
+  "page-global": 2
+ },
+ "public/scripts/sessionLink.js": {
+  "page-global": 3
+ },
+ "public/scripts/traces.js": {
+  "owner-less-listener": 1
+ },
+ "public/scripts/utils/androidOrphanGuard.js": {
+  "owner-less-listener": 1,
+  "lost-interval": 1,
+  "page-global": 1
+ },
+ "public/scripts/utils/deviceUtils.js": {
+  "page-global": 11
+ },
+ "public/scripts/utils/domWrite.js": {
+  "page-global": 5
+ },
+ "public/scripts/utils/dreamscapeClipboard.js": {
+  "page-global": 43
+ },
+ "public/scripts/utils/offscreenAnimationPause.js": {
+  "owner-less-listener": 3
+ },
+ "public/scripts/utils/referenceUtils.js": {
+  "page-global": 4
+ },
+ "public/scripts/utils/touchSlopUtils.js": {
+  "page-global": 1
+ },
+ "public/scripts/utils/wheelTickGate.js": {
+  "page-global": 3
+ },
+ "public/scripts/websocket.js": {
+  "owner-less-listener": 9,
+  "page-global": 4
+ },
+ "public/scripts/ws/handlers/110-chatInbound.js": {
+  "page-global": 4
+ },
+ "public/scripts/ws/handlers/20-galleryInbound.js": {
+  "page-global": 7
+ },
+ "public/scripts/ws/handlers/30-workspaceInbound.js": {
+  "page-global": 10
+ },
+ "public/scripts/ws/handlers/40-appCoreInbound.js": {
+  "page-global": 4
+ },
+ "public/scripts/ws/handlers/50-generationInbound.js": {
+  "page-global": 8
+ },
+ "public/scripts/ws/handlers/60-searchInbound.js": {
+  "page-global": 5
+ },
+ "public/scripts/ws/handlers/70-novelInbound.js": {
+  "page-global": 3
+ },
+ "public/scripts/ws/handlers/80-notesInbound.js": {
+  "page-global": 7
+ },
+ "public/scripts/ws/handlers/90-vfsInbound.js": {
+  "page-global": 2
+ },
+ "public/scripts/ws/inboundHandlerManifest.js": {
+  "page-global": 2
+ },
+ "public/scripts/ws/wsDispatchPolicy.js": {
+  "page-global": 5
+ },
+ "public/scripts/ws/wsInboundRegistry.js": {
+  "page-global": 10
+ }
+}
