@@ -159,8 +159,8 @@ async function main(served) {
         if (served && served[url.pathname]) return js(served[url.pathname]);
         if (url.pathname === '/templates/demo-feature.html') return req.respond({ status: 200, contentType: 'text/html', body: `<div id="demoFeatureWin" class="modal hidden">demo ${featureVersion}</div>` });
         if (url.pathname === '/scripts/demo/a.js') return js(`const DEMO_BIG = new Array(50000).fill('f').join(''); window.demoFeature = { version: ${featureVersion}, size: () => DEMO_BIG.length }; document.addEventListener('demo-feature', () => { window.__featureHits = (window.__featureHits || 0) + 1; });`);
-        if (url.pathname === '/scripts/demo/dep.js') return js(`window.demoDep = { version: ${featureVersion} };`);
-        if (url.pathname === '/scripts/demo/b.js') return js(`function demoOpen() { return 'feature ${featureVersion}'; } window.demoOpen = demoOpen; window.demoFeature.b = true; window.demoFeature.open = () => coreMakeWindow('demoHelperWin');`);
+        if (url.pathname === '/scripts/demo/dep.js') return js(`window.demoDep = { version: ${featureVersion}, build: (id) => { const m = document.createElement('div'); m.id = id; m.className = 'modal'; document.body.appendChild(m); return m; } };`);
+        if (url.pathname === '/scripts/demo/b.js') return js(`function demoOpen() { return 'feature ${featureVersion}'; } window.demoOpen = demoOpen; window.demoFeature.b = true; window.demoFeature.open = () => coreMakeWindow('demoHelperWin'); window.demoFeature.openViaDep = () => window.demoDep.build('depBuiltWin');`);
         if (url.pathname.startsWith('/scripts/')) return js(read(`public${url.pathname}`));
         if (url.pathname === '/seg/demo.js') return js(SEGMENT_V1);
         if (url.pathname === '/melaton-apps/single/client/single.js') return js(SINGLE_V1.replace('single v1', `single v${singleVersion}`).replace("concat('v1')", `concat('v${singleVersion}')`));
@@ -378,6 +378,15 @@ async function main(served) {
         return { r: r.swapped === true, dep: window.demoDep.version, feature: window.demoFeature.version, reloaded: melatonSegments.get('feature:demo_feature').id !== before, order: featureLoader.isLoaded('demo_feature') && featureLoader.isLoaded('demo_dep') };
     });
     assert.deepStrictEqual(cascade, { r: true, dep: 3, feature: 3, reloaded: true, order: true }, 'the dependency and its dependent both reloaded');
+    // a window a hot engine (the dependency) builds for its dependent belongs to the dependent
+    const engineWin = await page.evaluate(() => {
+        window.demoFeature.openViaDep();
+        const r = { feature: melatonSegments.windowsOf('feature:demo_feature').map((w) => w.id), dep: melatonSegments.windowsOf('feature:demo_dep').map((w) => w.id) };
+        closeModal(document.getElementById('depBuiltWin'));
+        document.getElementById('depBuiltWin').remove();
+        return r;
+    });
+    assert.deepStrictEqual(engineWin, { feature: ['depBuiltWin'], dep: [] }, 'the window an engine builds is its caller\'s');
     const restored = await page.evaluate(() => {
         const replacedNow = window.demoOpen();
         featureLoader.unloadFeature('demo_feature', 'test');

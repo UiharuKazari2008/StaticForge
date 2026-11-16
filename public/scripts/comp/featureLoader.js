@@ -57,6 +57,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/characterDbApplet.js']
     },
     server_management: {
+        hot: true,
         scripts: [
             'scripts/comp/serverManagement.js',
             'scripts/comp/ipManagement.js'
@@ -206,6 +207,7 @@ const FEATURE_MANIFEST = {
     },
     // Windows Vista's games (Yozora #609): the shared engine, then one feature per game
     vista_games: {
+        hot: true,
         styles: ['css/desktop-apps/vista-games.css'],
         scripts: ['scripts/comp/desktop-apps/vista-games/vistaGameEngine.js']
     },
@@ -699,7 +701,7 @@ class FeatureLoader {
                 const markup = feature.html ? (this._lastMarkup || []) : [];
                 this._lastMarkup = null;
                 const urls = await Promise.all(feature.scripts.map((s) => this._versionedAssetUrl(s)));
-                const ready = window.melatonSegments.load({ key, label: name, scripts: urls, urlPrefixes: urls.map((u) => u.split('?')[0]) });
+                const ready = window.melatonSegments.load({ key, label: name, scripts: urls, urlPrefixes: urls.map((u) => u.split('?')[0]), dependsOn: (feature.depends || []).map((d) => `feature:${d}`) });
                 markup.forEach((el) => window.melatonSegments.adopt(key, el));
                 await ready;
             } else if (Array.isArray(feature.scripts)) {
