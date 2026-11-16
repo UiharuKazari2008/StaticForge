@@ -217,7 +217,7 @@
                 } else if (c.last && c.last.guid === m.guid) {
                     c.last = m;
                 }
-                if (view() === 'list') renderList();
+                if (view() === 'list' || isDual()) renderList();
             } else if (!updated && loaded && page) {
                 refresh({ quiet: true });
             }
@@ -263,7 +263,7 @@
     function onRead(d) {
         if (!d || d.accountId !== accountId) return;
         const c = chatByGuid(d.chatGuid);
-        if (c) { c.unread = !d.read; if (view() === 'list') renderList(); }
+        if (c) { c.unread = !d.read; if (view() === 'list' || isDual()) renderList(); }
     }
 
     function onChat(d) {
@@ -275,7 +275,7 @@
             const at = chats.findIndex((x) => x.guid === c.guid);
             if (at >= 0) chats[at] = Object.assign({}, chats[at], c);
             if (conv && conv.guid === c.guid) { conv.chat = Object.assign({}, conv.chat, c); renderEntries(); }
-            if (view() === 'list') renderList();
+            if (view() === 'list' || isDual()) renderList();
         }, () => {});
     }
 
@@ -328,7 +328,7 @@
             loaded = true;
             listError = (err && err.message) || 'The conversations could not be read.';
         }
-        if (page && view() === 'list') renderList();
+        if (page && (view() === 'list' || isDual())) renderList();
     }
 
     // ---------------------------------------------------------------- list
@@ -413,11 +413,24 @@
 
     // ---------------------------------------------------------------- layers
 
+    /**
+     * The opened Fold (#870, Yukimi): 600 CSS px or more shows the conversations on the left half
+     * and the open conversation on the right, one each side of the crease (one app: one title, one
+     * pair of soft keys, the open layer's). New message and the picture view keep the whole width.
+     */
+    const DUAL_MIN = 600;
+    const isDual = () => !!page && page.clientWidth >= DUAL_MIN && (view() === 'list' || view() === 'conv');
+
     function showLayer() {
         if (!page) return;
         const v = view();
-        page.querySelector('.wch-listview').hidden = v !== 'list';
-        page.querySelector('.wch-convview').hidden = v !== 'conv';
+        const dual = isDual();
+        page.classList.toggle('is-dual', dual);
+        page.querySelector('.wch-listview').hidden = v !== 'list' && !dual;
+        page.querySelector('.wch-convview').hidden = v !== 'conv' && !dual;
+        // no conversation open: the right half is empty
+        page.querySelector('.wch-convview').classList.toggle('is-none', dual && v !== 'conv');
+        if (dual && v === 'conv') renderList();
         page.querySelector('.wtm-newview').hidden = v !== 'new';
         page.querySelector('.wtm-mediaview').hidden = v !== 'media';
         page.dataset.view = v;
@@ -440,7 +453,7 @@
         if (v === 'new') newDraft = null;
         if (v === 'media') { media = null; const box = page.querySelector('.wtm-media'); box.innerHTML = ''; }
         showLayer();
-        if (view() === 'list') renderList();
+        if (view() === 'list' || isDual()) renderList();
     }
 
     function leaveConv() {
@@ -468,7 +481,8 @@
         const box = inputEl();
         box.value = '';
         fitInput();
-        if (opts.replace) { layers = ['conv']; showLayer(); sh.syncHistory(); } else push('conv');
+        // side by side, another conversation takes the open one's place (one back step, not two)
+        if (opts.replace || (view() === 'conv' && isDual())) { layers = ['conv']; showLayer(); sh.syncHistory(); } else push('conv');
         try {
             await sh.busy(async () => {
                 const t = tm();
@@ -1216,6 +1230,10 @@
     function mount(p) {
         page = p;
         p.classList.add('wm-chat', 'wm-tm');
+        // folding / unfolding: conversations and the open one side by side or not
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(() => { if (page.classList.contains('is-dual') !== isDual()) showLayer(); }).observe(p);
+        }
         p.innerHTML = `
             <div class="wch-listview">
                 <div class="wm-pv-bar wch-bar">

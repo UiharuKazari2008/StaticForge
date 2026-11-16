@@ -378,3 +378,24 @@ html.ui-mobile .wm-msgbox.wtm-openwith .wm-msgbox-buttons button {
     width: 100%;
     white-space: nowrap;
 }
+
+/* the opened Fold (#870, wmTextMessaging.js isDual): conversations on the left half, the open one on
+ * the right, the crease drawn as the list's row rule; nothing open = an empty right half */
+.wm-tm.is-dual {
+    flex-direction: row;
+}
+
+.wm-tm.is-dual > .wch-listview,
+.wm-tm.is-dual > .wch-convview {
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+.wm-tm.is-dual > .wch-convview {
+    border-left: calc(1 * var(--wm-px)) solid #848284;
+}
+
+.wm-tm.is-dual > .wch-convview.is-none > * {
+    visibility: hidden;
+}
+
