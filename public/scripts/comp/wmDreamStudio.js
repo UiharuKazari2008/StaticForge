@@ -77,7 +77,7 @@
     // the generation tool bar (Yukimi, Nov 15): three groups, each kept whole when the bar wraps
     const GEN_GROUPS = [
         [['model', 'Model', 'combo'], ['effort', 'Drafting (Medium Effort)', 'toggle', 'fas fa-feather'], ['resolution', 'Size', 'combo'], ['n', 'Prints', 'number']],
-        [['dataset', 'Datasets', 'panel', 'nai-sakura'], ['subtoggle', 'Adjustments', 'panel', 'fas fa-diamond-half-stroke'], ['uc', 'UC Preset', 'list']],
+        [['dataset', 'Datasets', 'panel', 'nai-sakura'], ['subtoggle', 'Adjustments', 'panel', 'fas fa-diamond-half-stroke'], ['uc', 'UC Preset and NSFW', 'list']],
         [['steps', 'Steps', 'number'], ['guidance', 'Guidance', 'number'], ['variety', 'Variety+', 'toggle', 'fas fa-sparkle'], ['rescale', 'Rescale', 'number'], ['sampler', 'Sampler', 'combo'], ['seed', 'Seed', 'seed', 'fas fa-seedling']]
     ];
     // the numbers: their trackbar's range and step, the default the square button puts back
@@ -88,6 +88,8 @@
         rescale: { min: 0, max: 1, step: 0.01, def: 0 }
     };
     const SEED_HOLD_MS = 500;
+    // the numbers shown in seven-segment figures (Yukimi, Nov 15)
+    const GEN_SEG = new Set(['steps', 'guidance', 'rescale']);
 
     let sh = null;
     let ui = null;
@@ -776,7 +778,7 @@
         if (!ta || !out) return;
         const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
         const w = hit ? hit.weight : 1;
-        out.textContent = w.toFixed(2);
+        if (ui && typeof ui.segText === 'function') ui.segText(out, w.toFixed(2)); else out.textContent = w.toFixed(2);
         // the readout takes the strength's colour (Yukimi, Nov 15): up towards orange and red, down
         // towards blue, all of it by 2 / 0
         const level = Math.max(-1, Math.min(1, w - 1));
@@ -1194,7 +1196,7 @@
         // a group with combos or numbers takes a share of the row's spare room; one of icons only does not
         bar.innerHTML = GEN_GROUPS.map((group, gi) => `<div class="wm-toolbar-group${group.some((t) => t[2] === 'combo' || t[2] === 'number') ? ' wds-gb-grow' : ''}">${gi ? '<span class="wm-tool-sep" aria-hidden="true"></span>' : ''}${group.map(([id, label, kind, icon]) => {
             if (kind === 'combo') return `<button type="button" class="wm-tool wm-tool-combo" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"></button>`;
-            if (kind === 'number') return `<button type="button" class="wm-tool is-text" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="dialog" title="${esc(label)}"></button>`;
+            if (kind === 'number') return `<button type="button" class="wm-tool is-text${GEN_SEG.has(id) ? ' wm-seg' : ''}" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="dialog" title="${esc(label)}"></button>`;
             // UC is the desktop's level meter (four boxes), not a picture
             if (id === 'uc') return `<button type="button" class="wm-tool" data-gb="uc" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"><span class="wms-uc-meter" data-level="0"><i></i><i></i><i></i><i></i></span></button>`;
             const count = id === 'dataset' ? '<span class="wms-pt-count" hidden></span>' : '';
@@ -1218,6 +1220,8 @@
         seed.addEventListener('click', (e) => {
             e.stopPropagation();
             if (held) { held = false; return; }
+            // a tap that closed the seed's panel does only that
+            if (ui && ui.popPanelJustClosed(seed)) return;
             const s = read();
             change('seedLock', !s.seedLock).then(() => {
                 // nothing to keep yet (no print made, no seed typed): the box asks for one
@@ -1230,6 +1234,12 @@
     }
 
     const flat = (groups) => [].concat(...groups.map((g) => g.options.map((x) => Object.assign({ group: g.group, groupBadge: g.badge, free: g.free }, x))));
+    /** A number's cell: seven-segment figures with their unlit segments, or plain digits. */
+    function genNum(btn, id, v) {
+        if (!btn) return;
+        if (GEN_SEG.has(id) && ui && typeof ui.segText === 'function') ui.segText(btn, fmtNum(id, v));
+        else btn.textContent = fmtNum(id, v);
+    }
     const fmtNum = (id, v) => { const c = GEN_NUMBERS[id]; const dg = (String(c.step).split('.')[1] || '').length; return Number(v == null ? c.def : v).toFixed(dg); };
 
     /** A combo's text and the desktop's badge after it (v4.5 Full, Portrait WP, Euler A). */
@@ -1241,6 +1251,19 @@
             b.textContent = badge;
             btn.appendChild(b);
         }
+    }
+
+    /** Model's combo is as wide as its widest choice (Yukimi, Nov 15: the room goes to the others). */
+    let modelFit = '';
+    function fitModelCombo(btn, models) {
+        const key = models.map((m) => `${m.short}|${m.badge}`).join(',');
+        if (!btn || key === modelFit || !btn.getClientRects().length) return;
+        btn.style.width = '';
+        btn.classList.add('is-measuring');
+        let w = 0;
+        models.forEach((m) => { comboFace(btn, m.short, m.badge, m.badgeClass); w = Math.max(w, btn.scrollWidth); });
+        btn.classList.remove('is-measuring');
+        if (w > 0) { btn.style.width = `${Math.ceil(w)}px`; modelFit = key; }
     }
 
     function sizeBadge(x) {
@@ -1256,13 +1279,14 @@
         const o = M.options();
         const q = (id) => bar.querySelector(`[data-gb="${id}"]`);
         const model = flat(o.models).find((m) => m.value === s.model);
+        fitModelCombo(q('model'), flat(o.models));
         comboFace(q('model'), model ? model.short : (s.model || 'Model'), model && model.badge, model && model.badgeClass);
         const eff = q('effort');
         eff.hidden = !o.has.effort;
         eff.setAttribute('aria-pressed', String(s.effort === 'medium'));
         const size = flat(o.resolutions).find((x) => x.value === s.resolution);
         if (size) { const f = sizeBadge(size); comboFace(q('resolution'), f.name, f.badge, f.cls); } else comboFace(q('resolution'), s.width && s.height ? `${s.width} x ${s.height}` : 'Size');
-        Object.keys(GEN_NUMBERS).forEach((id) => { q(id).textContent = fmtNum(id, s[id]); });
+        Object.keys(GEN_NUMBERS).forEach((id) => { genNum(q(id), id, s[id]); });
         q('steps').disabled = !o.has.steps;
         q('rescale').disabled = !o.has.rescale;
         const ds = q('dataset');
@@ -1319,7 +1343,13 @@
             genList(b, grouped(o.resolutions, sizeName), s.resolution, (v) => change('resolution', v).then(() => { if (/^custom/.test(String(v))) openLayer('settings'); }));
             return;
         }
-        if (id === 'uc') { genList(b, o.ucPresets.map((x) => [x.value, x.name]), Number(s.append_uc) || 0, (v) => change('append_uc', v)); return; }
+        if (id === 'uc') {
+            // UC Preset and NSFW in one list (Yukimi, Nov 15), a divider between, each with its dot
+            const rows = o.ucPresets.map((x) => ({ label: x.name, radio: x.value === (Number(s.append_uc) || 0), action: () => change('append_uc', x.value) }));
+            rows.push('-', ...o.nsfw.map((x) => ({ label: `NSFW: ${x.name}`, radio: x.value === (Number(s.nsfw) || 0), action: () => change('nsfw', x.value) })));
+            sh.dropdown(b, rows, b.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left');
+            return;
+        }
         if (id === 'sampler') {
             const rows = o.samplers.map((x) => [`s:${x.value}`, x.name]);
             if (o.has.noise && o.noise.length) rows.push('-', ...o.noise.map((x) => [`n:${x.value}`, x.name]));
@@ -1332,7 +1362,7 @@
         if (GEN_NUMBERS[id]) {
             const c = GEN_NUMBERS[id];
             const label = b.getAttribute('aria-label');
-            ui.valuePop(b, Object.assign({}, c, { label, value: Number(s[id] == null ? c.def : s[id]), onChange: (v) => { b.textContent = fmtNum(id, v); queueSet(id, v); } }));
+            ui.valuePop(b, Object.assign({}, c, { label, value: Number(s[id] == null ? c.def : s[id]), onChange: (v) => { genNum(b, id, v); queueSet(id, v); } }));
             return;
         }
         if (id === 'dataset') { weightPanel(b, 'Datasets', datasetRows, (row, patch) => M.setDataset(row.key, patch)); return; }

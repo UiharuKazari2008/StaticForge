@@ -2493,8 +2493,8 @@
         /**
          * Jog wheel rendered into `host`: a ridged thumbwheel seen edge-on in a sunken frame (the
          * ridges crowd and darken towards both ends, as on a cylinder); a sideways drag rolls it,
-         * one step of the value per `stepPx` WM units rolled, with no ends to the wheel itself (the
-         * value stops at min / max). Left / Right step it, Home / End go to the ends. opts: value,
+         * one step of the value per `stepPx` WM units rolled, each step a detent (the shell's touch
+         * tick), with no ends to the wheel itself (the value stops at min / max). Left / Right step it, Home / End go to the ends. opts: value,
          * min, max, step, label (accessible name), stepPx (8), onChange(value) on every step,
          * onStep(dir) instead of a value (a wheel that steps something else: emphasis), disabled.
          * Returns { set(value), el }.
@@ -2522,12 +2522,15 @@
                 if (Number.isFinite(min)) el.setAttribute('aria-valuemin', String(min));
                 if (Number.isFinite(max)) el.setAttribute('aria-valuemax', String(max));
             };
+            // a detent: the shell's short touch tick on every step (Settings decide whether it buzzes)
+            const detent = () => { if (sh && typeof sh.vibrate === 'function') sh.vibrate('tick'); };
             const move = (n) => {
                 if (!n) return;
-                if (onStep) { for (let k = 0; k < Math.abs(n); k++) onStep(Math.sign(n)); return; }
+                if (onStep) { for (let k = 0; k < Math.abs(n); k++) { onStep(Math.sign(n)); detent(); } return; }
                 const next = Math.max(min, Math.min(max, Number((cur + n * step).toFixed(dg))));
                 if (next === cur) return;
                 cur = next;
+                detent();
                 draw();
                 if (onChange) onChange(cur);
             };
@@ -2610,6 +2613,16 @@
                     setTimeout(() => jog.el.focus({ preventScroll: true }), 0);
                 }
             });
+        },
+        /**
+         * Seven-segment figures (.wm-seg / .wm-lcd, DSEG7): sets the text and the unlit segments
+         * behind it (every figure an 8, its point kept), as an LCD shows them.
+         */
+        segText(el, text) {
+            if (!el) return;
+            const t = String(text == null ? '' : text);
+            if (el.textContent !== t) el.textContent = t;
+            el.dataset.ghost = t.replace(/[0-9]/g, '8').replace(/[^8.:\s]/g, '8');
         },
         /**
          * A tool bar too wide for the screen wraps by its groups (.wm-toolbar-group): a divider that

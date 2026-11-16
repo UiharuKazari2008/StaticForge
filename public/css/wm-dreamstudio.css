@@ -466,6 +466,11 @@
 .wds-genbar > .wm-toolbar-group.wds-gb-grow { flex: 1 0 auto; }
 .wds-genbar .wm-tool.wm-tool-combo { flex: 3 1 auto; max-width: calc(160 * var(--wm-px)); }
 .wds-genbar .wm-tool.is-text { flex: 1 0 auto; min-width: calc(26 * var(--wm-px)); }
+/* Model: as wide as its widest choice (set by script), never stretched */
+.wds-genbar .wm-tool.wm-tool-combo[data-gb="model"] { flex: 0 0 auto; max-width: none; }
+.wds-genbar .wm-tool.wm-tool-combo.is-measuring { width: max-content; }
+/* the seven-segment numbers: the LCD readout's size */
+.wds-genbar .wm-tool.wm-seg { font-size: calc(11 * var(--wm-px)); }
 .wm-dreamstudio:is([data-view="editor"], [data-view="ref"], [data-view="presets"]) > .wds-genbar { display: none; }
 /* the desktop's glyphs in the cells (for now): 13 units, the cell's own colour (grey when disabled) */
 .wds-genbar .wm-tool > i { font-size: calc(13 * var(--wm-px)); line-height: 1; pointer-events: none; }

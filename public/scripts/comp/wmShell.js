@@ -735,6 +735,9 @@
             // Start and the soft keys toggle their own menus: closing here first would let
             // their click handler open the menu again
             if (e.target.closest && e.target.closest('#wmShell .wm-start, #wmShell .wm-title, #wmShell .wm-softkey, #wmShell [aria-haspopup="menu"]')) return;
+            // nor the control a drop-down hangs from: its own click closes it (showDropdown), where a
+            // close here let that click open it again (every combo and tool list, Nov 15 #860)
+            if (openPopup.dataset.side === 'dropdown' && dropdownAnchor && dropdownAnchor.contains && dropdownAnchor.contains(e.target)) return;
             closeMenus();
         }, true);
         bindHoldRing();

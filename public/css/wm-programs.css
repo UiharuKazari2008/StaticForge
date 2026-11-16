@@ -1838,6 +1838,29 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     white-space: nowrap;
 }
 
+/* seven-segment figures (.wm-seg, and every .wm-lcd; wmSettings.ui.segText): the DSEG7 face over
+ * its unlit segments (data-ghost, every figure an 8) in the same place, faint */
+.wm-seg {
+    position: relative;
+    font-family: 'DSEG7 Classic', var(--wm-font);
+    font-weight: normal;
+}
+
+.wm-lcd { position: relative; }
+
+:is(.wm-seg, .wm-lcd)[data-ghost]::before {
+    content: attr(data-ghost);
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: inherit;
+    padding: inherit;
+    box-sizing: border-box;
+    opacity: 0.12;
+    pointer-events: none;
+}
+
 /* a toned readout (data-tone up / down, --wm-lcd-strength 0 .. 1): its backlight goes towards orange
  * and then red above neutral, towards blue below (the desktop's emphasis colours), as far as the
  * value stands from neutral */
