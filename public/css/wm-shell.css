@@ -4117,8 +4117,9 @@ html[data-screen-off] body::after {
 
 /* ---- Melaton Bars (#871): the page is behind an Android program (wmShell setBarsExternal). Yukimi, Nov 16:
  * everything open in Melaton Mobile is suspended - animations and transitions stand still, no blur or
- * filters, no promoted GPU layers, nothing painted. The bars' copies leave this attribute out
- * (windowCapture), so they still show the page as it looks in front. ---- */
+ * filters, no promoted GPU layers. Its content stays painted: never a black page (it showed as a black
+ * screen on the way back, a gesture home's preview among them). The bars' copies leave this attribute
+ * out (windowCapture), so they still show the page as it looks in front. ---- */
 html[data-wm-behind] *,
 html[data-wm-behind] *::before,
 html[data-wm-behind] *::after {
@@ -4127,10 +4128,6 @@ html[data-wm-behind] *::after {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     will-change: auto !important;
-}
-
-html[data-wm-behind] body > * {
-    visibility: hidden !important;
 }
 
 /* Settings > Today > Wallpaper > Use: Android Wallpaper (#799). The app's window shows the phone's own
