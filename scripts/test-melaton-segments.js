@@ -71,6 +71,8 @@ window.wsClient = {
         return {};
     }
 };
+// modalKeyboardRegistry.js puts its own addEventListener on document, bound to the native one
+(function () { const nativeAdd = document.addEventListener.bind(document); document.addEventListener = function patchedDocumentAddEventListener(t, l, o) { return nativeAdd(t, l, o); }; })();
 window.programFaults = { reg: new Map(), registerProgram(id, o) { this.reg.set(id, o); }, unregisterProgram(id) { return this.reg.delete(id); } };
 window.openModal = (m) => m.classList.remove('hidden');
 window.closeModal = (m) => { m.classList.add('hidden'); document.dispatchEvent(new CustomEvent('staticforge:modal-lifecycle', { detail: { type: 'closed', id: m.id } })); };
@@ -95,7 +97,23 @@ async function launchBrowser() {
     throw new Error('puppeteer-core not found (set PUPPETEER_CORE)');
 }
 
-async function main() {
+/**
+ * The runtime files as clients get them: minified with the compiler's terser options
+ * (modules/runtimeAssetCompiler.js). Minifying changes closure scopes (single-use functions are
+ * inlined), which is how a page-wide hook once kept the first segment alive; only the minified pass
+ * caught it.
+ */
+async function minifiedSources() {
+    const { minify } = require('terser');
+    const out = {};
+    for (const rel of ['/scripts/comp/melatonSegments.js', '/scripts/comp/melatonApps.js']) {
+        const r = await minify(read(`public${rel}`), { compress: { warnings: true, passes: 2 }, mangle: true, format: { comments: false } });
+        out[rel] = r.code;
+    }
+    return out;
+}
+
+async function main(served) {
     const browser = await launchBrowser();
     const page = await browser.newPage();
     let appVersion = 1;
@@ -108,6 +126,7 @@ async function main() {
         if (url.pathname === '/') return req.respond({ status: 200, contentType: 'text/html', body: harness() });
         // SEG_SOURCE: another melatonSegments.js (a mutation check of this test)
         if (url.pathname === '/scripts/comp/melatonSegments.js' && process.env.SEG_SOURCE) return js(fs.readFileSync(process.env.SEG_SOURCE, 'utf8'));
+        if (served && served[url.pathname]) return js(served[url.pathname]);
         if (url.pathname.startsWith('/scripts/')) return js(read(`public${url.pathname}`));
         if (url.pathname === '/seg/demo.js') return js(SEGMENT_V1);
         if (url.pathname === '/melaton-apps/demo/client/demo.js') return js(appVersion === 1 ? APP_V1 : APP_V2.replace(/v2/g, `v${appVersion}`));
@@ -258,10 +277,14 @@ async function main() {
     assert.deepStrictEqual(late.pending, []);
 
     await browser.close();
-    console.log('melaton segments: all checks passed');
 }
 
-main().catch((err) => {
+(async () => {
+    await main(null);
+    console.log('melaton segments: source: all checks passed');
+    await main(await minifiedSources());
+    console.log('melaton segments: minified (as served): all checks passed');
+})().catch((err) => {
     console.error(err);
     process.exit(1);
 });

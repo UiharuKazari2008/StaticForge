@@ -3911,6 +3911,25 @@ function bumpModalZIndexToFront(modal) {
     }
 }
 
+/**
+ * A window element (or windows inside it) removed for good without closeModal: an app unloaded for a
+ * live update (melatonSegments.js, #872). The stacks would keep the element, and with it every
+ * listener and closure of the unloaded app.
+ */
+function forgetModalElement(el) {
+    if (!el || el.nodeType !== 1) return;
+    const gone = [el, ...el.querySelectorAll('.modal')];
+    let changed = false;
+    for (const m of gone) {
+        const i = modalStack.indexOf(m);
+        if (i !== -1) { modalStack.splice(i, 1); changed = true; }
+        const u = windowUsageStack.indexOf(m);
+        if (u !== -1) windowUsageStack.splice(u, 1);
+    }
+    if (changed) updateModalStackZIndexes();
+}
+window.forgetModalElement = forgetModalElement;
+
 function bringModalToFront(modal) {
     if (!modal) return;
 

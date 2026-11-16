@@ -47,10 +47,18 @@ function attachPackageUpdates({ broadcast, log }) {
  * the listener above). Returns the changes.
  */
 function syncSystemPackageUpdates(globalResources) {
-    const { getMelatonApps, resyncSystemPackages } = require('./index');
-    // the store is created the way the WS handler creates it (packet types it must not take)
-    getMelatonApps(globalResources, { getReservedPacketTypes: reservedPacketTypes });
-    return resyncSystemPackages();
+    const { getMelatonApps, resyncSystemPackages, onPackageUpdated } = require('./index');
+    // every change announced during this call (creating the store syncs too, before the resync)
+    const seen = [];
+    const off = onPackageUpdated((change) => seen.push(change));
+    try {
+        // the store is created the way the WS handler creates it (packet types it must not take)
+        getMelatonApps(globalResources, { getReservedPacketTypes: reservedPacketTypes });
+        resyncSystemPackages();
+    } finally {
+        off();
+    }
+    return seen;
 }
 
 module.exports = { attachPackageUpdates, syncSystemPackageUpdates, RETIRE_GRACE_MS };

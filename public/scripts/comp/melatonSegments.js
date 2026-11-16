@@ -96,20 +96,34 @@
         return { capture: options === true, signal };
     }
 
+    /** add -> an addEventListener that gives segment callers the segment's signal. */
+    function signalledAdd(add) {
+        const fn = function addEventListener(type, listener, options) {
+            if (segments.size && listener) {
+                const seg = ownerOfCaller(1);
+                if (seg && !seg.ctl.signal.aborted) return add.call(this, type, listener, withSignal(options, seg.ctl.signal));
+            }
+            return add.call(this, type, listener, options);
+        };
+        fn.__melatonSegmentWrapped = true;
+        return fn;
+    }
+
     let hooked = false;
     function installHooks() {
-        if (hooked) return;
-        hooked = true;
-        const proto = root.EventTarget && root.EventTarget.prototype;
-        if (proto && proto.addEventListener) {
-            const add = proto.addEventListener;
-            proto.addEventListener = function addEventListener(type, listener, options) {
-                if (segments.size && listener) {
-                    const seg = ownerOfCaller(1);
-                    if (seg && !seg.ctl.signal.aborted) return add.call(this, type, listener, withSignal(options, seg.ctl.signal));
-                }
-                return add.call(this, type, listener, options);
-            };
+        if (!hooked) {
+            hooked = true;
+            const proto = root.EventTarget && root.EventTarget.prototype;
+            if (proto && proto.addEventListener) proto.addEventListener = signalledAdd(proto.addEventListener);
+        }
+        // an own addEventListener on document / window (modalKeyboardRegistry.js puts one on document,
+        // bound to the native one) would skip the prototype's: wrap it too, on every load (it can
+        // arrive later)
+        for (const target of [root.document, root]) {
+            if (!target || !Object.prototype.hasOwnProperty.call(target, 'addEventListener')) continue;
+            const own = target.addEventListener;
+            if (typeof own !== 'function' || own.__melatonSegmentWrapped) continue;
+            try { target.addEventListener = signalledAdd(own); } catch (_) { /* read-only */ }
         }
     }
 
@@ -260,6 +274,18 @@
         };
     }
 
+    /**
+     * The page-wide hooks. They live for the page, so they must not be created inside load(): a
+     * minifier inlining them there (terser does, for single-use functions) makes every hook closure
+     * keep load()'s scope, and so the first segment ever loaded, for good. ensureHooks has no segment
+     * in scope and is exported (two uses), so it is not inlined into load().
+     */
+    function ensureHooks() {
+        installHooks();
+        hookObjectUrls();
+        wrapRegistries();
+    }
+
     // ---- load / unload -----------------------------------------------------------------------------
 
     function absolute(url) {
@@ -322,9 +348,7 @@
         if (!key) return Promise.reject(new Error('melatonSegments.load: key required'));
         const existing = segments.get(key);
         if (existing) return existing.ready;
-        installHooks();
-        hookObjectUrls();
-        wrapRegistries();
+        ensureHooks();
 
         const scripts = (s.scripts || []).map(absolute);
         const seg = {
@@ -380,6 +404,10 @@
                 if (typeof root.contextMenu.detachClickMenuFromElement === 'function') root.contextMenu.detachClickMenuFromElement(node);
             }
         } catch (_) { /* best effort */ }
+        // the window stacks (modalUtils.js) keep removed windows unless told
+        if (typeof root.forgetModalElement === 'function') {
+            try { root.forgetModalElement(node); } catch (_) { /* best effort */ }
+        }
         node.remove();
     }
 
@@ -484,6 +512,7 @@
         run,
         report,
         ownerOfCaller,
+        ensureHooks,
         get: (key) => segments.get(key) || null,
         loaded: () => Array.from(segments.keys()),
         current: () => evaluating
