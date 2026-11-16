@@ -7565,6 +7565,61 @@
         "rom"
       ],
       "notes": "Large version of app-messenger."
+    },
+    "app-wallet": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-wallet-16.png, Lanczos-downscaled",
+        "size": [
+          16,
+          16
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-wallet.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-wallet.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "flags": [
+        "generated",
+        "1x-own-16px-frame"
+      ],
+      "notes": "Not ROM art: our own WM 6.1 style icon (docs/design/wm61-icon-style.md)."
+    },
+    "app-wallet-lg": {
+      "1x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-wallet.png, Lanczos-downscaled",
+        "size": [
+          32,
+          32
+        ]
+      },
+      "2x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-wallet.png, Lanczos-downscaled",
+        "size": [
+          64,
+          64
+        ]
+      },
+      "4x": {
+        "source": "generated (GPT Image, scripts/generate-wm-icon.js), master .cache/wm-icons/originals/app-wallet.png, Lanczos-downscaled",
+        "size": [
+          128,
+          128
+        ]
+      },
+      "flags": [
+        "generated"
+      ],
+      "notes": "Large (Programs grid) version of app-wallet. Not ROM art."
     }
   },
   "notDelivered": {

@@ -3422,6 +3422,37 @@ html.ui-mobile body > .pswp .pswp__preloader {
     font-weight: bold;
 }
 
+/* a button at the row's left end (bubble buttons[].left): the car key's Open | Hide (#874) */
+.wm-bubble-buttons button.is-left { margin-right: auto; }
+
+/* the car key's bubble (#874): Lock and Unlock as two large buttons side by side */
+.wm-carkey-keys {
+    display: flex;
+    gap: calc(6 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) 0;
+}
+
+.wm-carkey-key {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: calc(2 * var(--wm-px));
+    min-height: calc(46 * var(--wm-px));
+    padding: calc(4 * var(--wm-px)) !important;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tint);
+    color: #000;
+    font: bold var(--wm-fs) var(--wm-font);
+}
+
+.wm-carkey-key img { width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); }
+
+.wm-carkey-key:active:not(:disabled) { background: var(--wm-highlight); color: var(--wm-highlight-text, #fff); }
+
+.wm-carkey-key:disabled { color: #808080; }
+
 /* ---- the volume bubble (WM 6.1 speaker icon, emulator VGA capture halved): a 77 x 199 callout
  * 12.5 below the title bar, tail tip at the icon (43.5 from its left edge), two 6-step trackbars
  * (media | notifications and system sounds) in 28 x 94 cells, the focused one framed in the

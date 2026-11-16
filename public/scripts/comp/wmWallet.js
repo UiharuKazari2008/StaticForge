@@ -34,7 +34,7 @@
 
     const APP_ID = 'wallet';
     const TITLE = 'Wallet';
-    const ICON = 'app-accounts';
+    const ICON = 'app-wallet'; // scripts/generate-wm-wallet-art.js
     const BWIP_URL = '/scripts/vendor/bwip-js.min.js';
     const SPAY = 'com.samsung.android.spay';
     const FORMATS = [
@@ -529,6 +529,7 @@
         id: APP_ID,
         title: TITLE,
         icon: ICON,
+        art65: 'wallet',
         inStart: 'programs',
         sip: true,
         mount(p) { page = p; p.classList.add('wm-wallet'); build(); },
