@@ -4,11 +4,11 @@
  * changes goes through studioModel.js.
  *
  * Four views, one loop (write, Generate, look, adjust):
- *   home      the print in hand as a strip, Prompt, Undesired, characters, references, base image
+ *   home      the print in hand as a strip over the WM tabs Prompt (with the characters) | Directive
+ *             (while Rentan's creative mode is on) | UC | References | Inspector (Yukimi, Nov 16)
  *   editor    one prompt field, full screen, with an edit tool bar
  *   print     the picture, full screen; the steps stream here while a print runs
- * Settings > System > DreamStudio picks how they are laid out: one page (the strip and the row open
- * Print) or WM tabs (Prompt | Print). A wide screen puts home beside the print.
+ * A wide screen puts home beside the print.
  * Under home and the print the generation settings stay on a tool bar at the foot of the
  * page (Yukimi, Nov 15): Model | Drafting | Size | Prints, Datasets | Adjustments | UC, Steps |
  * Guidance | Variety+ | Rescale | Sampler | Seed. Numbers open a trackbar, the lists a drop-down
@@ -29,17 +29,17 @@
 
     const APP_ID = 'studio';
     const NEXT_KEY = 'wmStudioNext';
-    const LAYOUT_KEY = 'wmStudioLayout';
     const root = document.documentElement;
 
     const stored = (key) => { try { return localStorage.getItem(key); } catch (_) { return null; } };
     const store = (key, value) => { try { localStorage.setItem(key, value); } catch (_) { /* private mode */ } };
     // which Studio this load runs: decided once, as the shell's own version switch is
     const NEXT = stored(NEXT_KEY) === '1';
-    const layout = () => (stored(LAYOUT_KEY) === 'tabs' ? 'tabs' : 'page');
+    // one layout since the home tabs (Nov 16): the old Prompt | Print tab layout is gone
+    const layout = () => 'page';
 
-    const TABS = [['prompt', 'Prompt'], ['print', 'Print']];
-    const FIELD_NAMES = { prompt: 'Prompt', uc: 'Undesired', negative: 'Inline Negative' };
+    const TABS = [['prompt', 'Prompt'], ['directive', 'Directive'], ['uc', 'UC'], ['refs', 'References'], ['inspector', 'Inspector']];
+    const FIELD_NAMES = { prompt: 'Prompt', uc: 'Undesired', negative: 'Inline Negative', directive: 'Directive' };
     // a prompt field: one of FIELD_NAMES, or a character's, 'c:<place>:prompt' | 'c:<place>:uc'
     const charOf = (id) => { const m = /^c:(\d+):(prompt|uc)$/.exec(String(id)); return m ? { index: Number(m[1]), part: m[2] } : null; };
     function fieldName(id) {
@@ -58,7 +58,7 @@
         return change(c ? `character:${c.index}:${c.part}` : id, value);
     }
     function fieldList() {
-        const out = Object.keys(FIELD_NAMES);
+        const out = Object.keys(FIELD_NAMES).filter((id) => id !== 'directive' || (M && M.directiveOn()));
         (read().characters || []).forEach((_, i) => out.push(`c:${i}:prompt`, `c:${i}:uc`));
         return out;
     }
@@ -110,6 +110,7 @@
     let viewing = '';
     let opening = false;
     let tabState = {};
+    let directiveTab = null;
 
     const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const $ = (sel) => (page ? page.querySelector(sel) : null);
@@ -121,7 +122,6 @@
         if (top() === 'editor') return 'editor';
         if (top() === 'presets') return 'presets';
         if (top() === 'ref') return 'ref';
-        if (layout() === 'tabs') return tab === 'prompt' ? 'home' : tab;
         return top() || 'home';
     }
 
@@ -240,7 +240,7 @@
 
     function drawHome() {
         const s = read();
-        ['prompt', 'uc'].forEach((id) => {
+        ['prompt', 'uc', 'directive'].forEach((id) => {
             const box = $(`.wds-field[data-field="${id}"]`);
             if (!box) return;
             const text = s[id] || '';
@@ -250,6 +250,9 @@
         });
         drawChars(s);
         drawRefs(s);
+        const none = $('.wds-refs-none');
+        if (none) none.hidden = !!((s.references || []).length || s.hasBaseImage);
+        drawInspector(s);
         const base = $('.wds-base');
         if (base) {
             base.hidden = !s.hasBaseImage;
@@ -308,7 +311,7 @@
             const list = refList();
             list.push({ file: f, type: 1, strength: 1, fidelity: 1 });
             snap = null;
-            Promise.resolve(M.setReferences(list)).then(() => { layers = []; tab = 'prompt'; if (sh.current !== APP_ID) sh.open(APP_ID); snap = null; paint(); });
+            Promise.resolve(M.setReferences(list)).then(() => { layers = []; tab = 'refs'; if (sh.current !== APP_ID) sh.open(APP_ID); snap = null; paint(); });
         });
     }
 
@@ -462,13 +465,43 @@
         }
     }
 
+    /** The home tabs: Directive only while Rentan's creative mode is on (as on the desktop). */
     function drawTabs() {
-        const strip = $('.wds-tabs');
-        if (!strip) return;
+        const strip = $('.wds-home-strip');
+        if (!strip || !M) return;
+        const on = M.directiveOn();
+        if (tab === 'directive' && !on) tab = 'prompt';
+        // a tab that is not offered leaves the strip (fitTabs uses hidden for tabs that do not fit,
+        // and a hidden last tab loses the 6.5 strip's closing curve)
+        if (!directiveTab) directiveTab = strip.querySelector('[data-tab="directive"]');
+        if (directiveTab) {
+            if (on && !directiveTab.isConnected) strip.querySelector('[data-tab="prompt"]').after(directiveTab);
+            else if (!on && directiveTab.isConnected) directiveTab.remove();
+        }
         strip.querySelectorAll('.wm-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
-        if (layout() === 'tabs' && view() !== 'editor' && window.wmSettings && typeof window.wmSettings.fitTabs === 'function' && strip.getClientRects().length) {
+        page.querySelectorAll('.wds-tabpane').forEach((p) => p.classList.toggle('is-current', p.dataset.tab === tab));
+        if (view() === 'home' && window.wmSettings && typeof window.wmSettings.fitTabs === 'function' && strip.getClientRects().length) {
             window.wmSettings.fitTabs(strip, tabState);
         }
+    }
+
+    // ---- the Inspector tab: the seed and its lock, the Genso seeds (the expanders' picks of the
+    // last print) each with its lock, Lock All / Unlock All
+
+    function drawInspector(s) {
+        const box = $('.wds-insp');
+        if (!box || !ui) return;
+        const seeds = M.gensoSeeds();
+        const kept = !!s.seedLock;
+        box.innerHTML = '<div class="wm-form-sub">Seed</div>'
+            + `<div class="wds-wt-row is-on"><span class="wds-wt-name">${esc(kept ? 'Kept' : 'Random')}</span><span class="wds-wt-lcd wm-lcd wds-insp-seed"></span><button type="button" class="wm-tool" data-insp="seed" aria-pressed="${kept}" aria-label="Keep this seed" title="Keep this seed">${toolIcon(kept ? 'fas fa-lock' : 'fas fa-seedling')}</button></div>`
+            + `<div class="wm-form-sub wds-insp-head"><span>Genso</span>${seeds.length ? '<button type="button" class="wm-button" data-insp="lockall">Lock All</button><button type="button" class="wm-button" data-insp="unlockall">Unlock All</button>' : ''}</div>`
+            + (seeds.length
+                ? seeds.map((g, i) => `<div class="wds-wt-row wds-insp-row"><label class="wm-check"><input type="checkbox" data-genso="${i}"${g.locked ? ' checked' : ''}${g.canLock ? '' : ' disabled'}><span><b>${esc(g.key)}</b> ${esc(g.value)}</span></label></div>`).join('')
+                : '<p class="wds-none">No Genso yet: expanders used in a print show their picks here.</p>');
+        const seed = String(s.seedText || (kept ? s.seed : '') || '');
+        ui.segText(box.querySelector('.wds-insp-seed'), seed ? seed.padStart(10, '!') : '!!!!!!!!!!');
+        box._seeds = seeds;
     }
 
     function paint() {
@@ -476,7 +509,6 @@
         if (!shown) { stale = true; return; }
         stale = false;
         const v = view();
-        page.dataset.layout = layout();
         page.dataset.view = v;
         const box = v === 'editor' ? boxOf(edField) : null;
         page.dataset.ed = v === 'editor' ? (box ? 'box' : 'own') : '';
@@ -503,7 +535,6 @@
     // ---------------------------------------------------------------- layers
 
     function openLayer(name) {
-        if (layout() === 'tabs' && name !== 'editor' && name !== 'presets' && name !== 'ref') { tab = name; paint(); return; }
         if (top() === name) return;
         layers.push(name);
         paint();
@@ -528,7 +559,7 @@
      * after a cold start gets none; seen on the A53). The other fields (a character's, the inline
      * negative) have no box there and use the editor's own field.
      */
-    const boxOf = (field) => (field === 'prompt' || field === 'uc' ? $(`.wds-field[data-field="${field}"]`) : null);
+    const boxOf = (field) => (field === 'prompt' || field === 'uc' || field === 'directive' ? $(`.wds-field[data-field="${field}"]`) : null);
     function edArea() { return (top() === 'editor' && boxOf(edField)) || $('.wds-ed-text'); }
 
     function edCount() {
@@ -1189,7 +1220,7 @@
             viewing = '';
             // a wide screen already has the print beside the page: nothing to open
             const beside = view() === 'home' && $('.wds-print').getClientRects().length > 0;
-            if (layout() === 'tabs') { tab = 'print'; paint(); } else if (!beside) openLayer('print'); else paint();
+            if (!beside) openLayer('print'); else paint();
             const stage = $('.wds-stage');
             const rect = stage ? stage.getBoundingClientRect() : null;
             const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -1251,7 +1282,7 @@
     }
 
     function chooseBase() {
-        choosePicture('Base Image', (f) => { if (M.setBaseImage(f)) { snap = null; layers = []; tab = 'prompt'; if (sh.current !== APP_ID) sh.open(APP_ID); paint(); } });
+        choosePicture('Base Image', (f) => { if (M.setBaseImage(f)) { snap = null; layers = []; tab = 'refs'; if (sh.current !== APP_ID) sh.open(APP_ID); paint(); } });
     }
 
     function openPictureSession() {
@@ -1910,15 +1941,28 @@
 <div class="wds-hl" aria-hidden="true" hidden></div>
 <div class="wds-pane wds-home">
   <button type="button" class="wds-strip"><img class="wds-strip-thumb" alt="" hidden><div class="wds-strip-text"><b></b><span></span><div class="wds-bar" hidden><span></span></div></div></button>
-  <div class="wds-fields">
-    <div class="wds-label" data-for="prompt"><span>Prompt</span><span></span></div>
-    <textarea class="wds-field" data-field="prompt" placeholder="Tap here to write the prompt" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
-    <div class="wds-label" data-for="uc"><span>Undesired</span><span></span></div>
-    <textarea class="wds-field" data-field="uc" placeholder="Tap here to list what to leave out" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
-    <div class="wds-chars" hidden></div>
-    <div class="wds-refs" hidden></div>
-    <button type="button" class="wds-base" hidden><img alt=""><div><b>Base image</b><span></span></div></button>
+  <div class="wds-panes">
+    <div class="wds-tabpane wds-fields" data-tab="prompt">
+      <div class="wds-label" data-for="prompt"><span>Prompt</span><span></span></div>
+      <textarea class="wds-field" data-field="prompt" placeholder="Tap here to write the prompt" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+      <div class="wds-chars" hidden></div>
+    </div>
+    <div class="wds-tabpane wds-fields" data-tab="directive">
+      <div class="wds-label" data-for="directive"><span>Directive</span><span></span></div>
+      <textarea class="wds-field" data-field="directive" placeholder="Tap here to write what Rentan should make of the scene" spellcheck="false" autocapitalize="sentences" autocomplete="off"></textarea>
+    </div>
+    <div class="wds-tabpane wds-fields" data-tab="uc">
+      <div class="wds-label" data-for="uc"><span>Undesired</span><span></span></div>
+      <textarea class="wds-field" data-field="uc" placeholder="Tap here to list what to leave out" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
+    </div>
+    <div class="wds-tabpane wds-fields" data-tab="refs">
+      <button type="button" class="wds-base" hidden><img alt=""><div><b>Base image</b><span></span></div></button>
+      <div class="wds-refs" hidden></div>
+      <p class="wds-none wds-refs-none">No references. Menu &gt; Base Image or Add Reference adds one.</p>
+    </div>
+    <div class="wds-tabpane wds-fields" data-tab="inspector"><div class="wds-insp"></div></div>
   </div>
+  <div class="wm-tabs wds-home-strip" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>
 </div>
 <div class="wds-pane wds-print">
   <div class="wds-stage"><img alt="" hidden><div class="wds-grid" hidden></div><div class="wds-empty">No print yet. Generate makes one.</div></div>
@@ -1933,8 +1977,7 @@
 <div class="wds-ac wm-listbox" hidden></div>
 <div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g0, gi) => { const g = Array.isArray(g0) ? g0 : g0.tools; return `<div class="wm-toolbar-group${g.includes('weight') ? ' wds-ed-emph' : ''}${g.includes('tokens') ? ' wds-ed-tokens' : ''}"${g0.drop ? ` data-drop="${g0.drop}"` : ''}>${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : b === 'tokens' ? `<span class="wds-tb-tokens" aria-label="Tokens">${toolIcon('fas fa-triangle-exclamation wm-icon-warn')}<span></span><div class="wds-bar"><span></span></div></span>` : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[2] ? ` data-drop="${b[2]}"` : ''}${b[0] === 'emmenu' || b[0] === 'toolbox' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`; }).join('')}</div>
 </div>
-<div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>
-<div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
+<div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>`;
 
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
         $('.wds-base').addEventListener('click', () => baseDialog());
@@ -1958,6 +2001,24 @@
             const r = e.target.closest && e.target.closest('.wm-listbox-row');
             if (r) openPreset(r.dataset.key);
         });
+        const insp = $('.wds-insp');
+        insp.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('[data-insp]');
+            if (!b) return;
+            const act = b.dataset.insp;
+            if (act === 'seed') { const was = !!read().seedLock; change('seedLock', !was).then(() => { snap = null; if (!was && !read().seedLock) seedBox(); paint(); }); return; }
+            M.setGensoLock(act === 'lockall');
+            snap = null;
+            paint();
+        });
+        insp.addEventListener('change', (e) => {
+            const t = e.target;
+            const g = t && t.dataset && t.dataset.genso != null && (insp._seeds || [])[Number(t.dataset.genso)];
+            if (!g) return;
+            M.setGensoLock(g.key, !!t.checked);
+            snap = null;
+            paint();
+        });
         $('.wds-refs').addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-refrow'); if (b) { refAt = Number(b.dataset.ref) || 0; openLayer('ref'); } });
         const refForm = $('.wds-ref');
         refForm.addEventListener('change', (e) => {
@@ -1972,7 +2033,7 @@
         const chars = $('.wds-chars');
         chars.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-char-open'); if (b) openEditor(`c:${b.dataset.char}:prompt`); });
         chars.addEventListener('change', (e) => { const t = e.target; if (t && t.dataset && t.dataset.char != null && t.type === 'checkbox') { M.setCharacter(Number(t.dataset.char), { enabled: !!t.checked }); snap = null; } });
-        $('.wds-tabs').addEventListener('click', (e) => {
+        $('.wds-home-strip').addEventListener('click', (e) => {
             const b = e.target.closest && e.target.closest('.wm-tab');
             if (!b || b.dataset.tab === tab) return;
             tab = b.dataset.tab;
@@ -2100,7 +2161,6 @@
             M.ownsPrints = true;
             wrapEntryPoints();
             snap = null;
-            if (layout() === 'tabs') layers = layers.filter((l) => l === 'editor' || l === 'presets' || l === 'ref');
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
@@ -2142,25 +2202,18 @@
             label: 'DreamStudio',
             icon: 'app-studio',
             tabs: [],
-            init: () => ({ layout: layout(), next: stored(NEXT_KEY) === '1' }),
+            init: () => ({ next: stored(NEXT_KEY) === '1' }),
             render(el, t, d) {
                 const u = S.ui;
-                el.innerHTML = u.sub('Layout')
-                    + u.radio('wdsLayout', 'page', 'One page: the print as a strip at the top', d.layout === 'page')
-                    + u.radio('wdsLayout', 'tabs', 'Tabs: Prompt, Print', d.layout === 'tabs')
-                    + u.gap()
-                    + u.sub('Program')
+                el.innerHTML = u.sub('Program')
                     + u.check('wdsNext', 'Use the new DreamStudio', d.next)
                     + u.note('The new DreamStudio is being built (#860). The switch takes effect the next time Melaton Mobile starts.');
-                el.querySelectorAll('input[name="wdsLayout"]').forEach((r) => r.addEventListener('change', () => { if (r.checked) d.layout = r.value; }));
                 el.querySelector('input[name="wdsNext"]').addEventListener('change', (e) => { d.next = !!e.target.checked; });
             },
             commit(d) {
-                store(LAYOUT_KEY, d.layout === 'tabs' ? 'tabs' : 'page');
                 store(NEXT_KEY, d.next ? '1' : '0');
-                layers = layers.filter((l) => l === 'editor');
                 stale = true;
-                return ['wmStudioLayout'];
+                return [];
             }
         });
     }
@@ -2180,7 +2233,7 @@
 
     // wmStudio.js stands aside for this program when the switch is on, and other programs' "show the
     // prompt" (Phasewalker's Compile) lands here
-    window.wmDreamStudio = { active: NEXT, show(name) { if (!NEXT || !sh) return; layers = []; tab = name === 'print' ? 'print' : 'prompt'; if (name === 'print' && layout() !== 'tabs') layers = ['print']; sh.open(APP_ID); paint(); } };
+    window.wmDreamStudio = { active: NEXT, show(name) { if (!NEXT || !sh) return; layers = name === 'print' ? ['print'] : []; tab = 'prompt'; sh.open(APP_ID); paint(); } };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

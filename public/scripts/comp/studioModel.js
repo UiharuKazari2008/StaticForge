@@ -42,6 +42,10 @@
  *                                       the seed box emptied (and unlocked) / a new random seed in it
  *   studioModel.tokenLimit() / addedTokens('prompt' | 'uc')
  *                                       the token limit; the tokens Studio adds itself (quality, datasets)
+ *   studioModel.directiveOn()           Rentan's creative mode is on (the Directive field is used:
+ *                                       set('directive', text), snapshot().directive)
+ *   studioModel.gensoSeeds() / setGensoLock(key | true | false, on)
+ *                                       the Inspector's Genso seeds and their locks
  *   studioModel.customSize() / setCustomSize(w, h) / stepRatio(dir) / setRatio('W:H') / cycleArea()
  *                                       Custom Resolution and Custom Ratio, and the area limit
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
@@ -79,9 +83,11 @@
        getStudioDatasetCatalog, datasetBias, findDatasetConfig, toggleDataset, adjustDatasetBias, ensureActiveSubTogglesInitialized,
        getActiveSubToggleDatasets, getVisibleSubToggles, getSubToggleGroup, getSubToggleDefaultBias, isSubToggleEnabled,
        getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked, getPromptTokenLimit,
-       manualSelectedResolution, isCustomRatioMode, isCustomResolutionMode, formatAspectRatio, stepManualRatioFromCurrent, commitManualRatioInput, promptTextareaToolbar */
+       manualSelectedResolution, isCustomRatioMode, isCustomResolutionMode, formatAspectRatio, stepManualRatioFromCurrent, commitManualRatioInput, promptTextareaToolbar,
+       getInspectorAppliedTextReplacementSeeds, applyStudioGensoLocks */
 
-    const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
+    // directive: Rentan's creative directive (its own textarea; no managed emphasis marks in it)
+    const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'], directive: ['creativeDirectiveInput', null] };
     const listeners = new Map();
     const session = [];
     let current = null;
@@ -181,7 +187,12 @@
         } else if (FIELDS[id]) {
             const f = el(FIELDS[id][0]);
             if (!f || visibleText(f) === String(value == null ? '' : value)) return true;
-            writeStudioFieldValue(FIELDS[id][1], value);
+            if (FIELDS[id][1]) writeStudioFieldValue(FIELDS[id][1], value);
+            else {
+                f.value = String(value == null ? '' : value);
+                f.dispatchEvent(new Event('input', { bubbles: true }));
+                f.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         } else {
             await applyStudioParam(id, value);
         }
@@ -235,6 +246,40 @@
                 steps: !locked('steps')
             }
         };
+    }
+
+    /** Rentan's creative mode is on (its Directive is used): the desktop shows the Directive tab then. */
+    function directiveOn() {
+        const b = el('creativeBtn');
+        const g = el('dynamicGenerationGroup');
+        return !!(b && b.getAttribute('data-state') === 'on' && g && !g.classList.contains('hidden'));
+    }
+
+    // ---- the Inspector's Genso seeds (expander picks of the last print): their value and lock
+    /** [{ key, value, locked, canLock }] */
+    function gensoSeeds() {
+        try {
+            if (typeof getInspectorAppliedTextReplacementSeeds !== 'function') return [];
+            return getInspectorAppliedTextReplacementSeeds().filter((x) => x && x.key).map((x) => ({
+                key: String(x.key),
+                value: String(x.value == null ? '' : x.value),
+                locked: x.locked === true,
+                canLock: x.can_lock !== false
+            }));
+        } catch (_) { return []; }
+    }
+
+    /** One seed's lock (key), or every seed (key true / false). */
+    function setGensoLock(key, on) {
+        if (typeof applyStudioGensoLocks !== 'function') return false;
+        if (key === true || key === false) applyStudioGensoLocks(key);
+        else {
+            const locked = new Set(gensoSeeds().filter((x) => x.locked).map((x) => x.key.toLowerCase()));
+            if (on) locked.add(String(key).toLowerCase()); else locked.delete(String(key).toLowerCase());
+            applyStudioGensoLocks(Array.from(locked));
+        }
+        emit('change', { id: 'genso' });
+        return true;
     }
 
     // ---- custom size: Custom Resolution (width and height) and Custom Ratio (a W:H stepped through the
@@ -842,7 +887,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
-        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, addedTokens, customSize, setCustomSize, stepRatio, setRatio, cycleArea, tagGroups, tagsAt, searchTags,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, addedTokens, directiveOn, gensoSeeds, setGensoLock, customSize, setCustomSize, stepRatio, setRatio, cycleArea, tagGroups, tagsAt, searchTags,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
