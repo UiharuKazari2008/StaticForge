@@ -197,24 +197,36 @@
         if (!window.windowCapture) { out({ closed: true }); return; }
         const dpr = window.devicePixelRatio || 1;
         const appBefore = sh.currentApp();
-        restoreNow = sh.barsStage({
+        const stageOpts = {
             title: (ctx.app && ctx.app.label) || '',
             corner: ctx.corner === 'ok' ? 'ok' : ctx.corner === '' ? '' : 'close',
             androidTray: !!ctx.androidTray,
             softLeft: ctx.softkeys ? (SOFT_LABELS[ctx.softLeft] ?? 'Back') : undefined,
             softRight: ctx.softkeys ? (SOFT_LABELS[ctx.softRight] ?? '') : undefined,
             sip: ctx.softkeys ? !!ctx.ime : undefined
-        });
+        };
+        restoreNow = sh.barsStage(stageOpts);
         let opened = false;
+        // the popup redraws the bars as the page shows them (its title, the tray icon gone): staged again
+        // on top, with the corner as the popup left it (WM takes it away for a bubble with its own button)
+        const restage = () => {
+            const corner = shell.querySelector(sh.bottomBars ? '.wm-softkeys > .wm-title-action' : '.wm-titlebar > .wm-title-action');
+            const hidden = corner ? corner.hidden : false;
+            unstage();
+            restoreNow = sh.barsStage(stageOpts);
+            if (corner && hidden) corner.hidden = true;
+        };
         try {
-            if (!ctx.current) { sh.barsPopupOpen(ctx.role || 'notify'); opened = true; }
+            if (!ctx.current) { sh.barsPopupOpen(ctx.role || 'notify'); opened = true; restage(); }
             if (ctx.click != null) {
+                opened = true;
                 const list = clickables(sh.barsPopupLayers(), shell);
                 const el = list[Number(ctx.click)];
                 if (el) el.click();
                 // what the press did: a program came up (the page goes in front), or the popups went
                 await new Promise((r) => requestAnimationFrame(() => r()));
-                if (sh.currentApp() !== appBefore) { restoreNow = null; out({ open: true }); return; }
+                if (sh.currentApp() !== appBefore) { unstage(); opened = false; out({ open: true }); return; }
+                restage();
             }
             const layers = sh.barsPopupLayers();
             if (!layers.length) { out({ closed: true }); return; }
@@ -237,7 +249,7 @@
             });
         } finally {
             // the bubbles and the tray this copy opened are closed again (a waiting notification stays)
-            if (opened || ctx.click != null) { try { sh.barsPopupClose(); } catch (_) { /* gone */ } }
+            if (opened) { try { sh.barsPopupClose(); } catch (_) { /* gone */ } }
             unstage();
         }
     }
