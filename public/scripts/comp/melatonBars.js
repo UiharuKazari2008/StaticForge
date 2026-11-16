@@ -643,6 +643,14 @@
                 const ticks = [...el.querySelectorAll('.wm-vol-tick')].map((t) => { const r = t.getBoundingClientRect(); return r.top + r.height / 2; });
                 if (ticks.length > 1) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: `slider:${el.dataset.kind}:${steps}:${R(Math.min(...ticks))}:${R(Math.max(...ticks))}` });
             }
+            // the volume box's On / Vibrate / Off: the app draws the dot at Android's ringer mode and sets it itself
+            if (el.tagName === 'INPUT' && el.type === 'radio' && el.name === 'wmvolmode') {
+                const wmpx = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+                out.push({ k: 'dot', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r: R(4.5 * wmpx), color: '#000000ff', lv: `vol-mode:${el.value}` });
+                out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: `mode:${el.value}` });
+                [...el.children].forEach((c) => walk(c, alpha));
+                return;
+            }
             const ci = clickable.indexOf(el);
             if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
         };
