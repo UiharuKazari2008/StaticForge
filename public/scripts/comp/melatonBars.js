@@ -333,7 +333,7 @@
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again)
-        return ['m5', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m6', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
 
@@ -503,7 +503,30 @@
             });
             return pts.length >= 3 ? pts : null;
         };
+        // a box inset to a background layer's clip (border-box / padding-box / content-box)
+        const clipBox = (cs, box, which) => {
+            const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map(px);
+            const pd = which === 'content-box' ? [cs.paddingTop, cs.paddingRight, cs.paddingBottom, cs.paddingLeft].map(px) : [0, 0, 0, 0];
+            if (which !== 'content-box' && which !== 'padding-box') return box;
+            const t = bw[0] + pd[0]; const r = bw[1] + pd[1]; const btm = bw[2] + pd[2]; const l = bw[3] + pd[3];
+            return { left: box.left + l, top: box.top + t, width: Math.max(0, box.width - l - r), height: Math.max(0, box.height - t - btm) };
+        };
         const bgImage = (cs, box, clip, alpha) => {
+            // several layers (the title bar's ok / X face: two gradients, content-box over padding-box): the
+            // bottom one first, each in its own clip box
+            const layers = topSplit(cs.backgroundImage || '', ',');
+            if (layers.length > 1) {
+                const clips = topSplit(cs.backgroundClip || '', ',');
+                const sizes = topSplit(cs.backgroundSize || '', ',');
+                const poss = topSplit(cs.backgroundPosition || '', ',');
+                for (let i = layers.length - 1; i >= 0; i--) {
+                    if (layers[i] === 'none') continue;
+                    const one = { backgroundImage: layers[i], backgroundSize: sizes[i] || sizes[0] || 'auto', backgroundPosition: poss[i] || poss[0] || '0% 0%',
+                        borderTopLeftRadius: cs.borderTopLeftRadius, borderTopRightRadius: cs.borderTopRightRadius, borderBottomRightRadius: cs.borderBottomRightRadius, borderBottomLeftRadius: cs.borderBottomLeftRadius };
+                    bgImage(one, clipBox(cs, box, clips[i] || clips[0] || 'border-box'), clip, alpha);
+                }
+                return;
+            }
             // a plain linear-gradient (the volume box's title band): its stops, top to bottom or left to right
             const lg = /^linear-gradient\((.*)\)$/.exec(cs.backgroundImage || '');
             if (lg) {
@@ -600,6 +623,18 @@
                 const pa = alpha * (+ps.opacity || 1);
                 const pf = rgba(ps.backgroundColor, pa);
                 const p0 = out.length;
+                // a glyph cut by a mask (the title bar's ok / X: white through the glyph's alpha): the picture and
+                // its colour, the app tints it
+                const mi = ps.webkitMaskImage || ps.maskImage || '';
+                const mu = [...String(mi).matchAll(/url\(\s*["']?([^"')]+)/g)].map((m) => m[1]);
+                if (mu.length && pf) {
+                    const sz = topSplit(ps.webkitMaskSize || ps.maskSize || '', ' ');
+                    const po = topSplit(ps.webkitMaskPosition || ps.maskPosition || '', ' ');
+                    const mw = sz[0] && sz[0] !== 'auto' ? lenOf(sz[0], w) : w; const mh = sz[1] && sz[1] !== 'auto' ? lenOf(sz[1], h) : mw === w ? h : mw;
+                    out.push({ k: 'mask', x: R(box.left + lenOf(po[0] || '0px', w - mw)), y: R(box.top + lenOf(po[1] || '0px', h - mh)), w: R(mw), h: R(mh),
+                        url: new URL(mu[mu.length - 1], location.href).href, color: pf, clip: [R(box.left), R(box.top), R(w), R(h), [0, 0, 0, 0]] });
+                    return;
+                }
                 if (pf) out.push({ k: 'rect', x: R(box.left), y: R(box.top), w: R(w), h: R(h), r: radii(ps), fill: pf });
                 if (ps.backgroundImage && ps.backgroundImage !== 'none') bgImage(ps, box, clip, pa);
                 const pp = polyOf(ps.clipPath, box);
@@ -629,6 +664,8 @@
                 }
                 flush();
             });
+            // the bubble's tail: the app moves it under its own icon (the page's anchor may be off while it sleeps)
+            if (el.classList && el.classList.contains('wm-bubble-tail')) for (let i = n0; i < out.length; i++) { out[i].lv = 'tail'; out[i].tip = R(b.left + b.width / 2); }
             if (lv) {
                 let full;
                 // a bar with a set travel (data-full, in WM units: the Power box's 18 blocks of 9)
