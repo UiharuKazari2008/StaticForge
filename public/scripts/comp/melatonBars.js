@@ -447,6 +447,9 @@
      * the page's own click (n = the element's place among the popup's clickable ones).
      */
     function rgba(c, mul) {
+        // color(srgb r g b [/ a]) (0-1 channels: Chrome writes a resolved color-mix() this way)
+        const cs = /color\(srgb\s+([\d.e-]+)\s+([\d.e-]+)\s+([\d.e-]+)(?:\s*\/\s*([\d.]+))?\)/.exec(c || '');
+        if (cs) c = `rgba(${[cs[1], cs[2], cs[3]].map((v) => Math.round(Math.max(0, Math.min(1, +v)) * 255)).join(', ')}, ${cs[4] == null ? 1 : cs[4]})`;
         const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || '');
         if (!m) return null;
         const a = (m[4] == null ? 1 : +m[4]) * (mul == null ? 1 : mul);
