@@ -975,14 +975,16 @@
             corner.hidden = !o.corner;
             if (o.corner) corner.dataset.kind = o.corner === 'ok' ? 'ok' : 'close';
         }
-        // Android's notification tray: WM's notification glyph at the head of the icons (Settings)
+        // Android's notification tray at the head of the icons (Settings): a list glyph of its own, not WM's
+        // notification bubble, which is Melaton's own notifications (Yukimi, Nov 16; a Melaton-only concept,
+        // drawn in the ROM glyphs' 1-bit white: static_images/wm65/status-androidtray)
         let tray = shell.querySelector('.wm-status-icon[data-role="androidtray"]');
         if (o.androidTray && !tray) {
             tray = document.createElement('button');
             tray.type = 'button';
             tray.className = 'wm-status-icon';
             tray.dataset.role = 'androidtray';
-            tray.dataset.icon = 'notify-many';
+            tray.style.backgroundImage = 'image-set(url("/static_images/wm65/status-androidtray.png") 1x, url("/static_images/wm65/status-androidtray@2x.png") 2x, url("/static_images/wm65/status-androidtray@4x.png") 4x)';
             tray.setAttribute('aria-label', 'Android notifications');
             const status = shell.querySelector('.wm-status');
             const reserve = status.querySelector('.wm-status-reserve');
