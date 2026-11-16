@@ -100,7 +100,9 @@ window.closeModal = (m) => { m.classList.add('hidden'); setTimeout(() => documen
 <script src="/scripts/comp/melatonSegments.js"></script>
 <script src="/scripts/comp/melatonApps.js"></script>
 <script src="/scripts/comp/featureLoader.js"></script>
-<script>FEATURE_MANIFEST.demo_feature = { hot: true, html: 'templates/demo-feature.html', scripts: ['scripts/demo/a.js', 'scripts/demo/b.js'] };</script>
+<script>FEATURE_MANIFEST.demo_feature = { hot: true, html: 'templates/demo-feature.html', scripts: ['scripts/demo/a.js', 'scripts/demo/b.js'] };
+// a shared helper that builds a window for whoever asks (the Vista games engine does this for each game)
+window.coreMakeWindow = function (id) { const m = document.createElement('div'); m.id = id; m.className = 'modal'; document.body.appendChild(m); return m; };</script>
 </body></html>`;
 }
 
@@ -154,7 +156,7 @@ async function main(served) {
         if (served && served[url.pathname]) return js(served[url.pathname]);
         if (url.pathname === '/templates/demo-feature.html') return req.respond({ status: 200, contentType: 'text/html', body: `<div id="demoFeatureWin" class="modal hidden">demo ${featureVersion}</div>` });
         if (url.pathname === '/scripts/demo/a.js') return js(`const DEMO_BIG = new Array(50000).fill('f').join(''); window.demoFeature = { version: ${featureVersion}, size: () => DEMO_BIG.length }; document.addEventListener('demo-feature', () => { window.__featureHits = (window.__featureHits || 0) + 1; });`);
-        if (url.pathname === '/scripts/demo/b.js') return js(`window.demoFeature.b = true;`);
+        if (url.pathname === '/scripts/demo/b.js') return js(`window.demoFeature.b = true; window.demoFeature.open = () => coreMakeWindow('demoHelperWin');`);
         if (url.pathname.startsWith('/scripts/')) return js(read(`public${url.pathname}`));
         if (url.pathname === '/seg/demo.js') return js(SEGMENT_V1);
         if (url.pathname === '/melaton-apps/single/client/single.js') return js(SINGLE_V1.replace('single v1', `single v${singleVersion}`).replace("concat('v1')", `concat('v${singleVersion}')`));
@@ -306,6 +308,20 @@ async function main(served) {
     assert.deepStrictEqual(late.pending, []);
 
     // ---- a hot feature (featureLoader) ----------------------------------------------------------------
+    const helper = await page.evaluate(async () => {
+        await featureLoader.loadFeature('demo_feature');
+        window.demoFeature.open();
+        const wins = melatonSegments.windowsOf('feature:demo_feature').map((w) => w.id);
+        const swap = await featureLoader.swapFeature('demo_feature');
+        closeModal(document.getElementById('demoHelperWin'));
+        for (let i = 0; i < 40 && featureLoader.pendingSwaps.size; i++) await new Promise((r) => setTimeout(r, 50));
+        return { wins, swap, helperWinLeft: !!document.getElementById('demoHelperWin'), pending: featureLoader.pendingSwaps.size };
+    });
+    assert.deepStrictEqual(helper.wins, ['demoHelperWin'], 'a window a shared helper built for the feature is the feature\'s');
+    assert.deepStrictEqual(helper.swap, { deferred: 'window open' }, 'the swap waits for it');
+    assert.strictEqual(helper.pending, 0, 'and runs after it closed');
+    assert.strictEqual(helper.helperWinLeft, false, 'the window goes with the old copy');
+
     const f1 = await page.evaluate(async () => {
         await featureLoader.loadFeature('demo_feature');
         const w = document.getElementById('demoFeatureWin');

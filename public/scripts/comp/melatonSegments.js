@@ -83,6 +83,25 @@
         return null;
     }
 
+    /**
+     * The loaded segment with a frame anywhere in the current stack (deepest call first), or null.
+     * Used for windows only (rare): a window a shared helper builds for a segment (the Vista games
+     * engine builds each game's window) is that segment's, though the helper appends it.
+     */
+    function ownerInStack() {
+        if (!segments.size) return null;
+        const lines = stackLines(40);
+        for (let i = 3; i < lines.length; i++) {
+            const line = lines[i];
+            for (const seg of segments.values()) {
+                for (const prefix of seg.urlPrefixes) {
+                    if (line.indexOf(prefix) >= 0) return seg;
+                }
+            }
+        }
+        return null;
+    }
+
     // ---- global hooks (installed once, on the first load) ----------------------------------------
 
     function withSignal(options, signal) {
@@ -178,7 +197,9 @@
             // <body> children a segment appends are its own (its windows, overlays, popups)
             const own = (node) => {
                 if (!segments.size || !node || node.nodeType !== 1) return;
-                const seg = ownerOfCaller(2);
+                let seg = ownerOfCaller(2);
+                // a window built for a segment by a shared helper is the segment's too
+                if (!seg && (node.classList.contains('modal') || (node.querySelector && node.querySelector('.modal')))) seg = ownerInStack();
                 if (seg) seg.nodes.add(node);
             };
             for (const name of ['appendChild', 'insertBefore', 'append', 'prepend']) {
