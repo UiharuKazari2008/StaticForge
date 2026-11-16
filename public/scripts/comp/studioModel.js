@@ -32,6 +32,10 @@
  *                                       '__transparency__' name the presets
  *   studioModel.adjustments() / setAdjustment(dataset, id, { on, bias })
  *                                       the checked datasets' adjustment toggles with their weights
+ *   studioModel.tagGroups(path) / tagsAt(path) / searchTags(text)
+ *                                       Quick Access, the tag library by category (the desktop's
+ *                                       datasetTagToolbar.js server calls; promises): a level's groups
+ *                                       and main tags, the tags at a leaf, tags matching some letters
  *   studioModel.clearSeed() / randomSeed()
  *                                       the seed box emptied (and unlocked) / a new random seed in it
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
@@ -610,6 +614,38 @@
         return true;
     }
 
+    // ---- Quick Access: the tag library the desktop's Quick Access window browses
+    const ws = () => (window.wsClient && typeof window.wsClient.isConnected === 'function' && window.wsClient.isConnected() ? window.wsClient : null);
+
+    /** A level of the library: { groups: [{ name, label, path, kind: 'groups' | 'tags' | 'main', count, note }], tags: [{ name, label, count }] }. */
+    async function tagGroups(path = []) {
+        const c = ws();
+        if (!c || typeof c.searchDatasetTags !== 'function') return { groups: [], tags: [] };
+        const r = await c.searchDatasetTags('*', path);
+        const label = (x) => x.prettyName || (String(x.name || '').charAt(0).toUpperCase() + String(x.name || '').slice(1));
+        return {
+            groups: ((r && r.results) || []).map((x) => ({ name: x.name, label: label(x), path: x.path || path.concat(x.name), kind: x.hasChildren ? 'groups' : (x.isTagArray ? 'tags' : 'main'), count: x.itemCount, note: x.description || '' })),
+            tags: ((r && r.mainTags) || []).map((t) => ({ name: t.name, label: t.prettyName || t.name, count: t.itemCount }))
+        };
+    }
+
+    /** The tags at a leaf of the library (a group of the 'tags' kind; a 'main' group's path + 'main'). */
+    async function tagsAt(path) {
+        const c = ws();
+        if (!c || typeof c.getTagsForPath !== 'function') return [];
+        const r = await c.getTagsForPath(path);
+        const list = Array.isArray(r) ? r : ((r && r.tags) || []);
+        return list.map((t) => (typeof t === 'string' ? t : (t && (t.name || t.tag)) || '')).filter(Boolean);
+    }
+
+    /** Tags of the library matching some letters: [{ tag, path }]. */
+    async function searchTags(text) {
+        const c = ws();
+        if (!c || typeof c.searchTags !== 'function' || !String(text || '').trim()) return [];
+        const r = await c.searchTags(String(text).trim(), false);
+        return ((r && r.results) || []).map((x) => ({ tag: x.tag, path: (x.paths && x.paths[0]) || [] }));
+    }
+
     // ---- the seed box: emptied (and unlocked), or a new random seed in it (the desktop's Clear seed
     // and New seed buttons)
     function clearSeed() {
@@ -657,7 +693,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
-        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, tagGroups, tagsAt, searchTags,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */

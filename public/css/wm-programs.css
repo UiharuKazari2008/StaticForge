@@ -1821,21 +1821,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 
 .wm-jog.is-disabled { cursor: default; touch-action: pan-y; }
 
-/* a toned wheel (jog.tone): stronger towards orange and red, weaker towards blue (the desktop's
- * emphasis colours), as deep as the value stands from neutral */
-.wm-jog-wheel::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    opacity: calc(0.2 + 0.6 * var(--wm-jog-strength, 0));
-    mix-blend-mode: multiply;
-    pointer-events: none;
-}
-
-.wm-jog:not([data-tone="up"]):not([data-tone="down"]) .wm-jog-wheel::after { content: none; }
-.wm-jog[data-tone="up"] .wm-jog-wheel::after { background: color-mix(in srgb, #dc1e1e calc(var(--wm-jog-strength, 0) * 100%), #e6871e); }
-.wm-jog[data-tone="down"] .wm-jog-wheel::after { background: #2f6fe0; }
-
 /* ---- LCD readout (.wm-lcd): a number in seven-segment figures (DSEG7, public/css/fonts.css) on a
  * grey-green face in a 1-unit black frame ---- */
 .wm-lcd {
@@ -1851,5 +1836,16 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     font: calc(11 * var(--wm-px)) / 1 'DSEG7 Classic', var(--wm-font);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+/* a toned readout (data-tone up / down, --wm-lcd-strength 0 .. 1): its backlight goes towards orange
+ * and then red above neutral, towards blue below (the desktop's emphasis colours), as far as the
+ * value stands from neutral */
+.wm-lcd[data-tone="up"] {
+    background: color-mix(in srgb, color-mix(in srgb, #dc1e1e calc(var(--wm-lcd-strength, 0) * 100%), #f0a050) calc(25% + 55% * var(--wm-lcd-strength, 0)), #c8d4b8);
+}
+
+.wm-lcd[data-tone="down"] {
+    background: color-mix(in srgb, #5a8ee8 calc(25% + 55% * var(--wm-lcd-strength, 0)), #c8d4b8);
 }
 .wm-jog.is-disabled .wm-jog-ridge { background: #848284; box-shadow: none; }

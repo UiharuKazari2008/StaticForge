@@ -2497,7 +2497,7 @@
          * value stops at min / max). Left / Right step it, Home / End go to the ends. opts: value,
          * min, max, step, label (accessible name), stepPx (8), onChange(value) on every step,
          * onStep(dir) instead of a value (a wheel that steps something else: emphasis), disabled.
-         * Returns { set(value), tone(level), el }.
+         * Returns { set(value), el }.
          */
         jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, label = '', stepPx = 8, onChange, onStep, disabled = false } = {}) {
             const RIDGES = 18;
@@ -2573,16 +2573,7 @@
                     e.stopPropagation();
                 });
             }
-            return {
-                set: (v) => { cur = Number(v) || 0; draw(); },
-                /** Tints the wheel by how far a value stands from neutral: level -1 .. 1 (below / above). */
-                tone(level) {
-                    const l = Math.max(-1, Math.min(1, Number(level) || 0));
-                    el.dataset.tone = l > 0.001 ? 'up' : l < -0.001 ? 'down' : '';
-                    el.style.setProperty('--wm-jog-strength', Math.abs(l).toFixed(3));
-                },
-                el
-            };
+            return { set: (v) => { cur = Number(v) || 0; draw(); }, el };
         },
         /**
          * A number on a tool bar opens this under (or over) it: its name and value over a jog wheel

@@ -63,7 +63,16 @@
         (read().characters || []).forEach((_, i) => out.push(`c:${i}:prompt`, `c:${i}:uc`));
         return out;
     }
-    const ED_BAR = [['undo', 'Undo'], ['redo', 'Redo'], '|', ['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']];
+    // the editor's tool bar, one row on a phone (groups wrap whole on a narrower screen): 'weight' is
+    // the emphasis LCD (the jog wheel goes after it), then the group's menu (Trim Start, Trim End,
+    // Remove Emphasis: Yukimi, Nov 15), then Quick Access and Find
+    const ED_GROUPS = [
+        [['undo', 'Undo'], ['redo', 'Redo']],
+        [['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']],
+        ['weight', ['emmenu', 'Emphasis Group']],
+        [['quickaccess', 'Quick Access'], ['find', 'Find']]
+    ];
+    const ED_ICONS = { emmenu: 'group' };
 
     // the generation tool bar (Yukimi, Nov 15): three groups, each kept whole when the bar wraps
     const GEN_GROUPS = [
@@ -698,6 +707,8 @@
         if (id === 'clear') { ta.select(); document.execCommand('delete'); edCount(); return; }
         if (id === 'weightdown' || id === 'weightup') { stepWeight(id === 'weightup' ? 1 : -1); return; }
         if (id === 'find') { findAsk(); return; }
+        if (id === 'trimstart' || id === 'trimend' || id === 'emremove') { groupEdit(id); return; }
+        if (id === 'quickaccess') { openQa(); return; }
         document.execCommand(id);
         edCount();
     }
@@ -766,8 +777,231 @@
         const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
         const w = hit ? hit.weight : 1;
         out.textContent = w.toFixed(2);
-        // the jog takes the strength's colour: -3 .. 1 .. 5 as -1 .. 0 .. 1, most of it by 2 / 0
-        if (edJog) edJog.tone(w >= 1 ? Math.min(1, (w - 1) / 1) : Math.max(-1, (w - 1) / 1));
+        // the readout takes the strength's colour (Yukimi, Nov 15): up towards orange and red, down
+        // towards blue, all of it by 2 / 0
+        const level = Math.max(-1, Math.min(1, w - 1));
+        out.dataset.tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
+        out.style.setProperty('--wm-lcd-strength', Math.abs(level).toFixed(3));
+    }
+
+    /** The emphasis group's menu, from its bar button: the tools for the group the caret is in. */
+    function emphasisMenu(btn) {
+        const ta = edArea();
+        const hit = ta ? weightAt(ta.value, ta.selectionStart, ta.selectionEnd) : null;
+        sh.dropdown(btn, [
+            { label: 'Trim Start', disabled: !hit, action: () => groupEdit('trimstart') },
+            { label: 'Trim End', disabled: !hit, action: () => groupEdit('trimend') },
+            '-',
+            { label: 'Remove Emphasis', disabled: !hit, action: () => groupEdit('emremove') }
+        ], btn.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left');
+    }
+
+    /**
+     * The group under the caret: Trim Start / Trim End move its first / last tag out of it (a group
+     * of one tag is left plain), Remove Emphasis leaves its text plain. Undo takes it back.
+     */
+    function groupEdit(id) {
+        const ta = edArea();
+        if (!ta) return;
+        ta.focus();
+        const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
+        if (!hit) return;
+        const w = fmtWeight(hit.weight);
+        const parts = hit.inner.split(',');
+        let out;
+        let caret;
+        if (id === 'emremove' || parts.length < 2) {
+            out = hit.inner;
+            caret = hit.from;
+        } else if (id === 'trimstart') {
+            const first = parts[0].trim();
+            const rest = parts.slice(1).join(',').replace(/^\s+/, '');
+            out = `${first}, ${w}::${rest}::`;
+            caret = hit.from + first.length + 2 + w.length + 2;
+        } else {
+            const last = parts[parts.length - 1].trim();
+            const rest = parts.slice(0, -1).join(',').replace(/\s+$/, '');
+            out = `${w}::${rest}::, ${last}`;
+            caret = hit.from + w.length + 2;
+        }
+        ta.setSelectionRange(hit.from, hit.to);
+        document.execCommand('insertText', false, out);
+        ta.setSelectionRange(caret, caret);
+        edWeight();
+        edCount();
+    }
+
+    // ---- Quick Access (the desktop's tag library) as a WM dialog over the editor (Yukimi, Nov 15): the
+    // find box, a page of up to eight rows (groups to open, tags to put in) whose strip turns the
+    // pages (or a flick), and Back; Back and the phone's Back key step out to the list before, X closes it. A tag goes in at the caret the
+    // editor had, with the commas around it, and the dialog closes
+
+    const QA_ROWS = 8;
+    let qaDlg = null;
+    let qaStack = [];
+    let qaRows = [];
+    let qaPage = 0;
+    let qaPages = 1;
+    let qaQuery = '';
+    let qaSeq = 0;
+    let qaBusy = false;
+    let qaCaret = null;
+    let qaTimer = 0;
+
+    const qaTitle = () => (qaQuery ? 'Find Tag' : (qaStack.length ? qaStack[qaStack.length - 1].label : 'Quick Access'));
+    const qaQ = (sel) => (qaDlg ? qaDlg.querySelector(sel) : null);
+
+    function openQa() {
+        if (qaDlg) return;
+        const ta = edArea();
+        if (ta) qaCaret = { start: ta.selectionStart, end: ta.selectionEnd };
+        acHide();
+        if (ta) ta.blur();
+        qaStack = [];
+        qaQuery = '';
+        const host = document.getElementById('wmShell') || document.body;
+        qaDlg = document.createElement('div');
+        qaDlg.className = 'wm-msgbox-layer wds-qadlg';
+        qaDlg.innerHTML = `<div class="wm-msgbox" role="dialog" aria-modal="true" aria-label="Quick Access">
+<div class="wm-msgbox-title"><span></span><button type="button" class="wm-title-action" data-kind="close" aria-label="Close"></button></div>
+<div class="wds-qa-search wm-form-row"><span class="wm-form-label">Find:</span><input class="wm-edit" type="text" autocomplete="off" spellcheck="false" autocapitalize="off" placeholder="Tag" aria-label="Find a tag"></div>
+<div class="wm-listbox"></div><p class="wds-none" hidden></p>
+<div class="wds-pager"><button type="button" class="wm-tool" data-qa="prev" aria-label="Previous page">${toolIcon('fas fa-chevron-left')}</button><span></span><button type="button" class="wm-tool" data-qa="next" aria-label="Next page">${toolIcon('fas fa-chevron-right')}</button></div>
+<div class="wm-msgbox-buttons"><button type="button" data-qa="back">Back</button></div>
+</div>`;
+        host.appendChild(qaDlg);
+        qaDlg.querySelector('.wm-title-action').addEventListener('click', () => closeQa(true));
+        qaDlg.querySelector('.wm-msgbox').addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('[data-qa]');
+            if (!b || b.disabled || !b.closest('.wm-msgbox-buttons, .wds-pager')) return;
+            if (b.dataset.qa === 'back') qaBack();
+            else qaStep(b.dataset.qa === 'next' ? 1 : -1);
+        });
+        qaDlg.querySelector('.wm-listbox').addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wds-qa-row'); if (r) qaPick(Number(r.dataset.i)); });
+        const box = qaQ('.wds-qa-search .wm-edit');
+        box.addEventListener('input', () => {
+            clearTimeout(qaTimer);
+            qaTimer = setTimeout(() => { const q = box.value.trim(); const next = q.length >= 2 ? q : ''; if (next === qaQuery) return; qaQuery = next; qaLoad(); }, 350);
+        });
+        box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
+        // a flick across the list turns its pages
+        let downX = null;
+        const list = qaQ('.wm-listbox');
+        list.addEventListener('pointerdown', (e) => { downX = e.clientX; });
+        list.addEventListener('pointerup', (e) => { if (downX == null) return; const dx = e.clientX - downX; downX = null; if (Math.abs(dx) > 50) { e.preventDefault(); qaStep(dx < 0 ? 1 : -1); } });
+        sh.refreshTitleAction();
+        sh.syncHistory();
+        qaLoad();
+    }
+
+    /** Closes the dialog; back to the editor with its caret where it was (refocus: a tag went in or X). */
+    function closeQa(refocus) {
+        if (!qaDlg) return;
+        qaSeq += 1;
+        clearTimeout(qaTimer);
+        qaDlg.remove();
+        qaDlg = null;
+        sh.refreshTitleAction();
+        sh.syncHistory();
+        if (!refocus) return;
+        const ta = edArea();
+        if (!ta) return;
+        ta.focus();
+        const len = ta.value.length;
+        const c = qaCaret || { start: len, end: len };
+        ta.setSelectionRange(Math.min(c.start, len), Math.min(c.end, len));
+    }
+
+    /** Back: out of a search, else up a level, else the dialog closes. */
+    function qaBack() {
+        if (qaQuery) { qaQuery = ''; const box = qaQ('.wds-qa-search .wm-edit'); if (box) box.value = ''; qaLoad(); return true; }
+        if (qaStack.length) { qaStack.pop(); qaLoad(); return true; }
+        closeQa(true);
+        return true;
+    }
+
+    function qaLoad() {
+        const seq = ++qaSeq;
+        qaBusy = true;
+        qaPage = 0;
+        drawQa();
+        const at = qaStack[qaStack.length - 1];
+        let job;
+        if (qaQuery) job = M.searchTags(qaQuery).then((list) => list.map((x) => ({ type: 'tag', label: x.tag, tag: x.tag, note: x.path.join(' > ') })));
+        else if (!at || at.kind === 'groups') {
+            job = M.tagGroups(at ? at.path : []).then((r) => r.groups.map((g) => Object.assign({ type: 'group' }, g)).concat(r.tags.map((t) => ({ type: 'tag', label: t.label, tag: t.name, count: t.count }))));
+        } else {
+            job = M.tagsAt(at.kind === 'main' ? at.path.concat('main') : at.path).then((list) => list.map((t) => ({ type: 'tag', label: t, tag: t })));
+        }
+        Promise.resolve(job).catch((err) => { console.warn('[wmDreamStudio] quick access', err); return []; }).then((rows) => {
+            if (seq !== qaSeq || !qaDlg) return;
+            qaBusy = false;
+            qaRows = rows;
+            drawQa();
+        });
+    }
+
+    function drawQa() {
+        if (!qaDlg) return;
+        qaQ('.wm-msgbox-title > span').textContent = qaTitle();
+        const box = qaQ('.wm-listbox');
+        const none = qaQ('.wds-none');
+        const foot = qaQ('.wds-pager');
+        const empty = !qaBusy && !qaRows.length;
+        none.hidden = !(qaBusy || empty);
+        none.textContent = qaBusy ? 'Loading...' : (qaQuery ? `No tags match "${qaQuery}".` : 'Nothing here.');
+        box.hidden = qaBusy || empty;
+        let per = 1;
+        if (qaBusy || empty) { box.textContent = ''; qaPages = 1; } else {
+            box.hidden = false;
+            const unit = parseFloat(getComputedStyle(page).getPropertyValue('--wm-px')) || 1;
+            per = Math.max(1, Math.min(QA_ROWS, Math.floor(box.clientHeight / (26 * unit))));
+            qaPages = Math.max(1, Math.ceil(qaRows.length / per));
+            qaPage = Math.max(0, Math.min(qaPages - 1, qaPage));
+            const icon = { group: 'fas fa-folder', tag: 'fas fa-tag' };
+            box.innerHTML = qaRows.slice(qaPage * per, qaPage * per + per).map((r, k) => {
+                const right = r.note ? `<small>${esc(r.note)}</small>` : (r.count != null ? `<small>${esc(String(r.count))}</small>` : '');
+                return `<button type="button" class="wm-listbox-row wds-qa-row is-${r.type}" data-i="${qaPage * per + k}">${toolIcon(icon[r.type])}<span>${esc(r.label)}</span>${right}</button>`;
+            }).join('');
+        }
+        foot.querySelector('span').textContent = `Page ${qaPage + 1} of ${qaPages}`;
+        // Back steps out to the list before (or out of a search); at the top it closes the dialog
+        qaQ('[data-qa="back"]').textContent = qaQuery || qaStack.length ? 'Back' : 'Close';
+        qaQ('[data-qa="prev"]').disabled = qaPage <= 0;
+        qaQ('[data-qa="next"]').disabled = qaPage >= qaPages - 1;
+    }
+
+    function qaStep(dir) {
+        const next = Math.max(0, Math.min(qaPages - 1, qaPage + dir));
+        if (next === qaPage) return;
+        qaPage = next;
+        drawQa();
+    }
+
+    function qaPick(i) {
+        const r = qaRows[i];
+        if (!r) return;
+        if (r.type === 'group') { qaStack.push({ label: r.label, path: r.path, kind: r.kind }); qaLoad(); return; }
+        closeQa(true);
+        const ta = edArea();
+        if (!ta) return;
+        putTag(ta, r.tag);
+        edCount();
+        edWeight();
+    }
+
+    /** A tag in at the caret, with a comma before and after where the text around it needs one. */
+    function putTag(ta, tag) {
+        const text = ta.value;
+        const start = ta.selectionStart;
+        const before = text.slice(0, start);
+        const after = text.slice(ta.selectionEnd);
+        const atGroupStart = /-?\d+(?:\.\d+)?::\s*$/.test(before);
+        const atGroupEnd = /^\s*::/.test(after);
+        let pre = '';
+        if (before.trim() && !atGroupStart) pre = before.trim().endsWith(',') ? (before.endsWith(' ') ? '' : ' ') : ', ';
+        const post = after.trim() && !atGroupEnd && !/^\s*,/.test(after) ? (/^\s/.test(after) ? ',' : ', ') : '';
+        document.execCommand('insertText', false, pre + tag + post);
     }
 
     // ---- find: asks for the text once, then steps through its places (round to the start again)
@@ -1362,7 +1596,7 @@
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
 </div>
 <div class="wds-ac wm-listbox" hidden></div>
-<div class="wds-toolbar wm-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wm-tool-sep"></span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}<span class="wm-tool-sep"></span><span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span><span class="wm-tool-sep"></span><button type="button" class="wm-tool" data-ed="find" aria-label="Find">${edIcon('find')}</button></div>
+<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g, gi) => `<div class="wm-toolbar-group">${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[0] === 'emmenu' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`).join('')}</div>
 </div>
 <div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
@@ -1424,9 +1658,15 @@
             edJog.el.removeAttribute('tabindex');
             bar.querySelector('.wds-tb-weight').after(edJog.el);
         }
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (kit && top() === 'editor') kit.fitToolbar(bar); }).observe(bar);
         bar.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
         bar.addEventListener('mousedown', (e) => e.preventDefault());
-        bar.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wm-tool[data-ed]'); if (b) edCommand(b.dataset.ed); });
+        bar.addEventListener('click', (e) => {
+            const b = e.target.closest && e.target.closest('.wm-tool[data-ed]');
+            if (!b) return;
+            if (b.dataset.ed === 'emmenu') { emphasisMenu(b); return; }
+            edCommand(b.dataset.ed);
+        });
         let countTimer = 0;
         p.querySelectorAll('.wds-ed-text, .wds-field').forEach((area) => {
             area.addEventListener('input', () => { if (top() !== 'editor') return; clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
@@ -1516,9 +1756,9 @@
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
-        hide() { shown = false; if (ui) ui.closePopPanels(); },
-        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0),
-        onBack: () => (ui && ui.closePopPanel()) || popLayer(),
+        hide() { shown = false; if (ui) ui.closePopPanels(); closeQa(false); },
+        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0) + (qaDlg ? 1 : 0),
+        onBack: () => (qaDlg ? qaBack() : (ui && ui.closePopPanel()) || popLayer()),
         titleKind: () => (layers.length ? 'ok' : 'close'),
         onTitleOk: () => popLayer(),
         closeQuestion: () => (running() ? 'A print is being made. It goes on if you minimize.' : null),
