@@ -13,11 +13,13 @@
  *   IDs       the driver licence and other IDs stay in Samsung Wallet (it presents them); the page
  *             opens Wallet.
  *
- * Client-side only (Yukimi, Nov 16 2026): everything stays on the phone, in the Android app's
- * encrypted store under the namespace 'wallet' (window.AndroidSecureStore: AES-256-GCM under an
- * Android Keystore key, not backed up; DSApp SecureStore.kt, docs/ANDROID_BRIDGE.md). Nothing goes to
- * the server, localStorage or IndexedDB; the server keeps only Settings > Today's on / off for the
- * item. Without the app (a test tab) the list lives in this page's memory and is gone on reload.
+ * Client-side only (Yukimi, Nov 16 2026): everything stays on the phone. The list (names, Wallet
+ * names, last 4, membership numbers) is in the Android app's encrypted store under the namespace
+ * 'wallet' (window.AndroidSecureStore: AES-256-GCM under an Android Keystore key, not backed up; DSApp
+ * SecureStore.kt, docs/ANDROID_BRIDGE.md); the pictures (card art, Wallet's barcode pictures) need no
+ * encryption and are kept in this page's IndexedDB. Nothing goes to the server, which keeps only
+ * Settings > Today's options for the item. Without the app (a test tab) the list lives in this page's
+ * memory and is gone on reload.
  * A card's picture is cut from Samsung Wallet (Import from Samsung Wallet), a photo taken here with
  * the camera (cropped to a card), or drawn from its colour.
  *
@@ -75,8 +77,73 @@
 
     // ---------------------------------------------------------------- store (on the phone only)
 
+    // Two stores (Yukimi, Nov 16: only the cards' links / ids need encryption, not the pictures):
+    //  - the list, encrypted (AndroidSecureStore 'wallet'): names, Wallet names (Pay Now's link), last 4,
+    //    membership numbers, order; a few KB, so a reorder or a rename writes almost nothing
+    //  - the pictures, plain, in this page's IndexedDB ('melatonWallet' / 'pics', Blobs keyed
+    //    '<id>:photo' card art and '<id>:code' Wallet's barcode picture): asynchronous, never blocks
+    //    the page; site data cleared loses them, a new import brings them back
+    // (Before, one blocking call re-encrypted every picture on each change and the phone locked up.)
     const NS = 'wallet';
+    const pics = new Map(); // id -> { photo, code } blob URLs of the stored pictures
     function store() { return window.AndroidSecureStore || null; }
+
+    let dbOpen = null;
+    function picDb() {
+        if (!dbOpen) {
+            dbOpen = new Promise((resolve, reject) => {
+                const r = indexedDB.open('melatonWallet', 1);
+                r.onupgradeneeded = () => r.result.createObjectStore('pics');
+                r.onsuccess = () => resolve(r.result);
+                r.onerror = () => reject(r.error);
+            });
+            dbOpen.catch(() => { dbOpen = null; });
+        }
+        return dbOpen;
+    }
+    async function picOp(mode, fn) {
+        const d = await picDb();
+        return new Promise((resolve) => {
+            const tx = d.transaction('pics', mode);
+            const q = fn(tx.objectStore('pics'));
+            tx.oncomplete = () => resolve(q && 'result' in q ? q.result : null);
+            tx.onerror = () => resolve(null);
+            tx.onabort = () => resolve(null);
+        });
+    }
+    const picGet = (k) => picOp('readonly', (st) => st.get(k)).catch(() => null);
+    const picPut = (k, blob) => picOp('readwrite', (st) => st.put(blob, k)).catch(() => null);
+    const picDel = (k) => picOp('readwrite', (st) => st.delete(k)).catch(() => null);
+
+    function dataToBlob(dataUrl) {
+        const comma = dataUrl.indexOf(',');
+        const mime = dataUrl.slice(5, comma).split(';')[0];
+        const bin = atob(dataUrl.slice(comma + 1));
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new Blob([bytes], { type: mime });
+    }
+
+    function setPic(id, kind, url) {
+        const p = pics.get(id) || {};
+        if (p[kind] && p[kind] !== url) URL.revokeObjectURL(p[kind]);
+        if (url) p[kind] = url; else delete p[kind];
+        pics.set(id, p);
+    }
+
+    /** The stored pictures, read once after the list; Today and the list repaint as they arrive. */
+    async function loadPics() {
+        for (const it of data.items) {
+            for (const kind of ['photo', 'code']) {
+                if (!(kind === 'photo' ? it.hasPhoto : it.hasCode) || (pics.get(it.id) || {})[kind]) continue;
+                const blob = await picGet(`${it.id}:${kind}`);
+                if (blob) setPic(it.id, kind, URL.createObjectURL(blob));
+            }
+        }
+        todayKey = '';
+        if (sh && sh.refreshToday) sh.refreshToday();
+        if (!layers.length && page && page.isConnected && els) renderList();
+    }
 
     function load() {
         loaded = true;
@@ -87,22 +154,71 @@
         if (text === '!locked') { storeNote = 'locked'; loaded = false; return; }
         if (text.startsWith('!error')) { storeNote = 'error'; return; }
         storeNote = '';
-        if (!text) { data = { v: 1, items: [] }; return; }
+        if (!text) { data = { v: 2, items: [] }; return; }
         try {
             const d = JSON.parse(text);
-            data = { v: 1, items: Array.isArray(d.items) ? d.items.filter((x) => x && x.id && x.kind) : [] };
-        } catch (_) { storeNote = 'error'; }
+            data = { v: 2, items: Array.isArray(d.items) ? d.items.filter((x) => x && x.id && x.kind) : [] };
+        } catch (_) { storeNote = 'error'; return; }
+        // a wallet saved before (v1) kept its pictures in the encrypted list: they move to IndexedDB now
+        if (data.items.some((it) => it.photo || it.codeImage)) save();
+        loadPics();
     }
 
+    /** The list (encrypted, small) at once; new or removed pictures to IndexedDB in the background. */
     function save() {
         const s = store();
+        const work = [];
+        for (const it of data.items) {
+            for (const [kind, field, flag, gone] of [['photo', 'photo', 'hasPhoto', 'photoRemoved'], ['code', 'codeImage', 'hasCode', 'codeRemoved']]) {
+                if (it[field]) {
+                    // a new picture (data URL from the import or the camera)
+                    const blob = dataToBlob(it[field]);
+                    setPic(it.id, kind, URL.createObjectURL(blob));
+                    work.push(picPut(`${it.id}:${kind}`, blob));
+                    it[flag] = true;
+                    delete it[field];
+                } else if (it[gone]) {
+                    setPic(it.id, kind, null);
+                    work.push(picDel(`${it.id}:${kind}`));
+                    it[flag] = false;
+                }
+                delete it[gone];
+            }
+        }
+        // the pictures of cards that are gone
+        const ids = new Set(data.items.map((it) => it.id));
+        for (const id of [...pics.keys()]) if (!ids.has(id)) { setPic(id, 'photo', null); setPic(id, 'code', null); pics.delete(id); work.push(picDel(`${id}:photo`), picDel(`${id}:code`)); }
         if (s && typeof s.put === 'function' && storeNote !== 'error') {
             let ok = false;
-            try { ok = s.put(NS, JSON.stringify(data)) === true; } catch (_) { ok = false; }
+            try { ok = s.put(NS, JSON.stringify({ v: 2, items: data.items })) === true; } catch (_) { ok = false; }
             if (!ok && sh) sh.messageBox({ title: TITLE, icon: 'error', text: 'The wallet could not be saved on this phone. Unlock the phone, then try again.' });
         }
-        cardArt.clear();
         if (sh && typeof sh.refreshToday === 'function') sh.refreshToday();
+        return Promise.all(work);
+    }
+
+    /** A card's or membership's art (blob URL), a new one not saved yet included; '' when none. */
+    function photoOf(it) { return it.photo ? blobOf(it.photo) : (it.photoRemoved ? '' : ((pics.get(it.id) || {}).photo || '')); }
+    /** Samsung Wallet's barcode picture (blob URL); '' when none. */
+    function codeOf(it) { return it.codeImage ? blobOf(it.codeImage) : (it.codeRemoved ? '' : ((pics.get(it.id) || {}).code || '')); }
+
+    // pictures shown from blob URLs made once per picture (a data URL in every <img> was re-parsed on
+    // each repaint: megabytes of text for a list of imported cards)
+    const blobs = new Map();
+    function blobOf(dataUrl) {
+        if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl || '';
+        const have = blobs.get(dataUrl);
+        if (have) return have;
+        try {
+            const comma = dataUrl.indexOf(',');
+            const mime = dataUrl.slice(5, comma).split(';')[0];
+            const bin = atob(dataUrl.slice(comma + 1));
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([bytes], { type: mime }));
+            blobs.set(dataUrl, url);
+            return url;
+        } catch (_) { return dataUrl; }
     }
 
     function items() { if (!loaded) load(); return data.items; }
@@ -131,7 +247,7 @@
     /** The barcode as a PNG data URL (null while bwip-js loads; Today repaints when it is ready). */
     function barcodeUrl(it, big) {
         // Samsung Wallet's own barcode picture, when its type could not be read
-        if (it.format === 'image') return it.codeImage || 'bad';
+        if (it.format === 'image') return codeOf(it) || (it.hasCode ? null : 'bad');
         const k = barcodeKey(it, big);
         if (codeArt.has(k)) return codeArt.get(k);
         codeArt.set(k, null);
@@ -198,7 +314,7 @@
         return URL.createObjectURL(new Blob(out, { type: 'image/png' }));
     }
     function hdrUrl(it) {
-        const k = `${it.format}|${it.value}|${it.codeImage ? it.codeImage.length : 0}`;
+        const k = `${it.format}|${it.value}|${codeOf(it)}`;
         if (hdrArt.has(k)) return hdrArt.get(k);
         hdrArt.set(k, null);
         const base = barcodeUrl(it, true);
@@ -232,7 +348,8 @@
     // a card's picture for the 6.5 panel and the list (canvas: the panel takes an image)
     const cardArt = new Map();
     function cardUrl(it) {
-        if (it.photo) return it.photo;
+        const ph = photoOf(it);
+        if (ph) return ph;
         const k = JSON.stringify([it.name, it.last4, it.network, it.color]);
         if (cardArt.has(k)) return cardArt.get(k);
         const c = document.createElement('canvas');
@@ -324,7 +441,7 @@
         const it = list[todayAt];
         const bright = it.kind === 'barcode' && hdrOn === it.id;
         const art = it.kind === 'barcode' && showCode ? (bright ? (hdrUrl(it) || barcodeUrl(it, false)) : barcodeUrl(it, false)) : null;
-        const pic = it.kind === 'card' ? cardUrl(it) : (it.photo || '');
+        const pic = it.kind === 'card' ? cardUrl(it) : photoOf(it);
         const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length, showCode, bright]);
         if (key === todayKey) return true;
         todayKey = key;
@@ -369,9 +486,10 @@
             pages: list.map((it) => {
                 const go = () => activate(it);
                 const code = it.kind === 'barcode' && showCode ? barcodeUrl(it, false) : null;
-                const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? ((code && code !== 'bad' ? code : null) || it.photo || undefined) : undefined;
+                const photo = photoOf(it);
+                const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? ((code && code !== 'bad' ? code : null) || photo || undefined) : undefined;
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card' || (!!it.photo && image === it.photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }
@@ -425,12 +543,39 @@
         const note = storeNote === 'locked' ? 'Unlock the phone to show your cards.'
             : storeNote === 'error' ? 'The wallet saved on this phone cannot be read (the phone\'s lock screen was reset). Delete All starts it again.'
                 : storeNote === 'memory' ? 'This device has no Melaton app: the wallet is kept until the page closes.' : '';
-        const rows = list.map((it) => ({ key: it.id, label: `${lineOf(it)}${it.kind === 'barcode' ? ` (${label(FORMATS, it.format)})` : it.kind === 'id' ? ' (ID)' : ''}`, selected: it.id === selected, img: it.kind === 'card' ? cardUrl(it) : (it.photo || undefined) }));
+        // each row: its picture and name (a tap selects, a second tap opens it), ▲ / ▼ to reorder in place
+        const rows = list.map((it, i) => {
+            const img = it.kind === 'card' ? cardUrl(it) : photoOf(it);
+            const text = `${lineOf(it)}${it.kind === 'barcode' ? ` (${label(FORMATS, it.format)})` : it.kind === 'id' ? ' (ID)' : ''}`;
+            return `<div class="wwl-lrow${it.id === selected ? ' is-selected' : ''}" data-key="${esc(it.id)}">
+                <button type="button" class="wwl-lsel">${img ? `<img src="${esc(img)}" alt="" draggable="false">` : '<span class="wwl-lnoimg"></span>'}<span>${esc(text)}</span></button>
+                <button type="button" class="wwl-lmove" data-move="-1" aria-label="Move up"${i === 0 ? ' disabled' : ''}>\u25b2</button>
+                <button type="button" class="wwl-lmove" data-move="1" aria-label="Move down"${i === list.length - 1 ? ' disabled' : ''}>\u25bc</button>
+            </div>`;
+        }).join('');
         els.list.innerHTML = `${note ? ui.note(note) : ''}
-            ${list.length ? ui.listbox(rows) : `<p class="wwl-empty">No cards yet. Menu > New Card, New Barcode or New ID adds one.</p>`}
-            ${ui.note('Cards open Samsung Wallet\'s pay sheet; it asks for your fingerprint, then hold the phone to the reader. Barcodes show here for the store to scan. Everything stays on this phone, encrypted.')}`;
-        ui.bindListbox(els.list.querySelector('.wm-listbox'), (k) => { selected = k; if (sh.refreshSoftKeys) sh.refreshSoftKeys(); });
-        els.list.querySelectorAll('.wm-listbox-row').forEach((row) => row.addEventListener('dblclick', () => { const it = list.find((x) => x.id === row.dataset.key); if (it) activate(it); }));
+            ${list.length ? `<div class="wwl-lrows">${rows}</div>` : '<p class="wwl-empty">No cards yet. Menu > New Card, New Barcode or New ID adds one, or Import from Samsung Wallet.</p>'}
+            ${ui.note('Cards open Samsung Wallet\'s pay sheet; it asks for your fingerprint, then hold the phone to the reader. Barcodes show here for the store to scan. ▲ / ▼ set the order Today shows them in.')}`;
+        const box = els.list.querySelector('.wwl-lrows');
+        if (!box) return;
+        box.addEventListener('click', (e) => {
+            const row = e.target.closest('.wwl-lrow');
+            if (!row) return;
+            const id = row.dataset.key;
+            const mv = e.target.closest('.wwl-lmove');
+            if (mv) { selected = id; markSelected(); move(Number(mv.dataset.move)); return; }
+            if (e.target.closest('.wwl-lsel')) {
+                if (selected === id) { const it = items().find((x) => x.id === id); if (it) activate(it); return; }
+                selected = id;
+                markSelected();
+            }
+        });
+    }
+
+    function markSelected() {
+        const box = els && els.list && els.list.querySelector('.wwl-lrows');
+        if (box) box.querySelectorAll('.wwl-lrow').forEach((r) => r.classList.toggle('is-selected', r.dataset.key === selected));
+        if (sh && sh.refreshSoftKeys) sh.refreshSoftKeys();
     }
 
     function renderShow() {
@@ -455,7 +600,7 @@
         let html = '';
         if (f.kind === 'card') {
             html = `<div class="wwl-edit-pic"><img src="${esc(cardUrl(f))}" alt="" draggable="false"></div>
-                ${ui.buttons([['photo', 'Take Picture...'], ['nophoto', 'Remove Picture', !f.photo]])}
+                ${ui.buttons([['photo', 'Take Picture...'], ['nophoto', 'Remove Picture', !photoOf(f)]])}
                 ${ui.row('Nickname:', ui.edit('wwlName', f.name || '', 'maxlength="32"'), { for: 'wwlName' })}
                 ${ui.row('Card name:', ui.edit('wwlWallet', f.walletName || '', 'maxlength="40"'), { for: 'wwlWallet' })}
                 ${ui.row('Last 4:', ui.edit('wwlLast4', f.last4 || '', 'maxlength="4" inputmode="numeric"'), { for: 'wwlLast4' })}
@@ -483,7 +628,7 @@
         const ph = els.edit.querySelector('[data-act="photo"]');
         if (ph) ph.addEventListener('click', () => { readEdit(); startScan('photo'); });
         const np = els.edit.querySelector('[data-act="nophoto"]');
-        if (np) np.addEventListener('click', () => { readEdit(); delete f.photo; renderEdit(); });
+        if (np) np.addEventListener('click', () => { readEdit(); delete f.photo; f.photoRemoved = true; renderEdit(); });
     }
 
     function readEdit() {
@@ -519,10 +664,29 @@
         if (!all && !it) return;
         const ok = await sh.messageBox({ title: TITLE, icon: 'question', text: all ? 'Delete every card, barcode and ID from this phone\'s wallet?' : `Delete "${lineOf(it)}"?`, buttons: [{ text: 'Delete', value: true }, { text: 'Cancel', value: false }] });
         if (!ok) return;
-        if (all) { data.items = []; storeNote = storeNote === 'error' ? '' : storeNote; const s = store(); try { if (s && s.remove) s.remove(NS); } catch (_) { /* ignore */ } } else data.items = list.filter((x) => x !== it);
+        if (all) { data.items = []; storeNote = storeNote === 'error' ? '' : storeNote; } else data.items = list.filter((x) => x !== it);
         selected = null;
-        save();
+        await sh.busy(new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0))).then(() => save()), { delay: 0, timeout: 30000 }).catch(() => {});
         renderList();
+    }
+
+    /** The list's rows put in data.items' order without drawing them again (their pictures stay decoded). */
+    function reorderRows() {
+        const box = els && els.list && els.list.querySelector('.wwl-lrows');
+        if (!box) { renderList(); return; }
+        const rows = new Map([...box.querySelectorAll('.wwl-lrow')].map((r) => [r.dataset.key, r]));
+        const list = items();
+        list.forEach((it, i) => {
+            const r = rows.get(it.id);
+            if (!r) return;
+            box.appendChild(r);
+            const [up, down] = r.querySelectorAll('.wwl-lmove');
+            if (up) up.disabled = i === 0;
+            if (down) down.disabled = i === list.length - 1;
+        });
+        const sel = rows.get(selected);
+        if (sel) sel.scrollIntoView({ block: 'nearest' });
+        if (sh && sh.refreshSoftKeys) sh.refreshSoftKeys();
     }
 
     /** Cards in Samsung Wallet's order (as the last import found them); the others keep their place after. */
@@ -531,7 +695,7 @@
         const known = list.filter((x) => Number.isFinite(x.walletOrder)).sort((a, b) => a.walletOrder - b.walletOrder);
         data.items = known.concat(list.filter((x) => !Number.isFinite(x.walletOrder)));
         save();
-        renderList();
+        reorderRows();
     }
 
     function moveTo(end) {
@@ -541,7 +705,7 @@
         const [it] = list.splice(i, 1);
         if (end === 'top') list.unshift(it); else list.push(it);
         save();
-        renderList();
+        reorderRows();
     }
 
     function move(d) {
@@ -551,7 +715,7 @@
         if (i < 0 || j < 0 || j >= list.length) return;
         [list[i], list[j]] = [list[j], list[i]];
         save();
-        renderList();
+        reorderRows();
     }
 
     // ---------------------------------------------------------------- import from Samsung Wallet
@@ -710,18 +874,18 @@
                 } else {
                     if (o.merchant && isNew) it.name = o.walletName;
                     const code = await readCode(o.barcodeImage);
-                    if (code) { it.format = code.format; it.value = code.value; delete it.codeImage; } else if (o.barcodeImage || o.barcodeValue) {
+                    if (code) { it.format = code.format; it.value = code.value; delete it.codeImage; if (it.hasCode) it.codeRemoved = true; } else if (o.barcodeImage || o.barcodeValue) {
                         it.value = o.barcodeValue || it.value || '';
-                        it.codeImage = o.barcodeImage || it.codeImage;
-                        it.format = it.codeImage ? 'image' : (it.format || 'code128');
+                        if (o.barcodeImage) it.codeImage = o.barcodeImage;
+                        it.format = it.codeImage || it.hasCode ? 'image' : (it.format || 'code128');
                     }
                     if (o.barcodeValue) it.number = o.barcodeValue;
                 }
                 if (isNew) list.push(it);
             }
         };
-        await sh.busy(add(), { delay: 250, timeout: 30000 }).catch(() => {});
-        save();
+        // the wait cursor shows before the pictures are written (one frame first, then the work)
+        await sh.busy(add().then(() => new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)))).then(() => save()), { delay: 0, timeout: 60000 }).catch(() => {});
         imported = null;
         layers = layers.filter((l) => l !== 'import');
         sync();
@@ -836,6 +1000,7 @@
         c.height = 216;
         c.getContext('2d').drawImage(v, sx, sy, gw / scale, gh / scale, 0, 0, c.width, c.height);
         form.item.photo = c.toDataURL('image/jpeg', 0.8);
+        delete form.item.photoRemoved;
         stopScan();
         pop();
         renderEdit();

@@ -254,3 +254,63 @@
 /* the code brightened on Today (a tap; 30 s): an HDR picture, shown above SDR white */
 .wwl-code.is-bright { box-shadow: 0 0 0 calc(2 * var(--wm-px)) #fff; }
 .wwl-code img { dynamic-range-limit: no-limit; }
+
+/* the list: [picture] name, then ▲ / ▼ to reorder in place (a tap selects, a second tap opens) */
+.wwl-lrows {
+    display: flex;
+    flex-direction: column;
+    border: calc(1 * var(--wm-px)) solid #000;
+    margin: calc(2 * var(--wm-px)) 0;
+}
+
+.wwl-lrow {
+    display: flex;
+    align-items: stretch;
+    border-bottom: calc(1 * var(--wm-px)) solid #d0d0d0;
+}
+
+.wwl-lrow:last-child { border-bottom: 0; }
+
+.wwl-lsel {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    padding: calc(2 * var(--wm-px)) calc(4 * var(--wm-px));
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+
+.wwl-lsel span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.wwl-lsel img,
+.wwl-lnoimg {
+    flex: 0 0 auto;
+    width: calc(40 * var(--wm-px));
+    height: calc(25 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wwl-lrow.is-selected .wwl-lsel { background: var(--wm-highlight); color: var(--wm-highlight-text, #fff); }
+
+.wwl-lmove {
+    appearance: none;
+    -webkit-appearance: none;
+    flex: 0 0 auto;
+    width: calc(26 * var(--wm-px));
+    padding: 0;
+    border: 0;
+    border-left: calc(1 * var(--wm-px)) solid #d0d0d0;
+    background: var(--wm-tint, #e8e8e8);
+    color: #000;
+    font: calc(10 * var(--wm-px)) / 1 Tahoma, sans-serif;
+}
+
+.wwl-lmove:active:not(:disabled) { background: var(--wm-highlight); color: #fff; }
+.wwl-lmove:disabled { color: #a0a0a0; }
