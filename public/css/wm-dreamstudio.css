@@ -435,10 +435,16 @@
     overflow: hidden;
 }
 
-/* the token count and meter (of the model's limit), when the bar has room for them */
-.wds-tb-tokens { display: flex; flex-direction: column; justify-content: center; height: calc(21 * var(--wm-px)); min-width: calc(44 * var(--wm-px)); margin: 0 calc(2 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); line-height: 1; }
-.wds-tb-tokens > .wds-bar { height: calc(7 * var(--wm-px)); margin-top: calc(2 * var(--wm-px)); }
-.wds-tb-tokens.is-over > span { font-weight: bold; }
+/* the token meter, at the right just before the emphasis controls, longer the more room the bar has:
+ * a warning near the limit / an error over it, the count, the meter */
+.wds-toolbar > .wds-ed-tokens { flex: 1 1 auto; min-width: calc(80 * var(--wm-px)); max-width: calc(220 * var(--wm-px)); margin-left: auto; }
+.wds-toolbar > .wds-ed-tokens:not([hidden]) + .wds-ed-emph { margin-left: 0; }
+.wds-tb-tokens { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: calc(3 * var(--wm-px)); height: calc(21 * var(--wm-px)); margin: 0 calc(3 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); line-height: 1; white-space: nowrap; }
+.wds-tb-tokens > i { flex: 0 0 auto; font-size: calc(11 * var(--wm-px)); }
+.wds-tb-tokens:not([data-level="near"]):not([data-level="over"]) > i { display: none; }
+.wds-tb-tokens > .wds-bar { flex: 1 1 auto; min-width: calc(24 * var(--wm-px)); height: calc(9 * var(--wm-px)); margin: 0; }
+.wds-tb-tokens[data-level="over"] > span { font-weight: bold; }
+.wds-ed-head > span[hidden] { display: none; }
 
 /* the emphasis controls stay at the right of the bar when it has room to spare */
 .wds-toolbar > .wds-ed-emph { margin-left: auto; }
@@ -545,9 +551,18 @@
 .wm-pop.wds-ucpop { width: calc(200 * var(--wm-px)); }
 .wm-pop.wds-rack { width: calc(300 * var(--wm-px)); }
 
-/* UC: the desktop's level boxes as square cells, the NSFW state's icon after them */
+/* Custom Resolution / Ratio: a message box of LCD + jog rows; the size follows the ratio in ratio mode */
+#wmShell .wds-szdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
+.wds-szdlg .wm-msgbox-title > .wm-title-action { flex: 0 0 auto; }
+.wds-sz-body { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(6 * var(--wm-px)); }
+.wds-sz-body .wds-wt-name { flex: 1 1 auto; }
+.wds-sz-body button.wds-wt-lcd { min-width: calc(44 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+.wds-sz-body .wds-wt-row > .wm-jog { width: calc(90 * var(--wm-px)); }
+.wds-sz-body .wds-wt-row.is-follow > .wm-jog { visibility: hidden; }
+.wds-sz-body [data-area] { min-width: calc(60 * var(--wm-px)); margin: 0; }
+
+/* UC: the four level bars (narrow: they save room), the NSFW state's icon after them */
 .wds-genbar .wds-gb-uc { gap: calc(3 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); }
-.wds-genbar .wds-gb-uc .wms-uc-meter > i { width: calc(4 * var(--wm-px)); height: calc(4 * var(--wm-px)); }
 .wds-genbar .wds-gb-uc > i { font-size: calc(11 * var(--wm-px)); pointer-events: none; }
 
 /* the seed's panel: one row, the seed's edit box then Clear, Random and the lock as tool cells */

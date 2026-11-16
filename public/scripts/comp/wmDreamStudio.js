@@ -67,14 +67,13 @@
     // Quick Access and Find, then the emphasis controls kept at the right (Yukimi, Nov 15): 'weight'
     // is the LCD (the jog wheel goes after it), then the group's menu (Trim Start, Trim End, Remove
     // Emphasis)
-    // the toolbox holds the prompt tools (Lowercase, Weight Rack, Reset Emphasis) and Quick Access /
-    // Find when the row has no room for them; the token count goes first when room is short (drop 1),
-    // then Quick Access / Find (drop 2)
+    // the toolbox holds the prompt tools (Lowercase, Weight Rack, Reset Emphasis), and Quick Access /
+    // Find (the end of its group) when the row has no room for them; the token meter goes first when
+    // room is short (drop 1), then Quick Access / Find (drop 2)
     const ED_GROUPS = [
         [['undo', 'Undo'], ['redo', 'Redo']],
         [['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']],
-        [['toolbox', 'Prompt Tools']],
-        { drop: 2, tools: [['quickaccess', 'Quick Access'], ['find', 'Find']] },
+        [['toolbox', 'Prompt Tools'], ['quickaccess', 'Quick Access', 2], ['find', 'Find', 2]],
         { drop: 1, tools: ['tokens'] },
         ['weight', ['emmenu', 'Emphasis Group']]
     ];
@@ -648,16 +647,25 @@
         const ta = edArea();
         const out = $('.wds-ed-head > span');
         if (ta && out) drawTokens(edField, ta.value, out);
-        // the bar's count and meter (the desktop's token bar): of the model's limit
+        // the bar's count and meter (the desktop's token bar): the field's own words and what Studio
+        // adds to them (quality and dataset tags), of the model's limit; a warning near the limit, an
+        // error over it. With it on the bar the count leaves the head
         const box = $('.wds-tb-tokens');
-        if (!ta || !box || !box.offsetParent) return;
+        const shownOnBar = !!(ta && box && box.offsetParent);
+        if (out) out.hidden = shownOnBar;
+        if (!shownOnBar) return;
         const seq = String(++tokenSeq);
         box.dataset.seq = seq;
-        Promise.resolve(ta.value ? M.tokens(ta.value) : 0).then((n) => {
+        const added = edField === 'prompt' || edField === 'uc' ? M.addedTokens(edField) : 0;
+        Promise.resolve(ta.value ? M.tokens(ta.value) : 0).then((own) => {
             if (box.dataset.seq !== seq) return;
             const limit = M.tokenLimit() || 512;
-            box.firstElementChild.textContent = n == null ? '' : `${n}/${limit}`;
-            box.classList.toggle('is-over', n > limit);
+            const n = own == null ? null : own + added;
+            box.children[1].textContent = n == null ? '' : `${n}/${limit}`;
+            const level = n == null ? '' : n > limit ? 'over' : n >= limit * 0.85 ? 'near' : '';
+            box.dataset.level = level;
+            const icon = box.querySelector('i');
+            if (icon) icon.className = level === 'over' ? 'fas fa-circle-exclamation wm-icon-error' : 'fas fa-triangle-exclamation wm-icon-warn';
             setBar(box.querySelector('.wds-bar'), n == null ? 0 : Math.min(100, (n / limit) * 100));
         });
     }
@@ -868,7 +876,7 @@
         const ta = edArea();
         const hasGroups = !!ta && new RegExp(WEIGHT_RE.source).test(ta.value);
         const rows = [];
-        if (edDropped.some((g) => g.querySelector('[data-ed="quickaccess"]'))) rows.push({ label: 'Quick Access...', action: openQa }, { label: 'Find...', action: findAsk }, '-');
+        if (edDropped.some((g) => g.matches('[data-ed="quickaccess"]') || g.querySelector('[data-ed="quickaccess"]'))) rows.push({ label: 'Quick Access...', action: openQa }, { label: 'Find...', action: findAsk }, '-');
         rows.push(
             { label: 'Lowercase', disabled: !ta || !ta.value, action: lowercaseText },
             { label: 'Weight Rack...', disabled: !hasGroups, action: () => weightRack(btn) },
@@ -1562,7 +1570,7 @@
         if (id === 'seed') return;
         if (id === 'model') { genList(b, grouped(o.models, (g, x) => x.name), s.model, (v) => change('model', v)); return; }
         if (id === 'resolution') {
-            genList(b, grouped(o.resolutions, sizeName), s.resolution, (v) => change('resolution', v).then(() => { if (/^custom/.test(String(v))) openLayer('settings'); }));
+            genList(b, grouped(o.resolutions, sizeName), s.resolution, (v) => change('resolution', v).then(() => { if (/^custom/.test(String(v))) sizeDialog(); }));
             return;
         }
         if (id === 'uc') { ucPanel(b); return; }
@@ -1590,6 +1598,81 @@
     function queueSet(id, v) {
         clearTimeout(setTimers.get(id));
         setTimers.set(id, setTimeout(() => { setTimers.delete(id); change(id, v); }, 120));
+    }
+
+    // ---- Custom Resolution / Custom Ratio (Yukimi, Nov 15): a WM dialog with jog wheels, each value an
+    // LCD that opens the number pad; the area limit (Normal, Large, Max) as a button
+
+    let szDlg = null;
+
+    function closeSize() { if (!szDlg) return false; szDlg.remove(); szDlg = null; sh.refreshTitleAction(); sh.syncHistory(); paint(); return true; }
+
+    function sizeDialog() {
+        closeSize();
+        const c0 = M.customSize();
+        if (!c0 || !c0.mode) return;
+        const ratio = c0.mode === 'ratio';
+        const host = document.getElementById('wmShell') || document.body;
+        szDlg = document.createElement('div');
+        szDlg.className = 'wm-msgbox-layer wds-szdlg';
+        const row = (key, label) => `<div class="wds-wt-row is-on" data-sz="${key}"><span class="wds-wt-name">${label}</span><button type="button" class="wds-wt-lcd wm-lcd" data-pad="${key}" aria-label="${label}: type a value"></button></div>`;
+        szDlg.innerHTML = `<div class="wm-msgbox" role="dialog" aria-modal="true" aria-label="${ratio ? 'Custom Ratio' : 'Custom Resolution'}"><div class="wm-msgbox-title"><span>${ratio ? 'Custom Ratio' : 'Custom Resolution'}</span><button type="button" class="wm-title-action" data-kind="ok" aria-label="OK"></button></div>`
+            + `<div class="wds-sz-body">${ratio ? row('ratio', 'Ratio') : ''}${row('width', 'Width')}${row('height', 'Height')}<div class="wds-wt-row"><span class="wds-wt-name">Area</span><button type="button" class="wm-button" data-area></button></div></div></div>`;
+        host.appendChild(szDlg);
+        const q = (sel) => szDlg.querySelector(sel);
+        const show = () => {
+            const c = M.customSize() || c0;
+            if (ratio) ui.segText(q('[data-pad="ratio"]'), c.ratio || '1:1');
+            ui.segText(q('[data-pad="width"]'), String(c.width || 0).padStart(4, '!'));
+            ui.segText(q('[data-pad="height"]'), String(c.height || 0).padStart(4, '!'));
+            q('[data-area]').textContent = c.area;
+            jogs.width.set(c.width);
+            jogs.height.set(c.height);
+        };
+        const jogs = {};
+        let timer = 0;
+        const put = (w, h) => { clearTimeout(timer); timer = setTimeout(() => { Promise.resolve(M.setCustomSize(w, h)).then(() => { show(); paint(); }); }, 150); };
+        ['width', 'height'].forEach((k) => {
+            jogs[k] = ui.jogWheel(q(`[data-sz="${k}"]`), {
+                label: k === 'width' ? 'Width' : 'Height',
+                value: c0[k] || 1024,
+                min: 64,
+                max: 2048,
+                step: 64,
+                zeroStop: 0,
+                stepPx: 18,
+                onChange: (v) => { ui.segText(q(`[data-pad="${k}"]`), String(v).padStart(4, '!')); put(k === 'width' ? v : null, k === 'height' ? v : null); }
+            });
+        });
+        // in ratio mode the width and height follow the ratio: the ratio's jog steps the legal sizes
+        if (ratio) {
+            ui.jogWheel(q('[data-sz="ratio"]'), { label: 'Ratio', stepPx: 24, zeroStop: 0, onStep: (d) => { M.stepRatio(d); show(); paint(); } });
+            q('[data-sz="width"]').classList.add('is-follow');
+            q('[data-sz="height"]').classList.add('is-follow');
+        }
+        szDlg.addEventListener('click', (e) => {
+            const t = e.target.closest && e.target.closest('[data-pad], [data-area], .wm-title-action');
+            if (!t) return;
+            if (t.classList.contains('wm-title-action')) { closeSize(); return; }
+            if (t.hasAttribute('data-area')) { M.cycleArea(); show(); paint(); return; }
+            const key = t.dataset.pad;
+            const c = M.customSize() || c0;
+            ui.numPad({
+                title: key === 'ratio' ? 'Ratio' : key === 'width' ? 'Width' : 'Height',
+                value: key === 'ratio' ? c.ratio : String(c[key] || ''),
+                colon: key === 'ratio',
+                max: key === 'ratio' ? 6 : 4,
+                onOk: (text) => {
+                    if (key === 'ratio') M.setRatio(text);
+                    else if (Number(text) > 0) { const v = Math.max(64, Math.round(Number(text) / 64) * 64); Promise.resolve(M.setCustomSize(key === 'width' ? v : null, key === 'height' ? v : null)).then(show); }
+                    show();
+                    paint();
+                }
+            });
+        });
+        show();
+        sh.refreshTitleAction();
+        sh.syncHistory();
     }
 
     // ---- weight panels: a check row per dataset (or adjustment) with its weight; a tap on the
@@ -1634,7 +1717,7 @@
             max: r.max,
             step: r.coarse || 0.1,
             fineStep: r.fineStep || 0,
-            stepPx: 10,
+            stepPx: 18,
             onChange: put
         });
         if (r.def != null) {
@@ -1881,7 +1964,7 @@
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
 </div>
 <div class="wds-ac wm-listbox" hidden></div>
-<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g0, gi) => { const g = Array.isArray(g0) ? g0 : g0.tools; return `<div class="wm-toolbar-group${g.includes('weight') ? ' wds-ed-emph' : ''}"${g0.drop ? ` data-drop="${g0.drop}"` : ''}>${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : b === 'tokens' ? '<span class="wds-tb-tokens" aria-label="Tokens"><span></span><div class="wds-bar"><span></span></div></span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[0] === 'emmenu' || b[0] === 'toolbox' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`; }).join('')}</div>
+<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g0, gi) => { const g = Array.isArray(g0) ? g0 : g0.tools; return `<div class="wm-toolbar-group${g.includes('weight') ? ' wds-ed-emph' : ''}${g.includes('tokens') ? ' wds-ed-tokens' : ''}"${g0.drop ? ` data-drop="${g0.drop}"` : ''}>${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : b === 'tokens' ? `<span class="wds-tb-tokens" aria-label="Tokens">${toolIcon('fas fa-triangle-exclamation wm-icon-warn')}<span></span><div class="wds-bar"><span></span></div></span>` : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[2] ? ` data-drop="${b[2]}"` : ''}${b[0] === 'emmenu' || b[0] === 'toolbox' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`; }).join('')}</div>
 </div>
 <div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
@@ -1939,7 +2022,7 @@
         // the group under the caret (or makes one of the selection / the tag there)
         const kit = window.wmSettings && window.wmSettings.ui;
         if (kit && typeof kit.jogWheel === 'function') {
-            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 10, onStep: (d, fine) => stepWeight(d, fine), current: () => caretWeight() });
+            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 18, onStep: (d, fine) => stepWeight(d, fine), current: () => caretWeight() });
             edJog.el.removeAttribute('tabindex');
             bar.querySelector('.wds-tb-weight').after(edJog.el);
         }
@@ -2058,9 +2141,9 @@
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
-        hide() { shown = false; if (ui) ui.closePopPanels(); closeQa(false); },
-        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0) + (qaDlg ? 1 : 0),
-        onBack: () => (qaDlg ? qaBack() : (ui && ui.closePopPanel()) || popLayer()),
+        hide() { shown = false; if (ui) { ui.closePopPanels(); ui.closePad(); } closeQa(false); closeSize(); },
+        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0) + (qaDlg ? 1 : 0) + (szDlg ? 1 : 0) + (ui && ui.padOpen() ? 1 : 0),
+        onBack: () => ((ui && ui.closePad()) || (qaDlg ? qaBack() : closeSize() || (ui && ui.closePopPanel()) || popLayer())),
         titleKind: () => (layers.length ? 'ok' : 'close'),
         onTitleOk: () => popLayer(),
         closeQuestion: () => (running() ? 'A print is being made. It goes on if you minimize.' : null),

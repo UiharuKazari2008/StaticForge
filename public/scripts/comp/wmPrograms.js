@@ -2228,6 +2228,7 @@
     let calSkip = null; // the control whose tap just closed its calendar
     const pops = []; // the open pop-up panels, bottom first: [{ el, away, anchor, onClose }]
     let popSkip = null; // the control whose tap just closed its panel
+    let padOpen = null; // the number pad's layer while it is up
     const CAL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     // the sixteen system colours, in the order of the system palette: [['#rrggbb', name]]; silver and
     // gray are the two greys, the others the red / green / blue bits at half (0 - 6) or full (9 - 15)
@@ -2558,11 +2559,11 @@
          * min, max, step, fineStep (a roll slower than fineSpeed WM units a second, 160, steps by this
          * instead: fine adjust is the usual, a quick roll takes whole steps), zeroStop (detents a value
          * rests at 0 before it crosses to the other sign, 4; 0 = none), current() (onStep wheels: the
-         * value now, for the stop at zero), label (accessible name), stepPx (8), onChange(value) on every step,
+         * value now, for the stop at zero), label (accessible name), stepPx (16: a deliberate roll per step), onChange(value) on every step,
          * onStep(dir, fine) instead of a value (a wheel that steps something else: emphasis), disabled.
          * Returns { set(value), el }.
          */
-        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, fineStep = 0, fineSpeed = 160, label = '', stepPx = 8, onChange, onStep, current = null, zeroStop = 4, disabled = false } = {}) {
+        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, fineStep = 0, fineSpeed = 160, label = '', stepPx = 16, onChange, onStep, current = null, zeroStop = 4, disabled = false } = {}) {
             const RIDGES = 18;
             host.insertAdjacentHTML('beforeend', `<div class="wm-jog${disabled ? ' is-disabled' : ''}" role="slider"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${escUi(label)}"><div class="wm-jog-wheel">${'<span class="wm-jog-ridge"></span>'.repeat(RIDGES)}</div></div>`);
             const all = host.querySelectorAll('.wm-jog');
@@ -2731,7 +2732,7 @@
          * button), digits (decimals shown; from step), stepPx (units rolled per step),
          * onChange(value) on every step. Returns the panel (popPanel).
          */
-        valuePop(anchor, { label = '', min = 0, max = 1, step = 1, fineStep = 0, value = 0, def = null, digits = null, stepPx = 8, onChange } = {}) {
+        valuePop(anchor, { label = '', min = 0, max = 1, step = 1, fineStep = 0, value = 0, def = null, digits = null, stepPx = 16, onChange } = {}) {
             const dg = digits != null ? digits : Math.max((String(step).split('.')[1] || '').length, fineStep ? (String(fineStep).split('.')[1] || '').length : 0);
             const fmt = (v) => Number(v).toFixed(dg);
             const clamp = (v) => Math.max(min, Math.min(max, Number(Number(v).toFixed(dg))));
@@ -2789,6 +2790,57 @@
             el.dataset.ghost = ghost;
         },
         /**
+         * Number pad (a value typed rather than rolled): a WM dialog with the value in an LCD over
+         * 1 - 9, then (point or colon) / 0 / back, with Clear, ok and Cancel. opts: title, value,
+         * point (a '.' key), colon (a ':' key, for a ratio), minus (a '-' key), max (figures),
+         * onOk(text). One at a time; closePad() is for an app's back key.
+         */
+        numPad({ title = '', value = '', point = false, colon = false, minus = false, max = 10, onOk } = {}) {
+            ui.closePad();
+            const host = document.getElementById('wmShell') || document.body;
+            const layer = document.createElement('div');
+            layer.className = 'wm-msgbox-layer wm-numpad-layer';
+            const extra = colon ? ':' : point ? '.' : '';
+            const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', minus ? '-' : extra, '0', 'back'];
+            layer.innerHTML = `<div class="wm-msgbox wm-numpad" role="dialog" aria-modal="true" aria-label="${escUi(title)}"><div class="wm-msgbox-title"><span>${escUi(title)}</span></div>`
+                + '<div class="wm-numpad-lcd wm-lcd"></div>'
+                + `<div class="wm-numpad-keys">${keys.map((k) => (k ? `<button type="button" class="wm-button" data-k="${escUi(k)}"${k === 'back' ? ' aria-label="Backspace"' : ''}>${k === 'back' ? '&lt;' : escUi(k)}</button>` : '<span></span>')).join('')}</div>`
+                + '<div class="wm-msgbox-buttons"><button type="button" data-act="clear">Clear</button><button type="button" data-act="ok" class="is-default">ok</button><button type="button" data-act="cancel">Cancel</button></div></div>';
+            host.appendChild(layer);
+            let text = String(value == null ? '' : value);
+            const lcd = layer.querySelector('.wm-numpad-lcd');
+            const show = () => { lcd.textContent = text || '0'; lcd.dataset.ghost = '8'.repeat(Math.max(max, text.length)); };
+            show();
+            const done = (ok) => { ui.closePad(); if (ok && onOk) onOk(text); };
+            layer.addEventListener('click', (e) => {
+                const k = e.target.closest && e.target.closest('[data-k]');
+                if (k) {
+                    const key = k.dataset.k;
+                    if (key === 'back') text = text.slice(0, -1);
+                    else if (key === '-') text = text.startsWith('-') ? text.slice(1) : `-${text}`;
+                    else if ((key === '.' || key === ':') && text.includes(key)) return;
+                    else if (text.replace(/[-.:]/g, '').length < max || key === '.' || key === ':') text += key;
+                    if (sh && typeof sh.vibrate === 'function') sh.vibrate('tick');
+                    show();
+                    return;
+                }
+                const b = e.target.closest && e.target.closest('[data-act]');
+                if (!b) return;
+                if (b.dataset.act === 'clear') { text = ''; show(); } else done(b.dataset.act === 'ok');
+            });
+            padOpen = layer;
+            if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
+            return layer;
+        },
+        padOpen: () => !!padOpen,
+        closePad() {
+            if (!padOpen) return false;
+            padOpen.remove();
+            padOpen = null;
+            if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
+            return true;
+        },
+        /**
          * A tool bar too wide for the screen wraps by its groups (.wm-toolbar-group): a divider that
          * would start a row is left out, as a bar never begins with one. opts.oneRow: groups marked
          * data-drop="n" are taken out, n = 1 first, until the bar is one row; returns those groups
@@ -2799,7 +2851,8 @@
             // oneRow: groups marked data-drop leave the bar, the lowest number first, until it is one row
             const dropped = [];
             if (oneRow) {
-                const drops = [...bar.querySelectorAll(':scope > .wm-toolbar-group[data-drop]')].sort((a, b) => Number(a.dataset.drop) - Number(b.dataset.drop));
+                // a whole group, or tools inside one, can carry data-drop
+                const drops = [...bar.querySelectorAll(':scope > .wm-toolbar-group[data-drop], :scope > .wm-toolbar-group > [data-drop]')].sort((a, b) => Number(a.dataset.drop) - Number(b.dataset.drop));
                 drops.forEach((g) => { g.hidden = false; });
                 const rows = () => new Set([...bar.querySelectorAll(':scope > .wm-toolbar-group')].filter((g) => !g.hidden && g.getClientRects().length).map((g) => g.offsetTop)).size;
                 for (const g of drops) {

@@ -40,7 +40,10 @@
  *                                       the print on show's seed / that seed into the box (kept if locked)
  *   studioModel.clearSeed() / randomSeed()
  *                                       the seed box emptied (and unlocked) / a new random seed in it
- *   studioModel.tokenLimit()            the prompt's token limit for the chosen model
+ *   studioModel.tokenLimit() / addedTokens('prompt' | 'uc')
+ *                                       the token limit; the tokens Studio adds itself (quality, datasets)
+ *   studioModel.customSize() / setCustomSize(w, h) / stepRatio(dir) / setRatio('W:H') / cycleArea()
+ *                                       Custom Resolution and Custom Ratio, and the area limit
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
  *   studioModel.suggest(text)            suggestions for a few typed letters (a promise): [{ text, label, kind
  *                                       'tag' | 'character' | 'expander', category, count, note }], with
@@ -75,7 +78,8 @@
        loadPreciseReferencesFromMetadata, updateManualPriceDisplay, datasetAllowedForModel, getStudioUcPresetMenuItems,
        getStudioDatasetCatalog, datasetBias, findDatasetConfig, toggleDataset, adjustDatasetBias, ensureActiveSubTogglesInitialized,
        getActiveSubToggleDatasets, getVisibleSubToggles, getSubToggleGroup, getSubToggleDefaultBias, isSubToggleEnabled,
-       getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked, getPromptTokenLimit */
+       getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked, getPromptTokenLimit,
+       manualSelectedResolution, isCustomRatioMode, isCustomResolutionMode, formatAspectRatio, stepManualRatioFromCurrent, commitManualRatioInput, promptTextareaToolbar */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -231,6 +235,69 @@
                 steps: !locked('steps')
             }
         };
+    }
+
+    // ---- custom size: Custom Resolution (width and height) and Custom Ratio (a W:H stepped through the
+    // legal sizes), within the area limit the desktop's Normal / Large / Max toggle sets
+    /** { mode 'size' | 'ratio' | null, width, height, ratio 'W:H', area: 'Normal' | 'Large' | 'Max' } */
+    function customSize() {
+        if (!ready()) return null;
+        let res = '';
+        try { res = typeof manualSelectedResolution !== 'undefined' ? String(manualSelectedResolution || '') : ''; } catch (_) { res = ''; }
+        const ratio = typeof isCustomRatioMode === 'function' && isCustomRatioMode(res);
+        const custom = typeof isCustomResolutionMode === 'function' && isCustomResolutionMode(res);
+        const w = parseInt((el('manualWidth') || {}).value, 10) || 0;
+        const h = parseInt((el('manualHeight') || {}).value, 10) || 0;
+        const t = el('resolutionAreaToggle');
+        return {
+            mode: ratio ? 'ratio' : custom ? 'size' : null,
+            width: w,
+            height: h,
+            ratio: w && h && typeof formatAspectRatio === 'function' ? formatAspectRatio(w, h) : '',
+            area: (t && t.textContent.trim()) || 'Normal'
+        };
+    }
+
+    async function setCustomSize(width, height) {
+        if (!ready()) return false;
+        if (width) await applyStudioParam('width', Math.round(width));
+        if (height) await applyStudioParam('height', Math.round(height));
+        emit('change', { id: 'resolution' });
+        return true;
+    }
+
+    /** Custom Ratio: the next legal size up (1) or down (-1) at this ratio; or a typed 'W:H'. */
+    function stepRatio(dir) {
+        if (!ready() || typeof stepManualRatioFromCurrent !== 'function') return false;
+        stepManualRatioFromCurrent(dir);
+        emit('change', { id: 'resolution' });
+        return true;
+    }
+
+    function setRatio(text) {
+        const f = el('manualRatio');
+        if (!ready() || !f || typeof commitManualRatioInput !== 'function') return false;
+        f.value = String(text || '');
+        commitManualRatioInput();
+        emit('change', { id: 'resolution' });
+        return true;
+    }
+
+    /** The area limit's next step (Normal, Large, Max: the desktop's toggle beside Resolution). */
+    function cycleArea() {
+        const t = el('resolutionAreaToggle');
+        if (!ready() || !t) return false;
+        t.click();
+        emit('change', { id: 'resolution' });
+        return true;
+    }
+
+    /** Tokens Studio adds to a field on its own (quality and dataset tags): 'prompt' | 'uc'. */
+    function addedTokens(field) {
+        try {
+            const t = typeof promptTextareaToolbar !== 'undefined' && promptTextareaToolbar && promptTextareaToolbar._groupTotals;
+            return t ? Number(field === 'uc' ? t.neUc : t.nePrompt) || 0 : 0;
+        } catch (_) { return 0; }
     }
 
     /** The prompt's token limit for the chosen model (the desktop's token bar). */
@@ -775,7 +842,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
-        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, tagGroups, tagsAt, searchTags,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, addedTokens, customSize, setCustomSize, stepRatio, setRatio, cycleArea, tagGroups, tagsAt, searchTags,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
