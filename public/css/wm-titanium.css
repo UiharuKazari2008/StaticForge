@@ -683,30 +683,12 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-empty {
     opacity: 0.8;
 }
 
-/* one card per app (#877): its line (icon, name, latest time, the count of the rest), then its most
- * important notification; opened, every one of them. A closed card with more shows a second edge. */
+/* one group per app (#877): its line (icon, name, latest time, the count of the rest), then its most
+ * important notification; opened, every one of them. No frame or box: they sit on the glass as the
+ * notifications always did (Yukimi, Nov 16). */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp {
     position: relative;
-    margin: calc(4 * var(--u)) calc(6 * var(--u)) calc(6 * var(--u));
-    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.22);
-    background: rgba(0, 0, 0, 0.28);
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-stacked {
-    margin-bottom: calc(10 * var(--u));
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-stacked::after {
-    content: "";
-    position: absolute;
-    left: calc(5 * var(--u));
-    right: calc(5 * var(--u));
-    bottom: calc(-5 * var(--u));
-    height: calc(4 * var(--u));
-    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.18);
-    border-top: 0;
-    background: rgba(0, 0, 0, 0.22);
-    pointer-events: none;
+    margin: calc(4 * var(--u)) 0;
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-head {
@@ -721,7 +703,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-name {
     gap: calc(5 * var(--u));
     min-width: 0;
     margin: 0;
-    padding: calc(4 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u)) calc(6 * var(--u));
+    padding: calc(4 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u)) calc(10 * var(--u));
     border: 0;
     background: none;
     color: inherit;
@@ -789,10 +771,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note {
     position: relative;
     display: flex;
     flex-direction: column;
-}
-
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-open .wm-ti-super-note + .wm-ti-super-note {
-    border-top: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.15);
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-row {
