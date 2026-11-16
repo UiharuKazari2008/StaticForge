@@ -23,6 +23,8 @@
     const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', none: '' };
     let lastReq = 0;
     let restoreNow = null;
+    // Start opened for a copy (renderStart): put back at once when the page comes on screen
+    let startRestore = null;
     // one copy at a time: a bar copy stages the bars (the program's title) and Start's copy must not
     // take its title bar while they are staged
     let chain = Promise.resolve();
@@ -160,8 +162,13 @@
         if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
         if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
         const dpr = window.devicePixelRatio || 1;
+        // only behind another program: on screen, opening Start would show (and a tap on an item
+        // coming in now would open its program from Start, with Start's see-through bar)
+        if (document.visibilityState === 'visible') { out({ unsupported: 'visible' }); return; }
         const prep = S.barsPrep(folders);
         if (!prep) { out({ unsupported: 'no-start' }); return; }
+        let restored = false;
+        startRestore = () => { if (restored) return; restored = true; startRestore = null; try { prep.restore(); } catch (err) { console.warn('[melatonBars] start restore', err); } };
         const top = shell.querySelector('.wm-titlebar');
         const soft = shell.querySelector('.wm-softkeys');
         const wall = shell.querySelector(':scope > .wm-wall65');
@@ -191,6 +198,8 @@
             const listPic = await snap(list, () => { list.style.visibility = listVis; if (glow) glow.hidden = true; list.style.transform = 'none'; });
             const topPic = await snap(top);
             const softPic = soft ? await snap(soft) : null;
+            // the page came on screen meanwhile: Start was put back, the copy is not whole
+            if (restored) { out({ unsupported: 'interrupted' }); return; }
             out({
                 title: prep.title,
                 widthPx: Math.round(shell.getBoundingClientRect().width * dpr),
@@ -207,7 +216,7 @@
             list.style.visibility = listVis;
             list.style.transform = '';
             if (glow) glow.hidden = glowHidden;
-            try { prep.restore(); } catch (err) { console.warn('[melatonBars] start restore', err); }
+            if (startRestore) startRestore();
         }
     }
 
@@ -221,6 +230,7 @@
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState !== 'visible') return;
         unstage();
+        if (startRestore) startRestore();
         if (window.wmShell && window.wmShell.setBarsExternal) window.wmShell.setBarsExternal(false);
     });
 
