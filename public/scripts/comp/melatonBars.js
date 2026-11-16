@@ -316,7 +316,7 @@
             if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
         }
         // kv: the kit's make (2: the degree sign and more symbols; the app asks again for an older one)
-        out({ kv: 3, sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
+        out({ kv: 4, sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
     }
 
     /*
@@ -445,10 +445,10 @@
      * - with the colours as #rrggbbaa. The app draws exactly this; a press it cannot do itself goes back as
      * the page's own click (n = the element's place among the popup's clickable ones).
      */
-    function rgba(c) {
+    function rgba(c, mul) {
         const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || '');
         if (!m) return null;
-        const a = m[4] == null ? 1 : +m[4];
+        const a = (m[4] == null ? 1 : +m[4]) * (mul == null ? 1 : mul);
         if (a <= 0) return null;
         return '#' + [m[1], m[2], m[3]].map((v) => Math.round(+v).toString(16).padStart(2, '0')).join('') + Math.round(a * 255).toString(16).padStart(2, '0');
     }
@@ -460,7 +460,10 @@
         roots.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!clickable.includes(el)) clickable.push(el); }));
         const isHide = (el) => (el.tagName === 'BUTTON' || el.classList.contains('wm-softkey')) && /^hide$/i.test((el.textContent || '').trim());
         const radii = (cs) => [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => R(px(v)));
-        const bgImage = (cs, box, clip) => {
+        const bgImage = (cs, box, clip, alpha) => {
+            // WM's block bar: repeating-linear-gradient(to right, c 0, c Apx, transparent Apx, transparent Bpx)
+            const g = /repeating-linear-gradient\(\s*(?:to right|90deg)\s*,\s*(rgba?\([^)]*\))[^,]*,\s*rgba?\([^)]*\)\s+([\d.]+)px\s*,[^,]*,\s*[^,]*?([\d.]+)px\s*\)/.exec(cs.backgroundImage || '');
+            if (g) { out.push({ k: 'stripes', x: R(box.left), y: R(box.top), w: R(box.width), h: R(box.height), color: rgba(g[1], alpha), on: R(+g[2]), period: R(+g[3]) }); return; }
             const m = /url\(\s*["']?([^"')]+)/.exec(cs.backgroundImage || '');
             if (!m) return;
             const url = new URL(m[1], location.href).href;
@@ -485,24 +488,34 @@
             const place = (v, room) => { const n = v.endsWith('%') ? (parseFloat(v) / 100) * room : px(v); return Number.isFinite(n) ? n : 0; };
             const x = box.left + place(pos[0] || '0%', box.width - w);
             const y = box.top + place(pos[1] || '0%', box.height - h);
-            out.push({ k: 'img', x: R(x), y: R(y), w: R(w), h: R(h), url, clip });
+            out.push({ k: 'img', x: R(x), y: R(y), w: R(w), h: R(h), url, clip, alpha: alpha < 1 ? alpha : undefined });
         };
-        const walk = (el) => {
+        const walk = (el, inherited) => {
             if (!el.getClientRects().length) return;
             const cs = getComputedStyle(el);
             if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) return;
+            // opacity multiplies down the tree (the unlit signal bars at .45)
+            const alpha = (inherited == null ? 1 : inherited) * (+cs.opacity || 1);
             const b = el.getBoundingClientRect();
             const r = radii(cs);
             const clip = [R(b.left), R(b.top), R(b.width), R(b.height), r];
             const sh = /^(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/.exec(cs.boxShadow || '');
-            if (sh && !/inset/.test(cs.boxShadow)) out.push({ k: 'shadow', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, blur: R(px(sh[4])), dy: R(px(sh[3])), color: rgba(sh[1]) });
-            const fill = rgba(cs.backgroundColor);
+            if (sh && !/inset/.test(cs.boxShadow)) out.push({ k: 'shadow', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, blur: R(px(sh[4])), dy: R(px(sh[3])), color: rgba(sh[1], alpha) });
+            const fill = rgba(cs.backgroundColor, alpha);
             if (fill) out.push({ k: 'rect', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, fill });
-            if (cs.backgroundImage && cs.backgroundImage !== 'none') bgImage(cs, b, clip);
+            if (cs.backgroundImage && cs.backgroundImage !== 'none') bgImage(cs, b, clip, alpha);
+            // an inset shadow with no blur is a frame drawn inside the box (the signal bars' outlines)
+            const ins = /(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+([\d.]+)px\s+inset|inset\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px\s+([\d.]+)px\s+(rgba?\([^)]*\))/.exec(cs.boxShadow || '');
+            if (ins) {
+                const color = ins[1] || ins[10];
+                const spread = +(ins[5] || ins[9]);
+                const blur = +(ins[4] || ins[8]);
+                if (!blur && spread > 0) { const sw = R(spread); out.push({ k: 'border', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, bw: [sw, sw, sw, sw], color: [0, 1, 2, 3].map(() => rgba(color, alpha)) }); }
+            }
             if (el.tagName === 'IMG' && (el.currentSrc || el.src)) out.push({ k: 'img', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), url: el.currentSrc || el.src, clip });
             const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map((v) => R(px(v)));
             if (bw.some((v) => v > 0)) {
-                const bc = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor].map(rgba);
+                const bc = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor].map((c) => rgba(c, alpha));
                 if (bc.some(Boolean)) out.push({ k: 'border', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, bw, color: bc });
             }
             // pseudo-elements with a picture or colour (radio dots, the warning glyph, the keyboard key)
@@ -514,9 +527,10 @@
                 const w = px(ps.width); const h = px(ps.height);
                 if (!w || !h) return;
                 const box = { left: b.left + px(ps.left), top: b.top + px(ps.top), width: w, height: h };
-                const pf = rgba(ps.backgroundColor);
+                const pa = alpha * (+ps.opacity || 1);
+                const pf = rgba(ps.backgroundColor, pa);
                 if (pf) out.push({ k: 'rect', x: R(box.left), y: R(box.top), w: R(w), h: R(h), r: radii(ps), fill: pf });
-                if (ps.backgroundImage && ps.backgroundImage !== 'none') bgImage(ps, box, clip);
+                if (ps.backgroundImage && ps.backgroundImage !== 'none') bgImage(ps, box, clip, pa);
             });
             // its own text, line by line (a line: the characters on one row), in its font
             [...el.childNodes].forEach((n) => {
@@ -531,7 +545,7 @@
                     if (!rr || !rr.width) { if (line) line.s += text[i]; continue; }
                     if (!line || Math.abs(R(rr.top) - line.y) > 1) {
                         flush();
-                        line = { k: 'text', x: R(rr.left), y: R(rr.top), h: R(rr.height), s: '', size: R(px(cs.fontSize)), bold: (+cs.fontWeight || 400) >= 600, color: rgba(cs.color) || '#000000ff',
+                        line = { k: 'text', x: R(rr.left), y: R(rr.top), h: R(rr.height), s: '', size: R(px(cs.fontSize)), bold: (+cs.fontWeight || 400) >= 600, color: rgba(cs.color, alpha) || '#000000ff',
                             u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)) };
                         if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; line.live = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
                     }
@@ -539,7 +553,7 @@
                 }
                 flush();
             });
-            [...el.children].forEach(walk);
+            [...el.children].forEach((c) => walk(c, alpha));
             const ci = clickable.indexOf(el);
             if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
         };
@@ -569,6 +583,24 @@
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
         try { sh.barsPopupClose(); } catch (_) { /* none open */ }
+        sendLayouts(all);
+    }
+
+    // pictures the page made itself (blob: the theme's title band) go to the app as data: (it cannot open a
+    // blob of this page); kept per address
+    const dataUrls = new Map();
+    async function sendLayouts(all) {
+        const ab = window.AndroidBars;
+        const blobs = new Set();
+        Object.values(all).forEach((l) => l.items.forEach((it) => { if (it.k === 'img' && /^blob:/.test(it.url)) blobs.add(it.url); }));
+        for (const u of blobs) {
+            if (dataUrls.has(u)) continue;
+            try {
+                const b = await (await fetch(u)).blob();
+                dataUrls.set(u, await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(''); r.readAsDataURL(b); }));
+            } catch (_) { dataUrls.set(u, ''); }
+        }
+        Object.values(all).forEach((l) => l.items.forEach((it) => { if (it.k === 'img' && dataUrls.get(it.url)) it.url = dataUrls.get(it.url); }));
         const json = JSON.stringify(all);
         if (json === layoutsSent) return;
         layoutsSent = json;
