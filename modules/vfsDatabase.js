@@ -220,6 +220,7 @@ async function updateUserFilesInFolders(folderIds, scope, workspaceId) {
         `UPDATE user_files SET scope = ?, workspace_id = ?, updated_at = ? WHERE folder_id IN (${placeholders})`,
         [scope, workspaceId, now, ...folderIds]
     );
+    userFilesChanged({ folderIds });
 }
 
 async function createEntry({ folderId, targetKind, targetId, displayName = null, entryMeta = null }) {
@@ -271,6 +272,21 @@ async function moveEntry(id, newFolderId) {
     return db.get('SELECT * FROM vfs_entries WHERE id = ?', [id]);
 }
 
+// ---- user file change listeners (Yozora #876: the reminder scheduler rescans when a Calendars .ics
+// changes, without polling). fn({ name?, id?, folderIds? }): name when the write knows the file's name;
+// none for batch writes (folder moves, trash), where a listener must assume anything changed.
+const userFileListeners = new Set();
+function onUserFilesChanged(fn) {
+    if (typeof fn !== 'function') return () => {};
+    userFileListeners.add(fn);
+    return () => userFileListeners.delete(fn);
+}
+function userFilesChanged(info) {
+    for (const fn of userFileListeners) {
+        try { fn(info || {}); } catch (_) { /* a listener never breaks a write */ }
+    }
+}
+
 async function createUserFile({ contentHash, originalName, mimeType, size, scope, workspaceId = null, folderId = null, previewPath = null }) {
     const id = generateId();
     const now = Math.floor(Date.now() / 1000);
@@ -278,6 +294,7 @@ async function createUserFile({ contentHash, originalName, mimeType, size, scope
         `INSERT INTO user_files (id, content_hash, original_name, mime_type, size, scope, workspace_id, folder_id, preview_path, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [id, contentHash, originalName, mimeType, size, scope, workspaceId, folderId, previewPath, now, now]
     );
+    userFilesChanged({ id, name: originalName });
     return getUserFileById(id);
 }
 
@@ -338,7 +355,9 @@ async function updateUserFile(id, updates) {
     values.push(Math.floor(Date.now() / 1000));
     values.push(id);
     await db.run(`UPDATE user_files SET ${fields.join(', ')} WHERE id = ?`, values);
-    return getUserFileById(id);
+    const updated = await getUserFileById(id);
+    userFilesChanged({ id, name: updated ? updated.original_name : null });
+    return updated;
 }
 
 async function countUserFilesByContentHash(contentHash, excludeFileId = null) {
@@ -418,6 +437,7 @@ async function deleteUserFile(id) {
     const file = await getUserFileById(id);
     if (!file) return { success: false, deleted: null };
     await db.run('DELETE FROM user_files WHERE id = ?', [id]);
+    userFilesChanged({ id, name: file.original_name });
     return { success: true, deleted: file };
 }
 
@@ -567,6 +587,7 @@ async function clearFolderTrashed(folderIds) {
 
 async function markUserFileTrashed(fileId, trashedAt) {
     await db.run('UPDATE user_files SET trashed_at = ?, updated_at = ? WHERE id = ?', [trashedAt, trashedAt, fileId]);
+    userFilesChanged({ id: fileId });
 }
 
 async function markUserFilesTrashedInFolders(folderIds, trashedAt) {
@@ -576,6 +597,7 @@ async function markUserFilesTrashedInFolders(folderIds, trashedAt) {
         `UPDATE user_files SET trashed_at = ?, updated_at = ? WHERE folder_id IN (${placeholders})`,
         [trashedAt, trashedAt, ...folderIds]
     );
+    userFilesChanged({ folderIds });
 }
 
 async function clearUserFilesTrashedInFolders(folderIds) {
@@ -586,11 +608,13 @@ async function clearUserFilesTrashedInFolders(folderIds) {
         `UPDATE user_files SET trashed_at = NULL, updated_at = ? WHERE folder_id IN (${placeholders})`,
         [now, ...folderIds]
     );
+    userFilesChanged({ folderIds });
 }
 
 async function clearUserFileTrashed(fileId) {
     const now = Math.floor(Date.now() / 1000);
     await db.run('UPDATE user_files SET trashed_at = NULL, updated_at = ? WHERE id = ?', [now, fileId]);
+    userFilesChanged({ id: fileId });
 }
 
 async function getUserFilesInFoldersIncludingTrashed(folderIds) {
@@ -676,5 +700,6 @@ module.exports = {
     getUserFilesInFoldersIncludingTrashed,
     getUserFilesByIds,
     getFoldersByIds,
-    getEntriesByFolderIds
+    getEntriesByFolderIds,
+    onUserFilesChanged
 };

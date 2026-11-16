@@ -1608,6 +1608,9 @@
                         this.drawReminders();
                     });
                     const done = (keys, snoozeMin) => {
+                        // the server fires the same reminders to the phone (#876, reminderScheduler.js):
+                        // Dismiss or Snooze here does the same there
+                        this.reminderList.filter((x) => keys.includes(x.key)).forEach((x) => serverReminder(x, snoozeMin));
                         keys.forEach((k) => {
                             if (snoozeMin) { if (!this.snoozed) this.snoozed = new Map(); this.snoozed.set(k, Date.now() + snoozeMin * 60000); this.fired.delete(k); }
                         });
@@ -1998,6 +2001,26 @@
     }
 
     /** Which Recurrence box entry a rule is: a plain preset, or Advanced for anything WinCal calls custom. */
+    /**
+     * The server's copy of a reminder (modules/reminderScheduler.js ids: rem:<fileId>:<uid>:<start>,
+     * tasks rem:task:<uid>:<reminderAt>) dismissed or snoozed with this window's choice, so the phone's
+     * reminder notification goes too (#876).
+     */
+    function serverReminder(x, snoozeMin) {
+        const c = root.wsClient;
+        let user = '';
+        try { user = root.localStorage.getItem('userType') || ''; } catch (_) { user = ''; }
+        if (!c || typeof c.sendMessage !== 'function' || !/^(admin|dev_admin)$/.test(user) || !x || !x.o || !x.o.ev) return;
+        const start = x.o.start ? new Date(x.o.start).getTime() : NaN;
+        if (!x.o.ev.uid || !Number.isFinite(start)) return;
+        const id = x.o.task ? `rem:task:${x.o.ev.uid}:${start}` : (x.cal && x.cal.fileId ? `rem:${x.cal.fileId}:${x.o.ev.uid}:${start}` : '');
+        if (!id) return;
+        try {
+            if (snoozeMin) c.sendMessage('reminder_snooze', { id, minutes: snoozeMin }, false);
+            else c.sendMessage('reminder_dismiss', { id }, false);
+        } catch (_) { /* offline: the phone keeps it */ }
+    }
+
     function recurPreset(e) {
         const r = e.rrule;
         if (!r) return '';

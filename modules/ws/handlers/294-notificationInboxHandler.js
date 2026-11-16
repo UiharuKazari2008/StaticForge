@@ -1,5 +1,6 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const inbox = require('../../notificationInbox');
+const reminders = require('../../reminderScheduler');
 
 // Notification inbox (Yozora #845): the durable store of notices (modules/notificationInbox.js), so
 // the shell shows on resume what was not cleared or acted on elsewhere, and the DSApp foreground
@@ -9,6 +10,9 @@ const inbox = require('../../notificationInbox');
 //   inbox_list   { since?, includeCleared? }   -> { notices } (newest first, not expired)
 //   inbox_ack    { id, state: 'seen'|'acted'|'cleared', device? }   -> { ok }
 //   inbox_prefs  { quiet: [class...] }   -> { ok, quiet } (the phone's Display message off classes)
+//   reminder_snooze  { id, minutes? | at? }   -> { ok, at } (a 'reminder' notice comes back then, #876)
+//   reminder_dismiss { id }   -> { ok } (dismissed in the desktop Calendar: never fires, notice cleared)
+//   reminder_status  {}   -> { started, next, snoozed, lastScanAt, lastError } (the scheduler's queue)
 //
 // Broadcast to the same userType's clients:
 //   inbox_updated  { reason: 'new'|'ack', notice? | id, state?, device? }
@@ -31,6 +35,8 @@ function registerPackets(handlersCtx) {
         const queue = gr && typeof gr.getGenerationJobQueue === 'function' ? gr.getGenerationJobQueue() : require('../../generationJobQueue').getSharedGenerationJobQueue();
         require('../../notificationInboxSources').bindPrintQueue(queue);
     } catch (e) { console.warn(`[294-notificationInboxHandler] print queue: ${e.message}`); }
+    // calendar appointment and task reminders fire from the server (#876)
+    try { reminders.start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] reminders: ${e.message}`); }
     const reg = (type, fn, meta = {}) => {
         wsPacketRegistry.registerWsPacket(type, async (ctx) => {
             if (!canUse(ctx.clientInfo)) {
@@ -55,6 +61,17 @@ function registerPackets(handlersCtx) {
         const m = ctx.message;
         const quiet = inbox.setQuiet(inbox.userOf(ctx.clientInfo), Array.isArray(m.quiet) ? m.quiet : []);
         reply(handlersCtx, ctx.ws, m, { ok: !!quiet, quiet: quiet || [] });
+    });
+    reg('reminder_snooze', (ctx) => {
+        const m = ctx.message;
+        reply(handlersCtx, ctx.ws, m, reminders.snooze(inbox.userOf(ctx.clientInfo), String(m.id || ''), { minutes: m.minutes, at: m.at }));
+    }, { destructive: true });
+    reg('reminder_dismiss', (ctx) => {
+        const m = ctx.message;
+        reply(handlersCtx, ctx.ws, m, reminders.dismiss(inbox.userOf(ctx.clientInfo), String(m.id || '')));
+    }, { destructive: true });
+    reg('reminder_status', (ctx) => {
+        reply(handlersCtx, ctx.ws, ctx.message, reminders.status());
     });
 }
 
