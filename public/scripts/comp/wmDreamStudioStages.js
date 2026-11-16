@@ -531,7 +531,7 @@
             const list = M().textOverlays();
             el.innerHTML = list.length
                 ? `<div class="wm-listbox wds-ov-list">${list.map((o) => {
-                    const where = [o.targetShown ? o.targetText : '', o.stagesShown ? o.stagesText : ''].filter(Boolean).join(' · ');
+                    const where = [o.targetShown ? o.targetText : '', o.stagesShown ? o.stagesText : ''].filter(Boolean).join(' \u00b7 ');
                     return `<div class="wm-listbox-row wds-ov-row${o.enabled ? '' : ' is-off'}" role="button" tabindex="0" data-ov="${esc(o.id)}"><span class="wds-stg-icon">${icon(o.icon)}</span><span class="wds-ov-name${o.text ? '' : ' is-blank'}">${esc(o.text ? o.text.replace(/\n/g, ' ') : o.placeholder)}</span><span class="wds-stg-hex">${esc(where)}</span></div>`;
                 }).join('')}</div>`
                 : '<p class="wds-none">No text overlays. Menu &gt; Add Text Overlay adds one.</p>';

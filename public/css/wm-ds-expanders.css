@@ -36,7 +36,7 @@
 .wdx-tools { display: flex; align-items: center; margin: calc(2 * var(--wm-px)) 0; padding: 0; border: 0; background: none; }
 .wdx-kind { flex: 1 1 auto; text-align: right; opacity: 0.65; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wdx-choices { display: flex; flex-direction: column; gap: calc(2 * var(--wm-px)); max-height: calc(150 * var(--wm-px)); overflow-y: auto; overscroll-behavior: contain; }
-textarea.wm-edit.wdx-choice { display: block; flex: 0 0 auto; width: 100%; box-sizing: border-box; resize: none; }
+textarea.wm-edit.wdx-choice { display: block; flex: 0 0 auto; width: 100%; height: calc(34 * var(--wm-px)); min-height: 0; box-sizing: border-box; resize: none; }
 /* the choice the tools work on */
 textarea.wm-edit.wdx-choice.is-sel { outline: calc(1 * var(--wm-px)) dotted currentColor; outline-offset: calc(1 * var(--wm-px)); }
 .wdx-ro { margin: 0; white-space: pre-wrap; word-break: break-word; }
@@ -52,3 +52,7 @@ textarea.wm-edit.wdx-choice.is-sel { outline: calc(1 * var(--wm-px)) dotted curr
 .wdx-mgnote[hidden] { display: none; }
 .wdx-mgclash { margin-top: calc(3 * var(--wm-px)); }
 .wdx-mgdlg .wdx-mgnote { margin: calc(3 * var(--wm-px)) 0 0; }
+
+/* ---- a dialog's error line (over its buttons) */
+.wdx-dlg .wdx-err { margin: calc(3 * var(--wm-px)) 0 0; }
+.wdx-dlg .wdx-err[hidden] { display: none; }

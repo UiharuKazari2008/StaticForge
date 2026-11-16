@@ -526,9 +526,9 @@
         // the desktop's labels (renderImageBiasDropdown)
         const options = [
             ['0', portrait ? 'Top' : 'Left'],
-            ['1', `⅖ ${portrait ? 'Top' : 'Left'}`],
+            ['1', `\u2156 ${portrait ? 'Top' : 'Left'}`],
             ['2', 'Center'],
-            ['3', `⅘ ${portrait ? 'Bottom' : 'Right'}`],
+            ['3', `\u2158 ${portrait ? 'Bottom' : 'Right'}`],
             ['4', portrait ? 'Bottom' : 'Right']
         ];
         return { show, portrait, value: String(up.bias != null ? up.bias : 2), custom, options };

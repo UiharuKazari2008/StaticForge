@@ -2874,6 +2874,9 @@
                 + '<div class="wm-msgbox-buttons"><button type="button" data-act="clear">Clear</button><button type="button" data-act="ok" class="is-default">ok</button><button type="button" data-act="cancel">Cancel</button></div></div>';
             host.appendChild(layer);
             let text = String(value == null ? '' : value);
+            // the value shown is replaced by the first figure typed (as a calculator's display);
+            // Backspace and the sign key edit it instead
+            let fresh = text !== '';
             const lcd = layer.querySelector('.wm-numpad-lcd');
             const show = () => { lcd.textContent = text || '0'; lcd.dataset.ghost = '8'.repeat(Math.max(max, text.length)); };
             show();
@@ -2882,6 +2885,8 @@
                 const k = e.target.closest && e.target.closest('[data-k]');
                 if (k) {
                     const key = k.dataset.k;
+                    if (fresh && key !== 'back' && key !== '-') text = '';
+                    fresh = false;
                     if (key === 'back') text = text.slice(0, -1);
                     else if (key === '-') text = text.startsWith('-') ? text.slice(1) : `-${text}`;
                     else if ((key === '.' || key === ':') && text.includes(key)) return;
@@ -2892,7 +2897,7 @@
                 }
                 const b = e.target.closest && e.target.closest('[data-act]');
                 if (!b) return;
-                if (b.dataset.act === 'clear') { text = ''; show(); } else done(b.dataset.act === 'ok');
+                if (b.dataset.act === 'clear') { text = ''; fresh = false; show(); } else done(b.dataset.act === 'ok');
             });
             padOpen = layer;
             if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();

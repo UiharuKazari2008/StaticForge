@@ -38,35 +38,22 @@
         const box = (title, text, ic = 'info') => sh().messageBox({ title, text, icon: ic, modal: true });
         const ask = (title, text, ic = 'warning') => sh().messageBox({ title, text, icon: ic, modal: true, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false });
         const busy = (p) => sh().busy(p, { delay: 250 });
+        // a dialog's own error line (the desktop console's dlgError); a message box would open under the dialog
+        const ERR = '<p class="wm-form-note wdx-err" role="alert" hidden></p>';
+        const dlgErr = (el, text) => { const p = el.querySelector('.wdx-err'); if (p) { p.textContent = text || ''; p.hidden = !text; } };
         const tool = (act, label, cls, extra = '') => `<button type="button" class="wm-tool" data-x="${act}" aria-label="${esc(label)}" title="${esc(label)}"${extra}>${icon(cls)}</button>`;
 
-        /** Tap-and-hold (and right click) on rows: fn(row, x, y); the click after a hold is eaten. */
+        /**
+         * Tap-and-hold (and right click) on rows: fn(row, x, y). The shell draws the hold ring and sends a
+         * contextmenu at the pen point when it is whole (wmShell.js bindHoldRing); a mouse sends its own.
+         */
         function onHold(el, selector, fn) {
-            let timer = null;
-            let start = null;
-            let held = false;
-            const clear = () => { clearTimeout(timer); timer = null; };
-            el.addEventListener('pointerdown', (e) => {
-                if (e.button !== 0 && e.pointerType === 'mouse') return;
-                held = false;
-                const row = e.target.closest && e.target.closest(selector);
-                if (!row) return;
-                start = { x: e.clientX, y: e.clientY };
-                clear();
-                timer = setTimeout(() => { held = true; fn(row, start.x, start.y); }, (sh() && sh().holdMs) || 550);
-            });
-            el.addEventListener('pointermove', (e) => { if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) clear(); });
-            ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => el.addEventListener(t, clear));
             el.addEventListener('contextmenu', (e) => {
                 const row = e.target.closest && e.target.closest(selector);
                 if (!row) return;
                 e.preventDefault();
-                if (held) return;
-                held = true;
-                clear();
                 fn(row, e.clientX, e.clientY);
             });
-            el.addEventListener('click', (e) => { if (!held) return; held = false; e.stopPropagation(); e.preventDefault(); }, true);
         }
 
         /** A file onto the phone (the shell's Save to Phone, which DSApp also takes). */
@@ -265,19 +252,19 @@
             const title = key ? `!${key}` : 'New Expander';
             const el = api.openDlg(title, 'wdx-dlg', `<div class="wdx-name"><span>!</span>${ui().edit('', key || '', 'data-x="name" placeholder="name" aria-label="Name" spellcheck="false" autocapitalize="off"')}</div>`
                 + choiceTools
-                + `<div class="wm-msgbox-buttons">${key ? '<button type="button" data-x="delete">Delete</button>' : ''}<button type="button" data-x="save">Save</button></div>`);
+                + `${ERR}<div class="wm-msgbox-buttons">${key ? '<button type="button" data-x="delete">Delete</button>' : ''}<button type="button" data-x="save">Save</button></div>`);
             const kind = el.querySelector('.wdx-kind');
             const ed = choicesEditor(el, key ? toList(G.map[key]) : [], (n) => { kind.textContent = kindText(n); });
             if (!key) el.querySelector('[data-x="name"]').focus();
             el.addEventListener('click', async (e) => {
                 const b = e.target.closest && e.target.closest('[data-x="save"], [data-x="delete"]');
                 if (!b) return;
-                if (b.dataset.x === 'delete') { await remove(key, true); return; }
+                if (b.dataset.x === 'delete') { api.closeDlg(); await remove(key); return; }
                 const name = cleanName(el.querySelector('[data-x="name"]').value);
                 const err = nameError(name, key);
-                if (err) { box(title, err, 'warning'); return; }
+                if (err) { dlgErr(el, err); return; }
                 const vals = ed.values();
-                if (!vals.length) { box(title, 'Add at least one choice.', 'warning'); return; }
+                if (!vals.length) { dlgErr(el, 'Add at least one choice.'); return; }
                 const value = fromList(vals);
                 try {
                     await busy((async () => {
@@ -290,7 +277,7 @@
                         } else if (f && JSON.stringify(f.replacementValue) !== JSON.stringify(value)) await refavorite(f, name, value);
                         await changed();
                     })());
-                } catch (err2) { box(title, `The expander was not saved. ${errText(err2)}`.trim(), 'error'); return; }
+                } catch (err2) { dlgErr(el, `The expander was not saved. ${errText(err2)}`.trim()); return; }
                 api.closeDlg();
             });
         }
@@ -340,7 +327,7 @@
             try { await busy(M().expSave(next, Array.isArray(G.map[key]) ? G.map[key].slice() : G.map[key]).then(changed)); } catch (err) { box('Duplicate Expander', `The copy could not be saved. ${errText(err)}`.trim(), 'error'); }
         }
 
-        async function remove(key, fromDialog) {
+        async function remove(key) {
             if (!has(key)) return;
             if (!(await ask('Delete Expander', `Are you sure you want to delete the expander "!${key}"?`))) return;
             try {
@@ -353,7 +340,6 @@
                     } else await M().expDelete(key);
                     await changed();
                 })());
-                if (fromDialog) api.closeDlg();
             } catch (err) { box('Delete Expander', `The expander could not be deleted. ${errText(err)}`.trim(), 'error'); }
         }
 
@@ -523,11 +509,11 @@
                 + `<div class="wds-wt-row"><span class="wds-wt-name">Stages</span>${ui().comboHtml('stmode', (MODES.find((m) => m[0] === mode) || MODES[0])[1])}</div>`
                 + '<div class="wdx-stagebox"></div>'
                 + choiceTools
-                + `<div class="wm-msgbox-buttons">${r ? '<button type="button" data-x="delete">Delete</button>' : ''}<button type="button" data-x="save">${r ? 'Save' : 'Add'}</button></div>`);
+                + `${ERR}<div class="wm-msgbox-buttons">${r ? '<button type="button" data-x="delete">Delete</button>' : ''}<button type="button" data-x="save">${r ? 'Save' : 'Add'}</button></div>`);
             const kind = el.querySelector('.wdx-kind');
             const ed = choicesEditor(el, r ? toList(r.value) : [], (n) => { kind.textContent = kindText(n); });
             const stageBox = el.querySelector('.wdx-stagebox');
-            const showRange = () => ['start', 'end'].forEach((k) => ui().segText(stageBox.querySelector(`[data-pad="${k}"]`), range[k] === undefined ? '' : String(range[k]).padStart(2, '!')));
+            const showRange = () => ['start', 'end'].forEach((k) => ui().segText(stageBox.querySelector(`[data-pad="${k}"]`), range[k] === undefined ? '!!' : String(range[k]).padStart(2, '!')));
             const fillStages = () => {
                 if (mode === 'specific') {
                     stageBox.innerHTML = ui().listbox(stages.map((name, i) => ({ key: String(i), label: name, checked: picked.has(i) })), { maxHeight: 96 });
@@ -548,7 +534,7 @@
                     if (btn) btn.textContent = 'All';
                     mode = 'all';
                     fillStages();
-                    box('Stages', 'No pipeline stages available. Using "All Stages" instead.');
+                    dlgErr(el, 'No pipeline stages available. Using "All Stages" instead.');
                     return;
                 }
                 mode = v;
@@ -574,16 +560,16 @@
                 const b = e.target.closest && e.target.closest('[data-x="extend"], [data-x="save"], [data-x="delete"]');
                 if (!b) return;
                 if (b.dataset.x === 'extend') { extend = !extend; b.setAttribute('aria-pressed', String(extend)); b.title = extend ? 'Extend Mode' : 'Replace Mode'; return; }
-                if (b.dataset.x === 'delete') { if (await removeRule(index)) api.closeDlg(); return; }
+                if (b.dataset.x === 'delete') { api.closeDlg(); await removeRule(index); return; }
                 const name = String(el.querySelector('[data-x="name"]').value || '').trim();
-                if (!name) { box(title, 'Please enter a name', 'warning'); return; }
-                if (!/^[a-zA-Z0-9_]+$/.test(name)) { box(title, 'Name can only contain letters, numbers, and underscores', 'warning'); return; }
+                if (!name) { dlgErr(el, 'Please enter a name'); return; }
+                if (!/^[a-zA-Z0-9_]+$/.test(name)) { dlgErr(el, 'Name can only contain letters, numbers, and underscores'); return; }
                 const vals = ed.values();
-                if (!vals.length) { box(title, 'Please enter at least one value', 'warning'); return; }
+                if (!vals.length) { dlgErr(el, 'Please enter at least one value'); return; }
                 let st;
                 if (mode === 'specific' && picked.size) st = [...picked].sort((a, c) => a - c);
                 else if (mode === 'range') {
-                    if (range.start !== undefined && range.end !== undefined && range.start > range.end) { box(title, 'Start stage cannot be greater than end stage', 'warning'); return; }
+                    if (range.start !== undefined && range.end !== undefined && range.start > range.end) { dlgErr(el, 'Start stage cannot be greater than end stage'); return; }
                     if (range.start !== undefined || range.end !== undefined) { st = {}; if (range.start !== undefined) st.start = range.start; if (range.end !== undefined) st.end = range.end; }
                 }
                 const rule = { name, value: fromList(vals), extend, stages: st };
@@ -607,7 +593,7 @@
             const el = api.openDlg('Make Global', 'wdx-dlg wdx-mgdlg', `${ui().note('Each expander you select is saved as a global expander. Global expanders work in every request and every stage.')}<div class="wdx-mglist"></div>`
                 + `<div class="wdx-mgclash">${ui().sub('When a global expander already has the name')}${ui().radio('wdxMg', 'merge', 'Merge the values', true)}${ui().radio('wdxMg', 'replace', 'Replace the global values', false)}${ui().radio('wdxMg', 'skip', 'Skip it and keep it embedded', false)}</div>`
                 + `${ui().check('wdxMgRemove', 'Remove the converted expanders from this request', true, 'data-x="mgremove"')}<p class="wm-form-note wdx-mgnote"></p>`
-                + '<div class="wm-msgbox-buttons"><button type="button" data-x="mgsave" disabled>Save</button></div>');
+                + `${ERR}<div class="wm-msgbox-buttons"><button type="button" data-x="mgsave" disabled>Save</button></div>`);
             const fill = () => {
                 const isGlobal = (n) => Object.prototype.hasOwnProperty.call(globals, n);
                 const status = (it) => (!isGlobal(it.name) ? 'new' : mode === 'merge' ? 'merge' : mode === 'replace' ? 'replace' : 'skip');
@@ -644,7 +630,7 @@
                 let res = null;
                 try { res = await busy(M().localMakeGlobal([...chosen], mode, removeAfter)); } catch (err) {
                     b.disabled = false;
-                    box('Make Global', `The expanders were not saved. ${errText(err)}`.trim(), 'error');
+                    dlgErr(el, `The expanders were not saved. ${errText(err)}`.trim());
                     return;
                 }
                 api.closeDlg();

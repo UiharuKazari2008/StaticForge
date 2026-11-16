@@ -592,3 +592,7 @@
     .wm-dreamstudio .wds-print { order: 2; }
     .wm-dreamstudio .wds-strip { display: none; }
 }
+
+/* DreamStudio's own dialogs sit just under the shell's message box layer (z-index 20), so a question
+ * or warning asked while one is open comes up over it */
+#wmShell > .wm-msgbox-layer:is(.wds-dlg, .wds-szdlg, .wds-qadlg) { z-index: 19; }

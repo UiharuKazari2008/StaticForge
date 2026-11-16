@@ -286,8 +286,8 @@
                 const b = M.biasState();
                 const portrait = !!(b && b.portrait);
                 const presets = portrait
-                    ? [['0', 'Left'], ['1', '⅖ Left'], ['2', 'Center'], ['3', '⅘ Right'], ['4', 'Right']]
-                    : [['0', 'Top'], ['1', '⅖ Top'], ['2', 'Center'], ['3', '⅘ Bottom'], ['4', 'Bottom']];
+                    ? [['0', 'Left'], ['1', '\u2156 Left'], ['2', 'Center'], ['3', '\u2158 Right'], ['4', 'Right']]
+                    : [['0', 'Top'], ['1', '\u2156 Top'], ['2', 'Center'], ['3', '\u2158 Bottom'], ['4', 'Bottom']];
                 combo(el.querySelector('.wm-combo[data-act="preset"]'), presets, null, (v) => {
                     const iar = img.width / img.height;
                     const tar = tw / th;

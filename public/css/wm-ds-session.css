@@ -1,2 +1,105 @@
 /* Melaton Mobile: DreamStudio part - session (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* ---- File > Workspace: the desktop combo's rows (colour dot, name, file count) in a list box */
+.wss-wsdlg .wm-listbox { max-height: calc(200 * var(--wm-px)); overflow-y: auto; }
+.wss-wsdlg .wm-listbox-row { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); width: 100%; }
+.wss-swatch {
+    flex: 0 0 auto;
+    width: calc(9 * var(--wm-px));
+    height: calc(9 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid currentColor;
+    background: var(--wss-swatch, transparent);
+}
+.wss-ws-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.wss-ws-count { flex: 0 0 auto; opacity: 0.7; }
+
+/* ---- File > Quick Start: the gallery fills the page, the WM tabs under it */
+.wm-dreamstudio[data-view="x"] .wds-xview.wss-qs.is-current { overflow: hidden; }
+.wss-qs-grid {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: calc(2 * var(--wm-px));
+    padding: calc(2 * var(--wm-px));
+}
+.wss-qs-grid > .wds-none,
+.wss-qs-grid > .wss-qs-sec { grid-column: 1 / -1; margin: calc(4 * var(--wm-px)) calc(3 * var(--wm-px)); }
+.wss-qs-grid > .wds-none { opacity: 0.6; }
+.wss-qs-sec { font-weight: bold; }
+.wss-qs-card { display: block; height: auto; margin: 0; padding: 0; border: 0; background: none; }
+.wss-qs-card > img { display: block; width: 100%; height: auto; aspect-ratio: 1 / 1; object-fit: cover; }
+.wss-qs-tabs { flex: 0 0 auto; }
+
+/* ---- View > Show Both Prompt/UC: the two boxes share the page */
+.wm-dreamstudio[data-view="x"] .wds-xview.wss-both.is-current { overflow: hidden; padding-bottom: calc(5 * var(--wm-px)); }
+.wss-both > .wss-both-box { display: flex; align-items: flex-start; flex: 1 1 0; min-height: calc(3 * 13 * var(--wm-px) + 6 * var(--wm-px)); overflow-y: auto; cursor: text; }
+.wss-both-box .wss-hint { opacity: 0.55; }
+
+/* ---- Generate > Anlas: the facts in two columns */
+.wss-moneydlg .wm-facts { column-gap: calc(8 * var(--wm-px)); }
+
+/* ---- Tools > vSlider: a widget a group; its title (a tap: its menu), then an LCD + jog row an axis */
+.wss-vs { padding-bottom: calc(4 * var(--wm-px)); }
+.wss-vs-card + .wss-vs-card { margin-top: calc(5 * var(--wm-px)); padding-top: calc(4 * var(--wm-px)); border-top: calc(1 * var(--wm-px)) solid currentColor; }
+.wss-vs-title {
+    display: flex;
+    align-items: baseline;
+    gap: calc(4 * var(--wm-px));
+    width: 100%;
+    margin: 0;
+    padding: calc(1 * var(--wm-px)) 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+.wss-vs-title > b { font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wss-vs-title > span { flex: 1 1 auto; opacity: 0.7; white-space: nowrap; }
+.wss-vs-card.is-dirty > .wss-vs-title > b::after { content: " *"; }
+.wss-vs .wds-wt-row > .wds-wt-lcd { min-width: calc(34 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); text-align: right; cursor: pointer; }
+.wss-vs .wds-wt-row > .wm-jog { width: calc(110 * var(--wm-px)); }
+.wss-vs-status { margin: 0; opacity: 0.7; overflow-wrap: anywhere; }
+.wss-vs-status[hidden] { display: none; }
+.wss-vs-pick > button { width: 100%; }
+.wss-vs .wds-none { margin: calc(4 * var(--wm-px)) 0; opacity: 0.6; }
+.wss-vs .wm-msgbox-buttons { display: flex; justify-content: flex-end; }
+.wss-vs-note { margin-top: calc(5 * var(--wm-px)); }
+
+/* the widget editor: the form's rows; an option or a stop on one line, its remove cell at the end */
+.wss-ve { padding-bottom: calc(6 * var(--wm-px)); }
+.wss-ve .wm-form-row > :is(button, .wm-edit) { flex: 1 1 auto; min-width: 0; }
+.wss-ve-opt,
+.wss-ve-stop { display: flex; align-items: center; gap: calc(3 * var(--wm-px)); margin: calc(2 * var(--wm-px)) 0; }
+.wss-ve-opt > .wm-edit { flex: 1 1 0; min-width: 0; }
+.wss-ve-stop > .wm-edit { flex: 1 1 auto; min-width: 0; }
+.wss-ve-stop > .wds-wt-lcd { flex: 0 0 auto; min-width: calc(34 * var(--wm-px)); height: calc(19 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); text-align: right; cursor: pointer; }
+.wss-ve-opt > .wm-tool,
+.wss-ve-stop > .wm-tool { flex: 0 0 auto; margin: 0; }
+.wss-ve .wds-wt-row > .wds-wt-lcd { min-width: calc(34 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); text-align: right; cursor: pointer; }
+.wss-ve .wds-wt-row > .wm-jog { width: calc(110 * var(--wm-px)); }
+.wss-ve-actions { display: flex; align-items: center; justify-content: flex-end; gap: calc(4 * var(--wm-px)); margin: calc(3 * var(--wm-px)) 0; }
+.wss-ve-actions > .wm-form-row { flex: 1 1 auto; margin: 0; }
+
+/* ---- Tools > Studio Activity: a row an event: its level, what happened, when / from / by */
+.wss-act-list { border: 0; }
+.wss-act-row { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); width: 100%; text-align: left; }
+.wss-act-row > img { flex: 0 0 auto; width: calc(16 * var(--wm-px)); height: calc(16 * var(--wm-px)); }
+.wss-act-main { display: flex; flex-direction: column; min-width: 0; }
+.wss-act-main > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wss-act-sub { opacity: 0.7; }
+.wss-act-row.is-selected .wss-act-sub,
+.wss-act-row:active .wss-act-sub { opacity: 1; }
+.wss-act .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); opacity: 0.6; }
+#wmShell .wss-actdlg > .wm-msgbox { max-width: calc(280 * var(--wm-px)); }
+.wss-act-desc { margin: 0 0 calc(4 * var(--wm-px)); white-space: pre-wrap; overflow-wrap: anywhere; max-height: calc(120 * var(--wm-px)); overflow-y: auto; }
+.wss-act-json { display: block; width: 100%; box-sizing: border-box; height: calc(140 * var(--wm-px)); margin-top: calc(4 * var(--wm-px)); resize: none; white-space: pre; }
+.wss-act-json[hidden],
+.wss-actdlg .wm-facts[hidden],
+.wss-act-desc[hidden] { display: none; }

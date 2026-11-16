@@ -108,6 +108,7 @@
     let edField = 'prompt';
     let edJog = null;
     let viewing = '';
+    let shownAny = '';
     let opening = false;
     let tabState = {};
     let directiveTab = null;
@@ -173,7 +174,8 @@
     /** The print on show: the one picked, else the newest of this visit, else the one Studio holds. */
     function shownPrint() {
         const list = M.prints();
-        if (viewing && (list.includes(viewing) || viewing === M.selected())) return viewing;
+        // a gallery print put on show by a part (api.showPrint) stays the one on show while picked
+        if (viewing && (list.includes(viewing) || viewing === M.selected() || viewing === shownAny)) return viewing;
         return list[list.length - 1] || M.selected() || '';
     }
 
@@ -558,6 +560,13 @@
     function popLayer() {
         if (!layers.length) return false;
         if (top() === 'editor') { closeEditor(); return true; }
+        // a part's page may ask first (unsaved changes): it closes only when its leave() says yes
+        const xs = String(top()).startsWith('x:') ? ext.views[String(top()).slice(2)] : null;
+        if (xs && typeof xs.leave === 'function' && !xs._leaving) {
+            xs._leaving = true;
+            Promise.resolve(xs.leave()).catch(() => false).then((ok) => { xs._leaving = false; if (ok && top() === `x:${Object.keys(ext.views).find((k) => ext.views[k] === xs)}`) { layers.pop(); paint(); sh.syncHistory(); } });
+            return true;
+        }
         layers.pop();
         paint();
         sh.syncHistory();
@@ -1781,8 +1790,8 @@
     // ---- the seed's panel (a hold on Seed), one row (Yukimi, Nov 15): the seed, then Clear, Random
     // and the lock as the desktop's glyphs; a seed typed in counts once Enter or the panel closes
 
-    function seedBox() {
-        const anchor = $('.wds-genbar [data-gb="seed"]');
+    function seedBox(from) {
+        const anchor = from || $('.wds-genbar [data-gb="seed"]');
         if (!anchor || !ui) return;
         ui.popPanel(anchor, {
             label: 'Seed',
@@ -1851,7 +1860,9 @@
     // and gets the program's helpers (api) and the places it can fill (reg):
     //   reg.pane(tabId, { draw(el, api) })      draws a home tab's pane in place of the built-in one
     //                                          ('refs', 'inspector', or 'prompt' extras: see below)
-    //   reg.view(name, { title, mount(el), draw(el), softKeys(), menu() })
+    //   reg.view(name, { title, mount(el), draw(el), softKeys(), menu(), leave() })
+    //                                          leave(): may it close now (true / false, or a promise of
+    //                                          one: an unsaved-changes question)
     //                                          a full page of its own; api.openView(name) shows it,
     //                                          ok / Back steps out of it
     //   reg.menu(section, () => rows)          menu rows added to a section. Menu's top-level menus (the
@@ -1868,7 +1879,7 @@
     const ext = { panes: {}, views: {}, menus: { main: [], print: [], toolbox: [], editor: [], file: [], edit: [], view: [], prompt: [], add: [], generate: [], rentan: [], tools: [] }, hooks: { paint: [], show: [], hide: [] }, pending: [] };
     const extRows = (section) => {
         const out = [];
-        ext.menus[section].forEach((fn) => { try { const rows = fn(); if (Array.isArray(rows) && rows.length) out.push(...rows); } catch (err) { console.warn('[wmDreamStudio] menu', section, err); } });
+        ext.menus[section].slice().sort((x, y) => (x.order || 100) - (y.order || 100)).forEach((fn) => { try { const rows = fn(); if (Array.isArray(rows) && rows.length) out.push(...rows); } catch (err) { console.warn('[wmDreamStudio] menu', section, err); } });
         return out;
     };
     const extHook = (event, arg) => ext.hooks[event].forEach((fn) => { try { fn(arg); } catch (err) { console.warn('[wmDreamStudio] hook', event, err); } });
@@ -1890,7 +1901,10 @@
         view: () => view(),
         openDlg,
         closeDlg,
-        seedBox: () => seedBox(),
+        /** The seed's panel, hung from `anchor` (else from the generation bar's Seed). */
+        seedBox: (anchor) => seedBox(anchor),
+        /** Any gallery print as the print on show (not only this visit's), repainted. */
+        showPrint(filename) { if (!filename) return; viewing = filename; shownAny = filename; paint(); },
         /** The field the editor has open ('prompt', 'uc', 'c:0:prompt' ...), or '' outside the editor. */
         edField: () => (top() === 'editor' ? edField : ''),
         /** The editor's text again from Studio (after a part changed the field behind it). */
@@ -1930,7 +1944,8 @@
                     try { if (spec.mount) spec.mount(el, api); } catch (err) { console.warn('[wmDreamStudio] view', vname, err); }
                 }
             },
-            menu(section, fn) { if (ext.menus[section]) ext.menus[section].push(fn); },
+            // opts.order: where the rows sit among the parts' (lower first; 100 when not given)
+            menu(section, fn, opts = {}) { if (!ext.menus[section]) return; if (opts.order) fn.order = opts.order; ext.menus[section].push(fn); },
             hook(event, fn) { if (ext.hooks[event]) ext.hooks[event].push(fn); }
         };
         try { setup(api, reg); } catch (err) { console.warn('[wmDreamStudio] extension', name, err); }
@@ -1943,29 +1958,45 @@
         Promise.resolve(startStudioNewSession()).catch(() => {}).then(() => { snap = null; paint(); });
     }
 
+    // the parts' print rows that change or make a picture go under Edit; the rest (where it goes,
+    // who gets it) under Share
+    const PRINT_EDIT = new Set(['Enhance...', 'Comparison', 'Edit in Paint', 'Create Animation', 'Original']);
+
+    /**
+     * The print's rows, grouped so the menu stays short (density): seeing it, Favorite, Edit >
+     * (what makes something of it), Share > (where it goes), Properties, Scrap and Delete.
+     */
     function printRows() {
         const f = shownPrint();
         const list = M.prints();
         const at = list.indexOf(f);
         const none = !f;
+        const theirs = extRows('print').filter((r) => r !== '-');
+        const edit = [
+            { label: 'Use Its Settings', disabled: none, action: () => printAction('modify-preview') },
+            { label: 'Use as Base Image', disabled: none, action: useAsBase },
+            { label: 'Upscale', disabled: none, action: () => printAction('upscale') },
+            { label: 'Expand Canvas...', disabled: none, action: () => printAction('expand-canvas') },
+            ...theirs.filter((r) => PRINT_EDIT.has(r.label))
+        ];
+        const share = [
+            { label: 'Save to Phone', disabled: none, action: () => printAction('download') },
+            // Studio's Edit > Copy Lookback, straight from the tap (no async select first: the clipboard wants the tap)
+            { label: 'Copy Lookback', disabled: none || typeof window.copyLookbackImage !== 'function', action: () => window.copyLookbackImage(shownPrint()) },
+            ...theirs.filter((r) => !PRINT_EDIT.has(r.label))
+        ];
         return [
             { label: 'View Full Screen', disabled: none, action: viewFull },
             { label: 'Previous', disabled: at <= 0, action: () => step(-1) },
             { label: 'Next', disabled: at < 0 || at >= list.length - 1, action: () => step(1) },
             '-',
             { label: 'Favorite', disabled: none, action: () => printAction('toggle-favorite') },
-            { label: 'Use Its Settings', disabled: none, action: () => printAction('modify-preview') },
-            { label: 'Use as Base Image', disabled: none, action: useAsBase },
-            { label: 'Upscale', disabled: none, action: () => printAction('upscale') },
-            { label: 'Expand Canvas...', disabled: none, action: () => printAction('expand-canvas') },
-            { label: 'Save to Phone', disabled: none, action: () => printAction('download') },
-            // Studio's Edit > Copy Lookback, straight from the tap (no async select first: the clipboard wants the tap)
-            { label: 'Copy Lookback', disabled: none || typeof window.copyLookbackImage !== 'function', action: () => window.copyLookbackImage(shownPrint()) },
+            { label: 'Edit', disabled: none, submenu: () => edit },
+            { label: 'Share', disabled: none, submenu: () => share },
             { label: 'Properties', disabled: none, action: () => printAction('view-image-data') },
             '-',
             { label: 'Scrap', disabled: none, action: () => printAction('scrap-preview', true) },
-            { label: 'Delete', disabled: none, action: deletePrint },
-            ...(() => { const r = extRows('print'); return r.length ? ['-', ...r] : []; })()
+            { label: 'Delete', disabled: none, action: deletePrint }
         ];
     }
 
