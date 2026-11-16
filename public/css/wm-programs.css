@@ -1978,6 +1978,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
  * the kit's push buttons (1 - 9, then point / colon / minus, 0, back) ---- */
 .wm-numpad-layer { z-index: 9100; }
 .wm-msgbox.wm-numpad { max-width: calc(170 * var(--wm-px)); }
+.wm-numpad > .wm-numpad-top { display: flex; gap: calc(4 * var(--wm-px)); margin: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0; }
+.wm-numpad > .wm-numpad-top > .wm-numpad-lcd { display: flex; flex: 1 1 auto; height: calc(23 * var(--wm-px)); font-size: calc(14 * var(--wm-px)); }
+.wm-numpad > .wm-numpad-top > .wm-button { flex: 0 0 auto; min-width: calc(30 * var(--wm-px)); height: calc(23 * var(--wm-px)); }
 .wm-numpad > .wm-numpad-lcd { display: flex; margin: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0; height: calc(23 * var(--wm-px)); font-size: calc(14 * var(--wm-px)); }
 .wm-numpad-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(4 * var(--wm-px)); padding: calc(6 * var(--wm-px)); }
 .wm-numpad-keys > .wm-button { min-width: 0; height: calc(24 * var(--wm-px)); font-size: calc(13 * var(--wm-px)); }
@@ -1987,3 +1990,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 /* status icons: a warning in yellow, an error in red (as the system's message box icons) */
 .wm-icon-warn { color: #e0a000; }
 .wm-icon-error { color: #d01010; }
+
+/* a drop-down list (the shell's .wm-popup) opened from a control inside a dialog or panel (an app's
+ * .wm-msgbox-layer) is drawn over it, not under it (the list is z-index 11, a dialog 20) */
+#wmShell:has(> .wm-msgbox-layer:not([hidden])) > .wm-popup { z-index: 9050; }
