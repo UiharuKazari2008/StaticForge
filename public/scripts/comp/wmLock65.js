@@ -707,7 +707,7 @@
         const s = alarmStore();
         const now = Date.now();
         let next = Infinity;
-        let dirty = false;
+        let dirty = alarmTakeHandled(s);
         const due = [];
         s.list.forEach((a, i) => {
             if (!a.on) return;
@@ -730,6 +730,51 @@
         if (dirty) alarmSave(s);
         due.forEach(alarmRing);
         if (next < Infinity) alarmTimer = setTimeout(alarmCheck, Math.min(next - now + 50, 0x7fffffff));
+        alarmHandOver(s, now);
+    }
+
+    /*
+     * The Android app rings the alarms while this page sleeps or is gone (#876, DeviceNotices.kt:
+     * Android's alarm clock, the WM reminder notification, the alarm's own sound): it gets each alarm's
+     * next time, and what was answered on its notification (Dismiss, Snooze) is taken here first, so a
+     * dismissed alarm does not ring again when the page wakes.
+     */
+    const alarmApp = () => (window.AndroidAlarms && typeof window.AndroidAlarms.schedule === 'function' ? window.AndroidAlarms : null);
+    let lastHandOver = '';
+    function alarmHandOver(s, now) {
+        const app = alarmApp();
+        if (!app) return;
+        const url = (f) => (f ? `${location.origin}/sounds/wm61/${encodeURIComponent(f)}` : '');
+        const list = [];
+        s.list.forEach((a, i) => {
+            if (!a.on) return;
+            const n = alarmOccurrence(a, now, 1);
+            if (n) list.push({ i, at: n, due: n, text: a.text || '', sound: url(a.sound), mode: a.mode, loud: s.loud });
+        });
+        s.snoozed.forEach((z) => list.push({ i: z.i, at: z.at, due: z.due, text: z.text || '', sound: url(z.sound), mode: z.mode, loud: s.loud }));
+        const json = JSON.stringify(list);
+        if (json === lastHandOver) return;
+        lastHandOver = json;
+        try { app.schedule(json); } catch (_) { /* older app */ }
+    }
+    function alarmTakeHandled(s) {
+        const app = alarmApp();
+        if (!app || typeof app.takeHandled !== 'function') return false;
+        let list = [];
+        try { list = JSON.parse(app.takeHandled() || '[]'); } catch (_) { list = []; }
+        if (!Array.isArray(list) || !list.length) return false;
+        list.forEach((h) => {
+            const a = s.list[h.i];
+            if (!a || !Number.isFinite(h.due)) return;
+            a.last = Math.max(a.last || 0, h.due);
+            s.snoozed = s.snoozed.filter((z) => !(z.i === h.i && z.due === h.due));
+            const file = String(h.sound || '').split('/').pop();
+            if (Number.isFinite(h.snoozeAt)) s.snoozed.push({ i: h.i, at: h.snoozeAt, due: h.due, text: h.text, sound: file ? decodeURIComponent(file) : a.sound, mode: h.mode || a.mode });
+            // already ringing here too (the page woke while it rang): put away as answered
+            const r = ringing.find((x) => x.i === h.i && x.due === h.due);
+            if (r) { ringing.splice(ringing.indexOf(r), 1); if (r.note) { try { r.note.close(); } catch (_) { /* gone */ } r.note = null; } if (!ringing.length) alarmSoundStop(); }
+        });
+        return true;
     }
 
     function alarmSoundStop() {
@@ -769,6 +814,9 @@
 
     function alarmRing(r) {
         if (!ready()) return;
+        // the app's ringing (its notification, sound and motor) gives way to this page's
+        const app = alarmApp();
+        if (app && typeof app.pageRinging === 'function') { try { app.pageRinging(); } catch (_) { /* older app */ } }
         ringing.push(r);
         alarmSoundStart(r);
         if (locked) alarmToLock(); else alarmNote(r);
@@ -1122,4 +1170,13 @@
         locked: () => locked
     };
     if (R651) start651();
+
+    // the Android app raises Main Battery Low while this page is not in front (#876, DeviceNotices.kt):
+    // it gets the user's level (Settings > Power, wmShell.js wmBatteryLow) at each start
+    try {
+        if (window.AndroidAlarms && typeof window.AndroidAlarms.config === 'function') {
+            const n = parseInt(localStorage.getItem('wmBatteryLow'), 10);
+            if (Number.isFinite(n)) window.AndroidAlarms.config(JSON.stringify({ batteryLow: n }));
+        }
+    } catch (_) { /* older app or no storage */ }
 })();

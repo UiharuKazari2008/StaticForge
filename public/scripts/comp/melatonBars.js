@@ -439,7 +439,8 @@
      * The 6.5 lock screen for the app's own lock screen over the phone's (#875, Settings > Screen >
      * Android > Use the Windows Mobile lock screen): melatonBars.renderLock({ reqId, parts, fromMs,
      * minutes, phoneWall }) answers AndroidBars.publishLock({ reqId, widthPx, ... }) in device px:
-     *   parts 'all': bg (the screen without the slide, the time band, and the picture when phoneWall),
+     *   parts 'all': bg (the screen without the slide, the time band, and - phoneWall - the picture and
+     *     the layer's black, so the app's phone wallpaper shows through),
      *     slide (at rest, no handle), slidePressed, handle, handleDown, travel, pin (the keypad page,
      *     no dots), area + dots[n] (the entry bar with n dots), keys [{ key, x0, y0, x1, y1, held }]
      *   always: clock [{ at (minute start ms), png }] for `minutes` minutes from fromMs, and the band's box,
@@ -465,7 +466,8 @@
         const vis = (el, v) => { el.style.visibility = v; };
         const { layer, slider, handle, time, wall, pin, area, keys } = prep;
         const all = ctx.parts === 'all';
-        const o = { widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
+        // v: the pieces' make (the app drops copies of an older make: v2 leaves the layer's black out for the phone wallpaper)
+        const o = { v: 2, widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
         try {
             await Promise.race([
                 Promise.all([...layer.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null)))),
@@ -474,8 +476,8 @@
             if (all) {
                 const lr = box(layer);
                 o.layer = { x: Math.round(lr.left * dpr), y: Math.round(lr.top * dpr), w: Math.round(lr.width * dpr), h: Math.round(lr.height * dpr) };
-                o.bg = packAt(await snap(layer, () => { vis(slider, 'hidden'); vis(time, 'hidden'); if (ctx.phoneWall) vis(wall, 'hidden'); }), lr, dpr);
-                vis(slider, ''); vis(time, ''); vis(wall, '');
+                o.bg = packAt(await snap(layer, () => { vis(slider, 'hidden'); vis(time, 'hidden'); if (ctx.phoneWall) { vis(wall, 'hidden'); layer.style.background = 'transparent'; } }), lr, dpr);
+                vis(slider, ''); vis(time, ''); vis(wall, ''); layer.style.background = '';
                 o.slide = packAt(await snap(slider, () => { vis(handle, 'hidden'); }), box(slider), dpr);
                 o.slidePressed = packAt(await snap(slider, () => { slider.classList.add('is-pressed'); }), box(slider), dpr);
                 vis(handle, '');
@@ -487,8 +489,8 @@
                 layer.classList.add('is-pin');
                 pin.hidden = false;
                 prep.pinDots(0);
-                o.pin = packAt(await snap(layer, () => { if (ctx.phoneWall) vis(wall, 'hidden'); }), lr, dpr);
-                vis(wall, '');
+                o.pin = packAt(await snap(layer, () => { if (ctx.phoneWall) { vis(wall, 'hidden'); layer.style.background = 'transparent'; } }), lr, dpr);
+                vis(wall, ''); layer.style.background = '';
                 const ar = box(area);
                 o.area = { x: Math.round(ar.left * dpr), y: Math.round(ar.top * dpr) };
                 o.dots = [];
@@ -525,6 +527,7 @@
             out(o);
         } finally {
             [slider, handle, time, wall].forEach((e) => vis(e, ''));
+            layer.style.background = '';
             if (lockRestore) lockRestore();
         }
     }
