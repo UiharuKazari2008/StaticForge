@@ -23,6 +23,7 @@
     const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', none: '' };
     let lastReq = 0;
     let restoreNow = null;
+    let lastGood = null;
     // Start opened for a copy (renderStart): put back at once when the page comes on screen
     let startRestore = null;
     // one copy at a time: a bar copy stages the bars (the program's title) and Start's copy must not
@@ -92,6 +93,9 @@
         lastReq = Math.max(lastReq, reqId);
         const external = ctx.external !== false;
         if (window.wmShell && window.wmShell.setBarsExternal) window.wmShell.setBarsExternal(external);
+        // the page is in front (or about to be): its own bars are the ones on screen, nothing to copy
+        // (the last copy is sent again: the app keeps it ready for the next time the page goes behind)
+        if (!external || document.visibilityState === 'visible') { publish(lastGood ? Object.assign({}, lastGood, { reqId }) : { reqId, unsupported: 'in-front' }); return; }
         const shell = document.getElementById('wmShell');
         const top = shell && shell.querySelector('.wm-titlebar');
         const why = unsupported(top);
@@ -125,14 +129,14 @@
         }
         // a newer ask came in meanwhile: its copy follows
         if (reqId < lastReq) return;
-        publish({
-            reqId,
+        lastGood = {
             // the picture's own width: innerWidth x dpr rounds 411 x 2.625 to 1079 on a 1080 px screen
             widthPx: t ? t.width : Math.round(window.innerWidth * dpr),
             clock: !!top.querySelector('.wm-clock651'),
             top: pack(t, regions.top),
             bottom: soft ? pack(b, regions.bottom) : null
-        });
+        };
+        publish(Object.assign({ reqId }, lastGood));
     }
 
     function packAt(canvas, rect, dpr, extra) {

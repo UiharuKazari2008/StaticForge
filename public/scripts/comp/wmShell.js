@@ -991,12 +991,14 @@
         syncIconUnit(); fitStatusNow(); snapStatusIcons();
         return () => {
             if (tray) tray.remove();
-            if (title) title.textContent = before.title;
             bar.classList.toggle('is-start-open', before.startOpen);
-            if (corner) { corner.hidden = before.cornerHidden; if (before.cornerKind) corner.dataset.kind = before.cornerKind; }
-            keys.forEach((k, i) => { const b = before.keys[i]; k.textContent = b.text; k.disabled = b.disabled; k.hidden = b.hidden; });
+            // the bars as the shell itself has them now (its title, keys and corner), not the text
+            // read before the copy: a title left wrong once was put back over and over
+            if (title) title.textContent = before.startOpen ? startButtonPrefs().text : titleText;
+            keys.forEach((k, i) => { const b = before.keys[i]; k.disabled = b.disabled; k.hidden = b.hidden; });
+            renderSoftKeys();
+            refreshTitleAction();
             if (sip && before.sip != null) sip.setAttribute('aria-pressed', before.sip);
-            if (sip) sip.hidden = before.sipHidden;
             if (before.wmBar) root.dataset.wmBar = before.wmBar;
             if (before.wmApp !== undefined) root.dataset.wmApp = before.wmApp; else delete root.dataset.wmApp;
             fitForce = true;
@@ -2976,7 +2978,10 @@
         // behind an Android program (Melaton Bars, #871): the app copies the bars again when their
         // markup changed (a signal push that moved nothing asks for no copy)
         if (barsExternal && window.AndroidBars) {
-            const key = shell.querySelector('.wm-titlebar').innerHTML + (shell.querySelector('.wm-softkeys') || {}).innerHTML;
+            // what the bars show (icons and their pictures, the keys), not their markup: the copy's own
+            // put-back moves the icons' pixel nudges and asked for the next copy, endlessly
+            const key = [...shell.querySelectorAll('.wm-titlebar .wm-status-icon')].map((i) => `${i.dataset.role}:${i.hidden ? 0 : 1}:${i.dataset.icon || ''}:${i.style.backgroundImage.length}:${i.classList.contains('wm-strip') ? 1 : 0}:${i.classList.contains('is-presence') ? 1 : 0}`).join(',')
+                + '|' + [...shell.querySelectorAll('.wm-softkeys .wm-softkey')].map((k) => k.textContent).join(',');
             if (key !== barsKey) { barsKey = key; try { window.AndroidBars.requestRender(); } catch (_) { /* older app */ } }
         }
     }
