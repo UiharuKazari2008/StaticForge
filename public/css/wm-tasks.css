@@ -497,3 +497,20 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tasks .wtk-row.is-selected {
     color: #fff;
 }
 
+/* the opened Fold (#870, wmTasks.js render): the list on the left half, the open task's summary on the
+ * right, the crease drawn as the list's row rule; no task open = an empty right half */
+.wm-tasks.is-dual {
+    flex-direction: row;
+}
+
+.wm-tasks.is-dual .wtk-listview,
+.wm-tasks.is-dual .wtk-summary {
+    display: flex;
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+.wm-tasks.is-dual .wtk-summary {
+    border-left: calc(1 * var(--wm-px)) solid #848284;
+}
+

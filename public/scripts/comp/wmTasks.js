@@ -700,10 +700,23 @@
 
     // ---------------------------------------------------------------- drawing and input
 
+    /**
+     * The opened Fold (#870, Yukimi): 600 CSS px or more shows the list on the left half and the open
+     * task's summary on the right, one each side of the crease (one title, one pair of soft keys: the
+     * open view's). The form and Options keep the whole width.
+     */
+    const DUAL_MIN = 600;
+    const isDual = () => !!page && page.clientWidth >= DUAL_MIN && (view === 'list' || view === 'summary');
+
     function render() {
         if (!page) return;
         if (view === 'summary' && !current()) view = 'list';
         page.dataset.view = view;
+        const dual = isDual();
+        page.classList.toggle('is-dual', dual);
+        // no task open: the right half is empty
+        if (dual && view === 'list') page.querySelector('.wtk-summary').replaceChildren();
+        if (dual && view === 'summary') { renderList(); renderBar(); }
         if (view === 'list') { renderList(); renderBar(); } else if (view === 'summary') renderSummary(); else if (view === 'form') renderForm(); else renderOptions();
         ws.refreshTitleAction();
         ws.refreshSoftKeys();
@@ -794,6 +807,10 @@
         // a new page starts on the list: the program may have been ended (Task Manager) with the form open
         if (view === 'form') { view = 'list'; form = null; }
         p.classList.add('wm-tasks');
+        // folding / unfolding: list and summary side by side or not
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(() => { if (page.classList.contains('is-dual') !== isDual()) render(); }).observe(p);
+        }
         p.innerHTML = '<div class="wtk-listview">'
             + '<div class="wtk-bar"><span class="wtk-pri"><button type="button" data-pri="high" aria-label="High priority"><i></i></button><button type="button" data-pri="low" aria-label="Low priority"><i></i></button></span>'
             + '<input type="text" class="wtk-entry" placeholder="Tap here to add a new task" autocomplete="off" autocapitalize="sentences" enterkeyhint="done" aria-label="New task"></div>'
@@ -854,7 +871,8 @@
 
         p.addEventListener('click', (e) => {
             const t = e.target;
-            if (view === 'list') {
+            // side by side (#870) the list on the left answers while a summary is open on the right
+            if (view === 'list' || (isDual() && t.closest('.wtk-listview'))) {
                 const pri = t.closest('.wtk-pri button');
                 if (pri) {
                     const v = pri.dataset.pri === 'high' ? 1 : 9;
