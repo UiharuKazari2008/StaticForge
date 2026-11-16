@@ -466,11 +466,23 @@
             const url = new URL(m[1], location.href).href;
             // the size and place as CSS resolved them (px or %; 'auto' keeps the picture's own ratio: the box)
             const sz = (cs.backgroundSize || '').split(' ');
-            const toLen = (v, of) => (v.endsWith('%') ? (parseFloat(v) / 100) * of : v === 'auto' || v === 'cover' || v === 'contain' || !v ? of : px(v));
+            // a length: px, %, auto / cover / contain (the box), or calc() of % and px terms (the 6.5 title band:
+            // calc(100% + 18px)) - NaN in the list made the app's popups one pixel wide
+            const toLen = (v, of) => {
+                if (!v || v === 'auto' || v === 'cover' || v === 'contain') return of;
+                if (/^calc\(/.test(v)) {
+                    let sum = 0;
+                    const body = v.slice(5, -1).replace(/\s*-\s*/g, ' + -').replace(/\s+/g, ' ');
+                    body.split(' + ').forEach((t) => { t = t.trim(); if (t.endsWith('%')) sum += (parseFloat(t) / 100) * of; else if (t.endsWith('px')) sum += parseFloat(t); });
+                    return Number.isFinite(sum) && sum > 0 ? sum : of;
+                }
+                const n = v.endsWith('%') ? (parseFloat(v) / 100) * of : px(v);
+                return Number.isFinite(n) ? n : of;
+            };
             const w = toLen(sz[0] || 'auto', box.width);
             const h = toLen(sz[1] || sz[0] || 'auto', box.height);
             const pos = (cs.backgroundPosition || '0% 0%').split(' ');
-            const place = (v, room) => (v.endsWith('%') ? (parseFloat(v) / 100) * room : px(v));
+            const place = (v, room) => { const n = v.endsWith('%') ? (parseFloat(v) / 100) * room : px(v); return Number.isFinite(n) ? n : 0; };
             const x = box.left + place(pos[0] || '0%', box.width - w);
             const y = box.top + place(pos[1] || '0%', box.height - h);
             out.push({ k: 'img', x: R(x), y: R(y), w: R(w), h: R(h), url, clip });
@@ -551,7 +563,8 @@
             try {
                 sh.barsPopupClose();
                 sh.barsPopupOpen(role);
-                const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                // (a waiting notification is the notification icon's own popup, not part of another's)
+                const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (role === 'notify' || !l.classList.contains('wm-notify')));
                 if (layers.length) all[role] = { role, items: layoutOf(layers, dpr) };
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
