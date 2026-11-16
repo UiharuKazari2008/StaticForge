@@ -61,7 +61,7 @@ Pushed by the server:
 | Type | Notes |
 | --- | --- |
 | `as_request` | `{ callId, from: { kind, id, name, queuedAt? }, op, args }`: answer with `as_reply` |
-| `as_event` | `{ from, event, detail }`; from kind `server`: `partnership.changed` `{ session, permissions, name, syncItems }` to the device |
+| `as_event` | `{ from, event, detail }`; from kind `server`: `partnership.changed` `{ session, permissions, name, syncItems }` to the device; to a partnered device's service socket, `inbox.notice` (a notification inbox notice plus `user`, `pageConnected`) and `inbox.cleared { id }` ([notificationInbox.md](./notificationInbox.md), #876) |
 | `as_peers_updated` | `{ devices, computers }` to administrators that said hello, coalesced (250 ms) |
 
 ## File bodies (HTTP)

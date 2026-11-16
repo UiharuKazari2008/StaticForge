@@ -84,7 +84,7 @@ Read-only login can be disabled via `config.userPinLoginEnabled === false`.
 | IMAP mail accounts | [ws/mailAccounts.md](./ws/mailAccounts.md) | 15 |
 | Traffic | [ws/traffic.md](./ws/traffic.md) | 4 |
 | Lapis Remote (car remote, Hyundai BlueLink) | [ws/lapis.md](./ws/lapis.md) | 9 |
-| Notification inbox (durable notices + native posting) | [ws/notificationInbox.md](./ws/notificationInbox.md) | 2 |
+| Notification inbox (durable notices + native posting, reminders) | [ws/notificationInbox.md](./ws/notificationInbox.md) | 6 |
 | Melaton Videos (YouTube, Kick, app notifications; program and Today item) | [ws/youtube.md](./ws/youtube.md) | 19 |
 | XLink Operator Console | [ws/xlink.md](./ws/xlink.md) | 5 |
 | PayPass Operator (openCreditIC) | [ws/paypass.md](./ws/paypass.md) | 5 |
