@@ -362,7 +362,11 @@
         const { list, glow, view, page } = prep;
         const listVis = list.style.visibility;
         // the icons load when Start is first drawn: a copy made before that had cells with no picture
-        await Promise.all([...list.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null))));
+        // (1.5 s at most: a page behind another program may never decode a picture it does not draw)
+        await Promise.race([
+            Promise.all([...list.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null)))),
+            new Promise((r) => setTimeout(r, 1500))
+        ]);
         const glowHidden = glow ? glow.hidden : true;
         try {
             const lr = list.getBoundingClientRect();
