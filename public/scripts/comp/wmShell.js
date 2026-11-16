@@ -4110,7 +4110,9 @@
         // signal: only for a phone with a modem
         let signal = null;
         if (cell && cell.present !== false) {
-            const lvl = Number.isFinite(cell.level) ? Math.max(0, Math.min(4, Math.round(cell.level))) : null;
+            // Android's bars (level5: one more on 5-bar carriers such as Verizon) on WM's 4-bar icon, the same count up to 4
+            const raw = Number.isFinite(cell.level5) ? cell.level5 : cell.level;
+            const lvl = Number.isFinite(raw) ? Math.max(0, Math.min(4, Math.round(raw))) : null;
             if (airplane || cell.radioOn === false) signal = { icon: 'signal-off', text: airplane ? 'Flight mode' : 'Phone off' };
             else if (cell.simState === 'absent') signal = { icon: 'signal-alert', text: 'No SIM card' };
             else if (cell.simState === 'locked') signal = { icon: 'signal-alert', text: 'SIM locked' };
@@ -5864,9 +5866,10 @@
             // Wi-Fi; the radio type in bold and the signal bars at the right
             const c = dev.cell;
             if (c && c.present !== false) {
-                const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || c.level === 0;
+                const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || (Number.isFinite(c.level5) ? c.level5 : c.level) === 0;
                 const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
-                const lv5 = Number.isFinite(c.level5) ? c.level5 : Number.isFinite(c.level) ? Math.round((c.level * 5) / 4) : null;
+                // the bars Android draws (level5; Android's 0-4 when the carrier does not inflate it)
+                const lv5 = Number.isFinite(c.level5) ? c.level5 : Number.isFinite(c.level) ? c.level : null;
                 const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
