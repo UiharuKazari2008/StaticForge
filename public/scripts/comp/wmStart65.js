@@ -1238,7 +1238,12 @@
         const barsStale = () => { try { if (window.AndroidBars && window.AndroidBars.startStale) window.AndroidBars.startStale(); } catch (_) { /* older app */ } };
         document.addEventListener('wmAppsChanged', barsStale);
         // anything else Start's copy shows: a setting (the Today picture, Effects, the theme, the order) or the phone's wallpaper
-        document.addEventListener('wmSettingsChange', barsStale);
+        // only settings that change what Start shows (each stale notice costs a full copy): the Today
+        // picture and background, Start's order, Effects, the theme, the bezel / bars
+        document.addEventListener('wmSettingsChange', (e) => {
+            const keys = (e && e.detail && Array.isArray(e.detail.keys)) ? e.detail.keys : null;
+            if (!keys || keys.some((k) => /^wm(Today|Start|Ti|Theme|Wall|Camera|Bezel|Bars)|Wallpaper|Layout/i.test(String(k)))) barsStale();
+        });
         window.addEventListener('androidwallpaper', barsStale);
         document.addEventListener('wmAppsChanged', () => { if (page && page.isConnected && !page.hidden && !drag) { render(); place(Math.max(0, Math.min(maxY, y))); } });
         window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
