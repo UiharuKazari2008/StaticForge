@@ -63,14 +63,15 @@
         (read().characters || []).forEach((_, i) => out.push(`c:${i}:prompt`, `c:${i}:uc`));
         return out;
     }
-    // the editor's tool bar, one row on a phone (groups wrap whole on a narrower screen): 'weight' is
-    // the emphasis LCD (the jog wheel goes after it), then the group's menu (Trim Start, Trim End,
-    // Remove Emphasis: Yukimi, Nov 15), then Quick Access and Find
+    // the editor's tool bar, one row on a phone (groups wrap whole on a narrower screen): edit, then
+    // Quick Access and Find, then the emphasis controls kept at the right (Yukimi, Nov 15): 'weight'
+    // is the LCD (the jog wheel goes after it), then the group's menu (Trim Start, Trim End, Remove
+    // Emphasis)
     const ED_GROUPS = [
         [['undo', 'Undo'], ['redo', 'Redo']],
         [['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']],
-        ['weight', ['emmenu', 'Emphasis Group']],
-        [['quickaccess', 'Quick Access'], ['find', 'Find']]
+        [['quickaccess', 'Quick Access'], ['find', 'Find']],
+        ['weight', ['emmenu', 'Emphasis Group']]
     ];
     const ED_ICONS = { emmenu: 'group' };
 
@@ -84,7 +85,8 @@
     const GEN_NUMBERS = {
         n: { min: 1, max: 8, step: 1, def: 1 },
         steps: { min: 1, max: 50, step: 1, def: 25 },
-        guidance: { min: 0, max: 10, step: 0.1, def: 5 },
+        // a slow roll of the jog steps a guidance by its hundredths (Yukimi, Nov 15)
+        guidance: { min: 0, max: 10, step: 0.1, fineStep: 0.01, def: 5 },
         rescale: { min: 0, max: 1, step: 0.01, def: 0 }
     };
     const SEED_HOLD_MS = 500;
@@ -564,6 +566,7 @@
         if (v === 'settings') drawSettings();
         if (v === 'presets') drawPresets();
         if (v === 'ref') drawRef();
+        hlDraw();
         if (v === 'home' || v === 'print' || v === 'settings') drawGenbar();
         else if (ui) ui.closePopPanels();
         drawTabs();
@@ -743,7 +746,8 @@
 
     const fmtWeight = (w) => String(Number(w.toFixed(2)));
 
-    function stepWeight(dir) {
+    function stepWeight(dir, fine = false) {
+        const by = fine ? 0.01 : 0.1;
         const ta = edArea();
         if (!ta) return;
         ta.focus();
@@ -752,13 +756,13 @@
         let from; let to; let inner; let next;
         if (hit) {
             ({ from, to, inner } = hit);
-            next = Math.round((hit.weight + dir * 0.1) * 100) / 100;
+            next = Math.round((hit.weight + dir * by) * 100) / 100;
         } else {
             const range = ta.selectionStart !== ta.selectionEnd ? { from: ta.selectionStart, to: ta.selectionEnd } : tagAt(text, ta.selectionStart);
             if (!range) return;
             ({ from, to } = range);
             inner = text.slice(from, to);
-            next = Math.round((1 + dir * 0.1) * 100) / 100;
+            next = Math.round((1 + dir * by) * 100) / 100;
         }
         next = Math.max(-3, Math.min(5, next));
         // back at 1 the group is plain text again
@@ -779,11 +783,54 @@
         const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
         const w = hit ? hit.weight : 1;
         if (ui && typeof ui.segText === 'function') ui.segText(out, w.toFixed(2)); else out.textContent = w.toFixed(2);
+        hlDraw();
         // the readout takes the strength's colour (Yukimi, Nov 15): up towards orange and red, down
         // towards blue, all of it by 2 / 0
         const level = Math.max(-1, Math.min(1, w - 1));
         out.dataset.tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
         out.style.setProperty('--wm-lcd-strength', Math.abs(level).toFixed(3));
+    }
+
+    // ---- emphasis highlighting: a copy of the field's text behind it (same box, font and wrap, its
+    // letters clear) where each weighted group is a mark in its strength's colour (wm-programs.css
+    // .wm-emph); the field's own background is clear while it is edited
+
+    function hlDraw() {
+        const hl = $('.wds-hl');
+        if (!hl) return;
+        const ta = top() === 'editor' ? edArea() : null;
+        if (!ta || !ta.getClientRects().length) { if (!hl.hidden) { hl.hidden = true; hl.textContent = ''; hl.dataset.src = ''; } return; }
+        const body = $('.wds-body');
+        const br = body.getBoundingClientRect();
+        const r = ta.getBoundingClientRect();
+        const cs = getComputedStyle(ta);
+        ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'textIndent', 'tabSize',
+            'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'].forEach((k) => { if (hl.style[k] !== cs[k]) hl.style[k] = cs[k]; });
+        hl.style.left = `${r.left - br.left}px`;
+        hl.style.top = `${r.top - br.top}px`;
+        // the field's scroll bar takes from its width: the copy wraps where the text does
+        hl.style.width = `${ta.clientWidth + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)}px`;
+        hl.style.height = `${r.height}px`;
+        const text = ta.value;
+        let html = '';
+        let at = 0;
+        WEIGHT_RE.lastIndex = 0;
+        let m;
+        while ((m = WEIGHT_RE.exec(text))) {
+            const level = Math.max(-1, Math.min(1, Number(m[1]) - 1));
+            const tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
+            html += esc(text.slice(at, m.index)) + `<mark class="wm-emph" data-tone="${tone}" data-strength="${Math.abs(level).toFixed(3)}">${esc(m[0])}</mark>`;
+            at = m.index + m[0].length;
+        }
+        // a last empty line keeps its height
+        html += `${esc(text.slice(at))} `;
+        if (hl.dataset.src !== html) {
+            hl.dataset.src = html;
+            hl.innerHTML = html;
+            hl.querySelectorAll('mark[data-strength]').forEach((k) => k.style.setProperty('--wm-emph-strength', k.dataset.strength));
+        }
+        hl.hidden = false;
+        hl.scrollTop = ta.scrollTop;
     }
 
     /** The emphasis group's menu, from its bar button: the tools for the group the caret is in. */
@@ -1196,7 +1243,7 @@
         // a group with combos or numbers takes a share of the row's spare room; one of icons only does not
         bar.innerHTML = GEN_GROUPS.map((group, gi) => `<div class="wm-toolbar-group${group.some((t) => t[2] === 'combo' || t[2] === 'number') ? ' wds-gb-grow' : ''}">${gi ? '<span class="wm-tool-sep" aria-hidden="true"></span>' : ''}${group.map(([id, label, kind, icon]) => {
             if (kind === 'combo') return `<button type="button" class="wm-tool wm-tool-combo" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"></button>`;
-            if (kind === 'number') return `<button type="button" class="wm-tool is-text${GEN_SEG.has(id) ? ' wm-seg' : ''}" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="dialog" title="${esc(label)}"></button>`;
+            if (kind === 'number') return `<button type="button" class="wm-tool is-text${GEN_SEG.has(id) ? ' wm-lcd' : ''}" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="dialog" title="${esc(label)}"></button>`;
             // UC is the desktop's level meter (four boxes), not a picture
             if (id === 'uc') return `<button type="button" class="wm-tool" data-gb="uc" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"><span class="wms-uc-meter" data-level="0"><i></i><i></i><i></i><i></i></span></button>`;
             const count = id === 'dataset' ? '<span class="wms-pt-count" hidden></span>' : '';
@@ -1240,7 +1287,7 @@
         if (GEN_SEG.has(id) && ui && typeof ui.segText === 'function') ui.segText(btn, fmtNum(id, v));
         else btn.textContent = fmtNum(id, v);
     }
-    const fmtNum = (id, v) => { const c = GEN_NUMBERS[id]; const dg = (String(c.step).split('.')[1] || '').length; return Number(v == null ? c.def : v).toFixed(dg); };
+    const fmtNum = (id, v) => { const c = GEN_NUMBERS[id]; const dg = (String(c.fineStep || c.step).split('.')[1] || '').length; return Number(v == null ? c.def : v).toFixed(dg); };
 
     /** A combo's text and the desktop's badge after it (v4.5 Full, Portrait WP, Euler A). */
     function comboFace(btn, text, badge, cls) {
@@ -1583,6 +1630,7 @@
         p.classList.add('wm-dreamstudio');
         p.innerHTML = `
 <div class="wds-body">
+<div class="wds-hl" aria-hidden="true" hidden></div>
 <div class="wds-pane wds-home">
   <button type="button" class="wds-strip"><img class="wds-strip-thumb" alt="" hidden><div class="wds-strip-text"><b></b><span></span><div class="wds-bar" hidden><span></span></div></div></button>
   <div class="wds-fields">
@@ -1608,7 +1656,7 @@
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
 </div>
 <div class="wds-ac wm-listbox" hidden></div>
-<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g, gi) => `<div class="wm-toolbar-group">${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[0] === 'emmenu' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`).join('')}</div>
+<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g, gi) => `<div class="wm-toolbar-group${g.includes('weight') ? ' wds-ed-emph' : ''}">${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[0] === 'emmenu' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`).join('')}</div>
 </div>
 <div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
@@ -1666,7 +1714,7 @@
         // the group under the caret (or makes one of the selection / the tag there)
         const kit = window.wmSettings && window.wmSettings.ui;
         if (kit && typeof kit.jogWheel === 'function') {
-            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 10, onStep: (d) => stepWeight(d) });
+            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 10, onStep: (d, fine) => stepWeight(d, fine) });
             edJog.el.removeAttribute('tabindex');
             bar.querySelector('.wds-tb-weight').after(edJog.el);
         }
@@ -1681,10 +1729,19 @@
         });
         let countTimer = 0;
         p.querySelectorAll('.wds-ed-text, .wds-field').forEach((area) => {
-            area.addEventListener('input', () => { if (top() !== 'editor') return; clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
+            area.addEventListener('input', () => { if (top() !== 'editor') return; hlDraw(); clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
+            area.addEventListener('scroll', () => { const hl = $('.wds-hl'); if (hl && !hl.hidden && area === edArea()) hl.scrollTop = area.scrollTop; }, { passive: true });
             ['keyup', 'pointerup', 'select'].forEach((t) => area.addEventListener(t, () => { if (top() === 'editor') edWeight(); }));
             area.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== edArea()) acHide(); }, 0));
         });
+        // the caret moved (a tap, the keyboard's arrows, Android's selection handles): the emphasis
+        // controls follow the group it is in
+        document.addEventListener('selectionchange', () => { if (shown && top() === 'editor' && document.activeElement === edArea()) edWeight(); });
+        if (typeof ResizeObserver === 'function') {
+            const ro = new ResizeObserver(() => { if (shown && top() === 'editor') hlDraw(); });
+            ro.observe($('.wds-body'));
+            p.querySelectorAll('.wds-field, .wds-ed-text').forEach((f) => ro.observe(f));
+        }
         // the list keeps the focus (and the keyboard) in the text; a tap on a row puts the tag in
         const ac = $('.wds-ac');
         ac.addEventListener('mousedown', (e) => e.preventDefault());

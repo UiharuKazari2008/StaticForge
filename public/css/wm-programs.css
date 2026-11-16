@@ -1838,6 +1838,13 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     white-space: nowrap;
 }
 
+/* an LCD readout that is a tool cell (a number that opens its jog): framed always, its face a shade
+ * darker while pushed or its pop-up is open */
+.wm-tool.wm-lcd { border-color: #000; background: #c8d4b8; }
+.wm-tool.wm-lcd[aria-expanded="true"],
+.wm-tool.wm-lcd:active:not(:disabled) { background: #a9b897; }
+.wm-tool.wm-lcd:disabled { border-color: #848284; background: #dcdcd4; color: #848284; text-shadow: none; }
+
 /* seven-segment figures (.wm-seg, and every .wm-lcd; wmSettings.ui.segText): the DSEG7 face over
  * its unlit segments (data-ghost, every figure an 8) in the same place, faint */
 .wm-seg {
@@ -1872,3 +1879,19 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     background: color-mix(in srgb, #5a8ee8 calc(25% + 55% * var(--wm-lcd-strength, 0)), #c8d4b8);
 }
 .wm-jog.is-disabled .wm-jog-ridge { background: #848284; box-shadow: none; }
+
+/* ---- emphasis marks (a highlighter behind a prompt's text): a weighted group's background, towards
+ * orange and then red above neutral, towards blue below (the desktop's emphasis colours), as deep
+ * as --wm-emph-strength (0 .. 1) ---- */
+.wm-emph {
+    border-radius: 0;
+    color: transparent;
+}
+
+.wm-emph[data-tone="up"] {
+    background: color-mix(in srgb, color-mix(in srgb, #dc1e1e calc(var(--wm-emph-strength, 0) * 100%), #f0a050) calc(25% + 45% * var(--wm-emph-strength, 0)), transparent);
+}
+
+.wm-emph[data-tone="down"] {
+    background: color-mix(in srgb, #5a8ee8 calc(25% + 45% * var(--wm-emph-strength, 0)), transparent);
+}

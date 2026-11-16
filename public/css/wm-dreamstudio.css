@@ -19,11 +19,30 @@
 }
 
 .wds-body {
+    position: relative;
     display: flex;
     flex-direction: column;
     flex: 1 1 0;
     min-height: 0;
 }
+
+/* emphasis highlighting (wmDreamStudio.js hlDraw): the field's text copied behind it, same box and
+ * wrap, its letters clear, the weighted groups marked; the field itself clear over it */
+.wds-hl {
+    position: absolute;
+    z-index: 0;
+    margin: 0;
+    box-sizing: border-box;
+    border: 0 solid transparent;
+    color: transparent;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.wds-hl[hidden] { display: none; }
+.wm-dreamstudio[data-view="editor"] :is(.wds-field.is-editing, .wds-ed-text) { position: relative; z-index: 1; background: transparent; }
 
 .wds-body > .wds-pane {
     display: none;
@@ -415,6 +434,9 @@
     overflow: hidden;
 }
 
+/* the emphasis controls stay at the right of the bar when it has room to spare */
+.wds-toolbar > .wds-ed-emph { margin-left: auto; }
+
 /* the emphasis: its value in the kit's LCD readout, the jog wheel beside it */
 .wds-tb-weight { flex: 0 0 auto; min-width: calc(36 * var(--wm-px)); margin: 0 calc(2 * var(--wm-px)) 0 calc(1 * var(--wm-px)); }
 
@@ -469,8 +491,8 @@
 /* Model: as wide as its widest choice (set by script), never stretched */
 .wds-genbar .wm-tool.wm-tool-combo[data-gb="model"] { flex: 0 0 auto; max-width: none; }
 .wds-genbar .wm-tool.wm-tool-combo.is-measuring { width: max-content; }
-/* the seven-segment numbers: the LCD readout's size */
-.wds-genbar .wm-tool.wm-seg { font-size: calc(11 * var(--wm-px)); }
+/* the seven-segment numbers: the kit's LCD readout (frame, face, figures) as the cell */
+.wds-genbar .wm-tool.wm-lcd { justify-content: center; min-width: calc(30 * var(--wm-px)); }
 .wm-dreamstudio:is([data-view="editor"], [data-view="ref"], [data-view="presets"]) > .wds-genbar { display: none; }
 /* the desktop's glyphs in the cells (for now): 13 units, the cell's own colour (grey when disabled) */
 .wds-genbar .wm-tool > i { font-size: calc(13 * var(--wm-px)); line-height: 1; pointer-events: none; }

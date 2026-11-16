@@ -2495,17 +2495,19 @@
          * ridges crowd and darken towards both ends, as on a cylinder); a sideways drag rolls it,
          * one step of the value per `stepPx` WM units rolled, each step a detent (the shell's touch
          * tick), with no ends to the wheel itself (the value stops at min / max). Left / Right step it, Home / End go to the ends. opts: value,
-         * min, max, step, label (accessible name), stepPx (8), onChange(value) on every step,
-         * onStep(dir) instead of a value (a wheel that steps something else: emphasis), disabled.
+         * min, max, step, fineStep (a slower roll than fineSpeed WM units a second, 40, steps by this
+         * instead: fine adjust), label (accessible name), stepPx (8), onChange(value) on every step,
+         * onStep(dir, fine) instead of a value (a wheel that steps something else: emphasis), disabled.
          * Returns { set(value), el }.
          */
-        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, label = '', stepPx = 8, onChange, onStep, disabled = false } = {}) {
+        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, fineStep = 0, fineSpeed = 40, label = '', stepPx = 8, onChange, onStep, disabled = false } = {}) {
             const RIDGES = 18;
             host.insertAdjacentHTML('beforeend', `<div class="wm-jog${disabled ? ' is-disabled' : ''}" role="slider"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${escUi(label)}"><div class="wm-jog-wheel">${'<span class="wm-jog-ridge"></span>'.repeat(RIDGES)}</div></div>`);
             const all = host.querySelectorAll('.wm-jog');
             const el = all[all.length - 1];
             const ridges = [...el.querySelectorAll('.wm-jog-ridge')];
-            const dg = (String(step).split('.')[1] || '').length;
+            const places = (v) => (String(v).split('.')[1] || '').length;
+            const dg = Math.max(places(step), fineStep ? places(fineStep) : 0);
             let cur = Number(value) || 0;
             let phase = 0; // the wheel's turn, in ridge spacings
             const draw = () => {
@@ -2524,10 +2526,12 @@
             };
             // a detent: the shell's short touch tick on every step (Settings decide whether it buzzes)
             const detent = () => { if (sh && typeof sh.vibrate === 'function') sh.vibrate('tick'); };
-            const move = (n) => {
+            // fine: a slow roll steps by fineStep (the hundredths of a guidance), a quick one by step
+            const move = (n, fine = false) => {
                 if (!n) return;
-                if (onStep) { for (let k = 0; k < Math.abs(n); k++) { onStep(Math.sign(n)); detent(); } return; }
-                const next = Math.max(min, Math.min(max, Number((cur + n * step).toFixed(dg))));
+                if (onStep) { for (let k = 0; k < Math.abs(n); k++) { onStep(Math.sign(n), fine); detent(); } return; }
+                const by = fine && fineStep ? fineStep : step;
+                const next = Math.max(min, Math.min(max, Number((cur + n * by).toFixed(dg))));
                 if (next === cur) return;
                 cur = next;
                 detent();
@@ -2546,11 +2550,17 @@
                     const per = stepPx * unit;
                     const width = Math.max(1, el.querySelector('.wm-jog-wheel').getBoundingClientRect().width);
                     let lastX = e.clientX;
+                    let lastT = e.timeStamp || performance.now();
+                    let speed = 0; // WM units a second, smoothed
                     let rest = 0;
                     const mv = (ev) => {
                         ev.stopPropagation();
                         const dx = ev.clientX - lastX;
                         lastX = ev.clientX;
+                        const t = ev.timeStamp || performance.now();
+                        const dt = Math.max(1, t - lastT);
+                        lastT = t;
+                        speed = speed * 0.6 + (Math.abs(dx) / unit / dt) * 1000 * 0.4;
                         // the ridges follow the finger at the wheel's middle: x = w/2 sin(a), so
                         // da = 2 dx / w there, and one ridge spacing is pi / RIDGES of turn
                         phase += (2 * dx * RIDGES) / (width * Math.PI);
@@ -2558,7 +2568,7 @@
                         const n = Math.trunc(rest / per);
                         rest -= n * per;
                         draw();
-                        move(n);
+                        move(n, speed < fineSpeed);
                     };
                     const up = () => { el.classList.remove('is-rolling'); el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
                     el.addEventListener('pointermove', mv);
@@ -2585,8 +2595,8 @@
          * button), digits (decimals shown; from step), stepPx (units rolled per step),
          * onChange(value) on every step. Returns the panel (popPanel).
          */
-        valuePop(anchor, { label = '', min = 0, max = 1, step = 1, value = 0, def = null, digits = null, stepPx = 8, onChange } = {}) {
-            const dg = digits != null ? digits : (String(step).split('.')[1] || '').length;
+        valuePop(anchor, { label = '', min = 0, max = 1, step = 1, fineStep = 0, value = 0, def = null, digits = null, stepPx = 8, onChange } = {}) {
+            const dg = digits != null ? digits : Math.max((String(step).split('.')[1] || '').length, fineStep ? (String(fineStep).split('.')[1] || '').length : 0);
             const fmt = (v) => Number(v).toFixed(dg);
             const clamp = (v) => Math.max(min, Math.min(max, Number(Number(v).toFixed(dg))));
             let cur = clamp(Number(value) || 0);
@@ -2598,7 +2608,7 @@
                     const out = el.querySelector('.wm-valuepop-head > b');
                     out.textContent = fmt(cur);
                     const row = el.querySelector('.wm-valuepop-row');
-                    const jog = ui.jogWheel(row, { value: cur, min, max, step, label, stepPx, onChange: (v) => { cur = v; out.textContent = fmt(v); if (onChange) onChange(v); } });
+                    const jog = ui.jogWheel(row, { value: cur, min, max, step, fineStep, label, stepPx, onChange: (v) => { cur = v; out.textContent = fmt(v); if (onChange) onChange(v); } });
                     if (def != null) {
                         row.insertAdjacentHTML('beforeend', '<button type="button" class="wm-valuepop-default" aria-label="Default" title="Default"></button>');
                         row.querySelector('.wm-valuepop-default').addEventListener('click', () => {
