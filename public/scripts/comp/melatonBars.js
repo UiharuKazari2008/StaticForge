@@ -499,6 +499,70 @@
      *     so the time stays right while the page sleeps.
      */
     let lockRestore = null;
+
+    /*
+     * The lock screen's time band as parts for the app (#875): the band without its three texts, each
+     * text's box (the clock right-aligned in its 144 units, AM / PM and the date from their left), the
+     * glyphs each one uses with their advances (one element drawn per character, padded so the text
+     * shadow is kept), and how this locale writes the time and the date (the order of the parts, a
+     * 12-hour clock, padding), so the app lays the strings out from the glyphs.
+     */
+    async function clockGlyphs(prep, snap, dpr) {
+        const time = prep.time;
+        const spans = { clock: time.querySelector('.wm-lock65-clock'), ampm: time.querySelector('.wm-lock65-ampm'), date: time.querySelector('.wm-lock65-date') };
+        if (!spans.clock || !spans.date) return null;
+        const keep = Object.fromEntries(Object.entries(spans).map(([k, e]) => [k, e ? { text: e.textContent, style: e.getAttribute('style') || '' } : null]));
+        const out = { pad: 0, boxes: {}, chars: {}, time: [], date: [], hour12: false };
+        try {
+            // how the time and date are written here (the page's own formats: wmLock65 timeParts / fmtShort)
+            const fmtT = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
+            const fmtD = new Intl.DateTimeFormat(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
+            const sample = new Date(2001, 1, 3, 4, 5); // Feb 3 2001, 4:05
+            fmtT.formatToParts(sample).forEach((p) => {
+                if (p.type === 'dayPeriod') { out.hour12 = true; return; }
+                if (p.type === 'literal') { if (p.value.trim()) out.time.push({ lit: p.value.trim() }); return; }
+                out.time.push({ part: p.type, pad: p.type === 'hour' ? p.value.length > 1 : true });
+            });
+            fmtD.formatToParts(sample).forEach((p) => {
+                if (p.type === 'literal') { out.date.push({ lit: p.value }); return; }
+                out.date.push({ part: p.type, pad: p.value.length > 1 && p.type !== 'year' });
+            });
+            const periods = out.hour12 ? ['AM', 'PM'].map((_, i) => (fmtT.formatToParts(new Date(2001, 1, 3, i ? 13 : 1)).find((p) => p.type === 'dayPeriod') || {}).value || '') : [];
+            out.periods = periods;
+            // the boxes with the texts as they are now
+            prep.setTime(Date.now());
+            const bx = (e) => { const r = e.getBoundingClientRect(); return { x0: Math.round(r.left * dpr), y0: Math.round(r.top * dpr), x1: Math.round(r.right * dpr), y1: Math.round(r.bottom * dpr) }; };
+            out.boxes.clock = Object.assign(bx(spans.clock), { align: 'right' });
+            if (spans.ampm) out.boxes.ampm = Object.assign(bx(spans.ampm), { align: 'left' });
+            out.boxes.date = Object.assign(bx(spans.date), { align: 'left' });
+            // the band without its texts
+            out.bg = packAt(await snap(time, () => { Object.values(spans).forEach((e) => { if (e) e.style.visibility = 'hidden'; }); }), time.getBoundingClientRect(), dpr);
+            Object.values(spans).forEach((e) => { if (e) e.style.visibility = ''; });
+            // each glyph: the element alone with that character, its width the advance
+            const PAD = 6;
+            out.pad = Math.round(PAD * dpr);
+            const want = {
+                clock: [...new Set('0123456789' + out.time.filter((t) => t.lit).map((t) => t.lit).join(''))],
+                ampm: periods.filter(Boolean),
+                date: [...new Set('0123456789' + out.date.filter((t) => t.lit).map((t) => t.lit).join(''))]
+            };
+            for (const [k, list] of Object.entries(want)) {
+                const e = spans[k];
+                if (!e) continue;
+                out.chars[k] = {};
+                for (const ch of list) {
+                    e.textContent = ch;
+                    e.setAttribute('style', `${keep[k].style};width:auto;right:auto;padding:0 ${PAD}px;white-space:pre`);
+                    const w = e.getBoundingClientRect().width - PAD * 2;
+                    const c = await snap(e);
+                    out.chars[k][ch] = { png: pngOf(c), adv: Math.round(w * dpr * 100) / 100 };
+                }
+            }
+        } finally {
+            Object.entries(spans).forEach(([k, e]) => { if (e && keep[k]) { e.textContent = keep[k].text; e.setAttribute('style', keep[k].style); if (!keep[k].style) e.removeAttribute('style'); } });
+        }
+        return out;
+    }
     const pngOf = (c) => { const p = pack(c, []); return p ? p.png : ''; };
     async function renderLock(ctx) {
         ctx = ctx || {};
@@ -520,7 +584,7 @@
         const all = ctx.parts === 'all';
         // v: the pieces' make (the app drops copies of an older make: v2 leaves the layer's black out for the phone wallpaper)
         // phoneWall: made for the phone's own wallpaper under it (the app draws that picture first)
-        const o = { v: 2, phoneWall: !!ctx.phoneWall, widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
+        const o = { v: 3, phoneWall: !!ctx.phoneWall, widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
         try {
             await Promise.race([
                 Promise.all([...layer.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null)))),
@@ -565,17 +629,11 @@
                 pin.hidden = true;
                 layer.classList.remove('is-pin');
             }
-            // the time band for each coming minute
+            // the time band: its picture without the texts and the glyphs the texts are made of, so the app
+            // writes the time and date itself (always right, at once, with no page awake: Yukimi, Nov 16)
             const tr = box(time);
             o.band = { x: Math.round(tr.left * dpr), y: Math.round(tr.top * dpr) };
-            const from = Math.floor((Number(ctx.fromMs) || Date.now()) / 60000) * 60000;
-            const n = Math.max(1, Math.min(30, Number(ctx.minutes) || 15));
-            o.clock = [];
-            for (let i = 0; i < n; i++) {
-                prep.setTime(from + i * 60000);
-                const c = await snap(time);
-                o.clock.push({ at: from + i * 60000, png: pngOf(c) });
-            }
+            if (all) o.glyphs = await clockGlyphs(prep, snap, dpr);
             if (restored) { out({ unsupported: 'interrupted' }); return; }
             out(o);
         } finally {
