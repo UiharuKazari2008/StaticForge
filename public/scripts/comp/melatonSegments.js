@@ -28,7 +28,8 @@
  *  - addEventListener called by segment code (found from the caller's stack frame, so it also holds
  *    after an await) gets the segment's AbortSignal: window / document listeners go with it.
  *  - Core registries that keep callbacks are wrapped the same way and undone on unload:
- *    wsClient.on, programFaults.registerProgram, registerKeyboardListener, contextMenu attach*.
+ *    wsClient.on, programFaults.registerProgram, registerKeyboardListener, contextMenu attach*,
+ *    serverManagement.addRuntimeCompileListener.
  *  - <body> children the segment appended, [data-melaton-segment="<key>"], the owns selectors and its
  *    stylesheets are removed.
  *  - The segment record is watched by a FinalizationRegistry: report() shows whether the garbage
@@ -179,6 +180,12 @@
         if (typeof root.registerKeyboardListener === 'function') adoptCalls(root, 'registerKeyboardListener', function (args) {
             const id = args[0] && args[0].id;
             return () => { if (id && typeof root.unregisterKeyboardListener === 'function') root.unregisterKeyboardListener(id); };
+        });
+        // the server-management runtime-compile feed (the Log Viewer listens to it)
+        const sm = root.serverManagement;
+        if (sm) adoptCalls(sm, 'addRuntimeCompileListener', function (args) {
+            const fn = args[0];
+            return () => { if (typeof sm.removeRuntimeCompileListener === 'function') sm.removeRuntimeCompileListener(fn); };
         });
         const cm = root.contextMenu;
         if (cm) {

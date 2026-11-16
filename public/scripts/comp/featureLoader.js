@@ -9,15 +9,18 @@
 const FEATURE_MANIFEST = {
     // the phone Device Center draws (#827): Device Center and the Sidebar's Mobile Device gadgets
     activesync_device_art: {
+        hot: true,
         styles: ['css/activesync-device-art.css'],
         scripts: ['scripts/comp/activeSyncDeviceArt.js']
     },
     spellbook: {
+        hot: true,
         html: 'templates/spellbook.html',
         styles: ['css/spellbook.css'],
         scripts: ['scripts/comp/spellbookModal.js']
     },
     notepad: {
+        hot: true,
         // Find / Replace / Go To / Font / Page Setup are Vista's own templates (notepadVista.js)
         depends: ['vista_dialog_templates'],
         html: 'templates/notepad.html',
@@ -48,6 +51,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/configEditorApplet.js']
     },
     character_db: {
+        hot: true,
         html: 'templates/character-db.html',
         styles: ['css/character-db-applet.css'],
         scripts: ['scripts/comp/characterDbApplet.js']
@@ -59,12 +63,14 @@ const FEATURE_MANIFEST = {
         ]
     },
     log_viewer: {
+        hot: true,
         html: 'templates/log-viewer.html',
         depends: ['server_management'],
         styles: ['css/log-viewer.css', 'css/websocket-requests.css'],
         scripts: ['scripts/comp/websocketRequestsModal.js', 'scripts/comp/logViewerApplet.js']
     },
     run_index: {
+        hot: true,
         scripts: ['scripts/comp/runCommandIndex.js']
     },
     run: {
@@ -89,6 +95,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/characterSearchModal.js']
     },
     explorer: {
+        hot: true,
         styles: ['css/explorer.css', 'css/vista-file-progress.css', 'css/vista-7zip.css', 'css/melaton-apps.css', 'css/explorer-contacts.css', 'css/explorer-phone.css'],
         // vfsClient / vfsVirtualGrid / routers stay sync — desktop + inbound use them without Cartograph
         scripts: ['scripts/comp/explorerVistaChrome.js', 'scripts/comp/explorerComputerView.js', 'scripts/comp/fileOperationProgress.js', 'scripts/comp/vfsPrograms.js', 'scripts/comp/explorerArchive.js', 'scripts/comp/explorerSequenzia.js', 'scripts/comp/vcard.js', 'scripts/comp/explorerContacts.js', 'scripts/comp/phoneStorageBridge.js', 'scripts/comp/explorerPhoneDrive.js', 'scripts/comp/explorerApplet.js']
@@ -108,13 +115,16 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/bracketGenerationApplet.js']
     },
     dataset_tag_toolbar: {
+        hot: true,
         scripts: ['scripts/comp/datasetTagToolbar.js']
     },
     compiled_prompt_inspector: {
+        hot: true,
         styles: ['css/compiled-prompt-lcd.css'],
         scripts: ['scripts/comp/compiledPromptInspector.js']
     },
     image_prompt_inspector: {
+        hot: true,
         html: 'templates/image-prompt-inspector.html',
         // vista-atelier.css: the Vista menu bar; compiled-prompt-lcd.css: the Property / Value list
         // and the scene cards of the Dynamic Generation section
@@ -179,6 +189,7 @@ const FEATURE_MANIFEST = {
     // Alarm Clock moved to a Melaton app package (apps/alarm, Yozora #642):
     // melatonApps.launch({ packageId: 'alarm' }) (args { mode: 'pomodoro' } for the Pomodoro tab).
     remote_desktop: {
+        hot: true,
         scripts: ['scripts/comp/desktop-apps/guacRemote.js']
     },
     // Remote Desktop Connection: Vista's mstsc dialog; sessions open in remote_desktop's window
@@ -189,6 +200,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/desktop-apps/remoteDesktopConnection.js']
     },
     emotion: {
+        hot: true,
         styles: ['css/desktop-apps/emotion.css'],
         scripts: ['scripts/comp/desktop-apps/emotion.js']
     },
@@ -203,6 +215,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/desktop-apps/vista-games/minesweeper.js']
     },
     vista_cards: {
+        hot: true,
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/cardEngine.js']
     },
@@ -247,6 +260,7 @@ const FEATURE_MANIFEST = {
     },
     // Hosted Sidebar gadgets (Yozora #629): loaded by vistaSidebar.js when a gadget from public/static_images/vista-gadgets/catalog.json shows
     vista_gadget_host: {
+        hot: true,
         styles: ['css/vista-gadget-host.css'],
         scripts: ['scripts/comp/vistaGadgetHost.js']
     },
@@ -297,6 +311,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/desktop-apps/vista-games/gamesExplorer.js']
     },
     start_menu_organizer: {
+        hot: true,
         scripts: ['scripts/comp/desktop-apps/startMenuOrganizer.js']
     },
     // Desktop Icon Settings and Change Icon (Personalize, a desktop shortcut's Change Icon...);
@@ -315,6 +330,7 @@ const FEATURE_MANIFEST = {
     },
     // window pictures for Flip 3D and the taskbar's window previews (taskbarSettings.js)
     window_capture: {
+        hot: true,
         scripts: ['scripts/comp/windowCapture.js']
     },
     // Melaton Bars (#871): the phone's title / soft key bars copied for the Android app to draw over other programs
@@ -355,6 +371,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/expanderMakeGlobalWizard.js']
     },
     control_panel: {
+        hot: true,
         depends: ['vista_dialog_templates'],
         // Remote Access Properties draws with Taskbar Properties' Vista controls (tbp-*)
         styles: ['css/desktop-settings.css', 'css/vista-defender.css', 'css/cpl-system.css',
@@ -418,11 +435,13 @@ const FEATURE_MANIFEST = {
     // Melaton Defender's and Dreamscape CardSpace's library (#831): the retired Security Center DSAP's
     // markup and driver (securityDsap*), run by windowsDefender.js and cplAuthentication.js
     security_center_lib: {
+        hot: true,
         scripts: ['scripts/comp/securityCenterDsapApplet.js']
     },
     // Workspace Properties, New / Rename / Dump Workspace, Reorder Partitions on the desktop (#828):
     // workspaceUtils.js opens them; Data Management's Workspace Management uses them too
     workspace_dialogs: {
+        hot: true,
         depends: ['vista_dialog_templates'],
         styles: ['css/workspace-dialogs.css'],
         scripts: ['scripts/comp/workspaceDialogs.js']
@@ -452,12 +471,14 @@ const FEATURE_MANIFEST = {
     },
     // Print queue windows (#831): one per printer (generation backend); the tray icon is printQueue.js
     print_queue: {
+        hot: true,
         depends: ['vista_dialog_templates'],
         styles: ['css/print-queue.css'],
         scripts: ['scripts/comp/printQueueWindow.js']
     },
     // Director add-ons loaded on demand by director.js (setupMascot / openToolPayload); styles stay in director.css.
     director_mascot: {
+        hot: true,
         scripts: ['scripts/comp/directorMascot.js']
     },
     director_mascot_lab: {
