@@ -511,12 +511,18 @@
     display: flex;
     align-items: center;
     gap: calc(4 * var(--wm-px));
-    min-height: calc(23 * var(--wm-px));
+    min-height: calc(21 * var(--wm-px));
 }
 
-.wds-wt-row > label { flex: 1 1 auto; min-width: 0; }
+.wds-wt-row > label,
+.wds-wt-row > .wds-wt-name { flex: 1 1 auto; min-width: 0; }
 .wds-wt-row > label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wds-wt-row > .wds-wt-value { min-width: calc(30 * var(--wm-px)); margin: 0; border-color: currentColor; }
+/* each row's icon (the desktop's) before its name */
+.wds-wt-row > label > span > i { display: inline-block; width: calc(12 * var(--wm-px)); margin-right: calc(3 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); text-align: center; }
+/* a row that is on: its weight as an LCD and the jog wheel that rolls it */
+.wds-wt-row > .wds-wt-lcd { flex: 0 0 auto; min-width: calc(30 * var(--wm-px)); height: calc(19 * var(--wm-px)); }
+.wds-wt-row > .wm-jog { flex: 0 0 auto; width: calc(44 * var(--wm-px)); height: calc(19 * var(--wm-px)); }
+.wm-pop.wds-ucpop { width: calc(200 * var(--wm-px)); }
 
 /* the seed's panel: one row, the seed's edit box then Clear, Random and the lock as tool cells */
 .wm-pop.wds-seedpop {

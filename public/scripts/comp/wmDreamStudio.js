@@ -91,7 +91,7 @@
     };
     const SEED_HOLD_MS = 500;
     // the numbers shown in seven-segment figures (Yukimi, Nov 15)
-    const GEN_SEG = new Set(['steps', 'guidance', 'rescale']);
+    const GEN_SEG = new Set(['n', 'steps', 'guidance', 'rescale']);
 
     let sh = null;
     let ui = null;
@@ -1284,8 +1284,10 @@
     /** A number's cell: seven-segment figures with their unlit segments, or plain digits. */
     function genNum(btn, id, v) {
         if (!btn) return;
-        if (GEN_SEG.has(id) && ui && typeof ui.segText === 'function') ui.segText(btn, fmtNum(id, v));
-        else btn.textContent = fmtNum(id, v);
+        // Prints is a two-figure LCD: a blank figure ('!' in DSEG7) before one digit
+        const text = id === 'n' ? fmtNum(id, v).padStart(2, '!') : fmtNum(id, v);
+        if (GEN_SEG.has(id) && ui && typeof ui.segText === 'function') ui.segText(btn, text);
+        else btn.textContent = text;
     }
     const fmtNum = (id, v) => { const c = GEN_NUMBERS[id]; const dg = (String(c.fineStep || c.step).split('.')[1] || '').length; return Number(v == null ? c.def : v).toFixed(dg); };
 
@@ -1335,6 +1337,10 @@
         if (size) { const f = sizeBadge(size); comboFace(q('resolution'), f.name, f.badge, f.cls); } else comboFace(q('resolution'), s.width && s.height ? `${s.width} x ${s.height}` : 'Size');
         Object.keys(GEN_NUMBERS).forEach((id) => { genNum(q(id), id, s[id]); });
         q('steps').disabled = !o.has.steps;
+        // the paid dot: a value that makes the next print cost Anlas (over 28 steps, more than one print)
+        const paid = M.cost() > 0;
+        q('steps').classList.toggle('is-paid', paid && Number(s.steps) > 28);
+        q('n').classList.toggle('is-paid', paid && Number(s.n) > 1);
         q('rescale').disabled = !o.has.rescale;
         const ds = q('dataset');
         const list = M.datasets();
@@ -1363,6 +1369,9 @@
         const seed = q('seed');
         seed.setAttribute('aria-pressed', String(!!s.seedLock));
         seed.title = s.seedLock && s.seed != null && s.seed !== '' ? `Seed ${s.seed} (kept)` : 'Seed';
+        // a kept seed shows the lock, a free one the desktop's sprout
+        const glyph = seed.querySelector('i');
+        if (glyph) glyph.className = s.seedLock ? 'fas fa-lock' : 'fas fa-seedling';
         if (ui) ui.fitToolbar(bar);
     }
 
@@ -1390,13 +1399,7 @@
             genList(b, grouped(o.resolutions, sizeName), s.resolution, (v) => change('resolution', v).then(() => { if (/^custom/.test(String(v))) openLayer('settings'); }));
             return;
         }
-        if (id === 'uc') {
-            // UC Preset and NSFW in one list (Yukimi, Nov 15), a divider between, each with its dot
-            const rows = o.ucPresets.map((x) => ({ label: x.name, radio: x.value === (Number(s.append_uc) || 0), action: () => change('append_uc', x.value) }));
-            rows.push('-', ...o.nsfw.map((x) => ({ label: `NSFW: ${x.name}`, radio: x.value === (Number(s.nsfw) || 0), action: () => change('nsfw', x.value) })));
-            sh.dropdown(b, rows, b.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left');
-            return;
-        }
+        if (id === 'uc') { ucPanel(b); return; }
         if (id === 'sampler') {
             const rows = o.samplers.map((x) => [`s:${x.value}`, x.name]);
             if (o.has.noise && o.noise.length) rows.push('-', ...o.noise.map((x) => [`n:${x.value}`, x.name]));
@@ -1446,9 +1449,33 @@
 
     const fmtWt = (v) => (Number(v) === 1 ? '1.0' : Number(v).toFixed(1));
 
+    /** A weight's LCD and jog wheel in a row (rows that are switched off show neither). */
+    function weightJog(row, r, write) {
+        const lcd = row.querySelector('.wds-wt-lcd');
+        ui.segText(lcd, fmtWt(r.bias));
+        let timer = 0;
+        ui.jogWheel(row, {
+            label: `${r.name} weight`,
+            value: r.bias,
+            min: r.min,
+            max: r.max,
+            step: 0.1,
+            stepPx: 10,
+            onChange: (n) => {
+                ui.segText(lcd, fmtWt(n));
+                clearTimeout(timer);
+                timer = setTimeout(() => { Promise.resolve(write(r, { bias: n })).then(() => { r.bias = n; snap = null; drawGenbar(); }); }, 120);
+            }
+        });
+    }
+
+    /**
+     * Datasets / Adjustments: a check row each with its icon (the desktop's), and when it is on, its
+     * weight as an LCD with a jog wheel at the right; the group names as sub-headers.
+     */
     function weightPanel(anchor, label, rowsOf, write) {
         let rows = [];
-        const pop = ui.popPanel(anchor, {
+        return ui.popPanel(anchor, {
             label,
             className: 'wds-wtpop',
             build(el) {
@@ -1457,41 +1484,52 @@
                     const top = el.scrollTop;
                     el.innerHTML = rows.map((r, i) => {
                         if (r.head) return `<div class="wm-form-sub wds-wt-head${r.minor ? ' is-minor' : ''}">${esc(r.head)}</div>`;
-                        return `<div class="wds-wt-row" data-i="${i}"><label class="wm-check"><input type="checkbox" data-i="${i}"${r.on ? ' checked' : ''}><span>${esc(r.name)}</span></label><button type="button" class="wm-tool is-text wds-wt-value" data-i="${i}" aria-label="${esc(r.name)} weight" aria-haspopup="dialog">${fmtWt(r.bias)}</button></div>`;
+                        return `<div class="wds-wt-row${r.on ? ' is-on' : ''}" data-i="${i}"><label class="wm-check"><input type="checkbox" data-i="${i}"${r.on ? ' checked' : ''}><span>${toolIcon(r.icon || 'fas fa-toggle-on')}${esc(r.name)}</span></label>${r.on ? '<span class="wds-wt-lcd wm-lcd"></span>' : ''}</div>`;
                     }).join('') || '<div class="wm-form-sub wds-wt-head">None</div>';
+                    el.querySelectorAll('.wds-wt-row.is-on').forEach((row) => weightJog(row, rows[Number(row.dataset.i)], write));
                     el.scrollTop = top;
                 };
                 fill();
                 el.addEventListener('change', (e) => {
                     const t = e.target;
-                    const r = t && t.dataset && rows[Number(t.dataset.i)];
+                    const r = t && t.dataset && t.type === 'checkbox' && rows[Number(t.dataset.i)];
                     if (!r) return;
                     // a ratio group's rows are one of several: checking one clears the others (the desktop's own rule)
                     Promise.resolve(write(r, { on: !!t.checked })).then(() => { snap = null; fill(); drawGenbar(); });
                 });
-                el.addEventListener('click', (e) => {
-                    const v = e.target.closest && e.target.closest('.wds-wt-value');
-                    if (!v || ui.popPanelJustClosed(v)) return;
-                    const r = rows[Number(v.dataset.i)];
-                    if (!r) return;
-                    let timer = 0;
-                    ui.valuePop(v, {
-                        label: r.name,
-                        min: r.min,
-                        max: r.max,
-                        step: 0.1,
-                        value: r.bias,
-                        def: r.def,
-                        onChange: (n) => {
-                            v.textContent = fmtWt(n);
-                            clearTimeout(timer);
-                            timer = setTimeout(() => { Promise.resolve(write(r, { bias: n })).then(() => { r.bias = n; snap = null; drawGenbar(); }); }, 120);
-                        }
-                    });
+            }
+        });
+    }
+
+    // ---- UC Preset and NSFW: one panel (Yukimi, Nov 15), each under its header; NSFW's bias as an LCD
+    // with a jog at the foot of its section while NSFW is not Neutral
+
+    function ucPanel(anchor) {
+        ui.popPanel(anchor, {
+            label: 'UC Preset and NSFW',
+            className: 'wds-wtpop wds-ucpop',
+            build(el) {
+                const fill = () => {
+                    snap = null;
+                    const s = read();
+                    const o = M.options();
+                    const uc = Number(s.append_uc) || 0;
+                    const nsfw = Number(s.nsfw) || 0;
+                    el.innerHTML = ui.sub('UC Preset') + o.ucPresets.map((x) => ui.radio('wdsUc', x.value, x.name, x.value === uc, 'data-uc')).join('')
+                        + ui.sub('NSFW') + o.nsfw.map((x) => ui.radio('wdsNsfw', x.value, x.name, x.value === nsfw, 'data-nsfw')).join('')
+                        + (nsfw !== 0 ? '<div class="wds-wt-row is-on wds-nsfw-bias"><span class="wds-wt-name">Bias</span><span class="wds-wt-lcd wm-lcd"></span></div>' : '');
+                    const row = el.querySelector('.wds-nsfw-bias');
+                    if (row) weightJog(row, { name: 'NSFW', bias: Number(s.nsfw_bias) || 1, min: 0.1, max: 3, def: 1 }, (r, p) => change('nsfw_bias', p.bias));
+                };
+                fill();
+                el.addEventListener('change', (e) => {
+                    const t = e.target;
+                    if (!t || t.type !== 'radio') return;
+                    const v = Number(t.value);
+                    Promise.resolve(t.hasAttribute('data-uc') ? change('append_uc', v) : change('nsfw', v)).then(() => { fill(); drawGenbar(); });
                 });
             }
         });
-        return pop;
     }
 
     // ---- the seed's panel (a hold on Seed), one row (Yukimi, Nov 15): the seed, then Clear, Random
@@ -1504,44 +1542,57 @@
             label: 'Seed',
             className: 'wds-seedpop',
             build(el) {
-                const s0 = read();
-                el.innerHTML = `${ui.edit('', s0.seedText || '', 'data-seed inputmode="numeric" placeholder="Random" aria-label="Seed"')}`
+                el.innerHTML = `${ui.edit('', '', 'data-seed inputmode="numeric" placeholder="Random" aria-label="Seed"')}`
+                    + `<button type="button" class="wm-tool" data-seed-act="copy" aria-label="Use the Print's Seed" title="Use the Print's Seed" hidden>${toolIcon('fas fa-arrow-turn-down-right')}</button>`
                     + `<button type="button" class="wm-tool" data-seed-act="clear" aria-label="Clear Seed" title="Clear Seed">${toolIcon('fa-regular fa-xmark-large')}</button>`
                     + `<button type="button" class="wm-tool" data-seed-act="random" aria-label="Random Seed" title="Random Seed">${toolIcon('nai-dice')}</button>`
                     + `<button type="button" class="wm-tool" data-seed-act="lock" aria-label="Keep this seed" title="Keep this seed" aria-pressed="false">${toolIcon('fas fa-seedling')}</button>`;
                 const field = el.querySelector('[data-seed]');
+                field.classList.add('is-lcd');
                 const lock = el.querySelector('[data-seed-act="lock"]');
-                let typed = field.value;
+                const copy = el.querySelector('[data-seed-act="copy"]');
+                const random = el.querySelector('[data-seed-act="random"]');
+                let typed = '';
+                // the panel follows the seed: its figures, the lock's glyph, what can be used while it
+                // is kept (the box and Random wait until it is unlocked, as on the desktop), and the
+                // print's own seed offered when it is not the one in the box
                 const show = () => {
                     snap = null;
                     const s = read();
                     if (document.activeElement !== field) field.value = typed = s.seedText || '';
-                    lock.setAttribute('aria-pressed', String(!!s.seedLock));
-                    paint();
+                    const kept = !!s.seedLock;
+                    lock.setAttribute('aria-pressed', String(kept));
+                    const g = lock.querySelector('i');
+                    if (g) g.className = kept ? 'fas fa-lock' : 'fas fa-seedling';
+                    field.disabled = kept;
+                    random.disabled = kept;
+                    const ps = M.previewSeed();
+                    copy.hidden = !ps || ps === String(s.seedText || '');
                 };
-                // a typed seed: used by the next print; kept if the lock is on
+                const changed = () => { show(); paint(); };
+                // a typed seed: used by the next print
                 const commit = () => {
                     const raw = String(field.value || '').replace(/[^0-9]/g, '');
                     if (raw === typed) return Promise.resolve();
                     typed = raw;
-                    if (raw === '') return Promise.resolve(M.clearSeed()).then(show);
-                    const locked = !!read().seedLock;
-                    return Promise.resolve(locked ? M.clearSeed() : null).then(() => change('seed', Number(raw))).then(() => (locked ? change('seedLock', true) : null)).then(show);
+                    if (raw === '') return Promise.resolve(M.clearSeed()).then(changed);
+                    return change('seed', Number(raw)).then(changed);
                 };
                 field.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit().then(() => field.blur()); } });
                 field.addEventListener('change', () => { commit(); });
                 el.addEventListener('wds-seed-close', () => { commit(); });
                 el.addEventListener('click', (e) => {
                     const b = e.target.closest && e.target.closest('[data-seed-act]');
-                    if (!b) return;
+                    if (!b || b.disabled) return;
                     const act = b.dataset.seedAct;
                     let done;
                     if (act === 'clear') done = Promise.resolve(M.clearSeed());
-                    else if (act === 'random') done = Promise.resolve(read().seedLock ? M.clearSeed() : null).then(() => M.randomSeed()).then(() => change('seedLock', true));
+                    else if (act === 'copy') done = Promise.resolve(M.usePreviewSeed());
+                    else if (act === 'random') done = Promise.resolve(M.randomSeed()).then(() => change('seedLock', true));
                     else done = commit().then(() => change('seedLock', !read().seedLock));
-                    Promise.resolve(done).then(() => { field.blur(); show(); });
+                    Promise.resolve(done).then(() => { field.blur(); changed(); });
                 });
-                lock.setAttribute('aria-pressed', String(!!s0.seedLock));
+                show();
             },
             onClose(el) { el.dispatchEvent(new CustomEvent('wds-seed-close')); }
         });

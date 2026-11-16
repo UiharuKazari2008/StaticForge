@@ -1777,7 +1777,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 }
 
 /* ---- jog wheel (wmSettings.ui.jogWheel): a ridged thumbwheel seen edge-on in a sunken frame
- * (2-unit CE well: grey / white outside, black / light grey inside); the ridges are 1-unit dark
+ * (a 1-unit black frame round a black / light grey well); the ridges are 1-unit dark
  * lines placed by script on the half that faces the eye, the wheel shaded darker towards both
  * ends; the frame takes the highlight while it has the focus ---- */
 .wm-jog {
@@ -1785,8 +1785,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     min-width: calc(40 * var(--wm-px));
     height: calc(21 * var(--wm-px));
     box-sizing: border-box;
-    border: calc(1 * var(--wm-px)) solid;
-    border-color: #848284 #fff #fff #848284;
+    border: calc(1 * var(--wm-px)) solid #000;
     background: #c0c0c0;
     touch-action: none;
     cursor: ew-resize;
@@ -1832,7 +1831,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     padding: 0 calc(3 * var(--wm-px));
     border: calc(1 * var(--wm-px)) solid #000;
     background: #c8d4b8;
-    color: #101810;
+    --wm-lcd-ink: #101810;
+    color: var(--wm-lcd-ink);
     font: calc(11 * var(--wm-px)) / 1 'DSEG7 Classic', var(--wm-font);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -1864,9 +1864,36 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     justify-content: inherit;
     padding: inherit;
     box-sizing: border-box;
+    color: var(--wm-lcd-ink, currentColor);
     opacity: 0.12;
     pointer-events: none;
 }
+
+/* an LCD whose pop-up is open blinks its figures (valuePop toggles .is-blink); the unlit segments stay */
+.wm-lcd.is-blink { color: transparent; }
+
+/* the paid mark (.is-paid): a value that makes the next print cost Anlas lights a dot at the top right */
+.wm-lcd.is-paid::after {
+    content: '';
+    position: absolute;
+    top: calc(2 * var(--wm-px));
+    right: calc(2 * var(--wm-px));
+    width: calc(2 * var(--wm-px));
+    height: calc(2 * var(--wm-px));
+    background: var(--wm-lcd-ink);
+    pointer-events: none;
+}
+
+/* an edit box in LCD figures (a seed): the LCD's face and DSEG7 figures, its hint in the UI font */
+.wm-edit.is-lcd {
+    background: #c8d4b8;
+    color: #101810;
+    font-family: 'DSEG7 Classic', var(--wm-font);
+    letter-spacing: calc(0.5 * var(--wm-px));
+}
+
+.wm-edit.is-lcd::placeholder { font-family: var(--wm-font); letter-spacing: 0; }
+.wm-edit.is-lcd:disabled { background: #dcdcd4; color: #606860; }
 
 /* a toned readout (data-tone up / down, --wm-lcd-strength 0 .. 1): its backlight goes towards orange
  * and then red above neutral, towards blue below (the desktop's emphasis colours), as far as the

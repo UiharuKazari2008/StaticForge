@@ -36,6 +36,8 @@
  *                                       Quick Access, the tag library by category (the desktop's
  *                                       datasetTagToolbar.js server calls; promises): a level's groups
  *                                       and main tags, the tags at a leaf, tags matching some letters
+ *   studioModel.previewSeed() / usePreviewSeed()
+ *                                       the print on show's seed / that seed into the box (kept if locked)
  *   studioModel.clearSeed() / randomSeed()
  *                                       the seed box emptied (and unlocked) / a new random seed in it
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
@@ -529,14 +531,15 @@
             out.datasets = cat.datasets.map((d) => ({
                 value: d.value,
                 name: d.display || d.value,
+                icon: d.icon || 'fa-cube fas',
                 on: on.includes(d.value),
                 bias: num(bias[d.value], num(d.default, 1)),
                 min: num(d.min, -3),
                 max: num(d.max, 5),
                 def: num(d.default, 1)
             }));
-            out.quality = { value: '__quality__', name: (cat.qualityPreset && cat.qualityPreset.display) || 'Quality', on: !!p.append_quality, bias: num(p.quality_preset_bias, 1), min: 0, max: 9, def: 1 };
-            if (cat.transparencyPreset) out.transparency = { value: '__transparency__', name: cat.transparencyPreset.display || 'Transparency', on: !!p.append_transparency, bias: num(p.transparency_bias, 1), min: 0, max: 9, def: 1 };
+            out.quality = { value: '__quality__', name: (cat.qualityPreset && cat.qualityPreset.display) || 'Quality', icon: (cat.qualityPreset && cat.qualityPreset.icon) || 'fa-crown fas', on: !!p.append_quality, bias: num(p.quality_preset_bias, 1), min: 0, max: 9, def: 1 };
+            if (cat.transparencyPreset) out.transparency = { value: '__transparency__', name: cat.transparencyPreset.display || 'Transparency', icon: cat.transparencyPreset.icon || 'fas fa-chess-board', on: !!p.append_transparency, bias: num(p.transparency_bias, 1), min: 0, max: 9, def: 1 };
         } catch (err) { console.warn('[studioModel] datasets', err); }
         return out;
     }
@@ -576,6 +579,7 @@
                     return {
                         id: t.id,
                         name: t.name || t.id,
+                        icon: t.icon || 'fas fa-toggle-on',
                         on: isSubToggleEnabled(d.value, t),
                         bias: ratio ? getRatioGroupSharedBias(d.value, d, t.group) : num(stored && stored.bias, def),
                         min: num(t.min, -3),
@@ -593,7 +597,7 @@
                     const mine = toggles.filter((t) => t.group === id);
                     if (mine.length) rows.push({ head: name }, ...mine.map(row));
                 });
-                return { dataset: d.value, name: d.display || d.value, rows };
+                return { dataset: d.value, name: d.display || d.value, icon: d.icon || '', rows };
             }).filter((x) => x.rows.length);
         } catch (err) { console.warn('[studioModel] adjustments', err); return []; }
     }
@@ -657,6 +661,24 @@
         return true;
     }
 
+    /** The seed of the print on show (the preview's), or null. */
+    function previewSeed() {
+        const v = window.lastGeneratedSeed;
+        return v != null && v !== '' ? String(v) : null;
+    }
+
+    /** The print on show's seed into the box, kept if the seed was kept (the desktop's Paste seed). */
+    async function usePreviewSeed() {
+        const v = previewSeed();
+        if (!ready() || v == null) return false;
+        const btn = el('sproutSeedBtn');
+        const locked = !!(btn && btn.getAttribute('data-state') === 'on');
+        if (locked && typeof setSproutSeedLocked === 'function') setSproutSeedLocked(true, v);
+        else await set('seed', v);
+        emit('change', { id: 'seed' });
+        return true;
+    }
+
     async function randomSeed() {
         // the desktop's range (presetManager.js New seed): 1 .. 2147483646
         const seed = Math.floor(Math.random() * 2147483646) + 1;
@@ -693,7 +715,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
-        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, tagGroups, tagsAt, searchTags,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tagGroups, tagsAt, searchTags,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
