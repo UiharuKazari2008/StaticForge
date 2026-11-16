@@ -31,6 +31,10 @@
  *     cameraRoll()                { root, path } where the Camera saves
  *     added(root, path)           a file was written there (the Camera): refresh
  *   }
+ *
+ * My Device > Ledge (the session desks of prints, wmLedge.js) lives here too: while Ledge is on
+ * screen, location(), the folder bar, the grid, Sort By and the soft keys are wmLedge's, and
+ * available() is true for Ledge alone (a phone without the Android app's storage).
  */
 (function () {
     'use strict';
@@ -48,6 +52,9 @@
     const DIRECTOR_EDGE = 2048;
 
     const PS = () => window.phoneStorage || null;
+    // Ledge's desks as My Device folders (wmLedge.js): its own while on screen
+    const LG = () => window.wmLedge || null;
+    const ledgeOn = () => { const l = LG(); return !!(l && l.active()); };
     let sh = null;
     let hello = null;
     let albums = [];          // { root, path, name, count, images, videos, newest, cover }
@@ -73,7 +80,13 @@
     const join = (dir, name) => `${String(dir || '/').replace(/\/+$/, '')}/${name}`.replace(/^\/*/, '/');
     const sameLoc = (a, b) => !!(a && b && a.root === b.root && a.path === b.path);
 
+    /** Pictures & Videos has more than My Device's prints: storage cards, or Ledge's desks. */
     function available() {
+        const l = LG();
+        return cardsOn() || !!(l && l.available());
+    }
+
+    function cardsOn() {
         const ps = PS();
         return !!(ps && ps.available !== false && window.AndroidPhoneStorage && hello && hello.enabled && hello.access && !hello.locked && (hello.roots || []).length);
     }
@@ -109,7 +122,7 @@
     }
 
     async function loadAlbums() {
-        if (!available()) { albums = []; return albums; }
+        if (!cardsOn()) { albums = []; return albums; }
         if (hasMediaOps()) {
             try {
                 const list = await PS().call('media.albums', {});
@@ -243,6 +256,8 @@
     }
 
     async function open(root, path) {
+        const l = LG();
+        if (l) l.leave();
         loc = root ? { root, path: path || '/' } : null;
         if (root) visitedCards.add(root);
         selectedPath = null;
@@ -348,12 +363,41 @@
         return box;
     }
 
+    /**
+     * The folder bar's picture: wmShell draws the storage card's whenever this module has a folder
+     * on screen, and Ledge is a My Device folder. Put right after wmShell's folder bar (it is drawn
+     * just after render, in the same task); the bar keeps its data-icon, so wmShell still redraws it
+     * when it goes back to My Device's own folders.
+     */
+    function barIconSoon(page) {
+        queueMicrotask(() => {
+            const img = page.querySelector('.wm-pv-folder img');
+            const a = sh && sh.art;
+            if (!img || !a || img.dataset.icon !== 'fe-storage-card') return;
+            const want = ledgeOn() ? 'fe-device' : 'fe-storage-card';
+            if (img.getAttribute('src') === a.url(want)) return;
+            img.src = a.url(want);
+            img.srcset = a.srcset ? a.srcset(want) : '';
+        });
+    }
+
     /** Draw the card folder into the page (wmShell's own grid is hidden meanwhile). */
     function render(page, force) {
         const box = host(page);
         const empty = page.querySelector('.wm-pv-phone-empty');
         const grid = page.querySelector('.wm-pv-grid');
-        const deviceEmpty = page.querySelector('.wm-photos-empty:not(.wm-pv-phone-empty)');
+        const deviceEmpty = page.querySelector('.wm-photos-empty:not(.wm-pv-phone-empty):not(.wm-pv-ledge-empty)');
+        const l = LG();
+        if (l && l.render(page, force)) {
+            // Ledge on screen: the gallery's grid and the card's are hidden
+            box.hidden = true;
+            empty.hidden = true;
+            if (grid) grid.hidden = true;
+            if (deviceEmpty) deviceEmpty.hidden = true;
+            barIconSoon(page);
+            return;
+        }
+        barIconSoon(page);
         const on = !!loc;
         box.hidden = !on;
         if (grid) grid.hidden = on;
@@ -398,7 +442,7 @@
 
     /** Every remaining block (a jump to a cell further down). */
     function flush(page) {
-        if (!gridMore) return;
+        if (!gridMore || ledgeOn()) return;
         gridSig = '';
         const keep = gridMore;
         gridMore = null;
@@ -601,6 +645,7 @@
     }
 
     function sortItems(page) {
+        if (ledgeOn()) return LG().sortItems(page);
         return SORTS.map(([k, label]) => ({ label, radio: sortBy === k, action: () => setSort(k, page) }));
     }
 
@@ -643,6 +688,7 @@
 
     /** The app's soft keys on a card: Camera | Menu with nothing selected, View / Open | Menu otherwise. */
     function softKeys(page) {
+        if (ledgeOn()) return LG().softKeys(page);
         const sel = selectedPath && !selectedPath.startsWith('dir:') ? entryAt(selectedPath) : null;
         const dir = selectedPath && selectedPath.startsWith('dir:') ? selectedPath.slice(4) : null;
         let left;
@@ -684,8 +730,11 @@
      * other folders are reached through the folder cells. A card picked here opens on its camera roll.
      */
     function folderItems() {
-        const out = [];
-        for (const c of cards()) {
+        // Ledge first: it is My Device's (wmLedge.js)
+        const l = LG();
+        const out = l ? l.folderItems() : [];
+        if (out.length && cardsOn()) out.push('-');
+        for (const c of cardsOn() ? cards() : []) {
             const here = !!(loc && loc.root === c.id);
             out.push({
                 label: c.label, icon: 'fe-storage-card', radio: here && loc.path === '/',
@@ -702,6 +751,7 @@
     }
 
     function barLabel() {
+        if (ledgeOn()) return LG().barLabel();
         if (!loc) return '';
         if (query) return 'Search results';
         if (loc.path === '/') { const c = cardOf(loc.root); return c ? c.label : 'Storage Card'; }
@@ -1026,12 +1076,15 @@
             ready = (async () => {
                 await loadHello(false);
                 bindEvents();
-                if (available()) await loadAlbums();
-                return available();
+                if (cardsOn()) await loadAlbums();
+                return cardsOn();
             })();
             ready.catch(() => { ready = null; });
         }
-        return ready;
+        // Ledge's desks are read on every show (they change on the server)
+        const l = LG();
+        const desks = l ? l.init(fn).catch(() => false) : Promise.resolve(false);
+        return Promise.all([ready, desks]).then(() => available());
     }
 
     /** The Camera saved a file into a card folder: the albums and that folder again. */
@@ -1055,19 +1108,19 @@
     window.wmPhoneGallery = {
         available,
         init,
-        location: () => (loc ? { ...loc } : null),
+        location: () => (ledgeOn() ? { ledge: LG().location() } : (loc ? { ...loc } : null)),
         open: (root, path) => open(root, path),
         startLocation,
         cards,
         folderItems,
         barLabel,
-        barIcon: () => (loc ? 'fe-storage-card' : 'fe-device'),
+        barIcon: () => (loc && !ledgeOn() ? 'fe-storage-card' : 'fe-device'),
         render,
         flush,
         search(q) { query = String(q || '').trim(); gridSig = ''; onChange(); },
-        searching: () => !!query,
+        searching: () => !!query && !ledgeOn(),
         sortItems,
-        sortLabel: () => (SORTS.find(([k]) => k === sortBy) || SORTS[0])[1],
+        sortLabel: () => (ledgeOn() ? LG().sortLabel() : (SORTS.find(([k]) => k === sortBy) || SORTS[0])[1]),
         setSort,
         softKeys,
         isPhoneSlide,
