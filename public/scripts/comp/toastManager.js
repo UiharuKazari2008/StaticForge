@@ -732,7 +732,7 @@ const TOAST_INFO_DIALOG = /\b(first|please|required)\b|^(select|choose) |nothing
 const TOAST_NOT_CONNECTED = /websocket not connected|not connected to (the )?server|connection not healthy/i;
 // background events and the tray icon each belongs to (popupId = the title, as Notifications settings keys it)
 const TOAST_BALLOONS = [
-    [/^(updates? (applied|complete|ready|available)|update ready|restart required|download stalled|service worker (unavailable|not supported)|version mismatch)$/i, 'serviceWorkerTrayIcon'],
+    [/^(updates? (applied|complete|ready|available|waiting)|update ready|restart required|download stalled|service worker (unavailable|not supported)|version mismatch)$/i, 'serviceWorkerTrayIcon'],
     [/^(novelai subscription status|account fixed anlas expiring|extended free usage|cursor login)$/i, 'walletTrayIcon'],
     [/^(queue (blocked|unblocked)|new images available)$/i, 'imageGenerationIndicator'],
     [/^(connection error|connection lost|disconnected)$/i, 'modemTrayIcon'],

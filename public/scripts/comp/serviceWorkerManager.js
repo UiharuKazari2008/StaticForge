@@ -2539,7 +2539,8 @@ class ServiceWorkerManager {
         if (typeof showGlassToast === 'function') {
             // the message is HTML: the name comes from a package / window caption
             const safe = String(name == null ? '' : name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-            showGlassToast('info', 'Melaton Update', `${safe} will finish updating when you close it.`, false, 6000, '<i class="fas fa-info-circle"></i>');
+            // 'Update waiting' is a Melaton Update tray balloon (toastManager TOAST_BALLOONS)
+            showGlassToast('info', 'Update waiting', `${safe} will finish updating when you close it.`, false, 6000, '<i class="fas fa-info-circle"></i>');
         }
     }
 
