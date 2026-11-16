@@ -433,7 +433,8 @@
             }
             const top = shell.querySelector('.wm-titlebar');
             const soft = shell.querySelector('.wm-softkeys');
-            const topPic = await window.windowCapture.snapshot(top, { scale: dpr });
+            // (no copy of the title bar: the app's live bar shows under the popup)
+            const topPic = null;
             // a notification brings its soft keys (Dismiss / Menu, its two buttons) even where the soft key bar is
             // off over other programs (Yukimi, Nov 16: "so we have access to the 2 buttons for the notification")
             const noteEl = shell.querySelector(':scope > .wm-notify');
