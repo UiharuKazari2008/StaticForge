@@ -143,10 +143,20 @@
         };
         let t = null;
         let b = null;
+        let anims = { top: [], bottom: [] };
         try {
-            t = await window.windowCapture.snapshot(top, { scale: dpr, before: stage });
-            if (soft) b = await window.windowCapture.snapshot(soft, { scale: dpr });
+            // the animated icons (sprite strips) are left out of the pictures and sent as their frames
+            t = await window.windowCapture.snapshot(top, { scale: dpr, before: () => { stage(); hideStrips(top); } });
+            showStrips(top);
+            anims.top = await stripFrames(top, dpr);
+            if (soft) {
+                b = await window.windowCapture.snapshot(soft, { scale: dpr, before: () => hideStrips(soft) });
+                showStrips(soft);
+                anims.bottom = await stripFrames(soft, dpr);
+            }
         } finally {
+            showStrips(top);
+            if (soft) showStrips(soft);
             unstage();
         }
         // a newer ask came in meanwhile: its copy follows
@@ -157,11 +167,53 @@
             // the picture's own width: innerWidth x dpr rounds 411 x 2.625 to 1079 on a 1080 px screen
             widthPx: t ? t.width : Math.round(window.innerWidth * dpr),
             clock: !!top.querySelector('.wm-clock651'),
-            top: pack(t, regions.top),
-            bottom: soft ? pack(b, regions.bottom) : null
+            top: withAnims(pack(t, regions.top), anims.top),
+            bottom: soft ? withAnims(pack(b, regions.bottom), anims.bottom) : null
         };
         publish(Object.assign({ reqId }, lastGood));
     }
+
+    /*
+     * Animated status icons (#871): a sprite strip (.wm-strip: --strip, --n frames, --ms each - the
+     * Director's clapper while a turn runs, the update download, the signal search) cannot move in a
+     * still picture. Its place is left empty in the bar's picture and its frames go along with it, each
+     * the element drawn at that frame; the app plays them over the bar. Kept per strip and size.
+     */
+    const stripCache = new Map();
+    const stripEls = (bar) => [...bar.querySelectorAll('.wm-strip')].filter((n) => !n.hidden && n.getClientRects().length);
+    function hideStrips(bar) { stripEls(bar).forEach((n) => { n.dataset.barsHole = '1'; n.style.visibility = 'hidden'; }); }
+    function showStrips(bar) { bar.querySelectorAll('[data-bars-hole]').forEach((n) => { delete n.dataset.barsHole; n.style.visibility = ''; }); }
+    async function stripFrames(bar, dpr) {
+        const out = [];
+        const br = bar.getBoundingClientRect();
+        for (const n of stripEls(bar)) {
+            const cs = getComputedStyle(n);
+            const count = parseInt(cs.getPropertyValue('--n'), 10) || 0;
+            const ms = parseInt(cs.getPropertyValue('--ms'), 10) || 140;
+            if (count < 2) continue;
+            const r = n.getBoundingClientRect();
+            const key = `${cs.getPropertyValue('--strip').trim().slice(-120)}|${count}|${Math.round(r.width * dpr)}x${Math.round(r.height * dpr)}`;
+            let frames = stripCache.get(key);
+            if (!frames) {
+                frames = [];
+                for (let k = 0; k < count; k++) {
+                    const pos = `${(k / (count - 1)) * 100}% 0`;
+                    const c = await window.windowCapture.snapshot(n, { scale: dpr, before: () => { n.style.animation = 'none'; n.style.backgroundPosition = pos; } });
+                    const p = pack(c, []);
+                    if (!p) { frames = null; break; }
+                    frames.push(p.png);
+                }
+                n.style.animation = '';
+                n.style.backgroundPosition = '';
+                if (!frames) continue;
+                if (stripCache.size > 12) stripCache.clear();
+                stripCache.set(key, frames);
+            }
+            out.push({ x: Math.round((r.left - br.left) * dpr), y: Math.round((r.top - br.top) * dpr), ms, frames });
+        }
+        return out;
+    }
+    function withAnims(p, list) { if (p && list && list.length) p.anims = list; return p; }
 
     /** The WM wait cursor for the app's loading cover: its 16 frames side by side at the screen's pixels and its box. */
     let waitCache = null;
