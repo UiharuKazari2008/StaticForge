@@ -31,7 +31,8 @@
     let chain = Promise.resolve();
     function serial(fn) {
         const p = chain.then(fn, fn);
-        chain = p.catch(() => null);
+        // a copy that never finishes (the page was paused mid-way) holds the next ones 6 s at most
+        chain = Promise.race([p.catch(() => null), new Promise((r) => setTimeout(r, 6000))]);
         return p;
     }
 
@@ -224,7 +225,8 @@
                 const el = list[Number(ctx.click)];
                 if (el) el.click();
                 // what the press did: a program came up (the page goes in front), or the popups went
-                await new Promise((r) => requestAnimationFrame(() => r()));
+                // (a timer, not a frame: a page behind another program draws no frames)
+                await new Promise((r) => setTimeout(r, 30));
                 if (sh.currentApp() !== appBefore) { unstage(); opened = false; out({ open: true }); return; }
                 restage();
             }
