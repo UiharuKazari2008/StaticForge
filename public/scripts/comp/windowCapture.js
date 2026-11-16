@@ -539,7 +539,13 @@
                 const fit = Math.min(1, 256 / Math.max(a.naturalWidth || 1, a.naturalHeight || 1));
                 const w = r.width || a.naturalWidth * fit;
                 const h = r.height || a.naturalHeight * fit;
-                if (a.complete && a.naturalWidth && w && h) {
+                // a picture from another origin (the Android app's program icons, appassets.androidplatform.net)
+                // taints a canvas it is drawn on: its file is read instead
+                let foreign = false;
+                try { foreign = new URL(a.currentSrc || a.src, root.location.href).origin !== root.location.origin; } catch (_) { foreign = false; }
+                if (foreign && (a.currentSrc || a.src)) {
+                    waits.push(dataUrl(a.currentSrc || a.src).then((d) => { if (d) b.setAttribute('src', d); else b.removeAttribute('src'); }));
+                } else if (a.complete && a.naturalWidth && w && h) {
                     waits.push(imageDataUrl(a, w, h).then((d) => { if (d) b.setAttribute('src', d); else b.removeAttribute('src'); }));
                 } else b.removeAttribute('src');
             } else if (tag === 'canvas' || tag === 'video' || tag === 'iframe') {

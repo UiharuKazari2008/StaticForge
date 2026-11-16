@@ -135,7 +135,8 @@
                 androidTray: !!ctx.androidTray,
                 softLeft: ctx.softkeys ? (SOFT_LABELS[ctx.softLeft] ?? 'Back') : undefined,
                 softRight: ctx.softkeys ? (SOFT_LABELS[ctx.softRight] ?? '') : undefined,
-                sip: ctx.softkeys ? !!ctx.ime : undefined
+                sip: ctx.softkeys ? !!ctx.ime : undefined,
+            transparent: !!ctx.transparent
             });
             regions = { top: regionsOf(top, TOP_MAP, dpr), bottom: soft ? regionsOf(soft, SOFT_MAP, dpr) : [] };
         };
@@ -227,7 +228,8 @@
             androidTray: !!ctx.androidTray,
             softLeft: ctx.softkeys ? (SOFT_LABELS[ctx.softLeft] ?? 'Back') : undefined,
             softRight: ctx.softkeys ? (SOFT_LABELS[ctx.softRight] ?? '') : undefined,
-            sip: ctx.softkeys ? !!ctx.ime : undefined
+            sip: ctx.softkeys ? !!ctx.ime : undefined,
+            transparent: !!ctx.transparent
         };
         restoreNow = sh.barsStage(stageOpts);
         let opened = false;
@@ -384,7 +386,8 @@
             const bgSig = [wall && !wall.hidden ? getComputedStyle(wall).backgroundImage.length + getComputedStyle(wall).backgroundImage.slice(-60) : '',
                 getComputedStyle(page).backgroundImage.slice(-60), page.querySelector('.wm-s65-wall') ? getComputedStyle(page.querySelector('.wm-s65-wall')).backgroundImage.slice(-60) : '',
                 Math.round(page.getBoundingClientRect().width), Math.round(page.getBoundingClientRect().height)].join('|');
-            const reuseBg = !!(folders.length && bgSig === lastStartBg);
+            // (only when the app still holds them: a restarted app asks without haveBg)
+            const reuseBg = !!(ctx.haveBg && bgSig === lastStartBg);
             const wallPic = !reuseBg && wall && !wall.hidden && wall.getClientRects().length ? await snap(wall) : null;
             const pagePic = reuseBg ? null : await snap(page, () => { list.style.visibility = 'hidden'; });
             if (!reuseBg) lastStartBg = bgSig;

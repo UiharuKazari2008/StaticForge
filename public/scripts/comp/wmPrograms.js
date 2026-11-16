@@ -1053,7 +1053,8 @@
                 enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: !!c0.androidTray,
                 softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home',
                 room: c0.room !== false,
-                hideLandCover: !!c0.hideLandCover
+                hideLandCover: !!c0.hideLandCover,
+                keyguardClear: !!c0.keyguardClear
             };
         }
         const cfg = d.barsCfg;
@@ -1074,7 +1075,8 @@
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
             ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
-            ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}`;
+            ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}
+            ${check('wmBarsKeyguardClear', 'Transparent Statusbar at keyguard', cfg.keyguardClear)}`;
         const q = (sel) => el.querySelector(sel);
         const sync = () => {
             q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
@@ -1083,6 +1085,7 @@
             if (r) r.disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
+            q('input[name="wmBarsKeyguardClear"]').disabled = !cfg.enabled;
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
@@ -1090,6 +1093,7 @@
         bind('wmBarsSoft', (v) => { cfg.softkeys = v; });
         bind('wmBarsRoom', (v) => { cfg.room = v; });
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
+        bind('wmBarsKeyguardClear', (v) => { cfg.keyguardClear = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
         sync();

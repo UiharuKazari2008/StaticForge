@@ -960,7 +960,9 @@
             sip: sip ? sip.getAttribute('aria-pressed') : null,
             sipHidden: sip ? sip.hidden : false,
             wmBar: root.dataset.wmBar,
-            wmApp: root.dataset.wmApp
+            wmApp: root.dataset.wmApp,
+            barBg: bar.style.background,
+            barRule: bar.style.borderBottomColor
         };
         bar.classList.remove('is-start-open');
         // 6.5's see-through bar belongs to Today and Start: a program's bar is solid
@@ -989,6 +991,8 @@
         if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
         // the keyboard key is always there over Android programs (any of them may take text)
         if (sip && typeof o.sip === 'boolean') { sip.hidden = false; sip.setAttribute('aria-pressed', o.sip ? 'true' : 'false'); }
+        // the phone's lock screen with Transparent Statusbar at keyguard: the icons on the lock screen's own picture
+        if (o.transparent) { bar.style.background = 'transparent'; bar.style.borderBottomColor = 'transparent'; }
         syncIconUnit(); fitStatusNow(); snapStatusIcons();
         return () => {
             if (tray) tray.remove();
@@ -1002,6 +1006,8 @@
             if (sip && before.sip != null) sip.setAttribute('aria-pressed', before.sip);
             if (before.wmBar) root.dataset.wmBar = before.wmBar;
             if (before.wmApp !== undefined) root.dataset.wmApp = before.wmApp; else delete root.dataset.wmApp;
+            bar.style.background = before.barBg;
+            bar.style.borderBottomColor = before.barRule;
             fitForce = true;
             fitStatus();
         };
