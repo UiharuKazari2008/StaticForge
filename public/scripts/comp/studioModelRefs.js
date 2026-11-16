@@ -18,6 +18,24 @@
  *                                a gallery picture encoded as a vibe (or a vibe's new IE) through the
  *                                server; add: put it into the session after (Promise of { ok, id, message })
  *   addBaseFrom(kind)            'reroll' (Previous Image) / 'variation' (Current Image): the Add menu's rows
+ *   printChoices(filename)       { reroll, variation } for the print on show
+ *   addBaseFromPrint(kind, filename)   Previous Image / Current Image from that print (Promise)
+ *
+ *   maskState()                  { canMask, has, data, background, target: { width, height, cw, ch } }: the
+ *                                inpaint mask as the desktop keeps it (inpaint.js: currentMaskData, an 8x
+ *                                smaller editing grid of the print's size)
+ *   loadMask(canvas)             the saved mask drawn into an editing grid (Promise)
+ *   maskInk()                    the editor's ink [r, g, b] (inpaint.js draws in it)
+ *   saveMask(canvas)             the edited grid (cw x ch, painted pixels opaque) saved as inpaint.js saveMask does
+ *   deleteMask()                 inpaint.js deleteMask without its window
+ *   biasState()                  { show, portrait, value, custom, options } (imageBias.js renderImageBiasDropdown)
+ *   setBias(value)               '0'..'4' (applyImageBiasChange)
+ *   biasSource()                 { url, target, bias } for the Image Bias adjustment (Promise)
+ *   applyBias({ x, y, scale, rotate })   a custom bias (applyCustomImageBias)
+ *   uploadBase(file)             a picture from the device as the base image (handleManualImageUploadInternal)
+ *   uploadPrecise(file, type)    a picture from the device as a character / style reference (the unified
+ *                                upload's precise reference, then into the session)
+ *   encodeVibe({ blob, ... })    also takes a picture from the device (the unified upload's vibe encoding)
  */
 (function () {
     'use strict';
@@ -27,7 +45,10 @@
     /* global addPreciseReferenceToContainer, removePreciseReference, syncPreciseTypeToggles, getPreciseTypeTogglePair,
        getPreciseReferenceTypeFromToggles, addVibeReferenceToContainer, removeVibeReference, loadCacheImages, cacheImages,
        getForgeModelFeatures, hasPreciseReferences, getCurrentSelectedModel, localGalleryImageUrl, localCachePreviewUrl,
-       wsClient, unifiedUploadSelectedWorkspace, selectTransformation, updateManualPriceDisplay */
+       wsClient, unifiedUploadSelectedWorkspace, selectTransformation, updateManualPriceDisplay, findImageByFilename, getImageMetadata, handleTransformationTypeChange,
+       getDimensionsFromResolution, isCustomResolutionMode, getResolutionFromDisplay, updateInpaintButtonState,
+       updateMaskPreview, getImageBiasOrientation, shouldShowImageBias, applyImageBiasChange, applyCustomImageBias,
+       handleManualImageUploadInternal, activeWorkspace, PRECISION_REFERENCE_TAG, precisionReferenceTypeTag */
 
     // the desktop's functions are top-level declarations of classic scripts: properties of window
     const fn = (name) => typeof window[name] === 'function';
@@ -269,7 +290,7 @@
         });
     }
 
-    async function encodeVibe({ filename = '', id = '', ie = 0.35, model: forModel = '', comment = '', add = true } = {}) {
+    async function encodeVibe({ filename = '', id = '', blob = null, ie = 0.35, model: forModel = '', comment = '', add = true } = {}) {
         if (typeof wsClient === 'undefined' || !wsClient || typeof wsClient.encodeVibe !== 'function') return { ok: false, message: 'Not connected.' };
         const target = forModel || model();
         const params = { informationExtraction: num(ie, 0.35), model: target };
@@ -279,6 +300,11 @@
                 params.id = id;
                 const v = knownVibe(id);
                 if (v && v.workspaceId) params.workspace = v.workspaceId;
+            } else if (blob) {
+                // a picture from the device: its bytes, as the unified upload's vibe encoding sends them
+                params.image = await toBase64(blob);
+                params.workspace = typeof unifiedUploadSelectedWorkspace !== 'undefined' ? unifiedUploadSelectedWorkspace : undefined;
+                params.comment = comment || null;
             } else {
                 // a gallery picture: its bytes, as the gallery's "add as vibe transfer" sends them
                 const url = typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(filename) : `/images/${encodeURIComponent(filename)}`;
@@ -312,14 +338,269 @@
         }
     }
 
+    // selectTransformation's reroll / variation branch: its button-label step (updateTransformationDropdownState)
+    // is not defined on the desktop today and throws before the work starts, so the work is called itself
+    function runTransformation(kind) {
+        if (fn('handleTransformationTypeChange')) {
+            window.currentRequestType = kind;
+            return Promise.resolve(handleTransformationTypeChange(kind)).catch((err) => console.warn('[studioModelRefs] base image', err));
+        }
+        return selectTransformation(kind);
+    }
+
     function addBaseFrom(kind) {
-        if ((kind !== 'reroll' && kind !== 'variation') || !fn('selectTransformation')) return false;
+        if ((kind !== 'reroll' && kind !== 'variation') || !(fn('selectTransformation') || fn('handleTransformationTypeChange'))) return false;
         if (!baseChoices()[kind]) return false;
-        selectTransformation(kind);
+        runTransformation(kind);
         // the base image is set up a moment later (its size is read from the picture first)
         setTimeout(() => changed('baseImage'), 400);
         return true;
     }
 
-    M.extend({ refsState, setPrecise, addPrecise, removePrecise, setVibe, addVibe, removeVibe, setNormalizeVibes, workspaceVibes, vibeModels, encodeVibe, addBaseFrom });
+
+    /**
+     * Previous Image / Current Image for the print on show. The desktop offers them for the picture the
+     * session was opened from (currentEditImage); a print on show offers them for itself: Current Image
+     * always, Previous Image where its metadata names the base image it was made from.
+     */
+    function printChoices(filename) {
+        const b = baseChoices();
+        if (!filename) return b;
+        const img = window.currentEditImage;
+        if (img && (img.filename === filename || img.original === filename)) return b;
+        const g = (fn('findImageByFilename') && findImageByFilename(filename)) || null;
+        const meta = (g && g.metadata) || null;
+        return { reroll: !!(meta && meta.base_image === true && meta.image_source), variation: true };
+    }
+
+    /**
+     * Previous Image / Current Image from a print: the desktop's own selectTransformation with the print
+     * as the picture it works from (it reads currentEditImage / currentEditMetadata before it waits for
+     * anything; the session's own are put back straight after).
+     */
+    async function addBaseFromPrint(kind, filename) {
+        if (!filename) return addBaseFrom(kind);
+        if ((kind !== 'reroll' && kind !== 'variation') || !(fn('selectTransformation') || fn('handleTransformationTypeChange'))) return false;
+        const g = (fn('findImageByFilename') && findImageByFilename(filename)) || {};
+        let meta = g.metadata || null;
+        if (!meta && fn('getImageMetadata')) { try { meta = await getImageMetadata(filename); } catch (_) { meta = null; } }
+        if (!meta) return false;
+        if (kind === 'reroll' && !(meta.base_image === true && meta.image_source)) return false;
+        const name = g.original || filename;
+        const prevImage = window.currentEditImage;
+        const prevMeta = window.currentEditMetadata;
+        window.currentEditImage = Object.assign({}, g, { filename: name, original: name });
+        window.currentEditMetadata = meta;
+        try { runTransformation(kind); } finally {
+            window.currentEditImage = prevImage;
+            window.currentEditMetadata = prevMeta;
+        }
+        setTimeout(() => changed('baseImage'), 400);
+        return true;
+    }
+
+    // ---------------------------------------------------------------- inpaint mask (inpaint.js)
+
+    const MASK_INK = [75, 254, 108];
+
+    /** The print's size and the editing grid (8x smaller), as openMaskEditor works them out. */
+    function maskTarget() {
+        const hidden = M._el('manualResolution');
+        let res = hidden ? hidden.value : '';
+        if (!res) {
+            const shown = M._el('manualResolutionSelected');
+            if (shown && shown.textContent !== 'Select resolution...' && fn('getResolutionFromDisplay')) res = getResolutionFromDisplay(shown.textContent);
+            if (!res) res = 'normal_portrait';
+        }
+        let width = 512;
+        let height = 512;
+        if (fn('isCustomResolutionMode') && isCustomResolutionMode(res)) {
+            width = parseInt((M._el('manualWidth') || {}).value, 10) || 512;
+            height = parseInt((M._el('manualHeight') || {}).value, 10) || 512;
+        } else if (fn('getDimensionsFromResolution')) {
+            const d = getDimensionsFromResolution(res);
+            if (d) { width = d.width; height = d.height; }
+        }
+        return { width, height, cw: Math.ceil(width / 8), ch: Math.ceil(height / 8) };
+    }
+
+    function maskState() {
+        const up = window.uploadedImageData || null;
+        const pic = M._el('manualVariationImage');
+        let background = pic && pic.getAttribute('src') && !/background\.jpg$/.test(pic.getAttribute('src')) ? pic.src : '';
+        if (up && up.isPlaceholder && typeof localGalleryImageUrl === 'function') background = localGalleryImageUrl(String(up.image_source || '').replace(/^file:/, ''));
+        return { canMask: !!up, has: !!window.currentMaskData, data: window.currentMaskData || '', background, target: maskTarget() };
+    }
+
+    // a mask picture binarized as saveMask does: a drawn pixel white, everything else black, opaque
+    function binarize(ctx, w, h) {
+        const img = ctx.getImageData(0, 0, w, h);
+        const d = img.data;
+        for (let i = 0; i < d.length; i += 4) {
+            const on = d[i + 3] > 0 && (d[i] > 0 || d[i + 1] > 0 || d[i + 2] > 0);
+            d[i] = d[i + 1] = d[i + 2] = on ? 255 : 0;
+            d[i + 3] = 255;
+        }
+        ctx.putImageData(img, 0, 0);
+    }
+
+    function scaled(src, w, h) {
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(src, 0, 0, src.width, src.height, 0, 0, w, h);
+        binarize(ctx, w, h);
+        return c;
+    }
+
+    function maskButton(on) {
+        const b = document.getElementById('inpaintBtn');
+        if (!b) return;
+        b.setAttribute('data-state', on ? 'on' : 'off');
+        b.classList.toggle('active', !!on);
+    }
+
+    function afterMask() {
+        try { if (fn('updateInpaintButtonState')) updateInpaintButtonState(); } catch (_) { /* the desktop's buttons only */ }
+        try { if (fn('updateMaskPreview')) updateMaskPreview(); } catch (_) { /* its overlay only */ }
+        changed('mask');
+    }
+
+    /** The phone's editing grid saved as the desktop's mask: the print's size (nearest neighbour) and the grid's own. */
+    function saveMask(grid) {
+        if (!grid || !grid.width || !grid.height) return false;
+        const t = maskTarget();
+        window.currentMaskData = scaled(grid, t.width, t.height).toDataURL('image/png');
+        window.currentMaskCompressed = scaled(grid, grid.width, grid.height).toDataURL('image/png').replace('data:image/png;base64,', '');
+        maskButton(true);
+        afterMask();
+        return true;
+    }
+
+    function deleteMask() {
+        window.currentMaskData = null;
+        window.currentMaskCompressed = null;
+        maskButton(false);
+        afterMask();
+        return true;
+    }
+
+    /** The saved mask drawn into an editing grid of cw x ch (as openMaskEditor loads it: drawn pixels opaque, the rest clear). */
+    function loadMask(grid) {
+        const data = window.currentMaskData;
+        if (!data || !grid) return Promise.resolve(false);
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                const ctx = grid.getContext('2d');
+                ctx.imageSmoothingEnabled = false;
+                ctx.clearRect(0, 0, grid.width, grid.height);
+                ctx.drawImage(img, 0, 0, grid.width, grid.height);
+                const id = ctx.getImageData(0, 0, grid.width, grid.height);
+                const d = id.data;
+                for (let i = 0; i < d.length; i += 4) {
+                    const on = d[i] > 0 || d[i + 1] > 0 || d[i + 2] > 0;
+                    // shown in the editor's ink (the desktop shows a loaded mask white; one colour inverts as one)
+                    d[i] = on ? MASK_INK[0] : 0; d[i + 1] = on ? MASK_INK[1] : 0; d[i + 2] = on ? MASK_INK[2] : 0; d[i + 3] = on ? 255 : 0;
+                }
+                ctx.putImageData(id, 0, 0);
+                resolve(true);
+            };
+            img.onerror = () => resolve(false);
+            img.src = data;
+        });
+    }
+
+    // ---------------------------------------------------------------- image bias (imageBias.js)
+
+    function biasState() {
+        const up = window.uploadedImageData;
+        if (!up || up.isPlaceholder || !fn('getImageBiasOrientation')) return null;
+        let portrait = false;
+        try { portrait = !!getImageBiasOrientation().isPortrait; } catch (_) { /* landscape */ }
+        let show = false;
+        try { show = fn('shouldShowImageBias') && shouldShowImageBias(); } catch (_) { show = false; }
+        const custom = up.image_bias && typeof up.image_bias === 'object' ? Object.assign({}, up.image_bias) : null;
+        // the desktop's labels (renderImageBiasDropdown)
+        const options = [
+            ['0', portrait ? 'Top' : 'Left'],
+            ['1', `⅖ ${portrait ? 'Top' : 'Left'}`],
+            ['2', 'Center'],
+            ['3', `⅘ ${portrait ? 'Bottom' : 'Right'}`],
+            ['4', portrait ? 'Bottom' : 'Right']
+        ];
+        return { show, portrait, value: String(up.bias != null ? up.bias : 2), custom, options };
+    }
+
+    async function setBias(value) {
+        if (!fn('applyImageBiasChange') || !window.uploadedImageData) return false;
+        await applyImageBiasChange(String(value));
+        changed('baseImage');
+        return true;
+    }
+
+    /** The original picture and the print's size for the Image Bias adjustment (showImageBiasAdjustmentModal). */
+    async function biasSource() {
+        const up = window.uploadedImageData;
+        if (!up) return null;
+        let url = up.originalDataUrl || '';
+        const src = String(up.image_source || '');
+        if (!url) {
+            if (src.startsWith('data:')) url = src;
+            else if (src.startsWith('file:') && typeof localGalleryImageUrl === 'function') url = localGalleryImageUrl(src.slice(5));
+            else if (src.startsWith('cache:') && typeof localCachePreviewUrl === 'function') url = localCachePreviewUrl(`${src.slice(6)}.webp`);
+        }
+        const res = (M._el('manualResolution') || {}).value || 'normal_portrait';
+        const target = fn('getDimensionsFromResolution') ? getDimensionsFromResolution(res) : null;
+        if (!url || !target) return null;
+        const b = up.image_bias && typeof up.image_bias === 'object' ? up.image_bias : { x: 0, y: 0, scale: 1.0, rotate: 0 };
+        return { url, target: { width: target.width, height: target.height }, bias: { x: num(b.x, 0), y: num(b.y, 0), scale: num(b.scale, 1), rotate: num(b.rotate, 0) } };
+    }
+
+    function applyBias(bias) {
+        if (!fn('applyCustomImageBias') || !window.uploadedImageData || !bias) return false;
+        applyCustomImageBias({ x: Math.round(num(bias.x, 0)), y: Math.round(num(bias.y, 0)), scale: num(bias.scale, 1), rotate: Math.round(num(bias.rotate, 0)) });
+        changed('baseImage');
+        return true;
+    }
+
+    // ---------------------------------------------------------------- pictures from the device
+
+    async function uploadBase(file) {
+        if (!file || !String(file.type || '').startsWith('image/')) return { ok: false, message: 'Please select an image file' };
+        if (!fn('handleManualImageUploadInternal')) return { ok: false, message: 'Studio is not ready.' };
+        await handleManualImageUploadInternal(file);
+        changed('baseImage');
+        const up = window.uploadedImageData;
+        return { ok: !!(up && String(up.image_source || '').startsWith('cache:')), message: '' };
+    }
+
+    async function uploadPrecise(file, type = 1) {
+        if (!file || !String(file.type || '').startsWith('image/')) return { ok: false, message: 'Please select an image file' };
+        const why = preciseBlock();
+        if (why) return { ok: false, message: why };
+        if (typeof wsClient === 'undefined' || !wsClient || typeof wsClient.uploadReference !== 'function' || !fn('addPreciseReferenceToContainer')) return { ok: false, message: 'Not connected.' };
+        const t = type === 2 || type === 3 ? type : 1;
+        const tags = typeof PRECISION_REFERENCE_TAG !== 'undefined' && fn('precisionReferenceTypeTag') ? [PRECISION_REFERENCE_TAG, precisionReferenceTypeTag(t)] : [];
+        const ws = typeof activeWorkspace !== 'undefined' && activeWorkspace ? activeWorkspace : (typeof unifiedUploadSelectedWorkspace !== 'undefined' ? unifiedUploadSelectedWorkspace : 'default');
+        try {
+            const res = await wsClient.uploadReference(await toBase64(file), ws, null, null, null, null, tags);
+            if (!res || !res.success || !res.hash) return { ok: false, message: 'Upload failed: ' + ((res && res.message) || 'Unknown error') };
+            const hash = res.hash;
+            const key = `cache:${hash}`;
+            if (preciseItem(key)) return { ok: false, message: 'Precise reference already added.' };
+            const url = typeof localCachePreviewUrl === 'function' ? localCachePreviewUrl(`${hash}.webp`) : '';
+            await addPreciseReferenceToContainer({ type: 'cache', id: hash, url, filename: file.name || hash, hash }, { type: t, strength: 1, fidelity: 1, enabled: true });
+            try { if (fn('loadCacheImages')) await loadCacheImages(); } catch (_) { /* the browser's list only */ }
+            changed('references');
+            return { ok: !!preciseItem(key), key, hash, message: preciseItem(key) ? '' : 'The reference could not be added.' };
+        } catch (err) {
+            return { ok: false, message: 'Upload failed: ' + ((err && err.message) || String(err)) };
+        }
+    }
+
+    M.extend({ refsState, setPrecise, addPrecise, removePrecise, setVibe, addVibe, removeVibe, setNormalizeVibes, workspaceVibes, vibeModels, encodeVibe, addBaseFrom, printChoices, addBaseFromPrint,
+        maskState, saveMask, deleteMask, loadMask, biasState, setBias, biasSource, applyBias, uploadBase, uploadPrecise, maskInk: () => MASK_INK.slice() });
 })();

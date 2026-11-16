@@ -16,3 +16,66 @@
 .wds-rt-city > .wm-edit { flex: 1 1 auto; min-width: 0; }
 .wds-rt-city > button { flex: 0 0 auto; margin: 0; }
 .wds-rtloc .wm-form-note { margin: calc(4 * var(--wm-px)) 0 0; }
+
+/* the disabled combos (Rentan off) read as off: their frame and drop arrow fade with the text */
+#wmShell .wds-rtdlg button[data-act^="rt-"]:disabled { border-color: currentColor; }
+#wmShell .wds-rtdlg button[data-act^="rt-"]:disabled::after { opacity: 0.45; }
+
+/* the pages' empty / waiting line */
+.wds-xview[data-xview^="rt"] > .wds-none,
+.wds-rt-mems > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); opacity: 0.6; }
+
+/* Compile Prompts: a row per change (its check box, then what it does and the text it writes) */
+.wds-xview[data-xview="rtnovels"] > .wm-listbox,
+.wds-ctp,
+.wds-rt-rules,
+.wds-rt-memlist { flex: 1 1 auto; margin: calc(2 * var(--wm-px)); }
+.wds-ctp-row { display: flex; align-items: flex-start; gap: calc(3 * var(--wm-px)); cursor: pointer; }
+.wds-ctp-row > label { flex: 0 0 auto; margin: 0; }
+.wds-ctp-text,
+.wds-rt-memlist .wm-listbox-row > span { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.wds-ctp-text > b,
+.wds-ctp-text > span,
+.wds-rt-memlist b,
+.wds-rt-memlist small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-ctp-text small,
+.wds-rt-memlist small { font-weight: normal; opacity: 0.6; }
+.wds-ctp-text i { margin-right: calc(3 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); }
+.wds-ctp-row:active,
+.wds-rt-rules .wm-listbox-row:active,
+.wds-rt-memlist .wm-listbox-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+/* a change's details: label / value pairs */
+.wds-ctp-pairs { display: grid; grid-template-columns: auto 1fr; gap: calc(2 * var(--wm-px)) calc(5 * var(--wm-px)); margin: 0; max-height: calc(260 * var(--wm-px)); overflow-y: auto; }
+.wds-ctp-pairs > dt { font-weight: bold; }
+.wds-ctp-pairs > dd { margin: 0; min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Novel: the story fills the page, the story cursor and the save state on one line under it */
+textarea.wm-edit.wds-nv-text { flex: 1 1 auto; min-height: 0; width: 100%; box-sizing: border-box; margin: 0; resize: none; }
+.wds-nv-status { flex: 0 0 auto; display: flex; justify-content: space-between; gap: calc(5 * var(--wm-px)); padding: calc(1 * var(--wm-px)) calc(3 * var(--wm-px)); border-top: calc(1 * var(--wm-px)) solid currentColor; }
+.wds-nv-status > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* rules: the whole rule shows (they are sentences) */
+.wds-rt-rules .wm-listbox-row + .wm-listbox-row { border-top: calc(1 * var(--wm-px)) dotted currentColor; }
+.wds-rt-rules .wm-listbox-row > span { white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* dialogs' text boxes (a rule, an observation, attributes) */
+textarea.wm-edit.wds-rt-area { display: block; width: 100%; box-sizing: border-box; height: calc(64 * var(--wm-px)); margin: calc(2 * var(--wm-px)) 0; resize: none; }
+#wmShell .wds-rtrule > .wm-msgbox,
+#wmShell .wds-rtitem > .wm-msgbox,
+#wmShell .wds-ctpdlg > .wm-msgbox { width: calc(220 * var(--wm-px)); max-width: calc(100% - 8 * var(--wm-px)); }
+
+/* Memories: the find box and the store side by side above the list */
+.wds-rt-find { flex: 0 0 auto; display: flex; align-items: center; gap: calc(3 * var(--wm-px)); padding: calc(2 * var(--wm-px)); }
+.wds-rt-find > .wm-edit { flex: 1 1 auto; min-width: 0; }
+.wds-rt-find > [data-act="rt-store"] { flex: 0 0 calc(70 * var(--wm-px)); margin: 0; }
+.wds-rt-mems { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+
+/* one memory: its fields, then its three lists */
+.wds-rt-memform { padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)); }
+.wds-rt-memform > .wm-form-note { margin: calc(2 * var(--wm-px)) 0 0; }
+.wds-rt-memhead { padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px)) 0; font-weight: bold; }
+.wds-xview[data-xview="rtmemone"] > .wm-listbox { margin: calc(1 * var(--wm-px)) calc(2 * var(--wm-px)); }
+.wds-xview[data-xview="rtmemone"] > .wds-none { margin: calc(1 * var(--wm-px)) calc(5 * var(--wm-px)); }
+.wds-rtitem button.wds-wt-lcd,
+.wds-rt-memform button.wds-wt-lcd { min-width: calc(36 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+.wds-xview[data-xview="rtmemone"] .wm-listbox-row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

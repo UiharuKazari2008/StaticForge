@@ -51,3 +51,48 @@
 .wdr-cell.is-off { opacity: 0.45; }
 .wdr-cell:active { outline: calc(2 * var(--wm-px)) solid var(--wm-highlight); }
 
+
+/* Base Image: Image Bias as a combo with the adjustment's tool cell at its right */
+.wdr-dlg .wds-wt-row.wdr-biasrow > [data-act="bias"] { flex: 0 1 calc(92 * var(--wm-px)); width: calc(92 * var(--wm-px)); min-width: 0; }
+.wdr-dlg .wds-wt-row.wdr-biasrow > .wm-tool { margin: 0 0 0 calc(2 * var(--wm-px)); }
+.wdr-dlg .wds-wt-row:not(.is-on) > .wds-wt-name { opacity: 0.5; }
+
+/* Image Bias adjustment: the print's frame with the placed picture (sized from script to the frame's
+ * shape), dragged by finger */
+.wdr-bprev {
+    display: block;
+    width: var(--wdr-bw, calc(120 * var(--wm-px)));
+    height: var(--wdr-bh, calc(120 * var(--wm-px)));
+    margin: calc(2 * var(--wm-px)) auto calc(4 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid var(--wm-rule);
+    touch-action: none;
+}
+
+/* Mask Editor (a page): the picture with the mask grid over it, as large as fits; the tool bar under it */
+.wm-dreamstudio[data-view="x"] .wds-xview.is-current[data-xview="mask"] { overflow: hidden; padding: 0; }
+.wdr-mstage {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    align-items: center;
+    justify-content: center;
+    padding: calc(3 * var(--wm-px));
+    box-sizing: border-box;
+}
+.wdr-mframe {
+    position: relative;
+    flex: 0 0 auto;
+    width: var(--wdr-fw, 0);
+    height: var(--wdr-fh, 0);
+    box-sizing: content-box;
+    outline: calc(1 * var(--wm-px)) solid var(--wm-rule);
+}
+.wdr-mpic,
+.wdr-mgrid { position: absolute; inset: 0; width: 100%; height: 100%; }
+.wdr-mpic { object-fit: fill; user-select: none; -webkit-user-select: none; pointer-events: none; }
+/* the grid's cells drawn square and sharp, a little see-through over the picture (as mask-editor.css) */
+.wdr-mgrid { image-rendering: pixelated; opacity: 0.75; touch-action: none; }
+.wdr-mbar { flex: 0 0 auto; }
+.wdr-msizegrp { align-items: center; }
+.wdr-mbar .wdr-msize { min-width: calc(26 * var(--wm-px)); height: calc(21 * var(--wm-px)); margin: 0 calc(2 * var(--wm-px)) 0 0; cursor: pointer; }
+.wdr-mbar .wm-jog { width: calc(60 * var(--wm-px)); height: calc(19 * var(--wm-px)); margin-top: calc(1 * var(--wm-px)); }

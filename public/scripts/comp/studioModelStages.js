@@ -29,6 +29,21 @@
  *                                            character positions: the 5 x 5 grid (V4) or the free centers (V5)
  *   studioModel.characterDirective(i) / setCharacterDirective(i, text)
  *                                            a character's line of the Creative Directive (Rentan)
+ *   studioModel.characterMoves(i) / moveCharacter(i, dir)
+ *                                            a character one place up or down (the desktop drags its
+ *                                            cards; two characters or more)
+ *   studioModel.stageRatio(id, 'W:H') / stageRatioStep(id, dir) / stageSizeSet(id, 'width' | 'height', n)
+ *                                            a stage's Custom Ratio typed or stepped; a typed custom size
+ *                                            (the desktop snaps it to the nearest legal size on blur)
+ *   studioModel.saveStage0() / setSaveStage0(on)
+ *                                            Save Stage 0 Image (#saveStage0Btn: shown while there are stages)
+ *   studioModel.textOverlays() / textOverlay(id) / addTextOverlay() / deleteTextOverlay(id)
+ *   studioModel.setTextOverlayText(id, text) / setTextOverlayCustom(id, text) / toggleTextOverlayEnabled(id)
+ *   studioModel.textOverlayTypes() / setTextOverlayType(id, type)
+ *   studioModel.textOverlayTargets(id) / setTextOverlayTarget(id, index)
+ *   studioModel.textOverlayStages(id) / toggleTextOverlayStage(id, value)
+ *                                            Add > Component > Text Overlay (textOverlayManager.js): the
+ *                                            text, the display style, the target, the stages, on / off
  */
 (function () {
     'use strict';
@@ -41,7 +56,10 @@
        renderStageModelDropdown, renderStageSamplerDropdown, toggleStageBackgroundFocus, getGenerateStageMenuItems,
        handleManualGeneration, isGenerating, stageResultsReviewManager, characterPromptsContainer,
        setCharacterPromptPosition, clearCharacterPromptPositions, getOccupiedPositionCellLabels,
-       characterPositionToolManager, getDimensionsFromResolution, isV5Model, isCustomResolutionMode, mediumControlIsLocked, activeMediumLock, SAMPLER_MAP */
+       characterPositionToolManager, getDimensionsFromResolution, isV5Model, isCustomResolutionMode, isCustomRatioMode, mediumControlIsLocked, activeMediumLock, SAMPLER_MAP,
+       textOverlaysContainer, addTextOverlay, deleteTextOverlay, toggleTextOverlayEnabled, selectTextOverlayType, selectTextOverlayTarget,
+       toggleTextOverlayStage, textOverlayIconClass, groupTextDisplayStyles, resolveTextDisplayStyle, ensureTextOverlayModel,
+       textOverlayNewlinesToDisplay, textOverlayDisplayToNewlines, calculateStageHexId, moveCharacterPrompt */
 
     const el = (id) => document.getElementById(id);
     const has = (name) => typeof window[name] === 'function';
@@ -117,6 +135,7 @@
         const autoSeed = el(`${id}_autoSeedToggle`);
         const resolution = val('resolution');
         const custom = !!resolution && has('isCustomResolutionMode') && isCustomResolutionMode(resolution);
+        const ratioMode = custom && has('isCustomRatioMode') && isCustomRatioMode(resolution);
         const areaToggle = el(`${id}_resolutionAreaToggle`);
         const bgState = (el(`${id}_bgFocusToggle`) || {}).dataset ? el(`${id}_bgFocusToggle`).dataset.state || '' : '';
         const advanced = el(`${id}_advancedControls`);
@@ -148,13 +167,16 @@
                 inset: expand && !hidden(el(`${id}_insetToggle`)),
                 bias: expand,
                 custom,
+                ratio: ratioMode,
                 area: custom && !hidden(areaToggle),
                 autoSeed: !hidden(autoSeed),
                 directive: !!directiveGroup && !directiveGroup.classList.contains('hidden'),
                 variety: !!varietyBtn && !v5
             },
-            resolutionText: (el(`${id}_resolutionSelected`) || {}).textContent || '',
+            // a custom size hides the desktop's list (its button keeps the last preset's name): named by its mode
+            resolutionText: custom ? (ratioMode ? 'Custom Ratio' : 'Custom Resolution') : (el(`${id}_resolutionSelected`) || {}).textContent || '',
             resolutionInherited: resolution === '',
+            ratioText: val('ratio'),
             width: Number(val('width')) || 0,
             height: Number(val('height')) || 0,
             areaText: areaToggle ? areaToggle.textContent.trim() : '',
@@ -192,7 +214,7 @@
 
     function stageToggle(id, name) {
         if (name === 'bgFocus') { if (has('toggleStageBackgroundFocus')) toggleStageBackgroundFocus(id); emit('stages'); return; }
-        const node = name === 'variety' ? el(`${id}_varietyBtn`) : name === 'reset' ? el(`${id}_resetAdvanced`) : el(`${id}_${name}Toggle`);
+        const node = name === 'variety' ? el(`${id}_varietyBtn`) : name === 'reset' ? el(`${id}_resetAdvanced`) : name === 'customRes' ? el(`${id}_customResolutionBtn`) : el(`${id}_${name}Toggle`);
         if (!node || node.disabled) return;
         node.click();
         emit('stages');
@@ -292,6 +314,47 @@
         emit('stages');
     }
 
+    /** Custom Ratio: a typed 'W:H' (the desktop's ratio box commits on blur: nearest legal size at that ratio). */
+    function stageRatio(id, text) {
+        const f = el(`${id}_ratio`);
+        if (!f) return;
+        f.value = String(text || '');
+        f.dispatchEvent(new Event('blur'));
+        emit('stages');
+    }
+
+    /** Custom Ratio stepped as the desktop's arrow keys do (the next legal size up or down). */
+    function stageRatioStep(id, dir) {
+        const f = el(`${id}_ratio`);
+        if (!f) return;
+        f.dispatchEvent(new KeyboardEvent('keydown', { key: dir > 0 ? 'ArrowUp' : 'ArrowDown', bubbles: true, cancelable: true }));
+        emit('stages');
+    }
+
+    /** A typed custom width or height: the box's own input, then its blur (snapped to a legal size 100 ms on). */
+    function stageSizeSet(id, which, value) {
+        const f = el(`${id}_${which}`);
+        if (!f || !(Number(value) > 0)) return Promise.resolve();
+        f.value = String(Math.round(Number(value)));
+        f.dispatchEvent(new Event('input', { bubbles: true }));
+        f.dispatchEvent(new Event('blur'));
+        return new Promise((done) => setTimeout(done, 160)).then(() => emit('stages'));
+    }
+
+    // ---- Save Stage 0 Image (the base picture saved too, while there are stages)
+
+    function saveStage0() {
+        const b = el('saveStage0Btn');
+        return { shown: !hidden(b), on: on(b), disabled: !b || !!b.disabled || b.dataset.managedLock === 'true' };
+    }
+
+    function setSaveStage0(state) {
+        const b = el('saveStage0Btn');
+        if (!b || hidden(b) || b.disabled || on(b) === !!state) return;
+        b.click();
+        emit('stages');
+    }
+
     // ---- Generate Stage (the Generate button's menu, manualModalManager.js)
 
     function generateStageRows() {
@@ -312,13 +375,33 @@
 
     const srr = () => (typeof stageResultsReviewManager !== 'undefined' ? stageResultsReviewManager : null);
 
+    /**
+     * The list's own changes (a slot set out, its state, its step, its picture) are told as
+     * 'stage-results' events (studioModel.on), whoever started the run (the phone's Generate Stage goes past
+     * studioModel.generate, so its 'progress' events do not come): the manager's methods are wrapped once.
+     */
+    function watchStageResults() {
+        const m = srr();
+        if (!m || m._wmWatched) return;
+        m._wmWatched = true;
+        let queued = 0;
+        const tell = () => { if (!queued) queued = setTimeout(() => { queued = 0; M._emit('stage-results', {}); }, 50); };
+        ['renderSlots', 'setItemState', 'updateSlotProgress', 'fillSlot', 'releaseSession'].forEach((name) => {
+            const orig = m[name];
+            if (typeof orig !== 'function') return;
+            m[name] = function () { const out = orig.apply(this, arguments); tell(); return out; };
+        });
+    }
+
     function stageResultsAvailable() {
+        watchStageResults();
         const m = srr();
         if (!m) return false;
         try { return !!m.previewChainFilename() || m.hasResults(); } catch (_) { return false; }
     }
 
     async function loadStageResults() {
+        watchStageResults();
         const m = srr();
         if (!m) return [];
         const show = m.show;
@@ -332,8 +415,23 @@
         if (!m) return [];
         return m.items().map((item, i) => {
             const status = item.querySelector('.stage-result-status');
-            return { index: i, label: item.dataset.label || '', filename: item.dataset.stageFilename || '', state: item.dataset.state || '', status: status ? status.textContent : '', size: item.dataset.size || '' };
+            const fill = item.querySelector('.stage-result-progress > div');
+            const pct = fill ? Number.parseFloat(fill.style.width) : NaN;
+            let phase = false;
+            try { phase = !m.printMode && m.phasewalkerActive(); } catch (_) { phase = false; }
+            let hasPhase = false;
+            try { hasPhase = phase && m.hasPhaseFor(item); } catch (_) { hasPhase = false; }
+            return { index: i, label: item.dataset.label || '', filename: item.dataset.stageFilename || '', state: item.dataset.state || '', status: status ? status.textContent : '', size: item.dataset.size || '', pct: Number.isFinite(pct) ? pct : 0, phase, hasPhase };
         });
+    }
+
+    /** Use This Phase (Phasewalker compiled in): that stage's phase taken over into the prompts. */
+    function stageResultUsePhase(index) {
+        const m = srr();
+        const item = m ? m.items()[index] : null;
+        if (!item) return Promise.resolve();
+        m.select(item);
+        return Promise.resolve(m.useThisPhase(item)).then(() => emit('stage-results'));
     }
 
     function stageResultAction(index, action) {
@@ -446,11 +544,159 @@
         emit('characters');
     }
 
+    // ---- a character's place in the list (the desktop reorders the cards by dragging them, two or
+    // more; its moveCharacterPrompt swaps one with its neighbour)
+
+    function characterMoves(index) {
+        const n = charItems().length;
+        const shown = n >= 2 && has('moveCharacterPrompt');
+        return { shown, up: shown && index > 0, down: shown && index < n - 1 };
+    }
+
+    function moveCharacter(index, dir) {
+        const item = charItems()[index];
+        const mv = characterMoves(index);
+        if (!item || !(dir < 0 ? mv.up : mv.down)) return false;
+        moveCharacterPrompt(item.id, dir < 0 ? 'up' : 'down');
+        emit('characters');
+        return true;
+    }
+
+    // ---- Text Overlay (textOverlayManager.js): each card's text, display style, target, stages, on / off
+
+    const ovItems = () => Array.from((typeof textOverlaysContainer !== 'undefined' && textOverlaysContainer && textOverlaysContainer.querySelectorAll('.text-overlay-item')) || []);
+    const shownBlock = (node) => !!node && node.style.display !== 'none';
+
+    function textOverlay(id) {
+        const item = el(id);
+        if (!item || !item.classList.contains('text-overlay-item')) return null;
+        const model = has('ensureTextOverlayModel') ? ensureTextOverlayModel(item) : {};
+        const ta = el(`${id}_text`);
+        const typeId = item.dataset.textType || 'speech';
+        let style = null;
+        try { style = has('resolveTextDisplayStyle') ? resolveTextDisplayStyle(typeId) : null; } catch (_) { style = null; }
+        const enabled = el(`${id}_enabled`);
+        return {
+            id,
+            index: ovItems().indexOf(item),
+            text: model.text != null ? model.text : (ta ? ta.value : ''),
+            placeholder: ta ? ta.placeholder : '',
+            type: style ? style.id : typeId,
+            typeName: style ? style.name : typeId,
+            icon: has('textOverlayIconClass') ? textOverlayIconClass(typeId) : 'fas fa-comment-lines',
+            custom: (style && style.id === 'custom') || typeId === 'custom',
+            customText: model.customText || '',
+            enabled: !enabled || enabled.getAttribute('data-state') === 'on',
+            targetShown: shownBlock(el(`${id}_target_dropdown`)),
+            target: Number(item.dataset.targetIndex || 0) || 0,
+            targetText: (el(`${id}_target_display`) || {}).textContent || 'Base',
+            stagesShown: shownBlock(el(`${id}_stage_dropdown`)),
+            stagesText: (el(`${id}_stage_display`) || {}).textContent || '00'
+        };
+    }
+
+    const textOverlays = () => ovItems().map((item) => textOverlay(item.id)).filter(Boolean);
+
+    function addTextOverlayCard() {
+        if (!has('addTextOverlay')) return null;
+        addTextOverlay();
+        emit('overlays');
+        const list = ovItems();
+        return list.length ? list[list.length - 1].id : null;
+    }
+
+    function deleteTextOverlayCard(id) {
+        if (!has('deleteTextOverlay')) return;
+        deleteTextOverlay(id);
+        emit('overlays');
+    }
+
+    /** The text as the card keeps it (new lines kept; the box shows them as its return mark when not in use). */
+    function setTextOverlayText(id, text) {
+        const item = el(id);
+        const ta = el(`${id}_text`);
+        if (!item || !ta) return;
+        const stored = String(text == null ? '' : text);
+        ta.dataset.originalValue = stored;
+        ta.value = has('textOverlayNewlinesToDisplay') && document.activeElement !== ta ? textOverlayNewlinesToDisplay(stored) : stored;
+        if (has('ensureTextOverlayModel')) ensureTextOverlayModel(item).text = stored.trim();
+        emit('overlays');
+    }
+
+    function setTextOverlayCustom(id, text) {
+        const item = el(id);
+        const f = el(`${id}_custom_display`);
+        if (!item) return;
+        const v = String(text == null ? '' : text);
+        if (f) f.value = v;
+        if (has('ensureTextOverlayModel')) ensureTextOverlayModel(item).customText = v.trim();
+        emit('overlays');
+    }
+
+    function toggleTextOverlayCard(id) {
+        if (has('toggleTextOverlayEnabled')) toggleTextOverlayEnabled(id);
+        emit('overlays');
+    }
+
+    /** The display styles as the desktop's Text Type list groups them: [{ group, styles: [{ id, name, icon }] }]. */
+    function textOverlayTypes() {
+        if (!has('groupTextDisplayStyles')) return [];
+        const configured = (window.optionsData && window.optionsData.text_tags) || {};
+        try { return groupTextDisplayStyles(configured).map((g) => ({ group: g.group, styles: (g.styles || []).map((st) => ({ id: st.id, name: st.name || st.id, icon: st.icon || 'fas fa-comment-lines' })) })); } catch (_) { return []; }
+    }
+
+    function setTextOverlayType(id, typeId) {
+        if (!has('selectTextOverlayType')) return;
+        const hit = textOverlayTypes().flatMap((g) => g.styles).find((st) => st.id === typeId);
+        selectTextOverlayType(id, typeId, hit ? hit.name : typeId);
+        emit('overlays');
+    }
+
+    /** Target: Base, then each character by its name (the desktop's list). */
+    function textOverlayTargets() {
+        return [{ index: 0, label: 'Base' }].concat(charItems().map((c, i) => ({ index: i + 1, label: c.dataset.charaName || `Character ${i + 1}` })));
+    }
+
+    function setTextOverlayTarget(id, index) {
+        if (!has('selectTextOverlayTarget')) return;
+        const hit = textOverlayTargets().find((t) => t.index === Number(index));
+        if (hit) selectTextOverlayTarget(id, String(hit.index), hit.label);
+        emit('overlays');
+    }
+
+    /** Stages: All Stages, 00 (the base), each pipeline stage by its hex id; several can be on. */
+    function textOverlayStages(id) {
+        const item = el(id);
+        if (!item) return [];
+        const on2 = item.dataset.stages ? item.dataset.stages.split(',').map((x) => x.trim()) : ['00'];
+        const rows = [{ value: 'all', label: 'All Stages', icon: 'fas fa-layer-group' }, { value: '00', label: '00', icon: 'fas fa-egg' }];
+        items().forEach((st) => {
+            let hex = '';
+            try { hex = has('calculateStageHexId') ? calculateStageHexId(st) : ''; } catch (_) { hex = ''; }
+            if (!hex) return;
+            const expand = typeof STAGE_TYPES !== 'undefined' && st.dataset.stageType === STAGE_TYPES.EXPAND_CANVAS;
+            rows.push({ value: hex, label: hex, icon: expand ? 'mdi mdi-relative-scale' : 'fas fa-diagram-venn' });
+        });
+        return rows.map((r) => Object.assign(r, { on: on2.includes(r.value) }));
+    }
+
+    function toggleTextOverlayStageRow(id, value) {
+        if (has('toggleTextOverlayStage')) toggleTextOverlayStage(id, value);
+        emit('overlays');
+    }
+
+    try { watchStageResults(); } catch (_) { /* before the manager */ }
+
     M.extend({
         stageTypes, stages, stage, addStage, removeStage, moveStage, removeAllStages, hasRemovableStages, stageToggle, stageSet,
         stageMenu, stagePick, stageSizeStep, stageAreaToggle, generateStageRows, generateStage,
         stageResultsAvailable, loadStageResults, stageResults, stageResultAction,
         positions, setAutoPosition, setPosition, setPositions, clearPositions, revertPositions, applyReturnedPositions,
-        characterDirective, setCharacterDirective
+        characterDirective, setCharacterDirective, characterMoves, moveCharacter,
+        stageRatio, stageRatioStep, stageSizeSet, saveStage0, setSaveStage0, stageResultUsePhase,
+        textOverlays, textOverlay, addTextOverlay: addTextOverlayCard, deleteTextOverlay: deleteTextOverlayCard,
+        setTextOverlayText, setTextOverlayCustom, toggleTextOverlayEnabled: toggleTextOverlayCard,
+        textOverlayTypes, setTextOverlayType, textOverlayTargets, setTextOverlayTarget,
+        textOverlayStages, toggleTextOverlayStage: toggleTextOverlayStageRow
     });
 })();
