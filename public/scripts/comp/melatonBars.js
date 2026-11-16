@@ -316,7 +316,7 @@
             if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
         }
         // kv: the kit's make (2: the degree sign and more symbols; the app asks again for an older one)
-        out({ kv: 2, widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr) });
+        out({ kv: 3, sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
     }
 
     /*
@@ -325,6 +325,45 @@
      * icons out from it (right-aligned at iconsRight, `pitch` apart; around the camera when `hole` is set),
      * the title from titleX until the icons.
      */
+    /**
+     * What the bars' look depends on (the WM version, the theme's art and colours, the scale, the width): the
+     * app asks for a new kit when it changes (cursor rule melaton-bars-native-layouts: definitions synced).
+     */
+    function kitSignature() {
+        const root = document.documentElement;
+        const cs = getComputedStyle(root);
+        return [root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', cs.getPropertyValue('--wm-px').trim(),
+            cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
+    }
+
+    /**
+     * The bars' own drawing lists (layoutOf) for the app: the title bar empty (its background, Start; no title
+     * text, icons or corner), the corner as X and as ok, the soft key bar empty (no labels). WM 6.1 or 6.5, any
+     * theme: as this page draws it.
+     */
+    function barLists(dpr) {
+        const sh = window.wmShell;
+        const shell = document.getElementById('wmShell');
+        const top = shell && shell.querySelector('.wm-titlebar');
+        if (!sh || !sh.barsStage || !top) return null;
+        const out = {};
+        const hideIn = (root, sel) => { const hidden = []; root.querySelectorAll(sel).forEach((n) => { hidden.push([n, n.style.visibility]); n.style.visibility = 'hidden'; }); return () => hidden.forEach(([n, v]) => { n.style.visibility = v; }); };
+        for (const kind of ['close', 'ok']) {
+            const back = sh.barsStage({ title: ' ', corner: kind, androidTray: false, softLeft: 'Back', softRight: 'Menu', sip: false });
+            try {
+                const corner = top.querySelector('.wm-title-action');
+                out[kind] = corner && !corner.hidden ? layoutOf([corner], dpr) : [];
+                if (kind === 'close') {
+                    const un = hideIn(top, '.wm-status, .wm-title, .wm-title-action, .wm-status-left, .wm-cutout-gap');
+                    try { out.bar = layoutOf([top], dpr); } finally { un(); }
+                    const soft = shell.querySelector('.wm-softkeys');
+                    if (soft) { const un2 = hideIn(soft, '.wm-softkey, .wm-sip'); try { out.soft = layoutOf([soft], dpr); } finally { un2(); } }
+                }
+            } finally { back(); }
+        }
+        return out;
+    }
+
     /** The 6.5 bubble's colours and title band art for the app's own drawing (wm65.css .wm-bubble*). */
     function bubbleStyle(dpr) {
         const cs = getComputedStyle(document.documentElement);
@@ -390,6 +429,136 @@
                 dpr
             };
         } finally { back(); }
+    }
+
+    /*
+     * Native layouts (cursor rule melaton-bars-native-layouts; Yukimi, Nov 16: "any popup must carry the
+     * layout file the app can read"): a popup as the page really drew it, written down as a drawing list in
+     * device px from the screen's top-left, in paint order -
+     *   { k: 'shadow', x, y, w, h, r, blur, dy, color }      the box's shadow
+     *   { k: 'rect', x, y, w, h, r: [tl, tr, br, bl], fill }   a background colour
+     *   { k: 'img', x, y, w, h, url, clip: [x, y, w, h, r] }   a picture (background or <img>), its box clipped
+     *   { k: 'border', x, y, w, h, r, bw: [t, r, b, l], color: [t, r, b, l] }
+     *   { k: 'text', x, y, s, size, bold, color, u, ls, live }  one line of text, its box's top-left (y = top
+     *                                                            of the font's ascent), letter spacing, a live clock
+     *   { k: 'hit', x, y, w, h, act }                          a button / link / control: 'hide' or 'click:<n>'
+     * - with the colours as #rrggbbaa. The app draws exactly this; a press it cannot do itself goes back as
+     * the page's own click (n = the element's place among the popup's clickable ones).
+     */
+    function rgba(c) {
+        const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c || '');
+        if (!m) return null;
+        const a = m[4] == null ? 1 : +m[4];
+        if (a <= 0) return null;
+        return '#' + [m[1], m[2], m[3]].map((v) => Math.round(+v).toString(16).padStart(2, '0')).join('') + Math.round(a * 255).toString(16).padStart(2, '0');
+    }
+    function layoutOf(roots, dpr) {
+        const out = [];
+        const R = (v) => Math.round(v * dpr * 100) / 100;
+        const px = (v) => parseFloat(v) || 0;
+        const clickable = [];
+        roots.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!clickable.includes(el)) clickable.push(el); }));
+        const isHide = (el) => (el.tagName === 'BUTTON' || el.classList.contains('wm-softkey')) && /^hide$/i.test((el.textContent || '').trim());
+        const radii = (cs) => [cs.borderTopLeftRadius, cs.borderTopRightRadius, cs.borderBottomRightRadius, cs.borderBottomLeftRadius].map((v) => R(px(v)));
+        const bgImage = (cs, box, clip) => {
+            const m = /url\(\s*["']?([^"')]+)/.exec(cs.backgroundImage || '');
+            if (!m) return;
+            const url = new URL(m[1], location.href).href;
+            // the size and place as CSS resolved them (px or %; 'auto' keeps the picture's own ratio: the box)
+            const sz = (cs.backgroundSize || '').split(' ');
+            const toLen = (v, of) => (v.endsWith('%') ? (parseFloat(v) / 100) * of : v === 'auto' || v === 'cover' || v === 'contain' || !v ? of : px(v));
+            const w = toLen(sz[0] || 'auto', box.width);
+            const h = toLen(sz[1] || sz[0] || 'auto', box.height);
+            const pos = (cs.backgroundPosition || '0% 0%').split(' ');
+            const place = (v, room) => (v.endsWith('%') ? (parseFloat(v) / 100) * room : px(v));
+            const x = box.left + place(pos[0] || '0%', box.width - w);
+            const y = box.top + place(pos[1] || '0%', box.height - h);
+            out.push({ k: 'img', x: R(x), y: R(y), w: R(w), h: R(h), url, clip });
+        };
+        const walk = (el) => {
+            if (!el.getClientRects().length) return;
+            const cs = getComputedStyle(el);
+            if (cs.visibility === 'hidden' || cs.display === 'none' || +cs.opacity === 0) return;
+            const b = el.getBoundingClientRect();
+            const r = radii(cs);
+            const clip = [R(b.left), R(b.top), R(b.width), R(b.height), r];
+            const sh = /^(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/.exec(cs.boxShadow || '');
+            if (sh && !/inset/.test(cs.boxShadow)) out.push({ k: 'shadow', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, blur: R(px(sh[4])), dy: R(px(sh[3])), color: rgba(sh[1]) });
+            const fill = rgba(cs.backgroundColor);
+            if (fill) out.push({ k: 'rect', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, fill });
+            if (cs.backgroundImage && cs.backgroundImage !== 'none') bgImage(cs, b, clip);
+            if (el.tagName === 'IMG' && (el.currentSrc || el.src)) out.push({ k: 'img', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), url: el.currentSrc || el.src, clip });
+            const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map((v) => R(px(v)));
+            if (bw.some((v) => v > 0)) {
+                const bc = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor].map(rgba);
+                if (bc.some(Boolean)) out.push({ k: 'border', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, bw, color: bc });
+            }
+            // pseudo-elements with a picture or colour (radio dots, the warning glyph, the keyboard key)
+            ['::before', '::after'].forEach((pe) => {
+                const ps = getComputedStyle(el, pe);
+                if (!ps || ps.content === 'none' || ps.display === 'none') return;
+                if (ps.position !== 'absolute') return;
+                const w = px(ps.width); const h = px(ps.height);
+                if (!w || !h) return;
+                const box = { left: b.left + px(ps.left), top: b.top + px(ps.top), width: w, height: h };
+                const pf = rgba(ps.backgroundColor);
+                if (pf) out.push({ k: 'rect', x: R(box.left), y: R(box.top), w: R(w), h: R(h), r: radii(ps), fill: pf });
+                if (ps.backgroundImage && ps.backgroundImage !== 'none') bgImage(ps, box, clip);
+            });
+            // its own text, line by line (a line: the characters on one row), in its font
+            [...el.childNodes].forEach((n) => {
+                if (n.nodeType !== 3 || !n.textContent.trim()) return;
+                const range = document.createRange();
+                const text = n.textContent;
+                let line = null;
+                const flush = () => { if (line && line.s.trim()) out.push(line); line = null; };
+                for (let i = 0; i < text.length; i++) {
+                    range.setStart(n, i); range.setEnd(n, i + 1);
+                    const rr = range.getClientRects()[0];
+                    if (!rr || !rr.width) { if (line) line.s += text[i]; continue; }
+                    if (!line || Math.abs(R(rr.top) - line.y) > 1) {
+                        flush();
+                        line = { k: 'text', x: R(rr.left), y: R(rr.top), h: R(rr.height), s: '', size: R(px(cs.fontSize)), bold: (+cs.fontWeight || 400) >= 600, color: rgba(cs.color) || '#000000ff',
+                            u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)) };
+                        if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; line.live = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
+                    }
+                    line.s += text[i];
+                }
+                flush();
+            });
+            [...el.children].forEach(walk);
+            const ci = clickable.indexOf(el);
+            if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
+        };
+        roots.forEach(walk);
+        return out;
+    }
+
+    /**
+     * Every popup of the bar written down (layoutOf) for the app, while this page is behind a program:
+     * each role's popup opened here as a tap would, its drawing list taken, closed again. Pushed as
+     * AndroidBars.layouts({ role: { role, items } }) when something changed.
+     */
+    let layoutsSent = '';
+    function pushLayouts(roles) {
+        const sh = window.wmShell;
+        const ab = window.AndroidBars;
+        if (!sh || !sh.barsPopupOpen || !ab || typeof ab.layouts !== 'function' || document.visibilityState === 'visible') return;
+        const dpr = window.devicePixelRatio || 1;
+        const all = {};
+        for (const role of roles) {
+            try {
+                sh.barsPopupClose();
+                sh.barsPopupOpen(role);
+                const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                if (layers.length) all[role] = { role, items: layoutOf(layers, dpr) };
+            } catch (err) { console.warn('[melatonBars] layout', role, err); }
+        }
+        try { sh.barsPopupClose(); } catch (_) { /* none open */ }
+        const json = JSON.stringify(all);
+        if (json === layoutsSent) return;
+        layoutsSent = json;
+        try { ab.layouts(json); } catch (_) { /* older app */ }
     }
 
     function withAnims(p, list) { if (p && list && list.length) p.anims = list; return p; }
@@ -870,6 +1039,44 @@
             serial(() => { if (popupQueued === slot) popupQueued = null; return renderPopup(slot.ctx); }).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); });
         },
         renderLock: (ctx) => { serial(() => renderLock(ctx)).catch((err) => console.warn('[melatonBars] renderLock', err)); },
+        /**
+         * A press on a popup the app drew (its hit 'click:n'): done here as the page's own click, then the app
+         * hears AndroidBars.layoutResult({ role, result: 'app' | 'popup' | 'closed' }) - a program came up (the
+         * page goes in front), the popup changed (its new layout comes with it), or it went.
+         */
+        layoutClick: (ctx) => {
+            const sh = window.wmShell;
+            const ab = window.AndroidBars;
+            if (!sh || !ab || typeof ab.layoutResult !== 'function') return;
+            const role = ctx && ctx.role;
+            const before = sh.currentApp();
+            let result = 'closed';
+            try {
+                sh.barsPopupClose();
+                sh.barsPopupOpen(role);
+                const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                const list = [];
+                layers.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!list.includes(el)) list.push(el); }));
+                const el = list[Number(ctx.n)];
+                if (el) el.click();
+                if (sh.currentApp() !== before) result = 'app';
+                else {
+                    const now = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
+                    if (now.length) {
+                        const items = layoutOf(now, window.devicePixelRatio || 1);
+                        result = 'popup';
+                        ab.layoutResult(JSON.stringify({ role, result, layout: { role, items } }));
+                        sh.barsPopupClose();
+                        return;
+                    }
+                }
+            } catch (err) { console.warn('[melatonBars] layoutClick', err); }
+            if (result !== 'app') { try { sh.barsPopupClose(); } catch (_) { /* gone */ } }
+            ab.layoutResult(JSON.stringify({ role, result }));
+        },
+        /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
+        pushLayouts: (roles) => pushLayouts(roles || []),
+        kitSignature: () => kitSignature(),
         renderKit: (ctx) => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },

@@ -1091,6 +1091,8 @@
             if (role.startsWith('bubble:')) {
                 let o = null;
                 try { o = JSON.parse(role.slice(7)); } catch (_) { o = null; }
+                // a press by its place among the popup's clickable ones (a layout's hit)
+                if (o && o.role && o.n != null && window.melatonBars && window.melatonBars.layoutClick) { window.melatonBars.layoutClick({ role: o.role, n: o.n }); doneSoon(); return; }
                 if (o && o.role) {
                     const icon = shell.querySelector(`.wm-status-icon[data-role="${o.role}"]`);
                     statusBubble(o.role, icon, true);
@@ -3148,9 +3150,11 @@
         bubblesAt = now;
         const roles = new Set();
         shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
-        ['data', 'signal', 'battery', 'bluetooth'].forEach((r) => roles.add(r));
-        // the notification group, mail, texts, Messenger and the volume answer with their own surfaces
-        ['notify', 'androidtray', 'mail', 'sms', 'chat', 'volume'].forEach((r) => roles.delete(r));
+        ['data', 'signal', 'battery', 'bluetooth', 'volume'].forEach((r) => roles.add(r));
+        roles.delete('androidtray');
+        // the standard (cursor rule melaton-bars-native-layouts): each popup as the page draws it, written down
+        if (window.melatonBars && typeof window.melatonBars.pushLayouts === 'function') { window.melatonBars.pushLayouts([...roles]); return; }
+        ['notify', 'mail', 'sms', 'chat', 'volume'].forEach((r) => roles.delete(r));
         const specs = {};
         roles.forEach((role) => {
             bubbleCapture = [];
@@ -3165,6 +3169,7 @@
         try { ab.bubbles(json); } catch (_) { /* older app */ }
     }
     let barsStatusSent = '';
+    let barsKitSig = '';
     const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
     const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
     function barsStatusPush() {
@@ -3184,6 +3189,11 @@
             list.push(e);
         });
         barsBubbleSpecs(false);
+        // the bars' look changed (theme, version, scale, width): the app asks for a new kit
+        if (typeof ab.kitSig === 'function' && window.melatonBars && window.melatonBars.kitSignature) {
+            const sig = window.melatonBars.kitSignature();
+            if (sig !== barsKitSig) { barsKitSig = sig; try { ab.kitSig(sig); } catch (_) { /* older app */ } }
+        }
         const json = JSON.stringify(list);
         if (json === barsStatusSent) return;
         barsStatusSent = json;
