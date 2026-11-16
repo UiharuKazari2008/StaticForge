@@ -717,10 +717,17 @@
     let layoutsSent = '';
     // the last full set: a push of one popup (an ActiveSync transfer's numbers) replaces only that one
     let layoutsAll = {};
+    // set while this page opens its popups to write them down (the notification box it opens is not a new one)
+    let capturing = false;
+    let notesMO = null;
     function pushLayouts(roles, partial) {
         const sh = window.wmShell;
         const ab = window.AndroidBars;
         if (!sh || !sh.barsPopupOpen || !ab || typeof ab.layouts !== 'function' || document.visibilityState === 'visible') return;
+        capturing = true;
+        try { pushLayoutsNow(sh, roles, partial); } finally { if (notesMO) notesMO.takeRecords(); capturing = false; }
+    }
+    function pushLayoutsNow(sh, roles, partial) {
         const dpr = window.devicePixelRatio || 1;
         const all = {};
         for (const role of roles) {
@@ -919,13 +926,15 @@
         const note = shell && shell.querySelector(':scope > .wm-notify');
         if (!note || note._barsWatch) return;
         note._barsWatch = true;
-        new MutationObserver(() => {
-            if (!window.wmShell || !window.AndroidBars || document.visibilityState === 'visible') return;
+        notesMO = new MutationObserver(() => {
+            if (capturing || !window.wmShell || !window.AndroidBars || document.visibilityState === 'visible') return;
             try {
-                if (!note.hidden && window.AndroidBars.popupWanted) window.AndroidBars.popupWanted();
+                // its layout first (the app draws it from that), then the ask to show it
+                if (!note.hidden) { pushLayouts(['notify'], true); if (window.AndroidBars.popupWanted) window.AndroidBars.popupWanted(); }
                 else if (note.hidden && window.AndroidBars.popupGone) window.AndroidBars.popupGone();
             } catch (_) { /* older app */ }
-        }).observe(note, { attributes: true, attributeFilter: ['hidden'] });
+        });
+        notesMO.observe(note, { attributes: true, attributeFilter: ['hidden'] });
     }
     watchNotes();
     document.addEventListener('wmShellReady', watchNotes);
@@ -1254,6 +1263,7 @@
             const role = ctx && ctx.role;
             const before = sh.currentApp();
             let result = 'closed';
+            capturing = true;
             try {
                 sh.barsPopupClose();
                 sh.barsPopupOpen(role);
@@ -1272,13 +1282,17 @@
                         const layout = { role, items };
                         const sk = softLabels();
                         if (sk) layout.soft = sk;
-                        ab.layoutResult(JSON.stringify({ role, result, layout }));
                         sh.barsPopupClose();
+                        if (notesMO) notesMO.takeRecords();
+                        capturing = false;
+                        ab.layoutResult(JSON.stringify({ role, result, layout }));
                         return;
                     }
                 }
             } catch (err) { console.warn('[melatonBars] layoutClick', err); }
             if (result !== 'app') { try { sh.barsPopupClose(); } catch (_) { /* gone */ } }
+            if (notesMO) notesMO.takeRecords();
+            capturing = false;
             ab.layoutResult(JSON.stringify({ role, result }));
         },
         /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
