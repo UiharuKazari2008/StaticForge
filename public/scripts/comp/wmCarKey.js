@@ -159,9 +159,12 @@
     const can = (kind) => !!(state.mine && (kind === 'lock' ? state.mine.canLock : kind === 'unlock' ? state.mine.canUnlock : false));
     const press = (kind) => !!(state.mine && can(kind) && pressCar(state.mine.key, kind));
 
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     window.addEventListener('androidcarkey', (e) => take(e.detail));
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') read(); });
     // Lapis's vehicle name arrives after its first load: it may name my car
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     document.addEventListener('wmLapisChange', () => { if (!lsGet(MINE_KEY) && raw.cars && raw.cars.length) take(raw); });
     read();
 

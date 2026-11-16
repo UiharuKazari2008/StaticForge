@@ -355,6 +355,7 @@
     }
     function paintHdr() { todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); }
     // leaving Today or the screen going off: SDR again
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     document.addEventListener('visibilitychange', () => { if (document.hidden && hdrOn) { hdrOn = null; clearTimeout(hdrTimer); setHdr(false); } });
 
     // a card's picture for the 6.5 panel and the list (canvas: the panel takes an image)
@@ -913,6 +914,7 @@
         sync();
     }
 
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     window.addEventListener('androidwalletimport', (e) => {
         const d = e.detail || {};
         if (!imported) return;
@@ -920,6 +922,7 @@
         else if (d.phase === 'error') { imported.reason = d.reason || 'failed'; importTake(); importDone(); } else if (d.phase === 'done') { importTake(); importDone(); }
     });
     // back from Wallet: what a paused page missed
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && imported && imported.running) importTake(); });
 
     // ---------------------------------------------------------------- car keys (wmCarKey.js)
@@ -1115,6 +1118,7 @@
     }
 
     // the phone was unlocked: a store that was locked can be read now
+    // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on && storeNote === 'locked') { load(); todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); } });
 
     window.wmWallet = { open: () => sh && sh.open(APP_ID), carKeys: () => openKeys(), pay: (i) => pay(items()[i]), show: (i) => show(items()[i]) };
