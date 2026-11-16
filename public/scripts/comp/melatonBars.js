@@ -129,7 +129,9 @@
         }
         // a newer ask came in meanwhile: its copy follows
         if (reqId < lastReq) return;
+        const wait = await waitPic(dpr);
         lastGood = {
+            wait,
             // the picture's own width: innerWidth x dpr rounds 411 x 2.625 to 1079 on a 1080 px screen
             widthPx: t ? t.width : Math.round(window.innerWidth * dpr),
             clock: !!top.querySelector('.wm-clock651'),
@@ -138,6 +140,124 @@
         };
         publish(Object.assign({ reqId }, lastGood));
     }
+
+    /** The WM wait cursor for the app's loading cover: its 16 frames side by side at the screen's pixels and its box. */
+    let waitCache = null;
+    async function waitPic(dpr) {
+        const sh = window.wmShell;
+        const spec = sh && sh.barsWaitSpec ? sh.barsWaitSpec() : null;
+        if (!spec || !spec.width) return null;
+        const key = `${spec.width}x${spec.height}@${dpr}`;
+        if (waitCache && waitCache.key === key) return Object.assign({}, waitCache.out, { x: Math.round(spec.left * dpr), y: Math.round(spec.top * dpr) });
+        const w = Math.round(spec.width * dpr);
+        const h = Math.round(spec.height * dpr);
+        const file = spec.files[dpr > 2 ? 4 : dpr > 1 ? 2 : 1];
+        try {
+            const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = file; });
+            const c = document.createElement('canvas');
+            c.width = w * spec.n;
+            c.height = h;
+            const g = c.getContext('2d');
+            g.imageSmoothingEnabled = true;
+            g.imageSmoothingQuality = 'high';
+            g.drawImage(img, 0, 0, c.width, c.height);
+            const out = { png: c.toDataURL('image/png').replace(/^data:image\/png;base64,/, ''), w, h, n: spec.n, ms: spec.ms };
+            waitCache = { key, out };
+            return Object.assign({}, out, { x: Math.round(spec.left * dpr), y: Math.round(spec.top * dpr) });
+        } catch (_) { return null; }
+    }
+
+    // ---- popups (#871): an icon's bubble, the notification tray, a notification, a menu, over the program
+
+    const CLICKABLE = 'button, a[href], [role="button"], [role="option"], [role="menuitem"], [role="link"], input, select, label.wm-check, [data-act]';
+    /** The things a finger can press in the popups and on the bars, in a fixed order (the same after a reopen). */
+    function clickables(layers, shell) {
+        const out = [];
+        layers.forEach((l) => l.querySelectorAll(CLICKABLE).forEach((el) => { if (!out.includes(el)) out.push(el); }));
+        shell.querySelectorAll('.wm-softkeys .wm-softkey, .wm-softkeys .wm-sip, .wm-softkeys .wm-start, .wm-softkeys .wm-title-action, .wm-titlebar .wm-title-action').forEach((el) => { if (!out.includes(el)) out.push(el); });
+        return out.filter((el) => !el.hidden && !el.disabled && el.getClientRects().length);
+    }
+
+    /**
+     * melatonBars.renderPopup({ reqId, role, current, click, app, corner, androidTray, softkeys, softLeft,
+     * softRight, ime }): the popup that a tap on the bar's `role` opens (or, with current, the one up
+     * now: an incoming notification), copied with its boxes; with click, the press `click` in it first.
+     * AndroidBars.publishPopup({ reqId, layers: [{ png, x, y }], top, bottom, regions: [{ idx, x0, y0,
+     * x1, y1 }] } | { reqId, open: true } (the press opened a program: the app brings the page up) |
+     * { reqId, closed: true }).
+     */
+    async function renderPopup(ctx) {
+        ctx = ctx || {};
+        const reqId = Number(ctx.reqId) || 0;
+        const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishPopup) window.AndroidBars.publishPopup(JSON.stringify(Object.assign({ reqId }, o))); } catch (err) { console.warn('[melatonBars] publishPopup', err); } };
+        const sh = window.wmShell;
+        const shell = document.getElementById('wmShell');
+        if (!sh || !sh.barsPopupOpen || !shell || document.visibilityState === 'visible') { out({ closed: true }); return; }
+        if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
+        if (!window.windowCapture) { out({ closed: true }); return; }
+        const dpr = window.devicePixelRatio || 1;
+        const appBefore = sh.currentApp();
+        restoreNow = sh.barsStage({
+            title: (ctx.app && ctx.app.label) || '',
+            corner: ctx.corner === 'ok' ? 'ok' : ctx.corner === '' ? '' : 'close',
+            androidTray: !!ctx.androidTray,
+            softLeft: ctx.softkeys ? (SOFT_LABELS[ctx.softLeft] ?? 'Back') : undefined,
+            softRight: ctx.softkeys ? (SOFT_LABELS[ctx.softRight] ?? '') : undefined,
+            sip: ctx.softkeys ? !!ctx.ime : undefined
+        });
+        let opened = false;
+        try {
+            if (!ctx.current) { sh.barsPopupOpen(ctx.role || 'notify'); opened = true; }
+            if (ctx.click != null) {
+                const list = clickables(sh.barsPopupLayers(), shell);
+                const el = list[Number(ctx.click)];
+                if (el) el.click();
+                // what the press did: a program came up (the page goes in front), or the popups went
+                await new Promise((r) => requestAnimationFrame(() => r()));
+                if (sh.currentApp() !== appBefore) { restoreNow = null; out({ open: true }); return; }
+            }
+            const layers = sh.barsPopupLayers();
+            if (!layers.length) { out({ closed: true }); return; }
+            const list = clickables(layers, shell);
+            const regions = list.map((el, idx) => { const r = el.getBoundingClientRect(); return { idx, x0: Math.round(r.left * dpr), y0: Math.round(r.top * dpr), x1: Math.round(r.right * dpr), y1: Math.round(r.bottom * dpr) }; });
+            const pics = [];
+            for (const l of layers) {
+                const c = await window.windowCapture.snapshot(l, { scale: dpr });
+                if (c) pics.push(packAt(c, l.getBoundingClientRect(), dpr));
+            }
+            const top = shell.querySelector('.wm-titlebar');
+            const soft = shell.querySelector('.wm-softkeys');
+            const topPic = await window.windowCapture.snapshot(top, { scale: dpr });
+            const softPic = ctx.softkeys && soft ? await window.windowCapture.snapshot(soft, { scale: dpr }) : null;
+            out({
+                layers: pics.filter(Boolean),
+                top: topPic ? packAt(topPic, top.getBoundingClientRect(), dpr) : null,
+                bottom: softPic ? packAt(softPic, soft.getBoundingClientRect(), dpr) : null,
+                regions
+            });
+        } finally {
+            // the bubbles and the tray this copy opened are closed again (a waiting notification stays)
+            if (opened || ctx.click != null) { try { sh.barsPopupClose(); } catch (_) { /* gone */ } }
+            unstage();
+        }
+    }
+
+    // a notification that comes up while the page is behind a program: the app shows its copy
+    function watchNotes() {
+        const shell = document.getElementById('wmShell');
+        const note = shell && shell.querySelector(':scope > .wm-notify');
+        if (!note || note._barsWatch) return;
+        note._barsWatch = true;
+        new MutationObserver(() => {
+            if (!window.wmShell || !window.AndroidBars || document.visibilityState === 'visible') return;
+            try {
+                if (!note.hidden && window.AndroidBars.popupWanted) window.AndroidBars.popupWanted();
+                else if (note.hidden && window.AndroidBars.popupGone) window.AndroidBars.popupGone();
+            } catch (_) { /* older app */ }
+        }).observe(note, { attributes: true, attributeFilter: ['hidden'] });
+    }
+    watchNotes();
+    document.addEventListener('wmShellReady', watchNotes);
 
     function packAt(canvas, rect, dpr, extra) {
         const o = pack(canvas, []);
@@ -185,8 +305,14 @@
             const rel = (r) => ({ x0: Math.round((r.left - lr.left) * dpr), y0: Math.round((r.top - lr.top) * dpr), x1: Math.round((r.right - lr.left) * dpr), y1: Math.round((r.bottom - lr.top) * dpr) });
             const cells = prep.cells.map((c) => {
                 const el = list.querySelector(`.wm-s65-cell[data-i="${c.i}"]`);
-                return el ? Object.assign({}, c, rel(el.getBoundingClientRect())) : null;
+                if (!el) return null;
+                const ic = el.querySelector('.wm-s65-icon');
+                const ir = ic ? rel(ic.getBoundingClientRect()) : null;
+                // the cell's row and column (the opening effect's delay) and its icon's box (the launch effect)
+                return Object.assign({}, c, rel(el.getBoundingClientRect()), ir ? { ix0: ir.x0, iy0: ir.y0, ix1: ir.x1, iy1: ir.y1 } : {},
+                    { r: parseInt(el.style.getPropertyValue('--r'), 10) || 0, c: parseInt(el.style.getPropertyValue('--c'), 10) || 0 });
             }).filter(Boolean);
+
             // the glow's box against its cell's (it follows the selected cell)
             let glowAt = null;
             const cell0 = list.querySelector('.wm-s65-cell[data-i="0"]');
@@ -205,6 +331,9 @@
             // the page came on screen meanwhile: Start was put back, the copy is not whole
             if (restored) { out({ unsupported: 'interrupted' }); return; }
             out({
+                // Settings > Today > Effects (the ones on) and the design unit in device px (their distances)
+                fx: document.documentElement.dataset.wmTiFx || '',
+                unit: (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1) * dpr,
                 title: prep.title,
                 widthPx: Math.round(shell.getBoundingClientRect().width * dpr),
                 wall: wallPic ? packAt(wallPic, wall.getBoundingClientRect(), dpr) : null,
@@ -240,6 +369,7 @@
 
     window.melatonBars = {
         render: (ctx) => { serial(() => render(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] render', err); }); },
+        renderPopup: (ctx) => { serial(() => renderPopup(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); }); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
         unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))

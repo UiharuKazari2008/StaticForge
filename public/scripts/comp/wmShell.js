@@ -1006,6 +1006,47 @@
         };
     }
 
+    // ---- Melaton Bars (#871): popups over an Android program (the app draws copies of them)
+    const POPUP_SEL = '.wm-notify-scrim, .wm-bubble, .wm-volume, .wm-notify-tray, .wm-notify, .wm-popup, .wm-msgbox-layer';
+    /** Opens what a tap on the bar's `role` opens here (an icon's bubble, the notification group's tray). */
+    function barsPopupOpen(role) {
+        if (!shell) return false;
+        if (role === 'notify') { noteIconTap(); return true; }
+        const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
+        if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return true; }
+        icon.click();
+        return true;
+    }
+    /** The popup layers on screen now, top-most last (document order is their stacking order here). */
+    function barsPopupLayers() {
+        return shell ? [...shell.querySelectorAll(`:scope > :is(${POPUP_SEL})`)].filter((el) => !el.hidden && el.getClientRects().length) : [];
+    }
+    /** Closes the bubbles, the volume box, the tray and menus (a waiting notification stays). */
+    function barsPopupClose() {
+        if (!shell) return;
+        closeMenus(true);
+        closeBubble();
+        closeVolume();
+        if (noteTrayOpen) { noteTrayOpen = false; renderNotes(); }
+        syncScrim();
+    }
+    /** The wait cursor as it would show: its strip file, frames, frame time and box (CSS px). */
+    function barsWaitSpec() {
+        if (!shell) return null;
+        const layer = shell.querySelector('.wm-busy');
+        const img = layer.querySelector('.wm-busy-wait');
+        const was = { layer: layer.hidden, img: img.hidden, vis: layer.style.visibility };
+        layer.style.visibility = 'hidden';
+        layer.hidden = false;
+        img.hidden = false;
+        const r = img.getBoundingClientRect();
+        layer.hidden = was.layer;
+        img.hidden = was.img;
+        layer.style.visibility = was.vis;
+        const d = WM65 ? '/static_images/wm65/' : ART;
+        return { files: { 1: `${d}wait-strip.png`, 2: `${d}wait-strip@2x.png`, 4: `${d}wait-strip@4x.png` }, n: 16, ms: WAIT_FRAME_MS, left: r.left, top: r.top, width: r.width, height: r.height };
+    }
+
     /** A tap on the bars over an Android program, once the app has brought the page up: what the same tap does here. */
     function barsTap(role) {
         if (!shell || !role) return;
@@ -1027,16 +1068,20 @@
                 wait();
                 return;
             }
-            if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); return; }
+            const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
+            if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
+            if (role === 'shown') { doneSoon(); return; }
             if (role === 'start' || role === 'title') {
                 const menu = shell.querySelector('.wm-startmenu');
                 if (menu && menu.hidden) toggleStartMenu();
+                doneSoon();
                 return;
             }
             const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
             // an icon folded into the notification group, or gone since the copy: the group's tray
-            if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return; }
-            icon.click();
+            if (!icon || icon.hidden || !icon.getClientRects().length) noteIconTap();
+            else icon.click();
+            doneSoon();
         });
     }
 
@@ -10680,6 +10725,10 @@
         barsStage: (o) => barsStage(o || {}),
         /** Melaton Bars (#871): the page is behind an Android program (its status changes go to the app). */
         setBarsExternal: (on) => { barsExternal = !!on; },
+        barsPopupOpen: (role) => barsPopupOpen(role),
+        barsPopupLayers: () => barsPopupLayers(),
+        barsPopupClose: () => barsPopupClose(),
+        barsWaitSpec: () => barsWaitSpec(),
         /** Melaton Bars (#871): a tap on a bar the app draws over an Android program: 'start' | 'title' | an icon's role. */
         barsTap: (role) => barsTap(role),
         registerApp,
