@@ -20,6 +20,15 @@
  * <folder>:<uid>, sms:<account>:<chat>, chat:<chatId>, wx:/rain:<place>...). A missed one of those goes
  * into its app's own grouped notification (wmMessaging / wmChatApp inboxAdopt: the same title, lines,
  * icon and sound class), and the apps clear the id when their note is dismissed or the item is read.
+ *
+ * Calendar and task reminders (#876) have no page app that raises them: the server's reminder
+ * scheduler (modules/reminderScheduler.js) publishes a 'reminder' notice when one comes due, and this
+ * module shows it, live or on resume, as Windows Mobile's reminder notification - the one wmLock65
+ * draws for alarms ("12:03 | Reminder", the subject in bold over its time and location, Dismiss |
+ * Menu with Dismiss All, Remind 5 mins before, the Snooze items and View Item), with the Reminders
+ * sound class. A reminder stays until it is dismissed (it shows again on resume while it is not):
+ * Dismiss clears it (the phones' Android copy goes too), Snooze asks the server to bring it back later
+ * (reminder_snooze), View Item opens the appointment or the task.
  */
 (function () {
     'use strict';
@@ -82,8 +91,71 @@
         return ICON_BY_CLASS[notice.cls] || 'app-programs';
     }
 
+    // ---- reminders (#876) ----------------------------------------------------------------------
+
+    const isReminder = (n) => !!n && n.cls === 'reminder' && /^rem:/.test(String(n.id || ''));
+
+    /** View Item: the appointment's summary in Calendar, the task's in Tasks. */
+    async function openReminderItem(notice) {
+        const d = notice.data || {};
+        if (d.app === 'tasks' || d.task) { if (window.wmTasks && typeof window.wmTasks.open === 'function') window.wmTasks.open(d.uid); return; }
+        const cal = window.wmCalendar;
+        if (!cal) { openFor(notice); return; }
+        try { await cal.reload(); } catch (_) { /* shown as it is */ }
+        const at = Number(d.start) || 0;
+        const hit = (cal.occurrences(new Date(at - 60000), new Date(at + 60000)) || []).find((o) => o.ev && o.ev.uid === d.uid && +o.start === at);
+        cal.openEvent(hit || null);
+    }
+
+    function snooze(notice, opts) {
+        close(notice.id);
+        const c = client();
+        if (!c) return;
+        try { c.sendMessage('reminder_snooze', Object.assign({ id: notice.id }, opts), false); } catch (_) { /* offline: it stays as the server holds it */ }
+    }
+
+    /** The reminder's Menu, as the device lists it (wmLock65 alarmMenu, with the item to open). */
+    function reminderMenu(notice) {
+        const d = notice.data || {};
+        const before = !d.task && !d.allDay && Number(d.start) ? Number(d.start) - 5 * 60000 : 0;
+        const later = (label, minutes) => ({ label, action: () => snooze(notice, { minutes }) });
+        return [
+            { label: 'Dismiss All', action: () => [...shownNotes.keys()].filter((id) => /^rem:/.test(id)).forEach((id) => { ack(id, 'cleared'); close(id); }) },
+            before > Date.now() ? { label: 'Remind 5 mins before', action: () => snooze(notice, { at: before }) } : { label: 'Remind 5 mins before', disabled: true },
+            later('Snooze 5 minutes', 5), later('Snooze 10 minutes', 10), later('Snooze 15 minutes', 15),
+            later('Snooze 1 hour', 60), later('Snooze 1 day', 1440),
+            '-',
+            { label: 'View Item', action: () => { ack(notice.id, 'acted'); close(notice.id); openReminderItem(notice); } }
+        ];
+    }
+
+    /** Windows Mobile's reminder notification for a calendar / task reminder. */
+    function showReminder(notice) {
+        if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
+        const d = notice.data || {};
+        const lines = String(notice.text || '').split('\n');
+        const subject = d.subject || lines[0] || 'No Subject';
+        const rest = [d.when, d.location].filter(Boolean);
+        const more = rest.length ? rest : lines.slice(1);
+        const note = ws.appNote({
+            title: notice.title || 'Reminder',
+            // the hidden mark keeps two reminders of the same minute and subject two notifications ("1 of 2")
+            html: `<span class="wm-alarm651-note"><b>${esc(subject)}</b>${more.map((l) => `<br>${esc(l)}`).join('')}<span hidden>${esc(notice.id)}</span></span>`,
+            icon: 'status-reminder',
+            event: 'reminder',
+            softKeys: () => ({
+                left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } },
+                right: { label: 'Menu', icon: 'menu', menu: () => reminderMenu(notice) }
+            })
+        });
+        if (!note) return;
+        shownNotes.set(notice.id, note);
+        ack(notice.id, 'seen');
+    }
+
     /** Show one missed notice as a WM notification; View opens its app, Dismiss clears it. */
     function show(notice) {
+        if (isReminder(notice)) { showReminder(notice); return; }
         if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
         // its app's own grouped notification (it clears the id when dismissed or read)
         const app = adopter(notice);
@@ -123,6 +195,8 @@
         try { notices = (await ask('inbox_list', {})).notices || []; } catch (_) { return; }
         for (const n of notices) {
             if (n.state === 'cleared' || n.state === 'acted') { close(n.id); continue; }
+            // a reminder stays until it is dismissed: shown again whenever it is not up
+            if (isReminder(n)) { showReminder(n); continue; }
             // arrived while the app was away: show it. Arrived live (while we were here): the producing
             // app already showed it, so only mark it seen.
             if (n.state === 'new' && n.createdAt < connectedAt) show(n);
@@ -134,6 +208,9 @@
         const d = (pk && (pk.data || pk)) || {};
         if (d.reason === 'ack' && (d.state === 'cleared' || d.state === 'acted')) { close(d.id); return; }
         if (d.reason === 'new' && d.notice) {
+            // a reminder has no page app to raise it: shown here, live (also in the background, so it
+            // is up on resume; the app does not post it while this page is connected)
+            if (isReminder(d.notice)) { showReminder(d.notice); return; }
             // live and in the foreground: the producing app shows it; just keep it from reappearing.
             // not in the foreground (a background tick): leave it 'new' so it shows on resume.
             if (!document.hidden) ack(d.notice.id, 'seen');
