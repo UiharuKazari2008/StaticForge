@@ -288,7 +288,10 @@
         const shrink = !exact;
         const key = abs.href + (shrink ? '' : '#full');
         if (!dataUrls.has(key)) {
-            remember(key, fetch(key, { credentials: 'same-origin' }).then((res) => (res.ok ? res.blob() : null)).then(async (blob) => {
+            // a fetch that never answers (a page behind another program, a stalled request) gives up after 4 s
+            const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+            const stop = ctl ? setTimeout(() => ctl.abort(), 4000) : 0;
+            remember(key, fetch(key, { credentials: 'same-origin', signal: ctl ? ctl.signal : undefined }).then((res) => (res.ok ? res.blob() : null)).finally(() => clearTimeout(stop)).then(async (blob) => {
                 if (!blob) return '';
                 if (shrink && blob.size > BIG_IMAGE && /^image\//.test(blob.type) && !/svg/.test(blob.type) && typeof createImageBitmap === 'function') {
                     try {
@@ -589,8 +592,9 @@
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.decoding = 'async';
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('windowCapture: the window picture did not load'));
+            const t = setTimeout(() => reject(new Error('windowCapture: the picture took too long')), 4000);
+            img.onload = () => { clearTimeout(t); resolve(img); };
+            img.onerror = () => { clearTimeout(t); reject(new Error('windowCapture: the window picture did not load')); };
             img.src = src;
         });
     }
@@ -857,7 +861,8 @@
                 return null;
             } finally { exact = null; }
         };
-        const p = snapChain.then(run, run);
+        // one snapshot that hangs never holds the ones after it: null after 6 s
+        const p = snapChain.then(() => Promise.race([run(), new Promise((r) => setTimeout(() => r(null), 6000))]));
         snapChain = p.catch(() => null);
         return p;
     }

@@ -42,8 +42,14 @@
     // one copy at a time: a bar copy stages the bars (the program's title) and Start's copy must not
     // take its title bar while they are staged
     let chain = Promise.resolve();
+    // the app keeps the page's timers on while any copy is queued or being made (a reply that came back
+    // paused them under a slower copy, which then never finished)
+    let pending = 0;
+    const report = () => { try { if (window.AndroidBars && window.AndroidBars.workState) window.AndroidBars.workState(pending > 0); } catch (_) { /* older app */ } };
     function serial(fn) {
-        const p = chain.then(fn, fn);
+        pending++;
+        report();
+        const p = chain.then(fn, fn).finally(() => { pending--; report(); });
         // a copy that never finishes (the page was paused mid-way) holds the next ones 6 s at most
         chain = Promise.race([p.catch(() => null), new Promise((r) => setTimeout(r, 6000))]);
         return p;
