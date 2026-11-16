@@ -4,7 +4,8 @@
 # has none): shown while Samsung Digital Key reports the car in range. Drawn as the ROM draws its
 # status glyphs (see generate-wm-lapis-status-icon.py): 1-bit white, 2 px strokes at 2x on the mail
 # glyph's rows (6..29).
-#   status-carkey   a car from the side: cabin and body outlined, wheels solid
+#   status-carkey   a solid key (ring, blade, two teeth) with two thick signal arcs over its ring
+#                   (Yukimi's pick, Nov 16; was a car from the side, too close to Traffic's car)
 # 2x drawn; 1x = 2x2 downscale thresholded at 50 %; 4x = point upscale (wmShell HD_ART lists it).
 import math, os, struct, sys, zlib
 
@@ -18,35 +19,24 @@ def png(path, w, h, on):
     open(path, 'wb').write(b'\x89PNG\r\n\x1a\n' + ch(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + ch(b'IDAT', zlib.compress(raw, 9)) + ch(b'IEND', b''))
 
 
-def inside_body(x, y):
-    # the body: x 2..30, rows 16..25
-    return 2 <= x < 30 and 16 <= y < 25
+def arcs(x, y, cx, cy, radii, a0, a1, th):
+    r = math.hypot(x - cx, y - cy)
+    a = math.degrees(math.atan2(cy - y, x - cx))
+    return a0 <= a <= a1 and any(R <= r < R + th for R in radii)
 
 
-def inside_cabin(x, y):
-    # the cabin: a trapezoid, roof x 10..22 at row 8, x 5..27 at row 16
-    if not 8 <= y < 16:
-        return False
-    t = (y - 8) / 8
-    return 10 - 5 * t <= x < 22 + 5 * t
-
-
-def car(x, y):
-    # wheels: solid, centres (9, 25) and (23, 25), radius 4
-    for cx in (9, 23):
-        if math.hypot(x - cx, y - 25) < 4:
-            return True
-    # clear a ring round each wheel so it stands off the body
-    for cx in (9, 23):
-        if math.hypot(x - cx, y - 25) < 6:
-            return False
-    if not (inside_body(x, y) or inside_cabin(x, y)):
-        return False
-    # outline 2 px: a point inside whose 2 px neighbourhood leaves the shape
-    for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
-        if not (inside_body(x + dx, y + dy) or inside_cabin(x + dx, y + dy)):
-            return True
-    return False
+def key(x, y):
+    # the ring: centre (9, 21), 3.2..8
+    r = math.hypot(x - 9, y - 21)
+    if 3.2 <= r < 8:
+        return True
+    # the blade and its two teeth
+    if 15 <= x < 31 and 18.5 <= y < 23.5:
+        return True
+    if (22 <= x < 25 or 27 <= x < 30) and 23.5 <= y < 28:
+        return True
+    # two signal arcs over the ring, 3 px thick at 2x
+    return arcs(x, y, 9, 21, [10, 15.5], 48, 112, 3)
 
 
 def write(name, fn):
@@ -64,4 +54,4 @@ def write(name, fn):
             print(''.join('#' if v else '.' for v in row))
 
 
-write('status-carkey', car)
+write('status-carkey', key)
