@@ -5594,9 +5594,13 @@
     const MODE_KEY = 'wmSoundMode';
     const AV = window.AndroidVolume && typeof window.AndroidVolume.get === 'function' ? window.AndroidVolume : null;
     let avState = null;
+    let avAt = 0;
+    // Android's levels, read again when older than half a second (a change Android does not announce, the
+    // ringer under Do Not Disturb, still shows on the next status refresh)
     function avNow() {
         if (!AV) return null;
-        if (!avState) { try { avState = JSON.parse(AV.get()); } catch (_) { avState = null; } }
+        const now = Date.now();
+        if (!avState || now - avAt > 500) { try { avState = JSON.parse(AV.get()); avAt = now; } catch (_) { avState = null; } }
         return avState;
     }
     const clampStep = (n) => Math.max(0, Math.min(VOL_STEPS, Math.round(Number(n))));
