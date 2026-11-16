@@ -63,6 +63,9 @@
     flex-direction: column;
 }
 
+/* a full page of a part of its own (wmDreamStudio.extend: reg.view) */
+.wm-dreamstudio[data-view="x"] .wds-xview.is-current { display: flex; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; }
+
 /* the editor's own parts sit around whichever field is being edited: the head above, the autofill
  * list and the tool bar below */
 .wds-body > .wds-ed-head { order: -1; }
@@ -499,7 +502,7 @@
 .wds-genbar .wm-tool.wm-tool-combo.is-measuring { width: max-content; }
 /* the seven-segment numbers: the kit's LCD readout (frame, face, figures) as the cell */
 .wds-genbar .wm-tool.wm-lcd { justify-content: center; min-width: calc(30 * var(--wm-px)); }
-.wm-dreamstudio:is([data-view="editor"], [data-view="ref"], [data-view="presets"]) > .wds-genbar { display: none; }
+.wm-dreamstudio:is([data-view="editor"], [data-view="ref"], [data-view="presets"], [data-view="x"]) > .wds-genbar { display: none; }
 /* the desktop's glyphs in the cells (for now): 13 units, the cell's own colour (grey when disabled) */
 .wds-genbar .wm-tool > i { font-size: calc(13 * var(--wm-px)); line-height: 1; pointer-events: none; }
 

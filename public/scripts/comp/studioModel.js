@@ -902,7 +902,15 @@
         generating,
         has,
         stepPreviewSize: null,
-        ownsPrints: false
+        ownsPrints: false,
+        /**
+         * A part of its own adds functions here (studioModel<Part>.js, #860 migration): extend({ name: fn })
+         * - the phone view still reaches Studio only through studioModel. Helpers for those files:
+         * _emit(type, detail) tells the views something changed ('change' repaints them), _el(id).
+         */
+        extend(fns) { Object.keys(fns || {}).forEach((k) => { if (!(k in api)) api[k] = fns[k]; else console.warn('[studioModel] extend: already there', k); }); return api; },
+        _emit: (type, detail) => emit(type, detail),
+        _el: (id) => el(id)
     };
     window.studioModel = api;
 })();
