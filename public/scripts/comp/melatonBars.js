@@ -214,11 +214,16 @@
             const corner = shell.querySelector(sh.bottomBars ? '.wm-softkeys > .wm-title-action' : '.wm-titlebar > .wm-title-action');
             const hidden = corner ? corner.hidden : false;
             unstage();
-            restoreNow = sh.barsStage(stageOpts);
+            // a notification owns the soft keys while it is up (WM: Dismiss / Menu): those stay as the page has them
+            const note = shell.querySelector(':scope > .wm-notify');
+            const noteUp = !!(note && !note.hidden);
+            restoreNow = sh.barsStage(noteUp ? Object.assign({}, stageOpts, { softLeft: undefined, softRight: undefined }) : stageOpts);
             if (corner && hidden) corner.hidden = true;
         };
         try {
-            if (!ctx.current) { sh.barsPopupOpen(ctx.role || 'notify'); opened = true; restage(); }
+            if (!ctx.current) sh.barsPopupOpen(ctx.role || 'notify');
+            opened = !ctx.current;
+            restage();
             if (ctx.click != null) {
                 opened = true;
                 const list = clickables(sh.barsPopupLayers(), shell);
