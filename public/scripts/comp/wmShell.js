@@ -4111,8 +4111,10 @@
         let signal = null;
         if (cell && cell.present !== false) {
             // Android's bars (level5: one more on 5-bar carriers such as Verizon) on WM's 4-bar icon, the same count up to 4
-            const raw = Number.isFinite(cell.level5) ? cell.level5 : cell.level;
-            const lvl = Number.isFinite(raw) ? Math.max(0, Math.min(4, Math.round(raw))) : null;
+            // Samsung's 5 bars (level5) on WM's 4-bar icon in proportion (3 of 5 is 2 of 4, never 0 while in service:
+            // 3 of 4 read a bar high, Yukimi Nov 16); Android's own 0-4 level as it is
+            const lvl = Number.isFinite(cell.level5) ? (cell.level5 <= 0 ? 0 : Math.max(1, Math.round((cell.level5 * 4) / 5)))
+                : Number.isFinite(cell.level) ? Math.max(0, Math.min(4, Math.round(cell.level))) : null;
             if (airplane || cell.radioOn === false) signal = { icon: 'signal-off', text: airplane ? 'Flight mode' : 'Phone off' };
             else if (cell.simState === 'absent') signal = { icon: 'signal-alert', text: 'No SIM card' };
             else if (cell.simState === 'locked') signal = { icon: 'signal-alert', text: 'SIM locked' };

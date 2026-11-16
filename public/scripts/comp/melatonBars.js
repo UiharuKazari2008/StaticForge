@@ -425,7 +425,9 @@
                 soft: soft ? { h: Math.round(soft.getBoundingClientRect().height * dpr), left: box(keyL), right: box(keyR), sip: box(sip) } : null,
                 art: {
                     close: abs('/static_images/wm65/title-close@4x.png'), ok: abs('/static_images/wm65/title-ok@4x.png'),
-                    sip: abs('/static_images/wm65/sip-keyboard@4x.png'), base: location.origin
+                    sip: abs('/static_images/wm65/sip-keyboard@4x.png'), base: location.origin,
+                    // the status icons' art set (WM 6.1's square data icons, 6.5's rounded ones): the app's atlas
+                    set: document.documentElement.dataset.wmVersion === '6.5' ? 'wm65' : 'wm61'
                 },
                 dpr
             };

@@ -540,8 +540,14 @@ html.ui-mobile:not([data-wm-version="6.5"]) .wm-combo:disabled::after {
     position: relative;
     height: calc(32 * var(--wm-px));
     margin: calc(2 * var(--wm-px)) 0 calc(6 * var(--wm-px));
-    border: calc(1 * var(--wm-px)) solid var(--wm-highlight);
+    /* WM's focus frame: only round the trackbar that has the focus (a page of them looked all focused, Nov 16) */
+    border: calc(1 * var(--wm-px)) solid transparent;
+    outline: none;
     touch-action: none;
+}
+
+.wm-slider:focus {
+    border-color: var(--wm-highlight);
 }
 
 .wm-slider-track {
