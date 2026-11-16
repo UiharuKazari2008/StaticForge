@@ -477,7 +477,9 @@
             // 6.5 paints a menu in two ticks (its frame and first row, then the rest): the copy is of the whole menu
             layers.forEach((l) => { if (l.dataset.wmPaint) delete l.dataset.wmPaint; });
             const list = clickables(layers, shell);
-            const regions = list.map((el, idx) => { const r = el.getBoundingClientRect(); return { idx, x0: Math.round(r.left * dpr), y0: Math.round(r.top * dpr), x1: Math.round(r.right * dpr), y1: Math.round(r.bottom * dpr) }; });
+            // a Hide button only closes the popup: the app closes it at once and tells this page after (kind 'hide')
+            const isHide = (el) => (el.tagName === 'BUTTON' || el.classList.contains('wm-softkey')) && /^hide$/i.test((el.textContent || '').trim());
+            const regions = list.map((el, idx) => { const r = el.getBoundingClientRect(); return Object.assign({ idx, x0: Math.round(r.left * dpr), y0: Math.round(r.top * dpr), x1: Math.round(r.right * dpr), y1: Math.round(r.bottom * dpr) }, isHide(el) ? { kind: 'hide' } : {}); });
             const pics = [];
             for (const l of layers) {
                 const c = await window.windowCapture.snapshot(l, { scale: dpr });
@@ -823,6 +825,7 @@
     });
 
     let renderQueued = null;
+    let popupQueued = null;
     window.melatonBars = {
         // bar copies that wait in the queue are one: the newest ask is the one made (a popup asked for
         // meanwhile then waits behind one copy at most, not a pile of them)
@@ -832,7 +835,14 @@
             renderQueued = slot;
             serial(() => { if (renderQueued === slot) renderQueued = null; return render(slot.ctx); }).catch((err) => { unstage(); console.warn('[melatonBars] render', err); });
         },
-        renderPopup: (ctx) => { serial(() => renderPopup(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); }); },
+        // popup asks waiting in the queue are one (the newest); a press is never merged away
+        renderPopup: (ctx) => {
+            const press = ctx && ctx.click != null;
+            if (!press && popupQueued) { popupQueued.ctx = ctx; return; }
+            const slot = { ctx };
+            if (!press) popupQueued = slot;
+            serial(() => { if (popupQueued === slot) popupQueued = null; return renderPopup(slot.ctx); }).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); });
+        },
         renderLock: (ctx) => { serial(() => renderLock(ctx)).catch((err) => console.warn('[melatonBars] renderLock', err)); },
         renderKit: (ctx) => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
