@@ -3,6 +3,9 @@
  * Registers and asynchronously loads component scripts, styles, and HTML templates.
  */
 
+// hot: true = updates live, no restart (#872; the hot-features note above class FeatureLoader). Set only
+// for features `node scripts/check-app-scope.js --features` lists and that passed a live swap (loaded,
+// swapped, old copy reclaimed, no exceptions; ~/.cache/claude-run/live-features.js).
 const FEATURE_MANIFEST = {
     // the phone Device Center draws (#827): Device Center and the Sidebar's Mobile Device gadgets
     activesync_device_art: {
@@ -33,11 +36,13 @@ const FEATURE_MANIFEST = {
         ]
     },
     chat: {
+        hot: true,
         html: 'templates/chat.html',
         styles: ['css/chat-modal.css'],
         scripts: ['scripts/comp/chatSystem.js']
     },
     config_editor: {
+        hot: true,
         html: 'templates/config-editor.html',
         styles: ['css/config-editor.css'],
         scripts: ['scripts/comp/configEditorApplet.js']
@@ -63,12 +68,14 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/runCommandIndex.js']
     },
     run: {
+        hot: true,
         html: 'templates/run.html',
         depends: ['run_index'],
         styles: ['css/run-applet.css'],
         scripts: ['scripts/comp/runApplet.js']
     },
     nax_vibes: {
+        hot: true,
         scripts: ['scripts/comp/naxVibesApplet.js']
     },
     grimoire: {
@@ -77,6 +84,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/grimoireRemoteBrowser.js', 'scripts/comp/grimoireIeChrome.js', 'scripts/comp/grimoireTabs.js', 'scripts/comp/tagWikiSearchModal.js', 'scripts/comp/grimoireHistoryDsap.js']
     },
     character_search: {
+        hot: true,
         depends: ['grimoire'],
         scripts: ['scripts/comp/characterSearchModal.js']
     },
@@ -117,6 +125,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/tagSets.js']
     },
     planet_switcher: {
+        hot: true,
         styles: ['css/planet-switcher.css'],
         scripts: ['scripts/comp/planetSwitcher.js']
     },
@@ -124,17 +133,20 @@ const FEATURE_MANIFEST = {
     // melatonApps.launch({ packageId: 'calculator' }), not featureLoader.
     // Character Map (Yozora #632): charmap.exe; its window is the .mui's own dialog template
     charmap: {
+        hot: true,
         depends: ['vista_dialog_templates'],
         styles: ['css/vista-charmap.css'],
         scripts: ['scripts/comp/desktop-apps/charmap/charmapApp.js']
     },
     // Device Simulator for Melaton SideShow (Yozora #655): VirtualSideShow.exe, a real SideShow device
     sideshow_simulator: {
+        hot: true,
         styles: ['css/vista-sideshow-simulator.css'],
         scripts: ['scripts/comp/desktop-apps/sideshow/sideshowSimulator.js']
     },
     // Paint (Yozora #632): mspaint.exe with layers; its dialogs are Vista's own templates
     paint: {
+        hot: true,
         depends: ['vista_dialog_templates'],
         // the menu bar is Notepad's (vista-atelier.css)
         styles: ['css/vista-atelier.css', 'css/vista-paint.css'],
@@ -160,6 +172,7 @@ const FEATURE_MANIFEST = {
         ]
     },
     media_player: {
+        hot: true,
         styles: ['css/desktop-apps/mediaPlayer.css'],
         scripts: ['scripts/comp/desktop-apps/mediaPlayer.js']
     },
@@ -170,6 +183,7 @@ const FEATURE_MANIFEST = {
     },
     // Remote Desktop Connection: Vista's mstsc dialog; sessions open in remote_desktop's window
     remote_desktop_connection: {
+        hot: true,
         depends: ['remote_desktop'],
         styles: ['css/taskbar-properties.css', 'css/desktop-apps/remoteDesktopConnection.css'],
         scripts: ['scripts/comp/desktop-apps/remoteDesktopConnection.js']
@@ -184,6 +198,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/desktop-apps/vista-games/vistaGameEngine.js']
     },
     vista_minesweeper: {
+        hot: true,
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/minesweeper.js']
     },
@@ -192,26 +207,32 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/desktop-apps/vista-games/cardEngine.js']
     },
     vista_solitaire: {
+        hot: true,
         depends: ['vista_cards'],
         scripts: ['scripts/comp/desktop-apps/vista-games/solitaire.js']
     },
     vista_spider: {
+        hot: true,
         depends: ['vista_cards'],
         scripts: ['scripts/comp/desktop-apps/vista-games/spider.js']
     },
     vista_freecell: {
+        hot: true,
         depends: ['vista_cards'],
         scripts: ['scripts/comp/desktop-apps/vista-games/freecell.js']
     },
     vista_hearts: {
+        hot: true,
         depends: ['vista_cards'],
         scripts: ['scripts/comp/desktop-apps/vista-games/hearts.js']
     },
     vista_mahjong: {
+        hot: true,
         depends: ['vista_cards'],
         scripts: ['scripts/comp/desktop-apps/vista-games/mahjong.js']
     },
     vista_chess: {
+        hot: true,
         depends: ['vista_games'],
         scripts: [
             'scripts/comp/desktop-apps/vista-games/chessEngine.js',
@@ -220,6 +241,7 @@ const FEATURE_MANIFEST = {
         ]
     },
     vista_inkball: {
+        hot: true,
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/inkball.js']
     },
@@ -229,6 +251,7 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/vistaGadgetHost.js']
     },
     vista_purble: {
+        hot: true,
         // vista_cards for its status bar (VG.Cards.statusBar)
         depends: ['vista_cards'],
         scripts: [
@@ -240,20 +263,24 @@ const FEATURE_MANIFEST = {
         ]
     },
     vista_blockdrop: {
+        hot: true,
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/blockdrop.js']
     },
     vista_brickbreaker: {
+        hot: true,
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/brickbreaker.js']
     },
     // Doubles (#836): a Melaton slide-and-join number puzzle; draws itself, no pack
     vista_doubles: {
+        hot: true,
         depends: ['vista_games'],
         scripts: ['scripts/comp/desktop-apps/vista-games/doubles.js']
     },
     // JezzBall (Win 3.x Entertainment Pack): a 16-bit program's classic window on the Vista desktop
     vista_jezzball: {
+        hot: true,
         depends: ['vista_games'],
         styles: ['css/desktop-apps/vista-jezzball.css'],
         scripts: [
@@ -264,6 +291,7 @@ const FEATURE_MANIFEST = {
         ]
     },
     vista_explorer: {
+        hot: true,
         depends: ['vista_games'],
         styles: ['css/desktop-apps/vista-games-explorer.css'],
         scripts: ['scripts/comp/desktop-apps/vista-games/gamesExplorer.js']
@@ -274,12 +302,14 @@ const FEATURE_MANIFEST = {
     // Desktop Icon Settings and Change Icon (Personalize, a desktop shortcut's Change Icon...);
     // drawn with Taskbar Properties' Vista controls (tbp-*)
     desktop_icon_dialogs: {
+        hot: true,
         styles: ['css/taskbar-properties.css', 'css/desktop-icon-dialogs.css'],
         scripts: ['scripts/comp/desktopIconDialogs.js']
     },
     // Dovecote Express's Tools > Options (and Control Panel's Mail item): drawn with Taskbar
     // Properties' Vista controls (tbp-*); desktop-apps/dovecote.js openDovecoteMailOptions
     mail_options: {
+        hot: true,
         styles: ['css/taskbar-properties.css', 'css/mail-options.css'],
         scripts: ['scripts/comp/mailOptions.js']
     },
@@ -289,17 +319,20 @@ const FEATURE_MANIFEST = {
     },
     // Melaton Bars (#871): the phone's title / soft key bars copied for the Android app to draw over other programs
     melaton_bars: {
+        hot: true,
         depends: ['window_capture'],
         scripts: ['scripts/comp/melatonBars.js']
     },
     // Windows Flip 3D, Vista's Win+Tab (keyboardShortcuts.js, taskbarSettings.js Quick Launch)
     flip3d: {
+        hot: true,
         depends: ['window_capture'],
         styles: ['css/flip3d.css'],
         scripts: ['scripts/comp/flip3d.js']
     },
     // Taskbar and Start Menu Properties (public/scripts/comp/taskbarSettings.js openProperties)
     taskbar_properties: {
+        hot: true,
         styles: ['css/taskbar-properties.css'],
         scripts: ['scripts/comp/taskbarProperties.js']
     },
@@ -316,6 +349,7 @@ const FEATURE_MANIFEST = {
     },
     // Make Global (Yozora #668): embedded (request body) expanders saved as global ones, an Aero Wizard
     expander_make_global: {
+        hot: true,
         depends: ['vista_dialog_templates'],
         styles: ['css/expander-make-global.css'],
         scripts: ['scripts/comp/expanderMakeGlobalWizard.js']
@@ -364,6 +398,7 @@ const FEATURE_MANIFEST = {
     },
     // Image Search (Yozora #828), the desktop program that replaced the Global Search DSAP
     image_search: {
+        hot: true,
         // vista_dialog_templates: the date pickers of the advanced pane
         depends: ['image_search_lib', 'vista_dialog_templates'],
         styles: ['css/image-search.css'],
@@ -394,6 +429,7 @@ const FEATURE_MANIFEST = {
     },
     // The MMC consoles that replaced the management DSAPs (Yozora #828): the shell, then the snap-ins
     mmc_snapins: {
+        hot: true,
         depends: ['vista_dialog_templates', 'workspace_dialogs', 'print_queue'],
         styles: ['css/mmc-console.css', 'css/mmc-frontgate.css', 'css/mmc-quips-autofill.css', 'css/mmc-enshutsuka.css', 'css/mmc-datamgmt.css', 'css/mmc-books.css', 'css/mmc-wiki.css', 'css/mmc-chardb.css', 'css/mmc-exchange.css', 'css/mmc-appkeys.css', 'css/mmc-servermgr.css'],
         scripts: [
@@ -425,9 +461,11 @@ const FEATURE_MANIFEST = {
         scripts: ['scripts/comp/directorMascot.js']
     },
     director_mascot_lab: {
+        hot: true,
         scripts: ['scripts/comp/directorMascotLab.js']
     },
     director_tool_inspector: {
+        hot: true,
         scripts: ['scripts/comp/directorToolInspector.js']
     }
 };
