@@ -164,8 +164,20 @@
         loadPics();
     }
 
+    // a reorder in the list is kept until OK (Yukimi, Nov 16: like other settings, saved on OK only);
+    // leaving the list any other way puts the saved order back
+    let pendingOrder = null; // the saved order (ids) while the list holds an unsaved reorder
+    function noteReorder() { if (!pendingOrder) pendingOrder = items().map((x) => x.id); }
+    function revertOrder() {
+        if (!pendingOrder) return;
+        const by = new Map(items().map((x) => [x.id, x]));
+        data.items = pendingOrder.map((id) => by.get(id)).filter(Boolean).concat(items().filter((x) => !pendingOrder.includes(x.id)));
+        pendingOrder = null;
+    }
+
     /** The list (encrypted, small) at once; new or removed pictures to IndexedDB in the background. */
     function save() {
+        pendingOrder = null;
         const s = store();
         const work = [];
         for (const it of data.items) {
@@ -565,7 +577,7 @@
         }).join('');
         els.list.innerHTML = `${note ? ui.note(note) : ''}
             ${list.length ? `<div class="wwl-lrows">${rows}</div>` : '<p class="wwl-empty">No cards yet. Menu > New Card, New Barcode or New ID adds one, or Import from Samsung Wallet.</p>'}
-            ${ui.note('Cards open Samsung Wallet\'s pay sheet; it asks for your fingerprint, then hold the phone to the reader. Barcodes show here for the store to scan. ▲ / ▼ set the order Today shows them in.')}`;
+            ${ui.note('Cards open Samsung Wallet\'s pay sheet; it asks for your fingerprint, then hold the phone to the reader. Barcodes show here for the store to scan. ▲ / ▼ set the order Today shows them in; ok saves it.')}`;
         const box = els.list.querySelector('.wwl-lrows');
         if (!box) return;
         box.addEventListener('click', (e) => {
@@ -703,8 +715,8 @@
     function orderAsWallet() {
         const list = items();
         const known = list.filter((x) => Number.isFinite(x.walletOrder)).sort((a, b) => a.walletOrder - b.walletOrder);
+        noteReorder();
         data.items = known.concat(list.filter((x) => !Number.isFinite(x.walletOrder)));
-        save();
         reorderRows();
     }
 
@@ -712,9 +724,9 @@
         const list = items();
         const i = list.findIndex((x) => x.id === selected);
         if (i < 0) return;
+        noteReorder();
         const [it] = list.splice(i, 1);
         if (end === 'top') list.unshift(it); else list.push(it);
-        save();
         reorderRows();
     }
 
@@ -723,8 +735,8 @@
         const i = list.findIndex((x) => x.id === selected);
         const j = i + d;
         if (i < 0 || j < 0 || j >= list.length) return;
+        noteReorder();
         [list[i], list[j]] = [list[j], list[i]];
-        save();
         reorderRows();
     }
 
@@ -1036,12 +1048,20 @@
         sip: true,
         mount(p) { page = p; p.classList.add('wm-wallet'); build(); },
         show() { if (!loaded || storeNote === 'locked') load(); sync(); },
-        hide() { brightness(false); stopScan(); },
+        // left without OK: an unsaved reorder is dropped
+        hide() { brightness(false); stopScan(); if (pendingOrder) { revertOrder(); if (els) renderList(); } },
         historyDepth: () => layers.length,
         onBack: () => (layers.length ? pop() : false),
-        titleKind: () => (layers.length ? 'ok' : 'close'),
-        onTitleOk: () => { if (top() === 'edit') saveEdit(); else if (top() === 'import') importSave(); else pop(); },
-        onTitleClose() { layers = []; form = null; showing = null; brightness(false); stopScan(); },
+        // ok on every view (a settings page): the list's ok saves its order and goes back
+        titleKind: () => 'ok',
+        onTitleOk: () => {
+            if (top() === 'edit') { saveEdit(); return true; }
+            if (top() === 'import') { importSave(); return true; }
+            if (layers.length) { pop(); return true; }
+            if (pendingOrder) save();
+            return false;
+        },
+        onTitleClose() { layers = []; form = null; showing = null; brightness(false); stopScan(); revertOrder(); },
         softKeys() {
             const t = top();
             if (t === 'edit') return { left: { label: 'Save', action: saveEdit }, right: { label: 'Cancel', action: pop } };
