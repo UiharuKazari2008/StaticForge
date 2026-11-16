@@ -108,7 +108,6 @@
     let snap = null;
     let edField = 'prompt';
     let edJog = null;
-    let edDropped = [];
     let viewing = '';
     let opening = false;
     let tabState = {};
@@ -876,7 +875,12 @@
         const ta = edArea();
         const hasGroups = !!ta && new RegExp(WEIGHT_RE.source).test(ta.value);
         const rows = [];
-        if (edDropped.some((g) => g.matches('[data-ed="quickaccess"]') || g.querySelector('[data-ed="quickaccess"]'))) rows.push({ label: 'Quick Access...', action: openQa }, { label: 'Find...', action: findAsk }, '-');
+        // Quick Access and Find are offered here only when the bar has no room for them (each one
+        // looked at as it is now, never twice on screen)
+        const onBar = (id) => { const b = $(`.wds-toolbar [data-ed="${id}"]`); return !!(b && !b.hidden && b.getClientRects().length); };
+        if (!onBar('quickaccess')) rows.push({ label: 'Quick Access...', action: openQa });
+        if (!onBar('find')) rows.push({ label: 'Find...', action: findAsk });
+        if (rows.length) rows.push('-');
         rows.push(
             { label: 'Lowercase', disabled: !ta || !ta.value, action: lowercaseText },
             { label: 'Weight Rack...', disabled: !hasGroups, action: () => weightRack(btn) },
@@ -1732,7 +1736,8 @@
      */
     function weightPanel(anchor, label, rowsOf, write) {
         let rows = [];
-        return ui.popPanel(anchor, {
+        let pop = null;
+        pop = ui.popPanel(anchor, {
             label,
             className: 'wds-wtpop',
             build(el) {
@@ -1745,6 +1750,7 @@
                     }).join('') || '<div class="wm-form-sub wds-wt-head">None</div>';
                     el.querySelectorAll('.wds-wt-row.is-on').forEach((row) => weightJog(row, rows[Number(row.dataset.i)], write));
                     el.scrollTop = top;
+                    if (pop) pop.place();
                 };
                 fill();
                 el.addEventListener('change', (e) => {
@@ -1756,13 +1762,15 @@
                 });
             }
         });
+        return pop;
     }
 
     // ---- UC Preset and NSFW: one panel (Yukimi, Nov 15), each under its header; NSFW's bias as an LCD
     // with a jog at the foot of its section while NSFW is not Neutral
 
     function ucPanel(anchor) {
-        ui.popPanel(anchor, {
+        let pop = null;
+        pop = ui.popPanel(anchor, {
             label: 'UC Preset and NSFW',
             className: 'wds-wtpop wds-ucpop',
             build(el) {
@@ -1777,6 +1785,8 @@
                         + (nsfw !== 0 ? '<div class="wds-wt-row is-on wds-nsfw-bias"><span class="wds-wt-name">Bias</span><span class="wds-wt-lcd wm-lcd"></span></div>' : '');
                     const row = el.querySelector('.wds-nsfw-bias');
                     if (row) weightJog(row, { name: 'NSFW', bias: Number(s.nsfw_bias) || 1, min: 0.1, max: 3, def: 1 }, (r, p) => change('nsfw_bias', p.bias));
+                    // the Bias row comes and goes with NSFW: the panel is fitted on the screen again
+                    if (pop) pop.place();
                 };
                 fill();
                 el.addEventListener('change', (e) => {
@@ -2026,7 +2036,7 @@
             edJog.el.removeAttribute('tabindex');
             bar.querySelector('.wds-tb-weight').after(edJog.el);
         }
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (kit && top() === 'editor') edDropped = kit.fitToolbar(bar, { oneRow: true }); }).observe(bar);
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (kit && top() === 'editor') kit.fitToolbar(bar, { oneRow: true }); }).observe(bar);
         bar.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
         bar.addEventListener('mousedown', (e) => e.preventDefault());
         bar.addEventListener('click', (e) => {
