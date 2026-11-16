@@ -4843,6 +4843,9 @@ function observeModals() {
 
 // Wire click/context handlers on an individual (non-group) taskbar item
 function wireIndividualTaskbarItemHandlers(item, modal) {
+    // the window this button acts on: a window replaced under the same id (a Vista dialog opened
+    // again, an app swapped by a live update) gets its button wired again (#872)
+    item._taskbarModal = modal;
     item.onclick = () => {
         restoreMinimizedModal(modal, item);
         if (modal.classList.contains('hidden')) {
@@ -5252,6 +5255,8 @@ function updateTaskbarWindows() {
                 }
 
                 syncTaskbarItemStateClasses(existingItem, isActive, isMinimised);
+                // the same id can be a new element: act on it, not on the window it replaced
+                if (existingItem._taskbarModal !== modal) wireIndividualTaskbarItemHandlers(existingItem, modal);
 
                 // Update content if changed - check both font icon and image icon
                 const currentTitle = existingItem.querySelector('span')?.textContent;
