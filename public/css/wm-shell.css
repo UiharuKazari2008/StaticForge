@@ -4092,27 +4092,14 @@ html.ui-mobile .context-menu-item-subtext[data-accel] {
 }
 
 /* ---- Continuity (Yozora #798): the phone's screen is off (DSApp sets html[data-screen-off] before it
- * stops drawing the WebView). Yukimi: disable all animation and cover the view so nothing renders or
- * wastes CPU. Every CSS animation and transition stands still, the page's content is hidden (nothing to
- * paint) under one black sheet; the socket, the Continuity bus and audio keep running. ---- */
+ * stops drawing the WebView). Every CSS animation and transition stands still; the socket, the
+ * Continuity bus and audio keep running. The page stays painted: no black sheet (Yukimi, Nov 16: "we
+ * never want to black the screen" - a screen-on signal that came late left the unlocked phone black). ---- */
 html[data-screen-off] *,
 html[data-screen-off] *::before,
 html[data-screen-off] *::after {
     animation-play-state: paused !important;
     transition: none !important;
-}
-
-html[data-screen-off] body > * {
-    visibility: hidden !important;
-}
-
-html[data-screen-off] body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    z-index: 2147483647;
-    background: #000;
-    pointer-events: none;
 }
 
 /* ---- Melaton Bars (#871): the page is behind an Android program (wmShell setBarsExternal). Yukimi, Nov 16:
