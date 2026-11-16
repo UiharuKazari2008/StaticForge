@@ -469,7 +469,9 @@
             if (!m) return;
             const url = new URL(m[1], location.href).href;
             // the size and place as CSS resolved them (px or %; 'auto' keeps the picture's own ratio: the box)
-            const sz = (cs.backgroundSize || '').split(' ');
+            // split at the spaces outside brackets: "calc(100% + 18px) 104.545%" is two values, not four
+            const parts = (v) => { const out2 = []; let d = 0; let cur = ''; for (const ch of String(v || '')) { if (ch === '(') d++; if (ch === ')') d--; if (ch === ' ' && d === 0) { if (cur) out2.push(cur); cur = ''; } else cur += ch; } if (cur) out2.push(cur); return out2; };
+            const sz = parts(cs.backgroundSize);
             // a length: px, %, auto / cover / contain (the box), or calc() of % and px terms (the 6.5 title band:
             // calc(100% + 18px)) - NaN in the list made the app's popups one pixel wide
             const toLen = (v, of) => {
@@ -485,7 +487,7 @@
             };
             const w = toLen(sz[0] || 'auto', box.width);
             const h = toLen(sz[1] || sz[0] || 'auto', box.height);
-            const pos = (cs.backgroundPosition || '0% 0%').split(' ');
+            const pos = parts(cs.backgroundPosition || '0% 0%');
             const place = (v, room) => { const n = v.endsWith('%') ? (parseFloat(v) / 100) * room : px(v); return Number.isFinite(n) ? n : 0; };
             const x = box.left + place(pos[0] || '0%', box.width - w);
             const y = box.top + place(pos[1] || '0%', box.height - h);
