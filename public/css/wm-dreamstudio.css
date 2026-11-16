@@ -526,8 +526,10 @@
 .wds-dlg .wm-msgbox-title > .wm-title-action { flex: 0 0 auto; }
 .wds-dlg-body { padding: calc(4 * var(--wm-px)) calc(5 * var(--wm-px)) calc(6 * var(--wm-px)); }
 .wds-dlg-body .wds-wt-row > .wm-jog { width: calc(90 * var(--wm-px)); }
-.wds-dlg-body > .wm-msgbox-buttons { padding: calc(6 * var(--wm-px)) 0 0; }
-.wds-base-pic { display: block; max-width: 100%; max-height: calc(90 * var(--wm-px)); margin: 0 auto calc(4 * var(--wm-px)); border: calc(1 * var(--wm-px)) solid currentColor; object-fit: contain; }
+/* footer buttons sit at the right (the dialog rule) */
+#wmShell .wds-dlg-body > .wm-msgbox-buttons { justify-content: flex-end; padding: calc(8 * var(--wm-px)) 0 0; }
+/* the base image: framed, with room round it before the rows */
+.wds-base-pic { display: block; box-sizing: border-box; max-width: calc(100% - 8 * var(--wm-px)); max-height: calc(96 * var(--wm-px)); margin: calc(4 * var(--wm-px)) auto calc(8 * var(--wm-px)); padding: calc(2 * var(--wm-px)); border: calc(1 * var(--wm-px)) solid currentColor; object-fit: contain; }
 
 /* Custom Resolution / Ratio: a message box of LCD + jog rows; the size follows the ratio in ratio mode */
 #wmShell .wds-szdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
