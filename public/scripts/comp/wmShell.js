@@ -586,7 +586,7 @@
                     <button type="button" class="wm-status-icon wm-status-app" data-role="rain" hidden aria-label="Rain alarm"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="traffic" hidden aria-label="Commute delay"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="lapis" hidden aria-label="Remote start running"></button>
-                    <button type="button" class="wm-status-icon wm-status-app" data-role="carkey" hidden aria-label="Car in range"></button>
+                    <button type="button" class="wm-status-icon wm-status-app" data-role="carkey" hidden aria-label="Car: in range or running"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="continuity" hidden aria-label="Continuity"></button>
                     <button type="button" class="wm-status-icon wm-status-app" data-role="received" hidden aria-label="ActiveSync: received items"></button>
                     <button type="button" class="wm-status-icon" data-role="bluetooth" data-icon="bluetooth" hidden aria-label="Bluetooth"></button>
@@ -3006,10 +3006,12 @@
         hide(shell.querySelector('[data-role="traffic"]'), !(tr && tr.delayed));
         // Lapis Remote (#835): while a remote start runs (scripts/generate-wm-lapis-status-icon.py)
         const lp = window.wmLapis && typeof window.wmLapis.statusState === 'function' ? window.wmLapis.statusState() : null;
-        hide(shell.querySelector('[data-role="lapis"]'), !(lp && lp.running));
-        // the phone's car key (#874, wmCarKey.js): while Samsung Digital Key sees the car
+        // one car glyph for both (Yukimi, Nov 16): the key (status-carkey) while a remote start runs (Lapis,
+        // #835) or the phone's car key sees a car (#874, wmCarKey.js); its bubble has both. The remote
+        // start's own glyph is not shown any more.
+        hide(shell.querySelector('[data-role="lapis"]'), true);
         const ck = window.wmCarKey ? (window.wmCarKey.quick ? window.wmCarKey.quick() : window.wmCarKey.state()) : null;
-        hide(shell.querySelector('[data-role="carkey"]'), !(ck && ck.inRange));
+        hide(shell.querySelector('[data-role="carkey"]'), !((ck && ck.inRange) || (lp && lp.running)));
         // Continuity (#798): while this phone carries its DeX window
         const mc = window.melatonContinuity;
         // the Continuity PC (#798): from the moment its window opens, half opacity until its desktop is up
@@ -5831,7 +5833,14 @@
             const st = ck ? (ck.quick ? ck.quick() : ck.state()) : { cars: [] };
             const lp = window.wmLapis && typeof window.wmLapis.keySummary === 'function' ? window.wmLapis.keySummary() : null;
             const sections = [];
-            if (!st.cars.length) sections.push('No car is in range of this phone\'s keys.');
+            // a running remote start comes first: time left, what it set, fuel, doors; Stop the Engine
+            const run = window.wmLapis && typeof window.wmLapis.statusState === 'function' ? window.wmLapis.statusState() : null;
+            if (run && run.running) {
+                if (run.html) sections.push({ html: run.html });
+                if (run.canStop) sections.push({ links: [{ label: 'Stop the Engine', action: () => { closeBubble(); window.wmLapis.stop(); } }], align: 'right' });
+                if (st.cars.length) sections.push({ rule: true });
+            }
+            if (!st.cars.length && !(run && run.running)) sections.push('No car is in range of this phone\'s keys.');
             st.cars.forEach((car, i) => {
                 if (i) sections.push({ rule: true });
                 const many = st.cars.length > 1;
@@ -5867,7 +5876,7 @@
             const buttons = [];
             if (lp && window.wmLapis.open) buttons.push({ text: 'Open', left: true, action: () => window.wmLapis.open() });
             buttons.push({ text: 'Hide' });
-            const title = st.cars.length > 1 ? 'Car Keys' : (st.cars[0] && st.cars[0].car) || (lp && lp.name) || STATUS_APP_LABEL[role];
+            const title = st.cars.length > 1 ? 'Car Keys' : (st.cars[0] && st.cars[0].car) || (run && run.running && run.title) || (lp && lp.name) || STATUS_APP_LABEL[role];
             bubble({ title, role, anchor, sections, buttons });
         } else if (role === 'traffic') {
             // Traffic (#795): the commute time, the delay and when it gets there, and the way into the app
