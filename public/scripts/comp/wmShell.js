@@ -3007,7 +3007,7 @@
         const lp = window.wmLapis && typeof window.wmLapis.statusState === 'function' ? window.wmLapis.statusState() : null;
         hide(shell.querySelector('[data-role="lapis"]'), !(lp && lp.running));
         // the phone's car key (#874, wmCarKey.js): while Samsung Digital Key sees the car
-        const ck = window.wmCarKey ? window.wmCarKey.state() : null;
+        const ck = window.wmCarKey ? (window.wmCarKey.quick ? window.wmCarKey.quick() : window.wmCarKey.state()) : null;
         hide(shell.querySelector('[data-role="carkey"]'), !(ck && ck.inRange));
         // Continuity (#798): while this phone carries its DeX window
         const mc = window.melatonContinuity;
@@ -5826,7 +5826,8 @@
             // Unlock (Samsung Digital Key's notification actions, on the phone); my car also shows what
             // the server knows of it (Lapis); a friend's car can be made my car; Open (Lapis) left of Hide
             const ck = window.wmCarKey;
-            const st = ck ? ck.state() : { cars: [] };
+            // quick access: friends' keys left out when Wallet > Car Keys hides them
+            const st = ck ? (ck.quick ? ck.quick() : ck.state()) : { cars: [] };
             const lp = window.wmLapis && typeof window.wmLapis.keySummary === 'function' ? window.wmLapis.keySummary() : null;
             const sections = [];
             if (!st.cars.length) sections.push('No car is in range of this phone\'s keys.');

@@ -650,6 +650,8 @@
             ${list.map((k, i) => ui.radio('wwlMine', String(i), `${k.car}${k.inRange ? '  (in range)' : ''}`, k.mine)).join('')}
             ${ui.radio('wwlMine', '-', 'None of these', !list.some((k) => k.mine))}
             ${ui.note('Your car is the one Lapis Remote controls (its Lock and Unlock use this key when the car is in range). Every other key is kept as a friend\'s car: the car key bubble still locks and unlocks it.')}
+            ${ui.check('wwlHideOthers', 'Hide other car keys in quick access', !!(ck.hideOthers && ck.hideOthers()))}
+            ${ui.note('Quick access is the car in the title bar and its bubble: with this on they show your car only. Friends\' keys stay here.')}
             ${ui.sub('Forget a key')}
             ${list.map((k, i) => `<div class="wwl-key-row"><span>${esc(k.car)}${k.mine ? ' (my car)' : ' (friend\'s)'}</span>${ui.buttons([[`forget-${i}`, 'Forget']])}</div>`).join('')}`;
         els.keys.querySelectorAll('input[name="wwlMine"]').forEach((r) => r.addEventListener('change', () => {
@@ -657,6 +659,8 @@
             if (r.value === '-') { const m = list.find((k) => k.mine); if (m) ck.setFriend(m.car); try { localStorage.removeItem('wmCarKeyMine'); } catch (_) { /* storage off */ } } else ck.setMine(list[Number(r.value)].car);
             renderKeys();
         }));
+        const hideBox = els.keys.querySelector('input[name="wwlHideOthers"]');
+        if (hideBox) hideBox.addEventListener('change', () => ck.setHideOthers(hideBox.checked));
         els.keys.querySelectorAll('[data-act^="forget-"]').forEach((b) => b.addEventListener('click', () => { ck.forget(list[Number(b.dataset.act.slice(7))].car); renderKeys(); }));
     }
 

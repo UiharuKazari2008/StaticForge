@@ -17,7 +17,8 @@
  *
  * window.wmCarKey: state() -> { inRange (any car), cars: [{ key, car, mine, canLock, canUnlock }],
  * mine (my car's entry or null) }, can(kind) / press(kind) (my car; kind 'lock' | 'unlock'),
- * pressCar(key, kind), setMine(name), setFriend(name), forget(name), known() (every key seen, for
+ * pressCar(key, kind), quick() (what the title bar's car and its bubble show: my car only while
+ * hideOthers(), Wallet > Car Keys "Hide other car keys in quick access", setHideOthers(on)), setMine(name), setFriend(name), forget(name), known() (every key seen, for
  * Wallet > Car Keys), isMine(name). Fires document `wmCarKeyChange` on every change.
  */
 (function () {
@@ -27,6 +28,7 @@
 
     const MINE_KEY = 'wmCarKeyMine';
     const FRIENDS_KEY = 'wmCarKeyFriends';
+    const HIDE_KEY = 'wmCarKeyHideOthers'; // '1': the title bar's car and its bubble show my car only
     const SEEN_KEY = 'wmCarKeysSeen'; // every car name a key was seen for, so it can be set when out of range
     let raw = { cars: [] };
     let state = { inRange: false, cars: [], mine: null };
@@ -163,5 +165,16 @@
     document.addEventListener('wmLapisChange', () => { if (!lsGet(MINE_KEY) && raw.cars && raw.cars.length) take(raw); });
     read();
 
-    window.wmCarKey = { state: () => state, can, press, pressCar, setMine, setFriend: markFriend, forget, known, isMine: (n) => norm(n) === norm(lsGet(MINE_KEY)) };
+    const hideOthers = () => lsGet(HIDE_KEY) === '1';
+    /** What quick access (the title bar's car and its bubble) shows: my car only when friends' keys are hidden. */
+    function quick() {
+        const cars = hideOthers() ? state.cars.filter((c) => c.mine) : state.cars;
+        return { inRange: cars.length > 0, cars, mine: state.mine };
+    }
+    function setHideOthers(on) {
+        lsSet(HIDE_KEY, on ? '1' : null);
+        document.dispatchEvent(new CustomEvent('wmCarKeyChange', { detail: state }));
+    }
+
+    window.wmCarKey = { state: () => state, quick, hideOthers, setHideOthers, can, press, pressCar, setMine, setFriend: markFriend, forget, known, isMine: (n) => norm(n) === norm(lsGet(MINE_KEY)) };
 })();
