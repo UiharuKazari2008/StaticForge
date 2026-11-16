@@ -41,7 +41,6 @@ const {
     handleRequestFormSubmit,
     handleRequestFormOpen,
     handleWorkspaceSwitchResult,
-    handleLedgeChecks,
     handleDirectorStreamingAck,
     handleDirectorStreamWatch,
     handleDirectorSaveFeedback,
@@ -96,7 +95,7 @@ function registerPackets(handlersCtx) {
     reg('request_form_submit', handleRequestFormSubmit);
     reg('request_form_open', handleRequestFormOpen);
     reg('director_workspace_switch_result', handleWorkspaceSwitchResult);
-    reg('ledge_checks', handleLedgeChecks);
+    // ledge_* packets: 309-ledgeHandler.js
     reg('director_streaming_ack', handleDirectorStreamingAck);
     reg('director_stream_watch', handleDirectorStreamWatch);
     reg('director_get_cursor_usage', handleDirectorGetCursorUsage);

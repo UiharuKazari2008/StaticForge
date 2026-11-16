@@ -54,18 +54,6 @@ module.exports = {
     handleWorkspaceSwitchResult: function (_handler, _ws, message) {
         submitWorkspaceSwitch(message || {});
     },
-    handleLedgeChecks: function (handler, _ws, message) {
-        const ledge = require('../../ledgeDesk');
-        const session = ledge.getSession(message && message.sessionId);
-        if (!session) return;
-        ledge.setChecks(session, message.checked);
-        const state = Object.assign({ reason: 'checks' }, ledge.publicSession(session, true));
-        let wsServer = null;
-        try { wsServer = handler.globalResources.getWebSocketServer(); } catch (_) { wsServer = null; }
-        if (wsServer && typeof wsServer.broadcast === 'function') {
-            wsServer.broadcast({ type: 'ledge_state', data: state, timestamp: new Date().toISOString() });
-        }
-    },
     handleDirectorStreamingAck: function (_handler, _ws, message) {
         cursor.ackDirectorStream(message && message.sessionId, message && message.seq);
     },

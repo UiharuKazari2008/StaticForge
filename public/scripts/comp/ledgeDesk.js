@@ -1,7 +1,12 @@
 // Ledge: one stage-results window per session, cloned from #ledgeDeskTemplate.
-// Server sessions live in modules/ledgeDesk.js.
+// Server sessions live in modules/ledgeDesk.js. The server sends ledge_state only to a desk's owner
+// client (the device the Director session runs on); a phone never hosts this window and hands the
+// desk to window.wmLedge instead.
 
 const ledgeWindows = new Map();
+// the desks this client holds, kept from ledge_state (full desks and deltas on top of them)
+const ledgeDesks = new Map();
+let ledgeQueue = Promise.resolve();
 // Vista art for the balloons (.cursor/rules/vista-icons-not-fa.mdc)
 const LEDGE_TOAST_ICONS = {
     saved: '<img src="/static_images/vista-icons/info-32.png" width="32" height="32" alt="">',
@@ -308,7 +313,7 @@ function ledgeCloneTemplate() {
 
 function ledgeEnsureWindow(session) {
     const id = session && session.sessionId;
-    if (!id) return null;
+    if (!id || ledgeIsPhone()) return null;
     let host = ledgeWindows.get(id);
     if (host && host.isConnected) {
         ledgeRender(host, session);
@@ -339,22 +344,105 @@ function ledgeClose(sessionId) {
     ledgeWindows.delete(sessionId);
 }
 
-function presentLedge(data) {
-    if (!data) return;
+function ledgeIsPhone() {
+    return window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
+}
+
+/** The server addresses the owner client only; a packet naming another client is not for this one. */
+function ledgeIsOwner(data) {
+    let mine = null;
+    try {
+        // WebSocketClient.readStoredAgentClientId: public/scripts/websocket.js
+        mine = typeof WebSocketClient !== 'undefined' ? WebSocketClient.readStoredAgentClientId() : null;
+    } catch (_) {
+        mine = null;
+    }
+    return !data.ownerClientId || !mine || data.ownerClientId === mine;
+}
+
+function ledgeIndexItems(desk) {
+    desk.items.forEach((item, index) => { item.index = index; });
+    desk.count = desk.items.length;
+    desk.checked = desk.items.filter((item) => item.checked).map((item) => item.id);
+}
+
+function ledgeKeep(data) {
+    const desk = Object.assign({}, data, { items: (data.items || []).map((item) => Object.assign({}, item)) });
+    delete desk.present;
+    ledgeIndexItems(desk);
+    ledgeDesks.set(desk.sessionId, desk);
+    return desk;
+}
+
+async function ledgeFetch(sessionId) {
+    if (!window.wsClient || typeof window.wsClient.sendMessage !== 'function') return null;
+    const reply = await window.wsClient.sendMessage('ledge_get', { sessionId }, false);
+    const data = reply && reply.data && typeof reply.data === 'object' ? reply.data : reply;
+    return data && data.success && data.session ? ledgeKeep(data.session) : null;
+}
+
+/** The whole desk after this packet: a full desk replaces, a delta applies on the rev it builds on. */
+async function ledgeMerge(data) {
+    const id = data.sessionId;
     if (data.disposed || data.reason === 'dispose') {
-        ledgeClose(data.sessionId);
+        ledgeDesks.delete(id);
+        return { sessionId: id, disposed: true };
+    }
+    if (Array.isArray(data.items)) return ledgeKeep(data);
+    const desk = ledgeDesks.get(id);
+    // not held here, or a change was missed (another client was the owner meanwhile): the whole desk
+    if (!desk || desk.rev !== data.baseRev) return ledgeFetch(id);
+    if (data.reason === 'add') {
+        const trimmed = new Set(data.trimmed || []);
+        const items = desk.items.filter((item) => !trimmed.has(item.id));
+        (data.added || []).forEach((item) => {
+            items.splice(Math.min(item.index, items.length), 0, Object.assign({}, item));
+        });
+        desk.items = items;
+    } else if (data.reason === 'remove' && data.removed) {
+        desk.items = desk.items.filter((item) => item.id !== data.removed.id);
+    } else if (data.reason === 'checks') {
+        const on = new Set(data.checked || []);
+        desk.items.forEach((item) => { item.checked = on.has(item.id); });
+    } else if (data.reason === 'clear') {
+        desk.items = [];
+    }
+    ['name', 'workspaceId', 'kind', 'chatId', 'rev', 'updatedAt', 'ownerClientId'].forEach((key) => {
+        if (data[key] !== undefined) desk[key] = data[key];
+    });
+    ledgeIndexItems(desk);
+    return desk;
+}
+
+function ledgeShow(desk, data) {
+    if (!desk) return;
+    if (ledgeIsPhone()) {
+        // Melaton Mobile shows desks its own way (wmLedge); the desktop window is never hosted here
+        const phone = window.wmLedge;
+        if (phone && typeof phone.present === 'function') phone.present(desk, data);
         return;
     }
-    if (!data.sessionId) return;
-    if (data.reason === 'checks') {
-        const host = ledgeWindows.get(data.sessionId);
-        if (host) ledgeSyncChecks(host, data);
+    if (desk.disposed) {
+        ledgeClose(desk.sessionId);
         return;
     }
-    // quiet: new prints while the user works from a phone (mcpAgentFacade.js): a desk that is open
-    // here takes them, but none is opened for them
-    if (data.quiet && !ledgeWindows.has(data.sessionId)) return;
-    ledgeEnsureWindow(data);
+    if (data.present) {
+        ledgeEnsureWindow(desk);
+        return;
+    }
+    const host = ledgeWindows.get(desk.sessionId);
+    if (!host) return;
+    if (data.reason === 'checks') ledgeSyncChecks(host, desk);
+    else ledgeRender(host, desk);
+}
+
+function presentLedge(data) {
+    if (!data || !data.sessionId || !ledgeIsOwner(data)) return;
+    // in order: a delta must not apply before the fetch of the desk it builds on
+    ledgeQueue = ledgeQueue
+        .then(() => ledgeMerge(data))
+        .then((desk) => ledgeShow(desk, data))
+        .catch((err) => console.warn('[ledge]', (err && err.message) || err));
 }
 
 if (window.wsClient && window.wsClient.on) {

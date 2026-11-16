@@ -1152,20 +1152,21 @@ const TOOL_DEFS = [
     {
         name: 'ledge',
         core: true,
-        description: 'Ledge is one desk you throw images onto, instead of opening a Lumen window per file. op: open (name is required when it creates a session; the window title is "Ledge [name]". Returns sessionId; pass an existing sessionId to reopen without a name, or list if you forgot it), add (items array of {filename|src, text}; prepends unless index is set), remove(index), get(index), clear, list, dispose, save(vfs_path, workspace), save_file(items, vfs_path, workspace). Each item can carry text. The user can check items; list and get return checked. save writes the desk so it can be opened later. Default openGeneratedImages is ledge.',
+        description: 'Ledge is one desk you throw images onto, instead of opening a Lumen window per file. Desks are the user\'s, per workspace, and are kept across restarts; a desk shows only on the client you are bound to (the device your chat runs on), never on other clients. Your prints land on your chat\'s own desk, named after the chat (sessionId prints_<chatId>, newest 200 kept). op: open (name is required when it creates a session; the window title is "Ledge [name]". Returns sessionId; pass an existing sessionId to reopen without a name, or list if you forgot it), add (items array of {filename|src, text}; prepends unless index is set), remove(index or itemId), get(index or itemId), clear, rename(name), list (this workspace\'s desks), dispose, save(vfs_path, workspace), save_file(items, vfs_path, workspace). Each item can carry text. The user can check items; list and get return checked. shown says whether a client put the desk on screen. save writes the desk to a file. Default openGeneratedImages is ledge.',
         scope: 'gallery',
         inputSchema: {
             type: 'object',
             additionalProperties: false,
             properties: {
-                op: { type: 'string', enum: ['open', 'add', 'remove', 'get', 'clear', 'list', 'dispose', 'save', 'save_file'] },
+                op: { type: 'string', enum: ['open', 'add', 'remove', 'get', 'clear', 'rename', 'list', 'dispose', 'save', 'save_file'] },
                 sessionId: { type: 'string' },
+                itemId: { type: 'string', description: 'remove / get by item id instead of index' },
                 name: { type: 'string', description: 'Session name. Required when op open creates a session. Shown as "Ledge [name]". On an existing sessionId it renames.' },
                 index: { type: 'number' },
                 items: { type: 'array' },
                 item: { type: 'object' },
                 vfs_path: { type: 'string', description: '@desktop or a VFS folder or a .json file path' },
-                workspace: { type: 'string' },
+                workspace: { type: 'string', description: 'Workspace whose desks list shows (default: your session\'s), and the save target' },
                 jarray: { type: 'array', description: 'save_file payload' }
             }
         }
@@ -5146,6 +5147,57 @@ async function writeLedgeVfs(globalResources, req, input, obj, fallbackName) {
     return { path: shown, saved: true };
 }
 
+// Ledge (modules/ledgeDesk.js): whose desks a call reads and where they show. The owner client is the
+// one this key is bound to; the Director binds the tab or phone its chat was sent from
+// (cursorDirector.js bindDirectorTab), so that is the Director session's device. The user is that
+// client's user, or the key's when nothing is bound.
+function ledgeContext(globalResources, req, input) {
+    const ledge = require('./ledgeDesk').bind(globalResources);
+    let record = null;
+    try { record = getBoundRecord(globalResources, resolveBindKey(req)); } catch (_) { record = null; }
+    const info = record && record.info;
+    const user = info
+        ? ledge.userOfInfo(info)
+        : ledge.userKey(req && (req.userType || (req.applicationAuth && req.applicationAuth.userType)));
+    const asked = String((input && (input.workspace || input.workspaceId)) || '').trim();
+    let workspaceId = asked ? resolveWorkspaceId(asked, globalResources) : '';
+    if (!workspaceId) workspaceId = pairedWriteWorkspace('', req) || inferBoundWorkspaceId(globalResources, req) || 'default';
+    return {
+        ledge,
+        user,
+        workspaceId,
+        ownerClientId: info && info.clientId ? String(info.clientId) : '',
+        phone: !!(info && clientPhoneState(info))
+    };
+}
+
+// The Director chat a print came from: Wren's (the Dreamscape Director key) or Yozora's (the Xi key).
+// Another agent gets a desk of its own, named after it.
+async function ledgePrintsChat(req) {
+    const actor = String(resolveActorName(req) || '').trim();
+    const lower = actor.toLowerCase();
+    try {
+        if (lower === 'xi') {
+            const status = require('./xiDirector').runtimeStatus();
+            if (status && status.sessionId) return { id: status.sessionId, name: status.sessionName || 'Yozora', workspaceId: '' };
+        }
+        if (lower === 'dreamscape director' || lower === 'director' || lower === 'wren') {
+            const wren = require('./cursorDirector');
+            const id = wren.activeDirectorSessionId();
+            if (id) {
+                const status = await wren.directorStatus(false);
+                return {
+                    id,
+                    name: (status && status.sessionId === id && status.sessionName) || 'Director',
+                    workspaceId: wren.readChatWorkspace(id) || ''
+                };
+            }
+        }
+    } catch (_) { /* no Director index: the agent desk below */ }
+    const who = actor || 'Agent';
+    return { id: `agent_${who.toLowerCase().replace(/[^a-z0-9]+/g, '_')}`, name: `${who} prints`, workspaceId: '' };
+}
+
 async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
     const settings = readRemoteAccessSettings(globalResources);
     if (settings.openGeneratedImages === 'disabled') {
@@ -5154,31 +5206,33 @@ async function maybeOpenGeneratedInLumen(globalResources, req, filenames) {
     const names = Array.isArray(filenames) ? filenames.filter(Boolean) : [];
     if (!names.length) return { opened: false, reason: 'no-filename', target: settings.openGeneratedImages };
     if (settings.openGeneratedImages === 'ledge') {
-        const ledge = require('./ledgeDesk');
-        const session = ledge.ingestGenerated(names);
-        const state = session ? ledge.publicSession(session, true) : null;
-        // The user is working from a phone (the client this session is bound to is Melaton Mobile):
-        // the prints still land on the desk, but no client is made to open it (Yukimi 2026-11-11: "we
-        // don't need every client opening it when we're staring at the screen"). A Ledge window that
-        // is already open somewhere takes the new prints; `quiet` tells ledgeDesk.js not to open one.
-        let quiet = false;
-        try {
-            const record = getBoundRecord(globalResources, resolveBindKey(req));
-            quiet = !!(record && record.info && clientPhoneState(record.info));
-        } catch (_) { quiet = false; }
-        if (state) {
-            let wsServer = null;
-            try { wsServer = globalResources.getWebSocketServer(); } catch (_) { wsServer = null; }
-            if (wsServer && typeof wsServer.broadcast === 'function') {
-                wsServer.broadcast({ type: 'ledge_state', data: Object.assign({ reason: 'add' }, quiet ? { quiet: true } : {}, state), timestamp: new Date().toISOString() });
-            }
+        // One desk per Director chat, shown only on the client that chat belongs to (Yukimi
+        // 2026-11-16: "Unless the Director session is on the phone there is no reason any device
+        // should get Ledge open on it"). Every other client gets nothing.
+        const ctx = ledgeContext(globalResources, req);
+        const chat = await ledgePrintsChat(req);
+        const got = ctx.ledge.ingestGenerated(names, chat, {
+            user: ctx.user,
+            workspaceId: chat.workspaceId || ctx.workspaceId,
+            ownerClientId: ctx.ownerClientId
+        });
+        let shown = false;
+        if (got && ctx.ownerClientId) {
+            const desk = got.desk;
+            const data = got.created
+                ? ctx.ledge.fullPacket(desk, 'open', true)
+                : ctx.ledge.packet(desk, 'add', { baseRev: got.baseRev, present: true, added: got.added, trimmed: desk.lastTrimmed || [] });
+            shown = ctx.ledge.deliver(desk, data);
         }
         return {
-            opened: !!state && !quiet,
+            opened: shown,
             target: 'ledge',
-            ...(quiet ? { reason: 'user-on-phone', note: 'The prints are on the Ledge desk; it was not opened because the user is on a phone.' } : {}),
-            sessionId: state && state.sessionId,
-            clientCount: listClients(globalResources, resolveBindKey(req)).length
+            sessionId: got ? got.desk.id : null,
+            name: got ? got.desk.name : null,
+            client: ctx.ownerClientId ? (ctx.phone ? 'mobile' : 'desktop') : null,
+            ...(!ctx.ownerClientId
+                ? { reason: 'no-bound-client', note: 'The prints are on the Ledge desk. No client is bound, so none shows it.' }
+                : (!shown ? { reason: 'client-offline', note: 'The prints are on the Ledge desk. The bound client is not connected.' } : {}))
         };
     }
     const viewer = settings.openGeneratedImages === 'glancewell' ? 'glancewell' : 'lumen';
@@ -5669,6 +5723,11 @@ async function runDirectorSessionTool(globalResources, name, input, req) {
             if (!title) {
                 return mcpTextResult({ success: false, error: 'Director chat not found', code: 'SESSION_NOT_FOUND', chatId }, true);
             }
+            // the chat's Ledge prints desk carries its name (modules/ledgeDesk.js)
+            try {
+                const ledge = require('./ledgeDesk').bind(globalResources);
+                ledge.renameChatDesks(chatId, title).forEach((desk) => ledge.deliver(desk, ledge.packet(desk, 'rename', { baseRev: desk.rev - 1 })));
+            } catch (_) { /* the desk takes the name with the next print */ }
             return mcpTextResult({ success: true, chatId, title, next: 'Do not rename this chat again unless the goal shifted.' });
         } catch (error) {
             return mcpTextResult({ success: false, error: error.message, code: error.code || 'DIRECTOR_ERROR', chatId }, true);
@@ -9193,15 +9252,18 @@ async function callTool(globalResources, req, name, args) {
     }
 
     if (name === 'ledge') {
-        const ledge = require('./ledgeDesk');
+        // the calling user's desks in this workspace; changes show only on the bound client
+        const ctx = ledgeContext(globalResources, req, input);
+        const ledge = ctx.ledge;
         const op = String((input && input.op) || 'open').toLowerCase().replace(/[\s-]+/g, '_');
+        const scope = { user: ctx.user, workspaceId: ctx.workspaceId, ownerClientId: ctx.ownerClientId };
         if (op === 'save' || op === 'save_file') {
             let obj;
             let fallbackName = 'ledge.json';
             if (op === 'save') {
-                const session = ledge.getSession(input.sessionId);
+                const session = ledge.getSession(ctx.user, input.sessionId);
                 if (!session) {
-                    return mcpTextResult({ success: false, error: 'Unknown Ledge session', sessions: ledge.listSessions() }, true);
+                    return mcpTextResult({ success: false, error: 'Unknown Ledge session', sessions: ledge.listSessions(ctx.user, ctx.workspaceId) }, true);
                 }
                 obj = ledge.snapshot(session);
                 fallbackName = `ledge-${session.id}.json`;
@@ -9210,22 +9272,19 @@ async function callTool(globalResources, req, name, args) {
                 fallbackName = 'ledge-files.json';
             }
             const written = await writeLedgeVfs(globalResources, req, input, obj, fallbackName);
-            if (written.error) return mcpTextResult({ success: false, error: written.error, sessions: ledge.listSessions() }, true);
-            return mcpTextResult({ success: true, ...written, sessions: ledge.listSessions() });
+            if (written.error) return mcpTextResult({ success: false, error: written.error, sessions: ledge.listSessions(ctx.user, ctx.workspaceId) }, true);
+            return mcpTextResult({ success: true, ...written, sessions: ledge.listSessions(ctx.user, ctx.workspaceId) });
         }
-        const result = ledge.applyLedge(input);
-        if (result.state) {
-            let wsServer = null;
-            try { wsServer = globalResources.getWebSocketServer(); } catch (_) { wsServer = null; }
-            if (wsServer && typeof wsServer.broadcast === 'function') {
-                wsServer.broadcast({
-                    type: 'ledge_state',
-                    data: Object.assign({ reason: result.reason || 'open' }, result.state),
-                    timestamp: new Date().toISOString()
-                });
+        const result = ledge.applyLedge(input, scope);
+        let body = result.body;
+        if (result.data && result.desk) {
+            const shown = ctx.ownerClientId ? ledge.deliver(result.desk, result.data) : false;
+            if (body && typeof body === 'object') {
+                body = Object.assign({}, body, { shown });
+                if (!shown) body.shownNote = ctx.ownerClientId ? 'The bound client is not connected.' : 'No client is bound, so no client shows this desk.';
             }
         }
-        return mcpTextResult(result.body, result.ok !== true);
+        return mcpTextResult(body, result.ok !== true);
     }
 
     if (name === 'get_workspace_config') {
