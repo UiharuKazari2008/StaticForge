@@ -3459,8 +3459,11 @@
         // right of the camera instead of staying left of it (Yukimi, Nov 13, Fold7)
         let cameraInBar = applyCameraHole(bar);
         const relayout = () => { if (cameraInBar) cameraInBar = applyCameraHole(bar); };
-        // the kept room (not with the camera in the bar: its own layout decides there)
-        if (!cameraInBar) setReserve(free);
+        // the kept room (not with the camera in the bar: its own layout decides there). A screen with a
+        // camera keeps none at any rotation: upright the camera rules it out, so turned the two empty
+        // slots read as the camera's gap moved into the bar (Fold7 cover and inner screens, Nov 15)
+        const hasCamera = (parseFloat(root.style.getPropertyValue('--camera-hole-width')) || 0) > 0;
+        if (!cameraInBar && !hasCamera) setReserve(free);
         // the 50 % mark: the leftmost icon starts in the bar's right half (the kept room aside)
         const half = () => {
             const box = bar.getBoundingClientRect();
