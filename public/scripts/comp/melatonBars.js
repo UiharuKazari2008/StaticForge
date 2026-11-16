@@ -496,7 +496,8 @@
             // pseudo-elements with a picture or colour (radio dots, the warning glyph, the keyboard key)
             ['::before', '::after'].forEach((pe) => {
                 const ps = getComputedStyle(el, pe);
-                if (!ps || ps.content === 'none' || ps.display === 'none') return;
+                // (a pressed state's art waits at opacity 0: Start's and the corner's highlight)
+                if (!ps || ps.content === 'none' || ps.display === 'none' || ps.visibility === 'hidden' || +ps.opacity === 0) return;
                 if (ps.position !== 'absolute') return;
                 const w = px(ps.width); const h = px(ps.height);
                 if (!w || !h) return;
