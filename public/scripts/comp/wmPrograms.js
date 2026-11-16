@@ -2555,12 +2555,14 @@
          * one step of the value per `stepPx` WM units rolled, each step a detent (the shell's touch
          * tick), with no ends to the wheel itself (the value stops at min / max); a flick rolls on
          * and slows (inertia). Left / Right step it, Home / End go to the ends. opts: value,
-         * min, max, step, fineStep (a slower roll than fineSpeed WM units a second, 40, steps by this
-         * instead: fine adjust), label (accessible name), stepPx (8), onChange(value) on every step,
+         * min, max, step, fineStep (a roll slower than fineSpeed WM units a second, 160, steps by this
+         * instead: fine adjust is the usual, a quick roll takes whole steps), zeroStop (detents a value
+         * rests at 0 before it crosses to the other sign, 4; 0 = none), current() (onStep wheels: the
+         * value now, for the stop at zero), label (accessible name), stepPx (8), onChange(value) on every step,
          * onStep(dir, fine) instead of a value (a wheel that steps something else: emphasis), disabled.
          * Returns { set(value), el }.
          */
-        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, fineStep = 0, fineSpeed = 40, label = '', stepPx = 8, onChange, onStep, disabled = false } = {}) {
+        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, fineStep = 0, fineSpeed = 160, label = '', stepPx = 8, onChange, onStep, current = null, zeroStop = 4, disabled = false } = {}) {
             const RIDGES = 18;
             host.insertAdjacentHTML('beforeend', `<div class="wm-jog${disabled ? ' is-disabled' : ''}" role="slider"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${escUi(label)}"><div class="wm-jog-wheel">${'<span class="wm-jog-ridge"></span>'.repeat(RIDGES)}</div></div>`);
             const all = host.querySelectorAll('.wm-jog');
@@ -2586,15 +2588,50 @@
             };
             // a detent: the shell's short touch tick on every step (Settings decide whether it buzzes)
             const detent = () => { if (sh && typeof sh.vibrate === 'function') sh.vibrate('tick'); };
-            // fine: a slow roll steps by fineStep (the hundredths of a guidance), a quick one by step
+            // the stop at zero: a value that reaches 0 from either side rests there for zeroStop more
+            // detents' worth of roll before it goes on to the other side (a heavier buzz marks it)
+            let zeroDebt = 0;
+            let zeroDir = 0;
+            const atZero = (from, dir) => {
+                if (!zeroStop) return;
+                zeroDebt = zeroStop;
+                zeroDir = dir;
+                if (sh && typeof sh.vibrate === 'function') sh.vibrate('land');
+            };
+            /** True while the roll is still pushing through the stop at zero (the step is taken up). */
+            const heldAtZero = (value, dir) => {
+                if (!zeroStop || value !== 0 || !zeroDebt) return false;
+                if (dir !== zeroDir) { zeroDebt = 0; return false; }
+                zeroDebt -= 1;
+                return true;
+            };
+            // fine: a slow roll steps by fineStep (the hundredths of a guidance), only a quick one by step
             const move = (n, fine = false) => {
                 if (!n) return;
-                if (onStep) { for (let k = 0; k < Math.abs(n); k++) { onStep(Math.sign(n), fine); detent(); } return; }
+                const dir = Math.sign(n);
+                if (onStep) {
+                    for (let k = 0; k < Math.abs(n); k++) {
+                        const was = typeof current === 'function' ? Number(current()) : NaN;
+                        if (heldAtZero(was, dir)) continue;
+                        onStep(dir, fine);
+                        detent();
+                        const now = typeof current === 'function' ? Number(current()) : NaN;
+                        if (now === 0 && was !== 0) atZero(was, dir);
+                    }
+                    return;
+                }
                 const by = fine && fineStep ? fineStep : step;
-                const next = Math.max(min, Math.min(max, Number((cur + n * by).toFixed(dg))));
-                if (next === cur) return;
-                cur = next;
-                detent();
+                for (let k = 0; k < Math.abs(n); k++) {
+                    if (heldAtZero(cur, dir)) continue;
+                    let next = Math.max(min, Math.min(max, Number((cur + dir * by).toFixed(dg))));
+                    // a step across zero stops on it
+                    if (zeroStop && ((cur > 0 && next < 0) || (cur < 0 && next > 0))) next = 0;
+                    if (next === cur) break;
+                    const was = cur;
+                    cur = next;
+                    detent();
+                    if (cur === 0 && was !== 0) atZero(was, dir);
+                }
                 draw();
                 if (onChange) onChange(cur);
             };
@@ -2658,7 +2695,7 @@
                         const n = Math.trunc(rest / per);
                         rest -= n * per;
                         draw();
-                        move(n, speed < fineSpeed);
+                        move(n, !!fineStep || onStep ? speed < fineSpeed : false);
                     };
                     let lastMoveT = lastT;
                     const up = (ev) => {
@@ -2699,25 +2736,33 @@
             const fmt = (v) => Number(v).toFixed(dg);
             const clamp = (v) => Math.max(min, Math.min(max, Number(Number(v).toFixed(dg))));
             let cur = clamp(Number(value) || 0);
-            // the LCD it opened from blinks its figures while it is open (twice a second, by a class)
+            // the LCD it opened from blinks its figures while it is open (twice a second, by a class),
+            // and holds them lit while the value is being changed
             const lcd = anchor && anchor.classList && anchor.classList.contains('wm-lcd') ? anchor : null;
-            const blink = lcd ? setInterval(() => lcd.classList.toggle('is-blink'), 500) : 0;
+            let changedAt = 0;
+            const blink = lcd ? setInterval(() => {
+                if (Date.now() - changedAt < 900) lcd.classList.remove('is-blink');
+                else lcd.classList.toggle('is-blink');
+            }, 500) : 0;
+            const signed = min < 0;
             return ui.popPanel(anchor, {
                 label,
                 className: 'wm-valuepop',
                 onClose: () => { clearInterval(blink); if (lcd) lcd.classList.remove('is-blink'); },
                 build(el) {
-                    el.innerHTML = `<div class="wm-valuepop-head"><span>${escUi(label)}</span><b></b></div><div class="wm-valuepop-row"></div>`;
-                    const out = el.querySelector('.wm-valuepop-head > b');
+                    el.innerHTML = `<div class="wm-valuepop-head"><span>${escUi(label)}</span><span class="wm-lcd wm-valuepop-lcd"></span></div><div class="wm-valuepop-row"></div>`;
+                    const outEl = el.querySelector('.wm-valuepop-lcd');
+                    const out = { set textContent(t) { ui.segText(outEl, t, { signed }); } };
                     out.textContent = fmt(cur);
                     const row = el.querySelector('.wm-valuepop-row');
-                    const jog = ui.jogWheel(row, { value: cur, min, max, step, fineStep, label, stepPx, onChange: (v) => { cur = v; out.textContent = fmt(v); if (onChange) onChange(v); } });
+                    const jog = ui.jogWheel(row, { value: cur, min, max, step, fineStep, label, stepPx, onChange: (v) => { changedAt = Date.now(); if (lcd) lcd.classList.remove('is-blink'); cur = v; out.textContent = fmt(v); if (onChange) onChange(v); } });
                     if (def != null) {
                         row.insertAdjacentHTML('beforeend', '<button type="button" class="wm-valuepop-default" aria-label="Default" title="Default"></button>');
                         row.querySelector('.wm-valuepop-default').addEventListener('click', () => {
                             const v = clamp(def);
                             if (v === cur) return;
                             cur = v;
+                            changedAt = Date.now();
                             jog.set(v);
                             out.textContent = fmt(v);
                             if (onChange) onChange(v);
@@ -2729,21 +2774,40 @@
         },
         /**
          * Seven-segment figures (.wm-seg / .wm-lcd, DSEG7): sets the text and the unlit segments
-         * behind it (every figure an 8, its point kept), as an LCD shows them.
+         * behind it (every figure an 8, its point kept), as an LCD shows them. opts.signed: a sign
+         * figure in front (lit '-' when negative, its unlit minus otherwise).
          */
-        segText(el, text) {
+        segText(el, text, { signed = false } = {}) {
             if (!el) return;
-            const t = String(text == null ? '' : text);
+            let t = String(text == null ? '' : text);
+            // a value that can go negative keeps a sign figure: '-' lit, else blank ('!' in DSEG7)
+            if (signed) t = (t.startsWith('-') ? '-' : '!') + t.replace(/^-/, '');
             if (el.textContent !== t) el.textContent = t;
-            el.dataset.ghost = t.replace(/[0-9]/g, '8').replace(/[^8.:\s]/g, '8');
+            let ghost = t.replace(/[0-9!]/g, '8').replace(/[^8.:\s]/g, '8');
+            // its unlit segment is the minus alone
+            if (signed) ghost = `-${ghost.slice(1)}`;
+            el.dataset.ghost = ghost;
         },
         /**
          * A tool bar too wide for the screen wraps by its groups (.wm-toolbar-group): a divider that
-         * would start a row is left out, as a bar never begins with one. Call after its content or
-         * width changed.
+         * would start a row is left out, as a bar never begins with one. opts.oneRow: groups marked
+         * data-drop="n" are taken out, n = 1 first, until the bar is one row; returns those groups
+         * (a caller offers them in a menu). Call after its content or width changed.
          */
-        fitToolbar(bar) {
-            if (!bar) return;
+        fitToolbar(bar, { oneRow = false } = {}) {
+            if (!bar) return [];
+            // oneRow: groups marked data-drop leave the bar, the lowest number first, until it is one row
+            const dropped = [];
+            if (oneRow) {
+                const drops = [...bar.querySelectorAll(':scope > .wm-toolbar-group[data-drop]')].sort((a, b) => Number(a.dataset.drop) - Number(b.dataset.drop));
+                drops.forEach((g) => { g.hidden = false; });
+                const rows = () => new Set([...bar.querySelectorAll(':scope > .wm-toolbar-group')].filter((g) => !g.hidden && g.getClientRects().length).map((g) => g.offsetTop)).size;
+                for (const g of drops) {
+                    if (rows() <= 1) break;
+                    g.hidden = true;
+                    dropped.push(g);
+                }
+            }
             const seps = bar.querySelectorAll(':scope > .wm-toolbar-group > .wm-tool-sep:first-child');
             seps.forEach((s) => s.classList.remove('is-wrap'));
             let lastTop = null;
@@ -2754,6 +2818,7 @@
                 if (sep && (lastTop === null || t > lastTop + 1)) sep.classList.add('is-wrap');
                 lastTop = t;
             });
+            return dropped;
         },
         /**
          * Date control rendered into `host` (SysDateTimePick32 with its drop arrow: the combo's box

@@ -298,11 +298,12 @@
 
 /* ---------------------------------------------------------------- Quick Access: a dense WM dialog (the
  * message box's frame, wmShell .wm-msgbox), 240 units wide: Quick Access as its title, the
- * breadcrumbs, Back beside the find box, then 20-unit rows, ten in view and scrolling; smaller when
+ * breadcrumbs, Back beside the find box, then 20-unit rows, ten in view and scrolling: a fixed size whatever the
+ * level holds; smaller when
  * the keyboard leaves less room */
 
 #wmShell .wds-qadlg > .wm-msgbox { display: flex; flex-direction: column; width: 100%; max-width: calc(240 * var(--wm-px)); max-height: 100%; }
-#wmShell .wds-qadlg > .wm-msgbox > .wm-listbox { flex: 0 1 auto; max-height: calc(10 * 20 * var(--wm-px) + 1 * var(--wm-px)); min-height: calc(21 * var(--wm-px)); border: 0; border-top: calc(1 * var(--wm-px)) solid currentColor; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+#wmShell .wds-qadlg > .wm-msgbox > .wm-listbox { flex: 0 1 auto; height: calc(10 * 20 * var(--wm-px) + 1 * var(--wm-px)); min-height: calc(21 * var(--wm-px)); border: 0; border-top: calc(1 * var(--wm-px)) solid currentColor; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
 .wds-qadlg .wm-msgbox-title > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wds-qadlg .wm-msgbox-title > .wm-title-action { flex: 0 0 auto; }
 .wds-qa-search { display: flex; align-items: center; flex: 0 0 auto; gap: calc(2 * var(--wm-px)); padding: calc(2 * var(--wm-px)); }
@@ -318,7 +319,7 @@
 .wds-qa-row > i { flex: 0 0 auto; width: calc(12 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); text-align: center; pointer-events: none; }
 .wds-qa-row > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wds-qa-row > small { flex: 0 1 auto; min-width: 0; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: inherit; opacity: 0.7; }
-.wds-qadlg .wds-none { flex: 0 0 auto; height: calc(2 * 20 * var(--wm-px)); margin: 0; padding: calc(6 * var(--wm-px)) calc(5 * var(--wm-px)); box-sizing: border-box; border-top: calc(1 * var(--wm-px)) solid currentColor; }
+.wds-qadlg .wds-none { flex: 0 1 auto; height: calc(10 * 20 * var(--wm-px) + 1 * var(--wm-px)); margin: 0; padding: calc(6 * var(--wm-px)) calc(5 * var(--wm-px)); box-sizing: border-box; border-top: calc(1 * var(--wm-px)) solid currentColor; }
 
 /* ---------------------------------------------------------------- print */
 
@@ -434,6 +435,11 @@
     overflow: hidden;
 }
 
+/* the token count and meter (of the model's limit), when the bar has room for them */
+.wds-tb-tokens { display: flex; flex-direction: column; justify-content: center; height: calc(21 * var(--wm-px)); min-width: calc(44 * var(--wm-px)); margin: 0 calc(2 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); line-height: 1; }
+.wds-tb-tokens > .wds-bar { height: calc(7 * var(--wm-px)); margin-top: calc(2 * var(--wm-px)); }
+.wds-tb-tokens.is-over > span { font-weight: bold; }
+
 /* the emphasis controls stay at the right of the bar when it has room to spare */
 .wds-toolbar > .wds-ed-emph { margin-left: auto; }
 
@@ -475,6 +481,18 @@
 }
 
 .wds-ac[hidden] { display: none; }
+/* with spell check / thesaurus lines at the top the list is that much taller, so four rows still show */
+.wds-ac.has-side { max-height: calc(4 * 17 * var(--wm-px) + 2 * 23 * var(--wm-px) + 2 * var(--wm-px)); }
+/* a row's indicators: the kind / category icon before the text, the count / series / Expander after */
+.wds-ac > .wds-ac-row { gap: calc(4 * var(--wm-px)); }
+.wds-ac > .wds-ac-row > i { flex: 0 0 auto; width: calc(12 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); text-align: center; pointer-events: none; }
+.wds-ac > .wds-ac-row > span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-ac > .wds-ac-row > small { flex: 0 1 auto; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: inherit; opacity: 0.7; }
+/* spell check and thesaurus: one line each at the top, the word then its suggestions to tap, scrolling sideways */
+.wds-ac > .wds-ac-side { display: flex; align-items: center; gap: calc(3 * var(--wm-px)); min-height: calc(23 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); border-bottom: calc(1 * var(--wm-px)) solid currentColor; overflow-x: auto; overflow-y: hidden; white-space: nowrap; scrollbar-width: none; touch-action: pan-x; }
+.wds-ac > .wds-ac-side > * { flex: 0 0 auto; }
+.wds-ac > .wds-ac-side > i { width: calc(12 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); text-align: center; }
+.wds-ac > .wds-ac-side > .wm-tool { margin: 0; border-color: currentColor; }
 .wds-ac > .wm-listbox-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 
 /* ---------------------------------------------------------------- generation tool bar */
@@ -521,8 +539,16 @@
 .wds-wt-row > label > span > i { display: inline-block; width: calc(12 * var(--wm-px)); margin-right: calc(3 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); text-align: center; }
 /* a row that is on: its weight as an LCD and the jog wheel that rolls it */
 .wds-wt-row > .wds-wt-lcd { flex: 0 0 auto; min-width: calc(30 * var(--wm-px)); height: calc(19 * var(--wm-px)); }
-.wds-wt-row > .wm-jog { flex: 0 0 auto; width: calc(44 * var(--wm-px)); height: calc(19 * var(--wm-px)); }
+.wds-wt-row > .wm-jog { flex: 0 0 auto; width: calc(64 * var(--wm-px)); height: calc(19 * var(--wm-px)); }
+.wds-wt-row > .wm-valuepop-default { flex: 0 0 auto; }
+.wds-wt-row > .wds-wt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wm-pop.wds-ucpop { width: calc(200 * var(--wm-px)); }
+.wm-pop.wds-rack { width: calc(300 * var(--wm-px)); }
+
+/* UC: the desktop's level boxes as square cells, the NSFW state's icon after them */
+.wds-genbar .wds-gb-uc { gap: calc(3 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); }
+.wds-genbar .wds-gb-uc .wms-uc-meter > i { width: calc(4 * var(--wm-px)); height: calc(4 * var(--wm-px)); }
+.wds-genbar .wds-gb-uc > i { font-size: calc(11 * var(--wm-px)); pointer-events: none; }
 
 /* the seed's panel: one row, the seed's edit box then Clear, Random and the lock as tool cells */
 .wm-pop.wds-seedpop {

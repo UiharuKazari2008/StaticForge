@@ -67,10 +67,15 @@
     // Quick Access and Find, then the emphasis controls kept at the right (Yukimi, Nov 15): 'weight'
     // is the LCD (the jog wheel goes after it), then the group's menu (Trim Start, Trim End, Remove
     // Emphasis)
+    // the toolbox holds the prompt tools (Lowercase, Weight Rack, Reset Emphasis) and Quick Access /
+    // Find when the row has no room for them; the token count goes first when room is short (drop 1),
+    // then Quick Access / Find (drop 2)
     const ED_GROUPS = [
         [['undo', 'Undo'], ['redo', 'Redo']],
         [['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']],
-        [['quickaccess', 'Quick Access'], ['find', 'Find']],
+        [['toolbox', 'Prompt Tools']],
+        { drop: 2, tools: [['quickaccess', 'Quick Access'], ['find', 'Find']] },
+        { drop: 1, tools: ['tokens'] },
         ['weight', ['emmenu', 'Emphasis Group']]
     ];
     const ED_ICONS = { emmenu: 'group' };
@@ -104,6 +109,7 @@
     let snap = null;
     let edField = 'prompt';
     let edJog = null;
+    let edDropped = [];
     let viewing = '';
     let opening = false;
     let tabState = {};
@@ -642,6 +648,18 @@
         const ta = edArea();
         const out = $('.wds-ed-head > span');
         if (ta && out) drawTokens(edField, ta.value, out);
+        // the bar's count and meter (the desktop's token bar): of the model's limit
+        const box = $('.wds-tb-tokens');
+        if (!ta || !box || !box.offsetParent) return;
+        const seq = String(++tokenSeq);
+        box.dataset.seq = seq;
+        Promise.resolve(ta.value ? M.tokens(ta.value) : 0).then((n) => {
+            if (box.dataset.seq !== seq) return;
+            const limit = M.tokenLimit() || 512;
+            box.firstElementChild.textContent = n == null ? '' : `${n}/${limit}`;
+            box.classList.toggle('is-over', n > limit);
+            setBar(box.querySelector('.wds-bar'), n == null ? 0 : Math.min(100, (n / limit) * 100));
+        });
     }
 
     function edLoad() {
@@ -765,6 +783,8 @@
             next = Math.round((1 + dir * by) * 100) / 100;
         }
         next = Math.max(-3, Math.min(5, next));
+        // a step across zero stops on it (the jog's stop at zero)
+        if (hit && ((hit.weight > 0 && next < 0) || (hit.weight < 0 && next > 0))) next = 0;
         // back at 1 the group is plain text again
         const plain = Math.abs(next - 1) < 0.001;
         const out = plain ? inner : `${fmtWeight(next)}::${inner}::`;
@@ -782,7 +802,7 @@
         if (!ta || !out) return;
         const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
         const w = hit ? hit.weight : 1;
-        if (ui && typeof ui.segText === 'function') ui.segText(out, w.toFixed(2)); else out.textContent = w.toFixed(2);
+        if (ui && typeof ui.segText === 'function') ui.segText(out, w.toFixed(2), { signed: true }); else out.textContent = w.toFixed(2);
         hlDraw();
         // the readout takes the strength's colour (Yukimi, Nov 15): up towards orange and red, down
         // towards blue, all of it by 2 / 0
@@ -831,6 +851,101 @@
         }
         hl.hidden = false;
         hl.scrollTop = ta.scrollTop;
+    }
+
+    /** The weight of the group the caret is in (1 outside one): the emphasis jog's stop at zero reads it. */
+    function caretWeight() {
+        const ta = edArea();
+        const hit = ta ? weightAt(ta.value, ta.selectionStart, ta.selectionEnd) : null;
+        return hit ? hit.weight : 1;
+    }
+
+    /**
+     * The toolbox (the desktop's Prompt Tools): Quick Access and Find when the bar has no room for
+     * them, Lowercase, Weight Rack, Reset Emphasis.
+     */
+    function toolboxMenu(btn) {
+        const ta = edArea();
+        const hasGroups = !!ta && new RegExp(WEIGHT_RE.source).test(ta.value);
+        const rows = [];
+        if (edDropped.some((g) => g.querySelector('[data-ed="quickaccess"]'))) rows.push({ label: 'Quick Access...', action: openQa }, { label: 'Find...', action: findAsk }, '-');
+        rows.push(
+            { label: 'Lowercase', disabled: !ta || !ta.value, action: lowercaseText },
+            { label: 'Weight Rack...', disabled: !hasGroups, action: () => weightRack(btn) },
+            '-',
+            { label: 'Reset Emphasis...', disabled: !hasGroups, action: resetEmphasis }
+        );
+        sh.dropdown(btn, rows, 'left');
+    }
+
+    /** The whole text in lower case, a 'Text:' left as written (the desktop's Lowercase); Undo takes it back. */
+    function lowercaseText() {
+        const ta = edArea();
+        if (!ta || !ta.value) return;
+        const out = ta.value.split(/\btext:/i).map((part, i) => (i === 0 ? part.toLowerCase() : `Text:${part.toLowerCase()}`)).join('');
+        if (out === ta.value) return;
+        const a = ta.selectionStart;
+        const b = ta.selectionEnd;
+        ta.focus();
+        ta.select();
+        document.execCommand('insertText', false, out);
+        ta.setSelectionRange(Math.min(a, out.length), Math.min(b, out.length));
+        edWeight();
+        edCount();
+    }
+
+    /** Every weighted group back to plain text, after a question (the desktop's Reset Emphasis). */
+    function resetEmphasis() {
+        sh.messageBox({ title: 'Reset Emphasis', text: 'Remove every emphasis weight from this prompt?', icon: 'question', modal: true, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false })
+            .then((yes) => {
+                const ta = edArea();
+                if (!yes || !ta) return;
+                const out = ta.value.replace(new RegExp(WEIGHT_RE.source, 'g'), '$2');
+                if (out === ta.value) return;
+                ta.focus();
+                ta.select();
+                document.execCommand('insertText', false, out);
+                ta.setSelectionRange(out.length, out.length);
+                edWeight();
+                edCount();
+            });
+    }
+
+    /**
+     * Weight Rack (the desktop's): every weighted group of the prompt in a row, its weight as an LCD
+     * with a jog wheel and the square default button; a group stays a group at 1.00 here.
+     */
+    function weightRack(anchor) {
+        const ta = edArea();
+        if (!ta) return;
+        const groups = () => { const out = []; const re = new RegExp(WEIGHT_RE.source, 'g'); let m; while ((m = re.exec(ta.value))) out.push({ from: m.index, to: m.index + m[0].length, weight: Number(m[1]), inner: m[2] }); return out; };
+        const list = groups();
+        if (!list.length) return;
+        const setWeight = (k, w) => {
+            const g = groups()[k];
+            if (!g) return;
+            const out = `${fmtWeight(w)}::${g.inner}::`;
+            const a = ta.selectionStart;
+            const b = ta.selectionEnd;
+            ta.focus({ preventScroll: true });
+            ta.setSelectionRange(g.from, g.to);
+            document.execCommand('insertText', false, out);
+            const d = out.length - (g.to - g.from);
+            ta.setSelectionRange(a > g.from ? a + d : a, b > g.from ? b + d : b);
+            edWeight();
+            edCount();
+        };
+        ui.popPanel(anchor, {
+            label: 'Weight Rack',
+            className: 'wds-wtpop wds-rack',
+            build(el) {
+                el.innerHTML = ui.sub('Weight Rack') + list.map((g, k) => `<div class="wds-wt-row is-on" data-k="${k}"><span class="wds-wt-name">${esc(g.inner.trim())}</span><span class="wds-wt-lcd wm-lcd"></span></div>`).join('');
+                el.querySelectorAll('.wds-wt-row').forEach((row) => {
+                    const k = Number(row.dataset.k);
+                    weightJog(row, { name: list[k].inner.trim(), bias: list[k].weight, min: -3, max: 5, def: 1, step: 0.01, fineStep: 0.01, coarse: 0.1 }, (r, p) => setWeight(k, p.bias));
+                });
+            }
+        });
     }
 
     /** The emphasis group's menu, from its bar button: the tools for the group the caret is in. */
@@ -1093,12 +1208,59 @@
                 const now = acToken();
                 if (seq !== acSeq || top() !== 'editor' || !now || now.text !== tok.text) return;
                 const box = $('.wds-ac');
-                if (!list.length) { box.hidden = true; box.textContent = ''; return; }
-                box.innerHTML = list.slice(0, 30).map((r) => `<button type="button" class="wm-listbox-row" data-key="${esc(r.text)}"><span>${esc(r.text)}</span></button>`).join('');
+                const spell = list.spell || [];
+                const lookup = list.lookup || [];
+                if (!list.length && !spell.length && !lookup.length) { box.hidden = true; box.textContent = ''; return; }
+                // spell check and thesaurus at the top while they have something (the desktop's side
+                // sections): the word, then its suggestions / synonyms to tap
+                const chips = (word, words, attr) => words.map((w) => `<button type="button" class="wm-tool is-text" data-${attr}="${esc(w)}" data-word="${esc(word)}">${esc(w)}</button>`).join('');
+                const side = spell.map((r) => `<div class="wds-ac-side is-spell">${toolIcon('fas fa-spell-check')}<b>${esc(r.word)}</b>${chips(r.word, r.suggestions, 'fix')}</div>`).join('')
+                    + lookup.map((r) => `<div class="wds-ac-side is-lookup">${toolIcon('fas fa-book')}<b>${esc(r.word)}</b>${chips(r.word, r.synonyms, 'syn')}</div>`).join('');
+                box.innerHTML = side + list.slice(0, 30).map((r) => `<button type="button" class="wm-listbox-row wds-ac-row" data-key="${esc(r.text)}">${toolIcon(acIcon(r))}<span>${esc(r.label || r.text)}</span>${acNote(r) ? `<small>${esc(acNote(r))}</small>` : ''}</button>`).join('');
+                box.classList.toggle('has-side', !!side);
                 box.hidden = false;
                 box.scrollTop = 0;
             });
         }, 250);
+    }
+
+    // a row's indicators (the desktop's): its kind and tag category as an icon, beside it the post
+    // count, a character's series, or "Expander"
+    const AC_CATEGORY_ICONS = { 0: 'fas fa-tag', 1: 'fas fa-palette', 3: 'fas fa-copyright', 4: 'fas fa-user', 5: 'fas fa-circle-info', 6: 'fas fa-paw' };
+    function acIcon(r) {
+        if (r.kind === 'expander') return 'fas fa-book-font';
+        if (r.kind === 'character') return 'fas fa-user';
+        return AC_CATEGORY_ICONS[r.category] || 'fas fa-tag';
+    }
+    function acNote(r) {
+        if (r.kind !== 'tag') return r.note || '';
+        const n = Number(r.count) || 0;
+        if (!n) return '';
+        return n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(n >= 1e4 ? 0 : 1)}k` : String(n);
+    }
+
+    /**
+     * A spell-check suggestion or a synonym in place of its word inside the tag being typed. A
+     * spelling fix keeps the list and asks again; a synonym closes it (the desktop's two).
+     */
+    function acReplaceWord(word, to, keepOpen) {
+        const ta = edArea();
+        const tok = acToken();
+        if (!ta || !word || !to) return;
+        const from = tok ? tok.start : 0;
+        const end = tok ? tok.end : ta.value.length;
+        const hay = ta.value.slice(from, end).toLowerCase();
+        const re = new RegExp(`(^|[^a-z0-9])(${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').toLowerCase()})(?=$|[^a-z0-9])`, 'g');
+        let m;
+        let at = -1;
+        while ((m = re.exec(hay))) at = m.index + m[1].length;
+        if (at < 0) return;
+        ta.focus();
+        ta.setSelectionRange(from + at, from + at + word.length);
+        document.execCommand('insertText', false, to);
+        if (keepOpen) acQueue(); else acHide();
+        edCount();
+        hlDraw();
     }
 
     function acPick(tag) {
@@ -1245,7 +1407,8 @@
             if (kind === 'combo') return `<button type="button" class="wm-tool wm-tool-combo" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"></button>`;
             if (kind === 'number') return `<button type="button" class="wm-tool is-text${GEN_SEG.has(id) ? ' wm-lcd' : ''}" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="dialog" title="${esc(label)}"></button>`;
             // UC is the desktop's level meter (four boxes), not a picture
-            if (id === 'uc') return `<button type="button" class="wm-tool" data-gb="uc" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"><span class="wms-uc-meter" data-level="0"><i></i><i></i><i></i><i></i></span></button>`;
+            // UC: the desktop's four level boxes, NSFW: the desktop's icon for its state
+            if (id === 'uc') return `<button type="button" class="wm-tool wds-gb-uc" data-gb="uc" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"><span class="wms-uc-meter" data-level="0"><i></i><i></i><i></i><i></i></span>${toolIcon('fas fa-shield')}</button>`;
             const count = id === 'dataset' ? '<span class="wms-pt-count" hidden></span>' : '';
             const pressed = kind === 'toggle' || kind === 'seed' ? ' aria-pressed="false"' : ` aria-haspopup="${kind === 'panel' ? 'dialog' : 'listbox'}"`;
             return `<button type="button" class="wm-tool" data-gb="${id}" aria-label="${esc(label)}" title="${esc(label)}"${pressed}>${toolIcon(icon)}${count}</button>`;
@@ -1358,6 +1521,9 @@
         uc.disabled = !o.has.uc || !o.ucPresets.length;
         const level = Number(s.append_uc) || 0;
         uc.querySelector('.wms-uc-meter').dataset.level = String(level === 5 ? 1 : Math.min(4, level));
+        const nsfw = Number(s.nsfw) || 0;
+        const face = uc.querySelector('i.fas');
+        if (face) face.className = nsfw > 0 ? 'fas fa-face-grin-hearts' : nsfw < 0 ? 'fas fa-shield-xmark' : 'fas fa-shield';
         const variety = q('variety');
         variety.hidden = !o.has.variety;
         variety.setAttribute('aria-pressed', String(!!s.variety));
@@ -1449,24 +1615,32 @@
 
     const fmtWt = (v) => (Number(v) === 1 ? '1.0' : Number(v).toFixed(1));
 
-    /** A weight's LCD and jog wheel in a row (rows that are switched off show neither). */
+    /** A weight's LCD, jog wheel and square default button in a row (rows that are switched off show none). */
     function weightJog(row, r, write) {
         const lcd = row.querySelector('.wds-wt-lcd');
-        ui.segText(lcd, fmtWt(r.bias));
+        const signed = Number(r.min) < 0;
+        const fmt = r.fineStep ? (v) => Number(v).toFixed(2) : fmtWt;
+        ui.segText(lcd, fmt(r.bias), { signed });
         let timer = 0;
-        ui.jogWheel(row, {
+        const put = (n) => {
+            ui.segText(lcd, fmt(n), { signed });
+            clearTimeout(timer);
+            timer = setTimeout(() => { Promise.resolve(write(r, { bias: n })).then(() => { r.bias = n; snap = null; drawGenbar(); }); }, 120);
+        };
+        const jog = ui.jogWheel(row, {
             label: `${r.name} weight`,
             value: r.bias,
             min: r.min,
             max: r.max,
-            step: 0.1,
+            step: r.coarse || 0.1,
+            fineStep: r.fineStep || 0,
             stepPx: 10,
-            onChange: (n) => {
-                ui.segText(lcd, fmtWt(n));
-                clearTimeout(timer);
-                timer = setTimeout(() => { Promise.resolve(write(r, { bias: n })).then(() => { r.bias = n; snap = null; drawGenbar(); }); }, 120);
-            }
+            onChange: put
         });
+        if (r.def != null) {
+            row.insertAdjacentHTML('beforeend', `<button type="button" class="wm-valuepop-default" aria-label="${esc(r.name)}: Default" title="Default"></button>`);
+            row.lastElementChild.addEventListener('click', () => { jog.set(r.def); put(r.def); });
+        }
     }
 
     /**
@@ -1542,13 +1716,12 @@
             label: 'Seed',
             className: 'wds-seedpop',
             build(el) {
-                el.innerHTML = `${ui.edit('', '', 'data-seed inputmode="numeric" placeholder="Random" aria-label="Seed"')}`
+                el.innerHTML = `<span class="wm-lcd-edit" data-ghost="8888888888"><input type="text" data-seed inputmode="numeric" maxlength="10" autocomplete="off" placeholder="Random" aria-label="Seed"></span>`
                     + `<button type="button" class="wm-tool" data-seed-act="copy" aria-label="Use the Print's Seed" title="Use the Print's Seed" hidden>${toolIcon('fas fa-arrow-turn-down-right')}</button>`
                     + `<button type="button" class="wm-tool" data-seed-act="clear" aria-label="Clear Seed" title="Clear Seed">${toolIcon('fa-regular fa-xmark-large')}</button>`
                     + `<button type="button" class="wm-tool" data-seed-act="random" aria-label="Random Seed" title="Random Seed">${toolIcon('nai-dice')}</button>`
                     + `<button type="button" class="wm-tool" data-seed-act="lock" aria-label="Keep this seed" title="Keep this seed" aria-pressed="false">${toolIcon('fas fa-seedling')}</button>`;
                 const field = el.querySelector('[data-seed]');
-                field.classList.add('is-lcd');
                 const lock = el.querySelector('[data-seed-act="lock"]');
                 const copy = el.querySelector('[data-seed-act="copy"]');
                 const random = el.querySelector('[data-seed-act="random"]');
@@ -1565,6 +1738,7 @@
                     const g = lock.querySelector('i');
                     if (g) g.className = kept ? 'fas fa-lock' : 'fas fa-seedling';
                     field.disabled = kept;
+                    field.parentElement.classList.toggle('is-disabled', kept);
                     random.disabled = kept;
                     const ps = M.previewSeed();
                     copy.hidden = !ps || ps === String(s.seedText || '');
@@ -1707,7 +1881,7 @@
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
 </div>
 <div class="wds-ac wm-listbox" hidden></div>
-<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g, gi) => `<div class="wm-toolbar-group${g.includes('weight') ? ' wds-ed-emph' : ''}">${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[0] === 'emmenu' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`).join('')}</div>
+<div class="wds-toolbar wm-toolbar">${ED_GROUPS.map((g0, gi) => { const g = Array.isArray(g0) ? g0 : g0.tools; return `<div class="wm-toolbar-group${g.includes('weight') ? ' wds-ed-emph' : ''}"${g0.drop ? ` data-drop="${g0.drop}"` : ''}>${gi ? '<span class="wm-tool-sep"></span>' : ''}${g.map((b) => (b === 'weight' ? '<span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span>' : b === 'tokens' ? '<span class="wds-tb-tokens" aria-label="Tokens"><span></span><div class="wds-bar"><span></span></div></span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}" title="${b[1]}"${b[0] === 'emmenu' || b[0] === 'toolbox' ? ' aria-haspopup="menu"' : ''}>${edIcon(ED_ICONS[b[0]] || b[0])}</button>`)).join('')}</div>`; }).join('')}</div>
 </div>
 <div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
@@ -1765,17 +1939,18 @@
         // the group under the caret (or makes one of the selection / the tag there)
         const kit = window.wmSettings && window.wmSettings.ui;
         if (kit && typeof kit.jogWheel === 'function') {
-            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 10, onStep: (d, fine) => stepWeight(d, fine) });
+            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 10, onStep: (d, fine) => stepWeight(d, fine), current: () => caretWeight() });
             edJog.el.removeAttribute('tabindex');
             bar.querySelector('.wds-tb-weight').after(edJog.el);
         }
-        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (kit && top() === 'editor') kit.fitToolbar(bar); }).observe(bar);
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (kit && top() === 'editor') edDropped = kit.fitToolbar(bar, { oneRow: true }); }).observe(bar);
         bar.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
         bar.addEventListener('mousedown', (e) => e.preventDefault());
         bar.addEventListener('click', (e) => {
             const b = e.target.closest && e.target.closest('.wm-tool[data-ed]');
             if (!b) return;
             if (b.dataset.ed === 'emmenu') { emphasisMenu(b); return; }
+            if (b.dataset.ed === 'toolbox') { toolboxMenu(b); return; }
             edCommand(b.dataset.ed);
         });
         let countTimer = 0;
@@ -1796,7 +1971,14 @@
         // the list keeps the focus (and the keyboard) in the text; a tap on a row puts the tag in
         const ac = $('.wds-ac');
         ac.addEventListener('mousedown', (e) => e.preventDefault());
-        ac.addEventListener('click', (e) => { const r = e.target.closest && e.target.closest('.wm-listbox-row'); if (r) acPick(r.dataset.key); });
+        ac.addEventListener('click', (e) => {
+            const fix = e.target.closest && e.target.closest('[data-fix]');
+            if (fix) { acReplaceWord(fix.dataset.word, fix.dataset.fix, true); return; }
+            const syn = e.target.closest && e.target.closest('[data-syn]');
+            if (syn) { acReplaceWord(syn.dataset.word, syn.dataset.syn, false); return; }
+            const r = e.target.closest && e.target.closest('.wm-listbox-row');
+            if (r) acPick(r.dataset.key);
+        });
         $('.wds-ed-head > .wm-combo').addEventListener('click', (e) => {
             e.stopPropagation();
             sh.dropdown(e.currentTarget, fieldList().map((id) => ({ label: fieldName(id), radio: id === edField, action: () => edSwitch(id) })), 'left');

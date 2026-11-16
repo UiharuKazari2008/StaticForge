@@ -40,8 +40,11 @@
  *                                       the print on show's seed / that seed into the box (kept if locked)
  *   studioModel.clearSeed() / randomSeed()
  *                                       the seed box emptied (and unlocked) / a new random seed in it
+ *   studioModel.tokenLimit()            the prompt's token limit for the chosen model
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
- *   studioModel.suggest(text)            tag suggestions for a few typed letters: [{ text, count }] (a promise)
+ *   studioModel.suggest(text)            suggestions for a few typed letters (a promise): [{ text, label, kind
+ *                                       'tag' | 'character' | 'expander', category, count, note }], with
+ *                                       .spell [{ word, suggestions }] and .lookup [{ word, synonyms }]
  *   studioModel.cost()                  Anlas the next Generate would ask for (0 = free)
  *   studioModel.generate()              one Generate; resolves when it is over (done, failed or stopped)
  *   studioModel.stop()                  give up the print in hand
@@ -72,7 +75,7 @@
        loadPreciseReferencesFromMetadata, updateManualPriceDisplay, datasetAllowedForModel, getStudioUcPresetMenuItems,
        getStudioDatasetCatalog, datasetBias, findDatasetConfig, toggleDataset, adjustDatasetBias, ensureActiveSubTogglesInitialized,
        getActiveSubToggleDatasets, getVisibleSubToggles, getSubToggleGroup, getSubToggleDefaultBias, isSubToggleEnabled,
-       getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked */
+       getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked, getPromptTokenLimit */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -230,6 +233,11 @@
         };
     }
 
+    /** The prompt's token limit for the chosen model (the desktop's token bar). */
+    function tokenLimit() {
+        try { return typeof getPromptTokenLimit === 'function' ? Number(getPromptTokenLimit((snapshot() || {}).model)) || 0 : 0; } catch (_) { return 0; }
+    }
+
     async function tokens(text) {
         const model = (snapshot() || {}).model || '';
         try {
@@ -249,24 +257,76 @@
     let suggestSeq = 0;
     let suggestWired = false;
 
+    // spell check and thesaurus come in their own update messages before the search completes: kept
+    // per request until then
+    const suggestExtras = new Map();
+
+    /** A misspelt word's usable suggestions (none equal to it, no repeats); words left with none go. */
+    function spellRows(data) {
+        if (!data || !data.hasErrors || !Array.isArray(data.misspelled)) return [];
+        return data.misspelled.map((word) => {
+            const seen = new Set([String(word).toLowerCase()]);
+            const list = ((data.suggestions && data.suggestions[word]) || []).filter((x) => { const k = String(x).toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+            return { word, suggestions: list.slice(0, 6) };
+        }).filter((r) => r.suggestions.length);
+    }
+
+    /** Thesaurus words with synonyms (the word being typed first, as the server orders them). */
+    function lookupRows(data) {
+        if (!data || !data.hasData || !Array.isArray(data.words)) return [];
+        return data.words.filter((w) => w && Array.isArray(w.synonyms) && w.synonyms.length).map((w) => ({ word: w.word, synonyms: w.synonyms.slice(0, 8) }));
+    }
+
+    /** One result row as the phone lists it: what goes in, its label, its kind and the facts beside it. */
+    function suggestRow(r) {
+        if (!r || typeof r !== 'object') return null;
+        if (r.type === 'textReplacement' && r.placeholder) {
+            return { text: `!${r.placeholder}`, label: String(r.displayName || r.placeholder).replace(/^[^:]*:\s*/, ''), kind: 'expander', note: 'Expander' };
+        }
+        if (r.type === 'character' || r.type === 'characterTag') {
+            const c = r.character || {};
+            const name = String((r.tag && (r.tag.title || r.tag.name)) || r.tagInsertName || c.name || r.name || '').trim();
+            return name ? { text: name.replace(/_/g, ' '), label: name.replace(/_/g, ' '), kind: 'character', note: c.copyright || '' } : null;
+        }
+        const name = String(r.tag || r.title || r.name || '').trim();
+        if (!name) return null;
+        const cat = typeof r.category === 'number' ? r.category : ({ general: 0, artist: 1, copyright: 3, character: 4, meta: 5, species: 6 }[String(r.categoryName || r.category || '').toLowerCase()]);
+        const count = Number(r.n_count || r.count || r.d_count || r.e_count) || 0;
+        return { text: name.replace(/_/g, ' '), label: name.replace(/_/g, ' '), kind: 'tag', category: Number.isFinite(cat) ? cat : 0, count };
+    }
+
     function wireSuggest() {
         if (suggestWired || typeof window.handleSearchResponse !== 'function') return suggestWired;
         suggestWired = true;
         const orig = window.handleSearchResponse;
         window.handleSearchResponse = function (message) {
             if (!message || message.autofillSessionId !== SUGGEST_SESSION) return orig.apply(this, arguments);
+            if (message.type === 'search_results_update') {
+                const svc = message.service;
+                if ((svc === 'spellcheck' || svc === 'wordLookup') && suggestWaiting.has(message.requestId)) {
+                    const x = suggestExtras.get(message.requestId) || {};
+                    const row = (message.results || [])[0];
+                    x[svc] = row ? row.data : null;
+                    suggestExtras.set(message.requestId, x);
+                }
+                return undefined;
+            }
             if (message.type !== 'search_characters_complete') return undefined;
             const done = suggestWaiting.get(message.requestId);
             if (!done) return undefined;
             suggestWaiting.delete(message.requestId);
+            const extra = suggestExtras.get(message.requestId) || {};
+            suggestExtras.delete(message.requestId);
             const seen = new Set();
             const out = [];
             ((message.data && message.data.results) || []).forEach((r) => {
-                const text = r && typeof r.tag === 'string' ? r.tag.trim() : '';
-                if (!text || seen.has(text.toLowerCase())) return;
-                seen.add(text.toLowerCase());
-                out.push({ text, count: Number(r.count) || 0 });
+                const row = suggestRow(r);
+                if (!row || seen.has(row.text.toLowerCase())) return;
+                seen.add(row.text.toLowerCase());
+                out.push(row);
             });
+            out.spell = spellRows(extra.spellcheck || (message.data && message.data.spellCheck));
+            out.lookup = lookupRows(extra.wordLookup);
             done(out);
             return undefined;
         };
@@ -281,7 +341,7 @@
         return new Promise((resolve) => {
             suggestWaiting.set(requestId, resolve);
             // a search overtaken by the next one is never answered: it ends empty
-            setTimeout(() => { if (suggestWaiting.delete(requestId)) resolve([]); }, 6000);
+            setTimeout(() => { if (suggestWaiting.delete(requestId)) { suggestExtras.delete(requestId); resolve([]); } }, 6000);
             try {
                 window.wsClient.sendAcklessMessage('search_characters', {
                     query,
@@ -715,7 +775,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
-        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tagGroups, tagsAt, searchTags,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, tagGroups, tagsAt, searchTags,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */

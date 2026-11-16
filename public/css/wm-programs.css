@@ -1922,3 +1922,54 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 .wm-emph[data-tone="down"] {
     background: color-mix(in srgb, #5a8ee8 calc(25% + 45% * var(--wm-emph-strength, 0)), transparent);
 }
+
+/* ---- an edit box in LCD figures with its unlit segments (.wm-lcd-edit around the input; data-ghost
+ * on it, set by the page): the LCD face and frame, the figures right-aligned over their 8s, as wide
+ * as data-digits figures (the input's size) ---- */
+.wm-lcd-edit {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: calc(21 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #c8d4b8;
+    --wm-lcd-ink: #101810;
+    font: calc(11 * var(--wm-px)) / 1 'DSEG7 Classic', var(--wm-font);
+}
+
+.wm-lcd-edit[data-ghost]::before {
+    content: attr(data-ghost);
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 calc(3 * var(--wm-px));
+    color: var(--wm-lcd-ink);
+    opacity: 0.12;
+    pointer-events: none;
+}
+
+.wm-lcd-edit > input {
+    position: relative;
+    box-sizing: content-box;
+    width: 10ch;
+    height: 100%;
+    margin: 0;
+    padding: 0 calc(3 * var(--wm-px));
+    border: 0;
+    border-radius: 0;
+    outline: none;
+    background: transparent;
+    color: var(--wm-lcd-ink);
+    font: inherit;
+    text-align: right;
+}
+
+.wm-lcd-edit > input::placeholder { color: var(--wm-lcd-ink); opacity: 0.45; font-family: var(--wm-font); }
+.wm-lcd-edit.is-disabled { background: #dcdcd4; --wm-lcd-ink: #606860; }
+.wm-lcd-edit:focus-within { outline: calc(1 * var(--wm-px)) solid var(--wm-highlight); outline-offset: calc(-2 * var(--wm-px)); }
+
+/* the number pop-up's value in the LCD */
+.wm-valuepop-head > .wm-valuepop-lcd { min-width: calc(34 * var(--wm-px)); height: calc(17 * var(--wm-px)); }
