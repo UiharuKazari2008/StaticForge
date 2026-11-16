@@ -4273,6 +4273,9 @@
     }
 
     function queueNotes() {
+        // behind an Android program (Melaton Bars, #871) the page's timers are paused: at once, so the
+        // app's copy of the notification comes up over the program
+        if (barsExternal && window.AndroidBars) { noteQueued = false; refreshNotes(); statusDirty(); return; }
         if (noteQueued) return;
         noteQueued = true;
         // a timer, not a frame: a tab in the background still keeps its notifications
