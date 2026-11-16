@@ -1351,19 +1351,12 @@
         /** Melaton Bars (#871): a tap on the native Start's item `key` (in `folders`): what the tap does here. */
         activate(key, folders) {
             if (!sh) return false;
-            if (sh.currentApp() !== 'start') sh.open('start', { fromStart: true });
-            path.length = 0;
-            render();
-            for (const id of folders || []) {
-                const i = items.findIndex((it) => it.folder === id);
-                if (i < 0) break;
-                path.push({ id, label: items[i].label, parentKey: items[i].key, parentSel: i });
-                render();
-            }
-            const i = items.findIndex((it) => it.key === key);
-            if (i < 0) return false;
-            select(i, false);
-            openItemNow(items[i]);
+            // straight to the item: Start itself never comes up (its screen, title and soft keys
+            // would show for a moment and stay on the bars)
+            const f = Array.isArray(folders) && folders.length ? folders[folders.length - 1] : null;
+            const it = itemsFor(f).find((n) => n.key === key);
+            if (!it) return false;
+            openItemNow(it);
             return true;
         },
         /** Melaton Bars (#871): Start's Lock soft key from the native copy. */

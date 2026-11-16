@@ -1013,6 +1013,8 @@
                 let o = null;
                 try { o = JSON.parse(role.slice(11)); } catch (_) { o = null; }
                 if (o && window.wmStart65 && window.wmStart65.activate) window.wmStart65.activate(o.key, o.folders || []);
+                // the app keeps its Start over the screen until the program is drawn here
+                requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
                 return;
             }
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); return; }
