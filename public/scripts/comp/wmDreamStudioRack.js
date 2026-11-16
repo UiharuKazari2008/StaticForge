@@ -245,7 +245,7 @@
         });
 
         const open = () => { selected = null; api.openView('rack'); };
-        reg.menu('main', () => [{ label: 'Weight Rack', action: open }]);
+        reg.menu('prompt', () => [{ label: 'Weight Rack', action: open }]);
 
         // from the editor's toolbox: the editor keeps its text to itself until Done, so what it holds
         // goes to Studio first (the rack reads Studio), and once the rack steps back to it the

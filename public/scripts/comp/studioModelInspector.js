@@ -137,7 +137,7 @@
             // the same unit choice as the desktop's weather card (weather_units_metric)
             let metric = true;
             try { metric = localStorage.getItem('weather_units_metric') !== 'false'; } catch (_) { metric = true; }
-            const t = w.temperature !== undefined ? (metric ? `${w.temperature}°C` : `${Math.round((w.temperature * 9) / 5 + 32)}°F`) : '';
+            const t = w.temperature !== undefined ? (metric ? `${w.temperature}\u00b0C` : `${Math.round((w.temperature * 9) / 5 + 32)}\u00b0F`) : '';
             const name = typeof crossoverConditionName === 'function' ? crossoverConditionName(w.condition) : lab(w.condition);
             rows.push(['Weather', [w.condition ? name : '', t].filter(Boolean).join(', ')]);
         }

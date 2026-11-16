@@ -32,8 +32,9 @@
 
     // desktop rows the phone has no counterpart for: a window of the print (the phone has View Full
     // Screen), Paint and desktop shortcuts, the Studio Activity log and Text Expanders (desktop list
-    // windows), Set as Wallpaper (Desktop Settings); wmStudio.js leaves the same ones out
-    const NO_PHONE = new Set(['open-in-window', 'edit-in-paint', 'create-desktop-shortcut', 'studio-activity', 'studio-text-expanders', 'set-wallpaper']);
+    // windows), Set as Wallpaper (Desktop Settings), Enhance (its desktop modal has no phone form and
+    // comes up as squeezed Vista fragments); wmStudio.js leaves most of the same ones out
+    const NO_PHONE = new Set(['open-in-window', 'edit-in-paint', 'create-desktop-shortcut', 'studio-activity', 'studio-text-expanders', 'set-wallpaper', 'enhance']);
     // the previous-print overlay the phone does not draw
     const NO_PHONE_LABELS = new Set(['Comparison']);
     // one value of several: WM marks those with a bullet
@@ -41,8 +42,19 @@
 
     const val = (v, item) => { try { return typeof v === 'function' ? v(item) : v; } catch (_) { return undefined; } };
 
-    function runItem(item) {
-        if (typeof handleStudioMenuBarAction !== 'function') return Promise.resolve(false);
+    // New Persona asks chatSystem, a feature a phone loads only when Chat first opens (wmChat.js
+    // ensureChat): without it the desktop's handler does nothing
+    async function chatReady() {
+        if (window.chatSystem) return true;
+        const fl = window.featureLoader;
+        try { if (fl && typeof fl.loadFeature === 'function') await fl.loadFeature('chat'); } catch (_) { return false; }
+        for (let i = 0; i < 50 && !window.chatSystem; i += 1) await new Promise((r) => setTimeout(r, 100));
+        return !!window.chatSystem;
+    }
+
+    async function runItem(item) {
+        if (typeof handleStudioMenuBarAction !== 'function') return false;
+        if (item.action === 'start-chat' && !(await chatReady())) return false;
         let out;
         try { out = handleStudioMenuBarAction(item.action, M._el('manualModal'), item); } catch (err) { console.warn('[studioModel] menu', item.action, err); }
         // the handlers change the form in place (some a moment later): the views read it again

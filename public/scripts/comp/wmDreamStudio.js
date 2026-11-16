@@ -803,7 +803,7 @@
 
     /**
      * The toolbox (the desktop's Prompt Tools): Quick Access and Find when the bar has no room for
-     * them, Lowercase, Weight Rack, Reset Emphasis.
+     * them, Lowercase, Syntax Handling, Reset Emphasis, and the parts' rows (Weight Rack, Rentan).
      */
     function toolboxMenu(btn) {
         const ta = edArea();
@@ -817,7 +817,6 @@
         if (rows.length) rows.push('-');
         rows.push(
             { label: 'Lowercase', disabled: !ta || !ta.value, action: lowercaseText },
-            { label: 'Weight Rack...', disabled: !hasGroups, action: () => weightRack(btn) },
             { label: 'Syntax Handling...', action: syntaxDialog },
             '-',
             { label: 'Reset Emphasis...', disabled: !hasGroups, action: resetEmphasis }
@@ -858,43 +857,6 @@
                 edWeight();
                 edCount();
             });
-    }
-
-    /**
-     * Weight Rack (the desktop's): every weighted group of the prompt in a row, its weight as an LCD
-     * with a jog wheel and the square default button; a group stays a group at 1.00 here.
-     */
-    function weightRack(anchor) {
-        const ta = edArea();
-        if (!ta) return;
-        const groups = () => { const out = []; const re = new RegExp(WEIGHT_RE.source, 'g'); let m; while ((m = re.exec(ta.value))) out.push({ from: m.index, to: m.index + m[0].length, weight: Number(m[1]), inner: m[2] }); return out; };
-        const list = groups();
-        if (!list.length) return;
-        const setWeight = (k, w) => {
-            const g = groups()[k];
-            if (!g) return;
-            const out = `${fmtWeight(w)}::${g.inner}::`;
-            const a = ta.selectionStart;
-            const b = ta.selectionEnd;
-            ta.focus({ preventScroll: true });
-            ta.setSelectionRange(g.from, g.to);
-            document.execCommand('insertText', false, out);
-            const d = out.length - (g.to - g.from);
-            ta.setSelectionRange(a > g.from ? a + d : a, b > g.from ? b + d : b);
-            edWeight();
-            edCount();
-        };
-        ui.popPanel(anchor, {
-            label: 'Weight Rack',
-            className: 'wds-wtpop wds-rack',
-            build(el) {
-                el.innerHTML = ui.sub('Weight Rack') + list.map((g, k) => `<div class="wds-wt-row is-on" data-k="${k}"><span class="wds-wt-name">${esc(g.inner.trim())}</span><span class="wds-wt-lcd wm-lcd"></span></div>`).join('');
-                el.querySelectorAll('.wds-wt-row').forEach((row) => {
-                    const k = Number(row.dataset.k);
-                    weightJog(row, { name: list[k].inner.trim(), bias: list[k].weight, min: -3, max: 5, def: 1, step: 0.01, fineStep: 0.01, coarse: 0.1 }, (r, p) => setWeight(k, p.bias));
-                });
-            }
-        });
     }
 
     /** The emphasis group's menu, from its bar button: the tools for the group the caret is in. */
@@ -1548,10 +1510,24 @@
 
     let dlg = null;
 
-    function closeDlg() { if (!dlg) return false; dlg.remove(); dlg = null; sh.refreshTitleAction(); sh.syncHistory(); paint(); return true; }
+    let dlgOnClose = null;
 
-    function openDlg(title, cls, bodyHtml) {
+    function closeDlg() {
+        if (!dlg) return false;
+        // told first, while its fields are still there to read (a dialog that commits on close)
+        if (dlgOnClose) { const fn = dlgOnClose; dlgOnClose = null; try { fn(dlg); } catch (err) { console.warn('[wmDreamStudio] dialog close', err); } }
+        dlg.remove();
+        dlg = null;
+        sh.refreshTitleAction();
+        sh.syncHistory();
+        paint();
+        return true;
+    }
+
+    /** opts.onClose(el): the dialog is closing (title-bar ok, Back, another dialog opening). */
+    function openDlg(title, cls, bodyHtml, opts = {}) {
         closeDlg();
+        dlgOnClose = typeof opts.onClose === 'function' ? opts.onClose : null;
         const host = document.getElementById('wmShell') || document.body;
         dlg = document.createElement('div');
         dlg.className = `wm-msgbox-layer wds-dlg ${cls}`;
@@ -1878,13 +1854,18 @@
     //   reg.view(name, { title, mount(el), draw(el), softKeys(), menu() })
     //                                          a full page of its own; api.openView(name) shows it,
     //                                          ok / Back steps out of it
-    //   reg.menu(section, () => rows)          menu rows added to a section: 'main' (Menu), 'add'
-    //                                          (Menu > Add), 'print' (the print's rows), 'toolbox'
-    //                                          (the editor's toolbox), 'editor' (the editor's Menu)
+    //   reg.menu(section, () => rows)          menu rows added to a section. Menu's top-level menus (the
+    //                                          desktop's menu bar, each shown when it has rows): 'file',
+    //                                          'edit', 'view', 'prompt', 'add', 'generate', 'rentan',
+    //                                          'tools'; 'main' = rows straight in Menu for the page on
+    //                                          show only (a tab's own commands); 'print' (the print's
+    //                                          rows), 'toolbox' (the editor's toolbox), 'editor' (the
+    //                                          editor's Menu). Rows never repeat what is on screen.
     //   reg.hook(event, fn)                    'paint' (after every paint: fn(view)), 'show', 'hide'
     // Everything a part reads or changes in Studio goes through api.M (studioModel), as here.
 
-    const ext = { panes: {}, views: {}, menus: { main: [], add: [], print: [], toolbox: [], editor: [] }, hooks: { paint: [], show: [], hide: [] }, pending: [] };
+    const MENUS = ['file', 'edit', 'view', 'prompt', 'add', 'generate', 'rentan', 'tools'];
+    const ext = { panes: {}, views: {}, menus: { main: [], print: [], toolbox: [], editor: [], file: [], edit: [], view: [], prompt: [], add: [], generate: [], rentan: [], tools: [] }, hooks: { paint: [], show: [], hide: [] }, pending: [] };
     const extRows = (section) => {
         const out = [];
         ext.menus[section].forEach((fn) => { try { const rows = fn(); if (Array.isArray(rows) && rows.length) out.push(...rows); } catch (err) { console.warn('[wmDreamStudio] menu', section, err); } });
@@ -1909,6 +1890,13 @@
         view: () => view(),
         openDlg,
         closeDlg,
+        seedBox: () => seedBox(),
+        /** The field the editor has open ('prompt', 'uc', 'c:0:prompt' ...), or '' outside the editor. */
+        edField: () => (top() === 'editor' ? edField : ''),
+        /** The editor's text again from Studio (after a part changed the field behind it). */
+        edReload: () => { if (top() === 'editor') edLoad(); },
+        /** The print on show (the one picked, else the newest of this visit, else Studio's). */
+        shownPrint: () => (M ? shownPrint() : ''),
         dlgJog,
         weightJog,
         thumbUrl,
@@ -1981,23 +1969,32 @@
         ];
     }
 
+    /**
+     * Menu: the print (its rows, or a submenu off the print page), then the desktop's menu bar as
+     * submenus, each only when it has rows: File, Edit, View, Prompt, Add, Generate, Rentan, Tools
+     * (the program's own rows first, then the parts'), then the page's own commands (a tab's).
+     */
     function mainMenu() {
         const v = view();
+        const s = read();
         const rows = [];
         if (v === 'print') rows.push(...printRows(), '-');
         else rows.push({ label: 'Print', submenu: printRows }, '-');
-        // what has no place of its own on the bar (Yukimi, Nov 16)
-        const s = read();
-        rows.push({ label: 'Upscale Each Print', checked: !!s.upscale, action: () => change('upscale', !s.upscale).then(paint) });
-        rows.push({ label: 'Syntax Handling...', action: syntaxDialog });
-        rows.push('-');
-        if (M.options().has.characters) rows.push({ label: 'Add Character', action: addCharacter });
-        if (M.options().has.references) rows.push({ label: 'Add Reference...', action: addReference });
-        rows.push({ label: 'Base Image...', action: () => (read().hasBaseImage ? baseDialog() : chooseBase()) });
-        if (read().hasBaseImage) rows.push({ label: 'Remove Base Image', action: () => { M.clearBaseImage(); snap = null; paint(); } });
-        const add = extRows('add');
-        if (add.length) rows.push({ label: 'Add', submenu: () => extRows('add') });
-        rows.push('-', { label: 'New Session', action: newSession }, { label: 'Open Picture...', action: openPictureSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs }, ...syncRows());
+        const own = {
+            file: () => [{ label: 'New Session', action: newSession }, '-', { label: 'Open Picture...', action: openPictureSession }, { label: 'Open Preset...', action: showPresets }, { label: 'Save as Preset...', action: savePresetAs }, ...(() => { const r = syncRows(); return r.length ? ['-', ...r] : []; })()],
+            prompt: () => [{ label: 'Syntax Handling...', action: syntaxDialog }],
+            add: () => (M.options().has.characters ? [{ label: 'Character', action: addCharacter }] : []),
+            generate: () => [{ label: 'Upscale Each Print', checked: !!s.upscale, action: () => change('upscale', !s.upscale).then(paint) }]
+        };
+        const TITLES = { file: 'File', edit: 'Edit', view: 'View', prompt: 'Prompt', add: 'Add', generate: 'Generate', rentan: 'Rentan', tools: 'Tools' };
+        MENUS.forEach((key) => {
+            const build = () => {
+                const mine = own[key] ? own[key]() : [];
+                const theirs = extRows(key);
+                return mine.length && theirs.length ? [...mine, '-', ...theirs] : [...mine, ...theirs];
+            };
+            if (build().length) rows.push({ label: TITLES[key], submenu: build });
+        });
         const more = extRows('main');
         if (more.length) rows.push('-', ...more);
         return rows;

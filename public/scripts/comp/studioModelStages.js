@@ -36,12 +36,12 @@
     if (!M || typeof M.extend !== 'function') return;
 
     /* global STAGE_TYPES, pipelineStagesContainer, addPipelineStage, deletePipelineStage, movePipelineStageUp,
-       movePipelineStageDown, studioRemoveAllStages, studioHasRemovableStages, getPipelineStages, getPipelineStageMenuLabel,
+       movePipelineStageDown, studioRemoveAllStages, studioHasRemovableStages, getPipelineStages, getPipelineStageMenuLabel, getPipelineStageDefaultTypeName,
        getStageInheritedValues, getForgeModelFeatures, renderStageResolutionDropdown, renderStageBiasDropdown,
        renderStageModelDropdown, renderStageSamplerDropdown, toggleStageBackgroundFocus, getGenerateStageMenuItems,
        handleManualGeneration, isGenerating, stageResultsReviewManager, characterPromptsContainer,
        setCharacterPromptPosition, clearCharacterPromptPositions, getOccupiedPositionCellLabels,
-       characterPositionToolManager, getDimensionsFromResolution, isV5Model, isCustomResolutionMode, mediumControlIsLocked, activeMediumLock */
+       characterPositionToolManager, getDimensionsFromResolution, isV5Model, isCustomResolutionMode, mediumControlIsLocked, activeMediumLock, SAMPLER_MAP */
 
     const el = (id) => document.getElementById(id);
     const has = (name) => typeof window[name] === 'function';
@@ -100,6 +100,10 @@
         const index = list.indexOf(item) + 1;
         let label = { text: `Stage ${index}`, hex: '', icon: 'fas fa-layer-group' };
         try { if (has('getPipelineStageMenuLabel')) label = getPipelineStageMenuLabel(index); } catch (_) { /* the plain name */ }
+        // the stage's own name, else its type's (the card's header; the menu label leaves the type out)
+        let typeName = '';
+        try { typeName = has('getPipelineStageDefaultTypeName') ? getPipelineStageDefaultTypeName(id) : ''; } catch (_) { typeName = ''; }
+        const shownName = String(item.dataset.phaseStepName || '').trim() || typeName;
         const type = item.dataset.stageType;
         const expand = typeof STAGE_TYPES !== 'undefined' && type === STAGE_TYPES.EXPAND_CANVAS;
         const maxEnhance = item.dataset.maxEnhance === 'true';
@@ -125,7 +129,7 @@
         return {
             id,
             index,
-            label: label.text,
+            label: shownName ? `Stage ${index} \u2014 ${shownName}` : label.text,
             hex: label.hex,
             icon: label.icon,
             name: item.dataset.phaseStepName || '',
@@ -175,7 +179,8 @@
             rescale: val('rescale') !== '' ? Number(val('rescale')) : Number(inh.rescale),
             rescaleSet: val('rescale') !== '',
             variety: on(varietyBtn),
-            samplerText: (el(`${id}_samplerSelected`) || {}).textContent || '',
+            // the sampler by its list name (the desktop's button carries a short and a long name)
+            samplerText: (() => { const v = val('sampler') || inh.sampler || ''; const hit = typeof SAMPLER_MAP !== 'undefined' ? SAMPLER_MAP.find((x) => x.meta === v) : null; return hit ? hit.display : ((el(`${id}_samplerSelected`) || {}).textContent || ''); })(),
             samplerSet: val('sampler') !== '',
             modelText: (el(`${id}_modelSelected`) || {}).textContent || '',
             modelSet: val('model') !== '',
@@ -291,7 +296,9 @@
 
     function generateStageRows() {
         if (!has('getGenerateStageMenuItems') || !items().length) return [];
-        try { return getGenerateStageMenuItems().map((r, i) => ({ index: i, label: r.text, note: r.subtext || '', disabled: !!r.disabled })); } catch (_) { return []; }
+        // a stage by its card's name (the desktop's own label drops the type when the stage has no name of its own)
+        const list = items();
+        try { return getGenerateStageMenuItems().map((r, i) => { const st = i > 0 && list[i - 1] ? stage(list[i - 1].id) : null; return { index: i, label: st ? st.label : r.text, note: r.subtext || '', disabled: !!r.disabled }; }); } catch (_) { return []; }
     }
 
     function generateStage(index) {

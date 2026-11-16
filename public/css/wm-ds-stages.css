@@ -1,2 +1,87 @@
 /* Melaton Mobile: DreamStudio part - stages (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* ---- the stage list: a list box filling the page, a row each (icon, name, its buttons that are on, ID) */
+.wds-xview[data-xview="stages"] > .wds-none,
+.wds-xview[data-xview="stageresults"] > .wds-none { margin: calc(8 * var(--wm-px)) calc(5 * var(--wm-px)); opacity: 0.6; }
+.wds-stg-list,
+.wds-sr-list { flex: 1 1 auto; margin: calc(2 * var(--wm-px)); }
+.wds-stg-row { min-height: calc(21 * var(--wm-px)); cursor: pointer; }
+.wds-stg-row:active,
+.wds-sr-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-stg-row > .wds-stg-icon { flex: 0 0 auto; width: calc(14 * var(--wm-px)); text-align: center; }
+.wds-stg-row > .wds-stg-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wds-stg-row > .wds-stg-flags { flex: 0 0 auto; display: flex; gap: calc(2 * var(--wm-px)); }
+.wds-stg-row > .wds-stg-hex { flex: 0 0 auto; min-width: calc(14 * var(--wm-px)); text-align: right; opacity: 0.6; }
+/* a branch stands apart from the main pipeline (the desktop's indent) */
+.wds-stg-row.is-branch { padding-left: calc(14 * var(--wm-px)) !important; }
+.wds-stg-row i,
+.wds-stg-flag > i,
+.wds-stgdlg .wm-tool > i { font-size: calc(11 * var(--wm-px)); line-height: 1; pointer-events: none; }
+.wds-stg-flag { display: inline-flex; align-items: center; }
+.wds-stg-flag.is-inherited { opacity: 0.5; }
+
+/* ---- one stage's dialog: its buttons as one tool row, then LCD + jog rows and drop-downs */
+#wmShell .wds-stgdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
+.wds-stg-tools { display: flex; flex-wrap: wrap; margin: 0 0 calc(3 * var(--wm-px)); padding: 0; border: 0; background: none; }
+/* the drop-downs one width, so they line up whatever follows them */
+.wds-stgdlg .wds-wt-row > .wds-stg-combo { flex: 0 0 calc(116 * var(--wm-px)); min-width: 0; }
+.wds-stgdlg .wds-wt-row > .wm-tool { flex: 0 0 auto; }
+.wds-stgdlg .wds-wt-row > [data-st="area"] { min-width: calc(60 * var(--wm-px)); margin: 0; }
+/* an inherited value: shown as the stage would use it, faint until it is set here */
+.wds-stgdlg .wds-wt-row.is-inherited > .wm-lcd,
+.wds-stgdlg .wds-wt-row.is-inherited > .wds-stg-combo > span { opacity: 0.55; }
+.wds-stg-seed > button.wds-wt-lcd { min-width: calc(76 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+.wds-stg-seed > button.wds-wt-lcd:disabled { cursor: default; }
+textarea.wm-edit.wds-stg-directive { display: block; width: 100%; box-sizing: border-box; margin-top: calc(3 * var(--wm-px)); resize: none; }
+
+/* ---- Stage Results: a row per stage, its picture small at the left */
+.wds-sr-row { min-height: calc(36 * var(--wm-px)); cursor: pointer; }
+.wds-sr-row > img,
+.wds-sr-row > .wds-sr-blank { flex: 0 0 auto; width: calc(32 * var(--wm-px)); height: calc(32 * var(--wm-px)); object-fit: contain; }
+.wds-sr-row > .wds-sr-blank { box-sizing: border-box; border: calc(1 * var(--wm-px)) dotted currentColor; opacity: 0.5; }
+.wds-sr-text { display: flex; flex-direction: column; min-width: 0; }
+.wds-sr-text > b,
+.wds-sr-text > span { overflow: hidden; text-overflow: ellipsis; }
+.wds-sr-text > span { opacity: 0.6; }
+.wds-sr-pic { display: block; max-width: 100%; max-height: calc(220 * var(--wm-px)); margin: 0 auto; object-fit: contain; }
+
+/* ---- character positions: the 5 x 5 grid (V4), the board of centers (V5) */
+#wmShell .wds-posdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
+.wds-pos-who { margin-bottom: calc(3 * var(--wm-px)); font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-pos-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: calc(2 * var(--wm-px)); margin-top: calc(3 * var(--wm-px)); }
+#wmShell .wds-pos-grid > button.wds-pos-cell { min-width: 0; margin: 0; padding: 0; height: calc(20 * var(--wm-px)); }
+/* the chosen cell: ringed (the highlight colour is the button face on 6.5) */
+#wmShell .wds-pos-grid > button.wds-pos-cell[aria-pressed="true"] { box-shadow: inset 0 0 0 calc(2 * var(--wm-px)) currentColor; }
+.wds-pos-board {
+    position: relative;
+    margin: 0 auto;
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid currentColor;
+    overflow: hidden;
+    touch-action: none;
+}
+.wds-pos-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.wds-pos-pin {
+    position: absolute;
+    left: var(--wds-x);
+    top: var(--wds-y);
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    margin: calc(-8 * var(--wm-px)) 0 0 calc(-8 * var(--wm-px));
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid currentColor;
+    border-radius: 50%;
+    background: var(--wm-tab-strip);
+    color: inherit;
+    font: inherit;
+    font-weight: bold;
+    line-height: 1;
+    touch-action: none;
+}
+.wds-pos-pin.is-active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-pos-read { margin-top: calc(3 * var(--wm-px)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- a character's Directive line */
+#wmShell .wds-cdirdlg > .wm-msgbox { max-width: calc(240 * var(--wm-px)); }
+textarea.wm-edit.wds-cdir { display: block; width: 100%; box-sizing: border-box; resize: none; }

@@ -2,8 +2,8 @@
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
 
 /* Options...: a check box per scene button with its combo beside it (the button's context menu) */
-.wds-rtdlg .wds-rt-row > .wm-combo { flex: 0 0 auto; width: calc(104 * var(--wm-px)); margin: 0; }
-.wds-rtdlg .wds-rt-row > .wm-combo > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wds-rtdlg .wds-rt-row > button { flex: 0 0 auto; width: calc(104 * var(--wm-px)); margin: 0; }
+.wds-rtdlg .wds-rt-row > button > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Dynamic Generation (the generation bar's toggle) heads the rows: the scene rows hang under it */
 .wds-rtdlg .wds-rt-main { margin-bottom: calc(2 * var(--wm-px)); }
 .wds-rtdlg .wds-rt-row { padding-left: calc(8 * var(--wm-px)); }
@@ -14,9 +14,5 @@
 /* Weather Location: the city box and Verify on one line, the match below */
 .wds-rt-city { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); }
 .wds-rt-city > .wm-edit { flex: 1 1 auto; min-width: 0; }
-.wds-rt-city > .wm-button { flex: 0 0 auto; margin: 0; }
+.wds-rt-city > button { flex: 0 0 auto; margin: 0; }
 .wds-rtloc .wm-form-note { margin: calc(4 * var(--wm-px)) 0 0; }
-
-/* the combos' lists open over the dialog (the shell's popups sit under message box layers: a combo
- * inside a message box is not a kit case yet) */
-#wmShell:has(> .wds-rtdlg) > .wm-popup { z-index: 21; }

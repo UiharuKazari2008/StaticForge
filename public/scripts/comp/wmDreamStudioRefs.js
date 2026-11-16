@@ -48,7 +48,7 @@
             st.precise.forEach((r) => rows.push(rowHtml(`p:${r.key}`, r.file ? api.thumbUrl(r.file) : r.preview, TYPES[r.type] || TYPES[1], 'Strength, Fidelity', [[r.strength], [r.fidelity]], !r.enabled)));
             st.vibes.forEach((v) => rows.push(rowHtml(`v:${v.id}`, v.preview, 'Vibe Transfer', v.missing ? 'IE not encoded, Strength' : 'IE, Strength', [[v.ie == null ? 0 : v.ie], [v.strength, true]], !v.enabled)));
             let html = rows.length ? `<div class="wdr-list">${rows.join('')}</div>` : '<p class="wds-none">No references. Menu &gt; Add adds one.</p>';
-            if (st.vibes.length) html += ui().check('wdrNormalize', 'Normalize Vibe Strengths', st.normalize, 'data-wdr="normalize"');
+            if (st.vibes.length) html += `<div class="wdr-norm">${ui().check('wdrNormalize', 'Normalize Vibe Strengths', st.normalize, 'data-wdr="normalize"')}</div>`;
             // drawn again only when something shows differently (a paint comes with every change; the
             // list keeps its scroll place otherwise)
             if (html !== lastHtml || !el.querySelector('.wdr-list, .wds-none')) {
@@ -89,12 +89,14 @@
             let timer = 0;
             show(cur);
             const jog = ui().jogWheel(row, { label, value: cur, min, max, step, fineStep, stepPx: 18, zeroStop: 0, onChange: (v) => { cur = v; show(v); clearTimeout(timer); timer = setTimeout(() => onChange(v), 120); } });
+            // the kit's pad has one spare key: a point or a minus, not both, so a value that can go
+            // negative is rolled only
+            if (signed) { lcd.classList.add('is-rolled'); lcd.removeAttribute('aria-label'); return jog; }
             lcd.addEventListener('click', () => ui().numPad({
                 title: label,
                 value: Number(cur).toFixed(2),
                 point: true,
-                minus: signed,
-                max: 5,
+                max: 4,
                 onOk: (t) => {
                     const n = parseFloat(t);
                     if (!Number.isFinite(n)) return;
@@ -105,6 +107,12 @@
                 }
             }));
             return jog;
+        }
+
+        /** A combo inside one of these dialogs (the kit lifts its list over the dialog layer). */
+        function combo(btn, options, current, onPick) {
+            if (!btn) return;
+            ui().bindCombo(btn, options, current, onPick);
         }
 
         const picHtml = (src) => (src ? `<img class="wds-base-pic" alt="" src="${esc(src)}">` : '');
@@ -194,7 +202,7 @@
                 + `<div class="wdr-checks">${ui().check('wdrVOn', 'Enabled', v.enabled, 'data-vt="enabled"')}${ui().check('wdrVInj', 'Text Injection', v.inject, 'data-vt="inject"')}</div>`
                 + buttons(acts));
             const put = (patch) => { M.setVibe(id, patch); api.refresh(); };
-            ui().bindCombo(el.querySelector('.wm-combo'), v.ies.map((x) => [x, pct(x)]), v.ie, (x) => put({ ie: x }));
+            combo(el.querySelector('.wm-combo'), v.ies.map((x) => [x, pct(x)]), v.ie, (x) => put({ ie: x }));
             jogRow(el.querySelector('[data-j="strength"]'), { label: 'Strength', value: v.strength, min: -1, max: 1, step: 0.05, fineStep: 0.01, signed: true, onChange: (x) => put({ strength: x }) });
             el.addEventListener('change', (e) => {
                 const t = e.target;
@@ -222,11 +230,11 @@
             let value = ie == null ? 0.35 : Number(ie);
             const el = api.openDlg(id ? 'Request New IE' : 'Encode Vibe', 'wdr-dlg', picHtml(filename ? api.thumbUrl(filename) : preview)
                 + `<div class="wds-wt-row is-on"><span class="wds-wt-name">Model</span>${ui().comboHtml('model', (models.find((m) => m.value === model) || models[0]).name)}</div>`
-                + lcdRow('ie', 'Information Extraction')
+                + lcdRow('ie', 'IE')
                 + (id ? '' : `<div class="wds-wt-row is-on"><span class="wds-wt-name">Comment</span>${ui().edit('', '', 'data-wdr="comment" maxlength="200" placeholder="Optional"')}</div>`)
                 + buttons([['encode', 'Encode']]));
-            ui().bindCombo(el.querySelector('.wm-combo'), models.map((m) => [m.value, m.name]), model, (x) => { model = x; });
-            jogRow(el.querySelector('[data-j="ie"]'), { label: 'Information Extraction', value, min: 0, max: 1, step: 0.05, fineStep: 0.01, onChange: (x) => { value = x; } });
+            combo(el.querySelector('.wm-combo'), models.map((m) => [m.value, m.name]), model, (x) => { model = x; });
+            jogRow(el.querySelector('[data-j="ie"]'), { label: 'IE', value, min: 0, max: 1, step: 0.05, fineStep: 0.01, onChange: (x) => { value = x; } });
             onAct(el, {
                 encode: () => {
                     const c = el.querySelector('[data-wdr="comment"]');

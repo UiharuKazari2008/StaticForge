@@ -327,7 +327,8 @@
             ];
         }
 
-        reg.menu('main', () => [{ label: 'Rentan', submenu: rentanMenu }]);
+        // Menu > Rentan (the program builds the top-level menu from these rows)
+        reg.menu('rentan', rentanMenu);
         reg.menu('toolbox', () => [{ label: 'Rentan...', action: optionsDialog }]);
     });
 })();

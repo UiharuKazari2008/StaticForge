@@ -51,16 +51,16 @@
         function seedRow(g) {
             const sel = `!${g.key}${g.index != null ? `#${g.index}` : ''}`;
             const sub = [
-                g.isStatic ? `!${g.key}` : `${g.pattern} → ${sel}`,
+                g.isStatic ? `!${g.key}` : `${g.pattern} \u2192 ${sel}`,
                 where(g),
                 g.stages,
                 g.rentan ? g.rentan.category : '',
                 g.rentan && g.rentan.expiresAt ? `${g.rentan.expiresAt > Date.now() ? 'Expires' : 'Expired'} ${hhmm(g.rentan.expiresAt)}` : ''
-            ].filter(Boolean).join(' · ');
+            ].filter(Boolean).join(' \u00b7 ');
             return `<div class="wdi-row${g.uc ? ' is-uc' : ''}" data-row="g:${g.i}">`
                 // a pick that cannot be locked has no lock (the desktop shows it without its button)
                 + (g.canLock ? `<label class="wm-check"><input type="checkbox" data-wdi-lock="g:${g.i}" aria-label="Lock ${esc(sel)}"${g.locked ? ' checked' : ''}><span></span></label>` : '<span class="wdi-nolock"></span>')
-                + `<button type="button" class="wdi-text" data-wdi-menu="g:${g.i}"><span class="wdi-val">${esc(g.value) || '&nbsp;'}</span><span class="wdi-sub">${esc(sub)}</span>${g.rentan && g.rentan.reason ? `<span class="wdi-sub wdi-reason">“${esc(g.rentan.reason)}”</span>` : ''}</button>`
+                + `<button type="button" class="wdi-text" data-wdi-menu="g:${g.i}"><span class="wdi-val">${esc(g.value) || '&nbsp;'}</span><span class="wdi-sub">${esc(sub)}</span>${g.rentan && g.rentan.reason ? `<span class="wdi-sub wdi-reason">\u201c${esc(g.rentan.reason)}\u201d</span>` : ''}</button>`
                 + (g.canLock ? `<button type="button" class="wm-tool" data-wdi-roll="${g.i}" aria-label="Randomize Value" title="Randomize Value">${toolIcon('fas fa-dice')}</button>` : '')
                 + '</div>';
         }
@@ -69,12 +69,12 @@
         const STATUS = { failed: 'Failed', fallback: 'Fallback', alternative: 'Alternative' };
 
         function tendaiRow(t) {
-            const q = (s) => `“${s}”`;
+            const q = (s) => `\u201c${s}\u201d`;
             let main;
             if (t.action === 'delete') main = `${t.text ? q(t.text) : (t.count ? `Delete ${t.count} occurrence(s)` : 'Delete all')}${t.text ? (t.count ? ` (${t.count} occurrence(s))` : ' (all occurrences)') : ''}`;
             else if (t.action === 'append') main = `${t.find ? `${q(t.find)} + ` : ''}${t.text ? q(t.text) : 'N/A'}`;
-            else main = `${t.find ? q(t.find) : 'N/A'} → ${t.text ? q(t.text) : 'N/A'}`;
-            const sub = [where(t), t.category, STATUS[t.status] || '', t.converted ? 'Converted' : '', t.emphasis != null ? `Emphasis ${t.emphasis.toFixed(2)}` : ''].filter(Boolean).join(' · ');
+            else main = `${t.find ? q(t.find) : 'N/A'} \u2192 ${t.text ? q(t.text) : 'N/A'}`;
+            const sub = [where(t), t.category, STATUS[t.status] || '', t.converted ? 'Converted' : '', t.emphasis != null ? `Emphasis ${t.emphasis.toFixed(2)}` : ''].filter(Boolean).join(' \u00b7 ');
             return `<div class="wdi-row${t.uc ? ' is-uc' : ''}" data-row="t:${t.i}">`
                 + `<label class="wm-check"><input type="checkbox" data-wdi-lock="t:${t.i}" aria-label="Lock this replacement"${t.locked ? ' checked' : ''}><span></span></label>`
                 + `<button type="button" class="wdi-text" data-wdi-menu="t:${t.i}"><span class="wdi-val">${toolIcon(ACTION_ICON[t.action] || ACTION_ICON.replace)}${esc(main)}</span>`
@@ -175,7 +175,7 @@
 
         function askDelete(t) {
             const what = t.find || t.text;
-            api.sh.messageBox({ title: 'Inspector', text: `Are you sure you want to delete this replacement?${what ? `\n\n“${what}”` : ''}`, icon: 'question', modal: true, buttons: [{ text: 'Delete', value: true }, { text: 'Cancel', value: false, default: true }], cancelValue: false })
+            api.sh.messageBox({ title: 'Inspector', text: `Are you sure you want to delete this replacement?${what ? `\n\n\u201c${what}\u201d` : ''}`, icon: 'question', modal: true, buttons: [{ text: 'Delete', value: true }, { text: 'Cancel', value: false, default: true }], cancelValue: false })
                 .then((yes) => { if (yes) { M().tendaiDelete(t.i); after(); } });
         }
 
@@ -189,7 +189,7 @@
             const show = () => api.ui.segText(lcd, v.toFixed(2), { signed: true });
             show();
             const jog = api.ui.jogWheel(row, { label: 'Emphasis', value: v, min: -3, max: 5, step: 0.1, fineStep: 0.01, stepPx: 18, onChange: (n) => { v = Number(n); show(); } });
-            lcd.addEventListener('click', () => api.ui.numPad({ title: 'Emphasis', value: v.toFixed(2), point: true, minus: true, max: 5, onOk: (txt) => { const n = Number(txt); if (Number.isFinite(n)) { v = Math.max(-3, Math.min(5, n)); jog.set(v); show(); } } }));
+            lcd.addEventListener('click', () => api.ui.numPad({ title: 'Emphasis', value: v.toFixed(2), point: true, max: 4, onOk: (txt) => { const n = Number(txt); if (Number.isFinite(n)) { v = Math.max(-3, Math.min(5, n)); jog.set(v); show(); } } }));
             el.addEventListener('click', (e) => {
                 const b = e.target.closest && e.target.closest('[data-wdi-emp]');
                 if (!b) return;

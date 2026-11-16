@@ -9,7 +9,7 @@
  *             Transparent Background, Alpha Mode), Prompt (Clear Emphasis Weights, Reset Emphasis Group
  *             IDs, Remove Disabled Blocks: on the field of the page on show), Generate (Allow Paid,
  *             Reset to Free Limits, Maximum Quality, Recent Seeds, Phasewalker), Preferences
- *   Print     Create Animation, Original, New Persona, Ask Wren (on the print on show)
+ *   Print     Create Animation, New Persona, Ask Wren (on the print on show)
  * The rows, their checks and what they do are the desktop's own (studioModel.menuRows).
  */
 (function () {
@@ -89,17 +89,18 @@
             });
         }
 
-        reg.menu('main', () => {
-            const rows = [
-                group('File', 'File', ['Save', 'Save As', 'Session Name', '-', 'Open Session']),
-                M.changeOps() ? { label: 'Copy Change JSON...', action: changeDialog } : null,
-                group('View', 'View', ['Clear Preview', '-', 'Transparent Background', 'Alpha Mode']),
-                { label: 'Prompt', submenu: promptRows },
-                group('Generate', 'Generate', ['Allow Paid', 'Reset to Free Limits', 'Maximum Quality', '-', 'Recent Seeds', 'Phasewalker']),
-                ...wmRows(M.menuRows('Tools', ['Preferences']))
-            ];
-            return rows.filter(Boolean);
-        });
+        // the desktop menus' rows, each in Menu's own top-level menu of that name (the program
+        // builds File / Edit / View / Prompt / Generate / Tools and puts its own rows first)
+        // File: the program's own Open Picture / Open Preset / Save as Preset are the phone's forms of
+        // Open Session > Gallery Image / Preset and Save As > New Preset, so those desktop rows go
+        const OWN = new Set(['Gallery Image...', 'Preset...', 'New Preset...']);
+        const pruned = (rows) => rows.map((r) => (r && r !== '-' && typeof r.submenu === 'function' ? { ...r, submenu: () => r.submenu().filter((x) => x === '-' || !OWN.has(x.label)) } : r));
+        reg.menu('file', () => pruned(wmRows(M.menuRows('File', ['Save', 'Save As', 'Session Name', '-', 'Open Session']))));
+        reg.menu('edit', () => (M.changeOps() ? [{ label: 'Copy Change JSON...', action: changeDialog }] : []));
+        reg.menu('view', () => wmRows(M.menuRows('View', ['Clear Preview', '-', 'Transparent Background', 'Alpha Mode'])));
+        reg.menu('prompt', promptRows);
+        reg.menu('generate', () => wmRows(M.menuRows('Generate', ['Allow Paid', 'Reset to Free Limits', 'Maximum Quality', '-', 'Recent Seeds', 'Phasewalker'])));
+        reg.menu('tools', () => wmRows(M.menuRows('Tools', ['Preferences'])));
 
         // the print on show (the program's own when it says; else the one its stage holds)
         const shownPrint = () => {
@@ -117,7 +118,7 @@
 
         reg.menu('print', () => {
             const none = !shownPrint();
-            return wmRows(M.menuRows('Image', ['Create Animation', 'Original', 'New Persona', 'Ask Wren']), onPrint)
+            return wmRows(M.menuRows('Image', ['Create Animation', 'New Persona', 'Ask Wren']), onPrint)
                 .map((r) => (none && r !== '-' ? { ...r, disabled: true } : r));
         });
     });

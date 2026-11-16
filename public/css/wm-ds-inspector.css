@@ -8,8 +8,6 @@
     gap: calc(2 * var(--wm-px));
     padding: calc(1 * var(--wm-px)) 0;
 }
-.wds-insp .wdi-row > .wm-check { flex: 0 0 auto; margin: calc(2 * var(--wm-px)) 0 0; }
-.wds-insp .wdi-row > .wm-check > span:empty { display: none; }
 .wds-insp .wdi-row > .wm-tool { margin: 0; }
 .wds-insp .wdi-row > .wdi-nolock { flex: 0 0 auto; width: calc(15 * var(--wm-px)); }
 .wds-insp .wdi-text {

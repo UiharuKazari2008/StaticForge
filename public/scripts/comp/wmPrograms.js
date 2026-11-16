@@ -2854,7 +2854,8 @@
         /**
          * Number pad (a value typed rather than rolled): a WM dialog with the value in an LCD over
          * 1 - 9, then (point or colon) / 0 / back, with Clear, ok and Cancel. opts: title, value,
-         * point (a '.' key), colon (a ':' key, for a ratio), minus (a '-' key), max (figures),
+         * point (a '.' key), colon (a ':' key, for a ratio), minus (a '-' key that flips the sign;
+         * with point or colon too, Backspace moves beside the value), max (figures),
          * onOk(text). One at a time; closePad() is for an app's back key.
          */
         numPad({ title = '', value = '', point = false, colon = false, minus = false, max = 10, onOk } = {}) {
@@ -2863,9 +2864,12 @@
             const layer = document.createElement('div');
             layer.className = 'wm-msgbox-layer wm-numpad-layer';
             const extra = colon ? ':' : point ? '.' : '';
-            const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', minus ? '-' : extra, '0', 'back'];
+            // a signed decimal (a weight) needs both: minus left of 0, the point right of it, and
+            // Backspace beside the value instead
+            const both = minus && !!extra;
+            const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', minus ? '-' : extra, '0', both ? extra : 'back'];
             layer.innerHTML = `<div class="wm-msgbox wm-numpad" role="dialog" aria-modal="true" aria-label="${escUi(title)}"><div class="wm-msgbox-title"><span>${escUi(title)}</span></div>`
-                + '<div class="wm-numpad-lcd wm-lcd"></div>'
+                + (both ? '<div class="wm-numpad-top"><div class="wm-numpad-lcd wm-lcd"></div><button type="button" class="wm-button" data-k="back" aria-label="Backspace">&lt;</button></div>' : '<div class="wm-numpad-lcd wm-lcd"></div>')
                 + `<div class="wm-numpad-keys">${keys.map((k) => (k ? `<button type="button" class="wm-button" data-k="${escUi(k)}"${k === 'back' ? ' aria-label="Backspace"' : ''}>${k === 'back' ? '&lt;' : escUi(k)}</button>` : '<span></span>')).join('')}</div>`
                 + '<div class="wm-msgbox-buttons"><button type="button" data-act="clear">Clear</button><button type="button" data-act="ok" class="is-default">ok</button><button type="button" data-act="cancel">Cancel</button></div></div>';
             host.appendChild(layer);
