@@ -396,6 +396,11 @@
         if (windowId) registered.set(String(windowId), options || {});
     }
 
+    /** A program's window is gone for good (an app ended or was unloaded for an update, #872). */
+    function unregisterProgram(windowId) {
+        return windowId ? registered.delete(String(windowId)) : false;
+    }
+
     // ---- the input event a fault happens under ------------------------------------------------
 
     const SHELL_SELECTOR = '#desktopTaskbar, .desktop-taskbar, #startMenu, .start-menu, .desktop-icons, #desktopIcons, .context-menu, #systemTray';
@@ -1173,6 +1178,7 @@
         report,
         attribute,
         registerProgram,
+        unregisterProgram,
         programForWindow,
         classifyScript,
         stackScripts,

@@ -4,14 +4,15 @@
  *
  *   app_launch     { fileId } | { archiveFileId, entryPath } | { packageId }
  *                  -> { instanceId, runner, server, package: { id, title, version, publisher, icon,
- *                       clientEntry, base } }   base: /melaton-apps/<id or run sha>/
+ *                       clientEntry, styles, base, treeHash, owns } }   base: /melaton-apps/<id or run sha>/
  *   app_opener     { name, size } -> { package: { id, title } | null }   (no launch; Explorer asks first)
  *   app_message    { instanceId, data }          to the app's server half
  *   app_terminate  { instanceId }                the app's last window closed / it exited
  *   app_list       {} -> runner.list()           (admin)
  *   app_service_stop { packageId }               (admin)
  * Pushed to the launching tab: app_message { instanceId, data }, app_exited { instanceId, code,
- * signal, fault, reason }. Every instance of a tab ends when the tab disconnects (websocket.js).
+ * signal, fault, reason }. To every tab: app_package_updated { packageId, version, title, treeHash }
+ * when an installed system package's tree changed (#872, modules/melatonApps/updates.js). Every instance of a tab ends when the tab disconnects (websocket.js).
  *
  * A package with a server half starts for admin sessions only; readonly sessions can run
  * client-only apps. Runner and sandbox: modules/melatonApps/runner.js. Docs:
@@ -25,6 +26,7 @@ const { MelatonPackageError } = require('../../melatonPackageStore');
 const { MelatonAppError } = require('../../melatonApps/runner');
 const { getMelatonApps, refreshSystemPackage } = require('../../melatonApps');
 const { isMelatonExe } = require('../../melatonApps/exeContainer');
+const { attachPackageUpdates } = require('../../melatonApps/updates');
 
 const OWNER = { owner: 'melatonApps' };
 const MAX_PACKAGE_BYTES = 32 * 1024 * 1024;
@@ -46,6 +48,13 @@ function registerPackets(handlersCtx) {
     const workspaceExists = (id) => !!gr.getWorkspaceManager().getWorkspaces()[id];
     const apps = () => getMelatonApps(gr, {
         getReservedPacketTypes: () => wsPacketRegistry.listRegisteredPackets().map((row) => row.type)
+    });
+    // a changed system package is announced to every tab, which swaps it live (#872)
+    attachPackageUpdates({
+        broadcast: (message) => {
+            const wss = gr.getWebSocketServer && gr.getWebSocketServer();
+            if (wss && typeof wss.broadcast === 'function') wss.broadcast(message);
+        }
     });
 
     function reply(ctx, type, data) {
@@ -190,6 +199,10 @@ function registerPackets(handlersCtx) {
             clientEntry: `${pkg.base}${m.client.entry}${pkg.treeHash ? `?v=${pkg.treeHash.slice(0, 12)}` : ''}`,
             styles: (m.client.styles || []).map((s) => `${pkg.base}${s}${pkg.treeHash ? `?v=${pkg.treeHash.slice(0, 12)}` : ''}`),
             base: pkg.base,
+            // the installed tree: a tab running another one swaps the package first (#872)
+            treeHash: pkg.treeHash || '',
+            // DOM a system package owns besides its tagged windows, removed when it is unloaded
+            owns: m.client.owns || [],
             runner: m.server ? m.server.runner : null
         };
     }

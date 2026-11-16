@@ -2468,10 +2468,47 @@ class ServiceWorkerManager {
         return files.every((file) => isApplySafeStaticFilePath(normalizeStaticFilePath(file.url)));
     }
 
+    /**
+     * Whether this page never used a file (Yozora #872): not fetched (app.html's resource observer),
+     * not referenced by a <script> / <link>, not part of a loaded feature. Its update then needs no
+     * restart: the next load of that code (featureLoader, a later boot) takes the new copy from the
+     * cache. Unknown (no observer) counts as used.
+     */
+    _pageNeverUsed(pathname) {
+        const fetched = window.__melatonFetched;
+        if (!fetched || typeof fetched.has !== 'function') return false;
+        if (fetched.has(pathname)) return false;
+        const refs = document.querySelectorAll('script[src], link[href]');
+        for (let i = 0; i < refs.length; i++) {
+            const el = refs[i];
+            if (pathnameMatchesAssetUrl(pathname, el.getAttribute(el.tagName === 'SCRIPT' ? 'src' : 'href'))) return false;
+        }
+        const fl = window.featureLoader;
+        if (fl && fl.loadedFeatures && typeof FEATURE_MANIFEST !== 'undefined') {
+            const rel = pathname.replace(/^\/+/, '');
+            for (const name of fl.loadedFeatures) {
+                const f = FEATURE_MANIFEST[name] || {};
+                if ((f.scripts || []).includes(rel) || (f.styles || []).includes(rel) || f.html === rel) return false;
+            }
+        }
+        return true;
+    }
+
+    /** The files of an update this page uses (the rest change nothing until they are next loaded). */
+    filesUsedByPage(files) {
+        return (files || []).filter((file) => !this._pageNeverUsed(normalizeStaticFilePath(file.url)));
+    }
+
     classifyStaticCacheUpdate(files) {
         if (!Array.isArray(files) || files.length === 0) {
             return 'restart';
         }
+        // only the files this page runs decide; an update of nothing in use applies as it is (#872)
+        const used = this.filesUsedByPage(files);
+        if (!used.length) {
+            return 'unused';
+        }
+        files = used;
         if (this.hasScriptUpdate(files)) {
             return 'restart';
         }
@@ -2580,8 +2617,8 @@ class ServiceWorkerManager {
             this.lastAppliedWorkspaceCssHash = hash || this.lastAppliedWorkspaceCssHash;
         }
 
-        // switchWorkspaceTheme: public/scripts/comp/workspaceUtils.js
-        switchWorkspaceTheme(activeWorkspace);
+        // switchWorkspaceTheme: public/scripts/comp/workspaceUtils.js (only when something on screen changed)
+        if (cssUpdates.length || assetUpdates.length || workspaceUpdates.length) switchWorkspaceTheme(activeWorkspace);
 
         this.pendingApplyFiles = null;
         this.pendingUpdateKind = 'restart';
@@ -2623,11 +2660,17 @@ class ServiceWorkerManager {
         // apply resets the fuse, so the pending script restart would be forgotten
         const restartPending = this.pendingUpdateFuse && this.pendingUpdateKind === 'restart';
         const updateKind = restartPending ? 'restart' : this.classifyStaticCacheUpdate(updatedFiles);
+        console.log('Static cache update classified:', updateKind, updatedFiles);
+        // nothing this page runs changed (#872): the new copies are in the cache for the next load
+        if (updateKind === 'unused') {
+            this._staticHashByPath = null;
+            updatedFiles.forEach((f) => { const u = typeof f === 'string' ? f : (f && f.url); if (u) this.pendingUpdateUrls.delete(u); });
+            this.applyStaticCacheUpdate(updatedFiles, { silent: true });
+            return;
+        }
         this.pendingUpdateKind = updateKind;
         const canApplyWithoutRestart = updateKind === 'css-only' || updateKind === 'apply-safe';
         this.pendingApplyFiles = canApplyWithoutRestart ? updatedFiles.slice() : null;
-
-        console.log('Static cache update classified:', updateKind, updatedFiles);
 
         if (canApplyWithoutRestart) {
             if (silent && this.isCssOnlyAutoApplyEnabled()) {

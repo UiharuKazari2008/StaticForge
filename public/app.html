@@ -4,7 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <!-- boot trace (#798): the boot loads more than the default 250 resource-timing entries -->
-    <script>try { performance.setResourceTimingBufferSize(2000); } catch (_) {}</script>
+    <script>try { performance.setResourceTimingBufferSize(2000); } catch (_) {}
+    // every same-origin file this page fetched (Yozora #872): an update to a file the page never used
+    // needs no restart (serviceWorkerManager.classifyStaticCacheUpdate). An observer sees every entry,
+    // full buffer or not.
+    try { window.__melatonFetched = new Set(); new PerformanceObserver(function (list) { list.getEntries().forEach(function (e) { if (e.name.indexOf(location.origin + '/') === 0) { try { window.__melatonFetched.add(new URL(e.name).pathname); } catch (_) {} } }); }).observe({ type: 'resource', buffered: true }); } catch (_) { window.__melatonFetched = null; }</script>
     <meta name="viewport"
         content="width=device-width, height=device-height, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
@@ -7359,6 +7363,8 @@ Examples:
     <!-- Shared desktop-app window helper (desktopAppApplyContentHeight) for the Melaton app packages (#642) -->
     <script src="scripts/comp/desktop-apps/desktopAppWindow.js"></script>
     <!-- Melaton app runtime (#638): built-in apps launch through it from the Start menu, so it loads globally -->
+    <!-- app packages run as unloadable segments, so one updates without a restart (#872) -->
+    <script src="scripts/comp/melatonSegments.js"></script>
     <script src="scripts/comp/melatonApps.js"></script>
     <script src="scripts/comp/desktopShortcuts.js"></script>
     <!-- Vista's desktop icon view: sizes, Auto Arrange / Align to Grid, Sort By, the desktop menu (desktop-icon-view.css) -->

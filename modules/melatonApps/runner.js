@@ -51,6 +51,10 @@ function approxSize(value) {
     try { return Buffer.byteLength(JSON.stringify(value)); } catch (_) { return LIMITS.messageBytes + 1; }
 }
 
+const PERMISSION_FLAG = process.allowedNodeEnvironmentFlags && process.allowedNodeEnvironmentFlags.has('--permission')
+    ? '--permission'
+    : '--experimental-permission';
+
 class MelatonAppError extends Error {
     constructor(message, code) {
         super(message);
@@ -107,6 +111,12 @@ class MelatonAppRunner {
 
         if (pkg.manifest.server) {
             let proc = instance.runner === 'service' ? this.services.get(pkg.id) : null;
+            // a service still running an older tree of an updated package is not joined (#872): the
+            // new launch gets a process on the new tree; the old one goes once it is idle or retired
+            if (proc && (proc.treeHash || '') !== (pkg.treeHash || '')) {
+                if (!proc.instances.size) this._stop(proc, 'updated');
+                proc = null;
+            }
             if (!proc) proc = this._spawn(pkg, instance.runner);
             instance.proc = proc;
             proc.instances.add(instance.id);
@@ -152,6 +162,26 @@ class MelatonAppRunner {
         if (!proc) return { packageId, stopped: false };
         this._stop(proc, 'stopped');
         return { packageId, stopped: true };
+    }
+
+    /**
+     * A package's installed tree changed (#872): processes on an older tree stop, idle ones at once,
+     * the rest after graceMs (their tabs swap the app and launch it again on the new tree first). Their
+     * remaining instances get app_exited with reason 'updated' (not a fault).
+     */
+    retireStale(packageId, treeHash, graceMs) {
+        const stale = () => Array.from(this.procs.values())
+            .filter((p) => p.packageId === packageId && !p.runSha && (p.treeHash || '') !== (treeHash || '') && !p.stopping);
+        let now = 0;
+        for (const proc of stale()) {
+            if (!proc.instances.size) { this._stop(proc, 'updated'); now++; }
+        }
+        const later = stale().length;
+        if (later) {
+            const t = setTimeout(() => { for (const proc of stale()) this._stop(proc, 'updated'); }, Math.max(0, Number(graceMs) || 0));
+            if (t.unref) t.unref();
+        }
+        return { stopped: now, retiring: later };
     }
 
     /** End everything of a package (uninstall / disable). */
@@ -226,7 +256,9 @@ class MelatonAppRunner {
         fs.mkdirSync(dataDir, { recursive: true });
         const mem = Math.max(LIMITS.memoryMB.min, Math.min(LIMITS.memoryMB.max, Number(server.memoryMB) || LIMITS.memoryMB.default));
         const execArgv = [
-            '--experimental-permission',
+            // Node 22.13+ / 24 name the permission model --permission (24 rejects the old flag, so every
+            // server half failed to start after the Node 24 move); Node 20 only knows the experimental one
+            PERMISSION_FLAG,
             '--disable-warning=ExperimentalWarning',
             `--allow-fs-read=${pkgDir}`,
             `--allow-fs-read=${HERE}`,
@@ -248,6 +280,8 @@ class MelatonAppRunner {
             packageId: pkg.id,
             title: pkg.manifest.title,
             runSha: pkg.runSha || null,
+            // the installed tree this process runs (a live package update retires older ones, #872)
+            treeHash: pkg.treeHash || '',
             runner,
             child,
             ready: false,

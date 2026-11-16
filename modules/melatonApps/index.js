@@ -15,6 +15,34 @@ const { MelatonAppRunner } = require('./runner');
 const SYSTEM_APPS_DIR = path.resolve(__dirname, '..', '..', 'apps');
 
 let shared = null;
+const updateListeners = new Set();
+
+/** fn({ id, version, title, treeHash, previous }) whenever an installed system package's tree changes (#872). */
+function onPackageUpdated(fn) {
+    if (typeof fn === 'function') updateListeners.add(fn);
+    return () => updateListeners.delete(fn);
+}
+
+/** installFromDirectory, telling the listeners when the installed tree changed. */
+function installSystem(dir) {
+    let id = null;
+    try { id = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')).id; } catch (_) { id = null; }
+    let before = null;
+    try {
+        const row = id ? shared.store.get(String(id)) : null;
+        before = row ? row.treeHash || '' : null;
+    } catch (_) { before = null; }
+    const rec = shared.store.installFromDirectory(dir, { system: true });
+    // a first install (before === null) is not an update: no tab can run the package yet
+    if (rec && before !== null && rec.treeHash !== before) {
+        const change = { id: rec.id, version: rec.version, title: rec.title, treeHash: rec.treeHash, previous: before };
+        for (const fn of updateListeners) {
+            try { fn(change); } catch (err) { console.error('[melaton apps] update listener failed:', err.message); }
+        }
+        return Object.assign({ changed: change }, { record: rec });
+    }
+    return { changed: null, record: rec };
+}
 
 function getMelatonApps(globalResources, extra) {
     if (shared) return shared;
@@ -48,7 +76,7 @@ function syncSystemPackages() {
         const dir = path.join(SYSTEM_APPS_DIR, name);
         if (!fs.existsSync(path.join(dir, 'manifest.json'))) continue;
         try {
-            shared.store.installFromDirectory(dir, { system: true });
+            installSystem(dir);
         } catch (err) {
             console.error(`[melaton apps] system package ${name} not installed: ${err.message}`);
         }
@@ -65,14 +93,34 @@ function refreshSystemPackage(id) {
     const dir = path.join(SYSTEM_APPS_DIR, String(id));
     if (!fs.existsSync(path.join(dir, 'manifest.json'))) return null;
     try {
-        return shared.store.installFromDirectory(dir, { system: true });
+        return installSystem(dir).record;
     } catch (err) {
         console.error(`[melaton apps] system package ${id} not refreshed: ${err.message}`);
         return null;
     }
 }
 
+/**
+ * Install every system package again whose apps/<id>/ tree changed (#872, the notify refresh runs
+ * this). Returns the packages that changed: [{ id, version, title, treeHash, previous }].
+ */
+function resyncSystemPackages() {
+    if (!shared || !fs.existsSync(SYSTEM_APPS_DIR)) return [];
+    const changed = [];
+    for (const name of fs.readdirSync(SYSTEM_APPS_DIR)) {
+        const dir = path.join(SYSTEM_APPS_DIR, name);
+        if (!fs.existsSync(path.join(dir, 'manifest.json'))) continue;
+        try {
+            const r = installSystem(dir);
+            if (r.changed) changed.push(r.changed);
+        } catch (err) {
+            console.error(`[melaton apps] system package ${name} not installed: ${err.message}`);
+        }
+    }
+    return changed;
+}
+
 /** The shared store + runner if apps were used in this server, else null (no side effects). */
 getMelatonApps.peek = () => shared;
 
-module.exports = { getMelatonApps, refreshSystemPackage, SYSTEM_APPS_DIR };
+module.exports = { getMelatonApps, refreshSystemPackage, resyncSystemPackages, onPackageUpdated, SYSTEM_APPS_DIR };

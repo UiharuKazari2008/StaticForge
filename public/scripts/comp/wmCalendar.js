@@ -43,6 +43,11 @@
     let ws = null;
     let page = null;
     let MC = null; // window.melatonCalendar
+    // the Calendar package was swapped by a live update (#872): drop the old copy's parser (it holds
+    // the unloaded package alive) and use the new one, loaded again by melatonApps
+    document.addEventListener('melaton:app-updated', (e) => {
+        if (e.detail && e.detail.packageId === 'calendar' && MC) MC = window.melatonCalendar || null;
+    });
     let cals = [];
     let loadedAt = 0;
     let loading = null;

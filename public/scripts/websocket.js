@@ -10908,12 +10908,18 @@ class WebSocketClient {
         }
     }
 
-    // Event listener registration
-    on(event, handler) {
+    // Event listener registration. options.signal removes the handler when it aborts (an app's
+    // app.signal, or a Melaton segment unloaded for an update, #872)
+    on(event, handler, options) {
         if (!this.messageHandlers.has(event)) {
             this.messageHandlers.set(event, []);
         }
+        const signal = options && options.signal;
+        if (signal && signal.aborted) return;
         this.messageHandlers.get(event).push(handler);
+        if (signal && typeof signal.addEventListener === 'function') {
+            signal.addEventListener('abort', () => this.off(event, handler), { once: true });
+        }
     }
 
     // Event listener removal

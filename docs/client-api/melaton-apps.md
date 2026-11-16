@@ -8,14 +8,15 @@ both. Yozora #638; the package format is the Melaton package contract (#179,
 
 | Part | File |
 | --- | --- |
-| Client runtime | `public/scripts/comp/melatonApps.js` (loads with Explorer) |
+| Client runtime | `public/scripts/comp/melatonApps.js` (loads globally from `app.html`) |
+| Segments (live updates) | `public/scripts/comp/melatonSegments.js`, `modules/melatonApps/updates.js` (#872) |
 | Explorer hook | `public/scripts/comp/vfsPrograms.js` (`explorerApplet.openItem`, `explorerArchive.openEntry`) |
 | WS packets | `modules/ws/handlers/245-melatonAppsHandler.js`, [ws/melatonApps.md](./ws/melatonApps.md) |
 | Runner and sandbox | `modules/melatonApps/runner.js`, `sandboxPreload.js`, `sandboxBootstrap.js` |
 | Client files | `GET /melaton-apps/<id or run sha>/...` (`modules/melatonApps/static.js`, behind auth) |
 | Store | `modules/melatonPackageStore.js` (`prepareRun`, `findOpener`, `installFromDirectory`) |
 | System packages | `apps/<id>/` in the repo, installed into `.cache/packages/<id>/` on first use |
-| Tests | `node scripts/test-melaton-apps.js`, `node scripts/test-soratan.js` |
+| Tests | `node scripts/test-melaton-apps.js`, `node scripts/test-soratan.js`, `node scripts/test-melaton-segments.js` (Chromium) |
 
 ## `.msaz` v2
 
@@ -99,10 +100,55 @@ melatonApps.define('example', async (app) => {
 | `openWindow({ title, width, height, minWidth, resizable, icon })` | A desktop window (the modal shell, image icon, taskbar button). Returns `{ modal, body, setTitle, close }`. |
 | `overlay()` | A layer over the windows, under the taskbar. It takes no pointer input; the app's elements opt in. |
 | `tray({ title, icon, onClick, menu })` | A notification-area icon (`menu`: a contextMenu.js config) |
-| `onExit(fn)` / `exit()` | Ending the app (both halves) |
+| `onExit(fn)` / `exit()` | Ending the app (both halves). `fn(reason)`: `closed`, `exit`, `fault`, `update`, ... |
+| `onBeforeUpdate(fn)` | `fn()` returns a reason (a string) to put a live update off until the app ends (recording, unsaved work), or nothing to let it go ahead |
 
 Everything the app made through the context (windows, overlay, tray icon, listeners on `signal`) is
 removed when it ends.
+
+## Live updates (#872)
+
+An app updates without restarting the desktop. Its client code runs as a **Melaton segment**
+(`melatonSegments.js`): fetched and run in a function scope of its own (with `//# sourceURL`, so
+stacks, fault reports and DevTools show the real file), never as a page-global `<script>`. That makes
+it unloadable:
+
+| What the app left | On unload |
+| --- | --- |
+| top-level `const` / `let` / `function` / `class` | locals of the segment's scope: gone with it, and the new code can declare them again |
+| globals it set (`window.melatonX = ...`) | found by a before / after diff of the window's keys, deleted |
+| `setTimeout` / `setInterval` / `requestAnimationFrame` / `requestIdleCallback`, observers, `BroadcastChannel`, `Worker`, `fetch`, `URL.createObjectURL` | the segment's own stand-ins for those names: cleared, disconnected, closed, terminated, aborted, revoked |
+| `addEventListener` called by its code (also after an `await`) | given the segment's `AbortSignal`, so window / document listeners go |
+| `wsClient.on`, `programFaults.registerProgram`, `registerKeyboardListener`, `contextMenu.attach*` | undone |
+| `<body>` children it appended, `[data-melaton-segment]`, `client.owns` selectors, its stylesheets | removed |
+
+What stays: everything on the server, and preferences the app wrote to `localStorage` / IndexedDB.
+`melatonSegments.report()` lists unloaded segments and whether the garbage collector has taken them
+(`reclaimed`); the test checks it with `--expose-gc`.
+
+The flow:
+
+1. The notify refresh (`scripts/notify-service-worker-update.sh`) installs every `apps/<id>` whose
+   tree changed and sends `app_package_updated { packageId, treeHash }` to every tab. A launch or
+   describe that refreshes a package announces it the same way.
+2. A tab that has not loaded the package does nothing. A tab that runs it asks each running instance
+   (`onBeforeUpdate`); one reason puts the swap off until the package's last instance ends.
+3. Otherwise each instance's launch spec is kept, the instances end with `onExit('update')` (server
+   halves told), the segment is unloaded, and the kept launches start again on the new code. A
+   package loaded only for its window-less entry points (`ensureLoaded`) is loaded again.
+   `melaton:app-updated { packageId }` is dispatched on `document` afterwards: code that kept a
+   package's global (`wmCalendar.js` keeps `window.melatonCalendar`) takes the new one.
+4. Server halves: a session process ends with its instance and the relaunch starts one on the new
+   tree. A launch never joins a service process on an older tree. Processes still on the old tree are
+   stopped when idle, or after 20 s (`app_exited` reason `updated`, not a fault).
+
+`client.owns` (system packages only, up to 16 CSS selectors) names DOM the app owns besides its
+tagged windows, for things it builds outside `app.openWindow` / `overlay` / `tray`.
+
+Static files follow the same idea (`serviceWorkerManager.classifyStaticCacheUpdate`): a changed file
+this page never fetched (app.html records every same-origin resource) and no `<script>` / `<link>` or
+loaded feature uses is `unused`, and applies without a restart. Only files the page runs decide
+between a live apply and a restart.
 
 ## The server half
 

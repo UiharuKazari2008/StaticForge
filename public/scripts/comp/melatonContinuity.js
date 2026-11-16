@@ -363,7 +363,16 @@
     };
     api.on('apply-update', (m) => {
         const sw = root.serviceWorkerManager;
-        if (isDw() && sw && Array.isArray(m.files) && typeof sw.applyStaticCacheUpdate === 'function') sw.applyStaticCacheUpdate(m.files, { silent: true, fromPhone: true });
+        if (!isDw() || !sw || !Array.isArray(m.files) || typeof sw.applyStaticCacheUpdate !== 'function') return;
+        // this window may run files the phone's page does not (#872): it decides for itself
+        const kind = typeof sw.classifyStaticCacheUpdate === 'function' ? sw.classifyStaticCacheUpdate(m.files) : 'apply-safe';
+        if (kind === 'restart') {
+            sw.pendingUpdateKind = 'restart';
+            sw.tripPendingUpdateFuse(m.files.length);
+            if (typeof sw._scheduleUpdateCompleteToast === 'function') sw._scheduleUpdateCompleteToast('restart');
+            return;
+        }
+        sw.applyStaticCacheUpdate(m.files, { silent: true, fromPhone: true });
     });
 
     let pocketPc = false;

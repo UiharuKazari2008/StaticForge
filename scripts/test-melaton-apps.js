@@ -238,6 +238,33 @@ const manifest = (over) => Object.assign({
         assert.ok(!/[–—‘’“”…×− ]/.test(read(f)), `${f}: keyboard characters only`);
     }
 
+    // ---- live package updates (#872): server halves on an older tree are retired, not joined
+    {
+        const svc = (tree) => Object.assign(pkg('service'), { treeHash: tree });
+        const old = runner.launch({ pkg: svc('tree-a'), owner: { key: 'tabU' }, launch, deliver });
+        await wait(300);
+        const oldProc = runner.list().processes.find((p) => p.instances.includes(old.instanceId));
+        assert.ok(oldProc, 'service on tree a');
+        const fresh = runner.launch({ pkg: svc('tree-b'), owner: { key: 'tabU' }, launch, deliver });
+        const freshProc = runner.list().processes.find((p) => p.instances.includes(fresh.instanceId));
+        assert.notStrictEqual(freshProc.procId, oldProc.procId, 'a launch on the new tree does not join the old service');
+        const r = runner.retireStale('echo', 'tree-b', 150);
+        assert.deepStrictEqual(r, { stopped: 0, retiring: 1 }, 'the busy old process waits for the grace');
+        const ended = await nextPush((p) => p.type === 'app_exited' && p.data.instanceId === old.instanceId, 6000);
+        assert.strictEqual(ended.data.reason, 'updated');
+        assert.strictEqual(ended.data.fault, false, 'retired for an update is not a fault');
+        assert.ok(runner.list().processes.some((p) => p.procId === freshProc.procId), 'the new tree keeps running');
+        runner.terminate(fresh.instanceId, 'tabU');
+        runner.stopService('echo');
+        await wait(300);
+        assert.throws(() => validateManifest(manifest({ client: { entry: 'client/main.js', owns: ['#x'] } })), (e) => e.code === 'PACKAGE_OWNS', 'owns is for system packages');
+        assert.deepStrictEqual(validateManifest(manifest({ client: { entry: 'client/main.js', owns: ['#x', '.y'] } }), { trusted: true }).client.owns, ['#x', '.y']);
+        for (const f of ['public/scripts/comp/melatonSegments.js', 'modules/melatonApps/updates.js']) {
+            assert.ok(!/[–—‘’“”…×− ]/.test(read(f)), `${f}: keyboard characters only`);
+        }
+        assert.ok(read('public/app.html').indexOf('scripts/comp/melatonSegments.js') < read('public/app.html').indexOf('scripts/comp/melatonApps.js'), 'segments load before the app runtime');
+    }
+
     runner.shutdown();
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log('test-melaton-apps: ok');

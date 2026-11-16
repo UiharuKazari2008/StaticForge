@@ -166,6 +166,21 @@ function validateManifest(raw, options) {
             return r;
         });
     }
+    // DOM a system package owns besides its tagged windows (CSS selectors), removed when it is
+    // unloaded for a live update (#872). Trusted packages only: a selector can name any element.
+    let clientOwns = [];
+    if (client.owns != null) {
+        if (!opts.trusted) {
+            throw new MelatonPackageError('client.owns is only allowed for system packages', 'PACKAGE_OWNS');
+        }
+        const list = Array.isArray(client.owns) ? client.owns : [client.owns];
+        if (list.length > 16) throw new MelatonPackageError('too many client.owns', 'PACKAGE_OWNS');
+        clientOwns = list.map((sel) => {
+            const v = String(sel || '').trim();
+            if (!v || v.length > 200) throw new MelatonPackageError('client.owns: a selector of 1..200 characters', 'PACKAGE_OWNS');
+            return v;
+        });
+    }
     const clientEntry = String(client.entry || 'client/index.js').trim();
     const clientHtml = String(client.html || 'client/index.html').trim();
     assertSafeRelPath(clientEntry);
@@ -278,7 +293,7 @@ function validateManifest(raw, options) {
         aliases,
         surfaces,
         startMenuLocation,
-        client: Object.assign({ entry: clientEntry, html: clientHtml }, clientStyles.length ? { styles: clientStyles } : {}),
+        client: Object.assign({ entry: clientEntry, html: clientHtml }, clientStyles.length ? { styles: clientStyles } : {}, clientOwns.length ? { owns: clientOwns } : {}),
         server: !serverEntry ? null : (runnerMode
             ? Object.assign({ entry: serverEntry, runner: serverRunner }, serverMemoryMB ? { memoryMB: serverMemoryMB } : {})
             : { entry: serverEntry, packets: serverPackets }),

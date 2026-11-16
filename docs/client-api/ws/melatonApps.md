@@ -26,7 +26,8 @@ WebSocket closes, its instances end (`websocket.js` close calls `onClientClosed`
 | Push type | `data` |
 |---|---|
 | `app_message` | `{ instanceId, data }` from the server half (`app.send`) |
-| `app_exited` | `{ instanceId, packageId, code, signal, fault, reason, log }`. `reason`: `exited`, `not-responding` or the stop reason. `fault` is true for a crash, a hang or a start failure. |
+| `app_exited` | `{ instanceId, packageId, code, signal, fault, reason, log }`. `reason`: `exited`, `not-responding`, `updated` (an older tree retired after a live update, #872) or the stop reason. `fault` is true for a crash, a hang or a start failure. |
+| `app_package_updated` | To every tab: `{ packageId, version, title, treeHash }` when an installed system package's tree changed (the notify refresh, or a launch that refreshed it). A tab running it swaps it live (`melatonApps.applyPackageUpdate`, #872). |
 
 ## Detailed packets
 

@@ -1826,4 +1826,10 @@ function calcStart(app) {
     }
 }
 
+// The agent get/set path (agentClientBridge.js) calls these by name. The package runs as a Melaton
+// segment (#872), in a function scope, so they are page globals only because they are put there; a
+// live update deletes them with the rest of the package and the new code puts them back.
+window.readDesktopCalculatorForAgent = readDesktopCalculatorForAgent;
+window.applyDesktopCalculatorAgentAction = applyDesktopCalculatorAgentAction;
+
 if (typeof melatonApps !== 'undefined') melatonApps.define('calculator', calcStart);

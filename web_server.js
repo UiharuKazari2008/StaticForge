@@ -1195,6 +1195,14 @@ async function refreshAndBroadcastServiceWorkerCache(options = {}) {
     });
 
     const files = buildServiceWorkerCacheManifest();
+    // app packages (apps/<id>, outside the SW manifest): a changed tree is installed and announced,
+    // and the tabs running it swap it live (Yozora #872, modules/melatonApps/updates.js)
+    let packagesUpdated = [];
+    try {
+        packagesUpdated = require('./modules/melatonApps/updates').syncSystemPackageUpdates(globalResources).map((c) => c.id);
+    } catch (err) {
+        console.error('[melaton apps] package update sync failed:', err.message);
+    }
     const wsServer = globalResources.getWebSocketServer();
     const clientsNotified = wsServer && typeof wsServer.getConnectionCount === 'function'
         ? wsServer.getConnectionCount()
@@ -1210,6 +1218,7 @@ async function refreshAndBroadcastServiceWorkerCache(options = {}) {
         clientsNotified,
         compiled: compileResult.compiled || 0,
         skipped: compileResult.skipped || 0,
+        packagesUpdated,
         failedCount: errors.length,
         timestamp: Date.now()
     };
