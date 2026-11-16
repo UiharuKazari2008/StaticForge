@@ -1150,7 +1150,9 @@
     function acQueue() {
         clearTimeout(acTimer);
         const tok = acToken();
-        if (!tok) { acHide(); return; }
+        // SmartText's own settings (the desktop's, in the editor's Menu): off, its delay, its result count
+        const prefs = M.autofillSettings();
+        if (!tok || prefs.enabled === false) { acHide(); return; }
         acTimer = setTimeout(() => {
             const seq = ++acSeq;
             M.suggest(tok.text).then((list) => {
@@ -1165,12 +1167,12 @@
                 const chips = (word, words, attr) => words.map((w) => `<button type="button" class="wm-tool is-text" data-${attr}="${esc(w)}" data-word="${esc(word)}">${esc(w)}</button>`).join('');
                 const side = spell.map((r) => `<div class="wds-ac-side is-spell">${toolIcon('fas fa-spell-check')}<b>${esc(r.word)}</b>${chips(r.word, r.suggestions, 'fix')}</div>`).join('')
                     + lookup.map((r) => `<div class="wds-ac-side is-lookup">${toolIcon('fas fa-book')}<b>${esc(r.word)}</b>${chips(r.word, r.synonyms, 'syn')}</div>`).join('');
-                box.innerHTML = side + list.slice(0, 30).map((r) => `<button type="button" class="wm-listbox-row wds-ac-row" data-key="${esc(r.text)}">${toolIcon(acIcon(r))}<span>${esc(r.label || r.text)}</span>${acNote(r) ? `<small>${esc(acNote(r))}</small>` : ''}</button>`).join('');
+                box.innerHTML = side + list.slice(0, Number(prefs.maxResults) || 35).map((r) => `<button type="button" class="wm-listbox-row wds-ac-row" data-key="${esc(r.text)}">${toolIcon(acIcon(r))}<span>${esc(r.label || r.text)}</span>${acNote(r) ? `<small>${esc(acNote(r))}</small>` : ''}</button>`).join('');
                 box.classList.toggle('has-side', !!side);
                 box.hidden = false;
                 box.scrollTop = 0;
             });
-        }, 250);
+        }, Math.max(0, Number(prefs.searchDelayMs) || 0));
     }
 
     // a row's indicators (the desktop's): its kind and tag category as an icon, beside it the post
@@ -2001,22 +2003,38 @@
         return rows;
     }
 
+    /**
+     * The editor's Menu: what the edit bar does not already show (Yukimi, Nov 16: no copies of the
+     * bar's buttons): SmartText's settings, clearing the field, Find Next once something was found,
+     * Generate (the left key is Done here), the character's own rows.
+     */
     function editorMenu() {
+        const a = M.autofillSettings();
+        const tick = (key, label) => ({ label, checked: a[key] !== false, disabled: key !== 'enabled' && a.enabled === false, action: () => M.setAutofillSetting(key, a[key] === false) });
         const rows = [
-            { label: 'Undo', action: () => edCommand('undo') },
-            { label: 'Redo', action: () => edCommand('redo') },
+            {
+                label: 'SmartText',
+                submenu: () => [
+                    tick('enabled', 'Enable SmartText'),
+                    '-',
+                    tick('spellcheck', 'Spellcheck'),
+                    tick('spellcheckSoundAlike', 'Sound-alike Suggestions'),
+                    tick('thesaurus', 'Thesaurus'),
+                    '-',
+                    tick('naiAnimeTags', 'NAI Anime Tags'),
+                    tick('naiFurryTags', 'NAI Furry Tags'),
+                    tick('dbAnimeTags', 'DB Anime Tags'),
+                    tick('dbFurryTags', 'DB Furry Tags'),
+                    '-',
+                    { label: 'Delay before Search', submenu: () => a.delays.map((d) => ({ label: d.label, radio: d.ms === a.searchDelayMs, action: () => M.setAutofillSetting('searchDelayMs', d.ms) })) },
+                    { label: 'Max Results', submenu: () => a.maxima.map((n) => ({ label: `${n} results`, radio: n === a.maxResults, action: () => M.setAutofillSetting('maxResults', n) })) }
+                ]
+            },
             '-',
-            { label: 'Cut', action: () => edCommand('cut') },
-            { label: 'Copy', action: () => edCommand('copy') },
-            { label: 'Paste', action: () => edCommand('paste') },
-            { label: 'Select All', action: () => edCommand('selectall') },
-            { label: 'Clear', action: () => edCommand('clear') },
-            '-',
-            { label: 'Find...', action: findAsk },
-            { label: 'Find Next', disabled: !findText, action: findNext },
-            '-',
-            { label: 'Generate', action: generate }
+            { label: 'Clear Field', action: () => edCommand('clear') }
         ];
+        if (findText) rows.push({ label: `Find Next "${findText.length > 16 ? `${findText.slice(0, 16)}...` : findText}"`, action: findNext });
+        rows.push('-', { label: 'Generate', action: generate });
         const c = charOf(edField);
         if (c) rows.push('-', { label: 'Rename Character...', action: () => renameCharacter(c.index) }, { label: 'Remove Character', action: () => removeCharacter(c.index) });
         const more = extRows('editor');
