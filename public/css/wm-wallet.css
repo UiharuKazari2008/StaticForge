@@ -219,3 +219,28 @@
     text-shadow: 0 1px 2px #000;
     z-index: 1;
 }
+
+/* Import from Samsung Wallet: what was found, a check box and the card's picture per row */
+.wm-wallet .wwl-import { padding: calc(4 * var(--wm-px)) calc(6 * var(--wm-px)); }
+.wm-wallet .wwl-import[hidden] { display: none; }
+
+.wwl-imp-list { display: flex; flex-direction: column; }
+
+.wwl-imp-row {
+    display: flex;
+    align-items: center;
+    gap: calc(6 * var(--wm-px));
+    min-height: calc(34 * var(--wm-px));
+    border-bottom: calc(1 * var(--wm-px)) solid #d0d0d0;
+}
+
+.wwl-imp-row img,
+.wwl-imp-noimg {
+    flex: 0 0 auto;
+    width: calc(46 * var(--wm-px));
+    height: calc(29 * var(--wm-px));
+    object-fit: contain;
+}
+
+.wwl-imp-row input { flex: 0 0 auto; margin: 0; }
+.wwl-imp-row span { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

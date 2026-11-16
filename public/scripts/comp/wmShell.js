@@ -5813,41 +5813,49 @@
             if (l) sections.push({ links: [...(st && st.running && st.canStop ? [{ label: 'Stop the Engine', action: () => { closeBubble(); l.stop(); } }] : []), { label: 'Open', action: () => { closeBubble(); l.open(); } }] });
             bubble({ title: (st && st.title) || STATUS_APP_LABEL[role], role, anchor, sections, buttons: [{ text: 'Hide' }] });
         } else if (role === 'carkey') {
-            // the phone's car key (#874): the car in range and what the server knows of it (Lapis),
-            // then the key's own Lock and Unlock as two large buttons (Samsung Digital Key's
-            // notification actions, on the phone), then Open (Lapis) at the left of Hide
+            // the phone's car keys (#874, wmCarKey.js): each car in range with its own large Lock and
+            // Unlock (Samsung Digital Key's notification actions, on the phone); my car also shows what
+            // the server knows of it (Lapis); a friend's car can be made my car; Open (Lapis) left of Hide
             const ck = window.wmCarKey;
-            const st = ck ? ck.state() : null;
+            const st = ck ? ck.state() : { cars: [] };
             const lp = window.wmLapis && typeof window.wmLapis.keySummary === 'function' ? window.wmLapis.keySummary() : null;
-            const sections = [st && st.inRange ? 'In range of this phone\'s car key.' : 'The car is out of range.'];
-            if (lp && lp.lines.length) sections.push({ rule: true }, ...lp.lines);
-            const failed = (what) => messageBox({ title: (st && st.car) || 'Car Key', icon: 'error', text: `The car key could not ${what} the car. Move closer to the car, then try again.` });
-            const lock = () => { closeBubble(); if (!ck.press('lock')) failed('lock'); };
-            const unlock = async () => {
-                closeBubble();
-                const ok = await messageBox({ title: (st && st.car) || 'Car Key', icon: 'question', text: 'Unlock the doors?', buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
-                if (ok && !ck.press('unlock')) failed('unlock');
-            };
-            if (ck && (ck.can('lock') || ck.can('unlock'))) {
-                const keys = document.createElement('div');
-                keys.className = 'wm-carkey-keys';
-                const key = (label, art, action, on) => {
-                    const b = document.createElement('button');
-                    b.type = 'button';
-                    b.className = 'wm-carkey-key';
-                    b.disabled = !on;
-                    b.innerHTML = `${imgTag(art)}<span>${escapeHtml(label)}</span>`;
-                    b.addEventListener('click', (e) => { e.stopPropagation(); action(); });
-                    keys.appendChild(b);
+            const sections = [];
+            if (!st.cars.length) sections.push('No car is in range of this phone\'s keys.');
+            st.cars.forEach((car, i) => {
+                if (i) sections.push({ rule: true });
+                const many = st.cars.length > 1;
+                if (many) sections.push({ text: car.car, bold: true, links: car.mine ? [] : [{ label: 'Set as My Car', action: () => { ck.setMine(car.car); } }] });
+                sections.push(car.mine ? 'Your car, in range of this phone\'s key.' : many ? 'A friend\'s car, in range of its key.' : 'In range of this phone\'s key.');
+                if (car.mine && lp && lp.lines.length) sections.push(...lp.lines);
+                const failed = (what) => messageBox({ title: car.car, icon: 'error', text: `The car key could not ${what} ${car.car}. Move closer to the car, then try again.` });
+                const lock = () => { closeBubble(); if (!ck.pressCar(car.key, 'lock')) failed('lock'); };
+                const unlock = async () => {
+                    closeBubble();
+                    const ok = await messageBox({ title: car.car, icon: 'question', text: `Unlock ${car.car}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
+                    if (ok && !ck.pressCar(car.key, 'unlock')) failed('unlock');
                 };
-                key('Lock', 'today-lock-locked', lock, ck.can('lock'));
-                key('Unlock', 'today-lock', unlock, ck.can('unlock'));
-                sections.push({ node: keys });
-            }
+                if (car.canLock || car.canUnlock) {
+                    const keys = document.createElement('div');
+                    keys.className = 'wm-carkey-keys';
+                    const key = (label, art, action, on) => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = 'wm-carkey-key';
+                        btn.disabled = !on;
+                        btn.innerHTML = `${imgTag(art)}<span>${escapeHtml(label)}</span>`;
+                        btn.addEventListener('click', (e) => { e.stopPropagation(); action(); });
+                        keys.appendChild(btn);
+                    };
+                    key('Lock', 'today-lock-locked', lock, car.canLock);
+                    key('Unlock', 'today-lock', unlock, car.canUnlock);
+                    sections.push({ node: keys });
+                }
+            });
             const buttons = [];
             if (lp && window.wmLapis.open) buttons.push({ text: 'Open', left: true, action: () => window.wmLapis.open() });
             buttons.push({ text: 'Hide' });
-            bubble({ title: (st && st.car) || (lp && lp.name) || STATUS_APP_LABEL[role], role, anchor, sections, buttons });
+            const title = st.cars.length > 1 ? 'Car Keys' : (st.cars[0] && st.cars[0].car) || (lp && lp.name) || STATUS_APP_LABEL[role];
+            bubble({ title, role, anchor, sections, buttons });
         } else if (role === 'traffic') {
             // Traffic (#795): the commute time, the delay and when it gets there, and the way into the app
             const t = window.wmTraffic;

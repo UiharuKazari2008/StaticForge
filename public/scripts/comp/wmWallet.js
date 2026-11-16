@@ -18,8 +18,16 @@
  * Android Keystore key, not backed up; DSApp SecureStore.kt, docs/ANDROID_BRIDGE.md). Nothing goes to
  * the server, localStorage or IndexedDB; the server keeps only Settings > Today's on / off for the
  * item. Without the app (a test tab) the list lives in this page's memory and is gone on reload.
- * A card's picture is a photo taken here with the camera (cropped to a card, kept in the store) or
- * drawn from its colour.
+ * A card's picture is cut from Samsung Wallet (Import from Samsung Wallet), a photo taken here with
+ * the camera (cropped to a card), or drawn from its colour.
+ *
+ * Import from Samsung Wallet (Menu): the Android app reads Wallet's own screens through Melaton Bars'
+ * accessibility service (window.AndroidWalletImport, DSApp WalletImport.kt): every payment card's name,
+ * network, last 4 and its card art cut from its details page (exact view bounds, corners cleared), and
+ * every membership's name, card art, barcode picture and number. Wallet shows only the last 4 of a
+ * card. The page then lists what was found with check boxes; the checked ones are added or updated.
+ * A membership's barcode type is read from its picture (BarcodeDetector); when it cannot be, Wallet's
+ * own barcode picture is shown as it is (format 'image').
  *
  * Today: registerTodayItem 'cards' (label Wallet). 6.1: a block, the selected item as
  * [card picture] nickname / its name in Wallet ••last 4 (a tap pays), < > to page; a barcode drawn
@@ -40,7 +48,7 @@
     const FORMATS = [
         ['code128', 'Code 128'], ['code39', 'Code 39'], ['ean13', 'EAN-13'], ['upca', 'UPC-A'],
         ['interleaved2of5', 'Interleaved 2 of 5'], ['qrcode', 'QR Code'], ['pdf417', 'PDF417'],
-        ['azteccode', 'Aztec'], ['datamatrix', 'Data Matrix']
+        ['azteccode', 'Aztec'], ['datamatrix', 'Data Matrix'], ['image', 'As in Samsung Wallet']
     ];
     const TWO_D = new Set(['qrcode', 'pdf417', 'azteccode', 'datamatrix']);
     // BarcodeDetector's names for the formats above
@@ -54,7 +62,8 @@
     let data = { v: 1, items: [] };
     let loaded = false;
     let storeNote = ''; // why the store cannot be read now ('' when it can)
-    let layers = []; // 'edit' | 'show' | 'scan'
+    let layers = []; // 'edit' | 'show' | 'scan' | 'import'
+    let imported = null; // { running, items, picked: Set(index), reason } while an import runs or is offered
     let form = null; // the item being edited (a copy) and whether it is new
     let showing = null; // the item shown full screen
     let todayAt = 0; // the selected item on Today (index)
@@ -121,6 +130,8 @@
     function barcodeKey(it, big) { return `${it.format}|${it.value}|${big ? 1 : 0}`; }
     /** The barcode as a PNG data URL (null while bwip-js loads; Today repaints when it is ready). */
     function barcodeUrl(it, big) {
+        // Samsung Wallet's own barcode picture, when its type could not be read
+        if (it.format === 'image') return it.codeImage || 'bad';
         const k = barcodeKey(it, big);
         if (codeArt.has(k)) return codeArt.get(k);
         codeArt.set(k, null);
@@ -245,13 +256,13 @@
         if (todayAt >= list.length) todayAt = 0;
         const it = list[todayAt];
         const art = it.kind === 'barcode' ? barcodeUrl(it, false) : null;
-        const pic = it.kind === 'card' ? cardUrl(it) : '';
+        const pic = it.kind === 'card' ? cardUrl(it) : (it.photo || '');
         const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length]);
         if (key === todayKey) return true;
         todayKey = key;
         // [card picture] nickname / its name in Wallet ••last 4; a tap on it pays (or shows, or opens)
         const act = it.kind === 'card' ? 'pay' : it.kind === 'barcode' ? 'show' : 'id';
-        const lead = it.kind === 'card' ? `<img class="wwl-pic" src="${esc(pic)}" alt="" draggable="false">` : `<img class="wwl-pic is-icon" src="/static_images/wm61/${ICON}.png" srcset="/static_images/wm61/${ICON}@2x.png 2x, /static_images/wm61/${ICON}@4x.png 4x" alt="" draggable="false">`;
+        const lead = pic ? `<img class="wwl-pic" src="${esc(pic)}" alt="" draggable="false">` : `<img class="wwl-pic is-icon" src="/static_images/wm61/${ICON}.png" srcset="/static_images/wm61/${ICON}@2x.png 2x, /static_images/wm61/${ICON}@4x.png 4x" alt="" draggable="false">`;
         const row = `<div class="wwl-row">
                 <button type="button" class="wwl-item" data-act="${act}">${lead}<span class="wwl-lines"><span class="wwl-title">${esc(lineOf(it))}</span><span class="wwl-sub">${esc(subOf(it))}</span></span></button>
                 ${list.length > 1 ? `<span class="wwl-pager"><button type="button" class="wwl-arrow" data-act="prev" aria-label="Previous">\u2039</button><button type="button" class="wwl-arrow" data-act="next" aria-label="Next">\u203a</button></span>` : ''}
@@ -286,9 +297,9 @@
             icon: `x:${ICON}-lg`,
             pages: list.map((it) => {
                 const go = () => activate(it);
-                const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? (barcodeUrl(it, false) || undefined) : undefined;
+                const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? (it.photo || barcodeUrl(it, false) || undefined) : undefined;
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card', softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card' || !!it.photo, softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }
@@ -300,12 +311,14 @@
             <div class="wwl-list" data-layer="list"></div>
             <div class="wwl-edit wm-form" data-layer="edit" hidden></div>
             <div class="wwl-show" data-layer="show" hidden></div>
+            <div class="wwl-import wm-form" data-layer="import" hidden></div>
             <div class="wwl-scan" data-layer="scan" hidden><video playsinline muted></video><span class="wwl-scan-guide"></span><p class="wwl-scan-note">Hold the barcode inside the frame.</p></div>
         </div>`;
         els = {
             list: page.querySelector('[data-layer="list"]'),
             edit: page.querySelector('[data-layer="edit"]'),
             show: page.querySelector('[data-layer="show"]'),
+            import: page.querySelector('[data-layer="import"]'),
             scan: page.querySelector('[data-layer="scan"]'),
             video: page.querySelector('.wwl-scan video')
         };
@@ -316,17 +329,18 @@
     function sync() {
         if (!els) return;
         const t = top();
-        for (const k of ['list', 'edit', 'show', 'scan']) els[k].hidden = k !== t;
+        for (const k of ['list', 'edit', 'show', 'scan', 'import']) els[k].hidden = k !== t;
         page.classList.toggle('is-show', t === 'show');
         brightness(t === 'show');
         if (t !== 'scan') stopScan();
         if (t === 'list') renderList();
         else if (t === 'show') renderShow();
+        else if (t === 'import') renderImport();
         if (sh) { if (sh.refreshSoftKeys) sh.refreshSoftKeys(); if (sh.refreshTitleAction) sh.refreshTitleAction(); }
     }
 
     function push(l) { layers.push(l); sync(); }
-    function pop() { const was = layers.pop(); if (was === 'edit') form = null; if (was === 'show') showing = null; sync(); return true; }
+    function pop() { const was = layers.pop(); if (was === 'edit') form = null; if (was === 'show') showing = null; if (was === 'import') imported = null; sync(); return true; }
 
     let selected = null;
     function renderList() {
@@ -446,6 +460,146 @@
         renderList();
     }
 
+    // ---------------------------------------------------------------- import from Samsung Wallet
+
+    function importer() { return window.AndroidWalletImport || null; }
+
+    async function importStart() {
+        const b = importer();
+        if (!b) return;
+        let av = {};
+        try { av = JSON.parse(b.available()); } catch (_) { av = {}; }
+        if (!av.service) {
+            sh.messageBox({ title: TITLE, icon: 'info', text: 'Import from Samsung Wallet reads Wallet\'s card list through Melaton Bars. Turn on Melaton Bars in Android\'s Settings > Accessibility > Installed apps, then try again.' });
+            return;
+        }
+        const kinds = await sh.messageBox({
+            title: 'Import from Samsung Wallet',
+            icon: 'question',
+            text: 'Samsung Wallet opens and Melaton reads your cards from it: names, the last 4 digits and the card pictures (payment cards), names, card pictures and barcodes (memberships). Please do not touch the screen until it comes back here.\n\nWhat should it import?',
+            buttons: [{ text: 'Cards', value: 'payment' }, { text: 'Memberships', value: 'membership' }, { text: 'Both', value: 'all' }],
+            cancelValue: null
+        });
+        if (!kinds) return;
+        imported = { running: true, items: [], picked: new Set(), reason: '' };
+        let ok = false;
+        try { ok = b.start(kinds) === true; } catch (_) { ok = false; }
+        if (!ok) { imported = null; sh.messageBox({ title: TITLE, icon: 'error', text: 'The import could not start. Make sure Melaton Bars is on and no import is running.' }); }
+    }
+
+    function importTake() {
+        const b = importer();
+        if (!b || !imported) return;
+        let r = null;
+        try { r = JSON.parse(b.take()); } catch (_) { r = null; }
+        if (!r) return;
+        (r.items || []).forEach(importItem);
+        if (r.phase === 'error') imported.reason = r.reason || 'failed';
+        if (!r.running && imported.running) importDone();
+    }
+
+    function importItem(o) {
+        if (!imported || !o || !o.walletName) return;
+        // the same card from the event and from take(): once
+        if (imported.items.some((x) => x.kind === o.kind && x.walletName === o.walletName && (x.last4 || '') === (o.last4 || ''))) return;
+        imported.items.push(o);
+    }
+
+    function importDone() {
+        if (!imported) return;
+        imported.running = false;
+        if (!imported.items.length) {
+            const why = { service: 'Melaton Bars is off.', cancelled: 'It was cancelled.', left: 'Samsung Wallet was left before it finished.' }[imported.reason] || 'No cards were found.';
+            imported = null;
+            sh.messageBox({ title: TITLE, icon: 'info', text: `Nothing was imported. ${why}` });
+            return;
+        }
+        // tick the cards already here (they are updated), leave the rest for the user to pick
+        const have = items();
+        imported.items.forEach((o, i) => { if (have.some((x) => sameAs(x, o))) imported.picked.add(i); });
+        sh.open(APP_ID);
+        if (top() !== 'import') push('import'); else renderImport();
+    }
+
+    function sameAs(x, o) {
+        return x.kind === o.kind && norm(x.walletName) === norm(o.walletName) && (o.kind !== 'card' || !o.last4 || x.last4 === o.last4);
+    }
+    const norm = (v) => String(v || '').trim().toLowerCase();
+
+    function renderImport() {
+        const ui = window.wmSettings && window.wmSettings.ui;
+        if (!ui || !imported) return;
+        const rows = imported.items.map((o, i) => {
+            const label = o.kind === 'card' ? `${o.walletName}${o.last4 ? ` \u2022\u2022${o.last4}` : ''}` : `${o.walletName}${o.merchant ? ` (${o.merchant})` : ''}`;
+            const img = o.image ? `<img src="${esc(o.image)}" alt="" draggable="false">` : '<span class="wwl-imp-noimg"></span>';
+            return `<label class="wwl-imp-row">${img}<input type="checkbox" data-i="${i}"${imported.picked.has(i) ? ' checked' : ''}><span>${esc(label)}</span></label>`;
+        }).join('');
+        const n = imported.items.length;
+        els.import.innerHTML = `${ui.note(`Found ${n} card${n === 1 ? '' : 's'} in Samsung Wallet. Check the ones to keep on Today; cards already here are updated.`)}
+            <div class="wwl-imp-list">${rows}</div>`;
+        els.import.querySelectorAll('input[type="checkbox"]').forEach((c) => c.addEventListener('change', () => {
+            const i = Number(c.dataset.i);
+            if (c.checked) imported.picked.add(i); else imported.picked.delete(i);
+        }));
+    }
+
+    /** A barcode picture's type and value (BarcodeDetector), or null. */
+    async function readCode(dataUrl) {
+        if (!dataUrl || !('BarcodeDetector' in window)) return null;
+        try {
+            const img = new Image();
+            img.src = dataUrl;
+            await img.decode();
+            const det = new window.BarcodeDetector({ formats: (await window.BarcodeDetector.getSupportedFormats()).filter((f) => DETECTED[f]) });
+            const r = await det.detect(img);
+            return r && r[0] && DETECTED[r[0].format] ? { format: DETECTED[r[0].format], value: r[0].rawValue } : null;
+        } catch (_) { return null; }
+    }
+
+    async function importSave() {
+        if (!imported) return;
+        const list = items();
+        const pick = imported.items.filter((_, i) => imported.picked.has(i));
+        const add = async () => {
+            for (const o of pick) {
+                let it = list.find((x) => sameAs(x, o));
+                const isNew = !it;
+                if (isNew) it = { id: uid(), kind: o.kind, name: o.walletName, color: COLORS[0][0] };
+                it.walletName = o.walletName;
+                if (o.image) it.photo = o.image;
+                if (o.kind === 'card') {
+                    if (o.last4) it.last4 = o.last4;
+                    const net = norm(o.network);
+                    it.network = (NETWORKS.find(([k, l]) => net.includes(k) || net.includes(norm(l))) || ['other'])[0];
+                } else {
+                    if (o.merchant && isNew) it.name = o.walletName;
+                    const code = await readCode(o.barcodeImage);
+                    if (code) { it.format = code.format; it.value = code.value; delete it.codeImage; } else if (o.barcodeImage || o.barcodeValue) {
+                        it.value = o.barcodeValue || it.value || '';
+                        it.codeImage = o.barcodeImage || it.codeImage;
+                        it.format = it.codeImage ? 'image' : (it.format || 'code128');
+                    }
+                    if (o.barcodeValue) it.number = o.barcodeValue;
+                }
+                if (isNew) list.push(it);
+            }
+        };
+        await sh.busy(add(), { delay: 250, timeout: 30000 }).catch(() => {});
+        save();
+        imported = null;
+        layers = layers.filter((l) => l !== 'import');
+        sync();
+    }
+
+    window.addEventListener('androidwalletimport', (e) => {
+        const d = e.detail || {};
+        if (!imported) return;
+        if (d.phase === 'item') importItem(d);
+        else if (d.phase === 'error') { imported.reason = d.reason || 'failed'; importTake(); importDone(); } else if (d.phase === 'done') { importTake(); importDone(); }
+    });
+    // back from Wallet: what a paused page missed
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && imported && imported.running) importTake(); });
+
     // ---------------------------------------------------------------- camera scan
 
     async function startScan(mode) {
@@ -538,11 +692,12 @@
         historyDepth: () => layers.length,
         onBack: () => (layers.length ? pop() : false),
         titleKind: () => (layers.length ? 'ok' : 'close'),
-        onTitleOk: () => { if (top() === 'edit') saveEdit(); else pop(); },
+        onTitleOk: () => { if (top() === 'edit') saveEdit(); else if (top() === 'import') importSave(); else pop(); },
         onTitleClose() { layers = []; form = null; showing = null; brightness(false); stopScan(); },
         softKeys() {
             const t = top();
             if (t === 'edit') return { left: { label: 'Save', action: saveEdit }, right: { label: 'Cancel', action: pop } };
+            if (t === 'import') return { left: { label: 'Add', action: importSave }, right: { label: 'Cancel', action: pop } };
             if (t === 'scan') return { left: scan && scan.photo ? { label: 'Capture', action: capture } : { label: '', action: () => {} }, right: { label: 'Cancel', action: pop } };
             if (t === 'show') {
                 const list = items().filter((x) => x.kind === 'barcode');
@@ -560,6 +715,7 @@
                         { label: 'New Card...', action: () => editItem(null, 'card') },
                         { label: 'New Barcode...', action: () => editItem(null, 'barcode') },
                         { label: 'New ID...', action: () => editItem(null, 'id') },
+                        ...(importer() ? [{ label: 'Import from Samsung Wallet...', action: importStart }] : []),
                         '-',
                         { label: 'Edit...', disabled: !sel, action: () => editItem(sel) },
                         { label: 'Move Up', disabled: !sel || i <= 0, action: () => move(-1) },
