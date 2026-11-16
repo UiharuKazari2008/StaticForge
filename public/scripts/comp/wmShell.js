@@ -10811,7 +10811,10 @@
         /** Melaton Bars (#871): the page is behind an Android program (its status changes go to the app). */
         setBarsExternal: (on) => {
             const was = barsExternal;
-            barsExternal = !!on;
+            // never while the page is on screen: a bar copy asked for while the phone was locked can arrive just
+            // after it was unlocked into Melaton Mobile, and its "behind" hid the whole page (a black screen that
+            // still took touches, the Fold, Nov 16)
+            barsExternal = !!on && document.visibilityState !== 'visible';
             // everything open here suspended while it is behind (wm-shell.css html[data-wm-behind]); programs hear it
             if (barsExternal) root.dataset.wmBehind = ''; else delete root.dataset.wmBehind;
             if (was !== barsExternal) document.dispatchEvent(new CustomEvent('wmBehind', { detail: { on: barsExternal } }));
