@@ -144,10 +144,15 @@
         let t = null;
         let b = null;
         let anims = { top: [], bottom: [] };
+        let nativeInfo = null;
         try {
             // the animated icons (sprite strips) are left out of the pictures and sent as their frames
-            t = await window.windowCapture.snapshot(top, { scale: dpr, before: () => { stage(); hideStrips(top); } });
+            // the icons the app draws itself from Android's own status and the title text are left out too:
+            // their boxes go along (slots, title), so they are never out of date while this page sleeps
+            t = await window.windowCapture.snapshot(top, { scale: dpr, before: () => { stage(); hideNative(top); hideStrips(top); } });
             showStrips(top);
+            nativeInfo = nativeBoxes(top, dpr);
+            showNative(top);
             anims.top = await stripFrames(top, dpr);
             if (soft) {
                 b = await window.windowCapture.snapshot(soft, { scale: dpr, before: () => hideStrips(soft) });
@@ -167,7 +172,7 @@
             // the picture's own width: innerWidth x dpr rounds 411 x 2.625 to 1079 on a 1080 px screen
             widthPx: t ? t.width : Math.round(window.innerWidth * dpr),
             clock: !!top.querySelector('.wm-clock651'),
-            top: withAnims(pack(t, regions.top), anims.top),
+            top: Object.assign(withAnims(pack(t, regions.top), anims.top) || {}, nativeInfo || {}),
             bottom: soft ? withAnims(pack(b, regions.bottom), anims.bottom) : null
         };
         publish(Object.assign({ reqId }, lastGood));
@@ -180,7 +185,8 @@
      * the element drawn at that frame; the app plays them over the bar. Kept per strip and size.
      */
     const stripCache = new Map();
-    const stripEls = (bar) => [...bar.querySelectorAll('.wm-strip')].filter((n) => !n.hidden && n.getClientRects().length);
+    // (the icons the app draws itself are not copied as strips either: the signal search is drawn there)
+    const stripEls = (bar) => [...bar.querySelectorAll('.wm-strip')].filter((n) => !n.hidden && n.getClientRects().length && !NATIVE_ROLES.includes(n.dataset.role));
     function hideStrips(bar) { stripEls(bar).forEach((n) => { n.dataset.barsHole = '1'; n.style.visibility = 'hidden'; }); }
     function showStrips(bar) { bar.querySelectorAll('[data-bars-hole]').forEach((n) => { delete n.dataset.barsHole; n.style.visibility = ''; }); }
     async function stripFrames(bar, dpr) {
@@ -231,6 +237,81 @@
     function pinStrips(bar) {
         const backs = stripEls(bar).map((n) => pinStrip(n, 0));
         return () => backs.forEach((b) => b());
+    }
+
+    /*
+     * What the app draws itself on the bar (#871, Yukimi Nov 16: "the status bar is not allowed to be out
+     * of sync or inaccurate"): the connectivity, mobile network, roaming, signal and battery icons come
+     * from Android's own status, and the title is the program in front, so the app draws them live from
+     * its own state (DeviceStatusBridge, the program's label) with the same rules and art. The picture
+     * leaves them out; their boxes come along: slots [{ role, x, y, w, h, icon }] (icon: what this page
+     * shows, for the log) and the title's box.
+     */
+    const NATIVE_ROLES = ['data', 'cell', 'roaming', 'signal', 'battery'];
+    function nativeEls(bar) { return NATIVE_ROLES.map((r) => bar.querySelector(`.wm-status-icon[data-role="${r}"]`)).filter(Boolean); }
+    function hideNative(bar, iconsOnly) {
+        nativeEls(bar).forEach((n) => { n.dataset.barsNative = '1'; n.style.visibility = 'hidden'; });
+        const t = iconsOnly ? null : bar.querySelector('.wm-title');
+        if (t) { t.dataset.barsNative = '1'; t.style.color = 'transparent'; }
+    }
+    function showNative(bar) {
+        bar.querySelectorAll('[data-bars-native]').forEach((n) => { delete n.dataset.barsNative; n.style.visibility = ''; n.style.color = ''; });
+    }
+    function nativeBoxes(bar, dpr) {
+        const br = bar.getBoundingClientRect();
+        const rel = (r) => ({ x: Math.round((r.left - br.left) * dpr), y: Math.round((r.top - br.top) * dpr), w: Math.round(r.width * dpr), h: Math.round(r.height * dpr) });
+        const slots = nativeEls(bar).filter((n) => !n.hidden && !n.classList.contains('wm-shed') && n.getClientRects().length)
+            .map((n) => Object.assign({ role: n.dataset.role, icon: n.dataset.icon || '' }, rel(n.getBoundingClientRect())));
+        const t = bar.querySelector('.wm-title');
+        let title = null;
+        if (t) {
+            const r = t.getBoundingClientRect();
+            const cs = getComputedStyle(t);
+            title = Object.assign(rel(r), { pad: Math.round((parseFloat(cs.paddingLeft) || 0) * dpr), text: t.textContent || '' });
+        }
+        // the settings that choose the mobile network's badge (wmShell typeIcon) and the extra network icon
+        const ls = (k) => lsGet(k) === '1';
+        const net = { lte: ls('wmCellLte'), g5: ls('wmCell5g'), g5uw: ls('wmCell5gUw'), nruw: ls('wmCellNrUw'), showCell: ls('wmShowCellIcon') };
+        return { slots, title, net, unit: Math.round(((n) => (n ? n.getBoundingClientRect().width : 0))(bar.querySelector('.wm-status-icon:not([hidden])')) * dpr) };
+    }
+
+    /*
+     * The title's glyphs for the app (melatonBars.renderKit({ reqId })): Tahoma Bold at the title's size,
+     * each printable character drawn alone in the title element with its advance, so the app writes any
+     * program's name itself. AndroidBars.publishKit({ reqId, widthPx, h, pad, chars: { ch: { png, adv } } }).
+     */
+    async function renderKit(ctx) {
+        ctx = ctx || {};
+        const reqId = Number(ctx.reqId) || 0;
+        const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishKit) window.AndroidBars.publishKit(JSON.stringify(Object.assign({ reqId, v: 1 }, o))); } catch (err) { console.warn('[melatonBars] publishKit', err); } };
+        const shell = document.getElementById('wmShell');
+        const top = shell && shell.querySelector('.wm-titlebar');
+        const t = top && top.querySelector('.wm-title');
+        if (!t) { out({ unsupported: 'no-shell' }); return; }
+        if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
+        if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
+        const dpr = window.devicePixelRatio || 1;
+        const keep = { text: t.textContent, style: t.getAttribute('style') };
+        const PAD = 6;
+        const chars = {};
+        const list = [];
+        for (let c = 32; c < 127; c++) list.push(String.fromCharCode(c));
+        '…ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ–—‘’“”•™®©'.split('').forEach((ch) => list.push(ch));
+        try {
+            for (const ch of list) {
+                t.textContent = ch === ' ' ? '\u00a0' : ch;
+                // alone, as wide as the character (plus room for nothing else), its box the title's height
+                t.setAttribute('style', `${keep.style || ''};flex:0 0 auto;min-width:0;width:auto;padding:0 ${PAD}px;overflow:visible`);
+                const r = t.getBoundingClientRect();
+                const c = await window.windowCapture.snapshot(t, { scale: dpr });
+                const p = pack(c, []);
+                if (p) chars[ch] = { png: p.png, adv: Math.round((r.width - PAD * 2) * dpr * 100) / 100 };
+            }
+        } finally {
+            t.textContent = keep.text;
+            if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
+        }
+        out({ widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars });
     }
 
     function withAnims(p, list) { if (p && list && list.length) p.anims = list; return p; }
@@ -484,9 +565,12 @@
             const glowPic = glow && glowAt ? await snap(glow, () => { list.style.visibility = listVis; }) : null;
             const listPic = await snap(list, () => { list.style.visibility = listVis; if (glow) glow.hidden = true; list.style.transform = 'none'; });
             // the animated icons at their first frame (Start's copy is a still)
+            // and the icons the app draws live left out (their boxes go along): Start shows the same state as the bar
             let unpin = null;
-            const topPic = await snap(top, () => { unpin = pinStrips(top); });
+            const topPic = await snap(top, () => { unpin = pinStrips(top); hideNative(top, true); });
             if (unpin) unpin();
+            const topNative = nativeBoxes(top, dpr);
+            showNative(top);
             const softPic = soft ? await snap(soft) : null;
             // the page came on screen meanwhile: Start was put back, the copy is not whole
             if (restored) { out({ unsupported: 'interrupted' }); return; }
@@ -503,7 +587,7 @@
                 list: packAt(listPic, lr, dpr),
                 glow: glowPic ? packAt(glowPic, glow.getBoundingClientRect(), dpr, glowAt) : null,
                 cells,
-                top: packAt(topPic, top.getBoundingClientRect(), dpr, { regions: regionsOf(top, TOP_MAP, dpr) }),
+                top: packAt(topPic, top.getBoundingClientRect(), dpr, { regions: regionsOf(top, TOP_MAP, dpr), slots: topNative.slots }),
                 bottom: softPic ? packAt(softPic, soft.getBoundingClientRect(), dpr, { regions: regionsOf(soft, SOFT_MAP, dpr) }) : null
             });
         } finally {
@@ -697,6 +781,7 @@
         },
         renderPopup: (ctx) => { serial(() => renderPopup(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); }); },
         renderLock: (ctx) => { serial(() => renderLock(ctx)).catch((err) => console.warn('[melatonBars] renderLock', err)); },
+        renderKit: (ctx) => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
         unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
