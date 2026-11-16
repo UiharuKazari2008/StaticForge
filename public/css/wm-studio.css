@@ -2044,7 +2044,7 @@ html.ui-mobile[data-wm-viewer] .wm-studio .wms-tool-host > .modal {
 /* ---- WM badges (wmStudio.js): the desktop model badges F / C / L and the resolution group badges in
  * the closed combos and the drop-down rows; the desktop's colours, flat in a 1 px frame. Paid sizes
  * (LG, WP, XL) keep the plain face, free ones (SM, the Normal wallpapers) the desktop's green ---- */
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge {
     display: inline-block;
     flex: 0 0 auto;
@@ -2061,31 +2061,31 @@ html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge {
     vertical-align: middle;
 }
 
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.full-model-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge.full-model-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.full-model-badge {
     background: #d85a00;
     color: #fff;
 }
 
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.curated-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge.curated-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.curated-badge {
     background: #004fd8;
     color: #fff;
 }
 
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.legacy-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge.legacy-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.legacy-badge {
     background: #000;
     color: #fff;
 }
 
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.legacy-furry-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge.legacy-furry-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.legacy-furry-badge {
     background: #63004e;
     color: #fff;
 }
 
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge.free-badge,
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge.free-badge,
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge.free-badge {
     background: #00b152;
     color: #fff;
@@ -2750,7 +2750,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 }
 
 .wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge {
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge {
     white-space: nowrap;
 }
 
@@ -2777,7 +2777,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 
 /* combo badges in their own case */
 .wm-studio #manualModal .custom-dropdown-btn .custom-dropdown-badge,
-:is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge {
+:is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge {
     text-transform: none !important;
     letter-spacing: normal !important;
 }
@@ -2903,7 +2903,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
 }
 
 /* coloured model badges keep their white text (the form's black-text rule won: "Full" read black on orange) */
-#wmShell :is(.wm-studio #manualModal, .wm-studio .wms-ptools) .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge),
+#wmShell :is(.wm-studio #manualModal, .wm-studio .wms-ptools, .wm-dreamstudio .wds-genbar) .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge),
 html.ui-mobile[data-wm-app="studio"] #wmShell .wm-popup .wms-badge:is(.full-model-badge, .curated-badge, .legacy-badge, .legacy-furry-badge) {
     color: #fff !important;
     -webkit-text-fill-color: #fff !important;
@@ -3529,14 +3529,16 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
 
 /* UC: the desktop's level meter (ucPresetsDropdownBtn's four boxes) as WM pixels: four 3 x 7-unit
  * boxes 1 unit apart, framed in black, filled up to the level */
-.wm-studio .wms-uc-meter {
+.wm-studio .wms-uc-meter,
+.wm-dreamstudio .wds-genbar .wms-uc-meter {
     display: inline-flex;
     gap: calc(1 * var(--wm-px));
     align-items: center;
     pointer-events: none;
 }
 
-.wm-studio .wms-uc-meter > i {
+.wm-studio .wms-uc-meter > i,
+.wm-dreamstudio .wds-genbar .wms-uc-meter > i {
     display: block;
     width: calc(3 * var(--wm-px));
     height: calc(7 * var(--wm-px));
@@ -3545,6 +3547,10 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     background: #fff;
 }
 
+.wm-dreamstudio .wds-genbar .wms-uc-meter[data-level="1"] > i:nth-child(-n+1),
+.wm-dreamstudio .wds-genbar .wms-uc-meter[data-level="2"] > i:nth-child(-n+2),
+.wm-dreamstudio .wds-genbar .wms-uc-meter[data-level="3"] > i:nth-child(-n+3),
+.wm-dreamstudio .wds-genbar .wms-uc-meter[data-level="4"] > i,
 .wm-studio .wms-uc-meter[data-level="1"] > i:nth-child(-n+1),
 .wm-studio .wms-uc-meter[data-level="2"] > i:nth-child(-n+2),
 .wm-studio .wms-uc-meter[data-level="3"] > i:nth-child(-n+3),
@@ -3552,7 +3558,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     background: #000;
 }
 
-.wm-studio .wms-pt-uc:disabled .wms-uc-meter > i {
+.wm-studio .wms-pt-uc:disabled .wms-uc-meter > i,
+.wm-dreamstudio .wds-genbar .wm-tool:disabled .wms-uc-meter > i {
     border-color: #848284;
     background: transparent;
     box-shadow: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff;
@@ -3563,7 +3570,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     position: relative;
 }
 
-.wm-studio .wms-pt-count {
+.wm-studio .wms-pt-count,
+.wm-dreamstudio .wds-genbar .wms-pt-count {
     position: absolute;
     right: calc(1 * var(--wm-px));
     bottom: 0;
@@ -3576,7 +3584,8 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .search-status-displa
     pointer-events: none;
 }
 
-.wm-studio .wms-pt-count[hidden] {
+.wm-studio .wms-pt-count[hidden],
+.wm-dreamstudio .wds-genbar .wms-pt-count[hidden] {
     display: none;
 }
 

@@ -2167,6 +2167,8 @@
     let uiSeq = 0;
     let calPop = null; // the open month calendar: { el, away, anchor }
     let calSkip = null; // the control whose tap just closed its calendar
+    const pops = []; // the open pop-up panels, bottom first: [{ el, away, anchor, onClose }]
+    let popSkip = null; // the control whose tap just closed its panel
     const CAL_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     // the sixteen system colours, in the order of the system palette: [['#rrggbb', name]]; silver and
     // gray are the two greys, the others the red / green / blue bits at half (0 - 6) or full (9 - 15)
@@ -2410,6 +2412,231 @@
             calPop = null;
             if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
             return true;
+        },
+        /**
+         * A framed pop-up box hung from a control: a tool bar button's own panel (a number's
+         * trackbar, a list of check rows with their weights). It hangs under the control while it
+         * fits between the title bar and the soft keys, else over it (a bar at the foot of the page
+         * opens its panels upwards), pulled in to stay on the screen; a tall one scrolls. Panels
+         * stack (a weight's trackbar over the list it came from); a tap outside the top one closes
+         * only that one, and that tap does nothing else. opts: label (accessible name), className,
+         * build(el) fills it, onClose(). Returns { el, close, place } (place() fits it again after
+         * its content changed size).
+         */
+        popPanel(anchor, { label = '', className = '', build, onClose } = {}) {
+            const host = document.getElementById('wmShell') || document.body;
+            const el = document.createElement('div');
+            el.className = `wm-pop${className ? ` ${className}` : ''}`;
+            el.setAttribute('role', 'dialog');
+            if (label) el.setAttribute('aria-label', label);
+            host.appendChild(el);
+            if (typeof build === 'function') build(el);
+            const place = () => {
+                if (!el.isConnected) return;
+                const hr = host.getBoundingClientRect();
+                const content = host.querySelector('.wm-content');
+                const cr = content ? content.getBoundingClientRect() : hr;
+                const unit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+                const pad = 2 * unit;
+                el.style.maxWidth = `${Math.max(0, cr.width - 2 * pad)}px`;
+                el.style.maxHeight = `${Math.max(0, cr.height - 2 * pad)}px`;
+                const w = el.offsetWidth;
+                const h = el.offsetHeight;
+                const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : cr;
+                let top = r.bottom;
+                if (top + h > cr.bottom - pad) top = r.top - h >= cr.top + pad ? r.top - h : Math.max(cr.top + pad, cr.bottom - pad - h);
+                const left = Math.max(cr.left + pad, Math.min(r.left, cr.right - pad - w));
+                el.style.left = `${left - hr.left}px`;
+                el.style.top = `${top - hr.top}px`;
+            };
+            place();
+            const close = () => {
+                const at = pops.findIndex((p) => p.el === el);
+                if (at < 0) return;
+                // the panels opened from this one go with it
+                pops.splice(at).reverse().forEach((p) => {
+                    document.removeEventListener('pointerdown', p.away, true);
+                    // told first, while its content is still there to read (a typed value)
+                    if (typeof p.onClose === 'function') { try { p.onClose(p.el); } catch (_) { /* the caller's own */ } }
+                    p.el.remove();
+                    if (p.anchor && typeof p.anchor.setAttribute === 'function') p.anchor.setAttribute('aria-expanded', 'false');
+                });
+                if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
+            };
+            const away = (e) => {
+                if (pops[pops.length - 1] !== entry || el.contains(e.target)) return;
+                e.preventDefault();
+                e.stopPropagation();
+                // a tap on the control that opened it closes it, and that tap's click does not open it again
+                if (anchor && anchor.contains && anchor.contains(e.target)) { popSkip = anchor; setTimeout(() => { if (popSkip === anchor) popSkip = null; }, 400); }
+                close();
+            };
+            const entry = { el, away, anchor, onClose, close };
+            pops.push(entry);
+            if (anchor && typeof anchor.setAttribute === 'function') anchor.setAttribute('aria-expanded', 'true');
+            setTimeout(() => { if (pops.includes(entry)) document.addEventListener('pointerdown', away, true); }, 0);
+            if (sh && typeof sh.syncHistory === 'function') sh.syncHistory();
+            return { el, close, place };
+        },
+        popPanelOpen: () => pops.length > 0,
+        /** True right after a tap on `anchor` closed its own panel: that tap's click must not open it again. */
+        popPanelJustClosed: (anchor) => { if (popSkip !== anchor) return false; popSkip = null; return true; },
+        /** Closes the top pop-up panel (an app's back key); true when there was one. */
+        closePopPanel() {
+            const p = pops[pops.length - 1];
+            if (!p) return false;
+            p.close();
+            return true;
+        },
+        /** Closes every pop-up panel (the program leaves the screen). */
+        closePopPanels() { let n = 0; while (pops.length && n < 20) { ui.closePopPanel(); n += 1; } },
+        /**
+         * Jog wheel rendered into `host`: a ridged thumbwheel seen edge-on in a sunken frame (the
+         * ridges crowd and darken towards both ends, as on a cylinder); a sideways drag rolls it,
+         * one step of the value per `stepPx` WM units rolled, with no ends to the wheel itself (the
+         * value stops at min / max). Left / Right step it, Home / End go to the ends. opts: value,
+         * min, max, step, label (accessible name), stepPx (8), onChange(value) on every step,
+         * onStep(dir) instead of a value (a wheel that steps something else: emphasis), disabled.
+         * Returns { set(value), tone(level), el }.
+         */
+        jogWheel(host, { value = 0, min = -Infinity, max = Infinity, step = 1, label = '', stepPx = 8, onChange, onStep, disabled = false } = {}) {
+            const RIDGES = 18;
+            host.insertAdjacentHTML('beforeend', `<div class="wm-jog${disabled ? ' is-disabled' : ''}" role="slider"${disabled ? ' aria-disabled="true"' : ' tabindex="0"'} aria-label="${escUi(label)}"><div class="wm-jog-wheel">${'<span class="wm-jog-ridge"></span>'.repeat(RIDGES)}</div></div>`);
+            const all = host.querySelectorAll('.wm-jog');
+            const el = all[all.length - 1];
+            const ridges = [...el.querySelectorAll('.wm-jog-ridge')];
+            const dg = (String(step).split('.')[1] || '').length;
+            let cur = Number(value) || 0;
+            let phase = 0; // the wheel's turn, in ridge spacings
+            const draw = () => {
+                ridges.forEach((r, i) => {
+                    // each ridge's angle on the half of the wheel that faces the eye (-90 .. 90 deg)
+                    const t = (((i + phase) % RIDGES) + RIDGES) % RIDGES / RIDGES;
+                    const a = (t - 0.5) * Math.PI;
+                    r.style.left = `${(50 + 50 * Math.sin(a)).toFixed(2)}%`;
+                    r.style.opacity = (0.35 + 0.65 * Math.cos(a)).toFixed(2);
+                });
+                if (onStep) return;
+                el.setAttribute('aria-valuenow', String(cur));
+                el.setAttribute('aria-valuetext', cur.toFixed(dg));
+                if (Number.isFinite(min)) el.setAttribute('aria-valuemin', String(min));
+                if (Number.isFinite(max)) el.setAttribute('aria-valuemax', String(max));
+            };
+            const move = (n) => {
+                if (!n) return;
+                if (onStep) { for (let k = 0; k < Math.abs(n); k++) onStep(Math.sign(n)); return; }
+                const next = Math.max(min, Math.min(max, Number((cur + n * step).toFixed(dg))));
+                if (next === cur) return;
+                cur = next;
+                draw();
+                if (onChange) onChange(cur);
+            };
+            draw();
+            if (!disabled) {
+                el.addEventListener('pointerdown', (e) => {
+                    if (e.button > 0) return;
+                    e.stopPropagation();
+                    e.preventDefault();
+                    el.setPointerCapture(e.pointerId);
+                    el.classList.add('is-rolling');
+                    const unit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+                    const per = stepPx * unit;
+                    const width = Math.max(1, el.querySelector('.wm-jog-wheel').getBoundingClientRect().width);
+                    let lastX = e.clientX;
+                    let rest = 0;
+                    const mv = (ev) => {
+                        ev.stopPropagation();
+                        const dx = ev.clientX - lastX;
+                        lastX = ev.clientX;
+                        // the ridges follow the finger at the wheel's middle: x = w/2 sin(a), so
+                        // da = 2 dx / w there, and one ridge spacing is pi / RIDGES of turn
+                        phase += (2 * dx * RIDGES) / (width * Math.PI);
+                        rest += dx;
+                        const n = Math.trunc(rest / per);
+                        rest -= n * per;
+                        draw();
+                        move(n);
+                    };
+                    const up = () => { el.classList.remove('is-rolling'); el.removeEventListener('pointermove', mv); el.removeEventListener('pointerup', up); el.removeEventListener('pointercancel', up); };
+                    el.addEventListener('pointermove', mv);
+                    el.addEventListener('pointerup', up);
+                    el.addEventListener('pointercancel', up);
+                });
+                ['touchstart', 'touchmove'].forEach((t) => el.addEventListener(t, (e) => { e.stopPropagation(); if (t === 'touchmove' && e.cancelable) e.preventDefault(); }, { passive: false }));
+                el.addEventListener('keydown', (e) => {
+                    const d = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+                    if (d !== undefined) { phase += d; move(d); } else if (e.key === 'Home' && Number.isFinite(min) && !onStep) move(Math.round((min - cur) / step));
+                    else if (e.key === 'End' && Number.isFinite(max) && !onStep) move(Math.round((max - cur) / step));
+                    else return;
+                    draw();
+                    e.preventDefault();
+                    e.stopPropagation();
+                });
+            }
+            return {
+                set: (v) => { cur = Number(v) || 0; draw(); },
+                /** Tints the wheel by how far a value stands from neutral: level -1 .. 1 (below / above). */
+                tone(level) {
+                    const l = Math.max(-1, Math.min(1, Number(level) || 0));
+                    el.dataset.tone = l > 0.001 ? 'up' : l < -0.001 ? 'down' : '';
+                    el.style.setProperty('--wm-jog-strength', Math.abs(l).toFixed(3));
+                },
+                el
+            };
+        },
+        /**
+         * A number on a tool bar opens this under (or over) it: its name and value over a jog wheel
+         * (Yukimi, Nov 15: a thumbwheel rolled sideways, not a trackbar) and the small square button
+         * that puts the default back. opts: label, min, max, step, value, def (no default: no
+         * button), digits (decimals shown; from step), stepPx (units rolled per step),
+         * onChange(value) on every step. Returns the panel (popPanel).
+         */
+        valuePop(anchor, { label = '', min = 0, max = 1, step = 1, value = 0, def = null, digits = null, stepPx = 8, onChange } = {}) {
+            const dg = digits != null ? digits : (String(step).split('.')[1] || '').length;
+            const fmt = (v) => Number(v).toFixed(dg);
+            const clamp = (v) => Math.max(min, Math.min(max, Number(Number(v).toFixed(dg))));
+            let cur = clamp(Number(value) || 0);
+            return ui.popPanel(anchor, {
+                label,
+                className: 'wm-valuepop',
+                build(el) {
+                    el.innerHTML = `<div class="wm-valuepop-head"><span>${escUi(label)}</span><b></b></div><div class="wm-valuepop-row"></div>`;
+                    const out = el.querySelector('.wm-valuepop-head > b');
+                    out.textContent = fmt(cur);
+                    const row = el.querySelector('.wm-valuepop-row');
+                    const jog = ui.jogWheel(row, { value: cur, min, max, step, label, stepPx, onChange: (v) => { cur = v; out.textContent = fmt(v); if (onChange) onChange(v); } });
+                    if (def != null) {
+                        row.insertAdjacentHTML('beforeend', '<button type="button" class="wm-valuepop-default" aria-label="Default" title="Default"></button>');
+                        row.querySelector('.wm-valuepop-default').addEventListener('click', () => {
+                            const v = clamp(def);
+                            if (v === cur) return;
+                            cur = v;
+                            jog.set(v);
+                            out.textContent = fmt(v);
+                            if (onChange) onChange(v);
+                        });
+                    }
+                    setTimeout(() => jog.el.focus({ preventScroll: true }), 0);
+                }
+            });
+        },
+        /**
+         * A tool bar too wide for the screen wraps by its groups (.wm-toolbar-group): a divider that
+         * would start a row is left out, as a bar never begins with one. Call after its content or
+         * width changed.
+         */
+        fitToolbar(bar) {
+            if (!bar) return;
+            const seps = bar.querySelectorAll(':scope > .wm-toolbar-group > .wm-tool-sep:first-child');
+            seps.forEach((s) => s.classList.remove('is-wrap'));
+            let lastTop = null;
+            bar.querySelectorAll(':scope > .wm-toolbar-group').forEach((g) => {
+                if (!g.getClientRects().length) return;
+                const t = g.offsetTop;
+                const sep = g.querySelector(':scope > .wm-tool-sep:first-child');
+                if (sep && (lastTop === null || t > lastTop + 1)) sep.classList.add('is-wrap');
+                lastTop = t;
+            });
         },
         /**
          * Date control rendered into `host` (SysDateTimePick32 with its drop arrow: the combo's box

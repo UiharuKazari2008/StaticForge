@@ -564,3 +564,12 @@
     font-weight: 400;
     font-style: italic;
 }
+/* DSEG7 Classic Bold (keshikan, SIL Open Font License 1.1: public/dist/fonts/DSEG-LICENSE.txt): a
+ * seven-segment LCD face for the phone kit's LCD readouts (wm-programs.css .wm-lcd) */
+@font-face {
+    font-family: 'DSEG7 Classic';
+    src: url('/dist/fonts/DSEG7Classic-Bold.woff2') format('woff2');
+    font-weight: normal;
+    font-style: normal;
+    font-display: block;
+}

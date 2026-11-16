@@ -10,6 +10,10 @@
  *   print     the picture, full screen; the steps stream here while a print runs
  * Settings > System > DreamStudio picks how they are laid out: one page (the strip and the row open
  * Print and Settings) or WM tabs (Prompt | Settings | Print). A wide screen puts home beside the print.
+ * Under home, Settings and the print the generation settings stay on a tool bar at the foot of the
+ * page (Yukimi, Nov 15): Model | Drafting | Size | Prints, Datasets | Adjustments | UC, Steps |
+ * Guidance | Variety+ | Rescale | Sampler | Seed. Numbers open a trackbar, the lists a drop-down
+ * or a panel of check rows with their weights; Seed locks on a tap and opens its box on a hold.
  *
  * Stage 1 of #860 (the loop). While it is being built it runs beside the first phone Studio
  * (wmStudio.js); the same Settings page picks which one "Studio" opens (localStorage wmStudioNext,
@@ -61,6 +65,21 @@
     }
     const ED_BAR = [['undo', 'Undo'], ['redo', 'Redo'], '|', ['cut', 'Cut'], ['copy', 'Copy'], ['paste', 'Paste'], ['selectall', 'Select All']];
 
+    // the generation tool bar (Yukimi, Nov 15): three groups, each kept whole when the bar wraps
+    const GEN_GROUPS = [
+        [['model', 'Model', 'combo'], ['effort', 'Drafting (Medium Effort)', 'toggle', 'fas fa-feather'], ['resolution', 'Size', 'combo'], ['n', 'Prints', 'number']],
+        [['dataset', 'Datasets', 'panel', 'nai-sakura'], ['subtoggle', 'Adjustments', 'panel', 'fas fa-diamond-half-stroke'], ['uc', 'UC Preset', 'list']],
+        [['steps', 'Steps', 'number'], ['guidance', 'Guidance', 'number'], ['variety', 'Variety+', 'toggle', 'fas fa-sparkle'], ['rescale', 'Rescale', 'number'], ['sampler', 'Sampler', 'combo'], ['seed', 'Seed', 'seed', 'fas fa-seedling']]
+    ];
+    // the numbers: their trackbar's range and step, the default the square button puts back
+    const GEN_NUMBERS = {
+        n: { min: 1, max: 8, step: 1, def: 1 },
+        steps: { min: 1, max: 50, step: 1, def: 25 },
+        guidance: { min: 0, max: 10, step: 0.1, def: 5 },
+        rescale: { min: 0, max: 1, step: 0.01, def: 0 }
+    };
+    const SEED_HOLD_MS = 500;
+
     let sh = null;
     let ui = null;
     let M = null;
@@ -71,6 +90,7 @@
     let layers = [];
     let snap = null;
     let edField = 'prompt';
+    let edJog = null;
     let viewing = '';
     let opening = false;
     let tabState = {};
@@ -533,6 +553,8 @@
         if (v === 'settings') drawSettings();
         if (v === 'presets') drawPresets();
         if (v === 'ref') drawRef();
+        if (v === 'home' || v === 'print' || v === 'settings') drawGenbar();
+        else if (ui) ui.closePopPanels();
         drawTabs();
         sh.setTitle(v === 'editor' ? fieldName(edField) : (v === 'ref' ? 'Reference' : v === 'presets' ? 'Open Preset' : (v === 'settings' && layout() !== 'tabs' ? 'Settings' : 'DreamStudio')));
         sh.refreshTitleAction();
@@ -742,7 +764,10 @@
         const out = $('.wds-tb-weight');
         if (!ta || !out) return;
         const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
-        out.textContent = hit ? hit.weight.toFixed(2) : '1.00';
+        const w = hit ? hit.weight : 1;
+        out.textContent = w.toFixed(2);
+        // the jog takes the strength's colour: -3 .. 1 .. 5 as -1 .. 0 .. 1, most of it by 2 / 0
+        if (edJog) edJog.tone(w >= 1 ? Math.min(1, (w - 1) / 1) : Math.max(-1, (w - 1) / 1));
     }
 
     // ---- find: asks for the text once, then steps through its places (round to the start again)
@@ -939,6 +964,296 @@
         if (f && typeof sh.viewPicture === 'function') sh.viewPicture({ data: { filename: f } });
     }
 
+    // ---------------------------------------------------------------- generation tool bar
+
+    let genBuilt = false;
+
+    // the desktop Studio's own glyphs for now (Yukimi, Nov 15: "use the same icons as the desktop")
+    function toolIcon(cls) { return `<i class="${cls}" aria-hidden="true"></i>`; }
+
+    function buildGenbar() {
+        const bar = $('.wds-genbar');
+        if (!bar || genBuilt || !sh) return;
+        genBuilt = true;
+        // a group with combos or numbers takes a share of the row's spare room; one of icons only does not
+        bar.innerHTML = GEN_GROUPS.map((group, gi) => `<div class="wm-toolbar-group${group.some((t) => t[2] === 'combo' || t[2] === 'number') ? ' wds-gb-grow' : ''}">${gi ? '<span class="wm-tool-sep" aria-hidden="true"></span>' : ''}${group.map(([id, label, kind, icon]) => {
+            if (kind === 'combo') return `<button type="button" class="wm-tool wm-tool-combo" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"></button>`;
+            if (kind === 'number') return `<button type="button" class="wm-tool is-text" data-gb="${id}" aria-label="${esc(label)}" aria-haspopup="dialog" title="${esc(label)}"></button>`;
+            // UC is the desktop's level meter (four boxes), not a picture
+            if (id === 'uc') return `<button type="button" class="wm-tool" data-gb="uc" aria-label="${esc(label)}" aria-haspopup="listbox" title="${esc(label)}"><span class="wms-uc-meter" data-level="0"><i></i><i></i><i></i><i></i></span></button>`;
+            const count = id === 'dataset' ? '<span class="wms-pt-count" hidden></span>' : '';
+            const pressed = kind === 'toggle' || kind === 'seed' ? ' aria-pressed="false"' : ` aria-haspopup="${kind === 'panel' ? 'dialog' : 'listbox'}"`;
+            return `<button type="button" class="wm-tool" data-gb="${id}" aria-label="${esc(label)}" title="${esc(label)}"${pressed}>${toolIcon(icon)}${count}</button>`;
+        }).join('')}</div>`).join('');
+        bar.addEventListener('click', onGenClick);
+        // Seed: a tap locks it, a hold opens its box (the hold's own click does nothing)
+        const seed = bar.querySelector('[data-gb="seed"]');
+        let holdTimer = 0;
+        let held = false;
+        const cancel = () => { clearTimeout(holdTimer); holdTimer = 0; };
+        seed.addEventListener('pointerdown', (e) => {
+            if (e.button > 0) return;
+            held = false;
+            cancel();
+            holdTimer = setTimeout(() => { holdTimer = 0; held = true; seedBox(); }, SEED_HOLD_MS);
+        });
+        ['pointerup', 'pointercancel', 'pointerleave'].forEach((t) => seed.addEventListener(t, cancel));
+        seed.addEventListener('contextmenu', (e) => e.preventDefault());
+        seed.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (held) { held = false; return; }
+            const s = read();
+            change('seedLock', !s.seedLock).then(() => {
+                // nothing to keep yet (no print made, no seed typed): the box asks for one
+                snap = null;
+                if (!s.seedLock && !read().seedLock) seedBox();
+                else paint();
+            });
+        });
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { if (shown && ui) ui.fitToolbar(bar); }).observe(bar);
+    }
+
+    const flat = (groups) => [].concat(...groups.map((g) => g.options.map((x) => Object.assign({ group: g.group, groupBadge: g.badge, free: g.free }, x))));
+    const fmtNum = (id, v) => { const c = GEN_NUMBERS[id]; const dg = (String(c.step).split('.')[1] || '').length; return Number(v == null ? c.def : v).toFixed(dg); };
+
+    /** A combo's text and the desktop's badge after it (v4.5 Full, Portrait WP, Euler A). */
+    function comboFace(btn, text, badge, cls) {
+        btn.textContent = text;
+        if (badge) {
+            const b = document.createElement('span');
+            b.className = `wms-badge${cls ? ` ${cls}` : ''}`;
+            b.textContent = badge;
+            btn.appendChild(b);
+        }
+    }
+
+    function sizeBadge(x) {
+        if (String(x.value).startsWith('normal_wallpaper_')) return { name: String(x.value).endsWith('_portrait') ? 'Portrait' : 'Landscape', badge: 'WP', cls: 'free-badge' };
+        return { name: x.name, badge: x.groupBadge || '', cls: x.free ? 'free-badge' : '' };
+    }
+
+    function drawGenbar() {
+        const bar = $('.wds-genbar');
+        if (!bar || !M || !M.ready()) return;
+        buildGenbar();
+        const s = read();
+        const o = M.options();
+        const q = (id) => bar.querySelector(`[data-gb="${id}"]`);
+        const model = flat(o.models).find((m) => m.value === s.model);
+        comboFace(q('model'), model ? model.short : (s.model || 'Model'), model && model.badge, model && model.badgeClass);
+        const eff = q('effort');
+        eff.hidden = !o.has.effort;
+        eff.setAttribute('aria-pressed', String(s.effort === 'medium'));
+        const size = flat(o.resolutions).find((x) => x.value === s.resolution);
+        if (size) { const f = sizeBadge(size); comboFace(q('resolution'), f.name, f.badge, f.cls); } else comboFace(q('resolution'), s.width && s.height ? `${s.width} x ${s.height}` : 'Size');
+        Object.keys(GEN_NUMBERS).forEach((id) => { q(id).textContent = fmtNum(id, s[id]); });
+        q('steps').disabled = !o.has.steps;
+        q('rescale').disabled = !o.has.rescale;
+        const ds = q('dataset');
+        const list = M.datasets();
+        const onCount = list.datasets.filter((d) => d.on).length;
+        ds.disabled = !o.has.datasets || !(list.datasets.length || list.quality);
+        ds.setAttribute('aria-pressed', String(!ds.disabled && onCount > 0));
+        const count = ds.querySelector('.wms-pt-count');
+        count.hidden = onCount < 2;
+        count.textContent = String(onCount);
+        const sub = q('subtoggle');
+        const adj = M.adjustments();
+        sub.disabled = !adj.length;
+        sub.setAttribute('aria-pressed', String(adj.some((a) => a.rows.some((r) => r.on))));
+        const uc = q('uc');
+        uc.disabled = !o.has.uc || !o.ucPresets.length;
+        const level = Number(s.append_uc) || 0;
+        uc.querySelector('.wms-uc-meter').dataset.level = String(level === 5 ? 1 : Math.min(4, level));
+        const variety = q('variety');
+        variety.hidden = !o.has.variety;
+        variety.setAttribute('aria-pressed', String(!!s.variety));
+        const sampler = o.samplers.find((x) => x.value === s.sampler);
+        const noise = o.has.noise ? o.noise.find((x) => x.value === s.noiseScheduler) : null;
+        comboFace(q('sampler'), sampler ? sampler.short : (s.sampler || 'Sampler'), sampler && sampler.badge);
+        q('sampler').setAttribute('aria-label', `Sampler: ${sampler ? sampler.name : ''}${noise ? `, ${noise.name}` : ''}`);
+        q('sampler').disabled = !o.has.sampler;
+        const seed = q('seed');
+        seed.setAttribute('aria-pressed', String(!!s.seedLock));
+        seed.title = s.seedLock && s.seed != null && s.seed !== '' ? `Seed ${s.seed} (kept)` : 'Seed';
+        if (ui) ui.fitToolbar(bar);
+    }
+
+    /** A drop-down list from a tool (Model, Size, UC, Sampler): [[value, label] | '-' | { head }]. */
+    function genList(btn, rows, current, onPick) {
+        sh.dropdown(btn, rows.map((r) => (r === '-' ? '-' : { label: r[1], radio: r[0] === current, action: () => onPick(r[0]) })), btn.getBoundingClientRect().left > window.innerWidth / 2 ? 'right' : 'left');
+    }
+
+    function grouped(groups, name) {
+        const rows = [];
+        groups.forEach((g, i) => { if (i && g.options.length) rows.push('-'); g.options.forEach((x) => rows.push([x.value, name(g, x)])); });
+        return rows;
+    }
+
+    function onGenClick(e) {
+        const b = e.target.closest && e.target.closest('[data-gb]');
+        if (!b || b.disabled || !M || !M.ready()) return;
+        if (ui && ui.popPanelJustClosed(b)) return;
+        const id = b.dataset.gb;
+        const s = read();
+        const o = M.options();
+        if (id === 'seed') return;
+        if (id === 'model') { genList(b, grouped(o.models, (g, x) => x.name), s.model, (v) => change('model', v)); return; }
+        if (id === 'resolution') {
+            genList(b, grouped(o.resolutions, sizeName), s.resolution, (v) => change('resolution', v).then(() => { if (/^custom/.test(String(v))) openLayer('settings'); }));
+            return;
+        }
+        if (id === 'uc') { genList(b, o.ucPresets.map((x) => [x.value, x.name]), Number(s.append_uc) || 0, (v) => change('append_uc', v)); return; }
+        if (id === 'sampler') {
+            const rows = o.samplers.map((x) => [`s:${x.value}`, x.name]);
+            if (o.has.noise && o.noise.length) rows.push('-', ...o.noise.map((x) => [`n:${x.value}`, x.name]));
+            // two choices in one list: the sampler's dot and the noise schedule's dot
+            sh.dropdown(b, rows.map((r) => (r === '-' ? '-' : { label: r[1], radio: r[0] === `s:${s.sampler}` || r[0] === `n:${s.noiseScheduler}`, action: () => (r[0].startsWith('s:') ? change('sampler', r[0].slice(2)) : change('noiseScheduler', r[0].slice(2))) })), 'right');
+            return;
+        }
+        if (id === 'effort') { change('effort', s.effort === 'medium' ? 'high' : 'medium'); return; }
+        if (id === 'variety') { change('variety', !s.variety); return; }
+        if (GEN_NUMBERS[id]) {
+            const c = GEN_NUMBERS[id];
+            const label = b.getAttribute('aria-label');
+            ui.valuePop(b, Object.assign({}, c, { label, value: Number(s[id] == null ? c.def : s[id]), onChange: (v) => { b.textContent = fmtNum(id, v); queueSet(id, v); } }));
+            return;
+        }
+        if (id === 'dataset') { weightPanel(b, 'Datasets', datasetRows, (row, patch) => M.setDataset(row.key, patch)); return; }
+        if (id === 'subtoggle') { weightPanel(b, 'Adjustments', adjustmentRows, (row, patch) => M.setAdjustment(row.dataset, row.key, patch)); }
+    }
+
+    // a value dragged along a trackbar is written once the finger rests (each write redraws the form)
+    const setTimers = new Map();
+    function queueSet(id, v) {
+        clearTimeout(setTimers.get(id));
+        setTimers.set(id, setTimeout(() => { setTimers.delete(id); change(id, v); }, 120));
+    }
+
+    // ---- weight panels: a check row per dataset (or adjustment) with its weight; a tap on the
+    // weight opens its trackbar over the panel
+
+    function datasetRows() {
+        const d = M.datasets();
+        const rows = [];
+        if (d.datasets.length) rows.push({ head: 'Datasets' }, ...d.datasets.map((x) => Object.assign({ key: x.value }, x)));
+        const presets = [d.quality, d.transparency].filter(Boolean);
+        if (presets.length) rows.push({ head: 'Presets' }, ...presets.map((x) => Object.assign({ key: x.value }, x)));
+        return rows;
+    }
+
+    function adjustmentRows() {
+        const rows = [];
+        M.adjustments().forEach((a) => {
+            rows.push({ head: a.name });
+            a.rows.forEach((r) => rows.push(r.head ? { head: r.head, minor: true } : Object.assign({ key: r.id, dataset: a.dataset }, r)));
+        });
+        return rows;
+    }
+
+    const fmtWt = (v) => (Number(v) === 1 ? '1.0' : Number(v).toFixed(1));
+
+    function weightPanel(anchor, label, rowsOf, write) {
+        let rows = [];
+        const pop = ui.popPanel(anchor, {
+            label,
+            className: 'wds-wtpop',
+            build(el) {
+                const fill = () => {
+                    rows = rowsOf();
+                    const top = el.scrollTop;
+                    el.innerHTML = rows.map((r, i) => {
+                        if (r.head) return `<div class="wm-form-sub wds-wt-head${r.minor ? ' is-minor' : ''}">${esc(r.head)}</div>`;
+                        return `<div class="wds-wt-row" data-i="${i}"><label class="wm-check"><input type="checkbox" data-i="${i}"${r.on ? ' checked' : ''}><span>${esc(r.name)}</span></label><button type="button" class="wm-tool is-text wds-wt-value" data-i="${i}" aria-label="${esc(r.name)} weight" aria-haspopup="dialog">${fmtWt(r.bias)}</button></div>`;
+                    }).join('') || '<div class="wm-form-sub wds-wt-head">None</div>';
+                    el.scrollTop = top;
+                };
+                fill();
+                el.addEventListener('change', (e) => {
+                    const t = e.target;
+                    const r = t && t.dataset && rows[Number(t.dataset.i)];
+                    if (!r) return;
+                    // a ratio group's rows are one of several: checking one clears the others (the desktop's own rule)
+                    Promise.resolve(write(r, { on: !!t.checked })).then(() => { snap = null; fill(); drawGenbar(); });
+                });
+                el.addEventListener('click', (e) => {
+                    const v = e.target.closest && e.target.closest('.wds-wt-value');
+                    if (!v || ui.popPanelJustClosed(v)) return;
+                    const r = rows[Number(v.dataset.i)];
+                    if (!r) return;
+                    let timer = 0;
+                    ui.valuePop(v, {
+                        label: r.name,
+                        min: r.min,
+                        max: r.max,
+                        step: 0.1,
+                        value: r.bias,
+                        def: r.def,
+                        onChange: (n) => {
+                            v.textContent = fmtWt(n);
+                            clearTimeout(timer);
+                            timer = setTimeout(() => { Promise.resolve(write(r, { bias: n })).then(() => { r.bias = n; snap = null; drawGenbar(); }); }, 120);
+                        }
+                    });
+                });
+            }
+        });
+        return pop;
+    }
+
+    // ---- the seed's panel (a hold on Seed), one row (Yukimi, Nov 15): the seed, then Clear, Random
+    // and the lock as the desktop's glyphs; a seed typed in counts once Enter or the panel closes
+
+    function seedBox() {
+        const anchor = $('.wds-genbar [data-gb="seed"]');
+        if (!anchor || !ui) return;
+        ui.popPanel(anchor, {
+            label: 'Seed',
+            className: 'wds-seedpop',
+            build(el) {
+                const s0 = read();
+                el.innerHTML = `${ui.edit('', s0.seedText || '', 'data-seed inputmode="numeric" placeholder="Random" aria-label="Seed"')}`
+                    + `<button type="button" class="wm-tool" data-seed-act="clear" aria-label="Clear Seed" title="Clear Seed">${toolIcon('fa-regular fa-xmark-large')}</button>`
+                    + `<button type="button" class="wm-tool" data-seed-act="random" aria-label="Random Seed" title="Random Seed">${toolIcon('nai-dice')}</button>`
+                    + `<button type="button" class="wm-tool" data-seed-act="lock" aria-label="Keep this seed" title="Keep this seed" aria-pressed="false">${toolIcon('fas fa-seedling')}</button>`;
+                const field = el.querySelector('[data-seed]');
+                const lock = el.querySelector('[data-seed-act="lock"]');
+                let typed = field.value;
+                const show = () => {
+                    snap = null;
+                    const s = read();
+                    if (document.activeElement !== field) field.value = typed = s.seedText || '';
+                    lock.setAttribute('aria-pressed', String(!!s.seedLock));
+                    paint();
+                };
+                // a typed seed: used by the next print; kept if the lock is on
+                const commit = () => {
+                    const raw = String(field.value || '').replace(/[^0-9]/g, '');
+                    if (raw === typed) return Promise.resolve();
+                    typed = raw;
+                    if (raw === '') return Promise.resolve(M.clearSeed()).then(show);
+                    const locked = !!read().seedLock;
+                    return Promise.resolve(locked ? M.clearSeed() : null).then(() => change('seed', Number(raw))).then(() => (locked ? change('seedLock', true) : null)).then(show);
+                };
+                field.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); commit().then(() => field.blur()); } });
+                field.addEventListener('change', () => { commit(); });
+                el.addEventListener('wds-seed-close', () => { commit(); });
+                el.addEventListener('click', (e) => {
+                    const b = e.target.closest && e.target.closest('[data-seed-act]');
+                    if (!b) return;
+                    const act = b.dataset.seedAct;
+                    let done;
+                    if (act === 'clear') done = Promise.resolve(M.clearSeed());
+                    else if (act === 'random') done = Promise.resolve(read().seedLock ? M.clearSeed() : null).then(() => M.randomSeed()).then(() => change('seedLock', true));
+                    else done = commit().then(() => change('seedLock', !read().seedLock));
+                    Promise.resolve(done).then(() => { field.blur(); show(); });
+                });
+                lock.setAttribute('aria-pressed', String(!!s0.seedLock));
+            },
+            onClose(el) { el.dispatchEvent(new CustomEvent('wds-seed-close')); }
+        });
+    }
+
     // ---------------------------------------------------------------- menus / keys
 
     function newSession() {
@@ -1047,8 +1362,9 @@
   <textarea class="wds-ed-text" spellcheck="false" autocapitalize="off" autocomplete="off"></textarea>
 </div>
 <div class="wds-ac wm-listbox" hidden></div>
-<div class="wds-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wds-tb-sep"></span>' : `<button type="button" class="wds-tb-btn" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}<span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightdown" aria-label="Less Weight">\u2212</button><span class="wds-tb-weight" aria-live="polite">1.00</span><button type="button" class="wds-tb-btn wds-tb-step" data-ed="weightup" aria-label="More Weight">+</button><span class="wds-tb-sep"></span><button type="button" class="wds-tb-btn" data-ed="find" aria-label="Find">${edIcon('find')}</button></div>
+<div class="wds-toolbar wm-toolbar">${ED_BAR.map((b) => (b === '|' ? '<span class="wm-tool-sep"></span>' : `<button type="button" class="wm-tool" data-ed="${b[0]}" aria-label="${b[1]}">${edIcon(b[0])}</button>`)).join('')}<span class="wm-tool-sep"></span><span class="wds-tb-weight wm-lcd" aria-live="polite" aria-label="Emphasis">1.00</span><span class="wm-tool-sep"></span><button type="button" class="wm-tool" data-ed="find" aria-label="Find">${edIcon('find')}</button></div>
 </div>
+<div class="wds-genbar wm-toolbar" role="toolbar" aria-label="Generation settings"></div>
 <div class="wm-tabs wds-tabs" role="tablist">${TABS.map(([id, label]) => `<button type="button" class="wm-tab" role="tab" data-tab="${id}" aria-selected="false">${label}</button>`).join('')}</div>`;
 
         $('.wds-strip').addEventListener('click', () => openLayer('print'));
@@ -1100,9 +1416,17 @@
 
         // the editor: the bar keeps the focus (and the keyboard) in the text
         const bar = $('.wds-toolbar');
+        // the emphasis jog (Yukimi, Nov 15; it replaced - and +): rolled sideways it steps the weight of
+        // the group under the caret (or makes one of the selection / the tag there)
+        const kit = window.wmSettings && window.wmSettings.ui;
+        if (kit && typeof kit.jogWheel === 'function') {
+            edJog = kit.jogWheel(bar, { label: 'Emphasis', stepPx: 10, onStep: (d) => stepWeight(d) });
+            edJog.el.removeAttribute('tabindex');
+            bar.querySelector('.wds-tb-weight').after(edJog.el);
+        }
         bar.addEventListener('touchmove', (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
         bar.addEventListener('mousedown', (e) => e.preventDefault());
-        bar.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wds-tb-btn'); if (b) edCommand(b.dataset.ed); });
+        bar.addEventListener('click', (e) => { const b = e.target.closest && e.target.closest('.wm-tool[data-ed]'); if (b) edCommand(b.dataset.ed); });
         let countTimer = 0;
         p.querySelectorAll('.wds-ed-text, .wds-field').forEach((area) => {
             area.addEventListener('input', () => { if (top() !== 'editor') return; clearTimeout(countTimer); countTimer = setTimeout(edCount, 400); acQueue(); });
@@ -1192,9 +1516,9 @@
             ensureStudio().then(() => { snap = null; paint(); });
             paint();
         },
-        hide() { shown = false; },
-        historyDepth: () => layers.length,
-        onBack: () => popLayer(),
+        hide() { shown = false; if (ui) ui.closePopPanels(); },
+        historyDepth: () => layers.length + (ui && ui.popPanelOpen() ? 1 : 0),
+        onBack: () => (ui && ui.closePopPanel()) || popLayer(),
         titleKind: () => (layers.length ? 'ok' : 'close'),
         onTitleOk: () => popLayer(),
         closeQuestion: () => (running() ? 'A print is being made. It goes on if you minimize.' : null),

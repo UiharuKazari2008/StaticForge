@@ -25,6 +25,15 @@
  *   studioModel.presets() / sessionName() / openPreset(name) / savePreset(name)
  *                                       the saved presets' names, this session's name, load one, save as one
  *   studioModel.options()               what the lists offer and which controls the chosen model has
+ *                                       (models and sizes with the desktop's badges)
+ *   studioModel.datasets() / setDataset(value, { on, bias })
+ *                                       the datasets and the Quality / Transparency presets with their
+ *                                       weights (the desktop's dataset list); '__quality__' and
+ *                                       '__transparency__' name the presets
+ *   studioModel.adjustments() / setAdjustment(dataset, id, { on, bias })
+ *                                       the checked datasets' adjustment toggles with their weights
+ *   studioModel.clearSeed() / randomSeed()
+ *                                       the seed box emptied (and unlocked) / a new random seed in it
  *   studioModel.tokens(text)            token count of a prompt for the chosen model (a promise)
  *   studioModel.suggest(text)            tag suggestions for a few typed letters: [{ text, count }] (a promise)
  *   studioModel.cost()                  Anlas the next Generate would ask for (0 = free)
@@ -54,7 +63,10 @@
        applyStudioDatasetConfig, getCurrentDatasetModelKey, getCharacterPrompts, getStudioCharacterItems, hasManagedEmphasisGroupIds, expandEmphasisGroupIds,
        resolveEmphasisBagForTextarea,
        addCharacterPrompt, deleteCharacterPrompt, setStudioCharacterName, handleManualSave, applyImageAsVariationBase, handleDeleteBaseImage, collectPreciseReferenceData,
-       loadPreciseReferencesFromMetadata, updateManualPriceDisplay, datasetAllowedForModel, getStudioUcPresetMenuItems */
+       loadPreciseReferencesFromMetadata, updateManualPriceDisplay, datasetAllowedForModel, getStudioUcPresetMenuItems,
+       getStudioDatasetCatalog, datasetBias, findDatasetConfig, toggleDataset, adjustDatasetBias, ensureActiveSubTogglesInitialized,
+       getActiveSubToggleDatasets, getVisibleSubToggles, getSubToggleGroup, getSubToggleDefaultBias, isSubToggleEnabled,
+       getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked */
 
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'] };
     const listeners = new Map();
@@ -130,6 +142,8 @@
             })) : [];
         } catch (_) { out.references = []; }
         out.generating = generating();
+        // the seed box's own text ('' = random); out.seed falls back to the last print's seed
+        out.seedText = el('manualSeed') ? String(el('manualSeed').value || '').trim() : '';
         try {
             const items = typeof getStudioCharacterItems === 'function' ? getStudioCharacterItems() : [];
             out.characters = (typeof getCharacterPrompts === 'function' ? getCharacterPrompts() : []).map((c, i) => {
@@ -171,10 +185,12 @@
         let effort = false;
         try { effort = typeof v5FullSupportsEffort === 'function' && !!v5FullSupportsEffort(); } catch (_) { /* same */ }
         return {
-            models: (typeof modelGroups !== 'undefined' ? modelGroups : []).map((g) => ({ group: g.group, options: g.options.map((o) => ({ value: o.value, name: o.name })) })),
-            samplers: (typeof SAMPLER_MAP !== 'undefined' ? SAMPLER_MAP : []).map((s) => ({ value: s.meta, name: s.display })),
+            // short: the version as the desktop's closed combo shows it; badge: its edition (Full, Cur ...)
+            models: (typeof modelGroups !== 'undefined' ? modelGroups : []).map((g) => ({ group: g.group, options: g.options.map((o) => ({ value: o.value, name: o.name, short: o.display_full || o.display || o.name, badge: o.badge_full || o.badge || '', badgeClass: o.badge_class || '' })) })),
+            samplers: (typeof SAMPLER_MAP !== 'undefined' ? SAMPLER_MAP : []).map((s) => ({ value: s.meta, name: s.display, short: s.display_short_full || s.display, badge: s.badge || '' })),
             noise: (typeof NOISE_MAP !== 'undefined' ? NOISE_MAP : []).map((s) => ({ value: s.meta, name: s.display })),
-            resolutions: (typeof RESOLUTION_GROUPS !== 'undefined' ? RESOLUTION_GROUPS : []).map((g) => ({ group: g.group, options: g.options.map((o) => ({ value: o.value, name: o.name || o.display || o.value })) })),
+            // badge / free: the size group's badge as the desktop draws it (formatResolutionSelectedHtml)
+            resolutions: (typeof RESOLUTION_GROUPS !== 'undefined' ? RESOLUTION_GROUPS : []).map((g) => ({ group: g.group, badge: g.badge || '', free: !!g.free, options: g.options.map((o) => ({ value: o.value, name: o.name || o.display || o.value })) })),
             sizes: (typeof RESOLUTIONS !== 'undefined' ? RESOLUTIONS : []).reduce((m, r) => { m[r.value] = [r.width, r.height]; return m; }, {}),
             datasets: (() => {
                 try {
@@ -494,6 +510,124 @@
         return run;
     }
 
+    // ---- datasets and their adjustments with weights: the desktop's dataset and adjustment lists
+    // (manualDropdownManager.js); a weight is set as the step the desktop's own - / + would take
+    const num = (v, d) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+
+    function datasets() {
+        const out = { datasets: [], quality: null, transparency: null };
+        if (!ready() || typeof getStudioDatasetCatalog !== 'function') return out;
+        try {
+            const cat = getStudioDatasetCatalog();
+            const p = getStudioParamSnapshot();
+            const bias = typeof datasetBias !== 'undefined' && datasetBias ? datasetBias : {};
+            const on = typeof selectedDatasets !== 'undefined' && Array.isArray(selectedDatasets) ? selectedDatasets : [];
+            out.datasets = cat.datasets.map((d) => ({
+                value: d.value,
+                name: d.display || d.value,
+                on: on.includes(d.value),
+                bias: num(bias[d.value], num(d.default, 1)),
+                min: num(d.min, -3),
+                max: num(d.max, 5),
+                def: num(d.default, 1)
+            }));
+            out.quality = { value: '__quality__', name: (cat.qualityPreset && cat.qualityPreset.display) || 'Quality', on: !!p.append_quality, bias: num(p.quality_preset_bias, 1), min: 0, max: 9, def: 1 };
+            if (cat.transparencyPreset) out.transparency = { value: '__transparency__', name: cat.transparencyPreset.display || 'Transparency', on: !!p.append_transparency, bias: num(p.transparency_bias, 1), min: 0, max: 9, def: 1 };
+        } catch (err) { console.warn('[studioModel] datasets', err); }
+        return out;
+    }
+
+    async function setDataset(value, { on, bias } = {}) {
+        if (!ready()) return false;
+        if (value === '__quality__' || value === '__transparency__') {
+            const q = value === '__quality__';
+            if (on !== undefined) await applyStudioParam(q ? 'append_quality' : 'append_transparency', !!on);
+            if (bias !== undefined) await applyStudioParam(q ? 'quality_preset_bias' : 'transparency_bias', Number(bias));
+        } else {
+            const cfg = typeof findDatasetConfig === 'function' ? findDatasetConfig(value) : null;
+            if (!cfg) return false;
+            const list = typeof selectedDatasets !== 'undefined' && Array.isArray(selectedDatasets) ? selectedDatasets : [];
+            if (on !== undefined && !!on !== list.includes(value) && typeof toggleDataset === 'function') toggleDataset(value, cfg);
+            if (bias !== undefined && typeof adjustDatasetBias === 'function') {
+                const cur = num((typeof datasetBias !== 'undefined' && datasetBias ? datasetBias : {})[value], num(cfg.default, 1));
+                adjustDatasetBias(value, Number(bias) - cur, cfg);
+            }
+        }
+        emit('change', { id: 'datasets' });
+        return true;
+    }
+
+    function adjustments() {
+        if (!ready() || typeof getActiveSubToggleDatasets !== 'function') return [];
+        try {
+            if (typeof ensureActiveSubTogglesInitialized === 'function') ensureActiveSubTogglesInitialized();
+            const key = typeof getCurrentDatasetModelKey === 'function' ? getCurrentDatasetModelKey() : undefined;
+            return getActiveSubToggleDatasets().map((d) => {
+                const toggles = getVisibleSubToggles(d, key);
+                const row = (t) => {
+                    const group = t.group ? getSubToggleGroup(d, t.group) : null;
+                    const ratio = !!(group && group.mode === 'ratio');
+                    const stored = window.datasetSettings && window.datasetSettings[d.value] && window.datasetSettings[d.value][t.id];
+                    const def = getSubToggleDefaultBias(t);
+                    return {
+                        id: t.id,
+                        name: t.name || t.id,
+                        on: isSubToggleEnabled(d.value, t),
+                        bias: ratio ? getRatioGroupSharedBias(d.value, d, t.group) : num(stored && stored.bias, def),
+                        min: num(t.min, -3),
+                        max: num(t.max, 5),
+                        def,
+                        ratio
+                    };
+                };
+                // as the desktop lists them: the ones of no group, then each group under its name
+                const rows = toggles.filter((t) => !t.group).map(row);
+                const groups = [];
+                (d.sub_toggle_groups || []).forEach((g) => groups.push([g.id, g.name || g.id]));
+                toggles.forEach((t) => { if (t.group && !groups.some((g) => g[0] === t.group)) groups.push([t.group, t.group]); });
+                groups.forEach(([id, name]) => {
+                    const mine = toggles.filter((t) => t.group === id);
+                    if (mine.length) rows.push({ head: name }, ...mine.map(row));
+                });
+                return { dataset: d.value, name: d.display || d.value, rows };
+            }).filter((x) => x.rows.length);
+        } catch (err) { console.warn('[studioModel] adjustments', err); return []; }
+    }
+
+    function setAdjustment(dataset, id, { on, bias } = {}) {
+        if (!ready() || typeof findDatasetConfig !== 'function') return false;
+        const cfg = findDatasetConfig(dataset);
+        const t = cfg && (cfg.sub_toggles || []).find((x) => x.id === id);
+        if (!t) return false;
+        if (on !== undefined && !!on !== isSubToggleEnabled(dataset, t)) toggleSubToggle(dataset, id, t);
+        if (bias !== undefined) {
+            const now = adjustments().find((x) => x.dataset === dataset);
+            const r = now && now.rows.find((x) => x.id === id);
+            const cur = r ? r.bias : getSubToggleDefaultBias(t);
+            adjustSubToggleBias(dataset, id, Number(bias) - cur, t);
+        }
+        emit('change', { id: 'adjustments' });
+        return true;
+    }
+
+    // ---- the seed box: emptied (and unlocked), or a new random seed in it (the desktop's Clear seed
+    // and New seed buttons)
+    function clearSeed() {
+        if (!ready()) return false;
+        if (typeof setSproutSeedLocked === 'function') setSproutSeedLocked(false);
+        const f = el('manualSeed');
+        if (f && f.value) { f.value = ''; f.dispatchEvent(new Event('input', { bubbles: true })); }
+        emit('change', { id: 'seed' });
+        return true;
+    }
+
+    async function randomSeed() {
+        // the desktop's range (presetManager.js New seed): 1 .. 2147483646
+        const seed = Math.floor(Math.random() * 2147483646) + 1;
+        await set('seed', seed);
+        return seed;
+    }
+
     function stop() {
         if (!current || !current.active) return false;
         current.stopped = true;
@@ -523,6 +657,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */

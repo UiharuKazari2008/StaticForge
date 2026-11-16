@@ -1580,3 +1580,276 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
     font-size: calc(7 * var(--wm-px));
     line-height: 1;
 }
+
+/* ---- tool bar (Word Mobile's, measured on the 6.1 / 6.5 emulators, VGA halved): a 1-unit black
+ * rule over 24 units of the tab tint; 22 x 21 boxes in 23-unit cells packed from the left, framed
+ * (1-unit black, white face) only while pushed, checked or their list or panel is open; 16-unit
+ * glyphs, a disabled one grey with a 1-unit white emboss; 1 x 18 dividers in 5-unit gaps. A bar
+ * wider than the screen wraps by its groups (.wm-toolbar-group), 24 units a row; a divider that
+ * would start a row is left out (wmSettings.ui.fitToolbar) ---- */
+.wm-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    row-gap: calc(3 * var(--wm-px));
+    flex: 0 0 auto;
+    padding: calc(2 * var(--wm-px)) calc(1 * var(--wm-px)) calc(1 * var(--wm-px));
+    box-sizing: border-box;
+    border-top: calc(1 * var(--wm-px)) solid #000;
+    background: var(--wm-tab-strip);
+    color: #000;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.wm-toolbar-group {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: flex-start;
+}
+
+.wm-toolbar-group[hidden],
+.wm-tool[hidden] {
+    display: none;
+}
+
+.wm-tool {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    min-width: calc(22 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    margin: 0 calc(1 * var(--wm-px)) 0 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    box-sizing: border-box;
+    color: #000;
+    font: var(--wm-fs) / 1 var(--wm-font);
+    white-space: nowrap;
+    touch-action: manipulation;
+}
+
+.wm-tool > img {
+    width: calc(16 * var(--wm-px));
+    height: calc(16 * var(--wm-px));
+    pointer-events: none;
+}
+
+/* a number in the bar: its digits in the cell, as wide as they are */
+.wm-tool.is-text {
+    padding: 0 calc(3 * var(--wm-px));
+}
+
+.wm-tool[aria-pressed="true"],
+.wm-tool[aria-expanded="true"],
+.wm-tool:active:not(:disabled) {
+    border-color: #000;
+    background: #fff;
+}
+
+.wm-tool:disabled {
+    color: #848284;
+    text-shadow: calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff;
+}
+
+.wm-tool:disabled > img {
+    filter: brightness(0) invert(52%) drop-shadow(calc(1 * var(--wm-px)) calc(1 * var(--wm-px)) 0 #fff);
+    opacity: 1;
+}
+
+.wm-tool-sep {
+    flex: 0 0 auto;
+    width: calc(1 * var(--wm-px));
+    height: calc(18 * var(--wm-px));
+    margin: calc(1 * var(--wm-px)) calc(2 * var(--wm-px)) 0;
+    background: #848284;
+}
+
+.wm-tool-sep.is-wrap {
+    display: none;
+}
+
+/* a combo box in the bar (Model, Size): its text and the drop arrow's cell, as wide as the text */
+.wm-tool.wm-tool-combo {
+    justify-content: flex-start;
+    max-width: calc(120 * var(--wm-px));
+    margin-left: calc(1 * var(--wm-px));
+    padding: 0 calc(16 * var(--wm-px)) 0 calc(3 * var(--wm-px));
+    border-color: #000;
+    background: #fff;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wm-tool.wm-tool-combo::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: calc(13 * var(--wm-px));
+    border-left: calc(1 * var(--wm-px)) solid #000;
+    background:
+        linear-gradient(to top right, transparent 50%, #000 50%) calc(50% - 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        linear-gradient(to top left, transparent 50%, #000 50%) calc(50% + 2 * var(--wm-px)) 50% / calc(4 * var(--wm-px)) calc(4 * var(--wm-px)) no-repeat,
+        var(--wm-tab-strip);
+}
+
+.wm-tool.wm-tool-combo:active:not(:disabled) {
+    background: var(--wm-highlight);
+    color: var(--wm-highlight-text);
+}
+
+/* ---- pop-up panel (wmSettings.ui.popPanel): the drop-down list's frame (1-unit black, white
+ * face) around a tool's own panel; it scrolls when taller than the room it has ---- */
+.wm-pop {
+    position: absolute;
+    z-index: 9000;
+    left: 0;
+    top: 0;
+    box-sizing: border-box;
+    min-width: calc(92 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    color: #000;
+    font: var(--wm-fs) var(--wm-font);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* a number's panel (wmSettings.ui.valuePop): its name and value over the trackbar, the square
+ * default button at the trackbar's right */
+.wm-pop.wm-valuepop {
+    width: calc(200 * var(--wm-px));
+    padding: calc(3 * var(--wm-px)) calc(5 * var(--wm-px)) calc(5 * var(--wm-px));
+    overflow: hidden;
+}
+
+.wm-valuepop .wm-valuepop-row { margin-top: calc(3 * var(--wm-px)); }
+.wm-valuepop .wm-jog { flex: 1 1 auto; }
+
+.wm-valuepop-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+}
+
+.wm-valuepop-row {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+}
+
+
+.wm-valuepop-default {
+    position: relative;
+    flex: 0 0 auto;
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+    margin: 0;
+    padding: 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    border-radius: 0;
+    background: #fff;
+    box-shadow: none;
+    box-sizing: border-box;
+}
+
+.wm-valuepop-default::before {
+    content: '';
+    position: absolute;
+    inset: calc(3 * var(--wm-px));
+    background: #000;
+}
+
+.wm-valuepop-default:active {
+    background: #000;
+}
+
+.wm-valuepop-default:active::before {
+    background: #fff;
+}
+
+/* ---- jog wheel (wmSettings.ui.jogWheel): a ridged thumbwheel seen edge-on in a sunken frame
+ * (2-unit CE well: grey / white outside, black / light grey inside); the ridges are 1-unit dark
+ * lines placed by script on the half that faces the eye, the wheel shaded darker towards both
+ * ends; the frame takes the highlight while it has the focus ---- */
+.wm-jog {
+    position: relative;
+    min-width: calc(40 * var(--wm-px));
+    height: calc(21 * var(--wm-px));
+    box-sizing: border-box;
+    border: calc(1 * var(--wm-px)) solid;
+    border-color: #848284 #fff #fff #848284;
+    background: #c0c0c0;
+    touch-action: none;
+    cursor: ew-resize;
+    outline: none;
+}
+
+.wm-jog-wheel {
+    position: absolute;
+    inset: 0;
+    border: calc(1 * var(--wm-px)) solid;
+    border-color: #000 #dfdfdf #dfdfdf #000;
+    overflow: hidden;
+    background: linear-gradient(to right, #404040 0%, #a0a0a0 12%, #e8e8e8 38%, #f8f8f8 50%, #e8e8e8 62%, #a0a0a0 88%, #404040 100%);
+}
+
+.wm-jog-ridge {
+    position: absolute;
+    top: calc(2 * var(--wm-px));
+    bottom: calc(2 * var(--wm-px));
+    width: calc(1 * var(--wm-px));
+    margin-left: calc(-0.5 * var(--wm-px));
+    background: #000;
+    box-shadow: calc(1 * var(--wm-px)) 0 0 #fff;
+    pointer-events: none;
+}
+
+.wm-jog:focus-visible .wm-jog-wheel,
+.wm-jog.is-rolling .wm-jog-wheel {
+    outline: calc(1 * var(--wm-px)) solid var(--wm-highlight);
+    outline-offset: calc(-1 * var(--wm-px));
+}
+
+.wm-jog.is-disabled { cursor: default; touch-action: pan-y; }
+
+/* a toned wheel (jog.tone): stronger towards orange and red, weaker towards blue (the desktop's
+ * emphasis colours), as deep as the value stands from neutral */
+.wm-jog-wheel::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: calc(0.2 + 0.6 * var(--wm-jog-strength, 0));
+    mix-blend-mode: multiply;
+    pointer-events: none;
+}
+
+.wm-jog:not([data-tone="up"]):not([data-tone="down"]) .wm-jog-wheel::after { content: none; }
+.wm-jog[data-tone="up"] .wm-jog-wheel::after { background: color-mix(in srgb, #dc1e1e calc(var(--wm-jog-strength, 0) * 100%), #e6871e); }
+.wm-jog[data-tone="down"] .wm-jog-wheel::after { background: #2f6fe0; }
+
+/* ---- LCD readout (.wm-lcd): a number in seven-segment figures (DSEG7, public/css/fonts.css) on a
+ * grey-green face in a 1-unit black frame ---- */
+.wm-lcd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    box-sizing: border-box;
+    height: calc(21 * var(--wm-px));
+    padding: 0 calc(3 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #c8d4b8;
+    color: #101810;
+    font: calc(11 * var(--wm-px)) / 1 'DSEG7 Classic', var(--wm-font);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.wm-jog.is-disabled .wm-jog-ridge { background: #848284; box-shadow: none; }
