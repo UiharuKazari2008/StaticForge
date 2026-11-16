@@ -297,21 +297,25 @@
         const list = [];
         for (let c = 32; c < 127; c++) list.push(String.fromCharCode(c));
         '…ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ–—‘’“”•™®©'.split('').forEach((ch) => list.push(ch));
+        // the regular weight too (the bubbles' text), black on the bubble's white
+        const charsRegular = {};
         try {
-            for (const ch of list) {
-                t.textContent = ch === ' ' ? '\u00a0' : ch;
-                // alone, as wide as the character (plus room for nothing else), its box the title's height
-                t.setAttribute('style', `${keep.style || ''};flex:0 0 auto;min-width:0;width:auto;padding:0 ${PAD}px;overflow:visible`);
-                const r = t.getBoundingClientRect();
-                const c = await window.windowCapture.snapshot(t, { scale: dpr });
-                const p = pack(c, []);
-                if (p) chars[ch] = { png: p.png, adv: Math.round((r.width - PAD * 2) * dpr * 100) / 100 };
+            for (const [set, weight, color] of [[chars, 'bold', ''], [charsRegular, 'normal', 'color:#000;']]) {
+                for (const ch of list) {
+                    t.textContent = ch === ' ' ? '\u00a0' : ch;
+                    // alone, as wide as the character (plus room for nothing else), its box the title's height
+                    t.setAttribute('style', `${keep.style || ''};flex:0 0 auto;min-width:0;width:auto;padding:0 ${PAD}px;overflow:visible;font-weight:${weight};${color}`);
+                    const r = t.getBoundingClientRect();
+                    const c = await window.windowCapture.snapshot(t, { scale: dpr });
+                    const p = pack(c, []);
+                    if (p) set[ch] = { png: p.png, adv: Math.round((r.width - PAD * 2) * dpr * 100) / 100 };
+                }
             }
         } finally {
             t.textContent = keep.text;
             if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
         }
-        out({ widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, geo: barGeometry(dpr) });
+        out({ widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr) });
     }
 
     /*
@@ -320,6 +324,27 @@
      * icons out from it (right-aligned at iconsRight, `pitch` apart; around the camera when `hole` is set),
      * the title from titleX until the icons.
      */
+    /** The 6.5 bubble's colours and title band art for the app's own drawing (wm65.css .wm-bubble*). */
+    function bubbleStyle(dpr) {
+        const cs = getComputedStyle(document.documentElement);
+        const v = (k, d) => (cs.getPropertyValue(k) || '').trim() || d;
+        const px = parseFloat(v('--wm-px', '1')) || 1;
+        const art = /url\(\s*["']?([^"')]+)/.exec(v('--wm65-art-msgboxtitle', '')) || null;
+        const abs = (u) => { try { return new URL(u, location.href).href; } catch (_) { return ''; } };
+        // a colour as #rrggbb (computed values of the custom properties may be any CSS colour)
+        const probe = document.createElement('i');
+        document.body.appendChild(probe);
+        const hex = (c) => { probe.style.color = ''; probe.style.color = c; const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(getComputedStyle(probe).color); return m ? '#' + [1, 2, 3].map((i) => (+m[i]).toString(16).padStart(2, '0')).join('') : '#000000'; };
+        const out = {
+            u: Math.round(px * dpr * 1000) / 1000,
+            text: hex(v('--wm65-text', '#000')), face: hex(v('--wm65-face', '#fff')), caption: hex(v('--wm65-caption-text', '#fff')),
+            highlight: hex(v('--wm-highlight', '#316ac5')),
+            titleArt: abs(art ? art[1] : '/static_images/wm65/theme-classicblue-msgboxtitle@2x.png')
+        };
+        probe.remove();
+        return out;
+    }
+
     function barGeometry(dpr) {
         const sh = window.wmShell;
         const shell = document.getElementById('wmShell');

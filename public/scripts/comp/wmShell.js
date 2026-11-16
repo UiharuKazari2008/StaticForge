@@ -1087,6 +1087,20 @@
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
+            // a link or button of a status bubble the app drew (#871): the bubble opened here and that pressed
+            if (role.startsWith('bubble:')) {
+                let o = null;
+                try { o = JSON.parse(role.slice(7)); } catch (_) { o = null; }
+                if (o && o.role) {
+                    const icon = shell.querySelector(`.wm-status-icon[data-role="${o.role}"]`);
+                    statusBubble(o.role, icon, true);
+                    const b = shell.querySelector('.wm-bubble:not([hidden])');
+                    const target = b && [...b.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === o.label);
+                    if (target) target.click();
+                }
+                doneSoon();
+                return;
+            }
             // the app's lock screen was unlocked with its keypad's Contacts / Messaging key (#875)
             if (role === 'app:contacts' || role === 'app:messaging') { open(role.slice(4)); doneSoon(); return; }
             if (role === 'start' || role === 'title') {
@@ -3068,6 +3082,86 @@
      * in this bar's order), never as a picture. The phone's own icons (connectivity, signal, roaming,
      * battery) the app takes from Android itself.
      */
+    let bubbleCapture = null;
+    /*
+     * The status bubbles described for the app (#871; Yukimi, Nov 16: "popups should not require the web
+     * app at all"): each icon's bubble as the page would build it now - title, lines (text / bold), label and
+     * value pairs with signal bars, WM's block bar, a running clock (the VPN's time connected), links and
+     * buttons - so the app draws and answers it itself the moment it is tapped. Built only while this page
+     * is behind a program (building one closes menus and the volume, as a tap would).
+     */
+    function bubbleSpecOf(a) {
+        const out = { title: a.title || '', role: a.role || '', sec: [], foot: (a.footLinks || []).map((l) => l.label), buttons: (a.buttons || []).map((b) => ({ text: b.text, left: !!b.left })) };
+        const textOf = (n) => (n ? String(n.textContent || '').replace(/\s+/g, ' ').trim() : '');
+        const fromEl = (root) => {
+            [...root.childNodes].forEach((n) => {
+                if (n.nodeType === 3) { const t = String(n.textContent || '').trim(); if (t) out.sec.push({ t: 'text', s: t }); return; }
+                if (n.nodeType !== 1) return;
+                if (n.classList.contains('wm-bubble-pair')) {
+                    const kids = [...n.children];
+                    const left = kids[0];
+                    const right = kids.slice(1);
+                    const pair = { t: 'pair', l: textOf(left), lb: !!(left && left.tagName === 'B'), r: [], bars: null, clock: null };
+                    right.forEach((r) => {
+                        const parts = r.classList.contains('wm-bubble-right') ? [...r.children] : [r];
+                        parts.forEach((p) => {
+                            if (p.classList.contains('wm-bars')) pair.bars = p.querySelectorAll('i.is-on').length;
+                            else if (p.classList.contains('wm-vpn-time')) {
+                                const ws = window.wsClient;
+                                pair.clock = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null;
+                                pair.r.push({ s: textOf(p), b: true });
+                            } else pair.r.push({ s: textOf(p), b: p.tagName === 'B' || p.classList.contains('is-bold') });
+                        });
+                    });
+                    out.sec.push(pair);
+                } else if (n.classList.contains('wm-ds-progress')) {
+                    const sp = n.querySelector('span');
+                    out.sec.push({ t: 'progress', blocks: sp ? parseInt(sp.style.getPropertyValue('--wm-ds-blocks'), 10) || 0 : 0 });
+                } else if (n.classList.contains('wm-bubble-warn')) out.sec.push({ t: 'text', s: textOf(n), warn: true });
+                else if (n.children.length && [...n.children].some((c) => c.matches('div, .wm-bubble-pair, .wm-ds-progress'))) fromEl(n);
+                else { const t = textOf(n); if (t) out.sec.push({ t: 'text', s: t, b: n.tagName === 'B' }); }
+            });
+        };
+        (a.sections || []).forEach((sec) => {
+            if (typeof sec === 'string') { out.sec.push({ t: 'text', s: sec }); return; }
+            if (!sec) return;
+            if (sec.rule) { out.sec.push({ t: 'rule' }); return; }
+            if (sec.links) { out.sec.push({ t: 'links', s: sec.text || '', b: !!sec.bold, right: sec.align === 'right', links: sec.links.map((l) => l.label) }); return; }
+            const box = document.createElement('div');
+            if (sec.html) box.innerHTML = sec.html; else if (sec.node) box.appendChild(sec.node.cloneNode(true));
+            const start = out.sec.length;
+            fromEl(box);
+            // a section's parts stay one block (their own spacing)
+            if (out.sec.length > start) out.sec[start].first = true;
+        });
+        return out;
+    }
+    let bubblesSent = '';
+    let bubblesAt = 0;
+    function barsBubbleSpecs(force) {
+        const ab = window.AndroidBars;
+        if (!ab || typeof ab.bubbles !== 'function' || !barsExternal || !shell) return;
+        const now = Date.now();
+        if (!force && now - bubblesAt < 1000) return;
+        bubblesAt = now;
+        const roles = new Set();
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
+        ['data', 'signal', 'battery', 'bluetooth'].forEach((r) => roles.add(r));
+        // the notification group, mail, texts, Messenger and the volume answer with their own surfaces
+        ['notify', 'androidtray', 'mail', 'sms', 'chat', 'volume'].forEach((r) => roles.delete(r));
+        const specs = {};
+        roles.forEach((role) => {
+            bubbleCapture = [];
+            try { statusBubble(role, null, true); } catch (err) { console.warn('[wmShell] bubble spec', role, err); }
+            const got = bubbleCapture;
+            bubbleCapture = null;
+            if (got.length) specs[role] = bubbleSpecOf(got[got.length - 1]);
+        });
+        const json = JSON.stringify(specs);
+        if (json === bubblesSent) return;
+        bubblesSent = json;
+        try { ab.bubbles(json); } catch (_) { /* older app */ }
+    }
     let barsStatusSent = '';
     const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
     const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
@@ -3087,6 +3181,7 @@
             if (i.classList.contains('is-presence')) e.dim = true;
             list.push(e);
         });
+        barsBubbleSpecs(false);
         const json = JSON.stringify(list);
         if (json === barsStatusSent) return;
         barsStatusSent = json;
@@ -4109,6 +4204,8 @@
      * rule above them (WM 6.1's Phone / Connectivity bubbles: Settings | Hide).
      */
     function bubble({ title, sections = [], buttons = [{ text: 'Hide' }], footLinks = null, anchor = null, role = '' } = {}) {
+        // Melaton Bars: the bubble's content described for the app's own drawing (barsBubbleSpecs), not shown
+        if (bubbleCapture) { bubbleCapture.push({ title, sections, buttons, footLinks, role }); return; }
         const el = shell.querySelector('.wm-bubble');
         el.innerHTML = '<span class="wm-bubble-tail" aria-hidden="true"></span>';
         el.dataset.role = role || '';
