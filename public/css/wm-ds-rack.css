@@ -1,2 +1,32 @@
 /* Melaton Mobile: DreamStudio part - rack (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* Weight Rack (the page): the form's margins, a field's name as its sub-header, then a row a group */
+.wds-xview[data-xview="rack"] > .wds-rack-list { flex: 0 0 auto; padding-top: calc(2 * var(--wm-px)); }
+.wds-rack-list > .wm-form-sub:first-child { margin-top: 0; }
+.wds-rack-list > .wds-wt-row { min-height: calc(23 * var(--wm-px)); }
+
+/* a group's text: a plain button (a tap opens its tools), one line cut with an ellipsis */
+.wds-rack-list .wds-rack-name {
+    display: block;
+    margin: 0;
+    padding: 0 calc(2 * var(--wm-px));
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    line-height: calc(19 * var(--wm-px));
+}
+.wds-rack-row.is-selected > .wds-rack-name { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+
+/* the weight's LCD is a button (a tap types it on the number pad) */
+.wds-rack-list .wds-wt-row > .wds-wt-lcd { box-sizing: border-box; width: calc(50 * var(--wm-px)); min-width: 0; margin: 0; padding: 0 calc(3 * var(--wm-px)); text-align: right; }
+.wds-rack-list button.wds-wt-lcd { cursor: pointer; }
+.wds-rack-list .wds-wt-row > .wm-jog { width: calc(80 * var(--wm-px)); }
+
+/* the plain text between groups (the desktop's context cards): dimmed at 1.00, no wheel; the gap
+ * keeps its LCD in line with the groups' */
+.wds-rack-plain { opacity: 0.5; }
+.wds-rack-plain > .wds-wt-name { padding: 0 calc(2 * var(--wm-px)); }
+.wds-rack-gap { flex: 0 0 auto; width: calc(97 * var(--wm-px)); }

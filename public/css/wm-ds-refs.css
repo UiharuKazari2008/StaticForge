@@ -1,2 +1,51 @@
 /* Melaton Mobile: DreamStudio part - refs (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* the References tab: one row per reference - its picture, what it is over what its numbers are,
+ * the numbers as LCDs; a row switched off is greyed */
+.wdr-list { display: flex; flex-direction: column; flex: 0 0 auto; }
+.wdr-row {
+    display: flex;
+    align-items: center;
+    gap: calc(4 * var(--wm-px));
+    min-height: calc(30 * var(--wm-px));
+    margin: 0;
+    padding: calc(2 * var(--wm-px)) 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+}
+.wdr-row:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wdr-pic { flex: 0 0 auto; width: calc(26 * var(--wm-px)); height: calc(26 * var(--wm-px)); box-sizing: border-box; border: calc(1 * var(--wm-px)) solid currentColor; object-fit: cover; }
+.wdr-name { flex: 1 1 auto; min-width: 0; }
+.wdr-name > b, .wdr-name > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wdr-name > span { opacity: 0.6; }
+.wdr-row.is-off .wdr-name, .wdr-row.is-off .wdr-pic, .wdr-row.is-off .wdr-lcd { opacity: 0.45; }
+.wdr-lcd { flex: 0 0 auto; height: calc(19 * var(--wm-px)); }
+.wdr-row:active .wdr-lcd { color: var(--wm-lcd-ink); }
+.wds-tabpane > .wm-check { flex: 0 0 auto; margin-top: calc(2 * var(--wm-px)); }
+
+/* the dialogs: check boxes side by side; an LCD a tap types into; a combo or edit box at the row's end */
+.wdr-checks { display: flex; flex-wrap: wrap; gap: 0 calc(8 * var(--wm-px)); }
+.wdr-checks > .wm-check { flex: 0 0 auto; }
+.wdr-dlg button.wdr-padlcd { min-width: calc(38 * var(--wm-px)); cursor: pointer; }
+.wdr-dlg .wds-wt-row > .wm-combo { flex: 0 0 calc(92 * var(--wm-px)); width: calc(92 * var(--wm-px)); min-width: 0; }
+.wdr-dlg .wds-wt-row > .wm-edit { flex: 0 1 calc(120 * var(--wm-px)); min-width: 0; }
+
+/* Vibe Transfer: the workspace's vibes as a grid of pictures, scrolled inside the dialog */
+.wdr-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(calc(44 * var(--wm-px)), 1fr));
+    gap: calc(3 * var(--wm-px));
+    max-height: calc(200 * var(--wm-px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+.wdr-grid > .wds-none { grid-column: 1 / -1; margin: calc(4 * var(--wm-px)) 0; opacity: 0.6; }
+.wdr-cell { aspect-ratio: 1; margin: 0; padding: 0; border: calc(1 * var(--wm-px)) solid currentColor; border-radius: 0; background: transparent; }
+.wdr-cell > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.wdr-cell.is-off { opacity: 0.45; }
+.wdr-cell:active { outline: calc(2 * var(--wm-px)) solid var(--wm-highlight); }

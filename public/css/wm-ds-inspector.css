@@ -1,2 +1,55 @@
 /* Melaton Mobile: DreamStudio part - inspector (#860 migration). Kit classes and theme tokens only
  * (no colour or font literals: scripts/check-ui-standard.js); units are WM units (--wm-px). */
+
+/* a Genso pick or a Tendai modification: lock box, the text (a tap opens its menu), a tool at the right */
+.wds-insp .wdi-row {
+    display: flex;
+    align-items: flex-start;
+    gap: calc(2 * var(--wm-px));
+    padding: calc(1 * var(--wm-px)) 0;
+}
+.wds-insp .wdi-row > .wm-check { flex: 0 0 auto; margin: calc(2 * var(--wm-px)) 0 0; }
+.wds-insp .wdi-row > .wm-check > span:empty { display: none; }
+.wds-insp .wdi-row > .wm-tool { margin: 0; }
+.wds-insp .wdi-row > .wdi-nolock { flex: 0 0 auto; width: calc(15 * var(--wm-px)); }
+.wds-insp .wdi-text {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin: 0;
+    padding: calc(1 * var(--wm-px)) calc(2 * var(--wm-px));
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.wds-insp .wdi-text:active,
+.wds-insp .wdi-text[aria-expanded="true"] { background: var(--wm-highlight); color: var(--wm-highlight-text); }
+.wds-insp .wdi-val { overflow-wrap: anywhere; }
+.wds-insp .wdi-val > i { display: inline-block; width: calc(12 * var(--wm-px)); margin-right: calc(2 * var(--wm-px)); font-size: calc(9 * var(--wm-px)); text-align: center; }
+/* what the pick is (its pattern, where it sits, Rentan's category): smaller and fainter */
+.wds-insp .wdi-sub { font-size: calc(10 * var(--wm-px)); line-height: calc(12 * var(--wm-px)); opacity: 0.65; overflow-wrap: anywhere; }
+.wds-insp .wdi-reason { font-style: italic; }
+
+/* Rentan: the cache line and the scene the compile was made for (two columns: what / which) */
+.wds-insp .wdi-cache { margin: 0 0 calc(2 * var(--wm-px)); font-size: calc(10 * var(--wm-px)); opacity: 0.75; }
+.wds-insp .wdi-cache.is-expired { opacity: 1; }
+.wds-insp .wdi-scene {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: calc(6 * var(--wm-px));
+    margin: 0 0 calc(3 * var(--wm-px));
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(12 * var(--wm-px));
+}
+.wds-insp .wdi-scene > span:nth-child(odd) { opacity: 0.65; }
+
+/* Set Emphasis: one LCD + jog row; the LCD opens the number pad */
+.wdi-empdlg .wds-wt-row > button.wds-wt-lcd { min-width: calc(44 * var(--wm-px)); padding: 0 calc(3 * var(--wm-px)); cursor: pointer; }
+
+/* Compiled Prompts: each text in WM's framed box, read only; the script sizes each to its text */
+.wdi-compiledview { overflow-y: auto; padding-bottom: calc(6 * var(--wm-px)); }
+.wdi-compiledview textarea.wdi-compiled { display: block; box-sizing: border-box; width: 100%; height: calc(5 * 13 * var(--wm-px) + 6 * var(--wm-px)); resize: none; }
