@@ -456,7 +456,17 @@
         const code = it.kind === 'barcode' && showCode ? `<button type="button" class="wwl-code${TWO_D.has(it.format) ? ' is-2d' : ''}${bright ? ' is-bright' : ''}" data-act="bright" aria-label="${bright ? 'Back to normal brightness' : 'Brighten the barcode'}">
                 ${art && art !== 'bad' ? `<img src="${art}" alt="">` : `<span class="wwl-code-wait">${art === 'bad' ? 'This number cannot be drawn as the chosen barcode.' : 'Drawing the barcode...'}</span>`}
             </button>` : '';
-        el.innerHTML = row + code;
+        // a membership with its code on Today: [card picture] [the whole barcode] in one row (Yukimi,
+        // Nov 16), the picture's tap shows it full screen, the code's tap brightens it (HDR)
+        const pager = list.length > 1 ? `<span class="wwl-pager"><button type="button" class="wwl-arrow" data-act="prev" aria-label="Previous">\u2039</button><button type="button" class="wwl-arrow" data-act="next" aria-label="Next">\u203a</button></span>` : '';
+        const side = it.kind === 'barcode' && showCode
+            ? `<div class="wwl-row is-code">
+                <button type="button" class="wwl-item is-pic" data-act="show" aria-label="${esc(lineOf(it))}: full screen">${pic ? `<img class="wwl-pic is-big" src="${esc(pic)}" alt="" draggable="false">` : `<span class="wwl-pic-name">${esc(lineOf(it))}</span>`}</button>
+                ${code.replace('class="wwl-code', 'class="wwl-code is-side')}
+                ${pager}
+            </div>`
+            : '';
+        el.innerHTML = side || (row + code);
         if (!el.dataset.wired) {
             el.dataset.wired = '1';
             el.addEventListener('click', (e) => {

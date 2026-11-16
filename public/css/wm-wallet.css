@@ -314,3 +314,12 @@
 
 .wwl-lmove:active:not(:disabled) { background: var(--wm-highlight); color: #fff; }
 .wwl-lmove:disabled { color: #a0a0a0; }
+
+/* a membership on Today: [card picture] [the whole barcode] side by side, the code never cut */
+.wwl-row.is-code { align-items: stretch; min-height: calc(50 * var(--wm-px)); }
+.wwl-item.is-pic { flex: 0 0 auto; }
+.wwl-pic.is-big { width: calc(78 * var(--wm-px)); height: calc(49 * var(--wm-px)); }
+.wwl-pic-name { display: block; width: calc(78 * var(--wm-px)); font-weight: bold; white-space: normal; }
+.wwl-code.is-side { flex: 1 1 0; min-width: 0; min-height: 0; padding: calc(3 * var(--wm-px)); }
+.wwl-code.is-side img { width: 100%; height: auto; max-height: calc(49 * var(--wm-px)); object-fit: contain; }
+.wwl-code.is-side.is-2d img { width: auto; height: calc(49 * var(--wm-px)); max-width: 100%; }
