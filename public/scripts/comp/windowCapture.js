@@ -483,10 +483,11 @@
 
     function imageDataUrl(img, w, h) {
         const s = Math.min(2, root.devicePixelRatio || 1);
-        // an exact snapshot keeps the file the page shows at its own size: the picture scales it
-        // into the box as the page does, with nothing resampled on the way
-        const cw = exact ? Math.max(1, Math.min(2048, img.naturalWidth)) : Math.max(1, Math.min(2048, Math.round(w * s)));
-        const ch = exact ? Math.max(1, Math.min(2048, img.naturalHeight)) : Math.max(1, Math.min(2048, Math.round(h * s)));
+        // an exact snapshot draws the picture at the box's own device pixels, as the page does
+        // (naturalWidth is divided by a srcset's density: a 4x flag read as a quarter of its file)
+        const es = exact ? exact.scale : s;
+        const cw = Math.max(1, Math.min(2048, Math.round(w * es)));
+        const ch = Math.max(1, Math.min(2048, Math.round(h * es)));
         const key = `${img.currentSrc || img.src}|${cw}x${ch}`;
         if (dataUrls.has(key)) return dataUrls.get(key);
         let out = '';
