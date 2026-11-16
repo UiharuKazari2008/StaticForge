@@ -819,6 +819,12 @@ html.ui-mobile {
     --wm-title-glyph: image-set(var(--wm-art-title-close-1x) 1x, var(--wm-art-title-close-2x) 2x, var(--wm-art-title-close-4x) 4x);
 }
 
+/* the X sits centred on its button (the ok's offset keeps the k off the right ring, but put the X half a
+ * unit right of centre; Yukimi, Nov 16) */
+.wm-title-action[data-kind="close"]::after {
+    --wm-glyph-pos: round(down, calc(-2 * var(--wm-px)), var(--wm-dpx-step)) round(down, calc(-4 * var(--wm-px)), var(--wm-dpx-step));
+}
+
 .wm-title-action[data-kind="ok"] {
     --wm-title-glyph: image-set(var(--wm-art-title-ok-1x) 1x, var(--wm-art-title-ok-2x) 2x, var(--wm-art-title-ok-4x) 4x);
 }

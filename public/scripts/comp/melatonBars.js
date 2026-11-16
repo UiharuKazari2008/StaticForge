@@ -333,7 +333,7 @@
         const root = document.documentElement;
         const cs = getComputedStyle(root);
         // (the first part: the lists' make - a new one makes every app ask for its kit again)
-        return ['m6', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m7', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
 
