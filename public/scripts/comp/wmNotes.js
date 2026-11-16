@@ -372,9 +372,22 @@
 
         // ---- the note page
 
+        /**
+         * The opened Fold (#870, Yukimi): 600 CSS px or more shows the list on the left half and the
+         * open note on the right, one each side of the crease (one title and one pair of soft keys, the
+         * open view's). The forms keep the whole width.
+         */
+        const DUAL_MIN = 600;
+        const dualFor = (view) => !!page && page.clientWidth >= DUAL_MIN && (view === 'list' || view === 'note');
+        const isDual = () => dualFor(page && page.dataset.view);
+
         function showView(view) {
-            page.querySelector('.nt-listview').hidden = view !== 'list';
-            page.querySelector('.nt-noteview').hidden = view !== 'note';
+            const dual = dualFor(view);
+            page.classList.toggle('is-dual', dual);
+            page.querySelector('.nt-listview').hidden = view !== 'list' && !dual;
+            page.querySelector('.nt-noteview').hidden = view !== 'note' && !dual;
+            // no note open: the right half is empty
+            page.querySelector('.nt-noteview').classList.toggle('is-none', dual && view !== 'note');
             page.querySelector('.nt-formview').hidden = view !== 'form';
             const was = page.dataset.view;
             page.dataset.view = view;
@@ -1480,6 +1493,10 @@
         function mount(p) {
             page = p;
             p.classList.add('wm-notes');
+            // folding / unfolding: list and note side by side or not
+            if (typeof ResizeObserver === 'function') {
+                new ResizeObserver(() => { if (page.dataset.view && page.classList.contains('is-dual') !== isDual()) showView(page.dataset.view); }).observe(p);
+            }
             p.innerHTML = `
                 <div class="nt-listview">
                     <div class="wm-pv-bar nt-bar">
@@ -1544,7 +1561,14 @@
                 const i = itemById(row.dataset.id);
                 // a voice note plays where it is (the toolbar comes up for it), as on the device
                 if (isVoice(i)) { if (i.audio.length) void vbPlay({ noteId: i.noteId, audioId: i.audio[0].id, ms: i.audio[0].ms }); return; }
-                if (i) openNote(i.noteId, i.workspaceId, i.name);
+                if (!i) return;
+                // side by side, the note open on the right is saved and closed first (as ok does)
+                if (editing && isDual()) {
+                    if (editing.noteId === i.noteId) return;
+                    void closeNote().then((ok) => { if (ok) openNote(i.noteId, i.workspaceId, i.name); });
+                    return;
+                }
+                openNote(i.noteId, i.workspaceId, i.name);
             });
 
             const folderBtn = p.querySelector('.nt-folder');

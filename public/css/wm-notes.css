@@ -1011,3 +1011,24 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic {
     color: #0000ff;
     text-decoration: underline;
 }
+
+/* the opened Fold (#870, wmNotes.js showView): the list on the left half, the open note on the right,
+ * the crease drawn as the list's row rule; no note open = an empty right half */
+.wm-notes.is-dual {
+    flex-direction: row;
+}
+
+.wm-notes.is-dual > .nt-listview,
+.wm-notes.is-dual > .nt-noteview {
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+.wm-notes.is-dual > .nt-noteview {
+    border-left: calc(1 * var(--wm-px)) solid #848284;
+}
+
+.wm-notes.is-dual > .nt-noteview.is-none > * {
+    visibility: hidden;
+}
+
