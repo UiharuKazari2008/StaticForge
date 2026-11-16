@@ -1032,3 +1032,22 @@ html.ui-mobile[data-wm-version="6.5"] .wm-contacts .ct-fstatic {
     visibility: hidden;
 }
 
+/* Contacts the same way (wmNotes.js Contacts showLayer): the list left, the open card right */
+.wm-contacts.is-dual {
+    flex-direction: row;
+}
+
+.wm-contacts.is-dual > .ct-listview,
+.wm-contacts.is-dual > .ct-cardview {
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+.wm-contacts.is-dual > .ct-cardview {
+    border-left: calc(1 * var(--wm-px)) solid #848284;
+}
+
+.wm-contacts.is-dual > .ct-cardview.is-none > * {
+    visibility: hidden;
+}
+

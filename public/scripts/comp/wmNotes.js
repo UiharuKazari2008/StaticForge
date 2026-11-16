@@ -1906,10 +1906,22 @@
 
         // ---- layers
 
+        /**
+         * The opened Fold (#870, Yukimi): 600 CSS px or more shows the list on the left half and the
+         * open contact's card on the right, one each side of the crease (one title, one pair of soft
+         * keys: the open layer's). Editing keeps the whole width.
+         */
+        const DUAL_MIN = 600;
+        const isDual = () => !!page && page.clientWidth >= DUAL_MIN && (view() === 'list' || view() === 'card');
+
         function showLayer() {
             const v = view();
-            page.querySelector('.ct-listview').hidden = v !== 'list';
-            page.querySelector('.ct-cardview').hidden = v !== 'card';
+            const dual = isDual();
+            page.classList.toggle('is-dual', dual);
+            page.querySelector('.ct-listview').hidden = v !== 'list' && !dual;
+            page.querySelector('.ct-cardview').hidden = v !== 'card' && !dual;
+            // no contact open: the right half is empty
+            page.querySelector('.ct-cardview').classList.toggle('is-none', dual && v !== 'card');
             page.querySelector('.ct-editview').hidden = v !== 'edit';
             page.dataset.view = v;
             if (isCurrent()) {
@@ -1938,7 +1950,8 @@
             cardTab = 'summary';
             if (e.key) selectedKey = e.key;
             renderCard();
-            push('card');
+            // side by side, another contact takes the open card's place (one back step, not two)
+            if (view() === 'card' && isDual()) showLayer(); else push('card');
             loadPersonaState(e);
         }
 
@@ -2578,6 +2591,10 @@
         function mount(p) {
             page = p;
             p.classList.add('wm-contacts');
+            // folding / unfolding: list and card side by side or not
+            if (typeof ResizeObserver === 'function') {
+                new ResizeObserver(() => { if (page.classList.contains('is-dual') !== isDual()) showLayer(); }).observe(p);
+            }
             p.innerHTML = `
                 <div class="ct-listview">
                     <div class="ct-searchbar"><input class="ct-search" type="search" enterkeyhint="search" autocomplete="off" placeholder="Enter a name..." aria-label="Enter a name"></div>
