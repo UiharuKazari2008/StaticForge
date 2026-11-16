@@ -1298,11 +1298,25 @@
         return accountTitle();
     }
 
+    /**
+     * The opened Fold (#870, Yukimi): a page 600 CSS px wide or more shows the list on the left half
+     * and the message read on the right half, one each side of the crease; the title and soft keys
+     * stay the open layer's (one app, one bar). Every other layer keeps the whole width.
+     */
+    const DUAL_MIN = 600;
+    const isDual = () => !!page && page.clientWidth >= DUAL_MIN && (top() === 'list' || top() === 'read');
+
     function showLayer() {
         if (!page) return;
         const t = top();
-        page.querySelectorAll(':scope > .msg-view').forEach((v) => { v.hidden = v.dataset.view !== t; });
-        if (t === 'list') { renderBar(); renderList(); }
+        const dual = isDual();
+        page.classList.toggle('is-dual', dual);
+        page.querySelectorAll(':scope > .msg-view').forEach((v) => {
+            v.hidden = dual ? (v.dataset.view !== 'list' && v.dataset.view !== 'read') : v.dataset.view !== t;
+        });
+        // the right half with no message open is empty (the last message's text does not linger)
+        if (dual && t === 'list') page.querySelector('.msg-read').replaceChildren();
+        if (t === 'list' || dual) { renderBar(); renderList(); }
         if (t === 'accounts') renderAccounts();
         if (t === 'move') renderMove();
         if (t === 'manage') renderManage();
@@ -3092,6 +3106,10 @@
     function mount(p) {
         page = p;
         p.classList.add('wm-msg');
+        // folding / unfolding (or the page first getting its size): list and message side by side or not
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(() => { if (page.classList.contains('is-dual') !== isDual()) showLayer(); }).observe(p);
+        }
         p.innerHTML = `
             <div class="msg-view" data-view="list">
                 <div class="wm-pv-bar msg-bar">

@@ -23,6 +23,21 @@
     display: none;
 }
 
+/* the opened Fold (#870, wmMessaging.js isDual): the list on the left half, the message on the right,
+ * the crease between them drawn as the list's own row rule */
+.wm-msg.is-dual {
+    flex-direction: row;
+}
+
+.wm-msg.is-dual > .msg-view {
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+.wm-msg.is-dual > .msg-view[data-view="read"] {
+    border-left: calc(1 * var(--wm-px)) solid #848284;
+}
+
 .wm-msg .msg-folder {
     min-width: 0;
     overflow: hidden;
