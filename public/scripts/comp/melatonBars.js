@@ -20,12 +20,25 @@
     'use strict';
 
     const root = document.documentElement;
-    const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', none: '' };
+    const SOFT_LABELS = { back: 'Back', home: 'Home', recents: 'Recent', start: 'Start', notifications: 'Notification', keyboard: 'Keyboard', menu: 'Menu', none: '' };
+    // the right soft key's Menu (Settings > Menus > Soft Key Menu): its rows, in the user's order
+    const MENU_ITEMS = { taskmanager: 'Task Manager', notifications: 'All Notifications', quicksettings: 'Quick Settings', maximize: 'Maximize', minimize: 'Minimize', close: 'Close' };
+    function softMenuRows() {
+        let cfg = null;
+        try { cfg = JSON.parse(window.AndroidBars.getState()).config; } catch (_) { cfg = null; }
+        const list = cfg && Array.isArray(cfg.softMenu) ? cfg.softMenu : Object.keys(MENU_ITEMS).map((id) => ({ id, on: true }));
+        return list.filter((r) => r && r.on && MENU_ITEMS[r.id]).map((r) => ({
+            label: MENU_ITEMS[r.id],
+            // Task Manager is Melaton's own program (the page comes up); the others are the app's to do
+            action: r.id === 'taskmanager' ? () => window.wmShell.open('taskmgr') : () => { try { window.AndroidBars.menuAction(r.id); } catch (_) { /* older app */ } }
+        }));
+    }
     let lastReq = 0;
     let restoreNow = null;
     let lastGood = null;
     // Start opened for a copy (renderStart): put back at once when the page comes on screen
     let startRestore = null;
+    let lastStartBg = '';
     // one copy at a time: a bar copy stages the bars (the program's title) and Start's copy must not
     // take its title bar while they are staged
     let chain = Promise.resolve();
@@ -176,6 +189,10 @@
         const out = [];
         layers.forEach((l) => l.querySelectorAll(CLICKABLE).forEach((el) => { if (!out.includes(el)) out.push(el); }));
         shell.querySelectorAll('.wm-softkeys .wm-softkey, .wm-softkeys .wm-sip, .wm-softkeys .wm-start, .wm-softkeys .wm-title-action, .wm-titlebar .wm-title-action').forEach((el) => { if (!out.includes(el)) out.push(el); });
+        // the title bar's icons (a second tap on the bubble's own icon closes it, another icon's opens
+        // that one) and the scrim (a tap outside the popups hides them), as here
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((el) => { if (!out.includes(el)) out.push(el); });
+        layers.filter((l) => l.classList.contains('wm-notify-scrim')).forEach((el) => { if (!out.includes(el)) out.push(el); });
         return out.filter((el) => !el.hidden && !el.disabled && el.getClientRects().length);
     }
 
@@ -221,7 +238,10 @@
             if (corner && hidden) corner.hidden = true;
         };
         try {
-            if (!ctx.current) sh.barsPopupOpen(ctx.role || 'notify');
+            if (!ctx.current && ctx.role === 'softmenu') {
+                const right = shell.querySelector('.wm-softkeys .wm-softkey[data-side="right"]');
+                sh.menu('right', softMenuRows(), right);
+            } else if (!ctx.current) sh.barsPopupOpen(ctx.role || 'notify');
             opened = !ctx.current;
             restage();
             if (ctx.click != null) {
@@ -248,7 +268,13 @@
             const soft = shell.querySelector('.wm-softkeys');
             const topPic = await window.windowCapture.snapshot(top, { scale: dpr });
             const softPic = ctx.softkeys && soft ? await window.windowCapture.snapshot(soft, { scale: dpr }) : null;
+            // which popup is up now (a press on another icon switched to its bubble): the app's next press reopens that one
+            const bub = shell.querySelector(':scope > .wm-bubble');
+            const tray = shell.querySelector(':scope > .wm-notify-tray');
+            const vol = shell.querySelector(':scope > .wm-volume');
+            const openRole = bub && !bub.hidden && bub.dataset.role ? bub.dataset.role : tray && !tray.hidden ? 'notify' : vol && !vol.hidden ? 'volume' : (ctx.role || '');
             out({
+                role: openRole,
                 layers: pics.filter(Boolean),
                 top: topPic ? packAt(topPic, top.getBoundingClientRect(), dpr) : null,
                 bottom: softPic ? packAt(softPic, soft.getBoundingClientRect(), dpr) : null,
@@ -317,6 +343,8 @@
         const wall = shell.querySelector(':scope > .wm-wall65');
         const { list, glow, view, page } = prep;
         const listVis = list.style.visibility;
+        // the icons load when Start is first drawn: a copy made before that had cells with no picture
+        await Promise.all([...list.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null))));
         const glowHidden = glow ? glow.hidden : true;
         try {
             const lr = list.getBoundingClientRect();
@@ -341,8 +369,15 @@
                 glowAt = { dx: Math.round((g.left - c.left) * dpr), dy: Math.round((g.top - c.top) * dpr) };
             }
             const snap = (el, before) => window.windowCapture.snapshot(el, { scale: dpr, before });
-            const wallPic = wall && !wall.hidden && wall.getClientRects().length ? await snap(wall) : null;
-            const pagePic = await snap(page, () => { list.style.visibility = 'hidden'; });
+            // the picture layers are the same for every folder: sent once while they stay the same (the
+            // phone's wallpaper is several MB at the screen's size)
+            const bgSig = [wall && !wall.hidden ? getComputedStyle(wall).backgroundImage.length + getComputedStyle(wall).backgroundImage.slice(-60) : '',
+                getComputedStyle(page).backgroundImage.slice(-60), page.querySelector('.wm-s65-wall') ? getComputedStyle(page.querySelector('.wm-s65-wall')).backgroundImage.slice(-60) : '',
+                Math.round(page.getBoundingClientRect().width), Math.round(page.getBoundingClientRect().height)].join('|');
+            const reuseBg = !!(folders.length && bgSig === lastStartBg);
+            const wallPic = !reuseBg && wall && !wall.hidden && wall.getClientRects().length ? await snap(wall) : null;
+            const pagePic = reuseBg ? null : await snap(page, () => { list.style.visibility = 'hidden'; });
+            if (!reuseBg) lastStartBg = bgSig;
             const glowPic = glow && glowAt ? await snap(glow, () => { list.style.visibility = listVis; }) : null;
             const listPic = await snap(list, () => { list.style.visibility = listVis; if (glow) glow.hidden = true; list.style.transform = 'none'; });
             const topPic = await snap(top);
@@ -353,10 +388,11 @@
                 // Settings > Today > Effects (the ones on) and the design unit in device px (their distances)
                 fx: document.documentElement.dataset.wmTiFx || '',
                 unit: (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1) * dpr,
+                reuseBg,
                 title: prep.title,
                 widthPx: Math.round(shell.getBoundingClientRect().width * dpr),
                 wall: wallPic ? packAt(wallPic, wall.getBoundingClientRect(), dpr) : null,
-                page: packAt(pagePic, page.getBoundingClientRect(), dpr),
+                page: pagePic ? packAt(pagePic, page.getBoundingClientRect(), dpr) : null,
                 view: { x: Math.round(vr.left * dpr), y: Math.round(vr.top * dpr), w: Math.round(vr.width * dpr), h: Math.round(vr.height * dpr) },
                 list: packAt(listPic, lr, dpr),
                 glow: glowPic ? packAt(glowPic, glow.getBoundingClientRect(), dpr, glowAt) : null,

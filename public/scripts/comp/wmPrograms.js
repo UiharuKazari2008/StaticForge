@@ -1041,7 +1041,9 @@
     }
 
     const BARS_CORNERS = [['close', 'X goes Home'], ['ok', 'ok goes Back']];
-    const BARS_SOFT_RIGHT = [['home', 'Home'], ['recents', 'Recent'], ['start', 'Start'], ['notifications', 'Notification'], ['none', '(none)']];
+    const BARS_SOFT_RIGHT = [['menu', 'Menu'], ['home', 'Home'], ['recents', 'Recent'], ['start', 'Start'], ['notifications', 'Notification'], ['none', '(none)']];
+    // the Menu soft key's rows (Settings > Menus > Soft Key Menu)
+    const SOFT_MENU_ITEMS = [['taskmanager', 'Task Manager'], ['notifications', 'All Notifications'], ['quicksettings', 'Quick Settings'], ['maximize', 'Maximize'], ['minimize', 'Minimize'], ['close', 'Close']];
 
     function renderBarsTab(el, d) {
         const st = d.barsState || {};
@@ -1050,7 +1052,8 @@
             d.barsCfg = {
                 enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: !!c0.androidTray,
                 softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home',
-                room: c0.room !== false
+                room: c0.room !== false,
+                hideLandCover: !!c0.hideLandCover
             };
         }
         const cfg = d.barsCfg;
@@ -1070,7 +1073,8 @@
             <div class="wm-form-gap"></div>
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
-            ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}`;
+            ${check('wmBarsRoom', 'Make room for the soft key bar (gesture navigation: swipe up on the bar for Home, in from a side for Back)', cfg.room)}
+            ${check('wmBarsLandCover', 'Hide Softkey bar in landscape (Cover Screen only), swipe up to show', cfg.hideLandCover)}`;
         const q = (sel) => el.querySelector(sel);
         const sync = () => {
             q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
@@ -1078,12 +1082,14 @@
             const r = q('[data-act="barsright"]');
             if (r) r.disabled = !cfg.enabled || !cfg.softkeys;
             q('input[name="wmBarsRoom"]').disabled = !cfg.enabled || !cfg.softkeys;
+            q('input[name="wmBarsLandCover"]').disabled = !cfg.enabled || !cfg.softkeys;
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
         bind('wmBarsTray', (v) => { cfg.androidTray = v; });
         bind('wmBarsSoft', (v) => { cfg.softkeys = v; });
         bind('wmBarsRoom', (v) => { cfg.room = v; });
+        bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
         sync();
@@ -1703,12 +1709,42 @@
         {
             id: 'menus', tab: 'personal', label: 'Menus', icon: 'set-menus',
             // 6.5's Start is the grid (its ROM has no Menus applet): only the Start button applies there
-            get tabs() { return runningVersion() === '6.5' ? [['button', 'Start Button']] : [['start', 'Start Menu'], ['button', 'Start Button']]; },
+            // Melaton Bars (#871): the right soft key's Menu over Android programs
+            get tabs() {
+                const t = runningVersion() === '6.5' ? [['button', 'Start Button']] : [['start', 'Start Menu'], ['button', 'Start Button']];
+                return window.AndroidBars ? t.concat([['softmenu', 'Soft Key Menu']]) : t;
+            },
             init() {
                 const sb = startButton();
-                return { ids: startMenuIds(), source: sb.source, text: sb.source === 'custom' ? sb.text : (lsGet(K.startText) || 'Start'), icon: sb.source === 'custom' ? sb.icon : MELATON_EMBLEM };
+                const st = barsState();
+                const saved = st && st.config && Array.isArray(st.config.softMenu) ? st.config.softMenu : null;
+                const softMenu = (saved || SOFT_MENU_ITEMS.map(([id]) => ({ id, on: true }))).filter((r) => SOFT_MENU_ITEMS.some(([id]) => id === r.id));
+                SOFT_MENU_ITEMS.forEach(([id]) => { if (!softMenu.some((r) => r.id === id)) softMenu.push({ id, on: false }); });
+                return { ids: startMenuIds(), source: sb.source, text: sb.source === 'custom' ? sb.text : (lsGet(K.startText) || 'Start'), icon: sb.source === 'custom' ? sb.icon : MELATON_EMBLEM,
+                    softMenu, softMenu0: JSON.stringify(softMenu), softSel: 0 };
             },
             render(el, tab, d, api) {
+                if (tab === 'softmenu') {
+                    const label = (id) => (SOFT_MENU_ITEMS.find(([k]) => k === id) || [id, id])[1];
+                    el.innerHTML = `<p>Checked items appear on the Menu soft key over Android programs (Settings > Screen > Android: Right soft key, Menu).</p>
+                        <div class="wm-listbox-side">
+                            <div class="wm-listbox" style="max-height:calc(170 * var(--wm-px))">${d.softMenu.map((r, i) => `<div class="wm-listbox-row${i === d.softSel ? ' is-selected' : ''}" data-i="${i}">${check(`smn-${r.id}`, label(r.id), r.on)}</div>`).join('')}</div>
+                            <div class="wm-buttons"><button type="button" class="wm-button" data-act="up"${d.softSel > 0 ? '' : ' disabled'}>Move Up</button><button type="button" class="wm-button" data-act="down"${d.softSel < d.softMenu.length - 1 ? '' : ' disabled'}>Move Down</button></div>
+                        </div>`;
+                    el.querySelectorAll('.wm-listbox-row').forEach((row) => {
+                        const i = Number(row.dataset.i);
+                        row.addEventListener('click', () => { if (d.softSel !== i) { d.softSel = i; api.rerender(); } });
+                        row.querySelector('input').addEventListener('change', (e) => { d.softMenu[i].on = e.target.checked; });
+                    });
+                    el.querySelectorAll('.wm-button[data-act]').forEach((b) => b.addEventListener('click', () => {
+                        const j = d.softSel + (b.dataset.act === 'up' ? -1 : 1);
+                        if (j < 0 || j >= d.softMenu.length) return;
+                        [d.softMenu[d.softSel], d.softMenu[j]] = [d.softMenu[j], d.softMenu[d.softSel]];
+                        d.softSel = j;
+                        api.rerender();
+                    }));
+                    return;
+                }
                 if (tab === 'button') {
                     const desk = desktopStartButton();
                     const custom = d.source === 'custom';
@@ -1744,6 +1780,9 @@
                 }));
             },
             commit(d) {
+                if (window.AndroidBars && d.softMenu && JSON.stringify(d.softMenu) !== d.softMenu0) {
+                    try { window.AndroidBars.setConfig(JSON.stringify({ softMenu: d.softMenu })); } catch (_) { /* older app */ }
+                }
                 lsSet(K.startMenu, JSON.stringify([...d.ids]));
                 lsSet(K.startSource, d.source);
                 if (d.source === 'custom') {

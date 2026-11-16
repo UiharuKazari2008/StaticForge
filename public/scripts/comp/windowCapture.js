@@ -282,12 +282,15 @@
     function dataUrl(url) {
         let abs;
         try { abs = new URL(url, root.location.href); } catch (_) { return Promise.resolve(''); }
-        if (abs.origin !== root.location.origin) return Promise.resolve('');
-        const key = abs.href;
+        // the page's own files, and the Android app's (appassets.androidplatform.net: the phone's wallpaper as
+        // Today shows it, served by the app to the page; a fetch reads it)
+        if (abs.origin !== root.location.origin && abs.hostname !== 'appassets.androidplatform.net' && abs.protocol !== 'blob:') return Promise.resolve('');
+        const shrink = !exact;
+        const key = abs.href + (shrink ? '' : '#full');
         if (!dataUrls.has(key)) {
             remember(key, fetch(key, { credentials: 'same-origin' }).then((res) => (res.ok ? res.blob() : null)).then(async (blob) => {
                 if (!blob) return '';
-                if (blob.size > BIG_IMAGE && /^image\//.test(blob.type) && !/svg/.test(blob.type) && typeof createImageBitmap === 'function') {
+                if (shrink && blob.size > BIG_IMAGE && /^image\//.test(blob.type) && !/svg/.test(blob.type) && typeof createImageBitmap === 'function') {
                     try {
                         const bmp = await createImageBitmap(blob);
                         const s = Math.min(1, BIG_IMAGE_SIDE / Math.max(bmp.width, bmp.height));
@@ -345,7 +348,8 @@
     async function inlineUrls(text) {
         const found = new Set();
         text.replace(URL_RE, (all, q, u) => {
-            if (!/^(data|blob):/.test(u) && !u.startsWith('#')) found.add(u.replace(/&quot;/g, ''));
+            // blob: pictures too: an SVG drawn as a picture cannot load them itself
+            if (!/^data:/.test(u) && !u.startsWith('#')) found.add(u.replace(/&quot;/g, ''));
             return all;
         });
         const map = new Map();
