@@ -1,32 +1,35 @@
 {
   "version": 1,
-  "capturedAt": "2026-10-09T17:06:25.666Z",
+  "capturedAt": "2026-11-16T15:26:01.553Z",
   "policy": "Public endpoints only. No JWT, recaptcha, cookies, or generate APIs.",
   "sources": {
     "home": {
       "url": "https://novelai.net/",
       "status": 200,
-      "bytes": 152969,
-      "chunkCount": 10,
-      "chunkPathsSha256": "1ed236ceaa91762edc84828dc1d29ab9476f41925dc436af2ce00703b42a2652",
+      "buildId": "adc9438-production",
+      "staticBuildDir": "adc9438-production",
+      "dpl": "adc9438-43846402163-1",
+      "bytes": 159320,
+      "chunkCount": 35,
+      "chunkPathsSha256": "ef4964d1486aa3e4f1f919d4ec06b3c4a605657b770940dc424b3f8cfc7c038e",
       "chunkPathsSample": [
-        "/_next/static/chunks/133-1a6c287b6c9eff23.js",
-        "/_next/static/chunks/3711-5cf6ab35ba70001f.js",
-        "/_next/static/chunks/4870-642fa8d0a39c4dee.js",
-        "/_next/static/chunks/7311-5eb2760447762c74.js",
-        "/_next/static/chunks/framework-7e74bf61ca06990a.js",
-        "/_next/static/chunks/main-91df8a045524259a.js",
-        "/_next/static/chunks/pages/_app-b1c0ffe38c343809.js",
-        "/_next/static/chunks/pages/index-a782709c74ddf113.js"
+        "/_next/static/chunks/00cw-g5jlj2sj.js",
+        "/_next/static/chunks/09ef663ae8-r2.js",
+        "/_next/static/chunks/0ct7ed-x3coqr.js",
+        "/_next/static/chunks/0cz1d0mv5g_q7.js",
+        "/_next/static/chunks/0f3vss_nqpcf5.js",
+        "/_next/static/chunks/0fb8_-68xv8_2.js",
+        "/_next/static/chunks/0hp9wkajg-r6g.js",
+        "/_next/static/chunks/0hq09per9uz61.js"
       ]
     },
     "updateReload": {
       "url": "https://novelai.net/updateReload.json",
       "status": 200,
-      "bytes": 578,
-      "etag": "\"8ae73894cf1093d73f124bf4487be70d\"",
+      "bytes": 631,
+      "etag": "\"7974e45b7942ccf731d79323af89a53a\"",
       "lastModified": null,
-      "sha256": "dc7eab76aeba663ecede94bfaac5097abae85838e967ffb12093161b4f350815"
+      "sha256": "41ce71f442ca80f2d297cf9e46c98bafef4ba1aec967856f19fe6e10cb430ff6"
     },
     "tokenizerQwen": {
       "url": "https://novelai.net/tokenizer/compressed/qwen35_tokenizer.def?v=2&static=true",
@@ -41,15 +44,15 @@
       "bytes": 44804,
       "etag": null,
       "lastModified": null,
-      "sha256": "0bc2955b9a81daae8d5fe16a81bb58388d7dd59cf23c73cf300fbd299470c681"
+      "sha256": "2ad55c679aa0e93b162768bd17194741732100b048a653ab90d80c06ce181666"
     },
     "blogUsage": {
       "url": "https://blog.novelai.net/subscription-updates-usage-limits-2025-88a208d5d9c5",
       "status": 403,
-      "bytes": 5730,
+      "bytes": 5719,
       "etag": null,
       "lastModified": null,
-      "sha256": "67b28b0b3322c7d766d613ae2a3dc622bde4fffeff6e6cffc04bb0d8cff712a5",
+      "sha256": "fb7bea96c3cada8d8c30248e080176c029ec8a14126a62c925f94031d269b324",
       "error": "HTTP 403"
     }
   }

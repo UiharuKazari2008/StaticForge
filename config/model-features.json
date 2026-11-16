@@ -42,6 +42,19 @@
           "NovelAI Diffusion V5 93F4BD30",
           "NovelAI Diffusion V5 70AB5786"
         ]
+      },
+      "webapp": {
+        "default": "medium",
+        "since": "b94bdee-production (2026-11-04)",
+        "preferHighStorageKey": "imagegen-prefer-high-effort",
+        "migration": {
+          "settingsKey": "imageModelUpdate",
+          "version": 9,
+          "from": "nai-diffusion-5-full",
+          "to": "nai-diffusion-5-full-medium",
+          "oneTimeNotice": "mediumEffortDefault"
+        },
+        "note": "NovelAI's own web app picks Medium for V5 Full unless the user pressed 'Set me back to High' (prefer-high flag). Dreamscape's own default stays effort.default."
       }
     }
   },

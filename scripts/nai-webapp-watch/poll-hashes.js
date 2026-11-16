@@ -61,6 +61,24 @@ function fetchUrl(url, { method = 'GET', accept = '*/*' } = {}) {
     });
 }
 
+/**
+ * Build identity (informational; not part of the change comparison).
+ * Next.js exposes it twice: __NEXT_DATA__.buildId and the static dir of
+ * _buildManifest.js. Under Turbopack (Oct 13 - Nov 2, 2026) NovelAI shipped a
+ * generated id (`build-TfctsWXpff2fKS`) that stayed the same across several
+ * deploys, so the deploy id (`?dpl=<sha>-<run>-<attempt>`) is recorded too.
+ */
+function extractBuildInfo(html) {
+    const nextData = html.match(/"buildId":"([^"]+)"/);
+    const staticDir = html.match(/\/_next\/static\/([^/"'\s]+)\/_buildManifest\.js/);
+    const dpl = html.match(/[?&]dpl=([A-Za-z0-9_-]+)/);
+    return {
+        buildId: nextData ? nextData[1] : null,
+        staticBuildDir: staticDir ? staticDir[1] : null,
+        dpl: dpl ? dpl[1] : null
+    };
+}
+
 function extractChunkPaths(html) {
     const re = /\/_next\/static\/chunks\/[^"'\s>?#]+\.js/g;
     const found = new Set();
@@ -97,6 +115,7 @@ async function collectSnapshot() {
     const home = {
         url: PUBLIC_ENDPOINTS.home,
         status: homeRes.status,
+        ...extractBuildInfo(homeHtml),
         bytes: homeRes.body.length,
         chunkCount: chunkPaths.length,
         chunkPathsSha256,
@@ -226,6 +245,8 @@ Writes baseline to ${STATE_PATH} with --write.
             changed: report.changed,
             previousCapturedAt: report.previousCapturedAt,
             capturedAt: snapshot.capturedAt,
+            buildId: snapshot.sources.home.buildId,
+            baselineBuildId: previous?.sources?.home?.buildId || null,
             chunkCount: snapshot.sources.home.chunkCount
         }));
     }
