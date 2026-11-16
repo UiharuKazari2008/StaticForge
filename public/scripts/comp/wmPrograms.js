@@ -774,7 +774,9 @@
         { id: 'link-taskmgr', tab: 'system', label: 'Task Manager', icon: 'app-task-manager', app: 'taskmgr' },
         // (#831: Server Manager's dashboard is retired, no phone version; Data Management's place is
         // System > Workspaces and Application Requests, wmSettingsSystem.js)
-        { id: 'link-accounts', tab: 'personal', label: 'Accounts', icon: 'app-accounts', app: 'accounts' }
+        { id: 'link-accounts', tab: 'personal', label: 'Accounts', icon: 'app-accounts', app: 'accounts' },
+        // Wallet (#874): cards, barcodes and car keys for Today; a Personal setting, not a program
+        { id: 'link-wallet', tab: 'personal', label: 'Wallet', icon: 'app-wallet', app: 'wallet' }
     ];
     const SHELL_ONLY = new Set(['today', 'programs', 'settings', 'help']);
 

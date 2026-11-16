@@ -250,3 +250,7 @@
 .wm-wallet .wwl-keys[hidden] { display: none; }
 .wwl-key-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
 .wwl-key-row .wm-buttons { margin: 0; }
+
+/* the code brightened on Today (a tap; 30 s): an HDR picture, shown above SDR white */
+.wwl-code.is-bright { box-shadow: 0 0 0 calc(2 * var(--wm-px)) #fff; }
+.wwl-code img { dynamic-range-limit: no-limit; }

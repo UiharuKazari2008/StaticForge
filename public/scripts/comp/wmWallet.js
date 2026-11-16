@@ -163,6 +163,72 @@
         return null;
     }
 
+    // HDR barcodes: the drawn code as a PNG whose cICP chunk says BT.2020 / PQ, so white is far above SDR
+    // white (the panel shows it at its peak) and black stays black; only the code gets brighter, while
+    // the window is in HDR mode (AndroidDisplay.setHdr). Blob URLs by format + value.
+    const hdrArt = new Map();
+    function crc32(bytes) {
+        let c;
+        const t = crc32.t || (crc32.t = Array.from({ length: 256 }, (_, n) => { c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; }));
+        let x = 0xffffffff;
+        for (let i = 0; i < bytes.length; i++) x = t[(x ^ bytes[i]) & 0xff] ^ (x >>> 8);
+        return (x ^ 0xffffffff) >>> 0;
+    }
+    /** A PNG (data URL) again with a cICP chunk (9 BT.2020, 16 PQ, 0 RGB, full range) and no colour chunks. */
+    async function hdrPng(dataUrl) {
+        const src = new Uint8Array(await (await fetch(dataUrl)).arrayBuffer());
+        const out = [src.slice(0, 8)];
+        let i = 8;
+        while (i < src.length) {
+            const len = (src[i] << 24 | src[i + 1] << 16 | src[i + 2] << 8 | src[i + 3]) >>> 0;
+            const type = String.fromCharCode(src[i + 4], src[i + 5], src[i + 6], src[i + 7]);
+            const end = i + 12 + len;
+            if (!['iCCP', 'sRGB', 'gAMA', 'cHRM', 'cICP'].includes(type)) out.push(src.slice(i, end));
+            if (type === 'IHDR') {
+                const body = new Uint8Array([0x63, 0x49, 0x43, 0x50, 9, 16, 0, 1]);
+                const chunk = new Uint8Array(16);
+                chunk.set([0, 0, 0, 4], 0);
+                chunk.set(body, 4);
+                const crc = crc32(body);
+                chunk.set([crc >>> 24, (crc >>> 16) & 255, (crc >>> 8) & 255, crc & 255], 12);
+                out.push(chunk);
+            }
+            i = end;
+        }
+        return URL.createObjectURL(new Blob(out, { type: 'image/png' }));
+    }
+    function hdrUrl(it) {
+        const k = `${it.format}|${it.value}|${it.codeImage ? it.codeImage.length : 0}`;
+        if (hdrArt.has(k)) return hdrArt.get(k);
+        hdrArt.set(k, null);
+        const base = barcodeUrl(it, true);
+        const make = (u) => hdrPng(u).then((url) => { hdrArt.set(k, url); paintHdr(); }).catch(() => hdrArt.delete(k));
+        if (base && base !== 'bad') make(base);
+        else hdrArt.delete(k);
+        return null;
+    }
+    let hdrOn = null; // the item whose code is brightened on Today, and when it goes back
+    let hdrTimer = null;
+    function setHdr(on) {
+        const d = window.AndroidDisplay;
+        try { if (d && typeof d.setHdr === 'function') d.setHdr(!!on); } catch (_) { /* older app */ }
+    }
+    /** Today's code brightened (HDR) for 30 s, or back to normal. */
+    function toggleHdr(it) {
+        clearTimeout(hdrTimer);
+        if (hdrOn === it.id) { hdrOn = null; setHdr(false); } else {
+            hdrOn = it.id;
+            setHdr(true);
+            hdrUrl(it);
+            hdrTimer = setTimeout(() => { hdrOn = null; setHdr(false); todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); }, 30000);
+        }
+        todayKey = '';
+        if (sh && sh.refreshToday) sh.refreshToday();
+    }
+    function paintHdr() { todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); }
+    // leaving Today or the screen going off: SDR again
+    document.addEventListener('visibilitychange', () => { if (document.hidden && hdrOn) { hdrOn = null; clearTimeout(hdrTimer); setHdr(false); } });
+
     // a card's picture for the 6.5 panel and the list (canvas: the panel takes an image)
     const cardArt = new Map();
     function cardUrl(it) {
@@ -249,15 +315,17 @@
     }
 
     let todayKey = '';
-    function todayRender(el) {
+    function todayRender(el, ctx) {
         const list = items();
+        const showCode = !ctx || typeof ctx.option !== 'function' || ctx.option('code') !== 'hide';
         if (storeNote === 'locked') { if (todayKey !== 'locked') { todayKey = 'locked'; el.innerHTML = `<div class="wwl-row"><span class="wwl-lines"><span class="wwl-title">${TITLE}</span><span class="wwl-sub">Unlock the phone to show your cards.</span></span></div>`; } return true; }
         if (!list.length) return false;
         if (todayAt >= list.length) todayAt = 0;
         const it = list[todayAt];
-        const art = it.kind === 'barcode' ? barcodeUrl(it, false) : null;
+        const bright = it.kind === 'barcode' && hdrOn === it.id;
+        const art = it.kind === 'barcode' && showCode ? (bright ? (hdrUrl(it) || barcodeUrl(it, false)) : barcodeUrl(it, false)) : null;
         const pic = it.kind === 'card' ? cardUrl(it) : (it.photo || '');
-        const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length]);
+        const key = JSON.stringify([todayAt, list.length, it.id, it.name, it.last4, it.color, it.network, it.walletName, it.value, it.number, it.format, art, pic.length, showCode, bright]);
         if (key === todayKey) return true;
         todayKey = key;
         // [card picture] nickname / its name in Wallet ••last 4; a tap on it pays (or shows, or opens)
@@ -267,7 +335,8 @@
                 <button type="button" class="wwl-item" data-act="${act}">${lead}<span class="wwl-lines"><span class="wwl-title">${esc(lineOf(it))}</span><span class="wwl-sub">${esc(subOf(it))}</span></span></button>
                 ${list.length > 1 ? `<span class="wwl-pager"><button type="button" class="wwl-arrow" data-act="prev" aria-label="Previous">\u2039</button><button type="button" class="wwl-arrow" data-act="next" aria-label="Next">\u203a</button></span>` : ''}
             </div>`;
-        const code = it.kind === 'barcode' ? `<button type="button" class="wwl-code${TWO_D.has(it.format) ? ' is-2d' : ''}" data-act="show" aria-label="Show ${esc(it.name || 'barcode')} full screen">
+        // the code on Today (Settings > Today > Items > Wallet: Barcode); a tap brightens just the code (HDR)
+        const code = it.kind === 'barcode' && showCode ? `<button type="button" class="wwl-code${TWO_D.has(it.format) ? ' is-2d' : ''}${bright ? ' is-bright' : ''}" data-act="bright" aria-label="${bright ? 'Back to normal brightness' : 'Brighten the barcode'}">
                 ${art && art !== 'bad' ? `<img src="${art}" alt="">` : `<span class="wwl-code-wait">${art === 'bad' ? 'This number cannot be drawn as the chosen barcode.' : 'Drawing the barcode...'}</span>`}
             </button>` : '';
         el.innerHTML = row + code;
@@ -281,6 +350,7 @@
                 if (act === 'prev' || act === 'next') { const n = items().length; todayAt = (todayAt + (act === 'next' ? 1 : -1) + n) % n; todayRender(el); return; }
                 if (act === 'pay') pay(cur);
                 else if (act === 'show') show(cur);
+                else if (act === 'bright') toggleHdr(cur);
                 else if (act === 'id') activate(cur);
             });
         }
@@ -288,8 +358,9 @@
     }
 
 
-    function todayTitanium() {
+    function todayTitanium(ctx) {
         const list = items();
+        const showCode = !ctx || typeof ctx.option !== 'function' || ctx.option('code') !== 'hide';
         if (storeNote === 'locked') return { label: 'wallet', icon: `x:${ICON}-lg`, pages: [{ title: 'Wallet', line2: 'Unlock the phone to show your cards' }] };
         if (!list.length) return null;
         return {
@@ -297,9 +368,10 @@
             icon: `x:${ICON}-lg`,
             pages: list.map((it) => {
                 const go = () => activate(it);
-                const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? (it.photo || barcodeUrl(it, false) || undefined) : undefined;
+                const code = it.kind === 'barcode' && showCode ? barcodeUrl(it, false) : null;
+                const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? ((code && code !== 'bad' ? code : null) || it.photo || undefined) : undefined;
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card' || !!it.photo, softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card' || (!!it.photo && image === it.photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }
@@ -353,7 +425,7 @@
         const note = storeNote === 'locked' ? 'Unlock the phone to show your cards.'
             : storeNote === 'error' ? 'The wallet saved on this phone cannot be read (the phone\'s lock screen was reset). Delete All starts it again.'
                 : storeNote === 'memory' ? 'This device has no Melaton app: the wallet is kept until the page closes.' : '';
-        const rows = list.map((it) => ({ key: it.id, label: `${lineOf(it)}${it.kind === 'barcode' ? ` (${label(FORMATS, it.format)})` : it.kind === 'id' ? ' (ID)' : ''}`, selected: it.id === selected, img: it.kind === 'card' ? cardUrl(it) : undefined }));
+        const rows = list.map((it) => ({ key: it.id, label: `${lineOf(it)}${it.kind === 'barcode' ? ` (${label(FORMATS, it.format)})` : it.kind === 'id' ? ' (ID)' : ''}`, selected: it.id === selected, img: it.kind === 'card' ? cardUrl(it) : (it.photo || undefined) }));
         els.list.innerHTML = `${note ? ui.note(note) : ''}
             ${list.length ? ui.listbox(rows) : `<p class="wwl-empty">No cards yet. Menu > New Card, New Barcode or New ID adds one.</p>`}
             ${ui.note('Cards open Samsung Wallet\'s pay sheet; it asks for your fingerprint, then hold the phone to the reader. Barcodes show here for the store to scan. Everything stays on this phone, encrypted.')}`;
@@ -453,6 +525,25 @@
         renderList();
     }
 
+    /** Cards in Samsung Wallet's order (as the last import found them); the others keep their place after. */
+    function orderAsWallet() {
+        const list = items();
+        const known = list.filter((x) => Number.isFinite(x.walletOrder)).sort((a, b) => a.walletOrder - b.walletOrder);
+        data.items = known.concat(list.filter((x) => !Number.isFinite(x.walletOrder)));
+        save();
+        renderList();
+    }
+
+    function moveTo(end) {
+        const list = items();
+        const i = list.findIndex((x) => x.id === selected);
+        if (i < 0) return;
+        const [it] = list.splice(i, 1);
+        if (end === 'top') list.unshift(it); else list.push(it);
+        save();
+        renderList();
+    }
+
     function move(d) {
         const list = items();
         const i = list.findIndex((x) => x.id === selected);
@@ -525,6 +616,14 @@
         imported.items.forEach((o, i) => { if (have.some((x) => sameAs(x, o))) imported.picked.add(i); });
         sh.open(APP_ID);
         if (top() !== 'import') push('import'); else renderImport();
+        // the app ends the import with Home, which brings Today up a moment later: come back here
+        const t0 = Date.now();
+        const back = () => {
+            if (!imported || Date.now() - t0 > 4000) return;
+            if (sh.currentApp && sh.currentApp() !== APP_ID) sh.open(APP_ID);
+            setTimeout(back, 250);
+        };
+        setTimeout(back, 250);
     }
 
     function sameAs(x, o) {
@@ -594,12 +693,15 @@
         if (!imported) return;
         const list = items();
         const pick = imported.items.filter((_, i) => imported.picked.has(i));
+        // Samsung Wallet's own order (cards, then memberships), for "Order as in Samsung Wallet"
+        imported.items.forEach((o, i) => { o.walletOrder = (o.kind === 'card' ? 0 : 1000) + i; });
         const add = async () => {
             for (const o of pick) {
                 let it = list.find((x) => sameAs(x, o));
                 const isNew = !it;
                 if (isNew) it = { id: uid(), kind: o.kind, name: o.walletName, color: COLORS[0][0] };
                 it.walletName = o.walletName;
+                it.walletOrder = o.walletOrder;
                 if (o.image) it.photo = await compact(o.image);
                 if (o.kind === 'card') {
                     if (o.last4) it.last4 = o.last4;
@@ -754,7 +856,8 @@
         title: TITLE,
         icon: ICON,
         art65: 'wallet',
-        inStart: 'programs',
+        // Settings > Personal > Wallet (wmPrograms SETTINGS_LINKS), not a program in Start (Yukimi, Nov 16)
+        inStart: false,
         sip: true,
         mount(p) { page = p; p.classList.add('wm-wallet'); build(); },
         show() { if (!loaded || storeNote === 'locked') load(); sync(); },
@@ -792,6 +895,9 @@
                         { label: 'Edit...', disabled: !sel, action: () => editItem(sel) },
                         { label: 'Move Up', disabled: !sel || i <= 0, action: () => move(-1) },
                         { label: 'Move Down', disabled: !sel || i >= n - 1, action: () => move(1) },
+                        { label: 'Move to Top', disabled: !sel || i <= 0, action: () => moveTo('top') },
+                        { label: 'Move to Bottom', disabled: !sel || i >= n - 1, action: () => moveTo('bottom') },
+                        { label: 'Order as in Samsung Wallet', disabled: !items().some((x) => Number.isFinite(x.walletOrder)), action: orderAsWallet },
                         { label: 'Delete', disabled: !sel, action: () => remove(false) },
                         '-',
                         { label: 'Delete All', disabled: !n && storeNote !== 'error', action: () => remove(true) }
@@ -806,7 +912,10 @@
         if (!sh || typeof sh.registerApp !== 'function') return;
         sh.registerApp(APP);
         if (typeof sh.registerTodayItem === 'function') {
-            sh.registerTodayItem({ id: 'cards', label: TITLE, icon: ICON, after: 'lapis', render: todayRender, titanium: todayTitanium });
+            sh.registerTodayItem({
+                id: 'cards', label: TITLE, icon: ICON, after: 'lapis', render: todayRender, titanium: todayTitanium,
+                options: [{ key: 'code', label: 'Barcode', value: 'show', choices: [['show', 'Show the code (tap brightens it)'], ['hide', 'Name only']] }]
+            });
         }
     }
 
