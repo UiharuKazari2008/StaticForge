@@ -42,6 +42,8 @@
  *                                       the seed box emptied (and unlocked) / a new random seed in it
  *   studioModel.tokenLimit() / addedTokens('prompt' | 'uc')
  *                                       the token limit; the tokens Studio adds itself (quality, datasets)
+ *   studioModel.autofillSettings() / setAutofillSetting(key, value)
+ *                                       SmartText's settings (the desktop's, saved to the account)
  *   studioModel.directiveOn()           Rentan's creative mode is on (the Directive field is used:
  *                                       set('directive', text), snapshot().directive)
  *   studioModel.gensoSeeds() / setGensoLock(key | true | false, on)
@@ -84,7 +86,7 @@
        getActiveSubToggleDatasets, getVisibleSubToggles, getSubToggleGroup, getSubToggleDefaultBias, isSubToggleEnabled,
        getRatioGroupSharedBias, toggleSubToggle, adjustSubToggleBias, getCurrentDatasetModelKey, setSproutSeedLocked, getPromptTokenLimit,
        manualSelectedResolution, isCustomRatioMode, isCustomResolutionMode, formatAspectRatio, stepManualRatioFromCurrent, commitManualRatioInput, promptTextareaToolbar,
-       getInspectorAppliedTextReplacementSeeds, applyStudioGensoLocks */
+       getInspectorAppliedTextReplacementSeeds, applyStudioGensoLocks, saveAutofillSearchSettingsToServer */
 
     // directive: Rentan's creative directive (its own textarea; no managed emphasis marks in it)
     const FIELDS = { prompt: ['manualPrompt', 'prompt'], uc: ['manualUc', 'uc'], negative: ['manualPromptNegative', 'promptNegative'], directive: ['creativeDirectiveInput', null] };
@@ -246,6 +248,29 @@
                 steps: !locked('steps')
             }
         };
+    }
+
+    // ---- SmartText (autofill) settings: the desktop's, saved to the account (autofillSettings.js)
+    const AUTOFILL_DELAYS = [[0, 'Instant (0 ms)'], [80, 'Fast (80 ms)'], [120, 'Normal (120 ms)'], [200, 'Relaxed (200 ms)'], [300, 'Slow (300 ms)'], [500, 'Very Slow (500 ms)']];
+    const AUTOFILL_MAX = [15, 25, 35, 50, 75];
+    /** { enabled, spellcheck, spellcheckSoundAlike, thesaurus, naiAnimeTags, naiFurryTags, dbAnimeTags, dbFurryTags, searchDelayMs, maxResults, delays, maxima } */
+    function autofillSettings() {
+        let s = {};
+        try { s = typeof getAutofillSearchSettings === 'function' ? Object.assign({}, getAutofillSearchSettings()) : {}; } catch (_) { s = {}; }
+        s.delays = AUTOFILL_DELAYS.map(([ms, label]) => ({ ms, label }));
+        s.maxima = AUTOFILL_MAX.slice();
+        return s;
+    }
+
+    async function setAutofillSetting(key, value) {
+        if (typeof saveAutofillSearchSettingsToServer !== 'function') return false;
+        const cur = autofillSettings();
+        delete cur.delays;
+        delete cur.maxima;
+        cur[key] = value;
+        const ok = await saveAutofillSearchSettingsToServer(cur);
+        emit('change', { id: 'autofill' });
+        return ok;
     }
 
     /** Rentan's creative mode is on (its Directive is used): the desktop shows the Directive tab then. */
@@ -887,7 +912,7 @@
 
     const api = {
         ready, snapshot, set, options, tokens, suggest, cost, addCharacter, removeCharacter, setCharacter, presets, sessionName, openPreset, savePreset, setBaseImage, clearBaseImage, setReferences, openPicture, peers, sendTo, getFrom, generate, stop, select, action, on, off,
-        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, addedTokens, directiveOn, gensoSeeds, setGensoLock, customSize, setCustomSize, stepRatio, setRatio, cycleArea, tagGroups, tagsAt, searchTags,
+        datasets, setDataset, adjustments, setAdjustment, clearSeed, randomSeed, previewSeed, usePreviewSeed, tokenLimit, addedTokens, directiveOn, gensoSeeds, setGensoLock, autofillSettings, setAutofillSetting, customSize, setCustomSize, stepRatio, setRatio, cycleArea, tagGroups, tagsAt, searchTags,
         run: () => current,
         prints: () => session.slice(),
         /** A print that was scrapped or deleted leaves this visit's list. */
