@@ -3047,6 +3047,7 @@
         }
         // notifications held back during startup or a takeover come up once it ends
         if (notes.length && !noteShown && notesMayPop()) refreshNotes();
+        barsStatusPush();
         // behind an Android program (Melaton Bars, #871): the app copies the bars again when their
         // markup changed (a signal push that moved nothing asks for no copy)
         if (barsExternal && window.AndroidBars) {
@@ -3056,6 +3057,40 @@
                 + '|' + [...shell.querySelectorAll('.wm-softkeys .wm-softkey')].map((k) => k.textContent).join(',');
             if (key !== barsKey) { barsKey = key; try { window.AndroidBars.requestRender(); } catch (_) { /* older app */ } }
         }
+    }
+
+    /*
+     * Melaton Bars (#871; Yukimi, Nov 16: "entire 100% sync of icons"): the Android app draws the whole
+     * title bar itself. What only this page knows - which of its icons show and with which art (mail,
+     * text messages, Messenger, the Director and its clapper, prints, updates, the notification group,
+     * weather, traffic, the car key, Continuity, received items, Bluetooth, the volume) - goes to it as
+     * state the moment it changes (AndroidBars.status: [{ role, atlas | art | strip: { art, n, ms }, dim }],
+     * in this bar's order), never as a picture. The phone's own icons (connectivity, signal, roaming,
+     * battery) the app takes from Android itself.
+     */
+    let barsStatusSent = '';
+    const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
+    const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
+    function barsStatusPush() {
+        const ab = window.AndroidBars;
+        if (!ab || typeof ab.status !== 'function' || !shell) return;
+        const list = [];
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => {
+            const role = i.dataset.role;
+            if (!role || BARS_NATIVE_ROLES.has(role) || i.hidden || i.classList.contains('wm-shed')) return;
+            const e = { role };
+            if (i.classList.contains('wm-strip')) {
+                const st = i.style.getPropertyValue('--strip');
+                e.strip = { art: artPath(st), n: parseInt(i.style.getPropertyValue('--n'), 10) || 1, ms: parseInt(i.style.getPropertyValue('--ms'), 10) || 140 };
+            } else if (i.dataset.icon) e.atlas = i.dataset.icon;
+            else e.art = artPath(i.style.backgroundImage);
+            if (i.classList.contains('is-presence')) e.dim = true;
+            list.push(e);
+        });
+        const json = JSON.stringify(list);
+        if (json === barsStatusSent) return;
+        barsStatusSent = json;
+        try { ab.status(json); } catch (_) { /* older app */ }
     }
 
     /**

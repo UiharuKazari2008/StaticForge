@@ -311,7 +311,59 @@
             t.textContent = keep.text;
             if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
         }
-        out({ widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars });
+        out({ widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, geo: barGeometry(dpr) });
+    }
+
+    /*
+     * The title bar's and the soft key bar's geometry for the app's own drawing, measured on this page's
+     * bars staged as over a program (corner shown): device px from the bar's top-left. The app lays the
+     * icons out from it (right-aligned at iconsRight, `pitch` apart; around the camera when `hole` is set),
+     * the title from titleX until the icons.
+     */
+    function barGeometry(dpr) {
+        const sh = window.wmShell;
+        const shell = document.getElementById('wmShell');
+        const top = shell && shell.querySelector('.wm-titlebar');
+        if (!sh || !sh.barsStage || !top) return null;
+        const back = sh.barsStage({ title: 'Melaton', corner: 'close', androidTray: false, softLeft: 'Back', softRight: 'Menu', sip: false });
+        try {
+            const br = top.getBoundingClientRect();
+            const box = (el) => { if (!el || !el.getClientRects().length) return null; const r = el.getBoundingClientRect(); return { x: Math.round((r.left - br.left) * dpr), y: Math.round((r.top - br.top) * dpr), w: Math.round(r.width * dpr), h: Math.round(r.height * dpr) }; };
+            const icons = [...top.querySelectorAll('.wm-status-icon')].filter((i) => !i.hidden && !i.classList.contains('wm-shed') && i.getClientRects().length);
+            const last = icons[icons.length - 1];
+            const st = top.querySelector('.wm-status');
+            const gap = st ? (parseFloat(getComputedStyle(st).columnGap) || parseFloat(getComputedStyle(st).gap) || 0) : 0;
+            const unit = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-icon-unit')) || (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1);
+            const px = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wm-px')) || 1;
+            const t = top.querySelector('.wm-title');
+            const tcs = t ? getComputedStyle(t) : null;
+            const startImg = top.querySelector('.wm-start img');
+            const gapEl = top.querySelector('.wm-cutout-gap');
+            const soft = shell.querySelector('.wm-softkeys');
+            const keyL = soft && soft.querySelector('.wm-softkey[data-side="left"]');
+            const keyR = soft && soft.querySelector('.wm-softkey[data-side="right"]');
+            const sip = soft && soft.querySelector('.wm-sip');
+            const abs = (u) => { try { return new URL(u, location.href).href; } catch (_) { return ''; } };
+            return {
+                barH: Math.round(br.height * dpr),
+                start: Object.assign(box(startImg) || {}, { src: startImg ? abs(startImg.currentSrc || startImg.src) : '' }),
+                titleX: t ? Math.round((t.getBoundingClientRect().left - br.left + (parseFloat(tcs.paddingLeft) || 0)) * dpr) : 0,
+                titleY: t ? Math.round((t.getBoundingClientRect().top - br.top) * dpr) : 0,
+                titleMin: Math.round(60 * px * dpr),
+                icon: last ? Math.round(16 * unit * dpr) : Math.round(16 * px * dpr),
+                iconY: last ? Math.round((last.getBoundingClientRect().top - br.top) * dpr) : 0,
+                gap: Math.round(gap * dpr * 100) / 100,
+                iconsRight: last ? Math.round((last.getBoundingClientRect().right - br.left) * dpr) : 0,
+                corner: box(top.querySelector('.wm-title-action')),
+                hole: gapEl ? box(gapEl) : null,
+                soft: soft ? { h: Math.round(soft.getBoundingClientRect().height * dpr), left: box(keyL), right: box(keyR), sip: box(sip) } : null,
+                art: {
+                    close: abs('/static_images/wm65/title-close@4x.png'), ok: abs('/static_images/wm65/title-ok@4x.png'),
+                    sip: abs('/static_images/wm65/sip-keyboard@4x.png'), base: location.origin
+                },
+                dpr
+            };
+        } finally { back(); }
     }
 
     function withAnims(p, list) { if (p && list && list.length) p.anims = list; return p; }
