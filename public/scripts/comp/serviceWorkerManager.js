@@ -2494,6 +2494,61 @@ class ServiceWorkerManager {
         return true;
     }
 
+    /**
+     * Update history (#872), Melaton Update > View update history: what this computer installed,
+     * newest first. row: { key, name, status, importance, at }. A row with the same key replaces the
+     * earlier one (an update that was waiting, then installed). Kept in localStorage (this computer's
+     * record), 200 rows at most.
+     */
+    updateHistory() {
+        try {
+            const rows = JSON.parse(localStorage.getItem('melatonUpdateHistory') || '[]');
+            return Array.isArray(rows) ? rows : [];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    recordUpdateHistory(row) {
+        if (!row || !row.name) return;
+        const entry = {
+            key: String(row.key || `${row.name}|${Date.now()}`),
+            name: String(row.name),
+            status: String(row.status || 'Successful'),
+            importance: String(row.importance || 'Recommended'),
+            at: Number(row.at) || Date.now()
+        };
+        const rows = this.updateHistory().filter((r) => r && r.key !== entry.key);
+        rows.unshift(entry);
+        try { localStorage.setItem('melatonUpdateHistory', JSON.stringify(rows.slice(0, 200))); } catch (_) { /* private mode / full */ }
+        if (entry.status === 'Successful') {
+            try { localStorage.setItem('meletonUpdateInstalledAt', String(entry.at)); } catch (_) { /* private mode */ }
+        }
+        try { document.dispatchEvent(new CustomEvent('melaton:update-history', { detail: entry })); } catch (_) { /* no listeners */ }
+    }
+
+    /**
+     * A live update waits for a program (its window is open, or it asked to finish first): one balloon
+     * per program and update (the same route as 'Updates Applied'), and a waiting row in the history.
+     */
+    noteUpdateWaiting(key, name) {
+        if (!this._waitingNoted) this._waitingNoted = new Set();
+        this.recordUpdateHistory({ key, name: `Update for ${name}`, status: `Waiting for ${name} to close`, importance: 'Recommended' });
+        if (this._waitingNoted.has(key)) return;
+        this._waitingNoted.add(key);
+        if (typeof showGlassToast === 'function') {
+            // the message is HTML: the name comes from a package / window caption
+            const safe = String(name == null ? '' : name).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            showGlassToast('info', 'Melaton Update', `${safe} will finish updating when you close it.`, false, 6000, '<i class="fas fa-info-circle"></i>');
+        }
+    }
+
+    /** A live update installed (an app swapped, a feature swapped). */
+    noteUpdateInstalled(key, name) {
+        if (this._waitingNoted) this._waitingNoted.delete(key);
+        this.recordUpdateHistory({ key, name: `Update for ${name}`, status: 'Successful', importance: 'Recommended' });
+    }
+
     /** { features: Set of loaded hot features the files belong to, rest: the other files } (#872) */
     splitHotFeatureFiles(files) {
         const fl = window.featureLoader;
@@ -2525,7 +2580,6 @@ class ServiceWorkerManager {
                 this.pendingUpdateKind = 'restart';
             }
         }
-        this._noteLiveUpdate && this._noteLiveUpdate({ kind: 'feature', results });
         return results;
     }
 
@@ -4601,7 +4655,8 @@ class ServiceWorkerManager {
         console.log('🔄 Force restarting application...');
         if (this.pendingUpdateFuse) {
             // the downloaded updates install with this restart (the update page's "Updates were installed")
-            try { localStorage.setItem('meletonUpdateInstalledAt', String(Date.now())); } catch (_) { /* private mode */ }
+            const n = this.pendingUpdateFilesTotal || (this.pendingUpdateUrls ? this.pendingUpdateUrls.size : 0);
+            this.recordUpdateHistory({ name: n ? `Melaton update (${n} ${n === 1 ? 'file' : 'files'})` : 'Melaton update', status: 'Successful', importance: 'Important' });
         }
         this.resetPendingUpdateFuse();
 

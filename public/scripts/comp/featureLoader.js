@@ -520,16 +520,33 @@ class FeatureLoader {
         if (!this.isHot(name)) return { notHot: true };
         if (this.loadingPromises.has(name)) { try { await this.loadingPromises.get(name); } catch (_) { /* swapped anyway */ } }
         if (!this.loadedFeatures.has(name)) return { notLoaded: true };
-        if (!opts.force && window.melatonSegments.windowsOf(`feature:${name}`).length) {
+        const wins = window.melatonSegments.windowsOf(`feature:${name}`);
+        const sw = window.serviceWorkerManager;
+        if (!opts.force && wins.length) {
             this.pendingSwaps.add(name);
             this._watchPendingSwaps();
+            // the program's own name for the history and the balloon: its window's caption
+            if (!this.swapTitles) this.swapTitles = new Map();
+            this.swapTitles.set(name, this._featureTitle(name, wins[0]));
+            if (sw && typeof sw.noteUpdateWaiting === 'function') sw.noteUpdateWaiting(`feature:${name}`, this.swapTitles.get(name));
             return { deferred: 'window open' };
         }
         this.pendingSwaps.delete(name);
+        const title = (this.swapTitles && this.swapTitles.get(name)) || this._featureTitle(name, wins[0]);
+        if (this.swapTitles) this.swapTitles.delete(name);
         const released = this.unloadFeature(name, 'update');
         await this.loadFeature(name);
+        if (sw && typeof sw.noteUpdateInstalled === 'function') sw.noteUpdateInstalled(`feature:${name}`, title);
         try { document.dispatchEvent(new CustomEvent('melaton:feature-updated', { detail: { feature: name } })); } catch (_) { /* no listeners */ }
         return { swapped: true, released };
+    }
+
+    /** A feature's name for people: its window's caption, else the manifest key in words. */
+    _featureTitle(name, win) {
+        const cap = win && win.querySelector('.modal-window-title span, .modal-window-title');
+        const t = cap && cap.textContent ? cap.textContent.trim() : '';
+        if (t) return t.slice(0, 60);
+        return name.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
     }
 
     _watchPendingSwaps() {

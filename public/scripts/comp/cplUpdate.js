@@ -290,6 +290,7 @@
                 <div class="cpl-task-group">
                     <ul class="cpl-task-list">
                         <li><button type="button" class="cpl-link cpl-link--icon" data-cpl-wu="check"><img src="/static_images/vista-ie/refresh.png" alt="">Check for updates</button></li>
+                        <li><button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="update-history">View update history</button></li>
                         <li><button type="button" class="cpl-link" data-cpl-action="nav" data-cpl-arg="update-applied">Applied updates</button></li>
                     </ul>
                 </div>
@@ -310,7 +311,39 @@
             unmount
         });
         registerApplied(cpl);
+        registerHistory(cpl);
         return true;
+    }
+
+    // ---- View update history (#872): Vista's "Review your update history". Live updates (an app or
+    // a program updated without a restart) and the updates installed by a restart, newest first.
+    let historyCtl = null;
+    function historyBody() {
+        const manager = sw();
+        const rows = manager && typeof manager.updateHistory === 'function' ? manager.updateHistory() : [];
+        const date = (at) => { const d = new Date(Number(at) || 0); return Number.isFinite(d.getTime()) && d.getTime() > 0 ? d.toLocaleDateString() : ''; };
+        const body = rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.status)}</td><td>${esc(r.importance)}</td><td>${esc(date(r.at))}</td></tr>`).join('');
+        return `<div class="cpl-vpage cpl-vwide">
+            <h1 class="cpl-vtitle">Review your update history</h1>
+            <p class="cpl-vtext">Check the Status column to ensure all important updates were successful. Updates for programs install while Melaton runs; the others install when Melaton restarts.</p>
+            <table class="cpl-vtable cpl-wu-history"><colgroup><col style="width:46%"><col style="width:26%"><col style="width:14%"><col style="width:14%"></colgroup><tr class="is-head"><td>Name</td><td>Status</td><td>Importance</td><td>Date Installed</td></tr>${body || '<tr><td colspan="4">No updates have been installed on this computer yet.</td></tr>'}</table>
+        </div>`;
+    }
+    function registerHistory(cpl) {
+        cpl.registerPage('update-history', {
+            parent: 'update',
+            title: () => 'View update history',
+            tasks: () => '',
+            body: historyBody,
+            mount: (el) => {
+                // a live update while the page is open shows at once
+                if (historyCtl) historyCtl.abort();
+                historyCtl = new AbortController();
+                const ctl = historyCtl;
+                document.addEventListener('melaton:update-history', () => { if (el.isConnected) cpl.open('update-history'); else ctl.abort(); }, { signal: ctl.signal });
+            },
+            unmount: () => { if (historyCtl) { historyCtl.abort(); historyCtl = null; } }
+        });
     }
 
     // ---- Applied updates (Yozora #774): the asset packages this computer keeps

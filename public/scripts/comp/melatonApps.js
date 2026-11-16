@@ -126,7 +126,7 @@
                 root.melatonSegments.unload(segmentKey(pkg.base), 'no-define');
                 throw new Error(`${pkg.title}: the client entry did not call melatonApps.define`);
             }
-            loadedPkgs.set(pkg.base, { id: pkg.id, treeHash: pkg.treeHash || '', version: pkg.version || '', preloaded: false });
+            loadedPkgs.set(pkg.base, { id: pkg.id, title: pkg.title || pkg.id, treeHash: pkg.treeHash || '', version: pkg.version || '', preloaded: false });
             return start;
         });
         loading.set(pkg.base, p);
@@ -164,6 +164,8 @@
                         if (why) {
                             pendingSwaps.set(base, { treeHash: o.treeHash || '', reason: o.reason || 'update' });
                             console.info(`[melaton apps] ${app.title}: update waits until it closes (${why})`);
+                            const sw = root.serviceWorkerManager;
+                            if (sw && typeof sw.noteUpdateWaiting === 'function') sw.noteUpdateWaiting(`app:${base}`, app.title);
                             return { deferred: String(why) };
                         }
                     }
@@ -213,6 +215,8 @@
             try {
                 document.dispatchEvent(new CustomEvent('melaton:app-updated', { detail: { packageId: id, base, treeHash: o.treeHash || '' } }));
             } catch (_) { /* no listeners */ }
+            const sw = root.serviceWorkerManager;
+            if (sw && typeof sw.noteUpdateInstalled === 'function' && info) sw.noteUpdateInstalled(`app:${base}`, info.title || id);
             return { swapped: true, relaunched, released };
         })();
         swapping.set(base, p);
