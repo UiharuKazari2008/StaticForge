@@ -343,6 +343,12 @@
         if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
         if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
         const dpr = window.devicePixelRatio || 1;
+        // a page still starting puts program opens off until its boot steps are done (Start among them):
+        // the copy waits for that (8 s at most) instead of finding no Start screen
+        const wsc = window.wsClient;
+        if (wsc && wsc.deferredInitPending && typeof wsc.whenDeferredInitDone === 'function') {
+            await Promise.race([wsc.whenDeferredInitDone(), new Promise((r) => setTimeout(r, 8000))]);
+        }
         // only behind another program: on screen, opening Start would show (and a tap on an item
         // coming in now would open its program from Start, with Start's see-through bar)
         if (document.visibilityState === 'visible') { out({ unsupported: 'visible' }); return; }
