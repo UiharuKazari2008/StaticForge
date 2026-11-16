@@ -322,11 +322,13 @@
         const manager = sw();
         const rows = manager && typeof manager.updateHistory === 'function' ? manager.updateHistory() : [];
         const date = (at) => { const d = new Date(Number(at) || 0); return Number.isFinite(d.getTime()) && d.getTime() > 0 ? d.toLocaleDateString() : ''; };
-        const body = rows.map((r) => `<tr><td>${esc(r.name)}</td><td>${esc(r.status)}</td><td>${esc(r.importance)}</td><td>${esc(date(r.at))}</td></tr>`).join('');
+        // fixed table layout (cpl-vtable): every cell carries its full text as a tooltip
+        const cell = (v) => `<td title="${esc(v)}">${esc(v)}</td>`;
+        const body = rows.map((r) => `<tr>${cell(r.name)}${cell(r.status)}${cell(r.importance)}${cell(date(r.at))}</tr>`).join('');
         return `<div class="cpl-vpage cpl-vwide">
             <h1 class="cpl-vtitle">Review your update history</h1>
             <p class="cpl-vtext">Check the Status column to ensure all important updates were successful. Updates for programs install while Melaton runs; the others install when Melaton restarts.</p>
-            <table class="cpl-vtable cpl-wu-history"><colgroup><col style="width:46%"><col style="width:26%"><col style="width:14%"><col style="width:14%"></colgroup><tr class="is-head"><td>Name</td><td>Status</td><td>Importance</td><td>Date Installed</td></tr>${body || '<tr><td colspan="4">No updates have been installed on this computer yet.</td></tr>'}</table>
+            <table class="cpl-vtable cpl-wu-history"><colgroup><col><col style="width:86px"><col style="width:90px"><col style="width:98px"></colgroup><tr class="is-head"><td>Name</td><td>Status</td><td>Importance</td><td>Date Installed</td></tr>${body || '<tr><td colspan="4">No updates have been installed on this computer yet.</td></tr>'}</table>
         </div>`;
     }
     function registerHistory(cpl) {
