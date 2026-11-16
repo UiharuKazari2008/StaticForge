@@ -956,6 +956,7 @@
             cornerKind: corner ? corner.dataset.kind : '',
             keys: Array.from(keys).map((k) => ({ text: k.textContent, disabled: k.disabled, hidden: k.hidden })),
             sip: sip ? sip.getAttribute('aria-pressed') : null,
+            sipHidden: sip ? sip.hidden : false,
             wmBar: root.dataset.wmBar,
             wmApp: root.dataset.wmApp
         };
@@ -984,7 +985,8 @@
         }
         if (keys[0] && typeof o.softLeft === 'string') { keys[0].textContent = o.softLeft; keys[0].hidden = false; keys[0].disabled = !o.softLeft; }
         if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
-        if (sip && typeof o.sip === 'boolean') sip.setAttribute('aria-pressed', o.sip ? 'true' : 'false');
+        // the keyboard key is always there over Android programs (any of them may take text)
+        if (sip && typeof o.sip === 'boolean') { sip.hidden = false; sip.setAttribute('aria-pressed', o.sip ? 'true' : 'false'); }
         syncIconUnit(); fitStatusNow(); snapStatusIcons();
         return () => {
             if (tray) tray.remove();
@@ -993,6 +995,7 @@
             if (corner) { corner.hidden = before.cornerHidden; if (before.cornerKind) corner.dataset.kind = before.cornerKind; }
             keys.forEach((k, i) => { const b = before.keys[i]; k.textContent = b.text; k.disabled = b.disabled; k.hidden = b.hidden; });
             if (sip && before.sip != null) sip.setAttribute('aria-pressed', before.sip);
+            if (sip) sip.hidden = before.sipHidden;
             if (before.wmBar) root.dataset.wmBar = before.wmBar;
             if (before.wmApp !== undefined) root.dataset.wmApp = before.wmApp; else delete root.dataset.wmApp;
             fitForce = true;
