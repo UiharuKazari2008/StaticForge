@@ -1319,6 +1319,9 @@
          */
         barsPrep(folders) {
             if (!sh || root.dataset.wmVersion !== '6.5') return null;
+            // a page still running its put-off boot steps queues program opens: an open asked for now would
+            // come up later and leave Start on the page (the copy answers no-start; the app asks again)
+            if (window.wsClient && window.wsClient.deferredInitPending) return null;
             const prev = sh.currentApp();
             if (prev !== 'start') sh.open('start', { fromStart: true });
             if (!page) return null;
