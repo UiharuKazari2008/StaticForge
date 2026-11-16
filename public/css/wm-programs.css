@@ -1981,6 +1981,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-setb-preview .sbp-bar {
 .wm-numpad > .wm-numpad-lcd { display: flex; margin: calc(6 * var(--wm-px)) calc(6 * var(--wm-px)) 0; height: calc(23 * var(--wm-px)); font-size: calc(14 * var(--wm-px)); }
 .wm-numpad-keys { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: calc(4 * var(--wm-px)); padding: calc(6 * var(--wm-px)); }
 .wm-numpad-keys > .wm-button { min-width: 0; height: calc(24 * var(--wm-px)); font-size: calc(13 * var(--wm-px)); }
+#wmShell .wm-numpad .wm-msgbox-buttons { justify-content: flex-end; }
 .wm-numpad .wm-msgbox-buttons > button { min-width: calc(44 * var(--wm-px)); }
 
 /* status icons: a warning in yellow, an error in red (as the system's message box icons) */
