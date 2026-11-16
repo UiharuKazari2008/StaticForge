@@ -73,9 +73,9 @@
 /* a box of the home page being edited: only it is left of the page, and it fills it (the same
  * element that was touched, so it keeps its focus and the keyboard) */
 .wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-home { overflow: hidden; }
-.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-home > :not(.wds-fields),
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-home > :not(.wds-panes),
 .wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-fields > :not(.is-editing) { display: none; }
-.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-fields { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; padding: 0; }
+.wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-fields { padding: 0; }
 .wm-dreamstudio[data-view="editor"][data-ed="box"] .wds-field.is-editing {
     flex: 1 1 0;
     min-height: 0;
@@ -89,15 +89,28 @@
     -webkit-user-select: text;
 }
 
-.wm-dreamstudio > .wds-tabs { flex: 0 0 auto; }
-.wm-dreamstudio:not([data-layout="tabs"]) > .wds-tabs,
-.wm-dreamstudio[data-view="editor"] > .wds-tabs,
-.wm-dreamstudio[data-view="ref"] > .wds-tabs,
-.wm-dreamstudio[data-view="presets"] > .wds-tabs { display: none; }
-
 /* ---------------------------------------------------------------- home */
 
-.wds-home { overflow-y: auto; overscroll-behavior: contain; }
+.wds-home { overflow: hidden; }
+
+/* the home tabs: one pane at a time between the print strip and the WM tab strip; the field of a
+ * Prompt / Directive / UC pane fills it, the other panes scroll */
+.wds-panes { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; }
+.wds-panes > .wds-tabpane { display: none; flex: 1 1 0; min-height: 0; flex-direction: column; overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(4 * var(--wm-px)); }
+.wds-panes > .wds-tabpane.is-current { display: flex; }
+.wds-tabpane > .wds-field { flex: 1 1 auto; min-height: calc(5 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
+.wds-tabpane[data-tab="prompt"] > .wds-chars { flex: 0 0 auto; margin-top: calc(4 * var(--wm-px)); }
+.wds-home > .wds-home-strip { flex: 0 0 auto; }
+.wds-tabpane > .wds-none { margin: calc(4 * var(--wm-px)) 0; opacity: 0.6; }
+.wds-tabpane > .wds-none[hidden] { display: none; }
+
+/* Inspector: the seed with its lock, then the Genso picks each with its lock box */
+.wds-insp .wds-insp-head { display: flex; align-items: center; gap: calc(4 * var(--wm-px)); }
+.wds-insp .wds-insp-head > span { flex: 1 1 auto; }
+.wds-insp .wds-insp-head > [data-insp] { min-width: 0; height: calc(18 * var(--wm-px)); font-weight: normal; }
+.wds-insp .wds-insp-seed { min-width: calc(80 * var(--wm-px)); }
+.wds-insp .wds-insp-row > label { min-width: 0; }
+.wds-insp .wds-insp-row > label > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the print in hand: one row, picture left, what it is right; a tap opens the print */
 .wds-strip {
@@ -119,7 +132,6 @@
     text-align: left;
 }
 
-.wm-dreamstudio[data-layout="tabs"] .wds-strip,
 
 .wds-strip:active { background: var(--wm-highlight); color: var(--wm-highlight-text); }
 
@@ -176,8 +188,6 @@
     overflow: hidden;
 }
 
-.wds-field[data-field="prompt"] { height: calc(5 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
-.wds-field[data-field="uc"] { height: calc(2 * 13 * var(--wm-px) + 6 * var(--wm-px)); }
 .wds-field { resize: none; outline: none; -webkit-appearance: none; appearance: none; caret-color: transparent; }
 .wds-field::placeholder { color: #848284; opacity: 1; }
 .wds-field.is-editing::placeholder { color: transparent; }
@@ -476,6 +486,9 @@
  * narrow screen) under home, Settings and the print; not under a page of its own (the editor, a
  * reference, the preset list) */
 .wm-dreamstudio > .wds-genbar { flex: 0 0 auto; }
+/* under the home tabs the bar has no top rule of its own: the tab strip is its edge (a black line
+ * ran under the tabs) */
+.wm-dreamstudio[data-view="home"] > .wds-genbar { border-top-width: 0; padding-top: calc(3 * var(--wm-px)); }
 /* the groups share out each row's room (one row when the screen is wide enough for all three, else
  * they wrap by group): the combos take most of it, the numbers some */
 .wds-genbar > .wm-toolbar-group.wds-gb-grow { flex: 1 0 auto; }
@@ -563,16 +576,16 @@
 /* ---------------------------------------------------------------- wide screens: home beside the print */
 
 @container wds (min-width: 40em) {
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"] > .wds-body,
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] > .wds-body {
+    .wm-dreamstudio[data-view="home"] > .wds-body,
+    .wm-dreamstudio[data-view="print"] > .wds-body {
         flex-direction: row;
     }
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="home"] .wds-print,
-    .wm-dreamstudio:not([data-layout="tabs"])[data-view="print"] .wds-home {
+    .wm-dreamstudio[data-view="home"] .wds-print,
+    .wm-dreamstudio[data-view="print"] .wds-home {
         display: flex;
         flex-direction: column;
     }
-    .wm-dreamstudio:not([data-layout="tabs"]) .wds-home { order: 1; border-right: calc(1 * var(--wm-px)) solid #000; }
-    .wm-dreamstudio:not([data-layout="tabs"]) .wds-print { order: 2; }
-    .wm-dreamstudio:not([data-layout="tabs"]) .wds-strip { display: none; }
+    .wm-dreamstudio .wds-home { order: 1; border-right: calc(1 * var(--wm-px)) solid #000; }
+    .wm-dreamstudio .wds-print { order: 2; }
+    .wm-dreamstudio .wds-strip { display: none; }
 }

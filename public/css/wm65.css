@@ -946,7 +946,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-volume-title {
 html.ui-mobile[data-wm-version="6.5"] .wm-tabs {
     height: calc(19.5 * var(--wm-px));
     border-top: 0;
-    background: var(--wm65-bar);
+    /* the strip's black starts a pixel down: a strip whose top falls between two device pixels
+       (it follows fractional lengths above it) otherwise blended its black with the page into a
+       grey rule across the screen; the tabs cover that pixel themselves */
+    background: linear-gradient(to bottom, transparent 0 1px, var(--wm65-bar) 1px);
     overflow: visible;
 }
 
@@ -993,6 +996,9 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab:last-child::after {
     width: calc(34 * var(--wm-px));
     height: 100%;
     background: var(--wm65-art-tabcurve-face-face, url('/static_images/wm65/tabcurve-face-face@2x.png')) 0 0 / 100% 100% no-repeat;
+    /* the ROM's edge art scaled without smoothing: its stepped shadow stays crisp, where smoothing
+       mixed the two faces into a tinted fringe along the chosen tab's edges */
+    image-rendering: pixelated;
     pointer-events: none;
 }
 
@@ -1010,6 +1016,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-tab:first-child:not([aria-selected="tr
     height: 100%;
     background: var(--wm65-art-tabcurve-white-face, url('/static_images/wm65/tabcurve-white-face@2x.png')) 0 0 / 100% 100% no-repeat;
     clip-path: inset(0 0 0 calc(17.5 * var(--wm-px)));
+    image-rendering: pixelated;
     pointer-events: none;
 }
 
