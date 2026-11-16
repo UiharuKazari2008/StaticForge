@@ -663,6 +663,15 @@
      * each role's popup opened here as a tap would, its drawing list taken, closed again. Pushed as
      * AndroidBars.layouts({ role: { role, items } }) when something changed.
      */
+    // the soft key bar's labels while a popup is open (a notification's Hide / Dismiss, a box's own keys): the app
+    // shows them on its soft key bar while it draws that popup ([left, right], '' for none)
+    function softLabels() {
+        const sh = document.querySelector('#wmShell .wm-softkeys');
+        if (!sh) return null;
+        const lab = (side) => { const b = sh.querySelector(`.wm-softkey[data-side="${side}"]`); return b && !b.hidden && !b.disabled ? (b.textContent || b.getAttribute('aria-label') || '').trim() : ''; };
+        const l = lab('left'); const r = lab('right');
+        return l || r ? [l, r] : null;
+    }
     let layoutsSent = '';
     // the last full set: a push of one popup (an ActiveSync transfer's numbers) replaces only that one
     let layoutsAll = {};
@@ -683,7 +692,7 @@
                 sh.barsPopupOpen(role);
                 // (a waiting notification is the notification icon's own popup, not part of another's)
                 const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (role === 'notify' || !l.classList.contains('wm-notify')));
-                if (layers.length) all[role] = { role, items: layoutOf(layers, dpr) };
+                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
         try { sh.barsPopupClose(); } catch (_) { /* none open */ }
@@ -1209,7 +1218,8 @@
                 const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim'));
                 const list = [];
                 layers.forEach((r) => r.querySelectorAll(CLICKABLE).forEach((el) => { if (!list.includes(el)) list.push(el); }));
-                const el = list[Number(ctx.n)];
+                // a soft key the app showed for this popup: that key of the page's bar
+                const el = ctx.soft ? document.querySelector(`#wmShell .wm-softkeys .wm-softkey[data-side="${ctx.soft}"]`) : list[Number(ctx.n)];
                 if (el) el.click();
                 if (sh.currentApp() !== before) result = 'app';
                 else {
@@ -1217,7 +1227,10 @@
                     if (now.length) {
                         const items = layoutOf(now, window.devicePixelRatio || 1);
                         result = 'popup';
-                        ab.layoutResult(JSON.stringify({ role, result, layout: { role, items } }));
+                        const layout = { role, items };
+                        const sk = softLabels();
+                        if (sk) layout.soft = sk;
+                        ab.layoutResult(JSON.stringify({ role, result, layout }));
                         sh.barsPopupClose();
                         return;
                     }
