@@ -117,7 +117,8 @@
         if (reqId < lastReq) return;
         publish({
             reqId,
-            widthPx: Math.round(window.innerWidth * dpr),
+            // the picture's own width: innerWidth x dpr rounds 411 x 2.625 to 1079 on a 1080 px screen
+            widthPx: t ? t.width : Math.round(window.innerWidth * dpr),
             clock: !!top.querySelector('.wm-clock651'),
             top: pack(t, regions.top),
             bottom: soft ? pack(b, regions.bottom) : null

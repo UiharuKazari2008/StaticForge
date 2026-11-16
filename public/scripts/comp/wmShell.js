@@ -956,11 +956,14 @@
             cornerKind: corner ? corner.dataset.kind : '',
             keys: Array.from(keys).map((k) => ({ text: k.textContent, disabled: k.disabled, hidden: k.hidden })),
             sip: sip ? sip.getAttribute('aria-pressed') : null,
-            wmBar: root.dataset.wmBar
+            wmBar: root.dataset.wmBar,
+            wmApp: root.dataset.wmApp
         };
         bar.classList.remove('is-start-open');
         // 6.5's see-through bar belongs to Today and Start: a program's bar is solid
         if (root.dataset.wmBar) delete root.dataset.wmBar;
+        // ... and so are Today's and Start's see-through soft keys: an Android program is a program
+        if (o.title !== undefined) root.dataset.wmApp = 'android';
         if (title && typeof o.title === 'string') title.textContent = o.title;
         if (corner) {
             corner.hidden = !o.corner;
@@ -991,6 +994,7 @@
             keys.forEach((k, i) => { const b = before.keys[i]; k.textContent = b.text; k.disabled = b.disabled; k.hidden = b.hidden; });
             if (sip && before.sip != null) sip.setAttribute('aria-pressed', before.sip);
             if (before.wmBar) root.dataset.wmBar = before.wmBar;
+            if (before.wmApp !== undefined) root.dataset.wmApp = before.wmApp; else delete root.dataset.wmApp;
             fitForce = true;
             fitStatus();
         };
