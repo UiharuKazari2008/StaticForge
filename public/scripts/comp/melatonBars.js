@@ -435,6 +435,100 @@
         }
     }
 
+    /**
+     * The 6.5 lock screen for the app's own lock screen over the phone's (#875, Settings > Screen >
+     * Android > Use the Windows Mobile lock screen): melatonBars.renderLock({ reqId, parts, fromMs,
+     * minutes, phoneWall }) answers AndroidBars.publishLock({ reqId, widthPx, ... }) in device px:
+     *   parts 'all': bg (the screen without the slide, the time band, and the picture when phoneWall),
+     *     slide (at rest, no handle), slidePressed, handle, handleDown, travel, pin (the keypad page,
+     *     no dots), area + dots[n] (the entry bar with n dots), keys [{ key, x0, y0, x1, y1, held }]
+     *   always: clock [{ at (minute start ms), png }] for `minutes` minutes from fromMs, and the band's box,
+     *     so the time stays right while the page sleeps.
+     */
+    let lockRestore = null;
+    const pngOf = (c) => { const p = pack(c, []); return p ? p.png : ''; };
+    async function renderLock(ctx) {
+        ctx = ctx || {};
+        const reqId = Number(ctx.reqId) || 0;
+        const out = (o) => { try { if (window.AndroidBars && window.AndroidBars.publishLock) window.AndroidBars.publishLock(JSON.stringify(Object.assign({ reqId }, o))); } catch (err) { console.warn('[melatonBars] publishLock', err); } };
+        if (!window.wmLock || !window.wmLock.barsPrep) { out({ unsupported: 'no-lock' }); return; }
+        if (!window.windowCapture && window.featureLoader) { try { await window.featureLoader.loadFeature('window_capture'); } catch (_) { /* below */ } }
+        if (!window.windowCapture) { out({ unsupported: 'no-capture' }); return; }
+        if (document.visibilityState === 'visible') { out({ unsupported: 'visible' }); return; }
+        const dpr = window.devicePixelRatio || 1;
+        const prep = window.wmLock.barsPrep();
+        if (!prep) { out({ unsupported: 'no-lock' }); return; }
+        let restored = false;
+        lockRestore = () => { if (restored) return; restored = true; lockRestore = null; try { prep.restore(); } catch (err) { console.warn('[melatonBars] lock restore', err); } };
+        const snap = (el, before) => window.windowCapture.snapshot(el, { scale: dpr, before });
+        const box = (el) => el.getBoundingClientRect();
+        const vis = (el, v) => { el.style.visibility = v; };
+        const { layer, slider, handle, time, wall, pin, area, keys } = prep;
+        const all = ctx.parts === 'all';
+        const o = { widthPx: Math.round(box(document.getElementById('wmShell')).width * dpr), parts: all ? 'all' : 'clock' };
+        try {
+            await Promise.race([
+                Promise.all([...layer.querySelectorAll('img')].map((i) => (i.complete && i.naturalWidth ? null : i.decode().catch(() => null)))),
+                new Promise((r) => setTimeout(r, 1500))
+            ]);
+            if (all) {
+                const lr = box(layer);
+                o.layer = { x: Math.round(lr.left * dpr), y: Math.round(lr.top * dpr), w: Math.round(lr.width * dpr), h: Math.round(lr.height * dpr) };
+                o.bg = packAt(await snap(layer, () => { vis(slider, 'hidden'); vis(time, 'hidden'); if (ctx.phoneWall) vis(wall, 'hidden'); }), lr, dpr);
+                vis(slider, ''); vis(time, ''); vis(wall, '');
+                o.slide = packAt(await snap(slider, () => { vis(handle, 'hidden'); }), box(slider), dpr);
+                o.slidePressed = packAt(await snap(slider, () => { slider.classList.add('is-pressed'); }), box(slider), dpr);
+                vis(handle, '');
+                o.handleDown = packAt(await snap(handle), box(handle), dpr);
+                slider.classList.remove('is-pressed');
+                o.handle = packAt(await snap(handle), box(handle), dpr);
+                o.travel = Math.round(prep.travel * dpr);
+                // the keypad page: its picture without dots, the entry bar for each count, each key held
+                layer.classList.add('is-pin');
+                pin.hidden = false;
+                prep.pinDots(0);
+                o.pin = packAt(await snap(layer, () => { if (ctx.phoneWall) vis(wall, 'hidden'); }), lr, dpr);
+                vis(wall, '');
+                const ar = box(area);
+                o.area = { x: Math.round(ar.left * dpr), y: Math.round(ar.top * dpr) };
+                o.dots = [];
+                for (let n = 0; n <= 12; n++) {
+                    prep.pinDots(n);
+                    const c = await snap(area);
+                    o.dots.push(pngOf(c));
+                }
+                prep.pinDots(0);
+                o.keys = [];
+                for (const k of keys) {
+                    if (!k.getClientRects().length) continue;
+                    const r = box(k);
+                    k.classList.add('is-held');
+                    const c = await snap(k);
+                    k.classList.remove('is-held');
+                    o.keys.push({ key: k.dataset.key, x0: Math.round(r.left * dpr), y0: Math.round(r.top * dpr), x1: Math.round(r.right * dpr), y1: Math.round(r.bottom * dpr), held: pngOf(c) });
+                }
+                pin.hidden = true;
+                layer.classList.remove('is-pin');
+            }
+            // the time band for each coming minute
+            const tr = box(time);
+            o.band = { x: Math.round(tr.left * dpr), y: Math.round(tr.top * dpr) };
+            const from = Math.floor((Number(ctx.fromMs) || Date.now()) / 60000) * 60000;
+            const n = Math.max(1, Math.min(30, Number(ctx.minutes) || 15));
+            o.clock = [];
+            for (let i = 0; i < n; i++) {
+                prep.setTime(from + i * 60000);
+                const c = await snap(time);
+                o.clock.push({ at: from + i * 60000, png: pngOf(c) });
+            }
+            if (restored) { out({ unsupported: 'interrupted' }); return; }
+            out(o);
+        } finally {
+            [slider, handle, time, wall].forEach((e) => vis(e, ''));
+            if (lockRestore) lockRestore();
+        }
+    }
+
     function unstage() {
         const r = restoreNow;
         restoreNow = null;
@@ -446,12 +540,14 @@
         if (document.visibilityState !== 'visible') return;
         unstage();
         if (startRestore) startRestore();
+        if (lockRestore) lockRestore();
         if (window.wmShell && window.wmShell.setBarsExternal) window.wmShell.setBarsExternal(false);
     });
 
     window.melatonBars = {
         render: (ctx) => { serial(() => render(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] render', err); }); },
         renderPopup: (ctx) => { serial(() => renderPopup(ctx)).catch((err) => { unstage(); console.warn('[melatonBars] renderPopup', err); }); },
+        renderLock: (ctx) => { serial(() => renderLock(ctx)).catch((err) => console.warn('[melatonBars] renderLock', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
         unsupported: () => unsupported(document.querySelector('#wmShell .wm-titlebar'))
