@@ -581,6 +581,12 @@
                 for (let i = n0; i < out.length; i++) { out[i].lv = lv; if (full != null) out[i].full = full; }
             }
             [...el.children].forEach((c) => walk(c, alpha));
+            // a control the app works itself (the volume sliders): its travel, top = the highest step
+            if (el.dataset && el.dataset.control === 'slider') {
+                const steps = +el.getAttribute('aria-valuemax') || 10;
+                const ticks = [...el.querySelectorAll('.wm-vol-tick')].map((t) => { const r = t.getBoundingClientRect(); return r.top + r.height / 2; });
+                if (ticks.length > 1) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: `slider:${el.dataset.kind}:${steps}:${R(Math.min(...ticks))}:${R(Math.max(...ticks))}` });
+            }
             const ci = clickable.indexOf(el);
             if (ci >= 0) out.push({ k: 'hit', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), act: isHide(el) ? 'hide' : `click:${ci}` });
         };

@@ -1032,6 +1032,8 @@
         if (!shell) return false;
         if (role === 'notify') { noteIconTap(); return true; }
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
+        // the volume box opens with its icon aside too (never the notification box in its place)
+        if (role === 'volume') { closeVolume(); toggleVolume(icon && !icon.hidden && icon.getClientRects().length ? icon : null); return true; }
         if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return true; }
         icon.click();
         return true;
@@ -3822,11 +3824,8 @@
             if (cameraInBar) relayout();
             return;
         }
-        // the camera in the title bar takes room: away from Today the volume icon steps aside for the
-        // status icons (Yukimi, Nov 13); Today keeps it
-        // (drawn over an Android program by the app is away from Today too, whatever this page shows behind it:
-        // else the app's bar gained and lost the volume icon as the page changed, Nov 16)
-        if (cameraInBar && (current !== 'today' || barsExternal) && !el('volume').hidden) el('volume').classList.add('wm-shed');
+        // the volume icon stays while there is room (Yukimi, Nov 16: it shows when there is enough room);
+        // it steps aside below only when the bar runs short
         relayout();
         if (ok()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
@@ -5584,35 +5583,65 @@
      * 0-5). Off is tabVolume's mute (everything); Vibrate (wmSoundMode) silences the WM sounds and
      * buzzes notifications instead, media still plays. Phone only: the desktop keeps its flyout.
      */
-    const VOL_STEPS = 5;
-    const RINGER_KEY = 'wmRingerLevel';
+    // 10 steps (Yukimi, Nov 16). In the Android app the three sliders are Android's own levels
+    // (window.AndroidVolume: Media = STREAM_MUSIC, Notifications = STREAM_NOTIFICATION, Ringer =
+    // STREAM_RING; On / Vibrate / Off = the ringer mode), kept in step by its 'androidvolume' event.
+    const VOL_STEPS = 10;
+    const RINGER_KEY = 'wmRingerLevel10';
+    const NOTIFY_KEY = 'wmNotifyLevel10';
     const MODE_KEY = 'wmSoundMode';
+    const AV = window.AndroidVolume && typeof window.AndroidVolume.get === 'function' ? window.AndroidVolume : null;
+    let avState = null;
+    function avNow() {
+        if (!AV) return null;
+        if (!avState) { try { avState = JSON.parse(AV.get()); } catch (_) { avState = null; } }
+        return avState;
+    }
+    const clampStep = (n) => Math.max(0, Math.min(VOL_STEPS, Math.round(Number(n))));
 
-    function ringerLevel() {
+    function storedLevel(key) {
         try {
-            const raw = localStorage.getItem(RINGER_KEY);
+            const raw = localStorage.getItem(key);
             const n = raw == null || raw === '' ? VOL_STEPS : Number(raw);
-            return Number.isFinite(n) ? Math.max(0, Math.min(VOL_STEPS, Math.round(n))) : VOL_STEPS;
+            return Number.isFinite(n) ? clampStep(n) : VOL_STEPS;
         } catch (_) { return VOL_STEPS; }
     }
 
+    function ringerLevel() { const a = avNow(); return a && Number.isFinite(a.ring) ? clampStep(a.ring) : storedLevel(RINGER_KEY); }
+    function notifyLevel() { const a = avNow(); return a && Number.isFinite(a.notification) ? clampStep(a.notification) : storedLevel(NOTIFY_KEY); }
+
+    function avSet(kind, n) {
+        try { avState = JSON.parse(AV.set(kind, clampStep(n))); } catch (_) { avState = null; }
+    }
+
     function setRingerLevel(n) {
-        try { localStorage.setItem(RINGER_KEY, String(Math.max(0, Math.min(VOL_STEPS, Math.round(n))))); } catch (_) { /* storage off */ }
+        if (AV) { avSet('ring', n); return; }
+        try { localStorage.setItem(RINGER_KEY, String(clampStep(n))); } catch (_) { /* storage off */ }
+    }
+
+    function setNotifyLevel(n) {
+        if (AV) { avSet('notification', n); return; }
+        try { localStorage.setItem(NOTIFY_KEY, String(clampStep(n))); } catch (_) { /* storage off */ }
     }
 
     function mediaLevel() {
+        const a = avNow();
+        if (a && Number.isFinite(a.media)) return clampStep(a.media);
         const tv = window.tabVolume;
         const v = tv && typeof tv.getLevel === 'function' ? Number(tv.getLevel()) : 100;
-        return Math.max(0, Math.min(VOL_STEPS, Math.round((Number.isFinite(v) ? v : 100) / (100 / VOL_STEPS))));
+        return clampStep((Number.isFinite(v) ? v : 100) / (100 / VOL_STEPS));
     }
 
     function setMediaLevel(n) {
+        if (AV) { avSet('media', n); return; }
         const tv = window.tabVolume;
         if (tv && typeof tv.setLevel === 'function') tv.setLevel(Math.round(n * (100 / VOL_STEPS)), { keepMute: true });
     }
 
     /** 'on' | 'vibrate' | 'off' */
     function soundMode() {
+        const a = avNow();
+        if (a && a.mode) return a.mode === 'off' || a.mode === 'vibrate' ? a.mode : 'on';
         try {
             const tv = window.tabVolume;
             if (tv && typeof tv.isMuted === 'function' && tv.isMuted()) return 'off';
@@ -5621,6 +5650,10 @@
     }
 
     function setSoundMode(mode) {
+        if (AV) {
+            try { avState = JSON.parse(AV.setMode(mode)); } catch (_) { avState = null; }
+            return;
+        }
         const tv = window.tabVolume;
         if (tv && typeof tv.setMuted === 'function' && tv.isMuted() !== (mode === 'off')) tv.setMuted(mode === 'off');
         try {
@@ -5630,11 +5663,43 @@
         if (mode === 'vibrate') vibrate('mode');
     }
 
+    const levelOf = (kind) => (kind === 'media' ? mediaLevel() : kind === 'notify' ? notifyLevel() : ringerLevel());
+    const setLevelOf = (kind, v) => { if (kind === 'media') setMediaLevel(v); else if (kind === 'notify') setNotifyLevel(v); else setRingerLevel(v); };
+    let volumePaint = null;
+    let volumeKeyTimer = null;
+
+    // Android's levels changed (a slider, the keys, Android's own panel): the popup, the icon and the app's copy follow
+    if (AV) {
+        window.addEventListener('androidvolume', (e) => {
+            avState = (e && e.detail) || null;
+            if (volumePaint) volumePaint();
+            refreshStatus();
+            if (barsExternal && window.melatonBars && window.melatonBars.pushLayouts) window.melatonBars.pushLayouts(['volume'], true);
+        });
+        // the volume keys while Melaton is in front: the media level (the app moved it) in WM's popup, closed
+        // again 3 s after the last press
+        window.addEventListener('androidvolumekey', (e) => {
+            avState = (e && e.detail) || avState;
+            const el = shell && shell.querySelector('.wm-volume');
+            if (!el) return;
+            if (el.hidden) toggleVolume(null);
+            volumeFocus = 'media';
+            if (volumePaint) volumePaint();
+            refreshStatus();
+            clearTimeout(volumeKeyTimer);
+            volumeKeyTimer = setTimeout(() => { volumeKeyTimer = null; closeVolume(); }, 3000);
+        });
+        try { if (typeof AV.takeKeys === 'function') AV.takeKeys(true); } catch (_) { /* older app */ }
+    }
+
     let volumeFocus = 'media';
 
     function closeVolume() {
         const el = shell && shell.querySelector('.wm-volume');
         if (el && !el.hidden) { el.hidden = true; el.replaceChildren(); }
+        volumePaint = null;
+        clearTimeout(volumeKeyTimer);
+        volumeKeyTimer = null;
     }
 
     function toggleVolume(anchor) {
@@ -5644,21 +5709,24 @@
         closeMenus(true);
         volumeFocus = 'media';
         const col = (kind, icon, label) => `<div class="wm-vol-col" data-kind="${kind}">${imgTag(icon)}`
-            + `<div class="wm-vol-trackbar" role="slider" tabindex="0" aria-label="${label}" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="${VOL_STEPS}">`
+            + `<div class="wm-vol-trackbar" data-control="slider" data-kind="${kind}" role="slider" tabindex="0" aria-label="${label}" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="${VOL_STEPS}">`
             + '<span class="wm-vol-track"></span>'
             + Array.from({ length: VOL_STEPS + 1 }, (_, i) => `<span class="wm-vol-tick" style="--i:${i}"></span>`).join('')
             + '<span class="wm-vol-thumb"></span></div></div>';
         const radio = (v, t) => `<label class="wm-vol-mode"><input type="radio" name="wmvolmode" value="${v}"><span>${t}</span></label>`;
         el.innerHTML = '<span class="wm-volume-tail" aria-hidden="true"></span><div class="wm-volume-title">Volume</div>'
-            + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('ringer', 'volume-ringer', 'Notifications and system sounds')}</div>`
+            + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('notify', 'cal-bell', 'Notifications')}${col('ringer', 'volume-ringer', 'Ringer')}</div>`
             + `<div class="wm-vol-modes">${radio('on', 'On')}${radio('vibrate', 'Vibrate')}${radio('off', 'Off')}</div>`;
         el.hidden = false;
         const paint = () => {
             el.querySelectorAll('.wm-vol-col').forEach((c) => {
-                const v = c.dataset.kind === 'media' ? mediaLevel() : ringerLevel();
+                const v = levelOf(c.dataset.kind);
                 c.style.setProperty('--v', String(v));
                 const bar = c.querySelector('.wm-vol-trackbar');
                 bar.setAttribute('aria-valuenow', String(v));
+                // the app's copy moves the thumb itself to Android's level (melatonBars layoutOf: lv vol-thumb)
+                const th = c.querySelector('.wm-vol-thumb');
+                if (th) th.dataset.live = `vol-thumb:${c.dataset.kind}:${v}`;
                 c.classList.toggle('is-focus', c.dataset.kind === volumeFocus);
             });
             const mode = soundMode();
@@ -5666,7 +5734,8 @@
         };
         const set = (kind, v) => {
             v = Math.max(0, Math.min(VOL_STEPS, v));
-            if (kind === 'media') setMediaLevel(v); else setRingerLevel(v);
+            if (v === levelOf(kind)) return;
+            setLevelOf(kind, v);
             paint();
             refreshStatus();
         };
@@ -5690,7 +5759,7 @@
             c.addEventListener('pointermove', (e) => { if (c.hasPointerCapture && c.hasPointerCapture(e.pointerId)) set(kind, fromY(e.clientY)); });
             bar.addEventListener('focus', () => { volumeFocus = kind; paint(); });
             bar.addEventListener('keydown', (e) => {
-                const cur = kind === 'media' ? mediaLevel() : ringerLevel();
+                const cur = levelOf(kind);
                 if (e.key === 'ArrowUp' || e.key === 'ArrowRight') set(kind, cur + 1);
                 else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') set(kind, cur - 1);
                 else return;
@@ -5700,6 +5769,8 @@
         });
         el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => r.addEventListener('change', () => { setSoundMode(r.value); paint(); refreshStatus(); }));
         el.addEventListener('click', (e) => e.stopPropagation());
+        el.style.setProperty('--steps', String(VOL_STEPS));
+        volumePaint = paint;
         paint();
         // under the title bar, the tail's tip at the icon; kept on screen
         const sr = shell.getBoundingClientRect();
@@ -5732,9 +5803,10 @@
     }
 
     /** Four signal bars for a bubble row (level 0-4; null = none). */
-    function signalBars(lv) {
+    // n bars: 4 for Wi-Fi (Android's 0-4), 5 for the mobile network (the radio's dBm in 5 steps, Yukimi Nov 16)
+    function signalBars(lv, n = 4) {
         if (lv == null) return '';
-        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of 4">${[1, 2, 3, 4].map((n) => `<i class="${n <= lv ? 'is-on' : ''}"></i>`).join('')}</span>`;
+        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
     }
 
     // the Connectivity bubble's time connected ticks while the bubble is open (a local clock, no request)
@@ -5794,10 +5866,11 @@
             if (c && c.present !== false) {
                 const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || c.level === 0;
                 const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
-                const lv = noService || !Number.isFinite(c.level) ? null : Math.max(0, Math.min(4, Math.round(c.level)));
+                const lv5 = Number.isFinite(c.level5) ? c.level5 : Number.isFinite(c.level) ? Math.round((c.level * 5) / 4) : null;
+                const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv)}`;
+                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
@@ -7084,6 +7157,8 @@
     }
 
     function sndSilentNow() {
+        // in the Android app each sound's own output level decides (AndroidVolume.play)
+        if (AV) return soundMode() !== 'on';
         return soundMode() !== 'on' || ringerLevel() <= 0;
     }
 
@@ -7094,7 +7169,16 @@
     }
 
     /** Play a WM file now (gain 0..1); resolves with its source node or null. */
-    async function sndPlayFile(file, gain = 1) {
+    // usage: in the Android app the file plays on Android's own output instead (AndroidVolume.play):
+    // 'notification' (notification classes), 'system' (taps, hardware buttons), 'media' (the rest)
+    function avPlay(path, usage, gain = 1) {
+        if (!AV || !usage || typeof AV.play !== 'function') return null;
+        try { return AV.play(location.origin + path, usage, Math.max(0, Math.min(1, gain))) ? { stop() {}, android: true } : null; } catch (_) { return null; }
+    }
+
+    async function sndPlayFile(file, gain = 1, usage) {
+        const viaAndroid = avPlay(SND_BASE + encodeURIComponent(file), usage, gain);
+        if (viaAndroid) return viaAndroid;
         const ctx = snd.ctx;
         if (!ctx || ctx.state !== 'running') return null;
         const buffer = await sndBuffer(file);
@@ -7291,9 +7375,10 @@
             }
             if (own === '' || prefs.sound === '' || sndSilentNow()) return false;
             const ctx = snd.ctx;
-            if (!ctx || ctx.state !== 'running') return false;
+            if (!AV && (!ctx || ctx.state !== 'running')) return false;
             const now = Date.now();
             if (now - snd.last < 300 && !opts.again) return false;
+            const usage = ev.kind === 'note' ? 'notification' : 'media';
             snd.last = now;
             const ds = window.desktopSounds;
             const vista = (f) => typeof f === 'string' && !!(ds && Array.isArray(ds.FILES) && ds.FILES.includes(f) && typeof ds.playFile === 'function');
@@ -7302,11 +7387,12 @@
             let file = prefs.own ? prefs.sound : (typeof own === 'string' && own !== schemeFile && vista(own) ? own : prefs.sound);
             if (vista(file)) {
                 sndNote(id, event, `vista/${file}`, now);
+                if (avPlay(`/sounds/vista/${encodeURIComponent(file)}`, usage)) return true;
                 return !!(await ds.playFile(file));
             }
             if (!WM_SOUNDS.includes(file)) file = ev.sound;
             sndNote(id, event, `wm61/${file}`, now);
-            return !!(await sndPlayFile(file));
+            return !!(await sndPlayFile(file, 1, usage));
         } catch (_) {
             return false;
         }
@@ -7337,10 +7423,10 @@
         try {
             const p = soundPrefs();
             const on = kind === 'buttons' ? p.buttons : p.taps;
-            if (!on || sndSilentNow() || !snd.ctx || snd.ctx.state !== 'running') return;
+            if (!on || sndSilentNow() || (!AV && (!snd.ctx || snd.ctx.state !== 'running'))) return;
             const click = clickSound(p, kind);
             sndNote(kind === 'buttons' ? 'key-click' : 'tap-click', '', `wm61/${click.file}`, Date.now());
-            sndPlayFile(click.file, click.gain);
+            sndPlayFile(click.file, click.gain, 'system');
         } catch (_) { /* no click */ }
     }
 

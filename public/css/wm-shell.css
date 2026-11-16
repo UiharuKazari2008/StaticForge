@@ -3462,9 +3462,11 @@ html.ui-mobile body > .pswp .pswp__preloader {
  * (media | notifications and system sounds) in 28 x 94 cells, the focused one framed in the
  * highlight colour, then On / Vibrate / Off ---- */
 .wm-volume {
+    --steps: 10;
     position: absolute;
     z-index: 14;
-    width: calc(77 * var(--wm-px));
+    /* three columns (Media, Notifications, Ringer; Nov 16): 5 + 3 x 28 + 2 x 7 + the frame */
+    width: calc(112 * var(--wm-px));
     box-sizing: border-box;
     border: calc(2 * var(--wm-px)) solid #000;
     border-radius: calc(5 * var(--wm-px)) calc(5 * var(--wm-px)) calc(4 * var(--wm-px)) calc(4 * var(--wm-px));
@@ -3560,7 +3562,8 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-vol-tick {
     position: absolute;
     left: calc(18 * var(--wm-px));
-    top: round(calc((8 + var(--i) * 14.8) * var(--wm-px)), 1px);
+    /* the 74-unit travel of WM's 5-step bar, in --steps steps */
+    top: round(calc((8 + var(--i) * 74 / var(--steps)) * var(--wm-px)), 1px);
     width: calc(3 * var(--wm-px));
     height: calc(1 * var(--wm-px));
     background: #000;
@@ -3569,7 +3572,7 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-vol-thumb {
     position: absolute;
     left: 0;
-    top: round(calc((4.5 + (5 - var(--v)) * 14.8) * var(--wm-px)), 1px);
+    top: round(calc((4.5 + (var(--steps) - var(--v)) * 74 / var(--steps)) * var(--wm-px)), 1px);
     width: calc(17 * var(--wm-px));
     height: calc(8 * var(--wm-px));
     background: #000;

@@ -649,9 +649,9 @@
             const tv = window.tabVolume;
             if (tv && typeof tv.isMuted === 'function' && tv.isMuted()) return 0;
             if (localStorage.getItem('wmSoundMode') === 'vibrate') return 0;
-            const raw = localStorage.getItem('wmRingerLevel');
-            const lvl = raw == null || raw === '' ? 5 : Number(raw);
-            return Number.isFinite(lvl) ? Math.max(0, Math.min(5, lvl)) / 5 : 1;
+            const raw = localStorage.getItem('wmRingerLevel10');
+            const lvl = raw == null || raw === '' ? 10 : Number(raw);
+            return Number.isFinite(lvl) ? Math.max(0, Math.min(10, lvl)) / 10 : 1;
         } catch (_) { return 1; }
     }
     function unlockAudio() {
