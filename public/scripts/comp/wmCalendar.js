@@ -464,10 +464,23 @@
         }
     }
 
+    /**
+     * The opened Fold (#870, Yukimi): 600 CSS px or more shows the calendar (Agenda, Day, Week, Month,
+     * Year) on the left half and the open appointment's summary on the right, one each side of the
+     * crease (one title, one pair of soft keys: the open layer's). The form keeps the whole width.
+     */
+    const DUAL_MIN = 600;
+    const isDual = () => !!page && page.clientWidth >= DUAL_MIN && layer !== 'form';
+
     function render() {
         if (!page) return;
-        page.querySelector('.wcl-main').hidden = layer !== null;
-        page.querySelector('.wcl-summary').hidden = layer !== 'summary';
+        const dual = isDual();
+        page.classList.toggle('is-dual', dual);
+        page.querySelector('.wcl-main').hidden = layer !== null && !dual;
+        page.querySelector('.wcl-summary').hidden = layer !== 'summary' && !dual;
+        // no appointment open: the right half is empty
+        if (dual && layer === null) page.querySelector('.wcl-summary').replaceChildren();
+        if (dual && layer === 'summary') renderView();
         page.querySelector('.wcl-form').hidden = layer !== 'form';
         if (layer === null) renderView();
         else if (layer === 'summary') renderSummary();
@@ -728,6 +741,13 @@
 
     function onTap(e) {
         const t = e.target;
+        // side by side (#870): a tap on the calendar closes the summary on the right and is then read
+        // as a tap with no summary open (an appointment tapped opens its summary again)
+        if (layer === 'summary' && isDual() && t.closest('.wcl-main')) {
+            layer = null;
+            ws.syncHistory();
+            render();
+        }
         const hb = t.closest('.wcl-hbtn');
         if (hb) {
             if (hb.dataset.act === 'today') { date = startOfDay(new Date()); sel = null; render(); } else step(hb.dataset.act === 'prev' ? -1 : 1);
@@ -760,8 +780,9 @@
         if (item) {
             const o = shownList[Number(item.dataset.i)];
             if (!o) return;
-            // the first tap selects, a tap on the selected one opens it (Agenda opens at once)
-            if (view === 'agenda' || isSel(o)) { openSummary(o); return; }
+            // the first tap selects, a tap on the selected one opens it (Agenda opens at once; side by
+            // side the summary has its own half, so the first tap opens it)
+            if (view === 'agenda' || isSel(o) || isDual()) { openSummary(o); return; }
             sel = o;
             selHour = null;
             render();
@@ -869,6 +890,10 @@
         layer = null;
         form = null;
         p.classList.add('wm-calendar');
+        // folding / unfolding: calendar and summary side by side or not
+        if (typeof ResizeObserver === 'function') {
+            new ResizeObserver(() => { if (page.classList.contains('is-dual') !== isDual()) render(); }).observe(p);
+        }
         p.innerHTML = `
             <div class="wcl-main">
                 <div class="wcl-head"></div>
