@@ -1237,6 +1237,9 @@
         // Melaton Bars (#871): the Android app's copy of Start is out of date
         const barsStale = () => { try { if (window.AndroidBars && window.AndroidBars.startStale) window.AndroidBars.startStale(); } catch (_) { /* older app */ } };
         document.addEventListener('wmAppsChanged', barsStale);
+        // anything else Start's copy shows: a setting (the Today picture, Effects, the theme, the order) or the phone's wallpaper
+        document.addEventListener('wmSettingsChange', barsStale);
+        window.addEventListener('androidwallpaper', barsStale);
         document.addEventListener('wmAppsChanged', () => { if (page && page.isConnected && !page.hidden && !drag) { render(); place(Math.max(0, Math.min(maxY, y))); } });
         window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
         sh.registerApp({
