@@ -619,8 +619,14 @@
             const N = window.AndroidPhoneNotifications;
             if (!N) return;
             if (kind === 'access') { try { N.requestAccess(); } catch (_) { /* old app */ } return; }
-            if (kind === 'dismiss') { try { N.dismiss(row.dataset.key); } catch (_) { /* gone */ } row.closest('.wm-ti-super-note')?.remove(); return; }
-            if (kind === 'note') { let ok = false; try { ok = N.open(row.dataset.key); } catch (_) { ok = false; } if (ok) closeSuper(true); }
+            noteAction(N, kind, row);
+        });
+        superEl.addEventListener('keydown', (e) => {
+            // Enter sends a reply (Shift+Enter is a new line)
+            if (e.key !== 'Enter' || e.shiftKey || !e.target.matches('.wm-ti-super-reply textarea')) return;
+            e.preventDefault();
+            const send = e.target.closest('.wm-ti-super-reply').querySelector('[data-super="send"]');
+            if (send) send.click();
         });
         host.appendChild(superEl);
         window.addEventListener('androidnotifications', () => { if (superOpen) refreshNotes(); });
@@ -719,29 +725,183 @@
         try { localStorage.setItem(SUPER_NOTES_KEY, JSON.stringify(cfg)); } catch (_) { /* storage off */ }
     }
 
-    function refreshNotes() {
+    /*
+     * The phone's notifications, one card per app (Yukimi, Nov 16, #877): the app's most important
+     * notification (Android's ranking of its channel, then the newest) in full, the count of the rest
+     * beside the app's name; a tap on the app's line (or its count) opens the app's card to show all
+     * of them at once, its X clears the app's clearable ones. Each shows what Android's shade shows:
+     * the sender's face or thumbnail (large icon), the big picture, a progress bar, the conversation's
+     * last messages or an inbox's lines, and its buttons (Reply opens a box under it).
+     */
+    const superExpanded = new Set(); // packages opened to show every notification
+    let superReply = null; // { key, index, label, draft } while a reply box is open
+    const superImages = new Map(); // image id -> data URL (AndroidPhoneNotifications.image)
+    let superNoteRows = new Map(); // key -> row, as last listed
+
+    function noteAction(N, kind, row) {
+        const key = row.dataset.key;
+        const pkg = row.dataset.pkg;
+        if (kind === 'expand') {
+            if (superExpanded.has(pkg)) superExpanded.delete(pkg); else superExpanded.add(pkg);
+            refreshNotes();
+            return;
+        }
+        if (kind === 'dismiss') { try { N.dismiss(key); } catch (_) { /* gone */ } return; }
+        if (kind === 'clearapp') {
+            for (const n of superNoteRows.values()) if (n.package === pkg && n.clearable !== false) { try { N.dismiss(n.key); } catch (_) { /* gone */ } }
+            superExpanded.delete(pkg);
+            return;
+        }
+        if (kind === 'note') {
+            let ok = false;
+            try { ok = !!N.open(key); } catch (_) { ok = false; }
+            // its intent gone (or an old app): the app itself
+            if (!ok && pkg && window.AndroidApps && typeof window.AndroidApps.launch === 'function') { try { ok = window.AndroidApps.launch(pkg) === true; } catch (_) { ok = false; } }
+            if (ok) closeSuper(true);
+            return;
+        }
+        if (kind === 'act') {
+            const i = Number(row.dataset.i);
+            if (row.dataset.reply === '1') {
+                superReply = superReply && superReply.key === key && superReply.index === i ? null : { key, index: i, label: row.dataset.label || 'Reply', draft: '' };
+                refreshNotes(true);
+                const ta = superEl.querySelector('.wm-ti-super-reply textarea');
+                if (ta) ta.focus();
+                return;
+            }
+            try { N.action(key, i, null); } catch (_) { /* old app */ }
+            return;
+        }
+        if (kind === 'send') {
+            const ta = row.closest('.wm-ti-super-reply')?.querySelector('textarea');
+            const text = ta ? ta.value.trim() : '';
+            if (!text || !superReply) return;
+            let ok = false;
+            try { ok = !!N.action(superReply.key, superReply.index, text); } catch (_) { ok = false; }
+            if (ok) { superReply = null; refreshNotes(true); }
+        }
+    }
+
+    function noteRank(n) {
+        const cat = { call: 3, alarm: 3, navigation: 2, msg: 1, email: 1, event: 1, reminder: 1 }[n.category] || 0;
+        return (Number(n.importance) || 3) * 10 + cat;
+    }
+
+    function noteHtml(n, when, head) {
+        const imp = noteRank(n);
+        const big = (id, cls) => (id ? `<img class="${cls}" data-img="${esc(id)}" alt="" draggable="false">` : '');
+        let body = '';
+        if (Array.isArray(n.messages) && n.messages.length) {
+            // a one-to-one chat names its sender in the title already: only other senders are named
+            const solo = n.messages.every((m) => !m.sender || m.sender === n.title);
+            body = `<span class="wm-ti-super-msgs">${n.messages.slice(head ? -3 : -6).map((m) => `<span class="wm-ti-super-msg">${m.sender && !solo ? `<b>${esc(m.sender)}</b> ` : ''}${esc(m.text)}</span>`).join('')}</span>`;
+        } else if (Array.isArray(n.lines) && n.lines.length) {
+            body = `<span class="wm-ti-super-lines">${n.lines.slice(0, 6).map((l) => `<span>${esc(l)}</span>`).join('')}</span>`;
+        } else if (n.text) body = `<span class="wm-ti-super-note-body">${esc(n.text)}</span>`;
+        let prog = '';
+        if (n.progress) {
+            const p = n.progress.indeterminate || !(n.progress.max > 0) ? -1 : Math.max(0, Math.min(1, n.progress.value / n.progress.max));
+            prog = `<span class="wm-ti-super-prog${p < 0 ? ' is-marquee' : ''}" style="--p:${p < 0 ? 0 : p.toFixed(3)}"><span></span></span>`;
+        }
+        const title = n.conversation && n.conversation !== n.title ? n.conversation : n.title;
+        const acts = Array.isArray(n.actions) && n.actions.length ? `<div class="wm-ti-super-acts">${n.actions.slice(0, 3).map((a) => `<button type="button" class="wm-ti-super-act${superReply && superReply.key === n.key && superReply.index === a.index ? ' is-on' : ''}" data-super="act" data-key="${esc(n.key)}" data-i="${a.index}" data-reply="${a.reply ? 1 : 0}" data-label="${esc(a.label || '')}">${esc(a.title)}</button>`).join('')}</div>` : '';
+        const reply = superReply && superReply.key === n.key ? `<div class="wm-ti-super-reply"><textarea class="wm-edit" rows="2" placeholder="${esc(superReply.label)}">${esc(superReply.draft || '')}</textarea><button type="button" class="wm-ti-super-act" data-super="send">Send</button></div>` : '';
+        return `<div class="wm-ti-super-note${imp >= 40 ? ' is-high' : ''}" data-key="${esc(n.key)}">
+            <div class="wm-ti-super-note-row">
+            <button type="button" class="wm-ti-super-note-open" data-super="note" data-key="${esc(n.key)}" data-pkg="${esc(n.package)}"><span class="wm-ti-super-note-text"><span class="wm-ti-super-note-top"><span class="wm-ti-super-note-title">${esc(title)}</span><span class="wm-ti-super-note-when">${esc(when(n.time))}</span></span>${n.subText ? `<span class="wm-ti-super-note-app">${esc(n.subText)}</span>` : ''}${body}${prog}</span>${big(n.large, 'wm-ti-super-large')}</button>
+            ${n.clearable === false ? '<span class="wm-ti-super-note-xgap"></span>' : `<button type="button" class="wm-ti-super-note-x" data-super="dismiss" data-key="${esc(n.key)}" aria-label="Clear"></button>`}
+            </div>${n.picture ? `<button type="button" class="wm-ti-super-pic" data-super="note" data-key="${esc(n.key)}" data-pkg="${esc(n.package)}">${big(n.picture, '')}</button>` : ''}${acts}${reply}</div>`;
+    }
+
+    function refreshNotes(force) {
         if (!superEl) return;
         const box = superEl.querySelector('.wm-ti-super-notes');
         const sub = superEl.querySelector('.wm-ti-super-sub');
         const N = window.AndroidPhoneNotifications;
-        if (!N || typeof N.list !== 'function') { sub.hidden = true; box.innerHTML = '<div class="wm-ti-super-empty">The phone\'s notifications show here with the Dreamscape app.</div>'; return; }
+        const plain = (html) => { box.innerHTML = html; superNoteRows = new Map(); };
+        if (!N || typeof N.list !== 'function') { sub.hidden = true; plain('<div class="wm-ti-super-empty">The phone\'s notifications show here with the Dreamscape app.</div>'); return; }
         sub.hidden = false;
         let ok = false;
         try { ok = !!N.access(); } catch (_) { ok = false; }
-        if (!ok) { box.innerHTML = '<button type="button" class="wm-ti-super-item" data-super="access"><span class="wm-ti-super-line">Allow notification access to see the phone\'s notifications here.</span></button>'; return; }
+        if (!ok) { plain('<button type="button" class="wm-ti-super-item" data-super="access"><span class="wm-ti-super-line">Allow notification access to see the phone\'s notifications here.</span></button>'); return; }
         let list = [];
         try { list = JSON.parse(N.list() || '[]'); } catch (_) { list = []; }
         // Settings > Today > Super Bar: the phone's notifications off, or some apps or channels hidden;
         // the apps and channels seen are kept for that page to list
         const cfg = superNotesCfg();
         rememberNotes(cfg, list);
-        if (cfg.phone === false) { sub.hidden = true; box.innerHTML = ''; return; }
-        list = list.filter((n) => cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
-        if (!list.length) { box.innerHTML = '<div class="wm-ti-super-empty">No notifications</div>'; return; }
+        if (cfg.phone === false) { sub.hidden = true; plain(''); return; }
+        list = list.filter((n) => n && n.key && cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
+        superNoteRows = new Map(list.map((n) => [n.key, n]));
+        // a reply box whose notification went: gone with it; one being typed in keeps its words
+        const ta = box.querySelector('.wm-ti-super-reply textarea');
+        if (superReply && ta) superReply.draft = ta.value;
+        if (superReply && !superNoteRows.has(superReply.key)) superReply = null;
+        if (!list.length) { plain('<div class="wm-ti-super-empty">No notifications</div>'); return; }
         const when = (t) => { const d = new Date(Number(t) || 0); if (isNaN(d)) return ''; const p = timeParts(d); return p.time + (p.ampm ? ` ${p.ampm}` : ''); };
-        box.innerHTML = list.slice(0, 30).map((n) => `<div class="wm-ti-super-note">
-            <button type="button" class="wm-ti-super-note-open" data-super="note" data-key="${esc(n.key)}">${n.icon ? `<img src="${esc(n.icon)}" alt="" draggable="false">` : '<span class="wm-ti-super-noicon"></span>'}<span class="wm-ti-super-note-text"><span class="wm-ti-super-note-app">${esc(n.app)} · ${esc(when(n.time))}</span><span class="wm-ti-super-note-title">${esc(n.title)}</span>${n.text ? `<span class="wm-ti-super-note-body">${esc(n.text)}</span>` : ''}</span></button>
-            <button type="button" class="wm-ti-super-note-x" data-super="dismiss" data-key="${esc(n.key)}" aria-label="Clear"></button></div>`).join('');
+        // by app: most important first, then the newest
+        const groups = new Map();
+        for (const n of list) {
+            const k = n.package || n.key;
+            if (!groups.has(k)) groups.set(k, []);
+            groups.get(k).push(n);
+        }
+        const order = [...groups.entries()].map(([pkg, ns]) => {
+            ns.sort((a, b) => noteRank(b) - noteRank(a) || (Number(b.time) || 0) - (Number(a.time) || 0));
+            return { pkg, ns, high: noteRank(ns[0]) >= 40, latest: Math.max(...ns.map((n) => Number(n.time) || 0)) };
+        }).sort((a, b) => (b.high - a.high) || b.latest - a.latest).slice(0, 30);
+        for (const p of [...superExpanded]) if (!groups.has(p)) superExpanded.delete(p);
+        const html = order.map(({ pkg, ns, latest }) => {
+            const open = superExpanded.has(pkg) && ns.length > 1;
+            const h = ns[0];
+            const more = ns.length - 1;
+            const shown = open ? ns : [h];
+            const anyClear = ns.some((n) => n.clearable !== false);
+            return [pkg, `<div class="wm-ti-super-grp${open ? ' is-open' : ''}${more && !open ? ' is-stacked' : ''}" data-pkg="${esc(pkg)}">
+                <div class="wm-ti-super-grp-head">
+                    <button type="button" class="wm-ti-super-grp-name" data-super="${more ? 'expand' : 'note'}" data-pkg="${esc(pkg)}" data-key="${esc(h.key)}"${more ? ` aria-expanded="${open}"` : ''}>${h.icon ? `<img src="${esc(h.icon)}" alt="" draggable="false">` : '<span class="wm-ti-super-noicon"></span>'}<span class="wm-ti-super-grp-app">${esc(h.app)}</span><span class="wm-ti-super-grp-when">${esc(when(latest))}</span>${more ? `<span class="wm-ti-super-grp-count">${open ? ns.length : `+${more}`}<i class="wm-ti-super-chev"></i></span>` : ''}</button>
+                    ${anyClear && more ? `<button type="button" class="wm-ti-super-note-x" data-super="clearapp" data-pkg="${esc(pkg)}" aria-label="Clear all from ${esc(h.app)}"></button>` : ''}
+                </div>
+                ${shown.map((n) => noteHtml(n, when, !open)).join('')}
+            </div>`];
+        });
+        // only the apps whose cards changed are redrawn (a progress tick redraws its own card)
+        const have = new Map([...box.querySelectorAll(':scope > .wm-ti-super-grp')].map((el) => [el.dataset.pkg, el]));
+        if (!have.size) box.innerHTML = '';
+        let prev = null;
+        for (const [pkg, h] of html) {
+            let el = have.get(pkg);
+            have.delete(pkg);
+            // never under a reply being typed (its box would lose the keyboard)
+            const typing = el && !force && document.activeElement && document.activeElement.tagName === 'TEXTAREA' && el.contains(document.activeElement);
+            if (!typing && (!el || force || el._html !== h)) {
+                const t = document.createElement('template');
+                t.innerHTML = h.trim();
+                const fresh = t.content.firstElementChild;
+                fresh._html = h;
+                if (el) el.replaceWith(fresh); else box.appendChild(fresh);
+                el = fresh;
+                fillNoteImages(N, el);
+            }
+            const want = prev ? prev.nextElementSibling : box.firstElementChild;
+            if (want !== el) box.insertBefore(el, want);
+            prev = el;
+        }
+        have.forEach((el) => el.remove());
+        [...box.children].forEach((el) => { if (!el.classList.contains('wm-ti-super-grp')) el.remove(); });
+    }
+
+    /** The pictures and faces, asked of the app once each (a data URL per id, kept for the session). */
+    function fillNoteImages(N, el) {
+        el.querySelectorAll('img[data-img]').forEach((img) => {
+            const id = img.dataset.img;
+            let url = superImages.get(id);
+            if (url == null && typeof N.image === 'function') {
+                try { url = N.image(id) || ''; } catch (_) { url = ''; }
+                if (url) { superImages.set(id, url); if (superImages.size > 60) superImages.delete(superImages.keys().next().value); }
+            }
+            if (url) img.src = url; else img.remove();
+        });
     }
 
     // ---------------------------------------------------------------- drawing

@@ -683,10 +683,258 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-empty {
     opacity: 0.8;
 }
 
+/* one card per app (#877): its line (icon, name, latest time, the count of the rest), then its most
+ * important notification; opened, every one of them. A closed card with more shows a second edge. */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp {
+    position: relative;
+    margin: calc(4 * var(--u)) calc(6 * var(--u)) calc(6 * var(--u));
+    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.22);
+    background: rgba(0, 0, 0, 0.28);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-stacked {
+    margin-bottom: calc(10 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-stacked::after {
+    content: "";
+    position: absolute;
+    left: calc(5 * var(--u));
+    right: calc(5 * var(--u));
+    bottom: calc(-5 * var(--u));
+    height: calc(4 * var(--u));
+    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.18);
+    border-top: 0;
+    background: rgba(0, 0, 0, 0.22);
+    pointer-events: none;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-head {
+    display: flex;
+    align-items: stretch;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-name {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: calc(5 * var(--u));
+    min-width: 0;
+    margin: 0;
+    padding: calc(4 * var(--u)) calc(4 * var(--u)) calc(2 * var(--u)) calc(6 * var(--u));
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-size: calc(10 * var(--u));
+    text-align: left;
+    text-shadow: inherit;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-name:active {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-name img,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-name .wm-ti-super-noicon {
+    flex: none;
+    width: calc(14 * var(--u));
+    height: calc(14 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-app {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-when {
+    flex: none;
+    opacity: 0.7;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-count {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: calc(3 * var(--u));
+    margin-left: auto;
+    padding: 0 calc(5 * var(--u));
+    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.45);
+    font-size: calc(10 * var(--u));
+    line-height: calc(13 * var(--u));
+}
+
+/* a drawn arrow (no glyph): down while closed, up once opened */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-chev {
+    width: 0;
+    height: 0;
+    border-left: calc(3.5 * var(--u)) solid transparent;
+    border-right: calc(3.5 * var(--u)) solid transparent;
+    border-top: calc(4 * var(--u)) solid #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-open .wm-ti-super-chev {
+    border-top: 0;
+    border-bottom: calc(4 * var(--u)) solid #fff;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-head .wm-ti-super-note-x::before,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp-head .wm-ti-super-note-x::after {
+    top: calc(10 * var(--u));
+}
+
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note {
     position: relative;
     display: flex;
+    flex-direction: column;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp.is-open .wm-ti-super-note + .wm-ti-super-note {
+    border-top: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.15);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-row {
+    display: flex;
     align-items: stretch;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-xgap {
+    flex: none;
+    width: calc(8 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-top {
+    display: flex;
+    align-items: baseline;
+    gap: calc(5 * var(--u));
+    min-width: 0;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-when {
+    flex: none;
+    margin-left: auto;
+    font-size: calc(10 * var(--u));
+    opacity: 0.7;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-grp:not(.is-open) .wm-ti-super-note-when {
+    display: none;
+}
+
+/* the sender's face / a thumbnail (large icon), at the right as Android's shade has it */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open img.wm-ti-super-large {
+    width: calc(34 * var(--u));
+    height: calc(34 * var(--u));
+    margin: calc(1 * var(--u)) 0 0 auto;
+    object-fit: cover;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-msgs,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-lines {
+    display: flex;
+    flex-direction: column;
+    font-size: calc(12 * var(--u));
+    line-height: 1.25;
+    opacity: 0.9;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-msg,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-lines > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* the big picture, under the text, the width of the card */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-pic {
+    display: block;
+    margin: 0 calc(10 * var(--u)) calc(4 * var(--u));
+    padding: 0;
+    border: 0;
+    background: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-pic img {
+    display: block;
+    width: 100%;
+    max-height: calc(150 * var(--u));
+    object-fit: cover;
+}
+
+/* a progress bar in WM's blocks (7 units on, 2 off), white on the glass; indeterminate runs across */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-prog {
+    position: relative;
+    display: block;
+    height: calc(9 * var(--u));
+    margin: calc(4 * var(--u)) 0 calc(2 * var(--u));
+    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.85);
+    overflow: hidden;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-prog > span {
+    position: absolute;
+    left: calc(1 * var(--u));
+    top: calc(1 * var(--u));
+    bottom: calc(1 * var(--u));
+    width: calc(var(--p) * (100% - 2 * var(--u)));
+    width: round(down, calc(var(--p) * (100% - 2 * var(--u))), calc(9 * var(--u)));
+    background: repeating-linear-gradient(to right, #fff 0, #fff calc(7 * var(--u)), transparent calc(7 * var(--u)), transparent calc(9 * var(--u)));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-prog.is-marquee > span {
+    width: calc(45 * var(--u));
+    animation: wm-ti-super-marquee 2s steps(20) infinite;
+}
+
+@keyframes wm-ti-super-marquee {
+    from { left: calc(-45 * var(--u)); }
+    to { left: 100%; }
+}
+
+/* its buttons (Reply, Mark as read...), and the reply box they open */
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-acts {
+    display: flex;
+    gap: calc(4 * var(--u));
+    margin: 0 calc(10 * var(--u)) calc(5 * var(--u)) calc(10 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-act {
+    flex: 0 1 auto;
+    min-width: calc(54 * var(--u));
+    margin: 0;
+    padding: calc(3 * var(--u)) calc(8 * var(--u));
+    border: calc(1 * var(--u)) solid rgba(255, 255, 255, 0.6);
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+    font: inherit;
+    font-size: calc(11 * var(--u));
+    text-shadow: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    -webkit-tap-highlight-color: transparent;
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-act:active,
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-act.is-on {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-reply {
+    display: flex;
+    align-items: flex-end;
+    gap: calc(4 * var(--u));
+    margin: 0 calc(10 * var(--u)) calc(6 * var(--u));
+}
+
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-reply textarea {
+    flex: 1 1 auto;
+    min-width: 0;
+    resize: none;
+    font-size: calc(12 * var(--u));
 }
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open {
@@ -696,7 +944,6 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open {
     padding-right: calc(4 * var(--u));
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-open img,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-noicon {
     flex: none;
     width: calc(20 * var(--u));
@@ -706,6 +953,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-noicon {
 
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-super-note-text {
     display: flex;
+    flex: 1 1 auto;
     flex-direction: column;
     min-width: 0;
 }
