@@ -197,14 +197,13 @@
             if (!frames) {
                 frames = [];
                 for (let k = 0; k < count; k++) {
-                    const pos = `${(k / (count - 1)) * 100}% 0`;
-                    const c = await window.windowCapture.snapshot(n, { scale: dpr, before: () => { n.style.animation = 'none'; n.style.backgroundPosition = pos; } });
+                    let back = null;
+                    const c = await window.windowCapture.snapshot(n, { scale: dpr, before: () => { back = pinStrip(n, k); } });
+                    if (back) back();
                     const p = pack(c, []);
                     if (!p) { frames = null; break; }
                     frames.push(p.png);
                 }
-                n.style.animation = '';
-                n.style.backgroundPosition = '';
                 if (!frames) continue;
                 if (stripCache.size > 12) stripCache.clear();
                 stripCache.set(key, frames);
@@ -213,6 +212,27 @@
         }
         return out;
     }
+    /**
+     * A strip pinned to one frame with plain values (its picture, size and place resolved, no animation),
+     * so a copy shows that frame: a copy that lost the strip's custom properties drew the whole sheet
+     * (Yukimi, Nov 16: "a messed up sprite sheet" on Start). Returns the put-back.
+     */
+    function pinStrip(n, k) {
+        const cs = getComputedStyle(n);
+        const count = parseInt(cs.getPropertyValue('--n'), 10) || 1;
+        const was = n.getAttribute('style');
+        n.style.setProperty('background-image', cs.backgroundImage, 'important');
+        n.style.setProperty('background-size', `${count * 100}% 100%`, 'important');
+        n.style.setProperty('background-repeat', 'no-repeat', 'important');
+        n.style.setProperty('background-position', `${count > 1 ? (k / (count - 1)) * 100 : 0}% 0%`, 'important');
+        n.style.setProperty('animation', 'none', 'important');
+        return () => { if (was == null) n.removeAttribute('style'); else n.setAttribute('style', was); };
+    }
+    function pinStrips(bar) {
+        const backs = stripEls(bar).map((n) => pinStrip(n, 0));
+        return () => backs.forEach((b) => b());
+    }
+
     function withAnims(p, list) { if (p && list && list.length) p.anims = list; return p; }
 
     /** The WM wait cursor for the app's loading cover: its 16 frames side by side at the screen's pixels and its box. */
@@ -459,7 +479,10 @@
             if (!reuseBg) lastStartBg = bgSig;
             const glowPic = glow && glowAt ? await snap(glow, () => { list.style.visibility = listVis; }) : null;
             const listPic = await snap(list, () => { list.style.visibility = listVis; if (glow) glow.hidden = true; list.style.transform = 'none'; });
-            const topPic = await snap(top);
+            // the animated icons at their first frame (Start's copy is a still)
+            let unpin = null;
+            const topPic = await snap(top, () => { unpin = pinStrips(top); });
+            if (unpin) unpin();
             const softPic = soft ? await snap(soft) : null;
             // the page came on screen meanwhile: Start was put back, the copy is not whole
             if (restored) { out({ unsupported: 'interrupted' }); return; }

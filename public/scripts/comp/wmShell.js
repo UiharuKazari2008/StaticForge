@@ -2969,7 +2969,8 @@
         const dir = directorState();
         directorTurnWatch(dir);
         const dirOpen = stack.includes('director') || openedApps.includes('director');
-        hide(shell.querySelector('[data-role="director"]'), !((dir && dir.running) || dirOpen));
+        if (current === 'director') dirUnseen = false;
+        hide(shell.querySelector('[data-role="director"]'), !((dir && dir.running) || dirOpen || dirUnseen));
         paintDirectorClap(!!(dir && dir.running));
         let updateReady = false;
         try { updateReady = !!(window.serviceWorkerManager && window.serviceWorkerManager.hasPendingUpdates()); } catch (_) { updateReady = false; }
@@ -3076,11 +3077,14 @@
      * Display message on screen, posts a notification (off by default: the clapper already stops).
      */
     let dirWasRunning = null;
+    let dirUnseen = false;
     function directorTurnWatch(dir) {
         const running = !!(dir && dir.running);
         const was = dirWasRunning;
         dirWasRunning = dir ? running : was;
         if (!dir || was !== true || running) return;
+        // the glyph stays in the title bar until the Director is opened (a finished turn is news, as unread mail)
+        if (!(stack.includes('director') && current === 'director')) dirUnseen = true;
         playSystemSound('director');
         const p = eventPrefs('director');
         if (p && p.display) {
@@ -6738,7 +6742,8 @@
         { id: 'battery-low', label: 'Battery: Main battery low', kind: 'note', sound: 'BatteryLow.wav', desktop: 'balloon' },
         { id: 'battery-very-low', label: 'Battery: Main battery very low', kind: 'note', sound: 'BatteryCritical.wav', desktop: 'warning' },
         { id: 'beep', label: 'Default beep', kind: 'event', sound: 'Default.wav', desktop: 'dialog' },
-        { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: false, desktop: 'balloon' },
+        // shown as shipped (Yukimi, Nov 16: she expects the notification when a turn completes)
+        { id: 'director', label: 'Director: Turn finished', kind: 'note', sound: 'Alarm2.wav', display: true, desktop: 'balloon' },
         // #779: Dreamscape Messenger (the chat personas) and Text Messaging notify in classes of their own
         { id: 'chat', label: 'Dreamscape Messenger: New message', kind: 'note', sound: 'online.mp3', desktop: 'balloon' },
         { id: 'error', label: 'Errors', kind: 'event', sound: 'Alarm2.wav', desktop: 'critical-stop' },

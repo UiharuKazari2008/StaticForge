@@ -88,8 +88,9 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     assert.ok(byId('chat:9', 'dev_admin') && !byId('chat:9'), 'dev_admin keeps its own queue');
     assert.strictEqual(src._test.saidOf(null, 'plain words'), 'plain words', 'non-JSON reply is the line');
 
-    // ---- Director: running -> idle; Display message off by default (quiet: stored seen, never posted)
+    // ---- Director: running -> idle; shown by default since Nov 16; a class the phone made quiet is stored seen, never posted
     toPhones.length = 0;
+    inbox.setQuiet('admin', ['director']);
     src.onDirectorStatus({ running: false });
     src.onDirectorStatus({ running: true, sessionId: 's1', sessionName: 'Morning prints' });
     assert.ok(!byId('director:s1:turn'), 'nothing while running');
@@ -97,7 +98,7 @@ const byId = (id, user = 'admin') => inbox.list(user, { includeCleared: true }).
     n = byId('director:s1:turn');
     assert.strictEqual(n.title, 'Director');
     assert.strictEqual(n.text, '"Morning prints": the turn is finished.');
-    assert.strictEqual(n.state, 'seen', 'quiet by default (Display message off)');
+    assert.strictEqual(n.state, 'seen', 'quiet when the phone says so (Display message off)');
     assert.strictEqual(toPhones.length, 0, 'a quiet class is not posted on the phones');
     // the phone switched Display message on: posted
     inbox.setQuiet('admin', []);

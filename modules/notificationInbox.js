@@ -248,8 +248,8 @@ function phonesCleared(user, id) {
 
 // ---- the phone's display choices (Settings > Sounds & Notifications: Display message on screen) ----
 
-// as shipped: the Director's turn finished plays its sound only (wmShell SND_EVENTS display: false)
-const DEFAULT_QUIET = ['director'];
+// as shipped every class is shown (the Director's turn finished too since Nov 16: wmShell SND_EVENTS display: true)
+const DEFAULT_QUIET = [];
 const quietCache = new Map();
 
 function quietClasses(user) {
