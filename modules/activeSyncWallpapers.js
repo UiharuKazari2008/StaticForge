@@ -9,6 +9,15 @@
  *   GET  /api/activesync/wallpapers/:deviceId          an admin desktop (or the phone): { inner, cover,
  *                                                       external, screen, at } as URLs, null when none
  *   GET  /api/activesync/wallpapers/:deviceId/:kind     the stored picture (inner | cover | external)
+ *   GET  /api/activesync/wallpapers/:deviceId/hashes    the phone (#890): { hashes: { <kind>: sha1 hex of
+ *                                                       the stored file's bytes } }, kinds stored as files only
+ *
+ * Re-uploads (#890): the phone sends only the kinds whose picture differs from what is stored (it
+ * compares sha1 of the decoded bytes with /hashes, once per connection), and "same:<kind>" for a kind
+ * whose picture is another kind's (from the same request, or the one stored). A picture whose bytes
+ * are unchanged is not written again, an unchanged set does not rewrite index.json (nor move its stamp,
+ * so Device Center is not told of a change), and the reply lists the kinds sent that were unchanged
+ * (unchanged: [...]).
  *
  * Files live in <databases>/activesync-wallpapers/<deviceId>/ with an index.json. A partnership ended
  * or a device removed leaves them; the next push replaces them.
@@ -17,6 +26,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const activeSync = require('./activeSync');
 
 // Melaton's home pictures (the page: Today on each screen, the DeX window's desktop), the lock screens and
@@ -66,40 +76,148 @@ function describe(globalResources, deviceId) {
     return out;
 }
 
-/** Store what the phone sent; unchanged pictures keep their file and stamp. */
-function store(globalResources, deviceId, body) {
+// sha1 of the stored files, kept while a file's mtime and size stay the same (/hashes is asked once
+// per phone connection; a picture is hashed once, not on every ask)
+const hashCache = new Map(); // absolute file path -> { mtimeMs, size, sha1 }
+
+function sha1Of(buf) {
+    return crypto.createHash('sha1').update(buf).digest('hex');
+}
+
+function rememberHash(file, sha1) {
+    try {
+        const st = fs.statSync(file);
+        hashCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, sha1 });
+    } catch (_) { hashCache.delete(file); }
+}
+
+function fileSha1(file) {
+    let st;
+    try { st = fs.statSync(file); } catch (_) { hashCache.delete(file); return null; }
+    const hit = hashCache.get(file);
+    if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.sha1;
+    let buf;
+    try { buf = fs.readFileSync(file); } catch (_) { return null; }
+    const sha1 = sha1Of(buf);
+    hashCache.set(file, { mtimeMs: st.mtimeMs, size: st.size, sha1 });
+    return sha1;
+}
+
+/** { <kind>: sha1 hex of the stored picture's bytes } for the kinds stored as files. */
+function hashes(globalResources, deviceId) {
+    const idx = readIndex(globalResources, deviceId);
+    const dir = dirOf(globalResources, deviceId);
+    const out = {};
+    for (const k of KINDS) {
+        const e = idx[k];
+        if (!e || !e.file) continue;
+        const h = fileSha1(path.join(dir, e.file));
+        if (h) out[k] = h;
+    }
+    return out;
+}
+
+const SAME = /^same:([A-Za-z]+)$/;
+
+/**
+ * Store what the phone sent; unchanged pictures keep their file and stamp.
+ * Returns { wallpapers (describe), changed (the stored set changed), unchanged (kinds sent that were) }.
+ */
+function storeDetailed(globalResources, deviceId, body) {
     const src = body && typeof body === 'object' ? body : {};
     const dir = dirOf(globalResources, deviceId);
-    fs.mkdirSync(dir, { recursive: true });
     const old = readIndex(globalResources, deviceId);
-    const idx = { at: Date.now(), screen: src.screen === 'cover' || src.screen === 'inner' ? src.screen : (old.screen || null) };
+    const now = Date.now();
+    const idx = { at: now, screen: src.screen === 'cover' || src.screen === 'inner' ? src.screen : (old.screen || null) };
     const keep = new Set(['index.json']);
+    const unchanged = [];
+    const has = (k) => Object.prototype.hasOwnProperty.call(src, k);
+
+    // what a value stands for: { path } | { buf, ext } | null (cleared, or not a picture we take)
+    const parse = (raw) => {
+        const v = typeof raw === 'string' ? raw.trim() : '';
+        if (!v) return null;
+        if (/^\/[^/\\]/.test(v) && v.length <= 1024) return { path: v };
+        const m = DATA_URL.exec(v);
+        if (!m) return null;
+        const buf = Buffer.from(m[2].replace(/\s+/g, ''), 'base64');
+        if (!buf.length || buf.length > MAX_PICTURE_BYTES) return null;
+        return { buf, ext: EXT[m[1]] };
+    };
+    // a kind's picture for "same:<kind>": the one sent now, else the one stored (chains followed once each)
+    const resolved = new Map();
+    const sourceOf = (k, seen) => {
+        if (!KINDS.includes(k) || seen.has(k)) return null;
+        if (resolved.has(k)) return resolved.get(k);
+        seen.add(k);
+        let out = null;
+        if (has(k)) {
+            const v = typeof src[k] === 'string' ? src[k].trim() : '';
+            const same = SAME.exec(v);
+            out = same ? sourceOf(same[1], seen) : parse(v);
+        } else if (old[k] && old[k].path) {
+            out = { path: old[k].path };
+        } else if (old[k] && old[k].file) {
+            try {
+                const buf = fs.readFileSync(path.join(dir, old[k].file));
+                const ext = path.extname(old[k].file).slice(1);
+                if (buf.length && TYPE[ext]) out = { buf, ext };
+            } catch (_) { out = null; }
+        }
+        resolved.set(k, out);
+        return out;
+    };
+
     for (const k of KINDS) {
         // a kind not sent keeps what it had (the page and the service each send their own)
-        if (!Object.prototype.hasOwnProperty.call(src, k)) {
+        if (!has(k)) {
             if (old[k]) { idx[k] = old[k]; if (old[k].file) keep.add(old[k].file); }
             continue;
         }
-        const v = typeof src[k] === 'string' ? src[k].trim() : '';
-        if (!v) continue;
-        if (/^\/[^/\\]/.test(v) && v.length <= 1024) { idx[k] = { path: v, at: old[k] && old[k].path === v ? old[k].at : idx.at }; continue; }
-        const m = DATA_URL.exec(v);
-        if (!m) continue;
-        const buf = Buffer.from(m[2].replace(/\s+/g, ''), 'base64');
-        if (!buf.length || buf.length > MAX_PICTURE_BYTES) continue;
-        const file = `${k}.${EXT[m[1]]}`;
+        const pic = sourceOf(k, new Set());
+        if (!pic) continue; // null clears it (so does anything that is not a picture we take)
+        if (pic.path) {
+            const same = !!(old[k] && old[k].path === pic.path);
+            idx[k] = { path: pic.path, at: same ? old[k].at : now };
+            if (same) unchanged.push(k);
+            continue;
+        }
+        const file = `${k}.${pic.ext}`;
         const target = path.join(dir, file);
-        let same = false;
-        try { same = old[k] && old[k].file === file && fs.readFileSync(target).equals(buf); } catch (_) { same = false; }
-        if (!same) fs.writeFileSync(target, buf);
-        idx[k] = { file, at: same ? old[k].at : idx.at };
+        const sha1 = sha1Of(pic.buf);
+        const same = !!(old[k] && old[k].file === file && fileSha1(target) === sha1);
+        if (same) {
+            unchanged.push(k);
+        } else {
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(target, pic.buf);
+            rememberHash(target, sha1);
+        }
+        idx[k] = { file, at: same ? old[k].at : now };
         keep.add(file);
     }
+
+    const entryKey = (e) => (e ? `${e.file || ''}|${e.path || ''}|${e.at || 0}` : '');
+    const changed = idx.screen !== (old.screen || null) || KINDS.some((k) => entryKey(idx[k]) !== entryKey(old[k]));
     // pictures of a kind the phone no longer has go
-    for (const f of fs.readdirSync(dir)) if (!keep.has(f)) { try { fs.unlinkSync(path.join(dir, f)); } catch (_) { /* gone */ } }
-    fs.writeFileSync(path.join(dir, 'index.json'), JSON.stringify(idx));
-    stamps.set(deviceId, idx.at);
-    return describe(globalResources, deviceId);
+    try {
+        for (const f of fs.readdirSync(dir)) {
+            if (keep.has(f)) continue;
+            try { fs.unlinkSync(path.join(dir, f)); } catch (_) { /* gone */ }
+            hashCache.delete(path.join(dir, f));
+        }
+    } catch (_) { /* no folder yet: nothing was ever stored */ }
+    if (changed) {
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'index.json'), JSON.stringify(idx));
+        stamps.set(deviceId, idx.at);
+    }
+    return { wallpapers: describe(globalResources, deviceId), changed, unchanged };
+}
+
+/** Store what the phone sent (storeDetailed); returns the stored set as URLs. */
+function store(globalResources, deviceId, body) {
+    return storeDetailed(globalResources, deviceId, body).wallpapers;
 }
 
 function mount(app, authMiddleware, globalResources) {
@@ -119,9 +237,23 @@ function mount(app, authMiddleware, globalResources) {
         if (!id) return;
         if (!isPhone(req, id)) { refuse(res, 403, 'NOT_DEVICE', 'Only the device itself sends its wallpapers.'); return; }
         try {
-            const out = store(globalResources, id, req.body);
-            try { activeSync.touchDevice(globalResources, ws(), id); } catch (_) { /* no broadcast */ }
-            res.json({ success: true, wallpapers: out });
+            const out = storeDetailed(globalResources, id, req.body);
+            // Device Center hears of new pictures only (an unchanged set is no news)
+            if (out.changed) { try { activeSync.touchDevice(globalResources, ws(), id); } catch (_) { /* no broadcast */ } }
+            res.json({ success: true, wallpapers: out.wallpapers, unchanged: out.unchanged });
+        } catch (err) {
+            refuse(res, 500, 'ERROR', err.message);
+        }
+    });
+
+    // before /:kind ('hashes' is no kind): what is stored, so the phone sends only what differs (#890)
+    app.get('/api/activesync/wallpapers/:deviceId/hashes', auth, (req, res) => {
+        const id = idOf(req, res);
+        if (!id) return;
+        if (!mayRead(req, id)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
+        res.set('Cache-Control', 'no-store');
+        try {
+            res.json({ success: true, hashes: hashes(globalResources, id) });
         } catch (err) {
             refuse(res, 500, 'ERROR', err.message);
         }
@@ -152,4 +284,4 @@ function mount(app, authMiddleware, globalResources) {
     });
 }
 
-module.exports = { mount, describe, store, stampOf, KINDS };
+module.exports = { mount, describe, store, storeDetailed, hashes, stampOf, KINDS };
