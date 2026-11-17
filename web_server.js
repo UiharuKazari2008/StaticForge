@@ -1092,6 +1092,10 @@ function buildServiceWorkerCacheManifestUncached() {
 
     // the animation frames the strips and the status atlas are built from: loaded by nobody (#774)
     const buildSourceArt = (webPath) => melatonPackages.packageOf(webPath) === 'source';
+    // Melaton Mobile's lighter install (#890) is not drawn here: a phone's set (the 'mobile' flag)
+    // leaves the Desktop Background photos, the Sidebar's art and the legacy font files out of its own
+    // manifest in manifestForPackages (assetPackages.js phoneOptional). They stay in this full list for
+    // the desktops, the core list the phones' Wi-Fi prefetch reads (sw.js) and the subset packs.
 
     const staticFiles = globalResources.getGlobalCacheData()
         .filter(file =>
