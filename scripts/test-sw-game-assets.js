@@ -19,7 +19,7 @@ assert.ok(start > 0 && end > start, 'the game asset block in sw.js');
 // the route leaves the media folder alone; a hit under vista-games is checked; activate drops old zips
 assert.ok(/if \(url\.pathname\.startsWith\(GAME_MEDIA_PREFIX\)\) \{\s*return false;/.test(src), 'media zips bypass the worker');
 assert.ok(/startsWith\(GAME_ASSET_PREFIX\) && event\.event\) \{\s*event\.event\.waitUntil\(revalidateGameAsset\(/.test(src), 'a game asset hit is revalidated');
-assert.ok(/perfSpan\('maintenance:tidyStaticRows', tidyStaticRows\)/.test(src), 'cache maintenance drops cached media zips');
+assert.ok(/perfSpan\('maintenance:tidyStaticRows', \(\) => tidyStaticRows\(force\)\)/.test(src), 'cache maintenance drops cached media zips');
 // tidyStaticRows (the cache upkeep block): the media zips go, the game's files stay
 const upkeepStart = src.indexOf('// ---------- cache upkeep');
 const upkeepEnd = src.indexOf('function runCacheMaintenance');
@@ -28,28 +28,69 @@ assert.ok(upkeepStart > 0 && upkeepEnd > upkeepStart, 'the cache upkeep block in
 function world(opts) {
     const calls = [];
     const rows = new Map(Object.entries(opts.rows || {}));
+    const internal = opts.internal || new Map();
+    let listings = 0;
     const cache = {
         put: async (key, res) => { calls.push('put ' + key); rows.set(key, res); },
-        keys: async () => Array.from(rows.keys()).map((k) => ({ url: 'http://x' + k })),
+        keys: async () => { listings += 1; return Array.from(rows.keys()).map((k) => ({ url: 'http://x' + k })); },
         delete: async (req) => { const k = new URL(req.url).pathname; calls.push('delete ' + k); return rows.delete(k); }
     };
+    // INTERNAL_CACHE: the tidy's mark
+    const internalCache = {
+        match: async (key) => internal.get(key),
+        put: async (key, res) => { internal.set(key, res); }
+    };
     const headers = (h) => ({ get: (n) => (h || {})[n.toLowerCase()] || null });
+    const sent = [];
     const ctx = {
-        Date, Map, Set, Promise, URL, console, decodeURI, perfLog: () => {},
-        STATIC_CACHE: 'static-cache-v2',
+        Date, Map, Set, Promise, URL, console, decodeURI, JSON, perfLog: () => {},
+        Response: class { constructor(body) { this.body = body; } json() { return Promise.resolve(JSON.parse(this.body)); } },
+        STATIC_CACHE: 'static-cache-v2', INTERNAL_CACHE: 'internal-cache-v1',
         self: { clients: { matchAll: async () => (opts.clients || []).map((u) => ({ url: 'http://x' + u })) } },
-        caches: { open: async () => cache },
+        caches: { open: async (name) => (name === 'internal-cache-v1' ? internalCache : cache) },
+        // the page's stored list (IndexedDB melatonCacheVerified), when the test gives one
+        indexedDB: opts.snapshot === undefined ? undefined : fakeIndexedDb(opts.snapshot),
         fetch: async (url, init) => {
             const method = (init && init.method) || 'GET';
             calls.push(method + ' ' + url);
-            if (method === 'OPTIONS' && opts.manifest) return { ok: true, json: async () => opts.manifest.map((u) => ({ url: u })) };
-            return { ok: true, headers: headers({ 'x-file-hash': opts.serverHash }) };
+            if (method === 'OPTIONS') sent.push((init && init.headers) || {});
+            if (method === 'OPTIONS' && opts.manifest) {
+                const digest = opts.digest || 'd1';
+                if (init && init.headers && init.headers['X-Manifest-Hash'] === digest) {
+                    return { ok: false, status: 304, headers: headers({ 'x-manifest-hash': digest }) };
+                }
+                return { ok: true, status: 200, headers: headers({ 'x-manifest-hash': digest }), json: async () => opts.manifest.map((u) => ({ url: u })) };
+            }
+            return { ok: true, status: 200, headers: headers({ 'x-file-hash': opts.serverHash }) };
         }
     };
     vm.createContext(ctx);
     vm.runInContext(src.slice(start, end) + src.slice(upkeepStart, upkeepEnd)
         + '\nthis.api = { revalidateGameAsset, tidyStaticRows, gameAssetChecked };', ctx);
-    return { api: ctx.api, calls, rows, cached: (hash) => ({ headers: headers({ 'x-file-hash': hash }) }) };
+    return { api: ctx.api, calls, rows, internal, sent, listings: () => listings, cached: (hash) => ({ headers: headers({ 'x-file-hash': hash }) }) };
+}
+
+// indexedDB.open(...) -> request whose onsuccess gives a db with store 'v' holding { manifest: snapshot }
+function fakeIndexedDb(snapshot) {
+    return {
+        open() {
+            const request = {};
+            setImmediate(() => {
+                request.result = {
+                    close() {},
+                    transaction() {
+                        return { objectStore() { return { get() {
+                            const g = {};
+                            setImmediate(() => { g.result = snapshot; if (g.onsuccess) g.onsuccess(); });
+                            return g;
+                        } }; } };
+                    }
+                };
+                if (request.onsuccess) request.onsuccess();
+            });
+            return request;
+        }
+    };
 }
 
 (async () => {
@@ -94,6 +135,28 @@ function world(opts) {
     await w.api.tidyStaticRows();
     assert.deepStrictEqual(Array.from(w.rows.keys()).sort(),
         ['/css/app.css', '/sounds/vista/Windows%20Ding.wav', URL1, '/static_images/vista-gadgets/clock/clock.html'].sort());
+
+    // #890: the page's stored list goes as X-Manifest-Hash; a 304 uses it (no body)
+    const snapshot = { hash: 'd1', n: manifest.length, urls: manifest.join('\n'), hashes: manifest.map(() => 'h').join('\n'), auth: [] };
+    w = world({ manifest, digest: 'd1', snapshot, rows: { '/css/app.css': 1, '/css/old.css': 1 } });
+    await w.api.tidyStaticRows();
+    assert.strictEqual(w.sent[0]['X-Manifest-Hash'], 'd1', 'the stored digest is sent');
+    assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css'], 'the 304 prunes against the stored list');
+    // the same manifest again within a week: no listing at all
+    const mark = w.internal;
+    w = world({ manifest, digest: 'd1', snapshot, internal: mark, rows: { '/css/app.css': 1, '/css/old.css': 1 } });
+    await w.api.tidyStaticRows();
+    assert.strictEqual(w.listings(), 0, 'an unchanged manifest is not listed again');
+    assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css', '/css/old.css']);
+    // ... unless forced (a package was removed), or the manifest changed
+    await w.api.tidyStaticRows(true);
+    assert.strictEqual(w.listings(), 1, 'forced: listed');
+    w = world({ manifest, digest: 'd2', snapshot, internal: mark, rows: { '/css/app.css': 1, '/css/old.css': 1 } });
+    await w.api.tidyStaticRows();
+    assert.strictEqual(w.listings(), 1, 'a new manifest: listed');
+    assert.ok(!w.sent[0]['X-Manifest-Hash'] || w.sent[0]['X-Manifest-Hash'] === 'd1');
+    // a stored list under another digest than the server's: the body is used
+    assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css']);
 
     console.log('test-sw-game-assets: ok');
 })().catch((err) => {
