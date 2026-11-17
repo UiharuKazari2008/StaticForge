@@ -166,15 +166,21 @@ function registerAndroidBackgroundNotificationManifest() {
             typeof location !== 'undefined' && location.origin
                 ? `${location.origin}/android/background-notification`
                 : '/android/background-notification';
-        abr.registerManifest(
-            JSON.stringify({
-                uri,
-                title: 'DreamScape',
-                body: '{{free}} Free / {{paid}} Paid Credits / {{daysLeft}} Days Left',
-                internal: false,
-                intervalMinutes: 15
-            })
-        );
+        const manifest = JSON.stringify({
+            uri,
+            title: 'DreamScape',
+            body: '{{free}} Free / {{paid}} Paid Credits / {{daysLeft}} Days Left',
+            internal: false,
+            intervalMinutes: 15
+        });
+        // the app keeps it in its own settings: handed over again only when it changed (every boot
+        // wrote the app's prefs and rescheduled its job, #890)
+        const KEY = 'androidBackgroundManifest';
+        let known = null;
+        try { known = localStorage.getItem(KEY); } catch (_) { known = null; }
+        if (known === manifest) return;
+        abr.registerManifest(manifest);
+        try { localStorage.setItem(KEY, manifest); } catch (_) { /* registered again next boot */ }
     } catch (error) {
         console.warn('AndroidBackgroundRefresh.registerManifest failed:', error);
     }
