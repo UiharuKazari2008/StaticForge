@@ -224,6 +224,8 @@
 
     <!-- the power-on self test behind the app's maker logo (#827): storage, IndexedDB, Cache Storage, the
          service worker, free space; the start below waits for it (melatonSelfTest.gate) -->
+    <!-- Reinstall (#903): /launch?reinstall=1 throws away the program files and installs them again first -->
+    <script src="/scripts/launch/programReinstall.js"></script>
     <script src="/scripts/launch/selfTest.js"></script>
     <!-- the client's asset packages (#774): the cookie that picks its manifest and install pack -->
     <script src="/scripts/launch/assetPackages.js"></script>
