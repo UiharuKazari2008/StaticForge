@@ -8019,6 +8019,8 @@
     }
 
     let todayBgKey = '';
+    let todayShownUrl = null; // the picture Today shows now (applyTodayBackground)
+    let todayBgRetry = false; // a picture that could not load, to try again on reconnect
 
     /**
      * The Today picture's effect (Settings > Today > Wallpaper, per workspace with the Today
@@ -8203,21 +8205,45 @@
                 shell.classList.toggle('has-wall65', !!u);
             }
         };
-        set(url);
+        // a new picture goes on once it has loaded: put on at once, the page showed the workspace's own
+        // background (white) under it and the picture faded in over that (Yukimi, Nov 17, #893); the same
+        // picture again (a forced redraw) stays as it is
+        const shown = todayShownUrl;
+        if (!url || url === shown) set(url);
+        if (!url) todayShownUrl = null;
         if (url) {
-            // a picture that no longer loads falls back to the workspace background;
             // Tile and Center need its pixel size
             const probe = new Image();
-            probe.onerror = () => { set(null); todayBgKey = ''; };
+            probe.onerror = () => {
+                if (todayBgKey !== key) return;
+                todayBgKey = '';
+                // only a picture the server says is gone falls back to the workspace background; while the
+                // server restarts or the network is down the picture shown stays, and is tried again once
+                // the connection is back (Today stayed white after a reconnect until Start redrew it)
+                fetch(url, { method: 'HEAD', credentials: 'same-origin', cache: 'no-store' })
+                    .then((r) => { if (r.status === 404 || r.status === 410) { set(null); todayShownUrl = null; } else todayBgRetry = true; })
+                    .catch(() => { todayBgRetry = true; });
+            };
             probe.onload = () => {
                 naturalSizes.set(url, { w: probe.naturalWidth, h: probe.naturalHeight });
-                if (todayBgKey === key && (placement.size === 'tile' || placement.size === 'center') && fx.effect !== 'blur') set(url);
+                if (todayBgKey !== key) return;
+                if (url !== todayShownUrl || ((placement.size === 'tile' || placement.size === 'center') && fx.effect !== 'blur')) set(url);
+                todayShownUrl = url;
             };
             // Blur: the blurred copy once it is drawn (the sharp picture until then)
-            if (fx.effect === 'blur') blurredPicture(url, fx.level).then((b) => { if (b && todayBgKey === key) set(url, b); });
+            if (fx.effect === 'blur') blurredPicture(url, fx.level).then((b) => { if (b && todayBgKey === key) { set(url, b); todayShownUrl = url; } });
             probe.src = url;
         }
     }
+    // the connection is back (a server restart, the network): a picture that could not load is tried again
+    function retryTodayBackground() { if (todayBgRetry) { todayBgRetry = false; applyTodayBackground(true); } }
+    (function hookTodayRetry(tries) {
+        const c = window.wsClient;
+        if (c && typeof c.on === 'function') { c.on('connected', retryTodayBackground); return; }
+        if (tries < 60) setTimeout(() => hookTodayRetry(tries + 1), 1000);
+    })(0);
+    window.addEventListener('online', retryTodayBackground);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) retryTodayBackground(); });
 
     /**
      * The picture Today shows for a gallery item: the whole picture as the server's full-size WebP
