@@ -2882,7 +2882,13 @@ class WebSocketClient {
                 const step = steps[i];
                 if (this.connectionPhase === 'auth' || !this.isConnected()) return false;
                 if (step._logonPhase && !step.runOnReconnect) continue;
-                this._setLogonInitStatus(step.message, i / steps.length);
+                // the desktop is already up (an offline boot that reconnected, #899): the logon stage is
+                // over - its put-off steps ran before the resync - and the Welcome screen stays away
+                if (this.initializationCompleted) {
+                    if (!step.runOnReconnect) continue;
+                } else {
+                    this._setLogonInitStatus(step.message, i / steps.length);
+                }
                 try {
                     const t0 = performance.now();
                     await step.stepFunction();

@@ -757,6 +757,14 @@ function _toastPolicyRoute(type, title, message, showProgress, buttons) {
     const phone = typeof window !== 'undefined' && window.uiShell === 'mobile';
     const hasButtons = Array.isArray(buttons) && buttons.length > 0;
     if (TOAST_NOISE_TITLE.test(t) || TOAST_NOISE_MESSAGE.test(m)) return { kind: 'drop' };
+    // Nightshade Network (#899): an offline boot's failures are what being offline means (the tray icon
+    // says it; the steps run again when the network is back), and after it "not connected" is the
+    // icon's to say - requests wait for the reconnection
+    const wsc = typeof window !== 'undefined' ? window.wsClient : null;
+    if (desktop && wsc && wsc._offlineBoot && !wsc.initializationCompleted && (type === 'error' || type === 'warning')) return { kind: 'drop' };
+    if (desktop && wsc && TOAST_NOT_CONNECTED.test(both) && typeof wsc.nightshadeState === 'function') {
+        try { if (wsc.nightshadeState().problem) return { kind: 'drop' }; } catch (_) { /* as before */ }
+    }
     if (phone && TOAST_PHONE_NOISE_TITLE.test(t)) return { kind: 'drop' };
     if (desktop && DESKTOP_POPUP_TOAST_TITLES.has(t)) return { kind: 'pass' };
     if (desktop) {
