@@ -173,8 +173,9 @@ function acceptMiniport(ws, req, info, connect) {
     }
     miniports.add(ws);
     const beat = setInterval(() => {
-        // missLimit 1: as before, the pong is due by the next tick
-        const action = hb.tickSocketHeartbeat(entry, 1, { windowMs: hb.quietWindowFor(ws, null) });
+        // missLimit 2 at 15 s ticks: as before, the pong is due within 30 s; keepaliveMs: never quiet
+        // towards the phone long enough for the proxy's idle cut (wsSocketHeartbeat.js KEEPALIVE_MS)
+        const action = hb.tickSocketHeartbeat(entry, 2, { windowMs: hb.quietWindowFor(ws, null), keepaliveMs: hb.KEEPALIVE_MS });
         if (action === 'terminate') { try { ws.terminate(); } catch (_) { /* gone */ } return; }
         if (action === 'ping') { try { ws.ping(); } catch (_) { /* closing */ } }
     }, hb.HEARTBEAT_INTERVAL_MS);
