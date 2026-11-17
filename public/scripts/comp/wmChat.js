@@ -2063,8 +2063,8 @@
         let tries = 0;
         const untilBound = () => { tmBind(); if (tmBound || ++tries > 40) return; setTimeout(untilBound, 3000); };
         if (!tmBound) setTimeout(untilBound, 3000);
-        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', tmBind);
-        document.addEventListener('wmAppChange', tmBind);
+        if (window.wsClient && typeof window.wsClient.on === 'function') window.wsClient.on('connected', tmBind, { signal: appScopeSignal });
+        document.addEventListener('wmAppChange', tmBind, { signal: appScopeSignal });
     }
 
     /** For wmShell (title bar glyph, Today's Messaging row, the status bubble). */
