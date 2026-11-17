@@ -9040,6 +9040,7 @@
                 if (!this.page) return;
                 if (current !== 'today' || !awake()) { this.stale = true; return; }
                 if (this._drawQueued) return; // the full draw takes them
+                if (this.stale) { this.refresh(); return; } // a Today missed while away draws in full
                 if (!this._itemsQueued) {
                     this._itemsQueued = { ids: new Set(), clock: false };
                     requestAnimationFrame(() => this.paintItems());
