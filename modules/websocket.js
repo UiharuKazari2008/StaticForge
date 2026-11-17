@@ -8,7 +8,8 @@ const {
     reapSocketHeartbeats,
     quietWindowFor,
     watchSocketFrames,
-    formatWsDisconnectLog
+    formatWsDisconnectLog,
+    isDormantPage
 } = require('./wsSocketHeartbeat');
 
 // held for a dormant phone page: 'last' keeps the newest only, 'path' one per folder, 'all' every one in order
@@ -90,6 +91,7 @@ const PHONE_ONLY_TYPES = new Set(['lapis_updated', 'lapis_notice', 'traffic_upda
 function isPhonePage(info) {
     return !!(info && info.phone && info.phone.shell === 'mobile');
 }
+
 
 /**
  * A page running the desktop shell: a desktop tab or a phone's DeX window. Only that shell reports
@@ -861,10 +863,10 @@ class WebSocketServer {
     // ---- Dormant phone pages (rule server-push-not-polling; the phone reports its screen off or the
     // app behind another, client_dormant): status pushes that nothing waits on are held while it
     // sleeps and delivered when it wakes, newest state only where that is all the page uses. Replies
-    // (requestId), texts, mail and Director events are never held.
+    // (requestId), texts, mail and Director events are never held. A phone's DeX window that says it
+    // sleeps (client_dormant dex: 1, #890 P18) is held for the same way.
     _isDormantPhone(ws) {
-        const info = this.clients.get(ws);
-        return !!(info && info.dormant && info.phone && info.phone.shell === 'mobile');
+        return isDormantPage(this.clients.get(ws));
     }
 
     /** True when the message was held for a dormant phone page (sent later by setDormant(ws, false)). */
@@ -920,7 +922,7 @@ class WebSocketServer {
         if (was !== !!on) {
             const ua = String(info.userAgent || '');
             const device = /SM-F9\d\d/.test(ua) ? 'Fold' : /SM-A53/.test(ua) ? 'A53' : (/Android/.test(ua) ? 'Android' : 'other');
-            console.log(`📱 ${on ? 'asleep' : 'awake'} ${device} ip=${info.ip || info.clientIP || '?'}${on ? '' : ` held=${held ? held.size : 0}`}${why ? ` (${why})` : ''}`);
+            console.log(`📱 ${on ? 'asleep' : 'awake'} ${device}${info.dexWindow ? ' DeX' : ''} ip=${info.ip || info.clientIP || '?'}${on ? '' : ` held=${held ? held.size : 0}`}${why ? ` (${why})` : ''}`);
         }
         if (on) return;
         if (!held) return;
@@ -1210,7 +1212,7 @@ class WebSocketServer {
     }
 
     sendToUser(sessionId, message) {
-        const to = [];
+        let to = [];
         const type = message && message.type;
         // a packet with a requestId may be a reply routed to the whole session (sendToRequest): a light
         // client still gets it (its own request's answer)
@@ -1220,7 +1222,14 @@ class WebSocketServer {
             if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN
                 && ((reply && clientInfo.light) || socketWantsBroadcast(clientInfo, type, true))) to.push(client);
         });
-        require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this.sendToClient(ws, payload));
+        // the dormant hold is decided per socket before the Continuity copies are put together, as in
+        // broadcast(): a sleeping DeX window leaves its carrier's copy (sendCoalesced), and a sleeping
+        // phone page's held copy no longer takes the awake DeX window's _cc with it
+        if (message && DORMANT_HOLD.has(type) && !reply) {
+            const sleeping = new Set(to.filter((ws) => this._isDormantPhone(ws) && this._dormantHold(ws, message)));
+            if (sleeping.size) to = to.filter((ws) => !sleeping.has(ws));
+        }
+        require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this._sendNow(ws, payload));
     }
     
     /**
