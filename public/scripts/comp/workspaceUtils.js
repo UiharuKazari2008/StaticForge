@@ -1473,6 +1473,12 @@ const MAX_BACKGROUND_FAIL_COUNT = 3;
 // Update automatic background with next gallery image
 async function updateAutomaticBackground() {
     if (backgroundTransitionInProgress) return;
+    // out of sight (a hidden page, a phone's screen off: html[data-screen-off]) nothing is redrawn or
+    // cached; the newest print is looked at again when the page is back (#890)
+    if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) {
+        updateAutomaticBackground.waitForShow();
+        return;
+    }
 
     try {
         // Get the first non-placeholder image from the gallery
@@ -1518,6 +1524,22 @@ async function updateAutomaticBackground() {
         }
     }
 }
+
+/** One look when the page is back in sight (its screen on, its tab shown), then the listeners go. */
+updateAutomaticBackground.waitForShow = function () {
+    const update = updateAutomaticBackground;
+    if (update.waiting) return;
+    update.waiting = true;
+    const onShow = () => {
+        if (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined) return;
+        document.removeEventListener('visibilitychange', onShow);
+        window.removeEventListener('melatonscreen', onShow);
+        update.waiting = false;
+        void update();
+    };
+    document.addEventListener('visibilitychange', onShow);
+    window.addEventListener('melatonscreen', onShow);
+};
 
 // Get the first non-placeholder image from the gallery
 function getFirstGalleryImage() {

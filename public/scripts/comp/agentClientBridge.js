@@ -1478,7 +1478,11 @@
             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchStudio, { once: true });
             else watchStudio();
         }
-        setInterval(() => { watchConnectionFields(); announceDesktopState(false); }, 60000);
+        // a phone out of sight or with its screen off skips the net (#890): what it reads changes only
+        // with the events above, and the first minute back looks again
+        const phoneAsleep = () => window.uiShell === 'mobile'
+            && (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined);
+        setInterval(() => { if (phoneAsleep()) return; watchConnectionFields(); announceDesktopState(false); }, 60000);
         if (!hookConnected()) {
             const timer = setInterval(() => { if (hookConnected()) { clearInterval(timer); watchConnectionFields(); } }, 500);
         }
