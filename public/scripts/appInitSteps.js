@@ -264,25 +264,25 @@ if (window.wsClient) {
     }
 
     async function loadPromptTokenizers() {
+        // Melaton Mobile (#890): only the open model's tokenizer. Both stayed for the life of the page
+        // after the first Studio open (Qwen's tables ~65 MB of heap, T5 ~10 MB) although a phone writes
+        // for one model at a time; the other loads the first time something asks for it
+        // (ensurePromptTokenizerForModel, utilities.js: Qwen and T5 alike).
+        if (phoneShell()) {
+            const model = typeof getCurrentSelectedModel === 'function' ? getCurrentSelectedModel() : 'v5';
+            try {
+                return !!(await ensurePromptTokenizerForModel(model || 'v5'));
+            } catch (error) {
+                console.error('❌ Failed to load the prompt tokenizer:', error);
+                return false;
+            }
+        }
         // ensurePromptTokenizerForModel: public/scripts/comp/utilities.js
         // V5 (boot default) uses Qwen; start it while T5 JSON loads so the toolbar has a tokenizer.
         const qwenReady = ensurePromptTokenizerForModel('v5');
-        let t5Ok = false;
-        try {
-            // published only once loaded: while it loads in the background (phone) a reader sees none
-            const tokenizer = new T5Tokenizer();
-
-            // Load tokenizer configuration from protected folder
-            const response = await fetch('/protected/t5_tokenizer.json');
-            const config = await response.json();
-            await tokenizer.loadFromJSON(config);
-            t5Tokenizer = tokenizer;
-
-            console.log('✅ T5 Tokenizer loaded successfully');
-            t5Ok = true;
-        } catch (error) {
-            console.error('❌ Failed to load T5 tokenizer:', error);
-        }
+        // T5: published only once loaded; null when it could not load (logged there)
+        const t5Ok = !!(await ensurePromptTokenizerForModel(null, 't5'));
+        if (t5Ok) console.log('✅ T5 Tokenizer loaded successfully');
 
         try {
             await qwenReady;
