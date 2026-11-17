@@ -742,7 +742,8 @@
                 const layers = sh.barsPopupLayers().filter((l) => !l.classList.contains('wm-notify-scrim') && (role === 'notify' || !l.classList.contains('wm-notify')));
                 // written down as it ends up, not mid-way through its fade (WM 6.1's notification fades in)
                 settle(layers);
-                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
+                // pw: the width it was laid out at (the app moves it on a turned screen)
+                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr), pw: Math.round(window.innerWidth * dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
         try { sh.barsPopupClose(); } catch (_) { /* none open */ }
@@ -1281,7 +1282,7 @@
                     if (now.length) {
                         const items = layoutOf(now, window.devicePixelRatio || 1);
                         result = 'popup';
-                        const layout = { role, items };
+                        const layout = { role, items, pw: Math.round(window.innerWidth * (window.devicePixelRatio || 1)) };
                         const sk = softLabels();
                         if (sk) layout.soft = sk;
                         sh.barsPopupClose();
