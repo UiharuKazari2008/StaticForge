@@ -20,6 +20,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const MOBILE = window.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
     if (!MOBILE) return;
@@ -376,9 +377,9 @@
         if (++tickN % 15 === 0 && ws && typeof ws.refreshToday === 'function') { todayHtml = ''; ws.refreshToday(); }
         if (left <= 0) changed();
     }
-    document.addEventListener('visibilitychange', tick);
-    window.addEventListener('melatonscreen', tick);
-    document.addEventListener('wmBehind', tick);
+    document.addEventListener('visibilitychange', tick, { signal: appScopeSignal });
+    window.addEventListener('melatonscreen', tick, { signal: appScopeSignal });
+    document.addEventListener('wmBehind', tick, { signal: appScopeSignal });
 
     // ---------------------------------------------------------------- commands
 

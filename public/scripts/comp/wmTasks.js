@@ -36,6 +36,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -1044,9 +1045,9 @@
             softKeys
         });
         document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); });
-        window.addEventListener('melatonscreen', printWake);
-        document.addEventListener('visibilitychange', printWake);
-        document.addEventListener('wmBehind', printWake);
+        window.addEventListener('melatonscreen', printWake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', printWake, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', printWake, { signal: appScopeSignal });
     }
 
     if (window.wmShell) register();

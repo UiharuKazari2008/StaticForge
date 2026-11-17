@@ -32,6 +32,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -724,9 +725,9 @@
         document.addEventListener('keydown', onKey);
         // the clock (and timed scoring) stops while the game is not seen: it counted on with the screen off
         const onSeen = () => { if (!page) return; if (away()) { stopTimer(); save(); } else startTimer(); };
-        document.addEventListener('visibilitychange', onSeen);
-        window.addEventListener('melatonscreen', onSeen);
-        document.addEventListener('wmBehind', onSeen);
+        document.addEventListener('visibilitychange', onSeen, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', onSeen, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', onSeen, { signal: appScopeSignal });
         ws.registerApp({
             id: APP_ID,
             title: 'Solitaire',

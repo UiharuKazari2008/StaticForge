@@ -38,6 +38,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -948,9 +949,9 @@
         else if (!want && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
     }
     const progressWake = () => { if (wasGenerating || progressTimer) syncGenerating(); };
-    window.addEventListener('melatonscreen', progressWake);
-    document.addEventListener('visibilitychange', progressWake);
-    document.addEventListener('wmBehind', progressWake);
+    window.addEventListener('melatonscreen', progressWake, { signal: appScopeSignal });
+    document.addEventListener('visibilitychange', progressWake, { signal: appScopeSignal });
+    document.addEventListener('wmBehind', progressWake, { signal: appScopeSignal });
 
     function syncGenerating() {
         const now = generating();

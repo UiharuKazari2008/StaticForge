@@ -25,6 +25,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const root = document.documentElement;
     if (root.dataset.wmVersion !== '6.5' || !root.classList.contains('ui-mobile')) return;
@@ -263,9 +264,9 @@
         else if (!on && tick) { clearInterval(tick); tick = 0; }
     }
     const wake = () => { if (!locked) return; syncTick(); if (tick) paint(); };
-    window.addEventListener('melatonscreen', wake);
-    document.addEventListener('visibilitychange', wake);
-    document.addEventListener('wmBehind', wake);
+    window.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
+    document.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
+    document.addEventListener('wmBehind', wake, { signal: appScopeSignal });
 
     // ---------------------------------------------------------------- keys and the back button
 

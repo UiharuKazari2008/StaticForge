@@ -65,6 +65,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -2180,8 +2181,8 @@
         });
         waitForDirector();
         const wake = () => { if (shown && isCurrent()) waitForDirector(); };
-        window.addEventListener('melatonscreen', wake);
-        document.addEventListener('visibilitychange', wake);
+        window.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
         patchContextMenu();
         window.addEventListener('wmDirectorPrefsChange', () => { if (page) { paintPrints(); if (isCurrent()) ws.refreshSoftKeys(); } });
         // the soft keys follow the Director (a turn starts or ends, a chat opens)

@@ -38,6 +38,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const MOBILE = window.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
     if (!MOBILE) return;
@@ -745,8 +746,8 @@
         wireTabs();
         // its animations stop while the page is hidden or the screen is off (the page is not hidden then)
         const paused = () => { if (els) els.root.classList.toggle('is-paused', !screenOn()); };
-        document.addEventListener('visibilitychange', paused);
-        window.addEventListener('melatonscreen', paused);
+        document.addEventListener('visibilitychange', paused, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', paused, { signal: appScopeSignal });
     }
 
     // The tab strip: a tap picks a tab; a drag carries the glass slider and drops it on the nearest one.

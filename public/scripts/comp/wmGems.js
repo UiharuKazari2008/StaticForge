@@ -20,6 +20,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -1156,9 +1157,9 @@
             awayPaused = false;
             if (page && !page.hidden && view === 'main' && G && G.paused) resume();
         };
-        document.addEventListener('visibilitychange', onSeen);
-        window.addEventListener('melatonscreen', onSeen);
-        document.addEventListener('wmBehind', onSeen);
+        document.addEventListener('visibilitychange', onSeen, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', onSeen, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', onSeen, { signal: appScopeSignal });
     }
 
     // tests

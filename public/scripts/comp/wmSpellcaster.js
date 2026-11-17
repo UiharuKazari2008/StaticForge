@@ -23,6 +23,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -469,9 +470,9 @@
         // the screen on again (or the page back from another app): the stage as it is now, its clock going
         // again; not seen: the clock stops
         const wake = () => { if (stageSeen()) renderStage(); else syncTick(); };
-        window.addEventListener('melatonscreen', wake);
-        document.addEventListener('visibilitychange', wake);
-        document.addEventListener('wmBehind', wake);
+        window.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', wake, { signal: appScopeSignal });
         sh.registerApp({
             id: APP_ID,
             title: TITLE,
