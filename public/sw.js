@@ -2833,23 +2833,86 @@ const MAINTENANCE_KEY = '/internal/sw-maintenance-v1';
 const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Fetched on demand and never in the manifest: kept by the leftover prune
 const ON_DEMAND_STATIC_PREFIXES = () => [GAME_ASSET_PREFIX, GADGET_ASSET_PREFIX, '/data/vista-gadgets.json'];
+// The manifest digest of the last full pass and when it ran: the same list again prunes nothing new
+const TIDY_MARK_KEY = '/internal/sw-tidy-v1';
+const TIDY_RELIST_MS = 7 * 24 * 60 * 60 * 1000;
 let maintenanceRun = null;
 
 function decodedPath(pathname) {
   try { return decodeURI(pathname); } catch (_) { return pathname; }
 }
 
+// The page's copy of the manifest it last found the cache in sync with (updateEngine.js and
+// serviceWorkerManager.js: IndexedDB melatonCacheVerified, store 'v', key 'manifest', the URLs and
+// hashes packed under that digest). Opened with the pages' own version and store, closed at once.
+const PAGE_MANIFEST_DB = 'melatonCacheVerified';
+function readPageManifestSnapshot() {
+  if (typeof indexedDB === 'undefined' || !indexedDB) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let opened;
+    try {
+      opened = indexedDB.open(PAGE_MANIFEST_DB, 1);
+    } catch (_) {
+      resolve(null);
+      return;
+    }
+    opened.onupgradeneeded = () => { try { opened.result.createObjectStore('v'); } catch (_) { /* there */ } };
+    opened.onerror = () => resolve(null);
+    opened.onblocked = () => resolve(null);
+    opened.onsuccess = () => {
+      const db = opened.result;
+      const done = (value) => { try { db.close(); } catch (_) { /* closed */ } resolve(value); };
+      try {
+        const get = db.transaction('v').objectStore('v').get('manifest');
+        get.onsuccess = () => done(get.result || null);
+        get.onerror = () => done(null);
+      } catch (_) {
+        done(null);
+      }
+    };
+  });
+}
+
+/**
+ * This client's manifest: { paths, digest } or null. It sends the digest of the list the page keeps,
+ * so an unchanged manifest is a bodyless 304 and that list is used; without one it was the whole
+ * manifest (~130 KB gzip) every day.
+ */
 async function fetchManifestPaths() {
+  let known = null;
   try {
-    const response = await fetch('/', {
-      method: 'OPTIONS',
-      cache: 'no-store',
-      headers: { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker' }
-    });
-    if (!response.ok) return null;
-    const files = await response.json();
-    if (!Array.isArray(files) || files.length < 100) return null;
-    return new Set(files.map((file) => decodedPath(String(file.url || '').split('?')[0])));
+    const packed = await readPageManifestSnapshot();
+    if (packed && packed.hash && typeof packed.urls === 'string' && packed.n > 0) known = packed;
+  } catch (_) {
+    known = null;
+  }
+  try {
+    const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker' };
+    if (known) headers['X-Manifest-Hash'] = known.hash;
+    const response = await fetch('/', { method: 'OPTIONS', cache: 'no-store', headers });
+    const digest = (response.headers && typeof response.headers.get === 'function' && response.headers.get('X-Manifest-Hash')) || '';
+    let urls = null;
+    if (response.status === 304 && known) {
+      urls = known.urls.split('\n');
+      if (urls.length !== known.n) return null;
+    } else if (response.ok) {
+      const files = await response.json();
+      if (!Array.isArray(files)) return null;
+      urls = files.map((file) => String((file && file.url) || ''));
+    } else {
+      return null;
+    }
+    if (urls.length < 100) return null;
+    return { paths: new Set(urls.map((url) => decodedPath(url.split('?')[0]))), digest };
+  } catch (_) {
+    return null;
+  }
+}
+
+async function readTidyMark(internal) {
+  try {
+    const hit = await internal.match(TIDY_MARK_KEY);
+    return hit ? await hit.json() : null;
   } catch (_) {
     return null;
   }
@@ -2858,12 +2921,22 @@ async function fetchManifestPaths() {
 /**
  * One listing of the static cache: Setup's game media zips (about 27 MB a client, unpacked and
  * never read again), unhashed rows sharing a path with a hashed one (a query or Vary sibling),
- * and rows the manifest no longer lists (on-demand game and gadget files stay).
+ * and rows the manifest no longer lists (on-demand game and gadget files stay). The manifest the
+ * last pass ran on, again, within a week: no listing (nothing can have left it), unless forced (a
+ * package was removed).
  */
-async function tidyStaticRows() {
+async function tidyStaticRows(force = false) {
+  const manifest = await fetchManifestPaths();
+  const internal = await caches.open(INTERNAL_CACHE);
+  if (!force && manifest && manifest.digest) {
+    const mark = await readTidyMark(internal);
+    if (mark && mark.digest === manifest.digest && Date.now() - (Number(mark.at) || 0) < TIDY_RELIST_MS) {
+      perfLog(`maintenance static rows: manifest as at the last pass, not listed`);
+      return;
+    }
+  }
   const cache = await caches.open(STATIC_CACHE);
   const keys = await cache.keys();
-  const manifest = await fetchManifestPaths();
   const onDemand = ON_DEMAND_STATIC_PREFIXES();
   const byPath = new Map();
   const drop = [];
@@ -2878,7 +2951,7 @@ async function tidyStaticRows() {
       drop.push(request);
       continue;
     }
-    if (manifest && !manifest.has(decodedPath(pathname)) && !onDemand.some((prefix) => pathname.startsWith(prefix))) {
+    if (manifest && !manifest.paths.has(decodedPath(pathname)) && !onDemand.some((prefix) => pathname.startsWith(prefix))) {
       drop.push(request);
       continue;
     }
@@ -2899,7 +2972,12 @@ async function tidyStaticRows() {
   for (const request of drop) {
     await cache.delete(request, { ignoreVary: true });
   }
-  perfLog(`maintenance static rows=${keys.length} dropped=${drop.length} manifest=${manifest ? manifest.size : 'none'}`);
+  if (manifest && manifest.digest) {
+    await internal.put(TIDY_MARK_KEY, new Response(JSON.stringify({ digest: manifest.digest, at: Date.now() }), {
+      headers: { 'content-type': 'application/json' }
+    }));
+  }
+  perfLog(`maintenance static rows=${keys.length} dropped=${drop.length} manifest=${manifest ? manifest.paths.size : 'none'}`);
 }
 
 function runCacheMaintenance(force = false) {
@@ -2910,7 +2988,7 @@ function runCacheMaintenance(force = false) {
     const last = mark ? Number(await mark.text()) || 0 : 0;
     if (!force && Date.now() - last < MAINTENANCE_INTERVAL_MS) return;
     await perfSpan('maintenance:dropMislabelledStaticRows', dropMislabelledStaticRows);
-    await perfSpan('maintenance:tidyStaticRows', tidyStaticRows);
+    await perfSpan('maintenance:tidyStaticRows', () => tidyStaticRows(force));
     // the same one-at-a-time slot as the hit-driven runs
     if (imagePolicyRun) await imagePolicyRun;
     imagePolicyRun = perfSpan('maintenance:imagePolicy', () => enforceImageCachePolicyNow({ reconcile: true }));
