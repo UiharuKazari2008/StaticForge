@@ -3,15 +3,33 @@ const path = require('path');
 const WebSocket = require('ws');
 const wsPacketRegistry = require('../wsPacketRegistry');
 const siteAccess = require('../../siteAccess');
+const statusHub = require('../statusHub');
+const hardwareSensors = require('../../hardwareSensors');
 
 // Server Manager (Yozora #831 slice 5; public/scripts/comp/mmcServerManager.js): the root page's
-// Server Summary. Read only; signed-in administrators.
+// Server Summary, and the Hardware and Sensors feed (#896). Read only; signed-in administrators.
 //
 //   server_manager_summary -> { host, platform, version, osUptimeSec, processUptimeSec, startedAt,
 //                               clients: { sessions, signedIn, desktops, phones, devices },
 //                               frontGate: { enabled, cover } }
 
 const isAdmin = (info) => !!info && info.authenticated !== false && (info.userType === 'admin' || info.userType === 'dev_admin');
+
+// Hardware and Sensors (Yozora #896): the hwmon readings, read here every 5 s while the snap-in shows
+// and pushed only when a reading changed (statusHub, rule server-push-not-polling). Administrators.
+// items: { <sensor id>: row } (modules/hardwareSensors.js), plus '#host'
+statusHub.define({
+    name: 'hardware_sensors',
+    pushType: 'hardware_sensors_status',
+    intervalMs: 5000,
+    allow: isAdmin,
+    async sample() {
+        const r = hardwareSensors.read();
+        const items = { '#host': r.host };
+        for (const row of r.sensors) items[row.id] = row;
+        return items;
+    }
+});
 
 let version = null;
 function serverVersion() {
