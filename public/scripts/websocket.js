@@ -1285,6 +1285,9 @@ class WebSocketClient {
         this.websocketIndicators = [];
         /** Cached visible arrow elements for traffic flash (see _refreshWsFlashTargets). */
         this._wsFlashTargets = [];
+        // what the service worker was last told (NETWORK_ACTIVITY_OPT_OUT, _syncNetworkActivityOptOut): a
+        // new window starts opted in
+        this._netActivityOffSent = false;
         this._wsFlashPendingUp = null;
         this._wsFlashPendingDown = null;
         this._httpFlashPendingUp = null;
@@ -10495,6 +10498,26 @@ class WebSocketClient {
             || targets.some((t, i) => this._wsFlashTargets[i].arrow !== t.arrow);
         this._wsFlashTargets = targets;
         if (changed && (this._httpStreamUpActive || this._httpStreamDownActive)) this._syncHttpStreamClasses();
+        this._syncNetworkActivityOptOut(false);
+    }
+
+    /**
+     * The service worker's NETWORK_ACTIVITY goes only to windows with an arrow on screen (#890): with
+     * none (Melaton Mobile outside its connection dialogs, a desktop whose tray hides the arrows) every
+     * message would be dropped on arrival (flashHttpTrafficArrow), so the window opts out
+     * (sw.js NETWORK_ACTIVITY_OPT_OUT { off }) and opts in again when one shows. force: say it again
+     * (a new controller, controllerchange at the bottom of this file).
+     */
+    _syncNetworkActivityOptOut(force) {
+        const off = !Array.isArray(this._wsFlashTargets) || this._wsFlashTargets.length === 0;
+        if (!force && off === this._netActivityOffSent) return;
+        const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null;
+        const controller = sw && sw.controller;
+        if (!controller) return; // no worker controls the page: said when one does (controllerchange)
+        try {
+            controller.postMessage({ type: 'NETWORK_ACTIVITY_OPT_OUT', off });
+            this._netActivityOffSent = off;
+        } catch (_) { /* the worker is going: the next controller is told */ }
     }
 
     // At most one refresh per WS_FLASH_REFRESH_MIN_MS, the last change always followed by one (#817).
@@ -11634,6 +11657,16 @@ window.wsClient = new WebSocketClient();
     document.addEventListener('keydown', touched, { capture: true, passive: true });
     // a new socket starts awake on the server: say it again only when sleeping
     c.on('connected', () => { sent = false; if (dormant()) tell(true); });
+})();
+
+// A new service worker controls the page (an update, or the first install): it is told whether this
+// window draws network arrows (NETWORK_ACTIVITY_OPT_OUT, wsClient._syncNetworkActivityOptOut, #890).
+(function networkActivityOptOutOnControllerChange() {
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
+    const c = window.wsClient;
+    const sw = typeof navigator !== 'undefined' ? navigator.serviceWorker : null;
+    if (!c || !sw || typeof sw.addEventListener !== 'function') return;
+    sw.addEventListener('controllerchange', () => c._syncNetworkActivityOptOut(true), { signal: appScopeSignal });
 })();
 
 // Export for module use
