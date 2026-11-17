@@ -154,6 +154,7 @@
     let L = null; // layout
     let raf = 0;
     let anim = null; // { at, r } while tiles move
+    let cut = null; // a move that ends the game or makes the goal, its animation cut by hide(): its end comes on show
     let fx = []; // the light of joins in flight: { cell, at, color, big }
     let press = null;
     let audio = null;
@@ -228,9 +229,20 @@
     }
 
     function settle() {
-        if (!anim) return;
+        if (!anim) { endCut(); return; }
         const r = anim.r;
         anim = null;
+        afterMove(r);
+    }
+
+    /**
+     * A move whose animation hide() cut (the screen went off mid-slide): what it ends with (Game Over,
+     * the goal's question) comes now, the game on screen again.
+     */
+    function endCut() {
+        if (!cut || busyBox) return;
+        const r = cut;
+        cut = null;
         afterMove(r);
     }
 
@@ -256,7 +268,8 @@
         if (r.over) {
             prev = null;
             const won = G.won;
-            const high = record();
+            // (a game hide() already put into the statistics keeps the high score it made there)
+            const high = record() || r.high === true;
             save();
             sound(won ? 'win' : 'over');
             busyBox = true;
@@ -779,7 +792,7 @@
         if (v === 'options') renderOptions();
         if (v === 'stats') renderStats();
         if (v === 'about') renderAbout();
-        if (v === 'main') requestAnimationFrame(() => { layout(); renderStatus(); });
+        if (v === 'main') requestAnimationFrame(() => { layout(); renderStatus(); endCut(); });
         ws.refreshTitleAction();
         ws.refreshSoftKeys();
     }
@@ -894,13 +907,18 @@
     }
 
     function show() {
-        if (view === 'main') requestAnimationFrame(() => { sprites.clear(); layout(); renderStatus(); });
+        if (view === 'main') requestAnimationFrame(() => { sprites.clear(); layout(); renderStatus(); endCut(); });
     }
 
     function hide() {
         // an animation in flight ends at once (a game that just ended still goes into the statistics;
-        // its board is there, finished, on the way back)
-        if (anim) { const r = anim.r; anim = null; if (r.over) record(); }
+        // its board is there, finished, on the way back, with its Game Over or goal box: endCut)
+        if (anim) {
+            const r = anim.r;
+            anim = null;
+            if (r.over) r.high = record();
+            if (r.over || r.reached) cut = r;
+        }
         fx = [];
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         save();
@@ -939,17 +957,24 @@
             onTitleOk: () => (view === 'main' ? false : backToGame(true)),
             historyDepth: () => (view === 'main' ? 0 : 1),
             onBack: () => (view === 'main' ? false : backToGame(view !== 'options')),
-            onEnd() { hide(); view = 'main'; page = null; cv = null; ctx = null; L = null; },
+            onEnd() { hide(); cut = null; view = 'main'; page = null; cv = null; ctx = null; L = null; },
             softKeys
         });
         document.addEventListener('keydown', onKey);
         // not seen (the page hidden, the screen off - the page is not hidden then -, behind an Android
-        // program): what moves ends and the game is kept
+        // program): what moves ends and the game is kept. Seen again in front: the board drawn as it is
+        // now (a slide the screen cut stopped mid-way on the canvas) and the end of that move (show)
         const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
-        const onAway = () => { if (away()) hide(); };
-        document.addEventListener('visibilitychange', onAway);
-        window.addEventListener('melatonscreen', onAway);
-        document.addEventListener('wmBehind', onAway);
+        let wasAway = false;
+        const onSeen = () => {
+            if (away()) { if (page) { hide(); wasAway = true; } return; }
+            if (!wasAway) return;
+            wasAway = false;
+            if (page && !page.hidden && ws.current === APP_ID) show();
+        };
+        document.addEventListener('visibilitychange', onSeen);
+        window.addEventListener('melatonscreen', onSeen);
+        document.addEventListener('wmBehind', onSeen);
     }
 
     // tests
