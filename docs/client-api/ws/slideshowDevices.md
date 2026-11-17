@@ -23,7 +23,7 @@ MCP `list_clients` still list them with `kind`, `name`, `deviceId`, `bindable: f
 
 | Request type | Response | Notes |
 |---|---|---|
-| `client_identify` | `client_identify_response` | `data: { kind, deviceId, name, app, model, os, display: { width, height, orientation }, settings, deviceConfig?, gadgets? }` -> `{ success, deviceId, name, settings? }`. Send after every connect. `kind` must be `slideshow` (else error `BAD_DEVICE_KIND`); `deviceId` 12 hex (`BAD_DEVICE_ID`). Strings are clamped to 64 characters. The reply's `settings` holds only what Control Panel changed while the device was offline (apply and persist the keys you know); `name` is the stored name (a Control Panel rename wins). Both are cleared once sent. `deviceConfig` / `gadgets`: see [Device-specific settings and gadgets](#device-specific-settings-and-gadgets); device settings Control Panel changed while the device was offline follow the reply as a `set_device_config` command. |
+| `client_identify` | `client_identify_response` | `data: { kind, deviceId, name, app, model, os, display: { width, height, orientation }, settings, deviceConfig?, gadgets? }` -> `{ success, deviceId, name, settings?, screenWatch }` (`screenWatch`: whether anyone looks at its live screen now, see [Live screen watch](#live-screen-watch-890-p16)). Send after every connect. `kind` must be `slideshow` (else error `BAD_DEVICE_KIND`); `deviceId` 12 hex (`BAD_DEVICE_ID`). Strings are clamped to 64 characters. The reply's `settings` holds only what Control Panel changed while the device was offline (apply and persist the keys you know); `name` is the stored name (a Control Panel rename wins). Both are cleared once sent. `deviceConfig` / `gadgets`: see [Device-specific settings and gadgets](#device-specific-settings-and-gadgets); device settings Control Panel changed while the device was offline follow the reply as a `set_device_config` command. |
 | `client_device_state` | none | `data: { deviceId, state, showing, since, mode?, face?, scheduleEntry?, rotation?, posture?, profile? }`. Fire-and-forget on every slide and state change. `state`: `showing`, `paused`, `offline_cache`, `signin_needed`, `stopped`. `showing`: one to four gallery filenames, in the order laid out. `rotation` is `0`, `90`, `180` or `270` (anything else is stored as `0`). `posture` is `"open"`, `"closed"` or `null`. `profile` is a string of at most 64 characters. A packet that omits one of those three keeps the previous value. Send `stopped` when the screensaver ends; the socket's close marks the device offline. Ignored before `client_identify`. A gadget device adds `mode` (`slideshow` or `clock`, what is on screen), `face` (the clock face while `mode` is `clock`, else `null`) and `scheduleEntry` (the active time frame's index, or `null`); it sends the state again whenever a time frame starts or ends, and the stored `gadgets` follow it. |
 | `client_device_config` | none | `data: { deviceId, deviceConfig, gadgets }`. Fire-and-forget whenever the device's own values change (a command, the device's own settings page, a restart). Replaces the stored copy and refreshes Control Panel (`devices_updated`). Ignored before `client_identify` or for another device's id. |
 | `client_device_preview` | none | `data: { deviceId, version, model, width, height, frame, mask, screen: { x, y, width, height, sourceWidth, sourceHeight }, shape? }`. Fire-and-forget, once per connection after `client_identify`. See [Device preview](#device-preview-physical-representation). |
@@ -139,6 +139,18 @@ thumbnail fills the same quad (`/previews/<base>.webp`). Without a preview, the 
 | `rename` | `name` | persist the new name |
 | `set_device_config` | `config` | `{ key: value }`, only the keys to change; validate against the device's own schema, apply the valid ones, ack with `applied` / `rejected` / `restarting`, then send `client_device_config` |
 | `set_mode` | `mode`, `face?` | the same as `set_device_config` `{ mode, clockFace }`; always live; sets the manual choice (an active time frame still wins) |
+| `screen_watch` | `on` | sent by the server itself (not a Control Panel command): `true` when the first viewer of the device's live screen comes, `false` when the last one goes. A device that knows it sends `client_device_screen` captures only while `on` (and one at once when it turns on); one that does not ignores it and sends as before. Ack as any command |
+
+### Live screen watch (#890 P16)
+
+Captures cost the device a JPEG encode and a radio wakeup each, and are only drawn by Control Panel. The server keeps the
+viewers of each device's live screen and tells the device (`screen_watch` above, and `screenWatch` in every
+`client_identify_response`). Viewers:
+
+- a page that sends `device_screen_watch { deviceId, on }` (administrators; fire-and-forget): watching until it sends
+  `on: false` or its socket closes;
+- an administrator's `GET .../preview/screen.jpg`: a viewer for 10 minutes after the fetch, renewed by every fetch (a page
+  that only fetches captures keeps them coming).
 
 ## Control Panel packets (admin)
 
@@ -148,6 +160,7 @@ thumbnail fills the same quad (`/previews/<base>.webp`). Without a preview, the 
 | `device_send_command` | `device_send_command_response` | `{ deviceId, command, filename?, settings?, name?, config?, mode?, face? }` (top level or in `data`) -> `{ success, deviceId, command, commandId?, queued?, applied?, rejected?, restarting?, error?, code? }`. Online: relays `device_command` and waits up to 6 s for the ack (`ACK_TIMEOUT`). Offline: `set_settings` and `rename` are stored (`queued: true`) for the next identify, `set_device_config` and `set_mode` (as `{ mode, clockFace }`) are merged into `pendingDeviceConfig` and sent as one `set_device_config` right after the next identify reply (queued again should the device not answer); other commands fail with `DEVICE_OFFLINE`. `set_device_config` / `set_mode` pass the ack's `applied`, `rejected` and `restarting` through (`success` is the ack's `ok`), or fail validation as above. Settings and name changes show in `list_devices` at once. Destructive (read-only sessions get `READONLY_RESTRICTED`). |
 | `device_preview_images` | `device_preview_images_response` | `{ deviceId?, settings?, limit? }` -> `{ success, total, items, workspaces: [{ id, name }] }`. What a device would show with its stored settings overlaid by `settings` (unsaved form values); `items` is the first `limit` (default 12, max 60). The SideShow settings page's count and thumbnails. Non-admin: `success: false, code: "INSUFFICIENT_PERMISSIONS"`. |
 | `device_forget` | `device_forget_response` | `{ deviceId }` -> `{ success, deviceId, removed }`. Deletes the stored device; it comes back the next time it identifies. Destructive. |
+| `device_screen_watch` | none | `{ deviceId, on }` (top level or in `data`): this page shows the device's live screen (`on: true`) or stopped (`on: false`); see [Live screen watch](#live-screen-watch-890-p16). Ignored for non-administrators. |
 
 ## Push
 

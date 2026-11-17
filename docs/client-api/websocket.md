@@ -175,6 +175,41 @@ Client should respond with **pong** (registered critical handler — server echo
 
 `ping` and `pong` are in `CRITICAL_MESSAGE_TYPES` / infrastructure owner — work without auth. Client may also send a **request** `ping` (RTT probe); server replies with `ping_response` (see [ws/infrastructure.md](./ws/infrastructure.md)).
 
+## Phones and the Android app (#890)
+
+**Protocol heartbeat** (`modules/wsSocketHeartbeat.js`, 15 s ticks). Any frame a socket sends (a message, a pong, its own
+ping) counts as alive; the server pings a socket only after it was silent a whole quiet window: 30 s for pages, 180 s for
+the app's native links (the Miniport carrier, ActiveSync's background link) and for a phone page or DeX window that said it
+sleeps (`client_dormant`). Two unanswered pings in a row end the socket. Apart from that, the server never stays silent
+towards a socket for more than 35 s (it pings when nothing else went out): the reverse proxy in front of the server cuts a
+connection after ~60 s with nothing sent towards the client. When a phone reconnects (a new Miniport carrier, a new
+ActiveSync hello) its older links are probed at once (pinged, 10 s grace), so a link dropped by a Wi-Fi / cellular handover
+ends in seconds instead of minutes.
+
+**Light sockets** (`?light=1` on the socket URL): the app's widgets and screen saver. Signed in as usual, but none of a
+page's boot pushes and none of the broadcasts except the types it subscribed to; replies to its own requests as always.
+`gallery_subscribe { workspaceIds: ['active' | id, ...] }` -> `gallery_subscribe_response { success, workspaceIds, types }`
+subscribes it to `gallery_updated`, `workspace_image_added` and `workspace_updated` (they still follow the session's active
+workspace). See [ws/gallery.md](./ws/gallery.md).
+
+**Who gets a broadcast** (`socketWantsBroadcast`): the app's background link (ActiveSync speaker `service`) none; a light
+socket only what it subscribed to; desktop-only types (Server Manager, MMC, DSAP replication, the print queue, the
+Novel window, SideShow device lists ...) never go to a Melaton Mobile page; phone-only types (`lapis_updated`,
+`lapis_notice`, `traffic_updated`) never go to a desktop page (a desktop tab or a DeX window). `vfs_updated` reaches a phone
+page batched every 10 s. A sleeping page's status pushes are held: [ws/statusHub.md](./ws/statusHub.md#client_dormant-fire-and-forget).
+
+**Continuity and the Miniport** (`modules/ws/virtualSocket.js`). A page that has no socket of its own (a hybrid phone's DeX
+window; both pages over the app's Melaton Miniport, `?miniport=1`) is a sub-client of a carrier socket:
+`sub_open { sub, raw?, cc?, ccraw? }`, `sub_packet { sub, data }`, `sub_close { sub }`; the server answers
+`sub_packet` / `sub_closed`. A carrier that said `raw` gets packets for one sub-client as `"\u0001<sub>\u0001<packet>"`. A
+broadcast for several of its sub-clients goes to the carrier once: with `cc`, as the packet with `_cc: [sub, ...]` added;
+from a Miniport, a broadcast for one page as the raw frame above, and with `ccraw: 1` (#890 P12) a broadcast for several
+pages as one raw frame `"\u0001<sub>,<sub>\u0001<packet>"` (the packet is stringified once and never parsed by the app).
+
+**Service worker** (`service_worker_cache_update`): carries `swHash`, the sha1 of `/sw.js`; a page asks the browser for a
+new worker only when it differs from the one it last saw. `/sw.js` is served `no-cache` with its ETag, so the browser's
+update check for an unchanged worker is a 304.
+
 ## Long-running requests
 
 For generation, gallery, etc.:
@@ -249,7 +284,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `note_created` / `note_updated` / `note_deleted` / `note_content_updated` | Notes sync | `noteId`, `note` or `updates` |
 | `novel_progress` / `novel_updated` / `novel_generate_complete` | Novel manager | `noteId`, phase/result payload |
 | `vfs_updated` | VFS tree changed | `{ type, data }` — clients refresh explorer |
-| `service_worker_cache_update` | Static manifest changed | Triggers SW re-fetch |
+| `service_worker_cache_update` | Static manifest changed | `files` (changed rows, `delta: true` with `baseHash`), `hash`, `swHash` (sha1 of `/sw.js`: ask the browser for a new worker only when it changed), `silent`, `message` — triggers SW re-fetch |
 | `runtime_compile_error` / `runtime_compile_progress` / `runtime_compile_complete` / `runtime_compile_logs` | Runtime asset recompile | Progress, log lines, error text |
 | `resource_update_available` | Server resource refresh | Notifies clients to refresh options/cache |
 | `config_refresh_error` | Config reload failed | Error message |

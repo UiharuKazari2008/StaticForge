@@ -669,7 +669,15 @@ Service worker cache miss handler. **No auth.**
 
 ### `GET /previews/:preview`
 
-**Auth required.** Preview from `.previews/` directory.
+**Auth required.** Preview from `.previews/` directory. `Cache-Control: private, max-age=259200`.
+
+Made on first request from `images/` and kept (remade when the source is newer):
+
+| Name | What |
+|---|---|
+| `<file stem>@studio.webp` | the gallery file as an optimised WebP at its own size (Studio, #648) |
+| `<file stem>@fit.webp` | at most 320 px on its long side, its own proportions (Melaton Mobile's Pictures & Videos, #788); a grid's request waits at most 1.5 s, then 404 while the encode carries on |
+| `<file stem>@ll.webp` | the gallery PNG as a **lossless** WebP: the same pixels, alpha kept, about a third smaller (the screen saver, #890 P14). The request waits for the encode (one at a time). 404 when there is no `<stem>.png`, or for a 16-bit PNG or one with an embedded colour profile (it could not be copied exactly): load the PNG instead |
 
 **404:** `{ "success": false, "error": "Preview not found" }`
 
@@ -682,9 +690,15 @@ Service worker cache miss handler. **No auth.**
 **Auth required.** Static files from `.cache/` (upload, vibe, wiki mirrors, etc.).  
 `Cache-Control: public, max-age=259200`
 
-### `GET /naxCache/:gallerySlug/:filename`
+### `GET /naxCache/:gallerySlug/:filename[?w=480]`
 
-**Auth required.** NAX tag preview images.
+**Auth required.** NAX tag preview images (`modules/naxImageServer.js`): the dataset's picture, fetched from the CDN once
+(one fetch at a time) and kept in `.cache/nax_images/<slug>/`; `Cache-Control: public, max-age=2592000`.
+
+`?w=480` (#890 P13): a 480-px-wide WebP of it (aspect kept, so `object-fit: cover` crops it the same as the original;
+never enlarged), for grids whose cells are much smaller than the 832x1216 originals. Made on first request, kept in
+`.cache/nax_images/<slug>/.w480/`, served `public, max-age=31536000, immutable`. Any other `w` serves the original. A
+service worker that caches these must key the thumbnail apart from the original (the query matters).
 
 ### `GET /private/wiki/*`
 
@@ -1335,7 +1349,10 @@ Registered by `modules/vfsSequenzia.js`. Sequenzia shows in Explorer under Compu
 
 ### `GET /android/background-notification`
 
-**Auth required.** For Android WebView `AndroidBackgroundRefresh` polling.
+**Auth required.** For Android WebView `AndroidBackgroundRefresh` polling. Answered from the server's cached balance and
+subscription expiry (kept current by its balance refresh); NovelAI is asked only while the server holds no balance yet
+(#890). ActiveSync's background link gets the same values pushed as `as_credits` ([ws/activeSync.md](./ws/activeSync.md)).
+`Cache-Control: no-store`.
 
 **Response:**
 
@@ -1386,6 +1403,11 @@ Session auth; generating and writing the store are admin only. Yozora #773 (`mod
 | `POST /api/wm-program-icons/jobs/:job/done` | `{ accept: [...] }` -> store, recompile runtime assets. |
 | `POST /api/wm-program-icons/jobs/:job/cancel` | |
 | `DELETE /api/wm-program-icons/store?id=<package/activity>` | Back to the Android icon. |
+
+Pushed (#890 P15): every change of a job (an icon starts, is ready or failed; the batch is closed) goes over the socket as
+`{ type: "wm_program_icons_job", data: { success: true, job } }` - the `GET /api/wm-program-icons/jobs/:job` answer - to the
+sessions that made the job or asked about it (create, list, get, regenerate, done), at most one push per job per turn of
+the server's event loop. A page that gets pushes need not poll the job; after `done` / `cancel` no more come.
 
 ### `GET /install/packages`
 
@@ -1614,9 +1636,12 @@ Runtime assets may be transparently served from `.cache/runtime-assets/` at norm
 
 **Auth:** Static files generally **unauthenticated** except routes registered before static middleware with auth. **`GET /graphify-out/*`** requires session auth (dedicated mount in `web_server.js`; not served anonymously from `public/`).
 
-**Cache-Control:** default is no-store. A request whose query contains `sha`
+**Cache-Control:** default is `no-cache` (the browser keeps the file and revalidates it by ETag: an unchanged one is a
+304). A request whose query contains `sha`
 (`?sha=<hash>`) is `public, max-age=31536000, immutable`. Unversioned URLs stay
-on the default. `dev_admin` sessions (`GET /agent`) receive `private, max-age=120`
+on the default. `/sw.js` has its own route: `no-cache` with its ETag and Last-Modified (#890), so the browser's update
+check (`updateViaCache: 'none'`) for an unchanged worker is a 304; the workbox modules it imports (`/dist/workbox/*.js`,
+no version in their path) are on the default. `dev_admin` sessions (`GET /agent`) receive `private, max-age=120`
 on unversioned static CSS/JS/image responses so the `/agent` preload can populate
 the browser HTTP cache before `/app?agent=1` runs. The `/app` HTML document itself
 stays no-store when `?agent=1`.

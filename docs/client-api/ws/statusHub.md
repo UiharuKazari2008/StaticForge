@@ -42,8 +42,23 @@ The server writes one `📱 boot …` log line per boot (device guessed from the
 
 ## `client_dormant` (fire-and-forget)
 
-`{ type: "client_dormant", on: true|false }`
+`{ type: "client_dormant", on: true|false, dex?: 1 }`
 
 A phone page whose screen went off, or that went behind another app, says so. The server then holds
 status pushes nothing is waiting on (`WebSocketServer.setDormant`) and sends them when it wakes.
 New mail still goes at once. Authenticated sockets only; no reply.
+
+A phone's DeX window sends it too, with `dex: 1` (#890 P18; the server marks the socket `clientInfo.dexWindow`): it is
+then held for exactly like a sleeping phone page. What is held (`DORMANT_HOLD` in `modules/websocket.js`): `ping`,
+`queue_update`, `search_indexing_status`, `as_peers_updated`, `runpod_pods_status_update`, `browsing_sessions_changed`,
+`runtime_compile_progress`, `lapis_updated`, `dovecote_mailbox_updated` (newest only); `vfs_updated` (newest per folder);
+`traffic_updated` (newest per direction); `ma_event` (except `new`); `mcp_activity` (the generating flag and the log line,
+newest of each); `director_computer_status` (a change of the running turns goes at once, anything else newest only);
+`xlink_status`, `service_worker_cache_update`, `runtime_compile_complete` (all, in order). Replies (`requestId`) are never
+held. Held packets go out in order when it wakes (`on: false`), over its Continuity / Miniport carrier for a DeX window
+that has no socket of its own; a broadcast for both of a phone's windows leaves the sleeping one out of the carrier's
+copy (`_cc`).
+
+While asleep it also gets no Director streaming updates (and does not pace them); on waking it is sent the turn's newest
+update whole ([director.md](./director.md#streaming-updates-director_streaming_update)). Its own socket, if it has one,
+keeps the long heartbeat window ([websocket.md](../websocket.md#phones-and-the-android-app-890)).
