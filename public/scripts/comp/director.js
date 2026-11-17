@@ -707,9 +707,9 @@ class Director {
     syncStreamWatch() {
         const s = window.currentSession;
         const chat = document.getElementById('directorSessionChat');
-        // a phone with its screen off shows nothing either (html[data-screen-off]: the page is not
-        // hidden then); screen on watches again and is sent the whole update (#890)
-        const onScreen = !!(chat && chat.isConnected && !document.hidden && !this.screenIsOff() && !chat.closest('.hidden, .hidden-alt, .closing, [hidden]'));
+        // a phone with its screen off, or behind an Android program, shows nothing either (the page is
+        // not hidden then); seen again it watches again and is sent the whole update (#890)
+        const onScreen = !!(chat && chat.isConnected && !document.hidden && !this.phoneAsleep() && !chat.closest('.hidden, .hidden-alt, .closing, [hidden]'));
         const want = onScreen && s && s.id && !s.draft ? String(s.id) : '';
         if (want === this._streamWatch) return;
         if (!window.wsClient || !window.wsClient.isConnected()) return;
@@ -720,10 +720,11 @@ class Director {
         window.wsClient.send({ type: 'director_stream_watch', sessionId: want, delta: 1, liveDelta: 1 });
     }
 
-    // A phone with its screen off (html[data-screen-off], set by the app; the page is not hidden then).
-    screenIsOff() {
+    // A phone page that cannot be seen though it is not hidden: the screen off (html[data-screen-off],
+    // set by the app) or behind an Android program (html[data-wm-behind]); wmShell.awake() less hidden.
+    phoneAsleep() {
         const root = typeof document !== 'undefined' ? document.documentElement : null;
-        return !!(root && root.dataset && root.dataset.screenOff !== undefined);
+        return !!(root && root.dataset && (root.dataset.screenOff !== undefined || root.dataset.wmBehind !== undefined));
     }
 
     // The page came into sight or went out of it (visibilitychange, the phone's screen, another phone
@@ -779,8 +780,10 @@ class Director {
         // page-lifetime listeners: null outside an app segment (app-scope rule)
         const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
         document.addEventListener('visibilitychange', () => { this.onSightChange(); if (this.mascot && !document.hidden) this.mascot.tick(); });
-        // the phone's screen (melatonscreen; html[data-screen-off] is set by the time the event's turn ends)
+        // the phone's screen (melatonscreen; html[data-screen-off] is set by the time the event's turn ends),
+        // and the shell's own wake (wmawake: the screen, the page, an Android program in front)
         window.addEventListener('melatonscreen', () => setTimeout(() => { this.onSightChange(); if (this.mascot) this.mascot.tick(); }, 0), { signal: appScopeSignal });
+        document.addEventListener('wmawake', () => { this.onSightChange(); if (this.mascot) this.mascot.tick(); }, { signal: appScopeSignal });
         // Melaton Mobile: another program came to the front, or the Director did (wmShell.js)
         // (the mascot's tick is slow while she is not shown: she looks at once, #849)
         document.addEventListener('wmAppChange', () => setTimeout(() => { this.onSightChange(); if (this.mascot) this.mascot.tick(); }, 0));
@@ -8139,7 +8142,7 @@ class Director {
                 this.notePendingPrint(payload.rows, payload.live);
             }
             // a hidden page or a dark phone screen waits for onSightChange; a hidden log looks again
-            if (!document.hidden && !this.screenIsOff()) {
+            if (!document.hidden && !this.phoneAsleep()) {
                 this._livePaintTimer = setTimeout(() => this.flushLivePaint(), DIRECTOR_LIVE_HIDDEN_RETRY_MS);
             }
             return;
@@ -8185,8 +8188,8 @@ class Director {
     directorChatVisible() {
         const chat = this.directorChatMessages;
         if (!chat || !chat.isConnected || document.hidden) return false;
-        // a phone with its screen off (the page is not hidden then, #890)
-        if (this.screenIsOff()) return false;
+        // a phone with its screen off or behind an Android program (the page is not hidden then, #890)
+        if (this.phoneAsleep()) return false;
         const modal = chat.closest('.modal');
         if (modal && (modal.classList.contains('hidden')
             || modal.classList.contains('hidden-alt')

@@ -1682,12 +1682,13 @@ class DirectorMascot {
         });
     }
 
-    // Nothing of hers can be seen: a hidden page, or a phone with its screen off (html[data-screen-off];
-    // the page is not hidden then). Her tick and blinks wait (the director ticks her on screen on).
+    // Nothing of hers can be seen: a hidden page, or a phone with its screen off or behind an Android
+    // program (html[data-screen-off], html[data-wm-behind]: the page is not hidden then). Her tick and
+    // blinks wait (the director ticks her when the page is seen again).
     outOfSight() {
         if (typeof document === 'undefined') return false;
         const root = document.documentElement;
-        return !!(document.hidden || (root && root.dataset && root.dataset.screenOff !== undefined));
+        return !!(document.hidden || (root && root.dataset && (root.dataset.screenOff !== undefined || root.dataset.wmBehind !== undefined)));
     }
 
     tick(now = Date.now()) {
