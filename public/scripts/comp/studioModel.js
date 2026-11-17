@@ -615,11 +615,34 @@
         return true;
     }
 
-    function frameSrc(d) {
+    /** The packet's newest step picture ({ imageData, imageFormat }), or null. */
+    function frameOf(d) {
         const frames = Array.isArray(d.stepFrames) ? d.stepFrames : null;
         const last = frames && frames.length ? frames[frames.length - 1] : d;
-        if (!last || !last.imageData) return '';
+        return last && last.imageData ? last : null;
+    }
+
+    function frameSrc(last) {
         return `data:${last.imageFormat === 'png' ? 'image/png' : 'image/jpeg'};base64,${last.imageData}`;
+    }
+
+    /**
+     * A generation's record. Its frame (the newest step picture as a data: address) is made when it is
+     * read, not on every progress packet: a page out of sight never reads it, and the string (the
+     * picture's whole base64 again) was built ~28 times a print for nobody (#890).
+     */
+    function newRun(prints) {
+        const run = { active: true, phase: 'starting', step: 0, steps: 0, print: 1, prints, files: [], stopped: false, error: '' };
+        let pending = null;
+        let src = '';
+        Object.defineProperty(run, 'frame', {
+            enumerable: true,
+            get() { if (pending) { src = frameSrc(pending); pending = null; } return src; },
+            set(v) { pending = null; src = v ? String(v) : ''; }
+        });
+        // the packet's step picture, made into the frame when read
+        Object.defineProperty(run, 'takeFrame', { value: (last) => { pending = last; } });
+        return run;
     }
 
     function wire() {
@@ -639,8 +662,8 @@
                     current.prints = Number(d.totalStages);
                     if (Number(d.currentStage) > 0) current.print = Number(d.currentStage);
                 }
-                const src = frameSrc(d);
-                if (src) current.frame = src;
+                const last = frameOf(d);
+                if (last) current.takeFrame(last);
                 if ((d.phase === 'stage_complete' || d.phase === 'complete') && d.filename && !current.files.includes(d.filename)) {
                     current.files.push(d.filename);
                     current.frame = '';
@@ -694,7 +717,7 @@
         if (!ready() || generating() || (current && current.active)) return current;
         wire();
         const before = previewName();
-        const run = { active: true, phase: 'starting', step: 0, steps: 0, print: 1, prints: (snapshot() || {}).n || 1, frame: '', files: [], stopped: false, error: '' };
+        const run = newRun((snapshot() || {}).n || 1);
         current = run;
         emit('start', run);
         try {
