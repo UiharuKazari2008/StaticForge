@@ -24,6 +24,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const doc = typeof document !== 'undefined' ? document : null;
 
@@ -195,6 +196,7 @@
     }
 
     function rules() {
+        noteUse();
         if (!ruleIndex || ruleIndex.sig !== sheetSignature()) ruleIndex = buildRuleIndex();
         return ruleIndex;
     }
@@ -753,6 +755,14 @@
     // windows on screen now (a Flip 3D, a taskbar preview): their pictures are never dropped
     const held = new Set();
 
+    /** A picture let go: its observer and the window's listeners go with it (the listeners held the
+     *  entry, and so the canvas, until the window next scrolled or typed). */
+    function forget(win, e) {
+        if (e.unwatch) e.unwatch();
+        e.pic = null;
+        pictures.delete(win);
+    }
+
     /** Drops the least recently shown pictures past the budget (they are copied again when
      *  next needed); held ones stay. */
     function trimPictures() {
@@ -764,32 +774,73 @@
         for (const [win, e] of old) {
             if (total <= PICTURE_BUDGET) break;
             total -= e.pic.base.width * e.pic.base.height;
-            if (e.observer) e.observer.disconnect();
-            pictures.delete(win);
+            forget(win, e);
         }
     }
 
     function watch(win, entry) {
-        if (entry.observer) entry.observer.disconnect();
+        if (entry.unwatch) entry.unwatch();
         const outside = (c) => c && c !== 'flip3d-hidden';
         const classes = (list) => list.filter(outside).sort().join(' ');
+        const stop = () => {
+            if (entry.observer) entry.observer.disconnect();
+            entry.observer = null;
+            win.removeEventListener('scroll', mark, true);
+            win.removeEventListener('input', mark, true);
+            win.removeEventListener('load', mark, true);
+            if (entry.unwatch === stop) entry.unwatch = null;
+        };
         const mark = (records) => {
             // the window's own style (moves, z-order) and Flip 3D's hiding class do not change
             // the picture; a new size is caught by fresh()
             if (Array.isArray(records) && records.every((r) => r.target === win && r.type === 'attributes' &&
                 (r.attributeName === 'style' || (r.attributeName === 'class' && classes((r.oldValue || '').split(/\s+/)) === classes(Array.from(win.classList)))))) return;
             entry.dirty = true;
-            if (entry.observer) entry.observer.disconnect();
-            entry.observer = null;
-            win.removeEventListener('scroll', mark, true);
-            win.removeEventListener('input', mark, true);
-            win.removeEventListener('load', mark, true);
+            stop();
         };
+        entry.unwatch = stop;
         entry.observer = new MutationObserver(mark);
         entry.observer.observe(win, { subtree: true, childList: true, attributes: true, attributeOldValue: true, characterData: true });
         win.addEventListener('scroll', mark, true);
         win.addEventListener('input', mark, true);
         win.addEventListener('load', mark, true);
+    }
+
+    // ---- letting go while unused (#890) --------------------------------------------------------
+    //
+    // A taskbar hover or a Flip 3D kept its pictures (up to ~64 MB of canvases), the rule index and the
+    // inlined files (up to ~32 MB of data: URLs) for the life of the page; a DeX window whose display
+    // sleeps held them all the while. Hidden, the pictures of windows that are up go (a minimised window
+    // keeps the one it had while it was up: it cannot be copied again until it is restored), and their
+    // observers stop. IDLE_DROP_MS with no copy at all, the rule index and the inlined files go as well.
+    // A hover after that copies again (~80-200 ms a changed window; the rule index ~0.3 s once).
+    const IDLE_DROP_MS = 5 * 60 * 1000;
+    let idleDropTimer = 0;
+    function noteUse() {
+        if (idleDropTimer) clearTimeout(idleDropTimer);
+        idleDropTimer = setTimeout(dropIdle, IDLE_DROP_MS);
+    }
+    /** The pictures nobody looks at now: not on screen (held), not being made, not a minimised window's. */
+    function dropUpPictures() {
+        pictures.forEach((e, win) => {
+            if (held.has(win) || e.busy) return;
+            if (e.pic && win.isConnected && win.classList.contains('minimised')) return;
+            forget(win, e);
+        });
+    }
+    function dropIdle() {
+        idleDropTimer = 0;
+        dropUpPictures();
+        // a copy under way (busy) or a snapshot queued still needs them: looked at again later
+        let busy = false;
+        pictures.forEach((e) => { if (e.busy) busy = true; });
+        if (busy || exact) { noteUse(); return; }
+        ruleIndex = null;
+        dataUrls.clear();
+        dataUrlChars = 0;
+    }
+    if (doc && doc.addEventListener) {
+        doc.addEventListener('visibilitychange', () => { if (doc.visibilityState === 'hidden') dropUpPictures(); }, { signal: appScopeSignal });
     }
 
     function fresh(win) {
@@ -805,8 +856,9 @@
     /** The window's picture, made again only when it changed since the last one. */
     function capture(win) {
         forgetClosed();
+        noteUse();
         let e = pictures.get(win);
-        if (!e) pictures.set(win, (e = { pic: null, dirty: true, observer: null, w: 0, h: 0, busy: null, used: 0 }));
+        if (!e) pictures.set(win, (e = { pic: null, dirty: true, observer: null, unwatch: null, w: 0, h: 0, busy: null, used: 0 }));
         if (fresh(win)) return Promise.resolve(e.pic);
         if (e.busy) return e.busy;
         // mark it clean before copying: a change while it is being copied makes it dirty again
@@ -845,9 +897,10 @@
     function forgetClosed() {
         pictures.forEach((e, win) => {
             if (win.isConnected && isWindow(win)) return;
-            if (e.observer) e.observer.disconnect();
-            pictures.delete(win);
+            forget(win, e);
         });
+        // a window closed while held (a preview that never said "let go"): the element is not kept for it
+        held.forEach((win) => { if (!win.isConnected) held.delete(win); });
     }
 
     // an exact snapshot in progress ({ scale }): image-sets, pictures and the size follow the screen
