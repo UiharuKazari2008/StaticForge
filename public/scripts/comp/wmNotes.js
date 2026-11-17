@@ -1467,14 +1467,27 @@
          * all four. A rename or trash through the VFS comes as vfs_updated on the bridge.
          */
         let liveTimer = null;
+        let liveDue = false; // a change came while the list was not seen: read when it is
         function liveChanged() {
             clearTimeout(liveTimer);
             liveTimer = setTimeout(() => {
-                if (page && isCurrent() && page.dataset.view !== 'note') load({ keep: true });
+                if (!(page && isCurrent() && page.dataset.view !== 'note')) return;
+                // the screen off or behind an Android program: read once it is seen again
+                if (typeof ws.onScreen === 'function' && !ws.onScreen(page)) { liveDue = true; return; }
+                liveDue = false;
+                load({ keep: true });
             }, 250);
         }
 
+        // once, not per mount (End Task drops the page and the next open mounts it again)
+        let liveWired = false;
         function liveRefresh() {
+            if (liveWired) return;
+            liveWired = true;
+            const wake = () => { if (liveDue) liveChanged(); };
+            window.addEventListener('melatonscreen', wake);
+            document.addEventListener('visibilitychange', wake);
+            document.addEventListener('wmBehind', wake);
             if (typeof registerWsInboundHandler === 'function') { // eslint-disable-line no-undef
                 // eslint-disable-next-line no-undef
                 registerWsInboundHandler({
