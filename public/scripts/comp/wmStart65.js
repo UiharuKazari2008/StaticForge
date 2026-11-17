@@ -95,6 +95,7 @@
 (function () {
     'use strict';
     const root = document.documentElement;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     if (window.uiShell !== 'mobile' || root.dataset.wmVersion !== '6.5') return;
 
     const ART65 = '/static_images/wm65/';
@@ -1052,7 +1053,18 @@
     }
 
     /** The finger: pan past the start distance, fling on release, tap, tap-and-hold, drag after a hold. */
+    // what bindTouch set outside the page, ended when the next mount binds again (#890: each open after
+    // the X left a document listener and an observer of <html> behind, the old page held by both)
+    let touchAbort = null;
+    let touchMo = null;
     function bindTouch() {
+        if (touchAbort) touchAbort.abort();
+        if (touchMo) touchMo.disconnect();
+        touchAbort = typeof AbortController === 'function' ? new AbortController() : null;
+        if (touchAbort && appScopeSignal) {
+            const own = touchAbort;
+            appScopeSignal.addEventListener('abort', () => own.abort(), { once: true, signal: own.signal });
+        }
         let id = null;
         let downX = 0;
         let downY = 0;
@@ -1076,8 +1088,9 @@
         // and when the page is hidden: nothing may be left waiting for a finger that is gone
         const drop = () => { if (id === null) return; if (drag) endDrag(false); panning = false; held = false; end(); };
         view.addEventListener('lostpointercapture', (e) => { if (e.pointerId === id) setTimeout(() => { if (id === e.pointerId) drop(); }, 0); });
-        document.addEventListener('visibilitychange', () => { if (document.hidden) drop(); });
-        new MutationObserver(() => { if ((root.dataset.wmApp || '') !== 'start') drop(); }).observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
+        document.addEventListener('visibilitychange', () => { if (document.hidden) drop(); }, { signal: touchAbort ? touchAbort.signal : appScopeSignal });
+        touchMo = new MutationObserver(() => { if ((root.dataset.wmApp || '') !== 'start') drop(); });
+        touchMo.observe(root, { attributes: true, attributeFilter: ['data-wm-app'] });
 
         view.addEventListener('pointerdown', (e) => {
             // a second finger puts a lifted icon back
@@ -1239,17 +1252,17 @@
         // a program came, went or moved (wmAndroidApps.js after a hold menu command or an install)
         // Melaton Bars (#871): the Android app's copy of Start is out of date
         const barsStale = () => { try { if (window.AndroidBars && window.AndroidBars.startStale) window.AndroidBars.startStale(); } catch (_) { /* older app */ } };
-        document.addEventListener('wmAppsChanged', barsStale);
+        document.addEventListener('wmAppsChanged', barsStale, { signal: appScopeSignal });
         // anything else Start's copy shows: a setting (the Today picture, Effects, the theme, the order) or the phone's wallpaper
         // only settings that change what Start shows (each stale notice costs a full copy): the Today
         // picture and background, Start's order, Effects, the theme, the bezel / bars
         document.addEventListener('wmSettingsChange', (e) => {
             const keys = (e && e.detail && Array.isArray(e.detail.keys)) ? e.detail.keys : null;
             if (!keys || keys.some((k) => /^wm(Today|Start|Ti|Theme|Wall|Camera|Bezel|Bars)|Wallpaper|Layout/i.test(String(k)))) barsStale();
-        });
-        window.addEventListener('androidwallpaper', barsStale);
-        document.addEventListener('wmAppsChanged', () => { if (page && page.isConnected && !page.hidden && !drag) { render(); place(Math.max(0, Math.min(maxY, y))); } });
-        window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } });
+        }, { signal: appScopeSignal });
+        window.addEventListener('androidwallpaper', barsStale, { signal: appScopeSignal });
+        document.addEventListener('wmAppsChanged', () => { if (page && page.isConnected && !page.hidden && !drag) { render(); place(Math.max(0, Math.min(maxY, y))); } }, { signal: appScopeSignal });
+        window.addEventListener('resize', () => { if (page && page.isConnected && !page.hidden) { endDrag(false); if (columnsFor() !== cols) render(); else measure(); place(Math.max(0, Math.min(maxY, y))); } }, { signal: appScopeSignal });
         sh.registerApp({
             id: 'start',
             title: 'Start',
