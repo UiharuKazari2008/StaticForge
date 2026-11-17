@@ -527,7 +527,7 @@
 
         /** Continuity (#798): a hybrid phone's DeX window. It waits for the phone, and the phone installs. */
         function isHybridDw() {
-            const mc = root.melatonContinuity;
+            const mc = root && root.melatonContinuity;
             try { return !!(mc && mc.available && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
         }
 
@@ -569,7 +569,8 @@
             if (hybrid) tasks.length = 0;
             // over the Melaton Café Miniport (#815) the DeX window fast boots: its one POST check is the
             // Miniport interface (there, and its link's state; an idle link is woken), 1.2 s at least
-            const mcMini = root.melatonContinuity && typeof root.melatonContinuity.miniport === 'function' ? root.melatonContinuity : null;
+            const mcCont = root && root.melatonContinuity;
+            const mcMini = mcCont && typeof mcCont.miniport === 'function' ? mcCont : null;
             const onMiniport = hybrid && !!(mcMini && mcMini.miniport().available);
             if (onMiniport) {
                 tasks.push({ id: 'miniport', weight: 1, run: async () => {
@@ -660,7 +661,7 @@
                 }
             };
             // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
-            const mc = root.melatonContinuity;
+            const mc = root && root.melatonContinuity;
             const outcome = await bios.post({
                 // a CaféReady PC (the app's Melaton Café Miniport) holds its splash about 2.5 s so its logos read
                 // (the fast boot's 1.2 s was too short for them, Yukimi)
