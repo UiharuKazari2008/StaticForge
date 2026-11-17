@@ -7839,7 +7839,10 @@
                 id = window.showGlassToast(type, escapeHtml(title), html, false, stay ? false : (timeout || 8000), null, buttons);
             } catch (err) { console.warn('[wmShell] notify', err); }
             if (!id) { resolve(true); return; }
-            whenToastGone(document.getElementById(id), null, () => resolve(true));
+            // (no element of its own yet - a balloon, a box, the phone's notification - is looked for once more
+            // after 400 ms, as the poll did, then counted as gone)
+            const follow = () => { const t = document.getElementById(id); if (t) whenToastGone(t, null, () => resolve(true)); else resolve(true); };
+            if (document.getElementById(id)) follow(); else setTimeout(follow, 400);
         });
     }
 
