@@ -1902,7 +1902,7 @@ class WebSocketClient {
      * service: 'connected' | 'connecting' | 'restarting' (the server answered but is still
      * starting) | 'signed-out' (logon required) | 'off' (the user disconnected) | 'no-internet' |
      * 'unavailable'. problem is true for restarting, no-internet and unavailable: the states the
-     * phone's status glyph and the desktop icon's red ! show. CafeReady: the Miniport carries the
+     * phone's status glyph and the desktop icon's red ! show. CaféReady: the Miniport carries the
      * link (#815). Listen for 'nightshade:state' on window; it fires only when something changed.
      */
     nightshadeState() {
@@ -1932,7 +1932,7 @@ class WebSocketClient {
         };
     }
 
-    /** Fire 'nightshade:state' when the internet / service / CafeReady state moved (#895). */
+    /** Fire 'nightshade:state' when the internet / service / CaféReady state moved (#895). */
     _emitNightshadeState() {
         if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
         let s;
@@ -4809,6 +4809,17 @@ class WebSocketClient {
         // Nightshade Network (#895): losing the internet is its own state, not "service unavailable";
         // the network icon follows the computer's link (_updateModemTrayIcon emits the state too)
         window.addEventListener('offline', () => this._updateModemTrayIcon());
+        // CaféReady (#895): the Miniport coming up or going down changes "Connected (with CaféReady)"
+        // with no connection phase change (melatonContinuity.js loads after this file)
+        const hookMiniport = () => {
+            const mc = window.melatonContinuity;
+            if (this._nsMiniportHooked) return true;
+            if (!mc || typeof mc.on !== 'function') return false;
+            this._nsMiniportHooked = true;
+            mc.on('miniport', () => this._updateModemTrayIcon());
+            return true;
+        };
+        if (!hookMiniport()) document.addEventListener('DOMContentLoaded', hookMiniport, { once: true });
 
         // ServiceWorkerManager owns the single service-worker message listener and
         // forwards NETWORK_ACTIVITY events here.

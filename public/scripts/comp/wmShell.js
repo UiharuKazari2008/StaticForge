@@ -2933,6 +2933,8 @@
     function watchStatusSignals() {
         const ws = window.wsClient;
         if (ws && typeof ws.on === 'function') { ws.on('connected', statusDirtyToday); ws.on('disconnected', statusDirtyToday); }
+        // the Nightshade Network's state moved (restarting, no internet, unavailable, CaféReady, #895): its glyph
+        window.addEventListener('nightshade:state', statusDirty);
         // a setting, a sound mode, an app opened: taps and keys (volume keys reach the page as keys)
         document.addEventListener('click', statusDirty, { capture: true, passive: true });
         document.addEventListener('keyup', statusDirty, { capture: true, passive: true });
