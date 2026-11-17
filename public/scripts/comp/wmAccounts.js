@@ -354,7 +354,11 @@
         clearInterval(tickTimer);
         // renewal countdowns, Claude window resets and run costs move with the clock
         tickTimer = setInterval(() => {
-            if (!page || page.hidden || sh.current !== APP_ID || !awake()) { clearInterval(tickTimer); tickTimer = null; return; }
+            if (!page || page.hidden || sh.current !== APP_ID || !awake()) {
+                // stopped while the page stays open (the screen off, behind): its countdowns are old then
+                if (page && !page.hidden && sh.current === APP_ID) pageStale = true;
+                clearInterval(tickTimer); tickTimer = null; return;
+            }
             render();
         }, TICK_MS);
     }
@@ -903,7 +907,8 @@
         // seen again, an overdue read goes at once and the page is drawn as it is now
         const wake = () => {
             syncPoll();
-            if (!awake()) { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; } return; }
+            // the tick stops: the countdowns on the page are old from now, so it is drawn on the wake
+            if (!awake()) { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; pageStale = true; } return; }
             if (Date.now() - lastFetch > POLL_MS && !miniportWallet()) refresh();
             if (page && !page.hidden && sh.current === APP_ID) { if (pageStale) render(); if (!tickTimer) schedule(); }
         };
