@@ -258,6 +258,35 @@ async function main() {
     await as.partnership(gr, server, pc.info, { action: 'end', deviceId: DEV });
     assert.strictEqual(fs.readdirSync(path.join(tmpDir, 'activesync-transfers')).length, 0);
 
+    // #890: the same chunk twice at once (a resend racing its first copy) is written once
+    r = await request(port, 'POST', `/api/activesync/upload/${DEV}/begin`, { session: ADMIN, json: { root: 'primary', dir: '/', name: 'race.bin', size: 2000000 } });
+    const raceId = r.json.id;
+    const RACE = Buffer.alloc(1000000, 7);
+    const [c1, c2] = await Promise.all([
+        request(port, 'POST', `/api/activesync/upload/${raceId}/chunk?offset=0`, { session: ADMIN, body: RACE }),
+        request(port, 'POST', `/api/activesync/upload/${raceId}/chunk?offset=0`, { session: ADMIN, body: RACE })
+    ]);
+    assert.deepStrictEqual([c1.status, c2.status].sort(), [200, 409], 'one copy taken, the other told where the file stands');
+    const raceData = path.join(tmpDir, 'activesync-transfers', raceId);
+    assert.strictEqual(fs.statSync(raceData).size, 1000000, 'written once');
+    // a restart (nothing in memory) with a description that lags the data file: resumes from the bytes on disk
+    await new Promise((res) => setTimeout(res, 50));
+    const raceMeta = path.join(tmpDir, 'activesync-transfers', `${raceId}.json`);
+    const stale = JSON.parse(fs.readFileSync(raceMeta, 'utf8'));
+    stale.received = 0;
+    fs.writeFileSync(raceMeta, JSON.stringify(stale));
+    transfers._test.metas.clear();
+    r = await request(port, 'POST', `/api/activesync/upload/${raceId}/chunk?offset=0`, { session: ADMIN, body: RACE });
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual(r.json.received, 1000000, 'the data file says how much is here');
+    r = await request(port, 'POST', `/api/activesync/upload/${raceId}/chunk?offset=1000000`, { session: ADMIN, body: RACE });
+    assert.strictEqual(r.json.received, 2000000);
+    // given up: both files go, and a description write still in flight does not bring one back
+    r = await request(port, 'DELETE', `/api/activesync/upload/${raceId}`, { session: ADMIN });
+    assert.strictEqual(r.status, 200);
+    await new Promise((res) => setTimeout(res, 50));
+    assert.strictEqual(fs.readdirSync(path.join(tmpDir, 'activesync-transfers')).length, 0, 'nothing left after DELETE');
+
     listener.close();
     clearInterval(keepAlive);
     as.resetForTests();

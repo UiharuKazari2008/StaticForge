@@ -31,6 +31,12 @@
  * Files in flight to a phone live in <databases>/activesync-transfers/<id> (+ .json); what nobody
  * collected in 7 days is swept. A device's requests must come from the session of one of its open
  * sockets; a transfer id is 128 random bits.
+ *
+ * No file work on the event loop per request (#890): an upload's description is kept in memory (read
+ * once from its .json, written back asynchronously, one write at a time), chunks are appended with
+ * async writes, and a chunk is taken only while no other chunk of the same upload is being written.
+ * The .json may lag the data file by a chunk after a crash: a description read from disk takes the
+ * data file's size as what was received (the bytes are written in order), so resuming stays exact.
  */
 
 const fs = require('fs');
@@ -94,40 +100,106 @@ function dataPath(globalResources, id) {
     return path.join(transfersDir(globalResources), id);
 }
 
-function readMeta(globalResources, id) {
+const metas = new Map(); // upload id -> its description (the copy every request uses)
+const metaWrites = new Map(); // upload id -> { promise, again, removed } (the .json write in flight)
+const writing = new Set(); // upload ids with a chunk being appended
+
+/** An upload's description: from memory, else read once from its .json (null when there is none). */
+async function loadMeta(globalResources, id) {
     if (!isId(id)) return null;
+    if (metas.has(id)) return metas.get(id);
+    let meta = null;
     try {
-        return JSON.parse(fs.readFileSync(metaPath(globalResources, id), 'utf8'));
+        meta = JSON.parse(await fs.promises.readFile(metaPath(globalResources, id), 'utf8'));
     } catch (_) {
         return null;
     }
+    if (!meta || typeof meta !== 'object' || meta.id !== id) return null;
+    if (!meta.committed) {
+        // the .json is written after the bytes and may lag them: what is on disk was received in order
+        try {
+            const st = await fs.promises.stat(dataPath(globalResources, id));
+            meta.received = Math.max(0, Math.min(st.size, Number(meta.size) || 0));
+        } catch (_) {
+            meta.received = 0;
+        }
+    }
+    // another request read it meanwhile: one copy
+    if (metas.has(id)) return metas.get(id);
+    metas.set(id, meta);
+    return meta;
 }
 
-function writeMeta(globalResources, meta) {
-    fs.writeFileSync(metaPath(globalResources, meta.id), JSON.stringify(meta));
+/** Whether an upload id is taken (in memory or on disk). */
+async function metaExists(globalResources, id) {
+    if (metas.has(id)) return true;
+    try { await fs.promises.access(metaPath(globalResources, id)); return true; } catch (_) { return false; }
+}
+
+/**
+ * Write an upload's description to its .json (atomically, off the event loop). Writes for one upload
+ * never overlap: one asked while another runs is folded into a single write of the newest state after
+ * it. Resolves when the newest state is on disk.
+ */
+function persistMeta(globalResources, meta) {
+    const id = meta.id;
+    let w = metaWrites.get(id);
+    if (w) { w.again = true; return w.promise; }
+    w = { promise: null, again: false, removed: false };
+    metaWrites.set(id, w);
+    const file = metaPath(globalResources, id);
+    const tmp = `${file}.tmp`;
+    w.promise = (async () => {
+        try {
+            do {
+                w.again = false;
+                if (w.removed) break;
+                await fs.promises.writeFile(tmp, JSON.stringify(meta));
+                await fs.promises.rename(tmp, file);
+            } while (w.again && !w.removed);
+        } finally {
+            metaWrites.delete(id);
+            // removed while the write ran: the file it put back goes too
+            if (w.removed) {
+                for (const p of [file, tmp]) { try { await fs.promises.unlink(p); } catch (_) { /* gone */ } }
+            }
+        }
+    })();
+    return w.promise;
 }
 
 function removeUpload(globalResources, id) {
     if (!isId(id)) return;
+    metas.delete(id);
+    const w = metaWrites.get(id);
+    if (w) w.removed = true;
     for (const p of [dataPath(globalResources, id), metaPath(globalResources, id)]) {
         try { fs.unlinkSync(p); } catch (_) { /* gone */ }
     }
 }
 
-function sweep(globalResources) {
+/** What nobody collected in KEEP_MS goes, with data files whose description is gone (off the event loop). */
+async function sweep(globalResources) {
+    const folder = transfersDir(globalResources);
     let names = [];
-    try { names = fs.readdirSync(transfersDir(globalResources)); } catch (_) { return; }
+    try { names = await fs.promises.readdir(folder); } catch (_) { return; }
     const now = Date.now();
+    const present = new Set(names);
     for (const name of names) {
+        if (name.endsWith('.json.tmp')) {
+            // a write cut by a crash
+            try { const st = await fs.promises.stat(path.join(folder, name)); if (now - st.mtimeMs > 3600000 && !metaWrites.has(name.slice(0, -9))) await fs.promises.unlink(path.join(folder, name)); } catch (_) { /* gone */ }
+            continue;
+        }
         if (!name.endsWith('.json')) continue;
         const id = name.slice(0, -5);
-        const meta = readMeta(globalResources, id);
+        const meta = await loadMeta(globalResources, id);
         if (!meta || now - (meta.created || 0) > KEEP_MS) removeUpload(globalResources, id);
     }
-    // a data file whose description is gone
+    // a data file whose description is gone (an upload being begun is in memory already)
     for (const name of names) {
-        if (isId(name) && !fs.existsSync(metaPath(globalResources, name))) {
-            try { fs.unlinkSync(dataPath(globalResources, name)); } catch (_) { /* gone */ }
+        if (isId(name) && !present.has(`${name}.json`) && !metas.has(name)) {
+            try { await fs.promises.unlink(dataPath(globalResources, name)); } catch (_) { /* gone */ }
         }
     }
 }
@@ -265,8 +337,8 @@ function mount(app, authMiddleware, globalResources) {
     const isAdmin = (req) => req.userType === 'admin';
     const fromDevice = (req, deviceId) => activeSync.isDeviceSession(globalResources, wsServer(), deviceId, req.sessionId || (req.session && req.session.id));
 
-    sweep(globalResources);
-    const sweeper = setInterval(() => sweep(globalResources), 6 * 3600 * 1000);
+    sweep(globalResources).catch(() => {});
+    const sweeper = setInterval(() => { sweep(globalResources).catch(() => {}); }, 6 * 3600 * 1000);
     if (sweeper.unref) sweeper.unref();
 
     // a queued file got its answer, or its partnership ended: the copy here has done its job
@@ -378,7 +450,7 @@ function mount(app, authMiddleware, globalResources) {
 
     // ---------------------------------------------------------------- desktop -> phone
 
-    app.post('/api/activesync/upload/:deviceId/begin', auth, (req, res) => {
+    app.post('/api/activesync/upload/:deviceId/begin', auth, async (req, res) => {
         if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
         const deviceId = String(req.params.deviceId || '').toLowerCase();
         const b = req.body && typeof req.body === 'object' ? req.body : {};
@@ -387,17 +459,20 @@ function mount(app, authMiddleware, globalResources) {
         if (!activeSync.isPeerId(deviceId)) { refuse(res, 400, 'BAD_DEVICE', 'deviceId is not valid'); return; }
         if (!name || !Number.isFinite(size) || size < 0) { refuse(res, 400, 'BAD_FILE', 'name and size are required'); return; }
         if (size > MAX_UPLOAD_BYTES) { refuse(res, 413, 'TOO_LARGE', 'The file is too large.'); return; }
-        const id = isId(b.id) && !readMeta(globalResources, b.id) ? b.id : crypto.randomBytes(16).toString('hex');
+        const id = isId(b.id) && !(await metaExists(globalResources, b.id)) ? b.id : crypto.randomBytes(16).toString('hex');
         const meta = {
             id, deviceId, name, size, received: 0, created: Date.now(), committed: false,
             root: String(b.root || '').slice(0, 64), dir: String(b.dir || '/').slice(0, 2048),
             conflict: ['fail', 'replace', 'rename'].includes(b.conflict) ? b.conflict : 'fail',
             mtime: Number.isFinite(Number(b.mtime)) && Number(b.mtime) > 0 ? Number(b.mtime) : null
         };
+        // known before its files exist, so a sweep running now leaves them be
+        metas.set(id, meta);
         try {
-            fs.writeFileSync(dataPath(globalResources, id), Buffer.alloc(0));
-            writeMeta(globalResources, meta);
+            await fs.promises.writeFile(dataPath(globalResources, id), Buffer.alloc(0));
+            await persistMeta(globalResources, meta);
         } catch (error) {
+            removeUpload(globalResources, id);
             refuse(res, 500, 'IO', error.message);
             return;
         }
@@ -406,37 +481,54 @@ function mount(app, authMiddleware, globalResources) {
 
     app.post('/api/activesync/upload/:id/chunk', auth, async (req, res) => {
         if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
-        const meta = readMeta(globalResources, req.params.id);
+        const meta = await loadMeta(globalResources, req.params.id);
         if (!meta || meta.committed) { refuse(res, 404, 'NOT_FOUND', 'No such upload'); return; }
         const offset = Number(req.query.offset);
-        // a resent chunk after a lost answer: say where the file stands, write nothing twice
-        if (offset !== meta.received) { res.status(409).json({ success: false, code: 'OFFSET', received: meta.received }); return; }
+        // a resent chunk after a lost answer (or while the first copy is still being written): say where
+        // the file stands, write nothing twice
+        if (offset !== meta.received || writing.has(meta.id)) { res.status(409).json({ success: false, code: 'OFFSET', received: meta.received }); return; }
+        writing.add(meta.id);
         let body;
         try {
             body = await readBody(req, MAX_CHUNK_BYTES);
         } catch (error) {
+            writing.delete(meta.id);
             refuse(res, 413, error.code || 'ERROR', error.message);
             return;
         }
-        if (meta.received + body.length > meta.size) { refuse(res, 400, 'TOO_MUCH', 'More bytes than the file has'); return; }
+        // given up (DELETE) or swept while the body came
+        if (metas.get(meta.id) !== meta || meta.committed) { writing.delete(meta.id); refuse(res, 404, 'NOT_FOUND', 'No such upload'); return; }
+        if (meta.received + body.length > meta.size) { writing.delete(meta.id); refuse(res, 400, 'TOO_MUCH', 'More bytes than the file has'); return; }
+        const file = dataPath(globalResources, meta.id);
         try {
-            fs.appendFileSync(dataPath(globalResources, meta.id), body);
+            await fs.promises.appendFile(file, body);
             meta.received += body.length;
-            writeMeta(globalResources, meta);
         } catch (error) {
+            // a short write would shift every later chunk: back to what was received
+            try { await fs.promises.truncate(file, meta.received); } catch (_) { /* the next load measures it */ }
+            writing.delete(meta.id);
             refuse(res, 500, 'IO', error.message);
             return;
         }
+        writing.delete(meta.id);
+        // the description follows in the background (a crash before it lands is measured on load)
+        if (metas.get(meta.id) === meta) persistMeta(globalResources, meta).catch((error) => console.warn('[activeSync] upload description not saved:', error.message));
         res.json({ success: true, received: meta.received });
     });
 
     app.post('/api/activesync/upload/:id/commit', auth, async (req, res) => {
         if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
-        const meta = readMeta(globalResources, req.params.id);
+        const meta = await loadMeta(globalResources, req.params.id);
         if (!meta || meta.committed) { refuse(res, 404, 'NOT_FOUND', 'No such upload'); return; }
-        if (meta.received !== meta.size) { res.status(409).json({ success: false, code: 'INCOMPLETE', received: meta.received }); return; }
+        if (meta.received !== meta.size || writing.has(meta.id)) { res.status(409).json({ success: false, code: 'INCOMPLETE', received: meta.received }); return; }
         meta.committed = true;
-        writeMeta(globalResources, meta);
+        try {
+            await persistMeta(globalResources, meta);
+        } catch (error) {
+            meta.committed = false;
+            refuse(res, 500, 'IO', error.message);
+            return;
+        }
         const args = { transferId: meta.id, root: meta.root, dir: meta.dir, name: meta.name, size: meta.size, conflict: meta.conflict, mtime: meta.mtime };
         const wantQueue = !!(req.body && req.body.queue);
         const wantInstall = !!(req.body && req.body.install);
@@ -516,15 +608,15 @@ function mount(app, authMiddleware, globalResources) {
         }
     });
 
-    app.delete('/api/activesync/upload/:id', auth, (req, res) => {
+    app.delete('/api/activesync/upload/:id', auth, async (req, res) => {
         if (!isAdmin(req)) { refuse(res, 403, 'INSUFFICIENT_PERMISSIONS', 'Admin access required'); return; }
-        const meta = readMeta(globalResources, req.params.id);
+        const meta = await loadMeta(globalResources, req.params.id);
         if (meta && !meta.committed) removeUpload(globalResources, meta.id);
         res.json({ success: true });
     });
 
-    app.get('/api/activesync/transfer/:id/data', auth, (req, res) => {
-        const meta = readMeta(globalResources, req.params.id);
+    app.get('/api/activesync/transfer/:id/data', auth, async (req, res) => {
+        const meta = await loadMeta(globalResources, req.params.id);
         if (!meta || !meta.committed) { refuse(res, 404, 'NOT_FOUND', 'No such transfer'); return; }
         if (!fromDevice(req, meta.deviceId)) { refuse(res, 403, 'NOT_THE_DEVICE', 'Not this device'); return; }
         const m = /^bytes=(\d+)-(\d*)$/.exec(String(req.headers.range || ''));
@@ -550,6 +642,8 @@ function resetForTests() {
     streams.clear();
     waiting.clear();
     active.clear();
+    metas.clear();
+    writing.clear();
 }
 
-module.exports = { mount, sweep, resetForTests, UPLOAD_CHUNK_BYTES };
+module.exports = { mount, sweep, resetForTests, UPLOAD_CHUNK_BYTES, _test: { loadMeta, persistMeta, metas } };
