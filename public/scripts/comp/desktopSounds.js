@@ -20,6 +20,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (typeof window !== 'undefined' && window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const STORAGE_KEY = 'desktop-sounds';
     const BASE = '/sounds/vista/';
@@ -101,10 +102,33 @@
         enabled: true,
         ctx: null,
         unlocked: false,
+        gestureUnlocked: false,
+        playing: 0,
+        idleTimer: null,
         buffers: Object.create(null),
         inflight: Object.create(null),
         bound: false
     };
+
+    // A running AudioContext keeps the audio device open and its render thread going while it plays
+    // nothing (on a phone the audio output stays awake, #890). It is made on the first sound (or the
+    // first input once sounds are on, which lets later sounds start without one), and suspended
+    // IDLE_SUSPEND_MS after the last sound ends and when the page is hidden; the next sound resumes it.
+    const IDLE_SUSPEND_MS = 5000;
+
+    function suspendIfIdle() {
+        const ctx = state.ctx;
+        if (!ctx || state.playing > 0 || ctx.state !== 'running' || typeof ctx.suspend !== 'function') return;
+        ctx.suspend().catch(() => {});
+    }
+
+    function scheduleIdleSuspend() {
+        if (state.idleTimer) clearTimeout(state.idleTimer);
+        state.idleTimer = setTimeout(() => {
+            state.idleTimer = null;
+            suspendIfIdle();
+        }, IDLE_SUSPEND_MS);
+    }
 
     function normalizeEvent(eventId) {
         return Object.prototype.hasOwnProperty.call(SCHEME, eventId) ? eventId : null;
@@ -179,6 +203,8 @@
         const Ctor = win && (win.AudioContext || win.webkitAudioContext);
         if (!Ctor) return null;
         state.ctx = new Ctor();
+        // made to decode (prefetch) or for a sound: let go of the device if nothing plays
+        scheduleIdleSuspend();
         return state.ctx;
     }
 
@@ -189,7 +215,25 @@
             ctx.resume().catch(() => {});
         }
         state.unlocked = true;
+        if (state.playing === 0) scheduleIdleSuspend();
         prefetch();
+    }
+
+    /**
+     * The first click or key with sounds on (desktop) starts the context inside a user gesture, so the
+     * sounds after it may start without one (an app WebView that asks for a gesture once). Later input
+     * only resumes a context a sound is waiting on (one started before any gesture); sounds off, or
+     * Melaton Mobile, input does nothing here.
+     */
+    function onGesture() {
+        if (!state.enabled || !isDesktopNow()) return;
+        if (!state.gestureUnlocked) {
+            state.gestureUnlocked = true;
+            unlock();
+            return;
+        }
+        const ctx = state.ctx;
+        if (ctx && state.playing > 0 && ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
     }
 
     /** Decoded audio by file name (several events share one WAV). */
@@ -269,10 +313,24 @@
                 done = true;
                 resolve(ok);
             };
-            source.onended = () => finish(true);
+            // counted until the source itself ends (finish may come first, on its timer): the context is
+            // suspended only once nothing is left playing
+            let counted = true;
+            state.playing += 1;
+            if (state.idleTimer) { clearTimeout(state.idleTimer); state.idleTimer = null; }
+            const ended = () => {
+                if (!counted) return;
+                counted = false;
+                state.playing = Math.max(0, state.playing - 1);
+                if (state.playing === 0) scheduleIdleSuspend();
+            };
+            source.onended = () => { ended(); finish(true); };
+            // suspended while the WAV loaded (the idle suspend): it plays as the context resumes
+            if (ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
             try {
                 source.start(0);
             } catch (_err) {
+                ended();
                 finish(false);
                 return;
             }
@@ -366,9 +424,14 @@
         if (state.bound || !doc || !win) return;
         state.bound = true;
         state.enabled = readEnabled();
-        const unlockOnce = () => unlock();
-        doc.addEventListener('pointerdown', unlockOnce, { capture: true, passive: true });
-        doc.addEventListener('keydown', unlockOnce, { capture: true });
+        doc.addEventListener('pointerdown', onGesture, { capture: true, passive: true });
+        doc.addEventListener('keydown', onGesture, { capture: true });
+        // hidden: nothing is heard from this window until it shows again, so the device is let go now
+        doc.addEventListener('visibilitychange', () => {
+            if (doc.visibilityState !== 'hidden') return;
+            if (state.idleTimer) { clearTimeout(state.idleTimer); state.idleTimer = null; }
+            suspendIfIdle();
+        }, { signal: appScopeSignal });
         doc.addEventListener('desktopBootStage', (ev) => {
             if (ev && ev.detail && ev.detail.stage === 'done') play('logon', { startup: true });
         });
