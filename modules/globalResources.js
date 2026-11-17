@@ -4750,12 +4750,14 @@ class GlobalResources {
                 if (!fs.existsSync(sessionsDir)) {
                     fs.mkdirSync(sessionsDir, { recursive: true });
                 }
+                // concurrentDb (the library's spelling; concurrentDB was ignored): WAL journal (#890)
                 this.sessionStore = new SQLiteStore({
                     dir: sessionsDir,
                     db: 'sessions.sqlite',
                     table: 'sessions',
-                    concurrentDB: true
+                    concurrentDb: true
                 });
+                require('./sessionStoreTouch').tuneSessionStore(this.sessionStore);
                 console.log('✓ SQLite Session Store ready');
             } catch (err) {
                 console.error('❌ Failed to initialize SQLite session store, falling back to MemoryStore:', err.message);
