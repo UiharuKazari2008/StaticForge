@@ -10,7 +10,8 @@
  *                                                       external, screen, at } as URLs, null when none
  *   GET  /api/activesync/wallpapers/:deviceId/:kind     the stored picture (inner | cover | external)
  *   GET  /api/activesync/wallpapers/:deviceId/hashes    the phone (#890): { hashes: { <kind>: sha1 hex of
- *                                                       the stored file's bytes } }, kinds stored as files only
+ *                                                       the stored file's bytes, or "path:<path>" for a kind
+ *                                                       stored as a same-site path } }
  *
  * Re-uploads (#890): the phone sends only the kinds whose picture differs from what is stored (it
  * compares sha1 of the decoded bytes with /hashes, once per connection), and "same:<kind>" for a kind
@@ -103,14 +104,20 @@ function fileSha1(file) {
     return sha1;
 }
 
-/** { <kind>: sha1 hex of the stored picture's bytes } for the kinds stored as files. */
+/**
+ * { <kind>: sha1 hex of the stored picture's bytes, or "path:<path>" for a kind stored as a path }: every
+ * kind the server holds, so a page whose kinds are all paths still sees a server that lost its set
+ * (the page compares its own "path:<path>" digests, activeSyncScreen.js pictureHash).
+ */
 function hashes(globalResources, deviceId) {
     const idx = readIndex(globalResources, deviceId);
     const dir = dirOf(globalResources, deviceId);
     const out = {};
     for (const k of KINDS) {
         const e = idx[k];
-        if (!e || !e.file) continue;
+        if (!e) continue;
+        if (e.path) { out[k] = `path:${e.path}`; continue; }
+        if (!e.file) continue;
         const h = fileSha1(path.join(dir, e.file));
         if (h) out[k] = h;
     }
