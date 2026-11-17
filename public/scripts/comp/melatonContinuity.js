@@ -17,6 +17,12 @@
  * Handoffs registered here: 'browser' { url } (Internet Explorer Mobile on the phone, Alchemy on the
  * desktop), 'explorer' { path }, 'weather'. Programs add their own with registerHandoff.
  * Shared connection (slice F, below): the DeX window's server traffic rides the phone window's socket.
+ *
+ * The page asleep (#890, below): with the phone's screen off the app pauses this page's JavaScript while it
+ * runs on the Miniport; the Miniport wakes it for what leads to a notification.
+ *   holdAwake(reason, on)  keep the page running while something needs it (counted: one off per on)
+ *   wakeOn(type)           a server packet type that wakes the sleeping page (a notification driver)
+ *   sleepHolds()           what keeps it awake now, comma-separated ('' = it may sleep); the app asks
  */
 (function (root) {
     'use strict';
@@ -540,6 +546,14 @@
         } else if (m.op === 'restart') {
             // the Miniport notification's Restart Devices: every window of the app cold boots
             restartForMiniport();
+        } else if (m.op === 'resync') {
+            // asleep, more came for this page than the Miniport keeps (#890): what it shows is stale. It
+            // connects again and reads everything, as after a lost connection, quietly (the modem tray)
+            const c = root.wsClient;
+            if (c && inApp() && lastTransport === 'miniport') {
+                if (typeof c._beginTrayOnlyReconnect === 'function') c._beginTrayOnlyReconnect('miniport');
+                if (typeof c.manualReconnect === 'function') c.manualReconnect();
+            }
         }
     }
     /** The link is (back) up: a page that lost its connection reconnects at once. */
@@ -586,7 +600,8 @@
         // (_mpVersion, galleryImagesLoad.js) are kept, so a kept block is the current one by its key;
         // probes and other gallery reads are never flagged (noFlag)
         request_gallery: { ttl: 7 * 86400, dataset: 'gallery', noFlag: true },
-        // fetched by the Miniport once for every page, instead of each page polling
+        // fetched by the Miniport once for every page, instead of each page polling; only while a page is on
+        // screen (with the phone asleep it stops, and catches up within seconds of the screen coming on, #890)
         wallet_status: { ttl: 60, refresh: 300, dataset: 'status' },
         server_status: { ttl: 30, refresh: 60, dataset: 'status' },
         sidebar_host_metrics: { ttl: 20, refresh: 60, dataset: 'status' }
@@ -665,6 +680,152 @@
     api.resetMiniport = () => { if (isPhone() && miniport.available()) miniport.post({ op: 'reset' }); };
     api.miniport = () => ({ present: miniport.present(), available: miniport.available(), enabled: miniport.enabled !== false, up: miniport.up, authFailed: !!miniport.authFailed, transport: lastTransport });
 
+    // ================================================================ the page asleep (#890)
+    //
+    // With the phone's screen off, DSApp pauses this page's JavaScript (WebView.pauseTimers, MainActivity
+    // applyTimers) when the page runs on the Miniport and nothing holds it awake. The Miniport keeps what the
+    // server sends meanwhile. A packet that leads to a notification, a sound or an alert (SLEEP_WAKE, wakeOn)
+    // wakes the page at once, and everything held reaches it first, in order; a reply to one of its own
+    // requests wakes it too. A whole-state status push (SLEEP_LAST) is kept newest-only and goes with the
+    // next wake; the rest waits in order. Once a minute (the phone's own clock tick, never a wake-up of its
+    // own) the page runs for a moment, so its clock, reminders and alarms fire at most a minute late. Before
+    // each pause the app asks sleepHolds(): a request in flight, its boot, media playing, a notification
+    // still repeating its sound, or a holdAwake() keep it running.
+    //
+    // The packet types that lead to a notification, a sound, an alert or a waiting answer on this page
+    // (found by the handlers that call wmShell.notify / appNote / playSystemSound, showGlassToast, the
+    // request form, the inbox):
+    const SLEEP_WAKE = [
+        // the notification inbox (wmNotificationInbox.js: reminders shown live, notices missed), toasts and
+        // notices (appWebSocketHandlers.js: system_message, notification, agent_notice incl. restart asks, receipts)
+        'inbox_updated', 'notification', 'system_message', 'agent_notice', 'receipt', 'receipt_notification',
+        // texts (textMessagingClient.js -> wmChat Text Messaging note), mail (mailAccountsClient.js: new mail),
+        // Dreamscape Messenger replies (wmChat.js arrived(): chat_streaming_complete / chat_message_response)
+        'tm_event', 'ma_event', 'chat_streaming_complete', 'chat_message_response',
+        // the Director's questions (requestForm.js)
+        'request_form', 'request_form_closed',
+        // weather alerts and the rain alarm (weatherAlerts.js), a traffic report / leave-time push
+        // (wmTraffic.js), the car's notices (wmLapis.js)
+        'weather_alert_issued', 'weather_rain_alarm', 'traffic_report', 'lapis_notice',
+        // a computer waiting for this phone's answer (activeSyncAgent.js: as_request)
+        'as_request'
+    ];
+    // a status that wakes the page when this field changes: the Director's turn ending is "Director: Turn
+    // finished" (wmShell directorTurnWatch: running -> idle plays its sound and posts the notification)
+    const SLEEP_CHANGE = { director_computer_status: 'running' };
+    // whole-state status pushes: while the page sleeps only the newest is kept (per lastKey's value), and it
+    // goes with the next wake. Pushes that carry changes (statusHub feeds such as xlink_status, activity rows
+    // such as mcp_activity, traffic_updated per direction) are kept in order instead. A Director turn's
+    // streaming update (every row so far, up to ~1 MB, to pages that watch no chat) is kept newest-only per
+    // session: a page with row deltas that misses one asks for the whole update (director.js mergeStreamRows).
+    const SLEEP_LAST = ['ping', 'as_peers_updated', 'queue_update', 'search_indexing_status', 'print_queue_state',
+        'director_computer_status', 'director_streaming_update', 'lapis_updated', 'runpod_pods_status_update',
+        'browsing_sessions_changed', 'dovecote_mailbox_updated', 'weather_rain_status', 'devices_updated', 'sidebar_live'];
+    const SLEEP_LAST_KEY = { search_indexing_status: 'job', director_streaming_update: 'sessionId' };
+    const sleepWake = new Set(SLEEP_WAKE);
+    function sleepSpec() {
+        return { wake: Array.from(sleepWake), change: SLEEP_CHANGE, last: SLEEP_LAST, lastKey: SLEEP_LAST_KEY };
+    }
+    /** A server packet type that wakes this page while it sleeps (it leads to a notification, a sound, an alert). */
+    api.wakeOn = (type) => {
+        const t = String(type || '');
+        if (!t || sleepWake.has(t)) return;
+        sleepWake.add(t);
+        if (miniport.present()) miniport.post(Object.assign({ op: 'sleep' }, sleepSpec()));
+    };
+
+    // the page's Miniport port last began to connect or opened (MiniportSocket): its handshake runs first
+    let linkChangedAt = 0;
+    // holds: holdAwake (counted, from any program) and the page's own state holds (on or off)
+    const awakeHolds = new Map();
+    const stateHolds = new Set();
+    let holdsSent = '';
+    function sendHolds() {
+        const reasons = Array.from(new Set([...awakeHolds.keys(), ...stateHolds])).sort();
+        const key = reasons.join(',');
+        if (key === holdsSent) return;
+        holdsSent = key;
+        if (miniport.present()) miniport.post({ op: 'hold', reasons });
+    }
+    /** Keep this page running with the screen off while reason lasts (media, a transfer, a drive): one off per on. */
+    api.holdAwake = (reason, on) => {
+        const r = String(reason || '');
+        if (!r) return;
+        const n = (awakeHolds.get(r) || 0) + (on ? 1 : -1);
+        if (n > 0) awakeHolds.set(r, n); else awakeHolds.delete(r);
+        sendHolds();
+    };
+    function stateHold(reason, on) {
+        if (on === stateHolds.has(reason)) return;
+        if (on) stateHolds.add(reason); else stateHolds.delete(reason);
+        sendHolds();
+    }
+
+    /** Media in this page that is heard (Melaton Media, a video with its sound): it plays on with the screen off. */
+    function mediaPlaying() {
+        try {
+            const M = root.wmMedia;
+            const n = M && typeof M.now === 'function' ? M.now() : null;
+            if (n && n.playing) return true;
+        } catch (_) { /* no player */ }
+        if (!root.document || typeof root.document.querySelectorAll !== 'function') return false;
+        const els = root.document.querySelectorAll('audio, video');
+        for (let i = 0; i < els.length; i += 1) {
+            const el = els[i];
+            if (!el.paused && !el.ended && !el.muted && el.volume > 0) return true;
+        }
+        return false;
+    }
+    /** A notification whose class repeats its sound (Reminders, a severe weather alert: 4 more, 4 s apart). */
+    function soundRepeating() {
+        const S = root.wmShell && root.wmShell.sounds;
+        if (!S || !Array.isArray(S.log) || typeof S.eventPrefs !== 'function') return false;
+        const last = S.log[S.log.length - 1];
+        if (!last || Date.now() - Number(last.at || 0) > 18000) return false;
+        try { const p = S.eventPrefs(last.name); return !!(p && p.repeat && p.sound); } catch (_) { return false; }
+    }
+    /** Driving the commute home with no camera watch of the app's own: the page alerts the cameras (wmTraffic.js). */
+    function drivingUnwatched() {
+        const T = root.wmTraffic;
+        let dv = null;
+        try { dv = T && typeof T.driving === 'function' ? T.driving() : null; } catch (_) { dv = null; }
+        if (!dv || dv.direction !== 'home') return false;
+        const W = root.AndroidDriveWatch;
+        try {
+            const st = W && typeof W.status === 'function' ? JSON.parse(W.status() || 'null') : null;
+            if (st && st.active) return false;
+        } catch (_) { /* the page alerts */ }
+        return true;
+    }
+    /** What keeps this page awake now (comma-separated; '' = it may sleep): asked by the app before each pause. */
+    api.sleepHolds = () => {
+        const out = new Set([...awakeHolds.keys(), ...stateHolds]);
+        const c = root.wsClient;
+        // still starting: it boots on (the launch page, a boot or an install in progress)
+        if (!c || !inApp() || !c.initializationCompleted) out.add('boot');
+        else {
+            // connecting or just connected (a resync, the link back): the handshake and the welcome run first,
+            // the reads after them hold it as requests
+            if (c.isConnecting || c.connectionLock || Date.now() - linkChangedAt < 15000) out.add('connect');
+            // a request it waits on (a print, an upload, a read): its answer is handled while it runs
+            if (c.pendingRequests instanceof Map) {
+                for (const r of c.pendingRequests.values()) { if (r && r.counted !== false && !r.silentTicker) { out.add('request'); break; } }
+            }
+        }
+        if (mediaPlaying()) out.add('media');
+        if (soundRepeating()) out.add('sound');
+        return Array.from(out).join(',');
+    };
+    // the holds the page can see change: media starting and stopping, a drive on the way home
+    if (root.document && typeof root.document.addEventListener === 'function') {
+        const mediaCheck = () => stateHold('media', mediaPlaying());
+        // wmMediaChange: wmMedia.js (its player may not be in the document); media events do not bubble: captured
+        root.document.addEventListener('wmMediaChange', mediaCheck);
+        ['playing', 'pause', 'ended', 'emptied', 'volumechange'].forEach((t) => root.document.addEventListener(t, mediaCheck, true));
+        // wmTrafficChange: wmTraffic.js (a position, a report)
+        root.document.addEventListener('wmTrafficChange', () => stateHold('traffic', drivingUnwatched()));
+    }
+
     /** A WebSocket stand-in over the Miniport: what websocket.js uses instead of new WebSocket(). */
     class MiniportSocket {
         constructor() {
@@ -679,9 +840,11 @@
             this.onerror = null;
             if (miniportSocket && miniportSocket !== this) miniportSocket._closed(1000, 'replaced');
             miniportSocket = this;
-            setTimeout(() => { if (!miniport.post({ op: 'open' })) this._closed(1006, 'No Miniport'); }, 0);
+            linkChangedAt = Date.now();
+            // what wakes this page while it sleeps goes with its port (#890)
+            setTimeout(() => { if (!miniport.post({ op: 'open', sleep: sleepSpec() })) this._closed(1006, 'No Miniport'); }, 0);
         }
-        _opened() { if (this.readyState !== 0) return; this.readyState = 1; if (this.onopen) this.onopen({ type: 'open' }); }
+        _opened() { if (this.readyState !== 0) return; this.readyState = 1; linkChangedAt = Date.now(); if (this.onopen) this.onopen({ type: 'open' }); }
         _down(data) { if (this.readyState === 1 && this.onmessage) this.onmessage({ type: 'message', data }); }
         send(data) {
             if (this.readyState !== 1) throw new Error('The Miniport connection is not open');
@@ -936,6 +1099,7 @@
     if (miniport.present()) {
         root.AndroidMiniport.onmessage = (e) => fromMiniport(e && e.data);
         miniport.post({ op: 'hello' });
+        miniport.post(Object.assign({ op: 'sleep' }, sleepSpec()));
         miniport.post({ op: 'policy', policy: CACHE_POLICY });
         miniport.post({ op: 'config?' });
     }
