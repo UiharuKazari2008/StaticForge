@@ -133,10 +133,14 @@ const flush = () => new Promise((r) => setImmediate(r));
     assert.strictEqual(h.t.last().data.info, boot.INFO.busy);
     assert.ok(h.t.now >= boot.config.busyTimeoutMs, 'busy timeouts get the long grace');
 
+    // the browser's offline flag does not decide (1f01e89f): a server that answers boots, and a
+    // request that fails while the flag says offline opens the menu with the offline reason
     h = harness([json(true)], { offline: true });
+    assert.strictEqual(await h.ctl.runChecks(), 'teal');
+    assert.ok(h.t.fetches.length > 0, 'the server was asked');
+    h = harness([networkErr()], { offline: true });
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
     assert.strictEqual(h.t.last().data.info, boot.INFO.offline);
-    assert.strictEqual(h.t.fetches.length, 0);
 
     h = harness([json(true)], { session: 503 });
     assert.strictEqual(await h.ctl.runChecks(), 'menu');
@@ -790,9 +794,10 @@ const flush = () => new Promise((r) => setImmediate(r));
         };
         assert.strictEqual(await hh.ctl.runChecks(), 'reboot');
         const target = boot.config.installTargetMs;
-        const start = ends.copy - target * 0.8;
-        assert.ok(paces[0].budgetMs > target * 0.79 && paces[0].budgetMs <= target * 0.8, `Copying gets its share (${paces[0].budgetMs})`);
-        assert.ok(Math.abs(ends.expand - start - gateMs - target * 0.88) < 1000, 'Expanding ends at its share, after the game held Setup');
+        // the checklist's weights (melatonBoot.js INSTALL_STEPS, #774): Copying 0.75, Expanding 0.11
+        const start = ends.copy - target * 0.75;
+        assert.ok(paces[0].budgetMs > target * 0.74 && paces[0].budgetMs <= target * 0.75, `Copying gets its share (${paces[0].budgetMs})`);
+        assert.ok(Math.abs(ends.expand - start - gateMs - target * 0.86) < 1000, 'Expanding ends at its share, after the game held Setup');
         assert.ok(Math.abs(ends.complete - start - gateMs - target) < 1000, `the checklist takes the target (${ends.complete - start - gateMs})`);
         assert.ok(paces.every((pace) => pace && typeof pace.budgetMs === 'number'), 'every engine phase is gentle');
 
