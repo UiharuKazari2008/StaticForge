@@ -155,9 +155,12 @@
         late.forEach(clearTimeout);
         late = [];
     }
-    // shown, left or back: Today in front again or the page awake again draws the block (render -> watch);
-    // anything else only needs the boxes taken away (one check)
-    function changed() { if (watching || sent !== '[]') soon(); }
+    // shown, left or back: the block that can be seen again (Today in front, the screen on: Today does not always
+    // draw then) is watched again; anything else only needs the boxes taken away (one check)
+    function changed() {
+        if (live()) watch();
+        else if (watching || sent !== '[]') soon();
+    }
 
     function register() {
         sh = window.wmShell;
