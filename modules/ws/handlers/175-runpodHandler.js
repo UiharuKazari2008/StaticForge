@@ -22,7 +22,8 @@ async function handleRunpodPodsStatus(handlers, ws, message, clientInfo, wsServe
     try {
         const manager = handlers.globalResources.getRunpodPodManager();
         sendSnapshot(handlers, ws, message, wsServer);
-        manager.getSnapshot({ refresh: true }).then(() => {
+        // a fresh read (none while reads are failing: runpodPodManager.js backoff, #890)
+        manager.refreshForViewer().then(() => {
             manager.broadcast();
         }).catch((error) => {
             manager.log('error', `Status refresh: ${error.message}`);
