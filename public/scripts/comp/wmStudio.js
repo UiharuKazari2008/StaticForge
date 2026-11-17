@@ -918,6 +918,7 @@
             printBox = ws.progressBox({ title: 'Generating Image', text: 'Generating image...', pct: null });
             if (!printBox) return;
         }
+        if (!seenNow()) return; // drawn when the phone is seen again (progressWake)
         const p = progress();
         let text = 'Generating image...';
         let pct = null;
@@ -934,14 +935,27 @@
         printBox.update({ text, pct, preview: p && p.preview ? p.preview : undefined });
     }
 
+    /**
+     * The progress box shows the print while it runs (#806): its text and bar follow the socket's
+     * progress every 500 ms while the phone is seen (the screen off, the page hidden or behind an
+     * Android program: no ticks; the end still comes from the Generate button's observer). Seen
+     * again, it is right at once.
+     */
+    const seenNow = () => !ws || typeof ws.onScreen !== 'function' || ws.onScreen();
+    function syncProgressTimer(now) {
+        const want = now && seenNow();
+        if (want && !progressTimer) progressTimer = setInterval(syncGenerating, 500);
+        else if (!want && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+    }
+    const progressWake = () => { if (wasGenerating || progressTimer) syncGenerating(); };
+    window.addEventListener('melatonscreen', progressWake);
+    document.addEventListener('visibilitychange', progressWake);
+    document.addEventListener('wmBehind', progressWake);
+
     function syncGenerating() {
         const now = generating();
         const starting = now && !wasGenerating;
-        if (starting) {
-            // the progress box shows the print while it runs (#806): the page stays where it is
-            if (!progressTimer) progressTimer = setInterval(syncGenerating, 500);
-        }
-        if (!now && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+        syncProgressTimer(now);
         // done: the Print page shows the result (Stage Results comes up over it for a staged print)
         if (!now && wasGenerating && printBox && shown && !tools.length) setTab('print');
         wasGenerating = now;
