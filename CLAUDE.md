@@ -22,6 +22,9 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
 @.cursor/rules/fix-ui-issues-you-find.mdc
 @.cursor/rules/sliders-platform.mdc
 @.cursor/rules/server-push-not-polling.mdc
+@.cursor/rules/phone-power-client.mdc
+@.cursor/rules/phone-power-server.mdc
+@.cursor/rules/phone-power-native.mdc
 @.cursor/rules/tray-balloons.mdc
 @.cursor/rules/emulator-instances.mdc
 @.cursor/rules/android-app-builds.mdc
