@@ -743,7 +743,10 @@
         els.q.addEventListener('input', () => { els.clear.hidden = !els.q.value; });
         els.clear.addEventListener('click', () => { clearSearch(); els.q.focus(); });
         wireTabs();
-        document.addEventListener('visibilitychange', () => { if (els) els.root.classList.toggle('is-paused', document.hidden); });
+        // its animations stop while the page is hidden or the screen is off (the page is not hidden then)
+        const paused = () => { if (els) els.root.classList.toggle('is-paused', !screenOn()); };
+        document.addEventListener('visibilitychange', paused);
+        window.addEventListener('melatonscreen', paused);
     }
 
     // The tab strip: a tap picks a tab; a drag carries the glass slider and drops it on the nearest one.
