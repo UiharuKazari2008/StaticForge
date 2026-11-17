@@ -7948,18 +7948,26 @@ class Director {
             thumb.decoding = 'async';
             thumb.alt = filename || 'Tool picture';
             thumb.title = filename || src.split('/').pop().replace(/%20/g, ' ');
-            // studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
-            const shown = gallery && typeof studioPreviewDisplayUrl === 'function' ? studioPreviewDisplayUrl(src) : src;
-            // A gallery preview that is not made yet falls back to the file; a picture that is gone (deleted
-            // NAX preview) leaves the row instead of a broken image.
-            let fellBack = shown === src;
+            // The cells are 72 / 128 px squares (object-fit: cover): a gallery print shows its 512 px square
+            // preview (@2x.webp, the same centred cover crop), not the full-size Studio WebP (up to 4096 px,
+            // ~67 MB decoded each, #890). A preview that is not made yet falls back to the Studio WebP, then
+            // the file; a picture that is gone (deleted NAX preview) leaves the row instead of a broken image.
+            const chain = [];
+            // the previews are named as the server's getBaseName names them: no _upscaled, no extension
+            const stem = gallery && /\.(png|jpe?g)$/i.test(filename) ? filename.replace(/_upscaled(?=\.)/, '').replace(/\.(png|jpe?g)$/i, '') : '';
+            // localGalleryPreviewUrl / studioPreviewDisplayUrl: public/scripts/comp/assetUrlResolver.js
+            if (stem && typeof localGalleryPreviewUrl === 'function') chain.push(localGalleryPreviewUrl(`${stem}@2x.webp`));
+            const studio = gallery && typeof studioPreviewDisplayUrl === 'function' ? studioPreviewDisplayUrl(src) : src;
+            if (studio && studio !== src) chain.push(studio);
+            chain.push(src);
+            let at = 0;
             thumb.addEventListener('error', () => {
-                if (!fellBack) { fellBack = true; thumb.src = src; return; }
+                if (at < chain.length - 1) { at += 1; thumb.src = chain[at]; return; }
                 // Hidden, not removed: the strip keeps its key, so a later patch of the row does not retry it.
                 thumb.hidden = true;
                 if (!strip.querySelector('img:not([hidden])')) strip.hidden = true;
             });
-            thumb.src = shown;
+            thumb.src = chain[0];
             thumb.addEventListener('click', (event) => {
                 event.stopPropagation();
                 if (filename && typeof this.openSessionImage === 'function') this.openSessionImage(filename);
