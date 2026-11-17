@@ -152,6 +152,18 @@ function registerPackets(handlersCtx) {
         }
     });
 
+    // the page shows a device's live screen (or stopped): the device sends captures only while one does
+    // (#890 P16, slideshowDevices.js screen watch). Fire-and-forget.
+    reg('device_screen_watch', async ({ message, clientInfo, wsServer }) => {
+        if (!isAdmin(clientInfo)) return;
+        const src = message.data && typeof message.data === 'object' ? message.data : message;
+        try {
+            slideshowDevices.setScreenWatch(gr(), wsServer, clientInfo, src);
+        } catch (error) {
+            console.warn('[slideshowDevices] device_screen_watch failed:', error.message);
+        }
+    });
+
     reg('device_forget', async ({ ws, message, clientInfo, wsServer }) => {
         if (!isAdmin(clientInfo)) {
             handlersCtx.sendError(ws, 'Admin access required', 'INSUFFICIENT_PERMISSIONS', message.requestId);

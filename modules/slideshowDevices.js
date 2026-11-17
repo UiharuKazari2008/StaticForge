@@ -661,6 +661,10 @@ function identify(globalResources, wsServer, clientInfo, data) {
     scheduleDevicesUpdated(globalResources, wsServer);
     const reply = { success: true, deviceId, name };
     if (pending && Object.keys(pending).length) reply.settings = pending;
+    // whether anyone looks at its live screen now (#890 P16): a device that knows sends captures only then
+    reply.screenWatch = screenWatched(deviceId);
+    const st = screenWatch.get(deviceId);
+    if (st) st.on = reply.screenWatch;
     return reply;
 }
 
@@ -737,6 +741,97 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 const screens = new Map(); // deviceId -> { buffer, width, height, at, receivedAt }
 const screenBroadcasts = new Map(); // deviceId -> { timer, at }
+
+// ---- Live screen watch (#890 P16). A device sends client_device_screen captures (a radio wakeup and a
+// JPEG encode each) for Control Panel's drawing of it; it need not while nobody looks. The server keeps
+// who looks at each device's live screen and tells the device: device_command { command: 'screen_watch',
+// on } when the first viewer comes and when the last one goes, and client_identify_response.screenWatch
+// on every connect. A device that does not know the command ignores it and sends as before.
+// Viewers:
+//   - a page that says so: device_screen_watch { deviceId, on } (until off or its socket closes);
+//   - a GET of screen.jpg by an administrator: a viewer for SCREEN_VIEW_TTL_MS after it, so a page that
+//     only fetches the capture keeps it coming (each new capture brings another fetch).
+const SCREEN_VIEW_TTL_MS = 10 * 60 * 1000;
+const screenWatch = new Map(); // deviceId -> { viewers: Map(key -> expiresAt, Infinity for a socket), on, timer }
+let socketViewerSeq = 0;
+const socketViewerKeys = new WeakMap(); // clientInfo -> its viewer key
+
+function screenWatched(deviceId, now = Date.now()) {
+    const st = screenWatch.get(deviceId);
+    if (!st) return false;
+    for (const [key, until] of st.viewers) if (until <= now) st.viewers.delete(key);
+    return st.viewers.size > 0;
+}
+
+/** The viewer key of a page's socket (one per socket, whatever devices it watches). */
+function socketViewerKey(clientInfo) {
+    if (!clientInfo || typeof clientInfo !== 'object') return null;
+    let key = socketViewerKeys.get(clientInfo);
+    if (!key) { key = `ws:${++socketViewerSeq}`; socketViewerKeys.set(clientInfo, key); }
+    return key;
+}
+
+/** Tell the device when watching started or stopped; re-arm the expiry of HTTP viewers. */
+function syncScreenWatch(globalResources, wsServer, deviceId) {
+    const st = screenWatch.get(deviceId);
+    if (!st) return;
+    const now = Date.now();
+    const on = screenWatched(deviceId, now);
+    if (st.timer) { clearTimeout(st.timer); st.timer = null; }
+    let next = Infinity;
+    for (const until of st.viewers.values()) if (until < next) next = until;
+    if (Number.isFinite(next)) {
+        st.timer = setTimeout(() => { st.timer = null; syncScreenWatch(globalResources, wsServer, deviceId); }, Math.max(1000, next - now + 50));
+        if (typeof st.timer.unref === 'function') st.timer.unref();
+    }
+    if (on !== st.on) {
+        st.on = on;
+        const server = wsServerOf(globalResources, wsServer);
+        const live = findDeviceSocket(server, deviceId);
+        if (live && server && typeof server.sendToClient === 'function') {
+            try { relay(server, live, deviceId, { command: 'screen_watch', on }); } catch (err) { console.warn('[slideshowDevices] screen_watch not sent:', err.message); }
+        }
+    }
+    if (!on && !st.timer) screenWatch.delete(deviceId);
+}
+
+/** A viewer of a device's live screen came (ttlMs: how long it counts; Infinity until removed). */
+function addScreenViewer(globalResources, wsServer, deviceId, key, ttlMs) {
+    const id = String(deviceId || '').trim().toLowerCase();
+    if (!isDeviceId(id) || !key) return false;
+    let st = screenWatch.get(id);
+    if (!st) { st = { viewers: new Map(), on: false, timer: null }; screenWatch.set(id, st); }
+    const until = Number.isFinite(ttlMs) ? Date.now() + ttlMs : Infinity;
+    const had = st.viewers.get(key);
+    st.viewers.set(key, had === Infinity ? Infinity : Math.max(had || 0, until));
+    syncScreenWatch(globalResources, wsServer, id);
+    return true;
+}
+
+function removeScreenViewer(globalResources, wsServer, deviceId, key) {
+    const st = screenWatch.get(deviceId);
+    if (!st || !st.viewers.delete(key)) return;
+    syncScreenWatch(globalResources, wsServer, deviceId);
+}
+
+/** device_screen_watch { deviceId, on } from an administrator's page: it shows (or stopped showing) the live screen. */
+function setScreenWatch(globalResources, wsServer, clientInfo, data) {
+    const src = isPlainObject(data) ? data : {};
+    const deviceId = String(src.deviceId || '').trim().toLowerCase();
+    if (!isDeviceId(deviceId)) return false;
+    const key = socketViewerKey(clientInfo);
+    if (!key) return false;
+    if (src.on === false || src.on === 0) removeScreenViewer(globalResources, wsServer, deviceId, key);
+    else addScreenViewer(globalResources, wsServer, deviceId, key, Infinity);
+    return true;
+}
+
+/** A page's socket closed: it watches nothing now. */
+function dropSocketScreenWatches(globalResources, wsServer, clientInfo) {
+    const key = clientInfo && socketViewerKeys.get(clientInfo);
+    if (!key) return;
+    for (const deviceId of [...screenWatch.keys()]) removeScreenViewer(globalResources, wsServer, deviceId, key);
+}
 
 function previewDir(globalResources, deviceId) {
     getDb(globalResources);
@@ -988,6 +1083,11 @@ function mountPreviewRoutes(app, authMiddleware, globalResources) {
             res.status(403).json({ success: false, error: 'Admin access required', code: 'INSUFFICIENT_PERMISSIONS' });
             return;
         }
+        // an administrator looking at the capture keeps it coming for a while (#890 P16)
+        if (req.params.name === 'screen.jpg') {
+            const sid = req.sessionID || (req.session && req.session.id) || req.sessionId || '';
+            try { addScreenViewer(globalResources, null, req.params.deviceId, `http:${sid}`, SCREEN_VIEW_TTL_MS); } catch (_) { /* never blocks the image */ }
+        }
         let img;
         try {
             img = previewImage(globalResources, req.params.deviceId, req.params.name);
@@ -1084,8 +1184,9 @@ function deliverPendingDeviceConfig(globalResources, wsServer, clientInfo) {
     return commandId;
 }
 
-/** The socket closed: the device is offline from now, last seen now. */
+/** The socket closed: the device is offline from now, last seen now. A page's live-screen watches end. */
 function onSocketClosed(globalResources, wsServer, clientInfo) {
+    try { dropSocketScreenWatches(globalResources, wsServer, clientInfo); } catch (_) { /* nothing watched */ }
     if (!clientInfo || !clientInfo.deviceId) return;
     try {
         // another socket of the same device may still be open (a reconnect overtook the close)
@@ -1221,6 +1322,8 @@ function resetForTests(databasesPath) {
     screens.clear();
     for (const entry of screenBroadcasts.values()) clearTimeout(entry.timer);
     screenBroadcasts.clear();
+    for (const st of screenWatch.values()) if (st.timer) clearTimeout(st.timer);
+    screenWatch.clear();
     clearImageCache();
     return getDb({ getPath: () => databasesPath });
 }
@@ -1248,6 +1351,10 @@ module.exports = {
     deliverPendingDeviceConfig,
     commandAck,
     onSocketClosed,
+    setScreenWatch,
+    screenWatched,
+    addScreenViewer,
+    SCREEN_VIEW_TTL_MS,
     sendCommand,
     forget,
     listDevices,
