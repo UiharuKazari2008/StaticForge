@@ -535,6 +535,12 @@ function ensureStartMenuOrganizerModal() {
 }
 
 function openStartMenuOrganizer() {
+    // Melaton Mobile skips the boot read of the saved layout (appInitSteps.js, #890): read it before editing
+    // fetchStartMenuCustomLayout: public/scripts/comp/modalUtils.js
+    if (typeof fetchStartMenuCustomLayout === 'function' && !fetchStartMenuCustomLayout.loaded && window.wsClient) {
+        fetchStartMenuCustomLayout().then(openStartMenuOrganizer, openStartMenuOrganizer);
+        return;
+    }
     const modal = ensureStartMenuOrganizerModal();
     smoWorkingLayout = smoBuildWorkingLayout();
     smoRenderList();

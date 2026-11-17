@@ -2661,7 +2661,13 @@ function initializeModalDragging() {
     // Start only — move/end listeners attach for the active drag/resize session
     // Desktop-mode pointer: down starts the shared gesture (no focus); up may activate
     document.addEventListener('mousedown', handleModalInteraction);
-    document.addEventListener('touchstart', handleModalInteraction, { passive: false });
+    // Not on Melaton Mobile (#890): a document-wide touchstart that may cancel the touch held every
+    // scroll on the phone until main-thread script had run. WM dialogs never move or resize (wm-shell.css,
+    // wm-host.css pin them full screen or centred with !important), so a caption touch started a drag
+    // that moved nothing; a tap on a caption still reaches the mousedown above.
+    if (window.uiShell !== 'mobile') {
+        document.addEventListener('touchstart', handleModalInteraction, { passive: false });
+    }
 
     // Caption double-click: maximize / restore, or minimize without a maximize box (#440)
     document.addEventListener('dblclick', handleModalCaptionDoubleClick);
@@ -4658,6 +4664,10 @@ let taskbarClockIntervalTicks = 0;
 let taskbarClockResyncAt = 0;
 
 function initializeDesktopTaskbar() {
+    // Melaton Mobile never shows the taskbar (#890): its window buttons were kept up to date by an
+    // observer on every window's class for nothing. With taskbarWindows unset, updateTaskbarWindows and
+    // getOrCreateTaskbarItem do nothing on the phone (the shell has its own task list and clock).
+    if (window.uiShell === 'mobile') return;
     taskbarWindows = document.getElementById('taskbarWindows');
     taskbarClock = document.getElementById('taskbarClock');
 
@@ -4667,12 +4677,8 @@ function initializeDesktopTaskbar() {
     }
 
     // The clock displays minutes, so align once and update only on minute boundaries.
-    // Not on Melaton Mobile: its taskbar is never shown and the shell has a clock of its own, yet
-    // this one woke the page every minute to write a hidden element (#849).
-    if (window.uiShell !== 'mobile') {
-        updateTaskbarClock();
-        scheduleTaskbarClock();
-    }
+    updateTaskbarClock();
+    scheduleTaskbarClock();
 
     // Set up modal observation
     observeModals();
@@ -6881,6 +6887,7 @@ let startMenuCustomLayout = null;
 
 async function fetchStartMenuCustomLayout() {
     if (!window.wsClient) return;
+    fetchStartMenuCustomLayout.loaded = true;
     try {
         // start_menu_get_layout: modules/ws/handlers/260-startMenuLayoutHandler.js
         const result = await window.wsClient.sendMessage('start_menu_get_layout', {}, false);
@@ -7835,6 +7842,14 @@ function unwireStartMenuOutsideClick() {
 }
 
 function initializeStartMenu() {
+    // Melaton Mobile (#890): the phone's Start is wmShell's own; the Vista Start menu was built (every
+    // app, the places, the power buttons) into a page that never shows it. The pinned list is still
+    // read, the same state as before; startMenu stays unset, so the layout reads skip their rebuild.
+    if (window.uiShell === 'mobile') {
+        const phonePins = readStartMenuPinnedFromStorage();
+        if (phonePins !== null) applyStartMenuPinnedLaunchIds(phonePins);
+        return;
+    }
     startMenu = document.getElementById('startMenu');
     startMenuItems = document.getElementById('startMenuItems');
 

@@ -176,6 +176,8 @@ if (window.wsClient) {
 
     // Priority 0.46: Start menu organizer's saved layout (order + folders) — fetchStartMenuCustomLayout: modalUtils.js
     window.wsClient.registerInitStep(0.46, 'Loading start menu layout', async () => {
+        // Melaton Mobile has no Vista Start menu to lay out (#890); the organizer reads it if it opens there
+        if (window.uiShell === 'mobile') return;
         if (typeof fetchStartMenuCustomLayout === 'function') {
             await fetchStartMenuCustomLayout();
         }
