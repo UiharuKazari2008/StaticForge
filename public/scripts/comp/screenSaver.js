@@ -31,6 +31,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const doc = typeof document !== 'undefined' ? document : null;
     const CHECK_MS = 5000;
@@ -942,25 +943,57 @@
     const inputOptions = (type) => ({ capture: true, passive: type === 'pointermove' || type === 'wheel' || type === 'touchstart' });
 
     /** Typing or pointing inside a same-origin frame (Grimoire pages, applets) counts as input too. */
-    function watchFrames() {
-        if (!doc) return;
-        doc.querySelectorAll('iframe').forEach((frame) => {
-            let win = null;
-            try { win = frame.contentWindow; void win.document; } catch (_) { return; } // cross-origin
-            if (!win || win.__screenSaverWatched) return;
-            win.__screenSaverWatched = true;
-            INPUT_TYPES.forEach((type) => {
-                win.addEventListener(type, () => { state.lastInput = Date.now(); }, inputOptions(type));
-            });
+    function watchFrame(frame) {
+        let win = null;
+        try { win = frame.contentWindow; void win.document; } catch (_) { return; } // cross-origin
+        if (!win || win.__screenSaverWatched) return;
+        win.__screenSaverWatched = true;
+        INPUT_TYPES.forEach((type) => {
+            win.addEventListener(type, () => { state.lastInput = Date.now(); }, inputOptions(type));
         });
     }
 
+    // The frames are watched as they load (a load event of an <iframe>, caught on the document in its
+    // capture phase; a frame's new page is a new window, and loads again) instead of a look through the
+    // whole page every 5 s (#890). The look stays for the frames already there and on each return to the
+    // window, as a net.
+    let frameLoadsWatched = false;
+    function watchFrames() {
+        if (!doc) return;
+        if (!frameLoadsWatched) {
+            frameLoadsWatched = true;
+            doc.addEventListener('load', (ev) => {
+                const t = ev.target;
+                if (t && t.localName === 'iframe') watchFrame(t);
+            }, { capture: true, passive: true, signal: appScopeSignal });
+        }
+        const frames = doc.getElementsByTagName('iframe');
+        for (let i = 0; i < frames.length; i++) watchFrame(frames[i]);
+    }
+
     function tick() {
-        watchFrames();
+        // out of sight nobody idles at this window, and a saver started there would run unseen (a DeX
+        // window whose display sleeps, a hidden tab): the timer stops (syncIdleTimer), and the window
+        // shown again looks at once (the saver shows then if its wait has passed)
+        if (doc && doc.hidden) return;
         if (state.showing) return;
         const s = settings();
         if (s.id === 'none' || blocked()) return;
         if (Date.now() - state.lastInput >= s.wait * 60000) startIdle();
+    }
+
+    /** The 5 s idle check runs while the window is seen; shown again, it looks at once. */
+    function syncIdleTimer() {
+        if (!doc || isAgentTab() || root.uiShell === 'mobile') return;
+        if (doc.hidden) {
+            if (state.timer) { root.clearInterval(state.timer); state.timer = null; }
+            return;
+        }
+        if (!state.timer) {
+            state.timer = root.setInterval(tick, CHECK_MS);
+            watchFrames();
+            tick();
+        }
     }
 
     /** Input ends a saver (a Preview too). On the window, in capture: ahead of every document-level
@@ -979,7 +1012,10 @@
         if (root.uiShell === 'mobile') return;
         bindInput();
         // only the idle start stays off on the agent tab
-        if (!isAgentTab() && !state.timer) state.timer = root.setInterval(tick, CHECK_MS);
+        if (isAgentTab()) return;
+        watchFrames();
+        if (!doc.hidden && !state.timer) state.timer = root.setInterval(tick, CHECK_MS);
+        doc.addEventListener('visibilitychange', syncIdleTimer, { signal: appScopeSignal });
     }
 
     const api = {
