@@ -202,9 +202,11 @@
 
     // A bar's block count (how many fit) is measured once per size: a new size (a ResizeObserver
     // entry: the screen turned, the bar shown or hidden) or a new unit measures it again; a step only
-    // sets --wds-blocks, and only when it changed (it was a style read and a layout read a packet)
-    const barFits = new WeakMap();
-    const barsSeen = new WeakSet();
+    // sets --wds-blocks, and only when it changed (it was a style read and a layout read a packet).
+    // A bar with no width (its pane not rendered: the print pane on a narrow home page, the strip in
+    // the print view) is not kept: it is measured again the first time it is drawn shown.
+    let barFits = new WeakMap();
+    let barsSeen = new WeakSet();
     let barSizes = null;
     function barFit(bar) {
         const unit = 9 * wmPx();
@@ -212,8 +214,10 @@
         if (fit && fit.unit === unit) return fit;
         if (!barSizes && typeof ResizeObserver === 'function') barSizes = new ResizeObserver((entries) => entries.forEach((e) => barFits.delete(e.target)));
         if (barSizes && !barsSeen.has(bar)) { barsSeen.add(bar); barSizes.observe(bar); }
-        fit = { unit, n: Math.max(1, Math.floor((Math.max(0, bar.clientWidth - 2) + 2 * (unit / 9)) / unit)), blocks: '' };
-        barFits.set(bar, fit);
+        const w = bar.clientWidth;
+        fit = { unit, n: Math.max(1, Math.floor((Math.max(0, w - 2) + 2 * (unit / 9)) / unit)), blocks: '' };
+        if (w > 0) barFits.set(bar, fit);
+        else barFits.delete(bar);
         return fit;
     }
 
@@ -533,16 +537,37 @@
     // the many-print grid as last built (drawPrint); a new stage shape builds it again
     let gridKey = '';
     let stageSize = null;
+    let stageSeen = null;
     let stageTall = null;
     function watchStage(stage) {
-        if (stageSize || typeof ResizeObserver !== 'function') return;
+        if (stageSeen === stage || typeof ResizeObserver !== 'function') return;
         // only a turn of the stage's shape (tall / wide) changes the columns
-        stageSize = new ResizeObserver(() => {
-            const tall = stage.clientHeight >= stage.clientWidth;
-            if (stageTall !== null && tall !== stageTall) gridKey = '';
-            stageTall = tall;
-        });
+        if (!stageSize) {
+            stageSize = new ResizeObserver(() => {
+                if (!stageSeen) return;
+                const tall = stageSeen.clientHeight >= stageSeen.clientWidth;
+                if (stageTall !== null && tall !== stageTall) gridKey = '';
+                stageTall = tall;
+            });
+        } else stageSize.disconnect();
+        stageSeen = stage;
+        stageTall = null;
         stageSize.observe(stage);
+    }
+
+    // A new page (the first open, or the next one after X or End Task removed the last): the old page's
+    // stage and bars are no longer watched (the observers held them, and with them the whole removed
+    // page), and nothing measured or built from it is kept (#890)
+    function forgetPage() {
+        if (stageSize) stageSize.disconnect();
+        stageSeen = null;
+        stageTall = null;
+        gridKey = '';
+        if (barSizes) barSizes.disconnect();
+        barFits = new WeakMap();
+        barsSeen = new WeakSet();
+        // the Directive tab was the old strip's: the new strip has its own
+        directiveTab = null;
     }
 
     /** The home tabs: Directive only while Rentan's creative mode is on (as on the desktop). */
@@ -2180,6 +2205,7 @@
     // ---------------------------------------------------------------- page
 
     function mount(p) {
+        forgetPage();
         page = p;
         p.classList.add('wm-dreamstudio');
         p.innerHTML = `
