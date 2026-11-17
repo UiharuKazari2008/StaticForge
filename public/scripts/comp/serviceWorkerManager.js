@@ -1965,10 +1965,14 @@ class ServiceWorkerManager {
         if (this.agentSession) {
             return;
         }
-        // Continuity: a hybrid phone's DeX window checks for updates itself too (#900, Yukimi Nov 17: the
-        // bonded desktop still gets Melaton Update); the shared service worker joins a download the phone
-        // already runs, and the phone stops relaying what it applies
-        if (this._isContinuityDexWindow() && window.melatonContinuity.announceSelfUpdates) window.melatonContinuity.announceSelfUpdates();
+        // Continuity (#900, Yukimi Nov 17): the bonded desktop's Melaton Update is an interface to the
+        // phone's updater (the phone / CaféReady service downloads and installs): Check for updates asks
+        // the phone, whose update state comes back as it changes (melatonContinuity 'update-state')
+        if (this._isContinuityDexWindow()) {
+            const mc = window.melatonContinuity;
+            if (mc && typeof mc.phoneCheckForUpdates === 'function') return mc.phoneCheckForUpdates(noToast);
+            return;
+        }
         if (!window.isLoginPage && this._isBeforeDesktop()) {
             await this._holdCacheUpdateUntilDesktop(null, noToast);
             return;
@@ -2062,8 +2066,8 @@ class ServiceWorkerManager {
     }
 
     async updateStaticCache(files, noToast = false, cacheOptions = null) {
-        // Continuity (#900): the DeX window downloads too (a download the phone runs is joined below)
-        if (this._isContinuityDexWindow() && window.melatonContinuity.announceSelfUpdates) window.melatonContinuity.announceSelfUpdates();
+        // Continuity (#798, #900): the phone's updater downloads; this DeX window shows its state
+        if (this._isContinuityDexWindow()) return;
         if (this.agentSession) {
             return;
         }

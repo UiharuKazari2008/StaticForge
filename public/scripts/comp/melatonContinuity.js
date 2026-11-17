@@ -313,6 +313,8 @@
     api.on('phone-ready', (m) => {
         const was = phoneReadyNow;
         phoneReadyNow = !!m.ready;
+        // the bonded desktop's Melaton Update shows the phone's updater (#900)
+        if (phoneReadyNow && isDw() && typeof api.syncUpdateState === 'function') void api.syncUpdateState();
         if (phoneReadyNow && pocketPc) pocketPcBack();
         if (phoneReadyNow && (!was || waitingForPhone)) followPhone();
     });
@@ -370,6 +372,91 @@
         return sw.classifyStaticCacheUpdate(files) === 'restart' ? 'restart' : 'live';
     }
     api.on('update-needs?', (m) => answer(m, localNeed(m.urls)));
+
+    // ---- the bonded desktop's Melaton Update is an interface to the phone's updater (#900) ----------
+    //
+    // The phone (its CaféReady service) checks, downloads and installs; the DeX window shows it. Every
+    // change of the phone's update state (progress, updates waiting, their kind) goes to the DeX window
+    // as one snapshot (coalesced, no polling); the DeX window's Check for updates asks the phone.
+    const UPDATE_FIELDS = ['updateProgress', 'pendingUpdateFuse', 'pendingUpdateKind', 'pendingUpdateFilesTotal'];
+    function updateSnapshot() {
+        const sw = root.serviceWorkerManager;
+        if (!sw) return null;
+        const urls = Array.from(sw.pendingUpdateUrls || []);
+        return {
+            progress: Number(sw.updateProgress) || 0,
+            pending: !!sw.pendingUpdateFuse,
+            kind: sw.pendingUpdateKind || null,
+            files: sw.pendingUpdateFilesTotal || urls.length,
+            urls: urls.slice(0, 4000)
+        };
+    }
+    let updateRelayTimer = null;
+    function relayUpdateState() {
+        if (updateRelayTimer) return;
+        updateRelayTimer = setTimeout(() => {
+            updateRelayTimer = null;
+            if (!isPhone() || !api.peers().includes('desktop')) return;
+            const state = updateSnapshot();
+            if (state) api.post({ type: 'update-state', state });
+        }, 250);
+    }
+    function watchUpdateState() {
+        const sw = root.serviceWorkerManager;
+        if (!sw || sw.__mcUpdateWatch || !isPhone()) return;
+        sw.__mcUpdateWatch = true;
+        UPDATE_FIELDS.forEach((key) => {
+            let value = sw[key];
+            Object.defineProperty(sw, key, {
+                configurable: true,
+                enumerable: true,
+                get: () => value,
+                set: (next) => { if (next !== value) { value = next; relayUpdateState(); } }
+            });
+        });
+    }
+    // the DeX window joining, or asking: the state now
+    api.on('update-state?', (m) => { if (isPhone()) { watchUpdateState(); answer(m, updateSnapshot()); } });
+    api.on('update-check', async (m) => {
+        if (!isPhone()) return;
+        watchUpdateState();
+        const sw = root.serviceWorkerManager;
+        try { if (sw && typeof sw.checkStaticFileUpdates === 'function') await sw.checkStaticFileUpdates(!!m.noToast); } catch (_) { /* the state says what happened */ }
+        answer(m, updateSnapshot());
+    });
+    /** The DeX window: the phone's state into this window's update UI (tray icon, update page, Restart Now). */
+    function mirrorUpdateState(state) {
+        const sw = root.serviceWorkerManager;
+        if (!isDw() || !sw || !state) return;
+        const wasPending = !!sw.pendingUpdateFuse;
+        sw.updateProgress = state.progress || 0;
+        sw.pendingUpdateUrls = new Set(Array.isArray(state.urls) ? state.urls : []);
+        sw.pendingUpdateFilesTotal = state.files || sw.pendingUpdateUrls.size;
+        sw.pendingUpdateKind = state.kind || null;
+        sw.pendingUpdateFuse = !!state.pending;
+        if (typeof sw._notifyTrayIconUpdate === 'function') sw._notifyTrayIconUpdate();
+        // the update page, if open, shows the phone's progress
+        if (typeof sw.foregroundUpdateView === 'function') {
+            // the update page's own states (serviceWorkerManager _showServiceWorkerTrayPopup)
+            const view = state.pending ? 'complete' : state.progress > 0 && state.progress < 100 ? 'downloading' : null;
+            if (view) { try { sw.foregroundUpdateView(view, { progress: state.progress, filesTotal: state.files }); } catch (_) { /* the page redraws itself */ } }
+        }
+        // updates newly ready: this window's own "restart to finish" notice (Restart Now plans per window)
+        if (state.pending && !wasPending && typeof sw._scheduleUpdateCompleteToast === 'function') sw._scheduleUpdateCompleteToast(state.kind === 'restart' ? 'restart' : 'apply');
+    }
+    api.on('update-state', (m) => mirrorUpdateState(m.state));
+    /** The DeX window's Check for updates (serviceWorkerManager.checkStaticFileUpdates): the phone checks. */
+    api.phoneCheckForUpdates = async (noToast) => {
+        if (!isDw() || !api.peers().includes('phone')) return null;
+        const state = await api.ask('update-check', { noToast: !!noToast }, 60000);
+        mirrorUpdateState(state);
+        return state;
+    };
+    /** The DeX window, once the bond is up: the phone's update state now (then each change follows). */
+    api.syncUpdateState = async () => {
+        if (!isDw() || !api.peers().includes('phone')) return;
+        mirrorUpdateState(await api.ask('update-state?', {}, 3000));
+    };
     /**
      * Before a restart for updates in a bonded pair: { self, other } - whether this window and the other
      * one need the restart. other is null when there is no other window or it did not answer; then the
@@ -421,14 +508,8 @@
     /** serviceWorkerManager.forceRestart (phone window): what the coming restart installs. */
     api.restartScope = (scope) => { keepDexOnRestart = scope !== 'both'; };
     /** serviceWorkerManager.applyStaticCacheUpdate (phone window): CSS and safe files applied live go to the DeX window too. */
-    // a DeX window from #900 on says it takes its own updates (announceSelfUpdates): no relay to it
-    let dexTakesUpdates = false;
-    api.on('dex-takes-updates', () => { if (isPhone()) dexTakesUpdates = true; });
-    api.announceSelfUpdates = () => { if (isDw()) api.post({ type: 'dex-takes-updates' }); };
     api.relayApply = (files) => {
-        // #900: the DeX window takes updates itself now (its own check, download and apply on the shared
-        // service worker); a relay would apply them twice. Kept for a DeX page older than #900.
-        if (dexTakesUpdates || !isPhone() || !api.peers().includes('desktop')) return;
+        if (!isPhone() || !api.peers().includes('desktop')) return;
         api.post({ type: 'apply-update', files: files.map((f) => ({ url: f.url, hash: f.hash })) });
     };
     api.on('apply-update', (m) => {
