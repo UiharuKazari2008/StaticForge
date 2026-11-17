@@ -4967,23 +4967,60 @@ function emitDirector(handler, ws, type, data, requestId) {
 // A client that has never said (a page from before this) still gets every update, except a socket
 // that is no page at all (#890): a Dreamscape Frame / SideShow device, the Android app's widgets
 // (light clients) and its background link never show a chat.
+// A phone page (or a phone's DeX window) that said it sleeps (client_dormant, #890) gets none either:
+// nothing of the turn is drawn with the screen off, and on waking it is sent the newest update whole
+// (resendDirectorStream).
 function watchesDirectorStream(info, sessionId) {
     if (info && info.directorWatch === undefined && (info.deviceApp || info.deviceId || info.light || (info.as && info.as.speaker === 'service'))) return false;
+    if (require('./wsSocketHeartbeat').isDormantPage(info)) return false;
     return !info || info.directorWatch === undefined || info.directorWatch === String(sessionId);
 }
 
+/** The whole newest update of a gate to one socket: its new base for row and live text deltas. */
+function sendWholeStream(handler, ws, clientInfo, sessionId, gate) {
+    if (!gate || !gate.last || !handler || !ws) return false;
+    try {
+        handler.sendToClient(ws, { type: 'director_streaming_update', data: gate.last, timestamp: new Date().toISOString() });
+    } catch (_) { return false; /* the next update reaches it */ }
+    noteStreamSent(clientInfo, sessionId, gate.last.seq, gate);
+    return true;
+}
+
+/**
+ * What a socket now has of a chat's turn (the gate and its update seq), for the live text delta
+ * (flushDirectorStream). A gate is one turn: a later turn of the same chat starts its seq again.
+ */
+function noteStreamSent(info, sessionId, seq, gate) {
+    if (!info) return;
+    info.directorStreamSession = String(sessionId || '');
+    info.directorStreamSeq = Number.isFinite(seq) ? seq : null;
+    info.directorStreamGate = gate && gate.serial ? gate.serial : null;
+}
+
 // A page opened a chat (or closed it: sessionId ''). A chat whose turn is running sends its newest
-// update at once, so the page does not wait for the next one.
-function watchDirectorStream(handler, ws, clientInfo, sessionId, delta) {
+// update at once, so the page does not wait for the next one. delta: the page puts row deltas
+// together (#843); liveDelta: it also appends the live row's text (textAppend / textFrom, #890 P11).
+function watchDirectorStream(handler, ws, clientInfo, sessionId, delta, liveDelta) {
     if (!clientInfo) return;
     const id = String(sessionId || '');
     clientInfo.directorWatch = id;
     // this page puts row deltas together (flushDirectorStream); the full update below is its base
     clientInfo.directorDelta = delta === true || delta === 1;
+    clientInfo.directorLiveDelta = liveDelta === true || liveDelta === 1;
+    // until it is sent an update of this chat, it has none to build on
+    noteStreamSent(clientInfo, id, null);
     const gate = id ? streamGates.get(id) : null;
-    if (gate && gate.last && handler && ws) {
-        try { handler.sendToClient(ws, { type: 'director_streaming_update', data: gate.last, timestamp: new Date().toISOString() }); } catch (_) { /* the next update reaches it */ }
-    }
+    sendWholeStream(handler, ws, clientInfo, id, gate);
+}
+
+/**
+ * A sleeping page woke (client_dormant off, #890): the updates of the turn it watches went past it
+ * while it slept (watchesDirectorStream), so the newest one goes to it whole, as a new base.
+ */
+function resendDirectorStream(handler, ws, clientInfo) {
+    if (!clientInfo || !clientInfo.directorWatch) return false;
+    const id = String(clientInfo.directorWatch);
+    return sendWholeStream(handler, ws, clientInfo, id, streamGates.get(id));
 }
 
 function streamRttMs(gr, sessionId) {
@@ -5009,6 +5046,7 @@ function streamGaps(rtt) {
 }
 
 const streamGates = new Map();
+let streamGateSerial = 0;
 
 function armDirectorStream(sessionId, wait) {
     const gate = streamGates.get(String(sessionId));
@@ -5037,7 +5075,7 @@ function flushDirectorStream(sessionId) {
         return;
     }
     gate.seq += 1;
-    const data = gate.pending;
+    const data = streamWireData(gate.pending);
     gate.pending = null;
     gate.lastSent = now;
     gate.inflight = { seq: gate.seq, sentAt: now, acked: false };
@@ -5057,25 +5095,73 @@ function flushDirectorStream(sessionId) {
     const before = gate.sentJson || [];
     let from = 0;
     while (from < rowJson.length && from < before.length && rowJson[from] === before[from]) from += 1;
+    const prevSeq = gate.sentSeq || 0;
     const deltaPayload = {
         type: 'director_streaming_update',
         data: Object.assign({}, payload.data, {
             rows: (data.rows || []).slice(from),
             rowsFrom: from,
             rowsTotal: rowJson.length,
-            prevSeq: gate.sentSeq || 0
+            prevSeq
         }),
         timestamp: payload.timestamp
     };
+    // fullContent is the live row's text (or the turn's) again: a delta never needs it (#890 P11)
+    delete deltaPayload.data.fullContent;
+    // Live text deltas (#890 P11): the live row grows at its end (the text being written), so a page that
+    // says it can (director_stream_watch liveDelta) and has the update this one builds on gets only the
+    // new tail: live { ...the row without text, textAppend, textFrom } where textFrom is the length of
+    // the text it has. A page whose text is not that long asks for the whole update (as for rows).
+    const liveAppend = liveTextAppend(gate.sentLive, data.live);
+    const livePayload = liveAppend ? {
+        type: 'director_streaming_update',
+        data: Object.assign({}, deltaPayload.data, { live: liveAppend }),
+        timestamp: payload.timestamp
+    } : null;
     gate.sentJson = rowJson;
     gate.sentSeq = gate.seq;
+    gate.sentLive = data.live && typeof data.live.text === 'string' ? { type: data.live.type, name: data.live.name, text: data.live.text } : null;
+    const seq = gate.seq;
+    // the page has the update this one builds on (prevSeq), so its live text is the one sent with it
+    const hasPrev = (info) => !!(info && info.directorStreamGate === gate.serial && info.directorStreamSession === String(sessionId) && info.directorStreamSeq === prevSeq && prevSeq > 0);
+    const sent = (info) => { noteStreamSent(info, sessionId, seq, gate); return true; };
     let wsServer = null;
     try { wsServer = gate.gr && gate.gr.getWebSocketServer && gate.gr.getWebSocketServer(); } catch (_) { wsServer = null; }
     if (wsServer && typeof wsServer.broadcast === 'function') {
-        wsServer.broadcast(payload, (info) => watchesDirectorStream(info, sessionId) && !(info && info.directorDelta));
-        wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && watchesDirectorStream(info, sessionId));
+        wsServer.broadcast(payload, (info) => watchesDirectorStream(info, sessionId) && !(info && info.directorDelta) && sent(info));
+        if (livePayload) {
+            wsServer.broadcast(livePayload, (info) => !!(info && info.directorDelta && info.directorLiveDelta) && watchesDirectorStream(info, sessionId) && hasPrev(info) && sent(info));
+            wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && !(info.directorLiveDelta && hasPrev(info)) && watchesDirectorStream(info, sessionId) && sent(info));
+        } else {
+            wsServer.broadcast(deltaPayload, (info) => !!(info && info.directorDelta) && watchesDirectorStream(info, sessionId) && sent(info));
+        }
     }
     else if (gate.handler && gate.ws) gate.handler.sendToClient(gate.ws, payload);
+}
+
+/**
+ * An update's data as it goes out: fullContent (the live row's text, or the turn's text) is left out
+ * when rows or a live row carry it (#890 P11; every page draws those and reads fullContent only
+ * without them, director.js flushLivePaint).
+ */
+function streamWireData(data) {
+    const src = data && typeof data === 'object' ? data : {};
+    if (!Object.prototype.hasOwnProperty.call(src, 'fullContent')) return src;
+    if (!Array.isArray(src.rows) && !src.live) return src;
+    const { fullContent: _drop, ...rest } = src;
+    return rest;
+}
+
+/**
+ * The live row as a text delta against the one last sent (sent: { type, name, text }), or null when it
+ * must go whole: another row (type or name), text that does not start with what was sent, or none.
+ */
+function liveTextAppend(sent, live) {
+    if (!sent || !live || typeof live !== 'object' || typeof live.text !== 'string' || typeof sent.text !== 'string') return null;
+    if (live.type !== sent.type || live.name !== sent.name) return null;
+    if (live.text.length < sent.text.length || !live.text.startsWith(sent.text)) return null;
+    const { text, ...rest } = live;
+    return Object.assign(rest, { textAppend: text.slice(sent.text.length), textFrom: sent.text.length });
 }
 
 // Turn over: a throttled flush after the completion packet re-arms "running" in the client.
@@ -5092,7 +5178,7 @@ function queueDirectorStream(gr, data, handler, ws) {
     if (!sessionId) return;
     let gate = streamGates.get(sessionId);
     if (!gate) {
-        gate = { seq: 0, pending: null, inflight: null, timer: null, lastSent: 0, rtt: 80, gr: null };
+        gate = { seq: 0, pending: null, inflight: null, timer: null, lastSent: 0, rtt: 80, gr: null, serial: ++streamGateSerial };
         streamGates.set(sessionId, gate);
     }
     gate.gr = gr || gate.gr;
@@ -5797,6 +5883,7 @@ async function handleDirectorGetSession(handler, ws, message) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
             return;
         }
+        noteDraftsIn(chat.id, chat.messages, chat.inflight && chat.inflight.draftId);
         sendOk(handler, ws, 'director_get_session_response', message.requestId, {
             session: { ...publicSession(chat), messages: (chat.messages || []).map(publicMessage) }
         });
@@ -5828,6 +5915,7 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
             });
             return;
         }
+        noteDraftsIn(chat.id, chat.messages, chat.inflight && chat.inflight.draftId);
         sendOk(handler, ws, 'director_open_workspace_response', message.requestId, {
             session: { ...publicSession(chat), messages: (chat.messages || []).map(publicMessage) }
         });
@@ -5856,6 +5944,75 @@ async function handleDirectorDeleteSession(handler, ws, message) {
     }
 }
 
+// ---- director_get_messages { sinceId } (#890): a page that has the chat up to a message asks for what
+// came after it, not the whole chat again (0.25-4 MB on every turn end and reconnect). The reply holds
+// only the messages after sinceId (partial: true, sinceId echoed) and total, the chat's message count, so
+// the page can tell its copy still lines up (what it has up to sinceId plus these = total). It gets the
+// whole list (no partial) when sinceId is not in the chat, or is a draft of a turn: the running turn's
+// assistant message, or one a page was handed while its turn ran (it has been written to since).
+const handedDrafts = new Map(); // chat id -> Set(draft message ids a reply carried while the turn ran)
+const HANDED_DRAFTS_PER_CHAT = 32;
+const HANDED_DRAFTS_CHATS = 500;
+
+/** A reply carried this chat's running-turn draft: it is no anchor for a later sinceId. */
+function noteDraftHandout(chatId, draftId) {
+    if (!chatId || !draftId) return;
+    const key = String(chatId);
+    let set = handedDrafts.get(key);
+    if (!set) {
+        if (handedDrafts.size >= HANDED_DRAFTS_CHATS) handedDrafts.delete(handedDrafts.keys().next().value);
+        set = new Set();
+        handedDrafts.set(key, set);
+    }
+    set.delete(String(draftId));
+    set.add(String(draftId));
+    if (set.size > HANDED_DRAFTS_PER_CHAT) set.delete(set.values().next().value);
+}
+
+/** The running draft is among the messages a reply carries: remember it (noteDraftHandout). */
+function noteDraftsIn(chatId, messages, draftId) {
+    if (!draftId || !Array.isArray(messages)) return;
+    if (messages.some((m) => m && m.id === draftId)) noteDraftHandout(chatId, draftId);
+}
+
+/**
+ * The messages a director_get_messages reply carries: { messages, partial }. list: the chat's messages
+ * (stored shape); runningDraftId: the running turn's assistant message id (null when none runs).
+ */
+function messagesSince(chatId, list, sinceId, runningDraftId) {
+    const all = Array.isArray(list) ? list : [];
+    const id = typeof sinceId === 'string' && sinceId ? sinceId : null;
+    let out = all;
+    let partial = false;
+    const handed = handedDrafts.get(String(chatId || ''));
+    if (id && id !== runningDraftId && !(handed && handed.has(id))) {
+        const at = all.findIndex((m) => m && m.id === id);
+        if (at >= 0) { out = all.slice(at + 1); partial = true; }
+    }
+    noteDraftsIn(chatId, out, runningDraftId);
+    return { messages: out, partial };
+}
+
+/** director_get_messages_response data: the chat's strip, tasks and messages (all, or since sinceId). */
+function messagesReply(chat, list, sinceId, runningDraftId, fallbackName) {
+    const all = Array.isArray(list) ? list : [];
+    const picked = messagesSince(chat.id, all, sinceId, runningDraftId);
+    const data = {
+        sessionId: chat.id,
+        name: chat.name || fallbackName,
+        images: Array.isArray(chat.images) ? chat.images : [],
+        prints: Array.isArray(chat.prints) ? chat.prints : [],
+        tasks: normalizeSessionTasks(chat.tasks),
+        messages: picked.messages.map(publicMessage),
+        total: all.length
+    };
+    if (picked.partial) {
+        data.partial = true;
+        data.sinceId = String(sinceId);
+    }
+    return data;
+}
+
 async function handleDirectorGetMessages(handler, ws, message) {
     try {
         const paths = await ensureIndexPaths(handler.globalResources);
@@ -5865,14 +6022,9 @@ async function handleDirectorGetMessages(handler, ws, message) {
             handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
             return;
         }
-        sendOk(handler, ws, 'director_get_messages_response', message.requestId, {
-            sessionId: chat.id,
-            name: chat.name || 'Director',
-            images: Array.isArray(chat.images) ? chat.images : [],
-            prints: Array.isArray(chat.prints) ? chat.prints : [],
-            tasks: normalizeSessionTasks(chat.tasks),
-            messages: (chat.messages || []).map(publicMessage)
-        });
+        const draftId = chat.inflight && chat.inflight.draftId ? chat.inflight.draftId : null;
+        sendOk(handler, ws, 'director_get_messages_response', message.requestId,
+            messagesReply(chat, chat.messages || [], message.sinceId, draftId, 'Director'));
     } catch (error) {
         handler.sendError(ws, error.message || 'Failed to load Director messages', error.code || 'DIRECTOR_ERROR', message.requestId);
     }
@@ -8979,6 +9131,9 @@ module.exports = {
     queueDirectorStream,
     ackDirectorStream,
     watchDirectorStream,
+    resendDirectorStream,
+    messagesReply,
+    noteDraftsIn,
     computerSize,
     directorStatus,
     sampleDirectorResources,
@@ -9069,6 +9224,8 @@ module.exports = {
         usesClaudeCli, publicTokenRouterCatalog, resolveTokenRouterRun, tokenRouterCliEnv, tokenRouterJail, requireTokenRouterKey, spawnClaude,
         sanitizeRentanAgent, rentanAgentFor, saveRentanAgentDefault, rentanAgentPath, claimDynagenChat, rentanFallback,
         publicSession, publicMessage, publicTraceRow, roundModelRecord, watchGeneratedPrints, rememberGeneratedPrint,
+        flushDirectorStream, dropDirectorStream, watchesDirectorStream, streamWireData, liveTextAppend, streamGates,
+        messagesSince, noteDraftHandout, handedDrafts,
         isLinkDrop, continuationPrompt,
         normalizeSessionTasks, readProcStat, directorState, computerReadiness,
         parseDynagenAnswer, dynagenThoughtTracker, dynagenTurnPrompt, dynagenRules, chatIsListed, listedChatsByActivity, traySessions, chatIsHidden, pickOpenWorkspaceChat, dynagenDeliveries,

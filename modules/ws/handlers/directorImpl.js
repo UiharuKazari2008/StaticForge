@@ -57,9 +57,10 @@ module.exports = {
     handleDirectorStreamingAck: function (_handler, _ws, message) {
         cursor.ackDirectorStream(message && message.sessionId, message && message.seq);
     },
-    // which chat this page has on screen: streaming updates go only there (cursorDirector.js, #843)
+    // which chat this page has on screen: streaming updates go only there (cursorDirector.js, #843);
+    // delta: row deltas, liveDelta: the live row's text as an appended tail (#890 P11)
     handleDirectorStreamWatch: function (handler, ws, message, clientInfo) {
-        cursor.watchDirectorStream(handler, ws, clientInfo, message && message.sessionId, message && message.delta);
+        cursor.watchDirectorStream(handler, ws, clientInfo, message && message.sessionId, message && message.delta, message && message.liveDelta);
     },
     handleDirectorComputerSize: cursor.handleDirectorComputerSize,
     handleDirectorComputerStatus: cursor.handleDirectorComputerStatus,

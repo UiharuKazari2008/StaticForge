@@ -19,13 +19,22 @@ function registerPackets() {
             + (note ? `reason=${clip(note.reason, 30)} hidden=${!!note.hidden} screenOff=${!!note.screenOff} from=${clip(note.from, 900)}` : 'reason=none (started outside the page)'));
     }, { owner: 'clientBootNote' });
 
-    // client_dormant { on } (Nov 15 2026): a phone page whose screen went off, or that went behind
+    // client_dormant { on, dex? } (Nov 15 2026): a phone page whose screen went off, or that went behind
     // another app, says so; the server then holds status pushes nothing waits on and sends them when
-    // it wakes (WebSocketServer.setDormant / DORMANT_HOLD). Fire-and-forget.
+    // it wakes (WebSocketServer.setDormant / DORMANT_HOLD). Fire-and-forget. A phone's DeX window says
+    // so too, with dex: 1 (#890 P18): it is held for like a dormant phone page (clientInfo.dexWindow).
     wsPacketRegistry.registerWsPacket('client_dormant', async (ctx) => {
-        const { ws, message, clientInfo, wsServer } = ctx;
+        const { ws, message, clientInfo, wsServer, handlers } = ctx;
         if (!clientInfo || !clientInfo.authenticated || !wsServer || typeof wsServer.setDormant !== 'function') return;
-        wsServer.setDormant(ws, !!(message && message.on));
+        if (message && message.dex) clientInfo.dexWindow = true;
+        const on = !!(message && message.on);
+        const was = !!clientInfo.dormant;
+        wsServer.setDormant(ws, on);
+        // awake again: the Director turn it watches (if one runs) is sent whole, as the updates it
+        // missed asleep never went to it (cursorDirector.js watchesDirectorStream)
+        if (was && !on) {
+            try { require('../../cursorDirector').resendDirectorStream(handlers || wsServer, ws, clientInfo); } catch (_) { /* the next update reaches it */ }
+        }
     }, { owner: 'clientBootNote' });
 }
 
