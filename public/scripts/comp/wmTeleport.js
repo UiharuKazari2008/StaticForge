@@ -417,8 +417,12 @@
         p.slide = k;
     }
 
+    /** The app seen now: the screen on, the page shown, not behind an Android program. */
+    const seen = () => shown && !!page && (!ws || typeof ws.onScreen !== 'function' ? !document.hidden : ws.onScreen(page));
+
     function slideTick() {
-        if (!shown || document.hidden || traveling) return;
+        if (!seen()) { clearInterval(slideTimer); slideTimer = null; return; }
+        if (traveling) return;
         const t = now();
         for (const p of planets) {
             if (p.images.length < 2 || t < p.nextAt) continue;
@@ -450,7 +454,8 @@
 
     function starsFrame() {
         stars.timer = null;
-        if (!shown || !stars.ctx) return;
+        // not seen (the screen off, behind another app): no frames until it is seen again (wake)
+        if (!stars.ctx || !seen()) return;
         const { ctx, w, h, dpr } = stars;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.fillStyle = '#000';
@@ -483,7 +488,7 @@
                 ctx.fillRect(x - r / 2, y - r / 2, r, r);
             }
         }
-        // ~30 fps, the era's frame rate; nothing runs while hidden
+        // ~30 fps, the era's frame rate; nothing runs while not seen
         stars.timer = setTimeout(starsFrame, 33);
     }
 
@@ -599,8 +604,18 @@
         return items;
     }
 
+    // seen again: the stars and the slides go on
+    function wake() {
+        if (!seen()) return;
+        if (!stars.timer) starsFrame();
+        if (!slideTimer) slideTimer = setInterval(slideTick, 500);
+    }
+
     function register() {
         ws = window.wmShell;
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('wmBehind', wake);
         // every desktop route to the planet switcher (Start menu, power menu, Run 'teleport') opens this app
         if (typeof window.openPlanetSwitcher === 'function') window.openPlanetSwitcher = async function () { ws.open(APP_ID); };
         document.addEventListener('keydown', onKey, true);
