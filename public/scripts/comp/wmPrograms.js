@@ -2900,7 +2900,7 @@
             let ghost = t.replace(/[0-9!]/g, '8').replace(/[^8.:\s]/g, '8');
             // its unlit segment is the minus alone
             if (signed) ghost = `-${ghost.slice(1)}`;
-            el.dataset.ghost = ghost;
+            if (el.dataset.ghost !== ghost) el.dataset.ghost = ghost;
         },
         /**
          * Number pad (a value typed rather than rolled): a WM dialog with the value in an LCD over
