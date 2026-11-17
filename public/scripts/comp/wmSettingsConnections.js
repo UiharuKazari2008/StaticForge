@@ -528,7 +528,11 @@
             buttons.addEventListener('click', (ev) => {
                 const btn = ev.target.closest('[data-act]');
                 if (!btn) return;
-                if (btn.dataset.act === 'ns-connect') connect();
+                // Sign In (#899): the phone's password box; Connect: dial again
+                if (btn.dataset.act === 'ns-connect') {
+                    if (nsState().service === 'signed-out' && root.wmShell && root.wmShell.nightshadeSignIn) void root.wmShell.nightshadeSignIn();
+                    else connect();
+                }
                 else if (btn.dataset.act === 'ns-disconnect') disconnect();
                 setTimeout(paint, 50);
             });

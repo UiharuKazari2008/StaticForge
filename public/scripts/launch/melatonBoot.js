@@ -468,6 +468,32 @@
         }
 
         /** Boot screen → black (the graphics mode switch) → /app, which opens on teal. */
+        /**
+         * An installed Melaton (#899): the update engine's manifest is synced and the service worker keeps
+         * the app page (sw.js APP_SHELL_KEY). It starts without the server, or without a session, like a
+         * domain-joined PC: the logon checks the cached password (cachedLogon.js) and the Nightshade
+         * Network catches up when it is back.
+         */
+        async function installedCopy() {
+            try {
+                if (!env.localStorage || !env.localStorage.getItem('melatonManifestHash')) return false;
+                if (!env.caches) return false;
+                const cache = await env.caches.open('melaton-launch-shell-v1');
+                return !!(await cache.match('/app'));
+            } catch (_) {
+                return false;
+            }
+        }
+
+        /** No server or no session: an installed copy goes on to the app instead of stopping (#899). */
+        async function handOffInstalled(reason) {
+            if (!(await installedCopy())) return false;
+            try { env.sessionStorage.setItem('melatonOfflineStart', String(env.now())); } catch (_) { /* storage off */ }
+            if (typeof console !== 'undefined') console.warn(`[melatonBoot] ${reason}: starting the installed copy`);
+            await handOff();
+            return true;
+        }
+
         async function handOff() {
             show('black');
             if (env.designMode) return;
@@ -640,6 +666,8 @@
                         : probe.kind === 'http' ? 'tftp' : null);
             const serverDown = async (results) => {
                 if (!pxeReason(results.server)) return null;
+                // an installed copy boots its disk without the server (#899): the boot screen hands over
+                if (await installedCopy()) return null;
                 const again = await probeStatus(env);
                 if (run !== ctl.runId) return null;
                 ctl.lastProbe = again;
@@ -770,6 +798,7 @@
                 if (run !== ctl.runId) return 'cancelled';
                 ctl.lastProbe = probe;
                 if (probe.kind === 'offline') {
+                    if (await handOffInstalled('no network')) return run === ctl.runId ? 'teal' : 'cancelled';
                     await openMenu('offline');
                     return 'menu';
                 }
@@ -783,12 +812,14 @@
                 } else if (probe.kind === 'timeout') {
                     if (busySince == null) busySince = env.now();
                     if (env.now() - busySince >= config.busyTimeoutMs) {
+                        if (await handOffInstalled('server busy')) return run === ctl.runId ? 'teal' : 'cancelled';
                         await openMenu('busy');
                         return 'menu';
                     }
                 } else {
                     failures += 1;
                     if (failures >= config.maxFailures) {
+                        if (await handOffInstalled('server unreachable')) return run === ctl.runId ? 'teal' : 'cancelled';
                         await openMenu('unreachable');
                         return 'menu';
                     }
@@ -799,6 +830,7 @@
             const session = await checkSession(env);
             if (run !== ctl.runId) return 'cancelled';
             if (session === 'error') {
+                if (await handOffInstalled('session check failed')) return run === ctl.runId ? 'teal' : 'cancelled';
                 await openMenu('session');
                 return 'menu';
             }
@@ -806,7 +838,8 @@
             if (rest > 0) await env.sleep(rest);
             if (run !== ctl.runId) return 'cancelled';
             if (session === 'login') {
-                if (isSiteGateActive(env)) {
+                // not signed in: the gate's own logon, or an installed copy's (the logon dialog asks) (#899)
+                if (isSiteGateActive(env) || await installedCopy()) {
                     await handOff();
                     return run === ctl.runId ? 'teal' : 'cancelled';
                 }

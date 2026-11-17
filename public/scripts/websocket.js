@@ -863,9 +863,11 @@ class WebSocketClient {
     static NIGHTSHADE_PROBLEM_TEXT = {
         unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
         restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
-        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.'
+        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
     };
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
+    static OFFLINE_LOGON_AFTER_MS = 10000; // no server this long at boot: the offline logon (#899)
     static NIGHTSHADE_QUEUE_MAX = 64;    // requests that may wait for the reconnection at once (#895)
     static NIGHTSHADE_QUEUE_MS = 600000; // how long one waits before it fails (10 minutes)
     static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
@@ -1391,7 +1393,7 @@ class WebSocketClient {
         // the desktop once it is up (Nightshade Network, #895, Yukimi Nov 17): never locked or covered by a
         // Connection box; the Nightshade tray icon, its balloon and the Nightshade Network Client say it,
         // and requests wait for the reconnection (_desktopAwaitReconnect). A logon still shows its dialog.
-        if (this._nightshadeQuietDesktop() && this.connectionPhase !== 'auth') return true;
+        if ((this._nightshadeQuietDesktop() || this._offlineBoot) && this.connectionPhase !== 'auth') return true;
         if (!this._trayOnlyReconnect) return false;
         if (this.connectionPhase === 'auth') return false;
         if (!this.initializationCompleted) return false;
@@ -1491,14 +1493,53 @@ class WebSocketClient {
             attempt: patch.attempt !== undefined ? patch.attempt : this.connectionUi.attempt,
             maxAttempts: patch.maxAttempts !== undefined ? patch.maxAttempts : this.connectionUi.maxAttempts
         };
+        // the offline logon (#899) keeps its password box while the dial goes on behind it
+        if (this._offlineLogonReady && beat !== 'connected') return;
         const phase = beat === 'connected' ? 'connected' : (this.connectionPhase === 'failed' ? 'failed' : 'dialing');
         this._setConnectionPhase(phase, merged);
+    }
+
+    /**
+     * Offline logon (#899, Yukimi Nov 17: like a domain-joined PC, nothing stops you from reaching the
+     * desktop): an installed desktop whose server has not answered for OFFLINE_LOGON_AFTER_MS at boot,
+     * and which has signed in here before (cachedLogon.js), shows the logon dialog's password box. The
+     * password is checked by the server if it is back, else against the cached verifier; then the
+     * desktop opens without the server (_completeOfflineLogon) and catches up when it returns.
+     */
+    _offlineLogonEligible() {
+        if (!window.isDesktop || window.uiShell === 'mobile' || this.initializationCompleted || !this._shouldUsePreStartupDialog()) return false;
+        if (!window.cachedLogon || !window.cachedLogon.has()) return false;
+        try { return !!localStorage.getItem('melatonManifestHash'); } catch (_) { return false; }
+    }
+
+    _armOfflineLogon() {
+        if (this._offlineLogonTimer || this._offlineLogonReady || this._offlineBoot || !this._offlineLogonEligible()) return;
+        // a /launch hand-over for a server it could not reach: no need to wait as long
+        let offlineStart = false;
+        try { offlineStart = Date.now() - (Number(sessionStorage.getItem('melatonOfflineStart')) || 0) < 120000; } catch (_) { /* storage off */ }
+        this._offlineLogonTimer = setTimeout(() => {
+            this._offlineLogonTimer = null;
+            if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || !this._offlineLogonEligible()) return;
+            this._offlineLogonReady = true;
+            console.log('🔑 Offline logon: the server has not answered, the cached password is accepted');
+            this._setConnectionPhase('auth', { beat: 'establishing', message: 'The Nightshade Network is not available. Log on with your password to use this computer.' });
+        }, offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
+    }
+
+    async _completeOfflineLogon() {
+        this._offlineBoot = true;
+        this._offlineLogonReady = false;
+        this.preStartupCredentialsAccepted = true;
+        this.preStartupAuthBusy = false;
+        if (window.workstationLock) window.workstationLock.clearPending();
+        console.log('🔑 Offline logon accepted: the desktop opens without the server');
+        await this._startAfterLogon();
     }
 
     _connectionTheaterSkipped() {
         // Melaton Mobile shows no Connection dialog (its splash is the logo and wait wheel), so the
         // dial beats were ~3.5 s of waiting with nothing on screen on every phone boot
-        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden' || window.uiShell === 'mobile' || this._nightshadeQuietDesktop());
+        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden' || window.uiShell === 'mobile' || this._nightshadeQuietDesktop() || !!this._offlineBoot);
     }
 
     /** The desktop after its boot: a lost or restarting server neither locks nor dials on screen (#895). */
@@ -2006,7 +2047,8 @@ class WebSocketClient {
         return {
             internet: online ? 'online' : 'offline',
             service,
-            problem: service === 'restarting' || service === 'no-internet' || service === 'unavailable',
+            // signed-out is a problem too (#899): nothing covers the interface, the glyph / red ! says it
+            problem: service === 'restarting' || service === 'no-internet' || service === 'unavailable' || service === 'signed-out',
             // off because an administrator disconnected this client (Server Manager > Clients, #898)
             admin: service === 'off' && !!this._adminDisconnected,
             cafeReady,
@@ -2694,18 +2736,27 @@ class WebSocketClient {
         });
 
         try {
-            const response = await fetch('/', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'login',
-                    data: { pin: password }
-                })
-            });
-            const payload = await response.json();
-
-            if (!response.ok) {
-                throw new Error(payload?.error || 'Authentication failed.');
+            // the server when it answers, else the password this computer last signed in with (#899)
+            let payload = null;
+            if (window.cachedLogon) {
+                const r = await window.cachedLogon.signIn(password);
+                if (!r.ok) throw new Error(r.error || 'Authentication failed.');
+                if (r.userType && r.userType !== 'admin') throw new Error('Administrator credentials are required.');
+                if (!r.online) {
+                    this._updatePreStartupAuthError('');
+                    if (passwordInput) passwordInput.value = '';
+                    await this._completeOfflineLogon();
+                    return;
+                }
+                payload = r.data || { success: true, userType: r.userType };
+            } else {
+                const response = await fetch('/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'login', data: { pin: password } })
+                });
+                payload = await response.json();
+                if (!response.ok) throw new Error(payload?.error || 'Authentication failed.');
             }
             if (payload?.userType && payload.userType !== 'admin') {
                 throw new Error('Administrator credentials are required.');
@@ -2971,8 +3022,7 @@ class WebSocketClient {
 
     _canCompletePreStartupHandoff() {
         return this._shouldUsePreStartupDialog()
-            && this.connectionPhase !== 'auth'
-            && this.socketAuthenticated === true
+            && (this._offlineBoot || (this.connectionPhase !== 'auth' && this.socketAuthenticated === true))
             && !this._logonInitError;
     }
 
@@ -4581,7 +4631,7 @@ class WebSocketClient {
                 await window.bootUiDebug.gate('startup-splash', { detail: 'Initializing...' });
             }
             for (const step of runSteps) {
-                if (this.connectionPhase === 'auth' || !this.isConnected()) {
+                if (!this._offlineBoot && (this.connectionPhase === 'auth' || !this.isConnected())) {
                     console.log('⚠️ Initialization paused/aborted: auth required or disconnected');
                     this.initializationLock = false;
                     return;
@@ -4661,6 +4711,12 @@ class WebSocketClient {
                         window.desktopBoot.onStepDone(step);
                     }
                 } catch (error) {
+                    // an offline boot (#899): a step that needs the server runs again when it is back
+                    if (this._offlineBoot && !this.initializationCompleted) {
+                        console.warn(`⏸️ Init step put off until the Nightshade Network is back: ${step.message}`);
+                        (this._offlineFailedSteps || (this._offlineFailedSteps = [])).push(step);
+                        continue;
+                    }
                     console.error(`❌ Error in init step "${step.message}":`, error);
                     if (this.connectionPhase === 'auth' || !this.isConnected()) {
                         console.log('⚠️ Aborting init steps due to auth error or disconnect.');
@@ -4950,6 +5006,7 @@ class WebSocketClient {
             return;
         }
 
+        this._armOfflineLogon();
         const dialingStart = Date.now();
         this._setConnectionBeat('dialing', {
             attempt: this.reconnectAttempts,
@@ -5043,7 +5100,12 @@ class WebSocketClient {
                     this.disconnect(true);
                     return;
                 }
+                // the server answered: the offline logon is not needed (#899)
+                if (this._offlineLogonTimer) { clearTimeout(this._offlineLogonTimer); this._offlineLogonTimer = null; }
+                if (sessionAuthenticated) this._offlineLogonReady = false;
                 if (!sessionAuthenticated) {
+                    // reachable but not signed in: the logon dialog's password goes to the server (an online logon)
+                    this._offlineLogonReady = false;
                     if (this.connectionPhase !== 'auth') {
                         this.handleAuthError({
                             type: 'auth_error',
@@ -5094,6 +5156,15 @@ class WebSocketClient {
                     }
                 }
 
+                // an offline boot (#899): the steps that needed the server run now, in their order
+                if (isReconnection && this._offlineFailedSteps && this._offlineFailedSteps.length) {
+                    const steps = this._offlineFailedSteps;
+                    this._offlineFailedSteps = [];
+                    for (const step of steps) {
+                        try { await step.stepFunction(); step._bootCompleted = true; } catch (error) { console.warn(`⚠️ Put-off init step failed again: ${step.message}`, error); }
+                    }
+                }
+                if (isReconnection) this._offlineBoot = false;
                 // Trigger refresh callbacks on reconnection (not initial connection)
                 if (isReconnection) {
                     try {
@@ -5576,7 +5647,7 @@ class WebSocketClient {
 
         // Check if we've exceeded max attempts. The phone window carrying a DeX window keeps trying at
         // the longest delay instead (#798): nobody is at the phone to press Reconnect
-        if (this.reconnectAttempts > this.maxReconnectAttempts && (this._keepConnectedForContinuity() || (this._nightshadeQuietDesktop() && !this._userCancelledConnect))) {
+        if (this.reconnectAttempts > this.maxReconnectAttempts && (this._keepConnectedForContinuity() || ((this._nightshadeQuietDesktop() || this._offlineBoot) && !this._userCancelledConnect))) {
             this.reconnectAttempts = this.maxReconnectAttempts;
         }
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
@@ -6384,6 +6455,14 @@ class WebSocketClient {
                 beat: 'establishing',
                 message: 'Authentication required. Enter your password.'
             });
+            return;
+        }
+
+        // An installed client is never covered by a sign-in box (#899, Yukimi Nov 17): the phone, and the
+        // desktop once it is up, show the Nightshade Network as "Sign-in required" (the phone's glyph, the
+        // desktop's red !) and sign in from its bubble / the Nightshade Network Client
+        if (window.uiShell === 'mobile' || this._nightshadeQuietDesktop()) {
+            this._updateModemTrayIcon();
             return;
         }
 

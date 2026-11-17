@@ -95,8 +95,9 @@
     function connect() {
         const c = client();
         if (!c) return;
+        // Sign In (#899): the Connect dialog; accepted, the link reconnects with the new session
         if (c.connectionPhase === 'auth' && root.melatonNetworkDialogs && root.melatonNetworkDialogs.connect) {
-            root.melatonNetworkDialogs.connect.show();
+            Promise.resolve(root.melatonNetworkDialogs.connect.show()).then(() => { if (typeof c.forceReconnect === 'function') c.forceReconnect(); }).catch(() => {});
             return;
         }
         if (typeof c.manualReconnect === 'function') c.manualReconnect();

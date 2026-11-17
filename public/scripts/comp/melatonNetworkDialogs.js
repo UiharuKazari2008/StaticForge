@@ -390,7 +390,15 @@
         return pending.promise;
     }
 
+    /** The server's sign-in (cachedLogon.js keeps the verifier for offline logons, #899). */
     async function login(password) {
+        if (root.cachedLogon) {
+            const r = await root.cachedLogon.signIn(password);
+            if (r.ok && r.online) return r.data || { success: true, userType: r.userType };
+            // the right password, but no server to open a session: the dialog says the network is down
+            if (r.ok) return { offlineOnly: true };
+            return null;
+        }
         const response = await root.fetch('/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -412,6 +420,18 @@
             payload = null;
         }
         setBusy(false);
+        if (payload && payload.offlineOnly) {
+            // Vista RAS 868/800 wording: the server is not reachable; the password itself was right
+            if (root.bootMessageBox) {
+                await root.bootMessageBox.show({
+                    title: errorTitle(),
+                    icon: 'error',
+                    message: `Error 800: ${RAS_ERRORS[800]}`,
+                    buttons: [{ label: 'OK', value: 'ok', default: true, cancel: true }]
+                });
+            }
+            return;
+        }
         if (payload) {
             // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
             if (typeof root.syncAuthLocalStorageFromServer === 'function') root.syncAuthLocalStorageFromServer(payload);

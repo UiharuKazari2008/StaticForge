@@ -178,6 +178,8 @@ class PinModal {
             
             const data = await response.json();
             if (response.ok) {
+                // the verifier for offline logons (#899)
+                if (window.cachedLogon) void window.cachedLogon.remember(this.currentPin, data && data.userType);
                 await this.resolve();
                 // syncAuthLocalStorageFromServer: public/scripts/comp/connectionManager.js
                 syncAuthLocalStorageFromServer(data);
