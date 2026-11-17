@@ -637,6 +637,19 @@
                 let line = null;
                 // w: the line's width as the browser laid it out (the app fits its run to it: its hinted advances differ by a few %)
                 const flush = () => { if (line && line.s.trim()) { line.w = R((line.r - line.l) / dpr); delete line.r; delete line.l; out.push(line); } line = null; };
+                // one line (most labels): the whole run measured at once, not character by character
+                range.selectNodeContents(n);
+                const whole = range.getClientRects();
+                if (whole.length === 1 && whole[0].width) {
+                    const rr = whole[0];
+                    const one = { k: 'text', x: R(rr.left), y: R(rr.top), h: R(rr.height), s: text.replace(/\s+/g, ' ').trim() === text.trim() ? text : text, size: R(px(cs.fontSize)), bold: (+cs.fontWeight || 400) >= 600, color: rgba(cs.color, alpha) || '#000000ff',
+                        u: /underline/.test(cs.textDecorationLine || cs.textDecoration || ''), ls: R(px(cs.letterSpacing)), w: R(rr.width) };
+                    // leading / trailing white space collapses in the page: the drawn text starts at the first letter
+                    one.s = text.replace(/^\s+|\s+$/g, '').replace(/\s+/g, ' ');
+                    if (el.classList.contains('wm-vpn-time')) { const ws = window.wsClient; one.live = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null; }
+                    if (one.s) out.push(one);
+                    return;
+                }
                 for (let i = 0; i < text.length; i++) {
                     range.setStart(n, i); range.setEnd(n, i + 1);
                     const rr = range.getClientRects()[0];

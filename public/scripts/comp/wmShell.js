@@ -3151,7 +3151,8 @@
         const ab = window.AndroidBars;
         if (!ab || typeof ab.bubbles !== 'function' || !barsExternal || !shell) return;
         const now = Date.now();
-        if (!force && now - bubblesAt < 1000) return;
+        // (each push opens every popup and writes it down: at most every 4 s; the live parts the app fills itself)
+        if (!force && now - bubblesAt < 4000) return;
         bubblesAt = now;
         const roles = new Set();
         shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
