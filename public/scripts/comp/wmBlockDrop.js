@@ -597,10 +597,19 @@
     // the left soft key reads Resume now; a menu that is up (it paused the game) is left alone and the
     // key follows once it has closed
     let keysTimer = null;
+    let keysWait = false; // a menu was up: the key follows once it has closed
     function keysAfterMenu() {
         clearTimeout(keysTimer);
+        keysTimer = null;
+        keysWait = false;
         if (!ws || ws.current !== APP_ID) return;
-        if (document.querySelector('#wmShell .wm-popup:not([hidden])')) { keysTimer = setTimeout(keysAfterMenu, 250); return; }
+        if (document.querySelector('#wmShell .wm-popup:not([hidden])')) {
+            keysWait = true;
+            // (not seen, a menu left open with the screen off: no look every 250 ms; seen again it looks
+            // at once, pauseAway)
+            if (!away()) keysTimer = setTimeout(keysAfterMenu, 250);
+            return;
+        }
         ws.refreshSoftKeys();
     }
 
@@ -892,7 +901,7 @@
     }
 
     // the game pauses when it is not seen (as a menu or another program pauses it): also with the screen off
-    const pauseAway = () => { if (away()) pause(); };
+    const pauseAway = () => { if (away()) pause(); else if (keysWait) keysAfterMenu(); };
     document.addEventListener('visibilitychange', pauseAway);
     window.addEventListener('melatonscreen', pauseAway);
     document.addEventListener('wmBehind', pauseAway);
