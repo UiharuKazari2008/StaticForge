@@ -207,7 +207,11 @@
         });
         today.html = null;
         renderMain();
-        if (sh && sh.currentApp && sh.currentApp() === 'today' && typeof sh.refreshToday === 'function') sh.refreshToday();
+        // only XLink's Today item drawn again (#890: not the whole of Today); an older shell draws it all
+        if (sh && sh.currentApp && sh.currentApp() === 'today') {
+            if (typeof sh.refreshTodayItem === 'function') sh.refreshTodayItem(TODAY_ID);
+            else if (typeof sh.refreshToday === 'function') sh.refreshToday();
+        }
     }
     async function syncHub() {
         const want = wantHub();
@@ -793,6 +797,8 @@
                 label: 'XLink',
                 icon: ICON,
                 after: 'tasks',
+                // no clock in it: it draws on the feed's pushes, not on the shell's minute (#890)
+                wantsMinute: false,
                 options: [{ key: 'show', label: 'Show', choices: [['controls', 'Status and quick controls'], ['status', 'Status only']], value: 'controls' }],
                 render: todayRender,
                 titanium: todayTitanium

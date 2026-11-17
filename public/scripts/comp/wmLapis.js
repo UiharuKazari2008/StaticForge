@@ -207,10 +207,17 @@
 
     const carSrc = (small) => picture.url || (small ? CAR_ART_SM : CAR_ART);
 
+    /** Only Lapis's Today item drawn again (#890: not the whole of Today); an older shell draws it all. */
+    function todayChanged() {
+        if (!ws) return;
+        if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('lapis');
+        else if (typeof ws.refreshToday === 'function') ws.refreshToday();
+    }
+
     function changed() {
         todayHtml = '';
         if (shown) render(); else stale = true;
-        if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
+        todayChanged();
         document.dispatchEvent(new CustomEvent('wmLapisChange'));
         tick();
     }
@@ -374,7 +381,7 @@
         document.querySelectorAll('[data-lps-cd]').forEach((el) => { el.textContent = leftText(Number(el.dataset.lpsCd) - Date.now()); });
         document.querySelectorAll('[data-lps-bar]').forEach((el) => { const total = Number(el.dataset.lpsTotal) || 1; el.style.setProperty('--wm-ds-blocks', String(Math.max(0, Math.min(18, Math.round(((Number(el.dataset.lpsBar) - Date.now()) / total) * 18))))); });
         // Today's superscript counts whole minutes
-        if (++tickN % 15 === 0 && ws && typeof ws.refreshToday === 'function') { todayHtml = ''; ws.refreshToday(); }
+        if (++tickN % 15 === 0) { todayHtml = ''; todayChanged(); }
         if (left <= 0) changed();
     }
     document.addEventListener('visibilitychange', tick, { signal: appScopeSignal });
@@ -1229,7 +1236,7 @@
         combo('lowFuelPct', LOWS);
         combo('reservePct', RESERVES);
         combo('batteryLowPct', BATTS);
-        ui.bindCombo(box.querySelector('[data-act="todaySuper"]'), SUPERS, todaySuperPref(), (v) => { try { localStorage.setItem(LS_SUPER, v); } catch (_) { /* private mode */ } if (ws && ws.refreshToday) ws.refreshToday(); });
+        ui.bindCombo(box.querySelector('[data-act="todaySuper"]'), SUPERS, todaySuperPref(), (v) => { try { localStorage.setItem(LS_SUPER, v); } catch (_) { /* private mode */ } todayChanged(); });
         combo('tireLowPsi', PSIS);
         box.querySelectorAll('input[data-c]').forEach((el) => el.addEventListener('change', () => { f.climate[el.dataset.c] = el.checked; }));
         Object.keys(CL).forEach((k) => {
@@ -1581,7 +1588,8 @@
         if (!ws) return;
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
-            ws.registerTodayItem({ id: 'lapis', label: 'Lapis Remote', icon: 'app-lapis', after: 'traffic', render: todayRender, titanium: todayTitanium });
+            // no clock in it: a running start's minutes left come from its own tick (onTick), not the shell's minute
+            ws.registerTodayItem({ id: 'lapis', label: 'Lapis Remote', icon: 'app-lapis', after: 'traffic', wantsMinute: false, render: todayRender, titanium: todayTitanium });
         }
         if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
     }

@@ -159,8 +159,6 @@
 
     /** On screen now (the screen on, the page shown, not behind an Android program); el: and that element shown. */
     const seenNow = (el) => (ws && typeof ws.onScreen === 'function' ? ws.onScreen(el) : !document.hidden);
-    /** The screen off or the page hidden: the shell's own status pass does not run then. */
-    const offScreen = () => document.hidden || document.documentElement.dataset.screenOff !== undefined;
 
     /** The app's page drawn now while it is on screen, else marked and drawn when it shows again. */
     function renderSeen() {
@@ -168,13 +166,18 @@
         else if (els) renderStale = true;
     }
 
+    /** Only Traffic's Today item drawn again (#890: not the whole of Today); an older shell draws it all. */
+    function todayChanged() {
+        if (!ws) return;
+        if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('traffic');
+        else if (typeof ws.refreshToday === 'function') ws.refreshToday();
+    }
+
     function changed() {
         renderSeen();
-        if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
-        // on screen the shell's status pass follows wmTrafficChange (one, coalesced); with the screen off or
-        // the page hidden that pass waits for the screen, so the traffic glyph (and the app's own copy of the
-        // bars, AndroidBars) is put right here, as before
-        if (ws && typeof ws.refreshStatus === 'function' && offScreen()) ws.refreshStatus();
+        todayChanged();
+        // the shell's status pass follows wmTrafficChange (one, coalesced), asleep too (statusDirty runs it
+        // then in a microtask): the traffic glyph and the app's own copy of the bars (AndroidBars) with it
         document.dispatchEvent(new CustomEvent('wmTrafficChange'));
     }
 
@@ -1487,14 +1490,14 @@
         // (the app's copy of the bars shows it then)
         const w = leaveWindow();
         const key = w ? `${w.direction}:${w.leaveAt}` : '';
-        if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
+        if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); todayChanged(); }
         // a report going stale (30 min) or the commute switching direction: Today's panel lamp follows
         // (only when the lamp or the line changed: an unconditional repaint every minute redrew
         // every Today item, #849); with the screen off Today is not seen: screen on runs this tick at once
         if (seenNow()) {
             let tk = '';
             try { tk = `${levelSuffix()}|${JSON.stringify(todayLine(commuteNow() || direction()))}`; } catch (_) { tk = String(Date.now()); }
-            if (tk !== todayTickKey) { todayTickKey = tk; if (ws && ws.refreshToday) ws.refreshToday(); }
+            if (tk !== todayTickKey) { todayTickKey = tk; todayChanged(); }
         }
         // driving: the phone's position each minute, then the time left everywhere it shows (the page's own
         // camera alerts need it with the screen off too, when the app's drive watch does not have the drive)
@@ -1503,8 +1506,10 @@
         watchCameras();
     }
 
+    let minuteTimer = 0;
     function watchLeaveWindow() {
-        setInterval(minuteTick, 60 * 1000);
+        clearInterval(minuteTimer);
+        minuteTimer = setInterval(minuteTick, 60 * 1000);
         // back on screen: what the minute ticks left out (Today's lamp, the page) at once, and the app's drive
         // watch tried again now that the app is in front
         const back = () => {

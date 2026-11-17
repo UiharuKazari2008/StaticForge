@@ -1812,7 +1812,12 @@
     let tmTodayKey = '';
     function tmTodayChanged() {
         const key = JSON.stringify([tmState.accounts.map((a) => [a.id, a.identity, a.status, tmState.unread[a.id] || 0]), tmState.last]);
-        if (key !== tmTodayKey) { tmTodayKey = key; if (sh && typeof sh.refreshToday === 'function') sh.refreshToday(); }
+        if (key === tmTodayKey || !sh) return;
+        tmTodayKey = key;
+        // only the Text panel drawn again (#890: not the whole of Today); its counts on 6.1's Messaging row
+        // follow the status pass the callers run (refreshStatus). An older shell draws it all
+        if (typeof sh.refreshTodayItem === 'function') sh.refreshTodayItem('text');
+        else if (typeof sh.refreshToday === 'function') sh.refreshToday();
     }
 
     function tmOnUnread(d) {
@@ -2006,6 +2011,8 @@
         sh.registerTodayItem({
             id: 'text',
             label: 'Text',
+            // its times are clock times (today) or dates: a new day redraws Today whole; no minute tick (#890)
+            wantsMinute: false,
             // the row (classic Today, Settings > Today > Items) draws wm61 art; ti-2007 is 6.5's panel glyph
             icon: 'today-messages',
             after: 'connection',

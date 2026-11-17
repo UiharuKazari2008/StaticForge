@@ -3111,8 +3111,9 @@
         document.addEventListener('wmSettingsChange', statusDirtyToday);
         // (the weather's Today item and 6.5's clock draw themselves on it: wmTodayWidgets, only those items, #890)
         document.addEventListener('wmWeatherChange', statusDirty, { signal: appScopeSignal });
-        document.addEventListener('wmTrafficChange', statusDirtyToday);
-        document.addEventListener('wmLapisChange', statusDirtyToday);
+        // (Traffic's and Lapis's Today items draw themselves on their changes: wmShell.refreshTodayItem, #890)
+        document.addEventListener('wmTrafficChange', statusDirty);
+        document.addEventListener('wmLapisChange', statusDirty);
         document.addEventListener('wmCarKeyChange', statusDirtyToday);
         // the other window of the app (DeX) changed a shared setting
         window.addEventListener('storage', statusDirtyToday);

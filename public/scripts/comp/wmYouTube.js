@@ -264,12 +264,12 @@
         const c = window.wsClient;
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
-        c.on('youtube_status', (msg) => { if (hubOn && msg) applyHub(msg.changed || (msg.data && msg.data.changed)); });
+        c.on('youtube_status', (msg) => { if (hubOn && msg) applyHub(msg.changed || (msg.data && msg.data.changed)); }, { signal: appScopeSignal });
         // the server forgets a dropped socket's subscriptions: subscribe again
-        c.on('connected', () => { hubOn = false; void syncHub(); });
-        document.addEventListener('wmAppChange', () => { void syncHub(); });
-        document.addEventListener('visibilitychange', () => { void syncHub(); });
-        window.addEventListener('melatonscreen', () => { void syncHub(); });
+        c.on('connected', () => { hubOn = false; void syncHub(); }, { signal: appScopeSignal });
+        document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', () => { void syncHub(); }, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
         void syncHub();
         return true;
     }
@@ -277,7 +277,14 @@
     function changed() {
         if (shown) render(); else stale = true;
         todayHtml = '';
-        if (ws && typeof ws.currentApp === 'function' && ws.currentApp() === 'today' && typeof ws.refreshToday === 'function') ws.refreshToday();
+        if (ws && typeof ws.currentApp === 'function' && ws.currentApp() === 'today') todayItemChanged();
+    }
+
+    /** Only this item drawn again (#890: not the whole of Today); a shell without refreshTodayItem draws it all. */
+    function todayItemChanged() {
+        if (!ws) return;
+        if (typeof ws.refreshTodayItem === 'function') ws.refreshTodayItem('youtube');
+        else if (typeof ws.refreshToday === 'function') ws.refreshToday();
     }
 
     // ---------------------------------------------------------------- lists
@@ -1078,7 +1085,7 @@
         todayAt = (todayAt + d + n) % n;
         todayDir = d > 0 ? 'r' : 'l';
         todayHtml = '';
-        if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
+        todayItemChanged();
     }
 
     function bindToday(el) {
