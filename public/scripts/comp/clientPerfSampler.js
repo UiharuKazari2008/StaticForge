@@ -67,7 +67,8 @@ const clientPerfState = {
     phone: {
         SEND_EVERY_MS: 15 * 60 * 1000,
         PIGGYBACK_MS: 3000,
-        is: () => window.uiShell === 'mobile',
+        // the DeX window of a hybrid phone too: its samples ride the phone's socket and radio (#890)
+        is: () => window.uiShell === 'mobile' || !!(window.melatonContinuity && typeof window.melatonContinuity.isDexWindow === 'function' && window.melatonContinuity.isDexWindow()),
         /** Out of sight: a hidden page, or a phone whose screen is off (html[data-screen-off], the app's melatonscreen). */
         asleep: () => document.visibilityState === 'hidden' || document.documentElement.dataset.screenOff !== undefined,
         /** Whether the queued samples go out now or wait for a later chance. */
