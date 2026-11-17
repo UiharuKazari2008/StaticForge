@@ -28,6 +28,7 @@
  *   An Android app account (#885) is saveAccount({ kind: 'android', package, label }): that app's notifications
  *   on the partnered phone as conversations. androidApps() -> [{ package, label, icon, added }] (posted lately).
  *   Its chats carry canReply (the notification's quick reply is there now) and actions [{ id, title }]:
+ *   androidPackages() -> Set of the packages that are (enabled) accounts, synchronous (the Super Bar hides them).
  *   action(accountId, chatGuid, id) runs one on the phone. chat.open { key, device }: what a tap on its newest
  *   notification opens; openInApp(accountId, chatGuid) opens it on that phone (else the app) -> { opened }.
  *   messages() pages back with { before: page.cursor } (opaque: a date for iMessage, a cursor for RCS).
@@ -210,6 +211,16 @@
     const action = (accountId, chatGuid, id) => call('tm_action', { accountId, chatGuid, action: id });
     // Open in <app> (#885): the server asks the phone that posted it (notify.open, else the app)
     const openInApp = (accountId, chatGuid) => call('tm_open', { accountId, chatGuid });
+    /**
+     * The Android packages that are Messaging accounts now (enabled), synchronous from the last read
+     * (#885: the Super Bar leaves their notifications to Messaging). A read starts when none was made;
+     * 'account' events follow every change.
+     */
+    function androidPackages() {
+        const list = (cache && cache.accounts) || (snap && snap.accounts) || null;
+        if (!cache) accounts(false).catch(() => {});
+        return new Set((list || []).filter((a) => a && a.kind === 'android' && a.enabled !== false && a.package).map((a) => a.package));
+    }
     const androidApps = () => call('tm_android_apps').then((d) => d.apps || []);
     const resolve = (accountId, address) => call('tm_resolve', { accountId, address }).then((d) => d.name || '');
 
@@ -302,7 +313,7 @@
     root.textMessaging = {
         links, linkify, linkPreview, primeLinkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
-        action, androidApps, openInApp,
+        action, androidApps, openInApp, androidPackages,
         markRead, markUnread, deleteChat, search, syncStatus, syncChats, resync, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };

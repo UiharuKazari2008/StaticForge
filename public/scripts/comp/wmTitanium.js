@@ -630,6 +630,9 @@
         });
         host.appendChild(superEl);
         window.addEventListener('androidnotifications', () => { if (superOpen) refreshNotes(); });
+        // an app added to or removed from Messaging (#885) leaves or rejoins the list
+        const t = window.textMessaging;
+        if (t && typeof t.on === 'function') t.on('account', () => { if (superOpen) setTimeout(refreshNotes, 300); });
     }
 
     function drawSuper(clock) {
@@ -703,6 +706,12 @@
     }
 
     const SUPER_NOTES_KEY = 'wmSuperBarNotes'; // { phone, apps: { pkg: false }, channels: { 'pkg|ch': false }, known: { pkg: { app, channels } } }
+    /** Android apps that are Messaging accounts (#885): the Super Bar leaves them to Messaging. */
+    function messagingPackages() {
+        const t = window.textMessaging;
+        try { return t && typeof t.androidPackages === 'function' ? t.androidPackages() : new Set(); } catch (_) { return new Set(); }
+    }
+
     function superNotesCfg() {
         let c = null;
         try { c = JSON.parse(localStorage.getItem(SUPER_NOTES_KEY) || 'null'); } catch (_) { c = null; }
@@ -831,7 +840,9 @@
         const cfg = superNotesCfg();
         rememberNotes(cfg, list);
         if (cfg.phone === false) { sub.hidden = true; plain(''); return; }
-        list = list.filter((n) => n && n.key && cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
+        // an app that is a Messaging account (Discord, #885): its notifications are conversations there
+        const managed = messagingPackages();
+        list = list.filter((n) => n && n.key && !managed.has(n.package) && cfg.apps[n.package] !== false && !(n.channel && cfg.channels[`${n.package}|${n.channel}`] === false));
         superNoteRows = new Map(list.map((n) => [n.key, n]));
         // a reply box whose notification went: gone with it; one being typed in keeps its words
         const ta = box.querySelector('.wm-ti-super-reply textarea');
