@@ -2334,14 +2334,21 @@
         softKeys
     };
 
+    /**
+     * The program seen now: in front, the screen on, the page shown, not behind an Android program
+     * (wmShell.onScreen). The model's events draw only then; otherwise the page is marked and drawn
+     * when it is seen again, and a finished print is a notification (also with the screen off).
+     */
+    const seen = () => shown && isCurrent() && !!page && (typeof sh.onScreen !== 'function' || sh.onScreen(page));
+
     function wireModel() {
         M = window.studioModel || null;
         if (!M) return;
-        M.on('change', () => { snap = null; if (shown) paint(); else stale = true; });
-        M.on('start', () => { if (shown) paint(); });
-        M.on('progress', () => { if (!shown) return; const v = view(); if (v === 'print' || v === 'home') { drawPrint(); drawStrip(); } });
+        M.on('change', () => { snap = null; if (seen()) paint(); else stale = true; });
+        M.on('start', () => { if (seen()) paint(); else stale = true; });
+        M.on('progress', () => { if (!seen()) { stale = true; return; } const v = view(); if (v === 'print' || v === 'home') { drawPrint(); drawStrip(); } });
         M.on('end', (r) => {
-            if (shown && isCurrent()) { paint(); return; }
+            if (seen()) { paint(); return; }
             stale = true;
             if (r && r.files.length && !r.stopped) sh.notify({ title: 'DreamStudio', text: r.files.length > 1 ? `${r.files.length} prints are ready.` : 'Your print is ready.' });
         });
@@ -2381,6 +2388,11 @@
         registerSettings();
         if (!NEXT) return;
         wireModel();
+        // seen again (screen on, the page shown, back from an Android program): what changed meanwhile
+        const wake = () => { if (stale && seen()) paint(); };
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('wmBehind', wake);
         sh.registerApp(APP);
         // a print, preset or session sent here from any other program opens this one (again in show()
         // if Studio's scripts were not there yet)
