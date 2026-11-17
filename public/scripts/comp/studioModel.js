@@ -203,7 +203,8 @@
     }
 
     function options() {
-        const model = (snapshot() || {}).model || '';
+        // the model only: not the whole snapshot (the generation bar asks for options on every paint, #890)
+        const model = modelId();
         const caps = (typeof getForgeModelFeatures === 'function' && getForgeModelFeatures(model)) || {};
         const locked = (name) => { try { return typeof mediumControlIsLocked === 'function' && !!mediumControlIsLocked(name); } catch (_) { return false; } };
         let v5 = false;
