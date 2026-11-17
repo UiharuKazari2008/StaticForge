@@ -261,7 +261,7 @@ async function authenticateAndOpenClient(connection) {
                     .map(([name, value]) => ({ name, value: String(value) }));
                 await connection.send('Fetch.continueRequest', { requestId: event.requestId, headers });
                 appRequestCleared = true;
-                await connection.send('Network.setExtraHTTPHeaders', { headers: {} });
+                await connection.send('Network.setExtraHTTPHeaders', { headers: { 'X-Forwarded-Proto': 'https' } });
                 return;
             }
             await connection.send('Fetch.continueRequest', { requestId: event.requestId });
@@ -276,8 +276,11 @@ async function authenticateAndOpenClient(connection) {
     await connection.send('Fetch.enable', {
         patterns: [{ urlPattern: `${SERVER_ORIGIN}/app*`, requestStage: 'Request' }]
     });
+    // The session cookie is Secure (NODE_ENV=production, proxy: true): over plain loopback http the
+    // server only sends Set-Cookie when the request says it came over https, else the tab boots
+    // signed out and never leaves logon (#890: ~888 failed boots a day since Nov 12).
     await connection.send('Network.setExtraHTTPHeaders', {
-        headers: { 'X-StaticForge-App-Key': key }
+        headers: { 'X-StaticForge-App-Key': key, 'X-Forwarded-Proto': 'https' }
     });
     await connection.send('Page.navigate', { url: `${SERVER_ORIGIN}/agent` });
     await waitForValue(
@@ -286,7 +289,7 @@ async function authenticateAndOpenClient(connection) {
         Boolean,
         'the browser-agent app'
     );
-    await connection.send('Network.setExtraHTTPHeaders', { headers: {} });
+    await connection.send('Network.setExtraHTTPHeaders', { headers: { 'X-Forwarded-Proto': 'https' } });
     await connection.send('Fetch.disable');
     if (!appRequestCleared) throw new Error('Application key header was not cleared before the app request');
 }
