@@ -184,17 +184,27 @@
         if (hdr) hdr.textContent = text;
     }
 
-    /** Redraws `paint` every tick while `el` is on screen. */
+    /**
+     * Redraws `paint` every tick while `el` is on screen. Settings behind another app, the page hidden or
+     * the screen off: no ticks at all (they returned early but kept waking); seen again, it is painted at
+     * once and ticks on. Gone, it ends with its listeners.
+     */
     function liveTick(el, paint, ms = LIVE_TICK_MS) {
-        const timer = setInterval(() => {
-            if (!el.isConnected) { clearInterval(timer); return; }
-            // Settings behind another app, the page hidden or the screen off: no paint (the page is
-            // drawn again when it shows)
+        const seen = () => {
             const sh = window.wmShell;
-            if (sh && sh.onScreen && !sh.onScreen(el)) return;
-            paint();
-        }, ms);
-        return timer;
+            return el.isConnected && !el.closest('[hidden]') && !(sh && sh.onScreen && !sh.onScreen(el));
+        };
+        let timer = 0;
+        const evs = [[window, 'melatonscreen'], [document, 'visibilitychange'], [document, 'wmBehind'], [document, 'wmAppChange']];
+        const run = () => { timer = setInterval(() => { if (seen()) paint(); else sync(); }, ms); };
+        function sync() {
+            if (!el.isConnected) { clearInterval(timer); timer = 0; evs.forEach(([t, e]) => t.removeEventListener(e, sync)); return; }
+            const on = seen();
+            if (on && !timer) { paint(); run(); } else if (!on && timer) { clearInterval(timer); timer = 0; }
+        }
+        evs.forEach(([t, e]) => t.addEventListener(e, sync));
+        // the page painted itself just now: the first tick after ms
+        if (seen()) run();
     }
 
     // ---------------------------------------------------------------- Connections > Status
