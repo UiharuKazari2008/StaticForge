@@ -6479,7 +6479,7 @@
             const trip = tf && typeof tf.statusState === 'function' ? tf.statusState() : null;
             if (trip && trip.lines && trip.lines.length) {
                 if (sections.length) sections.push({ rule: true });
-                sections.push({ text: trip.title || 'Commute', bold: true, links: [] });
+                sections.push({ text: trip.title && trip.title !== 'Traffic' ? trip.title : 'Commute', bold: true, links: [] });
                 sections.push(...trip.lines);
                 const canStart = trip.direction === 'home' && !(run && run.running) && window.wmLapis && typeof window.wmLapis.canStart === 'function' && window.wmLapis.canStart();
                 sections.push({ links: [...(canStart ? [{ label: 'Start Car', action: () => { closeBubble(); window.wmLapis.startPrompt(); } }] : []),
@@ -6504,7 +6504,8 @@
             };
             if (!keyHasMine && lp) {
                 if (run && run.running && st.cars.length === 0) sections.push({ rule: true });
-                sections.push({ text: lp.name, bold: true, links: [] });
+                // its name is the bubble's title; a heading only beside friends' cars in range
+                if (st.cars.length) sections.push({ text: lp.name, bold: true, links: [] });
                 sections.push(lp.lines.length ? lp.lines[0] : 'No report from the car yet.');
                 if (lp.lines[1]) sections.push(lp.lines[1]);
                 if (window.wmLapis.lock && window.wmLapis.unlock) sections.push({ node: mkKeys(() => window.wmLapis.lock(), () => window.wmLapis.unlock(), true, true) });
