@@ -1995,6 +1995,13 @@ app.use('/previews/:preview', authMiddleware, async (req, res, next) => {
             return res.status(404).json({ success: false, error: 'Preview not found' });
         }
     }
+    // lossless preview (<file stem>@ll.webp, #890 P14): the PNG's own pixels as a lossless WebP for the
+    // screen saver, made on first request; a 404 means the page loads the PNG
+    if (studioPreview.isLosslessPreviewName(previewFile)) {
+        if (!await studioPreview.ensureLosslessPreview(imagesDir, previewsDir, previewFile)) {
+            return res.status(404).json({ success: false, error: 'Preview not found' });
+        }
+    }
     const previewStat = await statOrNull(previewPath);
     if (!previewStat || !previewStat.isFile()) {
         return res.status(404).json({ success: false, error: 'Preview not found' });
