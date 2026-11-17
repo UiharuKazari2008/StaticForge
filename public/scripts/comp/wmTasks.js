@@ -300,7 +300,12 @@
         const p = load().catch((err) => {
             if (first && shown()) ws.messageBox({ title: 'Tasks', icon: 'error', text: (err && err.message) || 'The tasks could not be opened.' });
             else console.warn('wmTasks: reload failed', err);
-        }).finally(() => { loading = null; changed(); if (page && view !== 'form') render(); });
+        }).finally(() => {
+            loading = null;
+            changed();
+            // the page draws only while it is seen (a read Today started, the screen off): else on show / wake
+            if (page && view !== 'form') { if (listSeen()) render(); else pageStale = true; }
+        });
         loading = p;
         if (first && shown()) ws.busy(p, { paint: true, timeout: 30000 });
         return p;
@@ -710,6 +715,7 @@
 
     function render() {
         if (!page) return;
+        pageStale = false;
         if (view === 'summary' && !current()) view = 'list';
         page.dataset.view = view;
         const dual = isDual();
@@ -914,6 +920,8 @@
             if (d.type !== 'vfs_updated') return;
             const path = String((d.data && d.data.path) || '');
             if (path && !/\/Calendars(\/|$)/i.test(path)) return;
+            // the screen off: read once it is on again (nothing shows the tasks meanwhile)
+            if (ws && ws.onScreen && !ws.onScreen()) { vfsPending = true; return; }
             clearTimeout(liveTimer);
             liveTimer = setTimeout(() => { if (Date.now() - loadedAt > 1500) reload(true); }, 400);
         });
@@ -923,11 +931,29 @@
         if (view !== 'form') render();
         reload(loadedFor !== workspaceId());
         clearInterval(printTimer);
-        // a print that starts or ends changes the list
-        printTimer = setInterval(() => {
-            if (view !== 'list' || !page || (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page))) return;
-            if (prints().map((x) => x.uid).join('|') !== printKey) renderList();
-        }, 2000);
+        printTimer = null;
+        syncPrintWatch();
+    }
+
+    // a print that starts or ends changes the list (the requests are local: no push for them); looked at
+    // every 2 s only while Tasks is in front and seen - the screen off or another app in front stops it,
+    // and coming back looks at once
+    const listSeen = () => !!page && ws.current === APP_ID && (!ws.onScreen || ws.onScreen(page));
+    function printCheck() {
+        if (view === 'list' && prints().map((x) => x.uid).join('|') !== printKey) renderList();
+    }
+    function syncPrintWatch() {
+        const on = listSeen();
+        if (on && !printTimer) printTimer = setInterval(() => { if (listSeen()) printCheck(); else syncPrintWatch(); }, 2000);
+        else if (!on && printTimer) { clearInterval(printTimer); printTimer = null; }
+    }
+    let pageStale = false;
+    let vfsPending = false;
+    function printWake() {
+        if (vfsPending && (!ws.onScreen || ws.onScreen())) { vfsPending = false; reload(true); }
+        syncPrintWatch();
+        if (!printTimer) return;
+        if (pageStale && view !== 'form') render(); else printCheck();
     }
 
     function back() {
@@ -1002,7 +1028,7 @@
             sip: true,
             mount,
             show,
-            hide() { clearInterval(printTimer); closePicker(); },
+            hide() { clearInterval(printTimer); printTimer = null; closePicker(); },
             // the device's title reads "Recent" while the Recently Viewed filter is on
             titleNow: () => (view === 'list' && filter().show === 'recent' ? 'Recent' : 'Tasks'),
             titleKind: () => (view === 'list' ? 'close' : 'ok'),
@@ -1018,6 +1044,9 @@
             softKeys
         });
         document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); });
+        window.addEventListener('melatonscreen', printWake);
+        document.addEventListener('visibilitychange', printWake);
+        document.addEventListener('wmBehind', printWake);
     }
 
     if (window.wmShell) register();
