@@ -509,16 +509,24 @@
 
         // Melaton Journal's pictures (journal.js Insert > Picture...): a gallery image or a user file
         const picArt = new Map();
+        // a picture still on its way -> its promise, gone once it loaded or failed (Send waits for these only)
+        const picWait = new WeakMap();
         function pictureArt(src) {
             const key = src ? `${src.kind}:${src.filename || src.id}` : '';
             if (!key) return null;
             let rec = picArt.get(key);
             if (!rec) {
-                rec = new Image();
-                picArt.set(key, rec);
-                rec.onload = () => paintInk();
-                if (src.kind === 'image') rec.src = `/images/${encodeURIComponent(src.filename)}`;
-                else if (src.kind === 'file' && vfs()) vfs().downloadFile(src.id).then((r) => { if (r && r.downloadUrl) rec.src = r.downloadUrl; }, () => {});
+                const im = new Image();
+                rec = im;
+                picArt.set(key, im);
+                let settle = null;
+                picWait.set(im, new Promise((resolve) => { settle = resolve; }));
+                const settled = () => { picWait.delete(im); settle(); };
+                im.onload = () => { settled(); paintInk(); };
+                im.onerror = settled;
+                if (src.kind === 'image') im.src = `/images/${encodeURIComponent(src.filename)}`;
+                else if (src.kind === 'file' && vfs()) vfs().downloadFile(src.id).then((r) => { if (r && r.downloadUrl) im.src = r.downloadUrl; else settled(); }, settled);
+                else settled();
             }
             return rec;
         }
@@ -914,11 +922,13 @@
 
         /** A page's strokes as a picture to send (white, at 2x). */
         async function inkPng(strokes) {
-            // its pictures loaded first (a note not open has none yet: they were sent as grey boxes)
-            const pics = strokes.filter((st) => st.tool === 'picture').map((st) => pictureArt(st.src)).filter((im) => im && !(im.complete && im.naturalWidth));
-            if (pics.length) {
-                const loaded = (im) => new Promise((resolve) => { im.addEventListener('load', resolve, { once: true }); im.addEventListener('error', resolve, { once: true }); });
-                await Promise.race([Promise.all(pics.map(loaded)), new Promise((resolve) => setTimeout(resolve, 5000))]);
+            // its pictures loaded first (a note not open has none yet: they were sent as grey boxes); only those
+            // still on their way, so one that failed (sent as its grey box, as drawn) does not hold Send up
+            const waits = strokes.filter((st) => st.tool === 'picture').map((st) => picWait.get(pictureArt(st.src))).filter(Boolean);
+            if (waits.length) {
+                let timer = 0;
+                await busyOf(() => Promise.race([Promise.all(waits), new Promise((resolve) => { timer = setTimeout(resolve, 5000); })]));
+                clearTimeout(timer);
             }
             let w = 240;
             let h = 40;
