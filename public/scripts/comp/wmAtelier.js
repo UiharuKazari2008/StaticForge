@@ -67,8 +67,12 @@
     const keyOf = (it) => `${it.gallerySlug}\0${it.tag}`;
     const imageUrl = (it) => `/naxCache/${encodeURIComponent(it.gallerySlug)}/${encodeURIComponent(it.filename)}`;
     // the grid's cells and the bag's icons: the server's 480 px wide WebP of the picture (#890 P13; its
-    // aspect kept, so object-fit: cover crops it as it did the original); the tag screen shows the original
-    const thumbUrl = (it) => `${imageUrl(it)}?w=480`;
+    // aspect kept, so object-fit: cover crops it as it did the original); the tag screen shows the original.
+    // Off until public/sw.js keys its image cache on ?w= for /naxCache/: it keys by the path alone
+    // (getCanonicalUrl), so a thumbnail would fill the original's entry and the tag screen, Internet
+    // Explorer's tag wiki and the desktop's NAX views would show the 480 px copy from then on
+    const NAX_THUMBS = false;
+    const thumbUrl = (it) => (NAX_THUMBS ? `${imageUrl(it)}?w=480` : imageUrl(it));
     const labelOf = (list, v) => (list.find((x) => x[0] === v) || [v, v])[1];
 
     function galleryLabel(g) {
