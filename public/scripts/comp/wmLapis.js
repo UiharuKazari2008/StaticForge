@@ -1616,6 +1616,38 @@
             const t = todayLine();
             return { name: carTitle(), lines: [t.title, t.sub].filter(Boolean) };
         },
+        /**
+         * The car for the title bar's Car bubble (#902), as data: { name, report, locked (true | false | null),
+         * range, fuel (numbers or null), gas (when to refuel, '' when not soon), sets (what a remote start sets
+         * now: "72°F, seat heat"), minutes, busy (the command on its way or null), canStart, canStop,
+         * run: null | { until, total, sets } } or null when Lapis is not set up here.
+         */
+        carData: () => {
+            if (!canUse() || !configured()) return null;
+            const s = st();
+            const lim = (state && state.limits) || { tempMin: 62, tempMax: 82 };
+            const auto = !!(state && state.climate && state.settings && state.settings.autoClimate);
+            const d = { temp: auto ? state.climate.temp : 72, minutes: (state && state.settings && state.settings.runMinutes) || 10 };
+            const tt = tempText(Math.min(lim.tempMax, Math.max(lim.tempMin, d.temp)), lim);
+            const sets = auto ? (climateLine() || `${tt}°F`) : `${tt}${/^\d/.test(tt) ? '°F' : ''}`;
+            const rt = refuelText();
+            const r = runInfo();
+            const cmd = busyCommand();
+            return {
+                name: carTitle(),
+                report: !!s,
+                locked: s ? (s.locked === false ? false : s.locked ? true : null) : null,
+                range: s && num(s.range) ? Math.round(s.range) : null,
+                fuel: s && num(s.fuel) ? Math.round(s.fuel) : null,
+                gas: rt && rt !== 'Not for weeks' ? refuelText(true) : '',
+                sets,
+                minutes: d.minutes,
+                busy: cmd ? cmd.kind : null,
+                canStart: !!(isAdmin() && !cmd && !r && !(s && s.engine)),
+                canStop: !!(isAdmin() && r),
+                run: r ? { until: r.until, total: r.total, sets: runSets(r.detail) } : null
+            };
+        },
         /** Lock / Unlock from elsewhere (the car key's bubble), with Unlock's question. */
         lock: () => send('lock'),
         unlock: () => doUnlock()

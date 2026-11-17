@@ -524,7 +524,7 @@
     // Dreamscape Messenger message (the chat personas) Windows Live Messenger's buddy (WLMMessengerResources 12000)
     // Weather (#792): an active alert at Home / Work, rain due or falling there with the rain alarm on
     // (Melaton glyphs: scripts/generate-wm-weather-status-icons.py)
-    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm', traffic: 'status-traffic', lapis: 'status-lapis', carkey: 'status-carkey', continuity: 'status-continuity', received: 'status-activesync', nightshade: 'status-nightshade' };
+    const STATUS_APP_ICONS = { mail: 'status-mail', sms: 'status-sms', chat: 'status-messenger', prints: 'status-prints', director: 'status-director', update: 'status-update', wxalert: 'status-weather-alert', rain: 'status-rain-alarm', traffic: 'status-traffic', lapis: 'status-lapis', carkey: 'status-traffic', /* the Car: the car glyph (#902) */ continuity: 'status-continuity', received: 'status-activesync', nightshade: 'status-nightshade' };
     // no High Latency icon (Yukimi, Nov 13: a slow link is neither a status icon nor a notification)
     // Traffic (#795): the commute ahead is more than 15 min late (scripts/generate-wm-traffic-status-icon.py)
     // Continuity (#798): this phone carries its DeX window's connection (scripts/generate-wm-continuity-status-icon.py)
@@ -6202,6 +6202,29 @@
         return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
     }
 
+    /**
+     * 1-bit glyphs drawn in the text's colour (the Car bubble's keys, #902): WM's buttons carry 1-bit pictures,
+     * never coloured ones; grey with the button when it is disabled. 16 x 16, '#' = a lit pixel.
+     */
+    const BIT_GLYPHS = {
+        lock: ['................', '.....######.....', '....##....##....', '....#......#....', '....#......#....', '....#......#....', '...##########...', '...##########...', '...####..####...', '...####..####...', '...####..####...', '...##########...', '...##########...', '...##########...', '................', '................'],
+        unlock: ['.......######...', '......##....##..', '......#......#..', '......#......#..', '......#.........', '......#.........', '...##########...', '...##########...', '...####..####...', '...####..####...', '...####..####...', '...##########...', '...##########...', '...##########...', '................', '................'],
+        power: ['................', '.......##.......', '.......##.......', '....#..##..#....', '...##..##..##...', '..##...##...##..', '..#....##....#..', '.##....##....##.', '.##..........##.', '.##..........##.', '..#..........#..', '..##........##..', '...##......##...', '....########....', '................', '................'],
+        stop: ['................', '................', '................', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '................', '................', '................']
+    };
+    function bitGlyph(name) {
+        const rows = BIT_GLYPHS[name] || [];
+        let d = '';
+        rows.forEach((r, y) => { for (let x = 0; x < r.length;) { if (r[x] !== '#') { x++; continue; } let e = x; while (r[e] === '#') e++; d += `M${x} ${y}h${e - x}v1h${x - e}z`; x = e; } });
+        return `<svg class="wm-bit-glyph" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg>`;
+    }
+
+    // the car key told something new (a car came in range, the doors changed): the Car bubble shows it at once (#902)
+    document.addEventListener('wmCarKeyChange', () => {
+        const b = shell && shell.querySelector('.wm-bubble');
+        if (b && !b.hidden && b.dataset.role === 'carkey') statusBubble('carkey', shell.querySelector('[data-role="carkey"]'), true);
+    });
+
     function statusBubble(role, anchor, update) {
         if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
         // one Car (Yukimi, Nov 17, #902): the car key, the remote start (Lapis) and the commute (Traffic) are one
@@ -6458,103 +6481,96 @@
             if (l) sections.push({ links: [...(st && st.running && st.canStop ? [{ label: 'Stop the Engine', action: () => { closeBubble(); l.stop(); } }] : []), { label: 'Open', action: () => { closeBubble(); l.open(); } }] });
             bubble({ title: (st && st.title) || STATUS_APP_LABEL[role], role, anchor, sections, buttons: [{ text: 'Hide' }] });
         } else if (role === 'carkey') {
-            // the phone's car keys (#874, wmCarKey.js): each car in range with its own large Lock and
-            // Unlock (Samsung Digital Key's notification actions, on the phone); my car also shows what
-            // the server knows of it (Lapis); a friend's car can be made my car; Open (Lapis) left of Hide
+            // the Car (Yukimi, Nov 17, #902): the phone's car key (#874, wmCarKey.js), the remote (Lapis, #835)
+            // and the commute (Traffic, #795) as one bubble. My car first: the car key's word wins over the
+            // server's (a direct link to the car beside the phone), then one row [Climate Start] [Lock] [Unlock];
+            // friends' cars in range with their own keys; the commute last; [Car] [Traffic] ... [Hide].
             const ck = window.wmCarKey;
-            // quick access: friends' keys left out when Wallet > Car Keys hides them
-            const st = ck ? (ck.quick ? ck.quick() : ck.state()) : { cars: [] };
-            const lp = window.wmLapis && typeof window.wmLapis.keySummary === 'function' ? window.wmLapis.keySummary() : null;
+            const kst = ck ? (ck.quick ? ck.quick() : ck.state()) : { cars: [] };
+            const L = window.wmLapis;
+            const car = L && typeof L.carData === 'function' ? L.carData() : null;
+            const mineKey = kst.cars.find((c) => c.mine) || null;
+            const friends = kst.cars.filter((c) => !c.mine);
             const sections = [];
-            // a running remote start comes first: time left, what it set, fuel, doors; Stop the Engine
-            const run = window.wmLapis && typeof window.wmLapis.statusState === 'function' ? window.wmLapis.statusState() : null;
-            if (run && run.running) {
-                if (run.html) sections.push({ html: run.html });
-                if (run.canStop) sections.push({ links: [{ label: 'Stop the Engine', action: () => { closeBubble(); window.wmLapis.stop(); } }], align: 'right' });
-                if (st.cars.length) sections.push({ rule: true });
-            }
-            // the commute (Traffic, #795; one Car, #902): the report for where the phone is now; Start Car on the
-            // way home only while the car is not already running (the running start is above, with its own Stop)
-            const tf = window.wmTraffic;
-            const trip = tf && typeof tf.statusState === 'function' ? tf.statusState() : null;
-            if (trip && trip.lines && trip.lines.length) {
-                if (sections.length) sections.push({ rule: true });
-                // one block: the heading and its lines (a divider between every line read as separate parts)
-                const head = trip.title && trip.title !== 'Traffic' ? trip.title : 'Commute';
-                sections.push({ html: `<b>${escapeHtml(head)}</b><br>${trip.lines.map(escapeHtml).join('<br>')}` });
-                const canStart = trip.direction === 'home' && !(run && run.running) && window.wmLapis && typeof window.wmLapis.canStart === 'function' && window.wmLapis.canStart();
-                sections.push({ links: [...(canStart ? [{ label: 'Start Car', action: () => { closeBubble(); window.wmLapis.startPrompt(); } }] : []),
-                    { label: 'Open Traffic', action: () => { closeBubble(); tf.open(trip.direction); } }], align: 'right' });
-                sections.push({ rule: true });
-            }
-            // my car out of the key's range: what the server knows (Lapis) and Lock / Unlock over BlueLink
-            const keyHasMine = st.cars.some((c) => c.mine);
-            const mkKeys = (onLock, onUnlock, lockOn, unlockOn) => {
-                const keys = document.createElement('div');
-                keys.className = 'wm-carkey-keys';
-                [['Lock', 'today-lock-locked', onLock, lockOn], ['Unlock', 'today-lock', onUnlock, unlockOn]].forEach(([label, art, action, on]) => {
+            const failed = (name, what) => messageBox({ title: name, icon: 'error', text: `The car key could not ${what} ${name}. Move closer to the car, then try again.` });
+            const keyRow = (keys) => {
+                const row = document.createElement('div');
+                row.className = 'wm-carkey-keys';
+                keys.forEach(([label, bits, action, on]) => {
                     const btn = document.createElement('button');
                     btn.type = 'button';
                     btn.className = 'wm-carkey-key';
                     btn.disabled = !on;
-                    btn.innerHTML = `${imgTag(art)}<span>${escapeHtml(label)}</span>`;
+                    btn.innerHTML = `${bitGlyph(bits)}<span>${escapeHtml(label)}</span>`;
                     btn.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(); action(); });
-                    keys.appendChild(btn);
+                    row.appendChild(btn);
                 });
-                return keys;
+                return row;
             };
-            if (!keyHasMine && lp) {
-                if (run && run.running && st.cars.length === 0) sections.push({ rule: true });
-                // its name is the bubble's title; a heading only beside friends' cars in range
-                const what = lp.lines.length ? lp.lines.slice(0, 2) : ['No report from the car yet.'];
-                sections.push({ html: `${st.cars.length ? `<b>${escapeHtml(lp.name)}</b><br>` : ''}${what.map(escapeHtml).join('<br>')}` });
-                if (window.wmLapis.lock && window.wmLapis.unlock) sections.push({ node: mkKeys(() => window.wmLapis.lock(), () => window.wmLapis.unlock(), true, true) });
-                if (st.cars.length) sections.push({ rule: true });
+            // a remote start running: the time left (Lapis's ticker moves it) and what it set
+            if (car && car.run) {
+                const left = car.run.until ? Math.max(0, car.run.until - Date.now()) : null;
+                const sec = left == null ? 0 : Math.round(left / 1000);
+                const blocks = car.run.until && car.run.total ? Math.max(0, Math.min(18, Math.round((left / car.run.total) * 18))) : 18;
+                sections.push({ html: `<div class="wm-car-run">${car.run.until ? `<b data-lps-cd="${car.run.until}">${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}</b> left, climate ${escapeHtml(car.run.sets)}` : `<b>Running</b>, climate ${escapeHtml(car.run.sets)}`}</div><div class="wm-ds-progress${car.run.until ? '' : ' is-marquee'}" role="progressbar" aria-label="Time left"><span data-lps-bar="${car.run.until || ''}" data-lps-total="${car.run.total || 1}" style="--wm-ds-blocks:${blocks}"></span></div>` });
             }
-            if (!st.cars.length && !(run && run.running) && !lp && !(trip && trip.lines && trip.lines.length)) sections.push('No car is in range of this phone\'s keys.');
-            st.cars.forEach((car, i) => {
-                if (i) sections.push({ rule: true });
-                const many = st.cars.length > 1;
-                if (many) sections.push({ text: car.car, bold: true, links: car.mine ? [] : [{ label: 'Set as My Car', action: () => { ck.setMine(car.car); } }] });
-                sections.push(car.mine ? 'Your car, in range of this phone\'s key.' : many ? 'A friend\'s car, in range of its key.' : 'In range of this phone\'s key.');
-                if (car.mine && lp && lp.lines.length) sections.push({ html: lp.lines.map(escapeHtml).join('<br>') });
-                const failed = (what) => messageBox({ title: car.car, icon: 'error', text: `The car key could not ${what} ${car.car}. Move closer to the car, then try again.` });
-                const lock = () => { closeBubble(); if (!ck.pressCar(car.key, 'lock')) failed('lock'); };
+            if (car || mineKey) {
+                // the doors: the car key's notification text when it says ("Doors locked"), else the server's report
+                const keyText = mineKey ? String(mineKey.text || '') : '';
+                const keyLocked = /\bunlock/i.test(keyText) ? false : /\block/i.test(keyText) ? true : null;
+                const locked = keyLocked != null ? keyLocked : car ? car.locked : null;
+                const busy = car && car.busy ? { lock: 'Locking...', unlock: 'Unlocking...', start: 'Starting...', stop: 'Stopping...' }[car.busy] : '';
+                const line1 = [busy || (locked === true ? 'Locked' : locked === false ? 'Unlocked' : ''), mineKey ? 'In range of your key' : ''].filter(Boolean).join(' · ');
+                const line2 = car ? [car.range != null ? `${car.range} mi` : '', car.fuel != null ? `${car.fuel}% fuel` : '', car.gas ? `Gas ${car.gas}` : ''].filter(Boolean).join(' · ') : '';
+                // what a remote start will set (not the weather outside)
+                const line3 = car && !car.run && car.canStart ? `Climate Start sets ${car.sets} for ${car.minutes} min` : '';
+                const lines = [line1, line2, line3].filter(Boolean);
+                sections.push({ html: lines.length ? lines.map(escapeHtml).join('<br>') : 'No report from the car yet.' });
+                const name = (mineKey && mineKey.car) || (car && car.name) || 'Car';
+                // Lock / Unlock: the car key while it is in range, else the server (BlueLink)
+                const lock = () => { if (mineKey && mineKey.canLock) { if (!ck.pressCar(mineKey.key, 'lock')) failed(name, 'lock'); } else if (car) L.lock(); };
                 const unlock = async () => {
-                    closeBubble();
-                    const ok = await messageBox({ title: car.car, icon: 'question', text: `Unlock ${car.car}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
-                    if (ok && !ck.pressCar(car.key, 'unlock')) failed('unlock');
+                    if (mineKey && mineKey.canUnlock) {
+                        const ok = await messageBox({ title: name, icon: 'question', text: `Unlock ${name}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
+                        if (ok && !ck.pressCar(mineKey.key, 'unlock')) failed(name, 'unlock');
+                    } else if (car) L.unlock();
                 };
-                if (car.canLock || car.canUnlock) {
-                    const keys = document.createElement('div');
-                    keys.className = 'wm-carkey-keys';
-                    const key = (label, art, action, on) => {
-                        const btn = document.createElement('button');
-                        btn.type = 'button';
-                        btn.className = 'wm-carkey-key';
-                        btn.disabled = !on;
-                        btn.innerHTML = `${imgTag(art)}<span>${escapeHtml(label)}</span>`;
-                        btn.addEventListener('click', (e) => { e.stopPropagation(); action(); });
-                        keys.appendChild(btn);
-                    };
-                    key('Lock', 'today-lock-locked', lock, car.canLock);
-                    key('Unlock', 'today-lock', unlock, car.canUnlock);
-                    sections.push({ node: keys });
+                const keys = [];
+                if (car && (car.canStart || car.canStop)) {
+                    keys.push(car.canStop ? ['Climate Stop', 'stop', () => L.stop(), true] : ['Climate Start', 'power', () => L.startPrompt(), !car.busy]);
                 }
-            });
-            // which key is my car and which are friends' (Wallet > Car Keys), whatever is in range now
-            if (window.wmWallet && window.wmWallet.carKeys) sections.push({ rule: true }, { links: [{ label: 'Car Keys...', action: () => window.wmWallet.carKeys() }], align: 'right' });
-            const buttons = [];
-            if (lp && window.wmLapis.open) buttons.push({ text: 'Open', left: true, action: () => window.wmLapis.open() });
-            buttons.push({ text: 'Hide' });
-            // one divider between parts, none first or doubled (the parts above each close with one when present)
-            for (let i = sections.length - 1; i >= 0; i--) {
-                const isRule = (x) => !!(x && x.rule);
-                if (isRule(sections[i]) && (i === 0 || isRule(sections[i - 1]))) sections.splice(i, 1);
+                const canLock = (mineKey && mineKey.canLock) || (!!car && !car.busy);
+                const canUnlock = (mineKey && mineKey.canUnlock) || (!!car && !car.busy);
+                keys.push(['Lock', 'lock', lock, canLock], ['Unlock', 'unlock', unlock, canUnlock]);
+                sections.push({ node: keyRow(keys) });
             }
-            // my car's name (the key's, the remote's); several cars in range: Car
-            const mine = st.cars.find((c) => c.mine);
-            const title = (mine && mine.car) || (st.cars.length === 1 && st.cars[0].car) || (lp && lp.name) || (run && run.running && run.title) || 'Car';
+            // friends' cars in range of a key this phone holds: each its own name and keys
+            friends.forEach((f) => {
+                sections.push({ rule: true });
+                sections.push({ text: f.car, bold: true, links: [{ label: 'Set as My Car', action: () => { ck.setMine(f.car); } }] });
+                sections.push('A friend\'s car, in range of its key.');
+                const lockF = () => { if (!ck.pressCar(f.key, 'lock')) failed(f.car, 'lock'); };
+                const unlockF = async () => {
+                    const ok = await messageBox({ title: f.car, icon: 'question', text: `Unlock ${f.car}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
+                    if (ok && !ck.pressCar(f.key, 'unlock')) failed(f.car, 'unlock');
+                };
+                sections.push({ node: keyRow([['Lock', 'lock', lockF, f.canLock], ['Unlock', 'unlock', unlockF, f.canUnlock]]) });
+            });
+            // the commute, last: the report for where the phone is now
+            const tf = window.wmTraffic;
+            const trip = tf && typeof tf.statusState === 'function' ? tf.statusState() : null;
+            if (trip && trip.lines && trip.lines.length) {
+                if (sections.length) sections.push({ rule: true });
+                const head = trip.title && trip.title !== 'Traffic' ? trip.title : 'Commute';
+                sections.push({ html: `<b>${escapeHtml(head)}</b><br>${trip.lines.map(escapeHtml).join('<br>')}` });
+            }
+            if (!sections.length) sections.push('No car is in range of this phone\'s keys.');
+            const buttons = [];
+            if (L && typeof L.open === 'function') buttons.push({ text: 'Car', action: () => L.open() });
+            if (tf && typeof tf.open === 'function') buttons.push({ text: 'Traffic', left: true, action: () => tf.open(trip && trip.direction) });
+            if (buttons.length === 1) buttons[0].left = true;
+            buttons.push({ text: 'Hide' });
+            const title = (mineKey && mineKey.car) || (car && car.name) || (kst.cars.length === 1 && kst.cars[0].car) || 'Car';
             bubble({ title, role, anchor, sections, buttons });
         } else if (role === 'traffic') {
             // Traffic (#795): the commute time, the delay and when it gets there, and the way into the app
