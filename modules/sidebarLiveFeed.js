@@ -134,16 +134,32 @@ function placeSlow(payload, key, data) {
     }
 }
 
+/**
+ * A phone's DeX window (or a phone page) that said it sleeps (client_dormant, #890): its Sidebar is not
+ * drawn, so it gets no figures (each push woke the phone's radio every 2 s); the first tick after it
+ * wakes sends fresh ones.
+ */
+function asleep(ws) {
+    try {
+        const server = globalResourcesRef && typeof globalResourcesRef.getWebSocketServer === 'function' ? globalResourcesRef.getWebSocketServer() : null;
+        const info = server && server.clients && typeof server.clients.get === 'function' ? server.clients.get(ws) : null;
+        return require('./wsSocketHeartbeat').isDormantPage(info);
+    } catch (_err) {
+        return false;
+    }
+}
+
 async function tick() {
     const now = Date.now();
     let host = null;
     let system = null;
     let wantsSystem = false;
-    subscriptions.forEach((sub) => { if (sub.topics.system.length) wantsSystem = true; });
+    const awake = [...subscriptions.values()].filter((sub) => !asleep(sub.ws));
+    awake.forEach((sub) => { if (sub.topics.system.length) wantsSystem = true; });
     if (wantsSystem) {
         try { system = await sidebarSystemInfo.getSystemInfo(); } catch (_err) { system = null; }
     }
-    for (const sub of [...subscriptions.values()]) {
+    for (const sub of awake) {
         const ws = sub.ws;
         if (!ws || ws.readyState !== 1) {
             subscriptions.delete(ws);
