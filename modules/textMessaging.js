@@ -4,6 +4,8 @@
  * Melaton Messenger on the desktop and the Android app's notifications.
  *
  * Config (config.json textMessaging):  { accounts: [{ id, kind, url, enabled }], notifyUnknown }
+ *   kind 'android' (#885): { id, kind, package, label, enabled, settings: { notify } } - an Android app's
+ *   notifications on the partnered phone as conversations (modules/textMessagingAndroid.js)
  * Secrets (secure.config.json textMessaging.keys[]): { name: <account id>, password }
  *
  * Chat (provider-neutral):
@@ -30,10 +32,11 @@ const path = require('path');
 const { randomUUID } = require('crypto');
 const { BlueBubblesProvider, handleKey, normalizeUrl, DEFAULT_SETTINGS: BB_DEFAULTS } = require('./textMessagingBlueBubbles');
 const { RcsProvider } = require('./textMessagingRcs');
+const androidApps = require('./textMessagingAndroid');
 const store = require('./textMessagingStore');
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-const KINDS = ['bluebubbles', 'rcs'];
+const KINDS = ['bluebubbles', 'rcs', 'android'];
 const CONTACT_SCAN_MS = 5 * 60 * 1000;
 const SUMMARY_TTL_MS = 30 * 1000;
 
@@ -278,6 +281,7 @@ function makeProvider(account) {
         try { cacheDir = resources().getPath('cache'); } catch (_) { cacheDir = null; }
         return new RcsProvider({ id: account.id }, hooks, { cacheDir: cacheDir || undefined });
     }
+    if (account.kind === 'android') return new androidApps.AndroidAppProvider(account, hooks);
     return null;
 }
 
@@ -344,6 +348,9 @@ const lastPush = new Map(); // accountId -> ms of the last message the source pu
 
 async function onProviderEvent(accountId, event, payload) {
     const out = Object.assign({ event }, payload);
+    // an Android app's own notification is already on the phone (#885): no second one from here
+    const kindOf = providers.get(accountId);
+    if (kindOf && kindOf.kind === 'android') out.native = true;
     if (event === 'message' || event === 'updated' || event === 'reaction') lastPush.set(accountId, Date.now());
     try {
         if (event === 'message' || event === 'updated') {
@@ -372,7 +379,9 @@ async function onProviderEvent(accountId, event, payload) {
             out.known = known;
             out.folder = known ? 'inbox' : 'unknown';
             const acctRow = readConfig().accounts.find((x) => x.id === accountId);
-            const acctNotify = !(acctRow && acctRow.settings && acctRow.settings.notify === false);
+            const acctNotify = acctRow && acctRow.kind === 'android'
+                ? !!(acctRow.settings && acctRow.settings.notify === true)
+                : !(acctRow && acctRow.settings && acctRow.settings.notify === false);
             out.notify = event === 'message' && m && !m.fromMe && !m.groupEvent && acctNotify && (known || readConfig().notifyUnknown);
         } else if (event === 'reaction' || event === 'read') {
             summaries.delete(accountId);
@@ -391,6 +400,18 @@ function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
 function accountOut(a) {
     const p = providers.get(a.id);
     const s = summaries.get(a.id);
+    if (a.kind === 'android') {
+        const label = a.label || androidApps.appLabel(a.package) || a.package || 'Android app';
+        return {
+            id: a.id, kind: 'android', name: label, service: label, url: '', package: a.package || '', label,
+            icon: `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app`,
+            enabled: a.enabled !== false, hasPassword: true,
+            status: p ? p.status : (a.enabled === false ? 'disabled' : 'error'), error: p ? p.error : '',
+            identity: p ? p.identity() : '', features: p ? p.features() : {},
+            unread: s ? s.value.unread : null, unknownUnread: s ? s.value.unknownUnread : null,
+            settings: Object.assign({ notify: false }, a.settings || {}), sync: syncInfo(a.id, p), server: null
+        };
+    }
     return {
         id: a.id,
         kind: a.kind,
@@ -417,7 +438,7 @@ function syncInfo(id, p) {
     try {
         if (!storeOpen()) return null;
         const st = store.stats(id);
-        const complete = p && p.kind === 'rcs' ? store.getState(id, 'chats') === '1' && st.syncedChats >= st.chats : store.getState(id, 'complete') === '1';
+        const complete = p && p.kind === 'android' ? true : p && p.kind === 'rcs' ? store.getState(id, 'chats') === '1' && st.syncedChats >= st.chats : store.getState(id, 'complete') === '1';
         const prog = p && p.syncProgress;
         return { chats: st.chats, messages: st.messages, complete, running: !!(p && p.syncing), done: prog ? prog.done : null, total: prog && prog.total != null ? prog.total : null };
     } catch (_) { return null; }
@@ -450,6 +471,7 @@ function saveAccount(input) {
     const cfg = readConfig();
     let id = String(body.id || '').trim().toLowerCase();
     if (id && !ID_RE.test(id)) throw Object.assign(new Error('Bad account id.'), { code: 'BAD_ID' });
+    if (kind === 'android') return saveAndroidAccount(body, cfg, id);
     if (!id) {
         const base = kind === 'bluebubbles' ? 'imessage' : kind;
         if (kind === 'rcs' && cfg.accounts.some((a) => a.kind === 'rcs')) throw Object.assign(new Error('There is already an RCS account.'), { code: 'EXISTS' });
@@ -475,6 +497,51 @@ function saveAccount(input) {
     broadcast({ event: 'account', accountId: id });
     return accountOut(row);
 }
+
+/** An Android app account (#885): { id?, package, label?, enabled, settings: { notify } }. One per app. */
+function saveAndroidAccount(body, cfg, id0) {
+    let id = id0;
+    const at0 = id ? cfg.accounts.findIndex((a) => a.id === id) : -1;
+    const pkg = String(body.package || (at0 >= 0 ? cfg.accounts[at0].package : '') || '').trim();
+    if (!androidApps.PACKAGE_RE.test(pkg)) throw Object.assign(new Error('Choose the Android app.'), { code: 'NO_PACKAGE' });
+    const clash = cfg.accounts.find((a) => a.kind === 'android' && a.package === pkg && a.id !== id);
+    if (clash) throw Object.assign(new Error('That app is already an account.'), { code: 'EXISTS' });
+    if (!id) {
+        const tail = (pkg.split('.').filter((x) => !/^(com|org|net|app|android|jp|co)$/i.test(x)).pop() || pkg.split('.').pop()).toLowerCase().replace(/[^a-z0-9_-]/g, '');
+        const base = `app-${tail || 'android'}`.slice(0, 28);
+        id = base;
+        for (let n = 2; cfg.accounts.some((a) => a.id === id); n += 1) id = `${base}${n}`;
+    }
+    const at = cfg.accounts.findIndex((a) => a.id === id);
+    const prev = at >= 0 ? cfg.accounts[at] : {};
+    const label = String(body.label || prev.label || androidApps.appLabel(pkg) || pkg).trim().slice(0, 80);
+    const settings = Object.assign({}, prev.settings || {});
+    if (body.settings && typeof body.settings.notify === 'boolean') settings.notify = body.settings.notify;
+    const row = { id, kind: 'android', url: '', package: pkg, label, enabled: body.enabled !== false, settings };
+    if (at >= 0) cfg.accounts[at] = Object.assign({}, prev, row);
+    else cfg.accounts.push(row);
+    writeConfig(cfg);
+    startAccount(row);
+    broadcast({ event: 'account', accountId: id });
+    return accountOut(row);
+}
+
+/** Apps on the phone that posted a notification lately (to add one as an account). */
+function recentAndroidApps() {
+    const taken = new Set(readConfig().accounts.filter((a) => a.kind === 'android').map((a) => a.package));
+    return { apps: androidApps.recentApps().map((a) => Object.assign(a, { added: taken.has(a.package) })) };
+}
+
+/** One of an Android app notification's own actions (chat.actions[].id) on the phone. */
+async function action(accountId, args) {
+    const p = provider(accountId);
+    if (typeof p.action !== 'function') throw Object.assign(new Error('This account has no notification actions.'), { code: 'UNSUPPORTED' });
+    const out = await p.action(args || {});
+    summaries.delete(accountId);
+    return out;
+}
+
+function androidAppIcon(pkg) { return androidApps.appIcon(pkg); }
 
 function deleteAccount(id) {
     const cfg = readConfig();
@@ -580,7 +647,7 @@ function syncStatus() {
         let drift = null;
         try { reconcile = JSON.parse(store.getState(a.id, 'reconcile') || 'null'); } catch (_) { reconcile = null; }
         try { drift = JSON.parse(store.getState(a.id, 'drift') || 'null'); } catch (_) { drift = null; }
-        const push = p ? (p.kind === 'bluebubbles' ? !!(p.socket && p.socket.connected) : !!(p.child && p.status === 'connected')) : false;
+        const push = p ? (p.kind === 'bluebubbles' ? !!(p.socket && p.socket.connected) : p.kind === 'android' ? !!p.device : !!(p.child && p.status === 'connected')) : false;
         return { id: a.id, name: accountOut(a).name, kind: a.kind, status: p ? p.status : 'disabled', sync: syncInfo(a.id, p), reconcile, drift, push, lastPush: lastPush.get(a.id) || null };
     });
     let cacheDir = null;
@@ -837,6 +904,7 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
+    recentAndroidApps, action, androidAppIcon,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
     downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };

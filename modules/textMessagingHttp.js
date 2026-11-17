@@ -186,7 +186,17 @@ function mount(app, authMiddleware, globalResources) {
     app.get('/api/textmessaging/:accountId/avatar/:key', auth, admin, (req, res) => {
         const buf = textMessaging.avatar(req.params.accountId, req.params.key);
         if (!buf) { refuse(res, 404, 'NO_PHOTO', 'No picture.'); return; }
-        res.setHeader('Content-Type', 'image/jpeg');
+        // Android app accounts keep PNGs (#885)
+        res.setHeader('Content-Type', buf[0] === 0x89 && buf[1] === 0x50 ? 'image/png' : 'image/jpeg');
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        res.end(buf);
+    });
+
+    // an Android app's icon, as the phone sent it with its first notification (#885: the app list)
+    app.get('/api/textmessaging/android-icon/:pkg', auth, admin, (req, res) => {
+        const buf = textMessaging.androidAppIcon(req.params.pkg);
+        if (!buf) { refuse(res, 404, 'NO_PHOTO', 'No picture.'); return; }
+        res.setHeader('Content-Type', 'image/png');
         res.setHeader('Cache-Control', 'private, max-age=3600');
         res.end(buf);
     });

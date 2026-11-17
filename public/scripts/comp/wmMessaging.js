@@ -652,6 +652,25 @@
         }, () => { /* keeps the last name */ });
     }
 
+    /**
+     * A Text Messaging account's picture: the SMS account art; an Android app account (#885) its
+     * Windows Mobile icon from Program Icons when there is one, else the app's own icon.
+     */
+    function tmIcon(a) {
+        if (!a || a.kind !== 'android') return 'msg-acct-sms';
+        const A = window.wmAndroidApps;
+        const set = A && typeof A.wmIcon === 'function' ? A.wmIcon(a.package) : null;
+        return set || a.icon || 'msg-acct-sms';
+    }
+
+    /** An icon name (ROM art), a Program Icons set (/static_images/wm-android/<name>) or a picture URL. */
+    function iconHtml(name) {
+        const n = String(name || '');
+        if (/^\/static_images\/wm-android\/[a-z0-9_-]+$/.test(n)) return `<img src="${esc(n)}.png" srcset="${esc(n)}.png 1x, ${esc(n)}@2x.png 2x" alt="" draggable="false">`;
+        if (n.startsWith('/')) return `<img src="${esc(n)}" alt="" draggable="false">`;
+        return img(n);
+    }
+
     /** The accounts in the picker's order: Text Messaging (each account), Dreamscape Messenger, Dreamscape Mail, the Director personas. */
     function accounts() {
         // before Messaging read them itself: the logon step's snapshot (textMessagingClient.js)
@@ -660,7 +679,7 @@
             const snap = t && typeof t.snapshot === 'function' ? t.snapshot() : null;
             if (snap && Array.isArray(snap.accounts)) tmAccts = snap.accounts.filter((a) => a && a.enabled !== false);
         }
-        const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: l.title, icon: 'msg-acct-sms', sub: l.subline, dim: true, unread: tmUnread(a.id) }; });
+        const tms = tmAccts.map((a) => { const l = tmLabel(a); return { key: `tm:${a.id}`, name: l.title, icon: tmIcon(a), sub: l.subline, dim: true, unread: tmUnread(a.id) }; });
         return tms.concat([
             { key: 'sms', name: SMS_ACCOUNT, icon: 'app-chat', sub: chatUserName, dim: !!chatUserName, unread: smsUnread() },
             { key: 'mail', name: MAIL_ACCOUNT, icon: 'msg-acct-outlook', sub: mailAddress(), dim: true, unread: mailUnread() }
@@ -734,8 +753,15 @@
         }
     }
 
-    /** Setup E-mail / New Account...: accounts are made on the desktop (Dovecote), not here. */
-    async function setupAccount() {
+    /** New Account... (#885): Options' New Account page (an Android app; E-mail Account... from there). */
+    function setupAccount() {
+        const s = window.wmSettings;
+        if (s && typeof s.openMessagingNewAccount === 'function') { s.openMessagingNewAccount(); return; }
+        void setupEmail();
+    }
+
+    /** Setup E-mail / E-mail Account...: e-mail accounts are made on the desktop (Dovecote), not here. */
+    async function setupEmail() {
         if (!ws) return;
         await ws.messageBox({
             title: 'Messaging',
@@ -1761,7 +1787,7 @@
         if (pickIndex < 0) pickIndex = Math.max(0, rows.findIndex((r) => r.current));
         pickIndex = Math.max(0, Math.min(rows.length - 1, pickIndex));
         host.innerHTML = rows.map((r, n) => `<div class="msg-pick-row${r.two ? ' is-two' : ''}${n === pickIndex ? ' is-selected' : ''}" role="option" data-n="${n}" style="--indent:${r.indent || 0}">
-            <span class="msg-ico">${img(r.icon)}</span>
+            <span class="msg-ico">${iconHtml(r.icon)}</span>
             <span class="msg-pick-name">${esc(r.name)}${r.unread ? ` <span class="msg-pick-count">(${r.unread})</span>` : ''}</span>
             ${r.two ? `<span class="msg-pick-sub${r.dim ? ' is-dim' : ''}">${esc(r.sub || '')}</span>` : ''}
         </div>`).join('');
@@ -1782,7 +1808,7 @@
                 goTo(a.key);
             }
         }));
-        rows.push({ two: true, icon: 'msg-acct-setup', name: 'Setup E-mail', sub: 'Tap to setup a new account', go: setupAccount });
+        rows.push({ two: true, icon: 'msg-acct-setup', name: 'Setup E-mail', sub: 'Tap to setup a new account', go: setupEmail });
         pickRows('accounts', rows);
     }
 
@@ -3429,7 +3455,7 @@
     }
 
     window.wmMessaging = {
-        openMail, showTree, closeTree, accountItems, goTo, openAccount: (key, f) => goTo(key || 'mail', f), setupAccount, mailAddress: () => mailAddress(), spellCheckField, loadSignature,
+        openMail, showTree, closeTree, accountItems, goTo, openAccount: (key, f) => goTo(key || 'mail', f), setupAccount, setupEmail, mailAddress: () => mailAddress(), spellCheckField, loadSignature,
         // IMAP accounts (#789): Search Phone opens a message; the shell's envelope / Today count the new arrivals
         openImapMessage,
         // "Select an Account" (the Today panels' Messaging key, Yukimi Nov 13)

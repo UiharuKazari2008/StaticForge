@@ -1141,3 +1141,19 @@ textarea.wm-edit.wm-msgopt-sig {
 textarea.wm-edit.wm-chatopt-area {
     height: calc(96 * var(--wm-px));
 }
+
+/* Options > Accounts > New Account... (#885): the Android apps that posted lately, icon rows */
+.wm-msgopt-apps {
+    height: calc(150 * var(--wm-px));
+    max-height: none !important;
+}
+
+.wm-msgopt-apps .wm-listbox-row {
+    min-height: calc(18 * var(--wm-px));
+    gap: calc(3 * var(--wm-px));
+}
+
+.wm-msgopt-apps.is-empty {
+    padding: calc(2 * var(--wm-px)) calc(3 * var(--wm-px));
+    color: #8c8e8c;
+}

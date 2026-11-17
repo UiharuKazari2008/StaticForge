@@ -36,7 +36,8 @@ function links() {
 }
 
 function onEvent(ev) {
-    if (!ev) return;
+    // an Android app account's messages are that app's own notifications on the phone (#885)
+    if (!ev || ev.native) return;
     if (ev.event === 'message' && ev.message) {
         const m = ev.message;
         if (m.fromMe) {

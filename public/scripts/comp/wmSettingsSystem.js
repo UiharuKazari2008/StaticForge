@@ -1148,6 +1148,8 @@
     const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
     const lsPut = (k, v) => { try { localStorage.setItem(k, v); return true; } catch (_) { return false; } };
 
+    let messagingNextSub = null; // a sub page to open with the page (Messaging > New Account...: 'new')
+
     function messagingOptionsInit() {
         const key = (sh() && sh().mailIconAllKey) || 'wmMailIconAll';
         const smsKey = (sh() && sh().smsIconAllKey) || 'wmSmsIconAll';
@@ -1175,6 +1177,7 @@
                 if (typeof d.rerender === 'function' && d.tab === 'message') d.rerender();
             }).catch(() => { /* offline: the box stays unavailable */ });
         }
+        if (messagingNextSub) { d.sub = messagingNextSub; messagingNextSub = null; }
         return d;
     }
 
@@ -1208,10 +1211,66 @@
         return list.find((a) => a.id === id) || null;
     }
 
+    /**
+     * New Account... (#885): an Android app whose notifications show in Messaging as conversations
+     * (Text Messaging kind 'android'), from the apps that posted a notification lately; E-mail
+     * Account... is the old explanation (e-mail accounts are made on the desktop).
+     */
+    function messagingNewRender(el, d) {
+        const t = window.textMessaging;
+        if (!d.newApps) {
+            el.innerHTML = ui.note('Reading the apps on the phone...');
+            if (!d.newAsked && t && typeof t.androidApps === 'function') {
+                d.newAsked = true;
+                t.androidApps().then((list) => { d.newApps = list; }, () => { d.newApps = []; d.newFailed = true; })
+                    .then(() => { if (typeof d.rerender === 'function' && d.sub === 'new') d.rerender(); });
+            } else if (!t || typeof t.androidApps !== 'function') { d.newApps = []; d.newFailed = true; }
+            if (!d.newApps) return;
+        }
+        const apps = d.newApps.filter((a) => !a.added);
+        const rows = apps.map((a) => ({ key: a.package, label: a.label || a.package, img: a.icon || '', selected: d.newPick === a.package }));
+        el.innerHTML = `${ui.text('Select an Android app. Its notifications show in Messaging as messages, and a reply typed here is sent through the notification.')}
+            ${rows.length ? ui.listbox(rows, { maxHeight: 200 }).replace('class="wm-listbox"', 'class="wm-listbox wm-msgopt-apps"') : `<div class="wm-listbox wm-msgopt-apps is-empty">${ui.esc(d.newFailed ? 'The list could not be read.' : 'No apps yet.')}</div>`}
+            ${ui.note('An app is listed after it posts a notification on this phone while ActiveSync sends notifications to the computer.')}
+            ${ui.buttons([['email', 'E-mail Account...']])}`;
+        ui.bindListbox(el.querySelector('.wm-listbox'), (key) => { d.newPick = key; });
+        el.querySelector('[data-act="email"]').addEventListener('click', () => {
+            const m = window.wmMessaging;
+            if (m && typeof m.setupEmail === 'function') m.setupEmail();
+        });
+    }
+
     function messagingSubRender(el, d) {
+        if (d.sub === 'new') { messagingNewRender(el, d); return; }
         if (String(d.sub).startsWith('tm:')) {
             const a = tmAccountFor(d.sub);
             if (!a) { el.innerHTML = ui.note('This account is not available right now.'); return; }
+            if (a.kind === 'android') {
+                // an Android app account (#885): its alert switch (off: the app's own notification is on the phone) and Remove
+                if (!d.tmOpts) { d.tmOpts = { notify: !!(a.settings && a.settings.notify === true) }; d.tmOptsInitial = JSON.stringify(d.tmOpts); }
+                el.innerHTML = `${ui.text(`${a.name}${a.identity ? ` (${a.identity})` : ''}`)}
+                    ${ui.check('tmo-notify', 'Show a Messaging notification for new messages', d.tmOpts.notify)}
+                    ${ui.note(`${a.name} shows its own notification on the phone as well.`)}
+                    ${ui.buttons([['tm-remove', 'Remove Account']])}`;
+                el.querySelector('input[name="tmo-notify"]').addEventListener('change', (e) => { d.tmOpts.notify = e.target.checked; });
+                el.querySelector('[data-act="tm-remove"]').addEventListener('click', async () => {
+                    const s1 = sh();
+                    const yes = s1 && typeof s1.messageBox === 'function'
+                        ? await s1.messageBox({ title: 'Messaging', icon: 'warning', text: `Remove the ${a.name} account? Its conversations are deleted from Messaging. ${a.name} on the phone is not changed.`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false })
+                        : false;
+                    if (!yes) return;
+                    try {
+                        await window.textMessaging.deleteAccount(a.id);
+                        if (typeof window.textMessaging.preload === 'function') void window.textMessaging.preload();
+                        d.sub = null;
+                        d.tmOpts = null;
+                        if (typeof d.rerender === 'function') d.rerender();
+                    } catch (err) {
+                        if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account could not be removed. ${(err && err.message) || ''}` });
+                    }
+                });
+                return;
+            }
             if (!d.tmOpts) { d.tmOpts = Object.assign({}, a.settings || {}); d.tmOptsInitial = JSON.stringify(d.tmOpts); }
             const priv = !!(a.server && a.server.privateApi);
             const opts = a.kind === 'bluebubbles' ? TM_OPTS : TM_OPTS.slice(0, 1);
@@ -1287,7 +1346,8 @@
             ui.bindListbox(el.querySelector('.wm-listbox'), async (key) => {
                 d.acctSel = key;
                 const m = window.wmMessaging;
-                if (key === '__new' && m && typeof m.setupAccount === 'function') m.setupAccount();
+                // New Account... (#885): an Android app, or the e-mail explanation from there
+                if (key === '__new') { void m; d.sub = 'new'; d.newApps = null; d.newAsked = false; d.newPick = null; api.rerender(); return; }
                 // a Text Messaging account (Apple iMessage / RCS): its client options (#779)
                 if (String(key).startsWith('tm:')) { d.sub = key; d.tmOpts = null; api.rerender(); return; }
                 // a mail account (IMAP, #789): Receive notifications for new messages (Yukimi, Nov 14)
@@ -1375,11 +1435,24 @@
     async function messagingOptionsCommit(d) {
         // ok on Signatures / Security: save the signature, back to the Accounts tab
         if (d.sub) {
+            // New Account... (#885): ok adds the chosen Android app
+            if (d.sub === 'new' && d.newPick) {
+                const t = window.textMessaging;
+                const app = (d.newApps || []).find((x) => x.package === d.newPick);
+                try {
+                    await t.saveAccount({ kind: 'android', package: d.newPick, label: app ? app.label : '' });
+                    if (typeof t.preload === 'function') void t.preload();
+                } catch (err) {
+                    const s1 = sh();
+                    if (s1 && typeof s1.messageBox === 'function') await s1.messageBox({ title: 'Messaging', icon: 'error', text: `The account could not be added. ${(err && err.message) || ''}` });
+                    return false;
+                }
+            }
             if (String(d.sub).startsWith('tm:') && d.tmOpts && JSON.stringify(d.tmOpts) !== d.tmOptsInitial) {
                 const a = tmAccountFor(d.sub);
                 const t = window.textMessaging;
                 try {
-                    if (a && t) await t.saveAccount({ id: a.id, kind: a.kind, url: a.url, enabled: a.enabled !== false, settings: d.tmOpts });
+                    if (a && t) await t.saveAccount({ id: a.id, kind: a.kind, url: a.url, package: a.package, label: a.label, enabled: a.enabled !== false, settings: d.tmOpts });
                     d.tmOptsInitial = JSON.stringify(d.tmOpts);
                     if (t && typeof t.preload === 'function') void t.preload();
                 } catch (err) {
@@ -1449,6 +1522,12 @@
         d.initial = JSON.stringify(Object.assign({}, d, { initial: undefined, sub: undefined, sig: undefined, sigInitial: undefined, rerender: undefined, tmInitial: undefined, tab: undefined }));
         return keys;
     }
+
+    /** Messaging > New Account... (#885): Options' Accounts tab on its New Account page. */
+    wmSettings.openMessagingNewAccount = () => {
+        messagingNextSub = 'new';
+        wmSettings.open('messaging-options', 'accounts', { direct: true });
+    };
 
     wmSettings.registerPage({
         id: 'messaging-options', tab: 'personal', label: 'Options', icon: 'app-messaging', hidden: true,

@@ -349,7 +349,8 @@
                         { text: 'Open', action: 'row-open' },
                         { separator: true },
                         c.unread ? { text: 'Mark as Read', action: 'row-read' } : { text: 'Mark as Unread', action: 'row-unread' },
-                        ...(this.features().deleteChat ? [{ separator: true }, { text: 'Delete', action: 'row-delete' }] : [])
+                        ...(this.features().deleteChat ? [{ separator: true }, { text: 'Delete', action: 'row-delete' }] : []),
+                        ...this.notifyActionItems(c, 'row-act:')
                     ] : [{ text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((x) => x.unread) }] }];
                 },
                 onAction: (action) => void this.command(action)
@@ -748,6 +749,9 @@
                 case 'exit': this.app.exit(); return;
                 default:
                     if (/^react:/.test(cmd)) await this.react(sel, cmd.slice(6));
+                    // an Android app account's notification action (#885), on the open conversation or a list row
+                    else if (/^act:/.test(cmd)) await this.notifyAction(this.chatGuid, Number(cmd.slice(4)));
+                    else if (/^row-act:/.test(cmd)) await this.notifyAction(this.menuGuid, Number(cmd.slice(8)));
             }
             void el;
         }
@@ -799,7 +803,8 @@
                     { text: 'Mark as Read', subtext: 'Ctrl+Q', action: 'mark-read', disabled: !inChat },
                     { text: 'Mark as Unread', subtext: 'Ctrl+U', action: 'mark-unread', disabled: !inChat || !!(this.chat() && this.chat().unread) },
                     f.deleteChat ? { text: 'Delete Conversation', subtext: 'Ctrl+D', action: 'delete-chat', disabled: !inChat } : null,
-                    { text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((c) => c.unread) }
+                    { text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((c) => c.unread) },
+                    ...(inChat ? this.notifyActionItems(this.chat(), 'act:') : [])
                 ].filter(Boolean);
             }
             if (menu === 'view') {
@@ -825,6 +830,29 @@
                 sep,
                 { text: `About ${NAME}`, action: 'about' }
             ];
+        }
+
+        /**
+         * An Android app account's conversation (#885): what its notification on the phone offers now
+         * (Mark as read, Mute, ...) as menu items, after a separator; none once the notification is gone.
+         */
+        notifyActionItems(c, prefix) {
+            const list = c && Array.isArray(c.actions) ? c.actions : [];
+            return list.length ? [{ separator: true }].concat(list.map((x) => ({ text: x.title, action: `${prefix}${x.id}` }))) : [];
+        }
+
+        async notifyAction(guid, id) {
+            const t = tm();
+            const a = this.account();
+            const c = this.chat(guid);
+            const act = c && (c.actions || []).find((x) => x.id === id);
+            if (!t || !a || !act || typeof t.action !== 'function') return;
+            this.busy(true);
+            try {
+                await t.action(a.id, c.guid, id);
+            } catch (err) {
+                await this.message_(`${act.title} could not be done.\n${(err && err.message) || err}`);
+            } finally { this.busy(false); }
         }
 
         /** The reactions, the ones you gave checked (a second pick takes it back). */
@@ -932,6 +960,12 @@
                 return;
             }
             if (!this.chatGuid) return;
+            // an Android app account (#885): the reply goes through the app's notification, while the phone shows it
+            const cur = this.chat();
+            if (cur && cur.canReply === false) {
+                await this.message_(`${a.name || 'The app'} does not offer a reply to this conversation now. Reply in ${a.name || 'the app'} on the phone.`);
+                return;
+            }
             const guid = this.chatGuid;
             const reply = this.replyTo;
             const files = this.attachQueue.splice(0);

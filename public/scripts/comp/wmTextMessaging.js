@@ -21,6 +21,8 @@
  *   picture       the full-size picture or video (ok goes back).
  * Commands the account's features{} lacks (tapbacks, edit, unsend, reply, typing, attachments,
  * newChat) are not offered.
+ * An Android app account (#885) has no threads: the notification's own quick reply sends (none when
+ * the chat's canReply is false), and its other actions are on the conversation's menus.
  *
  * window.wmTextMessaging = { showAccount(accountId, folder), openChat(accountId, chatGuid),
  *   compose(accountId, addresses), accounts() }: accounts() is the last list read (synchronous; it
@@ -739,6 +741,12 @@
         const box = inputEl();
         const text = box.value.trim();
         const c = conv;
+        // an Android app account (#885): a reply goes through the app's notification, while the phone shows it
+        if (c.chat && c.chat.canReply === false) {
+            const name = (acct() && acct().name) || 'The app';
+            await errorBox(`${name} does not offer a reply to this conversation now. Reply in ${name} on the phone.`);
+            return;
+        }
         markRead({ clear: true });
         // the attachments held on this reply go after its text, each with its own progress
         const files = pendingFiles.slice();
@@ -1128,6 +1136,8 @@
         if (feat('newChat')) items.push({ label: 'New', action: () => openNew([]) });
         items.push(readItem(c));
         if (feat('deleteChat')) items.push({ label: 'Delete', disabled: !c, action: () => deleteChat(c) });
+        const acts = actionItems(c);
+        if (acts.length) items.push('-', ...acts);
         items.push('-');
         items.push({ label: 'Go To', submenu: goToItems });
         items.push({ label: 'Tools', submenu: () => [
@@ -1144,11 +1154,32 @@
     }
 
     function rowMenu(c) {
+        const acts = actionItems(c);
         return [
             { label: 'Reply', action: () => openConversation(c) },
             readItem(c),
-            ...(feat('deleteChat') ? [{ label: 'Delete', action: () => deleteChat(c) }] : [])
+            ...(feat('deleteChat') ? [{ label: 'Delete', action: () => deleteChat(c) }] : []),
+            ...(acts.length ? ['-'].concat(acts) : [])
         ];
+    }
+
+    /**
+     * An Android app account's conversation (#885): the actions its notification on the phone offers
+     * now (Mark as read, Mute, ...), each run on the phone. None once the notification is gone.
+     */
+    function actionItems(c) {
+        const list = c && Array.isArray(c.actions) ? c.actions : [];
+        return list.map((a) => ({ label: a.title, action: () => runAction(c, a) }));
+    }
+
+    async function runAction(c, a) {
+        const t = tm();
+        if (!t || typeof t.action !== 'function') return;
+        try {
+            await sh.busy(() => t.action(accountId, c.guid, a.id), { paint: true });
+        } catch (err) {
+            await errorBox(`${a.title} could not be done.`, err);
+        }
     }
 
     /** What can be done to one message (the conversation menu and its tap-and-hold menu). */
@@ -1177,6 +1208,8 @@
             ] });
         }
         items.push({ label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertText(t) })) });
+        const acts = actionItems(conv && conv.chat);
+        if (acts.length) items.push('-', ...acts);
         if (replyTo) items.push({ label: 'Cancel Reply', action: () => { replyTo = null; renderReply(); sh.refreshSoftKeys(); } });
         if (pendingFiles.length) items.push({ label: 'Remove Attachments', action: () => { pendingFiles = []; renderPending(); sh.refreshSoftKeys(); } });
         items.push('-');

@@ -106,6 +106,18 @@ The app answers with ordinary packets on the same socket (it holds the page's se
 Google Messages stays the phone's default messaging app (RCS needs it); Yukimi turns its own
 notifications off so a message does not ring twice.
 
+## Notifications for Messaging's Android app accounts (Yozora #885)
+
+`notify.posted` (device -> computers, and server taps via `activeSync.onDeviceEvent`) also carries, when the app gives it:
+`sub` (sub text), `conv { title, group, shortcut }`, `messages [{ text, time, sender, senderKey, me }]` (MessagingStyle lines, newest 12; `me` = the user's own line), `actions [{ i, title, reply, semantic }]` (`reply` = takes typed text) and `avatar` (64 px PNG data URL, sent again only when it changed).
+
+| Op (computer/server -> device) | Args | Does |
+|---|---|---|
+| `notify.reply` | `{ key, action, text }` | fills every free-form RemoteInput of action `action` with `text` and sends its intent (the notification's quick reply) |
+| `notify.action` | `{ key, action }` | sends action `action`'s intent (Mark as read, Mute, ...); refused for an action that takes text |
+
+Both need the `notify` permission and a notification the phone still shows (`gone` otherwise). Older apps do not advertise them (`UNSUPPORTED`).
+
 ## Programs (Yozora #795)
 
 An Android program (`.apk`) sent from the computer is offered to Android's package installer. Android always asks
