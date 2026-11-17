@@ -652,6 +652,13 @@ img.wm-strip {
 }
 @keyframes wm-strip { from { background-position: 0 0; } to { background-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
 @keyframes wm-strip-img { from { object-position: 0 0; } to { object-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
+/* the title bar's strips are stepped by wmShell.js (syncStrips, #890): frame --wm-strip-k, set once per
+ * frame time while the page is awake, instead of the animation above (it woke the renderer every display
+ * refresh). The same positions: frame k at k / (n - 1) of the way along */
+#wmShell .wm-status-icon.is-jstep:is(.wm-strip, [data-icon="signal-search"]) {
+    animation: none !important;
+    background-position: calc(var(--wm-strip-k, 0) / (var(--n) - 1) * 100%) 0 !important;
+}
 
 /* ---- status atlas (scripts/build-wm-status-atlas.py: generated, do not edit) ---- */
 /* 72 icons, one image per density (512 x 160 px at 2x); the per-icon art stays as the source */

@@ -2817,6 +2817,75 @@
         return t ? `data-${t}-${mode}` : `data-${mode}`;
     }
 
+    /*
+     * The title bar's animated icons (the connection's sync arrows, the signal search, the Director's
+     * clapper, the update download) step here, one frame per timer tick at the strip's own frame time and
+     * only while the page is awake (#890). As a CSS steps() animation of background-position each ran on
+     * the main thread and woke the renderer on every display refresh (up to 120 times a second) to work out
+     * the same frame again. Same frames and timing: frame k = floor(time / --ms) mod --n, from the moment
+     * the icon started animating (k / (n - 1) of the way along the strip: wm-shell.css .is-jstep). The
+     * app's own copies of them (Melaton Bars, the always-on display) are unchanged: they read --strip,
+     * --n and --ms. Reduced motion keeps the signal search still, as its CSS did.
+     */
+    const stripRuns = new Map(); // icon -> { t0, n, ms, k }
+    let stripTimer = null;
+    let stripMotion = null;
+    function stripVar(el, name) {
+        const v = parseInt(el.style.getPropertyValue(name), 10);
+        return Number.isFinite(v) ? v : parseInt(getComputedStyle(el).getPropertyValue(name), 10);
+    }
+    function syncStrips() {
+        if (!shell) return;
+        if (stripMotion == null) { try { stripMotion = window.matchMedia('(prefers-reduced-motion: reduce)'); } catch (_) { stripMotion = false; } }
+        const still = !!(stripMotion && stripMotion.matches);
+        const want = new Set();
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((el) => {
+            if (el.hidden) return;
+            if (el.classList.contains('wm-strip') || (!still && el.dataset.icon === 'signal-search')) want.add(el);
+        });
+        for (const el of [...stripRuns.keys()]) {
+            if (want.has(el)) continue;
+            stripRuns.delete(el);
+            el.classList.remove('is-jstep');
+            el.style.removeProperty('--wm-strip-k');
+        }
+        for (const el of want) {
+            let run = stripRuns.get(el);
+            if (run) {
+                // another strip on the same icon (connecting -> transfer) keeps its start, as the CSS animation
+                // did; (the signal search's numbers are its stylesheet's: read once, no style pass per call)
+                const n = parseInt(el.style.getPropertyValue('--n'), 10);
+                const ms = parseInt(el.style.getPropertyValue('--ms'), 10);
+                if (n >= 2 && ms > 0) { run.n = n; run.ms = ms; }
+                continue;
+            }
+            const n = stripVar(el, '--n');
+            const ms = stripVar(el, '--ms');
+            if (!(n >= 2 && ms > 0)) continue;
+            run = { t0: performance.now(), n, ms, k: 0 };
+            stripRuns.set(el, run);
+            el.style.setProperty('--wm-strip-k', '0');
+            el.classList.add('is-jstep');
+        }
+        clearTimeout(stripTimer);
+        stripTimer = null;
+        stripTick();
+    }
+    function stripTick() {
+        stripTimer = null;
+        if (!stripRuns.size || !awake()) return; // the wake (wmawake) starts it again
+        const now = performance.now();
+        let next = Infinity;
+        for (const [el, r] of stripRuns) {
+            const t = now - r.t0;
+            const k = Math.floor((t % (r.n * r.ms)) / r.ms);
+            if (k !== r.k) { r.k = k; el.style.setProperty('--wm-strip-k', String(k)); }
+            next = Math.min(next, r.ms - (t % r.ms));
+        }
+        stripTimer = setTimeout(stripTick, Math.max(4, Math.ceil(next) + 1));
+    }
+    document.addEventListener('wmawake', () => { clearTimeout(stripTimer); stripTimer = null; stripTick(); });
+
     function paintSync(el, kind) {
         if (kind === syncNow) return;
         syncNow = kind;
@@ -3146,6 +3215,7 @@
         if (nsEl) nsEl.classList.toggle('is-working', !!(ns && ns.service === 'restarting'));
         if (!bubble0Hidden() && shell.querySelector('.wm-bubble').dataset.role === 'nightshade' && nsEl && nsEl.hidden) closeBubble();
         paintBezelLed();
+        syncStrips();
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
         // Traffic's bubble goes with its car: the delay is over, so is what the bubble says
