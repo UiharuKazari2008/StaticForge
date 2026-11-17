@@ -1,0 +1,13 @@
+#!/bin/sh
+# Performance / power rules (StaticForge #890; .cursor/rules/phone-power-client.mdc, -server.mdc): a staged
+# file may not get worse than scripts/perf-rules-baseline.json. Every pattern it counts was a real cost on
+# the phones. Fix the new hit, or mark a real design need on its line with `perf: allow <reason>`.
+# Enabled per checkout with: git config core.hooksPath .githooks
+root="$(git rev-parse --show-toplevel)" || exit 0
+[ -f "$root/scripts/check-perf-rules.js" ] || exit 0
+command -v node >/dev/null 2>&1 || exit 0
+if ! node "$root/scripts/check-perf-rules.js" --staged; then
+    echo "pre-commit: blocked by scripts/check-perf-rules.js (rules: .cursor/rules/phone-power-*.mdc)." >&2
+    exit 1
+fi
+exit 0
