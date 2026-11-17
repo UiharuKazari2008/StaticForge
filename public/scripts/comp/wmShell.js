@@ -2211,7 +2211,7 @@
             return;
         }
         // a program that works only with the server, opened while the phone has no connection to it
-        // (the launcher started without the server, #794): WM's Domain Controller box instead of a
+        // (the launcher started without the server, #794): the Nightshade Network box (#895) instead of a
         // page that hangs or shows a raw socket error; Retry opens it once the server answers
         if (NEEDS_SERVER.has(id) && serverDown() && !opts.offlineOk) {
             void openWhenServerBack(id, opts);
@@ -2865,7 +2865,7 @@
     const hide = (el, h) => { h = !!h; if (el.hidden !== h) el.hidden = h; };
 
     /*
-     * "Domain Controller is not ready" (Yukimi, Nov 13): only when it matters, never on a plain
+     * "The Nightshade Network is unavailable" (Yukimi, Nov 13; worded for #895): only when it matters, never on a plain
      * disconnect (the connectivity icon shows that): at start-up, when the phone comes up without
      * reaching the server (DC_NOTICE_MS after Today; a normal boot connects well before), and when something is asked of the server
      * while it is out of reach (dcNotice(), from websocket.js _mobileDomainUnreachable). It goes by
@@ -4770,9 +4770,10 @@
      */
     let dcBoxClose = null;
     function domainUnreachable() {
+        // Nightshade Network (#895): the service out of reach, in its own words
         return messageBox({
-            title: 'Domain Controller',
-            text: 'The Domain Controller is unreachable.',
+            title: 'Nightshade Network',
+            text: DC_NOTICE_TEXT,
             icon: 'error',
             buttons: [{ text: 'Retry', value: 'retry', default: true }, { text: 'Abort', value: 'abort' }],
             cancelValue: 'abort',
@@ -11214,11 +11215,11 @@
         answersUser: () => answersUser(),
         /** Fetch a same-origin file with a Downloading box, then save it on the phone (#806). */
         saveToPhone: (url, name) => saveToPhone(url, name || 'download'),
-        /** "The Domain Controller is unreachable." Retry / Abort box: resolves 'retry' | 'abort'. */
+        /** The Nightshade Network unavailable Retry / Abort box (#895): resolves 'retry' | 'abort'. */
         domainUnreachable: () => domainUnreachable(),
         /** Close an open unreachable box as `value` (websocket.js: 'connected' when the link is back). */
         closeDomainUnreachable: (value) => closeDomainUnreachable(value),
-        /** The "Domain Controller is not ready" notification (closes itself on reconnect). */
+        /** The "Nightshade Network is unavailable" notification (closes itself on reconnect). */
         dcNotice: () => dcNotice(),
         /** A request now is the user's own command: a tap on a program (not the title bar or a bubble) in the last 700 ms. */
         tapCommand: () => tapRecent() && !lastTapChrome,
