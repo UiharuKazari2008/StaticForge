@@ -172,7 +172,8 @@ T.setFetch(async (url, init) => {
         assert.strictEqual(r.slowdowns.length, 1);
         assert.strictEqual(r.slowdowns[0].speed, 'TRAFFIC_JAM');
         assert.strictEqual(r.slowdowns[0].street, 'I-90 E');
-        assert.strictEqual(r.level, 'heavy');
+        // 10 min late with major alerts: moderate (red needs Settings' red minutes, 45 by default; #902)
+        assert.strictEqual(r.level, 'moderate');
         assert.strictEqual(r.delaySec, 600);
         assert.ok(/2 speed cameras on route/.test(r.summary), r.summary);
         assert.ok(/Faster: via Omaha St \(6 mi\) saves 8 min/.test(r.summary), r.summary);
