@@ -43,6 +43,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const doc = typeof document !== 'undefined' ? document : null;
     const STORAGE_KEY = 'desktop-taskbar-settings';
@@ -893,6 +894,8 @@
     const THUMB_LIVE_MS = 500;
     let thumbLiveTimer = 0;
     let thumbHeld = null;
+    // a preview left up as the window went out of sight: it follows its window again when shown (#890)
+    let thumbResume = null;
 
     /** windowCapture.js (a lazy feature, shared with Flip 3D): a promise of it, null when it
      *  cannot load. */
@@ -966,7 +969,10 @@
             const live = pic && pic.overlays.length;
             thumbLiveTimer = setTimeout(() => {
                 thumbLiveTimer = 0;
-                if (thumbFor === item) followThumb(item, modal);
+                if (thumbFor !== item) return;
+                // out of sight (another tab, a DeX display asleep): no copies every second for no one
+                if (doc.hidden) { thumbResume = () => followThumb(item, modal); return; }
+                followThumb(item, modal);
             }, live ? THUMB_LIVE_MS : THUMB_RECOPY_MS);
         });
     }
@@ -1032,6 +1038,7 @@
         const done = () => {
             thumbHideTimer = 0;
             thumbFor = null;
+            thumbResume = null;
             if (thumbLiveTimer) clearTimeout(thumbLiveTimer);
             thumbLiveTimer = 0;
             if (thumbHeld && root.windowCapture) root.windowCapture.hold([thumbHeld], false);
@@ -1072,6 +1079,12 @@
         });
         band.addEventListener('pointerleave', () => hideThumb());
         band.addEventListener('pointerdown', () => hideThumb(true), true);
+        doc.addEventListener('visibilitychange', () => {
+            if (doc.hidden || !thumbResume) return;
+            const resume = thumbResume;
+            thumbResume = null;
+            if (thumbFor) resume();
+        }, { signal: appScopeSignal });
     }
 
     // ---- start-up ------------------------------------------------------------------------------
