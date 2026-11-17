@@ -92,3 +92,23 @@ registerWsInboundHandler({
         wsClient.triggerEvent('runtime_compile_logs', message);
     }
 });
+
+// Server Manager > Clients (#898): an administrator asked this client to resync, or disconnected it
+// (it stays off until reconnected here; the Nightshade Network Client says who disconnected it)
+registerWsInboundHandler({
+    id: 'system.client_resync',
+    type: 'client_resync',
+    phase: 'only',
+    handler(message, wsClient) {
+        if (wsClient && typeof wsClient.resyncFromServer === 'function') void wsClient.resyncFromServer();
+    }
+});
+
+registerWsInboundHandler({
+    id: 'system.client_disconnect',
+    type: 'client_disconnect',
+    phase: 'only',
+    handler(message, wsClient) {
+        if (wsClient && typeof wsClient.adminDisconnect === 'function') wsClient.adminDisconnect();
+    }
+});
