@@ -2346,6 +2346,8 @@ class Director {
 
     // Keep the in-progress rows where they are so the next turn appends under them.
     freezeLiveTurn() {
+        // rows held while the log was out of sight are drawn first: they are the ones kept
+        this.paintHeldLive();
         const live = this.directorChatMessages && this.directorChatMessages.querySelector('.director-live-turn');
         if (!live) return;
         live.classList.remove('director-live-turn');
@@ -2759,6 +2761,8 @@ class Director {
             const text = description || message.content || '';
             if (text) entries.push({ kind: directorPersonaName(this.persona), text: String(text) });
         });
+        // a live paint held while the log was out of sight (flushLivePaint): History reads the live rows
+        this.paintHeldLive();
         const live = this.directorChatMessages && this.directorChatMessages.querySelector('.director-live-turn');
         if (live) {
             live.querySelectorAll('.director-message').forEach((row) => {
@@ -3858,6 +3862,11 @@ class Director {
             host = nodes.length ? nodes[nodes.length - 1] : null;
         }
         if (!host) host = this.directorChatMessages.querySelector('.director-live-turn');
+        // the live rows were held while the log was out of sight: drawn now, so the print sits in its turn
+        if (!host && this._livePayload) {
+            this.paintHeldLive();
+            host = this.directorChatMessages.querySelector('.director-live-turn');
+        }
         if (!host) return;
         if (messageId && host.classList.contains('director-live-turn')) host.dataset.messageKey = messageId;
         this.ensurePrintBubble(host, filename, messageId);
@@ -8100,6 +8109,14 @@ class Director {
     // director_streaming_update: the latest payload wins and the live turn paints at most
     // every DIRECTOR_LIVE_PAINT_MS, never while the chat is out of sight (#511).
     queueLivePaint(payload) {
+        // An update that was never painted (the 500 ms window, the log out of sight) folds into the next:
+        // its rows count as changed from the first row either changed (renderLiveTrace leaves the rows
+        // before rowsFrom as they are; a row that grew in a skipped update stayed as first drawn)
+        const held = this._livePayload;
+        if (held && held !== payload && held.sessionId === payload.sessionId && Number.isInteger(payload.rowsFrom)) {
+            const from = Number.isInteger(held.rowsFrom) ? held.rowsFrom : 0;
+            if (from < payload.rowsFrom) payload.rowsFrom = from;
+        }
         this._livePayload = payload;
         if (this._livePaintTimer) return;
         const since = Date.now() - (this._livePaintedAt || 0);
@@ -8144,6 +8161,18 @@ class Director {
         if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
         this._livePaintTimer = null;
         this.flushLivePaint();
+    }
+
+    // Draw a held live paint now, seen or not (a reader of the live rows: History).
+    paintHeldLive() {
+        const payload = this._livePayload;
+        if (!payload || !this._running || payload.sessionId !== this._runningSessionId || payload.sessionId !== window.currentSession?.id) return;
+        if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
+        this._livePaintTimer = null;
+        this._livePayload = null;
+        this._pendingNotedFor = null;
+        this._livePaintedAt = Date.now();
+        if (payload.rows || payload.live) this.renderLiveTrace(payload);
     }
 
     dropLivePaint() {
