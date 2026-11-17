@@ -33,7 +33,9 @@
     }
 
     function announce() {
-        if (retired || document.hidden) return;
+        // a phone with its screen off is not on screen either (html[data-screen-off]; the page stays
+        // "visible" to the browser): no message a minute on the channel then (#890)
+        if (retired || document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
         try { channel.postMessage({ type: 'on-screen', id, born, role: role() }); } catch (_) { /* channel closed */ }
     }
 
