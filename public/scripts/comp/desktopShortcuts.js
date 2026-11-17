@@ -4414,6 +4414,11 @@ wsClient.registerInitStep(18, 'Loading Desktop Shortcuts', async () => {
         }
         // Drawn after icon bitmaps decode (public/scripts/comp/assetPreload.js).
         desktopShortcuts._bootShortcutsLoaded = true;
+        // run late, after an offline boot (#899): the desktop is already up and no boot stage will
+        // draw them, so they are drawn here
+        if (wsClient.initializationCompleted && desktopShortcuts.gridContainer && desktopShortcuts.freeformContainer) {
+            desktopShortcuts.renderShortcuts();
+        }
     }
 }, false, { critical: true, failureText: 'Melaton could not load your desktop icons.' });
 
