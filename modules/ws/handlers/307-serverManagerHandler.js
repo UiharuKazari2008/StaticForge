@@ -138,16 +138,17 @@ function registerPackets(handlersCtx) {
             }
         }
         if (!target) data = { success: false, error: 'That client is no longer connected.' };
-        else if (action === 'resync') {
+        else if (action === 'resync' || action === 'disconnect') data = { success: true, clientId, action };
+        else data = { success: false, error: 'Unknown action.' };
+        // the answer first: an administrator disconnecting their own client closes this very socket
+        handlersCtx.sendToClient(ws, { type: 'server_client_action_response', requestId: message.requestId, data, timestamp: new Date().toISOString() });
+        if (data.success && action === 'resync') {
             handlersCtx.sendToClient(target, { type: 'client_resync', data: { by: 'administrator' }, timestamp: new Date().toISOString() });
-            data = { success: true, clientId, action };
-        } else if (action === 'disconnect') {
+        } else if (data.success && action === 'disconnect') {
             handlersCtx.sendToClient(target, { type: 'client_disconnect', data: { by: 'administrator' }, timestamp: new Date().toISOString() });
             // the client closes itself on client_disconnect; one that does not (an older page) is closed here
             setTimeout(() => { try { if (target.readyState === WebSocket.OPEN) target.close(4003, 'Disconnected by an administrator'); } catch (_) { /* gone */ } clientsFeed.poke(); }, 1500);
-            data = { success: true, clientId, action };
-        } else data = { success: false, error: 'Unknown action.' };
-        handlersCtx.sendToClient(ws, { type: 'server_client_action_response', requestId: message.requestId, data, timestamp: new Date().toISOString() });
+        }
         clientsFeed.poke();
     }, { owner: 'serverManager' });
     wsPacketRegistry.registerWsPacket('server_manager_summary', async (ctx) => {
