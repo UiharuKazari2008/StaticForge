@@ -95,6 +95,15 @@
      * hidden, and what arrives then is not seen (it stays unread and gets its notification).
      */
     const seen = (el) => isCurrent() && !!page && (typeof sh.onScreen !== 'function' || sh.onScreen(el || page));
+    /**
+     * Seen and readable: also not under the 6.5 lock screen (wmLock65.js covers the page without
+     * hiding it). What decides "read as it comes" (no notification, the in-conversation sound) uses
+     * this; drawing uses seen() (the lock screen's slide shows the page under it).
+     */
+    const readable = () => {
+        if (!seen()) return false;
+        try { return !(window.wmLock && window.wmLock.isLocked); } catch (_) { return true; }
+    };
 
     // ---------------------------------------------------------------- helpers
 
@@ -219,7 +228,7 @@
         const g = d.chatGuid || m.chatGuid;
         if (d.accountId === accountId) {
             const c = chatByGuid(g);
-            const open = !!(conv && conv.guid === g && conv.accountId === d.accountId && view() !== 'list');
+            const open = !!(conv && conv.guid === g && conv.accountId === d.accountId && view() !== 'list' && readable());
             if (c) {
                 if (!updated) {
                     c.last = m;
@@ -234,8 +243,10 @@
             }
         }
         if (!conv || conv.accountId !== d.accountId || conv.guid !== g) return;
-        // a new message in the conversation on screen: the text-message sound, no bubble (the device's way)
-        if (!updated && !m.fromMe && !document.hidden && isCurrent() && view() === 'conv' && sh && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('sms');
+        // a new message in the conversation on screen: the text-message sound, no bubble (the device's way).
+        // Not seen (the screen off, behind, locked): isOpen() is false, so wmChat's notification sounds
+        // instead; one sound per text
+        if (!updated && !m.fromMe && view() === 'conv' && readable() && sh && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('sms');
         const list = conv.messages;
         let at = list.findIndex((x) => x.guid === m.guid);
         // our own send: the server's copy takes the place of the one Send put up
@@ -245,8 +256,8 @@
         else return;
         if (!m.fromMe) stopTyping(g);
         entriesChanged();
-        // read only when it is seen: with the screen off it stays unread (and gets its notification)
-        if (!updated && !m.fromMe && view() === 'conv' && seen()) markRead();
+        // read only when it is seen: with the screen off or locked it stays unread (and gets its notification)
+        if (!updated && !m.fromMe && view() === 'conv' && readable()) markRead();
     }
 
     function onReaction(d) {
@@ -1477,16 +1488,19 @@
             let tries = 0;
             const t = setInterval(() => { wire(); if (wiredTo || ++tries >= 20) clearInterval(t); }, 3000);
         }
-        // the phone woke (or the app came back): what changed meanwhile is drawn, and an open
-        // conversation on screen is read
-        const back = () => {
+        // the phone woke (or the app came back, or the lock screen went): what changed meanwhile is
+        // drawn, and an open conversation on screen is read (not while the lock screen covers it). After
+        // the event's other listeners, so a lock screen that comes up on this same wake (wmLock65 idle
+        // lock) is up before it looks
+        const back = () => setTimeout(() => {
             if (!seen()) return;
             if (listStale && (view() === 'list' || isDual())) renderList();
-            if (conv && view() === 'conv') { if (convStale) renderEntries(); markRead(); }
-        };
+            if (conv && view() === 'conv') { if (convStale) renderEntries(); if (readable()) markRead(); }
+        }, 0);
         document.addEventListener('visibilitychange', back);
         window.addEventListener('melatonscreen', back);
         document.addEventListener('wmBehind', back);
+        document.addEventListener('wmLockChange', (e) => { if (e.detail && e.detail.locked === false) back(); });
         loadAccounts(false);
         sh.registerApp({
             id: APP_ID,
@@ -1602,7 +1616,7 @@
         /** The account on screen and its folder (Messaging's tree marks it). */
         current: () => ({ accountId, folder }),
         /** True while that conversation is open on screen (a notification for it is not needed). */
-        isOpen: (id, guid) => !!(conv && conv.accountId === id && conv.guid === guid && view() === 'conv' && seen()),
+        isOpen: (id, guid) => !!(conv && conv.accountId === id && conv.guid === guid && view() === 'conv' && readable()),
         FOLDERS: FOLDERS.map((f) => Object.assign({}, f))
     };
 
