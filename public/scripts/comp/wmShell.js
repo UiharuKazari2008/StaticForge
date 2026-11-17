@@ -6337,8 +6337,10 @@
             bubble({ title: 'Bluetooth', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: openBluetoothSettings }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'battery') {
             // #829: the level over WM's block bar, then the charger and its watts, the time to full
-            // (or left), the cell's temperature; each line only when it is known
-            const b = deviceView().battery;
+            // (or left), the cell's temperature; each line only when it is known. Opened: one fresh read first,
+            // as the app's pushes carry the watts, temperature and times only with a displayed change (#890)
+            const fresh = update ? null : readBattery();
+            const b = deviceView().battery || (fresh ? batteryView(fresh) : null);
             const lines = [];
             if (!b) lines.push('Main battery: unknown');
             else {
