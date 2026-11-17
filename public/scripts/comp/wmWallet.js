@@ -521,7 +521,9 @@
                 const photo = photoOf(it);
                 const image = it.kind === 'card' ? cardUrl(it) : it.kind === 'barcode' ? ((code && code !== 'bad' ? code : null) || photo || undefined) : undefined;
                 const line2 = subOf(it) || (it.kind === 'barcode' ? it.value : '');
-                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
+                // wide pictures keep their shape on Today (#903): a card is a card, a barcode as the code is (a QR square)
+                const imageAspect = it.kind === 'card' ? 1.586 : (code && image === code) ? 'auto' : undefined;
+                return { title: lineOf(it), line2, image: image === 'bad' ? undefined : image, imageAspect, bare: it.kind === 'card' || (!!photo && image === photo), softKey: { label: it.kind === 'card' ? 'Pay Now' : it.kind === 'barcode' ? 'Show' : 'Open', action: go }, onTap: go };
             })
         };
     }
