@@ -766,7 +766,8 @@
         const s = session;
         clearInterval(s.sizeTimer);
         s.sizeTimer = setInterval(() => {
-            if (session !== s) return;
+            // the screen off or the page hidden: nothing to fit (the next tick on screen looks again)
+            if (session !== s || document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
             const g = guac();
             if (!g || !g.display) return;
             const dw = g.display.getWidth();
