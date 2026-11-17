@@ -75,6 +75,9 @@
     let localN = 0;
     const typingIn = new Map(); // chatGuid -> timer while the other side types
     let wiredTo = null;
+    // a push changed what the list / the open conversation shows while it was not on screen: drawn when it shows
+    let listStale = false;
+    let convStale = false;
 
     const PAIR_NOTE = 'Pair this account on your computer: Control Panel > Dreamscape CardSpace.';
     const unpaired = (a) => !!(a && (a.status === 'unpaired' || a.status === 'pairing'));
@@ -86,6 +89,12 @@
     const folderOf = (id) => FOLDERS.find((f) => f.id === id) || FOLDERS[0];
     const msgByGuid = (g) => (conv ? conv.messages.find((m) => m.guid === g) : null) || null;
     const chatByGuid = (g) => chats.find((c) => c.guid === g) || null;
+    /**
+     * This app on screen now: in front, the page shown, the screen on, not behind an Android program
+     * (wmShell.onScreen). document.hidden alone is not enough: with the screen off the page is not
+     * hidden, and what arrives then is not seen (it stays unread and gets its notification).
+     */
+    const seen = (el) => isCurrent() && !!page && (typeof sh.onScreen !== 'function' || sh.onScreen(el || page));
 
     // ---------------------------------------------------------------- helpers
 
@@ -219,7 +228,7 @@
                 } else if (c.last && c.last.guid === m.guid) {
                     c.last = m;
                 }
-                if (view() === 'list' || isDual()) renderList();
+                listChanged(c);
             } else if (!updated && loaded && page) {
                 refresh({ quiet: true });
             }
@@ -235,8 +244,9 @@
         else if (!updated) list.push(m);
         else return;
         if (!m.fromMe) stopTyping(g);
-        renderEntries();
-        if (!updated && !m.fromMe && isCurrent() && view() === 'conv' && document.visibilityState !== 'hidden') markRead();
+        entriesChanged();
+        // read only when it is seen: with the screen off it stays unread (and gets its notification)
+        if (!updated && !m.fromMe && view() === 'conv' && seen()) markRead();
     }
 
     function onReaction(d) {
@@ -247,7 +257,7 @@
         const who = (x) => (x.fromMe ? 'me' : normAddr(x.sender && x.sender.address));
         m.reactions = (m.reactions || []).filter((x) => who(x) !== who(r));
         if (!r.removed) m.reactions.push(r);
-        renderEntries();
+        entriesChanged();
     }
 
     function stopTyping(g) {
@@ -265,7 +275,7 @@
     function onRead(d) {
         if (!d || d.accountId !== accountId) return;
         const c = chatByGuid(d.chatGuid);
-        if (c) { c.unread = !d.read; if (view() === 'list' || isDual()) renderList(); }
+        if (c && c.unread !== !d.read) { c.unread = !d.read; listChanged(c); }
     }
 
     function onChat(d) {
@@ -276,8 +286,8 @@
             if (!c) return;
             const at = chats.findIndex((x) => x.guid === c.guid);
             if (at >= 0) chats[at] = Object.assign({}, chats[at], c);
-            if (conv && conv.guid === c.guid) { conv.chat = Object.assign({}, conv.chat, c); renderEntries(); }
-            if (view() === 'list' || isDual()) renderList();
+            if (conv && conv.guid === c.guid) { conv.chat = Object.assign({}, conv.chat, c); entriesChanged(); }
+            listChanged(at >= 0 ? chats[at] : null);
         }, () => {});
     }
 
@@ -330,7 +340,8 @@
             loaded = true;
             listError = (err && err.message) || 'The conversations could not be read.';
         }
-        if (page && (view() === 'list' || isDual())) renderList();
+        // a read a push started may end with the app away or the screen off: drawn when it shows
+        listChanged(null);
     }
 
     // ---------------------------------------------------------------- list
@@ -374,6 +385,7 @@
 
     function renderList() {
         if (!page) return;
+        listStale = false;
         // an RCS account not paired yet: only the note, no list
         const list = unpaired(acct()) ? [] : visibleChats();
         if (!selectedGuid || !list.some((c) => c.guid === selectedGuid)) selectedGuid = list.length ? list[0].guid : null;
@@ -388,6 +400,42 @@
         if (name.textContent !== 'Show') name.textContent = f.label;
         page.querySelector('.wch-sort span').textContent = sort === 'name' ? 'From' : 'Received';
         if (isCurrent()) sh.refreshSoftKeys();
+    }
+
+    /**
+     * A push changed the list (a message, read, a chat's details): on screen, only that conversation's
+     * row is drawn again (and moved to where the sort puts it); a list not on screen (another app in
+     * front, the screen off) is drawn in full when it shows again (nothing draws offscreen).
+     */
+    function listChanged(c) {
+        if (!page) return;
+        if (!seen()) { listStale = true; return; }
+        if (!(view() === 'list' || isDual())) return;
+        if (listStale || !c || !patchRow(c)) renderList();
+    }
+
+    /** One conversation's row drawn again in place, at the place the sort gives it; false: draw the list. */
+    function patchRow(c) {
+        if (unpaired(acct()) || !selectedGuid) return false;
+        const list = page.querySelector('.wch-list');
+        const old = [...list.children].find((r) => r.dataset.guid === c.guid);
+        if (!old) return false;
+        const order = visibleChats();
+        const at = order.indexOf(c);
+        if (at < 0 || order.length !== list.children.length) return false;
+        const tmp = document.createElement('div');
+        tmp.innerHTML = rowHtml(c);
+        const row = tmp.firstElementChild;
+        old.remove();
+        list.insertBefore(row, list.children[at] || null);
+        return true;
+    }
+
+    /** A push changed the open conversation: drawn now when it is on screen, else when it shows again. */
+    function entriesChanged() {
+        if (!page) return;
+        if (!seen()) { convStale = true; return; }
+        renderEntries();
     }
 
     function selectRow(g) {
@@ -517,7 +565,7 @@
             c.messages = (d && d.messages) || [];
             c.more = !!(d && d.more);
             c.cursor = (d && d.cursor) || null;
-            renderEntries();
+            entriesChanged();
         } catch (_) { /* the thread stays as it was */ }
     }
 
@@ -663,6 +711,7 @@
 
     function renderEntries(toEnd) {
         if (!page) return;
+        convStale = false;
         const box = page.querySelector('.wch-history');
         const atEnd = box.scrollHeight - box.scrollTop - box.clientHeight < 24;
         const list = conv ? conv.messages : [];
@@ -700,6 +749,7 @@
 
     function paintTyping() {
         if (!page || view() !== 'conv') return;
+        if (!seen()) { convStale = true; return; }
         const box = page.querySelector('.wch-history');
         const slot = box.querySelector('.wtm-typing-slot');
         if (!slot) return;
@@ -1421,12 +1471,22 @@
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
         wire();
-        // a stand-in (tests) or a late client: listen to whichever window.textMessaging is there
-        setInterval(wire, 3000);
-        // the phone woke (or the app came back) with a conversation on screen: what it shows is read
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && conv && view() === 'conv' && isCurrent()) markRead();
-        });
+        // a late client: tried again a few times until it is there (show() and every open wire again,
+        // so a stand-in a test swaps in later is heard from the next open on)
+        if (!wiredTo) {
+            let tries = 0;
+            const t = setInterval(() => { wire(); if (wiredTo || ++tries >= 20) clearInterval(t); }, 3000);
+        }
+        // the phone woke (or the app came back): what changed meanwhile is drawn, and an open
+        // conversation on screen is read
+        const back = () => {
+            if (!seen()) return;
+            if (listStale && (view() === 'list' || isDual())) renderList();
+            if (conv && view() === 'conv') { if (convStale) renderEntries(); markRead(); }
+        };
+        document.addEventListener('visibilitychange', back);
+        window.addEventListener('melatonscreen', back);
+        document.addEventListener('wmBehind', back);
         loadAccounts(false);
         sh.registerApp({
             id: APP_ID,
@@ -1440,6 +1500,8 @@
             show() {
                 wire();
                 showLayer();
+                // what pushes changed while it was away, at once (the read below follows)
+                if (listStale && (view() === 'list' || isDual())) renderList();
                 if (view() === 'list') refresh({ quiet: loaded });
                 else if (view() === 'conv') { renderEntries(); markRead(); }
             },
@@ -1540,7 +1602,7 @@
         /** The account on screen and its folder (Messaging's tree marks it). */
         current: () => ({ accountId, folder }),
         /** True while that conversation is open on screen (a notification for it is not needed). */
-        isOpen: (id, guid) => !!(conv && conv.accountId === id && conv.guid === guid && isCurrent() && view() === 'conv' && document.visibilityState !== 'hidden'),
+        isOpen: (id, guid) => !!(conv && conv.accountId === id && conv.guid === guid && view() === 'conv' && seen()),
         FOLDERS: FOLDERS.map((f) => Object.assign({}, f))
     };
 
