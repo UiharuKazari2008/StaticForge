@@ -3,10 +3,17 @@
  *
  * A widget is a native view (DSApp HomeWidgets): this Today block keeps a placeholder for each one
  * (a name row over a box of the widget's height) and tells the app where the boxes are on screen
- * (AndroidWidgets.place) a few times a second while Today is up; the app draws the widgets there,
- * over the page. A box that is covered (a menu, a message box, the Start menu, another app) or
+ * (AndroidWidgets.place) whenever that may have changed while Today is up; the app draws the widgets
+ * there, over the page. A box that is covered (a menu, a message box, the Start menu, another app) or
  * not wholly on screen is not placed, so the widget never sits over WM's own windows. On 6.5 the
  * home screen covers Today's rows, so no widget is placed there.
+ *
+ * The places are worked out on a change (#890), not on a 150 ms timer that ran on every launch of the
+ * app, the item switched off or not: Today scrolled, drawn or resized, a program or the page shown or
+ * left, a layer of the shell opened or closed (a mutation under #wmShell), each one check on the next
+ * frame plus two follow-ups (120 ms, 400 ms) for what opens with a move. Only while the block is drawn,
+ * on and on screen; otherwise one empty placement is sent and nothing listens. The widget list is the
+ * app's (AndroidWidgets.list, a sync bridge call): read once and again only after 'melatonwidgets'.
  *
  * Tap-and-hold a widget's name row (or tap "Tap here to add a widget"): Add Widget > the program >
  * its widgets, Remove.
@@ -22,7 +29,7 @@
     let box = null;      // the Today block
     let sig = '';        // the list drawn
     let sent = '';       // the last placement sent
-    let timer = 0;
+    let list = null;     // the app's widgets, read once (null: read again at the next draw)
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     const read = (fn) => { try { const v = JSON.parse(bridge[fn]() || '[]'); return Array.isArray(v) ? v : []; } catch (_) { return []; } };
@@ -48,15 +55,16 @@
             '-',
             { label: `Remove ${w.label}`, action: async () => {
                 const yes = await sh.messageBox({ title: 'Remove Widget', icon: 'warning', text: `Remove the widget '${w.label}' from Today?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false });
-                if (yes) { bridge.remove(Number(w.id)); sig = ''; if (sh.refreshToday) sh.refreshToday(); }
+                if (yes) { bridge.remove(Number(w.id)); sig = ''; list = null; if (sh.refreshToday) sh.refreshToday(); }
             } }
         ];
     }
 
     function render(el) {
-        const list = read('list');
-        const s = JSON.stringify(list.map((w) => [w.id, w.minH, w.label]));
+        if (!list) list = read('list');
         box = el;
+        watch();
+        const s = JSON.stringify(list.map((w) => [w.id, w.minH, w.label]));
         if (s === sig && el.dataset.wtwBuilt === 'android-widgets') return true;
         sig = s;
         el.dataset.wtwBuilt = 'android-widgets';
@@ -76,10 +84,18 @@
         return true;
     }
 
+    /** The block is drawn, on and can be seen (Today in front, the page awake, 6.1's rows: not under 6.5's home screen). */
+    function live() {
+        if (!box || !box.isConnected || !sh || sh.currentApp() !== 'today' || box.hidden) return false;
+        if (typeof sh.awake === 'function' ? !sh.awake() : document.visibilityState !== 'visible') return false;
+        if (box.closest('.wm-today-off, [hidden], .is-titanium')) return false;
+        return true;
+    }
+
     /** Where the boxes are now: only the ones wholly on screen and not covered. */
     function placement() {
         const items = [];
-        if (!box || !box.isConnected || !sh || sh.current !== 'today' || document.visibilityState !== 'visible') return items;
+        if (!live()) return items;
         const content = document.querySelector('#wmShell .wm-content');
         const cr = content ? content.getBoundingClientRect() : { top: 0, bottom: innerHeight, left: 0, right: innerWidth };
         for (const b of box.querySelectorAll('.wtw-aw-box')) {
@@ -96,20 +112,63 @@
     function tick() {
         const items = placement();
         const s = JSON.stringify(items);
-        if (s === sent) return;
-        sent = s;
-        try { bridge.place(JSON.stringify({ dpr: window.devicePixelRatio || 1, items })); } catch (_) { /* app gone */ }
+        if (s !== sent) {
+            sent = s;
+            try { bridge.place(JSON.stringify({ dpr: window.devicePixelRatio || 1, items })); } catch (_) { /* app gone */ }
+        }
+        // nothing to place any more (Today left, the screen off, the item off): stop listening until it is drawn again
+        if (!live()) unwatch();
     }
+
+    // ---- what moves the boxes: one check on the next frame, and two follow-ups for a layer that opens with a move
+    let raf = 0;
+    let late = [];
+    let watching = false;
+    let mo = null;
+    let content = null;
+    function soon() {
+        if (!raf) raf = requestAnimationFrame(() => { raf = 0; tick(); });
+        late.forEach(clearTimeout);
+        late = [120, 400].map((ms) => setTimeout(tick, ms));
+    }
+    function watch() {
+        if (watching) { soon(); return; }
+        watching = true;
+        content = document.querySelector('#wmShell .wm-content');
+        if (content) content.addEventListener('scroll', soon, { passive: true });
+        window.addEventListener('resize', soon);
+        const shellEl = document.getElementById('wmShell');
+        if (shellEl && typeof MutationObserver === 'function') {
+            // a menu, message box, bubble, the Start menu or a page shown or hidden in the shell
+            mo = new MutationObserver(soon);
+            mo.observe(shellEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'class'] });
+        }
+        soon();
+    }
+    function unwatch() {
+        if (!watching) return;
+        watching = false;
+        if (content) content.removeEventListener('scroll', soon);
+        content = null;
+        window.removeEventListener('resize', soon);
+        if (mo) { mo.disconnect(); mo = null; }
+        late.forEach(clearTimeout);
+        late = [];
+    }
+    // shown, left or back: Today in front again or the page awake again draws the block (render -> watch);
+    // anything else only needs the boxes taken away (one check)
+    function changed() { if (watching || sent !== '[]') soon(); }
 
     function register() {
         sh = window.wmShell;
         if (!sh || typeof sh.registerTodayItem !== 'function') return;
-        sh.registerTodayItem({ id: 'androidwidgets', label: 'Android Widgets', after: 'favorites', defaultOn: false, render });
+        // (no minute tick: nothing in the block shows a time)
+        sh.registerTodayItem({ id: 'androidwidgets', label: 'Android Widgets', after: 'favorites', defaultOn: false, wantsMinute: false, render });
         // a widget added (or the add cancelled) in the app: Today draws the list again
-        window.addEventListener('melatonwidgets', () => { sig = ''; if (sh.refreshToday) sh.refreshToday(); });
-        clearInterval(timer);
-        timer = setInterval(tick, 150);
-        document.addEventListener('visibilitychange', tick);
+        window.addEventListener('melatonwidgets', () => { sig = ''; list = null; if (sh.refreshToday) sh.refreshToday(); });
+        document.addEventListener('wmAppChange', changed);
+        document.addEventListener('wmawake', changed);
+        document.addEventListener('visibilitychange', changed);
     }
 
     if (window.wmShell) register();
