@@ -348,19 +348,27 @@
         return { running: true, until: r.until, title: carTitle(), html, canStop: isAdmin() };
     }
 
-    // one second ticker, alive only while a remote start with an end time is running and the page shows:
-    // it moves the countdowns already on screen (no server call) and ends the run when the time is up
+    // one second ticker, alive only while a remote start with an end time is running and the phone is
+    // seen (the screen on, the page shown, not behind an Android program): it moves the countdowns already
+    // on screen (no server call) and ends the run when the time is up. Not seen, one timer ends the run on
+    // time instead (its glyph, Today and the page follow), with no ticks before it.
     let ticker = null;
+    let endTimer = null;
     let tickN = 0;
+    const seenNow = () => (ws && typeof ws.onScreen === 'function' ? ws.onScreen() : !document.hidden);
     function tick() {
         const r = runInfo();
-        const live = !!(r && r.until) && !document.hidden;
-        if (!live) { if (ticker) { clearInterval(ticker); ticker = null; } return; }
-        if (!ticker) ticker = setInterval(onTick, 1000);
+        const timed = !!(r && r.until);
+        const live = timed && seenNow();
+        clearTimeout(endTimer);
+        endTimer = null;
+        if (!live && ticker) { clearInterval(ticker); ticker = null; }
+        if (live) { if (!ticker) ticker = setInterval(onTick, 1000); return; }
+        if (timed) endTimer = setTimeout(() => { endTimer = null; changed(); }, Math.max(0, r.until - Date.now()) + 50);
     }
     function onTick() {
         const r = runInfo();
-        if (!r || !r.until || document.hidden) { tick(); if (!r) changed(); return; }
+        if (!r || !r.until || !seenNow()) { tick(); if (!r) changed(); return; }
         const left = r.until - Date.now();
         document.querySelectorAll('[data-lps-cd]').forEach((el) => { el.textContent = leftText(Number(el.dataset.lpsCd) - Date.now()); });
         document.querySelectorAll('[data-lps-bar]').forEach((el) => { const total = Number(el.dataset.lpsTotal) || 1; el.style.setProperty('--wm-ds-blocks', String(Math.max(0, Math.min(18, Math.round(((Number(el.dataset.lpsBar) - Date.now()) / total) * 18))))); });
@@ -368,7 +376,9 @@
         if (++tickN % 15 === 0 && ws && typeof ws.refreshToday === 'function') { todayHtml = ''; ws.refreshToday(); }
         if (left <= 0) changed();
     }
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+    document.addEventListener('visibilitychange', tick);
+    window.addEventListener('melatonscreen', tick);
+    document.addEventListener('wmBehind', tick);
 
     // ---------------------------------------------------------------- commands
 
