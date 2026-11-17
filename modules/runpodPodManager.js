@@ -7,6 +7,13 @@ const https = require('https');
 
 const RUNPOD_REST_HOST = 'rest.runpod.io';
 const POLL_MS = 30000;
+// What the 30 s read is for (#890): the RunPod tray's status and the idle auto-shutdown of a running
+// pod. While every managed pod is stopped there is nothing to shut down, so the pods are read every
+// 5 minutes (a pod started from RunPod's own console is still caught); a viewer that asks
+// (runpod_pods_status) is answered from a fresh read. A failed read (DNS down, no key, RunPod down)
+// backs off: 1, 2, 4 ... minutes up to 15, instead of a failed request and a log line every 30 s.
+const IDLE_POLL_MS = 5 * 60 * 1000;
+const BACKOFF_MAX_MS = 15 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 20000;
 const DIRECT_AGENT = new https.Agent({ keepAlive: false });
 const DEFAULT_IDLE_MINUTES = 15;
@@ -70,6 +77,8 @@ class RunpodPodManager {
         this._pollTimerId = null;
         this._tickBusy = false;
         this._started = false;
+        this._failures = 0; // reads in a row that failed (backoff)
+        this._nextReadAt = 0; // the watcher's next remote read (idle cadence or backoff)
     }
 
     log(level, message) {
@@ -218,6 +227,8 @@ class RunpodPodManager {
         } finally {
             this._busy.delete(cfg.id);
             await this.getSnapshot({ refresh: true });
+            // a pod that runs now is watched every 30 s again (its idle auto-shutdown)
+            this._scheduleNextRead(this._snapshot);
             this.broadcast();
         }
         return this._snapshot;
@@ -241,19 +252,24 @@ class RunpodPodManager {
         } finally {
             this._busy.delete(cfg.id);
             await this.getSnapshot({ refresh: true });
+            // a pod that runs now is watched every 30 s again (its idle auto-shutdown)
+            this._scheduleNextRead(this._snapshot);
             this.broadcast();
         }
         return this._snapshot;
     }
 
-    async tick() {
+    async tick(now = Date.now()) {
         if (this._tickBusy) return;
+        // not due yet: every pod stopped (idle cadence), or the last reads failed (backoff)
+        if (now < this._nextReadAt) return;
         this._tickBusy = true;
         try {
             // fetchedAt is the read's own clock: it made every tick a "change" (rule server-push-not-polling)
             const key = (s) => { const { fetchedAt: _f, ...rest } = s || {}; return JSON.stringify(rest); };
             const before = key(this._snapshot);
             const snap = await this.getSnapshot({ refresh: true });
+            this._scheduleNextRead(snap, now);
             await this._maybeAutoStop(snap);
             const after = key(this._snapshot);
             if (after !== before) {
@@ -262,6 +278,37 @@ class RunpodPodManager {
         } finally {
             this._tickBusy = false;
         }
+    }
+
+    /** When the watcher reads the pods next: backoff after a failed read, idle cadence while all are stopped. */
+    _scheduleNextRead(snap, now = Date.now()) {
+        const pods = (snap && snap.pods) || [];
+        const failed = pods.some((p) => p && p.error);
+        if (failed) {
+            this._failures += 1;
+            const wait = Math.min(BACKOFF_MAX_MS, POLL_MS * (2 ** this._failures));
+            this._nextReadAt = now + wait;
+            if (this._failures === 1 || wait === BACKOFF_MAX_MS) this.log('info', `Status reads failing; next try in ${Math.round(wait / 60000)} min`);
+            return wait;
+        }
+        if (this._failures) this.log('info', 'Status reads work again');
+        this._failures = 0;
+        const allStopped = pods.length > 0 && !this._busy.size && pods.every((p) => p && (p.status === 'stopped' || p.status === 'terminated'));
+        // a little early so the 30 s timer's tick at that time is due
+        const wait = allStopped ? IDLE_POLL_MS : 0;
+        this._nextReadAt = wait ? now + wait - 1000 : 0;
+        return wait;
+    }
+
+    /**
+     * runpod_pods_status (a viewer asked): a fresh read, which also restarts the watcher's cadence;
+     * while reads are failing (backoff) the cached snapshot instead.
+     */
+    async refreshForViewer(now = Date.now()) {
+        if (this._failures && now < this._nextReadAt) return this._snapshot;
+        const snap = await this.getSnapshot({ refresh: true });
+        this._scheduleNextRead(snap, now);
+        return snap;
     }
 
     broadcast() {
