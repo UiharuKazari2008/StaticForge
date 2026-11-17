@@ -2013,9 +2013,12 @@
             if (!t.closest('.director-mascot-stage, .dm-vn-layer, #directorSessionChat')) return;
             advance();
         });
-        // the composer's text decides the left soft key (Send while there is something to send)
+        // the composer's text decides the left soft key (Send while there is something to send): the
+        // keys are drawn again only when that flips, not on every keystroke (#890)
         page.addEventListener('input', (e) => {
-            if (e.target && e.target.id === 'directorChatInput' && isCurrent()) ws.refreshSoftKeys();
+            if (!(e.target && e.target.id === 'directorChatInput' && isCurrent())) return;
+            if (sendable !== null && canSend(dir()) === sendable) return;
+            ws.refreshSoftKeys();
         });
         // the SIP button opens the composer (its edit box is not on screen until then)
         document.addEventListener('click', (e) => {
@@ -2031,12 +2034,18 @@
         });
     }
 
+    // Send's state as the soft keys last drew it (null: no Send key on them)
+    let sendable = null;
+    const canSend = (d) => !!(d && ((d.directorChatInput && d.directorChatInput.value.trim()) || (d.pendingAttachments && d.pendingAttachments.length)));
+
     function softKeys() {
         const d = dir();
         const t = top();
+        sendable = null;
         if (t) return t.keys ? t.keys() : { left: null, right: null };
         if (composing || isDraft(d)) {
-            const has = !!(d && ((d.directorChatInput && d.directorChatInput.value.trim()) || (d.pendingAttachments && d.pendingAttachments.length)));
+            const has = canSend(d);
+            sendable = has;
             return {
                 left: { label: 'Send', disabled: !has, action: () => { void send(); } },
                 right: isDraft(d) && !composing ? { label: 'Menu', menu: mainMenu } : { label: 'Menu', menu: composeMenu }

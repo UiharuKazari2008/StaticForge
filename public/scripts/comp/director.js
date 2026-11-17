@@ -3106,7 +3106,10 @@ class Director {
         // Auto-expand textarea
         if (this.directorChatInput) {
         this.directorChatInput.addEventListener('input', (e) => {
-            this.autoExpandTextarea(e.target);
+            this.autoExpandTextarea(e.target, e);
+            // the chips (and the attach menu's rows) follow the lookback links in the text: built again
+            // only when those changed, not on every keystroke (each built every chip and its picture anew)
+            if (this.lookbackChipKey() === this._chipLookbackKey) return;
             this.renderAttachChips();
             if (this.directorAttachDropdownMenu && !this.directorAttachDropdownMenu.classList.contains('hidden')) {
                 this.renderAttachDropdown();
@@ -3152,7 +3155,11 @@ class Director {
         }
     }
 
-    autoExpandTextarea(targetTextarea = null) {
+    // event: the composer's input event. A plain insertion (typed text or a new line, nothing selected
+    // replaced) can only make the text taller, so the box is measured at its height instead of being
+    // collapsed to 0 first: one layout a keystroke instead of two (#890).
+    autoExpandTextarea(targetTextarea = null, event = null) {
+        if (targetTextarea && event && targetTextarea.id === 'directorChatInput' && this.growTextarea(targetTextarea, event)) return;
         // Handle both directorChatInput and directorUserIntent
         const textareas = [];
 
@@ -3174,7 +3181,30 @@ class Director {
             const next = Math.min(Math.max(scrollHeight, minHeight), maxHeight);
             textarea.style.height = next + 'px';
             textarea.style.overflowY = next >= maxHeight ? 'auto' : 'hidden';
+            // a border-box composer measures the same at its own height (growTextarea); others always collapse
+            if (chat) this._composerFit = { length: textarea.value.length, height: next, borderBox: getComputedStyle(textarea).boxSizing === 'border-box' };
         });
+    }
+
+    // autoExpandTextarea's insertion case: true when it fitted the box (false: the full measure runs).
+    growTextarea(textarea, event) {
+        const fit = this._composerFit;
+        const kind = event.inputType;
+        const added = kind === 'insertText' ? String(event.data || '').length : (kind === 'insertLineBreak' ? 1 : -1);
+        const length = textarea.value.length;
+        // the last fit is of this text minus what was just added, at the height it set; with border-box
+        // sizing the text's scrollHeight at that height is what it is at 0 once the text is no shorter
+        if (!fit || !fit.borderBox || added <= 0 || length !== fit.length + added || textarea.style.height !== `${fit.height}px`) return false;
+        const minHeight = 36;
+        const maxHeight = 120;
+        const next = Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight);
+        if (next !== fit.height) {
+            textarea.style.height = next + 'px';
+            const overflow = next >= maxHeight ? 'auto' : 'hidden';
+            if (textarea.style.overflowY !== overflow) textarea.style.overflowY = overflow;
+        }
+        this._composerFit = { length, height: next, borderBox: true };
+        return true;
     }
 
     // Studio Director button: focus the desktop window when it is open, otherwise toggle the panel
@@ -6282,8 +6312,15 @@ class Director {
         return preview;
     }
 
+    // What the lookback chips show: each link's label and its text in the composer (renderAttachChips).
+    lookbackChipKey(list) {
+        return (list || this.lookbacksInComposer()).map((item) => `${item.label}\u0001${item.markdown}`).join('\u0002');
+    }
+
     renderAttachChips() {
         if (!this.directorAttachChips) return;
+        const lookbacks = this.lookbacksInComposer();
+        this._chipLookbackKey = this.lookbackChipKey(lookbacks);
         this.directorAttachChips.innerHTML = '';
         this.pendingAttachments.forEach((item, index) => {
             const caption = item.name || item.filename || item.hash || 'file';
@@ -6307,7 +6344,7 @@ class Director {
             chip.appendChild(remove);
             this.directorAttachChips.appendChild(chip);
         });
-        this.lookbacksInComposer().forEach((item) => {
+        lookbacks.forEach((item) => {
             const chip = document.createElement('div');
             chip.className = 'director-attach-chip';
             chip.title = item.label || 'lookback';
