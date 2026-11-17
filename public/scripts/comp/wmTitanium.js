@@ -832,7 +832,7 @@
         const box = superEl.querySelector('.wm-ti-super-notes');
         const sub = superEl.querySelector('.wm-ti-super-sub');
         const N = window.AndroidPhoneNotifications;
-        const plain = (html) => { box.innerHTML = html; superNoteRows = new Map(); };
+        const plain = (html) => { box.innerHTML = html; superNoteRows = new Map(); pruneNoteImages(); };
         if (!N || typeof N.list !== 'function') { sub.hidden = true; plain('<div class="wm-ti-super-empty">The phone\'s notifications show here with the Dreamscape app.</div>'); return; }
         sub.hidden = false;
         let ok = false;
@@ -905,9 +905,22 @@
         }
         have.forEach((el) => el.remove());
         [...box.children].forEach((el) => { if (!el.classList.contains('wm-ti-super-grp')) el.remove(); });
+        pruneNoteImages();
     }
 
-    /** The pictures and faces, asked of the app once each (a data URL per id, kept for the session). */
+    /**
+     * The pictures of notifications no longer listed go (#890): up to 60 data URLs (big pictures,
+     * faces) stayed after they were dismissed. A listed one keeps its copy while its card is folded,
+     * so opening the card asks the app for nothing again.
+     */
+    function pruneNoteImages() {
+        if (!superImages.size) return;
+        const keep = new Set();
+        superNoteRows.forEach((n) => { if (n.large) keep.add(String(n.large)); if (n.picture) keep.add(String(n.picture)); });
+        for (const id of [...superImages.keys()]) if (!keep.has(id)) superImages.delete(id);
+    }
+
+    /** The pictures and faces, asked of the app once each (a data URL per id, kept while listed). */
     function fillNoteImages(N, el) {
         el.querySelectorAll('img[data-img]').forEach((img) => {
             const id = img.dataset.img;
@@ -1036,6 +1049,45 @@
     let blurMo = null;
     let blurKey = '';
     const blurCache = new Map();
+    // both caches are small LRUs of blob-URL promises (#890): every large picture ever shown kept its
+    // screen-sized WebP and its blurred copy for the life of the page. An evicted blob is revoked once
+    // no layer shows it (the moving copy, Start's frost, the band, the Super Bar's frost).
+    const SIZED_MAX = 4;
+    const BLUR_MAX = 8;
+    const blobRetired = new Set();
+    function blobShown(url) {
+        const frost = superEl && superEl.querySelector('.wm-ti-super-frost');
+        return [fxLayer, frostLayer, blurInner, frost].some((el) => !!el && String(el.style.backgroundImage || '').includes(url));
+    }
+    function lruGet(cache, k) {
+        if (!cache.has(k)) return null;
+        const pr = cache.get(k);
+        cache.delete(k);
+        cache.set(k, pr);
+        return pr;
+    }
+    function lruPut(cache, k, pr, max) {
+        cache.set(k, pr);
+        while (cache.size > max) {
+            const [oldK, oldPr] = cache.entries().next().value;
+            cache.delete(oldK);
+            // retired, then swept a task later: a draw still waiting on it puts it on a layer first
+            Promise.resolve(oldPr).then((url) => {
+                if (!url) return;
+                blobRetired.add(url);
+                setTimeout(sweepRetired, 0);
+            });
+        }
+        return pr;
+    }
+    /** After a layer took a new picture: blobs evicted while still shown go now they are not. */
+    function sweepRetired() {
+        for (const url of blobRetired) {
+            if (blobShown(url)) continue;
+            blobRetired.delete(url);
+            URL.revokeObjectURL(url);
+        }
+    }
     function readEffects() {
         try { parallaxOn = localStorage.getItem(PARALLAX_KEY) === '1'; } catch (_) { parallaxOn = false; }
         let lv = 4;
@@ -1286,11 +1338,13 @@
         const img = w.backgroundImage;
         const urls = img ? [...img.matchAll(/url\((['"]?)(.*?)\1\)/g)].map((m) => m[2]) : [];
         if (!urls.length) return;
+        if (blobRetired.size) sweepRetired();
         Promise.all(urls.map(sizedUrl)).then((outs) => {
-            if (key !== fxKey) return;
+            if (key !== fxKey || !fxLayer) return;
             let out = img;
             urls.forEach((u, i) => { if (outs[i]) out = out.split(u).join(outs[i]); });
             if (out !== img) fxLayer.style.backgroundImage = out;
+            if (blobRetired.size) sweepRetired();
         });
     }
     /** The picture at the size the screen can show (its long side cover-fitted to the screen with the zoom's margin), as a WebP blob; null when it is already that small. */
@@ -1298,7 +1352,8 @@
         const dpr = window.devicePixelRatio || 1;
         const tw = Math.ceil(Math.max(screen.width, screen.height, window.innerWidth, window.innerHeight) * dpr * 1.25);
         const k = `${u}|${tw}`;
-        if (sizedCache.has(k)) return sizedCache.get(k);
+        const had = lruGet(sizedCache, k);
+        if (had) return had;
         const pr = new Promise((resolve) => {
             const im = new Image();
             im.decoding = 'async';
@@ -1320,8 +1375,7 @@
             im.onerror = () => resolve(null);
             im.src = u;
         });
-        sizedCache.set(k, pr);
-        return pr;
+        return lruPut(sizedCache, k, pr, SIZED_MAX);
     }
     function blurPicture() {
         if (!wallEl || !(fx.blur || fx.startfrost)) return;
@@ -1338,15 +1392,18 @@
             urls.forEach((u, i) => { if (outs[i]) out = out.split(u).join(outs[i]); });
             const bg = { backgroundImage: out, backgroundSize: w.backgroundSize, backgroundPosition: w.backgroundPosition, backgroundRepeat: w.backgroundRepeat };
             if (frostLayer) { Object.assign(frostLayer.style, bg); frostLayer.classList.add('is-ready'); wallEl.classList.add('has-frost'); }
-            if (!blurClip || !fx.blur) return;
-            Object.assign(blurInner.style, bg);
-            blurClip.hidden = false;
-            blurPlace();
+            if (blurClip && fx.blur) {
+                Object.assign(blurInner.style, bg);
+                blurClip.hidden = false;
+                blurPlace();
+            }
+            if (blobRetired.size) sweepRetired();
         });
     }
     /** The picture at 320 px wide, blurred 5 px with its edges carried out (no dark rim), as a WebP blob. */
     function blurredUrl(u) {
-        if (blurCache.has(u)) return blurCache.get(u);
+        const had = lruGet(blurCache, u);
+        if (had) return had;
         const pr = new Promise((resolve) => {
             const im = new Image();
             im.decoding = 'async';
@@ -1377,8 +1434,7 @@
             im.onerror = () => resolve(null);
             im.src = u;
         });
-        blurCache.set(u, pr);
-        return pr;
+        return lruPut(blurCache, u, pr, BLUR_MAX);
     }
     /** Line the band's copy up with the picture layer (on show, resize and a new picture only). */
     function blurPlace() {
