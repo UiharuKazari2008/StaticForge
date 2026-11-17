@@ -2893,3 +2893,72 @@ html.ui-mobile[data-wm-rev="6.5.1"] .wm-alarm651-play > .wm-button {
     height: calc(32 * var(--wm-px));
 }
 /* ---- end 6.5.1 notices ---- */
+
+
+
+/* Every scroller in the phone shell gets 6.5's bar (Yukimi, Nov 17: "a standard scroll bar and not a WM scroll
+ * bar"): the rules above list scrollers one by one and every new one was missed (77 found); these twins cover
+ * the rest the way 6.1 does (wm-shell.css) - low specificity, so an app's own bar rule or a hidden bar
+ * (scrollbar-width: none) still wins; .wm-own-bar opts out. Made from the rules above (same values). */
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar {
+    width: calc(13 * var(--wm-px));
+    height: calc(13 * var(--wm-px));
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-track {
+    background: #e6e6e6;
+    border: 0;
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-thumb {
+    min-height: calc(35 * var(--wm-px));
+    border-style: solid;
+    border-color: transparent;
+    border-width: calc(12 * var(--wm-px)) 0;
+    border-radius: 0;
+    border-image: url('/static_images/wm65/theme-black-scrollbarthumb@2x.png') 24 0 24 0 fill / calc(12 * var(--wm-px)) 0 stretch;
+    background: none;
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button {
+    display: block;
+    width: calc(13 * var(--wm-px));
+    height: calc(19.5 * var(--wm-px));
+    border: 0;
+    background: #e6e6e6 center / 100% 100% no-repeat;
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical:decrement {
+    border: 0;
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbaruparrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbaruparrowbutton@4x.png') 4x);
+    background-size: 100% 100%;
+    background-position: center;
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical:increment {
+    border: 0;
+    background-image: image-set(url('/static_images/wm65/theme-black-scrollbardownarrowbutton@2x.png') 2x, url('/static_images/wm65/theme-black-scrollbardownarrowbutton@4x.png') 4x);
+    background-size: 100% 100%;
+    background-position: center;
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical:decrement:active {
+    background-image: image-set(var(--wm65-art-scrollbaruparrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbaruparrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbaruparrowbuttonselected@4x.png')) 4x);
+}
+
+:where(html.ui-mobile[data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical:increment:active {
+    background-image: image-set(var(--wm65-art-scrollbardownarrowbuttonselected, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@2x.png')) 2x, var(--wm65-art-scrollbardownarrowbuttonselected-4x, url('/static_images/wm65/theme-classicblue-scrollbardownarrowbuttonselected@4x.png')) 4x);
+}
+
+:where(html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar:vertical {
+    background: url('/static_images/wm65/v651-scrollbar-up@2x.png') top / 100% calc(20 * var(--wm-px)) no-repeat, url('/static_images/wm65/v651-scrollbar-down@2x.png') bottom / 100% calc(20 * var(--wm-px)) no-repeat, #e6e6e6;
+}
+
+:where(html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-track:vertical {
+    margin: calc(20 * var(--wm-px)) 0;
+    background: transparent;
+}
+
+:where(html.ui-mobile[data-wm-rev="6.5.1"][data-wm-version="6.5"] :is(#wmShell, #confirmationDialog)) :not(.wm-own-bar)::-webkit-scrollbar-button:single-button:vertical {
+    display: none;
+}
