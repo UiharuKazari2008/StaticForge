@@ -61,25 +61,96 @@ const vghCall = function (fn, thisArg, ...args) {
 
 // ---------------------------------------------------------------- System.* object model
 
-const vghTimeZone = function (zone) {
-    const name = zone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-    const now = new Date();
-    let bias = now.getTimezoneOffset();
-    if (zone) {
-        const local = new Date(now.toLocaleString('en-US', { timeZone: zone }));
-        const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
-        bias = Math.round((utc - local) / 60000);
+// A gadget's clock reads System.Time every frame (the pong clock 60 times a second, #890): each read made
+// new ICU formatters (Intl.DateTimeFormat().resolvedOptions(), toLocaleString with a timeZone). Now: the
+// local zone's name looked up once a minute, one formatter per zone kept (a few, most recent first), the
+// local zone and UTC read from the Date's own getters, and a zone's bias worked out once a minute (offsets
+// change on whole minutes). The strings are the same as before.
+const vghTimeZone = (function () {
+    const formats = new Map(); // zone name -> Intl.DateTimeFormat (en-US, numeric, 24-hour)
+    const FORMATS_MAX = 16;
+    const biases = new Map(); // zone name -> { minute, bias }
+    const localZone = { name: '', at: -Infinity };
+
+    /** This computer's zone name ('' when the browser does not say), looked up at most once a minute. */
+    function localZoneName() {
+        const now = Date.now();
+        if (now - localZone.at >= 60000 || now < localZone.at) {
+            localZone.name = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+            localZone.at = now;
+        }
+        return localZone.name;
     }
-    return { name, displayName: name.replace(/_/g, ' '), standardDisplayName: name, daylightDisplayName: name, bias, standardBias: 0, daylightBias: 0 };
-};
+
+    /** The zone's formatter (an unknown zone throws RangeError, as toLocaleString did). */
+    function zoneFormat(zone) {
+        let f = formats.get(zone);
+        if (f) {
+            // most recently used last: the oldest goes first when the list is full
+            formats.delete(zone);
+            formats.set(zone, f);
+            return f;
+        }
+        f = new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hourCycle: 'h23' });
+        if (formats.size >= FORMATS_MAX) formats.delete(formats.keys().next().value);
+        formats.set(zone, f);
+        return f;
+    }
+
+    /** The wall clock in a zone at `date`: [year, month 1-12, day, hour 0-23, minute, second]. */
+    function zoneWall(zone, date) {
+        if (zone === 'UTC') return [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()];
+        if (zone === localZoneName()) return [date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes(), date.getSeconds()];
+        const w = [0, 0, 0, 0, 0, 0];
+        const parts = zoneFormat(zone).formatToParts(date);
+        for (let i = 0; i < parts.length; i++) {
+            const p = parts[i];
+            const v = Number(p.value);
+            if (p.type === 'year') w[0] = v;
+            else if (p.type === 'month') w[1] = v;
+            else if (p.type === 'day') w[2] = v;
+            else if (p.type === 'hour') w[3] = v === 24 ? 0 : v; // an ICU that writes midnight as 24
+            else if (p.type === 'minute') w[4] = v;
+            else if (p.type === 'second') w[5] = v;
+        }
+        return w;
+    }
+
+    function timeZone(zone) {
+        const name = zone || localZoneName() || 'UTC';
+        const now = new Date();
+        let bias = now.getTimezoneOffset();
+        if (zone) {
+            const minute = Math.floor(now.getTime() / 60000);
+            const kept = biases.get(zone);
+            if (kept && kept.minute === minute) {
+                bias = kept.bias;
+            } else {
+                // minutes the zone's wall clock is behind UTC's (west of Greenwich: positive, as getTimezoneOffset)
+                const w = zoneWall(zone, now);
+                const local = Date.UTC(w[0], w[1] - 1, w[2], w[3], w[4], w[5]);
+                const utc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), now.getUTCHours(), now.getUTCMinutes(), now.getUTCSeconds());
+                bias = Math.round((utc - local) / 60000);
+                if (biases.size > 512) biases.clear();
+                biases.set(zone, { minute, bias });
+            }
+        }
+        return { name, displayName: name.replace(/_/g, ' '), standardDisplayName: name, daylightDisplayName: name, bias, standardBias: 0, daylightBias: 0 };
+    }
+
+    /** Vista's VT_DATE string for "now" in a zone (vghLocalTime). */
+    timeZone.localTime = function (zone) {
+        const tz = zone && (zone.name || zone);
+        const now = new Date();
+        const w = tz ? zoneWall(String(tz), now) : [now.getFullYear(), now.getMonth() + 1, now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds()];
+        const p = (n) => String(n).padStart(2, '0');
+        return `${p(w[1])}/${p(w[2])}/${w[0]} ${p(w[3])}:${p(w[4])}:${p(w[5])}`;
+    };
+    return timeZone;
+})();
 
 /** Vista's VT_DATE string for "now" in a zone; gadgets hand it to new Date(). */
-const vghLocalTime = function (zone) {
-    const tz = zone && (zone.name || zone);
-    const d = new Date(tz ? new Date().toLocaleString('en-US', { timeZone: String(tz) }) : Date.now());
-    const p = (n) => String(n).padStart(2, '0');
-    return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
-};
+const vghLocalTime = (zone) => vghTimeZone.localTime(zone);
 
 const vghPlay = function (win, file) {
     const url = vghResolve(win, file);
