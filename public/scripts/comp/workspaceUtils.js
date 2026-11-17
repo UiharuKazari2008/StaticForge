@@ -397,6 +397,8 @@ async function syncWorkspaceWallpaperCache(refreshUrls, options) {
     });
     const swm = window.serviceWorkerManager;
     let fetchUrls = opts.activeOnly ? (active ? [active] : []) : undefined;
+    // the caller's own list of what may be fetched now (a wallpaper change before the background pass)
+    if (!opts.activeOnly && Array.isArray(opts.fetchUrls)) fetchUrls = Array.from(new Set(opts.fetchUrls.filter(Boolean)));
     let refreshList = refresh;
     // Melaton Mobile (#890, Yukimi Nov 17): the workspaces' desktop photos are big, and the phone shows
     // at most the active one (behind Today). It is fetched ahead only on Wi-Fi or when Today shows it;
@@ -3356,7 +3358,13 @@ function initializeWebSocketWorkspaceEvents() {
                         styleUpdateNeeded = true;
                         noteWallpaperFileReload(workspace.wallpaper);
                         const refreshUrl = resolveWorkspaceWallpaperUrl(workspace.wallpaper);
-                        await syncWorkspaceWallpaperCache(refreshUrl ? [refreshUrl] : []);
+                        // before the background pass has fetched the other workspaces' wallpapers
+                        // (preloadOtherWorkspaceWallpapers), a change fetched every uncached one: now
+                        // only the active one and the changed one, the rest still come with that pass
+                        // (#890). Melaton Mobile limits it further (Wi-Fi / Today, in the sync itself).
+                        await syncWorkspaceWallpaperCache(refreshUrl ? [refreshUrl] : [], otherWallpapersPreloaded ? undefined : {
+                            fetchUrls: [activeWorkspaceWallpaperUrl(), refreshUrl]
+                        });
                     }
                     if (data.settings.wallpaperPosition !== undefined) {
                         workspace.wallpaperPosition = data.settings.wallpaperPosition;
