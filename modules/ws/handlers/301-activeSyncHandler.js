@@ -31,11 +31,18 @@ function registerPackets(handlersCtx) {
             reply(ws, 'as_hello_response', message, refused(error));
             return;
         }
-        // only administrators see the other peers
-        if (!isAdmin(clientInfo)) { res.devices = res.device ? [res.device] : []; res.computers = []; }
+        const service = !!(clientInfo && clientInfo.as && clientInfo.as.speaker === 'service');
+        // only administrators see the other peers; the app's background link reads none of the list
+        // (ActiveSyncLink: success, session, permissions), so it is not sent the 8 KB of it (#890)
+        if (!isAdmin(clientInfo) || service) { res.devices = res.device ? [res.device] : []; res.computers = []; }
         reply(ws, 'as_hello_response', message, res);
         if (res.kind === 'device' && res.session === 'partner') {
             activeSync.deliverQueue(gr(), wsServer, res.id).catch((error) => console.warn('[activeSync] queue delivery failed:', error.message));
+        }
+        // the background link's notification credits line, once after its hello (#890; then on change)
+        if (service) {
+            clientInfo.asCreditsKey = null;
+            try { activeSync.pushCredits(gr(), wsServer, clientInfo); } catch (error) { console.warn('[activeSync] credits push failed:', error.message); }
         }
     });
 

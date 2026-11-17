@@ -3233,26 +3233,13 @@ app.get('/android/background-notification', serverReadinessMiddleware, authMiddl
     res.setHeader('Pragma', 'no-cache');
     try {
         const balance = await getBalance();
-        const fixed = balance.ok ? (balance.fixedTrainingStepsLeft || 0) : 0;
-        const paid = balance.ok ? (balance.purchasedTrainingSteps || 0) : 0;
         let expiresAt = balance.subscription && balance.subscription.expiresAt;
         if (expiresAt == null) {
             const accountData = globalResources.getAccountData();
             expiresAt = accountData && accountData.subscription && accountData.subscription.expiresAt;
         }
-        let daysLeft = '';
-        if (expiresAt != null && expiresAt !== '') {
-            const sec = Number(expiresAt);
-            if (Number.isFinite(sec)) {
-                const d = Math.ceil((sec * 1000 - Date.now()) / (86400000));
-                daysLeft = String(d > 0 ? d : 0);
-            }
-        }
-        res.json({
-            free: String(fixed),
-            paid: String(paid),
-            daysLeft
-        });
+        // the same values ActiveSync's background links get pushed (as_credits, #890)
+        res.json(require('./modules/backgroundNotificationCredits').creditsValues(balance.ok ? balance : null, expiresAt));
     } catch (error) {
         console.error('❌ /android/background-notification:', error);
         res.status(500).json({ error: 'Failed to load notification status' });
@@ -4649,6 +4636,17 @@ async function handleAdminUnixSocketMessage(message, socket) {
                 server_time: Date.now().valueOf()
             };
         });
+
+        // ActiveSync's background links (#890): the app's notification credits line pushed when it
+        // changes (as_credits), from the same 10 s status read; no NovelAI call of its own
+        try {
+            const activeSyncCredits = require('./modules/activeSync');
+            const backgroundCredits = require('./modules/backgroundNotificationCredits');
+            activeSyncCredits.setCreditsProvider(() => backgroundCredits.currentCredits(globalResources));
+            wsServer.addStatusTap(() => activeSyncCredits.pushCredits(globalResources, wsServer));
+        } catch (err) {
+            globalResources.logger.warn(`ActiveSync credits push not wired: ${err.message}`);
+        }
 
         // Start queue status broadcasting
         wsServer.startQueueStatusInterval();
