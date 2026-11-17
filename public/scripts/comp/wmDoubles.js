@@ -325,12 +325,36 @@
 
     // ---------------------------------------------------------------- sound
 
+    // the sound's context sleeps while the game is not seen and goes with it (X, Task Manager's End):
+    // a running one keeps the phone's audio thread up for nothing (#890). It sleeps a second late so a
+    // blip in flight ends whole; seen again it wakes at once, so the next blip is not late.
+    let audioRest = 0;
+    function audioWake() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        try { if (audio && audio.state === 'suspended') audio.resume().catch(() => {}); } catch (_) { /* closed */ }
+    }
+    function audioSleep() {
+        clearTimeout(audioRest);
+        audioRest = setTimeout(() => {
+            audioRest = 0;
+            try { if (audio && audio.state === 'running') audio.suspend().catch(() => {}); } catch (_) { /* closed */ }
+        }, 1000);
+    }
+    function audioEnd() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        const a = audio;
+        audio = null;
+        if (a) setTimeout(() => { try { a.close().catch(() => {}); } catch (_) { /* closed */ } }, 1000);
+    }
+
     function sound(kind, v) {
         if (!settings().sounds) return;
         try {
             if (ws.sounds && typeof ws.sounds.silent === 'function' && ws.sounds.silent()) return;
             if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-            if (audio.state === 'suspended') audio.resume();
+            if (audio.state === 'suspended') audio.resume().catch(() => {});
             const tone = (f, t, d, type = 'square', vol = 0.05) => {
                 const o = audio.createOscillator();
                 const g = audio.createGain();
@@ -908,6 +932,7 @@
     }
 
     function show() {
+        audioWake();
         if (view === 'main') requestAnimationFrame(() => { sprites.clear(); layout(); renderStatus(); endCut(); });
     }
 
@@ -923,6 +948,7 @@
         fx = [];
         if (raf) { cancelAnimationFrame(raf); raf = 0; }
         save();
+        audioSleep();
     }
 
     function softKeys() {
@@ -958,7 +984,7 @@
             onTitleOk: () => (view === 'main' ? false : backToGame(true)),
             historyDepth: () => (view === 'main' ? 0 : 1),
             onBack: () => (view === 'main' ? false : backToGame(view !== 'options')),
-            onEnd() { hide(); cut = null; view = 'main'; page = null; cv = null; ctx = null; L = null; },
+            onEnd() { hide(); audioEnd(); cut = null; view = 'main'; page = null; cv = null; ctx = null; L = null; },
             softKeys
         });
         document.addEventListener('keydown', onKey);
