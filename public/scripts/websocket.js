@@ -10563,8 +10563,11 @@ class WebSocketClient {
         }
 
         if (!this._wsFlashVisibilityInterval) {
-            // the net under the class observer above: every 30 s (was every 5, #849)
+            // the net under the class observer above: every 30 s (was every 5, #849); not while the page
+            // is hidden (each look asks checkVisibility, which runs the page's pending style work, #890):
+            // the page shown again looks at once (the visibilitychange listener in init)
             this._wsFlashVisibilityInterval = setInterval(() => {
+                if (document.hidden) return;
                 this._refreshWsFlashTargets();
             }, 30000);
         }
