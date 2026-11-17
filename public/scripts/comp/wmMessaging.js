@@ -329,9 +329,20 @@
         try { if (t && typeof t.label === 'function') return t.label(a); } catch (_) { /* below */ }
         return { title: a.name || 'Text Messaging', subline: a.identity || '' };
     }
+    // a text message account or its unread count changed: the account list is drawn only while it is
+    // seen (another program in front: show() draws it; the screen off: drawn on screen on)
+    let tmStale = false;
+    const pageSeen = () => !!page && isCurrent() && (typeof ws.onScreen !== 'function' || ws.onScreen(page));
     function tmRepaint() {
-        if (page && top() === 'accounts') renderAccounts();
+        if (page && top() === 'accounts') { if (pageSeen()) { tmStale = false; renderAccounts(); } else tmStale = true; }
         if (tree) renderTree();
+    }
+    function tmWake() {
+        if (!pageSeen()) return;
+        if (imapListDue) { imapListDue = false; if (isImap() && top() !== 'compose') loadFolder({ keep: true }); }
+        if (!tmStale) return;
+        tmStale = false;
+        if (top() === 'accounts') renderAccounts();
     }
     async function loadTmAccounts(force) {
         const t = tmApi();
@@ -430,6 +441,7 @@
 
     // a burst of events (a sync, a batch delete) reads the list and the counts once
     let imapListTimer = null;
+    let imapListDue = false;
     let imapMetaTimer = null;
     const imapMetaDue = new Set();
     function imapChanged(d) {
@@ -444,6 +456,8 @@
             }, 400);
         }
         if (page && isImap() && d.accountId === imapId && (!d.folder || d.folder === folder) && isCurrent()) {
+            // the screen off (or behind an Android program): read once it is seen again (tmWake)
+            if (!pageSeen()) { imapListDue = true; return; }
             clearTimeout(imapListTimer);
             imapListTimer = setTimeout(() => { if (page && isImap() && d.accountId === imapId && top() !== 'compose') loadFolder({ keep: true }); }, 300);
         }
@@ -3487,6 +3501,9 @@
         wireTm();
         // and the IMAP accounts (#789): their rows, and their new mail's notification while Messaging is closed
         wireImap();
+        window.addEventListener('melatonscreen', tmWake);
+        document.addEventListener('visibilitychange', tmWake);
+        document.addEventListener('wmBehind', tmWake);
         // the clients may come after this script, or be replaced (a test fake): tried until both are
         // bound, then again on a reconnect or a program change - not every 3 s for the life of the page
         // with Messaging closed (#849 idle profile)
