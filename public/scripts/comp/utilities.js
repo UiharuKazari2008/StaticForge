@@ -204,7 +204,8 @@ function escapeHtmlAttribute(text) {
  * Do not declare a parallel optionsData binding — it shadows the real object.
  */
 let qwenTokenizer = null;
-let qwenTokenizerPromise = null;
+// the tokenizer loads under way (ensurePromptTokenizerForModel): Qwen (V5), T5 (the models before it)
+const promptTokenizerLoads = { qwen: null, t5: null };
 
 /**
  * Current user balance storage
@@ -764,13 +765,42 @@ function getPromptTokenLimit(modelValue) {
     return null;
 }
 
-async function ensurePromptTokenizerForModel(modelValue) {
-    if (getForgeModelFeatures(modelValue)?.tokenizer !== 'qwen') {
-        return t5Tokenizer;
+/**
+ * The model's prompt tokenizer, loaded the first time it is asked for (both after the desktop's boot,
+ * appInitSteps.js loadPromptTokenizers; Melaton Mobile only the open model's, the other on first need,
+ * #890). kind 'qwen' | 't5' names the tokenizer instead of a model. Qwen: rejects when it cannot load.
+ * T5: published as t5Tokenizer only once loaded (its readers take a missing one), null when it cannot load.
+ */
+async function ensurePromptTokenizerForModel(modelValue, kind) {
+    const type = kind === 'qwen' || kind === 't5' ? kind : (getForgeModelFeatures(modelValue)?.tokenizer === 'qwen' ? 'qwen' : 't5');
+    if (type === 't5') {
+        // t5Tokenizer: window.t5Tokenizer (app.html)
+        if (t5Tokenizer) return t5Tokenizer;
+        if (!promptTokenizerLoads.t5) {
+            promptTokenizerLoads.t5 = (async () => {
+                // Melaton Mobile: not before Studio first opens (appInitSteps.js melatonTokenizerGate, #817)
+                if (window.melatonTokenizerGate) await window.melatonTokenizerGate;
+                const tokenizer = new T5Tokenizer();
+                const response = await fetch('/protected/t5_tokenizer.json');
+                const config = await response.json();
+                await tokenizer.loadFromJSON(config);
+                t5Tokenizer = tokenizer;
+                return tokenizer;
+            })().catch((error) => {
+                promptTokenizerLoads.t5 = null;
+                throw error;
+            });
+        }
+        try {
+            return await promptTokenizerLoads.t5;
+        } catch (error) {
+            console.error('Failed to load T5 tokenizer:', error);
+            return null;
+        }
     }
     if (qwenTokenizer) return qwenTokenizer;
-    if (!qwenTokenizerPromise) {
-        qwenTokenizerPromise = (async () => {
+    if (!promptTokenizerLoads.qwen) {
+        promptTokenizerLoads.qwen = (async () => {
             // Melaton Mobile: not before Studio first opens (appInitSteps.js melatonTokenizerGate, #817)
             if (window.melatonTokenizerGate) await window.melatonTokenizerGate;
             const tokenizer = new QwenTokenizer();
@@ -778,11 +808,11 @@ async function ensurePromptTokenizerForModel(modelValue) {
             qwenTokenizer = tokenizer;
             return tokenizer;
         })().catch((error) => {
-            qwenTokenizerPromise = null;
+            promptTokenizerLoads.qwen = null;
             throw error;
         });
     }
-    return qwenTokenizerPromise;
+    return promptTokenizerLoads.qwen;
 }
 
 function isV5Model(modelValue) {
