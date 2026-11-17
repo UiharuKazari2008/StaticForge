@@ -66,10 +66,12 @@ const PHONE_BATCH_MS = 10000;
 // nothing at all (config_checkpoint_restored, packages_updated). A phone's DeX window is a desktop page
 // and gets them. Kept for the phone: mcp_activity (the generating flag), desktop_shortcut_* and
 // desktop_positions_updated (the phone's file explorer lists the desktop's shortcuts from the same store),
-// autofill_ranking_updated (the phone's SmartText).
+// autofill_ranking_updated (the phone's SmartText), generation_quips_updated (a failed run shows
+// "Generate Quips Failed" on the phone too: generationQuipsTray.js handleGenerationQuipsClientUpdate;
+// progress and status only feed the desktop's tray icon and MMC page, whose runs only they start).
 const DESKTOP_ONLY_TYPES = new Set([
     'runtime_compile_logs',
-    'generation_quips_updated', 'generation_quips_progress', 'generation_quips_status',
+    'generation_quips_progress', 'generation_quips_status',
     'print_queue_state',
     'replication_progress', 'replication_maintenance', 'replication_sync_status', 'replication_sync_complete', 'replication_separation_done',
     'novel_progress',
