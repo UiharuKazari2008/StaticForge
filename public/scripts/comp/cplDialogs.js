@@ -949,6 +949,8 @@
             if (root.speechSynthesis) { root.speechSynthesis.cancel(); root.speechSynthesis.onvoiceschanged = null; }
             if (ctx.store.mic) ctx.store.mic.getTracks().forEach((t) => t.stop());
             if (ctx.store.raf) root.cancelAnimationFrame(ctx.store.raf);
+            // the meter's AudioContext kept the audio device open for the life of the page (#890)
+            if (ctx.store.ac) { try { void ctx.store.ac.close(); } catch (_) { /* closed */ } ctx.store.ac = null; }
         }
     };
 
@@ -958,6 +960,7 @@
             const stream = await root.navigator.mediaDevices.getUserMedia({ audio: true });
             ctx.store.mic = stream;
             const ac = new (root.AudioContext || root.webkitAudioContext)();
+            ctx.store.ac = ac;
             const an = ac.createAnalyser();
             ac.createMediaStreamSource(stream).connect(an);
             const buf = new Uint8Array(an.fftSize);
