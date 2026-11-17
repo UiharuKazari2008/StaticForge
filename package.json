@@ -105,6 +105,7 @@
     "build:icon-subsets": "node scripts/build-icon-font-subsets.js",
     "test:icon-subsets": "node scripts/build-icon-font-subsets.js --check",
     "check:ui": "node scripts/check-ui-standard.js",
+    "check:perf": "node scripts/check-perf-rules.js",
     "nekoai:registry": "NEKOAI_JS_SOURCE=registry node scripts/configure-nekoai.js",
     "nekoai:local": "NEKOAI_JS_SOURCE=local node scripts/configure-nekoai.js",
     "pack-server": "bash scripts/pack-server-transfer.sh",

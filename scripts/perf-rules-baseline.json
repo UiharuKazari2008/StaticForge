@@ -1,0 +1,605 @@
+{
+ "apps/activesync/client/activesync.js": {
+  "ungated-timer": 1
+ },
+ "apps/alarm/client/alarm.js": {
+  "ungated-timer": 2
+ },
+ "apps/calendar/client/calendar.js": {
+  "ungated-timer": 2
+ },
+ "apps/paypass/assets/paypass.css": {
+  "infinite-animation": 1
+ },
+ "apps/paypass/client/paypass.js": {
+  "ungated-timer": 1
+ },
+ "apps/quickcast/assets/quickcast.css": {
+  "infinite-animation": 11,
+  "paint-keyframes": 3
+ },
+ "apps/quickcast/client/quickcast.js": {
+  "ungated-timer": 1
+ },
+ "apps/soundrec/client/soundrec.js": {
+  "ungated-timer": 1
+ },
+ "apps/taskmgr/client/taskmgr.js": {
+  "ungated-timer": 1
+ },
+ "apps/xlink/assets/xlink.css": {
+  "infinite-animation": 2
+ },
+ "apps/xlink/client/xlink.js": {
+  "ungated-timer": 1
+ },
+ "modules/activeSyncTransfers.js": {
+  "sync-io-in-handler": 3
+ },
+ "modules/configManager.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/cursorDirector.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/globalResources.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/grimoireBrowserBridge.js": {
+  "sync-io-in-handler": 1
+ },
+ "modules/guacRemoteBridge.js": {
+  "sync-io-in-handler": 3
+ },
+ "modules/melatonApps/updates.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/replication/routes/20-separationRoutes.js": {
+  "sync-io-in-handler": 3
+ },
+ "modules/replication/routes/30-assetRoutes.js": {
+  "sync-io-in-handler": 2
+ },
+ "modules/textMessaging.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/trafficService.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/vfsWebSocketHandlers.js": {
+  "unclassified-broadcast": 6
+ },
+ "modules/weatherService.js": {
+  "unclassified-broadcast": 5
+ },
+ "modules/websocket.js": {
+  "unclassified-broadcast": 8
+ },
+ "modules/websocketHandlers.js": {
+  "unclassified-broadcast": 7
+ },
+ "modules/wmProgramIcons.js": {
+  "sync-io-in-handler": 1
+ },
+ "modules/ws/handlers/120-galleryHandler.js": {
+  "unclassified-broadcast": 6
+ },
+ "modules/ws/handlers/190-adminHandler.js": {
+  "unclassified-broadcast": 2
+ },
+ "modules/ws/handlers/270-accountPicturesHandler.js": {
+  "unclassified-broadcast": 2
+ },
+ "modules/ws/handlers/290-sidebarHandler.js": {
+  "unclassified-broadcast": 1
+ },
+ "modules/ws/handlers/30-notesHandler.js": {
+  "unclassified-broadcast": 7
+ },
+ "modules/ws/handlers/generationImpl.js": {
+  "unclassified-broadcast": 1
+ },
+ "public/css/7.scoped.css": {
+  "infinite-animation": 4,
+  "paint-keyframes": 2
+ },
+ "public/css/about-melaton.css": {
+  "infinite-animation": 1
+ },
+ "public/css/activesync-device-art.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/aero-glass.css": {
+  "will-change": 3
+ },
+ "public/css/app.css": {
+  "infinite-animation": 8,
+  "will-change": 54,
+  "paint-keyframes": 2
+ },
+ "public/css/autocomplete.css": {
+  "infinite-animation": 4
+ },
+ "public/css/blockContainer.css": {
+  "infinite-animation": 1,
+  "will-change": 2
+ },
+ "public/css/cache-browser.css": {
+  "infinite-animation": 4,
+  "paint-keyframes": 1
+ },
+ "public/css/character-position-tool.css": {
+  "infinite-animation": 1
+ },
+ "public/css/chat-modal.css": {
+  "infinite-animation": 2
+ },
+ "public/css/config-editor.css": {
+  "infinite-animation": 1
+ },
+ "public/css/cpl-dialogs.css": {
+  "infinite-animation": 1
+ },
+ "public/css/custom-dropdown.css": {
+  "will-change": 1,
+  "paint-keyframes": 2
+ },
+ "public/css/desktop-apps/remoteDesktopConnection.css": {
+  "infinite-animation": 1
+ },
+ "public/css/desktop-apps/vista-jezzball.css": {
+  "infinite-animation": 1
+ },
+ "public/css/desktop-boot.css": {
+  "infinite-animation": 4,
+  "will-change": 1
+ },
+ "public/css/desktop-shell.css": {
+  "infinite-animation": 4,
+  "will-change": 7,
+  "paint-keyframes": 1
+ },
+ "public/css/director.css": {
+  "infinite-animation": 11,
+  "will-change": 4
+ },
+ "public/css/dsap-smf.css": {
+  "infinite-animation": 1
+ },
+ "public/css/emphasis-groups-tool.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/emphasis-manager.css": {
+  "paint-keyframes": 2
+ },
+ "public/css/flip3d.css": {
+  "will-change": 1
+ },
+ "public/css/gallery-move.css": {
+  "infinite-animation": 4,
+  "will-change": 2
+ },
+ "public/css/generation-quips.css": {
+  "infinite-animation": 3
+ },
+ "public/css/grimoire-browser.css": {
+  "infinite-animation": 2
+ },
+ "public/css/image-loupe.css": {
+  "will-change": 3
+ },
+ "public/css/image-search.css": {
+  "paint-keyframes": 1
+ },
+ "public/css/launch-boot.css": {
+  "infinite-animation": 1,
+  "will-change": 1
+ },
+ "public/css/launch-phone-update.css": {
+  "infinite-animation": 1,
+  "will-change": 1
+ },
+ "public/css/login_new.css": {
+  "will-change": 7,
+  "paint-keyframes": 2
+ },
+ "public/css/manual-modal-generate.css": {
+  "infinite-animation": 4,
+  "will-change": 2
+ },
+ "public/css/manual-modal-preview-tools.css": {
+  "infinite-animation": 1
+ },
+ "public/css/manual-modal-prompt-form.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/manual-modal-splash.css": {
+  "infinite-animation": 3
+ },
+ "public/css/manual-modal-viewer.css": {
+  "will-change": 8
+ },
+ "public/css/manual-modal.css": {
+  "infinite-animation": 5,
+  "will-change": 3,
+  "paint-keyframes": 6
+ },
+ "public/css/mask-editor.css": {
+  "infinite-animation": 1
+ },
+ "public/css/melaton-network.css": {
+  "infinite-animation": 4
+ },
+ "public/css/mmc-wiki.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/modal-window-title-toolbar.css": {
+  "will-change": 3
+ },
+ "public/css/pin-modal.css": {
+  "will-change": 4
+ },
+ "public/css/planet-switcher.css": {
+  "infinite-animation": 8,
+  "will-change": 6
+ },
+ "public/css/service-worker-tray.css": {
+  "infinite-animation": 1
+ },
+ "public/css/tag-wiki-search.css": {
+  "infinite-animation": 2
+ },
+ "public/css/vibe-manager.css": {
+  "infinite-animation": 1
+ },
+ "public/css/vista-director.css": {
+  "infinite-animation": 1
+ },
+ "public/css/vista-explorer.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/vista-gadget-host.css": {
+  "infinite-animation": 1
+ },
+ "public/css/vista-glass-controls.css": {
+  "infinite-animation": 3
+ },
+ "public/css/vista-paint.css": {
+  "infinite-animation": 1
+ },
+ "public/css/vista-sidebar.css": {
+  "infinite-animation": 1
+ },
+ "public/css/vista-taskbar.css": {
+  "infinite-animation": 1,
+  "will-change": 1
+ },
+ "public/css/wm-activesync.css": {
+  "infinite-animation": 1
+ },
+ "public/css/wm-bintoss.css": {
+  "infinite-animation": 1
+ },
+ "public/css/wm-browser.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 2
+ },
+ "public/css/wm-director.css": {
+  "infinite-animation": 1
+ },
+ "public/css/wm-host.css": {
+  "infinite-animation": 1,
+  "will-change": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/wm-lapis.css": {
+  "infinite-animation": 1,
+  "will-change": 1
+ },
+ "public/css/wm-lock65.css": {
+  "infinite-animation": 1,
+  "will-change": 4
+ },
+ "public/css/wm-paypass.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/wm-settings-dreamscape.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/wm-settings-system.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/wm-shell.css": {
+  "infinite-animation": 4,
+  "will-change": 1,
+  "paint-keyframes": 2
+ },
+ "public/css/wm-studio.css": {
+  "infinite-animation": 2
+ },
+ "public/css/wm-suite-kit.css": {
+  "infinite-animation": 1,
+  "paint-keyframes": 1
+ },
+ "public/css/wm-titanium.css": {
+  "infinite-animation": 9,
+  "will-change": 11,
+  "paint-keyframes": 1
+ },
+ "public/css/wm-traffic.css": {
+  "infinite-animation": 1
+ },
+ "public/css/wm-weather.css": {
+  "infinite-animation": 12,
+  "will-change": 4
+ },
+ "public/css/wm-youtube.css": {
+  "infinite-animation": 1,
+  "will-change": 2
+ },
+ "public/css/wm65-start.css": {
+  "will-change": 3
+ },
+ "public/css/wm65.css": {
+  "will-change": 1,
+  "paint-keyframes": 2
+ },
+ "public/scripts/comp/activeSyncAgent.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/agentClientBridge.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/agentClientUpdateDialog.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/blockContainer.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/browsingSessions.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/chatSystem.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/clientPerfSampler.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/configEditorApplet.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/cplDeviceManager.js": {
+  "timer-html-rebuild": 1
+ },
+ "public/scripts/comp/cplDialogs.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/cplDialogs2.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/desktop-apps/emotion.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/desktop-apps/guacFrameMirror.js": {
+  "ungated-timer": 1,
+  "polling-timer": 1
+ },
+ "public/scripts/comp/desktop-apps/paint/paintApp.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/desktop-apps/paint/paintWarp.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/desktop-apps/sideshow/sideshowSimulator.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/desktopShortcuts.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/directorMascot.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/directorMascotLab.js": {
+  "ungated-timer": 1,
+  "timer-html-rebuild": 1
+ },
+ "public/scripts/comp/dynamicGenerationCarousel.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/galleryActions.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/galleryToolbar.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/generationOrchestrator.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/grimoireTabs.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/imageExpansion.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/logViewerApplet.js": {
+  "ungated-timer": 4
+ },
+ "public/scripts/comp/mailAccountsClient.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/mainframeServerWindow.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/melatonContinuity.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/melatonControlPanel.js": {
+  "ungated-timer": 3,
+  "timer-html-rebuild": 1
+ },
+ "public/scripts/comp/melatonSegments.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/meletonAccounts.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/menmaDsapApplet.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/messengerNotify.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/modalUtils.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/notepadManager.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/novelManager.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/planetSwitcher.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/serviceWorkerManager.js": {
+  "ungated-timer": 4
+ },
+ "public/scripts/comp/soundRecorder.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/spellbookModal.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/taskbarClock.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/taskbarProperties.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/textMessagingClient.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/toastManager.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/vistaSidebar.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/walletTray.js": {
+  "ungated-timer": 3
+ },
+ "public/scripts/comp/weatherAlerts.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/welcomeCenter.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmAccounts.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/wmAndroidApps.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/wmChat.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/wmDialogs.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmDreamStudioPrint.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmEmotion.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmFileExplorer.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmGems.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmInternetSearch.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmLapis.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/wmMedia.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmMinesweeper.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmNotes.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmNotificationInbox.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmPayPass.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmPrograms.js": {
+  "ungated-timer": 3
+ },
+ "public/scripts/comp/wmRemoteDesktop.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/wmSettingsConnections.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmSettingsSystem.js": {
+  "ungated-timer": 3
+ },
+ "public/scripts/comp/wmShell.js": {
+  "ungated-timer": 9,
+  "bridge-in-loop": 2
+ },
+ "public/scripts/comp/wmSolitaire.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmSpellcaster.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmStudio.js": {
+  "ungated-timer": 4
+ },
+ "public/scripts/comp/wmTasks.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmTeleport.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/comp/wmTextMessaging.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmTraffic.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/wmWeather.js": {
+  "ungated-timer": 3
+ },
+ "public/scripts/comp/wmYouTube.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/comp/workspaceUtils.js": {
+  "ungated-timer": 3
+ },
+ "public/scripts/launch/melatonBoot.js": {
+  "ungated-timer": 2
+ },
+ "public/scripts/launch/updateEngine.js": {
+  "ungated-timer": 1
+ },
+ "public/scripts/websocket.js": {
+  "ungated-timer": 5
+ }
+}

@@ -88,6 +88,12 @@ const DESKTOP_ONLY_TYPES = new Set([
 // data-shell="mobile"), never sent to a page that reported a desktop (a desktop tab, a DeX window).
 // A page that has not said which it is yet still gets them.
 const PHONE_ONLY_TYPES = new Set(['lapis_updated', 'lapis_notice', 'traffic_updated']);
+// Broadcasts every socket gets on purpose (#890, rule phone-power-server.mdc): a new broadcast type goes in
+// exactly one of DESKTOP_ONLY_TYPES / PHONE_ONLY_TYPES / BROADCAST_ALL (and in DORMANT_HOLD when a sleeping
+// phone or DeX window should get only the newest). scripts/check-perf-rules.js reads these lists and fails a
+// file that broadcasts a type none of them names (unclassified-broadcast).
+const BROADCAST_ALL = new Set([]);
+void BROADCAST_ALL;
 
 /** A Melaton Mobile page (it said so in client_desktop_state). */
 function isPhonePage(info) {
