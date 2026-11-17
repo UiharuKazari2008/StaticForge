@@ -571,11 +571,12 @@
                 });
                 el.addEventListener('scroll', () => {
                     if (el.scrollTop + el.clientHeight < el.scrollHeight - 40) return;
+                    // the count only (studioModelPrint keeps the sorted list while the gallery is the same)
                     const h = M.history(0, 0);
                     if (histShown >= h.total) return;
                     histShown += HIST_PAGE;
                     api.paint();
-                });
+                }, { passive: true });
             },
             draw(el) {
                 const h = M.history(0, histShown);
