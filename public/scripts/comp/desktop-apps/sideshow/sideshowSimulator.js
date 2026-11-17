@@ -364,9 +364,9 @@
             let n = 0;
             this.tickTimer = setInterval(() => {
                 if (++n % 10 === 0) this.evalFrames(false);
-                // the face is redrawn each second while the page is seen; hidden, only for the 30 s capture
-                // (it copies the face), and the first tick back draws it again (#890)
-                if (this.screen === 'clock' && (!doc || !doc.hidden || n % 30 === 0)) this.drawClock();
+                // the face is redrawn each second while the page is seen; hidden, sendScreen draws it for a
+                // capture that goes (none while nobody watches), and the first tick back draws it again (#890)
+                if (this.screen === 'clock' && (!doc || !doc.hidden)) this.drawClock();
                 if (this.screen === 'clock' && n % 30 === 0) void this.sendScreen();
             }, 1000);
             this.evalFrames(false);
@@ -528,6 +528,8 @@
             // nobody has the device's screen open (the server says so, P16): no capture, the next one goes
             // when a viewer opens it (screen_watch on)
             if (this.screenWatch === false) return;
+            // a hidden page leaves the face as it was (no draw each second): bring it to now for the copy
+            if (this.screen === 'clock' && doc.hidden) this.drawClock();
             const [, , lw, lh] = this.m.lcd;
             const c = Object.assign(doc.createElement('canvas'), { width: lw, height: lh });
             const g = c.getContext('2d');
