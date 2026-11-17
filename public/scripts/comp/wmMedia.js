@@ -284,11 +284,36 @@
         return true;
     }
 
-    // the clock of Android's playing item moves on the skin while it is on screen (local, no requests)
-    function androidClock(on) {
-        if (on && !androidTick) androidTick = setInterval(() => { if (page && layer === 'skin' && document.documentElement.dataset.wmApp === APP_ID) paintTime(); }, 1000);
-        else if (!on && androidTick) { clearInterval(androidTick); androidTick = 0; }
+    /**
+     * Now Playing on screen: Media in front on its skin, the page shown, the screen on, not behind an
+     * Android program (wmShell.onScreen). Playback goes on regardless; only the drawing waits.
+     */
+    function skinSeen() {
+        if (!page || layer !== 'skin' || document.documentElement.dataset.wmApp !== APP_ID) return false;
+        return !ws || typeof ws.onScreen !== 'function' || ws.onScreen(page);
     }
+    let skinStale = false; // the skin changed while it was not seen: painted when it shows again
+
+    // the clock of Android's playing item moves on the skin while it is on screen (local, no requests);
+    // the second's tick runs only then (the screen off, another app in front: none)
+    let androidPlaying = false;
+    function androidClock(on) {
+        androidPlaying = on;
+        syncAndroidTick();
+    }
+    function syncAndroidTick() {
+        const want = androidPlaying && skinSeen();
+        if (want && !androidTick) androidTick = setInterval(() => { if (skinSeen()) paintTime(); else syncAndroidTick(); }, 1000);
+        else if (!want && androidTick) { clearInterval(androidTick); androidTick = 0; }
+    }
+    // seen again (screen on, the page shown, back from an Android program): painted as it is now
+    function wake() {
+        syncAndroidTick();
+        if (skinStale && skinSeen()) paintSkin();
+    }
+    window.addEventListener('melatonscreen', wake);
+    document.addEventListener('visibilitychange', wake);
+    document.addEventListener('wmBehind', wake);
 
     function next(auto) {
         if (!media.queue.length) return;
@@ -665,13 +690,16 @@
     function paintSkin() {
         changed();
         if (!page) return;
+        const a = androidMode();
+        androidClock(!!(a && a.state === 'playing'));
+        // not seen: painted in full when it shows (render on show, wake)
+        if (!skinSeen()) { skinStale = true; return; }
         const skin = page.querySelector('.wmp-skin');
         if (!skin) return;
+        skinStale = false;
         const it = current();
         const v = media.el;
         const art = skin.querySelector('.wmp-art');
-        const a = androidMode();
-        androidClock(!!(a && a.state === 'playing'));
         skin.classList.toggle('is-android', !!a);
         if (a) {
             // something else plays on the phone: Now Playing is its remote (#801)
@@ -739,13 +767,17 @@
 
     function paintTime() {
         if (!page) return;
+        // timeupdate fires ~4 times a second while something plays, also with the screen off: drawn only when seen
+        if (!skinSeen()) { skinStale = true; return; }
         const skin = page.querySelector('.wmp-skin');
         if (!skin) return;
         const v = media.el;
         const a = androidMode();
         const t = a ? androidPosition(a) : v ? v.currentTime : 0;
         const d = a ? (a.duration || 0) / 1000 : v && Number.isFinite(v.duration) ? v.duration : 0;
-        skin.querySelector('.wmp-time').textContent = fmtTime(t);
+        const time = skin.querySelector('.wmp-time');
+        const text = fmtTime(t);
+        if (time.textContent !== text) time.textContent = text;
         const seek = skin.querySelector('.wmp-seek');
         seek.style.setProperty('--p', d ? Math.min(1, t / d) : 0);
         seek.classList.toggle('is-disabled', !d);
