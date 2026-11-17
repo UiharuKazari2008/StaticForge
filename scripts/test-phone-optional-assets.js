@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Melaton Mobile's lighter install (#890): a client with the mobile bit carries the flag 'mobile' in
+ * Melaton Mobile's lighter install (#890): a phone (the mobile bit and a Melaton Mobile boot on a handheld) carries the flag 'mobile' in
  * its package set (public/scripts/launch/assetPackages.js), and its manifest leaves out the Desktop
  * Background photos and the Sidebar's art ('wifi': fetched on demand, kept, prefetched on Wi-Fi by
  * public/sw.js) and the font files no phone browser reads ('demand'). Checks:
@@ -73,7 +73,7 @@ function pageWorld(state, extra = {}) {
     vm.runInContext(fs.readFileSync(path.join(PUBLIC, 'scripts/launch/assetPackages.js'), 'utf8'), ctx);
     return { api: ctx.melatonPackages, doc, ctx };
 }
-let p = pageWorld({ mobile: true, version: 'wm61', tier: 2, pinned: [] });
+let p = pageWorld({ mobile: true, handheld: true, version: 'wm61', tier: 2, pinned: [] });
 assert.strictEqual(decodeURIComponent(/melaton_pkgs=([^;]*)/.exec(p.doc.cookie)[1]), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'the page asserts the flag in the cookie at load');
 assert.deepStrictEqual(Array.from(p.api.current()), ['wm61', 'wm61-2x', 'wmc', 'wmc-2x'], 'current() lists packages only');
 assert.deepStrictEqual(urls(p.api.filterRows(full)), ['/scripts/app.js', '/dist/fontawesome/webfonts/fa-solid-900.woff2', '/static_images/wm61/start.png', '/static_images/wm61/start@2x.png'],
@@ -81,6 +81,35 @@ assert.deepStrictEqual(urls(p.api.filterRows(full)), ['/scripts/app.js', '/dist/
 p = pageWorld({ mobile: false, version: 'wm61', tier: 1, pinned: ['wm61'] });
 assert.strictEqual(decodeURIComponent(/melaton_pkgs=([^;]*)/.exec(p.doc.cookie)[1]), 'wm61', 'a desktop that added Melaton Mobile art: no flag');
 assert.strictEqual(p.api.filterRows(full).filter((r) => r.url === PHOTO).length, 1, 'and it keeps the photos');
+
+// the flag needs a handheld: a desktop browser started narrower than 1200 px boots Melaton Mobile (and
+// keeps the mobile bit for its art) but keeps the desktop's whole install
+const cookieOf = (w) => decodeURIComponent((/melaton_pkgs=([^;]*)/.exec(w.doc.cookie) || [])[1] || '');
+const DESKTOP_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
+const PHONE_UA = 'Mozilla/5.0 (Linux; Android 15; SM-A536B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+p = pageWorld(null, { navigator: { userAgent: DESKTOP_UA, userAgentData: { mobile: false } } });
+p.api.noteBoot({ shell: 'mobile', version: '6.1', touch: false });
+assert.strictEqual(cookieOf(p), 'wm61,wm61-2x,wmc,wmc-2x', 'a narrow desktop window: its art, no flag');
+assert.strictEqual(p.api.filterRows(full).filter((r) => r.url === PHOTO || r.url === SIDEBAR).length, 2, 'it keeps the photos and the Sidebar art');
+assert.strictEqual(p.api.read().handheld, false);
+p = pageWorld(null, { navigator: { userAgent: DESKTOP_UA }, AndroidDisplay: { isDesktop: () => false } });
+p.api.noteBoot({ shell: 'mobile', version: '6.1', touch: false });
+assert.strictEqual(cookieOf(p), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'the Android app: the flag');
+p.api.noteBoot({ shell: 'desktop' });
+assert.strictEqual(cookieOf(p), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'its DeX window (a desktop boot) keeps it');
+p = pageWorld(null, { navigator: { userAgent: DESKTOP_UA, userAgentData: { mobile: true } } });
+p.api.noteBoot({ shell: 'mobile', version: '6.1' });
+assert.ok(cookieOf(p).startsWith('mobile,'), 'a browser whose client hints say phone');
+p = pageWorld(null, { navigator: { userAgent: PHONE_UA } });
+p.api.noteBoot({ shell: 'mobile', version: '6.1' });
+assert.ok(cookieOf(p).startsWith('mobile,'), 'a phone browser by its user agent');
+p = pageWorld({ mobile: true, version: 'wm61', tier: 1, pinned: [] }, { navigator: { userAgent: PHONE_UA } });
+assert.strictEqual(cookieOf(p), 'wm61,wmc', 'a phone from before the handheld bit: the old cookie at load');
+p.api.noteBoot({ shell: 'mobile', version: '6.1' });
+assert.strictEqual(cookieOf(p), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'and the flag from its next Melaton Mobile boot');
+p.ctx.navigator = { userAgent: DESKTOP_UA, userAgentData: { mobile: false } };
+p.api.noteBoot({ shell: 'mobile', version: '6.1' });
+assert.strictEqual(cookieOf(p), 'mobile,wm61,wm61-2x,wmc,wmc-2x', 'kept: a set that went back and forth would download the photos again');
 
 // ---------- the fonts no phone reads ----------
 const fontDirs = ['dist/fonts', 'dist/fontawesome/webfonts', 'dist/remixicon'];
@@ -252,7 +281,7 @@ function hintWorld({ mobile, pathname, type, bridge }) {
         addEventListener: (ev, fn) => { listeners['win:' + ev] = fn; },
         AndroidDeviceStatus: bridge ? { getState: () => JSON.stringify(bridge.state) } : undefined
     };
-    const w2 = pageWorld(mobile ? { mobile: true, version: 'wm61', tier: 1, pinned: [] } : { mobile: false, version: 'wm61', tier: 1, pinned: [] }, extra);
+    const w2 = pageWorld(mobile ? { mobile: true, handheld: mobile !== 'narrow-desktop', version: 'wm61', tier: 1, pinned: [] } : { mobile: false, version: 'wm61', tier: 1, pinned: [] }, extra);
     return { posts, timers, listeners, conn, w: w2 };
 }
 
@@ -361,6 +390,9 @@ function hintWorld({ mobile, pathname, type, bridge }) {
     assert.strictEqual(h.listeners['conn:change'], undefined, 'and listens to nothing');
     h = hintWorld({ mobile: true, pathname: '/launch', type: 'wifi' });
     assert.strictEqual(h.timers.length, 0, 'the installer page does not start it');
+    h = hintWorld({ mobile: 'narrow-desktop', pathname: '/app', type: 'wifi' });
+    h.timers.forEach((t) => t.fn());
+    assert.strictEqual(h.posts.length, 0, 'a narrow desktop window (full install) sends nothing');
 
     console.log('test-phone-optional-assets: ok');
 })().catch((err) => {

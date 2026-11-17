@@ -24,13 +24,15 @@
  * requests carry it with no code of theirs): a comma list, or 'none' for core only. No cookie = a
  * client from before packages: the server gives it everything, as before.
  *
- * Melaton Mobile's lighter install (#890): a client with the mobile bit (a phone, and its DeX window)
+ * Melaton Mobile's lighter install (#890): a phone (the mobile bit, and a Melaton Mobile boot that ran
+ * on a handheld: the Android app, or a browser that says it is a phone; and so its DeX window too)
  * also carries the flag 'mobile' in its set, and its manifest leaves out the core files a phone
  * fetches only when something shows them (phoneOptional): the Desktop Background photos and the
  * Sidebar's art ('wifi': the service worker fetches one when it is asked for and keeps it, and fills
  * in the rest in the background while the phone is on Wi-Fi, sw.js PHONE_WIFI_PREFIXES), and font
  * files no phone browser reads ('demand': every @font-face naming one lists a WOFF2 before it).
- * Desktop clients keep them all.
+ * Desktop clients keep them all, also a desktop browser that once started narrower than 1200 px (it
+ * boots Melaton Mobile and keeps the mobile bit for its art, but it is not a handheld).
  *
  *   packageOf(url)            null (core) | package id | 'source'
  *   phoneOptional(url)        null | 'wifi' | 'demand': left out of a 'mobile' set's install
@@ -43,7 +45,7 @@
  *   filterRows(rows)          manifest rows (url) this client keeps
  *   tierFor(dpr, px)          1 | 2 | 4 (wmShell syncPixelScale's steps)
  *
- * In a Melaton Mobile page (/app with the mobile bit) it also tells the service worker what network
+ * In a phone's Melaton Mobile page (/app, with the flag) it also tells the service worker what network
  * the phone is on, once after the boot and then on each change (PHONE_PREFETCH): the worker's Wi-Fi
  * prefetch uses it where the worker cannot see the connection type itself.
  */
@@ -73,8 +75,8 @@
     // it is Common, though it lives under wm61
     const COMMON_WM61 = /^\/static_images\/wm61\/weather\//;
 
-    // the flag in a client's set: it runs Melaton Mobile (the stored mobile bit), so its install leaves
-    // out phoneOptional's files. Not a package: current() and Applied Updates never list it.
+    // the flag in a client's set: it is a phone (the mobile bit and the handheld bit), so its install
+    // leaves out phoneOptional's files. Not a package: current() and Applied Updates never list it.
     const MOBILE_FLAG = 'mobile';
     // Desktop pictures a phone shows only in a desktop window (DeX) or as its workspace's wallpaper
     // (sw.js WALLPAPER_CACHE keeps that one): the Desktop Background photos (179 MB,
@@ -131,7 +133,7 @@
     function read() {
         try {
             const s = JSON.parse(localStorage.getItem(STORE) || 'null');
-            if (s && typeof s === 'object') return { mobile: !!s.mobile, version: s.version === 'wm65' ? 'wm65' : 'wm61', tier: [1, 2, 4].includes(s.tier) ? s.tier : 1, pinned: Array.isArray(s.pinned) ? s.pinned.filter((id) => IDS.has(id)) : [] };
+            if (s && typeof s === 'object') return { mobile: !!s.mobile, handheld: !!s.handheld, version: s.version === 'wm65' ? 'wm65' : 'wm61', tier: [1, 2, 4].includes(s.tier) ? s.tier : 1, pinned: Array.isArray(s.pinned) ? s.pinned.filter((id) => IDS.has(id)) : [] };
         } catch (_) { /* storage off or junk */ }
         return null;
     }
@@ -145,10 +147,12 @@
         if (s.mobile) tierIds(s.version, s.tier).forEach((id) => set.add(id));
         return [...set].filter((id) => IDS.has(id)).sort();
     }
-    // the ids and, for a client with the mobile bit, the flag: what the cookie (and so the server) sees
+    // a phone's lighter install: Melaton Mobile booted here on a handheld
+    const phoneInstall = (s) => !!(s && s.mobile && s.handheld);
+    // the ids and, for a phone, the flag: what the cookie (and so the server) sees
     function setOf(s) {
         const ids = idsOf(s);
-        return s && s.mobile ? [...ids, MOBILE_FLAG].sort() : ids;
+        return phoneInstall(s) ? [...ids, MOBILE_FLAG].sort() : ids;
     }
     function cookieValue(s) {
         const ids = setOf(s);
@@ -172,7 +176,7 @@
 
     function change(mutate) {
         const before = read();
-        const s = before ? { ...before, pinned: before.pinned.slice() } : { mobile: false, version: 'wm61', tier: 1, pinned: [] };
+        const s = before ? { ...before, pinned: before.pinned.slice() } : { mobile: false, handheld: false, version: 'wm61', tier: 1, pinned: [] };
         mutate(s);
         const was = idsOf(before);
         const now = idsOf(s);
@@ -183,10 +187,30 @@
         return { changed: was.join(',') !== now.join(',') || !before, added: now.filter((id) => !was.includes(id)), removed };
     }
 
-    /** The page's shell at boot. Melaton Mobile sets the mobile bit (kept from then on). */
+    // A handheld (#890): the Android app (its bridges are in every page it loads, on the phone screen
+    // and in DeX alike), or a browser that says it is a phone. Any window narrower than 1200 px boots
+    // Melaton Mobile, also a desktop browser's; that one keeps the desktop's whole install.
+    function handheldNow() {
+        if (typeof window === 'undefined' || typeof navigator === 'undefined') return false;
+        try { if (window.AndroidDisplay || window.AndroidDeviceStatus || window.AndroidDevice) return true; } catch (_) { /* no bridges */ }
+        try {
+            const uad = navigator.userAgentData;
+            if (uad && typeof uad.mobile === 'boolean') return uad.mobile;
+        } catch (_) { /* no client hints */ }
+        return /Android.*Mobile|iPhone|iPod|Windows Phone|IEMobile/i.test(String(navigator.userAgent || ''));
+    }
+
+    /**
+     * The page's shell at boot. Melaton Mobile sets the mobile bit, and on a handheld the handheld bit
+     * (both kept from then on: a desktop boot, a phone's DeX window, never clears them, and a set that
+     * went back and forth would download the left-out files again each time).
+     */
     function noteBoot(opts = {}) {
         return change((s) => {
-            if (opts.shell === 'mobile') s.mobile = true;
+            if (opts.shell === 'mobile') {
+                s.mobile = true;
+                if (!s.handheld && handheldNow()) s.handheld = true;
+            }
             if (opts.version) s.version = opts.version === '6.5' || opts.version === 'wm65' ? 'wm65' : 'wm61';
             if (s.mobile && opts.shell === 'mobile') {
                 let px = null;
@@ -278,8 +302,7 @@
         };
         // after the boot (app.html's noteBoot has set the mobile bit by then); a desktop stops here
         setTimeout(() => {
-            const s = read();
-            if (!s || !s.mobile) return;
+            if (!phoneInstall(read())) return;
             send(null);
             const c = navigator.connection;
             if (c && typeof c.addEventListener === 'function') c.addEventListener('change', () => send(null));
