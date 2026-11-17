@@ -5,8 +5,9 @@ const { realClientIp, trustedProxiesFromResources } = require('./clientAddress')
 const {
     HEARTBEAT_INTERVAL_MS,
     createSocketHeartbeatEntry,
-    noteHeartbeatPong,
     reapSocketHeartbeats,
+    quietWindowFor,
+    watchSocketFrames,
     formatWsDisconnectLog
 } = require('./wsSocketHeartbeat');
 
@@ -25,13 +26,101 @@ const DORMANT_HOLD = new Map([
     // mail accounts: sync / flags / folders / account changes wait; new mail ('new') goes at once
     ['ma_event', (d) => (d.event === 'new' ? null : `${d.event || ''}:${d.accountId || ''}`)],
     ['service_worker_cache_update', 'all'],
-    ['runtime_compile_complete', 'all']
+    ['runtime_compile_complete', 'all'],
+    // state pushes (#890): the page uses only the newest
+    ['queue_update', 'last'],
+    ['search_indexing_status', 'last'],
+    // Director's status (#890): Melaton Mobile's "Director replied" note (wmDirector noteTurns) is driven
+    // by a turn starting or ending, so a status whose running turns differ from what the page last had
+    // goes at once; any other (a rename, an idle shutdown) waits as the newest only
+    ['director_computer_status', (d, info) => directorRunHoldKey(d, info)],
+    // MCP activity (#890): the generating flag (the print indicator) and the log line wait apart, newest only
+    ['mcp_activity', (d) => (d.generating === true || d.generating === false ? 'gen' : 'log')]
 ]);
 const DORMANT_HOLD_MAX = 300;
+
+/** The turns a Director status says are running ('' when none): the key that starts or ends a turn. */
+function directorRunKey(d) {
+    const s = d && typeof d === 'object' ? d : {};
+    const xi = s.xi && s.xi.running ? String(s.xi.sessionId || 'xi') : '';
+    return `${s.running ? String(s.sessionId || 'run') : ''}|${xi}`;
+}
+
+/** DORMANT_HOLD for director_computer_status: null (send now) when the running turns changed. */
+function directorRunHoldKey(d, info) {
+    const key = directorRunKey(d);
+    if (!info) return 'last';
+    const had = info.dormantDirectorRun;
+    info.dormantDirectorRun = key;
+    return had === undefined || had === key ? 'last' : null;
+}
 
 // notices a phone gets batched (WebSocketServer.broadcast): small, frequent, nothing waits on them
 const PHONE_BATCH_TYPES = new Set(['vfs_updated']);
 const PHONE_BATCH_MS = 10000;
+
+// Broadcasts only the desktop reads (#890), never sent to a Melaton Mobile page (agentClientBridge
+// info.phone). Each was checked against the phone's scripts: their only readers are desktop programs
+// (Server Manager, the MMC quips and SideShow pages, DSAP replication applets, the Novel window, the
+// desktop's save tray icon, the print queue tray icon, which printQueue.js never shows on the phone) or
+// nothing at all (config_checkpoint_restored, packages_updated). A phone's DeX window is a desktop page
+// and gets them. Kept for the phone: mcp_activity (the generating flag), desktop_shortcut_* and
+// desktop_positions_updated (the phone's file explorer lists the desktop's shortcuts from the same store),
+// autofill_ranking_updated (the phone's SmartText).
+const DESKTOP_ONLY_TYPES = new Set([
+    'runtime_compile_logs',
+    'generation_quips_updated', 'generation_quips_progress', 'generation_quips_status',
+    'print_queue_state',
+    'replication_progress', 'replication_maintenance', 'replication_sync_status', 'replication_sync_complete', 'replication_separation_done',
+    'novel_progress',
+    'workspace_desktop_persisted',
+    'devices_updated', 'device_screen_updated',
+    'config_checkpoint_restored',
+    'packages_updated'
+]);
+
+// Broadcasts only Melaton Mobile reads (its programs load in the mobile shell only: app.html
+// data-shell="mobile"), never sent to a page that reported a desktop (a desktop tab, a DeX window).
+// A page that has not said which it is yet still gets them.
+const PHONE_ONLY_TYPES = new Set(['lapis_updated', 'lapis_notice', 'traffic_updated']);
+
+/** A Melaton Mobile page (it said so in client_desktop_state). */
+function isPhonePage(info) {
+    return !!(info && info.phone && info.phone.shell === 'mobile');
+}
+
+/**
+ * A page running the desktop shell: a desktop tab or a phone's DeX window. Only that shell reports
+ * 'desktop' or 'logon' (agentClientBridge.js computeDesktopState); a phone page says 'booting' /
+ * 'ready' / 'locked', and may say so before its phone state is known, so those never count here.
+ */
+function isDesktopPage(info) {
+    return !!(info && !info.phone && (info.desktopState === 'desktop' || info.desktopState === 'logon'));
+}
+
+/**
+ * Whether a broadcast (or a message to a whole session) of this type goes to this socket at all.
+ *  - The Android app's background link (ActiveSync speaker 'service') reads no broadcast: only its
+ *    replies, as_request / as_event / miniport_ring / as_credits, all sent to it directly.
+ *  - A light socket (?light=1, the app's widgets and screen saver) gets only the types it subscribed to.
+ *  - DESKTOP_ONLY_TYPES skip phone pages, PHONE_ONLY_TYPES skip desktop pages.
+ * sessionWide: sendToUser (no per-shell type filter; only the native sockets are left out).
+ */
+function socketWantsBroadcast(info, type, sessionWide = false) {
+    if (!info) return true;
+    if (info.as && info.as.speaker === 'service') return false;
+    if (info.light) return !!(type && info.lightSubs && info.lightSubs.has(type));
+    if (sessionWide || !type) return true;
+    if (DESKTOP_ONLY_TYPES.has(type) && isPhonePage(info)) return false;
+    if (PHONE_ONLY_TYPES.has(type) && isDesktopPage(info)) return false;
+    return true;
+}
+
+// Fields of the ping that move with the clock, not with news (#890): they ride along on the next
+// real change. novelaiStatus.fetchedAt (every status.novelai.net read), accountSubscriptionLastRefreshAt
+// (every subscription refresh), queue_status's counters and countdowns (they decay as time passes;
+// queue_update still carries every change of in5min / in15min, startQueueStatusInterval).
+const PING_QUEUE_CLOCKS = ['sinceLast', 'nextAllowed', 'in5min', 'in15min'];
 
 /** The ping's status without its clock: two reads with the same key carry the same news. */
 function pingStatusKey(data) {
@@ -39,10 +128,30 @@ function pingStatusKey(data) {
     const { server_time: _t, ...rest } = data;
     // queue_status.sinceLast is the read's own clock as well
     if (rest.queue_status && typeof rest.queue_status === 'object') {
-        const { sinceLast: _s, ...q } = rest.queue_status;
+        const q = { ...rest.queue_status };
+        for (const k of PING_QUEUE_CLOCKS) delete q[k];
         rest.queue_status = q;
     }
+    if (rest.novelaiStatus && typeof rest.novelaiStatus === 'object') {
+        const { fetchedAt: _f, ...n } = rest.novelaiStatus;
+        rest.novelaiStatus = n;
+    }
+    if (rest.accountHealth && typeof rest.accountHealth === 'object') {
+        const { accountSubscriptionLastRefreshAt: _r, ...h } = rest.accountHealth;
+        rest.accountHealth = h;
+    }
     try { return JSON.stringify(rest); } catch (_) { return String(Date.now()); }
+}
+
+/** ?name=value on a socket's request URL ('' when absent). */
+function requestQuery(req, name) {
+    try {
+        const url = String((req && req.url) || '');
+        const q = url.indexOf('?');
+        return q < 0 ? '' : (new URLSearchParams(url.slice(q + 1)).get(name) || '');
+    } catch (_) {
+        return '';
+    }
 }
 
 class WebSocketServer {
@@ -137,7 +246,8 @@ class WebSocketServer {
             plumbing.subscribe('ws:broadcast:serviceWorkerCacheUpdate', (data) => {
                 // only the rows that changed since the last broadcast (modules/swManifestDelta.js);
                 // an unchanged manifest sends nothing
-                const d = require('./swManifestDelta').next(data.files || []);
+                const delta = require('./swManifestDelta');
+                const d = delta.next(data.files || []);
                 if (d.same) return;
                 this.broadcast({
                     type: 'service_worker_cache_update',
@@ -145,6 +255,9 @@ class WebSocketServer {
                         files: d.files,
                         delta: d.delta === true,
                         baseHash: d.baseHash || null,
+                        // sw.js's own content (#890): a page asks the browser for a new service worker
+                        // (registration.update()) only when this differs from the one it last saw
+                        swHash: delta.swScriptHash(),
                         hash: d.hash,
                         silent: data.silent === true,
                         message: data.message || 'Application updates are available',
@@ -229,10 +342,16 @@ class WebSocketServer {
     setupWebSocket() {
         this.wss.on('connection', async (ws, req) => {
             console.log('🔌 New WebSocket connection attempt');
-            
+            // an 'error' while the session is looked up (a reset, a bad frame) must not go unhandled:
+            // the logging handler below is wired only after that await
+            ws.on('error', () => { /* 'close' follows */ });
+
             // Extract session from request
             const sessionResult = await this.extractSession(req);
-            
+            // closed while the session was looked up: its 'close' has already fired, so nothing below
+            // may register it (it would stay in this.clients, and a Miniport's heartbeat timer would run on)
+            if (ws.readyState !== WebSocket.OPEN) return;
+
             // Same trusted-proxy walk as web_server.js getRealIP (modules/clientAddress.js).
             const resolvedIp = realClientIp(req, trustedProxiesFromResources(this.globalResources));
             const clientIP = resolvedIp && resolvedIp !== 'unknown' ? resolvedIp : false;
@@ -253,19 +372,11 @@ class WebSocketServer {
             // Dreamscape Frame tablets (modules/slideshowDevices.js) say so before they identify,
             // so agent auto-bind never picks one in between
             // (browsers cannot set headers on a socket: the Device Simulator app passes ?dreamscapeClient=)
-            let queryApp = '';
-            try {
-                const q = String(req.url || '').indexOf('?');
-                queryApp = q < 0 ? '' : new URLSearchParams(String(req.url).slice(q + 1)).get('dreamscapeClient') || '';
-            } catch (_) { /* no query */ }
+            const queryApp = requestQuery(req, 'dreamscapeClient');
             // Melaton Miniport (#815): the Android app's native carrier. Not a client of its own: it only
             // carries its pages' sub-clients (modules/ws/virtualSocket.js), so it never enters this.clients
             // (no boot pushes, no broadcasts of its own, not in any client list)
-            let miniportQuery = false;
-            try {
-                const q = String(req.url || '').indexOf('?');
-                miniportQuery = q >= 0 && new URLSearchParams(String(req.url).slice(q + 1)).get('miniport') === '1';
-            } catch (_) { /* no query */ }
+            const miniportQuery = requestQuery(req, 'miniport') === '1';
             // (a sub-client it carries reuses its request, ?miniport=1 included: that one is a client)
             if (miniportQuery && !ws.virtual) {
                 require('./ws/virtualSocket').acceptMiniport(ws, req, clientInfo, (vws, vreq) => this.wss.emit('connection', vws, vreq));
@@ -274,6 +385,15 @@ class WebSocketServer {
             const frameApp = [req.headers['x-dreamscape-client'], req.headers['user-agent'], queryApp]
                 .map((h) => String(h || '').trim().split(/\s+/)[0]).find((h) => /^(DreamscapeFrame|VirtualSideShow)\//.test(h));
             if (frameApp) clientInfo.deviceApp = frameApp.slice(0, 64);
+            // A light client (?light=1, #890): the Android app's widgets and screen saver (DSApp
+            // DreamscapeClient). Signed in as usual, but none of a page's boot pushes, and of the
+            // broadcasts only the types it subscribed to (gallery_subscribe); replies as always.
+            if (!ws.virtual && requestQuery(req, 'light') === '1') {
+                clientInfo.light = true;
+                clientInfo.lightSubs = new Set();
+            }
+            // every frame it sends counts as liveness (the heartbeat pings only a socket silent a whole window)
+            watchSocketFrames(ws, clientInfo.heartbeat);
 
             this.clients.set(ws, clientInfo);
             // the request a Continuity sub-client of this socket reuses (#798: modules/ws/virtualSocket.js)
@@ -331,10 +451,11 @@ class WebSocketServer {
             }
             this.sendToClient(ws, connectionPayload);
             // the server status once; after this it comes only when it changes (startPingInterval)
-            if (clientInfo.authenticated) this.sendPingTo(ws);
+            if (clientInfo.authenticated && !clientInfo.light) this.sendPingTo(ws);
 
-            // (not a Continuity sub-client: its carrier, the same session, just did, #798)
-            if (clientInfo.authenticated && !ws.virtual) {
+            // (not a Continuity sub-client: its carrier, the same session, just did, #798; not a light
+            // client: the app's widgets are not a sign-in)
+            if (clientInfo.authenticated && !ws.virtual && !clientInfo.light) {
                 // A logged-in client restarts the 6-hourly Claude usage refresh (modules/claudeUsageProbe.js).
                 try {
                     require('./claudeUsageProbe').noteClientLogin(this.globalResources);
@@ -343,7 +464,7 @@ class WebSocketServer {
                 }
             }
 
-            if (clientInfo.authenticated && clientInfo.clientId) {
+            if (clientInfo.authenticated && clientInfo.clientId && !clientInfo.light) {
                 try {
                     const { onAgentClientConnected } = require('./agentClientBridge');
                     onAgentClientConnected(this.globalResources, clientInfo.clientId);
@@ -352,24 +473,8 @@ class WebSocketServer {
                 }
             }
 
-            // Push boot-time compile failures stored in runtimeAssetService (no clients were connected at compile time)
-            this.sendStoredRuntimeCompileErrorsToClient(ws);
-
-            // Restore session workspace for reconnection sync (only if authenticated)
-            if (clientInfo.authenticated && clientInfo.sessionId) {
-                await this.restoreSessionWorkspace(clientInfo.sessionId, ws);
-                this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
-                await this.sendGalleryHintToClient(clientInfo.sessionId, ws);
-            }
-
-            // Send combined search + prompt FTS indexing snapshot on connect
-            void this.sendSearchIndexingSnapshotToClient(ws);
-
-            ws.on('pong', () => {
-                noteHeartbeatPong(clientInfo.heartbeat);
-            });
-
-            // Handle client disconnect
+            // Handle client disconnect (wired before the awaited boot pushes below: a socket that
+            // closes while they run is still cleaned up)
             ws.on('close', (code, reason) => {
                 // a carrier's Continuity sub-clients end with it (#798)
                 if (!ws.virtual) require('./ws/virtualSocket').closeAll(ws);
@@ -422,31 +527,36 @@ class WebSocketServer {
                 }
             });
 
-            // Handle errors
+            // Handle errors. ws always emits 'close' after 'error', and the close handler above does the
+            // cleanup. (This handler used to delete the client first, so the close handler skipped
+            // everything: an ActiveSync phone, a SideShow device, an agent bind or an IE window of a
+            // socket that ended in an error, a reset or a dead link, was never told it was gone.)
             ws.on('error', (error) => {
-                const clientInfo = this.clients.get(ws);
-                console.error(`❌ WebSocket error for session ${clientInfo?.sessionId || 'unknown'}:`, error);
-
-                const handlers = this.globalResources.getWebSocketMessageHandlers();
-                if (handlers && handlers.detachClientActiveGenerations) {
-                    handlers.detachClientActiveGenerations(ws);
-                }
-
-                // Clean up metadata cache for this client if we have session info
-                if (clientInfo && clientInfo.sessionId) {
-                    if (handlers && handlers.cleanupClientCache) {
-                        handlers.cleanupClientCache(
-                            clientInfo.sessionId,
-                            ws,
-                            this.hasOtherClientForSession(clientInfo.sessionId, ws)
-                        );
-                    }
-                }
-                
-                this.clearRuntimeCompileProgressThrottleForClient(ws);
-                this.clearRuntimeCompileLogsThrottleForClient(ws);
-                this.clients.delete(ws);
+                const info = this.clients.get(ws);
+                console.error(`❌ WebSocket error for session ${info?.sessionId || 'unknown'}:`, error);
             });
+
+            // ---- boot pushes (a light client gets none of them)
+            if (clientInfo.light) {
+                // its session's workspace still comes back on the server (its requests read it), unsent
+                if (clientInfo.authenticated && clientInfo.sessionId) {
+                    try { await this.globalResources.getWorkspaceManager().restoreSessionWorkspace(clientInfo.sessionId); } catch (_err) { /* default workspace */ }
+                }
+                return;
+            }
+
+            // Push boot-time compile failures stored in runtimeAssetService (no clients were connected at compile time)
+            this.sendStoredRuntimeCompileErrorsToClient(ws);
+
+            // Restore session workspace for reconnection sync (only if authenticated)
+            if (clientInfo.authenticated && clientInfo.sessionId) {
+                await this.restoreSessionWorkspace(clientInfo.sessionId, ws);
+                this.sendGalleryScrollStateFromSession(clientInfo.sessionId, ws);
+                await this.sendGalleryHintToClient(clientInfo.sessionId, ws);
+            }
+
+            // Send combined search + prompt FTS indexing snapshot on connect
+            void this.sendSearchIndexingSnapshotToClient(ws);
         });
 
         console.log('✓ WebSocket server initialized');
@@ -771,15 +881,20 @@ class WebSocketServer {
         if (!type || rid || !DORMANT_HOLD.has(type)) return false;
         const mode = DORMANT_HOLD.get(type);
         const dataOf = () => { try { const o = typeof message === 'string' ? JSON.parse(message) : message; return (o && o.data) || {}; } catch (_) { return {}; } };
+        if (!this._dormantHeld) this._dormantHeld = new WeakMap();
         let key;
         if (mode === 'last') key = type;
         else if (mode === 'path') key = `${type}|${dataOf().path || ''}`;
         else if (typeof mode === 'function') {
-            const k = mode(dataOf());
-            if (k == null) return false; // this one goes at once
+            const k = mode(dataOf(), this.clients.get(ws));
+            if (k == null) {
+                // this one goes at once; an older held copy kept as the newest ('last') would land after it
+                const was = this._dormantHeld.get(ws);
+                if (was) was.delete(`${type}|last`);
+                return false;
+            }
             key = `${type}|${k}`;
         } else key = `${type}|${(this._dormantSeq = (this._dormantSeq || 0) + 1)}`;
-        if (!this._dormantHeld) this._dormantHeld = new WeakMap();
         let held = this._dormantHeld.get(ws);
         if (!held) { held = new Map(); this._dormantHeld.set(ws, held); }
         held.delete(key); // a newer copy goes to the end
@@ -794,7 +909,11 @@ class WebSocketServer {
         if (!info) return;
         const was = !!info.dormant;
         info.dormant = !!on;
-        if (on && !was) info.dormantAt = Date.now();
+        if (on && !was) {
+            info.dormantAt = Date.now();
+            // the Director turns the page last had (directorRunHoldKey): the newest status broadcast
+            info.dormantDirectorRun = this._directorRunKey || directorRunKey(null);
+        }
         const held = !on && this._dormantHeld ? this._dormantHeld.get(ws) : null;
         if (was !== !!on) {
             const ua = String(info.userAgent || '');
@@ -887,6 +1006,8 @@ class WebSocketServer {
             }
 
             const clientInfo = this.clients.get(client);
+            // the same audience as broadcast() (#890): not the app's native links
+            if (!socketWantsBroadcast(clientInfo, 'runtime_compile_progress')) return;
             let state = this.runtimeCompileProgressByClient.get(client);
             if (!state) {
                 state = { lastSentAt: 0, pendingData: null, flushTimer: null };
@@ -989,6 +1110,8 @@ class WebSocketServer {
             }
 
             const clientInfo = this.clients.get(client);
+            // the same audience as broadcast() (#890): desktops only (Server Manager's log), no native links
+            if (!socketWantsBroadcast(clientInfo, 'runtime_compile_logs')) return;
             let state = this.runtimeCompileLogsByClient.get(client);
             if (!state) {
                 state = { lastSentAt: 0, pendingData: null, flushTimer: null };
@@ -1024,33 +1147,41 @@ class WebSocketServer {
     }
 
     broadcast(message, filter = null) {
-        const to = [];
+        const type = message && message.type;
+        let to = [];
         this.forEachSocket(client => {
-            if (client.readyState === WebSocket.OPEN && (!filter || filter(this.clients.get(client)))) to.push(client);
+            if (client.readyState !== WebSocket.OPEN) return;
+            const info = this.clients.get(client);
+            // who reads this type at all (#890: native links, light clients, desktop- / phone-only types)
+            if (!socketWantsBroadcast(info, type)) return;
+            if (!filter || filter(info)) to.push(client);
         });
         // a dormant phone page: held for it (setDormant), not sent over its carrier now
-        if (message && DORMANT_HOLD.has(message.type) && !message.requestId) {
+        if (message && DORMANT_HOLD.has(type) && !message.requestId) {
             // only the sockets whose copy was really held leave the list (new mail is not held)
-            const sleeping = to.filter((ws) => this._isDormantPhone(ws) && this._dormantHold(ws, message));
-            if (sleeping.length) {
-                const awake = to.filter((ws) => !sleeping.includes(ws));
-                to.length = 0;
-                to.push(...awake);
-            }
+            const sleeping = new Set(to.filter((ws) => this._isDormantPhone(ws) && this._dormantHold(ws, message)));
+            if (sleeping.size) to = to.filter((ws) => !sleeping.has(ws));
         }
         // a phone gets frequent small notices (file changes) in one go every few seconds instead of a
         // radio wakeup each (rule server-push-not-polling); desktops keep getting them at once
-        if (message && PHONE_BATCH_TYPES.has(message.type)) {
-            const phones = to.filter((ws) => { const i = this.clients.get(ws); return !!(i && i.phone && i.phone.shell === 'mobile'); });
-            if (phones.length) {
+        if (message && PHONE_BATCH_TYPES.has(type)) {
+            const phones = new Set(to.filter((ws) => isPhonePage(this.clients.get(ws))));
+            if (phones.size) {
                 phones.forEach((ws) => this._batchForPhone(ws, message));
-                const rest = to.filter((ws) => !phones.includes(ws));
-                to.length = 0;
-                to.push(...rest);
+                to = to.filter((ws) => !phones.has(ws));
             }
         }
-        // a Continuity carrier and its sub-client: one copy over the phone's socket (#798)
-        require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this.sendToClient(ws, payload));
+        // the Director turns now running, for a phone page that falls asleep next (directorRunHoldKey)
+        if (type === 'director_computer_status') this._directorRunKey = directorRunKey(message.data);
+        // a Continuity carrier and its sub-client: one copy over the phone's socket (#798). The dormant
+        // hold was decided above for every socket left, so they are sent as they are (sendToClient would
+        // ask a stateful hold rule a second time)
+        require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this._sendNow(ws, payload));
+    }
+
+    /** One already-serialised packet to an open socket, past the dormant hold (broadcast decided it). */
+    _sendNow(ws, payload) {
+        if (ws && ws.readyState === WebSocket.OPEN) ws.send(payload);
     }
 
     _batchForPhone(ws, message) {
@@ -1078,9 +1209,14 @@ class WebSocketServer {
 
     sendToUser(sessionId, message) {
         const to = [];
+        const type = message && message.type;
+        // a packet with a requestId may be a reply routed to the whole session (sendToRequest): a light
+        // client still gets it (its own request's answer)
+        const reply = !!(message && message.requestId);
         this.forEachSocket(client => {
             const clientInfo = this.clients.get(client);
-            if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN) to.push(client);
+            if (clientInfo && clientInfo.sessionId === sessionId && client.readyState === WebSocket.OPEN
+                && ((reply && clientInfo.light) || socketWantsBroadcast(clientInfo, type, true))) to.push(client);
         });
         require('./ws/virtualSocket').sendCoalesced(to, message, (ws, payload) => this.sendToClient(ws, payload));
     }
@@ -1188,6 +1324,8 @@ class WebSocketServer {
             }
             reapSocketHeartbeats(openClients, {
                 isOpen: (client) => client.ws && client.ws.readyState === WebSocket.OPEN,
+                // a socket heard from within its window is not pinged (#890, wsSocketHeartbeat.js)
+                windowFor: (client) => quietWindowFor(client.ws, client.info),
                 ping: (client) => {
                     try {
                         client.ws.ping();
@@ -1221,11 +1359,22 @@ class WebSocketServer {
         this._lastPingKey = null;
         this.heartbeatInterval = setInterval(() => {
             const serverData = pingCallback ? pingCallback() : null;
+            // the same read for other status pushes (addStatusTap: ActiveSync's as_credits, #890)
+            if (this._statusTaps) {
+                for (const fn of this._statusTaps) { try { fn(serverData); } catch (err) { console.warn('[ws] status tap failed:', err.message); } }
+            }
             const key = pingStatusKey(serverData);
             if (key === this._lastPingKey) return;
             this._lastPingKey = key;
             this.broadcastPing(serverData);
         }, 10000);
+    }
+
+    /** fn(serverStatus) on every 10 s status read; it decides itself whether anything changed. */
+    addStatusTap(fn) {
+        if (typeof fn !== 'function') return;
+        if (!this._statusTaps) this._statusTaps = [];
+        this._statusTaps.push(fn);
     }
 
     /** The current server status to one socket (a new connection), outside the change broadcast. */

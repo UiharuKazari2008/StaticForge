@@ -1708,6 +1708,38 @@ async function handleUrlUploadMetadataRequest(handlers, ws, message, clientInfo,
     }
 }
 
+// What gallery_subscribe turns on for a light client (#890): the pushes the app's widgets and screen
+// saver react to (DSApp DreamscapeClient PUSH_TYPES)
+const GALLERY_PUSH_TYPES = ['gallery_updated', 'workspace_image_added', 'workspace_updated'];
+
+/**
+ * gallery_subscribe { workspaceIds: ['active' | id, ...] } (#890): a socket says it wants the gallery's
+ * pushes. A light client (?light=1, modules/websocket.js) gets broadcasts only for the types it
+ * subscribed to, so this is how the app's widgets hear of new pictures. The pushes still follow the
+ * session's active workspace, as for every socket (clientMatchesGalleryWorkspace); the named
+ * workspaces are kept on the socket (galleryWorkspaces) for the app's pinned frames.
+ */
+async function handleGallerySubscribe(handlers, ws, message, clientInfo) {
+    const src = message && Array.isArray(message.workspaceIds) ? message.workspaceIds
+        : (message && message.data && Array.isArray(message.data.workspaceIds) ? message.data.workspaceIds : ['active']);
+    const ids = new Set();
+    for (const v of src.slice(0, 64)) {
+        const id = String(v == null ? '' : v).trim().slice(0, 128);
+        if (id) ids.add(id);
+    }
+    if (!ids.size) ids.add('active');
+    if (clientInfo) {
+        clientInfo.galleryWorkspaces = ids;
+        if (clientInfo.light && clientInfo.lightSubs) GALLERY_PUSH_TYPES.forEach((t) => clientInfo.lightSubs.add(t));
+    }
+    handlers.sendToClient(ws, {
+        type: 'gallery_subscribe_response',
+        requestId: message && message.requestId,
+        data: { success: true, workspaceIds: Array.from(ids), types: GALLERY_PUSH_TYPES },
+        timestamp: new Date().toISOString()
+    });
+}
+
 /**
  * Register gallery WebSocket packet handlers on wsPacketRegistry.
  * @param {import('../../websocketHandlers').WebSocketMessageHandlers} handlersCtx
@@ -1731,6 +1763,7 @@ function registerPackets(handlersCtx) {
     regFn('request_image_by_index', handleImageByIndexRequest);
     regFn('find_image_index', handleFindImageIndexRequest);
     regFn('gallery_position_hint', handleGalleryPositionHint);
+    regFn('gallery_subscribe', handleGallerySubscribe);
     regFn('set_gallery_show_shared', handleSetGalleryShowShared);
     regFn('delete_images_bulk', handleDeleteImagesBulk, GALLERY_DESTRUCTIVE);
     regFn('delete_unupscaled_original', handleDeleteUnupscaledOriginal, GALLERY_DESTRUCTIVE);

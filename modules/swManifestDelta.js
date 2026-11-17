@@ -13,9 +13,30 @@
  *
  * A client applies a delta only when baseHash is the list it last took; otherwise it reads the
  * manifest in full (serviceWorkerManager), as before.
+ *
+ *   swScriptHash() -> sha1 hex of public/sw.js (cached by its mtime and size; null when unreadable),
+ *                     sent as swHash with every broadcast (#890): a page calls registration.update()
+ *                     only when it differs from the one it stored, instead of on every notify
  */
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
+
+const SW_FILE = path.join(__dirname, '..', 'public', 'sw.js');
+let swCache = null; // { mtimeMs, size, hash }
+
+function swScriptHash(file = SW_FILE) {
+    try {
+        const st = fs.statSync(file);
+        if (swCache && swCache.file === file && swCache.mtimeMs === st.mtimeMs && swCache.size === st.size) return swCache.hash;
+        const hash = crypto.createHash('sha1').update(fs.readFileSync(file)).digest('hex');
+        swCache = { file, mtimeMs: st.mtimeMs, size: st.size, hash };
+        return hash;
+    } catch (_) {
+        return null;
+    }
+}
 
 let lastMap = null;
 let lastHash = null;
@@ -43,4 +64,4 @@ function next(rows) {
 
 const current = () => lastHash;
 
-module.exports = { next, current, digest };
+module.exports = { next, current, digest, swScriptHash };
