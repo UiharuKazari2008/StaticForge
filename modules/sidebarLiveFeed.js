@@ -18,6 +18,7 @@
 
 const sidebarGadgets = require('./sidebarGadgets');
 const sidebarSystemInfo = require('./sidebarSystemInfo');
+const { isDormantPage } = require('./wsSocketHeartbeat');
 
 const TICK_MS = 2000;
 const REFRESH_MS = {
@@ -143,7 +144,7 @@ function asleep(ws) {
     try {
         const server = globalResourcesRef && typeof globalResourcesRef.getWebSocketServer === 'function' ? globalResourcesRef.getWebSocketServer() : null;
         const info = server && server.clients && typeof server.clients.get === 'function' ? server.clients.get(ws) : null;
-        return require('./wsSocketHeartbeat').isDormantPage(info);
+        return isDormantPage(info);
     } catch (_err) {
         return false;
     }

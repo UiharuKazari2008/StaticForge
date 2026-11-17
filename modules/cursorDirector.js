@@ -51,6 +51,7 @@ const EFFORT_MODELS = {
 const { DIRECTOR_MCP_SCOPES } = require('./directorAppKeyScopes');
 const tokenRouter = require('./tokenRouterBridge');
 const customProviders = require('./customModelProviders');
+const { isDormantPage } = require('./wsSocketHeartbeat');
 const MCP_SCOPES = DIRECTOR_MCP_SCOPES;
 // Bubblewrap is the barrier. The jail's own CLI config copy approves every
 // shell and web search so Cursor does not stop to ask inside the computer.
@@ -4972,7 +4973,7 @@ function emitDirector(handler, ws, type, data, requestId) {
 // (resendDirectorStream).
 function watchesDirectorStream(info, sessionId) {
     if (info && info.directorWatch === undefined && (info.deviceApp || info.deviceId || info.light || (info.as && info.as.speaker === 'service'))) return false;
-    if (require('./wsSocketHeartbeat').isDormantPage(info)) return false;
+    if (isDormantPage(info)) return false;
     return !info || info.directorWatch === undefined || info.directorWatch === String(sessionId);
 }
 
