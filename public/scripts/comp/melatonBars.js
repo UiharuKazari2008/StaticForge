@@ -297,24 +297,11 @@
         const list = [];
         for (let c = 32; c < 127; c++) list.push(String.fromCharCode(c));
         '…ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÑÒÓÔÕÖØÙÚÛÜÝßàáâãäåæçèéêëìíîïñòóôõöøùúûüýÿ–—‘’“”•™®©°·×÷±µ§¢£€¥¿¡½¼¾²³¹←→↑↓'.split('').forEach((ch) => list.push(ch));
-        // the regular weight too (the bubbles' text), black on the bubble's white
+        // no glyph pictures any more: the app draws the title, soft keys and popups with the page's own Tahoma
+        // (melaton-bars-native-layouts rule 5). Writing each character into the title to photograph it showed
+        // as text cycling on the visible bar at every start (Yukimi, Nov 16)
         const charsRegular = {};
-        try {
-            for (const [set, weight, color] of [[chars, 'bold', ''], [charsRegular, 'normal', 'color:#000;']]) {
-                for (const ch of list) {
-                    t.textContent = ch === ' ' ? '\u00a0' : ch;
-                    // alone, as wide as the character (plus room for nothing else), its box the title's height
-                    t.setAttribute('style', `${keep.style || ''};flex:0 0 auto;min-width:0;width:auto;padding:0 ${PAD}px;overflow:visible;font-weight:${weight};${color}`);
-                    const r = t.getBoundingClientRect();
-                    const c = await window.windowCapture.snapshot(t, { scale: dpr });
-                    const p = pack(c, []);
-                    if (p) set[ch] = { png: p.png, adv: Math.round((r.width - PAD * 2) * dpr * 100) / 100 };
-                }
-            }
-        } finally {
-            t.textContent = keep.text;
-            if (keep.style == null) t.removeAttribute('style'); else t.setAttribute('style', keep.style);
-        }
+        void list; void keep; void t;
         // kv: the kit's make (2: the degree sign and more symbols; the app asks again for an older one)
         out({ kv: 4, sig: kitSignature(), widthPx: Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: barGeometry(dpr), bubble: bubbleStyle(dpr), lists: barLists(dpr) });
     }
