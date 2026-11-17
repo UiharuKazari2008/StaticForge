@@ -1242,10 +1242,15 @@
         for (const side of ['left', 'right']) {
             const btn = shell.querySelector(`.wm-softkey[data-side="${side}"]`);
             const key = softKeys[side];
-            if (!(stage && stage.mask.keys)) btn.textContent = key ? key.label : '';
-            btn.disabled = !key || !!key.disabled;
-            btn.setAttribute('aria-haspopup', key && key.menu ? 'menu' : 'false');
-            btn.setAttribute('aria-expanded', 'false');
+            // written only when they change (#890): the same text written again still swaps the text node
+            // and restyles the bar on every refresh
+            const label = key ? String(key.label == null ? '' : key.label) : '';
+            if (!(stage && stage.mask.keys) && btn.textContent !== label) btn.textContent = label;
+            const off = !key || !!key.disabled;
+            if (btn.disabled !== off) btn.disabled = off;
+            const popup = key && key.menu ? 'menu' : 'false';
+            if (btn.getAttribute('aria-haspopup') !== popup) btn.setAttribute('aria-haspopup', popup);
+            if (btn.getAttribute('aria-expanded') !== 'false') btn.setAttribute('aria-expanded', 'false');
         }
         // 6.5.1 (#850) bars: a key that names a picture (key.icon) is a round button, the others text bubbles
         if (BARS651 && !(stage && stage.mask.keys)) bars651Keys(softKeys);
