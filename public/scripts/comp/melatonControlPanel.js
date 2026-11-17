@@ -42,6 +42,7 @@
     // out of sight (a hidden page, a phone's screen off: html[data-screen-off]) the live ticks draw nothing
     // and the status read waits; the next tick after the page is back draws (#890)
     const unseen = () => !!root.document && (root.document.hidden || root.document.documentElement.dataset.screenOff !== undefined);
+    const appScopeSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const items = [];
     const pages = {};
@@ -1233,9 +1234,25 @@
         client.on('disconnected', again);
     }
 
+    // The page back in sight (shown again, a phone's screen on: melatonscreen) with a network page up
+    // reads the status at once when the last answer is a minute old, instead of at the next minute
+    // tick, so the page never shows a status from before it went out of sight (#890)
+    let seenWired = false;
+    function wireSeenAgain() {
+        if (seenWired || !doc) return;
+        seenWired = true;
+        const seenAgain = () => setTimeout(() => {
+            if (unseen() || !onNetworkPage()) return;
+            if (Date.now() - lastStatusAt >= STATUS_POLL_MS) pollStatus();
+        }, 0);
+        doc.addEventListener('visibilitychange', seenAgain, { signal: appScopeSignal });
+        if (typeof root.addEventListener === 'function') root.addEventListener('melatonscreen', seenAgain, { signal: appScopeSignal });
+    }
+
     function startTimers() {
         stopTimers();
         wireLinkEvents();
+        wireSeenAgain();
         startLiveTimer();
         statusTimer = setInterval(() => {
             snapshot();
