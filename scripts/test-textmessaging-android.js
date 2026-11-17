@@ -184,6 +184,13 @@ const post = (d) => tap('notify.posted', Object.assign({ package: 'com.discord',
     tm.deleteAccount('app-discord');
     tm._reset();
     fs.rmSync(tmp, { recursive: true, force: true });
+    // #892: a label that is only the package name (an app in the Work profile) is no name
+    {
+        const { realLabel } = require('../modules/textMessagingAndroid');
+        assert.strictEqual(realLabel('org.thoughtcrime.securesms', 'org.thoughtcrime.securesms'), '');
+        assert.strictEqual(realLabel('com.other.pkg', 'org.thoughtcrime.securesms'), '');
+        assert.strictEqual(realLabel('Signal', 'org.thoughtcrime.securesms'), 'Signal');
+    }
     console.log('test-textmessaging-android: ok');
     process.exit(0);
 })().catch((e) => {

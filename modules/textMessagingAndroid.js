@@ -143,7 +143,9 @@ function recentApps() {
         .map((pkg) => ({ package: pkg, label: r[pkg].label, at: r[pkg].at, icon: r[pkg].icon ? `/api/textmessaging/android-icon/${encodeURIComponent(pkg)}` : '' }));
 }
 
-function appLabel(pkg) { const r = loadRecent()[pkg]; return r ? r.label : ''; }
+// a label that is only the package name is no name (the phone could not read it: an app in the Work profile, #892)
+function realLabel(label, pkg) { const l = String(label || '').trim(); return l && l !== pkg && !PACKAGE_RE.test(l) ? l : ''; }
+function appLabel(pkg) { const r = loadRecent()[pkg]; return r ? realLabel(r.label, pkg) : ''; }
 
 /** Whether the phone has sent the app's icon. */
 function hasAppIcon(pkg) { return PACKAGE_RE.test(String(pkg || '')) && fs.existsSync(iconFile(pkg)); }
@@ -193,7 +195,8 @@ class AndroidAppProvider {
     constructor(account, hooks) {
         this.id = account.id;
         this.pkg = String(account.package || '');
-        this.label = String(account.label || appLabel(this.pkg) || this.pkg);
+        this.ownLabel = realLabel(account.label, this.pkg);
+        this.label = String(this.ownLabel || appLabel(this.pkg) || this.pkg);
         this.hooks = hooks || {};
         this.status = 'connecting';
         this.error = '';
@@ -293,6 +296,8 @@ class AndroidAppProvider {
         if (!this.store) return;
         // notify.list sends every app's icon again: the catch-up keeps it like a live post does
         if (d.icon) noteApp(d);
+        // the app's real name arrived (a build that reads the Work profile, #892): the account takes it unless it was named
+        if (!this.ownLabel) { const l = realLabel(d.app, this.pkg); if (l && l !== this.label) this.label = l; }
         const guid = this.chatGuidOf(d);
         const prev = this.rawChat(guid);
         const conv = d.conv && typeof d.conv === 'object' ? d.conv : {};
@@ -305,8 +310,8 @@ class AndroidAppProvider {
         const chat = Object.assign({ readAt: 0, lastDate: 0 }, prev || {}, {
             guid,
             package: this.pkg,
-            app: str(d.app || this.label, 80),
-            title: str(conv.title || (isGroup ? '' : (lines.find((l) => !l.me) || {}).sender) || d.title || d.app || this.label, 200),
+            app: str(realLabel(d.app, this.pkg) || this.label, 80),
+            title: str(conv.title || (isGroup ? '' : (lines.find((l) => !l.me) || {}).sender) || d.title || realLabel(d.app, this.pkg) || this.label, 200),
             sub: str(d.sub, 120),
             isGroup,
             key: str(d.key, 300),
@@ -419,7 +424,7 @@ class AndroidAppProvider {
         if (!c) return null;
         const base = `/api/textmessaging/${encodeURIComponent(this.id)}/avatar/`;
         const photo = c.photo ? `${base}${encodeURIComponent(c.guid)}?v=${c.photo}` : (hasAppIcon(this.pkg) ? `${base}app` : null);
-        const name = c.title || c.app || this.label;
+        const name = c.title || realLabel(c.app, this.pkg) || this.label;
         const last = c.lastDate ? {
             guid: c.lastGuid || '', chatGuid: c.guid, text: c.lastText || '', fromMe: !!c.lastFromMe,
             sender: { address: '', name: c.lastFromMe ? 'Me' : (c.lastSender || ''), me: !!c.lastFromMe }, date: c.lastDate, attachments: [], reactions: []
@@ -427,7 +432,7 @@ class AndroidAppProvider {
         const unread = this.isUnread(c);
         return {
             guid: c.guid,
-            identifier: c.sub || c.app || this.label,
+            identifier: c.sub || realLabel(c.app, this.pkg) || this.label,
             title: name,
             photo,
             named: true,
@@ -445,7 +450,7 @@ class AndroidAppProvider {
             sub: c.sub || '',
             // Open in <app> (#885): the notification's own tap target on the phone that posted it, else the app
             package: this.pkg,
-            app: c.app || this.label,
+            app: realLabel(c.app, this.pkg) || this.label,
             open: c.openKey ? { key: c.openKey, device: c.openDevice || c.device || '' } : null
         };
     }
@@ -584,4 +589,4 @@ class AndroidAppProvider {
 
 function _reset() { providers.clear(); caughtUp.clear(); recent = null; cacheDir = null; tapped = false; }
 
-module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
+module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, realLabel, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
