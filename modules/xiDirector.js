@@ -1288,13 +1288,14 @@ async function handleDirectorGetSession(handler, ws, message) {
         handler.sendError(ws, 'Session not found', 'SESSION_NOT_FOUND', message.requestId);
         return;
     }
+    const live = runs.get(chat.id);
+    if (live) director.noteDraftsIn(chat.id, chat.messages, live.draftId);
     sendOk(handler, ws, 'director_get_session_response', message.requestId, {
         session: Object.assign(publicXiSession(chat), {
             messages: (chat.messages || []).map(director._test.publicMessage)
         })
     });
-    const run = runs.get(message.sessionId);
-    if (run) publish(run);
+    if (live) publish(live);
 }
 
 async function handleDirectorOpenWorkspace(handler, ws, message) {
@@ -1308,6 +1309,8 @@ async function handleDirectorOpenWorkspace(handler, ws, message) {
         sendOk(handler, ws, 'director_open_workspace_response', message.requestId, { session: null, draft: true });
         return;
     }
+    const live = runs.get(found.id);
+    if (live) director.noteDraftsIn(found.id, found.messages, live.draftId);
     sendOk(handler, ws, 'director_open_workspace_response', message.requestId, {
         session: Object.assign(publicXiSession(found), {
             messages: (found.messages || []).map(director._test.publicMessage)
@@ -1340,15 +1343,10 @@ async function handleDirectorGetMessages(handler, ws, message) {
         return;
     }
     const live = runs.get(chat.id);
+    // the running turn's draft is left out (its live stream follows); sinceId: only what came after (#890)
     const messages = (chat.messages || []).filter((item) => !live || item.id !== live.draftId);
-    sendOk(handler, ws, 'director_get_messages_response', message.requestId, {
-        sessionId: chat.id,
-        name: chat.name || 'Yozora',
-        images: Array.isArray(chat.images) ? chat.images : [],
-        prints: Array.isArray(chat.prints) ? chat.prints : [],
-        tasks: director._test.normalizeSessionTasks(chat.tasks),
-        messages: messages.map(director._test.publicMessage)
-    });
+    sendOk(handler, ws, 'director_get_messages_response', message.requestId,
+        director.messagesReply(chat, messages, message.sinceId, null, 'Yozora'));
     const run = runs.get(message.sessionId);
     if (run) publish(run);
 }
