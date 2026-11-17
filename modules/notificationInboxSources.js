@@ -126,6 +126,7 @@ function onTextEvent(p) {
             app: 'messaging',
             id: smsId(p.accountId, p.chatGuid),
             cls: 'sms',
+            alert: true, // each message is news, though the conversation keeps one notice (#889)
             title: 'New Text Message',
             text: `From: ${from}\n${text}`,
             actions: ['reply'],
@@ -207,6 +208,7 @@ function onChatReply({ chatId, session, parsed, raw, clientInfo, ws } = {}) {
         app: 'chat',
         id: `chat:${chatId}`,
         cls: 'chat',
+        alert: true, // each reply is news (#889)
         title: 'Dreamscape Messenger',
         text: `From: ${from}\n${line}`,
         actions: ['reply'],
@@ -239,6 +241,7 @@ function onDirectorStatus(status) {
         app: 'director',
         id: `director:${was.sessionId || 'session'}:turn`,
         cls: 'director',
+        alert: true, // each finished turn is news (#889)
         title: 'Director',
         text: `${who}: the turn is finished.`,
         data: { app: 'director', kind: 'director', sessionId: was.sessionId || null },

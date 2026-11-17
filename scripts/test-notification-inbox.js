@@ -3,6 +3,7 @@
 // Notification inbox checks (Yozora #845): node scripts/test-notification-inbox.js
 const assert = require('assert');
 process.env.NOTIFICATION_INBOX_DB = ':memory:';
+process.env.NOTIFICATION_INBOX_NO_TIMER = '1';
 const inbox = require('../modules/notificationInbox');
 const sent = [];
 const gr = { getWebSocketServer: () => ({ broadcast: (m, filter) => sent.push({ m, adminWanted: filter({ authenticated: true, userType: 'admin' }), devWanted: filter({ authenticated: true, userType: 'dev_admin' }) }) }) };
@@ -44,6 +45,27 @@ inbox.bind(gr);
     inbox.ack('admin', 'lapis:unlocked', 'cleared');
     assert.strictEqual(inbox.list('admin').length, 0, 'cleared is hidden by default');
     assert.strictEqual(inbox.list('admin', { includeCleared: true }).length, 1);
+
+    // #889: which publishes sound on the phones, and what a reconnecting phone catches up on
+    const c1 = inbox.publish({ app: 'messaging', id: 'sms:a:chat1', cls: 'sms', title: 'Rin', text: 'hi', alert: true });
+    assert.strictEqual(c1.alert, true, 'a new notice sounds');
+    now += 1000;
+    const c2 = inbox.publish({ app: 'messaging', id: 'sms:a:chat1', cls: 'sms', title: 'Rin', text: 'are you there?', alert: true });
+    assert.strictEqual(c2.alert, true, 'the next message in a conversation sounds');
+    assert.strictEqual(inbox.list('admin').find((n) => n.id === 'sms:a:chat1').createdAt, now, 'a new event moves createdAt');
+    const t1 = inbox.publish({ app: 'traffic', id: 'traffic:commute', cls: 'traffic', title: 'Leave in 5 min', text: 'A' });
+    now += 1000;
+    const t2 = inbox.publish({ app: 'traffic', id: 'traffic:commute', cls: 'traffic', title: 'Leave in 4 min', text: 'A' });
+    assert.strictEqual(t1.alert, true);
+    assert.strictEqual(t2.alert, false, 'an update in place is silent');
+    assert.strictEqual(inbox.list('admin').find((n) => n.id === 'traffic:commute').createdAt, t1.createdAt, 'an update keeps createdAt');
+    inbox.ack('admin', 'traffic:commute', 'cleared');
+    assert.strictEqual(inbox.publish({ app: 'traffic', id: 'traffic:commute', cls: 'traffic', title: 'Leave now', text: 'A' }).alert, true, 'after a clear it sounds again');
+    inbox.ack('admin', 'sms:a:chat1', 'seen');
+    const pend = inbox.pendingForPhones('admin').map((n) => n.id);
+    assert.ok(pend.includes('traffic:commute') && !pend.includes('sms:a:chat1') && !pend.includes('lapis:unlocked'), 'catch-up: only notices still new');
+    now += 25 * 60 * 60 * 1000;
+    assert.ok(!inbox.pendingForPhones('admin').some((n) => n.id === 'traffic:commute'), 'catch-up: not older than 24 h');
 
     inbox._test.reset();
     console.log('notification inbox: all checks passed');

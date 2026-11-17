@@ -18,6 +18,12 @@
     const born = Date.now();
     const id = `${born.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     let hiddenSince = document.hidden ? born : 0;
+    // phone screen or DeX desktop (AndroidContinuity.role): on a hybrid phone both windows share this
+    // channel, and the DeX window coming on screen retired the phone's page hidden behind another app,
+    // a cold boot on the way back (#889). A page only retires for a newer one on its own screen.
+    function role() {
+        try { const b = window.AndroidContinuity; return b && typeof b.role === 'function' ? String(b.role()) : ''; } catch (_) { return ''; }
+    }
     let retired = false;
     let channel;
     try {
@@ -28,7 +34,7 @@
 
     function announce() {
         if (retired || document.hidden) return;
-        try { channel.postMessage({ type: 'on-screen', id, born }); } catch (_) { /* channel closed */ }
+        try { channel.postMessage({ type: 'on-screen', id, born, role: role() }); } catch (_) { /* channel closed */ }
     }
 
     function retire() {
@@ -46,6 +52,7 @@
         // Only a newer page retires an older hidden one, and only after this one has been out of sight
         // for a while (not a quick app switch).
         if (!document.hidden || !(Number(msg.born) > born)) return;
+        if (String(msg.role || '') !== role()) return;
         if (!hiddenSince || Date.now() - hiddenSince < HIDDEN_FOR_MS) return;
         retire();
     };
