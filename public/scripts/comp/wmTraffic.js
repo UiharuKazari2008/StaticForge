@@ -1412,7 +1412,8 @@
             const ahead = (r.alerts || []).filter((a) => a.at > dv.at && a.major);
             const lines = [`${d === 'work' ? 'To Work' : 'To Home'}: ${minText(dv.leftSec)} left, ${miles(dv.toGoM)} to go`, `Arrive ${clock(dv.arriveAt)}.`];
             if (ahead.length) lines.push(`Ahead: ${ahead[0].label}${ahead[0].street ? ` on ${ahead[0].street}` : ''}.`);
-            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines };
+            // light: the traffic light beside the commute in the Car bubble (#902): red for a major alert ahead
+            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines, light: ahead.length ? 'red' : 'green' };
         }
         // in the window the car needs a current report: one check (at most every 15 min; the server caches)
         if (win && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r || Date.now() - Date.parse(r.at) > TODAY_CHECK_MS)) {
@@ -1432,7 +1433,9 @@
         if (!fresh) lines.push(`Checked at ${clock(r.at)}.`);
         if (leaveLine) lines.unshift(leaveLine);
         const late = fresh && (r.delaySec || 0) >= DELAY_STATUS_SEC;
-        return { delayed: !!win, reason: win ? (late ? 'delay' : 'leave') : '', direction: d, title: 'Traffic', lines };
+        // light (#902): red when late enough to show or a major alert is on the way, yellow from 5 min late, else green
+        const light = late || majors.length ? 'red' : (r.delaySec || 0) >= 300 ? 'yellow' : 'green';
+        return { delayed: !!win, reason: win ? (late ? 'delay' : 'leave') : '', direction: d, title: 'Traffic', lines, light, leaveLine };
     }
     function todayRender(el) {
         if (!canUse()) return false;
