@@ -42,6 +42,7 @@ const SEMANTIC_MARK_AS_READ = 2;
 const CALL_MS = 15000;
 
 const providers = new Set();
+const caughtUp = new Set(); // device ids read with notify.list since this server started
 let tapped = false;
 let gr = null;
 let cacheDir = null;
@@ -156,11 +157,19 @@ function tap() {
     if (typeof as.onDeviceHello === 'function') {
         as.onDeviceHello((d) => {
             if (!d || d.speaker !== 'service' || d.session !== 'partner') return;
+            caughtUp.add(d.id);
             const t = setTimeout(() => { for (const p of providers) p.syncDevice(d.id, d.name); }, 5000);
             if (t.unref) t.unref();
         });
     }
     as.onDeviceEvent((name, detail, device) => {
+        // the first news from a phone since this server started: it may have connected before the
+        // accounts listened (a restart race), so what it shows now is read once
+        const id = device && device.id;
+        if (id && !caughtUp.has(id)) {
+            caughtUp.add(id);
+            for (const p of providers) void p.syncDevice(id, device.name);
+        }
         if (!detail || typeof detail !== 'object') return;
         if (name === 'notify.posted' && PACKAGE_RE.test(String(detail.package || ''))) {
             noteApp(detail);
@@ -536,6 +545,6 @@ class AndroidAppProvider {
     async test() { return { ok: true }; }
 }
 
-function _reset() { providers.clear(); recent = null; cacheDir = null; tapped = false; }
+function _reset() { providers.clear(); caughtUp.clear(); recent = null; cacheDir = null; tapped = false; }
 
 module.exports = { AndroidAppProvider, recentApps, appIcon, appLabel, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
