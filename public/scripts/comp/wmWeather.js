@@ -155,7 +155,7 @@
         if (!list || typeof list !== 'object') return;
         monitored = { home: list.home || null, work: list.work || null };
         save('wmWeatherMonitored', monitored);
-        if (els) render();
+        renderSeen();
         changed();
     }
 
@@ -250,6 +250,18 @@
 
     function changed() {
         document.dispatchEvent(new CustomEvent('wmWeatherChange'));
+    }
+
+    /**
+     * On screen now: the phone's screen on, the page shown, not behind an Android program
+     * (wmShell.onScreen; document.hidden alone misses the screen off). The desktop: the tab visible.
+     */
+    const seen = (el) => (ws && typeof ws.onScreen === 'function' ? ws.onScreen(el) : !document.hidden);
+    let renderStale = false; // a push changed the page while it was not seen: drawn when it shows
+    /** The page drawn now while it is seen; else when it shows again (show, screen on). */
+    function renderSeen() {
+        if (!els || !page) return;
+        if (shown && seen(page)) render(); else renderStale = true;
     }
 
     // ---------------------------------------------------------------- conditions
@@ -580,9 +592,9 @@
             try { await update(p); } catch (_) { /* shown as it was */ }
             if (gen !== quietGen && !all) return;
             changed();
-            render();
+            renderSeen();
         }
-        if (!places().length) render();
+        if (!places().length) renderSeen();
     }
 
     /** The user's refresh: wait cursor, a message box when it fails. */
@@ -843,6 +855,7 @@
 
     function render() {
         if (!els || !page) return;
+        renderStale = false;
         const list = places();
         const p = selected();
         els.empty.hidden = !!p;
@@ -1019,7 +1032,8 @@
     function tickClock() {
         clearTimeout(clockTimer);
         clockTimer = null;
-        if (!els || !shown) return;
+        // not seen (the screen off, behind another app): no tick until it shows again (wake: tickClock)
+        if (!els || !shown || !seen(page)) return;
         const p = selected();
         const data = dataOf(p);
         const now = new Date(data && !data.gadgetOnly ? placeNow(data) : Date.now() - new Date().getTimezoneOffset() * 60000);
@@ -1795,6 +1809,7 @@
     let radarAt = 0; // when it came
     let radarFrame = 0;
     let radarTimer = null;
+    let radarPlaying = false; // Play is on (the loop itself runs only while the map is seen)
     let miniMap = null;
     let miniKey = '';
     let fullMap = null;
@@ -2112,19 +2127,32 @@
     function startRadarPlay() {
         stopRadarPlay();
         if (!radar || radar.frames.length < 2) return;
+        radarPlaying = true;
         els.mapPlay.classList.add('is-playing');
         els.mapPlay.setAttribute('aria-label', 'Pause');
-        let hold = 0;
-        radarTimer = setInterval(() => {
-            if (document.hidden) return;
-            if (radarFrame === radar.frames.length - 1 && hold++ < 3) return; // rest on the newest frame
-            hold = 0;
-            setRadarFrame(radarFrame === radar.frames.length - 1 ? 0 : radarFrame + 1);
-        }, 550);
+        radarRun();
         ws.refreshSoftKeys();
     }
 
+    /** The loop steps the frames only while the map is seen; the screen off stops it, screen on goes on (still playing). */
+    function radarRun() {
+        const on = radarPlaying && !!radar && shown && seen(page);
+        if (on && !radarTimer) {
+            let hold = 0;
+            radarTimer = setInterval(() => {
+                if (!radar || !seen(page)) { radarRun(); return; }
+                if (radarFrame === radar.frames.length - 1 && hold++ < 3) return; // rest on the newest frame
+                hold = 0;
+                setRadarFrame(radarFrame === radar.frames.length - 1 ? 0 : radarFrame + 1);
+            }, 550);
+        } else if (!on && radarTimer) {
+            clearInterval(radarTimer);
+            radarTimer = null;
+        }
+    }
+
     function stopRadarPlay() {
+        radarPlaying = false;
         clearInterval(radarTimer);
         radarTimer = null;
         if (els && els.mapPlay) { els.mapPlay.classList.remove('is-playing'); els.mapPlay.setAttribute('aria-label', 'Play'); }
@@ -2132,7 +2160,7 @@
     }
 
     function toggleRadarPlay() {
-        if (radarTimer) stopRadarPlay(); else startRadarPlay();
+        if (radarPlaying) stopRadarPlay(); else startRadarPlay();
     }
 
     function setMapStyle(style) {
@@ -2233,7 +2261,7 @@
         const { w, h } = fx;
         const P = fx.parts;
         c.clearRect(0, 0, w, h);
-        if (t >= 1 || document.hidden) { fxStop(); return; }
+        if (t >= 1 || !seen(page)) { fxStop(); return; }
         const fade = t < 0.08 ? t / 0.08 : t > 0.8 ? (1 - t) / 0.2 : 1;
         const s = (now - fx.t0) / 1000;
         c.save();
@@ -2411,7 +2439,7 @@
 
     /** Play the intro for the scene on screen (force: replay even when the scene is the same). */
     function fxPlay(force) {
-        if (!els || !shown || settings.effects === false || reducedMotion() || document.hidden) return;
+        if (!els || !shown || settings.effects === false || reducedMotion() || !seen(page)) return;
         const scene = els.scene.dataset.scene;
         const phase = els.scene.dataset.phase;
         const p = selected();
@@ -2755,7 +2783,15 @@
 
     function startPoll() {
         clearInterval(pollTimer);
-        pollTimer = setInterval(() => { if (shown && !document.hidden) quiet(false); }, 60 * 1000);
+        pollTimer = null;
+        syncPoll();
+    }
+
+    /** The minute's routine update runs only while the app is seen; nothing wakes with the screen off. */
+    function syncPoll() {
+        const on = shown && seen(page);
+        if (on && !pollTimer) pollTimer = setInterval(() => { if (shown && seen(page)) quiet(false); else syncPoll(); }, 60 * 1000);
+        else if (!on && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
     /** The server's weather broadcasts (#792): Home / Work, their alerts and rain. */
@@ -2766,7 +2802,7 @@
         wired = true;
         const data = (pk) => (pk && (pk.data || pk)) || {};
         c.on('weather_places_changed', (pk) => applyMonitored(data(pk).places));
-        c.on('weather_alerts_changed', (pk) => { activeAlerts = data(pk); if (ws) ws.refreshStatus(); if (shown) render(); });
+        c.on('weather_alerts_changed', (pk) => { activeAlerts = data(pk); if (ws) ws.refreshStatus(); if (shown) renderSeen(); });
         c.on('weather_rain_status', (pk) => { rainStatus = data(pk); if (ws) ws.refreshStatus(); });
         loadMonitored();
         return true;
@@ -2776,11 +2812,21 @@
         ws = MOBILE ? window.wmShell : desktopShell();
         if (!wireServer()) { let n = 0; const t = setInterval(() => { if (wireServer() || ++n > 120) clearInterval(t); }, 1000); }
         document.addEventListener('keydown', onKey, true);
-        document.addEventListener('visibilitychange', () => {
+        // seen again (page shown, screen on, back from an Android program): the clock, an update and the
+        // loops go on; not seen: the scene's animations, the poll and the radar loop stop
+        const wake = () => {
             if (!els) return;
-            els.root.classList.toggle('is-paused', document.hidden);
-            if (!document.hidden && shown) { tickClock(); quiet(false); }
-        });
+            const on = shown && seen(page);
+            els.root.classList.toggle('is-paused', !on);
+            if (on) { tickClock(); quiet(false); if (renderStale) render(); }
+            syncPoll();
+            radarRun();
+        };
+        document.addEventListener('visibilitychange', wake);
+        if (MOBILE) {
+            window.addEventListener('melatonscreen', wake);
+            document.addEventListener('wmBehind', wake);
+        }
         if (MOBILE) ws.registerApp(APP);
     }
 
@@ -2834,7 +2880,7 @@
                 const top = layers[layers.length - 1];
                 if (top === 'radar') {
                     return {
-                        left: { label: radarTimer ? 'Pause' : 'Play', action: toggleRadarPlay },
+                        left: { label: radarPlaying ? 'Pause' : 'Play', action: toggleRadarPlay },
                         right: {
                             label: 'Menu',
                             menu: () => [
