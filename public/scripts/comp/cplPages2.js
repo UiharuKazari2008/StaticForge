@@ -784,6 +784,37 @@
         const pause = m.querySelector('[data-cpl-vpage="cmd"][data-cmd="pause"], [data-cpl-vpage="cmd"][data-cmd="resume"]');
         if (pause && d) { pause.dataset.cmd = d.state === 'paused' ? 'resume' : 'pause'; pause.textContent = d.state === 'paused' ? 'Resume' : 'Pause'; }
         m.querySelectorAll('[data-cpl-vpage="cmd"]').forEach((b) => { b.disabled = !d || !d.online || !!ss.busy; });
+        ssWatchSoon();
+    }
+
+    // live screens on show (#890): the devices whose live capture an open SideShow page shows are
+    // watched (device_screen_watch), so a device sends captures only while someone looks. One sync per
+    // task: a redraw (unmount + mount) does not switch a device off and on again.
+    const ssWatched = new Set();
+    let ssWatchEpoch = null;
+    let ssWatchQueued = false;
+    function ssSyncScreenWatch() {
+        ssWatchQueued = false;
+        const ws = root.wsClient;
+        if (!ws || typeof ws.send !== 'function') return;
+        // a new connection: the server forgot this page's watches with the old socket
+        const epoch = ws.connectionStats && ws.connectionStats.connectedAt;
+        if (epoch !== ssWatchEpoch) { ssWatchEpoch = epoch; ssWatched.clear(); }
+        const want = new Set();
+        const cp = CP();
+        if (cp && typeof cp.isOpen === 'function' && cp.isOpen() && ssOnPage() && document.visibilityState === 'visible') {
+            const page = cp.currentPage();
+            const list = page === 'sideshow' ? (ss.devices || []) : [ssDevice(ss.deviceId)];
+            list.forEach((d) => { if (d && d.preview && d.deviceId) want.add(String(d.deviceId)); });
+        }
+        const say = (deviceId, on) => { try { ws.send({ type: 'device_screen_watch', data: { deviceId, on } }); } catch (_) { /* the next sync tries again */ } };
+        want.forEach((id) => { if (!ssWatched.has(id)) { ssWatched.add(id); say(id, true); } });
+        Array.from(ssWatched).forEach((id) => { if (!want.has(id)) { ssWatched.delete(id); say(id, false); } });
+    }
+    function ssWatchSoon() {
+        if (ssWatchQueued) return;
+        ssWatchQueued = true;
+        Promise.resolve().then(ssSyncScreenWatch);
     }
 
     function ssWire() {
@@ -1817,6 +1848,13 @@
         return !!(res && res.success !== false);
     }
     root.cplSideShow = { setDeviceSearch };
+
+    ['sideshow', 'sideshow-device', 'sideshow-clock', 'sideshow-gadget'].forEach((id) => {
+        const page = pages[id];
+        if (!page || page.mount || page.unmount) return;
+        page.mount = () => ssWatchSoon();
+        page.unmount = () => ssWatchSoon();
+    });
 
     function register() {
         const cp = CP();
