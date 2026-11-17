@@ -1011,37 +1011,71 @@
         const D = root.AndroidDisplay;
         try { return D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; } catch (_) { return null; }
     }
-    function postDexState() {
+    // what the DeX window last told the phone (#890): every focus and resize of the DeX window re-sent it,
+    // each with a synchronous AndroidDisplay.getScreenInfo() call, a bus message and a redraw of the phone's
+    // title bar. It goes again only when something in it changed, when the phone asks (dex-state?), or
+    // after the phone saw the display go (dex-state-stale: the next show, resize or focus says "ready").
+    let dexSentKey = null;
+    let dexSentCheap = null;
+    let dexStale = false;
+    // what the window can tell without asking the app: its desktop up, the screen's size and density
+    const dexCheapKey = () => {
+        const c = root.wsClient;
+        const sc = root.screen || {};
+        return [c && c.initializationCompleted ? 1 : 0, sc.width || 0, sc.height || 0, root.devicePixelRatio || 1].join(',');
+    };
+    function postDexState(force) {
         if (!isDw()) return;
         const c = root.wsClient;
+        const cheap = dexCheapKey();
         const info = dexScreen() || {};
         const dpr = root.devicePixelRatio || 1;
-        api.post({
+        const msg = {
             type: 'dex-state',
             state: c && c.initializationCompleted ? 'ready' : 'booting',
             attach: info.attach || 'usb',
             usbVersion: Number(info.usbVersion) || null,
             width: info.widthPx || Math.round((root.screen && root.screen.width || 0) * dpr),
             height: info.heightPx || Math.round((root.screen && root.screen.height || 0) * dpr)
-        });
+        };
+        const key = [msg.state, msg.attach, msg.usbVersion, msg.width, msg.height].join(',');
+        if (!force && !dexStale && key === dexSentKey) { dexSentCheap = cheap; return; }
+        // not delivered (no phone window yet): sent again on the next chance
+        if (!api.post(msg)) return;
+        dexSentKey = key;
+        dexSentCheap = cheap;
+        dexStale = false;
     }
-    api.on('dex-state?', () => postDexState());
+    api.on('dex-state?', () => postDexState(true));
+    let announceDex = null;
+    api.on('dex-state-stale', () => {
+        if (!isDw()) return;
+        dexStale = true;
+        // shown already (the display came back before the phone's word arrived): said now, unless the
+        // window goes out of sight first (the display just went)
+        if (announceDex) announceDex();
+    });
     // the display coming back: the app reports only its removal (dex-display), and a DeX window that
     // kept running never sent another "ready", so the phone's glyph stayed dim after a reconnect
-    // (Nov 14). The window shows, resizes or takes focus again on the new display: it says so.
+    // (Nov 14). The window shows, resizes or takes focus again on the new display: it says so, when
+    // the phone saw the display go (dex-state-stale) or something it shows changed.
     if (root.addEventListener && root.document) {
         let again = null;
         const announce = () => {
             if (!isDw() || root.document.visibilityState === 'hidden') return;
+            // a focus or a window resize with nothing new: no app call, no message
+            if (!dexStale && dexSentKey !== null && dexCheapKey() === dexSentCheap) return;
             clearTimeout(again);
-            again = setTimeout(postDexState, 400);
+            again = setTimeout(() => { if (root.document.visibilityState !== 'hidden') postDexState(false); }, 400);
         };
-        root.document.addEventListener('visibilitychange', announce);
-        root.addEventListener('resize', announce);
-        root.addEventListener('focus', announce);
+        announceDex = announce;
+        root.document.addEventListener('visibilitychange', announce, { signal: appScopeSignal });
+        root.addEventListener('resize', announce, { signal: appScopeSignal });
+        root.addEventListener('focus', announce, { signal: appScopeSignal });
     }
     api.on('dex-state', (m) => {
         if (!isPhone()) return;
+        const before = [dex.present, dex.state, dex.attach, dex.usbVersion, dex.width, dex.height, dex.displayGone].join(',');
         dex.present = true;
         dex.state = m.state === 'ready' ? 'ready' : 'booting';
         dex.attach = m.attach || dex.attach;
@@ -1049,9 +1083,16 @@
         dex.width = Number(m.width) || dex.width;
         dex.height = Number(m.height) || dex.height;
         if (m.state === 'ready') dex.displayGone = false;
-        statusChanged();
+        // the title bar is drawn again only for a change it shows (#890)
+        if ([dex.present, dex.state, dex.attach, dex.usbVersion, dex.width, dex.height, dex.displayGone].join(',') !== before) statusChanged();
     });
-    api.on('dex-display', (m) => { if (isPhone() && m.state === 'removed') { dex.displayGone = true; statusChanged(); } });
+    api.on('dex-display', (m) => {
+        if (!isPhone() || m.state !== 'removed') return;
+        dex.displayGone = true;
+        statusChanged();
+        // the DeX window says "ready" again when it next shows on a display (its own state did not change)
+        api.post({ type: 'dex-state-stale' });
+    });
     // a phone page that starts while the DeX window is already up (a phone restart, an app update) hears
     // no "joined": it looks for it and asks how it is doing
     setTimeout(() => {
