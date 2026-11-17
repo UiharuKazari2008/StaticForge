@@ -401,7 +401,7 @@ function accountOut(a) {
     const p = providers.get(a.id);
     const s = summaries.get(a.id);
     if (a.kind === 'android') {
-        const label = a.label || androidApps.appLabel(a.package) || a.package || 'Android app';
+        const label = androidApps.realLabel(a.label, a.package) || androidApps.appLabel(a.package) || a.package || 'Android app';
         return {
             id: a.id, kind: 'android', name: label, service: label, url: '', package: a.package || '', label,
             icon: androidApps.hasAppIcon(a.package) ? `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app` : '',
@@ -514,7 +514,7 @@ function saveAndroidAccount(body, cfg, id0) {
     }
     const at = cfg.accounts.findIndex((a) => a.id === id);
     const prev = at >= 0 ? cfg.accounts[at] : {};
-    const label = String(body.label || prev.label || androidApps.appLabel(pkg) || pkg).trim().slice(0, 80);
+    const label = String(androidApps.realLabel(body.label, pkg) || androidApps.realLabel(prev.label, pkg) || androidApps.appLabel(pkg) || pkg).trim().slice(0, 80);
     const settings = Object.assign({}, prev.settings || {});
     if (body.settings && typeof body.settings.notify === 'boolean') settings.notify = body.settings.notify;
     const row = { id, kind: 'android', url: '', package: pkg, label, enabled: body.enabled !== false, settings };
