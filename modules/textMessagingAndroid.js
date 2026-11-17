@@ -125,7 +125,15 @@ function noteApp(d) {
 
 /** Apps that posted a notification lately, newest first: [{ package, label, at, icon }]. */
 function recentApps() {
-    const r = loadRecent();
+    const r = Object.assign({}, loadRecent());
+    // Melaton Videos (#861) keeps every app that posted lately too: its list fills ours (before our first post)
+    try {
+        const v = JSON.parse(fs.readFileSync(path.join(dir(), 'videos-sources.json'), 'utf8'));
+        const seen = (v && v.seenApps) || {};
+        Object.keys(seen).forEach((pkg) => {
+            if (!r[pkg] && PACKAGE_RE.test(pkg) && seen[pkg] && Date.now() - Number(seen[pkg].at) < RECENT_KEEP_MS) r[pkg] = { label: str(seen[pkg].label || pkg, 80), at: Number(seen[pkg].at) || 0, icon: fs.existsSync(iconFile(pkg)) };
+        });
+    } catch (_) { /* no Videos state */ }
     return Object.keys(r).sort((a, b) => r[b].at - r[a].at)
         .map((pkg) => ({ package: pkg, label: r[pkg].label, at: r[pkg].at, icon: r[pkg].icon ? `/api/textmessaging/android-icon/${encodeURIComponent(pkg)}` : '' }));
 }
