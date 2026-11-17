@@ -13,8 +13,9 @@ registerWsInboundHandler({
         };
         // sw.js itself is only re-read on a navigation; a page that stays open (the phone) kept the
         // old worker after every notify until it was reloaded (Nov 14)
+        // swHash: sha1 of the server's sw.js (#890); an unchanged worker is not asked for again
         if (window.serviceWorkerManager && typeof window.serviceWorkerManager.recheckWorkerScript === 'function') {
-            window.serviceWorkerManager.recheckWorkerScript();
+            window.serviceWorkerManager.recheckWorkerScript((message.data && message.data.swHash) || message.swHash || '');
         }
 
         // Queue until boot gate completes — public/scripts/comp/serviceWorkerManager.js
