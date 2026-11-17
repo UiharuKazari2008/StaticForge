@@ -68,10 +68,10 @@
     const imageUrl = (it) => `/naxCache/${encodeURIComponent(it.gallerySlug)}/${encodeURIComponent(it.filename)}`;
     // the grid's cells and the bag's icons: the server's 480 px wide WebP of the picture (#890 P13; its
     // aspect kept, so object-fit: cover crops it as it did the original); the tag screen shows the original.
-    // Off until public/sw.js keys its image cache on ?w= for /naxCache/: it keys by the path alone
-    // (getCanonicalUrl), so a thumbnail would fill the original's entry and the tag screen, Internet
-    // Explorer's tag wiki and the desktop's NAX views would show the 480 px copy from then on
-    const NAX_THUMBS = false;
+    // public/sw.js keys its image cache on ?w= for /naxCache/ (getCanonicalUrl, #890), so the grid's
+    // 480 px thumbnail and the full picture the tag screen / IE tag wiki / desktop NAX views show are
+    // cached apart
+    const NAX_THUMBS = true;
     const thumbUrl = (it) => (NAX_THUMBS ? `${imageUrl(it)}?w=480` : imageUrl(it));
     const labelOf = (list, v) => (list.find((x) => x[0] === v) || [v, v])[1];
 

@@ -682,7 +682,16 @@ const imageStrategy = null;
 
 function getCanonicalUrl(input) {
   const url = typeof input === 'string' ? input : input.url;
-  return url.split('?')[0];
+  const q = url.indexOf('?');
+  if (q < 0) return url;
+  const base = url.slice(0, q);
+  // a NAX thumbnail (/naxCache/<slug>/<file>?w=480, #890) is another picture than the original:
+  // it keeps its width in the key, so the grid's thumbnail and the full picture are cached apart
+  if (base.includes('/naxCache/')) {
+    const m = url.slice(q + 1).match(/(?:^|&)w=(\d+)(?:&|$)/);
+    if (m) return `${base}?w=${m[1]}`;
+  }
+  return base;
 }
 
 /**
@@ -702,7 +711,10 @@ function shouldBypassImageCache(request) {
 }
 
 function isFullImageUrl(url) {
-  return String(url || '').includes('/images/');
+  const s = String(url || '');
+  // lossless preview copies (/previews/<stem>@ll.webp, #890) are full-size pictures too: one-shot,
+  // never kept in the preview cache where a few MB each would push gallery previews out
+  return s.includes('/images/') || /\/previews\/[^?#]*@ll\.webp(?:[?#]|$)/.test(s);
 }
 
 // Workspace wallpapers. Same path is overwritten on upload, so this set is
