@@ -177,6 +177,10 @@
             this.pos = 0;
             this.paused = false;
             this.ws = null;
+            // whether someone looks at this device's screen (#890 P16): null while the server has not said
+            // (an older server: captures go as before), else its client_identify_response screenWatch and
+            // device_command screen_watch { on }
+            this.screenWatch = null;
             this.timer = null;
             this.clockTimer = null;
             this.tall = new Set();
@@ -360,7 +364,9 @@
             let n = 0;
             this.tickTimer = setInterval(() => {
                 if (++n % 10 === 0) this.evalFrames(false);
-                if (this.screen === 'clock') this.drawClock();
+                // the face is redrawn each second while the page is seen; hidden, only for the 30 s capture
+                // (it copies the face), and the first tick back draws it again (#890)
+                if (this.screen === 'clock' && (!doc || !doc.hidden || n % 30 === 0)) this.drawClock();
                 if (this.screen === 'clock' && n % 30 === 0) void this.sendScreen();
             }, 1000);
             this.evalFrames(false);
@@ -433,6 +439,7 @@
         }
 
         onIdentified(data) {
+            if (typeof data.screenWatch === 'boolean') this.screenWatch = data.screenWatch;
             if (data.name) this.name = String(data.name);
             if (data.settings) this.applySettings(data.settings);
             this.save();
@@ -518,6 +525,9 @@
          */
         async sendScreen() {
             if (!doc || !this.ws || this.ws.readyState !== 1 || this.closing || this.screen === 'stopped') return;
+            // nobody has the device's screen open (the server says so, P16): no capture, the next one goes
+            // when a viewer opens it (screen_watch on)
+            if (this.screenWatch === false) return;
             const [, , lw, lh] = this.m.lcd;
             const c = Object.assign(doc.createElement('canvas'), { width: lw, height: lh });
             const g = c.getContext('2d');
@@ -639,6 +649,11 @@
                     break;
                 }
                 case 'rename': if (d.name) { this.name = String(d.name).slice(0, 64); this.save(); } break;
+                case 'screen_watch':
+                    this.screenWatch = !!d.on;
+                    // the first viewer sees the screen as it is now
+                    if (this.screenWatch) this.captureSoon(0);
+                    break;
                 case 'set_device_config':
                 case 'set_mode': {
                     // set_mode is set_device_config's { mode, clockFace }
