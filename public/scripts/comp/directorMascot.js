@@ -1894,7 +1894,9 @@ class DirectorMascot {
                 r.holdUntil = now - budget + Math.min(4000, 1200 + words * 40);
             }
             if (!r.queue.length || now < r.holdUntil) break;
-            budget = now - r.holdUntil;
+            // Only the time after the hold ended and after the pause began: a hold that ran out long
+            // before the box went away must not count the idle time before the pause.
+            budget = Math.min(budget, now - r.holdUntil);
             r.current = r.queue.shift();
             r.shown = 0;
         }
