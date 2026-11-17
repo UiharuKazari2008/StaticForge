@@ -227,6 +227,10 @@ if (window.wsClient) {
             if (window.wsClient && typeof window.wsClient.isLogonInitPhase === 'function' && window.wsClient.isLogonInitPhase()) {
                 throw error;
             }
+            // an offline boot (#899): no box; the step runs again when the Nightshade Network is back
+            if (window.wsClient && window.wsClient._offlineBoot && !window.wsClient.initializationCompleted) {
+                throw error;
+            }
 
             const confirmed = await showConfirmationDialog(
                 'Failed to load application data. This may be due to a server issue or connection problem.',

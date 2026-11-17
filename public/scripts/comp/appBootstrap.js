@@ -98,6 +98,8 @@ document.addEventListener('desktopBootDone', prefetchAppOptionsChunksWhenIdle, {
 
 // Load options from server with retry logic
 async function loadOptions(maxRetries = 5, retryDelay = 500) {
+    // an offline boot (#899): one try; it runs again when the Nightshade Network is back
+    if (window.wsClient && window.wsClient._offlineBoot && !window.wsClient.initializationCompleted) maxRetries = 1;
     let lastError = null;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -204,7 +206,8 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
 
         } catch (error) {
             lastError = error;
-            if (attempt >= maxRetries) {
+            // an offline boot (#899) says nothing: the step runs again when the Nightshade Network is back
+            if (attempt >= maxRetries && !(window.wsClient && window.wsClient._offlineBoot)) {
                 showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, false, '<i class="fas fa-exclamation-triangle"></i>');
             }
             console.error(`❌ Failed to load app options (attempt ${attempt}/${maxRetries}):`, error);
@@ -222,8 +225,8 @@ async function loadOptions(maxRetries = 5, retryDelay = 500) {
     const errorMessage = `Failed to load application configuration after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`;
     console.error(errorMessage);
 
-    // Show critical error to user
-    showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, false, '<i class="fas fa-exclamation-triangle"></i>');
+    // Show critical error to user (not in an offline boot, #899)
+    if (!(window.wsClient && window.wsClient._offlineBoot)) showGlassToast('error', 'Critical Error', 'Failed to load application data. Please refresh the page or contact support.', false, false, '<i class="fas fa-exclamation-triangle"></i>');
 
     // Throw the error to be handled by the caller
     throw new Error(errorMessage);
