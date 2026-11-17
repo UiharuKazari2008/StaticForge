@@ -370,13 +370,50 @@
         } catch (_) { return 0; }
     }
 
-    /** The prompt's token limit for the chosen model (the desktop's token bar). */
-    function tokenLimit() {
-        try { return typeof getPromptTokenLimit === 'function' ? Number(getPromptTokenLimit((snapshot() || {}).model)) || 0 : 0; } catch (_) { return 0; }
+    /**
+     * The chosen model as snapshot().model has it (collectManualFormValues reads #manualModel), without
+     * building the whole snapshot (every field, references, characters): token counts and the limit
+     * asked for it on every keystroke of the editor (#890).
+     */
+    function modelId() {
+        if (!ready()) return '';
+        const f = el('manualModel');
+        return f ? String(f.value || '').toLowerCase() : String((snapshot() || {}).model || '');
     }
 
-    async function tokens(text) {
-        const model = (snapshot() || {}).model || '';
+    /** The prompt's token limit for the chosen model (the desktop's token bar). */
+    function tokenLimit() {
+        try { return typeof getPromptTokenLimit === 'function' ? Number(getPromptTokenLimit(modelId())) || 0 : 0; } catch (_) { return 0; }
+    }
+
+    // Token counts of the last texts asked about, per model (the newest last): a field's count is asked
+    // by its label, the editor's head and the token bar, again on every repaint of the home page (#890).
+    // A count is kept (or its promise while it runs); "no tokenizer yet" (null) is not.
+    const TOKEN_MEMO_MAX = 12;
+    const tokenMemo = new Map();
+
+    function tokens(text) {
+        const model = modelId();
+        const key = `${model}\u0000${String(text || '')}`;
+        if (tokenMemo.has(key)) {
+            const hit = tokenMemo.get(key);
+            tokenMemo.delete(key);
+            tokenMemo.set(key, hit);
+            return Promise.resolve(hit);
+        }
+        const job = countTokens(model, text).then((n) => {
+            if (tokenMemo.get(key) === job) {
+                if (n == null) tokenMemo.delete(key);
+                else tokenMemo.set(key, n);
+            }
+            return n;
+        });
+        tokenMemo.set(key, job);
+        while (tokenMemo.size > TOKEN_MEMO_MAX) tokenMemo.delete(tokenMemo.keys().next().value);
+        return job;
+    }
+
+    async function countTokens(model, text) {
         try {
             if (typeof ensurePromptTokenizerForModel === 'function') await ensurePromptTokenizerForModel(model);
             // a weighted group counts as its words: the `1.2::` and `::` around them are not sent as

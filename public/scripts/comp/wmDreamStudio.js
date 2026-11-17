@@ -268,25 +268,28 @@
     }
 
     let tokenSeq = 0;
-    function drawTokens(field, text, target) {
+    // count: the text's count when the caller has asked for it already (a promise), else asked here
+    function drawTokens(field, text, target, count) {
         if (!target) return;
         const seq = ++tokenSeq;
         target.dataset.seq = String(seq);
-        if (!text) { target.textContent = ''; return; }
-        M.tokens(text).then((n) => {
+        if (!text) { setText(target, ''); return; }
+        (count || M.tokens(text)).then((n) => {
             if (target.dataset.seq !== String(seq)) return;
-            target.textContent = n == null ? '' : `${n} tokens`;
+            setText(target, n == null ? '' : `${n} tokens`);
         });
     }
 
-    function drawHome() {
+    // entering: home comes back from another page (the editor's box shrinks back to its place)
+    function drawHome(entering) {
         const s = read();
         ['prompt', 'uc', 'directive'].forEach((id) => {
             const box = $(`.wds-field[data-field="${id}"]`);
             if (!box) return;
             const text = s[id] || '';
-            if (box.value !== text) box.value = text;
-            box.scrollTop = 0;
+            // a box whose text was put back, or home shown again, starts at its top; a repaint for a
+            // setting leaves it where it is (each one set it, a layout per box, #890)
+            if (box.value !== text) { box.value = text; box.scrollTop = 0; } else if (entering) box.scrollTop = 0;
             drawTokens(id, text, $(`.wds-label[data-for="${id}"] > span:last-child`));
         });
         drawChars(s);
@@ -581,6 +584,10 @@
         box._seeds = seeds;
     }
 
+    // the last paint drew home (or the print beside it): drawHome's boxes keep their scroll until home
+    // is entered again
+    let homeDrawn = false;
+
     function paint() {
         if (!page || !M) return;
         if (!shown) { stale = true; return; }
@@ -592,7 +599,10 @@
         const box = v === 'editor' ? boxOf(edField) : null;
         page.dataset.ed = v === 'editor' ? (box ? 'box' : 'own') : '';
         page.querySelectorAll('.wds-field').forEach((b) => b.classList.toggle('is-editing', b === box));
-        if (v === 'home' || v === 'print') { drawHome(); drawPrint(); }
+        const homeNow = v === 'home' || v === 'print';
+        const entering = homeNow && !homeDrawn;
+        homeDrawn = homeNow;
+        if (homeNow) { drawHome(entering); drawPrint(); }
         if (v === 'presets') drawPresets();
         if (v === 'ref') drawRef();
         hlDraw();
@@ -658,7 +668,9 @@
     function edCount() {
         const ta = edArea();
         const out = $('.wds-ed-head > span');
-        if (ta && out) drawTokens(edField, ta.value, out);
+        // the text is counted once for the head and the bar (it was counted twice a keystroke)
+        const count = ta && ta.value ? M.tokens(ta.value) : null;
+        if (ta && out) drawTokens(edField, ta.value, out, count);
         // the bar's count and meter (the desktop's token bar): the field's own words and what Studio
         // adds to them (quality and dataset tags), of the model's limit; a warning near the limit, an
         // error over it. With it on the bar the count leaves the head
@@ -669,15 +681,16 @@
         const seq = String(++tokenSeq);
         box.dataset.seq = seq;
         const added = edField === 'prompt' || edField === 'uc' ? M.addedTokens(edField) : 0;
-        Promise.resolve(ta.value ? M.tokens(ta.value) : 0).then((own) => {
+        Promise.resolve(count || 0).then((own) => {
             if (box.dataset.seq !== seq) return;
             const limit = M.tokenLimit() || 512;
             const n = own == null ? null : own + added;
-            box.children[1].textContent = n == null ? '' : `${n}/${limit}`;
+            setText(box.children[1], n == null ? '' : `${n}/${limit}`);
             const level = n == null ? '' : n > limit ? 'over' : n >= limit * 0.85 ? 'near' : '';
-            box.dataset.level = level;
+            if (box.dataset.level !== level) box.dataset.level = level;
             const icon = box.querySelector('i');
-            if (icon) icon.className = level === 'over' ? 'fas fa-circle-exclamation wm-icon-error' : 'fas fa-triangle-exclamation wm-icon-warn';
+            const iconClass = level === 'over' ? 'fas fa-circle-exclamation wm-icon-error' : 'fas fa-triangle-exclamation wm-icon-warn';
+            if (icon && icon.className !== iconClass) icon.className = iconClass;
             setBar(box.querySelector('.wds-bar'), n == null ? 0 : Math.min(100, (n / limit) * 100));
         });
     }
@@ -822,13 +835,15 @@
         if (!ta || !out) return;
         const hit = weightAt(ta.value, ta.selectionStart, ta.selectionEnd);
         const w = hit ? hit.weight : 1;
-        if (ui && typeof ui.segText === 'function') ui.segText(out, w.toFixed(2), { signed: true }); else out.textContent = w.toFixed(2);
+        if (ui && typeof ui.segText === 'function') ui.segText(out, w.toFixed(2), { signed: true }); else setText(out, w.toFixed(2));
         hlDraw();
         // the readout takes the strength's colour (Yukimi, Nov 15): up towards orange and red, down
-        // towards blue, all of it by 2 / 0
+        // towards blue, all of it by 2 / 0 (written only when it changed: this runs on every caret move)
         const level = Math.max(-1, Math.min(1, w - 1));
-        out.dataset.tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
-        out.style.setProperty('--wm-lcd-strength', Math.abs(level).toFixed(3));
+        const tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
+        if (out.dataset.tone !== tone) out.dataset.tone = tone;
+        const strength = Math.abs(level).toFixed(3);
+        if (out.style.getPropertyValue('--wm-lcd-strength') !== strength) out.style.setProperty('--wm-lcd-strength', strength);
     }
 
     // ---- emphasis highlighting: a copy of the field's text behind it (same box, font and wrap, its
@@ -846,32 +861,40 @@
         const cs = getComputedStyle(ta);
         ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight', 'letterSpacing', 'wordSpacing', 'textIndent', 'tabSize',
             'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth'].forEach((k) => { if (hl.style[k] !== cs[k]) hl.style[k] = cs[k]; });
-        hl.style.left = `${r.left - br.left}px`;
-        hl.style.top = `${r.top - br.top}px`;
+        // A keystroke drew this three times (input, selectionchange, keyup): what did not change is not
+        // written again (each write dirtied the layout the next read had to redo) nor built again (#890)
+        const setStyle = (k, v) => { if (hl.style[k] !== v) hl.style[k] = v; };
+        setStyle('left', `${r.left - br.left}px`);
+        setStyle('top', `${r.top - br.top}px`);
         // the field's scroll bar takes from its width: the copy wraps where the text does
-        hl.style.width = `${ta.clientWidth + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)}px`;
-        hl.style.height = `${r.height}px`;
+        setStyle('width', `${ta.clientWidth + parseFloat(cs.borderLeftWidth) + parseFloat(cs.borderRightWidth)}px`);
+        setStyle('height', `${r.height}px`);
         const text = ta.value;
-        let html = '';
-        let at = 0;
-        WEIGHT_RE.lastIndex = 0;
-        let m;
-        while ((m = WEIGHT_RE.exec(text))) {
-            const level = Math.max(-1, Math.min(1, Number(m[1]) - 1));
-            const tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
-            html += esc(text.slice(at, m.index)) + `<mark class="wm-emph" data-tone="${tone}" data-strength="${Math.abs(level).toFixed(3)}">${esc(m[0])}</mark>`;
-            at = m.index + m[0].length;
+        if (text !== hlText || !hl.dataset.src) {
+            hlText = text;
+            let html = '';
+            let at = 0;
+            WEIGHT_RE.lastIndex = 0;
+            let m;
+            while ((m = WEIGHT_RE.exec(text))) {
+                const level = Math.max(-1, Math.min(1, Number(m[1]) - 1));
+                const tone = level > 0.001 ? 'up' : level < -0.001 ? 'down' : '';
+                html += esc(text.slice(at, m.index)) + `<mark class="wm-emph" data-tone="${tone}" data-strength="${Math.abs(level).toFixed(3)}">${esc(m[0])}</mark>`;
+                at = m.index + m[0].length;
+            }
+            // a last empty line keeps its height
+            html += `${esc(text.slice(at))} `;
+            if (hl.dataset.src !== html) {
+                hl.dataset.src = html;
+                hl.innerHTML = html;
+                hl.querySelectorAll('mark[data-strength]').forEach((k) => k.style.setProperty('--wm-emph-strength', k.dataset.strength));
+            }
         }
-        // a last empty line keeps its height
-        html += `${esc(text.slice(at))} `;
-        if (hl.dataset.src !== html) {
-            hl.dataset.src = html;
-            hl.innerHTML = html;
-            hl.querySelectorAll('mark[data-strength]').forEach((k) => k.style.setProperty('--wm-emph-strength', k.dataset.strength));
-        }
-        hl.hidden = false;
-        hl.scrollTop = ta.scrollTop;
+        setHidden(hl, false);
+        if (hl.scrollTop !== ta.scrollTop) hl.scrollTop = ta.scrollTop;
     }
+    // the text hlDraw last built its copy from
+    let hlText = null;
 
     /** The weight of the group the caret is in (1 outside one): the emphasis jog's stop at zero reads it. */
     function caretWeight() {
