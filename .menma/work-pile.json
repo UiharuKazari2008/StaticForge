@@ -1,10 +1,10 @@
 {
-  "updated_at": "2026-11-16T07:10:00-05:00",
+  "updated_at": "2026-11-17T07:10:00-05:00",
   "rule": "Work other agents (Hoshino, Sala, Frost, anyone Yukimi runs) hand Menma goes here immediately. 9am loop pulls open items into the day's work, then folds COMPLETED items since last breakfast into cake (min 1 slice per completed teammate task, plus normal cleanup slices if code/docs landed). Do not let teammate work vanish between handoff and breakfast.",
   "last_breakfast_at": "2026-11-13T07:30:00-05:00",
   "open": [],
   "done_since_breakfast": [],
-  "cake_note": "Nov16 7am loop on host dreamscape. Live tree under active Claude locks dsbar (06:11) and wm732: untouched; lands from worktree ~/wt/n16 off origin/main e4a1993a. Docs for d307e079..e4a1993a (Nov15 7am through Nov16 06:17; Yukimi already documented youtube/Videos #840 #861, director streaming #843, melaton segments, reminders, traffic, lapis): ws/notificationInbox.md inbox_prefs, server-raised notices (notificationInboxSources ids mail/sms/tm-signin/chat/director/print/wx/rain), ActiveSync inbox.notice / inbox.cleared (#876); activeSync.md server events; README count. open=[].",
+  "cake_note": "Nov17 7am loop on host dreamscape. Live tree behind lock wm732 (Nov10, Claude): untouched; lands from ~/wt/n17 off origin/main a0413756. Docs: new ws/ledge.md (ledge_list/get/checks/remove/clear/rename/dispose, ledge_state push) for 309-ledgeHandler; Android app accounts docs already landed with #885. open=[].",
   "eaten": [
     {
       "id": "sf-22",
