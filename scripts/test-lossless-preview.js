@@ -69,6 +69,41 @@ fs.mkdirSync(previewsDir);
     assert.strictEqual(await pu.ensureLosslessPreview(imagesDir, previewsDir, 'a.webp'), null);
     assert.ok(!fs.readdirSync(previewsDir).some((f) => f.endsWith('.tmp')), 'no temp files left');
 
+    // a refused PNG is remembered by its mtime: an 8-bit file put in its place with the same mtime is still
+    // refused (no header read), a changed mtime is looked at again
+    const deep = path.join(imagesDir, 'deep.png');
+    const deepTime = new Date(Math.floor(Date.now() / 1000) * 1000 - 30000); // whole ms: utimes round-trips it
+    fs.utimesSync(deep, deepTime, deepTime);
+    assert.strictEqual(await pu.ensureLosslessPreview(imagesDir, previewsDir, 'deep@ll.webp'), null, '16-bit, again');
+    fs.copyFileSync(path.join(imagesDir, 'a.png'), deep);
+    fs.utimesSync(deep, deepTime, deepTime);
+    assert.strictEqual(await pu.ensureLosslessPreview(imagesDir, previewsDir, 'deep@ll.webp'), null, 'refusal remembered');
+    const later = new Date(deepTime.getTime() + 5000);
+    fs.utimesSync(deep, later, later);
+    assert.strictEqual(await pu.ensureLosslessPreview(imagesDir, previewsDir, 'deep@ll.webp'), path.join(previewsDir, 'deep@ll.webp'), 'a changed file is copied');
+    // an unreadable PNG: refused too, and no temp file
+    fs.writeFileSync(path.join(imagesDir, 'bad.png'), 'not a png');
+    assert.strictEqual(await pu.ensureLosslessPreview(imagesDir, previewsDir, 'bad@ll.webp'), null);
+    assert.strictEqual(await pu.ensureLosslessPreview(imagesDir, previewsDir, 'bad@ll.webp'), null);
+    assert.ok(!fs.readdirSync(previewsDir).some((f) => f.endsWith('.tmp')), 'no temp files left');
+
+    // the boot orphan sweep (globalResources.syncPreviews) keeps a lossless preview while its PNG exists
+    assert.strictEqual(pu.previewSweepBase('a@ll.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a_upscaled@ll.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a_upscaled@studio.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a@fit.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a@lq.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a@2x.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a.webp'), 'a');
+    assert.strictEqual(pu.previewSweepBase('a.png'), null);
+    // and removes an encode's temp file only when another process left it
+    assert.strictEqual(pu.isStalePreviewTmp('a@ll.webp.1234.1700000000000.tmp', 99), true);
+    assert.strictEqual(pu.isStalePreviewTmp(`a@ll.webp.${process.pid}.1700000000000.tmp`), false, 'our own: in progress');
+    assert.strictEqual(pu.isStalePreviewTmp('a@ll.webp'), false);
+    assert.strictEqual(pu.isStalePreviewTmp('notes.tmp', 99), false);
+    const gr = fs.readFileSync(path.join(__dirname, '..', 'modules', 'globalResources.js'), 'utf8');
+    assert.ok(/previewSweepBase\(preview\)/.test(gr) && /isStalePreviewTmp\(name\)/.test(gr), 'syncPreviews uses both helpers');
+
     fs.rmSync(root, { recursive: true, force: true });
     console.log('lossless preview: ok');
 })().catch((e) => { console.error(e); process.exit(1); });

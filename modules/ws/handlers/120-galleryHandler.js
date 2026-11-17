@@ -1137,9 +1137,14 @@ async function handleDeleteImagesBulk(handlers, ws, message, clientInfo, wsServe
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@2x.webp`),
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@lq.webp`),
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@blur.webp`),
-                    // Studio previews (#648), named after the original and the upscaled file
+                    // Studio (#648), fit (#788) and lossless (#890 P14) previews, named after the original
+                    // and the upscaled file
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@studio.webp`),
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@studio.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@fit.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@fit.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@ll.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@ll.webp`),
                     previewPath // Legacy preview format
                 ];
 
@@ -1411,9 +1416,14 @@ async function handleSendToSequenziaBulk(handlers, ws, message, clientInfo, wsSe
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@2x.webp`),
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@lq.webp`),
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@blur.webp`),
-                    // Studio previews (#648), named after the original and the upscaled file
+                    // Studio (#648), fit (#788) and lossless (#890 P14) previews, named after the original
+                    // and the upscaled file
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}@studio.webp`),
                     path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@studio.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@fit.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@fit.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}@ll.webp`),
+                    path.join(handlers.globalResources.getPath("previews"), `${baseName}_upscaled@ll.webp`),
                     previewPath // Legacy preview format
                 ];
 
