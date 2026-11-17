@@ -1682,8 +1682,16 @@ class DirectorMascot {
         });
     }
 
+    // Nothing of hers can be seen: a hidden page, or a phone with its screen off (html[data-screen-off];
+    // the page is not hidden then). Her tick and blinks wait (the director ticks her on screen on).
+    outOfSight() {
+        if (typeof document === 'undefined') return false;
+        const root = document.documentElement;
+        return !!(document.hidden || (root && root.dataset && root.dataset.screenOff !== undefined));
+    }
+
     tick(now = Date.now()) {
-        if (!this.manifest || !this.stageState || (typeof document !== 'undefined' && document.hidden)) return;
+        if (!this.manifest || !this.stageState || this.outOfSight()) return;
         // back in sight (page shown, screen on): the paced reader catches up
         if (this._reader && this._reader.pausedAt && this.readerSeen()) this.resumeReader();
         // Her host can be moved after she decided whether she shows (the phone's Director app re-hosts
@@ -1789,7 +1797,8 @@ class DirectorMascot {
         if (live && (live.type === 'thinking' || live.type === 'assistant')) {
             const text = String(live.text || '');
             this.dialogue = { kind: live.type, text };
-            if (live.type === 'assistant' && text.length > this._lastAssistantLength) this.talk();
+            // her mouth moves only where she can be seen (its 120 ms flap ran behind the Messages view too)
+            if (live.type === 'assistant' && text.length > this._lastAssistantLength && this._shown) this.talk();
             this._lastAssistantLength = live.type === 'assistant' ? text.length : this._lastAssistantLength;
             this.paintDialogue();
         }
@@ -1859,10 +1868,7 @@ class DirectorMascot {
     // screen on. Otherwise the reader's 50 ms loop stops (it ran the whole turn behind the Messages
     // view, with her off, beside the log, behind another phone program) and lines only queue (#890).
     readerSeen() {
-        if (!this.vnBubbles()) return false;
-        if (typeof document === 'undefined') return true;
-        const root = document.documentElement;
-        return !document.hidden && !(root && root.dataset && root.dataset.screenOff !== undefined);
+        return this.vnBubbles() && !this.outOfSight();
     }
 
     // The box can be seen again: the reader moves on by the time it waited, as if it had read all along
@@ -2491,7 +2497,7 @@ class DirectorMascot {
 
     blink() {
         const set = this.faceSet();
-        if (!this.el || !set || !set.blink || (typeof document !== 'undefined' && document.hidden)) return;
+        if (!this.el || !set || !set.blink || this.outOfSight()) return;
         // not rendered (Studio's chat pane folded, window closed): no class flips to restyle
         if (typeof this.el.blink.checkVisibility === 'function' && !this.el.blink.checkVisibility()) return;
         const expr = this.shownExpression();
@@ -2667,7 +2673,10 @@ class DirectorMascot {
         // The visual novel view shows the log panel instead; the box stays for a log-less layout later.
         const show = false && !!(d.text || d.kind === 'thinking');
         this.el.dialogue.classList.toggle('hidden', !show);
-        this.el.dialogue.dataset.kind = d.kind;
+        if (this.el.dialogue.dataset.kind !== d.kind) this.el.dialogue.dataset.kind = d.kind;
+        // the hidden box takes no text: every stream update wrote the whole live text into it and read
+        // its scroll height (a layout) for nobody (#890); a shown box is filled on its next paint
+        if (!show) return;
         const text = d.text || (d.kind === 'thinking' ? '…' : '');
         if (this.el.text.textContent !== text) {
             this.el.text.textContent = text;
