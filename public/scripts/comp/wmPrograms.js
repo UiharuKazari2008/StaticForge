@@ -739,7 +739,8 @@
         'remote-desktop-connection': ['remote-desktop-mobile']
     };
     // Toolbox programs that are desktop-only ideas (#732 plan): not offered on the phone
-    const TOOLBOX_SKIP = new Set(['vista-sidebar', 'snipping', 'sideshow-simulator-landscape', 'sideshow-simulator-portrait', 'welcome-center', 'perfmon', 'memories']);
+    // nightshade: the phone has Settings > Connections > Nightshade, not the desktop client (#895)
+    const TOOLBOX_SKIP = new Set(['vista-sidebar', 'snipping', 'sideshow-simulator-landscape', 'sideshow-simulator-portrait', 'welcome-center', 'perfmon', 'memories', 'nightshade']);
     // Yukimi, Nov 10: no lazy ports. A desktop program is offered on the phone only as a phone app of
     // its own (MAPPED) or a page the phone already shows well; the rest (Paint, Phasewalker, Atelier,
     // Runes ...) are not listed. Dreamscape apps (dsap:) open in Internet Explorer's mobile view.

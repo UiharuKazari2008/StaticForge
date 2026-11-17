@@ -62,6 +62,7 @@ const RUN_APP_ALIAS_GROUPS = [
     { aliases: ['wincal', 'wincal.exe', 'windows calendar', 'calendar'], launchIds: ['calendar'] },
     { aliases: ['wab', 'wab.exe', 'contacts', 'windows contacts'], launchIds: ['contacts'] },
     { aliases: ['soundrecorder', 'soundrecorder.exe', 'sound recorder', 'sndrec32'], launchIds: ['soundrec'] },
+    { aliases: ['nightshade', 'nightshade.exe', 'nightshade network', 'nightshade network client', 'nsclient'], launchIds: ['nightshade'] },
     { aliases: ['wordpad', 'wordpad.exe', 'write', 'write.exe'], launchIds: ['wordpad'] },
     { aliases: ['taskmgr', 'taskmgr.exe', 'task manager'], launchIds: ['taskmgr'] },
     { aliases: ['chat', 'girlfriend', 'friend', 'erp', 'roleplay', 'messages'], launchIds: ['chat'] },

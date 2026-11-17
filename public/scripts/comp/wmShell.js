@@ -3220,11 +3220,10 @@
         const asx = window.activeSync;
         hide(shell.querySelector('[data-role="received"]'), !(asx && typeof asx.receivedUnseen === 'function' && asx.receivedUnseen() > 0));
         // Nightshade Network (#895): no glyph while the service works; unreachable, restarting or no
-        // internet shows it (restarting steps it), and a tap says what is wrong
+        // internet shows the N with its "!" (still, never blinking: Yukimi), and a tap says what is wrong
         const ns = nightshadeNow(ws);
         const nsEl = shell.querySelector('[data-role="nightshade"]');
         hide(nsEl, !(ns && ns.problem && bootDoneAt));
-        if (nsEl) nsEl.classList.toggle('is-working', !!(ns && ns.service === 'restarting'));
         if (!bubble0Hidden() && shell.querySelector('.wm-bubble').dataset.role === 'nightshade' && nsEl && nsEl.hidden) closeBubble();
         paintBezelLed();
         syncStrips();

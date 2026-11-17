@@ -483,7 +483,7 @@
             if (tab === 'ns-cafe') {
                 const cur = IDLE_CHOICES.find(([v]) => v === d.idle) || [d.idle, `${d.idle} minutes`];
                 const has = !!(mp && mp.present);
-                el.innerHTML = `<div class="wm-setc-cafe-logo"><img src="/static_images/melaton/cafe-ready-dark.png" alt="Caf\u00e9Ready" draggable="false"></div>
+                el.innerHTML = `<div class="wm-cafe-badge" role="img" aria-label="Powered by Caf\u00e9Ready"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">\u2122</span></div>
                     <p>Caf\u00e9Ready lays a cache and its own connection over the Nightshade Network: windows keep their data and stay connected while one restarts.</p>
                     ${has ? ui.check('ns-cafe-on', 'Use Melaton Caf\u00e9 Miniport', d.cafeOn, 'data-k="ns-cafe-on"') : ui.note('This device has no Melaton Caf\u00e9 Miniport. Caf\u00e9Ready needs the Dreamscape app.')}
                     ${has ? `${ui.sub('Idle timeout')}<p>Disconnect the Miniport when no program has used it for:</p>${ui.comboHtml('ns-idle', cur[1])}` : ''}
@@ -508,7 +508,7 @@
                 return;
             }
             // General: the service's status, the account, Connect / Disconnect
-            el.innerHTML = `<div class="wm-setc-ns-head"><img src="/static_images/wm61/set-nightshade@2x.png" alt="" draggable="false"><b data-f="status"></b></div>
+            el.innerHTML = `<div class="wm-setc-ns-head">${root.wmShell && root.wmShell.art ? root.wmShell.art.img('set-nightshade') : ''}<b data-f="status"></b></div>
                 <div data-f="facts"></div><div data-f="note"></div><div data-f="buttons"></div>`;
             const status = el.querySelector('[data-f="status"]');
             const facts = el.querySelector('[data-f="facts"]');

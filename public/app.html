@@ -708,6 +708,8 @@
     <link rel="stylesheet" href="/css/vista-fa-icons.css">
     <!-- Taskbar: Start orb, buttons, Quick Launch, chevron, clock (taskbarSettings.js, taskbarClock.js) -->
     <link rel="stylesheet" href="/css/vista-taskbar.css">
+    <!-- Nightshade Network Client (#895): the service's connection manager, opened from its tray icon -->
+    <link rel="stylesheet" href="/css/nightshade-client.css">
     <link rel="stylesheet" href="/css/system-font.css">
     <link rel="stylesheet" href="/css/hidden.css">
     <script>
@@ -7372,6 +7374,8 @@ Examples:
     <script src="scripts/comp/vfsSystemOpenRouter.js"></script>
     <!-- Shared desktop-app window helper (desktopAppApplyContentHeight) for the Melaton app packages (#642) -->
     <script src="scripts/comp/desktop-apps/desktopAppWindow.js"></script>
+    <!-- Nightshade Network Client (#895): with the desktop, not on demand (it must open while the server is out of reach) -->
+    <script src="scripts/comp/nightshadeClient.js"></script>
     <!-- Melaton app runtime (#638): built-in apps launch through it from the Start menu, so it loads globally -->
     <!-- app packages run as unloadable segments, so one updates without a restart (#872) -->
     <script src="scripts/comp/melatonSegments.js"></script>

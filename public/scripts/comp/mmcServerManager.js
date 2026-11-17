@@ -12,7 +12,10 @@
  *                             Bridge, Melaton Mobile Device Center, Melaton Messenger, Pantry, Zanzou)
  *     Diagnostics             Event Viewer, Reliability and Performance, Device Manager (windows of
  *                             their own: a page with Open, as Computer Management does for snap-ins it
- *                             cannot host) and Workers (Computer Management's, hosted)
+ *                             cannot host), Nightshade Network (the service as the server sees it:
+ *                             this computer's connection, the domain controller, the clients; #895),
+ *                             Hardware and Sensors (hwmon readings pushed by the hardware_sensors
+ *                             feed while the page shows; #896) and Workers (Computer Management's, hosted)
  *     Configuration           Authentication, Melaton Defender, Remote Access, Runes (windows of their
  *                             own) and Replication (Computer Management's, hosted)
  *     Storage                 Computer Management's Storage, hosted whole: Workspace Management,
@@ -43,6 +46,10 @@
     const SERVER32 = '/static_images/melaton/net-server-32.png';
     const GLOBE16 = `${VI}/internet-globe-16.png`;
     const GLOBE32 = `${VI}/internet-globe-32.png`;
+    const NS16 = `${VI}/nightshade-16.png`;
+    const NS32 = `${VI}/nightshade-32.png`;
+    const SENS16 = `${DEV}/sensors-16.png`;
+    const SENS32 = `${DEV}/sensors-32.png`;
 
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
@@ -124,7 +131,12 @@
         sumError: '',
         loading: false,
         refreshed: 0,       // Last Refresh
-        hosted: new Set()   // the ROLES / PARTS keys hosted in the open console
+        hosted: new Set(),  // the ROLES / PARTS keys hosted in the open console
+        console: null,      // the open console (pushes repaint its page)
+        sensors: new Map(), // Hardware and Sensors: sensor id -> row (hardware_sensors feed)
+        sensorsHost: '',
+        sensorsOn: false,   // subscribed to the feed
+        sensorsError: ''
     };
 
     // ---- data -------------------------------------------------------------------------------------
@@ -217,7 +229,11 @@
                 { id: 'features', name: 'Features', icon: `${ITEMS}/programs-and-features-16.png`, desc: 'Programs and pages that are not consoles' },
                 {
                     id: 'diagnostics', name: 'Diagnostics', icon: `${ITEMS}/problem-reports-and-solutions-16.png`, desc: 'Logs, performance, devices and the remote services',
-                    children: DIAGNOSTICS.map(toolNode).concat([part('workers', 'Workers', SERVER16, 'The remote services Dreamscape uses')])
+                    children: DIAGNOSTICS.map(toolNode).concat([
+                        { id: 'nightshade', name: 'Nightshade Network', icon: NS16, desc: 'The Nightshade Network service: this computer\u2019s connection, the domain controller and the clients' },
+                        { id: 'sensors', name: 'Hardware and Sensors', icon: SENS16, desc: 'Temperatures, fans, voltages and power of the server\u2019s hardware' },
+                        part('workers', 'Workers', SERVER16, 'The remote services Dreamscape uses')
+                    ])
                 },
                 {
                     id: 'configuration', name: 'Configuration', icon: `${ITEMS}/administrative-tools-16.png`, desc: 'Sign-in, security, remote access, replication and the server configuration',
@@ -262,19 +278,174 @@
         return html.replace('<div class="mmc-page-body">', `<div class="mmc-page-body"><div class="sm-intro"><img src="${esc(img)}" alt=""><p>${esc(text)}</p></div>`) + footer();
     }
 
+    /** Signed-in clients: "3 (2 desktops, 1 phone)". */
+    function clientsHtml(s) {
+        if (!s || !s.clients) return '';
+        const k = s.clients;
+        const parts = [];
+        if (k.desktops) parts.push(`${k.desktops} desktop${k.desktops === 1 ? '' : 's'}`);
+        if (k.phones) parts.push(`${k.phones} phone${k.phones === 1 ? '' : 's'}`);
+        if (k.devices) parts.push(`${k.devices} device${k.devices === 1 ? '' : 's'}`);
+        return `${esc(String(k.signedIn || 0))}${parts.length ? ` <span class="mmc-hint">(${esc(parts.join(', '))})</span>` : ''}`;
+    }
+
+    // ---- Nightshade Network (#895): the service as the server's administrator sees it ----------
+
+    function nsDuration(ms) {
+        const t = Math.max(0, Math.floor((ms || 0) / 1000));
+        const p = (n) => String(n).padStart(2, '0');
+        return `${Math.floor(t / 3600)}:${p(Math.floor((t % 3600) / 60))}:${p(t % 60)}`;
+    }
+
+    function nsBytes(n) {
+        const v = Math.max(0, Number(n) || 0);
+        if (v < 1024) return `${v} bytes`;
+        if (v < 1048576) return `${(v / 1024).toFixed(1)} KB`;
+        return `${(v / 1048576).toFixed(1)} MB`;
+    }
+
+    function nightshadePage(c) {
+        const ws = root.wsClient;
+        let s = { service: 'unavailable', cafeReady: false, connectedAt: null };
+        try { if (ws && typeof ws.nightshadeState === 'function') s = ws.nightshadeState(); } catch (_) { /* default */ }
+        const up = s.service === 'connected';
+        const i = netInfo();
+        const n = root.melatonNetworkDialogs;
+        const device = n && typeof n.miniportLabel === 'function' ? n.miniportLabel(i) : `${i.connectionType || 'WAN'} Miniport (${i.device || 'L-PPoP'})`;
+        const st = (ws && ws.connectionStats) || {};
+        const na = '<span class="mmc-hint">Not available</span>';
+        const words = { connected: 'Connected', connecting: 'Connecting', restarting: 'Restarting', 'signed-out': 'Logon required', off: 'Disconnected by the user', 'no-internet': 'No internet connection', unavailable: 'Unavailable' };
+        let latency = na;
+        if (up && ws && Number.isFinite(ws.currentRtt)) {
+            latency = `${Math.round(ws.currentRtt)} ms`;
+            if (Number.isFinite(ws.rttVariability) && ws.currentRtt > 0) latency += ` <span class="mmc-hint">(\u00b1${Math.round((ws.rttVariability / ws.currentRtt) * 100)}%)</span>`;
+        }
+        const connection = c.props([
+            ['Status', c.state(up, `${words[s.service] || 'Unavailable'}${up && s.cafeReady ? ' (with Caf\u00e9Ready)' : ''}`, !up && s.service !== 'connecting')],
+            ['Connection name', esc(i.connectionName || 'Nightshade Network')],
+            ['Domain', esc(i.domain || 'DREAMSCAPE')],
+            ['Server name', esc(i.fqdn || '') || na],
+            ['Device', esc(device)],
+            ['Duration', up && s.connectedAt ? esc(nsDuration(Date.now() - s.connectedAt)) : na],
+            ['Latency', latency],
+            ['Encryption', root.location && root.location.protocol === 'https:' ? 'TLS (HTTPS)' : 'None'],
+            ['Messages', `${esc(Number(st.messagesOut || 0).toLocaleString())} sent, ${esc(Number(st.messagesIn || 0).toLocaleString())} received`],
+            ['Data', up ? `${esc(nsBytes(st.bytesOut))} sent, ${esc(nsBytes(st.bytesIn))} received` : na]
+        ]);
+        const sv = ws && ws.lastServerStartupStatus;
+        const caps = (sv && sv.capabilities) || {};
+        const onOff = (on) => (on ? 'On' : 'Off');
+        const dc = c.props([
+            ['Domain controller', sv ? (sv.isReady ? c.state(true, 'Ready') : c.state(false, `Starting (${sv.stageMessage || 'please wait'})`, true)) : na],
+            ['Session service', sv ? onOff(caps.websocket) : na],
+            ['Image generation', sv ? onOff(caps.generation) : na],
+            ['Static content', sv ? onOff(caps.staticAssets) : na],
+            ['Client files', sv && sv.runtimeCompileComplete !== undefined ? (sv.runtimeCompileComplete ? 'Up to date' : 'Compiling') : na],
+            ['Server Up Time', state.sum ? esc(upTime(state.sum.processUptimeSec)) : na],
+            ['Signed-in clients', clientsHtml(state.sum) || na]
+        ]);
+        const sections = [
+            { id: 'sm-ns-conn', title: 'This Computer\u2019s Connection', body: block('', connection, [
+                link('ns:client', 'Open Nightshade Network Client', NS16),
+                link('ns:reconnect', 'Reconnect This Computer', NS16),
+                link('cpl:network', 'View Network Connections', `${ITEMS}/network-and-sharing-center-16.png`)
+            ]) },
+            { id: 'sm-ns-dc', title: 'Domain Controller', body: block('', dc, [link('tool:eventvwr', 'Go to Event Viewer', `${APPS}/16/vista-event-viewer.png`)]) }
+        ];
+        return withIntro(c.page('Nightshade Network', '', sections), NS32, 'View the Nightshade Network service as this server runs it: this computer\u2019s connection, the domain controller\u2019s services and the signed-in clients.');
+    }
+
+    // ---- Hardware and Sensors (#896): hwmon readings pushed while the page shows -------------------
+
+    const SENSOR_ORDER = { temperature: 0, fan: 1, voltage: 2, power: 3, clock: 4 };
+    function sensorIcon(row) {
+        const d = String(row.device || '').toLowerCase();
+        if (/processor/.test(d)) return `${DEV}/processors-16.png`;
+        if (/graphics/.test(d)) return `${DEV}/display-adapters-16.png`;
+        if (/drive|nvme/.test(d)) return `${DEV}/disk-drives-16.png`;
+        if (/ethernet|wi-fi|network/.test(d)) return `${DEV}/network-adapters-16.png`;
+        if (/battery/.test(d)) return `${DEV}/batteries-16.png`;
+        return SENS16;
+    }
+
+    function applySensors(items, removed) {
+        if (items && typeof items === 'object') {
+            for (const [k, v] of Object.entries(items)) {
+                if (k === '#host') state.sensorsHost = String(v || '');
+                else if (v && typeof v === 'object') state.sensors.set(k, v);
+            }
+        }
+        (removed || []).forEach((k) => state.sensors.delete(k));
+    }
+
+    let sensorsWired = false;
+    function wireSensors() {
+        const ws = root.wsClient;
+        if (sensorsWired || !ws || typeof ws.on !== 'function') return;
+        sensorsWired = true;
+        ws.on('hardware_sensors_status', (msg) => {
+            if (!state.sensorsOn || !msg) return;
+            const d = msg.changed ? msg : (msg.data || {});
+            applySensors(d.changed, d.removed);
+            const c = state.console;
+            if (c && c.node === 'sensors' && c.modal && c.modal.isConnected) c.refresh();
+        });
+        // the server forgets a dropped socket's subscriptions
+        ws.on('connected', () => { if (state.sensorsOn) { state.sensorsOn = false; void sensorsWant(true); } });
+    }
+
+    async function sensorsWant(on) {
+        const ws = root.wsClient;
+        if (on === state.sensorsOn || !ws || typeof ws.sendMessage !== 'function') return;
+        state.sensorsOn = on;
+        if (!on) { try { await ws.sendMessage('status_unsubscribe', { feed: 'hardware_sensors' }, false); } catch (_) { /* gone */ } return; }
+        wireSensors();
+        try {
+            const r = await ws.sendMessage('status_subscribe', { feed: 'hardware_sensors' }, false);
+            state.sensors.clear();
+            applySensors(r && (r.items || (r.data && r.data.items)));
+            state.sensorsError = '';
+        } catch (err) {
+            state.sensorsOn = false;
+            state.sensorsError = (err && err.message) || 'The server did not answer.';
+        }
+        const c = state.console;
+        if (c && c.node === 'sensors' && c.modal && c.modal.isConnected) c.refresh();
+    }
+
+    function sensorsPage(c) {
+        if (!state.sensorsOn && isAdmin()) void sensorsWant(true);
+        const rows = [...state.sensors.values()]
+            .sort((a, b) => String(a.device).localeCompare(String(b.device)) || (SENSOR_ORDER[a.type] - SENSOR_ORDER[b.type]) || String(a.label).localeCompare(String(b.label)));
+        const val = (v, unit) => (v === null || v === undefined ? '' : `${v} ${unit}`);
+        const STATUS = { ok: 'Normal', warning: 'Over maximum', critical: 'Critical', stopped: 'Stopped' };
+        const cols = [
+            { t: 'Sensor', w: 170, key: 'label', text: (d) => d.label },
+            { t: 'Device', w: 150, key: 'device', text: (d) => d.device },
+            { t: 'Value', w: 90, key: 'value', num: true, text: (d) => val(d.value, d.unit) },
+            { t: 'Maximum', w: 90, key: 'max', num: true, text: (d) => val(d.max, d.unit) },
+            { t: 'Critical', w: 90, key: 'crit', num: true, text: (d) => val(d.crit, d.unit) },
+            { t: 'Status', w: 110, key: 'state', html: (d) => c.state(d.state === 'ok', STATUS[d.state] || 'Normal', d.state !== 'ok') }
+        ];
+        const list = c.listView(cols, rows.map((r) => ({ key: r.id, icon: sensorIcon(r), data: r })), {
+            sortId: 'sm-sensors',
+            empty: state.sensorsError ? `The sensors could not be read. ${state.sensorsError}` : (state.sensorsOn ? 'This computer reports no hardware sensors.' : 'Reading the sensors...')
+        });
+        const fans = rows.some((r) => r.type === 'fan');
+        const hot = rows.filter((r) => r.state === 'warning' || r.state === 'critical').length;
+        const summary = rows.length
+            ? `<p><b>${rows.length}</b> sensor${rows.length === 1 ? '' : 's'} on ${esc(state.sensorsHost || hostName())}${hot ? `, ${c.state(false, `${hot} over a limit`, true)}` : ''}.${fans ? '' : ' <span class="mmc-hint">This computer does not report its fans.</span>'}</p>`
+            : '';
+        return withIntro(c.page('Hardware and Sensors', '', [{ id: 'sm-sensors-list', title: 'Sensors', body: summary + list }]), SENS32,
+            'Monitor the temperatures, fans, voltages and power of the server\u2019s hardware. The readings update while this page is open.');
+    }
+
     function rootPage(c) {
         const s = state.sum;
         const info = netInfo();
         const wait = state.loading && !s ? '<p>Reading data, please wait...</p>' : '';
         const na = '<span class="mmc-hint">Not available</span>';
-        const clients = s && s.clients ? (() => {
-            const k = s.clients;
-            const parts = [];
-            if (k.desktops) parts.push(`${k.desktops} desktop${k.desktops === 1 ? '' : 's'}`);
-            if (k.phones) parts.push(`${k.phones} phone${k.phones === 1 ? '' : 's'}`);
-            if (k.devices) parts.push(`${k.devices} device${k.devices === 1 ? '' : 's'}`);
-            return `${esc(String(k.signedIn || 0))}${parts.length ? ` <span class="mmc-hint">(${esc(parts.join(', '))})</span>` : ''}`;
-        })() : na;
+        const clients = clientsHtml(s) || na;
         const computer = c.props([
             ['Full Computer Name', esc(s && s.host ? s.host : (info.fqdn || '')) || na],
             ['Domain', esc(info.domain || 'DREAMSCAPE')],
@@ -364,7 +535,12 @@
     }
 
     function page(node, c) {
+        state.console = c;
+        // the sensors feed runs only while its page shows
+        if (node.id !== 'sensors' && state.sensorsOn) void sensorsWant(false);
         switch (node.id) {
+            case 'nightshade': return nightshadePage(c);
+            case 'sensors': return sensorsPage(c);
             case 'root': return rootPage(c);
             case 'roles': return rolesPage(c);
             case 'features': return featuresPage(c);
@@ -379,6 +555,8 @@
     function commands(node) {
         const id = node && node.id;
         if (id === 'root') return [{ text: 'Configure Remote Access', action: 'tool:remote' }, { text: 'View Network Connections', action: 'cpl:network' }, { text: 'Change System Properties', action: 'cpl:system' }];
+        if (id === 'nightshade') return [{ text: 'Open Nightshade Network Client', action: 'ns:client' }, { text: 'Reconnect This Computer', action: 'ns:reconnect' }, { text: 'Refresh', action: 'refresh' }];
+        if (id === 'sensors') return [{ text: 'Refresh', action: 'refresh' }];
         if (TOOLS.has(id) || ROLES.some((r) => r[0] === id) || PARTS.some((p) => p[0] === id)) {
             const n = TOOLS.get(id);
             return [{ text: `Open ${n ? n[1] : node.name}`, action: `open:${id}` }];
@@ -405,8 +583,15 @@
 
     async function action(a, c) {
         if (a === 'refresh') {
-            if (c.node === 'root') { await load(c); return true; }
+            if (c.node === 'root' || c.node === 'nightshade') { await load(c); return true; }
+            if (c.node === 'sensors') { c.refresh(); return true; }
             return false;
+        }
+        if (a === 'ns:client') { call('openNightshadeClient'); return true; }
+        if (a === 'ns:reconnect') {
+            const ws = root.wsClient;
+            if (ws && typeof ws.manualReconnect === 'function') ws.manualReconnect();
+            return true;
         }
         if (a === 'help') { call('openHelpAndSupport', 'server-manager'); return true; }
         if (a.startsWith('tool:')) {
@@ -437,6 +622,7 @@
         switch (node && node.id) {
             case 'root': return state.loading ? 'Reading data, please wait...' : (state.sumError && !state.sum ? 'The server summary could not be read.' : '');
             case 'roles': return `${ROLES.length} roles`;
+            case 'sensors': return state.sensorsOn ? `${state.sensors.size} sensors` : 'Reading the sensors...';
             case 'features': return `${FEATURES.length} features`;
             case 'diagnostics':
             case 'configuration': return `${(node.children || []).length} items`;
@@ -459,14 +645,14 @@
             page,
             commands,
             selCommands,
-            toolbar: (node) => (node.id === 'root' ? [{ id: 'refresh', i: 3, title: 'Refresh' }] : []),
+            toolbar: (node) => (node.id === 'root' || node.id === 'nightshade' || node.id === 'sensors' ? [{ id: 'refresh', i: 3, title: 'Refresh' }] : []),
             action,
             rowOpen: (key, node, c) => { if (node.id === 'features' && String(key).startsWith('tool:')) void action(key, c); },
             status,
             help: () => call('openHelpAndSupport', 'server-manager'),
             about: { version: '1.0.0', lines: ['Server Manager holds Dreamscape\'s consoles in one tree: its roles, features, diagnostics, configuration and storage.'] },
             onOpen: (c) => { void load(c); },
-            onClose: () => { state.sum = null; }
+            onClose: () => { state.sum = null; state.console = null; if (state.sensorsOn) void sensorsWant(false); }
         };
     }
 
@@ -522,6 +708,14 @@
         const target = node ? nodeFor(c, node) : null;
         if (c && target && c.node !== target) c.select(target, true);
         return c;
+    }
+
+    // the Nightshade Network page follows the service's state (#895)
+    if (root.addEventListener) {
+        root.addEventListener('nightshade:state', () => {
+            const c = state.console;
+            if (c && c.node === 'nightshade' && c.modal && c.modal.isConnected) c.refresh();
+        });
     }
 
     root.openServerManager = openServerManager;

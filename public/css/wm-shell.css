@@ -4294,9 +4294,6 @@ html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
 /* Continuity (#798): the Continuity PC's glyph at half opacity while its window boots, and after its
  * display was unplugged while it still runs (presence); its popup's display / dock battery row */
 .wm-status-icon[data-role="continuity"].is-presence { opacity: .5; }
-/* Nightshade Network restarting (#895): the glyph steps on and off, as WM's own working glyphs blink */
-.wm-status-icon[data-role="nightshade"].is-working { animation: wmNightshadeWorking 1.2s steps(1, end) infinite; }
-@keyframes wmNightshadeWorking { 0% { opacity: 1; } 50% { opacity: 0; } }
 .wm-bubble .wm-cty-row { display: flex; align-items: center; justify-content: space-between; gap: calc(6 * var(--wm-px)); }
 .wm-bubble .wm-cty-bat { display: inline-flex; align-items: center; gap: calc(2 * var(--wm-px)); }
 
