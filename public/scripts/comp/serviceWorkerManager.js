@@ -1674,11 +1674,46 @@ class ServiceWorkerManager {
             worker.postMessage({ type: 'SW_MAINTENANCE' });
             // signed in by now: the worker keeps every Vista font the stylesheets name
             // (/protected/fonts/), so a restart never swaps the text to a fallback font
+            if (window.uiShell === 'mobile') {
+                void this._cacheProtectedFontsOnPhone(worker);
+                return;
+            }
             const fonts = this._protectedFontPaths();
             if (fonts.length) worker.postMessage({ type: 'CACHE_PROTECTED_FONTS', paths: fonts });
         };
         document.addEventListener('desktopBootDone', () => setTimeout(send, 15000), { once: true });
         setTimeout(send, 120000);
+    }
+
+    /**
+     * Melaton Mobile (#890): the same fonts as above, without walking every rule of every stylesheet on
+     * each boot. The list found last time is kept with the stylesheets it came from (their URLs carry
+     * the content hash); with the same sheets it is the same list, and when the worker's cache already
+     * has every font in it nothing is sent (the worker would have skipped each one). A changed set of
+     * sheets is walked again, and a missing font sends the whole list as before.
+     */
+    async _cacheProtectedFontsOnPhone(worker) {
+        const KEY = 'melatonProtectedFonts';
+        const sig = Array.from(document.styleSheets, (sheet) => sheet.href
+            || `inline:${(sheet.ownerNode && sheet.ownerNode.textContent || '').length}`).join('\n');
+        let kept = null;
+        try { kept = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (_) { kept = null; }
+        let fonts = kept && kept.sig === sig && Array.isArray(kept.fonts) ? kept.fonts : null;
+        if (!fonts) {
+            fonts = this._protectedFontPaths();
+            try { localStorage.setItem(KEY, JSON.stringify({ sig, fonts })); } catch (_) { /* walked again next boot */ }
+        }
+        if (!fonts.length) return;
+        try {
+            // sw.js PROTECTED_FONT_CACHE: keep this name the same as the worker's
+            const name = 'protected-font-cache-v1';
+            if (typeof caches !== 'undefined' && await caches.has(name)) {
+                const cache = await caches.open(name);
+                const found = await Promise.all(fonts.map((p) => cache.match(p).then((r) => !!r, () => false)));
+                if (found.every(Boolean)) return;
+            }
+        } catch (_) { /* unknown: the worker checks each one itself */ }
+        worker.postMessage({ type: 'CACHE_PROTECTED_FONTS', paths: fonts });
     }
 
     /** /protected/fonts/ URLs in every @font-face this page has (resolved against their sheet). */
@@ -3676,13 +3711,18 @@ class ServiceWorkerManager {
         // One ping a minute (#849). It was one every 10 seconds, which woke the page and kept the
         // worker's thread from ever going idle, on every client and for as long as the page lived.
         // The limits that read the answers moved with it (SW_HEALTH_SILENT_MS, SW_HEALTH_GRACE_MS).
+        // Melaton Mobile (#890): nothing on the phone shows the worker's health (the desktop's tray icon
+        // reads it), and each ping can start a worker that had gone idle: a phone pings only while an
+        // update runs, and never with the screen off.
+        const phone = window.uiShell === 'mobile';
         this.healthCheckInterval = setInterval(() => {
             if (document.hidden) return;
+            if (phone && (!this.isUpdating || document.documentElement.dataset.screenOff !== undefined)) return;
             this._runMeasuredHealthCheckPing();
         }, SW_HEALTH_PING_MS);
         
         // Send initial ping immediately
-        this._runMeasuredHealthCheckPing();
+        if (!phone || this.isUpdating) this._runMeasuredHealthCheckPing();
     }
 
     stopHealthCheck() {
@@ -4092,12 +4132,23 @@ class ServiceWorkerManager {
      * one request). The worker installs and claims on its own (skipWaiting, cheap activate).
      * Continuity (#798): one registration for both windows; the phone asks.
      */
-    recheckWorkerScript() {
+    recheckWorkerScript(swHash) {
         if (!this.swRegistration || this._isContinuityDexWindow()) return;
+        // the broadcast names sw.js's own hash (swHash, #890): a notify that did not change the worker
+        // costs no request (each update() read sw.js from the server); without one, ask as before
+        const hash = typeof swHash === 'string' && /^[0-9a-f]{40}$/i.test(swHash) ? swHash.toLowerCase() : '';
+        if (hash) {
+            let known = '';
+            try { known = localStorage.getItem('melatonSwHash') || ''; } catch (_) { known = ''; }
+            if (known === hash) return;
+        }
         clearTimeout(this._workerRecheckTimer);
         // after the notify's own manifest work has started; several notifies in a row ask once
         this._workerRecheckTimer = setTimeout(() => {
-            this.swRegistration.update().catch(() => { /* next notify or navigation */ });
+            this.swRegistration.update().then(() => {
+                if (!hash) return;
+                try { localStorage.setItem('melatonSwHash', hash); } catch (_) { /* asked again next time */ }
+            }).catch(() => { /* next notify or navigation */ });
         }, 3000);
     }
 
