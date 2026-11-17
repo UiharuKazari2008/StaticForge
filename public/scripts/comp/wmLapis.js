@@ -498,8 +498,10 @@
             else if (c === 'start') { const s = st(); if (s && s.engine && s.climate) doStop(); else openLayer('start'); }
         });
         els.body.addEventListener('click', onLayerClick);
-        document.addEventListener('visibilitychange', () => { if (els) els.root.classList.toggle('is-paused', document.hidden); });
+        // one listener for the page (the same function each mount: added once), not one more per open (#890)
+        document.addEventListener('visibilitychange', pauseHidden, { signal: appScopeSignal });
     }
+    function pauseHidden() { if (els) els.root.classList.toggle('is-paused', document.hidden); }
 
     // ---------------------------------------------------------------- main page
 
