@@ -2827,15 +2827,41 @@
             // and holds them lit while the value is being changed
             const lcd = anchor && anchor.classList && anchor.classList.contains('wm-lcd') ? anchor : null;
             let changedAt = 0;
-            const blink = lcd ? setInterval(() => {
-                if (Date.now() - changedAt < 900) lcd.classList.remove('is-blink');
-                else lcd.classList.toggle('is-blink');
-            }, 500) : 0;
+            // (only while it is seen: a panel left open when the screen goes off does not blink all night;
+            // the screen on, the page shown or back from an Android program, it blinks again)
+            let blink = 0;
+            const blinkSeen = () => {
+                const r = document.documentElement.dataset;
+                return !document.hidden && r.screenOff === undefined && r.wmBehind === undefined;
+            };
+            const blinkSync = () => {
+                const on = !!lcd && blinkSeen();
+                if (on && !blink) {
+                    blink = setInterval(() => {
+                        if (Date.now() - changedAt < 900) lcd.classList.remove('is-blink');
+                        else lcd.classList.toggle('is-blink');
+                    }, 500);
+                } else if (!on && blink) { clearInterval(blink); blink = 0; }
+            };
+            if (lcd) {
+                blinkSync();
+                window.addEventListener('melatonscreen', blinkSync);
+                document.addEventListener('visibilitychange', blinkSync);
+                document.addEventListener('wmBehind', blinkSync);
+            }
             const signed = min < 0;
             return ui.popPanel(anchor, {
                 label,
                 className: 'wm-valuepop',
-                onClose: () => { clearInterval(blink); if (lcd) lcd.classList.remove('is-blink'); },
+                onClose: () => {
+                    clearInterval(blink);
+                    blink = 0;
+                    if (!lcd) return;
+                    window.removeEventListener('melatonscreen', blinkSync);
+                    document.removeEventListener('visibilitychange', blinkSync);
+                    document.removeEventListener('wmBehind', blinkSync);
+                    lcd.classList.remove('is-blink');
+                },
                 build(el) {
                     el.innerHTML = `<div class="wm-valuepop-head"><span>${escUi(label)}</span><span class="wm-lcd wm-valuepop-lcd"></span></div><div class="wm-valuepop-row"></div>`;
                     const outEl = el.querySelector('.wm-valuepop-lcd');
