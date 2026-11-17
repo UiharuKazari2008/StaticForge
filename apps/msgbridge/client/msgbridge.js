@@ -75,7 +75,8 @@
 
     const STATUS_TEXT = { connected: 'Connected', connecting: 'Connecting', unpaired: 'Not paired', disabled: 'Turned off', error: 'Not connected' };
     const statusText = (a) => STATUS_TEXT[a.status] || (a.status ? String(a.status).replace(/^./, (c) => c.toUpperCase()) : 'Not connected');
-    const sourceName = (a) => (a.kind === 'rcs' ? 'the phone' : 'the Mac');
+    // RCS and Android app accounts (#885) come from the phone
+    const sourceName = (a) => (a.kind === 'rcs' || a.kind === 'android' ? 'the phone' : 'the Mac');
     const isRcs = (a) => a.kind === 'rcs';
     const MAIL_STATUS = { connected: 'Connected', connecting: 'Connecting', disabled: 'Turned off', error: 'Not connected' };
     const mailStatusText = (a) => (a.enabled === false ? 'Turned off' : MAIL_STATUS[a.status] || 'Not connected');

@@ -2004,7 +2004,8 @@
                     const count = u ? `${u} new` : '';
                     // nothing unread: the account itself (Yukimi, Nov 13), not its last conversation
                     // Yukimi (Nov 13): "Apple iMessage - <Apple ID>" / "Text Messages - <number>"
-                    const kindName = a.kind === 'bluebubbles' ? 'Apple iMessage' : 'Text Messages';
+                    // an Android app account (#885): the app's name ("Discord - <phone>")
+                    const kindName = a.kind === 'bluebubbles' ? 'Apple iMessage' : a.kind === 'android' ? (a.name || 'Android app') : 'Text Messages';
                     if (!u) return { title: 'No Unread Messages', line2: a.identity ? `${kindName} - ${a.identity}` : kindName, onTap: open };
                     return last
                         ? { title: last.from, line2: last.text, line3: [sub, count].filter(Boolean).join(', '), onTap: open }

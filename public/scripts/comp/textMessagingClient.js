@@ -25,6 +25,10 @@
  *       messages.google.com; 'pairing' events: { emoji, emojiSvg }, then { paired: true } or { error })
  *   refreshRcsQr(accountId) / unpairRcs(accountId)
  *   An RCS account is saveAccount({ kind: 'rcs' }) (one per server); status 'unpaired' until paired.
+ *   An Android app account (#885) is saveAccount({ kind: 'android', package, label }): that app's notifications
+ *   on the partnered phone as conversations. androidApps() -> [{ package, label, icon, added }] (posted lately).
+ *   Its chats carry canReply (the notification's quick reply is there now) and actions [{ id, title }]:
+ *   action(accountId, chatGuid, id) runs one on the phone.
  *   messages() pages back with { before: page.cursor } (opaque: a date for iMessage, a cursor for RCS).
  *   on(event, fn) / off(event, fn)
  *       'message' | 'updated' | 'reaction' | 'typing' | 'read' | 'chat' | 'account' | 'settings' | 'pairing'
@@ -153,6 +157,8 @@
     function label(account) {
         const a = account || {};
         let subline = a.identity || '';
+        // an Android app account (#885): the phone it reads, else what it is
+        if (!subline && a.kind === 'android') subline = a.status === 'disabled' ? 'Turned off' : 'Android app';
         if (!subline) subline = a.status === 'connected' ? (a.service || '') : (a.status === 'disabled' ? 'Turned off' : (a.error || 'Not connected'));
         return { title: a.name || 'Text Messaging', subline };
     }
@@ -199,6 +205,9 @@
     const search = (q, opts) => call('tm_search', Object.assign({ q }, opts || {})).then((d) => d.results || []);
     const deleteChat = (accountId, chatGuid) => call('tm_delete_chat', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
     const markUnread = (accountId, chatGuid) => call('tm_unread', { accountId, chatGuid }).then((d) => { scheduleUnread(); return d; });
+    // Android app accounts (#885): a notification's own action (chat.actions[].id), the apps that posted lately
+    const action = (accountId, chatGuid, id) => call('tm_action', { accountId, chatGuid, action: id });
+    const androidApps = () => call('tm_android_apps').then((d) => d.apps || []);
     const resolve = (accountId, address) => call('tm_resolve', { accountId, address }).then((d) => d.name || '');
 
     function typing(accountId, chatGuid, on) {
@@ -290,6 +299,7 @@
     root.textMessaging = {
         links, linkify, linkPreview, primeLinkPreview,
         accounts, summary, unread, snapshot, preload, label, chats, chat, messages, send, sendFile, react, edit, unsend,
+        action, androidApps,
         markRead, markUnread, deleteChat, search, syncStatus, syncChats, resync, typing, resolve, testAccount, saveAccount, deleteAccount, saveSettings, pairRcs, pairRcsGoogle, refreshRcsQr,
         unpairRcs, on, off, REACTIONS
     };

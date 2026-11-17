@@ -34,6 +34,18 @@ Every packet is **admin only** (authenticated, `userType === 'admin'`). Others g
 | `tm_rcs_pair_google` | Pair by Google account (sign in at messages.google.com in Alchemy). Destructive. |
 | `tm_rcs_unpair` | Destructive. |
 | `tm_resolve` | `{ accountId, address }` -> `{ name }`. |
+| `tm_android_apps` | -> `{ apps: [{ package, label, at, icon, added }] }`: phone apps that posted a notification lately (#885). |
+| `tm_action` | `{ accountId, chatGuid, action }`: run one of an Android app account's notification actions (`chat.actions[].id`) on the phone (#885). |
+
+## Android app accounts (#885)
+
+`tm_account_save { kind: 'android', package, label?, enabled?, settings: { notify } }` makes an account from an Android app (Discord = `com.discord`); one account per app. `modules/textMessagingAndroid.js` takes that app's notifications from the partnered phone (ActiveSync `notify.posted` / `notify.removed`, sent while "Send notifications" is on). Each MessagingStyle conversation (else the notification's title) becomes a chat, and each line becomes a message.
+
+- `tm_send` in such a chat uses the notification's quick reply (device op `notify.reply`). It works only while the phone shows the notification: `chat.canReply` says so, and otherwise the reply is refused with `NO_REPLY`. New conversations, attachments, reactions, edits and threads are not supported.
+- `chat.actions: [{ id, title }]` are the notification's other buttons (Mark as read, Mute, ...); run one with `tm_action`.
+- `tm_read` runs the app's own Mark as read action, else dismisses the notification. When the notification is removed on the phone, the chat is marked read (`read` event).
+- `settings.notify` is off by default because the app's own notification is on the phone already. Events from these accounts carry `native: true` and never go to `tm.notify` or the notification inbox.
+- Pictures: `GET /api/textmessaging/:accountId/avatar/app` is the app's icon and `.../avatar/<chatGuid>` the conversation's picture. `GET /api/textmessaging/android-icon/:package` serves an icon for the app list.
 
 ## Events
 

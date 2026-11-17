@@ -114,7 +114,8 @@ const smsId = (accountId, chatGuid) => `sms:${accountId}:${chatGuid}`;
 
 /** textMessaging.broadcast(out): a new text notifies (the conversation's newest line); read clears. */
 function onTextEvent(p) {
-    if (!p || !p.accountId) return;
+    // an Android app account (#885): the app's own notification is already on the phone
+    if (!p || !p.accountId || p.native) return;
     if (p.event === 'message' && p.chatGuid && p.message) {
         if (p.message.fromMe) { clear('admin', smsId(p.accountId, p.chatGuid)); return; } // answered: read
         if (p.notify !== true) return;

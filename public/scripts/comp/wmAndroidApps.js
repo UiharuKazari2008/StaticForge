@@ -1484,7 +1484,9 @@
         window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(refresh, 800); });
     }
 
-    window.wmAndroidApps = { sync, refresh, list: () => apps.slice(), store: () => store };
+    // an app's Windows Mobile icon set from the store by package (Messaging's Android app accounts, #885), or null
+    const wmIcon = (pkg) => { const k = pkg ? storeKey({ id: '', package: String(pkg) }) : null; return (k && store.icons[k].icon) || null; };
+    window.wmAndroidApps = { sync, refresh, list: () => apps.slice(), store: () => store, wmIcon };
 
     if (window.wmShell) register();
     else document.addEventListener('wmShellReady', register, { once: true });

@@ -1031,6 +1031,46 @@
         }));
     }
 
+    /**
+     * An Android app account (#885): that app's notifications on the partnered phone as conversations in
+     * Melaton Messenger and the phone's Messaging; a reply goes through the notification's quick reply.
+     */
+    function tmDetailsAndroid(row, details, actions) {
+        const status = tmStatus(row);
+        const enabled = customCheck('Use this account', row.enabled !== false);
+        // off by default: the app's own notification is on the phone already
+        const notify = customCheck('Show a Messaging notification for new messages', !!(row.settings && row.settings.notify === true));
+        details.append(
+            customField('Service', tmText(`${row.name || row.package} notifications on the phone`)),
+            customField('Android app', tmText(row.package || '')),
+            customField('Phone', tmText(row.identity || 'Waiting for a notification from the app')),
+            customField('Status', tmText(status.text, row.status === 'error' ? 'cpl-tm-error' : '')),
+            customField('Enabled', enabled.wrap),
+            customField('Notifications', notify.wrap),
+            tmText('Notifications reach the server while ActiveSync on the phone sends notifications to the computer. A reply works while the phone still shows the notification and the app offers a reply on it.', 'cpl-tm-hint')
+        );
+        actions.append(tmButton('Save', async () => {
+            await tmApi().saveAccount({ id: row.id, kind: 'android', package: row.package, label: row.label, enabled: enabled.input.checked, settings: { notify: notify.input.checked } });
+            await loadTextMessaging(true);
+        }));
+    }
+
+    // the apps that posted on the phone lately, for Install a Messaging Service > Android app (#885)
+    let tmAndroidApps = null;
+
+    async function tmAddAndroid(pkg) {
+        const t = tmApi();
+        const app = (tmAndroidApps || []).find((a) => a.package === pkg);
+        try {
+            const saved = await t.saveAccount({ kind: 'android', package: pkg, label: app ? app.label : '' });
+            await loadTextMessaging(true);
+            return saved && saved.id ? saved.id : null;
+        } catch (err) {
+            tmToast((err && err.message) || 'The app could not be added');
+            return null;
+        }
+    }
+
     function paintTextMessaging() {
         const list = hostEl && hostEl.querySelector('#cplTextMessagingList');
         if (!list) return;
@@ -1046,6 +1086,7 @@
         tmRows.forEach((row) => {
             const ui = tmUiOf(row.id || '');
             const rcs = row.kind === 'rcs';
+            const android = row.kind === 'android';
             const block = document.createElement('div');
             block.className = 'cpl-vault-row' + (ui.open ? ' is-open' : '');
             block.dataset.cplVaultKey = `sms:${row.id || ''}`;
@@ -1055,10 +1096,10 @@
             line.className = 'cpl-vault-line';
             const name = document.createElement('span');
             name.className = 'cpl-vault-name';
-            name.textContent = row.identity || (rcs ? 'Google Messages' : (row.id ? 'BlueBubbles server' : 'New BlueBubbles server'));
+            name.textContent = android ? (row.name || row.package) : row.identity || (rcs ? 'Google Messages' : (row.id ? 'BlueBubbles server' : 'New BlueBubbles server'));
             const sub = document.createElement('span');
             sub.className = 'cpl-vault-sub';
-            sub.textContent = rcs ? 'RCS (Google Messages)' : `iMessage (BlueBubbles)${row.url ? ` \u00b7 ${row.url}` : ''}`;
+            sub.textContent = android ? `Android app notifications${row.identity ? ` \u00b7 ${row.identity}` : ''}` : rcs ? 'RCS (Google Messages)' : `iMessage (BlueBubbles)${row.url ? ` \u00b7 ${row.url}` : ''}`;
             name.appendChild(sub);
             const status = tmStatus(row);
             const summary = document.createElement('span');
@@ -1074,10 +1115,10 @@
             details.className = 'cpl-vault-details';
             const actions = document.createElement('div');
             actions.className = 'cpl-vault-actions';
-            if (rcs) tmDetailsRcs(row, details, actions); else tmDetailsBlueBubbles(row, details, actions);
+            if (android) tmDetailsAndroid(row, details, actions); else if (rcs) tmDetailsRcs(row, details, actions); else tmDetailsBlueBubbles(row, details, actions);
             if (row.id) {
                 actions.append(tmButton('Delete', async () => {
-                    const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog(`<p>Delete the Text Messaging account ${esc(row.identity || row.url || row.id)}? Melaton Messenger and the phone stop showing its messages.</p>`,
+                    const ok = typeof root.showConfirmationDialog === 'function' ? await root.showConfirmationDialog(`<p>Delete the Text Messaging account ${esc(android ? (row.name || row.package) : (row.identity || row.url || row.id))}? Melaton Messenger and the phone stop showing its messages.</p>`,
                         [{ text: 'Delete', value: true, className: 'btn-standard primary' }, { text: 'Cancel', value: false, className: 'btn-standard' }], null, { title: 'Dreamscape CardSpace', width: 400 }) : true;
                     if (ok !== true) return;
                     await tmApi().deleteAccount(row.id);
@@ -2299,12 +2340,21 @@
                 ['secCursorAccountsAddBtn', 'Cursor', 'A Cursor profile the Director can run Yumiya and Yozora on.']
             ].concat(csKeyServices().filter((sv) => sv.id !== 'claude').map((sv) => [`key:${sv.id}`, sv.label || sv.id, sv.description || '']))
         },
+        androidApps: {
+            title: 'Install a Messaging Service',
+            desc: 'Select the Android app. An app is listed after it posts a notification on the phone while ActiveSync sends notifications to the computer.',
+            items: () => (tmAndroidApps == null ? [['noop', 'Reading the apps...', '']]
+                : tmAndroidApps.filter((a) => !a.added).length
+                    ? tmAndroidApps.filter((a) => !a.added).map((a) => [`tm-app:${a.package}`, a.label || a.package, a.package])
+                    : [['noop', 'No apps yet', 'No app has posted a notification on the phone yet, or the phone does not send notifications to the computer.']])
+        },
         messaging: {
             title: 'Install a Messaging Service',
             desc: 'Select the kind of messaging service.',
             items: [
                 ['tm-bluebubbles', 'iMessage (BlueBubbles server)', 'A BlueBubbles server on a Mac brings your iMessage conversations to Melaton Messenger and the phone. Type its address and password.'],
                 ['tm-rcs', 'RCS (Google Messages)', 'Pair Google Messages on your Android phone by scanning a QR code, and its RCS and SMS conversations join Melaton Messenger.'],
+                ['tm-android', 'Android app (Discord and others)', 'The notifications of an app on your phone show as conversations in Melaton Messenger and the phone\'s Messaging, and a reply is sent through the notification.'],
                 ['ma-add', 'E-mail account', 'An IMAP e-mail account (Gmail, iCloud Mail, Outlook.com, Yahoo Mail or your own provider). The server keeps a copy of its mail and sends with it.']
             ]
         }
@@ -2340,6 +2390,25 @@
                 const fresh = csRow('mail:');
                 if (fresh) { csSel = fresh.dataset.cplVaultKey; csGo('details'); } else csGo('home');
             }, 0);
+            return;
+        }
+        if (id === 'noop') return;
+        if (id === 'tm-android') {
+            tmAndroidApps = null;
+            csAddStep = 'androidApps';
+            csRender();
+            const t = tmApi();
+            Promise.resolve(t && typeof t.androidApps === 'function' ? t.androidApps() : []).catch(() => []).then((list) => {
+                tmAndroidApps = list || [];
+                if (csAddStep === 'androidApps') csRender();
+            });
+            return;
+        }
+        if (id.startsWith('tm-app:')) {
+            void tmAddAndroid(id.slice(7)).then((newId) => {
+                const row = newId && csRow(`sms:${newId}`);
+                if (row) { csSel = row.dataset.cplVaultKey; csGo('details'); } else csGo('home');
+            });
             return;
         }
         if (id === 'tm-rcs') {
@@ -2385,7 +2454,7 @@
             const go = t.closest('[data-cs-go]');
             if (go && !go.disabled) { csGo(go.dataset.csGo); return; }
             if (t.closest('.cs-back')) {
-                if (csView === 'add' && csAddStep !== 'root') { csAddStep = 'root'; csRender(); return; }
+                if (csView === 'add' && csAddStep !== 'root') { csAddStep = csAddStep === 'androidApps' ? 'messaging' : 'root'; csRender(); return; }
                 csGo(csView === 'form' ? csFormReturn : 'home');
                 return;
             }
