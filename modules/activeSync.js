@@ -484,6 +484,23 @@ function peersKey(data) {
     } catch (_) { return String(Date.now()); }
 }
 
+// What a phone's page reads of its own row is its session, permissions and name (activeSyncAgent.js
+// takeLists); these fields of that row change with the phone's own reports and nothing on the phone
+// shows them (Device Center on a desktop does, and gets them all).
+const OWN_ROW_UNREAD = ['status', 'speakers', 'adb', 'wallpapersAt', 'lastSync', 'queued', 'link'];
+const lastOwnKeys = new Map(); // deviceId -> the peer list key its sockets last got (ownPeersKey)
+
+/** The peer list as a device's own page sees it: its own row without the fields it does not read. */
+function ownPeersKey(data, deviceId) {
+    const devices = (data.devices || []).map((d) => {
+        if (!d || d.deviceId !== deviceId) return d;
+        const out = Object.assign({}, d);
+        for (const k of OWN_ROW_UNREAD) delete out[k];
+        return out;
+    });
+    return peersKey({ devices, computers: data.computers || [] });
+}
+
 /** as_peers_updated to every peer that may list (administrators' computers and the devices), coalesced. */
 function scheduleUpdated(globalResources, wsServer) {
     const server = wsServerOf(globalResources, wsServer);
@@ -505,8 +522,22 @@ function scheduleUpdated(globalResources, wsServer) {
         const key = peersKey(data);
         if (key === lastPeersKey) return;
         lastPeersKey = key;
-        server.broadcast({ type: 'as_peers_updated', data, timestamp: new Date().toISOString() },
-            (info) => !!(info && info.authenticated && info.userType === 'admin' && info.as));
+        // a phone's own report (battery, the program in front, Wi-Fi) no longer comes back to that same
+        // phone as the whole list (#890): its sockets get it only when something it reads changed. The
+        // app's background link reads no peer list at all (ActiveSyncLink); desktops get every change.
+        const ownSend = new Map(); // deviceId -> whether its sockets get this one
+        server.broadcast({ type: 'as_peers_updated', data, timestamp: new Date().toISOString() }, (info) => {
+            if (!(info && info.authenticated && info.userType === 'admin' && info.as)) return false;
+            if (info.as.speaker === 'service') return false;
+            if (info.as.kind !== 'device') return true;
+            const id = info.as.id;
+            if (!ownSend.has(id)) {
+                const own = ownPeersKey(data, id);
+                ownSend.set(id, lastOwnKeys.get(id) !== own);
+                lastOwnKeys.set(id, own);
+            }
+            return ownSend.get(id);
+        });
     }, BROADCAST_DEBOUNCE_MS);
     if (typeof broadcastTimer.unref === 'function') broadcastTimer.unref();
 }
@@ -586,7 +617,11 @@ function hello(globalResources, wsServer, clientInfo, data) {
     scheduleUpdated(globalResources, server);
     // server modules that want a phone the moment it connects (Messaging's Android app accounts catch up, #885)
     if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name }); } catch (_) { /* the tap's own fault */ } }
-    return { success: true, kind, id, name: as.name, session: as.session, permissions: as.permissions, device: describeDevice(globalResources, server, row), ...list(globalResources, server) };
+    const peers = list(globalResources, server);
+    // the page has this list now: the broadcast its hello sets off is not sent back to it unless it
+    // differs in what the page reads (scheduleUpdated)
+    if (as.speaker !== 'service') lastOwnKeys.set(id, ownPeersKey(peers, id));
+    return { success: true, kind, id, name: as.name, session: as.session, permissions: as.permissions, device: describeDevice(globalResources, server, row), ...peers };
 }
 
 /** as_status: fire-and-forget from a device; kept on the socket, written to the row now and then. */
@@ -1132,6 +1167,60 @@ function ringPartners(globalResources, wsServer, reason) {
 }
 
 /**
+ * The app's background notification credits line (#890): { free, paid, daysLeft } strings, the same
+ * values as GET /android/background-notification (modules/backgroundNotificationCredits.js). Each
+ * background link (speaker 'service') gets as_credits once after its hello and again whenever the
+ * values change (pushCredits runs on the server's 10 s status read), so the app need not ask while
+ * its link is up.
+ */
+let creditsProvider = null;
+let lastCreditsKey = null;
+
+/** fn() -> { free, paid, daysLeft } from what the server holds (web_server.js sets it at boot). */
+function setCreditsProvider(fn) {
+    creditsProvider = typeof fn === 'function' ? fn : null;
+}
+
+function creditsNow() {
+    if (!creditsProvider) return null;
+    try {
+        const v = creditsProvider();
+        if (!v || typeof v !== 'object') return null;
+        const str = (x) => (x == null ? '' : String(x));
+        return { free: str(v.free), paid: str(v.paid), daysLeft: str(v.daysLeft) };
+    } catch (err) {
+        console.warn('[activeSync] credits read failed:', err.message);
+        return null;
+    }
+}
+
+/**
+ * as_credits to the background links whose last copy differs. onlyInfo: one link (its hello; it is
+ * sent the values whatever it had). Returns how many links it went to.
+ */
+function pushCredits(globalResources, wsServer, onlyInfo) {
+    const server = wsServerOf(globalResources, wsServer);
+    if (!server || typeof server.sendToClient !== 'function') return 0;
+    const data = creditsNow();
+    if (!data) return 0;
+    const key = `${data.free}|${data.paid}|${data.daysLeft}`;
+    // nothing new since the last round, and every link that said hello since was sent it then
+    if (!onlyInfo && key === lastCreditsKey) return 0;
+    if (!onlyInfo) lastCreditsKey = key;
+    let sent = 0;
+    for (const s of liveSockets(server, 'device')) {
+        if (s.info.as.speaker !== 'service') continue;
+        if (onlyInfo ? s.info !== onlyInfo : s.info.asCreditsKey === key) continue;
+        try {
+            server.sendToClient(s.ws, { type: 'as_credits', data, timestamp: new Date().toISOString() });
+            s.info.asCreditsKey = key;
+            sent += 1;
+        } catch (_) { /* closing */ }
+    }
+    return sent;
+}
+
+/**
  * A notice from the notification inbox (#845) to every partnered phone's background link (Melaton Bars
  * #876 D, Yukimi Nov 16: Dreamscape notifications still arrive when the app's page is not running -
  * "it's always ready"). pageConnected says whether a Melaton page of that phone is on its link now (it
@@ -1239,6 +1328,8 @@ function resetForTests(databasesPath) {
     for (const p of pendingCalls.values()) clearTimeout(p.timer);
     pendingCalls.clear();
     statusWrites.clear();
+    lastOwnKeys.clear();
+    lastCreditsKey = null;
     if (databasesPath) getDb({ getPath: () => databasesPath });
 }
 
@@ -1283,6 +1374,8 @@ module.exports = {
     logEvent,
     partnerLinks,
     ringPartners,
+    setCreditsProvider,
+    pushCredits,
     sendInboxNotice,
     sendInboxCleared,
     sendServerEvent,
