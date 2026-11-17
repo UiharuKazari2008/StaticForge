@@ -104,6 +104,33 @@
     const fmtTime = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
     const fmtShort = new Intl.DateTimeFormat(undefined, { year: '2-digit', month: 'numeric', day: 'numeric' });
 
+
+    // ---- wide pictures (#903): the box is 43 units square; a wider picture widens it, up to 2.5 times
+    const picAspects = new Map(); // picture URL -> width / height, once it loaded ('auto')
+    function picAspect(url, want) {
+        if (typeof want === 'number' && want > 1.05) return want;
+        if (want !== 'auto') return null;
+        if (picAspects.has(url)) return picAspects.get(url);
+        picAspects.set(url, null);
+        const im = new Image();
+        im.onload = () => {
+            const ar = im.naturalWidth && im.naturalHeight ? im.naturalWidth / im.naturalHeight : null;
+            picAspects.set(url, ar && ar > 1.05 ? ar : null);
+            if (!ar || ar <= 1.05) return;
+            // the rows already drawn with it take its shape now
+            document.querySelectorAll('.wm-ti-pic[data-auto-src]').forEach((el) => {
+                if (el.dataset.autoSrc !== url || !el.parentElement) return;
+                el.parentElement.setAttribute('style', picWideStyle(ar));
+            });
+        };
+        im.src = url;
+        return null;
+    }
+    function picWideStyle(ar) {
+        const w = Math.round(43 * Math.min(2.5, Math.max(1, ar)) * 10) / 10;
+        return `--ti-pic-w:calc(${w} * var(--u));--ti-line-left:calc(${Math.round((w + 16) * 10) / 10} * var(--u))`;
+    }
+
     function timeParts(d) {
         let time = '';
         let ampm = '';
@@ -1552,10 +1579,14 @@
                 <div class="wm-ti-date">${esc(pg.date)}</div><div class="wm-ti-network">${esc(pg.network)}</div>`;
         }
         const lines = [pg.title, pg.line2, pg.line3].filter(Boolean).length;
-        const pic = pg.image ? `<span class="wm-ti-pic" style="background-image:url('${esc(pg.image)}')"></span>` : '';
+        // a wide picture keeps its shape (Yukimi, Nov 17, #903: a video's thumbnail, a barcode): pg.imageAspect
+        // (width / height, or 'auto' = the picture's own once it loaded) widens the box, the lines follow it
+        const ar = pg.image ? picAspect(pg.image, pg.imageAspect) : null;
+        const wide = ar ? picWideStyle(ar) : '';
+        const pic = pg.image ? `<span class="wm-ti-pic"${pg.imageAspect === 'auto' ? ` data-auto-src="${esc(pg.image)}"` : ''} style="background-image:url('${esc(pg.image)}')"></span>` : '';
         const small = !pg.image && pg.smallIcon ? `<img class="wm-ti-small" src="${esc(artUrl(pg.smallIcon))}" srcset="${esc(artSet(pg.smallIcon))}" alt="" draggable="false">` : '';
         // pg.bare: a picture without the white frame (the Music panel's album art and Play All Songs tile)
-        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ` data-pic="${pg.bare ? 'bare' : '1'}"` : ''}${small ? ' data-small="1"' : ''}>${pic}${small}
+        return `${iconHtml}<div class="wm-ti-text" data-lines="${lines}"${pg.image ? ` data-pic="${pg.bare ? 'bare' : '1'}"` : ''}${small ? ' data-small="1"' : ''}${wide ? ` style="${wide}"` : ''}>${pic}${small}
             ${lineHtml('is-1', pg.title)}${lineHtml('is-2', pg.line2)}${lineHtml('is-3', pg.line3)}</div>`;
     }
 

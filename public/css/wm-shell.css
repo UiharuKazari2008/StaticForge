@@ -4343,3 +4343,15 @@ html.ui-mobile #wmShell .wm-status-icon[data-icon="notify-many"]::after {
 #wmShell .wm-car-run { margin-bottom: calc(2 * var(--wm-px)); }
 #wmShell .wm-car-trip { display: flex; align-items: center; gap: calc(6 * var(--wm-px)); }
 #wmShell .wm-car-trip .wm-traffic-light { flex: 0 0 auto; width: calc(12 * var(--wm-px)); height: calc(30 * var(--wm-px)); }
+
+/* Status icons' tap areas (Yukimi, Nov 17, #903: hard to tap at times): each icon takes the bar's whole height
+ * and half the gap to each neighbour, invisibly; the picture is unchanged. (::before: ::after draws "..".) */
+html.ui-mobile #wmShell .wm-titlebar .wm-status-icon { position: relative; }
+html.ui-mobile #wmShell .wm-titlebar .wm-status-icon::before {
+    content: '';
+    position: absolute;
+    top: calc(-5 * var(--wm-px));
+    bottom: calc(-5 * var(--wm-px));
+    left: calc(-2.5 * var(--wm-px));
+    right: calc(-2.5 * var(--wm-px));
+}

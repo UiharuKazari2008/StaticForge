@@ -1187,7 +1187,7 @@
             label: 'videos',
             count: liveCount ? 'live' : fresh ? String(fresh) : '',
             icon: 'x:app-youtube-lg',
-            pages: vids.map((v) => ({ image: v.thumb, title: v.title, line2: v.channel || '', line3: v.live === 'live' ? ['LIVE', v.viewers ? `${people(v.viewers)} watching` : '', v.note].filter(Boolean).join(' · ') : [age(v.at), rareText(v) || lenText(v)].filter(Boolean).join(' · '), softKey: key, onTap: () => openItem(v) })),
+            pages: vids.map((v) => ({ image: v.thumb, imageAspect: 16 / 9, title: v.title, line2: v.channel || '', line3: v.live === 'live' ? ['LIVE', v.viewers ? `${people(v.viewers)} watching` : '', v.note].filter(Boolean).join(' · ') : [age(v.at), rareText(v) || lenText(v)].filter(Boolean).join(' · '), softKey: key, onTap: () => openItem(v) })),
             softKey: key,
             onTap: go
         };

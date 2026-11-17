@@ -649,6 +649,16 @@
             if (BARS651) return;
             const start = shell.querySelector('.wm-start');
             if (start.disabled || !start.getClientRects().length) return;
+            // only the title's text and a little after it is Start, not the empty bar up to the icons (Yukimi,
+            // Nov 17, #903): the title box stretches over all the free space
+            const tEl = e.currentTarget;
+            if (tEl.firstChild) {
+                const range = document.createRange();
+                range.selectNodeContents(tEl);
+                const textRight = range.getBoundingClientRect().right;
+                const unit = parseFloat(getComputedStyle(shell).getPropertyValue('--wm-px')) || 1;
+                if (e.clientX > textRight + 12 * unit) return;
+            }
             e.stopPropagation();
             try { start.focus({ preventScroll: true }); } catch (_) { /* focus is a nicety */ }
             start.click();

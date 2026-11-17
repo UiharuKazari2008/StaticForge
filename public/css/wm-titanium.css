@@ -197,7 +197,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-pic {
     position: absolute;
     left: calc(10 * var(--u));
     top: calc(17 * var(--u));
-    width: calc(43 * var(--u));
+    /* wider for a wide picture (wmTitanium picWideStyle: a video's thumbnail, a barcode, #903) */
+    width: var(--ti-pic-w, calc(43 * var(--u)));
     height: calc(43 * var(--u));
     outline: calc(1 * var(--u)) solid #fff;
     background: #000 center / cover no-repeat;
@@ -211,7 +212,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic="bare"] .wm-ti-pic {
     background-size: contain;
 }
 
-html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic] .wm-ti-line { left: calc(59 * var(--u)); }
+html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic] .wm-ti-line { left: var(--ti-line-left, calc(59 * var(--u))); }
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-pic][data-lines="1"] .is-1 { top: calc(26 * var(--u)); }
 
 /* with a small icon (32 x 32 at 20,62) the line starts at 64 */
