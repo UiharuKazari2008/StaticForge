@@ -451,7 +451,7 @@
         page.innerHTML = `
             <div class="lps-root">
                 <div class="lps-plate"><img class="lps-gem" src="/static_images/lapis/emblem.png" alt="" draggable="false"><span class="lps-car-name"></span><span class="lps-updated"></span></div>
-                <div class="lps-scroll">
+                <div class="lps-scroll wm-pg-scroll">
                     <div class="lps-scr lps-hero" data-open="status">
                         <div class="lps-sbar"><i class="lps-dot"></i><b class="lps-park"></b><span class="lps-where"></span><span class="lps-sp"></span><span class="lps-odo"></span></div>
                         <div class="lps-stage"><img class="lps-carimg" alt="" draggable="false" decoding="async"><div class="lps-horizon"></div><div class="lps-map lps-stage-map" hidden></div><span class="lps-pill is-l lps-p-lock"></span><span class="lps-pill is-r lps-p-eng"></span><button type="button" class="lps-key lps-view" aria-label="Show the map"></button></div>
@@ -472,7 +472,7 @@
                     <button type="button" class="lps-go" data-cmd="start"><span>ENGINE<br>START<br>STOP</span></button>
                     <button type="button" class="lps-key" data-cmd="find"><span class="lps-led"><i></i></span>${I.find}<span>Find</span></button>
                 </div>
-                <div class="lps-layer" hidden><div class="lps-layer-body"></div></div>
+                <div class="lps-layer" hidden><div class="lps-layer-body wm-pg-scroll"></div></div>
             </div>`;
         const q = (s) => page.querySelector(s);
         els = {
@@ -652,7 +652,7 @@
         if (!top || !els) return;
         if (top === 'settings') { if (els.body.dataset.for !== 'settings') renderSettings(); return; }
         if (top === 'item') { if (els.body.dataset.for !== 'item') renderItem(); return; }
-        els.body.className = 'lps-layer-body';
+        els.body.className = 'lps-layer-body wm-pg-scroll';
         if (top === 'start') renderStart();
         else if (top === 'map') renderMap();
         else if (top === 'status') els.body.innerHTML = statusHtml();
@@ -883,7 +883,7 @@
     function renderItem() {
         const ui = window.wmSettings && window.wmSettings.ui;
         const box = els.body;
-        box.className = 'lps-layer-body wm-form lps-settings';
+        box.className = 'lps-layer-body wm-pg-scroll wm-form lps-settings';
         box.dataset.for = 'item';
         if (!ui || !item) { box.innerHTML = '<p>The item is not available.</p>'; return; }
         const s = st();
@@ -1155,7 +1155,7 @@
     function renderSettings() {
         const ui = window.wmSettings && window.wmSettings.ui;
         const box = els.body;
-        box.className = 'lps-layer-body wm-form lps-settings';
+        box.className = 'lps-layer-body wm-pg-scroll wm-form lps-settings';
         box.dataset.for = 'settings';
         if (!ui) { box.innerHTML = '<p>Settings are not available.</p>'; return; }
         const f = formOf();

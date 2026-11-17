@@ -660,7 +660,7 @@
                     </div>
                     <div class="trf-ends"></div>
                 </div>
-                <div class="trf-scroll">
+                <div class="trf-scroll wm-pg-scroll">
                     <div class="trf-dash">
                         <div class="trf-signal" aria-hidden="true"><i class="is-red"></i><i class="is-amber"></i><i class="is-green"></i></div>
                         <div class="trf-lcd">
@@ -675,7 +675,7 @@
                     <div class="trf-rows"></div>
                     <div class="trf-foot"></div>
                 </div>
-                <div class="trf-layer" hidden><div class="wm-form-hdr trf-layer-hdr"></div><div class="trf-layer-body"></div></div>
+                <div class="trf-layer" hidden><div class="wm-form-hdr trf-layer-hdr"></div><div class="trf-layer-body wm-pg-scroll"></div></div>
             </div>`;
         const q = (s) => page.querySelector(s);
         els = {
@@ -866,7 +866,7 @@
         else if (top === 'slow') els.layerBody.innerHTML = slowHtml(r);
         else if (top === 'advisor') els.layerBody.innerHTML = advisorHtml(d);
         else if (top === 'item') els.layerBody.innerHTML = itemHtml(itemView);
-        els.layerBody.className = 'trf-layer-body';
+        els.layerBody.className = 'trf-layer-body wm-pg-scroll';
     }
 
     function incidentsMissing() {
@@ -1081,7 +1081,7 @@
     function renderSettings() {
         const ui = window.wmSettings && window.wmSettings.ui;
         const box = els.layerBody;
-        box.className = 'trf-layer-body wm-form trf-settings';
+        box.className = 'trf-layer-body wm-pg-scroll wm-form trf-settings';
         if (!ui) { box.innerHTML = '<p>Settings are not available.</p>'; return; }
         const f = draftOf();
         const label = (list, v) => (list.find(([x]) => String(x) === String(v)) || list[0])[1];
