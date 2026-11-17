@@ -7521,8 +7521,9 @@
         snd.live++;
         clearTimeout(snd.idle);
         snd.idle = 0;
-        // started while the idle suspend was still on its way: running again after it
-        if (snd.suspending && snd.ctx) snd.ctx.resume().catch(() => {});
+        // started while the idle suspend was on its way, or after it ended (it came while the sound's file
+        // was fetched and decoded): running again, so the sound is heard and its 'ended' comes
+        if (snd.ctx && (snd.suspending || snd.ctx.state !== 'running')) snd.ctx.resume().catch(() => {});
         let done = false;
         // a listener, not onended: an alarm's caller sets onended on the source it gets
         src.addEventListener('ended', () => {
