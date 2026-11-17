@@ -8141,10 +8141,12 @@ class Director {
                 this._pendingNotedFor = payload;
                 this.notePendingPrint(payload.rows, payload.live);
             }
-            // a hidden page or a dark phone screen waits for onSightChange; a hidden log looks again
-            if (!document.hidden && !this.phoneAsleep()) {
-                this._livePaintTimer = setTimeout(() => this.flushLivePaint(), DIRECTOR_LIVE_HIDDEN_RETRY_MS);
-            }
+            // a hidden page, a dark phone screen or a put-away phone page waits for onSightChange (the
+            // shell's wmAppChange / wmawake, melatonscreen, visibilitychange); a hidden log or a closed
+            // desktop window looks again
+            const chat = this.directorChatMessages;
+            const away = document.hidden || this.phoneAsleep() || !!(chat && chat.isConnected && chat.closest('[hidden]'));
+            if (!away) this._livePaintTimer = setTimeout(() => this.flushLivePaint(), DIRECTOR_LIVE_HIDDEN_RETRY_MS);
             return;
         }
         this._livePayload = null;
