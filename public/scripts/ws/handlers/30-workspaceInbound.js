@@ -173,6 +173,8 @@ registerWsInboundHandler({
     type: 'workspace_restored',
     phase: 'only',
     handler(message, wsClient) {
+        // noteRestoredWorkspace: public/scripts/websocket.js (the reconnect skips a second activation)
+        if (typeof wsClient.noteRestoredWorkspace === 'function') wsClient.noteRestoredWorkspace(message.workspace);
         handleWorkspaceRestoredMessage(message);
         wsClient.triggerEvent('workspace_restored', message);
     }
