@@ -252,9 +252,20 @@
         paintClock();
         paintMail();
     }
-    // screen on (or the page shown) while locked: drawn at once, not on the next second's tick
-    window.addEventListener('melatonscreen', (e) => { if (tick && e.detail && e.detail.on) paint(); });
-    document.addEventListener('visibilitychange', () => { if (tick && !document.hidden) paint(); });
+    /**
+     * The clock, the mail count and the picture follow each second while the lock screen is seen; with
+     * the screen off (all night, locked) nothing ticks, and screen on paints it at once and ticks again.
+     */
+    function syncTick() {
+        const s = window.wmShell;
+        const on = locked && !(s && s.onScreen && !s.onScreen());
+        if (on && !tick) tick = setInterval(paint, 1000);
+        else if (!on && tick) { clearInterval(tick); tick = 0; }
+    }
+    const wake = () => { if (!locked) return; syncTick(); if (tick) paint(); };
+    window.addEventListener('melatonscreen', wake);
+    document.addEventListener('visibilitychange', wake);
+    document.addEventListener('wmBehind', wake);
 
     // ---------------------------------------------------------------- keys and the back button
 
@@ -348,8 +359,7 @@
         try { if (sh.current === 'start') sh.back(); } catch (err) { console.warn('[wmLock65] start', err); }
         enter(el.slider);
         if (R651) lock651();
-        clearInterval(tick);
-        tick = setInterval(paint, 1000);
+        syncTick();
         document.dispatchEvent(new CustomEvent('wmLockChange', { detail: { locked: true } }));
         return true;
     }
