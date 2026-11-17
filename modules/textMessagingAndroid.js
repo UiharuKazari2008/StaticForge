@@ -145,6 +145,14 @@ function recentApps() {
 
 // a label that is only the package name is no name (the phone could not read it: an app in the Work profile, #892)
 function realLabel(label, pkg) { const l = String(label || '').trim(); return l && l !== pkg && !PACKAGE_RE.test(l) ? l : ''; }
+/** What the phone said of an app outside a notification (apps.icon): its name when real, its icon. */
+function learnApp({ package: pkg, label, icon } = {}) {
+    if (!PACKAGE_RE.test(String(pkg || ''))) return;
+    const l = realLabel(label, pkg);
+    const r = loadRecent();
+    const was = r[pkg];
+    noteApp({ package: pkg, app: l || (was && realLabel(was.label, pkg)) || pkg, icon: icon || undefined });
+}
 function appLabel(pkg) { const r = loadRecent()[pkg]; return r ? realLabel(r.label, pkg) : ''; }
 
 /** Whether the phone has sent the app's icon. */
@@ -196,7 +204,7 @@ class AndroidAppProvider {
         this.id = account.id;
         this.pkg = String(account.package || '');
         this.ownLabel = realLabel(account.label, this.pkg);
-        this.label = String(this.ownLabel || appLabel(this.pkg) || this.pkg);
+        this.learnedLabel = '';
         this.hooks = hooks || {};
         this.status = 'connecting';
         this.error = '';
@@ -204,6 +212,10 @@ class AndroidAppProvider {
         this.deviceName = '';
         this.store = null;
     }
+
+    /** The app's name: the account's own, else what the phone said (it can arrive later, #892), else the package. */
+    get label() { return String(this.ownLabel || this.learnedLabel || appLabel(this.pkg) || this.pkg); }
+    set label(v) { this.learnedLabel = realLabel(v, this.pkg); }
 
     get kind() { return 'android'; }
 
@@ -252,6 +264,23 @@ class AndroidAppProvider {
             const res = await activeSync().serverCall(resources(), null, deviceId, 'notify.list', {}, { timeoutMs: CALL_MS });
             for (const n of (res && res.notifications) || []) if (n && n.package === this.pkg) this.take(n, deviceId, deviceName);
         } catch (_) { /* that phone does not send notifications */ }
+        await this.learnFrom(deviceId);
+    }
+
+    /**
+     * The app's name and icon when they are not known yet (an app in the Work profile used to come without
+     * either, #892): asked from the phone (apps.icon, which answers the label too from DSApp builds after
+     * Nov 17), instead of waiting for its next notification.
+     */
+    async learnFrom(deviceId) {
+        if (this.ownLabel && hasAppIcon(this.pkg)) return;
+        if (appLabel(this.pkg) && hasAppIcon(this.pkg)) return;
+        try {
+            const res = await activeSync().serverCall(resources(), null, deviceId, 'apps.icon', { package: this.pkg, size: 48 }, { timeoutMs: CALL_MS });
+            if (!res) return;
+            learnApp({ package: this.pkg, label: res.label, icon: res.icon });
+            if (!this.ownLabel) { const l = realLabel(res.label, this.pkg); if (l) this.label = l; }
+        } catch (error) { this.log(`apps.icon: ${error.message}`); }
     }
 
     // ---- taking a notification ----
@@ -589,4 +618,4 @@ class AndroidAppProvider {
 
 function _reset() { providers.clear(); caughtUp.clear(); recent = null; cacheDir = null; tapped = false; }
 
-module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, realLabel, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
+module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, realLabel, learnApp, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
