@@ -45,6 +45,10 @@
 
     const view = () => layers[layers.length - 1] || 'list';
     const isCurrent = () => !!sh && sh.current === APP_ID;
+    /** The page is seen: the screen on, not hidden, not behind an Android program (wmShell.onScreen). */
+    const seenNow = () => !sh || typeof sh.onScreen !== 'function' || sh.onScreen();
+    /** The cast's own spell on screen: only then the stage's running time ticks. */
+    const stageSeen = () => !!(job && job.running && current === job.name && isCurrent() && seenNow());
     const esc = (s) => K.esc(s);
     const mgr = () => window.spellbookModalManager || null;
 
@@ -193,8 +197,19 @@
 
     function resultFor(name) { return results.get(name) || null; }
 
+    /**
+     * The stage's running time each second, only while the cast's spell is seen: the timer stops itself
+     * otherwise and the next drawing of the stage (show, the spell opened again, wake) starts it again.
+     */
+    function syncTick() {
+        const on = stageSeen();
+        if (on && !tick) tick = setInterval(() => { if (stageSeen()) renderStage(); else syncTick(); }, 1000);
+        else if (!on && tick) { clearInterval(tick); tick = null; }
+    }
+
     function renderStage() {
         if (!page || !current) return;
+        syncTick();
         const box = page.querySelector('.wsc-spell');
         const img = box.querySelector('.wsc-pic');
         const empty = box.querySelector('.wsc-empty');
@@ -239,7 +254,8 @@
             const src = img.currentSrc || img.src;
             if (!src || src === location.href) return;
             job.stepSrc = src;
-            if (current === job.name) renderStage();
+            // the step drawn while it is seen; otherwise show or wake draws the newest
+            if (stageSeen()) renderStage();
         });
         stepObserver.observe(img, { attributes: true, attributeFilter: ['src'] });
     }
@@ -281,8 +297,8 @@
         /* global updateImageGenerationIndicator */
         if (typeof updateImageGenerationIndicator === 'function') { try { updateImageGenerationIndicator(); } catch (_) { /* indicator only */ } }
         clearInterval(tick);
-        // the stage's running time each second while it is seen (not with the screen off: drawn on screen on)
-        tick = setInterval(() => { if (current === name && isCurrent() && (typeof sh.onScreen !== 'function' || sh.onScreen())) renderStage(); }, 1000);
+        tick = null;
+        // (refreshAll draws the stage, which starts its clock while the spell is seen: syncTick)
         refreshAll();
         let result = null;
         let error = null;
@@ -450,6 +466,12 @@
             }
         };
         window.addEventListener('appOptionsChunkLoaded', () => { if (page) { renderList(); renderSpell(); } });
+        // the screen on again (or the page back from another app): the stage as it is now, its clock going
+        // again; not seen: the clock stops
+        const wake = () => { if (stageSeen()) renderStage(); else syncTick(); };
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('wmBehind', wake);
         sh.registerApp({
             id: APP_ID,
             title: TITLE,
