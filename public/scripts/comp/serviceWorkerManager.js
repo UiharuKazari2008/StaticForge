@@ -1962,11 +1962,10 @@ class ServiceWorkerManager {
         if (this.agentSession) {
             return;
         }
-        // Continuity (#798): a hybrid phone's DeX window leaves updates to the phone; restarting the phone
-        // restarts it, and it loads what the phone installed (one app, one service worker)
-        if (this._isContinuityDexWindow()) {
-            return;
-        }
+        // Continuity: a hybrid phone's DeX window checks for updates itself too (#900, Yukimi Nov 17: the
+        // bonded desktop still gets Melaton Update); the shared service worker joins a download the phone
+        // already runs, and the phone stops relaying what it applies
+        if (this._isContinuityDexWindow() && window.melatonContinuity.announceSelfUpdates) window.melatonContinuity.announceSelfUpdates();
         if (!window.isLoginPage && this._isBeforeDesktop()) {
             await this._holdCacheUpdateUntilDesktop(null, noToast);
             return;
@@ -2060,8 +2059,8 @@ class ServiceWorkerManager {
     }
 
     async updateStaticCache(files, noToast = false, cacheOptions = null) {
-        // Continuity (#798): the phone window downloads; this DeX window gets the files with its restart
-        if (this._isContinuityDexWindow()) return;
+        // Continuity (#900): the DeX window downloads too (a download the phone runs is joined below)
+        if (this._isContinuityDexWindow() && window.melatonContinuity.announceSelfUpdates) window.melatonContinuity.announceSelfUpdates();
         if (this.agentSession) {
             return;
         }
@@ -4691,24 +4690,39 @@ class ServiceWorkerManager {
     }
 
     forceRestart(opts = {}) {
-        // Continuity (#798): the warning first when this restart also restarts the other window of a
-        // hybrid phone (the Pocket PC, or the Continuity-enabled PC); Cancel keeps the updates waiting
         const mcw = window.melatonContinuity;
+        const bonded = !!(mcw && typeof mcw.restartPlan === 'function' && (mcw.isDexWindow() || mcw.keepPhoneConnected()));
+        // Continuity (#900): who restarts is decided per window - each judges the pending files against what
+        // it runs (restartPlan); the warning then names exactly the windows that restart. Cancel keeps the
+        // updates waiting.
+        if (bonded && this.pendingUpdateFuse && !opts.plan) {
+            mcw.restartPlan(Array.from(this.pendingUpdateUrls || [])).then(async (plan) => {
+                if (!opts.confirmed && !(await mcw.confirmUpdateRestart(plan))) return;
+                this.forceRestart({ confirmed: true, plan });
+            });
+            return;
+        }
         if (!opts.confirmed && mcw && typeof mcw.confirmUpdateRestart === 'function' && (mcw.isDexWindow() || mcw.keepPhoneConnected())) {
             mcw.confirmUpdateRestart().then((go) => { if (go) this.forceRestart({ confirmed: true }); });
             return;
         }
-        // Continuity (#798): the DeX window's "Restart Now" restarts the phone, which installs; this window
-        // restarts with it. With no phone window to ask, this window restarts on its own.
-        if (this._isContinuityDexWindow() && window.melatonContinuity.restartViaPhone('updates')) {
-            console.log('🔄 Restart for updates: the phone restarts, this DeX window follows it');
-            this.resetPendingUpdateFuse();
-            return;
+        const plan = opts.plan || null;
+        if (this._isContinuityDexWindow()) {
+            // the phone needs the restart: it restarts, and this window with it only when it needs it too;
+            // only this computer needs it: it restarts alone and the phone stays up (falls through)
+            if ((!plan || plan.other) && window.melatonContinuity.restartViaPhone('updates', plan ? { restartDex: !!plan.self } : undefined)) {
+                console.log(`🔄 Restart for updates: the phone restarts${plan && !plan.self ? ', this DeX window stays up' : ', this DeX window follows it'}`);
+                if (!plan || plan.self) this.resetPendingUpdateFuse();
+                return;
+            }
+        } else if (plan && mcw && typeof mcw.restartScope === 'function') {
+            // the phone restarting: the DeX window stays up unless the updates need it too
+            mcw.restartScope(plan.other ? 'both' : 'mobile');
         }
         // Continuity (#798): the phone window restarting for updates. Files only Melaton Mobile uses: the
         // DeX window stays up ("Restarting your Pocket PC..." on its logon screen); anything else: it restarts too
         const mc = window.melatonContinuity;
-        if (mc && typeof mc.restartScope === 'function' && this.pendingUpdateFuse) {
+        if (!plan && mc && typeof mc.restartScope === 'function' && this.pendingUpdateFuse) {
             mc.restartScope(mc.updateScope(Array.from(this.pendingUpdateUrls || [])));
         }
         console.log('🔄 Force restarting application...');

@@ -357,15 +357,56 @@
     api.on('update-scope?', (m) => { if (isPhone()) answer(m, pendingScope()); });
 
     /**
+     * Who must restart for these updates (#900, Yukimi Nov 17: a bonded desktop installs updates too, and
+     * the restart is decided for each window): each window judges the files against what it runs itself
+     * (serviceWorkerManager.classifyStaticCacheUpdate, #872): 'restart' or 'live' (applied in place, or
+     * not used by it).
+     */
+    function localNeed(urls) {
+        const sw = root.serviceWorkerManager;
+        if (!sw || typeof sw.classifyStaticCacheUpdate !== 'function') return 'restart';
+        const files = (Array.isArray(urls) ? urls : []).map((url) => ({ url: String(url) }));
+        if (!files.length) return 'live';
+        return sw.classifyStaticCacheUpdate(files) === 'restart' ? 'restart' : 'live';
+    }
+    api.on('update-needs?', (m) => answer(m, localNeed(m.urls)));
+    /**
+     * Before a restart for updates in a bonded pair: { self, other } - whether this window and the other
+     * one need the restart. other is null when there is no other window or it did not answer; then the
+     * file rule (updateScope: Melaton Mobile's own files restart only the phone) decides.
+     */
+    api.restartPlan = async (urls) => {
+        const list = Array.isArray(urls) ? urls : [];
+        const self = localNeed(list) === 'restart';
+        const peer = isDw() ? 'phone' : 'desktop';
+        if (!api.peers().includes(peer)) return { self, other: null };
+        const said = await api.ask('update-needs?', { urls: list.slice(0, 4000) }, 2500);
+        if (said === 'restart' || said === 'live') return { self, other: said === 'restart' };
+        // no answer (an older page): the file rule
+        const scope = api.updateScope(list);
+        return { self, other: isDw() ? true : scope === 'both' };
+    };
+
+    /**
      * Before a restart for updates (serviceWorkerManager.forceRestart): the warning when it restarts the
      * other window too. The DeX window: the phone always restarts ("Pocket PC"), this window as well when
      * the updates touch both. The phone: only when the updates touch both ("Continuity-enabled PC").
      * Resolves true to go on, false when the person cancelled.
      */
-    api.confirmUpdateRestart = async () => {
+    api.confirmUpdateRestart = async (plan) => {
         const ask = (text) => (typeof root.showConfirmationDialog === 'function'
             ? root.showConfirmationDialog(text, [{ text: 'Restart Now', value: true }, { text: 'Cancel', value: false }], null, { title: 'Melaton Update', icon: 'fas fa-exclamation-triangle', sound: true })
             : Promise.resolve(true));
+        // a plan (restartPlan, #900): the warning says exactly which windows restart
+        if (plan && typeof plan === 'object') {
+            if (isDw()) {
+                if (plan.other && plan.self) return !!(await ask('Melaton will restart your Pocket PC and this Continuity-enabled PC to install updates.<br><br>Programs that are open on either one will close. Save your work before you continue.'));
+                if (plan.other) return !!(await ask('Melaton will restart your Pocket PC to install updates.<br><br>Programs that are open on your Pocket PC will close. This computer stays on and reconnects when your Pocket PC is ready.'));
+                return true; // only this computer restarts: the usual Restart Now
+            }
+            if (plan.other) return !!(await ask('These updates also restart your Continuity-enabled PC.<br><br>Programs that are open on it will close. Save your work there before you continue.'));
+            return true;
+        }
         if (isDw() && api.peers().includes('phone')) {
             const scope = await api.ask('update-scope?');
             return !!(await ask(scope === 'both'
@@ -380,8 +421,14 @@
     /** serviceWorkerManager.forceRestart (phone window): what the coming restart installs. */
     api.restartScope = (scope) => { keepDexOnRestart = scope !== 'both'; };
     /** serviceWorkerManager.applyStaticCacheUpdate (phone window): CSS and safe files applied live go to the DeX window too. */
+    // a DeX window from #900 on says it takes its own updates (announceSelfUpdates): no relay to it
+    let dexTakesUpdates = false;
+    api.on('dex-takes-updates', () => { if (isPhone()) dexTakesUpdates = true; });
+    api.announceSelfUpdates = () => { if (isDw()) api.post({ type: 'dex-takes-updates' }); };
     api.relayApply = (files) => {
-        if (!isPhone() || !api.peers().includes('desktop')) return;
+        // #900: the DeX window takes updates itself now (its own check, download and apply on the shared
+        // service worker); a relay would apply them twice. Kept for a DeX page older than #900.
+        if (dexTakesUpdates || !isPhone() || !api.peers().includes('desktop')) return;
         api.post({ type: 'apply-update', files: files.map((f) => ({ url: f.url, hash: f.hash })) });
     };
     api.on('apply-update', (m) => {
@@ -1061,11 +1108,18 @@
      * (it installs, one app and one service worker) and the DeX window follows its restart. False when
      * there is no phone window to ask.
      */
-    api.restartViaPhone = (why) => (isDw() && api.peers().includes('phone') ? api.post({ type: 'restart-request', why: String(why || 'updates') }) : false);
-    api.on('restart-request', () => {
+    api.restartViaPhone = (why, opts) => (isDw() && api.peers().includes('phone')
+        ? api.post({ type: 'restart-request', why: String(why || 'updates'), ...(opts && typeof opts.restartDex === 'boolean' ? { restartDex: opts.restartDex } : {}) })
+        : false);
+    api.on('restart-request', (msg) => {
         if (!isPhone()) return;
         const m = root.serviceWorkerManager;
-        // the DeX window already warned (and the person said Restart Now there)
+        // the DeX window already warned (and the person said Restart Now there); it says whether it needs
+        // the restart itself (#900): if not, it stays up while the phone restarts
+        if (msg && typeof msg.restartDex === 'boolean') {
+            api.restartScope(msg.restartDex ? 'both' : 'mobile');
+            if (m && typeof m.forceRestart === 'function') { m.forceRestart({ confirmed: true, plan: { self: true, other: msg.restartDex } }); return; }
+        }
         if (m && typeof m.forceRestart === 'function') m.forceRestart({ confirmed: true });
         else if (typeof root.restartClientNavigate === 'function') root.restartClientNavigate();
     });
