@@ -2,16 +2,25 @@
 # Usage: python3 scripts/generate-wm-notification-sounds.py [out-dir] [name ...]
 # Melaton Mobile's own notification sounds (Yozora #848), one per sound class of wmShell.js
 # SND_EVENTS. All synthesised here (no samples), 22.05 kHz 16-bit mono like TrafficCamera.wav,
-# written to public/sounds/wm61:
+# written to public/sounds/wm61. Loudness follows how much the event needs the person (Yukimi,
+# Nov 17 2026: weather alerts must get attention, things that need nothing must not pique interest):
 #
-#   BatteryLow.wav       battery-low       a held electronic high-low warning pair, twice
+#   urgent      WeatherSevere (the loudest of all), WeatherAlert, BatteryCritical   about -4 to -7 LUFS
+#   act soon    LapisUnlocked, LapisIssue, BatteryLow, RainAlarm                    about -11 to -14 LUFS
+#   nothing to  BatteryFull, LapisCountdown, SoftwareUpdate                         about -19 to -21 LUFS
+#   do
+#
+# (the stock notify.mp3 is about -13 LUFS; TrafficCamera.wav, its own script, about -7)
+#
+#   BatteryLow.wav       battery-low       a soft high-low pair, twice: "plug in when you can"
 #   BatteryCritical.wav  battery-very-low  an alarm: a fast falling three-tone burst three times,
 #                                          then a long buzzing low tone
-#   BatteryFull.wav      battery-full      a bright bell arpeggio rising an octave: "topped up"
+#   BatteryFull.wav      battery-full      two soft round notes rising a fourth (G4, C5): "done", quietly
 #   WeatherAlert.wav     weather-alert     a weather-radio style high-low pair, twice, the last held
 #   WeatherSevere.wav    weather-severe    the 853 Hz + 960 Hz two-tone attention signal, in the
 #                                          long-short-short cadence of a phone's emergency alert.
 #                                          Tones only: no header or end-of-message data bursts.
+#                                          Driven into a soft clip so it is the loudest sound here.
 #   RainAlarm.wav        rain-alarm        five water drops, then one soft bell
 #   SoftwareUpdate.wav   update            two soft round notes rising a major third (C5, E5), a slow
 #                                          swell and no strike, quieter than the rest (Yukimi, Nov 17:
@@ -97,7 +106,7 @@ def render(length, fn):
 def battery_low():
     hi, lo = 987.8, 740.0
     notes = [(hi, 0.0, 0.15), (lo, 0.17, 0.22), (hi, 0.55, 0.15), (lo, 0.72, 0.30)]
-    return render(1.05, lambda t: sum(beep(f, t - s, n, bite=0.5) for f, s, n in notes))
+    return render(1.05, lambda t: sum(beep(f, t - s, n, edge=0.015) for f, s, n in notes))
 
 
 def battery_critical():
@@ -108,8 +117,8 @@ def battery_critical():
 
 
 def battery_full():
-    notes = [(1046.5, 0.0, 0.5), (1318.5, 0.105, 0.5), (1568.0, 0.21, 0.6), (2093.0, 0.315, 1.0)]
-    return render(1.4, lambda t: sum(bell(f, t - s, r) for f, s, r in notes))
+    notes = [(392.0, 0.0, 0.5, 1.0), (523.3, 0.15, 0.75, 0.85)]
+    return render(0.95, lambda t: sum(g * soft(f, t - s, r) for f, s, r, g in notes))
 
 
 def weather_alert():
@@ -182,8 +191,20 @@ SOUNDS = {
     'LapisIssue': lapis_issue,
 }
 
-# peak level per sound (of full scale); the rest 0.8. The update notice is a gentle one (-6 dB)
-LEVEL = {'SoftwareUpdate': 0.4}
+# per sound: the peak (of full scale) and a drive into a soft clip (tanh; louder at the same peak, and
+# harsher) - the loudness tiers above. Unlisted: peak 0.8, no drive.
+LEVEL = {
+    'WeatherSevere': (0.89, 6.0),
+    'WeatherAlert': (0.85, 0.6),
+    'BatteryCritical': (0.75, 0.0),
+    'LapisUnlocked': (0.85, 2.2),
+    'LapisIssue': (0.85, 2.4),
+    'BatteryLow': (0.3, 0.0),
+    'RainAlarm': (0.7, 0.0),
+    'BatteryFull': (0.4, 0.0),
+    'LapisCountdown': (0.5, 0.0),
+    'SoftwareUpdate': (0.4, 0.0),
+}
 
 out_dir = sys.argv[1] if len(sys.argv) > 1 else 'public/sounds/wm61'
 names = sys.argv[2:] or list(SOUNDS)
@@ -195,8 +216,12 @@ for name in names:
     for i in range(fade):
         samples[-1 - i] *= i / fade
     peak = max(abs(x) for x in samples) or 1
+    level, drive = LEVEL.get(name, (0.8, 0.0))
+    if drive > 0:
+        samples = [math.tanh(drive * x / peak) for x in samples]
+        peak = max(abs(x) for x in samples) or 1
     path = os.path.join(out_dir, name + '.wav')
     with wave.open(path, 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
-        w.writeframes(b''.join(struct.pack('<h', int(x / peak * LEVEL.get(name, 0.8) * 32767)) for x in samples))
+        w.writeframes(b''.join(struct.pack('<h', int(x / peak * level * 32767)) for x in samples))
     print(path, f'{len(samples) / RATE:.2f} s')
