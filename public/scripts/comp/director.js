@@ -8734,9 +8734,12 @@ class Director {
         window.wsClient.on('connected', () => {
             const director = window.directorInstance;
             if (!director) return;
-            director.requestEngineBalances(true);
+            // Melaton Mobile (#890) shows balances only in the Engine menu, which asks again when its
+            // list is over a minute old: a reconnect asks only while the phone has none yet
+            if (window.uiShell !== 'mobile' || !Object.keys(director.engineBalances || {}).length) director.requestEngineBalances(true);
             director.requestDirectorSettings();
-            // a new socket is a new client to the server: say again which chat is on screen
+            // a new socket is a new client to the server: say again which chat is on screen (also when
+            // none is: a client that never said gets every chat's streaming updates, cursorDirector.js)
             director._streamWatch = undefined;
             director.syncStreamWatch();
         });

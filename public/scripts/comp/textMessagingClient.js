@@ -186,6 +186,8 @@
             const d = await accounts(true);
             snap = { at: Date.now(), accounts: d.accounts || [], settings: d.settings || {}, inbox: {} };
             if (!snap.accounts.length) return;
+            // this read is the unread count a reconnect also asked for (its 'connected' scheduleUnread): once (#890)
+            clearTimeout(unreadTimer);
             const list = await summary().catch(() => snap.accounts);
             await Promise.all((list || []).filter((a) => a.status === 'connected' && a.enabled !== false).map((a) =>
                 chats(a.id, { folder: 'inbox', limit: 20 }).catch(() => null)));
