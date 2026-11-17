@@ -1,7 +1,7 @@
 /**
  * Nightshade Network Client (Yozora #895): the Dreamscape service's own program on the desktop, as a
  * mobile broadband card's connection manager - what the tray icon opens. It is the user's view, not
- * an administrator's: the service's status, signal quality, time connected, CaféReady and the data
+ * an administrator's: the service's status, connection quality, time connected, CaféReady and the data
  * this session used, with Connect when it is down. Disconnect is in the Connection menu only, behind
  * a warning (Yukimi: not that easy). The server's own detail is in Server Manager > Diagnostics >
  * Nightshade Network (mmcServerManager.js).
@@ -24,7 +24,7 @@
     const ICON32 = `${VI}/nightshade-32.png`;
     const ICON48 = `${VI}/nightshade-48.png`;
     const CAFE_LOGO = '/static_images/melaton/cafe-ready-dark.png';
-    const SIGNAL = '/static_images/vista-explorer/signal-';
+    const BARS = '/static_images/vista-explorer/signal-'; // Vista's 0-5 bar art
     const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -55,9 +55,10 @@
         return { internet: online ? 'online' : 'offline', service: online ? 'unavailable' : 'no-internet', problem: true, cafeReady: false, connectedAt: null, rtt: null };
     }
 
-    /** Signal quality from the round trip, as a broadband card shows bars: [bars 0-5, word]. */
-    function signal(s) {
-        if (s.service !== 'connected') return [0, 'No signal'];
+    /** Connection quality from the round trip to the server (what it really measures), shown with
+     *  Vista's bars as a broadband card does: [bars 0-5, word]. */
+    function quality(s) {
+        if (s.service !== 'connected') return [0, 'Not connected'];
         const rtt = s.rtt;
         if (rtt == null) return [3, 'Good'];
         if (rtt < 80) return [5, 'Excellent'];
@@ -182,10 +183,10 @@
                         <div class="nsc-name">Nightshade Network</div>
                         <div class="nsc-status" data-f="status"></div>
                     </div>
-                    <img class="nsc-signal" data-f="bars" src="/static_images/vista-explorer/signal-0-32.png" alt="" draggable="false">
+                    <img class="nsc-bars" data-f="bars" src="/static_images/vista-explorer/signal-0-32.png" alt="" draggable="false">
                 </div>
                 <div class="nsc-rows">
-                    <span>Signal quality:</span><span data-f="signal"></span>
+                    <span>Connection quality:</span><span data-f="quality"></span>
                     <span>Connected for:</span><span data-f="time"></span>
                     <span>CaféReady:</span><span data-f="cafe"></span>
                     <span>Data used:</span><span data-f="data"></span>
@@ -230,19 +231,20 @@
         setText(f('status'), connected && s.cafeReady ? 'Connected (with CaféReady)' : STATUS[s.service] || 'Unavailable');
         win.dataset.nscState = s.service;
         win.classList.toggle('nsc-problem', !!s.problem);
-        const [bars, word] = signal(s);
-        // Vista's own signal-strength art (0-5 bars), as Network and Sharing Center shows a wireless link
+        const [bars, word] = quality(s);
+        // connection quality on Vista's 0-5 bar art, as a broadband card's manager shows its link
         const barsEl = f('bars');
-        const src = `${SIGNAL}${bars}-32.png`;
+        const src = `${BARS}${bars}-32.png`;
         if (barsEl.getAttribute('src') !== src) barsEl.setAttribute('src', src);
-        barsEl.setAttribute('alt', `Signal: ${word}`);
-        setText(f('signal'), word);
+        barsEl.setAttribute('alt', `Connection quality: ${word}`);
+        setText(f('quality'), word);
         setText(f('time'), connected && s.connectedAt ? clock(Date.now() - s.connectedAt) : '—');
         setText(f('cafe'), cafeText(s));
         const st = (client() && client().connectionStats) || {};
         setText(f('data'), connected ? `${size(st.bytesOut)} sent, ${size(st.bytesIn)} received` : '—');
-        setText(f('note'), NOTE[s.service] || '');
-        f('note').hidden = !NOTE[s.service];
+        const note = s.admin ? 'An administrator disconnected this computer from the Nightshade Network. Connect again when you are ready.' : NOTE[s.service] || '';
+        setText(f('note'), note);
+        f('note').hidden = !note;
         f('cafe-logo').hidden = !s.cafeReady;
         // the footer's first button: Connect / Sign In while down, none while connected or dialing
         const btn = win.querySelector('.nsc-footer [data-act="connect"]');
@@ -324,6 +326,6 @@
         });
     }
 
-    root.nightshadeClient = { open, close, attachTrayMenu, _state: state, _signal: signal };
+    root.nightshadeClient = { open, close, attachTrayMenu, _state: state, _quality: quality };
     root.openNightshadeClient = open;
 })(typeof window !== 'undefined' ? window : globalThis);
