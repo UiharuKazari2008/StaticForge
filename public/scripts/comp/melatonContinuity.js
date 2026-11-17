@@ -39,7 +39,12 @@
         lagRows.push([new Date().toISOString().slice(11, 23), kind, text, ms == null ? null : Math.round(ms)]);
         if (lagRows.length > 300) lagRows.splice(0, lagRows.length - 300);
     }
-    if (root.AndroidContinuity && typeof root.PerformanceObserver === 'function') {
+    // the observers run only while another window of the app is there (the Continuity case): Chromium works
+    // out script attribution for every long frame while one observes, which a lone phone page never reads (#890)
+    let lagJournalOn = false;
+    function startLagJournal() {
+        if (lagJournalOn || !root.AndroidContinuity || typeof root.PerformanceObserver !== 'function') return;
+        lagJournalOn = true;
         try {
             new root.PerformanceObserver((list) => {
                 list.getEntries().forEach((e) => {
@@ -128,6 +133,10 @@
             return api.post({ type: 'handoff', id: String(id), state: s || {}, label: h.label || String(id) });
         }
     };
+
+    // the lag journal (above) starts with the Continuity case: another window there now, or joining later
+    api.on('peer', (m) => { if (m && m.state === 'joined') startLagJournal(); });
+    if (api.available && api.peers().length) startLagJournal();
 
     function openHandoff(msg, from) {
         const h = handoffs.get(String(msg.id));
