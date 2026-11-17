@@ -4964,8 +4964,11 @@ function emitDirector(handler, ws, type, data, requestId) {
 // on Today, a sleeping phone, a desktop in another chat all received and parsed it and threw it
 // away (the page uses it only for the chat it is showing). A client now says which chat it has on
 // screen (director_stream_watch, director.js syncStreamWatch); the update goes to those clients.
-// A client that has never said (a page from before this) still gets every update.
+// A client that has never said (a page from before this) still gets every update, except a socket
+// that is no page at all (#890): a Dreamscape Frame / SideShow device, the Android app's widgets
+// (light clients) and its background link never show a chat.
 function watchesDirectorStream(info, sessionId) {
+    if (info && info.directorWatch === undefined && (info.deviceApp || info.deviceId || info.light || (info.as && info.as.speaker === 'service'))) return false;
     return !info || info.directorWatch === undefined || info.directorWatch === String(sessionId);
 }
 
@@ -6496,12 +6499,12 @@ async function sendDirectorMessage(handler, ws, message, clientInfo, wsServer) {
         // name from before that write, so the completion packet must re-read.
         const storedName = await readSessionName(paths, sessionId);
         const sessionName = storedName || prepared.name;
+        // the reply once (#890): it went to every socket three times over (clientResponse and data held
+        // copies no page reads; director.js reads response.SuggestedName, then loads the messages)
         emitDirector(handler, ws, 'director_message_response', {
             success: true,
             sessionId,
             response: { SuggestedName: sessionName, Description: assistant.data.Description },
-            clientResponse: { Description: assistant.data.Description, SuggestedName: sessionName },
-            data: { Description: assistant.data.Description },
             context: turned.context || null
         });
         emitDirector(handler, ws, 'director_send_message_response', {
