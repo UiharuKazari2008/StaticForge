@@ -34,6 +34,25 @@ kept by the app, and `getDeviceName()` the phone's own name (optional). `ring()`
 so both speakers and a reinstalled WebView profile stay one device. Without the bridge the WebView keeps its own id in
 `localStorage.activeSyncPeerId`.
 
+## The link (#890)
+
+- **Keep-alive.** The reverse proxy in front of the server cuts a connection after about 60 s with nothing sent towards the
+  client. The server therefore never stays silent towards a socket for more than 35 s: when nothing else went out it sends
+  a protocol ping (the app's WebSocket answers it by itself). Anything the app sends counts as alive, so the server pings
+  a silent background link (or Miniport carrier) only after 180 s; two unanswered pings end the link.
+- **Link probing.** When a device says hello again on a new socket (a Wi-Fi / cellular handover can leave the old one
+  open on the server), its older links are probed at once: pinged, 10 s grace, then ended if no frame came. Until a probed
+  link answers, what it last reported (on screen, in front, connected) is not relied on.
+- **Credits.** The service's link gets `as_credits { free, paid, daysLeft }` (strings: free and paid Anlas and the
+  subscription's days left) once after its `as_hello` and again whenever they change; `GET
+  /android/background-notification` answers the same values from the server's cached balance. No polling while the link
+  is up.
+- **Peer list.** The service's link gets no broadcasts at all (`as_peers_updated` included); a phone's page gets the peer
+  list only when something it reads changed, never its own status report back.
+- **Wallpapers.** `GET /api/activesync/wallpapers/<device>/hashes` -> `{ hashes: { <kind>: sha1 of the stored bytes |
+  "path:<path>" } }` lists every stored kind; send only what differs, `"same:<kind>"` for a picture another kind has, and
+  read `unchanged: [...]` in the POST answer. See [client-api/ws/activeSync.md](./client-api/ws/activeSync.md#wallpapers-kept-for-device-center-827).
+
 ## Staying connected
 
 The background link is a partner's. The server refuses a service's `as_hello` for a device without a partnership

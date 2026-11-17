@@ -18,7 +18,7 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_create_session` | `director_create_session_response` | admin/destructive | Handler: handleDirectorCreateSession |
 | `director_delete_feedback` | `director_delete_feedback_response` | admin/destructive | Handler: handleDirectorDeleteFeedback |
 | `director_delete_session` | `director_delete_session_response` | admin/destructive | Handler: handleDirectorDeleteSession |
-| `director_get_messages` | `director_get_messages_response` | session | Handler: handleDirectorGetMessages |
+| `director_get_messages` | `director_get_messages_response` | session | `{ sessionId, sinceId? }`: the chat's messages, all or only those after `sinceId` (#890). See [`director_get_messages`](#director_get_messages). |
 | `director_get_models` | `director_get_models_response` | session | Model list for `engine` (`cursor` default, `claude`, `tokenrouter`), grouped by family. `models[]` has `id`, `name`, `short` (single-line picker label, empty when `name` already fits), `provider`, `cost`, `price`, `fast`, and `efforts`. Claude and TokenRouter also return `available`; TokenRouter returns `error` when its catalog is unreachable and there is no saved copy. `force: true` refetches the TokenRouter catalog. |
 | `director_custom_providers_get` | `director_custom_providers_response` | admin | `{ providers, presets }`. `providers[]` is each custom engine's public row (`id`, `name`, `baseUrl`, `kind`, `defaultModel`, `monitorUsage`, `hasKey`, `hasManagementKey`, `logo`, and the per-engine tool switches described under [Engines (Wren)](#engines-wren)). Keys are never sent, only `hasKey` / `hasManagementKey`. `presets[]` is the supported hosts the form offers: `{ id, name, baseUrl, defaultModel }` (Google, OpenAI, TokenRouter, OpenRouter, NVIDIA NIM, DeepSeek, DeepInfra). See [Engines (Wren)](#engines-wren). |
 | `director_custom_providers_save` | `director_custom_providers_save_response` | admin/destructive | `{ provider }` with the same fields as a `providers[]` row, plus `apiKey`, optional `managementKey`, and optional `logo` (a PNG data URL, `""` removes it). A blank `apiKey` keeps the stored key. Answers `{ provider, providers }` in the `director_custom_providers_get` row shape. |
@@ -48,7 +48,7 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_save_rules` | `director_save_rules_response` | admin/destructive | Handler: handleDirectorSaveRules |
 | `director_send_message` | `director_send_message_response` | admin/destructive | Handler: handleDirectorSendMessage. `persona: "xi"` runs the host agent. |
 | `director_streaming_ack` | — | session | Client ack of `director_streaming_update.data.seq`. The server holds the next snapshot until this ack or a deadline scaled from client RTT. |
-| `director_stream_watch` | — | session | `{ sessionId, delta }`: the chat this page has on screen (`''` = none). With `delta: 1` the page takes row deltas: `director_streaming_update.data` then has `rowsFrom` (index of the first row in `rows`), `rowsTotal` and `prevSeq` (the update it builds on); a page without that update sends this packet again and gets the whole update. `director_streaming_update` goes only to clients watching that chat; a client that never sent this gets every update. A chat whose turn is running answers with its newest update at once. |
+| `director_stream_watch` | — | session | `{ sessionId, delta, liveDelta? }`: the chat this page has on screen (`''` = none). With `delta: 1` the page takes row deltas: `director_streaming_update.data` then has `rowsFrom` (index of the first row in `rows`), `rowsTotal` and `prevSeq` (the update it builds on); a page without that update sends this packet again and gets the whole update. With `liveDelta: 1` as well it also takes live text deltas (see [Streaming updates](#streaming-updates-director_streaming_update)). `director_streaming_update` goes only to clients watching that chat; a client that never sent this gets every update. A chat whose turn is running answers with its newest update at once. A phone page or DeX window that said it sleeps (`client_dormant`, [statusHub.md](./statusHub.md#client_dormant-fire-and-forget)) gets no updates; when it wakes it is sent the newest one whole. |
 | `ledge_checks` | `ledge_checks_response` | session | `{ sessionId, checked: [itemId] }` from a Ledge desk. The other `ledge_*` packets (`ledge_list`, `ledge_get`, `ledge_remove`, `ledge_clear`, `ledge_rename`, `ledge_dispose`) are listed in `modules/ws/handlers/309-ledgeHandler.js`. Changes go to the desk's owner client only, as `ledge_state` (fields in `modules/ledgeDesk.js`). |
 | `director_tool_diff` | `director_tool_diff_response` | session | `{ sessionId, diffId, persona: "xi" }` → `{ text, name, detail }`. The live trace does not include that body. |
 | `director_tool_payload` | `director_tool_payload_response` | session | `{ sessionId, payloadId }` (or `diffId`) returns a parked tool body: `{ args, result, text, name, detail }`. The public trace omits `args` / `result`; the inspector requests them on demand. |
@@ -307,17 +307,29 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 
 **Auth:** Session required
 
-**Handler:** modules/ws/handlers/40-directorHandler.js → `handleDirectorGetMessages`
+**Handler:** modules/ws/handlers/40-directorHandler.js → `handleDirectorGetMessages` (`modules/cursorDirector.js` / `modules/xiDirector.js` with `persona: "xi"`)
 
 **Request fields:**
 
 | Field | Notes |
 |-------|-------|
 | `requestId` | Optional |
+| `sessionId` | The chat |
+| `sinceId` | Optional (#890). The id of the last message the page has. The reply then holds only the messages after it (a reload at a turn's end or a reconnect, instead of the whole chat again: 0.25-4 MB). Send the id of a message from the last reply, not of the running turn's assistant message. |
 
 **Success response:** `director_get_messages_response`
 
-**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+`data: { success, sessionId, name, images, prints, tasks, messages, total, partial?, sinceId? }`
+
+- `messages`: every message (no `sinceId`, as before), or with `sinceId` only those after it.
+- `total`: how many messages the chat has in all (Xi: without the running turn's draft, which its live stream carries).
+- `partial: true` and `sinceId` (echoed) when `messages` holds only the messages after `sinceId`. The page appends them; if the
+  messages it has up to `sinceId` plus these are not `total`, its copy no longer lines up (a card was inserted, a message
+  rolled back) and it asks again without `sinceId`.
+- No `partial` (the whole chat) when `sinceId` is not in the chat, is the running turn's assistant message, or is an assistant
+  message a reply carried while its turn was still running (it has been written to since).
+
+**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). `SESSION_NOT_FOUND` for an unknown chat.
 
 ### `director_get_session`
 
@@ -553,6 +565,26 @@ On `director_settings_set` only the parts sent change; null clears one. The serv
 ### Server → client: `director_settings_changed`
 
 `{ settings }` after a save, so every tab's next new chat uses the new defaults.
+
+## Streaming updates (`director_streaming_update`)
+
+`data: { seq, sessionId, persona, rows, live, context, model, mascot? }` for every client watching the chat (see
+`director_stream_watch`). Pages ack each `seq` (`director_streaming_ack`); the server paces updates by the watching clients'
+RTT (a sleeping phone page does not count).
+
+- `fullContent` (the live row's text, or the turn's text, again) is left out whenever `rows` or `live` is there, and always
+  from deltas (#890). Pages read it only when an update has neither (`director.js` `flushLivePaint`).
+- Row deltas (`delta: 1`): `rows` from index `rowsFrom`, `rowsTotal`, `prevSeq`.
+- Live text deltas (`liveDelta: 1`, #890): when the live row has the same `type` and `name` as the one this page was last sent
+  and its text starts with that text, `live` carries no `text` but `textAppend` (the new tail) and `textFrom` (the length of
+  the text the page has): `live: { ...the row's other fields, textAppend, textFrom }`. The page appends when `textFrom`
+  equals its live text's length; otherwise it asks for the whole update again (`director_stream_watch`, as for a missed row
+  delta). The server sends a live delta only to a page that has the update this one builds on (`prevSeq`); others get the
+  text whole. A page that did not say `liveDelta` always gets the text whole.
+
+The turn's end: `director_message_response` `{ success, sessionId, response: { SuggestedName, Description }, context }`, sent
+once to every client (#890: no `clientResponse` / `data` copies; pages read `response.SuggestedName` and then reload the
+messages), and `director_send_message_response` `{ success, sessionId, assistantMessageId }` with the request's `requestId`.
 
 ## Kabuki
 

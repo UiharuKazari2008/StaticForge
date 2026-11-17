@@ -62,7 +62,8 @@ Pushed by the server:
 | --- | --- |
 | `as_request` | `{ callId, from: { kind, id, name, queuedAt? }, op, args }`: answer with `as_reply` |
 | `as_event` | `{ from, event, detail }`; from kind `server`: `partnership.changed` `{ session, permissions, name, syncItems }` to the device; to a partnered device's service socket, `inbox.notice` (a notification inbox notice plus `user`, `pageConnected`) and `inbox.cleared { id }` ([notificationInbox.md](./notificationInbox.md), #876) |
-| `as_peers_updated` | `{ devices, computers }` to administrators that said hello, coalesced (250 ms) |
+| `as_peers_updated` | `{ devices, computers }` to administrators that said hello, coalesced (250 ms), only when something other than the clocks changed. A phone's sockets get it only when something its own page reads changed (another peer, or its own session, permissions or name: its own status report does not come back to it, #890); the app's background link never gets it |
+| `as_credits` | To the app's background link (speaker `service`) only (#890): `{ free, paid, daysLeft }`, all strings (`daysLeft` `''` when unknown): free and paid Anlas and the subscription's days left, the values of `GET /android/background-notification`. Once right after its `as_hello`, then whenever they change (checked with the server's 10 s status read). The app need not ask over HTTP while its link is up |
 
 ## File bodies (HTTP)
 
@@ -78,6 +79,10 @@ requests must come from the session of one of its open sockets.
 | `POST /api/activesync/upload/:id/commit` | administrator | `{ queue? }`. The phone is asked `stream.receive { transferId, root, dir, name, size, conflict, mtime }` and pulls the file; answers `{ entry }`, or `{ queued: true }` for an offline partner with `queue` (kept up to 7 days, removed when delivered, refused or the partnership ends) |
 | `GET /api/activesync/transfer/:id/data` | the device | The committed file, with `Range` |
 | `DELETE /api/activesync/upload/:id` | administrator | Gives up an upload that was not committed |
+
+Uploads (#890): a chunk is taken only while no other chunk of the same upload is being written; one sent meanwhile (a
+resend racing its first copy) answers 409 `OFFSET` with `received`, so a chunk is never written twice. After a server
+restart `received` is what the data file holds, so resuming from the answer is always exact.
 
 The phone reports its writing as `as_event` `stream.progress { transferId, written, total }`.
 
@@ -111,4 +116,13 @@ storage unchanged, and Send To copies files into its Download folder.
 | `POST /api/activesync/wallpapers/:deviceId` | the phone (its own session) | `{ inner, cover, external, screen }`, each a same-site path or an image data URL (2 MB max) -> `{ success, wallpapers }` |
 | `GET /api/activesync/wallpapers/:deviceId` | admin or the phone | `{ success, wallpapers: { inner, cover, external, screen, at } }` (URLs, null when none) |
 | `GET /api/activesync/wallpapers/:deviceId/:kind` | admin or the phone | the stored picture (immutable; the URL carries its stamp) |
+| `GET /api/activesync/wallpapers/:deviceId/hashes` | admin or the phone | `{ success, hashes: { <kind>: sha1 hex of the stored file's bytes, or "path:<path>" for a kind stored as a path } }` (#890): every stored kind; `{}` when the server holds none for the device |
+
+Re-uploads (#890): the page compares each picture's sha1 (of the decoded bytes; `"path:<path>"` for a path) with `/hashes`
+(once per connection) and with what it sent last, and posts only the kinds that differ. A kind whose picture is another
+kind's (in the same post, or the one stored) goes as `"same:<kind>"`. A picture whose bytes are unchanged is not written
+again, and an unchanged set neither rewrites `index.json` nor moves its stamp (Device Center is not told of a change). The
+POST answer adds `unchanged: [kinds sent that were unchanged]`. Kinds: `inner`, `cover`, `external`, `innerLock`,
+`coverLock`, `externalLock` (the page) and `androidInner`, `androidCover`, `androidExternal` (the app's service); a kind
+not sent keeps what it had, `null` clears it.
 

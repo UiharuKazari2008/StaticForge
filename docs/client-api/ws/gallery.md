@@ -12,6 +12,7 @@ See [WebSocket protocol](../websocket.md) for envelope format, auth, and error h
 | `delete_unupscaled_original` | `delete_unupscaled_original_response` | admin/destructive | Handler: handleDeleteUnupscaledOriginal |
 | `find_image_index` | `find_image_index_response` | session | Handler: handleFindImageIndexRequest |
 | `gallery_position_hint` | `gallery_position_hint_response` | session | Handler: handleGalleryPositionHint |
+| `gallery_subscribe` | `gallery_subscribe_response` | session (`gallery` app-key scope) | `{ workspaceIds }`: a light socket's gallery pushes (#890). See [`gallery_subscribe`](#gallery_subscribe). |
 | `request_gallery` | `request_gallery_response` | session | Handler: handleGalleryRequest |
 | `request_image_by_index` | `request_image_by_index_response` | session | Handler: handleImageByIndexRequest |
 | `request_image_metadata` | `request_image_metadata_response` | session | Handler: handleImageMetadataRequest |
@@ -170,6 +171,26 @@ Additional response/push types from handler:
 **Success response:** `gallery_position_hint_response`
 
 **Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). Readonly users receive `READONLY_RESTRICTED` for destructive packets.
+
+### `gallery_subscribe`
+
+**Auth:** Session required (in the `gallery` application-key scope)
+
+**Handler:** modules/ws/handlers/120-galleryHandler.js → `handleGallerySubscribe` (#890)
+
+A light socket (`?light=1` on the socket URL: the Android app's widgets and screen saver, see
+[websocket.md](../websocket.md#phones-and-the-android-app-890)) gets no broadcast it did not subscribe to; this is how it hears
+of new pictures. Any socket may send it.
+
+**Request fields:**
+
+| Field | Notes |
+|-------|-------|
+| `requestId` | Optional |
+| `workspaceIds` | Optional (top level or in `data`): `['active' \| <workspace id>, ...]`, at most 64; default `['active']`. Kept on the socket (`galleryWorkspaces`) for the app's pinned frames |
+
+**Success response:** `gallery_subscribe_response` `data: { success: true, workspaceIds, types: ['gallery_updated', 'workspace_image_added', 'workspace_updated'] }`.
+From then on a light socket gets those three pushes; they still follow the session's active workspace, as for every socket.
 
 ### `request_gallery`
 
