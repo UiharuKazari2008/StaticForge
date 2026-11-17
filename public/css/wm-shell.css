@@ -4323,12 +4323,23 @@ html.ui-mobile #wmShell .wm-status-icon[data-icon="notify-many"]::after {
     letter-spacing: calc(-0.5 * var(--wm-icon-unit, var(--wm-px)));
 }
 
-/* the Car bubble (#902): 1-bit glyphs on its keys (wmShell bitGlyph, the text's colour; grey when disabled),
- * up to three keys in one row ([Climate Start] [Lock] [Unlock]), the remote start's time left */
+/* the Car bubble (#902): the car's report and its keys as one part - the keys under the report on a phone,
+ * beside it where the bubble is wide (DeX, an opened Fold); the keys are 1-bit glyphs only (wmShell bitGlyph,
+ * the text's colour, grey when disabled); the commute's traffic light left of its lines */
+#wmShell .wm-car-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(4 * var(--wm-px)) calc(8 * var(--wm-px));
+}
+#wmShell .wm-car-main .wm-car-info { flex: 1 1 calc(200 * var(--wm-px)); min-width: 0; }
+#wmShell .wm-car-main .wm-carkey-keys { flex: 1 1 calc(120 * var(--wm-px)); padding: 0; }
+#wmShell .wm-car-main .wm-carkey-key { min-height: calc(34 * var(--wm-px)); padding: calc(4 * var(--wm-px)) !important; }
 #wmShell .wm-carkey-key .wm-bit-glyph {
-    width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
-    height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    width: calc(24 * var(--wm-px));
+    height: calc(24 * var(--wm-px));
     display: block;
 }
-#wmShell .wm-carkey-keys .wm-carkey-key { min-width: 0; white-space: nowrap; }
 #wmShell .wm-car-run { margin-bottom: calc(2 * var(--wm-px)); }
+#wmShell .wm-car-trip { display: flex; align-items: center; gap: calc(6 * var(--wm-px)); }
+#wmShell .wm-car-trip .wm-traffic-light { flex: 0 0 auto; width: calc(12 * var(--wm-px)); height: calc(30 * var(--wm-px)); }

@@ -6203,20 +6203,26 @@
     }
 
     /**
-     * 1-bit glyphs drawn in the text's colour (the Car bubble's keys, #902): WM's buttons carry 1-bit pictures,
-     * never coloured ones; grey with the button when it is disabled. 16 x 16, '#' = a lit pixel.
+     * 1-bit glyphs at the screen's own resolution (the Car bubble's keys, #902): vector shapes drawn without
+     * anti-aliasing (shape-rendering crispEdges), so they stay 1-bit and sharp at any density instead of a
+     * 16-pixel picture blown up; the text's colour, grey with a disabled button. The traffic light is 1-bit
+     * too, its lit lamp in its colour.
      */
-    const BIT_GLYPHS = {
-        lock: ['................', '.....######.....', '....##....##....', '....#......#....', '....#......#....', '....#......#....', '...##########...', '...##########...', '...####..####...', '...####..####...', '...####..####...', '...##########...', '...##########...', '...##########...', '................', '................'],
-        unlock: ['.......######...', '......##....##..', '......#......#..', '......#......#..', '......#.........', '......#.........', '...##########...', '...##########...', '...####..####...', '...####..####...', '...####..####...', '...##########...', '...##########...', '...##########...', '................', '................'],
-        power: ['................', '.......##.......', '.......##.......', '....#..##..#....', '...##..##..##...', '..##...##...##..', '..#....##....#..', '.##....##....##.', '.##..........##.', '.##..........##.', '..#..........#..', '..##........##..', '...##......##...', '....########....', '................', '................'],
-        stop: ['................', '................', '................', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '...##########...', '................', '................', '................']
+    const GLYPHS = {
+        lock: '<path d="M10 15V11a6 6 0 0 1 12 0v4" fill="none" stroke="currentColor" stroke-width="3"/><path fill="currentColor" fill-rule="evenodd" d="M6 14h20v15H6zM14.5 18h3v7h-3z"/>',
+        unlock: '<path d="M10 15V9a6 6 0 0 1 12 0v2" fill="none" stroke="currentColor" stroke-width="3"/><path fill="currentColor" fill-rule="evenodd" d="M6 14h20v15H6zM14.5 18h3v7h-3z"/>',
+        power: '<path d="M16 3v12" stroke="currentColor" stroke-width="3"/><path d="M10 7.6A10 10 0 1 0 22 7.6" fill="none" stroke="currentColor" stroke-width="3"/>',
+        stop: '<path fill="currentColor" d="M8 8h16v16H8z"/>'
     };
-    function bitGlyph(name) {
-        const rows = BIT_GLYPHS[name] || [];
-        let d = '';
-        rows.forEach((r, y) => { for (let x = 0; x < r.length;) { if (r[x] !== '#') { x++; continue; } let e = x; while (r[e] === '#') e++; d += `M${x} ${y}h${e - x}v1h${x - e}z`; x = e; } });
-        return `<svg class="wm-bit-glyph" viewBox="0 0 16 16" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="${d}"/></svg>`;
+    function bitGlyph(name, label) {
+        return `<svg class="wm-bit-glyph" viewBox="0 0 32 32" shape-rendering="crispEdges"${label ? ` role="img" aria-label="${escapeHtml(label)}"` : ' aria-hidden="true"'}>${GLYPHS[name] || ''}</svg>`;
+    }
+    /** The commute's traffic light: a 1-bit housing, the lit lamp red, yellow or green, the others empty rings. */
+    function trafficLight(lit) {
+        const lamp = (cy, colour, on) => `<circle cx="8" cy="${cy}" r="4" fill="${on ? colour : 'none'}" stroke="currentColor" stroke-width="1.5"/>`;
+        return `<svg class="wm-traffic-light" viewBox="0 0 16 40" shape-rendering="crispEdges" role="img" aria-label="${escapeHtml({ red: 'Running late', yellow: 'Some delay', green: 'On time' }[lit] || 'Commute')}">`
+            + '<rect x="1.5" y="1.5" width="13" height="37" fill="none" stroke="currentColor" stroke-width="2"/>'
+            + lamp(9, '#e00000', lit === 'red') + lamp(20, '#ffc800', lit === 'yellow') + lamp(31, '#00b000', lit === 'green') + '</svg>';
     }
 
     // the car key told something new (a car came in range, the doors changed): the Car bubble shows it at once (#902)
@@ -6496,17 +6502,34 @@
             const keyRow = (keys) => {
                 const row = document.createElement('div');
                 row.className = 'wm-carkey-keys';
-                keys.forEach(([label, bits, action, on]) => {
+                keys.forEach(([label, glyph, action, on]) => {
                     const btn = document.createElement('button');
                     btn.type = 'button';
                     btn.className = 'wm-carkey-key';
                     btn.disabled = !on;
-                    btn.innerHTML = `${bitGlyph(bits)}<span>${escapeHtml(label)}</span>`;
+                    btn.title = label;
+                    btn.setAttribute('aria-label', label);
+                    btn.innerHTML = bitGlyph(glyph);
                     btn.addEventListener('click', (e) => { e.stopPropagation(); closeBubble(); action(); });
                     row.appendChild(btn);
                 });
                 return row;
             };
+            /** The car's report and its keys as one part (no divider between them); side by side where the bubble is wide. */
+            const carPart = (html, keys) => {
+                const box = document.createElement('div');
+                box.className = 'wm-car-main';
+                const info = document.createElement('div');
+                info.className = 'wm-car-info';
+                info.innerHTML = html;
+                box.appendChild(info);
+                if (keys.length) box.appendChild(keyRow(keys));
+                return box;
+            };
+            /** Lock or Unlock: only the one that does something when the doors' state is known, both when not. */
+            const lockKeys = (locked, lock, unlock, canLock, canUnlock) => (locked === true ? [['Unlock', 'unlock', unlock, canUnlock]]
+                : locked === false ? [['Lock', 'lock', lock, canLock]] : [['Lock', 'lock', lock, canLock], ['Unlock', 'unlock', unlock, canUnlock]]);
+            const doorsOf = (text) => (/\bunlock/i.test(String(text || '')) ? false : /\block/i.test(String(text || '')) ? true : null);
             // a remote start running: the time left (Lapis's ticker moves it) and what it set
             if (car && car.run) {
                 const left = car.run.until ? Math.max(0, car.run.until - Date.now()) : null;
@@ -6516,8 +6539,7 @@
             }
             if (car || mineKey) {
                 // the doors: the car key's notification text when it says ("Doors locked"), else the server's report
-                const keyText = mineKey ? String(mineKey.text || '') : '';
-                const keyLocked = /\bunlock/i.test(keyText) ? false : /\block/i.test(keyText) ? true : null;
+                const keyLocked = mineKey ? doorsOf(mineKey.text) : null;
                 const locked = keyLocked != null ? keyLocked : car ? car.locked : null;
                 const busy = car && car.busy ? { lock: 'Locking...', unlock: 'Unlocking...', start: 'Starting...', stop: 'Stopping...' }[car.busy] : '';
                 const line1 = [busy || (locked === true ? 'Locked' : locked === false ? 'Unlocked' : ''), mineKey ? 'In range of your key' : ''].filter(Boolean).join(' · ');
@@ -6525,7 +6547,6 @@
                 // what a remote start will set (not the weather outside)
                 const line3 = car && !car.run && car.canStart ? `Climate Start sets ${car.sets} for ${car.minutes} min` : '';
                 const lines = [line1, line2, line3].filter(Boolean);
-                sections.push({ html: lines.length ? lines.map(escapeHtml).join('<br>') : 'No report from the car yet.' });
                 const name = (mineKey && mineKey.car) || (car && car.name) || 'Car';
                 // Lock / Unlock: the car key while it is in range, else the server (BlueLink)
                 const lock = () => { if (mineKey && mineKey.canLock) { if (!ck.pressCar(mineKey.key, 'lock')) failed(name, 'lock'); } else if (car) L.lock(); };
@@ -6539,30 +6560,29 @@
                 if (car && (car.canStart || car.canStop)) {
                     keys.push(car.canStop ? ['Climate Stop', 'stop', () => L.stop(), true] : ['Climate Start', 'power', () => L.startPrompt(), !car.busy]);
                 }
-                const canLock = (mineKey && mineKey.canLock) || (!!car && !car.busy);
-                const canUnlock = (mineKey && mineKey.canUnlock) || (!!car && !car.busy);
-                keys.push(['Lock', 'lock', lock, canLock], ['Unlock', 'unlock', unlock, canUnlock]);
-                sections.push({ node: keyRow(keys) });
+                keys.push(...lockKeys(locked, lock, unlock, (mineKey && mineKey.canLock) || (!!car && !car.busy), (mineKey && mineKey.canUnlock) || (!!car && !car.busy)));
+                sections.push({ node: carPart(lines.length ? lines.map(escapeHtml).join('<br>') : 'No report from the car yet.', keys) });
             }
-            // friends' cars in range of a key this phone holds: each its own name and keys
+            // friends' cars in range of a key this phone holds: each its name and keys
             friends.forEach((f) => {
                 sections.push({ rule: true });
-                // one line: whose car it is beside its name (no box of its own)
-                sections.push({ text: `${f.car} \u00b7 friend's car`, bold: true, links: [{ label: 'Set as My Car', action: () => { ck.setMine(f.car); } }] });
                 const lockF = () => { if (!ck.pressCar(f.key, 'lock')) failed(f.car, 'lock'); };
                 const unlockF = async () => {
                     const ok = await messageBox({ title: f.car, icon: 'question', text: `Unlock ${f.car}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
                     if (ok && !ck.pressCar(f.key, 'unlock')) failed(f.car, 'unlock');
                 };
-                sections.push({ node: keyRow([['Lock', 'lock', lockF, f.canLock], ['Unlock', 'unlock', unlockF, f.canUnlock]]) });
+                const fl = doorsOf(f.text);
+                sections.push({ node: carPart(`<b>${escapeHtml(f.car)}</b><br>${fl === true ? 'Locked · ' : fl === false ? 'Unlocked · ' : ''}A friend's car, in range of its key`, lockKeys(fl, lockF, unlockF, f.canLock, f.canUnlock)) });
             });
             // the commute, last: the report for where the phone is now
             const tf = window.wmTraffic;
             const trip = tf && typeof tf.statusState === 'function' ? tf.statusState() : null;
-            if (trip && trip.lines && trip.lines.length) {
+            // (not "Leave Work at 17:30": the Car bubble shows the commute, not when to leave)
+            const tripLines = trip && trip.lines ? trip.lines.filter((l) => !/^Leave (Home|Work) at /.test(l)) : [];
+            if (tripLines.length) {
                 if (sections.length) sections.push({ rule: true });
                 const head = trip.title && trip.title !== 'Traffic' ? trip.title : 'Commute';
-                sections.push({ html: `<b>${escapeHtml(head)}</b><br>${trip.lines.map(escapeHtml).join('<br>')}` });
+                sections.push({ html: `<div class="wm-car-trip">${trip.light ? trafficLight(trip.light) : ''}<div><b>${escapeHtml(head)}</b><br>${tripLines.map(escapeHtml).join('<br>')}</div></div>` });
             }
             if (!sections.length) sections.push('No car is in range of this phone\'s keys.');
             const buttons = [];
