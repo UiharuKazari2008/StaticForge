@@ -982,7 +982,7 @@ function holdForImageMetadata(event) {
   try { event.waitUntil(imageMetadataSettled()); } catch (_) { /* the event is over: the next one holds */ }
 }
 
-/** Writes the pending batch now (maintenance, rule changes). */
+/** Writes the pending batch now (the daily maintenance). */
 function flushImageMetadataNow() {
   if (!imageMetadataPending) return imageMetadataWriting;
   clearTimeout(imageMetadataFlushTimer);
@@ -1018,7 +1018,7 @@ async function flushImageMetadata() {
 
 // The pinned URLs (favourites and locked previews) as one Set, built once per rules change: every
 // image hit built two new Sets from the lists. The lists are replaced (never edited in place) when
-// the rules change (SYNC_IMAGE_CACHE_RULES) or the metadata is read again, so their identity is
+// the rules change (syncImageCacheRules) or the metadata is read again, so their identity is
 // the key.
 let pinnedImageSetMemo = { favorites: null, locked: null, set: new Set() };
 function pinnedImageSet(metadata) {
@@ -1095,26 +1095,30 @@ async function enforceImageCachePolicyNow({ reconcile }) {
       perfLog(`imagePolicy reconcile skipped: ${error && error.message}`);
     }
   }
+  // the blob is written (a full rewrite of up to 20,000 entries) only when this run changed it:
+  // every preview hit schedules a run, and most change nothing (#890)
+  let changed = false;
   if (keys) {
     const keySet = new Set();
     for (const key of keys) {
       const url = getCanonicalUrl(key.url);
       // Full images are one-shot. Drop leftovers so they do not crowd previews.
       if (isFullImageUrl(url)) {
-        if (await cache.delete(key)) delete metadata.entries[url];
+        if (await cache.delete(key) && metadata.entries[url]) { delete metadata.entries[url]; changed = true; }
         continue;
       }
       keySet.add(url);
     }
     // Entries whose row is gone
     for (const url of Object.keys(metadata.entries)) {
-      if (!keySet.has(url)) delete metadata.entries[url];
+      if (!keySet.has(url)) { delete metadata.entries[url]; changed = true; }
     }
     // Cached previews whose entry an old overlapping write lost: track them as recently used,
     // so they count toward the limits and can be evicted in order instead of never
     for (const url of keySet) {
       if (!metadata.entries[url] && isManagedImageCacheUrl(url)) {
         metadata.entries[url] = { size: 0, lastAccess: now, cachedAt: now, seq: metadata.sequence, pinned: false };
+        changed = true;
       }
     }
   }
@@ -1126,7 +1130,7 @@ async function enforceImageCachePolicyNow({ reconcile }) {
   for (const [url, entry] of Object.entries(metadata.entries)) {
     if (!isManagedImageCacheUrl(url)) continue;
     const pinned = pinnedUrl(url);
-    entry.pinned = pinned;
+    if (entry.pinned !== pinned) { entry.pinned = pinned; changed = true; }
     totalEntries += 1;
     totalSize += entry.size || 0;
     if (pinned) continue;
@@ -1154,12 +1158,12 @@ async function enforceImageCachePolicyNow({ reconcile }) {
   let deleted = 0;
   for (const url of evict.keys()) {
     if (deleted >= IMAGE_POLICY_DELETES_PER_RUN) break;
-    if (await cache.delete(url)) delete metadata.entries[url];
+    if (await cache.delete(url) && metadata.entries[url]) { delete metadata.entries[url]; changed = true; }
     deleted += 1;
     if (deleted % 20 === 0) await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
-  await writeImageMetadata(metadata);
+  if (changed) await writeImageMetadata(metadata);
   perfLog(`imagePolicy evict=${evict.size} deleted=${deleted} entries=${totalEntries}`);
   // the rest goes in later runs (the interval keeps them apart)
   if (evict.size > deleted) {
@@ -1977,33 +1981,80 @@ self.addEventListener('message', (event) => {
             type: 'pong',
             timestamp: Date.now()
         });
-        // the page that asked (serviceWorkerManager sendHealthCheckPing); every other window used to
-        // get each page's ping answer too, once a minute per page
-        replyToSource(event.source, { type: 'ping', timestamp: Date.now() });
+        event.waitUntil(answerPing(event.source));
     } else if (event.data && event.data.type === 'SYNC_IMAGE_CACHE_RULES') {
-        const favoriteUrls = Array.isArray(event.data.favoriteUrls) ? event.data.favoriteUrls.map(getCanonicalUrl) : [];
-        const lockedPreviewUrls = Array.isArray(event.data.lockedPreviewUrls) ? event.data.lockedPreviewUrls.map(getCanonicalUrl) : [];
-        event.waitUntil((async () => {
-            const policy = event.data.policy || {};
-            if (Number.isFinite(policy.maxEntries) && policy.maxEntries > 0) {
-              IMAGE_CACHE_POLICY.maxEntries = Math.floor(policy.maxEntries);
-            }
-            if (Number.isFinite(policy.maxSizeBytes) && policy.maxSizeBytes > 0) {
-              IMAGE_CACHE_POLICY.maxSizeBytes = Math.floor(policy.maxSizeBytes);
-            }
-            if (Number.isFinite(policy.maxIdleMs) && policy.maxIdleMs > 0) {
-              IMAGE_CACHE_POLICY.maxIdleMs = Math.floor(policy.maxIdleMs);
-            }
-            const metadata = await readImageMetadata();
-            metadata.rules.favoriteUrls = Array.from(new Set(favoriteUrls));
-            metadata.rules.lockedPreviewUrls = Array.from(new Set(lockedPreviewUrls.slice(0, IMAGE_CACHE_POLICY.lockedPreviewCount)));
-            await writeImageMetadata(metadata);
-            scheduleImageCachePolicyEnforcement();
-            // a rules change is rare and should not wait for the next batch
-            await flushImageMetadataNow();
-        })());
+        event.waitUntil(syncImageCacheRules(event.data));
     }
 });
+
+/**
+ * The gallery's pins (galleryView.js syncServiceWorkerImageCacheRules): favourites and the first
+ * 500 previews, sent after every gallery reload, reroll result and pin toggle. The same lists again
+ * change nothing (no write, no policy run). New lists go out with the next metadata batch, which
+ * the message's event waits for: each sync used to rewrite the whole blob at once (#890).
+ */
+async function syncImageCacheRules(data) {
+    const favoriteUrls = Array.isArray(data.favoriteUrls) ? data.favoriteUrls.map(getCanonicalUrl) : [];
+    const lockedPreviewUrls = Array.isArray(data.lockedPreviewUrls) ? data.lockedPreviewUrls.map(getCanonicalUrl) : [];
+    const policy = data.policy || {};
+    const policyBefore = `${IMAGE_CACHE_POLICY.maxEntries}/${IMAGE_CACHE_POLICY.maxSizeBytes}/${IMAGE_CACHE_POLICY.maxIdleMs}`;
+    if (Number.isFinite(policy.maxEntries) && policy.maxEntries > 0) {
+      IMAGE_CACHE_POLICY.maxEntries = Math.floor(policy.maxEntries);
+    }
+    if (Number.isFinite(policy.maxSizeBytes) && policy.maxSizeBytes > 0) {
+      IMAGE_CACHE_POLICY.maxSizeBytes = Math.floor(policy.maxSizeBytes);
+    }
+    if (Number.isFinite(policy.maxIdleMs) && policy.maxIdleMs > 0) {
+      IMAGE_CACHE_POLICY.maxIdleMs = Math.floor(policy.maxIdleMs);
+    }
+    const policyChanged = policyBefore !== `${IMAGE_CACHE_POLICY.maxEntries}/${IMAGE_CACHE_POLICY.maxSizeBytes}/${IMAGE_CACHE_POLICY.maxIdleMs}`;
+    const metadata = await readImageMetadata();
+    const favorites = Array.from(new Set(favoriteUrls));
+    const locked = Array.from(new Set(lockedPreviewUrls.slice(0, IMAGE_CACHE_POLICY.lockedPreviewCount)));
+    const rulesChanged = !sameUrlSet(metadata.rules.favoriteUrls, favorites)
+        || !sameUrlSet(metadata.rules.lockedPreviewUrls, locked);
+    if (!rulesChanged && !policyChanged) return;
+    if (rulesChanged) {
+        // new arrays (never edited in place): pinnedImageSet keys its Set on their identity
+        metadata.rules.favoriteUrls = favorites;
+        metadata.rules.lockedPreviewUrls = locked;
+        await writeImageMetadata(metadata);
+    }
+    scheduleImageCachePolicyEnforcement();
+    if (rulesChanged) await imageMetadataSettled();
+}
+
+/** Two lists without repeats hold the same URLs (in any order). */
+function sameUrlSet(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    if (a.every((url, i) => url === b[i])) return true;
+    const have = new Set(a);
+    return b.every((url) => have.has(url));
+}
+
+/**
+ * The health ping's answer (serviceWorkerManager sendHealthCheckPing: once a minute from each visible
+ * page; its tray reads the time of the last answer). The page that asked gets it, and so does every
+ * hidden window: those do not ping while hidden, and with no answer for 95 s a window shown again
+ * showed 'Service Worker: Not Responding' until its next ping, up to a minute later. Every other
+ * visible window pings on its own: the broadcast woke each of them once per page per minute for
+ * nothing. No source: every window, as before.
+ */
+function answerPing(source) {
+    const message = { type: 'ping', timestamp: Date.now() };
+    if (!source || typeof source.postMessage !== 'function') {
+        replyToSource(null, message);
+        return Promise.resolve();
+    }
+    try { source.postMessage(message); } catch (_) { /* gone */ }
+    return self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+            if (client.id !== source.id && client.visibilityState === 'hidden') {
+                try { client.postMessage(message); } catch (_) { /* gone */ }
+            }
+        });
+    }).catch(() => {});
+}
 
 /**
  * A reply goes to the page that asked (the message's source): a broadcast woke every other window
