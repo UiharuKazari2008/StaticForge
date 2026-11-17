@@ -108,12 +108,33 @@
         return m ? m[2] : null;
     }
 
+    // A gallery PNG is shown from its lossless WebP (/previews/<stem>@ll.webp, #890 P14): exactly its
+    // pixels, alpha kept, about a third smaller, made by the server on first request. None for that file
+    // (a 404: a 16-bit PNG, one with a colour profile, an older server): the PNG, as before.
+    // ?download=true keeps it out of the service worker's preview cache (sw.js shouldBypassImageCache;
+    // the route ignores the query): a saver going through thousands of originals must not push the
+    // gallery's previews out, and the PNG it replaces was never cached either (one-shot /images/).
+    const LOSSLESS_RE = /^\/previews\/([^/?#]+)@ll\.webp(?:\?download=true)?$/;
+    function losslessUrl(file) {
+        // images/<stem>.png exactly (the fallback rebuilds the name from the stem)
+        if (!file || !/\.png$/.test(file) || /[\\/]/.test(file)) return null;
+        return `/previews/${encodeURIComponent(file.slice(0, -4))}@ll.webp?download=true`;
+    }
+
     function loadImage(url) {
         return new Promise((resolve) => {
             const img = new Image();
             img.decoding = 'async';
             img.onload = () => resolve(img);
-            img.onerror = () => resolve(null);
+            const ll = LOSSLESS_RE.exec(url);
+            img.onerror = () => {
+                if (!ll) { resolve(null); return; }
+                let file = '';
+                try { file = `${decodeURIComponent(ll[1])}.png`; } catch (_) { resolve(null); return; }
+                /* global localGalleryImageUrl */
+                const png = typeof localGalleryImageUrl === 'function' ? localGalleryImageUrl(file) : `/images/${encodeURIComponent(file)}`;
+                loadImage(png).then(resolve);
+            };
             img.src = url;
         });
     }
@@ -462,6 +483,9 @@
     function galleryUrl(file, base, preview) {
         /* global localGalleryImageUrl, resolveGalleryPreviewUrl */
         if (preview && base && typeof resolveGalleryPreviewUrl === 'function') return resolveGalleryPreviewUrl({ base });
+        // full screen: a PNG from its lossless WebP (loadImage falls back to the PNG)
+        const ll = preview ? null : losslessUrl(file);
+        if (ll) return ll;
         if (file && typeof localGalleryImageUrl === 'function') return localGalleryImageUrl(file);
         return file ? `/images/${encodeURIComponent(file)}` : null;
     }
