@@ -2850,19 +2850,9 @@ app.get('/logon-picture', (req, res) => {
     });
 });
 
-// Boot-critical static assets — available as soon as HTTP listens (before full static middleware)
-app.get('/sw.js', async (req, res, next) => {
-    try {
-        const filePath = path.join(__dirname, 'public', 'sw.js');
-        if (!await statOrNull(filePath)) {
-            return next();
-        }
-        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-        res.sendFile(filePath);
-    } catch (err) {
-        next(err);
-    }
-});
+// Boot-critical static assets — available as soon as HTTP listens (before full static middleware).
+// The worker revalidates (no-cache + ETag): an update check for an unchanged one is a 304 (#890)
+app.get('/sw.js', require('./modules/swScriptRoute').createSwScriptHandler(path.join(__dirname, 'public')));
 
 function redirectGateTokenHolderToLaunch(req, res) {
     const k = req.query && req.query.k != null && req.query.k !== ''
