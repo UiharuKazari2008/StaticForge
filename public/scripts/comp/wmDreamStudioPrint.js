@@ -20,6 +20,7 @@
 (function () {
     'use strict';
     if (window.uiShell !== 'mobile') return;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     // ---------------------------------------------------------------- Start shortcuts
     // kept on this device (as the phone's Start menu choices are); each a program of the shell that
@@ -384,12 +385,30 @@
             loadPaint();
         }
 
+        /**
+         * Paint left (ok, Back, Close, another tab): the print it held three times over goes (the canvas,
+         * the untouched copy the eraser paints back, up to six full undo snapshots: ~520 MB for a 4x
+         * upscale, #890). Opening it again reads the print anew, as it always did.
+         */
+        function freePaint() {
+            pt.loadSeq = (pt.loadSeq || 0) + 1;
+            pt.undo = [];
+            pt.dirty = false;
+            if (pt.orig) { pt.orig.width = 0; pt.orig.height = 0; }
+            pt.orig = null;
+            const cv = pt.el && pt.el.querySelector('canvas');
+            if (cv && (cv.width || cv.height)) { cv.width = 0; cv.height = 0; }
+        }
+
         function loadPaint() {
             const el = pt.el;
             if (!el) return;
             const cv = el.querySelector('canvas');
             const img = new Image();
+            const seq = (pt.loadSeq = (pt.loadSeq || 0) + 1);
             img.onload = () => {
+                // Paint was left (or opened on another print) while the print loaded
+                if (seq !== pt.loadSeq || String(api.view()) !== 'x:paint') return;
                 cv.width = img.naturalWidth;
                 cv.height = img.naturalHeight;
                 const ctx = cv.getContext('2d');
@@ -483,7 +502,7 @@
                 }
                 if (k === 'size') ui().valuePop(b, { label: 'Size', min: 1, max: 500, step: 1, value: pt.size, onChange: (n) => { pt.size = n; drawPaintBar(el); } });
             });
-            window.addEventListener('resize', () => { if (String(api.view()) === 'x:paint') fitPaint(); });
+            window.addEventListener('resize', () => { if (String(api.view()) === 'x:paint') fitPaint(); }, { signal: appScopeSignal });
         }
 
         function revertPaint() {
@@ -529,6 +548,8 @@
                 drawPaintBar(el);
                 requestAnimationFrame(fitPaint);
             },
+            // ok / Back with changes not saved asks first, as Menu > Close does (they were lost unasked)
+            leave: () => (pt.dirty ? ask('Close Paint without saving the changes?', 'Paint', 'warning') : true),
             softKeys: () => ({
                 left: { label: 'Save', disabled: !pt.orig, action: () => savePaint() },
                 right: {
@@ -662,5 +683,9 @@
 
         // the comparison's page follows prints that land and the desktop's own changes to it
         M.on('end', () => { const v = String(api.view()); if (v === 'x:compare' || v === 'x:history') api.paint(); });
+        // Paint lets go of its pictures once another page is drawn in its place
+        reg.hook('paint', (v) => { if (String(v) !== 'x:paint' && (pt.orig || pt.undo.length)) freePaint(); });
+        // closed with X (its pages go, no paint follows while it is away); a minimize keeps Paint as it was
+        reg.hook('hide', () => { if (String(api.view()) !== 'x:paint' && (pt.orig || pt.undo.length)) freePaint(); });
     });
 })();
