@@ -298,6 +298,28 @@
     }
 
     /** Redraw Programs and Start after a change (wmPrograms / wmStart65 listen). */
+    /**
+     * Melaton Bars' title over an Android program is the launcher's own name for it (Yukimi, Nov 17): the name
+     * given with Rename, a role's (Phone, Camera, Marketplace, Android Settings), else the program's - never
+     * Android's application label or a package name (Signal in the Work profile). { package: title } to the app.
+     */
+    let barsTitlesSent = '';
+    function barsTitles(apps) {
+        const ab = window.AndroidBars;
+        if (!ab || typeof ab.titles !== 'function') return;
+        const out = {};
+        for (const a of apps) {
+            if (!a || !a.package) continue;
+            const t = a.role === 'settings' ? 'Android Settings' : (ROLES[a.role] ? ROLES[a.role].label : labelOf(a));
+            // a program in both profiles: the main one's name
+            if (t && (!out[a.package] || a.profile !== 'work')) out[a.package] = t;
+        }
+        const json = JSON.stringify(out);
+        if (json === barsTitlesSent) return;
+        barsTitlesSent = json;
+        try { ab.titles(json); } catch (_) { /* older app */ }
+    }
+
     function refresh() {
         sync();
         document.dispatchEvent(new CustomEvent('wmAppsChanged'));
@@ -539,6 +561,7 @@
             });
         }
         applyDefaults();
+        barsTitles(apps);
         for (const id of [...registered]) if (!want.has(id)) sh.removeApp(id);
         registered.clear();
         want.forEach((id) => registered.add(id));
