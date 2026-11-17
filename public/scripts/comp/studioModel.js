@@ -389,9 +389,15 @@
 
     // Token counts of the last texts asked about, per model (the newest last): a field's count is asked
     // by its label, the editor's head and the token bar, again on every repaint of the home page (#890).
-    // A count is kept (or its promise while it runs); "no tokenizer yet" (null) is not.
+    // A count is kept (or its promise while it runs); one taken with no tokenizer loaded yet is not
+    // (countTokensForText answers 0 then, and the phone loads T5 in the background after boot).
     const TOKEN_MEMO_MAX = 12;
     const tokenMemo = new Map();
+
+    // the tokenizer countTokensForText counts with (presetTokenCount.js) is loaded
+    function tokenizerLoaded() {
+        try { return typeof getPromptTokenizer !== 'function' || !!getPromptTokenizer(); } catch (_) { return false; }
+    }
 
     function tokens(text) {
         const model = modelId();
@@ -404,7 +410,7 @@
         }
         const job = countTokens(model, text).then((n) => {
             if (tokenMemo.get(key) === job) {
-                if (n == null) tokenMemo.delete(key);
+                if (n == null || !tokenizerLoaded()) tokenMemo.delete(key);
                 else tokenMemo.set(key, n);
             }
             return n;
