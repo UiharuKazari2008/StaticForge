@@ -417,15 +417,41 @@ async function hashedScriptRow(handler, request, url) {
     if (kept) return kept;
     const row = await matchStaticShell(url.pathname);
     if (!row || row.headers.get('x-file-hash') !== sha) return null;
-    const stored = cache.put(key, row.clone())
-      .then(() => cache.keys(bare, { ignoreSearch: true }))
-      .then((keys) => Promise.all(keys.filter((k) => k.url !== key).map((k) => cache.delete(k))))
-      .catch(() => {});
+    const stored = keepScriptCodeRow(cache, bare, key, row.clone()).catch(() => {});
     if (handler && handler.event && handler.event.waitUntil) handler.event.waitUntil(stored);
     return respondWithSavedAsset(request, row, SHELL_ASSET_CACHE_CONTROL);
   } catch (error) {
     return null;
   }
+}
+
+// Bare path -> the keys SCRIPT_CODE_CACHE holds for it. Read with one listing of that (small) cache
+// the first time this worker stores a new hash, then kept current here. Each stored file used to
+// list the cache with ignoreSearch, a scan of every row, for every changed script after an update.
+let scriptCodeKeyIndex = null;
+function scriptCodeKeys(cache) {
+  if (!scriptCodeKeyIndex) {
+    scriptCodeKeyIndex = cache.keys().then((keys) => {
+      const byPath = new Map();
+      for (const request of keys) {
+        const bare = request.url.split('?')[0];
+        if (!byPath.has(bare)) byPath.set(bare, new Set());
+        byPath.get(bare).add(request.url);
+      }
+      return byPath;
+    }).catch((error) => { scriptCodeKeyIndex = null; throw error; });
+  }
+  return scriptCodeKeyIndex;
+}
+
+/** Store row under key and drop the copies of the path's other hashes. */
+async function keepScriptCodeRow(cache, bare, key, row) {
+  await cache.put(key, row);
+  const byPath = await scriptCodeKeys(cache);
+  const before = byPath.get(bare);
+  byPath.set(bare, new Set([key]));
+  if (!before) return;
+  await Promise.all([...before].filter((k) => k !== key).map((k) => cache.delete(k)));
 }
 
 function respondWithSavedAsset(request, response, cacheControl) {
@@ -855,11 +881,22 @@ function getApproximateResponseSize(response) {
 // used to read, parse, change one entry of, re-serialize and rewrite the whole blob (~325 KB),
 // concurrently and unlocked. That held each preview response 37-236 ms instead of a few ms,
 // and overlapping writes lost entries (6244 of 7988 cached previews had none). Callers still
-// readImageMetadata() / writeImageMetadata(); the write is a debounced flush to Cache Storage.
-const IMAGE_METADATA_FLUSH_MS = 1500;
+// readImageMetadata() / writeImageMetadata(); the write is a deferred flush to Cache Storage.
+// The flush writes the whole blob (up to 20,000 entries, ~2 MB of JSON): it ran every 1.5 s while
+// previews loaded (#890). Now it waits until the previews stop (IDLE_MS without a change), is held
+// to one per MIN_GAP_MS, and a change never waits more than MAX_WAIT_MS. The image requests and the
+// messages that change it keep the worker alive until the batch is written
+// (imageMetadataSettled under their waitUntil), so stopping the worker does not lose it.
+const IMAGE_METADATA_FLUSH_IDLE_MS = 2000;
+const IMAGE_METADATA_FLUSH_MIN_GAP_MS = 30000;
+const IMAGE_METADATA_FLUSH_MAX_WAIT_MS = 30000;
 let imageMetadataState = null;
 let imageMetadataLoading = null;
 let imageMetadataFlushTimer = null;
+let imageMetadataDirtySince = 0;
+let imageMetadataLastFlushAt = 0;
+let imageMetadataPending = null; // { promise, resolve } of the batch not yet written
+let imageMetadataWriting = Promise.resolve();
 
 async function readImageMetadata() {
   if (imageMetadataState) return imageMetadataState;
@@ -915,13 +952,55 @@ async function loadImageMetadataFromCache() {
   }
 }
 
+/** Marks the metadata changed; resolves at once (imageMetadataSettled() is the write). */
 async function writeImageMetadata(metadata) {
   imageMetadataState = metadata;
-  if (imageMetadataFlushTimer) return;
-  imageMetadataFlushTimer = setTimeout(() => {
-    imageMetadataFlushTimer = null;
-    flushImageMetadata().catch(() => {});
-  }, IMAGE_METADATA_FLUSH_MS);
+  const now = Date.now();
+  if (!imageMetadataPending) {
+    let resolve = null;
+    const promise = new Promise((done) => { resolve = done; });
+    imageMetadataPending = { promise, resolve };
+    imageMetadataDirtySince = now;
+  }
+  // after the last change, not before the gap since the last write, never later than the cap
+  const at = Math.min(
+    Math.max(now + IMAGE_METADATA_FLUSH_IDLE_MS, imageMetadataLastFlushAt + IMAGE_METADATA_FLUSH_MIN_GAP_MS),
+    imageMetadataDirtySince + IMAGE_METADATA_FLUSH_MAX_WAIT_MS
+  );
+  clearTimeout(imageMetadataFlushTimer);
+  imageMetadataFlushTimer = setTimeout(runImageMetadataFlush, Math.max(0, at - now));
+}
+
+/** Resolves once every change made so far is in Cache Storage. */
+function imageMetadataSettled() {
+  return imageMetadataPending ? imageMetadataPending.promise : imageMetadataWriting;
+}
+
+/** The fetch or message event that changed the metadata keeps the worker up until it is written. */
+function holdForImageMetadata(event) {
+  if (!event || typeof event.waitUntil !== 'function') return;
+  try { event.waitUntil(imageMetadataSettled()); } catch (_) { /* the event is over: the next one holds */ }
+}
+
+/** Writes the pending batch now (maintenance, rule changes). */
+function flushImageMetadataNow() {
+  if (!imageMetadataPending) return imageMetadataWriting;
+  clearTimeout(imageMetadataFlushTimer);
+  return runImageMetadataFlush();
+}
+
+function runImageMetadataFlush() {
+  imageMetadataFlushTimer = null;
+  const pending = imageMetadataPending;
+  imageMetadataPending = null;
+  imageMetadataDirtySince = 0;
+  imageMetadataLastFlushAt = Date.now();
+  // one write at a time, in order: the later one carries every change
+  imageMetadataWriting = imageMetadataWriting
+    .then(() => flushImageMetadata())
+    .catch(() => {})
+    .then(() => { if (pending) pending.resolve(); });
+  return imageMetadataWriting;
 }
 
 async function flushImageMetadata() {
@@ -937,10 +1016,23 @@ async function flushImageMetadata() {
   );
 }
 
+// The pinned URLs (favourites and locked previews) as one Set, built once per rules change: every
+// image hit built two new Sets from the lists. The lists are replaced (never edited in place) when
+// the rules change (SYNC_IMAGE_CACHE_RULES) or the metadata is read again, so their identity is
+// the key.
+let pinnedImageSetMemo = { favorites: null, locked: null, set: new Set() };
+function pinnedImageSet(metadata) {
+  const rules = metadata.rules || {};
+  const favorites = rules.favoriteUrls || null;
+  const locked = rules.lockedPreviewUrls || null;
+  if (pinnedImageSetMemo.favorites !== favorites || pinnedImageSetMemo.locked !== locked) {
+    pinnedImageSetMemo = { favorites, locked, set: new Set([...(favorites || []), ...(locked || [])]) };
+  }
+  return pinnedImageSetMemo.set;
+}
+
 function isPinnedImageUrl(url, metadata) {
-  const favoriteSet = new Set(metadata.rules.favoriteUrls || []);
-  const lockedPreviewSet = new Set(metadata.rules.lockedPreviewUrls || []);
-  return favoriteSet.has(url) || lockedPreviewSet.has(url);
+  return pinnedImageSet(metadata).has(url);
 }
 
 async function updateImageMetadataForHit(url) {
@@ -989,9 +1081,8 @@ async function enforceImageCachePolicyNow({ reconcile }) {
   const metadata = await readImageMetadata();
   const cache = await caches.open(IMAGE_CACHE);
   const now = Date.now();
-  const favoriteSet = new Set(metadata.rules.favoriteUrls || []);
-  const lockedPreviewSet = new Set(metadata.rules.lockedPreviewUrls || []);
-  const pinnedUrl = (url) => favoriteSet.has(url) || lockedPreviewSet.has(url);
+  const pinnedSet = pinnedImageSet(metadata);
+  const pinnedUrl = (url) => pinnedSet.has(url);
 
   // Chromium refuses to list a cache this large in one call ("Operation too large": the Fold's
   // 20000 previews, ~1.2 GB). Maintenance then failed before recording its run, so it ran in
@@ -1132,14 +1223,14 @@ async function handleImageRequest(event) {
       }
     }
     if (!discardCached) {
-      event.waitUntil(updateImageMetadataForHit(canonicalUrl));
-      event.waitUntil((async () => {
-        scheduleImageCachePolicyEnforcement();
-      })());
+      // the worker stays up until the hit's metadata batch is written
+      event.waitUntil(updateImageMetadataForHit(canonicalUrl).then(imageMetadataSettled));
+      scheduleImageCachePolicyEnforcement();
       return respondWithSavedAsset(request, cachedResponse);
     }
     await cache.delete(canonicalUrl);
     await deleteImageMetadata([canonicalUrl]);
+    holdForImageMetadata(event);
   }
 
   const networkResponse = await fetch(request, {
@@ -1166,9 +1257,8 @@ async function handleImageRequest(event) {
     try {
       await cache.put(canonicalUrl, networkResponse.clone());
       await upsertImageMetadata(canonicalUrl, networkResponse);
-      event.waitUntil((async () => {
-        scheduleImageCachePolicyEnforcement();
-      })());
+      holdForImageMetadata(event);
+      scheduleImageCachePolicyEnforcement();
     } catch (cacheError) {
       console.warn('[sw] image-cache put failed:', canonicalUrl, cacheError);
       try {
@@ -1794,6 +1884,18 @@ workbox.routing.registerRoute(
   }
 );
 
+// Chrome stops a worker whose event is still extended after about 5 minutes, and the page's requests
+// in flight go with it. A long job (a download, the Wi-Fi prefetch) holds its message event this long
+// at most and then goes on for as long as the worker is up anyway.
+const EVENT_HOLD_MAX_MS = 4 * 60 * 1000;
+function heldAtMost(promise, ms = EVENT_HOLD_MAX_MS) {
+  let timer = null;
+  return Promise.race([
+    Promise.resolve(promise).finally(() => clearTimeout(timer)),
+    new Promise((resolve) => { timer = setTimeout(resolve, ms); })
+  ]);
+}
+
 // Message handling for client communication
 self.addEventListener('message', (event) => {
     if (event.data && event.data.type === 'SW_PERF_TRACE') {
@@ -1804,7 +1906,12 @@ self.addEventListener('message', (event) => {
         event.waitUntil(runCacheMaintenance(event.data.force === true));
     } else if (event.data && event.data.type === 'CACHE_STATIC_FILES') {
         const files = event.data.files || [];
-        perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true));
+        // held by the message (up to EVENT_HOLD_MAX_MS): a worker with nothing else to answer was
+        // stopped mid-download
+        event.waitUntil(heldAtMost(perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true))));
+    } else if (event.data && event.data.type === 'NETWORK_ACTIVITY_OPT_OUT') {
+        // a page that draws no network arrows (the phone shell) stops getting NETWORK_ACTIVITY
+        event.waitUntil(setNetworkActivityOptOut(event.source, event.data.off !== false));
     } else if (event.data && event.data.type === 'NO_UPDATES_AVAILABLE') {
         // Notify clients that no updates are available
         self.clients.matchAll().then(clients => {
@@ -1815,11 +1922,11 @@ self.addEventListener('message', (event) => {
             });
         });
     } else if (event.data && event.data.type === 'CACHE_INTERNAL') {
-        cacheInternalData(event.data.url, event.data.data);
+        event.waitUntil(cacheInternalData(event.data.url, event.data.data));
     } else if (event.data && event.data.type === 'GET_CACHE_STATUS') {
-        getCacheStatus(event.data.requestId);
+        event.waitUntil(getCacheStatus(event.data.requestId, event.source));
     } else if (event.data && event.data.type === 'GET_CACHED_FILES') {
-        getCachedFiles(event.data.requestId);
+        event.waitUntil(getCachedFiles(event.data.requestId, event.source));
     } else if (event.data && event.data.type === 'DELETE_AND_PRECACHE') {
         event.waitUntil(deleteAndPrecache(event.data.url, event.data.requestId));
     } else if (event.data && event.data.type === 'SYNC_WALLPAPER_URLS') {
@@ -1851,30 +1958,24 @@ self.addEventListener('message', (event) => {
             });
         }));
     } else if (event.data && event.data.type === 'DELETE_FROM_CACHE') {
-        deleteFromCache(event.data.url, event.data.requestId);
+        event.waitUntil(deleteFromCache(event.data.url, event.data.requestId));
     } else if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
     } else if (event.data && event.data.type === 'GET_DOWNLOAD_STATE') {
-        getDownloadState(event.data.requestId);
+        getDownloadState(event.data.requestId, event.source);
     } else if (event.data && event.data.type === 'CANCEL_DOWNLOAD') {
         cancelDownload();
     } else if (event.data && event.data.type === 'GET_SW_CONFIG') {
-        getSwConfig(event.data.requestId);
+        getSwConfig(event.data.requestId, event.source);
     } else if (event.data && event.data.type === 'ping') {
         // Respond to health check ping
         event.ports && event.ports[0] && event.ports[0].postMessage({
             type: 'pong',
             timestamp: Date.now()
         });
-        // Also send via postMessage for compatibility
-        self.clients.matchAll().then(clients => {
-            clients.forEach(client => {
-                client.postMessage({
-                    type: 'ping',
-                    timestamp: Date.now()
-                });
-            });
-        });
+        // the page that asked (serviceWorkerManager sendHealthCheckPing); every other window used to
+        // get each page's ping answer too, once a minute per page
+        replyToSource(event.source, { type: 'ping', timestamp: Date.now() });
     } else if (event.data && event.data.type === 'SYNC_IMAGE_CACHE_RULES') {
         const favoriteUrls = Array.isArray(event.data.favoriteUrls) ? event.data.favoriteUrls.map(getCanonicalUrl) : [];
         const lockedPreviewUrls = Array.isArray(event.data.lockedPreviewUrls) ? event.data.lockedPreviewUrls.map(getCanonicalUrl) : [];
@@ -1894,12 +1995,30 @@ self.addEventListener('message', (event) => {
             metadata.rules.lockedPreviewUrls = Array.from(new Set(lockedPreviewUrls.slice(0, IMAGE_CACHE_POLICY.lockedPreviewCount)));
             await writeImageMetadata(metadata);
             scheduleImageCachePolicyEnforcement();
+            // a rules change is rare and should not wait for the next batch
+            await flushImageMetadataNow();
         })());
     }
 });
 
+/**
+ * A reply goes to the page that asked (the message's source): a broadcast woke every other window
+ * (a phone's and its DeX window's) for an answer meant for one. No source: every window, as before.
+ */
+function replyToSource(source, message) {
+    if (source && typeof source.postMessage === 'function') {
+        try {
+            source.postMessage(message);
+            return;
+        } catch (_) { /* gone: every window */ }
+    }
+    self.clients.matchAll().then((clients) => {
+        clients.forEach((client) => client.postMessage(message));
+    });
+}
+
 // Get list of cached files with their hashes
-async function getCachedFiles(requestId) {
+async function getCachedFiles(requestId, source = null) {
     try {
         const cache = await caches.open(STATIC_CACHE);
         const keys = await cache.keys();
@@ -1921,25 +2040,17 @@ async function getCachedFiles(requestId) {
             }
         }
         
-        self.clients.matchAll().then(clients => {
-            clients.forEach(client => {
-                client.postMessage({
-                    type: 'CACHED_FILES_LIST',
-                    requestId: requestId,
-                    files: cachedFiles
-                });
-            });
+        replyToSource(source, {
+            type: 'CACHED_FILES_LIST',
+            requestId: requestId,
+            files: cachedFiles
         });
     } catch (error) {
         console.error('Error getting cached files:', error);
-        self.clients.matchAll().then(clients => {
-            clients.forEach(client => {
-                client.postMessage({
-                    type: 'CACHED_FILES_ERROR',
-                    requestId: requestId,
-                    error: error.message
-                });
-            });
+        replyToSource(source, {
+            type: 'CACHED_FILES_ERROR',
+            requestId: requestId,
+            error: error.message
         });
     }
 }
@@ -1971,22 +2082,18 @@ function getContentTypeFromPath(filePath) {
     return contentTypes[ext] || 'application/octet-stream';
 }
 
-// Get current download state
-function getDownloadState(requestId) {
-    self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-            client.postMessage({
-                type: 'DOWNLOAD_STATE',
-                requestId: requestId,
-                isDownloading: downloadState.isDownloading,
-                completed: downloadState.completed,
-                total: downloadState.total,
-                currentFile: downloadState.currentFile,
-                startTime: downloadState.startTime,
-                lastProgressTime: downloadState.lastProgressTime,
-                files: downloadState.files
-            });
-        });
+// Get current download state (to the page that asked: it carries the whole file list)
+function getDownloadState(requestId, source = null) {
+    replyToSource(source, {
+        type: 'DOWNLOAD_STATE',
+        requestId: requestId,
+        isDownloading: downloadState.isDownloading,
+        completed: downloadState.completed,
+        total: downloadState.total,
+        currentFile: downloadState.currentFile,
+        startTime: downloadState.startTime,
+        lastProgressTime: downloadState.lastProgressTime,
+        files: downloadState.files
     });
 }
 
@@ -1996,14 +2103,19 @@ function cancelDownload() {
         downloadState.abortController.abort();
         downloadState.isDownloading = false;
         downloadState.abortController = null;
+        dropStaticCacheProgress();
+        // the loop returns on the abort without stopping it: a 2 s timer that ran until the next download
+        stopStallDetection();
         
-        // Notify clients of cancellation
+        // Notify clients of cancellation (the counts read now: the state is reset before matchAll answers)
+        const completedNow = downloadState.completed;
+        const totalNow = downloadState.total;
         self.clients.matchAll().then(clients => {
             clients.forEach(client => {
                 client.postMessage({
                     type: 'STATIC_CACHE_CANCELLED',
-                    completed: downloadState.completed,
-                    total: downloadState.total
+                    completed: completedNow,
+                    total: totalNow
                 });
             });
         });
@@ -2125,24 +2237,58 @@ function staticCacheResponseWithHash(bodyBuffer, response, hash) {
 }
 
 // Cache static files from server
+// A download's per-file progress goes out at most every STATIC_PROGRESS_POST_MS, the last count of a
+// burst trailing (#890). One post per file was a clients.matchAll() and a message to every window per
+// file, and each page re-drew its bar and logged a line per file. The pages read the counts in a
+// message, never the number of messages (updateEngine.js download, serviceWorkerManager.js, login.js).
+const STATIC_PROGRESS_POST_MS = 200;
+let staticProgressLatest = null;
+let staticProgressTimer = null;
+let staticProgressPostedAt = 0;
+
+function postStaticCacheProgress(completed, total, currentFile) {
+    staticProgressLatest = { completed, total, currentFile };
+    if (staticProgressTimer) return;
+    const wait = staticProgressPostedAt + STATIC_PROGRESS_POST_MS - Date.now();
+    if (wait <= 0) {
+        sendStaticCacheProgress();
+        return;
+    }
+    staticProgressTimer = setTimeout(sendStaticCacheProgress, wait);
+}
+
+function sendStaticCacheProgress() {
+    staticProgressTimer = null;
+    const progress = staticProgressLatest;
+    staticProgressLatest = null;
+    if (!progress) return;
+    staticProgressPostedAt = Date.now();
+    self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+            client.postMessage({
+                type: 'STATIC_CACHE_PROGRESS',
+                completed: progress.completed,
+                total: progress.total,
+                currentFile: progress.currentFile
+            });
+        });
+    });
+}
+
+/** The download ended (complete, cancelled, failed): a count still waiting would land after the end. */
+function dropStaticCacheProgress() {
+    clearTimeout(staticProgressTimer);
+    staticProgressTimer = null;
+    staticProgressLatest = null;
+}
+
 function noteInstallFileDone(fileUrl, absentReason) {
     if (absentReason) {
         downloadState.absentFiles.push({ url: fileUrl, reason: absentReason });
     }
     downloadState.completed++;
     downloadState.lastProgressTime = Date.now();
-    const completedNow = downloadState.completed;
-    const totalNow = downloadState.total;
-    self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-            client.postMessage({
-                type: 'STATIC_CACHE_PROGRESS',
-                completed: completedNow,
-                total: totalNow,
-                currentFile: fileUrl
-            });
-        });
-    });
+    postStaticCacheProgress(downloadState.completed, downloadState.total, fileUrl);
 }
 
 async function cacheStaticFiles(files, silent = false) {
@@ -2320,20 +2466,7 @@ async function cacheStaticFiles(files, silent = false) {
 
                         downloadState.completed++;
                         downloadState.lastProgressTime = Date.now();
-
-                        const completedNow = downloadState.completed;
-                        const totalNow = downloadState.total;
-                        const currentFileNow = file.url;
-                        self.clients.matchAll().then(clients => {
-                            clients.forEach(client => {
-                                client.postMessage({
-                                    type: 'STATIC_CACHE_PROGRESS',
-                                    completed: completedNow,
-                                    total: totalNow,
-                                    currentFile: currentFileNow
-                                });
-                            });
-                        });
+                        postStaticCacheProgress(downloadState.completed, downloadState.total, file.url);
                     } catch (cacheError) {
                         console.error(`Failed to cache ${file.url}:`, cacheError);
                         // Notify client of cache error
@@ -2378,6 +2511,7 @@ async function cacheStaticFiles(files, silent = false) {
         
         // Stop stall detection
         stopStallDetection();
+        dropStaticCacheProgress();
         
         // Capture values before resetting state (defensive against race conditions)
         const completedCount = downloadState.completed > 0 ? downloadState.completed : files.length;
@@ -2416,6 +2550,7 @@ async function cacheStaticFiles(files, silent = false) {
         
         // Stop stall detection
         stopStallDetection();
+        dropStaticCacheProgress();
         
         // Notify clients of error
         self.clients.matchAll().then(clients => {
@@ -2433,7 +2568,7 @@ async function cacheStaticFiles(files, silent = false) {
     }
 }
 
-function getSwConfig(requestId) {
+function getSwConfig(requestId, source = null) {
     const payload = {
         cssOnlyAutoApply: CSS_ONLY_AUTO_APPLY === true,
         epoch: SW_SCRIPT_EPOCH
@@ -2441,15 +2576,11 @@ function getSwConfig(requestId) {
     if (!requestId) {
         return payload;
     }
-    self.clients.matchAll().then(clients => {
-        clients.forEach(client => {
-            client.postMessage({
-                type: 'SW_CONFIG',
-                requestId,
-                cssOnlyAutoApply: payload.cssOnlyAutoApply,
-                epoch: payload.epoch
-            });
-        });
+    replyToSource(source, {
+        type: 'SW_CONFIG',
+        requestId,
+        cssOnlyAutoApply: payload.cssOnlyAutoApply,
+        epoch: payload.epoch
     });
     return payload;
 }
@@ -2534,29 +2665,27 @@ async function cacheInternalData(url, data) {
 }
 
 // Get cache status
-async function getCacheStatus(requestId) {
+async function getCacheStatus(requestId, source = null) {
   try {
     const staticCache = await caches.open(STATIC_CACHE);
     const dynamicCache = await caches.open(DYNAMIC_CACHE);
     const internalCache = await caches.open(INTERNAL_CACHE);
-    const imageCache = await caches.open(IMAGE_CACHE);
     
     const staticKeys = await staticCache.keys();
     const dynamicKeys = await dynamicCache.keys();
     const internalKeys = await internalCache.keys();
-    const imageKeys = await imageCache.keys();
+    // the image count from its metadata: listing up to 20,000 previews can fail outright
+    // ("Operation too large", enforceImageCachePolicyNow), and then no answer came at all
+    const metadata = await readImageMetadata();
+    const images = Object.keys(metadata.entries || {}).length;
     
-    self.clients.matchAll().then(clients => {
-      clients.forEach(client => {
-        client.postMessage({
-          type: 'CACHE_STATUS',
-          requestId: requestId,
-          static: staticKeys.length,
-          dynamic: dynamicKeys.length,
-          internal: internalKeys.length,
-          images: imageKeys.length
-        });
-      });
+    replyToSource(source, {
+      type: 'CACHE_STATUS',
+      requestId: requestId,
+      static: staticKeys.length,
+      dynamic: dynamicKeys.length,
+      internal: internalKeys.length,
+      images
     });
   } catch (error) {
     console.error('Error getting cache status:', error);
@@ -2575,20 +2704,17 @@ async function deleteUrlFromCaches(url) {
     cacheNames.push(IMAGE_CACHE);
   }
   const removedUrls = [];
+  const targetUrl = absoluteAssetUrl(urlWithoutQuery);
 
+  // Every one of these caches keys its rows by the bare absolute URL (the strategies strip the
+  // query, CACHE_STATIC_FILES / deleteAndPrecache store the bare path, WALLPAPER_CACHE and the image
+  // cache the canonical URL), so one exact delete per cache takes the row and its Vary variants.
+  // Listing each cache instead read ~10,000 static rows per call, and a 20,000-row image cache
+  // cannot be listed at all ("Operation too large"), which failed the whole refresh.
   for (const cacheName of cacheNames) {
     const cache = await caches.open(cacheName);
-    const keys = await cache.keys();
-
-    const targetUrl = absoluteAssetUrl(urlWithoutQuery);
-    for (const key of keys) {
-      const keyUrl = absoluteAssetUrl(key.url);
-      if (keyUrl === targetUrl || key.url.split('?')[0] === urlWithoutQuery) {
-        const deleted = await cache.delete(key);
-        if (deleted) {
-          removedUrls.push(keyUrl);
-        }
-      }
+    if (await cache.delete(targetUrl, { ignoreVary: true })) {
+      removedUrls.push(targetUrl);
     }
   }
 
@@ -2789,6 +2915,8 @@ function runCacheMaintenance(force = false) {
     if (imagePolicyRun) await imagePolicyRun;
     imagePolicyRun = perfSpan('maintenance:imagePolicy', () => enforceImageCachePolicyNow({ reconcile: true }));
     try { await imagePolicyRun; } finally { imagePolicyRun = null; imagePolicyLastEnforcedAt = Date.now(); }
+    // the reconcile's changes are written under this message's waitUntil
+    await flushImageMetadataNow();
     await internal.put(MAINTENANCE_KEY, new Response(String(Date.now())));
   })().catch((error) => {
     console.warn('[sw] cache maintenance failed:', error);
@@ -2844,6 +2972,63 @@ const _networkActivityPending = { transmit: false, receive: false };
 let _networkActivityFlushTimer = null;
 const NETWORK_ACTIVITY_DEBOUNCE_MS = 80;
 
+// Who gets NETWORK_ACTIVITY (#890): the desktop's taskbar arrows (websocket.js
+// flashHttpTrafficArrow) and nobody else. A hidden window drops it on arrival (document.hidden), so
+// it is not sent one; a page with no arrows to draw (Melaton Mobile's shell) opts out with
+// NETWORK_ACTIVITY_OPT_OUT { off: true } and opts back in with { off: false }. The opt-outs are
+// client ids kept in INTERNAL_CACHE, so a worker the browser stopped and started again still
+// knows them; ids of closed windows are dropped as they are seen to be gone.
+const NETWORK_ACTIVITY_OPT_OUT_KEY = '/internal/sw-network-activity-opt-out-v1';
+let networkActivityOptOut = null; // Set of client ids, null until read
+let networkActivityOptOutLoad = null;
+
+function loadNetworkActivityOptOut() {
+  if (networkActivityOptOut) return Promise.resolve(networkActivityOptOut);
+  if (!networkActivityOptOutLoad) {
+    networkActivityOptOutLoad = caches.open(INTERNAL_CACHE)
+      .then((cache) => cache.match(NETWORK_ACTIVITY_OPT_OUT_KEY))
+      .then((hit) => (hit ? hit.json() : []))
+      .catch(() => [])
+      .then((ids) => {
+        if (!networkActivityOptOut) networkActivityOptOut = new Set(Array.isArray(ids) ? ids.filter((id) => typeof id === 'string') : []);
+        networkActivityOptOutLoad = null;
+        return networkActivityOptOut;
+      });
+  }
+  return networkActivityOptOutLoad;
+}
+
+function saveNetworkActivityOptOut() {
+  const ids = JSON.stringify([...(networkActivityOptOut || [])]);
+  return caches.open(INTERNAL_CACHE)
+    .then((cache) => cache.put(NETWORK_ACTIVITY_OPT_OUT_KEY, new Response(ids, { headers: { 'content-type': 'application/json' } })))
+    .catch(() => {});
+}
+
+async function setNetworkActivityOptOut(source, off) {
+  const id = source && typeof source.id === 'string' ? source.id : '';
+  if (!id) return;
+  const set = await loadNetworkActivityOptOut();
+  if (off === set.has(id)) return;
+  if (off) set.add(id);
+  else set.delete(id);
+  await saveNetworkActivityOptOut();
+}
+
+/** The windows that draw network activity: shown, and not opted out. Forgets closed ones. */
+async function networkActivityClients() {
+  const [clients, optOut] = await Promise.all([self.clients.matchAll(), loadNetworkActivityOptOut()]);
+  if (optOut.size) {
+    const open = new Set(clients.map((client) => client.id));
+    let pruned = false;
+    for (const id of optOut) {
+      if (!open.has(id)) { optOut.delete(id); pruned = true; }
+    }
+    if (pruned) saveNetworkActivityOptOut();
+  }
+  return clients.filter((client) => client.visibilityState !== 'hidden' && !optOut.has(client.id));
+}
+
 function maybeNotifyHttpTransmit(request) {
   const method = request.method;
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
@@ -2892,7 +3077,7 @@ function notifyClientsOfNetworkActivity(type, requestData) {
       return;
     }
 
-    self.clients.matchAll().then(clients => {
+    networkActivityClients().then(clients => {
       clients.forEach(client => {
         if (pendingTransmit) {
           client.postMessage({

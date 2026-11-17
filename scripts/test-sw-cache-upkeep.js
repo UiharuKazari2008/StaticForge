@@ -35,6 +35,11 @@ function imageWorld({ rows, entries, rules }) {
         EXPLORER_VFS_PREVIEW_PATH: /^\/[0-9a-f-]{36}\/previews\/[^/]+$/i,
         self: { location: { origin: 'http://x' } },
         perfSpan: (name, fn) => fn(),
+        perfLog: () => {},
+        setTimeout,
+        IMAGE_POLICY_DELETES_PER_RUN: 300,
+        IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS: 30000,
+        scheduleImageCachePolicyEnforcement: () => {},
         readImageMetadata: async () => metadata,
         writeImageMetadata: async () => {},
         getCanonicalUrl: (u) => u,
@@ -44,7 +49,8 @@ function imageWorld({ rows, entries, rules }) {
         }) }
     };
     vm.createContext(ctx);
-    vm.runInContext([fnSource('isManagedImageCacheUrl'), fnSource('isFullImageUrl'),
+    vm.runInContext(['let pinnedImageSetMemo = { favorites: null, locked: null, set: new Set() };',
+        fnSource('pinnedImageSet'), fnSource('isManagedImageCacheUrl'), fnSource('isFullImageUrl'),
         fnSource('enforceImageCachePolicy'), fnSource('enforceImageCachePolicyNow')].join('\n')
         + '\nthis.api = { enforceImageCachePolicy, enforceImageCachePolicyNow };', ctx);
     return { api: ctx.api, cache, metadata, keysCalls: () => keysCalls };
@@ -118,6 +124,212 @@ function imageWorld({ rows, entries, rules }) {
     assert.ok(Math.min(...idx) < 50 && Math.max(...idx) > 4900, 'spread over the whole list');
     assert.strictEqual(sCtx.sample(files.slice(0, 50), 200).length, 50, 'a short list is checked whole');
     assert.ok(/sampleManifestFiles\(snapshot, BOOT_CACHE_SAMPLE\)/.test(mgr), 'the boot check samples');
+
+    // ---- #890: the image metadata flush, the pinned set, exact deletes, the script copies' index ----
+
+    // a clock and timers the test moves by hand
+    function fakeTime() {
+        let now = 1000000;
+        let seq = 0;
+        const timers = new Map();
+        return {
+            Date: { now: () => now },
+            setTimeout: (fn, ms) => { const id = ++seq; timers.set(id, { at: now + Math.max(0, ms || 0), fn }); return id; },
+            clearTimeout: (id) => { timers.delete(id); },
+            async advance(ms) {
+                const end = now + ms;
+                for (;;) {
+                    let next = null;
+                    for (const [id, t] of timers) if (t.at <= end && (!next || t.at < next[1].at)) next = [id, t];
+                    if (!next) break;
+                    timers.delete(next[0]);
+                    now = next[1].at;
+                    next[1].fn();
+                    for (let i = 0; i < 5; i++) await Promise.resolve();
+                }
+                now = end;
+                for (let i = 0; i < 5; i++) await Promise.resolve();
+            },
+            now: () => now
+        };
+    }
+
+    const flushSrc = ['IMAGE_METADATA_FLUSH_IDLE_MS', 'IMAGE_METADATA_FLUSH_MIN_GAP_MS', 'IMAGE_METADATA_FLUSH_MAX_WAIT_MS']
+        .map((name) => (new RegExp('^const ' + name + ' = [^;]+;', 'm').exec(src) || [''])[0]).join('\n');
+    assert.ok(/IDLE_MS = 2000;[\s\S]*MIN_GAP_MS = 30000;[\s\S]*MAX_WAIT_MS = 30000;/.test(flushSrc), 'the flush constants');
+    function metadataWorld() {
+        const t = fakeTime();
+        const puts = [];
+        const ctx = {
+            Promise, JSON, Math, Set, Map, Array, Object,
+            Date: t.Date, setTimeout: t.setTimeout, clearTimeout: t.clearTimeout,
+            INTERNAL_CACHE: 'internal', IMAGE_METADATA_KEY: '/internal/meta',
+            Response: class { constructor(body) { this.body = body; } },
+            caches: { open: async () => ({ put: async (key, res) => { puts.push({ at: t.now(), body: res.body }); } }) }
+        };
+        vm.createContext(ctx);
+        vm.runInContext([flushSrc,
+            'let imageMetadataState = null; let imageMetadataFlushTimer = null; let imageMetadataDirtySince = 0;',
+            'let imageMetadataLastFlushAt = 0; let imageMetadataPending = null; let imageMetadataWriting = Promise.resolve();',
+            'let pinnedImageSetMemo = { favorites: null, locked: null, set: new Set() };',
+            fnSource('writeImageMetadata'), fnSource('imageMetadataSettled'), fnSource('holdForImageMetadata'),
+            fnSource('flushImageMetadataNow'), fnSource('runImageMetadataFlush'), fnSource('flushImageMetadata'),
+            fnSource('pinnedImageSet'), fnSource('isPinnedImageUrl')].join('\n')
+            + '\nthis.api = { writeImageMetadata, imageMetadataSettled, holdForImageMetadata, flushImageMetadataNow, pinnedImageSet, isPinnedImageUrl };', ctx);
+        return { api: ctx.api, t, puts };
+    }
+
+    // a burst of hits: nothing written while they come, one write 2 s after the last
+    let m = metadataWorld();
+    const meta = { sequence: 1, rules: { favoriteUrls: [], lockedPreviewUrls: [] }, entries: {} };
+    let settled = false;
+    for (let i = 0; i < 20; i++) {
+        meta.entries['/previews/' + i] = { seq: i };
+        await m.api.writeImageMetadata(meta);
+        if (i === 0) m.api.imageMetadataSettled().then(() => { settled = true; });
+        await m.t.advance(100);
+    }
+    assert.strictEqual(m.puts.length, 0, 'no write while previews keep coming');
+    assert.strictEqual(settled, false, 'the batch is not written yet');
+    await m.t.advance(2000);
+    assert.strictEqual(m.puts.length, 1, 'one write once they stop');
+    assert.strictEqual(Object.keys(JSON.parse(m.puts[0].body).entries).length, 20, 'the write carries every change');
+    assert.strictEqual(settled, true, 'imageMetadataSettled resolves with the write');
+
+    // a second burst soon after: held to one write per 30 s
+    meta.entries['/previews/x'] = { seq: 99 };
+    await m.api.writeImageMetadata(meta);
+    await m.t.advance(5000);
+    assert.strictEqual(m.puts.length, 1, 'not again within 30 s of the last write');
+    await m.t.advance(30000);
+    assert.strictEqual(m.puts.length, 2, 'written once the gap is over');
+    assert.ok(m.puts[1].at - m.puts[0].at >= 30000, 'at least 30 s apart');
+
+    // previews that never stop (a hit every 500 ms for 2 minutes): a write about every 30 s, not every 1.5 s
+    m = metadataWorld();
+    for (let i = 0; i < 240; i++) {
+        meta.entries['/previews/c' + i] = { seq: i };
+        await m.api.writeImageMetadata(meta);
+        await m.t.advance(500);
+    }
+    assert.ok(m.puts.length >= 3 && m.puts.length <= 5, 'about one write per 30 s while busy: ' + m.puts.length);
+    for (let i = 1; i < m.puts.length; i++) assert.ok(m.puts[i].at - m.puts[i - 1].at >= 30000, 'never closer than 30 s');
+
+    // flushImageMetadataNow writes at once (rule changes, maintenance)
+    m = metadataWorld();
+    await m.api.writeImageMetadata(meta);
+    await m.api.flushImageMetadataNow();
+    assert.strictEqual(m.puts.length, 1, 'written now');
+    await m.t.advance(60000);
+    assert.strictEqual(m.puts.length, 1, 'and not again with nothing new');
+
+    // holdForImageMetadata: the event waits for the pending write
+    m = metadataWorld();
+    await m.api.writeImageMetadata(meta);
+    const held = [];
+    m.api.holdForImageMetadata({ waitUntil: (p) => held.push(p) });
+    assert.strictEqual(held.length, 1, 'the event is extended');
+    let heldDone = false;
+    held[0].then(() => { heldDone = true; });
+    await m.t.advance(100);
+    assert.strictEqual(heldDone, false);
+    await m.t.advance(3000);
+    assert.strictEqual(heldDone, true, 'until the batch is written');
+    assert.ok(/event\.waitUntil\(updateImageMetadataForHit\(canonicalUrl\)\.then\(imageMetadataSettled\)\)/.test(src), 'an image hit holds the worker for its batch');
+
+    // the pinned Set: built once, rebuilt only when the lists are replaced
+    const rules = { favoriteUrls: ['/previews/a'], lockedPreviewUrls: ['/previews/b'] };
+    const md = { rules };
+    const first = m.api.pinnedImageSet(md);
+    assert.strictEqual(m.api.pinnedImageSet(md), first, 'the same Set on every hit');
+    assert.ok(m.api.isPinnedImageUrl('/previews/a', md) && m.api.isPinnedImageUrl('/previews/b', md) && !m.api.isPinnedImageUrl('/previews/c', md));
+    rules.favoriteUrls = ['/previews/c'];
+    assert.notStrictEqual(m.api.pinnedImageSet(md), first, 'new lists, new Set');
+    assert.ok(m.api.isPinnedImageUrl('/previews/c', md) && !m.api.isPinnedImageUrl('/previews/a', md));
+    assert.ok(!/new Set\(metadata\.rules/.test(fnSource('isPinnedImageUrl') + fnSource('enforceImageCachePolicyNow')), 'no per-hit Sets');
+
+    // deleteUrlFromCaches: one exact delete per cache, no listing
+    const delCalls = [];
+    const dctx = {
+        URL, self: { location: { origin: 'http://x' } },
+        IMAGE_CACHE: 'image', STATIC_CACHE: 'static', DYNAMIC_CACHE: 'dynamic', WALLPAPER_CACHE: 'wall',
+        EXPLORER_VFS_PREVIEW_PATH: /^\/[0-9a-f-]{36}\/previews\/[^/]+$/i,
+        deleteImageMetadata: async (urls) => { delCalls.push(['meta', urls]); },
+        caches: { open: async (name) => ({
+            keys: async () => { throw new Error('listed ' + name); },
+            delete: async (key, opts) => { delCalls.push([name, key, opts]); return name === 'static'; }
+        }) }
+    };
+    vm.createContext(dctx);
+    vm.runInContext([fnSource('absoluteAssetUrl'), fnSource('isManagedImageCacheUrl'), fnSource('isStudioGalleryImageUrl'),
+        fnSource('deleteUrlFromCaches')].join('\n') + '\nthis.del = deleteUrlFromCaches;', dctx);
+    const removed = await dctx.del('/static_images/x.png?v=2');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(delCalls)), [
+        ['static', 'http://x/static_images/x.png', { ignoreVary: true }],
+        ['dynamic', 'http://x/static_images/x.png', { ignoreVary: true }],
+        ['wall', 'http://x/static_images/x.png', { ignoreVary: true }],
+        ['meta', ['http://x/static_images/x.png']]
+    ]);
+    assert.deepStrictEqual(Array.from(removed), ['http://x/static_images/x.png']);
+
+    // the script copies: one listing per worker, then the index; the old hash's copy goes
+    const scKeys = new Map([['http://x/scripts/a.js?sha=1', 1], ['http://x/scripts/b.js?sha=9', 1]]);
+    let scLists = 0;
+    const scCache = {
+        keys: async () => { scLists += 1; return Array.from(scKeys.keys()).map((url) => ({ url })); },
+        put: async (key) => { scKeys.set(key, 1); },
+        delete: async (key) => scKeys.delete(key)
+    };
+    const sctx = { Map, Set, Promise };
+    vm.createContext(sctx);
+    vm.runInContext('let scriptCodeKeyIndex = null;\n' + fnSource('scriptCodeKeys') + fnSource('keepScriptCodeRow')
+        + '\nthis.keep = keepScriptCodeRow;', sctx);
+    await sctx.keep(scCache, 'http://x/scripts/a.js', 'http://x/scripts/a.js?sha=2', {});
+    await sctx.keep(scCache, 'http://x/scripts/c.js', 'http://x/scripts/c.js?sha=5', {});
+    await sctx.keep(scCache, 'http://x/scripts/a.js', 'http://x/scripts/a.js?sha=3', {});
+    assert.strictEqual(scLists, 1, 'the small cache is listed once');
+    assert.deepStrictEqual(Array.from(scKeys.keys()).sort(), ['http://x/scripts/a.js?sha=3', 'http://x/scripts/b.js?sha=9', 'http://x/scripts/c.js?sha=5']);
+
+    // ---- #890: replies go to the page that asked; NETWORK_ACTIVITY skips hidden and opted-out windows ----
+    const posted = [];
+    const client = (id, visibilityState) => ({ id, visibilityState, postMessage: (m2) => posted.push([id, m2.type]) });
+    const stored = new Map();
+    let allClients = [client('a', 'visible'), client('b', 'hidden'), client('c', 'visible')];
+    const nctx = {
+        Promise, Set, JSON, Array,
+        INTERNAL_CACHE: 'internal', NETWORK_ACTIVITY_OPT_OUT_KEY: '/internal/opt-out',
+        Response: class { constructor(body) { this.body = body; } json() { return Promise.resolve(JSON.parse(this.body)); } },
+        self: { clients: { matchAll: async () => allClients } },
+        caches: { open: async () => ({
+            match: async (key) => stored.get(key),
+            put: async (key, res) => { stored.set(key, res); }
+        }) }
+    };
+    vm.createContext(nctx);
+    vm.runInContext('let networkActivityOptOut = null; let networkActivityOptOutLoad = null;\n'
+        + [fnSource('replyToSource'), fnSource('loadNetworkActivityOptOut'), fnSource('saveNetworkActivityOptOut'),
+            fnSource('setNetworkActivityOptOut'), fnSource('networkActivityClients')].join('\n')
+        + '\nthis.api = { replyToSource, setNetworkActivityOptOut, networkActivityClients, reset: () => { networkActivityOptOut = null; } };', nctx);
+    nctx.api.replyToSource(allClients[2], { type: 'ping' });
+    await new Promise((r) => setImmediate(r));
+    assert.deepStrictEqual(posted, [['c', 'ping']], 'the ping answer goes to the page that asked');
+    posted.length = 0;
+    nctx.api.replyToSource(null, { type: 'X' });
+    await new Promise((r) => setImmediate(r));
+    assert.strictEqual(posted.length, 3, 'no source: every window, as before');
+    assert.deepStrictEqual((await nctx.api.networkActivityClients()).map((c2) => c2.id), ['a', 'c'], 'a hidden window gets none');
+    await nctx.api.setNetworkActivityOptOut(allClients[2], true);
+    assert.deepStrictEqual((await nctx.api.networkActivityClients()).map((c2) => c2.id), ['a'], 'an opted-out page gets none');
+    nctx.api.reset(); // a worker started again reads the opt-outs back
+    assert.deepStrictEqual((await nctx.api.networkActivityClients()).map((c2) => c2.id), ['a'], 'kept across a worker restart');
+    await nctx.api.setNetworkActivityOptOut(allClients[2], false);
+    assert.deepStrictEqual((await nctx.api.networkActivityClients()).map((c2) => c2.id), ['a', 'c'], 'and opts back in');
+    await nctx.api.setNetworkActivityOptOut(allClients[0], true);
+    allClients = [client('c', 'visible')]; // a closed: its id is forgotten
+    await nctx.api.networkActivityClients();
+    assert.deepStrictEqual(JSON.parse(stored.get('/internal/opt-out').body), [], 'closed windows are dropped from the list');
+    assert.ok(/replyToSource\(event\.source, \{ type: 'ping'/.test(src), 'the ping handler answers its source');
+    assert.ok(/networkActivityClients\(\)\.then\(clients =>/.test(src), 'the flush posts to those windows only');
 
     console.log('test-sw-cache-upkeep: ok');
 })().catch((err) => {
