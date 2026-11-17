@@ -56,7 +56,7 @@
             '-',
             { label: `Remove ${w.label}`, action: async () => {
                 const yes = await sh.messageBox({ title: 'Remove Widget', icon: 'warning', text: `Remove the widget '${w.label}' from Today?`, buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false, default: true }], cancelValue: false });
-                if (yes) { bridge.remove(Number(w.id)); sig = ''; list = null; if (sh.refreshToday) sh.refreshToday(); }
+                if (yes) { bridge.remove(Number(w.id)); sig = ''; list = null; todayChanged(); }
             } }
         ];
     }
@@ -165,13 +165,20 @@
         else if (watching || sent !== '[]') soon();
     }
 
+    /** Only this item drawn again (#890: not the whole of Today); an older shell draws it all. */
+    function todayChanged() {
+        if (!sh) return;
+        if (typeof sh.refreshTodayItem === 'function') sh.refreshTodayItem('androidwidgets');
+        else if (typeof sh.refreshToday === 'function') sh.refreshToday();
+    }
+
     function register() {
         sh = window.wmShell;
         if (!sh || typeof sh.registerTodayItem !== 'function') return;
         // (no minute tick: nothing in the block shows a time)
         sh.registerTodayItem({ id: 'androidwidgets', label: 'Android Widgets', after: 'favorites', defaultOn: false, wantsMinute: false, render });
         // a widget added (or the add cancelled) in the app: Today draws the list again
-        window.addEventListener('melatonwidgets', () => { sig = ''; list = null; if (sh.refreshToday) sh.refreshToday(); }, { signal: appScopeSignal });
+        window.addEventListener('melatonwidgets', () => { sig = ''; list = null; todayChanged(); }, { signal: appScopeSignal });
         document.addEventListener('wmAppChange', changed, { signal: appScopeSignal });
         document.addEventListener('wmawake', changed, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', changed, { signal: appScopeSignal });

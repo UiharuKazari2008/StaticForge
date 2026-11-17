@@ -141,7 +141,7 @@
             }
         }
         todayKey = '';
-        if (sh && sh.refreshToday) sh.refreshToday();
+        todayChanged();
         if (!layers.length && page && page.isConnected && els) renderList();
     }
 
@@ -200,12 +200,15 @@
         // the pictures of cards that are gone
         const ids = new Set(data.items.map((it) => it.id));
         for (const id of [...pics.keys()]) if (!ids.has(id)) { setPic(id, 'photo', null); setPic(id, 'code', null); pics.delete(id); work.push(picDel(`${id}:photo`), picDel(`${id}:code`)); }
+        // the unsaved pictures' blob URLs (blobOf) are kept as IndexedDB blobs now (setPic): they go
+        for (const url of blobs.values()) { try { URL.revokeObjectURL(url); } catch (_) { /* gone */ } }
+        blobs.clear();
         if (s && typeof s.put === 'function' && storeNote !== 'error') {
             let ok = false;
             try { ok = s.put(NS, JSON.stringify({ v: 2, items: data.items })) === true; } catch (_) { ok = false; }
             if (!ok && sh) sh.messageBox({ title: TITLE, icon: 'error', text: 'The wallet could not be saved on this phone. Unlock the phone, then try again.' });
         }
-        if (sh && typeof sh.refreshToday === 'function') sh.refreshToday();
+        todayChanged();
         return Promise.all(work);
     }
 
@@ -284,7 +287,7 @@
                 codeArt.set(k, 'bad');
                 console.warn('[wmWallet] barcode', it.format, err && err.message);
             }
-            if (sh && typeof sh.refreshToday === 'function') sh.refreshToday();
+            todayChanged();
             if (layers[layers.length - 1] === 'show' && showing === it) renderShow();
             if (!layers.length && page && page.isConnected) renderList();
         }).catch(() => { codeArt.delete(k); });
@@ -348,12 +351,12 @@
             hdrOn = it.id;
             setHdr(true);
             hdrUrl(it);
-            hdrTimer = setTimeout(() => { hdrOn = null; setHdr(false); todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); }, 30000);
+            hdrTimer = setTimeout(() => { hdrOn = null; setHdr(false); todayKey = ''; todayChanged(); }, 30000);
         }
         todayKey = '';
-        if (sh && sh.refreshToday) sh.refreshToday();
+        todayChanged();
     }
-    function paintHdr() { todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); }
+    function paintHdr() { todayKey = ''; todayChanged(); }
     // leaving Today or the screen going off: SDR again
     // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
     document.addEventListener('visibilitychange', () => { if (document.hidden && hdrOn) { hdrOn = null; clearTimeout(hdrTimer); setHdr(false); } });
@@ -445,6 +448,12 @@
     }
 
     let todayKey = '';
+    /** Only Wallet's Today item drawn again (#890: not the whole of Today); an older shell draws it all. */
+    function todayChanged() {
+        if (!sh) return;
+        if (typeof sh.refreshTodayItem === 'function') sh.refreshTodayItem('cards');
+        else if (typeof sh.refreshToday === 'function') sh.refreshToday();
+    }
     function todayRender(el, ctx) {
         const list = items();
         const showCode = !ctx || typeof ctx.option !== 'function' || ctx.option('code') !== 'hide';
@@ -1111,7 +1120,8 @@
         sh.registerApp(APP);
         if (typeof sh.registerTodayItem === 'function') {
             sh.registerTodayItem({
-                id: 'cards', label: TITLE, icon: ICON, after: 'lapis', render: todayRender, titanium: todayTitanium,
+                // no clock in it: it draws on its own changes (todayChanged), not on the shell's minute (#890)
+                id: 'cards', label: TITLE, icon: ICON, after: 'lapis', wantsMinute: false, render: todayRender, titanium: todayTitanium,
                 options: [{ key: 'code', label: 'Barcode', value: 'show', choices: [['show', 'Show the code (tap brightens it)'], ['hide', 'Name only']] }]
             });
         }
@@ -1119,7 +1129,7 @@
 
     // the phone was unlocked: a store that was locked can be read now
     // app-scope: allow page lifetime (phone shell, loaded once from app.html; not an app package)
-    window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on && storeNote === 'locked') { load(); todayKey = ''; if (sh && sh.refreshToday) sh.refreshToday(); } });
+    window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on && storeNote === 'locked') { load(); todayKey = ''; todayChanged(); } });
 
     window.wmWallet = { open: () => sh && sh.open(APP_ID), carKeys: () => openKeys(), pay: (i) => pay(items()[i]), show: (i) => show(items()[i]) };
 
