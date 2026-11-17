@@ -404,7 +404,7 @@ function accountOut(a) {
         const label = a.label || androidApps.appLabel(a.package) || a.package || 'Android app';
         return {
             id: a.id, kind: 'android', name: label, service: label, url: '', package: a.package || '', label,
-            icon: `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app`,
+            icon: androidApps.hasAppIcon(a.package) ? `/api/textmessaging/${encodeURIComponent(a.id)}/avatar/app` : '',
             enabled: a.enabled !== false, hasPassword: true,
             status: p ? p.status : (a.enabled === false ? 'disabled' : 'error'), error: p ? p.error : '',
             identity: p ? p.identity() : '', features: p ? p.features() : {},

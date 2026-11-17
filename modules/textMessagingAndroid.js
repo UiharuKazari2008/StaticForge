@@ -141,6 +141,9 @@ function recentApps() {
 
 function appLabel(pkg) { const r = loadRecent()[pkg]; return r ? r.label : ''; }
 
+/** Whether the phone has sent the app's icon. */
+function hasAppIcon(pkg) { return PACKAGE_RE.test(String(pkg || '')) && fs.existsSync(iconFile(pkg)); }
+
 /** The app's icon (PNG bytes) or null. */
 function appIcon(pkg) {
     if (!PACKAGE_RE.test(String(pkg || ''))) return null;
@@ -284,6 +287,8 @@ class AndroidAppProvider {
 
     take(d, deviceId, deviceName, { old = false } = {}) {
         if (!this.store) return;
+        // notify.list sends every app's icon again: the catch-up keeps it like a live post does
+        if (d.icon) noteApp(d);
         const guid = this.chatGuidOf(d);
         const prev = this.rawChat(guid);
         const conv = d.conv && typeof d.conv === 'object' ? d.conv : {};
@@ -407,7 +412,7 @@ class AndroidAppProvider {
     normalizeChat(c) {
         if (!c) return null;
         const base = `/api/textmessaging/${encodeURIComponent(this.id)}/avatar/`;
-        const photo = c.photo ? `${base}${encodeURIComponent(c.guid)}?v=${c.photo}` : `${base}app`;
+        const photo = c.photo ? `${base}${encodeURIComponent(c.guid)}?v=${c.photo}` : (hasAppIcon(this.pkg) ? `${base}app` : null);
         const name = c.title || c.app || this.label;
         const last = c.lastDate ? {
             guid: c.lastGuid || '', chatGuid: c.guid, text: c.lastText || '', fromMe: !!c.lastFromMe,
@@ -547,4 +552,4 @@ class AndroidAppProvider {
 
 function _reset() { providers.clear(); caughtUp.clear(); recent = null; cacheDir = null; tapped = false; }
 
-module.exports = { AndroidAppProvider, recentApps, appIcon, appLabel, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
+module.exports = { AndroidAppProvider, recentApps, appIcon, hasAppIcon, appLabel, PACKAGE_RE, _reset, _setCacheDir: (d) => { cacheDir = d; } };
