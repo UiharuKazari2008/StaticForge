@@ -467,12 +467,36 @@
 
     // ---------------------------------------------------------------- sound
 
+    // the sound's context sleeps while the game is not seen and goes with it (X, Task Manager's End):
+    // a running one keeps the phone's audio thread up for nothing (#890). It sleeps a second late so a
+    // blip in flight ends whole; seen again it wakes at once, so the next blip is not late.
+    let audioRest = 0;
+    function audioWake() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        try { if (audio && audio.state === 'suspended') audio.resume().catch(() => {}); } catch (_) { /* closed */ }
+    }
+    function audioSleep() {
+        clearTimeout(audioRest);
+        audioRest = setTimeout(() => {
+            audioRest = 0;
+            try { if (audio && audio.state === 'running') audio.suspend().catch(() => {}); } catch (_) { /* closed */ }
+        }, 1000);
+    }
+    function audioEnd() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        const a = audio;
+        audio = null;
+        if (a) setTimeout(() => { try { a.close().catch(() => {}); } catch (_) { /* closed */ } }, 1000);
+    }
+
     function sound(kind, step) {
         if (!settings().sounds) return;
         try {
             if (ws.sounds && typeof ws.sounds.silent === 'function' && ws.sounds.silent()) return;
             if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-            if (audio.state === 'suspended') audio.resume();
+            if (audio.state === 'suspended') audio.resume().catch(() => {});
             const tone = (f, t, d, type = 'square', v = 0.05) => {
                 const o = audio.createOscillator();
                 const g = audio.createGain();
@@ -1095,6 +1119,7 @@
     }
 
     function show() {
+        audioWake();
         if (view === 'main') requestAnimationFrame(() => { layout(); if (G && !G.paused) startClock(); armHint(); });
     }
 
@@ -1102,6 +1127,7 @@
         pause();
         save();
         stopLoop();
+        audioSleep();
         clearTimeout(idleTimer);
         // an animation in flight finishes at once so the saved board is whole
         while (anim) { const a = anim; anim = null; if (a.done) a.done(); }
@@ -1142,7 +1168,7 @@
             onTitleOk: () => (view === 'main' ? false : backToGame(true)),
             historyDepth: () => (view === 'main' ? 0 : 1),
             onBack: () => (view === 'main' ? false : backToGame(view !== 'options')),
-            onEnd() { hide(); view = 'main'; page = null; cv = null; ctx = null; },
+            onEnd() { hide(); audioEnd(); view = 'main'; page = null; cv = null; ctx = null; },
             softKeys
         });
         document.addEventListener('keydown', onKey);
@@ -1152,7 +1178,8 @@
         // (only a game this paused goes on by itself: one paused under a box or a page waits for it)
         let awayPaused = false;
         const onSeen = () => {
-            if (away()) { if (G && !G.paused) { pause(); awayPaused = true; } save(); return; }
+            if (away()) { if (G && !G.paused) { pause(); awayPaused = true; } save(); audioSleep(); return; }
+            if (page && !page.hidden && ws.current === APP_ID) audioWake();
             if (!awayPaused) return;
             awayPaused = false;
             if (page && !page.hidden && view === 'main' && G && G.paused) resume();

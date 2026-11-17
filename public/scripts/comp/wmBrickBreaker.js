@@ -663,8 +663,33 @@
                 if (!C) return;
                 actx = new C();
             }
+            clearTimeout(audioRest);
+            audioRest = 0;
             if (actx.state === 'suspended') actx.resume().catch(() => {});
         } catch (_) { actx = null; }
+    }
+    // the context sleeps while the game is not seen and goes with it (X, Task Manager's End): a
+    // running one keeps the phone's audio thread up for nothing (#890). It sleeps a second late so a
+    // blip in flight ends whole; seen again (or resumed from the menu) it wakes at once.
+    let audioRest = 0;
+    function audioWake() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        try { if (actx && actx.state === 'suspended') actx.resume().catch(() => {}); } catch (_) { /* closed */ }
+    }
+    function audioSleep() {
+        clearTimeout(audioRest);
+        audioRest = setTimeout(() => {
+            audioRest = 0;
+            try { if (actx && actx.state === 'running') actx.suspend().catch(() => {}); } catch (_) { /* closed */ }
+        }, 1000);
+    }
+    function audioEnd() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        const a = actx;
+        actx = null;
+        if (a) setTimeout(() => { try { a.close().catch(() => {}); } catch (_) { /* closed */ } }, 1000);
     }
     const SOUNDS = {
         paddle: [[523, 0.045, 'square']],
@@ -1547,6 +1572,7 @@
     }
 
     function show() {
+        audioWake();
         if (view === 'main') requestAnimationFrame(() => { layout(); kick(); });
     }
 
@@ -1555,6 +1581,7 @@
         saveGame();
         stopLoop();
         G.keys.left = G.keys.right = false;
+        audioSleep();
     }
 
     function softKeys() {
@@ -1601,13 +1628,15 @@
             onTitleOk: () => (view === 'main' ? false : backToGame(true)),
             historyDepth: () => (view === 'main' ? 0 : 1),
             onBack: () => (view === 'main' ? false : backToGame(view !== 'options')),
-            onEnd() { hide(); view = 'main'; page = null; cv = null; ctx = null; },
+            onEnd() { hide(); audioEnd(); view = 'main'; page = null; cv = null; ctx = null; },
             softKeys
         });
         document.addEventListener('keydown', onKey);
         document.addEventListener('keyup', onKey);
         // the game stops where it is when it is not seen, also with the screen off
-        const pauseAway = () => { if (away()) pause(); };
+        const pauseAway = () => {
+            if (away()) { pause(); audioSleep(); } else if (page && !page.hidden && ws.current === APP_ID) audioWake();
+        };
         document.addEventListener('visibilitychange', pauseAway, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', pauseAway, { signal: appScopeSignal });
         document.addEventListener('wmBehind', pauseAway, { signal: appScopeSignal });

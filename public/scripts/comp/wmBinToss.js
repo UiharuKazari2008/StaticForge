@@ -706,12 +706,37 @@
 
     // ---------------------------------------------------------------- sound
 
+    // the sound's context sleeps while the game is not seen and goes with it (X, Task Manager's End):
+    // a running one keeps the phone's audio thread up for nothing (#890). It sleeps once the music's
+    // fade (stopMusic) is over; seen again it wakes at once, so the first sound is not late.
+    let audioRest = 0;
+    function audioWake() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        try { if (audio && audio.state === 'suspended') audio.resume().catch(() => {}); } catch (_) { /* closed */ }
+    }
+    function audioSleep() {
+        clearTimeout(audioRest);
+        audioRest = setTimeout(() => {
+            audioRest = 0;
+            if (music) return;
+            try { if (audio && audio.state === 'running') audio.suspend().catch(() => {}); } catch (_) { /* closed */ }
+        }, 1300);
+    }
+    function audioEnd() {
+        clearTimeout(audioRest);
+        audioRest = 0;
+        const a = audio;
+        audio = null;
+        if (a) setTimeout(() => { try { a.close().catch(() => {}); } catch (_) { /* closed */ } }, 1300);
+    }
+
     function sound(kind, strength) {
         if (!settings().sounds || !gesture) return;
         try {
             if (ws.sounds && typeof ws.sounds.silent === 'function' && ws.sounds.silent()) return;
             if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-            if (audio.state === 'suspended') audio.resume();
+            if (audio.state === 'suspended') audio.resume().catch(() => {});
             const now = audio.currentTime;
             const tone = (f, t, d, type, vol) => {
                 const o = audio.createOscillator();
@@ -799,7 +824,7 @@
         if (music || !musicWanted()) return;
         try {
             if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
-            if (audio.state === 'suspended') audio.resume();
+            audioWake();
             const now = audio.currentTime;
             const out = audio.createGain();
             out.gain.setValueAtTime(0.0001, now);
@@ -2365,6 +2390,7 @@ void main() {
         // Automatic: evening may have come while the program was in the background
         if (isNight() !== night) { night = isNight(); if (R) buildRoom(); }
         wireTilt(true);
+        audioWake();
         if (view === 'main') { startLoop(); startMusic(); }
     }
 
@@ -2373,6 +2399,7 @@ void main() {
         stopMusic();
         wireTilt(false);
         onCancel();
+        audioSleep();
     }
 
     function setMode(m) {
@@ -2426,6 +2453,7 @@ void main() {
             onEnd() {
                 endRun();
                 hide();
+                audioEnd();
                 // give the 3D context back to the phone
                 if (gl) { const ext = gl.getExtension('WEBGL_lose_context'); if (ext) { try { ext.loseContext(); } catch (_) { /* gone */ } } }
                 gl = null; R = null; view = 'main'; page = null; cv = null; balls = []; timed = null;
