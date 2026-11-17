@@ -65,6 +65,8 @@
                         c.height = Math.max(1, Math.round(im.naturalHeight * k));
                         c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
                         const data = c.toDataURL('image/jpeg', 0.8);
+                        // a few pictures at most (each JPEG is ~100 KB of string; every Today change added one)
+                        if (wallCache.size >= 4) wallCache.delete(wallCache.keys().next().value);
                         wallCache.set(url, data);
                         resolve(data);
                     } catch (_) { resolve(null); }
@@ -77,13 +79,16 @@
             const w = root.wmShell && root.wmShell.wallpaper;
             return { today: w && typeof w.picture === 'function' ? w.picture() : null, desk: w && typeof w.desktop === 'function' ? w.desktop() : null };
         };
+        /** Which screen is on: a foldable's cover is narrow (about 9:21), its inner screen near square. */
+        function currentScreen() {
+            const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
+            return vw && vh && Math.min(vw, vh) / Math.max(vw, vh) < 0.56 && /^SM-F9/i.test((root.AndroidActiveSync && typeof root.AndroidActiveSync.getModel === 'function' && root.AndroidActiveSync.getModel()) || navigator.userAgent) ? 'cover' : 'inner';
+        }
         async function wallpapers() {
             const { today, desk } = sources();
             const [phone, dex] = await Promise.all([shrink(today), shrink(desk)]);
             // the cover and the inner screen run the same Today (one picture for both)
-            // which screen is on: a foldable's cover is narrow (about 9:21), its inner screen near square
-            const vw = root.innerWidth || 0; const vh = root.innerHeight || 0;
-            const screen = vw && vh && Math.min(vw, vh) / Math.max(vw, vh) < 0.56 && /^SM-F9/i.test((root.AndroidActiveSync && typeof root.AndroidActiveSync.getModel === 'function' && root.AndroidActiveSync.getModel()) || navigator.userAgent) ? 'cover' : 'inner';
+            const screen = currentScreen();
             // Today on Android's own wallpaper (#827): each screen of a foldable shows its own picture,
             // which the app's service sends from each screen's slot (androidInner / androidCover); the
             // page's one picture would put the screen that is on into both
@@ -98,10 +103,79 @@
          * The server keeps the wallpapers for Device Center (#827, modules/activeSyncWallpapers.js):
          * sent once per connection and again when a wallpaper changes (Settings, a workspace switch,
          * Android's own wallpaper), never on a timer.
+         *
+         * Only what the server does not have goes (#890; the same JPEG went up to three times in every
+         * post, and every connection posted all of it): each picture's sha1 (of the decoded bytes, as
+         * the server hashes its files) is compared with the server's (GET .../hashes, once per
+         * connection) and with what this phone sent last (localStorage melatonWallSent:<device>, kept
+         * across restarts); a picture an earlier screen has in the same post or on the server goes as
+         * "same:<kind>". A server without /hashes gets the whole set, as before.
          */
+        const KINDS = ['inner', 'cover', 'external'];
+        const SENT_PREFIX = 'melatonWallSent:';
+        const readSent = (id) => {
+            try { const v = JSON.parse(root.localStorage.getItem(SENT_PREFIX + id) || 'null'); return v && typeof v === 'object' ? v : null; } catch (_) { return null; }
+        };
+        const writeSent = (id, v) => { try { root.localStorage.setItem(SENT_PREFIX + id, JSON.stringify(v)); } catch (_) { /* this load only */ } };
+        const subtle = root.crypto && root.crypto.subtle;
+        async function sha1Hex(bytes) {
+            const digest = await subtle.digest('SHA-1', bytes);
+            return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+        }
+        const hashCache = new Map(); // data URL -> sha1 of its bytes
+        /** sha1 hex of a data URL's bytes; 'path:<path>' for a same-site path; null for none; '' when unknown. */
+        async function pictureHash(value) {
+            if (!value) return null;
+            if (!/^data:/.test(value)) return `path:${value}`;
+            if (hashCache.has(value)) return hashCache.get(value);
+            const m = /^data:[^,]*;base64,(.*)$/.exec(value);
+            if (!subtle || !m) return '';
+            try {
+                const bin = root.atob(m[1].replace(/\s+/g, ''));
+                const bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+                const hex = await sha1Hex(bytes);
+                if (hashCache.size >= 8) hashCache.delete(hashCache.keys().next().value);
+                hashCache.set(value, hex);
+                return hex;
+            } catch (_) { return ''; }
+        }
+        async function keyDigest(key) {
+            if (!subtle || typeof root.TextEncoder !== 'function') return '';
+            try { return await sha1Hex(new root.TextEncoder().encode(key)); } catch (_) { return ''; }
+        }
+        /** The server's { kind: sha1 }; null from a server without /hashes; undefined when it could not be asked. */
+        async function fetchServerHashes(id) {
+            let r = null;
+            try {
+                r = await fetch(`/api/activesync/wallpapers/${encodeURIComponent(id)}/hashes`, { credentials: 'same-origin', cache: 'no-store' });
+            } catch (_) { return undefined; }
+            if (!r.ok) return null;
+            try {
+                const j = await r.json();
+                return j && j.hashes && typeof j.hashes === 'object' ? Object.assign({}, j.hashes) : null;
+            } catch (_) { return null; }
+        }
+        /** Whether a kind must go: ours (pictureHash), what the server has (server), what this phone sent last (last). */
+        function kindDiffers(k, ours, server, last) {
+            if (ours === '') return true;
+            if (ours === null) return !!server[k] || (last[k] != null && last[k] !== '');
+            if (server[k] === ours) return false;
+            if (ours.startsWith('path:')) return !!server[k] || last[k] !== ours; // a path is no file on the server
+            return true;
+        }
+        const hashesOf = async (body) => {
+            const out = {};
+            for (const k of KINDS) out[k] = await pictureHash(body[k]);
+            return out;
+        };
+
         let sentKey = '';
         let sendTimer = null;
         let sending = false;
+        let connection = 0; // connections seen (as.on('state') below)
+        let verifiedConn = -1; // the connection whose server hashes are known
+        let serverHashes = null; // { kind: sha1 } the server has, kept up to date with what goes
         async function sendWallpapers(force) {
             const st = as.state();
             if (!st.online || !st.id || !st.session || st.session === 'pending' || sending) return;
@@ -111,12 +185,66 @@
             if (!force && key === sentKey) return;
             sending = true;
             try {
-                const body = await wallpapers();
-                if (!body.inner && !body.external && body.homeSource !== 'android') return;
+                if (verifiedConn !== connection) {
+                    const got = await fetchServerHashes(st.id);
+                    serverHashes = got || null;
+                    // asked again on the next send when the network failed; a server without it is not asked again
+                    if (got !== undefined) verifiedConn = connection;
+                }
+                const stored = readSent(st.id);
+                const digest = await keyDigest(key);
+                let body = null;
+                // the same sources as last time are the same pictures: no drawing needed to know them
+                let ours = digest && stored && stored.key === digest && stored.hashes ? stored.hashes : null;
+                let screen = currentScreen();
+                if (!ours) {
+                    body = await wallpapers();
+                    if (!body.inner && !body.external && body.homeSource !== 'android') return;
+                    ours = await hashesOf(body);
+                    screen = body.screen;
+                }
+                const last = (stored && stored.hashes) || {};
+                const needed = () => (serverHashes ? KINDS.filter((k) => kindDiffers(k, ours[k], serverHashes, last)) : KINDS.slice());
+                let need = needed();
+                if (serverHashes && !need.length && stored && stored.screen === screen) {
+                    sentKey = key;
+                    if (stored.key !== digest) writeSent(st.id, { key: digest, hashes: ours, screen });
+                    return;
+                }
+                if (!body) {
+                    body = await wallpapers();
+                    if (!body.inner && !body.external && body.homeSource !== 'android') return;
+                    ours = await hashesOf(body);
+                    need = needed();
+                }
+                let post = body;
+                if (serverHashes) {
+                    post = { screen: body.screen };
+                    if (body.homeSource) post.homeSource = body.homeSource;
+                    need.forEach((k) => {
+                        const h = ours[k];
+                        if (body[k] == null) { post[k] = null; return; }
+                        // an earlier screen with this picture, in this post or on the server: copied there
+                        const twin = h && !h.startsWith('path:')
+                            ? KINDS.slice(0, KINDS.indexOf(k)).find((o) => ours[o] === h && (need.includes(o) || serverHashes[o] === h))
+                            : null;
+                        post[k] = twin ? `same:${twin}` : body[k];
+                    });
+                }
                 const r = await fetch(`/api/activesync/wallpapers/${encodeURIComponent(st.id)}`, {
-                    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+                    method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(post)
                 });
-                if (r.ok) sentKey = key;
+                if (r.ok) {
+                    sentKey = key;
+                    if (serverHashes) {
+                        KINDS.forEach((k) => {
+                            if (!Object.prototype.hasOwnProperty.call(post, k)) return;
+                            if (ours[k] && !ours[k].startsWith('path:')) serverHashes[k] = ours[k];
+                            else delete serverHashes[k];
+                        });
+                    }
+                    writeSent(st.id, { key: digest, hashes: ours, screen: body.screen });
+                }
             } catch (_) { /* the next change tries again */ } finally { sending = false; }
         }
         const soon = (force) => { clearTimeout(sendTimer); sendTimer = setTimeout(() => { void sendWallpapers(force); }, 2500); };
@@ -124,7 +252,8 @@
         as.on('state', () => {
             const st = as.state();
             const now = !!(st.online && st.session && st.session !== 'pending');
-            if (now && !wasOnline) soon(true);
+            // a new connection: the server's hashes are read again (once) before anything is sent
+            if (now && !wasOnline) { connection += 1; soon(true); }
             wasOnline = now;
         });
         document.addEventListener('wmSettingsChange', () => soon(false));
