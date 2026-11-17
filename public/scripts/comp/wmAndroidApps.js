@@ -722,15 +722,18 @@
         } catch (_) { return null; }
     }
 
+    /** Something of the page is seen: the screen on, the page shown, not behind an Android program. */
+    const awake = () => !sh || typeof sh.onScreen !== 'function' || sh.onScreen();
+
     function pageShown() {
         const el = job.live && job.live.el;
-        return !!(el && el.isConnected && !el.closest('[hidden]') && sh.current === 'settings');
+        return !!(el && el.isConnected && !el.closest('[hidden]') && sh.current === 'settings' && awake());
     }
 
     function rerenderLive() {
         // never under the user's typing (Custom's text box): the next poll redraws
         const typing = document.activeElement && document.activeElement.closest && document.activeElement.closest('.wm-pi-direction');
-        if (pageShown() && job.live.api && !typing) job.live.api.rerender();
+        if (pageShown() && job.live.api && !typing) { job.stale = false; job.live.api.rerender(); } else if (job.live) job.stale = true;
     }
 
     function setJob(id, data) {
@@ -743,6 +746,9 @@
     function poll(soon) {
         clearTimeout(job.timer);
         if (!job.id) return;
+        // the server sends no job progress (no push yet): asked every 3 s while Program Icons shows it, 8 s
+        // otherwise, and once a minute with the screen off or the page hidden, so the "ready to review"
+        // notification still comes then; seen again, asked at once (register: jobWake)
         job.timer = setTimeout(async () => {
             let j = null;
             try { j = await api(`/jobs/${encodeURIComponent(job.id)}`); } catch (err) {
@@ -765,7 +771,7 @@
                     buttons: [{ text: 'View', onClick: () => { window.wmSettings.open(PAGE_ID, 'pi-results'); } }, { text: 'Dismiss' }]
                 });
             }
-        }, soon ? 300 : (pageShown() ? 3000 : 8000));
+        }, soon ? 300 : (pageShown() ? 3000 : awake() ? 8000 : 60000));
     }
 
     function registerIconsPage() {
@@ -1412,14 +1418,44 @@
             } catch (_) { return ''; }
         }
 
+        /** Hex SHA-1 of a string or bytes (FNV-1a where crypto.subtle is missing). */
+        async function digest(data) {
+            const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : new Uint8Array(data);
+            try {
+                if (window.crypto && window.crypto.subtle) {
+                    const h = new Uint8Array(await window.crypto.subtle.digest('SHA-1', bytes));
+                    return Array.from(h, (b) => b.toString(16).padStart(2, '0')).join('');
+                }
+            } catch (_) { /* FNV below */ }
+            let h = 0x811c9dc5;
+            for (let i = 0; i < bytes.length; i++) h = Math.imul(h ^ bytes[i], 0x01000193) >>> 0;
+            return `fnv-${bytes.length.toString(16)}-${h.toString(16)}`;
+        }
+
+        /** A contact photo by its bytes (its address names only the contact, not the picture); '' when unread. */
+        async function photoDigest(url) {
+            try {
+                const res = await fetch(url, { cache: 'no-store' });
+                return res.ok ? await digest(await res.arrayBuffer()) : '';
+            } catch (_) { return ''; }
+        }
+
+        // what each kind's mirror was last written from (a digest of the phone's data), so an unchanged
+        // phone is not encoded and uploaded again every 4 hours
+        const SIG_KEY = 'wmPhoneDataSig:';
+        const sigOf = (kind) => { const v = readJson(SIG_KEY + kind, null); return v && typeof v.sig === 'string' ? v.sig : ''; };
+        const keepSig = (kind, sig) => writeJson(SIG_KEY + kind, { sig, at: Date.now() });
+
         /** Mirror the phone into the workspace (sync mode); one run at a time. */
         function syncNow(kinds) {
             if (syncing) return syncing;
             syncing = (async () => {
                 const want = (kinds || ['calendar', 'contacts']).filter((k) => mode(k) === 'sync');
+                const wrote = [];
                 for (const kind of want) {
                     if (!await access(kind)) continue;
                     try {
+                        let same = false; // the mirror already holds what the phone has: nothing written
                         if (kind === 'calendar') {
                             if (!window.melatonApps || typeof window.melatonApps.ensureLoaded !== 'function') continue;
                             await window.melatonApps.ensureLoaded('calendar');
@@ -1429,31 +1465,58 @@
                             const folder = `${wsRoot()}/Calendars`;
                             const written = new Set();
                             // one file per calendar the phone shows: "Phone - <name> (<device>).ics"
+                            const files = [];
                             for (const { cal, events } of calendarSets(now - PAST_MS, now + AHEAD_MS)) {
                                 // a calendar with nothing in the window gets no file (an old one is trashed below)
                                 if (!events.length) continue;
                                 const name = `${safe(`Phone - ${cal.name || 'Calendar'} (${device()})`)}.ics`;
                                 const out = { name: `${cal.name || 'Calendar'} (${device()})`, color: cal.color || '#99ccff', source: `phone:${device()}`, refresh: 0, tasks: [], events: events.map((ev) => Object.assign({}, ev, { phone: undefined })) };
-                                await writeFile(folder, name, MC.toIcs(out), 'text/calendar');
-                                written.add(name);
+                                files.push({ name, out });
                             }
-                            // calendars the phone no longer shows (and the first single-file mirror) go
                             const suffix = `(${safe(device())}).ics`;
-                            const stale = (await listOf(folder)).filter((i) => i.kind !== 'folder' && String(i.name).endsWith(suffix) && /^Phone( - |\s*\()/.test(i.name) && !written.has(i.name));
-                            if (stale.length && typeof vfsClient.moveToTrash === 'function') { try { await vfsClient.moveToTrash(stale.map((i) => ({ id: i.id, name: i.name, kind: i.kind, targetKind: i.targetKind, targetId: i.targetId, isShortcut: false, isUserFileLink: false, isDesktopShortcut: false, isVfsShortcutEntry: false, workspaceId: i.workspaceId, size: i.size, modifiedAt: i.modifiedAt, mimeType: i.mimeType || undefined })), folder); } catch (_) { /* next time */ } }
+                            const ours = (i) => i.kind !== 'folder' && String(i.name).endsWith(suffix) && /^Phone( - |\s*\()/.test(i.name);
+                            // the same calendars as last written, and the folder holds exactly those files: nothing to do
+                            const sig = await digest(JSON.stringify([folder, files.map((f) => [f.name, f.out])]));
+                            if (sig === sigOf(kind)) {
+                                const have = (await listOf(folder)).filter(ours).map((i) => i.name);
+                                same = have.length === files.length && files.every((f) => have.includes(f.name));
+                            }
+                            if (!same) {
+                                for (const f of files) {
+                                    await writeFile(folder, f.name, MC.toIcs(f.out), 'text/calendar');
+                                    written.add(f.name);
+                                }
+                                // calendars the phone no longer shows (and the first single-file mirror) go
+                                const stale = (await listOf(folder)).filter((i) => ours(i) && !written.has(i.name));
+                                if (stale.length && typeof vfsClient.moveToTrash === 'function') { try { await vfsClient.moveToTrash(stale.map((i) => ({ id: i.id, name: i.name, kind: i.kind, targetKind: i.targetKind, targetId: i.targetId, isShortcut: false, isUserFileLink: false, isDesktopShortcut: false, isVfsShortcutEntry: false, workspaceId: i.workspaceId, size: i.size, modifiedAt: i.modifiedAt, mimeType: i.mimeType || undefined })), folder); } catch (_) { /* next time */ } }
+                                keepSig(kind, sig);
+                            }
                         } else {
                             if (!window.melatonVCard && window.featureLoader) await window.featureLoader._loadScript('scripts/comp/vcard.js');
                             const VC = window.melatonVCard;
                             if (!VC) continue;
                             const cards = contactEntries(VC).map((e) => e.c);
-                            // every field, the photo too (as a small JPEG in the card)
-                            for (const c of cards) if (PHOTO_URL.test(c.photo || '')) c.photo = await photoData(c.photo);
-                            await writeFile(`${wsRoot()}/Contacts`, `${safe(`Phone contacts (${device()})`)}.vcf`, cards.map((c) => VC.toVcf(c)).join(''), 'text/vcard');
+                            const folder = `${wsRoot()}/Contacts`;
+                            const file = `${safe(`Phone contacts (${device()})`)}.vcf`;
+                            // the cards and each photo's bytes as last written, and the file still there: no
+                            // photo is encoded and nothing is uploaded
+                            const photos = [];
+                            for (const c of cards) if (PHOTO_URL.test(c.photo || '')) photos.push(await photoDigest(c.photo));
+                            const sig = await digest(JSON.stringify([folder, file, cards, photos]));
+                            same = sig === sigOf(kind) && (await listOf(folder)).some((i) => i.kind !== 'folder' && i.name === file);
+                            if (!same) {
+                                // every field, the photo too (as a small JPEG in the card)
+                                for (const c of cards) if (PHOTO_URL.test(c.photo || '')) c.photo = await photoData(c.photo);
+                                await writeFile(folder, file, cards.map((c) => VC.toVcf(c)).join(''), 'text/vcard');
+                                keepSig(kind, sig);
+                            }
                         }
+                        if (!same) wrote.push(kind);
                         try { localStorage.setItem(`wmPhoneDataSynced:${kind}`, String(Date.now())); } catch (_) { /* no record */ }
                     } catch (err) { console.warn('[wmPhoneData] sync', kind, err); }
                 }
-                document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: want } }));
+                // Calendar and Contacts read again only when a mirror was written (wmPhoneDataChange sends its own)
+                if (wrote.length) document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: wrote } }));
             })().finally(() => { syncing = null; });
             return syncing;
         }
@@ -1502,6 +1565,11 @@
         phoneData.start();
         loadStore();
         if (job.id) poll(true);
+        // a batch running: seen again (screen on, the page shown) asks at once instead of on the minute
+        const jobWake = () => { if (!awake()) return; if (job.id) poll(true); else if (job.stale) rerenderLive(); };
+        window.addEventListener('melatonscreen', jobWake);
+        document.addEventListener('visibilitychange', jobWake);
+        document.addEventListener('wmBehind', jobWake);
         // a program was installed, removed or changed
         let timer = null;
         window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(refresh, 800); });
