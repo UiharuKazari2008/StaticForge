@@ -156,7 +156,9 @@ Unauthenticated: `authenticated: false`, no `userType`.
 
 ## Heartbeat / ping
 
-Server broadcasts **ping** every ~10 seconds (`modules/websocket.js` → `startPingInterval`):
+The server reads its status every 10 seconds (`modules/websocket.js` `startPingInterval`) and broadcasts **ping** only
+when something other than its clocks changed (#890: it used to go to every socket every 10 s); a socket that connects
+gets it once. A sleeping phone page or DeX window gets only the newest when it wakes:
 
 ```json
 {
@@ -250,7 +252,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 |------|-----------|------------------------------|
 | `connection` | Immediately on WS connect | `status`, `message`, `authenticated`, `userType?`, `vfsPathUuid?`, `logViewerPathUuid?` (admin) |
 | `gallery_hint` | After workspace restore on connect/reconnect | `workspaceId`, `viewType`, `total`, `lastGalleryUpdatedAt`, `lastGalleryDestructiveAt`, `latestFilename?` — client compares session gallery memory and appends/reloads if stale |
-| `ping` | ~10s interval broadcast | `timestamp`, `image_count`, `queue_status`, plus `balance` / `opusUsage` / `accountHealth` when available — see [ws/infrastructure.md](./ws/infrastructure.md#ping-server-push-fields) |
+| `ping` | On connect, then when the status read every 10 s changed | `timestamp`, `image_count`, `queue_status`, plus `balance` / `opusUsage` / `accountHealth` when available - see [ws/infrastructure.md](./ws/infrastructure.md#ping-server-push-fields) |
 | `account_data_health_updated` | Account health fields change | Same health fields as `get_app_options` / ping `accountHealth` — [ws/account.md](./ws/account.md) |
 | `request_keep_alive` | During long WS requests | `requestId`, `status: "processing"`, optional `progress`, `message` |
 | `gallery_updated` | Image add/delete/move/scrap/pin | `data.action` (`add`, `append_top`, `bulk_delete`, `remove`, …), `workspaceId?` (when set, only clients whose active gallery workspace matches should apply), `filename?`, `filenames?`, `viewType?`, `newItems?`, `deletedCount?`, `lastGalleryDestructiveAt?`, `lastGalleryUpdatedAt?`, `latestFilename?`, `total?` |
