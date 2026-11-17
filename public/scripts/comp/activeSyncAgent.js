@@ -33,7 +33,9 @@
     const ID_KEY = 'activeSyncPeerId';
     const HELLO_RETRY_MS = [2000, 5000, 15000, 30000];
     const STATUS_MIN_MS = 5000;
-    const STATUS_BEAT_MS = 120000;
+    // the storage figures' safety net (#890): storage changes, a transfer, the page coming back and every
+    // connect refresh them; this only catches what those miss, and never runs out of sight
+    const STATUS_BEAT_MS = 15 * 60 * 1000;
 
     function inAndroidApp() {
         return !!(root.AndroidNotification || root.AndroidCaption || root.AndroidDeviceStatus || root.AndroidPhoneStorage);
@@ -230,14 +232,28 @@
         }, () => { storageRoots = null; });
     }
 
+    // the app's last androiddevicestatus snapshot (a copy: wmShell maps the operator name in the shared
+    // detail). The app pushes one on every change while it runs, so it is the current state and the
+    // synchronous AndroidDeviceStatus.getState() bridge call (a wait on the app's main thread) is needed
+    // only before the first push (#890)
+    let pushedDeviceState = null;
+    function takePushedDeviceState(detail) {
+        let d = detail;
+        if (typeof d === 'string') { try { d = JSON.parse(d); } catch (_) { d = null; } }
+        if (!d || typeof d !== 'object') return;
+        try { pushedDeviceState = JSON.parse(JSON.stringify(d)); } catch (_) { pushedDeviceState = null; }
+    }
+    function appDeviceState() {
+        if (pushedDeviceState) return pushedDeviceState;
+        const b = root.AndroidDeviceStatus;
+        if (!b || typeof b.getState !== 'function') return null;
+        try { return JSON.parse(b.getState()); } catch (_) { return null; }
+    }
+
     /** The phone's status as the server keeps it; unknown fields stay out (never guessed). */
     function deviceStatus() {
         const out = { foreground: !doc || doc.visibilityState === 'visible' };
-        let s = null;
-        const b = root.AndroidDeviceStatus;
-        if (b && typeof b.getState === 'function') {
-            try { s = JSON.parse(b.getState()); } catch (_) { s = null; }
-        }
+        const s = appDeviceState();
         // the owner's description of the phone (Device ID, #829)
         out.description = identity().description;
         if (s) {
@@ -287,7 +303,8 @@
     function myEdition(st) {
         let cellular = !!(st && st.cellular && st.cellular.present);
         if (!st || !st.cellular) {
-            try { const s2 = root.AndroidDeviceStatus ? JSON.parse(root.AndroidDeviceStatus.getState()) : null; cellular = !!(s2 && s2.cellular && s2.cellular.present); } catch (_) { /* no bridge */ }
+            const s2 = appDeviceState();
+            cellular = !!(s2 && s2.cellular && s2.cellular.present);
         }
         const scr = screenInfo();
         let h = null;
@@ -337,6 +354,33 @@
     let statusTimer = null;
     let lastStatusAt = 0;
 
+    /*
+     * What decides whether a status goes out (#890): the figures a person or Device Center tells apart,
+     * not the raw readings. Signal strength already comes as bars (0-4) and the battery as a whole
+     * percent; the battery's live current, voltage, temperature and charge counter, the link rates and
+     * the free bytes changed on almost every push, so a status went out every 5 seconds, screen off
+     * too. The payload still carries the exact values; only this key is coarse.
+     */
+    const pick = (o, keys) => {
+        if (!o || typeof o !== 'object') return o;
+        const r = {};
+        keys.forEach((k) => { if (o[k] !== undefined) r[k] = o[k]; });
+        return r;
+    };
+    function statusKey(status) {
+        if (!status || typeof status !== 'object') return '';
+        const { at: _at, activeDownKbps: _down, activeUpKbps: _up, ...rest } = status;
+        if (rest.battery) rest.battery = pick(rest.battery, ['level', 'charging', 'plugged', 'saver', 'status', 'health']);
+        if (rest.wifi) rest.wifi = pick(rest.wifi, ['enabled', 'connected', 'level', 'ssid']);
+        if (Array.isArray(rest.storage)) {
+            // free space in whole percent of the card (a file written or removed moved the exact bytes)
+            rest.storage = rest.storage.map((r) => (r && typeof r === 'object'
+                ? { id: r.id, name: r.name, total: r.total, free: Number(r.total) > 0 && r.free != null ? Math.round((Number(r.free) / Number(r.total)) * 100) : r.free }
+                : r));
+        }
+        try { return JSON.stringify(rest); } catch (_) { return String(Date.now()); }
+    }
+
     function pushStatus() {
         if (kind !== 'device' || !st.online) return;
         const wait = STATUS_MIN_MS - (Date.now() - lastStatusAt);
@@ -352,8 +396,7 @@
             // few seconds, and each one sent the whole status and made the server re-send every peer
             // list; the same status again goes out at most every 10 minutes
             const status = deviceStatus();
-            let key = '';
-            try { const { at: _at, ...rest } = status || {}; key = JSON.stringify(rest); } catch (_) { key = String(Date.now()); }
+            const key = statusKey(status);
             if (key === lastStatusKey && Date.now() - lastStatusSentAt < STATUS_SAME_MS) return;
             lastStatusKey = key;
             lastStatusSentAt = Date.now();
@@ -396,7 +439,7 @@
             takeLists(res);
             lastStatusAt = Date.now();
             // the hello carried the status: the next one goes out only when it differs from this
-            try { const { at: _at, ...rest } = data.status || {}; lastStatusKey = data.status ? JSON.stringify(rest) : ''; } catch (_) { lastStatusKey = ''; }
+            lastStatusKey = data.status ? statusKey(data.status) : '';
             lastStatusSentAt = Date.now();
             fire('state', state());
             if (kind === 'device') { loadReceived(); tellVisible(); }
@@ -627,7 +670,7 @@
                 const loaded = root.phoneStorage;
                 if (!loaded || !loaded.available) throw err('disabled', 'Phone storage is not shared.');
                 // what changes on the phone, for the computers that watch a folder
-                loaded.on('changed', (m) => emit('storage.changed', m));
+                loaded.on('changed', (m) => { emit('storage.changed', m); refreshStorageSoon(); });
                 loaded.on('config', () => { emit('storage.config', null); refreshStorageRoots().then(pushStatus); });
                 return loaded;
             }).catch((e) => { storageLoading = null; throw e; });
@@ -728,7 +771,8 @@
     function registerDeviceOps() {
         registerOp('status.get', () => deviceStatus());
         registerOp('stream.send', streamSend);
-        registerOp('stream.receive', streamReceive);
+        // a file written to the phone changes its free space (#890: no timer reads it any more)
+        registerOp('stream.receive', (args, from) => Promise.resolve(streamReceive(args, from)).finally(refreshStorageSoon));
 
         // the computer's user chose how to connect; this device's user agrees or not
         registerOp('partnership.propose', async (args, from) => {
@@ -746,10 +790,13 @@
         const STORAGE_OPS = ['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open'];
         registerOp('storage.watch', async (args) => (await storage()).watch(String(args.root || ''), String(args.path || '/')));
         registerOp('storage.unwatch', async (args) => { await (await storage()).unwatch(String(args.root || ''), String(args.path || '/')); return true; });
+        // what a computer changes on the phone moves its free space (#890: no timer reads it any more)
+        const STORAGE_WRITES = new Set(['mkdir', 'rename', 'delete', 'trash', 'restore', 'move', 'copy']);
         STORAGE_OPS.forEach((op) => {
             registerOp(`storage.${op}`, async (args) => {
                 const ps = await storage();
                 const res = await ps.call(op, args || {});
+                if (STORAGE_WRITES.has(op)) refreshStorageSoon();
                 // the app's local file URLs carry a per-launch token and mean nothing off the phone
                 if (op === 'hello' && res && typeof res === 'object') { const copy = Object.assign({}, res); delete copy.baseUrl; return copy; }
                 return res;
@@ -775,7 +822,8 @@
         });
 
         const b = root.AndroidDeviceStatus;
-        if (b) root.addEventListener('androiddevicestatus', pushStatus);
+        // the event carries the snapshot itself (detail): no second, synchronous getState() per push (#890)
+        if (b) root.addEventListener('androiddevicestatus', (e) => { takePushedDeviceState(e && e.detail); pushStatus(); });
         else if (root.navigator && typeof root.navigator.getBattery === 'function') {
             root.navigator.getBattery().then((bat) => {
                 webBattery = bat;
@@ -784,7 +832,8 @@
                 pushStatus();
             }, () => { /* no battery API */ });
         }
-        if (doc) doc.addEventListener('visibilitychange', pushStatus);
+        // back in sight: the storage figures again (they are no longer read on a 2-minute timer, #890)
+        if (doc) doc.addEventListener('visibilitychange', () => { pushStatus(); if (doc.visibilityState === 'visible' && st.online) refreshStorageSoon(); });
         // a program changed on the shell's stage, or a foldable was opened / closed (#827)
         if (doc && root.MutationObserver) {
             new MutationObserver(pushStatus).observe(doc.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
@@ -795,7 +844,20 @@
             const now = s && s.foldable ? s.screen : '';
             if (now !== lastScreen) { lastScreen = now; pushStatus(); }
         });
-        setInterval(() => { refreshStorageRoots().then(pushStatus); }, STATUS_BEAT_MS);
+        // the safety net (STATUS_BEAT_MS): skipped while the page is out of sight or the screen is off
+        storageBeat = setInterval(() => {
+            if (!doc || doc.visibilityState !== 'visible' || doc.documentElement.dataset.screenOff !== undefined) return;
+            refreshStorageSoon();
+        }, STATUS_BEAT_MS);
+    }
+
+    // one storage read for a burst of reasons (a transfer's files, a folder change, coming back)
+    let storageBeat = null;
+    let storageSoonTimer = null;
+    function refreshStorageSoon() {
+        if (!root.AndroidPhoneStorage) { pushStatus(); return; }
+        clearTimeout(storageSoonTimer);
+        storageSoonTimer = setTimeout(() => { storageSoonTimer = null; refreshStorageRoots().then(pushStatus); }, 1500);
     }
 
     // ---------------------------------------------------------------- wiring
