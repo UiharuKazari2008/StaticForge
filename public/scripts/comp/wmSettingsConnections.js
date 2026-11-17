@@ -1,5 +1,5 @@
 /**
- * Melaton Mobile Settings: Connections pages (Connections, Network Cards, Domain Enroll, Wireless Manager, Remote Access, Grimoire, Cellular, Bluetooth) (Yozora #709, #771).
+ * Melaton Mobile Settings: Connections pages (Connections, Network Cards, Nightshade, Domain Enroll, Wireless Manager, Remote Access, Grimoire, Cellular, Bluetooth) (Yozora #709, #771, #895).
  * Pages for the Settings app (wmPrograms.js), added through window.wmSettings.registerPage /
  * extendPage and drawn with window.wmSettings.ui so they look like WM 6.1's own pages. Every
  * value is read and saved through the desktop's own store (one source of truth).
@@ -11,6 +11,9 @@
  *   Network Cards          WM's Configure Network Adapters: the network is the domain, the one
  *                          adapter is the VPN miniport (melatonNetworkDialogs.js miniportLabel);
  *                          tapping it shows its status, ok goes back to the list
+ *   Nightshade             the Nightshade Network service (#895): General (status, account, Connect /
+ *                          Disconnect), CaféReady (the Melaton Café Miniport's switch and idle timeout,
+ *                          its logo), Advanced (server, latency, session, domain)
  *   Domain Enroll          the domain (network) and connection names, config.json
  *                          userGlobalSettings.desktop.domainName / connectionName through
  *                          persistUserGlobalSettingsPatch (modalUtils.js), as the desktop's
@@ -416,6 +419,115 @@
                 if (d.rerender) d.rerender();
                 return false;
             }
+            return [];
+        }
+    });
+
+    // ---------------------------------------------------------------- Nightshade Network (#895)
+    // The service the Dreamscape link is: its own applet with the service's icon, as a deeply
+    // integrated Windows service. Status from websocket.js nightshadeState.
+
+    const NS_STATUS = { connected: 'Connected', connecting: 'Connecting...', restarting: 'Restarting', 'signed-out': 'Sign-in required', off: 'Disconnected', 'no-internet': 'No internet connection', unavailable: 'Unavailable' };
+    const NS_PROBLEM = {
+        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
+        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
+        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
+    };
+    function nsState() {
+        const c = ws();
+        try { if (c && typeof c.nightshadeState === 'function') return c.nightshadeState(); } catch (_) { /* below */ }
+        return { service: 'unavailable', problem: true, cafeReady: false, connectedAt: null, rtt: null };
+    }
+    function nsStatusText(s) {
+        return s.service === 'connected' && s.cafeReady ? 'Connected (with Caf\u00e9Ready)' : NS_STATUS[s.service] || 'Unavailable';
+    }
+    function accountName() {
+        const a = root.meletonAccounts;
+        try { if (a && typeof a.name === 'function' && a.name()) return a.name(); } catch (_) { /* below */ }
+        try { return root.localStorage.getItem('username') || '\u2014'; } catch (_) { return '\u2014'; }
+    }
+
+    wmSettings.registerPage({
+        id: 'nightshade',
+        tab: 'connections',
+        label: 'Nightshade',
+        icon: 'set-nightshade',
+        tabs: [['ns-general', 'General'], ['ns-cafe', 'Caf\u00e9Ready'], ['ns-advanced', 'Advanced']],
+        init() {
+            const mcx = root.melatonContinuity;
+            const cfg = mcx && mcx.miniportConfig ? mcx.miniportConfig() : null;
+            const mp = mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null;
+            return {
+                idle: cfg && cfg.config && cfg.config.idleMinutes != null ? Number(cfg.config.idleMinutes) : 10,
+                cafeOn: !(mp && mp.enabled === false),
+                cafeTouched: false
+            };
+        },
+        render(el, tab, d, api) {
+            el.classList.add('wm-setc');
+            d.rerender = api.rerender;
+            setHeader(el, 'Nightshade Network');
+            const mcx = root.melatonContinuity;
+            const mp = mcx && typeof mcx.miniport === 'function' ? mcx.miniport() : null;
+            if (tab === 'ns-cafe') {
+                const cur = IDLE_CHOICES.find(([v]) => v === d.idle) || [d.idle, `${d.idle} minutes`];
+                const has = !!(mp && mp.present);
+                el.innerHTML = `<div class="wm-setc-cafe-logo"><img src="/static_images/melaton/cafe-ready-dark.png" alt="Caf\u00e9Ready" draggable="false"></div>
+                    <p>Caf\u00e9Ready lays a cache and its own connection over the Nightshade Network: windows keep their data and stay connected while one restarts.</p>
+                    ${has ? ui.check('ns-cafe-on', 'Use Melaton Caf\u00e9 Miniport', d.cafeOn, 'data-k="ns-cafe-on"') : ui.note('This device has no Melaton Caf\u00e9 Miniport. Caf\u00e9Ready needs the Dreamscape app.')}
+                    ${has ? `${ui.sub('Idle timeout')}<p>Disconnect the Miniport when no program has used it for:</p>${ui.comboHtml('ns-idle', cur[1])}` : ''}
+                    ${ui.facts([['Caf\u00e9Ready:', nsState().cafeReady ? 'Active' : has && d.cafeOn ? 'Standing by' : 'Off']])}`;
+                const on = el.querySelector('input[data-k="ns-cafe-on"]');
+                if (on) on.addEventListener('change', () => { d.cafeOn = on.checked; d.cafeTouched = true; });
+                const combo = el.querySelector('[data-act="ns-idle"]');
+                if (combo) ui.bindCombo(combo, IDLE_CHOICES, d.idle, (v) => { d.idle = v; d.cafeTouched = true; });
+                return;
+            }
+            if (tab === 'ns-advanced') {
+                el.innerHTML = `<div data-f="facts"></div>${ui.sub('Domain controller')}<div data-f="server"></div>`;
+                const facts = el.querySelector('[data-f="facts"]');
+                const server = el.querySelector('[data-f="server"]');
+                const paint = () => {
+                    const a = ui.facts(connectionFacts()); if (facts.innerHTML !== a) facts.innerHTML = a;
+                    const b = ui.facts(serverFacts()); if (server.innerHTML !== b) server.innerHTML = b;
+                };
+                paint();
+                liveTick(el, paint);
+                if (Date.now() - statusAt >= STATUS_POLL_MS) pollStatus().then(() => { if (el.isConnected) paint(); });
+                return;
+            }
+            // General: the service's status, the account, Connect / Disconnect
+            el.innerHTML = `<div class="wm-setc-ns-head"><img src="/static_images/wm61/set-nightshade@2x.png" alt="" draggable="false"><b data-f="status"></b></div>
+                <div data-f="facts"></div><div data-f="note"></div><div data-f="buttons"></div>`;
+            const status = el.querySelector('[data-f="status"]');
+            const facts = el.querySelector('[data-f="facts"]');
+            const note = el.querySelector('[data-f="note"]');
+            const buttons = el.querySelector('[data-f="buttons"]');
+            const paint = () => {
+                const s = nsState();
+                const st = esc(nsStatusText(s)); if (status.innerHTML !== st) status.innerHTML = st;
+                const rows = [['Account:', accountName()]];
+                if (s.service === 'connected' && s.connectedAt) rows.push(['Duration:', formatDuration(Date.now() - s.connectedAt)]);
+                const a = ui.facts(rows); if (facts.innerHTML !== a) facts.innerHTML = a;
+                const n = NS_PROBLEM[s.service] ? ui.note(NS_PROBLEM[s.service]) : ''; if (note.innerHTML !== n) note.innerHTML = n;
+                const up = s.service === 'connected' || s.service === 'connecting';
+                const b = ui.buttons([up ? ['ns-disconnect', 'Disconnect'] : ['ns-connect', s.service === 'signed-out' ? 'Sign In' : 'Connect']]);
+                if (buttons.innerHTML !== b) buttons.innerHTML = b;
+            };
+            buttons.addEventListener('click', (ev) => {
+                const btn = ev.target.closest('[data-act]');
+                if (!btn) return;
+                if (btn.dataset.act === 'ns-connect') connect();
+                else if (btn.dataset.act === 'ns-disconnect') disconnect();
+                setTimeout(paint, 50);
+            });
+            paint();
+            liveTick(el, paint);
+        },
+        commit(d) {
+            const mcx = root.melatonContinuity;
+            if (d.cafeTouched && mcx && typeof mcx.setMiniportConfig === 'function') mcx.setMiniportConfig({ idleMinutes: d.idle, enabled: d.cafeOn });
             return [];
         }
     });

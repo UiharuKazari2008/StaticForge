@@ -289,3 +289,20 @@ html.ui-mobile .wm-setc-mcp .wm-setc-mcp-row .wm-edit {
 html.ui-mobile .wm-setc-mcp .wm-setc-mcp-row .wm-button {
     flex: 0 0 auto;
 }
+
+/* Settings > Connections > Nightshade (#895): the service's icon and status at the top of General,
+   CaféReady's logo (white lettering: on a black sticker, as About > Version's badge) */
+html.ui-mobile .wm-setc .wm-setc-ns-head {
+    display: flex;
+    align-items: center;
+    gap: calc(8 * var(--wm-px));
+    margin-bottom: calc(6 * var(--wm-px));
+}
+html.ui-mobile .wm-setc .wm-setc-ns-head img { width: calc(32 * var(--wm-px)); height: calc(32 * var(--wm-px)); flex: none; }
+html.ui-mobile .wm-setc .wm-setc-cafe-logo {
+    display: inline-flex;
+    padding: calc(3 * var(--wm-px)) calc(8 * var(--wm-px));
+    margin-bottom: calc(4 * var(--wm-px));
+    background: #111111;
+}
+html.ui-mobile .wm-setc .wm-setc-cafe-logo img { display: block; height: calc(26 * var(--wm-px)); width: auto; }
