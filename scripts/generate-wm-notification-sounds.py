@@ -13,7 +13,9 @@
 #                                          long-short-short cadence of a phone's emergency alert.
 #                                          Tones only: no header or end-of-message data bursts.
 #   RainAlarm.wav        rain-alarm        five water drops, then one soft bell
-#   SoftwareUpdate.wav   update            a short glassy rising fifth and octave
+#   SoftwareUpdate.wav   update            two soft round notes rising a major third (C5, E5), a slow
+#                                          swell and no strike, quieter than the rest (Yukimi, Nov 17:
+#                                          the glassy fifth-and-octave was too sharp and too loud)
 #   LapisCountdown.wav   lapis-run-left    a car's cabin warning gong, three even strokes on one note
 #   LapisUnlocked.wav    lapis-unlocked    two key-fob chirps, then a rising two-note gong: "locked?"
 #   LapisIssue.wav       lapis-issue       a dashboard fault chime: a gong falling a tritone, twice
@@ -69,6 +71,14 @@ def gong(f, t, ring):
     s = math.sin(TAU * f * t) + 0.6 * math.sin(TAU * (f + 3) * t) + 0.3 * math.sin(TAU * 2 * f * t) * math.exp(-t * 5)
     s += 0.35 * math.sin(TAU * 2.76 * f * t) * math.exp(-t * 16)
     return s * env
+
+
+def soft(f, t, ring, attack=0.025):
+    """A soft round tone: a sine that swells in (no strike), a faint octave that fades at once, a warm ring."""
+    if t < 0 or t > ring:
+        return 0.0
+    env = (1 - math.cos(math.pi * min(1.0, t / attack))) / 2 * math.exp(-t * 3.2 / ring) * min(1.0, (ring - t) / 0.04)
+    return (math.sin(TAU * f * t) + 0.12 * math.sin(TAU * 2 * f * t) * math.exp(-t * 18)) * env
 
 
 def chirp(t, length, f0, f1):
@@ -140,8 +150,9 @@ def rain_alarm():
 
 
 def software_update():
-    notes = [(784.0, 0.0, 0.3, 1.0), (1174.7, 0.085, 0.32, 0.9), (1568.0, 0.17, 0.55, 1.0)]
-    return render(0.75, lambda t: sum(g * glass(f, t - s, r) for f, s, r, g in notes))
+    # C5 then E5, the second a touch softer: "something new, when you have a moment"
+    notes = [(523.3, 0.0, 0.55, 1.0), (659.3, 0.16, 0.7, 0.85)]
+    return render(0.9, lambda t: sum(g * soft(f, t - s, r) for f, s, r, g in notes))
 
 
 def lapis_countdown():
@@ -171,6 +182,9 @@ SOUNDS = {
     'LapisIssue': lapis_issue,
 }
 
+# peak level per sound (of full scale); the rest 0.8. The update notice is a gentle one (-6 dB)
+LEVEL = {'SoftwareUpdate': 0.4}
+
 out_dir = sys.argv[1] if len(sys.argv) > 1 else 'public/sounds/wm61'
 names = sys.argv[2:] or list(SOUNDS)
 os.makedirs(out_dir, exist_ok=True)
@@ -184,5 +198,5 @@ for name in names:
     path = os.path.join(out_dir, name + '.wav')
     with wave.open(path, 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
-        w.writeframes(b''.join(struct.pack('<h', int(x / peak * 0.8 * 32767)) for x in samples))
+        w.writeframes(b''.join(struct.pack('<h', int(x / peak * LEVEL.get(name, 0.8) * 32767)) for x in samples))
     print(path, f'{len(samples) / RATE:.2f} s')
