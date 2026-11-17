@@ -7657,7 +7657,34 @@
     // 'notification' (notification classes), 'system' (taps, hardware buttons), 'media' (the rest)
     function avPlay(path, usage, gain = 1) {
         if (!AV || !usage || typeof AV.play !== 'function') return null;
-        try { return AV.play(location.origin + path, usage, Math.max(0, Math.min(1, gain))) ? { stop() {}, android: true } : null; } catch (_) { return null; }
+        const g = Math.max(0, Math.min(1, gain));
+        // the app keeps every sound it fetched by its URL and never fetches it again (DSApp WmSound,
+        // cacheDir/wm-sounds): a sound changed on the server kept playing its first copy there while the
+        // page's own preview played the new one (Yukimi, Nov 17, #904). The URL carries the file's content
+        // version (the service worker's x-file-hash), so a changed sound is a new file to the app.
+        sndVersion(path).then((v) => {
+            try { AV.play(location.origin + path + (v ? `?v=${v}` : ''), usage, g); } catch (_) { /* older app */ }
+        });
+        return { stop() {}, android: true };
+    }
+
+    // a sound file's content version from the offline cache (sw.js stores each file with x-file-hash);
+    // looked up once per file per load, '' when it is not cached yet
+    const sndVersions = new Map();
+    function sndVersion(path) {
+        if (!sndVersions.has(path)) {
+            sndVersions.set(path, (async () => {
+                try {
+                    const cache = await caches.open('static-cache-v2'); // sw.js STATIC_CACHE
+                    const hit = await cache.match(decodeURIComponent(path)) || await cache.match(path);
+                    const h = hit && hit.headers.get('x-file-hash');
+                    return h ? h.slice(0, 16) : '';
+                } catch (_) {
+                    return '';
+                }
+            })());
+        }
+        return sndVersions.get(path);
     }
 
     async function sndPlayFile(file, gain = 1, usage) {
