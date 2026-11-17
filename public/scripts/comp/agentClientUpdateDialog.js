@@ -433,12 +433,17 @@
         const phone = window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
         const away = () => document.hidden || document.documentElement.hasAttribute('data-screen-off');
         if (phone && away()) {
+            // the screen coming on is no visibilitychange (the page stays visible with the screen off,
+            // html[data-screen-off]): the app's melatonscreen { on: true } says it (#890)
             const onShow = () => {
                 if (away()) return;
                 document.removeEventListener('visibilitychange', onShow);
+                window.removeEventListener('melatonscreen', onScreen);
                 go();
             };
+            const onScreen = (e) => { if (e && e.detail && e.detail.on) onShow(); };
             document.addEventListener('visibilitychange', onShow);
+            window.addEventListener('melatonscreen', onScreen);
         } else {
             go();
         }
