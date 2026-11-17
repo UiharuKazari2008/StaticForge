@@ -4322,3 +4322,13 @@ html.ui-mobile #wmShell .wm-status-icon[data-icon="notify-many"]::after {
     font: bold calc(13 * var(--wm-icon-unit, var(--wm-px))) / 1 var(--wm-font);
     letter-spacing: calc(-0.5 * var(--wm-icon-unit, var(--wm-px)));
 }
+
+/* the Car bubble (#902): 1-bit glyphs on its keys (wmShell bitGlyph, the text's colour; grey when disabled),
+ * up to three keys in one row ([Climate Start] [Lock] [Unlock]), the remote start's time left */
+#wmShell .wm-carkey-key .wm-bit-glyph {
+    width: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    height: calc(16 * var(--wm-icon-unit, var(--wm-px)));
+    display: block;
+}
+#wmShell .wm-carkey-keys .wm-carkey-key { min-width: 0; white-space: nowrap; }
+#wmShell .wm-car-run { margin-bottom: calc(2 * var(--wm-px)); }
