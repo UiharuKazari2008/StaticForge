@@ -4313,7 +4313,8 @@
         batteryBubbleTimer = setInterval(() => {
             const el = shell && shell.querySelector('.wm-bubble');
             if (!el || el.hidden || el.dataset.role !== 'battery') { clearInterval(batteryBubbleTimer); batteryBubbleTimer = null; return; }
-            if (document.hidden) return;
+            // (the screen off too: a bridge read and a redraw every 2 s for nobody, #890)
+            if (!awake()) return;
             readBattery();
             statusBubble('battery', anchor, true);
         }, 2000);
@@ -5326,7 +5327,7 @@
                     // (Yukimi, Nov 10); a workspace switch keeps its Please Wait box
                     if (!switchingWorkspace) {
                         const release = busy(true, { delay: 0, timeout: 30000 });
-                        const watch = setInterval(() => { if (!t.isConnected || t.classList.contains('removing')) { clearInterval(watch); release(); } }, 250);
+                        whenToastGone(t, 30000, release);
                         continue;
                     }
                     loadingToasts.add(t);
@@ -5348,7 +5349,7 @@
             if (progress) {
                 t.dataset.wmBusy = '1';
                 const release = busy(true, { delay: 250, timeout: 60000 });
-                const watch = setInterval(() => { if (!t.isConnected || t.classList.contains('removing')) { clearInterval(watch); release(); } }, 250);
+                whenToastGone(t, 60000, release);
                 continue;
             }
             // a routine done ("Image deleted!", "Moved 1 files", "Saved"): nothing, the result is on screen
@@ -5804,6 +5805,34 @@
         }
         noteTrayOpen = !noteTrayOpen;
         renderNotes();
+    }
+
+    /**
+     * fn() once the toast is taken away (out of the page, or its 'removing' fade begun), or after ms (null:
+     * never gives up). Watched, not polled (#890: a 250 / 400 ms timer each, and a notification left waiting
+     * in the title bar - an error stays until dismissed - kept its poll going for hours, the screen off too).
+     */
+    function whenToastGone(t, ms, fn) {
+        let done = false;
+        let mo = null;
+        let timer = null;
+        let parent = null;
+        const end = () => { if (done) return; done = true; if (mo) mo.disconnect(); clearTimeout(timer); fn(); };
+        const check = () => {
+            if (done) return;
+            if (!t || !t.isConnected || t.classList.contains('removing')) { end(); return; }
+            // moved to another box: its new box is watched too
+            if (mo && t.parentNode !== parent) { parent = t.parentNode; mo.observe(parent, { childList: true }); }
+        };
+        if (typeof MutationObserver === 'function' && t) {
+            mo = new MutationObserver(check);
+            mo.observe(t, { attributes: true, attributeFilter: ['class'] });
+        } else if (t) {
+            // (no MutationObserver: the old poll)
+            const poll = setInterval(() => { check(); if (done) clearInterval(poll); }, 400);
+        }
+        if (ms != null) timer = setTimeout(end, ms);
+        check();
     }
 
     function watchToasts() {
@@ -7810,8 +7839,7 @@
                 id = window.showGlassToast(type, escapeHtml(title), html, false, stay ? false : (timeout || 8000), null, buttons);
             } catch (err) { console.warn('[wmShell] notify', err); }
             if (!id) { resolve(true); return; }
-            const gone = () => { const t = document.getElementById(id); return !t || t.classList.contains('removing'); };
-            const timer = setInterval(() => { if (gone()) { clearInterval(timer); resolve(true); } }, 400);
+            whenToastGone(document.getElementById(id), null, () => resolve(true));
         });
     }
 
