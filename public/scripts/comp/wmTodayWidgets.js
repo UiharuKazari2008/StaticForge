@@ -212,6 +212,8 @@
     // timed re-read (#890: every 5 min while Today showed, rule server-push-not-polling)
     const director = { asked: 0, status: null, lists: { wren: null, kabuki: null, xi: null }, at: { wren: 0, kabuki: 0, xi: 0 }, stale: { wren: true, kabuki: true, xi: true }, wired: false };
     const directorStale = (all) => { for (const p of PERSONAS) if (all || Date.now() - director.at[p] >= SESSIONS_MS) director.stale[p] = true; };
+    // only these personas' lists (a turn of theirs ended)
+    const directorStaleOf = (list) => { for (const p of list) if (PERSONAS.includes(p)) director.stale[p] = true; };
     const toTime = (v) => (typeof v === 'number' ? (v < 1e12 ? v * 1000 : v) : (Date.parse(v) || 0));
 
     // An item whose data came in by itself asks Today to repaint: Today no longer repaints on every
@@ -233,6 +235,12 @@
             else if (sh.current === 'today' && typeof sh.refreshToday === 'function') sh.refreshToday();
         }, 150);
     }
+    // one later repaint per item (a read held back by a tap or a floor): no minute's full draw asks again (#890)
+    const laterTimers = new Map();
+    function repaintLater(id, ms) {
+        if (laterTimers.has(id)) return;
+        laterTimers.set(id, setTimeout(() => { laterTimers.delete(id); repaintItems([id]); }, Math.max(50, ms)));
+    }
     const DIRECTOR_ITEMS = ['director', 'director-wren', 'director-kabuki', 'director-xi'];
 
     function wireDirector() {
@@ -241,15 +249,29 @@
         director.wired = true;
         // the status comes round periodically: Today repaints only when it says something new (clocks aside)
         let statusKey = '';
-        let turnKey = '';
+        let turnSeen = false;
+        let chatTurn = null; // the persona of the running Wren / Chiyo turn ('wren', 'kabuki', '?' = not known), or null
+        let chatTurnId = '';
+        let xiTurnId = '';
         c.on('director_computer_status', (m) => {
             director.status = (m && (m.data || m)) || director.status;
             let k = '';
             try { k = JSON.stringify(director.status, (key, v) => (/^(at|ts|time|timestamp|updatedAt|checkedAt|lastSeen|now|uptime\w*)$/i.test(key) ? undefined : v)); } catch (_) { k = String(Date.now()); }
-            // a turn started or ended (Wren / Chiyo, or Xi): the sessions' order and pictures may have moved
+            // a turn ended (or moved to another session): that persona's sessions' order and pictures may have
+            // moved, so only its list is read again. A turn that starts needs none: the running session comes
+            // with the status, its prints with director_session_image (#890: every edge of every turn asked
+            // for all three lists, about 6 requests a turn)
             const st = director.status || {};
-            const t = `${!!st.running}:${st.sessionId || ''}:${!!(st.xi && st.xi.running)}:${(st.xi && st.xi.sessionId) || ''}`;
-            if (t !== turnKey) { if (turnKey) directorStale(true); turnKey = t; }
+            const chatId = st.running && st.sessionId ? String(st.sessionId) : '';
+            const xiId = st.xi && st.xi.running ? String(st.xi.sessionId || '?') : '';
+            if (turnSeen) {
+                if (chatTurnId && chatTurnId !== chatId) directorStaleOf(chatTurn === 'wren' || chatTurn === 'kabuki' ? [chatTurn] : ['wren', 'kabuki']);
+                if (xiTurnId && xiTurnId !== xiId) directorStaleOf(['xi']);
+            }
+            turnSeen = true;
+            if (chatId !== chatTurnId) chatTurn = chatId ? chatPersonaOf(st, chatId) : null;
+            chatTurnId = chatId;
+            xiTurnId = xiId;
             if (k !== statusKey) { statusKey = k; repaintItems(DIRECTOR_ITEMS); }
         });
         // a session made a print: its picture on Today at once
@@ -278,12 +300,21 @@
         director.at[p] = Date.now();
     }
 
+    /** Wren or Chiyo for a running session, as personaModel tells them: the status tray's entry, else our lists; '?' when neither has it. */
+    function chatPersonaOf(st, id) {
+        const tray = (st.sessions || []).find((x) => x && String(x.id) === id);
+        if (tray) return tray.memoryStore === 'obliterated' ? 'kabuki' : 'wren';
+        const inList = (p) => (director.lists[p] || []).some((x) => String(x.id) === id);
+        return inList('kabuki') ? 'kabuki' : inList('wren') ? 'wren' : '?';
+    }
+
     function directorStatus() {
         const inst = window.directorInstance;
         const st = (inst && inst._status) || director.status;
         if (!st && online() && Date.now() - director.asked > 60000) {
             director.asked = Date.now();
-            ask('director_computer_status').then((d) => { if (d && d.state) director.status = d; });
+            // the answer draws the items now (#890: the minute's full draw no longer comes round to show it)
+            ask('director_computer_status').then((d) => { if (d && d.state) { director.status = d; repaintItems(DIRECTOR_ITEMS); } });
         }
         return st || null;
     }
@@ -1247,7 +1278,9 @@
         // read once, then only when something changed (vfs_updated, File Explorer's wmFilesChange):
         // no timed re-read (rule server-push-not-polling); a failure retries after a minute
         if (!files.stale && files.at && (files.count != null || now - files.at < FILES_RETRY_MS)) return;
-        if (performance.now() - files.tapAt < 800) return; // the next repaint asks
+        // a tap just now: the read waits for it (no minute's draw comes round to ask again, #890)
+        const tapLeft = 800 - (performance.now() - files.tapAt);
+        if (tapLeft > 0) { repaintLater('files', tapLeft + 50); return; }
         files.busy = now;
         files.stale = false;
         files.at = now;
@@ -1357,16 +1390,26 @@
     function loadRemote() {
         const b = window.browsingSessions;
         if (!b || typeof b.list !== 'function') return;
-        if (!ie.wired && typeof b.on === 'function') { ie.wired = true; b.on('changed', () => { ie.stale = true; repaintItems(['ie']); }); }
+        if (!ie.wired && typeof b.on === 'function') {
+            ie.wired = true;
+            b.on('changed', () => { ie.stale = true; repaintItems(['ie']); });
+            // the server knows this client (again): a read that waited for it, or pushes missed while away
+            b.on('ready', () => { if (ie.at) ie.stale = true; repaintItems(['ie']); });
+        }
         const now = Date.now();
         if ((ie.busy && now - ie.busy < 30000) || !online() || sh.current !== 'today' || document.hidden) return;
         if (document.documentElement.dataset.wmBoot !== 'done') return; // not while the phone starts
-        // read once, then only after the server's "sessions changed" push (at most every 15 s)
-        if (ie.at && (!ie.stale || now - ie.at < IE_CHANGED_MS) && (ie.sessions != null || now - ie.at < FILES_RETRY_MS)) return;
-        if (performance.now() - files.tapAt < 800) return; // the next repaint asks
+        // read once, then only after the server's "sessions changed" push (at most every 15 s: a push inside
+        // those is read when they end; no minute's draw comes round to ask again, #890)
+        if (ie.at && (!ie.stale || now - ie.at < IE_CHANGED_MS) && (ie.sessions != null || now - ie.at < FILES_RETRY_MS)) {
+            if (ie.stale) repaintLater('ie', IE_CHANGED_MS - (now - ie.at) + 50);
+            return;
+        }
+        const tapLeft = 800 - (performance.now() - files.tapAt);
+        if (tapLeft > 0) { repaintLater('ie', tapLeft + 50); return; }
         let st = null;
         try { st = b.state(); } catch (_) { st = null; }
-        if (!st || !st.online) return; // the server does not know this client yet
+        if (!st || !st.online) return; // the server does not know this client yet ('ready' above draws it then)
         ie.busy = now;
         ie.stale = false;
         ie.at = now;
@@ -2248,6 +2291,15 @@
         document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') shown(false); });
         // the link back, or the service's own state moved (restarting, connected): the server item reads again
         window.addEventListener('nightshade:state', () => serverWanted());
+        // the Weather app refreshes data older than 15 min only when asked (wmWeather.current(); its own poll
+        // runs only while its program shows): Today asks on the shell's minute while it shows the weather, as
+        // the minute's full draw did (#890). 6.5's clock asks too (buildPanels); current() asks at most once a
+        // minute, and what lands comes back as wmWeatherChange above
+        document.addEventListener('wmminute', () => {
+            if (!todayOnScreen() || isOff('weather')) return;
+            const W = window.wmWeather;
+            if (W && typeof W.current === 'function') { try { W.current(); } catch (_) { /* not loaded */ } }
+        });
         // order: Tasks, Calendar, Accounts (wmAccounts.js, after 'calendar'), Director, Studio,
         // Daily usage, Weather, Notes, Remote Desktop, Server status. defaultOn: false = off until
         // switched on in Settings > Today > Items (when the shell honours it)
@@ -2274,8 +2326,10 @@
         registerItem({ id: 'studio', label: 'Studio', after: prev, wantsMinute: v65, render: renderStudio, titanium: studioTitanium });
         // (the print count comes with the server's ping, and has no signal of its own)
         if (!v65) registerItem({ id: 'usage', label: 'Daily Usage', icon: 'app-studio', after: 'studio', wantsMinute: true, text: usageText, onTap: () => open('studio'), titanium: usageTitanium });
+        // (the weather draws on wmWeatherChange; its data is kept fresh on the minute below, not by a draw)
         registerItem({ id: 'weather', label: 'Weather', after: 'usage', wantsMinute: false, render: renderWeather, titanium: weatherTitaniumPages });
-        registerItem({ id: 'notes', label: 'Notes', after: 'weather', defaultOn: false, wantsMinute: false, render: renderNotes, titanium: notesTitanium, options: NOTES_OPTIONS });
+        // (Notes' list comes in when asked, from a draw, with no signal of its own: read again on the minute)
+        registerItem({ id: 'notes', label: 'Notes', after: 'weather', defaultOn: false, wantsMinute: true, render: renderNotes, titanium: notesTitanium, options: NOTES_OPTIONS });
         // (Remote Desktop's program says nothing when a session starts or ends: read on the minute)
         registerItem({
             id: 'remote-desktop', label: 'Remote Desktop', icon: 'app-remote-desktop-mobile', after: 'notes', defaultOn: false, wantsMinute: true, text: remoteText, titanium: remoteTitanium,
@@ -2293,7 +2347,9 @@
         document.addEventListener('wsMessage', (e) => { const d = e.detail || {}; if (d.type === 'vfs_updated') { files.stale = true; repaintItems(['files']); } });
         // Internet Explorer and Favorites: off until switched on, as Files is
         registerItem({ id: 'ie', label: 'Internet Explorer', icon: 'app-ie', after: 'files', defaultOn: false, wantsMinute: false, render: renderIe, titanium: ieTitanium, options: IE_OPTIONS });
-        registerItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, wantsMinute: false, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });
+        // (programs that register late have no signal: the minute draws it as before; Android's list does say)
+        registerItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, wantsMinute: true, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });
+        document.addEventListener('wmAppsChanged', () => { fav.at = 0; repaintItems(['favorites', 'music']); });
         // Music (#796): 6.5's Windows Media panel, on by default as on the device
         if (v65) {
             registerItem({ id: 'music', label: 'Music', icon: 'app-windows-media', after: 'favorites', wantsMinute: false, text: musicText, titanium: musicTitanium, options: MUSIC_OPTIONS, onTap: () => musicToggle(musicNow()) });
