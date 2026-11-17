@@ -300,7 +300,12 @@
             else if (v >= 2) speed = '480 Mbps';
             else if (v >= 1) speed = '12 Mbps';
         } else {
-            const dev = root.wmShell && typeof root.wmShell.deviceStatus === 'function' ? root.wmShell.deviceStatus() : null;
+            // the link rates are live numbers: the app's pushes carry only a displayed change (DeviceStatusBridge,
+            // #890), so the shell's copy goes stale; read them from the app as this page draws
+            let dev = null;
+            const b = root.AndroidDeviceStatus;
+            if (b && typeof b.getState === 'function') { try { dev = JSON.parse(b.getState()); } catch (_) { dev = null; } }
+            if (!dev) dev = root.wmShell && typeof root.wmShell.deviceStatus === 'function' ? root.wmShell.deviceStatus() : null;
             const kbps = dev ? Number(dev.activeDownKbps) || 0 : 0;
             const wifi = dev && dev.wifi;
             if (kbps > 0) speed = kbps >= 10000 ? `${Math.round(kbps / 1000)} Mbps` : kbps >= 1000 ? `${(kbps / 1000).toFixed(1)} Mbps` : `${kbps} Kbps`;
