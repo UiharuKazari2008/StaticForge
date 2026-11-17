@@ -176,7 +176,7 @@ Additional response/push types from handler:
 
 **Auth:** Session required (in the `gallery` application-key scope)
 
-**Handler:** modules/ws/handlers/120-galleryHandler.js → `handleGallerySubscribe` (#890)
+**Handler:** modules/ws/handlers/120-galleryHandler.js -> `handleGallerySubscribe` (#890)
 
 A light socket (`?light=1` on the socket URL: the Android app's widgets and screen saver, see
 [websocket.md](../websocket.md#phones-and-the-android-app-890)) gets no broadcast it did not subscribe to; this is how it hears

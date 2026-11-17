@@ -48,7 +48,7 @@ Persona names: the protocol keeps the ids `wren`, `kabuki`, and `xi` (and this p
 | `director_save_rules` | `director_save_rules_response` | admin/destructive | Handler: handleDirectorSaveRules |
 | `director_send_message` | `director_send_message_response` | admin/destructive | Handler: handleDirectorSendMessage. `persona: "xi"` runs the host agent. |
 | `director_streaming_ack` | — | session | Client ack of `director_streaming_update.data.seq`. The server holds the next snapshot until this ack or a deadline scaled from client RTT. |
-| `director_stream_watch` | — | session | `{ sessionId, delta, liveDelta? }`: the chat this page has on screen (`''` = none). With `delta: 1` the page takes row deltas: `director_streaming_update.data` then has `rowsFrom` (index of the first row in `rows`), `rowsTotal` and `prevSeq` (the update it builds on); a page without that update sends this packet again and gets the whole update. With `liveDelta: 1` as well it also takes live text deltas (see [Streaming updates](#streaming-updates-director_streaming_update)). `director_streaming_update` goes only to clients watching that chat; a client that never sent this gets every update. A chat whose turn is running answers with its newest update at once. A phone page or DeX window that said it sleeps (`client_dormant`, [statusHub.md](./statusHub.md#client_dormant-fire-and-forget)) gets no updates; when it wakes it is sent the newest one whole. |
+| `director_stream_watch` | - | session | `{ sessionId, delta, liveDelta? }`: the chat this page has on screen (`''` = none). With `delta: 1` the page takes row deltas: `director_streaming_update.data` then has `rowsFrom` (index of the first row in `rows`), `rowsTotal` and `prevSeq` (the update it builds on); a page without that update sends this packet again and gets the whole update. With `liveDelta: 1` as well it also takes live text deltas (see [Streaming updates](#streaming-updates-director_streaming_update)). `director_streaming_update` goes only to clients watching that chat; a client that never sent this gets every update. A chat whose turn is running answers with its newest update at once. A phone page or DeX window that said it sleeps (`client_dormant`, [statusHub.md](./statusHub.md#client_dormant-fire-and-forget)) gets no updates; when it wakes it is sent the newest one whole. |
 | `ledge_checks` | `ledge_checks_response` | session | `{ sessionId, checked: [itemId] }` from a Ledge desk. The other `ledge_*` packets (`ledge_list`, `ledge_get`, `ledge_remove`, `ledge_clear`, `ledge_rename`, `ledge_dispose`) are listed in `modules/ws/handlers/309-ledgeHandler.js`. Changes go to the desk's owner client only, as `ledge_state` (fields in `modules/ledgeDesk.js`). |
 | `director_tool_diff` | `director_tool_diff_response` | session | `{ sessionId, diffId, persona: "xi" }` → `{ text, name, detail }`. The live trace does not include that body. |
 | `director_tool_payload` | `director_tool_payload_response` | session | `{ sessionId, payloadId }` (or `diffId`) returns a parked tool body: `{ args, result, text, name, detail }`. The public trace omits `args` / `result`; the inspector requests them on demand. |
@@ -307,7 +307,7 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 
 **Auth:** Session required
 
-**Handler:** modules/ws/handlers/40-directorHandler.js → `handleDirectorGetMessages` (`modules/cursorDirector.js` / `modules/xiDirector.js` with `persona: "xi"`)
+**Handler:** modules/ws/handlers/40-directorHandler.js -> `handleDirectorGetMessages` (`modules/cursorDirector.js` / `modules/xiDirector.js` with `persona: "xi"`)
 
 **Request fields:**
 
@@ -329,7 +329,7 @@ The chat's task list renders in `#directorTaskList`, above the messages inside `
 - No `partial` (the whole chat) when `sinceId` is not in the chat, is the running turn's assistant message, or is an assistant
   message a reply carried while its turn was still running (it has been written to since).
 
-**Errors:** `type: "error"` via `sendError()` — see [websocket.md](../websocket.md#errors). `SESSION_NOT_FOUND` for an unknown chat.
+**Errors:** `type: "error"` via `sendError()` - see [websocket.md](../websocket.md#errors). `SESSION_NOT_FOUND` for an unknown chat.
 
 ### `director_get_session`
 

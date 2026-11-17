@@ -2857,7 +2857,7 @@ app.get('/logon-picture', (req, res) => {
     });
 });
 
-// Boot-critical static assets — available as soon as HTTP listens (before full static middleware).
+// Boot-critical static assets - available as soon as HTTP listens (before full static middleware).
 // The worker revalidates (no-cache + ETag): an update check for an unchanged one is a 304 (#890)
 app.get('/sw.js', require('./modules/swScriptRoute').createSwScriptHandler(path.join(__dirname, 'public')));
 
