@@ -27,6 +27,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const M = window.studioModel;
     if (!M || typeof M.extend !== 'function') return;
 
@@ -238,12 +239,28 @@
         return true;
     }
 
-    function history(offset = 0, count = 40) {
+    // The gallery's prints newest first, kept while the gallery's list is the same (Print History asked
+    // for it on every scroll near its end: a filter, a copy and a sort of every print each time, #890).
+    // The gallery's list changes by being replaced, or in place at its head (a new print, a print that
+    // moved up) or by length (one taken out): its identity, length and two ends say whether it changed.
+    let historyCache = null;
+    // the gallery says it changed (galleryView.js): an edit in place (a print's time) counts too
+    document.addEventListener('galleryUpdated', () => { historyCache = null; }, { signal: appScopeSignal });
+
+    function historySorted() {
         const list = (typeof allImages !== 'undefined' && Array.isArray(allImages)) ? allImages : [];
-        const sorted = list.filter((g) => g && (g.filename || g.original)).slice().sort((a, b) => (Number(b.mtime) || 0) - (Number(a.mtime) || 0));
+        const c = historyCache;
+        if (c && c.list === list && c.length === list.length && c.head === list[0] && c.tail === list[list.length - 1]) return c.sorted;
+        const sorted = list.filter((g) => g && (g.filename || g.original)).sort((a, b) => (Number(b.mtime) || 0) - (Number(a.mtime) || 0));
+        historyCache = { list, length: list.length, head: list[0], tail: list[list.length - 1], sorted };
+        return sorted;
+    }
+
+    function history(offset = 0, count = 40) {
+        const sorted = historySorted();
         return {
             total: sorted.length,
-            rows: sorted.slice(offset, offset + count).map((g) => ({ filename: g.filename || g.upscaled || g.original, mtime: Number(g.mtime) || 0, width: g.width || 0, height: g.height || 0, upscaled: !!(g.upscaled && g.original && g.upscaled !== g.original), pinned: !!g.isPinned }))
+            rows: count > 0 ? sorted.slice(offset, offset + count).map((g) => ({ filename: g.filename || g.upscaled || g.original, mtime: Number(g.mtime) || 0, width: g.width || 0, height: g.height || 0, upscaled: !!(g.upscaled && g.original && g.upscaled !== g.original), pinned: !!g.isPinned })) : []
         };
     }
 
