@@ -2034,9 +2034,10 @@ class WebSocketClient {
         const online = typeof navigator === 'undefined' || navigator.onLine !== false;
         const startup = this.lastServerStartupStatus;
         let service;
-        if (this.isConnected()) service = 'connected';
+        // signed out first (#899): a failed sign-in keeps the socket open, unauthenticated
+        if (this.connectionPhase === 'auth' && (this.socketAuthenticated !== true || !this.isConnected())) service = 'signed-out';
+        else if (this.isConnected()) service = 'connected';
         else if (!online) service = 'no-internet';
-        else if (this.connectionPhase === 'auth') service = 'signed-out';
         else if (startup && startup.isReady === false) service = 'restarting';
         else if (this.isConnecting || this.connectionPhase === 'dialing') service = 'connecting';
         else if (this._userCancelledConnect) service = 'off';
