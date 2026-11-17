@@ -896,6 +896,21 @@
         if (idxListening || !window.wsClient || typeof window.wsClient.on !== 'function') return;
         idxListening = true;
         window.wsClient.on('search_indexing_status', () => { if (idxDraw) idxDraw(); });
+        // seen again (screen on, the page shown, back from an Android program): what the pushes changed meanwhile
+        const wake = () => { if (idxDraw) idxDraw(); };
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('wmBehind', wake);
+    }
+
+    /** el's children made like html's: only the ones that differ are replaced (the marquee bar keeps running). */
+    function idxPatch(el, html) {
+        const t = document.createElement('template');
+        t.innerHTML = html;
+        const next = [...t.content.children];
+        const now = [...el.children];
+        if (next.length !== now.length) { el.replaceChildren(...next); return; }
+        next.forEach((n, i) => { if (!n.isEqualNode(now[i])) now[i].replaceWith(n); });
     }
 
     wmSettings.registerPage({
@@ -906,10 +921,15 @@
         tabs: [['status', 'Status']],
         available: () => !!document.getElementById('searchIndexingIndicator'),
         init: () => ({}),
-        render(el, tab, d) {
+        render(el) {
+            // drawn by the search_indexing_status push (the only thing that changes what it reads) and when it
+            // is seen again; never by a timer, never while not seen (Settings hidden, the screen off)
+            let last = '';
             const draw = () => {
-                // gone, or Settings hidden (hide() leaves the page DOM; show() draws the grid anew)
-                if (!el.isConnected || el.closest('[hidden]')) { if (idxDraw === draw) idxDraw = null; clearInterval(d.timer); return; }
+                // gone (another page, Settings opened again: show() draws the grid anew)
+                if (!el.isConnected) { if (idxDraw === draw) idxDraw = null; return; }
+                const sh = window.wmShell;
+                if (el.closest('[hidden]') || (sh && typeof sh.onScreen === 'function' && !sh.onScreen(el))) return;
                 const s = idxState();
                 const busy = s.syncActive || s.ftsActive;
                 let bar = '';
@@ -918,7 +938,7 @@
                         ? `<div class="wm-ds-progress" role="progressbar" aria-valuenow="${Math.round(s.progress)}"><span style="--wm-ds-blocks:${Math.round(s.progress / 100 * 18)}"></span></div>`
                         : '<div class="wm-ds-progress is-marquee" role="progressbar" aria-label="Indexing"><span></span></div>';
                 }
-                el.innerHTML = `<p class="wm-ds-idx-count"><b>${esc(s.indexed.toLocaleString())} items indexed${s.total ? ` of ${esc(s.total.toLocaleString())}` : ''}</b></p>
+                const html = `<p class="wm-ds-idx-count"><b>${esc(s.indexed.toLocaleString())} items indexed${s.total ? ` of ${esc(s.total.toLocaleString())}` : ''}</b></p>
                     ${ui.text(s.line)}
                     ${bar}
                     ${s.sync.message && (s.syncActive || s.sync.status === 'error') ? ui.note(s.sync.message) : ''}
@@ -928,15 +948,20 @@
                     ${ui.buttons([['search-index-trigger', 'Start'], ['search-index-toggle-pause', s.sync.status === 'paused' ? 'Resume' : 'Pause']])}
                     ${ui.gap()}
                     ${ui.note('Rebuilding the index and the search cache are in Control Panel > Melaton Search on the desktop.')}`;
-                el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => {
-                    idxRun(b.dataset.act);
-                    setTimeout(() => { if (idxDraw === draw) draw(); }, 1200);
-                }));
+                // only what changed is drawn again (a full redraw restarted the marquee every 2 s)
+                if (html === last && el.firstElementChild) return;
+                last = html;
+                idxPatch(el, html);
             };
+            // one listener for the buttons (they may be drawn again)
+            el.addEventListener('click', (e) => {
+                const b = e.target.closest('[data-act]');
+                if (!b || b.disabled || !el.contains(b)) return;
+                idxRun(b.dataset.act);
+                setTimeout(() => { if (idxDraw === draw) draw(); }, 1200);
+            });
             idxDraw = draw;
             idxListen();
-            clearInterval(d.timer);
-            d.timer = setInterval(draw, 2000);
             draw();
         }
     });
