@@ -503,8 +503,15 @@
      * what came while it was away is read now (the list, Today, the notification), and its lines stop
      * reading bold.
      */
+    /**
+     * The phone shows the page now: not hidden, the screen on, not behind an Android program
+     * (wmShell.onScreen). A reply that lands with the screen off is not seen: it stays unread and gets
+     * its notification (document.hidden alone missed "the phone asleep").
+     */
+    const onScreenNow = () => (sh && typeof sh.onScreen === 'function' ? sh.onScreen() : !document.hidden);
+
     function engagedChat() {
-        if (!conv || conv.id === 'new' || view() !== 'conv' || !isCurrent() || document.hidden) return;
+        if (!conv || conv.id === 'new' || view() !== 'conv' || !isCurrent() || !onScreenNow()) return;
         const p = previews.get(conv.id);
         const newest = conv.entries.reduce((m, e) => Math.max(m, msOf(e.at)), 0);
         if ((p && p.unread) || fresh.has(conv.id) || newest > seenOf(conv.id)) markConvSeen();
@@ -720,7 +727,7 @@
         const st = streams.get(id);
         const said = st ? eventsText(st.events, (e) => e.type).says : '';
         if (creating && conv && conv.pendingId === id) { streams.delete(id); return; } // create() reloads
-        const viewing = showingChat(id) && isCurrent() && !document.hidden;
+        const viewing = showingChat(id) && isCurrent() && onScreenNow();
         if (!viewing && said) arrived(id, said, st && st.events);
         // read as it lands when its conversation is in front, with the event's sound and no bubble, as the
         // device does in an open conversation (no sound for what you send: the device has none)
@@ -735,7 +742,7 @@
         const r = d.response || {};
         const first = (k) => (Array.isArray(r[k]) && r[k].length ? String(r[k][0]) : '');
         const said = first('speechdirect') || first('speech') || first('reply');
-        const viewing = showingChat(d.chatId) && isCurrent() && !document.hidden;
+        const viewing = showingChat(d.chatId) && isCurrent() && onScreenNow();
         if (!viewing && said && d.success !== false) arrived(d.chatId, said, null);
         if (viewing && said && d.success !== false && sh.sounds && typeof sh.sounds.play === 'function') sh.sounds.play('chat');
         finishReply(d.chatId).then(() => { if (viewing && showingChat(d.chatId)) markConvSeen(); });
@@ -1572,9 +1579,12 @@
         patchDesktop();
         scheduleBgUnread();
         // the phone woke (or the app came back) with a conversation on screen: what it shows is read
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && conv && conv.id !== 'new' && view() === 'conv' && isCurrent()) markConvSeen();
-        });
+        const woke = () => {
+            if (onScreenNow() && conv && conv.id !== 'new' && view() === 'conv' && isCurrent()) markConvSeen();
+        };
+        document.addEventListener('visibilitychange', woke);
+        window.addEventListener('melatonscreen', woke);
+        document.addEventListener('wmBehind', woke);
         // Messaging > Options > Dreamscape Messenger saved (wmSettingsSystem.js chat-options)
         window.addEventListener('wmChatOptionsChange', () => {
             showActions = stored(ACTIONS_KEY) === '1';
