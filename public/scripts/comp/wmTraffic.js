@@ -48,6 +48,7 @@
     let page = null;
     let els = null;
     let shown = false;
+    let renderStale = false; // the page changed while it was not on screen: drawn when it shows
     let layers = [];
     let settings = null;
     let latest = { work: null, home: null };
@@ -123,7 +124,7 @@
     async function check(direction, force) {
         if (checking[direction]) return latest[direction];
         checking[direction] = true;
-        render();
+        renderSeen();
         try {
             const origin = originFor(direction);
             const d = await ask('traffic_check', origin ? { direction, force: !!force, origin } : { direction, force: !!force }, 40000);
@@ -155,10 +156,24 @@
         return lv === 'clear' ? '' : `-${['moderate', 'heavy'].includes(lv) ? lv : 'none'}`;
     }
 
+    /** On screen now (the screen on, the page shown, not behind an Android program); el: and that element shown. */
+    const seenNow = (el) => (ws && typeof ws.onScreen === 'function' ? ws.onScreen(el) : !document.hidden);
+    /** The screen off or the page hidden: the shell's own status pass does not run then. */
+    const offScreen = () => document.hidden || document.documentElement.dataset.screenOff !== undefined;
+
+    /** The app's page drawn now while it is on screen, else marked and drawn when it shows again. */
+    function renderSeen() {
+        if (shown && seenNow(page)) render();
+        else if (els) renderStale = true;
+    }
+
     function changed() {
-        render();
+        renderSeen();
         if (ws && typeof ws.refreshToday === 'function') ws.refreshToday();
-        if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus();
+        // on screen the shell's status pass follows wmTrafficChange (one, coalesced); with the screen off or
+        // the page hidden that pass waits for the screen, so the traffic glyph (and the app's own copy of the
+        // bars, AndroidBars) is put right here, as before
+        if (ws && typeof ws.refreshStatus === 'function' && offScreen()) ws.refreshStatus();
         document.dispatchEvent(new CustomEvent('wmTrafficChange'));
     }
 
@@ -441,7 +456,9 @@
         if (!plan) return;
         const sig = `${plan.key}|${plan.reportAt}`;
         if (sig === nativeDrive.sig) {
-            // Android refuses the location service unless the app is in front: try again now the page is on screen
+            // Android refuses the location service unless the app is in front: try again now the page is on
+            // screen (not with the screen off: it would be refused again; screen on calls this at once)
+            if (!seenNow()) return;
             const b2 = nativeBridge();
             if (b2 && typeof b2.status === 'function') nativeStatus(b2.status());
             if (nativeDrive.active || !/^(not allowed|no location access)$/.test(nativeDrive.reason)) return;
@@ -675,6 +692,7 @@
 
     function render() {
         if (!els) return;
+        renderStale = false;
         const d = direction();
         els.seg.querySelectorAll('[data-dir]').forEach((b) => { b.classList.toggle('is-on', b.dataset.dir === d); b.setAttribute('aria-selected', String(b.dataset.dir === d)); });
         if (layers.length) renderLayer();
@@ -1462,23 +1480,40 @@
 
     let windowKey = '';
     let todayTickKey = '';
-    function watchLeaveWindow() {
-        setInterval(() => {
-            if (!loaded || document.hidden) return;
-            const w = leaveWindow();
-            const key = w ? `${w.direction}:${w.leaveAt}` : '';
-            if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
-            // a report going stale (30 min) or the commute switching direction: Today's panel lamp follows
-            // (only when the lamp or the line changed: an unconditional repaint every minute redrew
-            // every Today item, #849)
+    function minuteTick() {
+        if (!loaded || document.hidden) return;
+        // the leave window opening or closing: the status glyph follows at once, also with the screen off
+        // (the app's copy of the bars shows it then)
+        const w = leaveWindow();
+        const key = w ? `${w.direction}:${w.leaveAt}` : '';
+        if (key !== windowKey) { windowKey = key; if (ws && typeof ws.refreshStatus === 'function') ws.refreshStatus(); if (ws && ws.refreshToday) ws.refreshToday(); }
+        // a report going stale (30 min) or the commute switching direction: Today's panel lamp follows
+        // (only when the lamp or the line changed: an unconditional repaint every minute redrew
+        // every Today item, #849); with the screen off Today is not seen: screen on runs this tick at once
+        if (seenNow()) {
             let tk = '';
             try { tk = `${levelSuffix()}|${JSON.stringify(todayLine(commuteNow() || direction()))}`; } catch (_) { tk = String(Date.now()); }
             if (tk !== todayTickKey) { todayTickKey = tk; if (ws && ws.refreshToday) ws.refreshToday(); }
-            // driving: the phone's position each minute, then the time left everywhere it shows
-            if (driveWindow()) { readPosition(); if (driving()) changed(); }
-            armNativeWatch();
-            watchCameras();
-        }, 60 * 1000);
+        }
+        // driving: the phone's position each minute, then the time left everywhere it shows (the page's own
+        // camera alerts need it with the screen off too, when the app's drive watch does not have the drive)
+        if (driveWindow()) { readPosition(); if (driving()) changed(); }
+        armNativeWatch();
+        watchCameras();
+    }
+
+    function watchLeaveWindow() {
+        setInterval(minuteTick, 60 * 1000);
+        // back on screen: what the minute ticks left out (Today's lamp, the page) at once, and the app's drive
+        // watch tried again now that the app is in front
+        const back = () => {
+            if (!seenNow()) return;
+            minuteTick();
+            if (renderStale && shown && seenNow(page)) render();
+        };
+        window.addEventListener('melatonscreen', back);
+        document.addEventListener('visibilitychange', back);
+        document.addEventListener('wmBehind', back);
     }
 
     function register() {
