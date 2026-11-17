@@ -1476,8 +1476,13 @@
                     }
                     const chName = (pkg, id) => (names[pkg] && names[pkg][id]) || chLabel(id);
                     const known = Object.entries(c.known || {}).sort((a, b) => String(a[1].app || a[0]).localeCompare(String(b[1].app || b[0]), undefined, { sensitivity: 'base' }));
-                    const rows = known.map(([pkg, k]) => `<div class="wm-listbox-row">${check('sb-app', k.app || pkg, c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
-                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row is-indent">${check('sb-ch', chName(pkg, ch), c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join('')).join('');
+                    // an app that is a Messaging account (#885) shows there, never here: its row says so, unchecked
+                    let managed = new Set();
+                    try { managed = window.textMessaging && typeof window.textMessaging.androidPackages === 'function' ? window.textMessaging.androidPackages() : new Set(); } catch (_) { managed = new Set(); }
+                    const rows = known.map(([pkg, k]) => (managed.has(pkg)
+                        ? `<div class="wm-listbox-row">${check('sb-app', `${k.app || pkg} (in Messaging)`, false, `value="${esc(pkg)}" disabled`)}</div>`
+                        : `<div class="wm-listbox-row">${check('sb-app', k.app || pkg, c.apps[pkg] !== false, `value="${esc(pkg)}"${c.phone === false ? ' disabled' : ''}`)}</div>`
+                        + (k.channels || []).map((ch) => `<div class="wm-listbox-row is-indent">${check('sb-ch', chName(pkg, ch), c.channels[`${pkg}|${ch}`] !== false, `value="${esc(`${pkg}|${ch}`)}"${c.phone === false || c.apps[pkg] === false ? ' disabled' : ''}`)}</div>`).join(''))).join('');
                     el.innerHTML = `${check('sbPhone', "Show the phone's notifications", c.phone !== false)}
                         <div class="wm-form-gap"></div><p>Show notifications from:</p>
                         ${rows ? `<div class="wm-listbox wm-opt-list" style="flex:0 1 auto;min-height:0">${rows}</div>` : '<p class="wm-form-note">Apps and their channels are listed here once their notifications have shown in the Super Bar.</p>'}`;
