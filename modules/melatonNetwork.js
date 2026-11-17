@@ -5,7 +5,9 @@
  *   domain          userGlobalSettings.desktop.domainName in config.json (personalisation),
  *                   default DREAMSCAPE
  *   connectionName  userGlobalSettings.desktop.connectionName, the network interface the
- *                   client connects through (Windows' connection name), default VPN Connection
+ *                   client connects through (Windows' connection name), default Nightshade Network
+ *                   (#895: the service the Dreamscape link became; a saved "VPN Connection", the
+ *                   old default, reads as the new one)
  *   connectionType  'Ethernet' when the client reached us from a private address (the LAN,
  *                   through the local nginx), 'WAN' when it came over the Internet
  *   device          'L-PPoP' (LANTIS Public Point of Presence, the FireStorm load balancer)
@@ -15,7 +17,8 @@
  */
 
 const DEFAULT_DOMAIN = 'DREAMSCAPE';
-const DEFAULT_CONNECTION_NAME = 'VPN Connection';
+const DEFAULT_CONNECTION_NAME = 'Nightshade Network';
+const LEGACY_CONNECTION_NAME = 'VPN Connection';
 const DEVICE = 'L-PPoP';
 
 function desktopSetting(config, key, fallback) {
@@ -30,7 +33,8 @@ function domainName(config) {
 }
 
 function connectionName(config) {
-    return desktopSetting(config, 'connectionName', DEFAULT_CONNECTION_NAME);
+    const name = desktopSetting(config, 'connectionName', DEFAULT_CONNECTION_NAME);
+    return name === LEGACY_CONNECTION_NAME ? DEFAULT_CONNECTION_NAME : name;
 }
 
 function isPrivateAddress(address) {

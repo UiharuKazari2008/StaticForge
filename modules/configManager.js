@@ -654,7 +654,7 @@ class ConfigManager {
                             // Melaton's domain (the server as domain controller) and the connection
                             // (network interface) the client reaches it through, modules/melatonNetwork.js
                             domainName: 'DREAMSCAPE',
-                            connectionName: 'VPN Connection',
+                            connectionName: 'Nightshade Network',
                             autoLaunchWorkspace: true,
                             liveWindowRepositioning: false,
                             exitDesktopOnWorkspaceMaximise: false,

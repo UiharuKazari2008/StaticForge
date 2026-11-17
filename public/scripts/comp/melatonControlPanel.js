@@ -28,7 +28,7 @@
  *   melatonControlPanel.toggleTrayFlyout(anchor) / attachTrayMenu(anchor)
  *
  * Names: config.json userGlobalSettings.desktop.domainName (the network / domain, default
- * DREAMSCAPE) and desktop.connectionName (the interface, default VPN Connection), saved through
+ * DREAMSCAPE) and desktop.connectionName (the interface, default Nightshade Network), saved through
  * persistUserGlobalSettingsPatch (modalUtils.js); connection facts: melatonNetworkDialogs.js.
  */
 (function (root) {
@@ -74,7 +74,7 @@
         const n = net();
         return n
             ? n.connectionInfo()
-            : { domain: 'DREAMSCAPE', connectionName: 'VPN Connection', fqdn: root.location.hostname, connectionType: 'WAN', device: 'L-PPoP' };
+            : { domain: 'DREAMSCAPE', connectionName: 'Nightshade Network', fqdn: root.location.hostname, connectionType: 'WAN', device: 'L-PPoP' };
     }
 
     function ws() {
@@ -1527,14 +1527,46 @@
     let flyout = null;
     let flyoutAnchor = null;
     let flyoutTimer = null;
+    // 'network': the computer's own link (the globe); 'nightshade': the Nightshade Network service (#895)
+    let flyoutKind = 'network';
 
-    function flyoutStateText(state) {
-        switch (state) {
-            case 'connected': return 'Connected';
-            case 'connecting': return 'Connecting...';
-            case 'auth': return 'Logon required';
-            default: return 'Disconnected';
+    /** The Nightshade Network state (websocket.js nightshadeState, #895). */
+    function nightshade() {
+        const client = ws();
+        if (client && typeof client.nightshadeState === 'function') {
+            try { return client.nightshadeState(); } catch (_) { /* fall through */ }
         }
+        const online = !root.navigator || root.navigator.onLine !== false;
+        return { internet: online ? 'online' : 'offline', service: online ? 'unavailable' : 'no-internet', problem: true, cafeReady: false, connectedAt: null, rtt: null };
+    }
+
+    const NIGHTSHADE_STATUS = {
+        connected: 'Connected',
+        connecting: 'Connecting...',
+        restarting: 'Restarting',
+        'signed-out': 'Sign-in required',
+        off: 'Disconnected',
+        'no-internet': 'No internet connection',
+        unavailable: 'Unavailable'
+    };
+    const NIGHTSHADE_PROBLEM = {
+        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
+        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
+        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
+    };
+
+    function nightshadeStatusText(s) {
+        if (s.service === 'connected' && s.cafeReady) return 'Connected (with Caf\u00e9Ready)';
+        return NIGHTSHADE_STATUS[s.service] || 'Unavailable';
+    }
+
+    /** Reconnect from the Nightshade icon: sign in when logon is required, else dial again. */
+    function nightshadeReconnect() {
+        const client = ws();
+        if (!client) return;
+        if (client.connectionPhase === 'auth' && net()) { net().connect.show(); return; }
+        if (typeof client.manualReconnect === 'function') client.manualReconnect();
     }
 
     function ensureFlyout() {
@@ -1550,12 +1582,12 @@
             if (!link) return;
             const action = link.dataset.flyoutAction;
             hideFlyout();
-            if (action === 'toggle') {
-                const state = linkState();
-                if (state === 'connected' || state === 'connecting') openStatusDialog();
-                else connectToDomain();
-            } else if (action === 'center') {
+            if (action === 'center') {
                 open('network');
+            } else if (action === 'ns-reconnect') {
+                nightshadeReconnect();
+            } else if (action === 'ns-status') {
+                openStatusDialog();
             }
         });
         doc.body.appendChild(flyout);
@@ -1573,32 +1605,63 @@
 
     function renderFlyout() {
         if (!flyout || flyout.classList.contains('hidden')) return;
-        const i = info();
-        const state = linkState();
-        const connected = state === 'connected';
-        const html = `
+        const html = flyoutKind === 'nightshade' ? nightshadeFlyoutHtml() : networkFlyoutHtml();
+        if (flyout.innerHTML !== html) flyout.innerHTML = html;
+    }
+
+    /** The globe's flyout: the computer's own link (#895), as Vista's network flyout shows it. */
+    function networkFlyoutHtml() {
+        const online = !root.navigator || root.navigator.onLine !== false;
+        const conn = ws() && ws().melatonConnection;
+        const name = conn && conn.connectionType === 'Ethernet' ? 'Local Area Connection' : 'Network';
+        return `
             <div class="network-flyout-body">
-                <div class="network-flyout-heading">${connected ? 'Currently connected to:' : 'Not connected'}</div>
+                <div class="network-flyout-heading">${online ? 'Currently connected to:' : 'Not connected'}</div>
                 <div class="network-flyout-item">
-                    <img src="/static_images/melaton/net-server.png" alt="" draggable="false">
+                    <img src="/static_images/vista-icons/${online ? 'net-internet' : 'net-disconnected'}-32.png" alt="" draggable="false">
                     <div class="network-flyout-text">
-                        <span class="network-flyout-name">${esc(i.domain)}</span>
-                        <span class="network-flyout-sub">Access: ${connected ? 'Local and Internet' : state === 'auth' ? 'Logon required' : 'No network access'}</span>
-                    </div>
-                </div>
-                <div class="network-flyout-item">
-                    <img src="/static_images/melaton/net-laptop.png" alt="" draggable="false">
-                    <div class="network-flyout-text">
-                        <span class="network-flyout-name">${esc(i.connectionName)}</span>
-                        <span class="network-flyout-sub">${esc(flyoutStateText(state))}</span>
+                        <span class="network-flyout-name">${online ? esc(name) : 'No connections are available'}</span>
+                        <span class="network-flyout-sub">${online ? 'Access: Local and Internet' : 'Access: None'}</span>
                     </div>
                 </div>
             </div>
             <div class="network-flyout-links">
-                <button type="button" class="network-flyout-link" data-flyout-action="toggle">Connect or disconnect</button>
                 <button type="button" class="network-flyout-link" data-flyout-action="center">Network and Server Center</button>
             </div>`;
-        if (flyout.innerHTML !== html) flyout.innerHTML = html;
+    }
+
+    /** The Nightshade Network status panel (#895): the service, CaféReady, duration, server, latency. */
+    function nightshadeFlyoutHtml() {
+        const s = nightshade();
+        const i = info();
+        const rows = [];
+        if (s.service === 'connected') {
+            if (s.connectedAt) rows.push(['Duration:', formatDuration(Date.now() - s.connectedAt)]);
+            rows.push(['Server:', i.fqdn || root.location.hostname]);
+            if (s.rtt != null) rows.push(['Latency:', `${s.rtt} ms`]);
+        }
+        const problem = NIGHTSHADE_PROBLEM[s.service];
+        const cafe = s.cafeReady
+            ? `<div class="nightshade-flyout-cafe"><span>Powered by</span><span class="nightshade-flyout-cafe-badge"><img src="/static_images/melaton/cafe-ready-dark.png" alt="Caf\u00e9Ready" draggable="false"></span></div>`
+            : '';
+        const reconnect = s.service === 'connected' ? 'Reconnect' : s.service === 'signed-out' ? 'Sign in' : s.service === 'connecting' ? '' : 'Connect';
+        return `
+            <div class="network-flyout-body">
+                <div class="network-flyout-item nightshade-flyout-head">
+                    <img src="/static_images/vista-icons/nightshade-32.png" srcset="/static_images/vista-icons/nightshade-48.png 1.5x" alt="" draggable="false">
+                    <div class="network-flyout-text">
+                        <span class="network-flyout-name">Nightshade Network</span>
+                        <span class="network-flyout-sub">${esc(nightshadeStatusText(s))}</span>
+                    </div>
+                </div>
+                ${rows.length ? `<div class="nightshade-flyout-rows">${rows.map(([k, v]) => `<span>${esc(k)}</span><span>${esc(v)}</span>`).join('')}</div>` : ''}
+                ${problem ? `<div class="nightshade-flyout-note">${esc(problem)}</div>` : ''}
+                ${cafe}
+            </div>
+            <div class="network-flyout-links">
+                ${reconnect ? `<button type="button" class="network-flyout-link" data-flyout-action="ns-reconnect">${reconnect}</button>` : ''}
+                <button type="button" class="network-flyout-link" data-flyout-action="ns-status">Status</button>
+            </div>`;
     }
 
     function positionFlyout() {
@@ -1618,9 +1681,11 @@
         flyout.style.bottom = `${Math.max(margin, root.innerHeight - rect.top + 6)}px`;
     }
 
-    function showFlyout(anchor) {
+    function showFlyout(anchor, kind = 'network') {
         if (!ensureFlyout()) return;
         flyoutAnchor = anchor || null;
+        flyoutKind = kind;
+        flyout.setAttribute('aria-label', kind === 'nightshade' ? 'Nightshade Network' : 'Network');
         flyout.classList.remove('hidden');
         renderFlyout();
         positionFlyout();
@@ -1639,11 +1704,52 @@
 
     /** One click on the network tray icon (websocket.js _setupConnectionDialModalHandlers). */
     function toggleTrayFlyout(anchor) {
-        if (flyout && !flyout.classList.contains('hidden')) {
+        if (flyout && !flyout.classList.contains('hidden') && flyoutKind === 'network') {
             hideFlyout();
             return;
         }
-        showFlyout(anchor);
+        showFlyout(anchor, 'network');
+    }
+
+    /** One click on the Nightshade Network tray icon (#895): its status panel. */
+    function toggleNightshadeFlyout(anchor) {
+        if (flyout && !flyout.classList.contains('hidden') && flyoutKind === 'nightshade') {
+            hideFlyout();
+            return;
+        }
+        showFlyout(anchor, 'nightshade');
+    }
+
+    /** Right-click on the Nightshade Network tray icon (#895): Status, Reconnect, Disconnect, Properties, Sign Out. */
+    function attachNightshadeMenu(anchor) {
+        if (!anchor || anchor.dataset.nightshadeMenu === '1' || typeof root.contextMenu === 'undefined' || !root.contextMenu) return;
+        anchor.dataset.nightshadeMenu = '1';
+        root.contextMenu.attachToElement(anchor, {
+            sections: [{
+                type: 'list',
+                items: [
+                    { icon: 'fas fa-circle-info', text: 'Status', action: 'ns-status' },
+                    { icon: 'fas fa-rotate', text: 'Reconnect', action: 'ns-reconnect' },
+                    {
+                        icon: 'fas fa-link-slash',
+                        text: 'Disconnect',
+                        action: 'ns-disconnect',
+                        disabled: () => { const st = nightshade().service; return !(st === 'connected' || st === 'connecting'); }
+                    },
+                    { separator: true },
+                    { icon: 'fas fa-sliders', text: 'Properties', action: 'ns-properties' },
+                    { icon: 'fas fa-right-from-bracket', text: 'Sign Out', action: 'ns-signout' }
+                ]
+            }],
+            onAction: (action) => {
+                hideFlyout();
+                if (action === 'ns-status') openStatusDialog();
+                else if (action === 'ns-reconnect') nightshadeReconnect();
+                else if (action === 'ns-disconnect') disconnectFromDomain();
+                else if (action === 'ns-properties') open('network');
+                else if (action === 'ns-signout') callGlobal('runLogoutDirect');
+            }
+        });
     }
 
     /** Right-click on the network tray icon: Vista's network tray menu (contextMenu.js). */
@@ -1654,18 +1760,7 @@
             sections: [{
                 type: 'list',
                 items: [
-                    {
-                        icon: 'fas fa-network-wired',
-                        text: 'Connect or disconnect',
-                        action: 'network-toggle',
-                        loadfn: (item) => {
-                            const state = linkState();
-                            const i = info();
-                            item.text = state === 'connected' || state === 'connecting'
-                                ? `Disconnect ${i.connectionName}`
-                                : `Connect ${i.connectionName}`;
-                        }
-                    },
+                    // Connect / disconnect is the Nightshade Network icon's (#895): this icon is the computer's link
                     { icon: 'fas fa-sliders', text: 'Network and Server Center', action: 'network-center' },
                     // the WebSocket indicator's old click: requests in Periscope's task list
                     { icon: 'fas fa-arrow-right-arrow-left', text: 'Network activity', action: 'network-activity' },
@@ -1675,11 +1770,7 @@
             }],
             onAction: (action) => {
                 hideFlyout();
-                if (action === 'network-toggle') {
-                    const state = linkState();
-                    if (state === 'connected' || state === 'connecting') disconnectFromDomain();
-                    else connectToDomain();
-                } else if (action === 'network-center') {
+                if (action === 'network-center') {
                     open('network');
                 } else if (action === 'network-diagnose') {
                     diagnose();
@@ -1703,6 +1794,8 @@
         toggleTrayFlyout,
         hideTrayFlyout: hideFlyout,
         attachTrayMenu,
+        toggleNightshadeFlyout,
+        attachNightshadeMenu,
         isOpen: () => instances.some(isShown),
         goBack,
         currentPage: () => current,

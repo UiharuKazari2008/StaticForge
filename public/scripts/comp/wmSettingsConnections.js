@@ -53,7 +53,7 @@
         const n = net();
         return n
             ? n.connectionInfo()
-            : { domain: 'DREAMSCAPE', connectionName: 'VPN Connection', fqdn: root.location.hostname, connectionType: 'WAN', device: 'L-PPoP' };
+            : { domain: 'DREAMSCAPE', connectionName: 'Nightshade Network', fqdn: root.location.hostname, connectionType: 'WAN', device: 'L-PPoP' };
     }
 
     function miniport(i) {

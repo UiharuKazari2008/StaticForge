@@ -25,6 +25,7 @@ function prepareSystemTrayBackground() {
         'serviceWorkerTrayIcon',
         'pingWarningIndicator',
         'volumeTrayIcon',
+        'nightshadeTrayIcon',
         'modemTrayIcon'
     ];
 
@@ -97,6 +98,11 @@ async function startBackgroundTrayServices() {
         () => {
             revealTrayIconById('volumeTrayIcon');
             return 'volumeTrayIcon';
+        },
+        () => {
+            // Nightshade Network (#895): the service's own icon, always shown, before the network icon
+            revealTrayIconById('nightshadeTrayIcon');
+            return 'nightshadeTrayIcon';
         },
         () => {
             revealTrayIconById('modemTrayIcon');

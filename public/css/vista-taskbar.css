@@ -535,6 +535,29 @@ body.desktop-mode:not(.windows-classic-theme) .tray-overflow-btn.is-open {
     }
 }
 
+/* Nightshade Network (#895): the service's icon, always shown (websocket.js _updateNightshadeTrayIcon).
+   A problem (unreachable, restarting, no internet) lays the red ! over its lower right, where the
+   wallet and update icons carry their marks; connecting steps the N between full and dim. */
+#nightshadeTrayIcon { position: relative; }
+#nightshadeTrayIcon > img { display: block; width: 16px; height: 16px; }
+#nightshadeTrayIcon > .nightshade-tray-alert {
+    display: none;
+    position: absolute;
+    right: -2px;
+    bottom: -1px;
+    width: 10px;
+    height: 10px;
+    background: no-repeat center / 10px 10px;
+    background-image: image-set(url("/static_images/vista-icons/nightshade-alert-16.png") 1x, url("/static_images/vista-icons/nightshade-alert-32.png") 2x);
+    pointer-events: none;
+}
+#nightshadeTrayIcon.is-problem > .nightshade-tray-alert { display: block; }
+#nightshadeTrayIcon.is-connecting > img { animation: nightshadeTrayConnecting 1.2s steps(1, end) infinite; }
+@keyframes nightshadeTrayConnecting {
+    0% { opacity: 1; }
+    50% { opacity: 0.45; }
+}
+
 /* System icons turned off on the Notification Area tab */
 .desktop-taskbar.tray-no-volume #volumeTrayIcon,
 .desktop-taskbar.tray-no-network #modemTrayIcon,

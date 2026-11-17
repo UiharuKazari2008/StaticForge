@@ -7203,7 +7203,16 @@ Examples:
                 <div class="taskbar-tray-icon hidden" id="volumeTrayIcon" title="Volume">
                     <i class="fas fa-volume-high" id="volumeTrayIconGlyph"></i>
                 </div>
-                <!-- Network (VPN connection): click = status flyout, right-click = menu (melatonControlPanel.js) -->
+                <!-- Nightshade Network (#895): the Dreamscape service, always shown; a red ! on a problem.
+                     click = status panel, right-click = menu (melatonControlPanel.js), state from
+                     websocket.js _updateNightshadeTrayIcon -->
+                <div class="nightshade-tray-icon taskbar-tray-icon hidden" id="nightshadeTrayIcon"
+                    title="Nightshade Network">
+                    <img src="/static_images/vista-icons/nightshade-16.png" srcset="/static_images/vista-icons/nightshade-32.png 2x"
+                        alt="" width="16" height="16" draggable="false">
+                    <span class="nightshade-tray-alert" aria-hidden="true"></span>
+                </div>
+                <!-- Network (the computer's own link, #895): click = status flyout, right-click = menu (melatonControlPanel.js) -->
                 <div class="modem-tray-icon taskbar-tray-icon hidden" id="modemTrayIcon"
                     title="Network">
                     <i class="fa-regular fa-globe" id="modemTrayIconGlyph"></i>

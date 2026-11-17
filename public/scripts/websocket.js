@@ -849,6 +849,23 @@ class BannerManager {
 class WebSocketClient {
     // Constants for timeouts, delays, and limits
     static TIMEOUT_UI_DEFAULT = 3000; // Default UI timeout (3 seconds)
+    // Nightshade Network (#895): the service's status words, and what its problems say (the desktop
+    // balloon and the phone's glyph bubble, Yukimi's wording)
+    static NIGHTSHADE_STATUS_TEXT = {
+        connected: 'Connected',
+        connecting: 'Connecting...',
+        restarting: 'Restarting',
+        'signed-out': 'Sign-in required',
+        off: 'Disconnected',
+        'no-internet': 'No internet connection',
+        unavailable: 'Unavailable'
+    };
+    static NIGHTSHADE_PROBLEM_TEXT = {
+        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
+        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
+        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.'
+    };
+    static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
     static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
     static TIMEOUT_CONNECTION_STABILITY = 2000; // Connection stability check timeout
     static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
@@ -1868,10 +1885,10 @@ class WebSocketClient {
         }
     }
 
-    /** The network interface name (desktop.connectionName, default VPN Connection). */
+    /** The network interface name (desktop.connectionName, default Nightshade Network). */
     _vpnConnectionName() {
         const text = window.melatonNetworkDialogs;
-        return text ? text.connectionInfo().connectionName : 'VPN Connection';
+        return text ? text.connectionInfo().connectionName : 'Nightshade Network';
     }
 
     /** Vista's balloon after a VPN connects: "<connection> is now connected". */
@@ -1933,35 +1950,17 @@ class WebSocketClient {
         const glyph = document.getElementById('modemTrayIconGlyph');
         if (!icon || !glyph) return;
 
-        // Vista network tray tooltips: the connection and its access (melatonNetworkDialogs.js)
-        const name = this._vpnConnectionName();
-        let title;
-        let iconClass;
+        this._updateNightshadeTrayIcon();
 
-        if (this.isConnected()) {
-            iconClass = 'fa-regular fa-globe';
-            const uptimeMs = this.connectionStats.connectedAt
-                ? Date.now() - this.connectionStats.connectedAt
-                : 0;
-            title = `${name}\nAccess: Local and Internet`;
-            if (uptimeMs > 0) title += `\nDuration: ${this.formatConnectionUptime(uptimeMs)}`;
-            // the network icon carries what the WebSocket status dot showed (hidden on the desktop)
-            if (this.currentRtt !== null && this.currentRtt !== undefined) title += `\nPing: ${Math.round(this.currentRtt)} ms`;
-            // the latency warning the old latency tray icon carried
-            if (this.shouldShowPingWarning()) title += `\n${this.getPingWarningReason()}`;
-        } else if (this.connectionPhase === 'failed') {
-            iconClass = 'fas fa-link-slash';
-            title = 'Not connected\nError connecting to domain controller';
-        } else if (this.connectionPhase === 'auth') {
-            iconClass = 'fas fa-link-slash';
-            title = `${name}\nLogon required`;
-        } else if (this.connectionPhase === 'dialing' || this.isConnecting) {
-            iconClass = 'fas fa-sync-alt fa-spin';
-            title = `Connecting to ${name}...`;
-        } else {
-            iconClass = 'fas fa-link-slash';
-            title = 'Not connected';
-        }
+        // Nightshade Network (#895): the network icon is the computer's own link (Vista's tooltip: the
+        // network and its access); the Dreamscape service has its own icon (_updateNightshadeTrayIcon).
+        // Ethernet / WAN: how this client reached the server (modules/melatonNetwork.js).
+        const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+        const lan = !!(this.melatonConnection && this.melatonConnection.connectionType === 'Ethernet');
+        const iconClass = online ? 'fa-regular fa-globe' : 'fas fa-link-slash';
+        const title = online
+            ? `${lan ? 'Local Area Connection' : 'Network'}\nAccess: Local and Internet`
+            : 'Not connected\nNo connections are available';
 
         if (typeof setClassNameIfChanged === 'function') {
             setClassNameIfChanged(glyph, iconClass);
@@ -1970,6 +1969,67 @@ class WebSocketClient {
             glyph.className = iconClass;
             icon.setAttribute('title', title);
         }
+    }
+
+    /**
+     * The Nightshade Network tray icon (#895): always shown; tooltip "Nightshade Network: <status>",
+     * the session's duration and ping while connected; .is-problem lays the red ! on it (unreachable,
+     * restarting, no internet), .is-connecting steps it while dialing. A problem that lasts
+     * NIGHTSHADE_BALLOON_MS after the service was up says so in a balloon, and its end says
+     * "Connected to Nightshade Network." (popupId 'nightshade', toastManager.js TOAST_BALLOONS).
+     */
+    _updateNightshadeTrayIcon() {
+        if (window.uiShell === 'mobile') return;
+        const icon = document.getElementById('nightshadeTrayIcon');
+        if (!icon) return;
+        const s = this.nightshadeState();
+        const label = WebSocketClient.NIGHTSHADE_STATUS_TEXT[s.service] || 'Unavailable';
+        let title = `Nightshade Network: ${s.service === 'connected' && s.cafeReady ? 'Connected (with CaféReady)' : label}`;
+        if (s.service === 'connected') {
+            const up = s.connectedAt ? Date.now() - s.connectedAt : 0;
+            if (up > 0) title += `\nDuration: ${this.formatConnectionUptime(up)}`;
+            if (s.rtt != null) title += `\nPing: ${s.rtt} ms`;
+            // the latency warning the old latency tray icon carried
+            if (this.shouldShowPingWarning()) title += `\n${this.getPingWarningReason()}`;
+        }
+        if (typeof setAttrIfChanged === 'function') setAttrIfChanged(icon, 'title', title);
+        else if (icon.title !== title) icon.title = title;
+        icon.classList.toggle('is-problem', s.problem);
+        icon.classList.toggle('is-connecting', s.service === 'connecting');
+        this._nightshadeBalloons(s);
+    }
+
+    _nightshadeBalloons(s) {
+        if (s.service === 'connected') {
+            if (this._nsBalloonTimer) { clearTimeout(this._nsBalloonTimer); this._nsBalloonTimer = null; }
+            if (this._nsProblemShown) {
+                this._nsProblemShown = false;
+                this._nightshadeBalloon('info', 'Connected to Nightshade Network.');
+            }
+            this._nsWasUp = true;
+            return;
+        }
+        if (!s.problem) {
+            // connecting, signed out or turned off: no balloon (the dial and logon dialogs say it)
+            if (this._nsBalloonTimer) { clearTimeout(this._nsBalloonTimer); this._nsBalloonTimer = null; }
+            return;
+        }
+        if (!this._nsWasUp || this._nsProblemShown || this._nsBalloonTimer) return;
+        this._nsBalloonTimer = setTimeout(() => {
+            this._nsBalloonTimer = null;
+            const now = this.nightshadeState();
+            if (!now.problem) return;
+            this._nsProblemShown = true;
+            this._nightshadeBalloon('warning', WebSocketClient.NIGHTSHADE_PROBLEM_TEXT[now.service] || WebSocketClient.NIGHTSHADE_PROBLEM_TEXT.unavailable);
+        }, WebSocketClient.NIGHTSHADE_BALLOON_MS);
+    }
+
+    _nightshadeBalloon(type, message) {
+        if (typeof showGlassToast !== 'function') return;
+        const bootPending = typeof window.isDesktopTrayBootPending === 'function' && window.isDesktopTrayBootPending();
+        if (bootPending) return;
+        showGlassToast(type, 'Nightshade Network', message, false, 8000,
+            '<img src="/static_images/vista-icons/nightshade-32.png" alt="" width="32" height="32" draggable="false">');
     }
 
     _showLatencyTrayPopup(reason) {
@@ -2065,6 +2125,34 @@ class WebSocketClient {
                 });
             });
         }
+
+        // Nightshade Network tray icon (#895): one click = its status panel, right-click = its menu
+        // (public/scripts/comp/melatonControlPanel.js toggleNightshadeFlyout / attachNightshadeMenu)
+        const nsTray = document.getElementById('nightshadeTrayIcon');
+        if (nsTray) {
+            nsTray.addEventListener('pointerdown', () => {
+                void featureLoader.loadFeature('control_panel').then(() => {
+                    const cp = window.melatonControlPanel;
+                    if (cp && typeof cp.attachNightshadeMenu === 'function' && !nsTray.dataset.cpMenu) {
+                        nsTray.dataset.cpMenu = '1';
+                        cp.attachNightshadeMenu(nsTray);
+                    }
+                });
+            }, { once: true });
+            nsTray.addEventListener('click', () => {
+                void featureLoader.loadFeature('control_panel').then(() => {
+                    const cp = window.melatonControlPanel;
+                    if (cp && typeof cp.toggleNightshadeFlyout === 'function') cp.toggleNightshadeFlyout(nsTray);
+                    else this.openConnectionDialStatus();
+                });
+            });
+        }
+        // the tooltips carry live numbers (the session's duration, ping): fresh on each hover, not on a
+        // timer (they kept the duration of the last connection change)
+        for (const el of [modemTray, nsTray]) {
+            if (el) el.addEventListener('pointerenter', () => this._updateModemTrayIcon(), { passive: true });
+        }
+        this._updateModemTrayIcon();
     }
 
     _wireStartupConnectionKeyboardListeners() {
@@ -3632,7 +3720,7 @@ class WebSocketClient {
         // Restart check first: a lock drops the previous server's status before this one lands
         this._noteServerInstance(data);
         this.lastServerStartupStatus = data;
-        this._emitNightshadeState(); // ready or still starting: Nightshade's 'restarting' (#895)
+        this._updateModemTrayIcon(); // ready or still starting: Nightshade's 'restarting' (#895)
         // Domain name + WAN / Ethernet for the connection dialogs (modules/melatonNetwork.js)
         if (data.melaton && typeof data.melaton === 'object') {
             this.melatonConnection = data.melaton;
@@ -4715,11 +4803,12 @@ class WebSocketClient {
         });
 
         window.addEventListener('online', () => {
-            this._emitNightshadeState();
+            this._updateModemTrayIcon();
             this._reconnectOnFocusRegain('online');
         });
-        // Nightshade Network (#895): losing the internet is its own state, not "service unavailable"
-        window.addEventListener('offline', () => this._emitNightshadeState());
+        // Nightshade Network (#895): losing the internet is its own state, not "service unavailable";
+        // the network icon follows the computer's link (_updateModemTrayIcon emits the state too)
+        window.addEventListener('offline', () => this._updateModemTrayIcon());
 
         // ServiceWorkerManager owns the single service-worker message listener and
         // forwards NETWORK_ACTIVITY events here.
@@ -10475,7 +10564,7 @@ class WebSocketClient {
             });
         const up = net.up;
         const down = net.down;
-        const status = net.status;
+        // net.status: the ping dot (no longer the globe's limited state, #895)
         const upOn = !!(up && (up.classList.contains('active') || up.classList.contains('active-http')
             || (up.classList.contains('streaming-up') && !up.classList.contains('streaming-stalled-up'))));
         const downOn = !!(down && (down.classList.contains('active') || down.classList.contains('active-http')
@@ -10484,7 +10573,9 @@ class WebSocketClient {
         window.setDesktopTaskbarNetFlags({
             send: upOn,
             recv: downOn,
-            limited: !!(status && (status.classList.contains('ping-response-wait') || status.classList.contains('ping-warning')))
+            // a slow or silent server is the Nightshade Network's (its tooltip and balloon, #895), not
+            // the computer's network: the globe shows limited no more
+            limited: false
         });
     }
 

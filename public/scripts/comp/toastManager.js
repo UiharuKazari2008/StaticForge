@@ -462,7 +462,8 @@ const TRAY_POPUP_ID_BY_TITLE = {
     'Generation Receipt': 'generation-receipt',
     'Upscaling Receipt': 'upscale-receipt',
     'Vibe Encoding Receipt': 'vibe-receipt',
-    'Deposit Receipt': 'deposit-receipt'
+    'Deposit Receipt': 'deposit-receipt',
+    'Nightshade Network': 'nightshade'
 };
 
 function _trayPopupIdForTitle(title) {
@@ -493,9 +494,10 @@ function _isDesktopPopupWiredToast(type, title, showProgress = false) {
 
 function _getDesktopPopupAnchorForTitle(title) {
     if (title === 'High Latency Detected') {
-        // the Vista look shows latency on the network icon (limited globe), not its own icon
+        // the server's latency belongs to the Nightshade Network icon (#895); the network icon is the
+        // computer's own link
         const classic = window.uiTheme.is('classic');
-        return (!classic && document.getElementById('modemTrayIcon')) || document.getElementById('pingWarningIndicator');
+        return (!classic && (document.getElementById('nightshadeTrayIcon') || document.getElementById('modemTrayIcon'))) || document.getElementById('pingWarningIndicator');
     }
     if (title === 'Generation Complete') {
         return document.getElementById('imageGenerationIndicator');
@@ -735,7 +737,8 @@ const TOAST_BALLOONS = [
     [/^(updates? (applied|complete|ready|available|waiting)|update ready|restart required|download stalled|service worker (unavailable|not supported)|version mismatch)$/i, 'serviceWorkerTrayIcon'],
     [/^(novelai subscription status|account fixed anlas expiring|extended free usage|cursor login)$/i, 'walletTrayIcon'],
     [/^(queue (blocked|unblocked)|new images available)$/i, 'imageGenerationIndicator'],
-    [/^(connection error|connection lost|disconnected)$/i, 'modemTrayIcon'],
+    // the Dreamscape link is the Nightshade Network service (#895), not the computer's network
+    [/^(connection error|connection lost|disconnected|nightshade network)$/i, 'nightshadeTrayIcon'],
     [/^activesync$/i, 'activeSyncTrayIcon'],
     [/^director$/i, 'directorTrayIcon']
 ];
