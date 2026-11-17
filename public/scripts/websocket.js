@@ -11597,19 +11597,27 @@ window.wsClient = new WebSocketClient();
 // (client_dormant, Nov 15 2026): while it sleeps the server holds status pushes nothing waits on and
 // sends them when it wakes, so the radio is not woken for things no one sees (rule
 // server-push-not-polling). Replies, texts, mail and Director events still arrive at once.
+// The DeX window of a hybrid phone does the same with dex:1 (#890 P18): its WebView goes hidden when
+// its display sleeps or another program covers it (onPause), and the server holds the same pushes for it.
 (function reportDormant() {
     const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const c = window.wsClient;
     if (!c || typeof document === 'undefined') return;
     let sent = null;
     const dormant = () => document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined;
+    // melatonContinuity.js loads after this file: asked when a report is due (it caches the answer)
+    const dexWindow = () => {
+        const mc = window.melatonContinuity;
+        try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+    };
     const tell = (force) => {
-        if (window.uiShell !== 'mobile') return;
+        const dex = window.uiShell !== 'mobile' && dexWindow();
+        if (window.uiShell !== 'mobile' && !dex) return;
         const on = dormant();
         if (!force && on === sent) return;
         const ws = c.ws;
         if (!ws || ws.readyState !== 1) return;
-        try { ws.send(JSON.stringify({ type: 'client_dormant', on })); sent = on; } catch (_) { /* closing */ }
+        try { ws.send(JSON.stringify(dex ? { type: 'client_dormant', on, dex: 1 } : { type: 'client_dormant', on })); sent = on; } catch (_) { /* closing */ }
     };
     // coming back on screen always says so, even if the page thinks it already did (a lost report
     // must never leave the server holding its status pushes, Yukimi Nov 15: status icons not updating);
