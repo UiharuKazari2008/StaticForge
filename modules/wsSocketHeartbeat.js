@@ -16,12 +16,20 @@
  *   QUIET_WINDOW_LONG_MS  180 s  the app's native links (the Miniport carrier, ActiveSync's
  *                                background link, light sockets) and the page of a phone the
  *                                server knows is asleep: each server ping wakes the phone's radio
+ *
+ * A long window must not leave a silently dropped link standing for minutes once its peer is back:
+ * when a phone reconnects (a new Miniport carrier, a new ActiveSync hello), its older links are
+ * probed (probeSocketLink), and until one answers its page's last word on being on screen or
+ * connected is not relied on (socketLinkUnanswered).
  */
 
 const HEARTBEAT_INTERVAL_MS = 30000;
 const MISSED_PONG_LIMIT = 2;
 const QUIET_WINDOW_MS = 30000;
 const QUIET_WINDOW_LONG_MS = 180000;
+// a probe (probeSocketLink) is not counted as missed before this: the radio of a phone that just
+// reconnected elsewhere may take a moment to answer on its older link
+const PROBE_GRACE_MS = 10000;
 
 function createSocketHeartbeatEntry(now = Date.now()) {
     return { alive: true, misses: 0, heardAt: now };
@@ -33,6 +41,7 @@ function noteSocketHeard(entry, now = Date.now()) {
     entry.alive = true;
     entry.misses = 0;
     entry.heardAt = now;
+    entry.probedAt = 0;
 }
 
 // the old name: a pong is one of the frames that count
@@ -47,14 +56,16 @@ const noteHeartbeatPong = noteSocketHeard;
 function tickSocketHeartbeat(entry, missLimit = MISSED_PONG_LIMIT, opts = null) {
     const limit = Number.isInteger(missLimit) && missLimit > 0 ? missLimit : MISSED_PONG_LIMIT;
     const windowMs = opts && Number(opts.windowMs) > 0 ? Number(opts.windowMs) : 0;
+    const now = opts && Number.isFinite(opts.now) ? opts.now : Date.now();
     if (windowMs) {
-        const now = opts && Number.isFinite(opts.now) ? opts.now : Date.now();
         if (!Number.isFinite(entry.heardAt)) entry.heardAt = now;
         if (entry.alive && now - entry.heardAt < windowMs) {
             entry.misses = 0;
             return 'skip';
         }
     }
+    // probed a moment ago (probeSocketLink): its ping is out, and this tick is too soon to count it
+    if (!entry.alive && entry.probedAt && now - entry.probedAt < PROBE_GRACE_MS) return 'skip';
     if (!entry.alive) {
         entry.misses += 1;
         if (entry.misses >= limit) {
@@ -115,6 +126,49 @@ function quietWindowFor(ws, info) {
 }
 
 /**
+ * The physical link a server socket travels on, and its heartbeat entry: a Continuity or Miniport
+ * sub-client (#798 / #815) lives on its carrier's socket; a Miniport carrier keeps its own entry
+ * (ws._dsHeartbeat). clients: the server's Map(ws -> clientInfo), for a Continuity carrier's entry.
+ */
+function socketLink(ws, info, clients) {
+    if (ws && ws.virtual && ws.carrier) {
+        const c = ws.carrier;
+        if (c._dsHeartbeat) return { ws: c, entry: c._dsHeartbeat };
+        const ci = clients && typeof clients.get === 'function' ? clients.get(c) : null;
+        return { ws: c, entry: ci && ci.heartbeat ? ci.heartbeat : null };
+    }
+    if (ws && ws._dsHeartbeat) return { ws, entry: ws._dsHeartbeat };
+    return { ws: ws || null, entry: info && info.heartbeat ? info.heartbeat : null };
+}
+
+/**
+ * The socket's link was pinged and has not answered yet: it may have dropped without a word (a
+ * Wi-Fi / cellular handover leaves the old connection open on the server until the heartbeat ends it).
+ * What such a socket last reported (on screen, in front, connected) is not to be relied on.
+ */
+function socketLinkUnanswered(ws, info, clients) {
+    const { entry } = socketLink(ws, info, clients);
+    return !!(entry && entry.alive === false);
+}
+
+/**
+ * A peer came back on another link (#890): its older link proves it is still there. Its quiet
+ * window ends now and it is pinged; until a frame comes socketLinkUnanswered says so, and if none
+ * comes the usual missed-pong rule ends it within a tick or two after PROBE_GRACE_MS (instead of up
+ * to QUIET_WINDOW_LONG_MS later). A link that is already waiting on a ping is left to that one.
+ * Returns true when a ping went out.
+ */
+function probeSocketLink(ws, info, clients, now = Date.now()) {
+    const { ws: link, entry } = socketLink(ws, info, clients);
+    if (!link || !entry || link.readyState !== 1 || typeof link.ping !== 'function') return false;
+    if (!entry.alive) return false;
+    entry.alive = false;
+    entry.probedAt = now;
+    try { link.ping(); } catch (_) { /* closing: the next tick counts it */ }
+    return true;
+}
+
+/**
  * Every frame a server-side ws socket receives counts as liveness: wire it once per socket.
  * (Listeners add to the caller's own 'message' handler; they do not replace it.)
  */
@@ -145,12 +199,16 @@ module.exports = {
     MISSED_PONG_LIMIT,
     QUIET_WINDOW_MS,
     QUIET_WINDOW_LONG_MS,
+    PROBE_GRACE_MS,
     createSocketHeartbeatEntry,
     noteSocketHeard,
     noteHeartbeatPong,
     tickSocketHeartbeat,
     reapSocketHeartbeats,
     quietWindowFor,
+    socketLink,
+    socketLinkUnanswered,
+    probeSocketLink,
     watchSocketFrames,
     formatWsDisconnectLog
 };

@@ -71,6 +71,7 @@ class VirtualSocket extends EventEmitter {
 }
 
 const subsOf = new WeakMap(); // carrier socket -> Map(sub -> VirtualSocket)
+const miniports = new Set(); // open Miniport carriers (#890: a new one has its session's older ones probed)
 
 /**
  * One message to many sockets (broadcast, sendToUser): a sub-client whose carrier gets the same message
@@ -148,7 +149,9 @@ function closeAll(carrier) {
  * client of its own. connect(vws, req) runs the server's connection handler for each sub-client.
  * Its heartbeat is its own (it has no client entry) but the shared rule (wsSocketHeartbeat.js, #890):
  * any frame from the app counts as alive, the server pings only after 180 s without one, and a ping
- * still unanswered at the next tick ends the link.
+ * still unanswered at the next tick ends the link. A new carrier on the same session means the app
+ * reconnected: an older one may have dropped without a word (a Wi-Fi / cellular handover), so it is
+ * probed at once instead of being left standing for up to 180 s.
  */
 function acceptMiniport(ws, req, info, connect) {
     if (!info || !info.authenticated) {
@@ -162,6 +165,13 @@ function acceptMiniport(ws, req, info, connect) {
     const hb = require('../wsSocketHeartbeat');
     const entry = hb.createSocketHeartbeatEntry();
     hb.watchSocketFrames(ws, entry);
+    // its link entry, for socketLink / probeSocketLink (its sub-clients' link is this socket)
+    ws._dsHeartbeat = entry;
+    ws._dsSessionId = info.sessionId || null;
+    if (ws._dsSessionId) {
+        for (const old of miniports) if (old !== ws && old._dsSessionId === ws._dsSessionId) hb.probeSocketLink(old, null, null);
+    }
+    miniports.add(ws);
     const beat = setInterval(() => {
         // missLimit 1: as before, the pong is due by the next tick
         const action = hb.tickSocketHeartbeat(entry, 1, { windowMs: hb.quietWindowFor(ws, null) });
@@ -175,7 +185,7 @@ function acceptMiniport(ws, req, info, connect) {
         if (message && message.type === 'ping') { try { ws.send(JSON.stringify({ type: 'pong', t: message.t || null })); } catch (_) { /* closing */ } return; }
         handle(ws, message, connect);
     });
-    ws.on('close', () => { clearInterval(beat); closeAll(ws); });
+    ws.on('close', () => { miniports.delete(ws); clearInterval(beat); closeAll(ws); });
     ws.on('error', () => { /* close follows */ });
     console.log(`🔌 Melaton Miniport connected: session ${String(info.sessionId || '').slice(0, 8)}… (${info.clientIP || 'unknown'})`);
     try { ws.send(JSON.stringify({ type: 'miniport_ready', at: Date.now() })); } catch (_) { /* gone */ }

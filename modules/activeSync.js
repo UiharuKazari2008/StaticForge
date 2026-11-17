@@ -33,6 +33,7 @@ const os = require('os');
 const path = require('path');
 const crypto = require('crypto');
 const WebSocket = require('ws');
+const { socketLink, socketLinkUnanswered, probeSocketLink } = require('./wsSocketHeartbeat');
 
 const KINDS = new Set(['device', 'computer']);
 const SPEAKERS = new Set(['webview', 'service']);
@@ -317,6 +318,39 @@ function liveSockets(wsServer, kind, id) {
     }
     out.sort((a, b) => b.info.as.since - a.info.as.since);
     return out;
+}
+
+/**
+ * A socket whose link was pinged and has not answered (wsSocketHeartbeat.js, #890): it may have
+ * dropped without a word, so what it last said about the page (on screen, in front, connected) does
+ * not count until it answers. Only notification decisions ask; Device Center shows what it has.
+ */
+function linkUnanswered(server, s) {
+    return socketLinkUnanswered(s.ws, s.info, server && server.clients);
+}
+
+/**
+ * A device said hello on a new socket (#890): it may have changed networks, and its older links
+ * (another Miniport carrier, an older background link) may have dropped without a word. With the
+ * long quiet window of the app's links the server would notice only minutes later, and until then
+ * the dead page would still count as in front or connected for notifications. Each older link is
+ * pinged now; a live one answers at once, a dead one ends within a tick or two.
+ */
+function probeOlderLinks(server, deviceId, clientInfo) {
+    if (!server || !server.clients) return 0;
+    const live = liveSockets(server, 'device', deviceId);
+    const mine = live.find((s) => s.info === clientInfo);
+    const myLink = mine ? socketLink(mine.ws, mine.info, server.clients).ws : null;
+    const seen = new Set();
+    let probed = 0;
+    for (const s of live) {
+        if (s.info === clientInfo) continue;
+        const link = socketLink(s.ws, s.info, server.clients).ws;
+        if (!link || link === myLink || seen.has(link)) continue;
+        seen.add(link);
+        if (probeSocketLink(s.ws, s.info, server.clients)) probed += 1;
+    }
+    return probed;
 }
 
 function socketAnswers(info, op) {
@@ -609,6 +643,7 @@ function hello(globalResources, wsServer, clientInfo, data) {
     }
     const wasOnline = !!existing;
     clientInfo.as = as;
+    if (wasOnline) probeOlderLinks(server, id, clientInfo);
     if (as.status) d.prepare('UPDATE as_devices SET last_status = ? WHERE device_id = ?').run(JSON.stringify(as.status), id);
     if (as.status && as.status.continuity) noteContinuity(globalResources, id);
     if (!wasOnline) logEvent(globalResources, id, 'info', `Connected (${as.speaker})`);
@@ -843,7 +878,7 @@ function receivedOf(op, args) {
 
 /** Is the phone's page on screen (its webview socket says visible: not locked, screen on, in front)? */
 function pageOnScreen(server, deviceId) {
-    return liveSockets(server, 'device', deviceId).some((s) => s.info.as.speaker !== 'service' && s.info.as.visible === true);
+    return liveSockets(server, 'device', deviceId).some((s) => s.info.as.speaker !== 'service' && s.info.as.visible === true && !linkUnanswered(server, s));
 }
 
 /** A live delivery the background service took: an item only when the page was not on screen. */
@@ -1139,7 +1174,8 @@ function partnerLinks(globalResources, wsServer) {
         const live = liveSockets(server, 'device', id);
         if (!live.some((s) => s.info.as.session === 'partner')) continue;
         const service = live.find((s) => s.info.as.speaker === 'service') || null;
-        const foreground = live.some((s) => s.info.as.speaker === 'webview' && s.info.as.status && s.info.as.status.foreground === true);
+        // a page whose link has not answered its ping may be gone (a silent drop): it is not in front
+        const foreground = live.some((s) => s.info.as.speaker === 'webview' && s.info.as.status && s.info.as.status.foreground === true && !linkUnanswered(server, s));
         const row = rowOf(globalResources, id);
         out.push({ deviceId: id, name: row ? row.name : '', service, foreground });
     }
@@ -1239,7 +1275,7 @@ function sendInboxNotice(globalResources, wsServer, notice, opts = {}) {
         if (!live.some((x) => x.info.as.session === 'partner')) continue;
         const service = live.find((x) => x.info.as.speaker === 'service');
         if (!service) continue;
-        const pageConnected = live.some((x) => x.info.as.speaker === 'webview');
+        const pageConnected = live.some((x) => x.info.as.speaker === 'webview' && !linkUnanswered(server, x));
         if (sendServerEvent(globalResources, server, service, 'inbox.notice', Object.assign({}, notice, { pageConnected }))) sent += 1;
     }
     return sent;
