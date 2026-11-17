@@ -245,6 +245,11 @@ const vsbLivePaused = function () {
 
 const vsbLiveSend = function (force) {
     vsbLive.syncTimer = null;
+    // the 5 s watch runs only while a gadget reads the feed and the page is seen (#890): it is looked at
+    // here, on every use, release and visibility change
+    const watch = vsbLive.users.size > 0 && !document.hidden;
+    if (watch && !vsbLive.watchTimer) vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
+    else if (!watch && vsbLive.watchTimer) { clearInterval(vsbLive.watchTimer); vsbLive.watchTimer = null; }
     if (typeof wsClient === 'undefined' || !wsClient || !wsClient.ws || wsClient.ws.readyState !== 1) return;
     let topics = document.hidden ? { host: false, system: [], weather: false, fx: [], quotes: [], feeds: [] } : vsbLiveTopics();
     if (!document.hidden && vsbLiveUnfocused()) topics = { ...topics, host: false, system: [] };
@@ -311,7 +316,7 @@ const vsbLiveBind = function () {
     // blur also fires when focus moves into a gadget iframe; vsbLivePaused reads hasFocus once it settles
     window.addEventListener('blur', () => setTimeout(() => vsbLiveSync(false), 0));
     window.addEventListener('focus', () => vsbLiveSync(false));
-    vsbLive.watchTimer = setInterval(vsbLiveWatch, VSB_LIVE_WATCH_MS);
+    // the watch's interval starts with the first send (vsbLiveSend), once a gadget uses the feed
 };
 
 const vsbLiveUse = function (owner, spec, onData, isActive = null) {
