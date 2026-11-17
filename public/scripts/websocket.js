@@ -1879,7 +1879,55 @@ class WebSocketClient {
         return `${this._vpnConnectionName()} is now connected`;
     }
 
+    /**
+     * Nightshade Network (#895): the Dreamscape service's state apart from the real internet link.
+     * internet: 'online' | 'offline' (the browser's own link, never the socket);
+     * service: 'connected' | 'connecting' | 'restarting' (the server answered but is still
+     * starting) | 'signed-out' (logon required) | 'off' (the user disconnected) | 'no-internet' |
+     * 'unavailable'. problem is true for restarting, no-internet and unavailable: the states the
+     * phone's status glyph and the desktop icon's red ! show. CafeReady: the Miniport carries the
+     * link (#815). Listen for 'nightshade:state' on window; it fires only when something changed.
+     */
+    nightshadeState() {
+        const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+        const startup = this.lastServerStartupStatus;
+        let service;
+        if (this.isConnected()) service = 'connected';
+        else if (!online) service = 'no-internet';
+        else if (this.connectionPhase === 'auth') service = 'signed-out';
+        else if (startup && startup.isReady === false) service = 'restarting';
+        else if (this.isConnecting || this.connectionPhase === 'dialing') service = 'connecting';
+        else if (this._userCancelledConnect) service = 'off';
+        else service = 'unavailable';
+        let cafeReady = false;
+        try {
+            const c = window.melatonContinuity;
+            const mp = c && typeof c.miniport === 'function' ? c.miniport() : null;
+            cafeReady = !!(service === 'connected' && mp && mp.up && mp.transport === 'miniport');
+        } catch (_) { cafeReady = false; }
+        return {
+            internet: online ? 'online' : 'offline',
+            service,
+            problem: service === 'restarting' || service === 'no-internet' || service === 'unavailable',
+            cafeReady,
+            connectedAt: service === 'connected' ? (this.connectionStats && this.connectionStats.connectedAt) || null : null,
+            rtt: Number.isFinite(this.currentRtt) ? Math.round(this.currentRtt) : null
+        };
+    }
+
+    /** Fire 'nightshade:state' when the internet / service / CafeReady state moved (#895). */
+    _emitNightshadeState() {
+        if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
+        let s;
+        try { s = this.nightshadeState(); } catch (_) { return; }
+        const key = `${s.internet}|${s.service}|${s.cafeReady ? 1 : 0}`;
+        if (key === this._nightshadeKey) return;
+        this._nightshadeKey = key;
+        try { window.dispatchEvent(new CustomEvent('nightshade:state', { detail: s })); } catch (_) { /* old engine */ }
+    }
+
     _updateModemTrayIcon() {
+        this._emitNightshadeState();
         if (window.uiShell === 'mobile') return;
         const icon = document.getElementById('modemTrayIcon');
         const glyph = document.getElementById('modemTrayIconGlyph');
@@ -3584,6 +3632,7 @@ class WebSocketClient {
         // Restart check first: a lock drops the previous server's status before this one lands
         this._noteServerInstance(data);
         this.lastServerStartupStatus = data;
+        this._emitNightshadeState(); // ready or still starting: Nightshade's 'restarting' (#895)
         // Domain name + WAN / Ethernet for the connection dialogs (modules/melatonNetwork.js)
         if (data.melaton && typeof data.melaton === 'object') {
             this.melatonConnection = data.melaton;
@@ -4666,8 +4715,11 @@ class WebSocketClient {
         });
 
         window.addEventListener('online', () => {
+            this._emitNightshadeState();
             this._reconnectOnFocusRegain('online');
         });
+        // Nightshade Network (#895): losing the internet is its own state, not "service unavailable"
+        window.addEventListener('offline', () => this._emitNightshadeState());
 
         // ServiceWorkerManager owns the single service-worker message listener and
         // forwards NETWORK_ACTIVITY events here.
