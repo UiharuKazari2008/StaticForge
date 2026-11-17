@@ -358,6 +358,19 @@
     // ---- Hardware and Sensors (#896): hwmon readings pushed while the page shows -------------------
 
     const SENSOR_ORDER = { temperature: 0, fan: 1, voltage: 2, power: 3, clock: 4 };
+    // the drivers' own labels in a reader's words (the driver's label stays in brackets)
+    const SENSOR_NAMES = {
+        Tctl: 'Processor', Tdie: 'Processor die', Tccd1: 'Core complex 1', Tccd2: 'Core complex 2',
+        'Package id 0': 'Processor package', edge: 'Graphics', junction: 'Graphics hot spot', mem: 'Graphics memory',
+        sclk: 'Graphics clock', mclk: 'Graphics memory clock', vddgfx: 'Graphics core voltage', vddnb: 'Northbridge voltage',
+        PPT: 'Processor package power', Composite: 'Drive'
+    };
+    function sensorName(row) {
+        const l = String(row.label || '');
+        if (SENSOR_NAMES[l]) return `${SENSOR_NAMES[l]} (${l})`;
+        const core = /^Core (\d+)$/.exec(l);
+        return core ? `Processor core ${core[1]}` : l;
+    }
     function sensorIcon(row) {
         const d = String(row.device || '').toLowerCase();
         if (/processor/.test(d)) return `${DEV}/processors-16.png`;
@@ -420,7 +433,7 @@
         const val = (v, unit) => (v === null || v === undefined ? '' : `${v} ${unit}`);
         const STATUS = { ok: 'Normal', warning: 'Over maximum', critical: 'Critical', stopped: 'Stopped' };
         const cols = [
-            { t: 'Sensor', w: 170, key: 'label', text: (d) => d.label },
+            { t: 'Sensor', w: 200, key: 'label', text: (d) => sensorName(d) },
             { t: 'Device', w: 150, key: 'device', text: (d) => d.device },
             { t: 'Value', w: 90, key: 'value', num: true, text: (d) => val(d.value, d.unit) },
             { t: 'Maximum', w: 90, key: 'max', num: true, text: (d) => val(d.max, d.unit) },
