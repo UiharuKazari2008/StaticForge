@@ -31,6 +31,9 @@ const clientPerfState = {
     typingFlushTimer: null,
     modalFlushTimer: null,
     visibilityHandler: null,
+    screenHandler: null,
+    lastSentAt: 0,
+    lastSleepFlushAt: 0,
     modalLifecycleHandler: null,
     connectedHandler: null,
     longTaskObserver: null,
@@ -56,7 +59,35 @@ const clientPerfState = {
     autofillRebuildMaxMs: 0,
     autofillServiceCount: 0,
     autofillResultCount: 0,
-    lastAutofillRebuildMs: 0
+    lastAutofillRebuildMs: 0,
+    // Melaton Mobile (#890): a sample a minute went out at once, each its own radio wake-up (1,440 a
+    // day per phone, screen off too). A phone builds one a minute only while it is on screen and sends
+    // them together: at most every 15 minutes, when the socket has just sent something else (the radio
+    // is up anyway), when it goes out of sight or the screen goes off, or when the queue is full.
+    phone: {
+        SEND_EVERY_MS: 15 * 60 * 1000,
+        PIGGYBACK_MS: 3000,
+        is: () => window.uiShell === 'mobile',
+        /** Out of sight: a hidden page, or a phone whose screen is off (html[data-screen-off], the app's melatonscreen). */
+        asleep: () => document.visibilityState === 'hidden' || document.documentElement.dataset.screenOff !== undefined,
+        /** Whether the queued samples go out now or wait for a later chance. */
+        sendDue(reason) {
+            if (reason === 'visibility' || reason === 'screen_off' || reason === 'startup') return true;
+            if (clientPerfState.queuedSamples.length >= CLIENT_PERF_QUEUE_LIMIT) return true;
+            const now = Date.now();
+            if (now - clientPerfState.lastSentAt >= this.SEND_EVERY_MS) return true;
+            // lastOutgoingAt: public/scripts/websocket.js _sendOnSocket (anything but these samples)
+            return now - (Number(wsClient.lastOutgoingAt) || 0) < this.PIGGYBACK_MS;
+        },
+        /** Going out of sight (hidden, or the screen off): one sample and the queue go out, once on a
+            phone for both events (its screen-off is followed by the WebView hiding). */
+        flushOnSleep(reason) {
+            const now = Date.now();
+            if (this.is() && now - clientPerfState.lastSleepFlushAt < 2000) return;
+            clientPerfState.lastSleepFlushAt = now;
+            flushClientPerfSample(reason);
+        }
+    }
 };
 
 function clientPerfPercentile(values, percentile) {
@@ -196,6 +227,7 @@ async function sendQueuedClientPerfSamples() {
     clientPerfState.sendPromise = (async () => {
         const queued = clientPerfState.queuedSamples.splice(0);
         try {
+            clientPerfState.lastSentAt = Date.now();
             await wsClient.reportClientPerf(queued);
         } catch (error) {
             clientPerfState.queuedSamples.unshift(...queued);
@@ -221,7 +253,8 @@ async function flushClientPerfSample(reason = 'interval') {
     });
     queueClientPerfSample(sample);
     resetClientPerfWindowCounters();
-    await sendQueuedClientPerfSamples();
+    const phone = clientPerfState.phone;
+    if (!phone.is() || phone.sendDue(reason)) await sendQueuedClientPerfSamples();
     return sample;
 }
 
@@ -334,14 +367,21 @@ function startClientPerfSampler() {
         clientPerfState.measureObserver.observe({ type: 'measure', buffered: true });
     }
 
+    const phone = clientPerfState.phone;
     clientPerfState.visibilityHandler = () => {
         if (document.visibilityState === 'hidden') {
-            flushClientPerfSample('visibility');
-        } else {
+            phone.flushOnSleep('visibility');
+        } else if (!phone.asleep()) {
             startClientPerfFrameWindow();
         }
     };
     document.addEventListener('visibilitychange', clientPerfState.visibilityHandler);
+    // a phone's screen going off does not hide the page (the app's melatonscreen event)
+    clientPerfState.screenHandler = (event) => {
+        if (!(event && event.detail && event.detail.on)) phone.flushOnSleep('screen_off');
+        else if (!phone.asleep()) startClientPerfFrameWindow();
+    };
+    window.addEventListener('melatonscreen', clientPerfState.screenHandler);
 
     clientPerfState.modalLifecycleHandler = (event) => {
         recordClientPerfModalEvent(event.detail?.type);
@@ -353,6 +393,9 @@ function startClientPerfSampler() {
 
     startClientPerfFrameWindow();
     clientPerfState.intervalId = setInterval(() => {
+        // Melaton Mobile: nothing is measured or sent while the page is out of sight or the screen is
+        // off (going out of sight sent that minute already); the desktop samples as before
+        if (phone.is() && phone.asleep()) return;
         startClientPerfFrameWindow();
         clientPerfState.intervalFlushTimer = setTimeout(() => {
             clientPerfState.intervalFlushTimer = null;
@@ -397,6 +440,10 @@ function stopClientPerfSampler() {
     if (clientPerfState.visibilityHandler) {
         document.removeEventListener('visibilitychange', clientPerfState.visibilityHandler);
         clientPerfState.visibilityHandler = null;
+    }
+    if (clientPerfState.screenHandler) {
+        window.removeEventListener('melatonscreen', clientPerfState.screenHandler);
+        clientPerfState.screenHandler = null;
     }
     if (clientPerfState.modalLifecycleHandler) {
         document.removeEventListener('staticforge:modal-lifecycle', clientPerfState.modalLifecycleHandler);
