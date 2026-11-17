@@ -589,6 +589,10 @@
             s.connected = true;
             s.attempts = 0;
             s.passthrough = false;
+            // Guacamole's own page is past: its 500 ms look (watchFramePage) has nothing more to find
+            // (connected stays true for the session's life), so it stops instead of waking all session
+            clearInterval(s.pageTimer);
+            s.pageTimer = 0;
             clearTimeout(s.timer);
             setReconnecting(false);
             status = `Connected to ${s.name}`;
@@ -762,12 +766,18 @@
      * A remote desktop that cannot take the asked size (VNC, an old RDP server) is shown at its own
      * size: the frame follows the display so 100 % is one remote pixel per CSS pixel.
      */
+    const sizeSeen = () => !document.hidden && document.documentElement.dataset.screenOff === undefined;
+
     function startSizeWatch() {
         const s = session;
         clearInterval(s.sizeTimer);
+        s.sizeTimer = 0;
+        s.sizeWatch = true;
+        // the screen off or the page hidden: nothing to fit, no timer (sizeWake starts it again)
+        if (!sizeSeen()) return;
         s.sizeTimer = setInterval(() => {
-            // the screen off or the page hidden: nothing to fit (the next tick on screen looks again)
-            if (session !== s || document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
+            if (session !== s) { clearInterval(s.sizeTimer); s.sizeTimer = 0; return; }
+            if (!sizeSeen()) { clearInterval(s.sizeTimer); s.sizeTimer = 0; return; }
             const g = guac();
             if (!g || !g.display) return;
             const dw = g.display.getWidth();
@@ -1274,6 +1284,15 @@
         hookFeatureLoader();
         patchDesktop();
         document.addEventListener('keydown', onDocKey);
+        // the screen on or the page shown again: the display size watch of a session that has one goes
+        // on (it stops itself while not seen); not seen: it stops at once
+        const sizeWake = () => {
+            const s = session;
+            if (!s || s.ended || !s.sizeWatch) return;
+            if (sizeSeen()) { if (!s.sizeTimer) startSizeWatch(); } else if (s.sizeTimer) { clearInterval(s.sizeTimer); s.sizeTimer = 0; }
+        };
+        window.addEventListener('melatonscreen', sizeWake);
+        document.addEventListener('visibilitychange', sizeWake);
         // the SIP button: the phone keyboard into the session, or the focused field on the connect screen
         document.addEventListener('click', (e) => {
             if (!isCurrent() || !e.target.closest || !e.target.closest('#wmShell .wm-sip')) return;
