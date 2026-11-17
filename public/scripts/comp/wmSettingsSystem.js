@@ -2645,7 +2645,7 @@
                 el.querySelector('input[name="manage"]').addEventListener('change', (e) => { d.manage = e.target.checked; });
                 return;
             }
-            el.innerHTML = `${ui.text('Specify the hardware port to which your GPS device is connected. For more information, see the GPS device manufacturer’s documentation.')}
+            el.innerHTML = `${ui.text('Specify the hardware port to which your GPS device is connected. For more information, see the GPS device manufacturer\'s documentation.')}
                 <div class="wm-sys-gps-label">GPS hardware port:</div>${ui.comboHtml('hardware', label(GPS_PORTS, d.hardware))}
                 <div class="wm-sys-gps-baud"><span>Baud rate:</span>${ui.comboHtml('baud', d.baud)}</div>
                 <div class="wm-sys-facts wm-sys-gps-fix"></div>`;
