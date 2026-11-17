@@ -839,6 +839,7 @@
 
     function show(id, reason, extra) {
         if (!doc || !SAVERS[id]) return false;
+        bindInput();
         hide(false);
         ensureStyle();
         const cover = doc.createElement('div');
@@ -962,21 +963,30 @@
         if (Date.now() - state.lastInput >= s.wait * 60000) startIdle();
     }
 
-    function bind() {
+    /** Input ends a saver (a Preview too). On the window, in capture: ahead of every document-level
+        listener (modalKeyboardRegistry.js), so the key that wakes the screen does nothing else. */
+    function bindInput() {
         if (state.bound || !doc) return;
         state.bound = true;
-        // input always ends a saver (a Preview too); only the idle start stays off on the agent tab.
-        // On the window, in capture: ahead of every document-level listener (modalKeyboardRegistry.js),
-        // so the key that wakes the screen does nothing else
         INPUT_TYPES.forEach((type) => root.addEventListener(type, onInput, inputOptions(type)));
-        if (!isAgentTab()) state.timer = root.setInterval(tick, CHECK_MS);
         doc.addEventListener('desktopWorkstationLocked', () => hide(false));
+    }
+
+    function bind() {
+        // Melaton Mobile never starts a saver on idle (blocked(): no desktop), yet the check ran every
+        // 5 s and every touch went through the capture listeners for the life of the page (#890).
+        // There the listeners come only with a saver that is shown (a Preview), and stay from then on.
+        if (root.uiShell === 'mobile') return;
+        bindInput();
+        // only the idle start stays off on the agent tab
+        if (!isAgentTab() && !state.timer) state.timer = root.setInterval(tick, CHECK_MS);
     }
 
     const api = {
         IDS: Object.keys(SAVERS),
         /** The dialog's Preview: full screen until input (never locks). */
         preview(id, extra) {
+            bindInput();
             if (id === 'focus') {
                 const fc = focusCover();
                 if (fc) { fc.show(true); state.showing = 'preview-focus'; }
@@ -993,6 +1003,7 @@
         showForFocusLoss() {
             const s = settings();
             if (s.id === 'none' || s.id === 'focus' || isAgentTab()) return false;
+            bindInput();
             if (state.showing) return true;
             return show(s.id, 'focus');
         },
