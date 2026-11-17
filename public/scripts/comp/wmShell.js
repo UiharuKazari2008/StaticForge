@@ -6479,8 +6479,9 @@
             const trip = tf && typeof tf.statusState === 'function' ? tf.statusState() : null;
             if (trip && trip.lines && trip.lines.length) {
                 if (sections.length) sections.push({ rule: true });
-                sections.push({ text: trip.title && trip.title !== 'Traffic' ? trip.title : 'Commute', bold: true, links: [] });
-                sections.push(...trip.lines);
+                // one block: the heading and its lines (a divider between every line read as separate parts)
+                const head = trip.title && trip.title !== 'Traffic' ? trip.title : 'Commute';
+                sections.push({ html: `<b>${escapeHtml(head)}</b><br>${trip.lines.map(escapeHtml).join('<br>')}` });
                 const canStart = trip.direction === 'home' && !(run && run.running) && window.wmLapis && typeof window.wmLapis.canStart === 'function' && window.wmLapis.canStart();
                 sections.push({ links: [...(canStart ? [{ label: 'Start Car', action: () => { closeBubble(); window.wmLapis.startPrompt(); } }] : []),
                     { label: 'Open Traffic', action: () => { closeBubble(); tf.open(trip.direction); } }], align: 'right' });
@@ -6505,9 +6506,8 @@
             if (!keyHasMine && lp) {
                 if (run && run.running && st.cars.length === 0) sections.push({ rule: true });
                 // its name is the bubble's title; a heading only beside friends' cars in range
-                if (st.cars.length) sections.push({ text: lp.name, bold: true, links: [] });
-                sections.push(lp.lines.length ? lp.lines[0] : 'No report from the car yet.');
-                if (lp.lines[1]) sections.push(lp.lines[1]);
+                const what = lp.lines.length ? lp.lines.slice(0, 2) : ['No report from the car yet.'];
+                sections.push({ html: `${st.cars.length ? `<b>${escapeHtml(lp.name)}</b><br>` : ''}${what.map(escapeHtml).join('<br>')}` });
                 if (window.wmLapis.lock && window.wmLapis.unlock) sections.push({ node: mkKeys(() => window.wmLapis.lock(), () => window.wmLapis.unlock(), true, true) });
                 if (st.cars.length) sections.push({ rule: true });
             }
@@ -6517,7 +6517,7 @@
                 const many = st.cars.length > 1;
                 if (many) sections.push({ text: car.car, bold: true, links: car.mine ? [] : [{ label: 'Set as My Car', action: () => { ck.setMine(car.car); } }] });
                 sections.push(car.mine ? 'Your car, in range of this phone\'s key.' : many ? 'A friend\'s car, in range of its key.' : 'In range of this phone\'s key.');
-                if (car.mine && lp && lp.lines.length) sections.push(...lp.lines);
+                if (car.mine && lp && lp.lines.length) sections.push({ html: lp.lines.map(escapeHtml).join('<br>') });
                 const failed = (what) => messageBox({ title: car.car, icon: 'error', text: `The car key could not ${what} ${car.car}. Move closer to the car, then try again.` });
                 const lock = () => { closeBubble(); if (!ck.pressCar(car.key, 'lock')) failed('lock'); };
                 const unlock = async () => {
