@@ -2437,6 +2437,17 @@
             <button type="submit" class="wmb-search-go" aria-label="Search">${img('ie-search')}</button>
         </form>`;
 
+    /** A tag wiki's picture: its 480 px copy shown larger than it is (a square or wide picture) takes the original. */
+    function naxUpgrade(e) {
+        const im = e.target;
+        if (!im || im.tagName !== 'IMG' || !im.classList.contains('wmb-g-nax') || !im.dataset.full) return;
+        const want = im.getBoundingClientRect().width * (window.devicePixelRatio || 1);
+        if (im.naturalWidth && im.naturalWidth >= want - 1) return;
+        const full = im.dataset.full;
+        delete im.dataset.full;
+        im.src = full;
+    }
+
     async function loadGrimPage(g, force) {
         const send = (type, data) => window.wsClient.sendMessage(type, data);
         if (g.kind === 'search' && !g.q) {
@@ -2471,8 +2482,11 @@
             if (!bodies.length) throw new Error((r && r.error) || `“${g.tag}” has no wiki page.`);
             const title = String(r.tagName || g.tag).replace(/_/g, ' ');
             noteRecent(title);
-            const nax = r.naxImage && r.naxImage.gallerySlug && r.naxImage.filename
-                ? `<img class="wmb-g-nax" src="/naxCache/${encodeURIComponent(r.naxImage.gallerySlug)}/${encodeURIComponent(r.naxImage.filename)}" alt="">` : '';
+            // the server's 480 px wide WebP first (#890 P13); a picture shown larger than that takes the
+            // original when it has loaded (naxUpgrade), so nothing is shown softer than before
+            const naxSrc = r.naxImage && r.naxImage.gallerySlug && r.naxImage.filename
+                ? `/naxCache/${encodeURIComponent(r.naxImage.gallerySlug)}/${encodeURIComponent(r.naxImage.filename)}` : '';
+            const nax = naxSrc ? `<img class="wmb-g-nax" src="${naxSrc}?w=480" data-full="${naxSrc}" alt="">` : '';
             return `<article class="wmb-g-wiki" data-page-title="${esc(title)}">
                 <h1 class="wmb-g-title">${esc(title)}</h1>${nax}
                 ${bodies.map((b) => `${bodies.length > 1 || b.source ? `<div class="wmb-g-source">${esc(b.source === 'e621' ? 'e621' : b.source === 'danbooru' ? 'Danbooru' : (b.source || ''))}</div>` : ''}<div class="wmb-g-body">${b.html || ''}</div>`).join('')}
@@ -3923,6 +3937,8 @@
             onLocalClick(e);
         });
         on(d.gpage, 'click', onLocalClick);
+        // (load does not bubble: heard on the way down)
+        d.gpage.addEventListener('load', naxUpgrade, true);
         on(d.gpage, 'scroll', () => { if (W.localShown && W.localShown === entry()) W.localShown.scroll = d.gpage.scrollTop; }, { passive: true });
         on(d.gpage, 'submit', (e) => {
             e.preventDefault();
