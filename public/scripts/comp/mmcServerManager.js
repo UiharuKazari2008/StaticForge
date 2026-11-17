@@ -479,9 +479,16 @@
     }
 
     function clientName(r) {
-        if (r.kind || r.name) return r.name ? `${r.name}${r.kind ? ` (${r.kind})` : ''}` : String(r.kind);
-        const where = platformOf(r.userAgentFull || r.userAgent);
-        const what = r.light ? 'Light client' : r.continuity ? 'Continuity PC' : r.phone ? 'Phone' : 'Desktop';
+        if (r.kind || r.name) {
+            const kind = r.kind ? String(r.kind).replace(/^\w/, (ch) => ch.toUpperCase()) : '';
+            if (!r.name || String(r.name).toLowerCase() === String(r.kind || '').toLowerCase()) return `${kind || r.name} device`;
+            return `${r.name}${kind ? ` (${kind})` : ''}`;
+        }
+        const ua = r.userAgentFull || r.userAgent || '';
+        const where = platformOf(ua);
+        // a DeX window is an Android page too: Continuity first; a phone tab without its phone state yet
+        // (just reconnected) still reads as a phone by its user agent
+        const what = r.light ? 'Light client' : r.continuity ? 'Continuity PC' : (r.phone || /Android|iPhone/.test(ua)) ? 'Phone' : 'Desktop';
         return `${what}${where ? ` (${where})` : ''}`;
     }
 
@@ -489,7 +496,7 @@
         if (!r.authenticated) return 'Not signed in';
         if (r.dormant) return 'Idle (screen off)';
         const words = { ready: 'Ready', desktop: 'Desktop', logon: 'At logon', booting: 'Starting', locked: 'Locked' };
-        if (r.phone) return 'Ready';
+        if (r.phone || r.kind) return 'Ready';
         return words[r.desktopState] || (r.light ? 'Connected' : 'Connected');
     }
 
@@ -503,20 +510,27 @@
         return `${Math.floor(s / 86400)} d ago`;
     }
 
+    /** A workspace's name for its id (referenceUtils.js getWorkspaceDisplayName), the id otherwise. */
+    function workspaceName(id) {
+        if (!id) return '';
+        try { if (typeof root.getWorkspaceDisplayName === 'function') return root.getWorkspaceDisplayName(id) || id; } catch (_) { /* below */ }
+        return id;
+    }
+
     function clientsPage(c) {
         if (!clientsFeed.on && isAdmin()) void clientsFeed.want(true);
         const me = selfClientId();
         const rows = [...clientsFeed.rows.values()].map((r) => ({ ...r, self: r.clientId === me }));
         const cols = [
-            { t: 'Client', w: 230, key: 'name', text: (d) => `${clientName(d)}${d.self ? ' (this computer)' : ''}` },
+            { t: 'Client', w: 230, key: 'label', text: (d) => `${d.label}${d.self ? ' (this computer)' : ''}` },
             { t: 'User', w: 90, key: 'userType', text: (d) => (d.userType === 'admin' ? 'Administrator' : d.userType || '') },
             { t: 'Address', w: 120, key: 'address', text: (d) => d.address || '' },
-            { t: 'Workspace', w: 110, key: 'workspaceId', text: (d) => d.workspaceId || '' },
+            { t: 'Workspace', w: 130, key: 'workspace', text: (d) => d.workspace },
             { t: 'Status', w: 120, key: 'status', html: (d) => c.state(d.authenticated, clientStateText(d), true) },
             { t: 'Connected', w: 100, key: 'connectedAt', text: (d) => ago(d.connectedAt) },
             { t: 'Last Activity', w: 100, key: 'lastActivity', text: (d) => ago(d.lastActivity) }
         ];
-        const list = c.listView(cols, rows.map((r) => ({ key: r.clientId, icon: r.phone ? `${DEV}/portable-16.png` : r.kind ? `${DEV}/monitors-16.png` : CLIENTS16, data: { ...r, name: clientName(r), status: clientStateText(r) } })), {
+        const list = c.listView(cols, rows.map((r) => ({ key: r.clientId, icon: r.phone ? `${DEV}/portable-16.png` : r.kind ? `${DEV}/monitors-16.png` : CLIENTS16, data: { ...r, label: clientName(r), status: clientStateText(r), workspace: workspaceName(r.workspaceId) } })), {
             sortId: 'sm-clients',
             sort: { key: 'lastActivity', dir: -1 },
             empty: clientsFeed.error ? `The clients could not be read. ${clientsFeed.error}` : (clientsFeed.on ? 'No clients are connected.' : 'Reading the clients...')
