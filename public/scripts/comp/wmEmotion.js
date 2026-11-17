@@ -167,7 +167,12 @@
             if (!st.running || st.requestId !== requestId) { stopFollow(); return; }
             apply(await fetchJob());
         };
-        const onPush = (message) => apply(message && message.data);
+        // a push came: the server follows this job, the minute's safety read stops (#890; a reconnect still reads)
+        const onPush = (message) => {
+            const job = message && message.data;
+            if (poll && job && (!job.requestId || requestId === 'resumed' || job.requestId === requestId)) { clearInterval(poll); poll = null; }
+            apply(job);
+        };
         const client = window.wsClient;
         if (client && typeof client.on === 'function') { client.on('emotion_job_update', onPush); client.on('connected', check); }
         follow = { client, onPush, check };

@@ -815,6 +815,12 @@
             } catch (_) { dataUrls.set(u, ''); }
         }
         Object.values(all).forEach((l) => l.items.forEach((it) => { if (it.k === 'img' && dataUrls.get(it.url)) it.url = dataUrls.get(it.url); }));
+        // a new title band (a theme or size change) is a new blob: the oldest copies of ones no layout
+        // uses now go past eight (#890: a data URL per band ever made stayed)
+        for (const k of [...dataUrls.keys()]) {
+            if (dataUrls.size <= 8) break;
+            if (!blobs.has(k)) dataUrls.delete(k);
+        }
         const json = JSON.stringify(all);
         if (json === layoutsSent) return;
         layoutsSent = json;
