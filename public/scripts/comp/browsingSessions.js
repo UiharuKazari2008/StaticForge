@@ -34,7 +34,10 @@
     let helloTimer = null;
     let helloTries = 0;
     let reportTimer = null;
-    let lastReport = '';
+    // what the server holds for this load's session: a new session starts with no windows (hello), and
+    // one left with none is dropped when its socket closes (modules/browsingSessions.js onSocketClosed)
+    let lastReport = '[]';
+    let pollTimer = null;
     let st = { settings: null, restorable: 0, online: false };
     let firstReady = true;
 
@@ -169,8 +172,10 @@
             st.online = true;
             st.settings = res.settings || st.settings;
             st.restorable = Number(res.restorable) || 0;
-            lastReport = '';
-            report(true);
+            // the server keeps a session's windows across a reconnect: they go again only when this page
+            // has windows (the server may have lost them) or they changed since the last report (#890)
+            if (lastReport === '[]') report(false);
+            else { lastReport = ''; report(true); }
             fire('ready', { first: firstReady, restorable: st.restorable, settings: st.settings });
             firstReady = false;
         }).catch(() => {
@@ -191,7 +196,10 @@
         c.on('browsing_sessions_changed', () => fire('changed'));
         c.on('browsing_session_tab_taken', (msg) => fire('tabTaken', (msg && (msg.data || msg)) || {}));
         scheduleHello(700);
-        setInterval(() => report(false), POLL_MS);
+        // the net looks only while the page is in sight (a phone's screen off counts as out of sight,
+        // html[data-screen-off]); nothing on a page out of sight changes its browser windows (#890)
+        const asleep = () => root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined;
+        pollTimer = setInterval(() => { if (!asleep()) report(false); }, POLL_MS);
     }
 
     // ---- requests ----
