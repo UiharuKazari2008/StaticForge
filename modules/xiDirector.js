@@ -874,9 +874,8 @@ function finishRun(run, why) {
                     success: true,
                     sessionId: run.sessionId,
                     persona: 'xi',
-                    response: { SuggestedName: name, Description: text || 'Done.' },
-                    clientResponse: { Description: text || 'Done.', SuggestedName: name },
-                    data: { Description: text || 'Done.' }
+                    // the reply once (#890; no page reads the clientResponse / data copies)
+                    response: { SuggestedName: name, Description: text || 'Done.' }
                 });
                 emit(boundGr, 'director_send_message_response', {
                     success: true,
