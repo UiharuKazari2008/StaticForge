@@ -11,7 +11,11 @@
  *   phoneStorage.write(root, dir, file, { name, conflict, mtime, signal, onProgress })
  *                                     a Blob/File into a phone folder: writeBegin, binary chunks
  *                                     (at most 4 unacknowledged), writeEnd; writeAbort on cancel / error
- *   phoneStorage.watch(root, path) / unwatch(root, path)   reference counted, ≤32 folders on the phone
+ *   phoneStorage.watch(root, path, { remote }) / unwatch(root, path, { remote })
+ *                                     reference counted, ≤32 folders on the phone; remote: a computer
+ *                                     follows the folder (ActiveSync), else only this page shows it. A folder
+ *                                     only this page shows is watched with local: true, which the app stops
+ *                                     while the page is off screen (and reads again on the way back, #890)
  */
 (function (root) {
     'use strict';
@@ -145,29 +149,54 @@
     }
 
     // ---- watches: the phone keeps ≤32; several Explorer windows can show one folder ----
-    const watches = new Map(); // "root\npath" -> count
+    // Counted apart: this page's own views (Explorer, Pictures) and the computers that follow the folder
+    // over ActiveSync. The app is told local: true while only this page's views watch it (its observer may
+    // stop while the page is off screen) and local: false while a computer follows it; a change of that is
+    // the same watch asked again with the other mark (DSApp PhoneStorageBridge.watch). An app build without
+    // the mark ignores it: there every watch keeps observing, as before.
+    const watches = new Map(); // "root\npath" -> { local, remote, sent: the local mark the app has, null before }
 
-    function watch(rootId, path) {
-        const key = `${rootId}\n${path}`;
-        const n = watches.get(key) || 0;
-        watches.set(key, n + 1);
-        if (n === 0) {
-            if (watches.size > MAX_WATCHES) return Promise.resolve(false);
-            return call('watch', { root: rootId, path }).then(() => true, () => false);
-        }
-        return Promise.resolve(true);
+    /** Tells the app the folder's mark when it changed; resolves true while the folder is watched. */
+    function syncWatch(rootId, path, w) {
+        const local = w.remote === 0;
+        if (w.sent === local) return Promise.resolve(true);
+        const was = w.sent;
+        w.sent = local;
+        return call('watch', { root: rootId, path, local }).then(() => true, () => {
+            // the app did not take it: asked again by the next watch of the folder
+            if (w.sent === local) w.sent = was;
+            return false;
+        });
     }
 
-    function unwatch(rootId, path) {
+    function watch(rootId, path, opts) {
         const key = `${rootId}\n${path}`;
-        const n = watches.get(key) || 0;
-        if (n <= 1) {
-            watches.delete(key);
-            if (n === 1) return call('unwatch', { root: rootId, path }).catch(() => {});
-        } else {
-            watches.set(key, n - 1);
+        const remote = !!(opts && opts.remote);
+        let w = watches.get(key);
+        if (!w) {
+            w = { local: 0, remote: 0, sent: null };
+            watches.set(key, w);
         }
-        return Promise.resolve();
+        if (remote) w.remote += 1; else w.local += 1;
+        // past the phone's limit a new folder is counted but not watched (as before)
+        if (w.sent === null && watches.size > MAX_WATCHES) return Promise.resolve(false);
+        return syncWatch(rootId, path, w);
+    }
+
+    function unwatch(rootId, path, opts) {
+        const key = `${rootId}\n${path}`;
+        const remote = !!(opts && opts.remote);
+        const w = watches.get(key);
+        if (!w) return Promise.resolve();
+        if (remote) w.remote = Math.max(0, w.remote - 1); else w.local = Math.max(0, w.local - 1);
+        if (w.local + w.remote === 0) {
+            watches.delete(key);
+            if (w.sent !== null) return call('unwatch', { root: rootId, path }).catch(() => {});
+            return Promise.resolve();
+        }
+        // a computer stopped following it, or started: the app's mark follows
+        if (w.sent === null) return Promise.resolve();
+        return syncWatch(rootId, path, w).then(() => undefined);
     }
 
     // ---- writing a Blob into a phone folder ----

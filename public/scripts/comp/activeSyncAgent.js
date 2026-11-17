@@ -377,8 +377,16 @@
     function statusKey(status) {
         if (!status || typeof status !== 'object') return '';
         const { at: _at, activeDownKbps: _down, activeUpKbps: _up, ...rest } = status;
+        // the battery's live readings (currentUa, currentAvgUa, powerMw, chargeCounterUah, fullCapacityMah,
+        // temperatureC, voltageMv, chargeTimeRemainingMs) and the Wi-Fi link rate (linkMbps) are left out
         if (rest.battery) rest.battery = pick(rest.battery, ['level', 'charging', 'plugged', 'saver', 'status', 'health']);
         if (rest.wifi) rest.wifi = pick(rest.wifi, ['enabled', 'connected', 'level', 'ssid']);
+        // the radio moving data (dataMoving: on for 15 s after any traffic) flips with every request the
+        // phone makes; nothing that reads as_status shows it (the phone's own bar reads the app directly)
+        if (rest.cellular && typeof rest.cellular === 'object' && 'dataMoving' in rest.cellular) {
+            const { dataMoving: _moving, ...cell } = rest.cellular;
+            rest.cellular = cell;
+        }
         if (Array.isArray(rest.storage)) {
             // free space in whole percent of the card (a file written or removed moved the exact bytes)
             rest.storage = rest.storage.map((r) => (r && typeof r === 'object'
@@ -775,11 +783,29 @@
         return entry;
     }
 
+    /**
+     * A transfer this page drives (stream.send / stream.receive: the page reads or writes the file and
+     * moves it over HTTP) keeps the page running with the screen off until it ends (#890): the app pauses
+     * a sleeping page's JavaScript, and a paused page stops mid-file (melatonContinuity.holdAwake).
+     */
+    function heldAwake(fn) {
+        return async (args, from) => {
+            const mc = root.melatonContinuity;
+            const hold = !!(mc && typeof mc.holdAwake === 'function');
+            if (hold) mc.holdAwake('activesync-transfer', true);
+            try {
+                return await fn(args, from);
+            } finally {
+                if (hold) mc.holdAwake('activesync-transfer', false);
+            }
+        };
+    }
+
     function registerDeviceOps() {
         registerOp('status.get', () => deviceStatus());
-        registerOp('stream.send', streamSend);
+        registerOp('stream.send', heldAwake(streamSend));
         // a file written to the phone changes its free space (#890: no timer reads it any more)
-        registerOp('stream.receive', (args, from) => Promise.resolve(streamReceive(args, from)).finally(refreshStorageSoon));
+        registerOp('stream.receive', heldAwake((args, from) => Promise.resolve(streamReceive(args, from)).finally(refreshStorageSoon)));
 
         // the computer's user chose how to connect; this device's user agrees or not
         registerOp('partnership.propose', async (args, from) => {
@@ -795,8 +821,10 @@
         // phone storage: the app's bridge, the same operations File Explorer uses on the phone itself
         // 'open' shows the file in an Android app on the phone; watch / unwatch keep a folder's changes coming
         const STORAGE_OPS = ['hello', 'list', 'stat', 'mkdir', 'rename', 'delete', 'trash', 'trashList', 'restore', 'move', 'copy', 'open'];
-        registerOp('storage.watch', async (args) => (await storage()).watch(String(args.root || ''), String(args.path || '/')));
-        registerOp('storage.unwatch', async (args) => { await (await storage()).unwatch(String(args.root || ''), String(args.path || '/')); return true; });
+        // a computer follows the folder (remote): the app keeps its observer behind other programs and with
+        // the screen off (phoneStorageBridge.js: local-only watches stop there, #890)
+        registerOp('storage.watch', async (args) => (await storage()).watch(String(args.root || ''), String(args.path || '/'), { remote: true }));
+        registerOp('storage.unwatch', async (args) => { await (await storage()).unwatch(String(args.root || ''), String(args.path || '/'), { remote: true }); return true; });
         // what a computer changes on the phone moves its free space (#890: no timer reads it any more)
         const STORAGE_WRITES = new Set(['mkdir', 'rename', 'delete', 'trash', 'restore', 'move', 'copy']);
         STORAGE_OPS.forEach((op) => {
