@@ -2433,13 +2433,24 @@
      * when it is seen again, and a finished print is a notification (also with the screen off).
      */
     const seen = () => shown && isCurrent() && !!page && (typeof sh.onScreen !== 'function' || sh.onScreen(page));
+    // a part of the page is rendered (a style read, no layout where checkVisibility is there)
+    const paneShown = (el) => !!el && (typeof el.checkVisibility === 'function' ? el.checkVisibility() : el.getClientRects().length > 0);
 
     function wireModel() {
         M = window.studioModel || null;
         if (!M) return;
         M.on('change', () => { snap = null; if (seen()) paint(); else stale = true; });
         M.on('start', () => { if (seen()) paint(); else stale = true; });
-        M.on('progress', () => { if (!seen()) { stale = true; return; } const v = view(); if (v === 'print' || v === 'home') { drawPrint(); drawStrip(); } });
+        // a step draws only the parts on screen: the print pane is not shown on a narrow screen's home
+        // page, the strip not in the print view nor on a wide screen (each decoded the step picture
+        // anyway); a change of view repaints both (#890)
+        M.on('progress', () => {
+            if (!seen()) { stale = true; return; }
+            const v = view();
+            if (v !== 'print' && v !== 'home') return;
+            if (paneShown($('.wds-print'))) drawPrint();
+            if (paneShown($('.wds-strip'))) drawStrip();
+        });
         M.on('end', (r) => {
             if (seen()) { paint(); return; }
             stale = true;
