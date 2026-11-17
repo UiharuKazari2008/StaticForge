@@ -203,7 +203,11 @@
                     ours = await hashesOf(body);
                     screen = body.screen;
                 }
-                const last = (stored && stored.hashes) || {};
+                let last = (stored && stored.hashes) || {};
+                // the server has no picture at all of what this phone sent as files: it lost (or dropped) the
+                // device's set, so what was sent last says nothing about its paths either (it lists no paths)
+                const hasFile = (h) => typeof h === 'string' && h !== '' && !h.startsWith('path:');
+                if (serverHashes && !Object.keys(serverHashes).length && KINDS.some((k) => hasFile(last[k]))) last = {};
                 const needed = () => (serverHashes ? KINDS.filter((k) => kindDiffers(k, ours[k], serverHashes, last)) : KINDS.slice());
                 let need = needed();
                 if (serverHashes && !need.length && stored && stored.screen === screen) {
