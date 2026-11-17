@@ -24,7 +24,16 @@
  * requests carry it with no code of theirs): a comma list, or 'none' for core only. No cookie = a
  * client from before packages: the server gives it everything, as before.
  *
+ * Melaton Mobile's lighter install (#890): a client with the mobile bit (a phone, and its DeX window)
+ * also carries the flag 'mobile' in its set, and its manifest leaves out the core files a phone
+ * fetches only when something shows them (phoneOptional): the Desktop Background photos and the
+ * Sidebar's art ('wifi': the service worker fetches one when it is asked for and keeps it, and fills
+ * in the rest in the background while the phone is on Wi-Fi, sw.js PHONE_WIFI_PREFIXES), and font
+ * files no phone browser reads ('demand': every @font-face naming one lists a WOFF2 before it).
+ * Desktop clients keep them all.
+ *
  *   packageOf(url)            null (core) | package id | 'source'
+ *   phoneOptional(url)        null | 'wifi' | 'demand': left out of a 'mobile' set's install
  *   PACKAGES                  [{ id, label, version, tier }]
  *   current()                 the active ids (sorted)
  *   noteBoot({ shell, version, touch })   the page's shell: updates the automatic set + cookie;
@@ -33,6 +42,10 @@
  *   pin(id) / unpin(id) / pinned()        Applied Updates
  *   filterRows(rows)          manifest rows (url) this client keeps
  *   tierFor(dpr, px)          1 | 2 | 4 (wmShell syncPixelScale's steps)
+ *
+ * In a Melaton Mobile page (/app with the mobile bit) it also tells the service worker what network
+ * the phone is on, once after the boot and then on each change (PHONE_PREFETCH): the worker's Wi-Fi
+ * prefetch uses it where the worker cannot see the connection type itself.
  */
 (function (root, factory) {
     const api = factory();
@@ -59,6 +72,26 @@
     // Weather's art (#780): the app runs under both shells (and 6.5's home screen shows its icons), so
     // it is Common, though it lives under wm61
     const COMMON_WM61 = /^\/static_images\/wm61\/weather\//;
+
+    // the flag in a client's set: it runs Melaton Mobile (the stored mobile bit), so its install leaves
+    // out phoneOptional's files. Not a package: current() and Applied Updates never list it.
+    const MOBILE_FLAG = 'mobile';
+    // Desktop pictures a phone shows only in a desktop window (DeX) or as its workspace's wallpaper
+    // (sw.js WALLPAPER_CACHE keeps that one): the Desktop Background photos (179 MB,
+    // wallpaperGalleries.js) and the Sidebar's art. sw.js PHONE_WIFI_PREFIXES lists the same folders
+    // (scripts/test-phone-optional-assets.js keeps the two in step).
+    const PHONE_WIFI = /^\/static_images\/(?:wallpapers\/photos|vista-sidebar)\//;
+    // Font files a phone browser never asks for: every @font-face naming one lists its WOFF2 before it
+    // (dist/fontawesome/css/all*.css, dist/mdi/materialdesignicons*.css, dist/remixicon/remixicon*.css,
+    // css/fonts.css), and Chromium skips the .eot and .svg entries by their format. The same test reads
+    // those stylesheets and fails when that stops being true for one of them.
+    const PHONE_DEMAND = /^\/dist\/(?:fontawesome\/webfonts\/fa-[a-z0-9-]+\.ttf|fonts\/materialdesignicons-webfont\.(?:eot|woff|ttf)|fonts\/NotoSans-VariableFont_wdth(?:,|%2C)wght\.ttf|remixicon\/remixicon\.(?:ttf|woff|svg))$/i;
+    function phoneOptional(url) {
+        const u = String(url || '').split('?')[0];
+        if (PHONE_WIFI.test(u)) return 'wifi';
+        if (PHONE_DEMAND.test(u)) return 'demand';
+        return null;
+    }
     function packageOf(url) {
         const u = String(url || '').split('?')[0];
         // the Wallet's barcode drawing (#874, 1 MB): phones only
@@ -112,8 +145,13 @@
         if (s.mobile) tierIds(s.version, s.tier).forEach((id) => set.add(id));
         return [...set].filter((id) => IDS.has(id)).sort();
     }
-    function cookieValue(s) {
+    // the ids and, for a client with the mobile bit, the flag: what the cookie (and so the server) sees
+    function setOf(s) {
         const ids = idsOf(s);
+        return s && s.mobile ? [...ids, MOBILE_FLAG].sort() : ids;
+    }
+    function cookieValue(s) {
+        const ids = setOf(s);
         return ids.length ? ids.join(',') : 'none';
     }
     function syncCookie(s) {
@@ -172,11 +210,15 @@
     /** What the automatic set holds (the ones Applied Updates cannot remove). */
     function automatic() { const s = read(); return s && s.mobile ? tierIds(s.version, s.tier) : []; }
 
+    /** ids: a set from parseSet (the server); default this client's own, with its flag. */
     function filterRows(rows, ids) {
-        const have = new Set(ids || current());
+        const have = new Set(ids || setOf(read()));
+        const lite = have.has(MOBILE_FLAG);
         return (Array.isArray(rows) ? rows : []).filter((r) => {
-            const p = packageOf(r && (r.url || r.path));
-            return p === null || (p !== 'source' && have.has(p));
+            const url = r && (r.url || r.path);
+            const p = packageOf(url);
+            if (p !== null) return p !== 'source' && have.has(p);
+            return !(lite && phoneOptional(url));
         });
     }
 
@@ -185,11 +227,69 @@
         if (value == null || value === '') return null;
         const v = String(value).trim();
         if (v === 'none') return [];
-        return v.split(',').map((x) => x.trim()).filter((x) => IDS.has(x)).sort();
+        return v.split(',').map((x) => x.trim()).filter((x) => IDS.has(x) || x === MOBILE_FLAG).sort();
     }
 
     // a page that loads this re-asserts the cookie from storage (a cleared cookie comes back)
     try { if (typeof document !== 'undefined') { const s = read(); if (s) syncCookie(s); } } catch (_) { /* no storage */ }
 
-    return { PACKAGES, COOKIE, packageOf, tierFor, current, noteBoot, noteTier, pin, unpin, pinned, automatic, filterRows, parseSet, cookieValue, read };
+    // ---- Melaton Mobile's Wi-Fi prefetch (#890): sw.js fetches the 'wifi' files this install leaves
+    // out while the phone is on Wi-Fi. The worker reads navigator.connection.type itself where it has
+    // it; this page tells it what it knows (that, or the Android app's status: wmShell's contract v1,
+    // active wifi | cellular | ethernet | vpn | none) once the boot is over, then on every change.
+    // Event driven: nothing here polls, and a status event costs a compare unless the type is unknown.
+    const PREFETCH_HINT_DELAY_MS = 30000;
+    function connectionNetwork() {
+        const c = typeof navigator !== 'undefined' ? navigator.connection : null;
+        if (!c) return 'unknown';
+        if (c.saveData) return 'metered';
+        const t = typeof c.type === 'string' ? c.type : '';
+        if (t === 'wifi' || t === 'ethernet') return 'unmetered';
+        if (t === 'cellular' || t === 'bluetooth' || t === 'wimax' || t === 'none') return 'metered';
+        return 'unknown';
+    }
+    function statusNetwork(status) {
+        let s = status;
+        if (typeof s === 'string') { try { s = JSON.parse(s); } catch (_) { s = null; } }
+        if (!s || typeof s !== 'object') return 'unknown';
+        if (s.active === 'wifi' || s.active === 'ethernet') return 'unmetered';
+        if (s.active === 'cellular' || s.active === 'none') return 'metered';
+        // a VPN rides on the link under it
+        if (s.active === 'vpn') return s.wifi && s.wifi.connected ? 'unmetered' : 'metered';
+        return 'unknown';
+    }
+    function startPrefetchHints() {
+        if (typeof window === 'undefined' || typeof document === 'undefined' || typeof navigator === 'undefined') return;
+        if (!navigator.serviceWorker || typeof location === 'undefined' || location.pathname !== '/app') return;
+        let last = null;
+        const send = (status) => {
+            let network = connectionNetwork();
+            if (network === 'unknown') {
+                let st = status;
+                const bridge = window.AndroidDeviceStatus;
+                if (st == null && bridge && typeof bridge.getState === 'function') { try { st = bridge.getState(); } catch (_) { st = null; } }
+                network = statusNetwork(st);
+            }
+            if (network === last) return;
+            const worker = navigator.serviceWorker.controller;
+            if (!worker) return;
+            last = network;
+            try { worker.postMessage({ type: 'PHONE_PREFETCH', network }); } catch (_) { last = null; }
+        };
+        // after the boot (app.html's noteBoot has set the mobile bit by then); a desktop stops here
+        setTimeout(() => {
+            const s = read();
+            if (!s || !s.mobile) return;
+            send(null);
+            const c = navigator.connection;
+            if (c && typeof c.addEventListener === 'function') c.addEventListener('change', () => send(null));
+            // the app's status says the link only when the connection type does not
+            window.addEventListener('androiddevicestatus', (e) => { if (connectionNetwork() === 'unknown') send(e && e.detail != null ? e.detail : null); });
+            window.addEventListener('online', () => send(null));
+            navigator.serviceWorker.addEventListener('controllerchange', () => { last = null; send(null); });
+        }, PREFETCH_HINT_DELAY_MS);
+    }
+    try { startPrefetchHints(); } catch (_) { /* no worker: on demand only */ }
+
+    return { PACKAGES, COOKIE, MOBILE_FLAG, packageOf, phoneOptional, tierFor, current, noteBoot, noteTier, pin, unpin, pinned, automatic, filterRows, parseSet, cookieValue, read };
 }));

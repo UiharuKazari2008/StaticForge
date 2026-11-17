@@ -1909,6 +1909,10 @@ self.addEventListener('message', (event) => {
         // held by the message (up to EVENT_HOLD_MAX_MS): a worker with nothing else to answer was
         // stopped mid-download
         event.waitUntil(heldAtMost(perfSpan(`cacheStaticFiles ${files.length} files`, () => cacheStaticFiles(files, event.data.silent === true))));
+    } else if (event.data && event.data.type === 'PHONE_PREFETCH') {
+        // Melaton Mobile's page: the network it is on (assetPackages.js); Wi-Fi starts the prefetch
+        notePhoneNetwork(event.data.network);
+        event.waitUntil(heldAtMost(runPhonePrefetch()));
     } else if (event.data && event.data.type === 'NETWORK_ACTIVITY_OPT_OUT') {
         // a page that draws no network arrows (the phone shell) stops getting NETWORK_ACTIVITY
         event.waitUntil(setNetworkActivityOptOut(event.source, event.data.off !== false));
@@ -2833,6 +2837,11 @@ const MAINTENANCE_KEY = '/internal/sw-maintenance-v1';
 const MAINTENANCE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 // Fetched on demand and never in the manifest: kept by the leftover prune
 const ON_DEMAND_STATIC_PREFIXES = () => [GAME_ASSET_PREFIX, GADGET_ASSET_PREFIX, '/data/vista-gadgets.json'];
+// Melaton Mobile's install leaves these folders out (assetPackages.js phoneOptional 'wifi': the
+// Desktop Background photos and the Sidebar's art; scripts/test-phone-optional-assets.js keeps the
+// two lists in step). A phone fetches one when something shows it and keeps it, and the Wi-Fi
+// prefetch below fills in the rest.
+const PHONE_WIFI_PREFIXES = ['/static_images/wallpapers/photos/', '/static_images/vista-sidebar/'];
 // The manifest digest of the last full pass and when it ran: the same list again prunes nothing new
 const TIDY_MARK_KEY = '/internal/sw-tidy-v1';
 const TIDY_RELIST_MS = 7 * 24 * 60 * 60 * 1000;
@@ -2921,9 +2930,9 @@ async function readTidyMark(internal) {
 /**
  * One listing of the static cache: Setup's game media zips (about 27 MB a client, unpacked and
  * never read again), unhashed rows sharing a path with a hashed one (a query or Vary sibling),
- * and rows the manifest no longer lists (on-demand game and gadget files stay). The manifest the
- * last pass ran on, again, within a week: no listing (nothing can have left it), unless forced (a
- * package was removed).
+ * and rows the manifest no longer lists (on-demand game and gadget files stay, and on a phone the
+ * desktop pictures it fetched on demand). The manifest the last pass ran on, again, within a week:
+ * no listing (nothing can have left it), unless forced (a package was removed).
  */
 async function tidyStaticRows(force = false) {
   const manifest = await fetchManifestPaths();
@@ -2938,6 +2947,10 @@ async function tidyStaticRows(force = false) {
   const cache = await caches.open(STATIC_CACHE);
   const keys = await cache.keys();
   const onDemand = ON_DEMAND_STATIC_PREFIXES();
+  // a manifest with none of a folder's files is a phone's (assetPackages.js phoneOptional): the copies
+  // it fetched stay. A desktop's lists them, so a picture the server dropped still goes there.
+  const listed = manifest ? [...manifest.paths] : [];
+  const phoneKept = manifest ? PHONE_WIFI_PREFIXES.filter((prefix) => !listed.some((p) => p.startsWith(prefix))) : [];
   const byPath = new Map();
   const drop = [];
   for (const request of keys) {
@@ -2951,7 +2964,9 @@ async function tidyStaticRows(force = false) {
       drop.push(request);
       continue;
     }
-    if (manifest && !manifest.paths.has(decodedPath(pathname)) && !onDemand.some((prefix) => pathname.startsWith(prefix))) {
+    if (manifest && !manifest.paths.has(decodedPath(pathname))
+        && !onDemand.some((prefix) => pathname.startsWith(prefix))
+        && !phoneKept.some((prefix) => pathname.startsWith(prefix))) {
       drop.push(request);
       continue;
     }
@@ -3005,10 +3020,148 @@ function runCacheMaintenance(force = false) {
   return maintenanceRun;
 }
 
-// Install event — SW script only; assets cached via client-initiated CACHE_STATIC_FILES
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
-});
+// ---------- Melaton Mobile's on-demand files (#890) ----------
+// A phone's manifest leaves out the Desktop Background photos and the Sidebar's art (179 MB + 5 MB,
+// assetPackages.js phoneOptional 'wifi'). A page that shows one gets it through the static strategy,
+// which keeps it (x-file-hash), and tidyStaticRows leaves it be. The rest come here, in the
+// background and only while the phone is on Wi-Fi (Yukimi, Nov 17): Melaton Mobile's page posts
+// PHONE_PREFETCH with the network it is on once its boot is over and on every change; on Wi-Fi a pass
+// fetches the missing or changed files one at a time at low priority and stops as soon as the network
+// is not Wi-Fi or an update download starts. A pass that found nothing missing is not repeated for
+// the same list within a week. The workspace's own wallpaper does not wait for any of this: the page
+// fetches it into WALLPAPER_CACHE at every boot, on any network (syncWallpaperUrls), so Today and the
+// DeX desktop always have it, offline too.
+const PHONE_OPTIONAL_LIST_KEY = '/internal/sw-phone-optional-v1';
+const PHONE_PREFETCH_RECHECK_MS = 7 * 24 * 60 * 60 * 1000;
+// between two files: the page's own requests and the worker's thread come first
+const PHONE_PREFETCH_GAP_MS = 50;
+let phoneNetworkHint = 'unknown';
+let phonePrefetchRun = null;
+
+function notePhoneNetwork(network) {
+  phoneNetworkHint = network === 'unmetered' || network === 'metered' ? network : 'unknown';
+}
+
+/** 'unmetered' (Wi-Fi, Ethernet), 'metered' or 'unknown': the worker's own view first, else the page's. */
+function workerNetwork() {
+  const c = self.navigator && self.navigator.connection;
+  if (c) {
+    if (c.saveData) return 'metered';
+    const t = typeof c.type === 'string' ? c.type : '';
+    if (t === 'wifi' || t === 'ethernet') return 'unmetered';
+    if (t === 'cellular' || t === 'bluetooth' || t === 'wimax' || t === 'none') return 'metered';
+  }
+  return phoneNetworkHint;
+}
+
+function pathOfUrl(url) {
+  try {
+    return new URL(url, self.location.origin).pathname;
+  } catch (_) {
+    return String(url || '').split('?')[0];
+  }
+}
+
+function isPhoneWifiPath(pathname) {
+  return PHONE_WIFI_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+}
+
+async function readPhoneOptionalRecord(internal) {
+  try {
+    const hit = await internal.match(PHONE_OPTIONAL_LIST_KEY);
+    const record = hit ? await hit.json() : null;
+    return record && record.hash && Array.isArray(record.rows) ? record : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writePhoneOptionalRecord(internal, record) {
+  return internal.put(PHONE_OPTIONAL_LIST_KEY, new Response(JSON.stringify(record), {
+    headers: { 'content-type': 'application/json' }
+  })).catch(() => {});
+}
+
+/**
+ * The 'wifi' files the server has now, from the core list (X-Melaton-Packages: none, every client's
+ * files and no Melaton Mobile art; the phone's own list leaves them out): { record, fresh } or null.
+ * The list kept from last time is sent by its digest, so an unchanged one is a bodyless 304.
+ */
+async function phoneOptionalList(internal) {
+  const kept = await readPhoneOptionalRecord(internal);
+  const headers = { 'X-Service-Worker-Version': '2.0', 'X-Requested-With': 'ServiceWorker', 'X-Melaton-Packages': 'none' };
+  if (kept) headers['X-Manifest-Hash'] = kept.hash;
+  const response = await fetch('/', { method: 'OPTIONS', cache: 'no-store', headers });
+  if (response.status === 304 && kept) return { record: kept, fresh: false };
+  if (!response.ok) return null;
+  const files = await response.json();
+  if (!Array.isArray(files)) return null;
+  const hash = response.headers.get('X-Manifest-Hash') || '';
+  const rows = files
+    .filter((file) => file && file.url && file.hash && isPhoneWifiPath(pathOfUrl(file.url)))
+    .map((file) => ({ url: String(file.url), hash: String(file.hash) }));
+  const record = { hash, rows, complete: false, checkedAt: 0 };
+  if (hash) await writePhoneOptionalRecord(internal, record);
+  return { record, fresh: true };
+}
+
+async function phonePrefetchPass() {
+  const internal = await caches.open(INTERNAL_CACHE);
+  const list = await phoneOptionalList(internal);
+  if (!list) return;
+  const { record } = list;
+  if (!list.fresh && record.complete && Date.now() - (Number(record.checkedAt) || 0) < PHONE_PREFETCH_RECHECK_MS) return;
+  const cache = await caches.open(STATIC_CACHE);
+  let fetched = 0;
+  let missed = 0;
+  let stopped = false;
+  for (const row of record.rows) {
+    if (workerNetwork() !== 'unmetered' || downloadState.isDownloading) {
+      stopped = true;
+      break;
+    }
+    const pathname = pathOfUrl(row.url);
+    const kept = await cache.match(pathname, { ignoreVary: true });
+    if (kept && kept.headers.get('x-file-hash') === row.hash) continue;
+    let response = null;
+    try {
+      response = await fetch(row.url, { cache: 'no-store', priority: 'low' });
+    } catch (_) {
+      stopped = true;
+      break;
+    }
+    if (!response.ok) {
+      missed += 1;
+      continue;
+    }
+    const body = await response.arrayBuffer();
+    // a copy that is not the manifest's (a stale server copy) is left for the next pass
+    if (await sha256Hex(body) !== row.hash) {
+      missed += 1;
+      continue;
+    }
+    await purgeStaticCacheEntries(cache, row.url);
+    await cache.put(new Request(row.url), staticCacheResponseWithHash(body, response, row.hash));
+    fetched += 1;
+    await new Promise((resolve) => setTimeout(resolve, PHONE_PREFETCH_GAP_MS));
+  }
+  if (!stopped && !missed) {
+    record.complete = true;
+    record.checkedAt = Date.now();
+    if (record.hash) await writePhoneOptionalRecord(internal, record);
+  }
+  perfLog(`phonePrefetch rows=${record.rows.length} fetched=${fetched} missed=${missed}${stopped ? ' stopped' : ''}`);
+}
+
+/** One pass at a time, on Wi-Fi only. */
+function runPhonePrefetch() {
+  if (phonePrefetchRun) return phonePrefetchRun;
+  if (workerNetwork() !== 'unmetered') return Promise.resolve();
+  phonePrefetchRun = perfSpan('phonePrefetch', phonePrefetchPass)
+    .catch((error) => { perfLog(`phonePrefetch failed ${error && (error.message || error)}`); })
+    .finally(() => { phonePrefetchRun = null; });
+  return phonePrefetchRun;
+}
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {

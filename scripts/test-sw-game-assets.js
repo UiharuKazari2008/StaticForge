@@ -158,6 +158,20 @@ function fakeIndexedDb(snapshot) {
     // a stored list under another digest than the server's: the body is used
     assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css']);
 
+    // #890: a phone's manifest has no Desktop Background photos or Sidebar art: what it fetched stays
+    const PHOTO = '/static_images/wallpapers/photos/japan/flickr-1.webp';
+    const SIDEBAR = '/static_images/vista-sidebar/weather/32.png';
+    const FONT = '/dist/fontawesome/webfonts/fa-solid-900.ttf';
+    w = world({ manifest, rows: { '/css/app.css': 1, [PHOTO]: 1, [SIDEBAR]: 1, [FONT]: 1 } });
+    await w.api.tidyStaticRows();
+    assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css', PHOTO, SIDEBAR].sort(),
+        'a phone keeps the pictures it fetched; the font no phone reads goes');
+    // a desktop's manifest lists them: a picture the server no longer has goes there
+    const desktop = manifest.concat(['/static_images/wallpapers/photos/japan/flickr-2.webp', '/static_images/vista-sidebar/weather/31.png']);
+    w = world({ manifest: desktop, rows: { '/css/app.css': 1, [PHOTO]: 1, [SIDEBAR]: 1 } });
+    await w.api.tidyStaticRows();
+    assert.deepStrictEqual(Array.from(w.rows.keys()).sort(), ['/css/app.css'], 'a desktop prunes the photos its list dropped');
+
     console.log('test-sw-game-assets: ok');
 })().catch((err) => {
     console.error(err);
