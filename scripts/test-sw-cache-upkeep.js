@@ -28,6 +28,7 @@ assert.ok(!/enforceImageCachePolicy|tidyStaticRows|dropMislabelledStaticRows|cac
 function imageWorld({ rows, entries, rules }) {
     const cache = new Map(rows.map((u) => [u, true]));
     let keysCalls = 0;
+    let writes = 0;
     const metadata = { sequence: 100, rules: rules || { favoriteUrls: [], lockedPreviewUrls: [] }, entries };
     const ctx = {
         Date, Map, Set, Object, Promise, URL,
@@ -41,7 +42,7 @@ function imageWorld({ rows, entries, rules }) {
         IMAGE_POLICY_ENFORCE_MIN_INTERVAL_MS: 30000,
         scheduleImageCachePolicyEnforcement: () => {},
         readImageMetadata: async () => metadata,
-        writeImageMetadata: async () => {},
+        writeImageMetadata: async () => { writes += 1; },
         getCanonicalUrl: (u) => u,
         caches: { open: async () => ({
             keys: async () => { keysCalls += 1; return Array.from(cache.keys()).map((u) => ({ url: u })); },
@@ -53,7 +54,7 @@ function imageWorld({ rows, entries, rules }) {
         fnSource('pinnedImageSet'), fnSource('isManagedImageCacheUrl'), fnSource('isFullImageUrl'),
         fnSource('enforceImageCachePolicy'), fnSource('enforceImageCachePolicyNow')].join('\n')
         + '\nthis.api = { enforceImageCachePolicy, enforceImageCachePolicyNow };', ctx);
-    return { api: ctx.api, cache, metadata, keysCalls: () => keysCalls };
+    return { api: ctx.api, cache, metadata, keysCalls: () => keysCalls, writes: () => writes };
 }
 
 (async () => {
@@ -78,6 +79,14 @@ function imageWorld({ rows, entries, rules }) {
     assert.deepStrictEqual(Array.from(w.cache.keys()).sort(), [P(2), P(4), P(5)]);
     assert.deepStrictEqual(Object.keys(w.metadata.entries).sort(), [P(2), P(4), P(5)]);
     assert.strictEqual(w.metadata.entries[P(2)].pinned, true);
+    assert.strictEqual(w.writes(), 1, 'a run that evicted writes the metadata');
+    // a run that changes nothing (every preview hit schedules one) does not rewrite the blob (#890)
+    await w.api.enforceImageCachePolicy();
+    assert.strictEqual(w.writes(), 1, 'nothing evicted, no pin changed: no write');
+    w.metadata.rules = { favoriteUrls: [P(2), P(4)], lockedPreviewUrls: [] };
+    await w.api.enforceImageCachePolicy();
+    assert.strictEqual(w.writes(), 2, 'a pin that changed is written');
+    assert.strictEqual(w.metadata.entries[P(4)].pinned, true);
 
     // reconcile (maintenance): full images go, entries without a row go, rows without an entry are tracked
     w = imageWorld({
@@ -86,6 +95,7 @@ function imageWorld({ rows, entries, rules }) {
     });
     await w.api.enforceImageCachePolicyNow({ reconcile: true });
     assert.strictEqual(w.keysCalls(), 1);
+    assert.strictEqual(w.writes(), 1, 'the reconcile changed entries: written');
     assert.deepStrictEqual(Array.from(w.cache.keys()).sort(), [P(1), P(7)]);
     assert.deepStrictEqual(Object.keys(w.metadata.entries).sort(), [P(1), P(7)]);
 
@@ -328,7 +338,55 @@ function imageWorld({ rows, entries, rules }) {
     allClients = [client('c', 'visible')]; // a closed: its id is forgotten
     await nctx.api.networkActivityClients();
     assert.deepStrictEqual(JSON.parse(stored.get('/internal/opt-out').body), [], 'closed windows are dropped from the list');
-    assert.ok(/replyToSource\(event\.source, \{ type: 'ping'/.test(src), 'the ping handler answers its source');
+    // the ping: the page that asked and the hidden windows (they do not ping while hidden; their tray
+    // reads the last answer's time), not the other visible windows (each pings on its own)
+    const pctx = { Promise, Date, self: nctx.self };
+    vm.createContext(pctx);
+    vm.runInContext(fnSource('replyToSource') + fnSource('answerPing') + '\nthis.answer = answerPing;', pctx);
+    allClients = [client('a', 'visible'), client('b', 'hidden'), client('c', 'visible'), client('d', 'hidden')];
+    posted.length = 0;
+    await pctx.answer(allClients[2]);
+    assert.deepStrictEqual(posted, [['c', 'ping'], ['b', 'ping'], ['d', 'ping']], 'the asking page and the hidden windows');
+    posted.length = 0;
+    await pctx.answer(allClients[1]);
+    assert.deepStrictEqual(posted, [['b', 'ping'], ['d', 'ping']], 'a hidden asker is answered once');
+    posted.length = 0;
+    await pctx.answer(null);
+    await new Promise((r) => setImmediate(r));
+    assert.strictEqual(posted.length, 4, 'no source: every window');
+    assert.ok(/event\.waitUntil\(answerPing\(event\.source\)\)/.test(src), 'the ping handler answers through answerPing');
+
+    // the gallery's pin sync: the same lists change nothing; new lists go with the next batch
+    const rctx = {
+        Promise, Array, Set, Number, Math,
+        IMAGE_CACHE_POLICY: { maxEntries: 20000, maxSizeBytes: 2e9, maxIdleMs: 604800000, lockedPreviewCount: 3 },
+        getCanonicalUrl: (u) => u.replace(/\?.*$/, ''),
+        calls: []
+    };
+    const rmeta = { rules: { favoriteUrls: [], lockedPreviewUrls: [] }, entries: {} };
+    rctx.readImageMetadata = async () => rmeta;
+    rctx.writeImageMetadata = async () => { rctx.calls.push('write'); };
+    rctx.imageMetadataSettled = async () => { rctx.calls.push('settled'); };
+    rctx.flushImageMetadataNow = async () => { rctx.calls.push('flushNow'); };
+    rctx.scheduleImageCachePolicyEnforcement = () => { rctx.calls.push('policy'); };
+    vm.createContext(rctx);
+    vm.runInContext(fnSource('sameUrlSet') + fnSource('syncImageCacheRules') + '\nthis.sync = syncImageCacheRules;', rctx);
+    await rctx.sync({ favoriteUrls: ['/p/a', '/p/b'], lockedPreviewUrls: ['/p/1', '/p/2', '/p/3', '/p/4'] });
+    assert.deepStrictEqual(rctx.calls, ['write', 'policy', 'settled'], 'new lists: marked, policy run, held for the batch, no forced write');
+    assert.deepStrictEqual(Array.from(rmeta.rules.lockedPreviewUrls), ['/p/1', '/p/2', '/p/3'], 'the first lockedPreviewCount');
+    const favRef = rmeta.rules.favoriteUrls;
+    rctx.calls.length = 0;
+    await rctx.sync({ favoriteUrls: ['/p/b', '/p/a?x=1', '/p/a'], lockedPreviewUrls: ['/p/1', '/p/2', '/p/3', '/p/9'] });
+    assert.deepStrictEqual(rctx.calls, [], 'the same pins again (any order): nothing written, no policy run');
+    assert.strictEqual(rmeta.rules.favoriteUrls, favRef, 'the lists are kept (the pinned Set stays built)');
+    await rctx.sync({ favoriteUrls: ['/p/a', '/p/b'], lockedPreviewUrls: ['/p/1', '/p/2', '/p/3'], policy: { maxIdleMs: 1000 } });
+    assert.deepStrictEqual(rctx.calls, ['policy'], 'a new policy runs the policy without a metadata write');
+    rctx.calls.length = 0;
+    await rctx.sync({ favoriteUrls: ['/p/a', '/p/c'], lockedPreviewUrls: ['/p/1', '/p/2', '/p/3'] });
+    assert.deepStrictEqual(rctx.calls, ['write', 'policy', 'settled'], 'a pin toggled: written with the batch');
+    assert.notStrictEqual(rmeta.rules.favoriteUrls, favRef, 'replaced, not edited in place');
+    assert.ok(!/flushImageMetadataNow/.test(fnSource('syncImageCacheRules')), 'no forced flush on a pin sync');
+    assert.ok(/event\.waitUntil\(syncImageCacheRules\(event\.data\)\)/.test(src), 'the message waits for it');
     assert.ok(/networkActivityClients\(\)\.then\(clients =>/.test(src), 'the flush posts to those windows only');
 
     console.log('test-sw-cache-upkeep: ok');
