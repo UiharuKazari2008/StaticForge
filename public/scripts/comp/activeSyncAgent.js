@@ -223,11 +223,18 @@
     }
 
     let storageRoots = null; // [{ id, name, total, free }] from the app's storage bridge, when shared
+    let storageRootsHello = null; // the cached hello whose roots were last taken as they are
 
     function refreshStorageRoots() {
         if (!root.AndroidPhoneStorage) return Promise.resolve();
-        return storage().then((ps) => ps.hello()).then((h) => {
-            const roots = h && Array.isArray(h.roots) ? h.roots : [];
+        return storage().then((ps) => ps.hello().then((h) => {
+            const helloRoots = h && Array.isArray(h.roots) ? h.roots : [];
+            // phoneStorage.hello() is cached until the app's 'config' event, so its total / free figures are
+            // current only the first time. Later reads ask the app's 'roots' op, which reads StatFs again (#890).
+            // Never an uncached 'hello': the app stops every folder watch on the main page's hello
+            if (h !== storageRootsHello || typeof ps.call !== 'function') { storageRootsHello = h; return helloRoots; }
+            return ps.call('roots').then((r) => (Array.isArray(r) ? r : helloRoots), () => helloRoots);
+        })).then((roots) => {
             storageRoots = roots.map((r) => ({ id: r.id, name: r.name || r.label || r.id, total: r.total == null ? r.totalBytes : r.total, free: r.free == null ? r.freeBytes : r.free }));
         }, () => { storageRoots = null; });
     }
