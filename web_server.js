@@ -3226,14 +3226,9 @@ app.get('/android/background-notification', serverReadinessMiddleware, authMiddl
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('Pragma', 'no-cache');
     try {
-        const balance = await getBalance();
-        let expiresAt = balance.subscription && balance.subscription.expiresAt;
-        if (expiresAt == null) {
-            const accountData = globalResources.getAccountData();
-            expiresAt = accountData && accountData.subscription && accountData.subscription.expiresAt;
-        }
-        // the same values ActiveSync's background links get pushed (as_credits, #890)
-        res.json(require('./modules/backgroundNotificationCredits').creditsValues(balance.ok ? balance : null, expiresAt));
+        // the server's last balance, the same values ActiveSync's background links get pushed
+        // (as_credits); NovelAI is asked only while the server has none yet (#890)
+        res.json(await require('./modules/backgroundNotificationCredits').notificationCredits(globalResources, getBalance));
     } catch (error) {
         console.error('❌ /android/background-notification:', error);
         res.status(500).json({ error: 'Failed to load notification status' });
