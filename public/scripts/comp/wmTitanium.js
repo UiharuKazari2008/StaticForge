@@ -1110,21 +1110,51 @@
     }
 
     // ---- tilt: the phone's lean, against a resting hold that drifts in slowly (so any way of holding
-    // it is the middle); smoothed per frame, written only when it moves by a hundredth of a percent
+    // it is the middle); smoothed per frame. #890: written in whole device pixels (the travel of a
+    // percent is worked out from the picture's size), a reading that would move it by less than a quarter
+    // of a pixel is left (the hand's tremor; the resting hold still drifts in), and the frames stop once
+    // the rest of the way is under a pixel. Idle (Yukimi, Nov 17): 30 s without a touch or a key the sensor
+    // goes off and the lean settles where the last reading put it; a touch, a key, the screen coming on or
+    // Today shown again start it, and while it rests on screen it reads the phone for a second each minute
+    // (the shell's minute tick) so the resting hold stays current. The look while in use is the same.
+    const TILT_IDLE_MS = 30000;
+    const TILT_PEEK_MS = 1000;
     let tiltOn = false;
     let tiltBase = null;
     let tiltRaw = null;
     const tiltNow = { x: 0, y: 0 };
     let tiltRaf = 0;
+    let tiltPx = null;          // percent of the picture per device pixel { x, y }
+    let tiltListening = false;
+    let tiltIdle = false;
+    let tiltIdleTimer = 0;
+    let tiltPeekTimer = 0;
+    let tiltInputAt = 0;
     function tiltWanted() {
         return !!(fx.tilt && host && !host.hidden && root.dataset.wmApp === 'today' && document.visibilityState === 'visible' && root.dataset.screenOff === undefined);
+    }
+    function tiltListen(on) {
+        if (on === tiltListening) return;
+        tiltListening = on;
+        if (on) window.addEventListener('deviceorientation', onOrient);
+        else window.removeEventListener('deviceorientation', onOrient);
     }
     function syncTilt() {
         const want = tiltWanted();
         if (want === tiltOn) return;
         tiltOn = want;
-        if (want) { window.addEventListener('deviceorientation', onOrient); return; }
-        window.removeEventListener('deviceorientation', onOrient);
+        clearTimeout(tiltIdleTimer); tiltIdleTimer = 0;
+        clearTimeout(tiltPeekTimer); tiltPeekTimer = 0;
+        tiltIdle = false;
+        if (want) {
+            // Today shown or the screen on: in use again from now
+            tiltPx = null;
+            tiltInputAt = performance.now();
+            tiltListen(true);
+            tiltIdleTimer = setTimeout(tiltIdleCheck, TILT_IDLE_MS + 50);
+            return;
+        }
+        tiltListen(false);
         tiltBase = null;
         tiltRaw = null;
         tiltNow.x = 0; tiltNow.y = 0;
@@ -1132,6 +1162,44 @@
         wallVar('--wm-ti-tx', '0%');
         wallVar('--wm-ti-ty', '0%');
     }
+    function tiltIdleCheck() {
+        tiltIdleTimer = 0;
+        if (!tiltOn || tiltIdle) return;
+        const left = TILT_IDLE_MS - (performance.now() - tiltInputAt);
+        if (left > 0) { tiltIdleTimer = setTimeout(tiltIdleCheck, left + 50); return; }
+        // idle: the sensor off; the frames still running ease to where the last reading put the lean, and stop
+        tiltIdle = true;
+        tiltListen(false);
+    }
+    /** A touch or a key on the page: the tilt is in use (again). */
+    function tiltTouched() {
+        tiltInputAt = performance.now();
+        if (!tiltOn) return;
+        if (tiltIdle) {
+            tiltIdle = false;
+            clearTimeout(tiltPeekTimer); tiltPeekTimer = 0;
+            tiltListen(true);
+        }
+        if (!tiltIdleTimer) tiltIdleTimer = setTimeout(tiltIdleCheck, TILT_IDLE_MS + 50);
+    }
+    /** The minute tick while it rests on screen: a second of readings keeps the resting hold current. */
+    function tiltPeek() {
+        if (!tiltOn || !tiltIdle || tiltPeekTimer) return;
+        tiltListen(true);
+        tiltPeekTimer = setTimeout(() => { tiltPeekTimer = 0; if (tiltIdle) tiltListen(false); }, TILT_PEEK_MS);
+    }
+    document.addEventListener('pointerdown', tiltTouched, { capture: true, passive: true });
+    document.addEventListener('keydown', tiltTouched, { capture: true, passive: true });
+    document.addEventListener('wmminute', tiltPeek);
+    window.addEventListener('resize', () => { tiltPx = null; });
+    function tiltMeasure() {
+        const el = wallEl && wallEl.isConnected ? wallEl : document.querySelector('#wmShell > .wm-wall65');
+        const dpr = window.devicePixelRatio || 1;
+        const w = (el && el.clientWidth) || window.innerWidth || 1;
+        const h = (el && el.clientHeight) || window.innerHeight || 1;
+        tiltPx = { x: 100 / Math.max(1, w * dpr), y: 100 / Math.max(1, h * dpr) };
+    }
+    const tiltK = () => (wallZoom - 1) * 15; // 0.3 of the margin each way, in percent
     function onOrient(e) {
         if (e.beta == null || e.gamma == null) return;
         const angle = (screen.orientation && screen.orientation.angle) || 0;
@@ -1142,18 +1210,30 @@
         tiltBase.x += (x - tiltBase.x) * 0.01;
         tiltBase.y += (y - tiltBase.y) * 0.01;
         const c = (v) => Math.max(-1, Math.min(1, v / 18));
-        tiltRaw = { x: c(x - tiltBase.x), y: c(y - tiltBase.y) };
+        const raw = { x: c(x - tiltBase.x), y: c(y - tiltBase.y) };
+        if (tiltRaw && tiltPx) {
+            const k = tiltK();
+            if (Math.abs(raw.x - tiltRaw.x) * k < 0.25 * tiltPx.x && Math.abs(raw.y - tiltRaw.y) * k < 0.25 * tiltPx.y) return;
+        }
+        tiltRaw = raw;
         if (!tiltRaf) tiltRaf = requestAnimationFrame(tiltFrame);
     }
     function tiltFrame() {
         tiltRaf = 0;
         if (!tiltOn || !tiltRaw || !ensureWall()) return;
+        if (!tiltPx) tiltMeasure();
+        const k = tiltK();
         tiltNow.x += (tiltRaw.x - tiltNow.x) * 0.2;
         tiltNow.y += (tiltRaw.y - tiltNow.y) * 0.2;
-        const k = (wallZoom - 1) * 15; // 0.3 of the margin each way
-        wallVar('--wm-ti-tx', `${(-tiltNow.x * k).toFixed(2)}%`);
-        wallVar('--wm-ti-ty', `${(-tiltNow.y * k).toFixed(2)}%`);
-        if (Math.abs(tiltRaw.x - tiltNow.x) > 0.01 || Math.abs(tiltRaw.y - tiltNow.y) > 0.01) tiltRaf = requestAnimationFrame(tiltFrame);
+        // the rest of the way under a device pixel: there now, and no more frames until a reading moves it
+        const done = Math.abs(tiltRaw.x - tiltNow.x) * k < tiltPx.x && Math.abs(tiltRaw.y - tiltNow.y) * k < tiltPx.y;
+        if (done) { tiltNow.x = tiltRaw.x; tiltNow.y = tiltRaw.y; }
+        // whole device pixels (wallVar writes only a value that changed)
+        const qx = Math.round((-tiltNow.x * k) / tiltPx.x) * tiltPx.x;
+        const qy = Math.round((-tiltNow.y * k) / tiltPx.y) * tiltPx.y;
+        wallVar('--wm-ti-tx', `${(qx || 0).toFixed(4)}%`);
+        wallVar('--wm-ti-ty', `${(qy || 0).toFixed(4)}%`);
+        if (!done) tiltRaf = requestAnimationFrame(tiltFrame);
     }
 
     // ---- the frosted band: the picture blurred once into a small cached image, shown in the band's
