@@ -775,6 +775,9 @@ class ServiceWorkerManager {
 
     _showBootUiEarly(message = 'Checking server status…') {
         this.bootPhase = 'waiting_server';
+        // the desktop is already up (an offline boot, #899): this start-up waited out the server behind
+        // it, and its boot screens must not come back over the desktop now the server answers
+        if (window.wsClient && window.wsClient.initializationCompleted) return;
         document.body.classList.add('initializing');
         if (!window.wsClient) {
             return;
