@@ -7410,7 +7410,14 @@
             : { file: SND_CLICKS[kind === 'buttons' ? 'buttons' : 'taps'][loud], gain: 1 };
     };
     const SND_PREFS_KEY = 'wmSounds';
-    const snd = { ctx: null, buffers: new Map(), last: 0, log: [], preview: null };
+    const snd = { ctx: null, buffers: new Map(), last: 0, log: [], preview: null, live: 0, idle: 0 };
+    // In the Android app every sound with an output plays natively (AndroidVolume.play: SoundPool): a
+    // tap made a Web Audio context and decoded every sound in use (~5 MB of AudioBuffers, the render
+    // thread alive for days) for nothing (#890). There only Settings' Play and an alarm's own sound
+    // (they need stop() / onended) use Web Audio: the context is made when they play and suspended,
+    // its buffers dropped, a few seconds after the last of them ends.
+    const SND_NATIVE = !!(AV && typeof AV.play === 'function');
+    const SND_IDLE_MS = 5000;
 
     /** This device's sound options (Settings > Sounds & Notifications), defaults filled in. */
     function soundPrefs() {
@@ -7484,13 +7491,44 @@
         };
     }
 
+    /** The Web Audio context, made on first use; null where there is none. */
+    function sndContext() {
+        if (!snd.ctx) {
+            const Ctor = window.AudioContext || window.webkitAudioContext;
+            if (!Ctor) return null;
+            snd.ctx = new Ctor();
+        }
+        return snd.ctx;
+    }
+
+    /** In the app: a Web Audio sound started (Play, an alarm); the context stays up until all have ended. */
+    function sndHold(src) {
+        if (!SND_NATIVE || !src || typeof src.addEventListener !== 'function') return;
+        snd.live++;
+        clearTimeout(snd.idle);
+        snd.idle = 0;
+        let done = false;
+        // a listener, not onended: an alarm's caller sets onended on the source it gets
+        src.addEventListener('ended', () => {
+            if (done) return;
+            done = true;
+            snd.live = Math.max(0, snd.live - 1);
+            if (!snd.live) snd.idle = setTimeout(sndIdle, SND_IDLE_MS);
+        });
+    }
+
+    function sndIdle() {
+        snd.idle = 0;
+        if (!SND_NATIVE || snd.live || !snd.ctx) return;
+        snd.buffers.clear();
+        try { if (snd.ctx.state === 'running' && snd.ctx.suspend) snd.ctx.suspend().catch(() => {}); } catch (_) { /* closed */ }
+    }
+
     function sndUnlock() {
+        // the app plays every sound itself: no context, nothing decoded (Play and alarms make it when they play)
+        if (SND_NATIVE) return;
         try {
-            if (!snd.ctx) {
-                const Ctor = window.AudioContext || window.webkitAudioContext;
-                if (!Ctor) return;
-                snd.ctx = new Ctor();
-            }
+            if (!sndContext()) return;
             if (snd.ctx.state === 'suspended' && snd.ctx.resume) snd.ctx.resume().catch(() => {});
             // the sounds this device uses (each one picked or WM's own), not the whole list
             const p = soundPrefs();
@@ -7550,6 +7588,7 @@
         if (tv && typeof tv.connectRaw === 'function') tv.connectRaw(g);
         else g.connect(ctx.destination);
         src.start(0);
+        sndHold(src);
         return src;
     }
 
@@ -7762,7 +7801,7 @@
         try {
             const ds = window.desktopSounds;
             if (ds && Array.isArray(ds.FILES) && ds.FILES.includes(file) && typeof ds.playFile === 'function') return !!(await ds.playFile(file));
-            if (!WM_SOUNDS.includes(file) || !snd.ctx) return false;
+            if (!WM_SOUNDS.includes(file) || !(SND_NATIVE ? sndContext() : snd.ctx)) return false;
             if (snd.ctx.state !== 'running') await snd.ctx.resume().catch(() => {});
             const src = await sndPlayFile(file);
             snd.preview = src;
@@ -11868,7 +11907,8 @@
             // Resolves to the playing source (stop() ends it, onended tells) or null.
             alarm: async (file, loud) => {
                 try {
-                    if (!WM_SOUNDS.includes(file) || !snd.ctx || ringerLevel() <= 0 || (!loud && sndSilentNow())) return null;
+                    if (!WM_SOUNDS.includes(file) || ringerLevel() <= 0 || (!loud && sndSilentNow())) return null;
+                    if (!(SND_NATIVE ? sndContext() : snd.ctx)) return null;
                     if (snd.ctx.state !== 'running') await snd.ctx.resume().catch(() => {});
                     sndNote('alarm', '', `wm61/${file}`, Date.now());
                     return (await sndPlayFile(file)) || null;
