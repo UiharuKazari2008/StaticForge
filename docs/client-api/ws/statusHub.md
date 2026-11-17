@@ -54,6 +54,7 @@ then held for exactly like a sleeping phone page. What is held (`DORMANT_HOLD` i
 `runtime_compile_progress`, `lapis_updated`, `dovecote_mailbox_updated` (newest only); `vfs_updated` (newest per folder);
 `traffic_updated` (newest per direction); `ma_event` (except `new`); `mcp_activity` (the generating flag and the log line,
 newest of each); `director_computer_status` (a change of the running turns goes at once, anything else newest only);
+`wm_program_icons_job` (newest per job);
 `xlink_status`, `service_worker_cache_update`, `runtime_compile_complete` (all, in order). Replies (`requestId`) are never
 held. Held packets go out in order when it wakes (`on: false`), over its Continuity / Miniport carrier for a DeX window
 that has no socket of its own; a broadcast for both of a phone's windows leaves the sleeping one out of the carrier's
