@@ -9334,7 +9334,6 @@
         // the right and bottom, over the theme's white-to-green field; each picture fitted (not
         // cropped) into about 68 x 53 and centred, no label; the selected cell is filled with the
         // highlight colour. Wider screens get more 80 px columns. Soft keys View / Menu.
-        let gridTimer = null;
         let gridSig = '';
         let gridView = null;
         let viewSwitchedAt = 0;
@@ -9360,11 +9359,51 @@
                 if (indices == null) searchResults = null;
                 else searchResults = Array.isArray(images) ? images.slice() : [];
                 filterSeq++;
-                return orig.apply(this, arguments);
+                try { return orig.apply(this, arguments); } finally { gridDirty(); }
             };
             wrapped.__wm = true;
             window.applyFilteredImages = wrapped;
         }
+
+        /*
+         * The grid follows the desktop gallery's list (allImages) by its changes, not a 700 ms poll (#890):
+         * every function of galleryView.js that changes the list (a load or page, a new print, deletes, the
+         * sort) is wrapped to say so, with galleryUpdated and the search results above. One pass 150 ms after
+         * the first change of a burst while Pictures is on screen; otherwise the grid is stale and draws at
+         * show or wake.
+         */
+        let gridStale = false;
+        let gridSoon = null;
+        function gridDirty() {
+            const app = apps.get('gallery');
+            const page = app && app.page;
+            if (!page) return;
+            if (current !== 'gallery' || !onScreen(page)) { gridStale = true; return; }
+            if (gridSoon) return;
+            gridSoon = setTimeout(() => {
+                gridSoon = null;
+                const pg = apps.get('gallery') && apps.get('gallery').page;
+                if (!pg) return;
+                if (current !== 'gallery' || !onScreen(pg)) { gridStale = true; return; }
+                gridStale = false;
+                renderGrid(pg, false);
+            }, 150);
+        }
+        ['setActiveGalleryList', 'prependToActiveGalleryList', 'removeMultipleImagesFromGallery', 'sortGalleryData', 'flipActiveGallerySortOrder'].forEach((name) => {
+            const orig = window[name];
+            if (typeof orig !== 'function' || orig.__wmGrid) return;
+            const wrapped = function () {
+                try { return orig.apply(this, arguments); } finally { gridDirty(); }
+            };
+            wrapped.__wmGrid = true;
+            window[name] = wrapped;
+        });
+        document.addEventListener('galleryUpdated', gridDirty);
+        document.addEventListener('wmawake', (e) => {
+            if (!(e.detail && e.detail.awake) || !gridStale || current !== 'gallery') return;
+            const pg = apps.get('gallery') && apps.get('gallery').page;
+            if (pg) { gridStale = false; renderGrid(pg, false); }
+        });
 
         function galleryList() {
             if (searchResults) return searchResults;
@@ -9415,7 +9454,9 @@
         function renderFolderBar(page) {
             const view = VIEWS.find(([v]) => v === activeView());
             const g = phoneOn() ? phoneGallery() : null;
-            page.querySelector('.wm-pv-folder span').textContent = g ? g.barLabel() : (searchResults ? 'Search results' : (view ? view[1] : 'Pictures'));
+            // (each part written only when it changed: the same text or flag written again is a style pass, #890)
+            const setText = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
+            setText(page.querySelector('.wm-pv-folder span'), g ? g.barLabel() : (searchResults ? 'Search results' : (view ? view[1] : 'Pictures')));
             // the volume's picture beside the folder: the device or the storage card (ref-pv captures)
             const icon = g ? 'fe-storage-card' : 'fe-device';
             const img = page.querySelector('.wm-pv-folder img');
@@ -9424,15 +9465,15 @@
             // the tool row (search, Jump to Top, Visual Index, sizes) is the workspace prints' own:
             // a storage card shows the folder bar and the grid alone (Yukimi #788)
             const tools = page.querySelector('.wm-pv-tools');
-            if (tools) tools.hidden = !!g;
+            if (tools && tools.hidden !== !!g) tools.hidden = !!g;
             if (g) {
-                if (dropdownAnchor !== sortBtn) sortBtn.querySelector('span').textContent = g.searching() ? 'Relevance' : g.sortLabel();
-                sortBtn.disabled = g.searching();
+                if (dropdownAnchor !== sortBtn) setText(sortBtn.querySelector('span'), g.searching() ? 'Relevance' : g.sortLabel());
+                if (sortBtn.disabled !== !!g.searching()) sortBtn.disabled = !!g.searching();
                 return;
             }
             // while its drop-down is open the control reads "Sort By", as on the device
-            if (dropdownAnchor !== sortBtn) sortBtn.querySelector('span').textContent = searchResults ? 'Relevance' : (SORTS.find(([k]) => k === sortBy) || SORTS[1])[1];
-            sortBtn.disabled = !!searchResults;
+            if (dropdownAnchor !== sortBtn) setText(sortBtn.querySelector('span'), searchResults ? 'Relevance' : (SORTS.find(([k]) => k === sortBy) || SORTS[1])[1]);
+            if (sortBtn.disabled !== !!searchResults) sortBtn.disabled = !!searchResults;
         }
 
         // the grid's blocks still to come after a render (renderGrid), added after the first paint
@@ -9462,11 +9503,14 @@
                 gridView = view;
             }
             renderFolderBar(page);
-            const list = sortedList(galleryList());
+            // the signature from the list as it is (its length and ends) and the sort, before any sort runs:
+            // sorting by Name or Size first was a full localeCompare sort of the gallery for every check (#890)
+            const raw = galleryList();
             const nameOf = (it) => (it && (it.filename || it.original)) || '';
-            const sig = `${list.length}|${nameOf(list[0])}|${nameOf(list[list.length - 1])}|${view}|${filterSeq}|${searchResults ? 's' : 'a'}|${sortBy}`;
+            const sig = `${raw.length}|${nameOf(raw[0])}|${nameOf(raw[raw.length - 1])}|${view}|${filterSeq}|${searchResults ? 's' : 'a'}|${sortBy}`;
             if (!force && sig === gridSig) return;
             gridSig = sig;
+            const list = sortedList(raw);
             const scroller = page.querySelector('.wm-pv-scroll');
             const anchor = gridAnchor(page);
             const box = page.querySelector('.wm-pv-grid');
@@ -10072,16 +10116,15 @@
                 }
                 // the first fill of the grid behind WM's wait cursor (the folder bar and soft keys are
                 // up at once); later shows only redraw what changed
+                gridStale = false;
                 if (!gridSig) busy(() => renderGrid(page, false), { paint: true });
                 else renderGrid(page, false);
-                // the desktop gallery keeps loading, paging and searching underneath (allImages):
-                // follow it while Pictures is on screen
-                clearInterval(gridTimer);
-                gridTimer = setInterval(() => { if (onScreen(page)) renderGrid(page, false); }, 700);
+                // the desktop gallery keeps loading, paging and searching underneath (allImages): its
+                // changes redraw the grid while Pictures is on screen (gridDirty), no poll
             },
             hide() {
-                clearInterval(gridTimer);
-                gridTimer = null;
+                clearTimeout(gridSoon);
+                gridSoon = null;
                 if (picked && this.page) endPick(this.page);
             },
             softKeys() {

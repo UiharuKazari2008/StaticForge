@@ -388,21 +388,24 @@
         const grid = page.querySelector('.wm-pv-grid');
         const deviceEmpty = page.querySelector('.wm-photos-empty:not(.wm-pv-phone-empty):not(.wm-pv-ledge-empty)');
         const l = LG();
+        // (a flag written only when it changes: the same value written again is a style pass; Pictures
+        // calls this on every change of the gallery, #890)
+        const hide = (el, h) => { if (el && el.hidden !== h) el.hidden = h; };
         if (l && l.render(page, force)) {
             // Ledge on screen: the gallery's grid and the card's are hidden
-            box.hidden = true;
-            empty.hidden = true;
-            if (grid) grid.hidden = true;
-            if (deviceEmpty) deviceEmpty.hidden = true;
+            hide(box, true);
+            hide(empty, true);
+            hide(grid, true);
+            hide(deviceEmpty, true);
             barIconSoon(page);
             return;
         }
         barIconSoon(page);
         const on = !!loc;
-        box.hidden = !on;
-        if (grid) grid.hidden = on;
-        if (deviceEmpty && on) deviceEmpty.hidden = true;
-        if (!on) { empty.hidden = true; return; }
+        hide(box, !on);
+        hide(grid, on);
+        if (on) hide(deviceEmpty, true);
+        if (!on) { hide(empty, true); return; }
         const dirs = query ? [] : subfoldersOf(loc.root, loc.path);
         const list = listNow();
         const camTile = !query && loc.path === CAMERA_DIR && !!(window.wmCamera && window.wmCamera.supported());
@@ -573,6 +576,8 @@
         slideTimer = setInterval(() => {
             const p = window.pswp;
             if (!p || p.isDestroying) { stopShow(); return; }
+            // the screen off or the page away: the show waits (nothing turns pages unseen, #890)
+            if (sh && typeof sh.awake === 'function' && !sh.awake()) return;
             const d = p.currSlide && p.currSlide.data && p.currSlide.data.data;
             if (d && d.phoneMedia && d.phoneMedia.video) {
                 // a video plays to its end before the show goes on
