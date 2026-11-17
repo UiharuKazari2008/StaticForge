@@ -680,6 +680,8 @@ class Director {
             // in forced style and texture uploads). Her tick sees a change within a second;
             // openDirectorWindow asks at once.
             isHosted: () => this.mascotHostOnScreen(),
+            // her log came into view (Log peek, the log view): a live paint held while it was hidden draws now
+            onLogShown: () => this.wakeLivePaint(),
             renderResult: (message) => this.createMascotResult(message),
             actions: {
                 prints: () => this.togglePrintsPane(),
@@ -705,14 +707,30 @@ class Director {
     syncStreamWatch() {
         const s = window.currentSession;
         const chat = document.getElementById('directorSessionChat');
-        const onScreen = !!(chat && chat.isConnected && !document.hidden && !chat.closest('.hidden, .hidden-alt, .closing, [hidden]'));
+        // a phone with its screen off shows nothing either (html[data-screen-off]: the page is not
+        // hidden then); screen on watches again and is sent the whole update (#890)
+        const onScreen = !!(chat && chat.isConnected && !document.hidden && !this.screenIsOff() && !chat.closest('.hidden, .hidden-alt, .closing, [hidden]'));
         const want = onScreen && s && s.id && !s.draft ? String(s.id) : '';
         if (want === this._streamWatch) return;
         if (!window.wsClient || !window.wsClient.isConnected()) return;
         this._streamWatch = want;
         // the rows kept for putting deltas together belong to the chat watched until now
         this._streamState = null;
-        window.wsClient.send({ type: 'director_stream_watch', sessionId: want, delta: 1 });
+        // liveDelta: the growing live row comes as its new tail (textAppend from textFrom), #890
+        window.wsClient.send({ type: 'director_stream_watch', sessionId: want, delta: 1, liveDelta: 1 });
+    }
+
+    // A phone with its screen off (html[data-screen-off], set by the app; the page is not hidden then).
+    screenIsOff() {
+        const root = typeof document !== 'undefined' ? document.documentElement : null;
+        return !!(root && root.dataset && root.dataset.screenOff !== undefined);
+    }
+
+    // The page came into sight or went out of it (visibilitychange, the phone's screen, another phone
+    // program to the front): the stream watch follows, and a live paint held while unseen draws now.
+    onSightChange() {
+        this.syncStreamWatch();
+        this.wakeLivePaint();
     }
 
     // A streaming update with row deltas (cursorDirector.js flushDirectorStream, #843): rows holds
@@ -720,13 +738,31 @@ class Director {
     // (prevSeq). Puts the whole list back into payload.rows, so everything after reads it as before,
     // and leaves rowsFrom for renderLiveTrace. False: this page does not have that update (it joined
     // late, or missed one); it has asked for the whole thing, which arrives as a full update.
+    // Live text deltas (#890): the growing live row of an update that builds on the one before comes
+    // as live.textAppend from live.textFrom (the length already sent); it is put back into live.text
+    // here. A tail that does not fit the text held asks for the whole update, as a missed row delta does.
     mergeStreamRows(payload) {
+        const st = this._streamState;
+        const live = payload.live;
+        if (live && typeof live.textAppend === 'string') {
+            const held = st && st.sessionId === payload.sessionId && (payload.prevSeq == null || st.seq === payload.prevSeq) ? st.live : null;
+            const fits = !!held && typeof held.text === 'string' && live.textFrom === held.text.length
+                && held.type === live.type && (held.name || '') === (live.name || '');
+            if (!fits) {
+                this._streamWatch = undefined;
+                this.syncStreamWatch();
+                return false;
+            }
+            const whole = Object.assign({}, live, { text: held.text + live.textAppend });
+            delete whole.textAppend;
+            delete whole.textFrom;
+            payload.live = whole;
+        }
         // every row is in it (a full update, or a delta that starts at the first row): a new base
         if (payload.rowsFrom == null || payload.rowsFrom === 0) {
-            if (Array.isArray(payload.rows) && payload.seq != null) this._streamState = { sessionId: payload.sessionId, seq: payload.seq, rows: payload.rows };
+            if (Array.isArray(payload.rows) && payload.seq != null) this._streamState = { sessionId: payload.sessionId, seq: payload.seq, rows: payload.rows, live: payload.live || null };
             return true;
         }
-        const st = this._streamState;
         if (!st || st.sessionId !== payload.sessionId || st.seq !== payload.prevSeq) {
             this._streamWatch = undefined;
             this.syncStreamWatch();
@@ -735,14 +771,19 @@ class Director {
         payload.rows = st.rows.slice(0, payload.rowsFrom).concat(payload.rows || []);
         st.rows = payload.rows;
         st.seq = payload.seq;
+        st.live = payload.live || null;
         return true;
     }
 
     async init() {
-        document.addEventListener('visibilitychange', () => this.syncStreamWatch());
+        // page-lifetime listeners: null outside an app segment (app-scope rule)
+        const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
+        document.addEventListener('visibilitychange', () => { this.onSightChange(); if (this.mascot && !document.hidden) this.mascot.tick(); });
+        // the phone's screen (melatonscreen; html[data-screen-off] is set by the time the event's turn ends)
+        window.addEventListener('melatonscreen', () => setTimeout(() => { this.onSightChange(); if (this.mascot) this.mascot.tick(); }, 0), { signal: appScopeSignal });
         // Melaton Mobile: another program came to the front, or the Director did (wmShell.js)
         // (the mascot's tick is slow while she is not shown: she looks at once, #849)
-        document.addEventListener('wmAppChange', () => setTimeout(() => { this.syncStreamWatch(); if (this.mascot) this.mascot.tick(); }, 0));
+        document.addEventListener('wmAppChange', () => setTimeout(() => { this.onSightChange(); if (this.mascot) this.mascot.tick(); }, 0));
         this.setupDirectorDropdowns();
         this.setupDirectorEventListeners();
         this.setupDirectorContextMenus();
@@ -2913,18 +2954,25 @@ class Director {
     }
 
     // Apply message filter to current messages
-    applyMessageFilter() {
+    // scope: only the rows under it (the live turn's own rows: the ones before it were filtered when
+    // they were drawn); the whole chat by default
+    applyMessageFilter(scope) {
         if (!this.directorChatMessages) return;
-        const messages = this.directorChatMessages.querySelectorAll('.director-message, .director-message-captions');
+        // 'all' with nothing hidden: no walk over every row of the chat
+        if (this.messageFilter === 'all' && !this._filterHidRows) return;
+        const ROWS = '.director-message, .director-message-captions';
         if (this.messageFilter === 'all') {
-            if (!this._filterHidRows) return;
-            messages.forEach((message) => message.classList.remove('hidden'));
+            this.directorChatMessages.querySelectorAll(ROWS).forEach((message) => message.classList.remove('hidden'));
             this._filterHidRows = false;
             return;
         }
+        // a scope is enough only once the whole chat has been filtered for this filter
+        const scoped = !!scope && this._filterAppliedFor === this.messageFilter && scope !== this.directorChatMessages && this.directorChatMessages.contains(scope);
         this._filterHidRows = true;
-        
-        messages.forEach(message => {
+        if (!scoped) this._filterAppliedFor = this.messageFilter;
+        const rows = (scoped ? scope : this.directorChatMessages).querySelectorAll(ROWS);
+
+        rows.forEach(message => {
             let shouldShow = true;
             const isThinking = message.classList.contains('thinking');
             const isTool = message.classList.contains('tool');
@@ -2942,11 +2990,7 @@ class Director {
                     break;
             }
             
-            if (shouldShow) {
-                message.classList.remove('hidden');
-            } else {
-                message.classList.add('hidden');
-            }
+            if (message.classList.contains('hidden') === shouldShow) message.classList.toggle('hidden', !shouldShow);
         });
     }
 
@@ -5340,6 +5384,9 @@ class Director {
         const live = chat.querySelector('.director-live-turn');
         // Rows the live turn already showed come back without the arrive animation
         const shown = live ? [...live.children] : [];
+        // a log out of sight (her scene with the log hidden) did not paint the live rows: they arrive
+        // unseen and must not play the animation when the log is opened later
+        const unseen = !this.directorChatVisible();
         let carry = 0;
         for (let i = nodes.length; i < visible.length; i++) {
             const unit = visible[i];
@@ -5347,7 +5394,7 @@ class Director {
             const held = unit.type === 'trace' ? shown[carry] : null;
             const seen = !!held && held.dataset.traceKind === this.traceKind(unit.row);
             if (seen) carry++;
-            this._animateRows = !seen;
+            this._animateRows = !seen && !unseen;
             if (unit.type === 'caption') el = this.createQuoteMessageElement(unit.caption);
             else if (unit.type === 'report') el = this.createReportElement(unit.message);
             else if (unit.type === 'card') el = this.createDirectorCardElement(unit.message);
@@ -7893,7 +7940,7 @@ class Director {
                 if (!this._expandedTrace.has(el.dataset.expandKey)) el.classList.remove('expanded');
             }
         });
-        this.applyMessageFilter();
+        this.applyMessageFilter(host);
         if (!streaming) {
             [...host.children].forEach((el) => this.ensureTraceRowMarkdown(el));
         }
@@ -7954,10 +8001,19 @@ class Director {
             return;
         }
         if (!this.directorChatVisible()) {
-            this._livePaintTimer = setTimeout(() => this.flushLivePaint(), DIRECTOR_LIVE_HIDDEN_RETRY_MS);
+            // a print on the way still marks the prints strip, which can be on screen beside her scene
+            if (this._pendingNotedFor !== payload) {
+                this._pendingNotedFor = payload;
+                this.notePendingPrint(payload.rows, payload.live);
+            }
+            // a hidden page or a dark phone screen waits for onSightChange; a hidden log looks again
+            if (!document.hidden && !this.screenIsOff()) {
+                this._livePaintTimer = setTimeout(() => this.flushLivePaint(), DIRECTOR_LIVE_HIDDEN_RETRY_MS);
+            }
             return;
         }
         this._livePayload = null;
+        this._pendingNotedFor = null;
         this._livePaintedAt = Date.now();
         if (payload.rows || payload.live) {
             this.renderLiveTrace(payload);
@@ -7966,22 +8022,42 @@ class Director {
         }
     }
 
+    // The log came into view (sight back, her Log peek, the log view): a live paint held meanwhile
+    // draws now instead of at the next look.
+    wakeLivePaint() {
+        if (!this._livePayload) return;
+        if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
+        this._livePaintTimer = null;
+        this.flushLivePaint();
+    }
+
     dropLivePaint() {
         if (this._livePaintTimer) clearTimeout(this._livePaintTimer);
         this._livePaintTimer = null;
         this._livePayload = null;
+        this._pendingNotedFor = null;
     }
 
     directorChatVisible() {
         const chat = this.directorChatMessages;
         if (!chat || !chat.isConnected || document.hidden) return false;
+        // a phone with its screen off (the page is not hidden then, #890)
+        if (this.screenIsOff()) return false;
         const modal = chat.closest('.modal');
         if (modal && (modal.classList.contains('hidden')
             || modal.classList.contains('hidden-alt')
             || modal.classList.contains('minimised'))) {
             return false;
         }
-        return !chat.closest('.hidden, .hidden-alt, .minimised');
+        if (chat.closest('.hidden, .hidden-alt, .minimised')) return false;
+        // her scene with the log hidden (not peeking): the rows are visibility: hidden, and on a phone
+        // in portrait not laid out at all (wm-director.css); the wide phone's log beside her shows
+        const host = chat.closest('#directorSessionChat');
+        if (host && host.classList.contains('dm-log-hidden') && !host.classList.contains('dm-log-peek')
+            && typeof chat.checkVisibility === 'function' && !chat.checkVisibility({ visibilityProperty: true })) {
+            return false;
+        }
+        return true;
     }
 
     // A generation tool in the live trace means a print is on the way, until that many prints have landed this turn.
