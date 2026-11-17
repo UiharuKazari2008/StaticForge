@@ -36,7 +36,9 @@ const DORMANT_HOLD = new Map([
     // goes at once; any other (a rename, an idle shutdown) waits as the newest only
     ['director_computer_status', (d, info) => directorRunHoldKey(d, info)],
     // MCP activity (#890): the generating flag (the print indicator) and the log line wait apart, newest only
-    ['mcp_activity', (d) => (d.generating === true || d.generating === false ? 'gen' : 'log')]
+    ['mcp_activity', (d) => (d.generating === true || d.generating === false ? 'gen' : 'log')],
+    // Program Icons jobs (#890 P15): each push is the job's whole state, so the newest per job
+    ['wm_program_icons_job', (d) => `job:${(d && d.job && d.job.id) || ''}`]
 ]);
 const DORMANT_HOLD_MAX = 300;
 
