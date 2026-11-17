@@ -1674,5 +1674,7 @@ class WebSocketServer {
 }
 
 module.exports = { 
-    WebSocketServer
+    WebSocketServer,
+    // tests (scripts/test-ws-phone-round2.js): who reads which broadcast, what waits for a sleeping page
+    _test: { socketWantsBroadcast, isPhonePage, isDesktopPage, DORMANT_HOLD, DESKTOP_ONLY_TYPES, PHONE_ONLY_TYPES }
 }; 

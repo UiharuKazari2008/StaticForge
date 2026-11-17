@@ -1389,7 +1389,7 @@ module.exports = {
     updateReceived,
     setVisible,
     receivedUnseen,
-    __test: { noteReceived, receivedOf },
+    __test: { noteReceived, receivedOf, peersKey, ownPeersKey },
     deviceOnline,
     deviceAddresses,
     deviceRow,

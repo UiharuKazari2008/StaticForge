@@ -84,6 +84,16 @@ class FakeCarrier extends EventEmitter {
     assert.strictEqual(sent.length, 2);
     assert.deepStrictEqual(JSON.parse(sent.find((x) => x[0] === raw)[1]), { type: 'b', _cc: ['desktop'] });
     assert.deepStrictEqual(JSON.parse(sent.find((x) => x[0] === other)[1]), { type: 'b' });
+    // the _cc copy is the message's own JSON with _cc spliced in (one stringify), as before
+    const spliced = [];
+    vs.sendCoalesced([raw, sub3], { type: 'b', data: { x: [1, 2], y: 'z' } }, (ws, p) => spliced.push(p));
+    assert.strictEqual(spliced[0], JSON.stringify({ type: 'b', data: { x: [1, 2], y: 'z' }, _cc: ['desktop'] }));
+    // a phone page carrier is never sent a raw frame (it reads its own copy), ccraw or not
+    raw._dsCcRaw = true;
+    const pageCopy = [];
+    vs.sendCoalesced([raw, sub3], { type: 'p' }, (ws, p) => pageCopy.push(p));
+    assert.deepStrictEqual(JSON.parse(pageCopy[0]), { type: 'p', _cc: ['desktop'] });
+    delete raw._dsCcRaw;
     // the sub-client alone (its carrier not a recipient): its own copy
     const alone = [];
     vs.sendCoalesced([sub3], { type: 'c' }, (ws, p) => alone.push(ws));
@@ -112,6 +122,17 @@ class FakeCarrier extends EventEmitter {
         assert.strictEqual(out.length, 1, 'one copy for both pages');
         assert.strictEqual(out[0][0], mp);
         assert.deepStrictEqual(JSON.parse(out[0][1]), { type: 'bc', _cc: ['phone', 'desktop'] });
+        // a broadcast for one page: the raw frame every Miniport reads, the packet stringified once (#890)
+        const one = [];
+        vs.sendCoalesced([subs.desktop], { type: 'solo', data: { a: 1 } }, (ws, p) => one.push([ws, p]));
+        assert.deepStrictEqual(one, [[mp, '\u0001desktop\u0001{"type":"solo","data":{"a":1}}']]);
+        // a carrier that says ccraw (P12): several pages in one raw frame
+        mp.emit('message', Buffer.from(JSON.stringify({ type: 'sub_open', sub: 'phone', raw: 1, cc: 1, ccraw: 1 })));
+        const two = [];
+        vs.sendCoalesced([subs.phone, subs.desktop], { type: 'bc2' }, (ws, p) => two.push([ws, p]));
+        assert.strictEqual(two.length, 1);
+        assert.strictEqual(two[0][1].replace(/^\u0001(phone,desktop|desktop,phone)\u0001/, ''), '{"type":"bc2"}');
+        assert.ok(/^\u0001(phone,desktop|desktop,phone)\u0001/.test(two[0][1]), 'both pages named');
         let gone = 0;
         subs.phone.on('close', () => { gone++; });
         mp.emit('close');
