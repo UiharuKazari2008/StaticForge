@@ -1481,6 +1481,10 @@
         };
         const out = [];
         for (let i = 0; i < rows.length; i += 8) out.push(...await Promise.all(rows.slice(i, i + 8).map(one)));
+        // only this turn's edits stay parsed: the cache grew by every edit of every chat (5-30 MB on a
+        // busy day, #890); an older one is read again if it is asked for
+        const keep = new Set(rows.map((r) => `${sid}|${r.payloadId || r.diffId}`));
+        changeCache.forEach((_, k) => { if (!keep.has(k)) changeCache.delete(k); });
         const files = new Map();
         out.forEach((c) => {
             const k = c.file || '(unknown file)';

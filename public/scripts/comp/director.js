@@ -5525,6 +5525,8 @@ class Director {
             if (this._windowSessionId !== this.currentSession.id) {
                 this._windowSessionId = this.currentSession.id;
                 this._visibleRowCount = DIRECTOR_ROW_PAGE;
+                // the parsed edits of other chats go (a busy day of Yozora's held megabytes of them)
+                this.pruneInlineDiffs(this.currentSession.id);
             }
         }
 
@@ -6383,6 +6385,13 @@ class Director {
         return 'fas fa-file';
     }
 
+    // Keep only the open chat's parsed edits (mountInlineDiff); the others are read again if reopened.
+    pruneInlineDiffs(sessionId) {
+        if (!this._inlineDiffs || !this._inlineDiffs.size) return;
+        const mine = `${sessionId}|`;
+        this._inlineDiffs.forEach((_, key) => { if (!String(key).startsWith(mine)) this._inlineDiffs.delete(key); });
+    }
+
     // An Edit / Write row of Yozora's: its removed and added lines under the row. The payload (the tool's
     // arguments and result) is read once per edit, when the row first comes on screen, and kept.
     mountInlineDiff(rowEl, body, row) {
@@ -6414,7 +6423,8 @@ class Director {
                 const change = directorParseChange(row, payload && payload.args, payload && payload.result);
                 // a live edit's payload can lag its row by a moment
                 if (!change.lines.length && !change.cut && tries < 3) { setTimeout(load, 1800); return; }
-                this._inlineDiffs.set(key, change);
+                // kept only while its chat is the open one (another opened while it was read)
+                if (this.currentSession && this.currentSession.id === sessionId) this._inlineDiffs.set(key, change);
                 if (box.isConnected) fill(change);
             } catch (_) {
                 if (tries < 3) setTimeout(load, 2500);
