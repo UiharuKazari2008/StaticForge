@@ -1327,6 +1327,14 @@
                 return;
             }
             if (command === 'client_restart') {
+                // a phone that is not on screen is never restarted from afar (#890): she came back to a cold boot
+                // and lost her state (13 agent restarts of the hidden Fold in the server's boot log). On screen
+                // she sees it happen.
+                const phone = window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
+                if (phone && (document.hidden || document.documentElement.hasAttribute('data-screen-off'))) {
+                    replyAgentSessionResult(requestId, { ok: false, refused: true, error: 'This phone is not on screen: restart refused so its state is kept. Ask Yukimi, or use client_update while she is on it.' });
+                    return;
+                }
                 replyAgentSessionResult(requestId, { ok: true, restarting: true });
                 restartClientFromCommand();
                 return;

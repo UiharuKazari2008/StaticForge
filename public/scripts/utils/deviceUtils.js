@@ -4,16 +4,11 @@
 
 // Detect if device is mobile based on screen width and user agent
 function isMobileDevice() {
-    // Check screen width
-    const isMobileWidth = window.innerWidth <= 768;
-    
-    // Check user agent for mobile devices
-    const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-    
-    // Check if device has touch capability
-    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    
-    return isMobileWidth || isMobileUA || hasTouch;
+    // the user agent and touch first: constant, and on a phone they answer without reading innerWidth,
+    // which forces a style/layout pass when the page is dirty (27 ms per 30 s idle on the A53, #890)
+    if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) return true;
+    if ('ontouchstart' in window || navigator.maxTouchPoints > 0) return true;
+    return window.innerWidth <= 768;
 }
 
 // Get device pixel ratio

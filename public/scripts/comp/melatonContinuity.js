@@ -67,9 +67,16 @@
         }
     }
 
+    let roleCache = null;
     const api = {
         get available() { return !!bridge(); },
-        role() { try { return bridge() ? String(bridge().role()) : null; } catch (_) { return null; } },
+        // a page's window stays on its screen (a move between the phone and DeX reloads the page), so the
+        // synchronous bridge call is made once, not on every check (#890)
+        role() {
+            if (roleCache) return roleCache;
+            try { roleCache = bridge() ? String(bridge().role()) : null; } catch (_) { roleCache = null; }
+            return roleCache;
+        },
         peers() { try { return bridge() ? JSON.parse(bridge().peers()) : []; } catch (_) { return []; } },
         hybrid() {
             try {

@@ -5598,14 +5598,16 @@
     const AV = window.AndroidVolume && typeof window.AndroidVolume.get === 'function' ? window.AndroidVolume : null;
     let avState = null;
     let avAt = 0;
-    // Android's levels, read again when older than half a second (a change Android does not announce, the
-    // ringer under Do Not Disturb, still shows on the next status refresh)
+    // Android's levels: kept by the app's 'androidvolume' pushes; read again when older than 30 s or when the
+    // page comes back on screen (a change Android does not announce, the ringer under Do Not Disturb). Half a
+    // second made every status repaint a synchronous bridge call (63 ms per 30 s idle on the A53, #890)
     function avNow() {
         if (!AV) return null;
         const now = Date.now();
-        if (!avState || now - avAt > 500) { try { avState = JSON.parse(AV.get()); avAt = now; } catch (_) { avState = null; } }
+        if (!avState || now - avAt > 30000) { try { avState = JSON.parse(AV.get()); avAt = now; } catch (_) { avState = null; } }
         return avState;
     }
+    if (AV) document.addEventListener('visibilitychange', () => { if (!document.hidden) avAt = 0; });
     const clampStep = (n) => Math.max(0, Math.min(VOL_STEPS, Math.round(Number(n))));
 
     function storedLevel(key) {
@@ -5697,6 +5699,7 @@
     if (AV) {
         window.addEventListener('androidvolume', (e) => {
             avState = (e && e.detail) || null;
+            avAt = Date.now();
             if (volumePaint) volumePaint();
             refreshStatus();
             if (barsExternal && window.melatonBars && window.melatonBars.pushLayouts) window.melatonBars.pushLayouts(['volume'], true);

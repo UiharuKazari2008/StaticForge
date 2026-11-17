@@ -427,10 +427,20 @@
         const shown = new Promise((resolve) => {
             settle = resolve;
         });
-        if (remaining <= 0) {
-            startApplying();
+        const go = () => { if (phase !== 'counting') return; if (remaining <= 0) startApplying(); else startTick(); };
+        // a phone that is not on screen holds the countdown until it is (#890): nobody can press Cancel on a
+        // hidden page, and it came back to a cold boot
+        const phone = window.uiShell === 'mobile' || document.documentElement.classList.contains('ui-mobile');
+        const away = () => document.hidden || document.documentElement.hasAttribute('data-screen-off');
+        if (phone && away()) {
+            const onShow = () => {
+                if (away()) return;
+                document.removeEventListener('visibilitychange', onShow);
+                go();
+            };
+            document.addEventListener('visibilitychange', onShow);
         } else {
-            startTick();
+            go();
         }
         return shown;
     }

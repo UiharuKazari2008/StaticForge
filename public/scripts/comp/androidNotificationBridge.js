@@ -46,7 +46,9 @@ function updateAndroidNotificationBody() {
     if (isManualOpen) {
         firstPart = 'Editor Open';
     } else {
-        firstPart = window.optionsData.activeWorkspace.data.name || 'Default';
+        // optionsData arrives after the first server pings of a boot (404 TypeErrors on the Fold, #890)
+        const ws = window.optionsData && window.optionsData.activeWorkspace;
+        firstPart = (ws && ws.data && ws.data.name) || 'Default';
     }
 
     // 24H rolling image generation count (from server ping)
@@ -68,9 +70,14 @@ function updateAndroidNotificationBody() {
     const creditsLeftPart = `${fixedCredits ? fixedCredits + ' + ' : ''}${paidCredits} anlas`;
 
     const parts = [firstPart, genPart, creditsLeftPart];
+    // called on every server ping: hand the app only a change (each call wrote its prefs and woke the
+    // foreground service, #890)
+    const body = JSON.stringify(parts);
+    if (body === updateAndroidNotificationBody.last) return;
 
     try {
-        window.AndroidPersistentNotification.setBody(JSON.stringify(parts));
+        window.AndroidPersistentNotification.setBody(body);
+        updateAndroidNotificationBody.last = body;
     } catch (error) {
         console.warn('Failed to update Android persistent notification body:', error);
     }
