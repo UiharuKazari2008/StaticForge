@@ -38,6 +38,10 @@
  *   POST /api/wm-program-icons/jobs/:job/done             { accept: [...] } -> store, recompile
  *   POST /api/wm-program-icons/jobs/:job/cancel
  *   DELETE /api/wm-program-icons/store?id=<package/activity>   back to the Android icon
+ *
+ * Pushed (#890 P15): every change of a job (an icon starts, is ready or failed, the batch is closed)
+ * goes to the sessions that made or asked about it as wm_program_icons_job { success, job } (the
+ * GET /jobs/:job answer), so the page need not poll while its socket is up.
  */
 
 const fs = require('fs');
@@ -489,6 +493,43 @@ async function renderWm(square, size) {
 function saveJob(job) {
     job.updatedAt = Date.now();
     try { atomicWrite(path.join(jobsDir(), `${job.id}.json`), JSON.stringify(job)); } catch (err) { console.warn('[wmProgramIcons] job not saved', err.message); }
+    pushJob(job);
+}
+
+// ---- pushes (#890 P15): job id -> the session ids that made it or asked about it (in memory only)
+const JOB_WATCHERS_MAX = 8;
+const jobWatchers = new Map();
+const pushPending = new Set();
+
+/** A request about a job: its session hears of the job's changes from now on. */
+function watchJob(job, req) {
+    const sid = req && (req.sessionID || (req.session && req.session.id) || req.sessionId);
+    if (!job || !sid) return;
+    let set = jobWatchers.get(job.id);
+    if (!set) { set = new Set(); jobWatchers.set(job.id, set); }
+    set.delete(String(sid));
+    set.add(String(sid));
+    if (set.size > JOB_WATCHERS_MAX) set.delete(set.values().next().value);
+}
+
+/** wm_program_icons_job to the job's sessions, once per turn of the event loop however many changes. */
+function pushJob(job) {
+    if (!job || !jobWatchers.has(job.id) || pushPending.has(job.id)) return;
+    pushPending.add(job.id);
+    setImmediate(() => {
+        pushPending.delete(job.id);
+        const set = jobWatchers.get(job.id);
+        if (!set || !set.size) return;
+        let server = null;
+        try { server = boundGr && typeof boundGr.getWebSocketServer === 'function' ? boundGr.getWebSocketServer() : null; } catch (_) { server = null; }
+        if (!server || typeof server.sendToUser !== 'function') return;
+        const message = { type: 'wm_program_icons_job', data: { success: true, job: publicJob(job) }, timestamp: new Date().toISOString() };
+        for (const sid of set) {
+            try { server.sendToUser(sid, message); } catch (_) { /* that session has no socket now */ }
+        }
+        // a closed batch changes no more
+        if (job.state === 'done' || job.state === 'cancelled') jobWatchers.delete(job.id);
+    });
 }
 
 function jobState(job) {
@@ -639,7 +680,7 @@ function enqueue(job, item) {
     queue.push({ job, item });
 }
 
-async function createJob(body) {
+async function createJob(body, req) {
     const list = Array.isArray(body && body.items) ? body.items : [];
     if (!list.length) throw Object.assign(new Error('Choose at least one program.'), { status: 400 });
     if (list.length > MAX_ITEMS) throw Object.assign(new Error(`Up to ${MAX_ITEMS} programs at a time.`), { status: 400 });
@@ -703,6 +744,7 @@ async function createJob(body) {
     }
     if (!job.items.length) throw Object.assign(new Error('No program in the request could be read.'), { status: 400 });
     jobs.set(id, job);
+    watchJob(job, req);
     job.items.forEach((it) => enqueue(job, it));
     saveJob(job);
     pump();
@@ -788,15 +830,17 @@ function mount(app, authMiddleware, globalResources) {
     });
     app.get(`${base}/jobs`, auth, admin, (req, res) => {
         res.set('Cache-Control', 'no-store');
-        const list = [...jobs.values()].filter((j) => j.state !== 'done' && j.state !== 'cancelled').sort((a, b) => b.createdAt - a.createdAt).map(publicJob);
-        res.json({ success: true, jobs: list });
+        const open = [...jobs.values()].filter((j) => j.state !== 'done' && j.state !== 'cancelled').sort((a, b) => b.createdAt - a.createdAt);
+        open.forEach((j) => watchJob(j, req));
+        res.json({ success: true, jobs: open.map(publicJob) });
     });
     app.post(`${base}/jobs`, auth, admin, json, async (req, res) => {
-        try { res.json({ success: true, job: publicJob(await createJob(req.body)) }); } catch (err) { fail(res, err); }
+        try { res.json({ success: true, job: publicJob(await createJob(req.body, req)) }); } catch (err) { fail(res, err); }
     });
     app.get(`${base}/jobs/:job`, auth, admin, (req, res) => {
         const job = jobOr404(req, res);
         if (!job) return;
+        watchJob(job, req);
         res.set('Cache-Control', 'no-store');
         res.json({ success: true, job: publicJob(job) });
     });
@@ -814,11 +858,13 @@ function mount(app, authMiddleware, globalResources) {
     app.post(`${base}/jobs/:job/regenerate`, auth, admin, json, (req, res) => {
         const job = jobOr404(req, res);
         if (!job) return;
+        watchJob(job, req);
         try { const n = regenerate(job, req.body && req.body.keys, req.body && req.body.mode); res.json({ success: true, queued: n, job: publicJob(job) }); } catch (err) { fail(res, err); }
     });
     app.post(`${base}/jobs/:job/done`, auth, admin, json, async (req, res) => {
         const job = jobOr404(req, res);
         if (!job) return;
+        watchJob(job, req);
         try { const saved = await finish(job, req.body && req.body.accept); res.json({ success: true, saved, manifest: publicManifest() }); } catch (err) { fail(res, err); }
     });
     app.post(`${base}/jobs/:job/cancel`, auth, admin, (req, res) => {
@@ -843,5 +889,5 @@ module.exports = {
     playStoreContext,
     chooseRoute,
     publicManifest,
-    _test: { versionOf, TAKES, createJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; } }
+    _test: { versionOf, TAKES, createJob, finish, removeFromStore, jobs, setRoot: (r) => { projectRoot = r; }, watchJob, pushJob, saveJob, publicJob, jobWatchers, setGr: (g) => { boundGr = g; } }
 };
