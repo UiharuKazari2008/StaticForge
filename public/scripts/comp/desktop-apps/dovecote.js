@@ -4901,6 +4901,11 @@ const doveApplyTrayBadge = function (dreamUnread, options) {
 };
 
 const doveRefreshTrayUnread = async function (options) {
+    // Melaton Mobile has no Dovecote tray (#890): the two reads (every mailbox, then up to 200 inbox
+    // rows) filled a hidden badge on every reconnect. The phone's Messaging, Today and status bar take
+    // their counts from the dovecote_mailbox_updated push, and read for themselves on the
+    // dovecoteMailboxUpdated event without a detail that the reconnect still sends (below).
+    if (window.uiShell === 'mobile') return;
     try {
         // dovecote_list_mailboxes: modules/ws/handlers/250-dovecoteHandler.js
         const result = await wsClient.sendMessage('dovecote_list_mailboxes', {}, false);
