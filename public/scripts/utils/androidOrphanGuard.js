@@ -9,6 +9,7 @@
 (function () {
     'use strict';
     if (typeof window === 'undefined' || typeof BroadcastChannel !== 'function') return;
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const inApp = !!(window.AndroidNotification || window.AndroidCaption || window.AndroidDeviceStatus)
         || /;\s*wv\)/.test(navigator.userAgent || '');
     if (!inApp) return;
@@ -39,9 +40,19 @@
         try { channel.postMessage({ type: 'on-screen', id, born, role: role() }); } catch (_) { /* channel closed */ }
     }
 
+    // the minute's announcement runs only while the page is on screen (announce() says nothing otherwise):
+    // no wake a minute behind another program or with the screen off (#890)
+    let announceTimer = null;
+    function syncAnnounceTimer() {
+        const on = !retired && !document.hidden && document.documentElement.dataset.screenOff === undefined;
+        if (on && !announceTimer) announceTimer = setInterval(announce, ANNOUNCE_EVERY_MS);
+        else if (!on && announceTimer) { clearInterval(announceTimer); announceTimer = null; }
+    }
+
     function retire() {
         if (retired) return;
         retired = true;
+        syncAnnounceTimer();
         try { channel.close(); } catch (_) { /* already closed */ }
         // exitConfirmation.js would otherwise ask "leave?" in a page nobody can see
         window.bypassConfirmation = true;
@@ -62,7 +73,10 @@
     document.addEventListener('visibilitychange', () => {
         hiddenSince = document.hidden ? Date.now() : 0;
         announce();
+        syncAnnounceTimer();
     });
-    setInterval(announce, ANNOUNCE_EVERY_MS);
+    // the screen coming on (or going off) is no visibilitychange: the app's melatonscreen says it
+    window.addEventListener('melatonscreen', () => setTimeout(() => { announce(); syncAnnounceTimer(); }, 0), { signal: appScopeSignal });
+    syncAnnounceTimer();
     announce();
 })();
