@@ -306,6 +306,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `agent_session_bound` | After this application key binds the tab | `data.clientId`, optional `data.actorName` — Remote Access tray popup |
 | `agent_session_unbound` | Key rebound / idle 15 min / tray Disconnect | `data.clientId`, `data.reason` |
 | `agent_session_notice` | Physics compiled for the bound tab | `data.action` (`physics`), optional `data.actorName` — `#mcpPhysicsIndicator` (location arrow) plus Remote Access popover |
+| `wm_program_icons_job` | Every change of a Program Icons job (#890 P15): an icon starts, is ready or failed, the batch is closed; at most one per job per turn of the server's event loop | `data.success`, `data.job` (the `GET /api/wm-program-icons/jobs/:job` answer). Sent to the sessions that created, listed, got, regenerated or finished the job; none after `done` / `cancel`. A page that gets them need not poll the job. A sleeping phone page or DeX window is held the newest state per job - [rest-api.md](./rest-api.md) Program Icons |
 
 Director messages use prefix `director_` (handled in client before inbound registry).
 

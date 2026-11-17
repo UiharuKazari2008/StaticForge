@@ -1407,7 +1407,8 @@ Session auth; generating and writing the store are admin only. Yozora #773 (`mod
 Pushed (#890 P15): every change of a job (an icon starts, is ready or failed; the batch is closed) goes over the socket as
 `{ type: "wm_program_icons_job", data: { success: true, job } }` - the `GET /api/wm-program-icons/jobs/:job` answer - to the
 sessions that made the job or asked about it (create, list, get, regenerate, done), at most one push per job per turn of
-the server's event loop. A page that gets pushes need not poll the job; after `done` / `cancel` no more come.
+the server's event loop. A page that gets pushes need not poll the job; after `done` / `cancel` no more come. A sleeping
+phone page or DeX window (`client_dormant`) is held only the newest state of each job until it wakes.
 
 ### `GET /install/packages`
 
