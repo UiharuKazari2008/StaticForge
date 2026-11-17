@@ -151,7 +151,16 @@ function appIcon(pkg) {
 function tap() {
     if (tapped) return;
     tapped = true;
-    activeSync().onDeviceEvent((name, detail, device) => {
+    // a phone that (re)connects: what it shows now, once its link is up (a restart, an app update)
+    const as = activeSync();
+    if (typeof as.onDeviceHello === 'function') {
+        as.onDeviceHello((d) => {
+            if (!d || d.speaker !== 'service' || d.session !== 'partner') return;
+            const t = setTimeout(() => { for (const p of providers) p.syncDevice(d.id, d.name); }, 5000);
+            if (t.unref) t.unref();
+        });
+    }
+    as.onDeviceEvent((name, detail, device) => {
         if (!detail || typeof detail !== 'object') return;
         if (name === 'notify.posted' && PACKAGE_RE.test(String(detail.package || ''))) {
             noteApp(detail);
@@ -210,13 +219,20 @@ class AndroidAppProvider {
         (async () => {
             let links = [];
             try { links = activeSync().partnerLinks(resources(), null); } catch (_) { links = []; }
-            for (const l of links) {
-                try {
-                    const res = await activeSync().serverCall(resources(), null, l.deviceId, 'notify.list', {}, { timeoutMs: CALL_MS });
-                    for (const n of (res && res.notifications) || []) if (n && n.package === this.pkg) this.take(n, l.deviceId, l.name, { old: true });
-                } catch (_) { /* that phone does not send notifications */ }
-            }
+            for (const l of links) await this.syncDevice(l.deviceId, l.name);
         })().finally(() => { this.syncing = false; });
+    }
+
+    /**
+     * One phone's notifications of this app now. Lines that are new count as arrivals (the server or
+     * the phone was away when they came); what is already stored is not announced again.
+     */
+    async syncDevice(deviceId, deviceName) {
+        if (!providers.has(this)) return;
+        try {
+            const res = await activeSync().serverCall(resources(), null, deviceId, 'notify.list', {}, { timeoutMs: CALL_MS });
+            for (const n of (res && res.notifications) || []) if (n && n.package === this.pkg) this.take(n, deviceId, deviceName);
+        } catch (_) { /* that phone does not send notifications */ }
     }
 
     // ---- taking a notification ----

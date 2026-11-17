@@ -584,7 +584,7 @@
                 } });
             }
             const bios = ensureBios();
-            // a CafeReady PC (the app's Melaton Café Miniport, #815): the BIOS splash shows its badge
+            // a CaféReady PC (the app's Melaton Café Miniport, #815): the BIOS splash shows its badge
             if (bios && bios.screen) bios.screen.cafeReady = !!(mcMini && mcMini.miniport().present);
             // and the processor's case badge, as a PC's splash shows its CPU (Intel / AMD, or the phone's chip)
             const bootDoc = env.window && env.window.document;
@@ -662,7 +662,7 @@
             // Continuity (#798): the DeX window of a hybrid phone waits for the phone before it boots on
             const mc = root.melatonContinuity;
             const outcome = await bios.post({
-                // a CafeReady PC (the app's Melaton Café Miniport) holds its splash about 2.5 s so its logos read
+                // a CaféReady PC (the app's Melaton Café Miniport) holds its splash about 2.5 s so its logos read
                 // (the fast boot's 1.2 s was too short for them, Yukimi)
                 fastBootMs: (mcMini && mcMini.miniport().present) ? 2500 : (onMiniport ? 1200 : 0),
                 // ready: the phone window says it is ready; auth: the session lets this window in (the

@@ -1059,7 +1059,8 @@
                 keyguardClear: !!c0.keyguardClear,
                 cutAnimations: !!c0.cutAnimations,
                 lockScreen: !!c0.lockScreen,
-                lockPhoneWall: !!c0.lockPhoneWall
+                lockPhoneWall: !!c0.lockPhoneWall,
+                volumePopup: !!c0.volumePopup
             };
         }
         const cfg = d.barsCfg;
@@ -1085,7 +1086,9 @@
             ${check('wmBarsCutAnim', 'Cut window animations everywhere (programs open, close and switch without zooming)', cfg.cutAnimations)}
             <div class="wm-form-gap"></div>
             ${check('wmBarsLock', 'Use the Windows Mobile lock screen (the phone\'s PIN is typed on its keypad)', cfg.lockScreen)}
-            ${check('wmBarsLockWall', 'Use the phone\'s lock screen wallpaper', cfg.lockPhoneWall)}`;
+            ${check('wmBarsLockWall', 'Use the phone\'s lock screen wallpaper', cfg.lockPhoneWall)}
+            <div class="wm-form-gap"></div>
+            ${check('wmBarsVolume', 'Use WM Volume popup in Android (the volume keys show it and change the media level)', cfg.volumePopup)}`;
         const q = (sel) => el.querySelector(sel);
         const sync = () => {
             q('input[name="wmBarsOn"]').disabled = !!why && !cfg.enabled;
@@ -1098,6 +1101,7 @@
             q('input[name="wmBarsCutAnim"]').disabled = st.elevated === false;
             q('input[name="wmBarsLock"]').disabled = !cfg.enabled;
             q('input[name="wmBarsLockWall"]').disabled = !cfg.enabled || !cfg.lockScreen;
+            q('input[name="wmBarsVolume"]').disabled = !cfg.enabled;
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
@@ -1109,6 +1113,7 @@
         bind('wmBarsCutAnim', (v) => { cfg.cutAnimations = v; });
         bind('wmBarsLock', (v) => { cfg.lockScreen = v; });
         bind('wmBarsLockWall', (v) => { cfg.lockPhoneWall = v; });
+        bind('wmBarsVolume', (v) => { cfg.volumePopup = v; });
         ui.bindCombo(q('[data-act="barscorner"]'), BARS_CORNERS, cfg.corner, (v) => { cfg.corner = v; });
         ui.bindCombo(q('[data-act="barsright"]'), BARS_SOFT_RIGHT, cfg.softRight, (v) => { cfg.softRight = v; });
         sync();
@@ -1863,7 +1868,7 @@
                         <span>Memory:</span><span>${esc(f.memory)}</span>
                         <span>Expansion slot:</span><span>${esc(f.slot)}</span>
                     </div>
-                    <div class="wm-cafe-badge" role="img" aria-label="Powered by CafeReady"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span></div>`;
+                    <div class="wm-cafe-badge" role="img" aria-label="Powered by CaféReady"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span></div>`;
             },
             async commit(d) {
                 const idApi = window.melatonDeviceIdentity;

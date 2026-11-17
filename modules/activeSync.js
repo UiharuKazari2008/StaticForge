@@ -584,6 +584,8 @@ function hello(globalResources, wsServer, clientInfo, data) {
     // ADB on 5555 (#818): look for the phone where this socket comes from
     try { require('./deviceAdb').noteOnline(globalResources, server, id); } catch (err) { console.warn('[activeSync] adb detect:', err.message); }
     scheduleUpdated(globalResources, server);
+    // server modules that want a phone the moment it connects (Messaging's Android app accounts catch up, #885)
+    if (kind === 'device') for (const fn of helloTaps) { try { fn({ id, speaker: as.speaker, session: as.session, name: as.name }); } catch (_) { /* the tap's own fault */ } }
     return { success: true, kind, id, name: as.name, session: as.session, permissions: as.permissions, device: describeDevice(globalResources, server, row), ...list(globalResources, server) };
 }
 
@@ -920,6 +922,9 @@ async function deliverQueue(globalResources, wsServer, deviceId) {
 }
 
 const deviceEventTaps = [];
+const helloTaps = [];
+/** fn({ id, speaker, session, name }) after a device's socket said as_hello (before its reply is sent). */
+function onDeviceHello(fn) { if (typeof fn === 'function') helloTaps.push(fn); }
 /** fn(eventName, detail, device) for every event a partnered device sends (after its permission check). */
 function onDeviceEvent(fn) { if (typeof fn === 'function') deviceEventTaps.push(fn); }
 
@@ -1249,6 +1254,7 @@ module.exports = {
     onSocketClosed,
     call,
     serverCall,
+    onDeviceHello,
     queueFor,
     listReceived,
     updateReceived,

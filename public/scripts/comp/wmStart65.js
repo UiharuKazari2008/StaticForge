@@ -1218,6 +1218,9 @@
      */
     function lock() {
         try {
+            // in the Android app the phone itself locks (Yukimi, Nov 16); WM's lock screen comes over Android's
+            const ab = window.AndroidBars;
+            if (ab && typeof ab.lockPhone === 'function' && ab.lockPhone()) return;
             if (window.wmLock && typeof window.wmLock.lock === 'function') window.wmLock.lock();
         } catch (err) { console.warn('[wmStart65] lock', err); }
     }

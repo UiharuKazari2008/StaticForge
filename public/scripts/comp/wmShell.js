@@ -81,7 +81,7 @@
     // ROM art upscaled 4x (GPU, 4x-UltraSharp) for dense screens: a phone at DPR 2.6 with the
     // 1.5x touch scale draws icons at ~4x. Only these names have an @4x file (regenerate the list
     // when art is added: ls public/static_images/wm61/*@4x.png)
-    const HD_ART = new Set(["app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "status-lapis", "status-carkey", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
+    const HD_ART = new Set(["app-doubles", "app-doubles-lg", "app-bintoss", "app-bintoss-lg", "app-teleport", "app-teleport-lg", "app-weather", "app-weather-lg", "app-traffic", "app-traffic-lg", "app-lapis", "app-lapis-lg", "app-youtube", "app-youtube-lg", "status-lapis", "status-carkey", "app-wallet", "app-wallet-lg", "set-buttons", "app-chat", "app-chat-lg", "app-messenger", "app-messenger-lg", "app-spellbook", "app-spellbook-lg", "app-reference", "app-reference-lg", "app-remote-desktop-mobile", "app-remote-desktop-mobile-lg", "app-spellcaster", "app-spellcaster-lg", "app-phasewalker", "app-phasewalker-lg", "app-atelier", "app-atelier-lg", "app-expanders", "app-expanders-lg", "app-characters", "app-characters-lg", "app-emotion", "app-emotion-lg", "app-agora", "app-agora-lg", "app-novels", "app-novels-lg", "app-data-management", "app-data-management-lg", "app-image-search", "app-image-search-lg", "app-control-panel", "app-control-panel-lg", "app-paypass", "app-paypass-lg", "app-xlink", "app-xlink-lg", "app-import", "app-import-lg", "app-accounts", "app-accounts-lg", "app-calculator", "app-calculator-lg", "app-calendar", "app-calendar-lg", "app-contacts", "app-contacts-lg", "app-director", "app-director-lg", "app-file-explorer", "app-file-explorer-lg", "app-games", "app-games-lg", "app-solitaire", "app-solitaire-lg", "app-minesweeper", "app-minesweeper-lg", "app-blockdrop", "app-blockdrop-lg", "app-brickbreaker", "app-brickbreaker-lg", "app-inkball", "app-inkball-lg", "app-gems", "app-gems-lg", "app-folder-dreamscape", "app-folder-dreamscape-lg", "app-android", "app-android-lg", "app-folder-work", "app-folder-work-lg", "app-android-bridge", "app-android-bridge-lg", "app-program-icons", "app-program-icons-lg", "app-help", "app-help-lg", "app-ie", "app-ie-lg", "app-messaging", "app-messaging-lg", "app-sms", "app-sms-lg", "app-notes", "app-notes-lg", "app-office", "app-office-lg", "app-phone", "app-phone-lg", "app-pictures", "app-pictures-lg", "app-programs", "app-programs-lg", "app-search", "app-search-lg", "app-settings", "app-settings-lg", "app-studio", "app-studio-lg", "app-task-manager", "app-task-manager-lg", "app-today", "app-today-lg", "contacts-card", "contacts-email", "contacts-home", "contacts-mobile", "contacts-sms", "contacts-web", "contacts-work", "fe-card", "fe-device", "fe-file", "fe-folder", "fe-storage-card", "ie-busy", "ie-chevron", "ie-favorite", "ie-folder", "ie-go", "ie-lock", "ie-logo", "ie-page", "ie-search", "ie-stop", "ie-unlock", "menu-check", "menu-submenu-arrow", "msg-acct-mail", "msg-acct-outlook", "msg-acct-setup", "msg-acct-sms", "msg-attach-mail", "msg-attachment", "msg-folder-account", "msg-folder-deleted", "msg-folder-drafts", "msg-folder-folder", "msg-folder-inbox", "msg-folder-outbox", "msg-folder-sent", "msg-read", "msg-unread", "msgbox-error", "msgbox-info", "msgbox-question", "msgbox-warning", "notes-folders", "notes-note", "notes-recording", "notes-speaker", "set-about", "set-backlight", "set-clock", "set-connections", "set-domain", "set-error-reporting", "set-grimoire", "set-input", "set-lock", "set-memory", "set-menus", "set-netcards", "set-owner", "set-power", "set-regional", "set-remove-programs", "set-screen", "set-search-indexing", "set-sounds", "set-today", "set-update", "set-usb", "set-wireless", "set-workspace", "set-bluetooth", "set-cellular", "sip-keyboard", "start-flag", "status-battery-1", "status-battery-2", "status-battery-3", "status-battery-charging", "status-battery-empty", "status-battery-full", "status-battery-unknown", "status-battery-low", "status-bluetooth", "wrls-all-on", "wrls-nfc-on", "wrls-nfc-off", "wrls-all-off", "wrls-wifi-on", "wrls-wifi-off", "wrls-bluetooth-on", "wrls-bluetooth-off", "wrls-phone-on", "wrls-phone-off", "status-data-3g", "status-data-3g-active", "status-data-4g", "status-data-4g-active", "status-data-4g-plus", "status-data-4g-plus-active", "status-data-5g", "status-data-5g-active", "status-data-5g-plus", "status-data-5g-plus-active", "status-data-anim-00", "status-data-anim-01", "status-data-anim-02", "status-data-anim-03", "status-data-anim-04", "status-data-anim-05", "status-data-anim-06", "status-data-anim-07", "status-data-anim-08", "status-data-anim-09", "status-data-anim-10", "status-data-anim-11", "status-data-anim-12", "status-data-anim-13", "status-data-anim-14", "status-data-anim-15", "status-data-anim-16", "status-data-anim-17", "status-data-e", "status-data-e-active", "status-data-g", "status-data-g-active", "status-data-h", "status-data-h-active", "status-data-h-plus", "status-data-h-plus-active", "status-data-nr", "status-data-nr-active", "status-data-nr-a", "status-data-nr-a-active", "status-data-off", "status-data-on", "status-data-uw", "status-data-uw-active", "status-director", "status-mail", "status-sms", "status-messenger", "status-notify-many", "status-prints", "status-reminder", "status-roaming", "status-signal-1", "status-signal-2", "status-signal-3", "status-signal-4", "status-signal-alert", "status-signal-none", "status-signal-off", "status-signal-search-1", "status-signal-search-2", "status-signal-search-3", "status-vibrate", "status-volume", "status-volume-off", "volume-system", "volume-ringer", "volume-notify", "status-wifi-available", "status-wifi-connected", "title-close", "title-ok", "today-calendar", "today-clock", "today-getting-started", "today-lock", "today-lock-locked", "today-messages", "today-owner", "today-phone", "today-search-button", "today-search-button-pressed", "today-tasks", "wait-0", "wait-1", "wait-10", "wait-11", "wait-12", "wait-13", "wait-14", "wait-15", "wait-2", "wait-3", "wait-4", "wait-5", "wait-6", "wait-7", "wait-8", "wait-9", "app-activesync", "app-activesync-lg", "app-tasks", "app-tasks-lg", "app-windows-media", "app-windows-media-lg", "as-attention", "as-connected", "as-notconnected", "as-syncing", "cal-bell", "cal-next", "cal-prev", "cal-today", "chat-buddy", "status-director-open-0", "status-director-open-1", "status-director-open-2", "status-director-open-3", "status-director-open-4", "status-director-clap-strip", "status-weather-alert", "status-rain-alarm", "status-traffic", "status-camera", "status-continuity", "status-activesync", "status-error", "status-update", "status-update-dl-strip", "status-warning", "wmp-add", "wmp-artist", "wmp-back", "wmp-burn", "wmp-delete", "wmp-disc", "wmp-down", "wmp-error", "wmp-favorite", "wmp-folder", "wmp-forward", "wmp-genre", "wmp-home", "wmp-music", "wmp-play", "wmp-playlist", "wmp-properties", "wmp-radio", "wmp-refresh", "wmp-search", "wmp-stop", "wmp-tv", "wmp-tv-folder", "wmp-up", "wmp-video", "wmp-webpage"]);
     const srcset = (name) => WM_SET.test(name) ? `${name}.png 1x, ${name}@2x.png 2x, ${name}@4x.png 4x` : String(name).startsWith('/') ? `${name} 1x` : `${art(name)} 1x, ${art2x(name)} 2x${HD_ART.has(name) ? `, ${ART}${name}@4x.png 4x` : ''}`;
     const imgTag = (name, alt = '') => `<img src="${art(name)}" srcset="${srcset(name)}" alt="${alt}" draggable="false">`;
     const escapeHtml = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -975,18 +975,21 @@
             corner.hidden = !o.corner;
             if (o.corner) corner.dataset.kind = o.corner === 'ok' ? 'ok' : 'close';
         }
-        // Android's notification tray: WM's notification glyph at the head of the icons (Settings)
+        // Android's notification tray before the radios (Settings): a list glyph of its own, not WM's
+        // notification bubble, which is Melaton's own notifications (Yukimi, Nov 16; a Melaton-only concept,
+        // drawn in the ROM glyphs' 1-bit white: static_images/wm65/status-androidtray)
         let tray = shell.querySelector('.wm-status-icon[data-role="androidtray"]');
         if (o.androidTray && !tray) {
             tray = document.createElement('button');
             tray.type = 'button';
             tray.className = 'wm-status-icon';
             tray.dataset.role = 'androidtray';
-            tray.dataset.icon = 'notify-many';
+            tray.style.backgroundImage = 'image-set(url("/static_images/wm65/status-androidtray.png") 1x, url("/static_images/wm65/status-androidtray@2x.png") 2x, url("/static_images/wm65/status-androidtray@4x.png") 4x)';
             tray.setAttribute('aria-label', 'Android notifications');
+            // just left of where Bluetooth's icon comes (Yukimi, Nov 16): the app icons left of it, the radios right
             const status = shell.querySelector('.wm-status');
-            const reserve = status.querySelector('.wm-status-reserve');
-            if (reserve) reserve.after(tray); else status.prepend(tray);
+            const bt = status.querySelector('.wm-status-icon[data-role="bluetooth"]');
+            if (bt) bt.before(tray); else status.prepend(tray);
         }
         if (keys[0] && typeof o.softLeft === 'string') { keys[0].textContent = o.softLeft; keys[0].hidden = false; keys[0].disabled = !o.softLeft; }
         if (keys[1] && typeof o.softRight === 'string') { keys[1].textContent = o.softRight; keys[1].hidden = false; keys[1].disabled = !o.softRight; }
@@ -1029,6 +1032,8 @@
         if (!shell) return false;
         if (role === 'notify') { noteIconTap(); return true; }
         const icon = shell.querySelector(`.wm-status-icon[data-role="${role}"]`);
+        // the volume box opens with its icon aside too (never the notification box in its place)
+        if (role === 'volume') { closeVolume(); toggleVolume(icon && !icon.hidden && icon.getClientRects().length ? icon : null); return true; }
         if (!icon || icon.hidden || !icon.getClientRects().length) { noteIconTap(); return true; }
         icon.click();
         return true;
@@ -1087,6 +1092,22 @@
             const doneSoon = () => requestAnimationFrame(() => requestAnimationFrame(() => { try { if (window.AndroidBars && window.AndroidBars.tapDone) window.AndroidBars.tapDone(); } catch (_) { /* older app */ } }));
             if (role === 'lock') { if (window.wmStart65 && window.wmStart65.lockNow) window.wmStart65.lockNow(); doneSoon(); return; }
             if (role === 'shown') { doneSoon(); return; }
+            // a link or button of a status bubble the app drew (#871): the bubble opened here and that pressed
+            if (role.startsWith('bubble:')) {
+                let o = null;
+                try { o = JSON.parse(role.slice(7)); } catch (_) { o = null; }
+                // a press by its place among the popup's clickable ones (a layout's hit)
+                if (o && o.role && o.n != null && window.melatonBars && window.melatonBars.layoutClick) { window.melatonBars.layoutClick({ role: o.role, n: o.n }); doneSoon(); return; }
+                if (o && o.role) {
+                    const icon = shell.querySelector(`.wm-status-icon[data-role="${o.role}"]`);
+                    statusBubble(o.role, icon, true);
+                    const b = shell.querySelector('.wm-bubble:not([hidden])');
+                    const target = b && [...b.querySelectorAll('button')].find((x) => (x.textContent || '').trim() === o.label);
+                    if (target) target.click();
+                }
+                doneSoon();
+                return;
+            }
             // the app's lock screen was unlocked with its keypad's Contacts / Messaging key (#875)
             if (role === 'app:contacts' || role === 'app:messaging') { open(role.slice(4)); doneSoon(); return; }
             if (role === 'start' || role === 'title') {
@@ -2817,14 +2838,14 @@
                 // a server message (or a request going out: prints in progress) may change an icon
                 statusDirty();
                 const after = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : before + 1;
-                // CafeReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
+                // CaféReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
                 // request nor its cached reply reaches the server (Yukimi, Nov 14: the arrows only for that)
                 const cafe = message && ((direction === 'out' && message._mpCache) || (direction === 'in' && message._mpCached));
                 if (after !== before && !cafe && !(message && QUIET_WS.has(message.type))) dataUsed();
             };
         }
         // requests count by the bytes that came over the network (resource timing): a service worker,
-        // HTTP cache or CafeReady answer has none, so it no longer raises the call (Yukimi, Nov 14)
+        // HTTP cache or CaféReady answer has none, so it no longer raises the call (Yukimi, Nov 14)
         if (!dataWatchFetch) dataWatchFetch = true;
         if (dataWatchFetch === true && typeof PerformanceObserver === 'function') {
             dataWatchFetch = 'observed';
@@ -3047,6 +3068,7 @@
         }
         // notifications held back during startup or a takeover come up once it ends
         if (notes.length && !noteShown && notesMayPop()) refreshNotes();
+        barsStatusPush();
         // behind an Android program (Melaton Bars, #871): the app copies the bars again when their
         // markup changed (a signal push that moved nothing asks for no copy)
         if (barsExternal && window.AndroidBars) {
@@ -3056,6 +3078,132 @@
                 + '|' + [...shell.querySelectorAll('.wm-softkeys .wm-softkey')].map((k) => k.textContent).join(',');
             if (key !== barsKey) { barsKey = key; try { window.AndroidBars.requestRender(); } catch (_) { /* older app */ } }
         }
+    }
+
+    /*
+     * Melaton Bars (#871; Yukimi, Nov 16: "entire 100% sync of icons"): the Android app draws the whole
+     * title bar itself. What only this page knows - which of its icons show and with which art (mail,
+     * text messages, Messenger, the Director and its clapper, prints, updates, the notification group,
+     * weather, traffic, the car key, Continuity, received items, Bluetooth, the volume) - goes to it as
+     * state the moment it changes (AndroidBars.status: [{ role, atlas | art | strip: { art, n, ms }, dim }],
+     * in this bar's order), never as a picture. The phone's own icons (connectivity, signal, roaming,
+     * battery) the app takes from Android itself.
+     */
+    let bubbleCapture = null;
+    /*
+     * The status bubbles described for the app (#871; Yukimi, Nov 16: "popups should not require the web
+     * app at all"): each icon's bubble as the page would build it now - title, lines (text / bold), label and
+     * value pairs with signal bars, WM's block bar, a running clock (the VPN's time connected), links and
+     * buttons - so the app draws and answers it itself the moment it is tapped. Built only while this page
+     * is behind a program (building one closes menus and the volume, as a tap would).
+     */
+    function bubbleSpecOf(a) {
+        const out = { title: a.title || '', role: a.role || '', sec: [], foot: (a.footLinks || []).map((l) => l.label), buttons: (a.buttons || []).map((b) => ({ text: b.text, left: !!b.left })) };
+        const textOf = (n) => (n ? String(n.textContent || '').replace(/\s+/g, ' ').trim() : '');
+        const fromEl = (root) => {
+            [...root.childNodes].forEach((n) => {
+                if (n.nodeType === 3) { const t = String(n.textContent || '').trim(); if (t) out.sec.push({ t: 'text', s: t }); return; }
+                if (n.nodeType !== 1) return;
+                if (n.classList.contains('wm-bubble-pair')) {
+                    const kids = [...n.children];
+                    const left = kids[0];
+                    const right = kids.slice(1);
+                    const pair = { t: 'pair', l: textOf(left), lb: !!(left && left.tagName === 'B'), r: [], bars: null, clock: null };
+                    right.forEach((r) => {
+                        const parts = r.classList.contains('wm-bubble-right') ? [...r.children] : [r];
+                        parts.forEach((p) => {
+                            if (p.classList.contains('wm-bars')) pair.bars = p.querySelectorAll('i.is-on').length;
+                            else if (p.classList.contains('wm-vpn-time')) {
+                                const ws = window.wsClient;
+                                pair.clock = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null;
+                                pair.r.push({ s: textOf(p), b: true });
+                            } else pair.r.push({ s: textOf(p), b: p.tagName === 'B' || p.classList.contains('is-bold') });
+                        });
+                    });
+                    out.sec.push(pair);
+                } else if (n.classList.contains('wm-ds-progress')) {
+                    const sp = n.querySelector('span');
+                    out.sec.push({ t: 'progress', blocks: sp ? parseInt(sp.style.getPropertyValue('--wm-ds-blocks'), 10) || 0 : 0 });
+                } else if (n.classList.contains('wm-bubble-warn')) out.sec.push({ t: 'text', s: textOf(n), warn: true });
+                else if (n.children.length && [...n.children].some((c) => c.matches('div, .wm-bubble-pair, .wm-ds-progress'))) fromEl(n);
+                else { const t = textOf(n); if (t) out.sec.push({ t: 'text', s: t, b: n.tagName === 'B' }); }
+            });
+        };
+        (a.sections || []).forEach((sec) => {
+            // first: where each .wm-bubble-section starts (its own padding above and below; the parts of one
+            // section are one block)
+            if (typeof sec === 'string') { out.sec.push({ t: 'text', s: sec, first: true }); return; }
+            if (!sec) return;
+            if (sec.rule) { out.sec.push({ t: 'rule', first: true }); return; }
+            if (sec.links) { out.sec.push({ t: 'links', s: sec.text || '', b: !!sec.bold, right: sec.align === 'right', links: sec.links.map((l) => l.label), first: true }); return; }
+            const box = document.createElement('div');
+            if (sec.html) box.innerHTML = sec.html; else if (sec.node) box.appendChild(sec.node.cloneNode(true));
+            const start = out.sec.length;
+            fromEl(box);
+            // a section's parts stay one block (their own spacing)
+            if (out.sec.length > start) out.sec[start].first = true;
+        });
+        return out;
+    }
+    let bubblesSent = '';
+    let bubblesAt = 0;
+    function barsBubbleSpecs(force) {
+        const ab = window.AndroidBars;
+        if (!ab || typeof ab.bubbles !== 'function' || !barsExternal || !shell) return;
+        const now = Date.now();
+        // (each push opens every popup and writes it down: at most every 4 s; the live parts the app fills itself)
+        if (!force && now - bubblesAt < 4000) return;
+        bubblesAt = now;
+        const roles = new Set();
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
+        ['data', 'signal', 'battery', 'bluetooth', 'volume'].forEach((r) => roles.add(r));
+        roles.delete('androidtray');
+        // the standard (cursor rule melaton-bars-native-layouts): each popup as the page draws it, written down
+        if (window.melatonBars && typeof window.melatonBars.pushLayouts === 'function') { window.melatonBars.pushLayouts([...roles]); return; }
+        ['notify', 'mail', 'sms', 'chat', 'volume'].forEach((r) => roles.delete(r));
+        const specs = {};
+        roles.forEach((role) => {
+            bubbleCapture = [];
+            try { statusBubble(role, null, true); } catch (err) { console.warn('[wmShell] bubble spec', role, err); }
+            const got = bubbleCapture;
+            bubbleCapture = null;
+            if (got.length) specs[role] = bubbleSpecOf(got[got.length - 1]);
+        });
+        const json = JSON.stringify(specs);
+        if (json === bubblesSent) return;
+        bubblesSent = json;
+        try { ab.bubbles(json); } catch (_) { /* older app */ }
+    }
+    let barsStatusSent = '';
+    let barsKitSig = '';
+    const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
+    const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
+    function barsStatusPush() {
+        const ab = window.AndroidBars;
+        if (!ab || typeof ab.status !== 'function' || !shell) return;
+        const list = [];
+        shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => {
+            const role = i.dataset.role;
+            if (!role || BARS_NATIVE_ROLES.has(role) || i.hidden || i.classList.contains('wm-shed')) return;
+            const e = { role };
+            if (i.classList.contains('wm-strip')) {
+                const st = i.style.getPropertyValue('--strip');
+                e.strip = { art: artPath(st), n: parseInt(i.style.getPropertyValue('--n'), 10) || 1, ms: parseInt(i.style.getPropertyValue('--ms'), 10) || 140 };
+            } else if (i.dataset.icon) e.atlas = i.dataset.icon;
+            else e.art = artPath(i.style.backgroundImage);
+            if (i.classList.contains('is-presence')) e.dim = true;
+            list.push(e);
+        });
+        barsBubbleSpecs(false);
+        // the bars' look changed (theme, version, scale, width): the app asks for a new kit
+        if (typeof ab.kitSig === 'function' && window.melatonBars && window.melatonBars.kitSignature) {
+            const sig = window.melatonBars.kitSignature();
+            if (sig !== barsKitSig) { barsKitSig = sig; try { ab.kitSig(sig); } catch (_) { /* older app */ } }
+        }
+        const json = JSON.stringify(list);
+        if (json === barsStatusSent) return;
+        barsStatusSent = json;
+        try { ab.status(json); } catch (_) { /* older app */ }
     }
 
     /**
@@ -3677,9 +3825,8 @@
             if (cameraInBar) relayout();
             return;
         }
-        // the camera in the title bar takes room: away from Today the volume icon steps aside for the
-        // status icons (Yukimi, Nov 13); Today keeps it
-        if (cameraInBar && current !== 'today' && !el('volume').hidden) el('volume').classList.add('wm-shed');
+        // the volume icon stays while there is room (Yukimi, Nov 16: it shows when there is enough room);
+        // it steps aside below only when the bar runs short
         relayout();
         if (ok()) return;
         if (!reserve.hidden && step(() => setReserve(0))) return;
@@ -3964,7 +4111,11 @@
         // signal: only for a phone with a modem
         let signal = null;
         if (cell && cell.present !== false) {
-            const lvl = Number.isFinite(cell.level) ? Math.max(0, Math.min(4, Math.round(cell.level))) : null;
+            // Android's bars (level5: one more on 5-bar carriers such as Verizon) on WM's 4-bar icon, the same count up to 4
+            // Samsung's 5 bars (level5) on WM's 4-bar icon in proportion (3 of 5 is 2 of 4, never 0 while in service:
+            // 3 of 4 read a bar high, Yukimi Nov 16); Android's own 0-4 level as it is
+            const lvl = Number.isFinite(cell.level5) ? (cell.level5 <= 0 ? 0 : Math.max(1, Math.round((cell.level5 * 4) / 5)))
+                : Number.isFinite(cell.level) ? Math.max(0, Math.min(4, Math.round(cell.level))) : null;
             if (airplane || cell.radioOn === false) signal = { icon: 'signal-off', text: airplane ? 'Flight mode' : 'Phone off' };
             else if (cell.simState === 'absent') signal = { icon: 'signal-alert', text: 'No SIM card' };
             else if (cell.simState === 'locked') signal = { icon: 'signal-alert', text: 'SIM locked' };
@@ -4042,7 +4193,18 @@
             statusDirty();
             const b = shell && shell.querySelector('.wm-bubble');
             if (b && !b.hidden && b.dataset.role === 'data') statusBubble('data', shell.querySelector('[data-role="data"]'), true);
+            // behind a program: the app's own Connectivity popup follows the transfer too (its layout again,
+            // at most every 400 ms, the last numbers always sent)
+            if (barsExternal && document.visibilityState !== 'visible') asLayoutSoon(!!d.done);
         });
+    }
+    let asLayoutTimer = null;
+    let asLayoutAt = 0;
+    function asLayoutSoon(now) {
+        const run = () => { asLayoutTimer = null; asLayoutAt = Date.now(); if (window.melatonBars && window.melatonBars.pushLayouts) window.melatonBars.pushLayouts(['data'], true); };
+        if (now) { clearTimeout(asLayoutTimer); run(); return; }
+        if (asLayoutTimer) return;
+        asLayoutTimer = setTimeout(run, Math.max(0, 400 - (Date.now() - asLayoutAt)));
     }
 
     function watchDirector() {
@@ -4074,6 +4236,8 @@
      * rule above them (WM 6.1's Phone / Connectivity bubbles: Settings | Hide).
      */
     function bubble({ title, sections = [], buttons = [{ text: 'Hide' }], footLinks = null, anchor = null, role = '' } = {}) {
+        // Melaton Bars: the bubble's content described for the app's own drawing (barsBubbleSpecs), not shown
+        if (bubbleCapture) { bubbleCapture.push({ title, sections, buttons, footLinks, role }); return; }
         const el = shell.querySelector('.wm-bubble');
         el.innerHTML = '<span class="wm-bubble-tail" aria-hidden="true"></span>';
         el.dataset.role = role || '';
@@ -5393,8 +5557,8 @@
             noteTrayOpen = false;
             renderNotes();
             const up = shell.querySelector('.wm-status-icon[data-role="update"]');
+            // nothing at all: nothing happens (Yukimi, Nov 16: the "There are no notifications." box only annoyed)
             if (notes.some(isUpdateNote) && up) statusBubble('update', up);
-            else messageBox({ title: 'Notifications', icon: 'info', text: 'There are no notifications.' });
             return;
         }
         noteTrayOpen = !noteTrayOpen;
@@ -5424,35 +5588,69 @@
      * 0-5). Off is tabVolume's mute (everything); Vibrate (wmSoundMode) silences the WM sounds and
      * buzzes notifications instead, media still plays. Phone only: the desktop keeps its flyout.
      */
-    const VOL_STEPS = 5;
-    const RINGER_KEY = 'wmRingerLevel';
+    // 10 steps (Yukimi, Nov 16). In the Android app the three sliders are Android's own levels
+    // (window.AndroidVolume: Media = STREAM_MUSIC, Notifications = STREAM_NOTIFICATION, Ringer =
+    // STREAM_RING; On / Vibrate / Off = the ringer mode), kept in step by its 'androidvolume' event.
+    const VOL_STEPS = 10;
+    const RINGER_KEY = 'wmRingerLevel10';
+    const NOTIFY_KEY = 'wmNotifyLevel10';
     const MODE_KEY = 'wmSoundMode';
+    const AV = window.AndroidVolume && typeof window.AndroidVolume.get === 'function' ? window.AndroidVolume : null;
+    let avState = null;
+    let avAt = 0;
+    // Android's levels, read again when older than half a second (a change Android does not announce, the
+    // ringer under Do Not Disturb, still shows on the next status refresh)
+    function avNow() {
+        if (!AV) return null;
+        const now = Date.now();
+        if (!avState || now - avAt > 500) { try { avState = JSON.parse(AV.get()); avAt = now; } catch (_) { avState = null; } }
+        return avState;
+    }
+    const clampStep = (n) => Math.max(0, Math.min(VOL_STEPS, Math.round(Number(n))));
 
-    function ringerLevel() {
+    function storedLevel(key) {
         try {
-            const raw = localStorage.getItem(RINGER_KEY);
+            const raw = localStorage.getItem(key);
             const n = raw == null || raw === '' ? VOL_STEPS : Number(raw);
-            return Number.isFinite(n) ? Math.max(0, Math.min(VOL_STEPS, Math.round(n))) : VOL_STEPS;
+            return Number.isFinite(n) ? clampStep(n) : VOL_STEPS;
         } catch (_) { return VOL_STEPS; }
     }
 
+    function ringerLevel() { const a = avNow(); return a && Number.isFinite(a.ring) ? clampStep(a.ring) : storedLevel(RINGER_KEY); }
+    function notifyLevel() { const a = avNow(); return a && Number.isFinite(a.notification) ? clampStep(a.notification) : storedLevel(NOTIFY_KEY); }
+
+    function avSet(kind, n) {
+        try { avState = JSON.parse(AV.set(kind, clampStep(n))); } catch (_) { avState = null; }
+    }
+
     function setRingerLevel(n) {
-        try { localStorage.setItem(RINGER_KEY, String(Math.max(0, Math.min(VOL_STEPS, Math.round(n))))); } catch (_) { /* storage off */ }
+        if (AV) { avSet('ring', n); return; }
+        try { localStorage.setItem(RINGER_KEY, String(clampStep(n))); } catch (_) { /* storage off */ }
+    }
+
+    function setNotifyLevel(n) {
+        if (AV) { avSet('notification', n); return; }
+        try { localStorage.setItem(NOTIFY_KEY, String(clampStep(n))); } catch (_) { /* storage off */ }
     }
 
     function mediaLevel() {
+        const a = avNow();
+        if (a && Number.isFinite(a.media)) return clampStep(a.media);
         const tv = window.tabVolume;
         const v = tv && typeof tv.getLevel === 'function' ? Number(tv.getLevel()) : 100;
-        return Math.max(0, Math.min(VOL_STEPS, Math.round((Number.isFinite(v) ? v : 100) / (100 / VOL_STEPS))));
+        return clampStep((Number.isFinite(v) ? v : 100) / (100 / VOL_STEPS));
     }
 
     function setMediaLevel(n) {
+        if (AV) { avSet('media', n); return; }
         const tv = window.tabVolume;
         if (tv && typeof tv.setLevel === 'function') tv.setLevel(Math.round(n * (100 / VOL_STEPS)), { keepMute: true });
     }
 
     /** 'on' | 'vibrate' | 'off' */
     function soundMode() {
+        const a = avNow();
+        if (a && a.mode) return a.mode === 'off' || a.mode === 'vibrate' ? a.mode : 'on';
         try {
             const tv = window.tabVolume;
             if (tv && typeof tv.isMuted === 'function' && tv.isMuted()) return 'off';
@@ -5461,6 +5659,10 @@
     }
 
     function setSoundMode(mode) {
+        if (AV) {
+            try { avState = JSON.parse(AV.setMode(mode)); } catch (_) { avState = null; }
+            return;
+        }
         const tv = window.tabVolume;
         if (tv && typeof tv.setMuted === 'function' && tv.isMuted() !== (mode === 'off')) tv.setMuted(mode === 'off');
         try {
@@ -5470,11 +5672,63 @@
         if (mode === 'vibrate') vibrate('mode');
     }
 
+    const levelOf = (kind) => (kind === 'media' ? mediaLevel() : kind === 'notify' ? notifyLevel() : ringerLevel());
+    const setLevelOf = (kind, v) => { if (kind === 'media') setMediaLevel(v); else if (kind === 'notify') setNotifyLevel(v); else setRingerLevel(v); };
+    let volumePaint = null;
+    let volumeKeyTimer = null;
+    // WM's beep at the new level as a slider moves, on that slider's output (in the app: Android's media,
+    // notification or ring output; the volume keys' beep the app plays itself)
+    let volumeBeepAt = 0;
+    function volumeFeedback(kind) {
+        const now = Date.now();
+        if (now - volumeBeepAt < 120) return;
+        volumeBeepAt = now;
+        // in the app: WM's Quietest / Default / Loudest by the new step, on that slider's Android output
+        if (AV && typeof AV.beep === 'function') { try { AV.beep(kind === 'notify' ? 'notification' : kind === 'ringer' ? 'ring' : 'media'); return; } catch (_) { /* older app */ } }
+        const usage = kind === 'media' ? 'media' : kind === 'notify' ? 'notification' : 'ring';
+        if (avPlay(`${SND_BASE}${levelOf(kind) <= 3 ? 'Quietest' : levelOf(kind) <= 7 ? 'Default' : 'Loudest'}.wav`, usage)) return;
+        const lv = levelOf(kind);
+        if (lv <= 0) return;
+        const file = lv <= 3 ? 'Quietest.wav' : lv <= 7 ? 'Default.wav' : 'Loudest.wav';
+        try { if (snd.ctx && snd.ctx.state === 'running') sndPlayFile(file, kind === 'media' ? lv / VOL_STEPS : 1); } catch (_) { /* no sound */ }
+    }
+
+    // Android's levels changed (a slider, the keys, Android's own panel): the popup, the icon and the app's copy follow
+    if (AV) {
+        window.addEventListener('androidvolume', (e) => {
+            avState = (e && e.detail) || null;
+            if (volumePaint) volumePaint();
+            refreshStatus();
+            if (barsExternal && window.melatonBars && window.melatonBars.pushLayouts) window.melatonBars.pushLayouts(['volume'], true);
+        });
+        // the volume keys while Melaton is in front: the media level (the app moved it) in WM's popup, closed
+        // again 3 s after the last press
+        window.addEventListener('androidvolumekey', (e) => {
+            avState = (e && e.detail) || avState;
+            const el = shell && shell.querySelector('.wm-volume');
+            if (!el) return;
+            if (el.hidden) toggleVolume(null);
+            // the key moved the focused slider (the app keeps which one); the focus stays on it
+            const k = e && e.detail && e.detail.kind;
+            volumeFocus = k === 'notification' ? 'notify' : k === 'ring' ? 'ringer' : 'media';
+            if (volumePaint) volumePaint();
+            refreshStatus();
+            clearTimeout(volumeKeyTimer);
+            volumeKeyTimer = setTimeout(() => { volumeKeyTimer = null; closeVolume(); }, 3000);
+        });
+        try { if (typeof AV.takeKeys === 'function') AV.takeKeys(true); } catch (_) { /* older app */ }
+    }
+
     let volumeFocus = 'media';
 
     function closeVolume() {
         const el = shell && shell.querySelector('.wm-volume');
         if (el && !el.hidden) { el.hidden = true; el.replaceChildren(); }
+        volumePaint = null;
+        clearTimeout(volumeKeyTimer);
+        volumeKeyTimer = null;
+        // closed: the volume keys move Media again
+        try { if (AV && typeof AV.keyTarget === 'function') AV.keyTarget('media'); } catch (_) { /* older app */ }
     }
 
     function toggleVolume(anchor) {
@@ -5484,29 +5738,36 @@
         closeMenus(true);
         volumeFocus = 'media';
         const col = (kind, icon, label) => `<div class="wm-vol-col" data-kind="${kind}">${imgTag(icon)}`
-            + `<div class="wm-vol-trackbar" role="slider" tabindex="0" aria-label="${label}" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="${VOL_STEPS}">`
+            + `<div class="wm-vol-trackbar" data-control="slider" data-kind="${kind}" role="slider" tabindex="0" aria-label="${label}" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="${VOL_STEPS}">`
             + '<span class="wm-vol-track"></span>'
             + Array.from({ length: VOL_STEPS + 1 }, (_, i) => `<span class="wm-vol-tick" style="--i:${i}"></span>`).join('')
             + '<span class="wm-vol-thumb"></span></div></div>';
         const radio = (v, t) => `<label class="wm-vol-mode"><input type="radio" name="wmvolmode" value="${v}"><span>${t}</span></label>`;
         el.innerHTML = '<span class="wm-volume-tail" aria-hidden="true"></span><div class="wm-volume-title">Volume</div>'
-            + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('ringer', 'volume-ringer', 'Notifications and system sounds')}</div>`
+            + `<div class="wm-vol-sliders">${col('media', 'volume-system', 'Media')}${col('notify', 'volume-notify', 'Notifications')}${col('ringer', 'volume-ringer', 'Ringer')}</div>`
             + `<div class="wm-vol-modes">${radio('on', 'On')}${radio('vibrate', 'Vibrate')}${radio('off', 'Off')}</div>`;
         el.hidden = false;
         const paint = () => {
             el.querySelectorAll('.wm-vol-col').forEach((c) => {
-                const v = c.dataset.kind === 'media' ? mediaLevel() : ringerLevel();
+                const v = levelOf(c.dataset.kind);
                 c.style.setProperty('--v', String(v));
                 const bar = c.querySelector('.wm-vol-trackbar');
                 bar.setAttribute('aria-valuenow', String(v));
+                // the app's copy moves the thumb itself to Android's level (melatonBars layoutOf: lv vol-thumb)
+                const th = c.querySelector('.wm-vol-thumb');
+                if (th) th.dataset.live = `vol-thumb:${c.dataset.kind}:${v}`;
                 c.classList.toggle('is-focus', c.dataset.kind === volumeFocus);
             });
+            // while the box is up the volume keys move the focused slider (Yukimi, Nov 16)
+            try { if (AV && typeof AV.keyTarget === 'function') AV.keyTarget(volumeFocus === 'notify' ? 'notification' : volumeFocus === 'ringer' ? 'ring' : 'media'); } catch (_) { /* older app */ }
             const mode = soundMode();
             el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => { r.checked = r.value === mode; });
         };
         const set = (kind, v) => {
             v = Math.max(0, Math.min(VOL_STEPS, v));
-            if (kind === 'media') setMediaLevel(v); else setRingerLevel(v);
+            if (v === levelOf(kind)) return;
+            setLevelOf(kind, v);
+            volumeFeedback(kind);
             paint();
             refreshStatus();
         };
@@ -5530,7 +5791,7 @@
             c.addEventListener('pointermove', (e) => { if (c.hasPointerCapture && c.hasPointerCapture(e.pointerId)) set(kind, fromY(e.clientY)); });
             bar.addEventListener('focus', () => { volumeFocus = kind; paint(); });
             bar.addEventListener('keydown', (e) => {
-                const cur = kind === 'media' ? mediaLevel() : ringerLevel();
+                const cur = levelOf(kind);
                 if (e.key === 'ArrowUp' || e.key === 'ArrowRight') set(kind, cur + 1);
                 else if (e.key === 'ArrowDown' || e.key === 'ArrowLeft') set(kind, cur - 1);
                 else return;
@@ -5540,6 +5801,8 @@
         });
         el.querySelectorAll('input[name="wmvolmode"]').forEach((r) => r.addEventListener('change', () => { setSoundMode(r.value); paint(); refreshStatus(); }));
         el.addEventListener('click', (e) => e.stopPropagation());
+        el.style.setProperty('--steps', String(VOL_STEPS));
+        volumePaint = paint;
         paint();
         // under the title bar, the tail's tip at the icon; kept on screen
         const sr = shell.getBoundingClientRect();
@@ -5572,9 +5835,10 @@
     }
 
     /** Four signal bars for a bubble row (level 0-4; null = none). */
-    function signalBars(lv) {
+    // n bars: 4 for Wi-Fi (Android's 0-4), 5 for the mobile network (the radio's dBm in 5 steps, Yukimi Nov 16)
+    function signalBars(lv, n = 4) {
         if (lv == null) return '';
-        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of 4">${[1, 2, 3, 4].map((n) => `<i class="${n <= lv ? 'is-on' : ''}"></i>`).join('')}</span>`;
+        return `<span class="wm-bars" role="img" aria-label="Signal ${lv} of ${n}">${Array.from({ length: n }, (_, i) => `<i class="${i + 1 <= lv ? 'is-on' : ''}" style="height:${(100 * (i + 1)) / n}%"></i>`).join('')}</span>`;
     }
 
     // the Connectivity bubble's time connected ticks while the bubble is open (a local clock, no request)
@@ -5609,6 +5873,14 @@
             const dev = deviceView();
             const sections = [];
             const pe = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+            // Bluetooth's icon not in the bar (off, or Show Bluetooth Status hides it): its state as the first
+            // row, before Wi-Fi, worded as the Wi-Fi row (Yukimi, Nov 16)
+            const btIcon = shell.querySelector('.wm-status-icon[data-role="bluetooth"]');
+            const rdo = radiosNow || readRadios();
+            if (rdo && rdo.bluetooth != null && (!btIcon || btIcon.hidden || btIcon.classList.contains('wm-shed'))) {
+                const bst = !rdo.bluetooth ? 'Power Off' : rdo.bluetoothConnected === true ? 'Connected' : 'On';
+                sections.push({ html: `<div class="wm-bubble-pair"><span>Bluetooth: ${bst}</span></div>` });
+            }
             // Wi-Fi as Mobile Broadband (Yukimi, Nov 14): "Wi-Fi: <network / Connected / Disconnected /
             // Power Off>", its signal as bars (1-4) at the right
             const w = dev.wifi;
@@ -5624,19 +5896,21 @@
             // Wi-Fi; the radio type in bold and the signal bars at the right
             const c = dev.cell;
             if (c && c.present !== false) {
-                const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || c.level === 0;
+                const noService = c.radioOn === false || dev.airplane || c.simState === 'absent' || c.simState === 'locked' || c.searching === true || (Number.isFinite(c.level5) ? c.level5 : c.level) === 0;
                 const state = noService ? 'Suspended' : c.dataEnabled === false ? 'Disconnected' : dev.active === 'cellular' || c.dataActive ? 'Connected' : 'Available';
-                const lv = noService || !Number.isFinite(c.level) ? null : Math.max(0, Math.min(4, Math.round(c.level)));
+                // the bars Android draws (level5; Android's 0-4 when the carrier does not inflate it)
+                const lv5 = Number.isFinite(c.level5) ? c.level5 : Number.isFinite(c.level) ? c.level : null;
+                const lv = noService || lv5 == null ? null : Math.max(0, Math.min(5, Math.round(lv5)));
                 // the radio's own type, also while Wi-Fi carries the data (dev.type is the active link's)
                 const rt = dev.type || (typeof c.dataType === 'string' ? c.dataType : null);
-                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv)}`;
+                const right = `${!noService && rt ? `<b>${pe(typeName(rt))}</b>` : ''}${signalBars(lv, 5)}`;
                 sections.push({ html: `<div class="wm-bubble-pair"><span>Mobile Broadband: ${state}</span>${right ? `<span class="wm-bubble-right">${right}</span>` : ''}</div>` });
             }
             if (dev.link && dev.active !== 'wifi' && dev.active !== 'cellular') sections.push(`${dev.link.text}`);
             // the server still starting: no Mainframe Server box on the phone, this line instead (Yukimi, Nov 13)
             const dcBooting = !!(ws && ws.lastServerStartupStatus && ws.lastServerStartupStatus.isReady === false);
             // the Dreamscape link as one "VPN:" row like the Wi-Fi one, Reconnect at its right (Yukimi, Nov 13)
-            // CafeReady: the Miniport carries the link and its cache answers (#815)
+            // CaféReady: the Miniport carries the link and its cache answers (#815)
             let cafeReady = false;
             try { const mp = window.melatonContinuity && typeof window.melatonContinuity.miniport === 'function' ? window.melatonContinuity.miniport() : null; cafeReady = !!(mp && mp.up && mp.transport === 'miniport'); } catch (_) { cafeReady = false; }
             const vpn = connected
@@ -5645,14 +5919,14 @@
                     : ws && ws.connectionPhase === 'auth' ? 'Logon required.'
                         : ws && (ws.isConnecting || ws.connectionPhase === 'dialing') ? 'Connecting...'
                             : `Not connected to ${host}.`;
-            // connected: two lines (Yukimi, Nov 14) - "VPN: Connected (with CafeReady)" with the time
+            // connected: two lines (Yukimi, Nov 14) - "VPN: Connected (with CaféReady)" with the time
             // connected at the right, then "<host> - RTT: ## ms"
             if (connected) {
                 const since = ws && ws.connectionStats && ws.connectionStats.connectedAt;
                 const secs = since ? Math.max(0, Math.floor((Date.now() - since) / 1000)) : null;
                 const dur = secs == null ? '' : `${Math.floor(secs / 3600)}:${String(Math.floor(secs / 60) % 60).padStart(2, '0')}:${String(secs % 60).padStart(2, '0')}`;
                 const e = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected${cafeReady ? ' (with CafeReady)' : ''}</span><span class="wm-vpn-time">${e(dur)}</span></div><div>${e(host)}${rtt != null ? ` - RTT: ${rtt} ms` : ''}</div>` });
+                sections.push({ html: `<div class="wm-bubble-pair"><span>VPN: Connected${cafeReady ? ' (with CaféReady)' : ''}</span><span class="wm-vpn-time">${e(dur)}</span></div><div>${e(host)}${rtt != null ? ` - RTT: ${rtt} ms` : ''}</div>` });
                 vpnClock();
             } else {
                 sections.push({ text: `VPN: ${vpn}`, links: [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
@@ -5673,11 +5947,13 @@
                 const total = up.total + down.total;
                 const pct = total ? Math.min(100, Math.round(((up.done + down.done) / total) * 100)) : (asx.active ? 0 : 100);
                 const files = asx.files > 1 ? ` ${Math.min(asx.files, asx.filesDone + (asx.active ? 1 : 0))} of ${asx.files} files.` : '';
-                const lines = [`ActiveSync: ${asx.active ? 'Synchronizing...' : 'Complete.'}${files}`];
-                if (up.total) lines.push(`Sent ${size(up.done)} of ${size(up.total)}.`);
-                if (down.total) lines.push(`Received ${size(down.done)} of ${size(down.total)}.`);
+                // data-live: the app's own copy of this popup fills these in from its transfer counts
+                // (melaton-bars-native-layouts: message handling), as this page is frozen behind a program
+                const lines = [[`ActiveSync: ${asx.active ? 'Synchronizing...' : 'Complete.'}${files}`, 'as-head']];
+                if (up.total) lines.push([`Sent ${size(up.done)} of ${size(up.total)}.`, 'as-sent']);
+                if (down.total) lines.push([`Received ${size(down.done)} of ${size(down.total)}.`, 'as-recv']);
                 const esc = (t) => String(t).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-                sections.push({ html: `${lines.map((l) => `<div>${esc(l)}</div>`).join('')}<div class="wm-progress-bar wm-as-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:calc(${pct} * (100% - 2 * var(--wm-px)) / 100)"></span></div>` });
+                sections.push({ html: `${lines.map(([l, k]) => `<div data-live="${k}">${esc(l)}</div>`).join('')}<div class="wm-progress-bar wm-as-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span data-live="as-bar" style="width:calc(${pct} * (100% - 2 * var(--wm-px)) / 100)"></span></div>` });
             }
             // the install / update download the connecting icon also stands for
             const inst = swDownloading();
@@ -5752,7 +6028,9 @@
                 else if (!b.charging && b.remainingMs) more.push(`About ${batteryDuration(b.remainingMs)} left.`);
                 if (b.temperatureC != null) more.push(`Temperature: ${batteryTemp(b.temperatureC)}`);
                 if (b.saver) more.push('Battery saver is on.');
-                lines.push({ html: `<div>Main battery: ${b.level}%</div><div class="wm-ds-progress wm-bat-bar" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><span style="--wm-ds-blocks:${Math.round(b.level / 100 * 18)}"></span></div>${more.map((t) => `<div>${escapeHtml(t)}</div>`).join('')}` });
+                // data-live: the app's copy fills these from Android's battery while this page sleeps behind a
+                // program (melaton-bars-native-layouts: message handling); the bar's 18 blocks of 9 units
+                lines.push({ html: `<div data-live="bat-level">Main battery: ${b.level}%</div><div class="wm-ds-progress wm-bat-bar" role="progressbar" aria-label="Main battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${b.level}"><span data-live="bat-bar" data-full="162" style="--wm-ds-blocks:${Math.round(b.level / 100 * 18)}"></span></div>${more.map((t, i) => `<div data-live="bat-more-${i}">${escapeHtml(t)}</div>`).join('')}` });
             }
             const powerSettings = () => { const st = window.wmSettings; if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings'); };
             bubble({ title: 'Power', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: powerSettings }], buttons: [{ text: 'Hide' }] });
@@ -6914,6 +7192,8 @@
     }
 
     function sndSilentNow() {
+        // in the Android app each sound's own output level decides (AndroidVolume.play)
+        if (AV) return soundMode() !== 'on';
         return soundMode() !== 'on' || ringerLevel() <= 0;
     }
 
@@ -6924,7 +7204,16 @@
     }
 
     /** Play a WM file now (gain 0..1); resolves with its source node or null. */
-    async function sndPlayFile(file, gain = 1) {
+    // usage: in the Android app the file plays on Android's own output instead (AndroidVolume.play):
+    // 'notification' (notification classes), 'system' (taps, hardware buttons), 'media' (the rest)
+    function avPlay(path, usage, gain = 1) {
+        if (!AV || !usage || typeof AV.play !== 'function') return null;
+        try { return AV.play(location.origin + path, usage, Math.max(0, Math.min(1, gain))) ? { stop() {}, android: true } : null; } catch (_) { return null; }
+    }
+
+    async function sndPlayFile(file, gain = 1, usage) {
+        const viaAndroid = avPlay(SND_BASE + encodeURIComponent(file), usage, gain);
+        if (viaAndroid) return viaAndroid;
         const ctx = snd.ctx;
         if (!ctx || ctx.state !== 'running') return null;
         const buffer = await sndBuffer(file);
@@ -7121,9 +7410,10 @@
             }
             if (own === '' || prefs.sound === '' || sndSilentNow()) return false;
             const ctx = snd.ctx;
-            if (!ctx || ctx.state !== 'running') return false;
+            if (!AV && (!ctx || ctx.state !== 'running')) return false;
             const now = Date.now();
             if (now - snd.last < 300 && !opts.again) return false;
+            const usage = ev.kind === 'note' ? 'notification' : 'media';
             snd.last = now;
             const ds = window.desktopSounds;
             const vista = (f) => typeof f === 'string' && !!(ds && Array.isArray(ds.FILES) && ds.FILES.includes(f) && typeof ds.playFile === 'function');
@@ -7132,11 +7422,12 @@
             let file = prefs.own ? prefs.sound : (typeof own === 'string' && own !== schemeFile && vista(own) ? own : prefs.sound);
             if (vista(file)) {
                 sndNote(id, event, `vista/${file}`, now);
+                if (avPlay(`/sounds/vista/${encodeURIComponent(file)}`, usage)) return true;
                 return !!(await ds.playFile(file));
             }
             if (!WM_SOUNDS.includes(file)) file = ev.sound;
             sndNote(id, event, `wm61/${file}`, now);
-            return !!(await sndPlayFile(file));
+            return !!(await sndPlayFile(file, 1, usage));
         } catch (_) {
             return false;
         }
@@ -7167,10 +7458,10 @@
         try {
             const p = soundPrefs();
             const on = kind === 'buttons' ? p.buttons : p.taps;
-            if (!on || sndSilentNow() || !snd.ctx || snd.ctx.state !== 'running') return;
+            if (!on || sndSilentNow() || (!AV && (!snd.ctx || snd.ctx.state !== 'running'))) return;
             const click = clickSound(p, kind);
             sndNote(kind === 'buttons' ? 'key-click' : 'tap-click', '', `wm61/${click.file}`, Date.now());
-            sndPlayFile(click.file, click.gain);
+            sndPlayFile(click.file, click.gain, 'system');
         } catch (_) { /* no click */ }
     }
 
@@ -9532,7 +9823,6 @@
                 label: 'Notifications',
                 action: () => {
                     if (notes.length || statusFolded.length) noteIconTap();
-                    else messageBox({ title: 'Notifications', icon: 'info', text: 'There are no notifications.' });
                 }
             };
         }
