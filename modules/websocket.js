@@ -92,7 +92,6 @@ function isPhonePage(info) {
     return !!(info && info.phone && info.phone.shell === 'mobile');
 }
 
-
 /**
  * A page running the desktop shell: a desktop tab or a phone's DeX window. Only that shell reports
  * 'desktop' or 'logon' (agentClientBridge.js computeDesktopState); a phone page says 'booting' /

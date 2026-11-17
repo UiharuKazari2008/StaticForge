@@ -187,6 +187,45 @@ function socket(name) {
     console.log = log;
 }
 
+// ---------------------------------------------------------------- client_dormant { dex: 1 } end to end
+{
+    const registry = require('../modules/ws/wsPacketRegistry');
+    require('../modules/ws/handlers/169-clientBootNoteHandler').registerPackets();
+    const director = require('../modules/cursorDirector');
+    const srv = fakeServer();
+    const dexWs = socket('dex');
+    const info = { authenticated: true, sessionId: 'S2', desktopState: 'desktop', directorWatch: 'chat-wake', directorDelta: true };
+    srv.clients.set(dexWs, info);
+    const handlerSent = [];
+    const handlers = { sendToClient: (ws, msg) => handlerSent.push({ ws, msg }) };
+    const handler = registry.getWsPacketHandler('client_dormant');
+    assert.strictEqual(typeof handler, 'function', 'client_dormant registered');
+    const log = console.log;
+    console.log = () => {};
+    // a turn runs in the chat the DeX window shows
+    const gr = { getWebSocketServer: () => ({ clients: new Map(), broadcast() {} }) };
+    director.queueDirectorStream(gr, { sessionId: 'chat-wake', persona: 'wren', rows: [], live: { type: 'assistant', text: 'Hi' }, fullContent: 'Hi', context: null, model: null });
+    const gate = director._test.streamGates.get('chat-wake');
+    if (gate.timer) { clearTimeout(gate.timer); gate.timer = null; }
+    director._test.flushDirectorStream('chat-wake');
+    // asleep, with dex: 1
+    handler({ ws: dexWs, message: { type: 'client_dormant', on: true, dex: 1 }, clientInfo: info, wsServer: srv, handlers });
+    assert.strictEqual(info.dexWindow, true, 'marked as a DeX window');
+    assert.strictEqual(info.dormant, true);
+    assert.strictEqual(director._test.watchesDirectorStream(info, 'chat-wake'), false);
+    // awake: the turn's newest update whole
+    handler({ ws: dexWs, message: { type: 'client_dormant', on: false, dex: 1 }, clientInfo: info, wsServer: srv, handlers });
+    assert.strictEqual(info.dormant, false);
+    const upd = handlerSent.filter((x) => x.msg.type === 'director_streaming_update');
+    assert.strictEqual(upd.length, 1, 'the newest update on waking');
+    assert.strictEqual(upd[0].msg.data.live.text, 'Hi');
+    // a second "awake" (no sleep between) sends nothing more
+    handler({ ws: dexWs, message: { type: 'client_dormant', on: false, dex: 1 }, clientInfo: info, wsServer: srv, handlers });
+    assert.strictEqual(handlerSent.filter((x) => x.msg.type === 'director_streaming_update').length, 1);
+    director._test.dropDirectorStream('chat-wake');
+    console.log = log;
+}
+
 // ---------------------------------------------------------------- ActiveSync own peers key, as_credits
 {
     const as = require('../modules/activeSync');
