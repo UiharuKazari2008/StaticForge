@@ -284,7 +284,7 @@ These are **pushes** — handle asynchronously. Registered in `public/scripts/ws
 | `note_created` / `note_updated` / `note_deleted` / `note_content_updated` | Notes sync | `noteId`, `note` or `updates` |
 | `novel_progress` / `novel_updated` / `novel_generate_complete` | Novel manager | `noteId`, phase/result payload |
 | `vfs_updated` | VFS tree changed | `{ type, data }` — clients refresh explorer |
-| `service_worker_cache_update` | Static manifest changed | `files` (changed rows, `delta: true` with `baseHash`), `hash`, `swHash` (sha1 of `/sw.js`: ask the browser for a new worker only when it changed), `silent`, `message` — triggers SW re-fetch |
+| `service_worker_cache_update` | Static manifest changed | `files` (changed rows, `delta: true` with `baseHash`), `hash`, `swHash` (sha1 of `/sw.js`: ask the browser for a new worker only when it changed), `silent`, `message` - triggers SW re-fetch |
 | `runtime_compile_error` / `runtime_compile_progress` / `runtime_compile_complete` / `runtime_compile_logs` | Runtime asset recompile | Progress, log lines, error text |
 | `resource_update_available` | Server resource refresh | Notifies clients to refresh options/cache |
 | `config_refresh_error` | Config reload failed | Error message |
