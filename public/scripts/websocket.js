@@ -866,6 +866,8 @@ class WebSocketClient {
         'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.'
     };
     static NIGHTSHADE_BALLOON_MS = 5000; // a quiet reconnect inside this shows no balloon
+    static NIGHTSHADE_QUEUE_MAX = 64;    // requests that may wait for the reconnection at once (#895)
+    static NIGHTSHADE_QUEUE_MS = 600000; // how long one waits before it fails (10 minutes)
     static TIMEOUT_PING = 20000; // Ping timeout (20 seconds; cellular/WireGuard pongs)
     static TIMEOUT_CONNECTION_STABILITY = 2000; // Connection stability check timeout
     static TIMEOUT_HOST_AVAILABILITY = 3000; // Host availability check timeout
@@ -1386,6 +1388,10 @@ class WebSocketClient {
         // and its bubble (wmShell statusBubble), never a Connection box; a command that needs the
         // server asks Retry / Abort (_mobileDomainUnreachable)
         if (this._isMobileShell() && this.initializationCompleted && this.connectionPhase !== 'auth') return true;
+        // the desktop once it is up (Nightshade Network, #895, Yukimi Nov 17): never locked or covered by a
+        // Connection box; the Nightshade tray icon, its balloon and the Nightshade Network Client say it,
+        // and requests wait for the reconnection (_desktopAwaitReconnect). A logon still shows its dialog.
+        if (this._nightshadeQuietDesktop() && this.connectionPhase !== 'auth') return true;
         if (!this._trayOnlyReconnect) return false;
         if (this.connectionPhase === 'auth') return false;
         if (!this.initializationCompleted) return false;
@@ -1492,7 +1498,47 @@ class WebSocketClient {
     _connectionTheaterSkipped() {
         // Melaton Mobile shows no Connection dialog (its splash is the logo and wait wheel), so the
         // dial beats were ~3.5 s of waiting with nothing on screen on every phone boot
-        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden' || window.uiShell === 'mobile');
+        return !!(this._quietResume || this._trayOnlyReconnect || document.visibilityState === 'hidden' || window.uiShell === 'mobile' || this._nightshadeQuietDesktop());
+    }
+
+    /** The desktop after its boot: a lost or restarting server neither locks nor dials on screen (#895). */
+    _nightshadeQuietDesktop() {
+        return !!(window.isDesktop && !this._isMobileShell() && this.initializationCompleted);
+    }
+
+    /**
+     * Nightshade Network (#895, Yukimi Nov 17): on the desktop a request made while the service is out
+     * of reach waits for the reconnection (and its resync: workspace, refresh callbacks) instead of
+     * failing; the desktop stays usable meanwhile. The user's own Disconnect still fails requests at
+     * once. At most NIGHTSHADE_QUEUE_MAX wait, each for up to NIGHTSHADE_QUEUE_MS.
+     * @returns {Promise|null} null when the request should simply fail
+     */
+    _desktopAwaitReconnect(type, data, showBanner, error) {
+        if (!this._nightshadeQuietDesktop() || this._userCancelledConnect || this.isManualClose) return null;
+        if ((this._nsWaiting || 0) >= WebSocketClient.NIGHTSHADE_QUEUE_MAX) return null;
+        this._nsWaiting = (this._nsWaiting || 0) + 1;
+        // nothing is dialing (a long wait, or the reconnect gave up before #895): start now
+        if (!this.isConnecting && !this._reconnectTimer && typeof this.manualReconnect === 'function') {
+            try { this.manualReconnect(); } catch (_) { /* the wait decides */ }
+        }
+        return new Promise((resolve, reject) => {
+            let done = false;
+            let timer = null;
+            const finish = (ok) => {
+                if (done) return;
+                done = true;
+                this._nsWaiting -= 1;
+                this.off('resynced', onBack);
+                this.off('user_disconnected', onOff);
+                clearTimeout(timer);
+                if (ok) resolve(); else reject(error);
+            };
+            const onBack = () => finish(true);
+            const onOff = () => finish(false);
+            timer = setTimeout(() => finish(false), WebSocketClient.NIGHTSHADE_QUEUE_MS);
+            this.on('resynced', onBack);
+            this.on('user_disconnected', onOff);
+        }).then(() => this.sendMessage(type, data, showBanner));
     }
 
     // Dial beats are a visible first-connect animation. A hidden or resumed tab must not
@@ -1636,8 +1682,32 @@ class WebSocketClient {
      * (Yozora #427): stop dialing and stay offline until the user connects again, like Windows.
      * Connect / Reconnect (manualReconnect) brings the session back.
      */
+    /**
+     * Server Manager > Clients > Disconnect (#898): an administrator disconnected this client. It stays
+     * off (no automatic reconnect) and says so until someone connects it again here.
+     */
+    adminDisconnect() {
+        this._adminDisconnected = true;
+        this.cancelConnectionFromUser();
+        this._updateModemTrayIcon();
+    }
+
+    /**
+     * Server Manager > Clients > Resync (#898): what a reconnect does without dropping the link - the
+     * workspace again, then every refresh callback (gallery, settings, open views).
+     */
+    async resyncFromServer() {
+        if (!this.isConnected()) return false;
+        const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace) ? activeWorkspace : (window.currentWorkspace || 'default');
+        try { await this.setActiveWorkspace(workspaceId); } catch (error) { console.warn('⚠️ Resync: workspace', error && error.message); }
+        try { await this.executeRefreshCallbacks(); } catch (error) { console.error('❌ Resync: refresh callbacks', error); }
+        this.triggerEvent('resynced');
+        return true;
+    }
+
     cancelConnectionFromUser() {
         this._userCancelledConnect = true;
+        this.triggerEvent('user_disconnected');
         if (this._bootStreamController) this._bootStreamController.abort();
         this.suppressAutoReconnect();
         this._releaseConnectLock();
@@ -1937,6 +2007,8 @@ class WebSocketClient {
             internet: online ? 'online' : 'offline',
             service,
             problem: service === 'restarting' || service === 'no-internet' || service === 'unavailable',
+            // off because an administrator disconnected this client (Server Manager > Clients, #898)
+            admin: service === 'off' && !!this._adminDisconnected,
             cafeReady,
             connectedAt: service === 'connected' ? (this.connectionStats && this.connectionStats.connectedAt) || null : null,
             rtt: Number.isFinite(this.currentRtt) ? Math.round(this.currentRtt) : null
@@ -3828,6 +3900,9 @@ class WebSocketClient {
             this._serverStartedAt = startedAt;
         }
         if (!this.initializationCompleted || this.sessionSuspended) return;
+        // the desktop is not locked for a server restart any more (#895, Yukimi Nov 17): the Nightshade
+        // icon shows Restarting and requests wait (_desktopAwaitReconnect); the reconnect resyncs data
+        if (this._nightshadeQuietDesktop()) return;
         if (data.isReady === false || restarted) {
             this._suspendSession(data.isReady === false ? 'server-booting' : 'server-restarted');
         }
@@ -5027,6 +5102,8 @@ class WebSocketClient {
                     } catch (error) {
                         console.error('❌ Error triggering refresh callbacks:', error);
                     }
+                    // requests that waited for the Nightshade Network go now (_desktopAwaitReconnect, #895)
+                    this.triggerEvent('resynced');
                 }
 
                 // Boot gate owns update checks — block handoff/init until cache sync finishes
@@ -5499,7 +5576,7 @@ class WebSocketClient {
 
         // Check if we've exceeded max attempts. The phone window carrying a DeX window keeps trying at
         // the longest delay instead (#798): nobody is at the phone to press Reconnect
-        if (this.reconnectAttempts > this.maxReconnectAttempts && this._keepConnectedForContinuity()) {
+        if (this.reconnectAttempts > this.maxReconnectAttempts && (this._keepConnectedForContinuity() || (this._nightshadeQuietDesktop() && !this._userCancelledConnect))) {
             this.reconnectAttempts = this.maxReconnectAttempts;
         }
         if (this.reconnectAttempts > this.maxReconnectAttempts) {
@@ -5567,6 +5644,7 @@ class WebSocketClient {
         this.lastUserActivity = Date.now();
         this.isManualClose = false;
         this._userCancelledConnect = false;
+        this._adminDisconnected = false;
         this.reconnectAttempts = 0;
         this.reconnectDelay = 1000;
         this.circuitBreaker = false;
@@ -9404,7 +9482,9 @@ class WebSocketClient {
             if (!this.isConnectionHealthy()) {
                 const error = new Error('WebSocket connection not healthy');
                 error.code = 'CONNECTION_UNHEALTHY';
-                const asked = type !== 'ping' && !silentTicker ? this._mobileDomainUnreachable(type, data, showBanner, error) : null;
+                const asked = type !== 'ping' && !silentTicker
+                    ? (this._mobileDomainUnreachable(type, data, showBanner, error) || this._desktopAwaitReconnect(type, data, showBanner, error))
+                    : null;
                 if (asked) asked.then(resolve, reject);
                 else reject(error);
                 return;

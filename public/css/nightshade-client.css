@@ -19,7 +19,7 @@
     padding: 12px 14px 10px;
 }
 
-/* the service's icon, name and status, the signal bars at the right */
+/* the service's icon, name and status, the connection quality bars at the right */
 .nsc-window .nsc-head {
     display: flex;
     align-items: center;
@@ -47,7 +47,7 @@
     color: var(--text-primary);
 }
 
-.nsc-window .nsc-signal {
+.nsc-window .nsc-bars {
     width: 32px;
     height: 32px;
     flex: none;
@@ -105,4 +105,12 @@
     justify-content: flex-end;
     gap: 7px;
     padding: 0 14px 12px;
+}
+
+/* the label centred on the 23 px face: Segoe UI's tall ascent left it a pixel low with line-height
+   normal (Yukimi, Nov 17) */
+/* :not(#_): above the kit's button rule, whose font shorthand resets line-height */
+.nsc-window .nsc-footer button:not(#_) {
+    line-height: 20px;
+    padding-bottom: 1px;
 }
