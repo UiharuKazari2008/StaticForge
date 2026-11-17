@@ -320,7 +320,9 @@
         timer = 0;
     }
 
-    const visible = () => !!(page && !page.hidden) && !document.hidden && view === 'game';
+    // not seen: the page hidden, the screen off (the page is not hidden then) or behind an Android program
+    const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+    const visible = () => !!(page && !page.hidden) && !away() && view === 'game';
 
     // ---------------------------------------------------------------- geometry
 
@@ -690,8 +692,6 @@
         canvas.addEventListener('pointerup', onUp);
         canvas.addEventListener('pointercancel', onCancel);
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-        document.addEventListener('keydown', onKey);
-        document.addEventListener('visibilitychange', () => { if (document.hidden) { stopTimer(); save(); } else startTimer(); });
         if (typeof ResizeObserver === 'function') {
             resizeObs = new ResizeObserver(() => fit());
             resizeObs.observe(p.querySelector('.wsol-table'));
@@ -720,6 +720,13 @@
     function init() {
         ws = window.wmShell;
         if (!ws) return;
+        // once, not per mount (End Task drops the page and the next open mounts it again)
+        document.addEventListener('keydown', onKey);
+        // the clock (and timed scoring) stops while the game is not seen: it counted on with the screen off
+        const onSeen = () => { if (!page) return; if (away()) { stopTimer(); save(); } else startTimer(); };
+        document.addEventListener('visibilitychange', onSeen);
+        window.addEventListener('melatonscreen', onSeen);
+        document.addEventListener('wmBehind', onSeen);
         ws.registerApp({
             id: APP_ID,
             title: 'Solitaire',

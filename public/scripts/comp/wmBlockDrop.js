@@ -693,8 +693,11 @@
     const loop = { raf: 0, last: 0 };
     const soft = { on: false };
 
+    // not seen: the page hidden, the screen off (the page is not hidden then) or behind an Android program
+    const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+
     function onScreen() {
-        if (!ws || ws.current !== APP_ID || view !== 'game' || document.hidden || !page || page.hidden) return false;
+        if (!ws || ws.current !== APP_ID || view !== 'game' || away() || !page || page.hidden) return false;
         if (ws.taskSwitcher && ws.taskSwitcher.isOpen) return false;
         if (document.querySelector('#wmShell .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return false;
         return true;
@@ -888,7 +891,11 @@
         renderStatus();
     }
 
-    document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+    // the game pauses when it is not seen (as a menu or another program pauses it): also with the screen off
+    const pauseAway = () => { if (away()) pause(); };
+    document.addEventListener('visibilitychange', pauseAway);
+    window.addEventListener('melatonscreen', pauseAway);
+    document.addEventListener('wmBehind', pauseAway);
 
     // ---------------------------------------------------------------- drawing
 

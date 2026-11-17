@@ -786,8 +786,11 @@
     const BELLS = [523.25, 587.33, 659.25, 783.99, 880, 1046.5];
     const BAR = 6.4;
 
+    // not seen: the page hidden, the screen off (the page is not hidden then) or behind an Android program
+    const pageAway = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+
     function musicWanted() {
-        if (!settings().music || !gesture || !page || page.hidden || view !== 'main' || document.hidden) return false;
+        if (!settings().music || !gesture || !page || page.hidden || view !== 'main' || pageAway()) return false;
         try { return !(ws.sounds && typeof ws.sounds.silent === 'function' && ws.sounds.silent()); } catch (_) { return true; }
     }
 
@@ -1902,7 +1905,7 @@ void main() {
 
     function frame(now) {
         raf = 0;
-        if (!page || page.hidden || view !== 'main' || document.hidden) return;
+        if (!page || page.hidden || view !== 'main' || pageAway()) return;
         const dt = Math.min(0.05, (now - (lastFrame || now)) / 1000);
         lastFrame = now;
         simulate(dt);
@@ -2428,7 +2431,11 @@ void main() {
             },
             softKeys
         });
-        document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); else if (page && !page.hidden && ws.current === APP_ID) show(); });
+        // not seen (also the screen off): the loop, the music and the tilt sensor stop; seen again they go on
+        const onSeen = () => { if (pageAway()) hide(); else if (page && !page.hidden && ws.current === APP_ID) show(); };
+        document.addEventListener('visibilitychange', onSeen);
+        window.addEventListener('melatonscreen', onSeen);
+        document.addEventListener('wmBehind', onSeen);
     }
 
     // tests
