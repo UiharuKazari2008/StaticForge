@@ -767,8 +767,11 @@
     }
 
     // the server pushes the batch on every change (wm_program_icons_job, #890 P15: the read's own shape).
-    // Once a push has come the poll below is one read (on show, connect, wake), never a chain
+    // Once a push has come the poll below is one read (on show, connect, wake), never a chain, except while
+    // the page sleeps: the Miniport holds these pushes then (they do not wake the page), so the minute's read
+    // keeps going while the batch works and its "ready to review" notification still comes with the screen off
     let jobPushes = false;
+    const asleepWatch = () => jobPushes && !awake() && !!job.id && (job.lastState === 'working' || job.lastState == null);
     function onJobPush(msg) {
         const d = (msg && msg.data) || msg || {};
         const jb = d.job;
@@ -777,9 +780,9 @@
         // only the batch this phone watches (one another phone started is picked up when Program Icons opens)
         if (!job.id || jb.id !== job.id) return;
         job.pushAt = Date.now();
+        if (takeJob(jb) === 'working' && !awake()) { if (!job.timer) poll(false); return; }
         clearTimeout(job.timer);
         job.timer = null;
-        takeJob(jb);
     }
 
     /** Watch the open batch: one read; until the server's pushes come, a read again while it works. */
@@ -788,8 +791,8 @@
         job.timer = null;
         if (!job.id) return;
         // no pushes yet (a server without them): asked every 3 s while Program Icons shows it, 8 s otherwise,
-        // and once a minute with the screen off or the page hidden, so the "ready to review" notification
-        // still comes then; seen again, asked at once (register: jobWake)
+        // and once a minute with the screen off or the page hidden (pushes or not), so the "ready to review"
+        // notification still comes then; seen again, asked at once (register: jobWake)
         job.timer = setTimeout(async () => {
             job.timer = null;
             const askedAt = Date.now();
@@ -798,12 +801,12 @@
             try { j = await api(`/jobs/${encodeURIComponent(id)}`); } catch (err) {
                 if (job.id !== id) return;
                 if (err.status === 404 || err.status === 403) { setJob(null); rerenderLive(); return; }
-                if (!jobPushes) poll(false);
+                if (!jobPushes || !awake()) poll(false);
                 return;
             }
             // another batch meanwhile, or a push newer than this answer: the answer is old
             if (job.id !== id || (job.pushAt || 0) > askedAt) return;
-            if (takeJob(j.job) === 'working' && !jobPushes) poll(false);
+            if (takeJob(j.job) === 'working' && (!jobPushes || !awake())) poll(false);
         }, soon ? 300 : (pageShown() ? 3000 : awake() ? 8000 : 60000));
     }
 
@@ -1625,7 +1628,8 @@
         // A batch waiting for review (its poll chain ended) is not asked again on every wake: the page's
         // own actions (Make again, Apply, Cancel) ask when they change it
         const jobWake = () => {
-            if (!awake()) return;
+            // gone to sleep with pushes coming: they wait in the Miniport now, the minute's read takes over
+            if (!awake()) { if (asleepWatch() && !job.timer) poll(false); return; }
             if (job.id && (job.lastState === 'working' || job.lastState == null)) poll(true);
             else if (job.stale) rerenderLive();
         };
