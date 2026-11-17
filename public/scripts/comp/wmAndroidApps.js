@@ -1565,8 +1565,14 @@
         phoneData.start();
         loadStore();
         if (job.id) poll(true);
-        // a batch running: seen again (screen on, the page shown) asks at once instead of on the minute
-        const jobWake = () => { if (!awake()) return; if (job.id) poll(true); else if (job.stale) rerenderLive(); };
+        // a batch running: seen again (screen on, the page shown) asks at once instead of on the minute.
+        // A batch waiting for review (its poll chain ended) is not asked again on every wake: the page's
+        // own actions (Make again, Apply, Cancel) ask when they change it
+        const jobWake = () => {
+            if (!awake()) return;
+            if (job.id && (job.lastState === 'working' || job.lastState == null)) poll(true);
+            else if (job.stale) rerenderLive();
+        };
         window.addEventListener('melatonscreen', jobWake);
         document.addEventListener('visibilitychange', jobWake);
         document.addEventListener('wmBehind', jobWake);
