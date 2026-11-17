@@ -668,7 +668,9 @@
         const list = conv ? conv.messages : [];
         const lastMine = (list.slice().reverse().find((m) => m.fromMe && !m.retracted) || {}).guid;
         const c = conv && conv.chat;
-        let html = `<p class="wch-convhead"><i>Conversation with <span class="wch-link">${esc(chatTitle(c))}</span></i></p>`;
+        // an Android app account (#885): the name opens the conversation in the app (its notification's tap)
+        const opens = canOpenInApp(c);
+        let html = `<p class="wch-convhead"><i>Conversation with <span class="wch-link${opens ? ' is-open' : ''}"${opens ? ` role="link" title="Open in ${esc(c.app || 'the app')}"` : ''}>${esc(chatTitle(c))}</span></i></p>`;
         if (c && c.isGroup) html += `<p class="wtm-members">${esc((c.participants || []).map((p) => p.name || p.address).join(', '))}</p>`;
         html += conv && conv.more ? '<p class="wch-olderp"><a class="wch-more" role="link">Older</a></p>' : '';
         html += list.map((m, n) => entryHtml(m, n, lastMine)).join('');
@@ -1136,7 +1138,7 @@
         if (feat('newChat')) items.push({ label: 'New', action: () => openNew([]) });
         items.push(readItem(c));
         if (feat('deleteChat')) items.push({ label: 'Delete', disabled: !c, action: () => deleteChat(c) });
-        const acts = actionItems(c);
+        const acts = openItem(c).concat(actionItems(c));
         if (acts.length) items.push('-', ...acts);
         items.push('-');
         items.push({ label: 'Go To', submenu: goToItems });
@@ -1154,7 +1156,7 @@
     }
 
     function rowMenu(c) {
-        const acts = actionItems(c);
+        const acts = openItem(c).concat(actionItems(c));
         return [
             { label: 'Reply', action: () => openConversation(c) },
             readItem(c),
@@ -1170,6 +1172,31 @@
     function actionItems(c) {
         const list = c && Array.isArray(c.actions) ? c.actions : [];
         return list.map((a) => ({ label: a.title, action: () => runAction(c, a) }));
+    }
+
+    /** An Android app account's conversation (#885): it can be opened in its app. */
+    const canOpenInApp = (c) => !!(c && c.package && acct() && acct().kind === 'android');
+    const openItem = (c) => (canOpenInApp(c) ? [{ label: `Open in ${c.app || 'App'}`, action: () => openInApp(c) }] : []);
+
+    /**
+     * Open in <app> (#885): on the phone that posted it, what a tap on the conversation's newest
+     * notification opens (Discord at that channel), else the app itself; on another phone or the DeX
+     * page of another device, the server asks the phone that posted it.
+     */
+    async function openInApp(c) {
+        if (!canOpenInApp(c)) return;
+        const A = window.AndroidActiveSync;
+        const here = !!(A && typeof A.getDeviceId === 'function' && c.open && c.open.device && A.getDeviceId() === c.open.device);
+        if (here) {
+            try { if (c.open && typeof A.openNotification === 'function' && A.openNotification(c.open.key) === true) return; } catch (_) { /* the app below */ }
+            try { if (window.AndroidApps && window.AndroidApps.launch(c.package) === true) return; } catch (_) { /* the server below */ }
+        }
+        const t = tm();
+        try {
+            await sh.busy(() => t.openInApp(accountId, c.guid), { paint: true });
+        } catch (err) {
+            await errorBox(`${c.app || 'The app'} could not be opened.`, err);
+        }
     }
 
     async function runAction(c, a) {
@@ -1208,7 +1235,7 @@
             ] });
         }
         items.push({ label: 'My Text', submenu: () => MY_TEXT.map((t) => ({ label: t, action: () => insertText(t) })) });
-        const acts = actionItems(conv && conv.chat);
+        const acts = openItem(conv && conv.chat).concat(actionItems(conv && conv.chat));
         if (acts.length) items.push('-', ...acts);
         if (replyTo) items.push({ label: 'Cancel Reply', action: () => { replyTo = null; renderReply(); sh.refreshSoftKeys(); } });
         if (pendingFiles.length) items.push({ label: 'Remove Attachments', action: () => { pendingFiles = []; renderPending(); sh.refreshSoftKeys(); } });
@@ -1321,6 +1348,7 @@
         const hist = p.querySelector('.wch-history');
         hist.addEventListener('click', (e) => {
             if (e.target.closest('.wch-more')) { loadOlder(); return; }
+            if (e.target.closest('.wch-convhead .wch-link.is-open')) { void openInApp(conv && conv.chat); return; }
             // a link (or its card): the phone's Internet Explorer, never the WebView's target=_blank (a dead tap)
             const link = e.target.closest('a.wtm-link, a.tm-card');
             if (link) {

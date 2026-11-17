@@ -28,6 +28,7 @@ const textMessaging = require('../../textMessaging');
  *   tm_resolve  { accountId, address }                                    { name }
  *   tm_android_apps                          { apps: [{ package, label, at, icon, added }] } (posted lately, #885)
  *   tm_action   { accountId, chatGuid, action }  an Android app account's notification action (chat.actions[].id)
+ *   tm_open     { accountId, chatGuid }      Open in <app>: the notification's tap target on the phone, else the app -> { opened }
  *   tm_rcs_pair_google { accountId } -> { emoji }  (sign-in from Alchemy; tap the emoji on the phone)
  *   tm_rcs_pair { accountId } -> { qr }   tm_rcs_refresh_qr { accountId }   tm_rcs_unpair { accountId }
  *               (RCS accounts: pairing events arrive as tm_event { event: 'pairing', qr | paired })
@@ -91,6 +92,7 @@ function registerPackets(handlersCtx) {
     reg('tm_rcs_unpair', async (d) => textMessaging.unpair(String(d.accountId || '')), { destructive: true });
     // Android app accounts (#885): the apps that posted lately, and a notification's own actions
     reg('tm_android_apps', async () => textMessaging.recentAndroidApps());
+    reg('tm_open', async (d) => textMessaging.openInApp(d.accountId, { chatGuid: String(d.chatGuid || '') }));
     reg('tm_action', async (d) => textMessaging.action(d.accountId, { chatGuid: String(d.chatGuid || ''), action: Number(d.action) }));
     reg('tm_resolve', async (d) => ({ name: await textMessaging.resolveName(d.accountId, String(d.address || '')) }));
 }
