@@ -189,13 +189,39 @@
         return list.filter((_, i) => stale[i]);
     }
 
-    /** The manifest files whose cached copy is missing or has another hash. */
+    /**
+     * The manifest files whose cached copy is missing or has another hash. The exact rows first; the
+     * cache is listed (for Vary / ?sha= siblings) only when one of them does not match, so a cache in
+     * sync costs no listing of its ~9,000 rows (#890).
+     */
     async function filesNeedingUpdate(env, files) {
         const list = (files || []).filter((file) => !isAuthGatedManifestFile(file));
         if (!env.caches) return list.slice();
         const cache = await env.caches.open(STATIC_CACHE);
         const origin = env.location && env.location.origin;
-        return staleFiles(cache, list, origin, await indexCacheKeys(cache, origin));
+        const misses = await staleFiles(cache, list, origin, new Map());
+        if (!misses.length) return misses;
+        return staleFiles(cache, misses, origin, await indexCacheKeys(cache, origin));
+    }
+
+    // The check of an unchanged manifest (a 304): every route entry and this many files spread over
+    // the stored list, as /app's boot check (serviceWorkerManager.js BOOT_CACHE_SAMPLE). The
+    // file-for-file check of ~9,000 rows ran at every phone start (/launch) and twice on a desktop's
+    // (the POST and the boot screen): about 8 s on the A53. Rows only vanish all at once (browser
+    // eviction, Setup's format) or through our own deletes, which a sample catches, and a sample that
+    // finds one checks the whole list; /app checks every file once a day after its boot.
+    const SAMPLE_FILES = 200;
+    function sampleFiles(files, count = SAMPLE_FILES, random = Math.random) {
+        const list = Array.isArray(files) ? files : [];
+        if (list.length <= count) return list;
+        const picked = list.filter((file) => file && (file.type === 'route' || file.url === '/' || file.url === '/app' || file.url === '/launch'));
+        const step = list.length / count;
+        const offset = random() * step;
+        for (let i = 0; i < count; i++) {
+            const file = list[Math.floor(offset + i * step)];
+            if (file && !picked.includes(file)) picked.push(file);
+        }
+        return picked;
     }
 
     function totalBytes(files) {
@@ -501,6 +527,10 @@
         if (fetched.unchanged) {
             const snapshot = await readManifestSnapshot(env);
             if (snapshot) {
+                const sample = sampleFiles(snapshot, SAMPLE_FILES, env.random || Math.random);
+                if (sample.length < snapshot.length && !requiredFiles(env, await filesNeedingUpdate(env, sample)).length) {
+                    return { files: [], bytes: 0, unchanged: true };
+                }
                 const files = requiredFiles(env, await filesNeedingUpdate(env, snapshot));
                 if (files.length) return { files, bytes: totalBytes(files), manifest: snapshot };
                 return { files: [], bytes: 0, unchanged: true };
@@ -922,6 +952,7 @@
         normalizePath,
         fetchManifest,
         filesNeedingUpdate,
+        sampleFiles,
         totalBytes,
         fileGroup,
         zipEntryName,

@@ -139,6 +139,37 @@ function memoryStorage() {
         await engine.check({ ...condEnv, localStorage: authStore, fetch: async () => ({ ok: true, status: 200, headers: { get: (h) => (h === 'X-Manifest-Hash' ? DIGEST : null) }, json: async () => routed }) });
         assert.deepStrictEqual(JSON.parse(authStore.getItem('melatonManifestSnapshot')), [{ url: '/scripts/main.js', hash: 'app1' }, { url: '/app', hash: 'a', auth: true }], 'the snapshot keeps auth');
 
+        // #890: a 304 over a large stored list checks a spread sample, and lists the cache only for a miss
+        {
+            const many = Array.from({ length: 5000 }, (_, i) => ({ url: `/f/${i}.js`, hash: `h${i}` }));
+            const counting = (rows) => {
+                const base = fakeCaches(rows);
+                const stats = { matches: 0, keys: 0 };
+                return { stats, open: async (name) => {
+                    const c = await base.open(name);
+                    return { match: (k) => { stats.matches += 1; return c.match(k); }, keys: () => { stats.keys += 1; return c.keys(); } };
+                } };
+            };
+            const bigStore = memoryStorage();
+            bigStore.setItem('melatonManifestHash', DIGEST);
+            bigStore.setItem('melatonManifestSnapshot', JSON.stringify(many));
+            const full = counting(many);
+            const inSync = await engine.check({ ...condEnv, localStorage: bigStore, caches: full });
+            assert.ok(inSync.unchanged && inSync.files.length === 0, 'in sync');
+            assert.ok(full.stats.matches <= 210, 'a sample, not 5000 lookups: ' + full.stats.matches);
+            assert.strictEqual(full.stats.keys, 0, 'a cache in sync is not listed');
+            // a wiped cache: the sample misses, and the whole list is diffed
+            const wiped = counting([]);
+            const all = await engine.check({ ...condEnv, localStorage: bigStore, caches: wiped });
+            assert.strictEqual(all.files.length, 5000, 'a sample that misses checks every file');
+            // the sample spreads over the list and keeps the routes
+            const routes = [{ url: '/', type: 'route' }, { url: '/app', type: 'route' }, { url: '/launch', type: 'route' }].concat(many);
+            const picked = engine.sampleFiles(routes, 200, () => 0.5);
+            assert.ok(['/', '/app', '/launch'].every((u) => picked.some((f) => f.url === u)), 'the routes are always checked');
+            assert.ok(picked.length >= 200 && picked.length <= 203);
+            assert.strictEqual(engine.sampleFiles(many.slice(0, 150)).length, 150, 'a short list is checked whole');
+        }
+
         // With IndexedDB the list is stored there, packed, under its digest (#849)
         const fakeIdb = () => {
             const rows = new Map();
