@@ -691,15 +691,17 @@
 
     // ================================================================ the page asleep (#890)
     //
-    // With the phone's screen off, DSApp pauses this page's JavaScript (WebView.pauseTimers, MainActivity
-    // applyTimers) when the page runs on the Miniport and nothing holds it awake. The Miniport keeps what the
-    // server sends meanwhile. A packet that leads to a notification, a sound or an alert (SLEEP_WAKE, wakeOn)
-    // wakes the page at once, and everything held reaches it first, in order; a reply to one of its own
-    // requests wakes it too. A whole-state status push (SLEEP_LAST) is kept newest-only and goes with the
-    // next wake; the rest waits in order. Once a minute (the phone's own clock tick, never a wake-up of its
-    // own) the page runs for a moment, so its clock, reminders and alarms fire at most a minute late. Before
-    // each pause the app asks sleepHolds(): a request in flight, its boot, media playing, a notification
-    // still repeating its sound, or a holdAwake() keep it running.
+    // With the phone's screen off, or the phone window out of sight behind another program, DSApp pauses this
+    // page's JavaScript (WebView.pauseTimers, MainActivity applyTimers) when the page runs on the Miniport and
+    // nothing holds it awake. The Miniport keeps what the server sends meanwhile. A packet that leads to a
+    // notification, a sound or an alert (SLEEP_WAKE, SLEEP_CHANGE, wakeOn) wakes the page at once, and
+    // everything held reaches it first, in order; a reply to one of its own requests wakes it too. A
+    // whole-state status push (SLEEP_LAST) is kept newest-only and goes with the next wake; the rest waits in
+    // order (past the Miniport's cap only what wakes is kept, then 'resync'). Once a minute (the phone's own
+    // clock tick, never a wake-up of its own) the page runs for a moment, so its clock, reminders and alarms
+    // fire at most a minute late. Before each pause the app asks sleepHolds(): a request in flight, its boot,
+    // media playing, a drive home, a notification still repeating its sound or buzz, or a holdAwake() keep it
+    // running (a lock or DPI gate pauses it all the same, as before).
     //
     // The packet types that lead to a notification, a sound, an alert or a waiting answer on this page
     // (found by the handlers that call wmShell.notify / appNote / playSystemSound, showGlassToast, the
@@ -717,11 +719,17 @@
         // (wmTraffic.js), the car's notices (wmLapis.js)
         'weather_alert_issued', 'weather_rain_alarm', 'traffic_report', 'lapis_notice',
         // a computer waiting for this phone's answer (activeSyncAgent.js: as_request)
-        'as_request'
+        'as_request',
+        // a key tripwire or a key's health changing (wmAccounts.js refresh -> raise(): its warnings)
+        'api_service_lock_changed', 'api_key_status_changed'
     ];
-    // a status that wakes the page when this field changes: the Director's turn ending is "Director: Turn
-    // finished" (wmShell directorTurnWatch: running -> idle plays its sound and posts the notification)
-    const SLEEP_CHANGE = { director_computer_status: 'running' };
+    // a status that wakes the page when this field changes (every copy of it in the packet counts):
+    // - the Director's or Yozora's turn ending is "Director: Turn finished" (wmShell directorTurnWatch: running
+    //   -> idle plays its sound, sets the title bar glyph and posts the notification; Yozora's turns flip only
+    //   data.xi.running, the Director's data.running)
+    // - an eMotion animation finishing: "The animation is ready." / "could not be made" (wmEmotion.js finish();
+    //   its progress pushes carry status 'running' and do not wake it)
+    const SLEEP_CHANGE = { director_computer_status: 'running', emotion_job_update: 'status' };
     // whole-state status pushes: while the page sleeps only the newest is kept (per lastKey's value), and it
     // goes with the next wake. Pushes that carry changes (statusHub feeds such as xlink_status, activity rows
     // such as mcp_activity, traffic_updated per direction) are kept in order instead. A Director turn's
@@ -764,10 +772,20 @@
         if (n > 0) awakeHolds.set(r, n); else awakeHolds.delete(r);
         sendHolds();
     };
+    // a state hold is looked at again while it is on: its end can come with no event the page hears (a player
+    // that goes with its window, a drive whose position went stale or whose window closed), and the app does not
+    // ask sleepHolds() while a hold is set. The page runs then anyway (the hold), so the check costs nothing extra
+    let stateRecheck = 0;
     function stateHold(reason, on) {
         if (on === stateHolds.has(reason)) return;
         if (on) stateHolds.add(reason); else stateHolds.delete(reason);
+        if (stateHolds.size && !stateRecheck) stateRecheck = setInterval(recheckStateHolds, 30000);
+        else if (!stateHolds.size && stateRecheck) { clearInterval(stateRecheck); stateRecheck = 0; }
         sendHolds();
+    }
+    function recheckStateHolds() {
+        stateHold('media', mediaPlaying());
+        stateHold('traffic', drivingUnwatched());
     }
 
     /** Media in this page that is heard (Melaton Media, a video with its sound): it plays on with the screen off. */
@@ -785,13 +803,28 @@
         }
         return false;
     }
-    /** A notification whose class repeats its sound (Reminders, a severe weather alert: 4 more, 4 s apart). */
+    /**
+     * A notification whose class repeats (Reminders, a severe weather alert: 4 more, 4 s apart, wmShell
+     * soundNewNotes): its sound in the last 18 s, or in vibrate mode its buzz (no sound is logged then; a
+     * 'reminder' buzz is Reminders, a 'notification' buzz any other class that repeats).
+     */
     function soundRepeating() {
-        const S = root.wmShell && root.wmShell.sounds;
-        if (!S || !Array.isArray(S.log) || typeof S.eventPrefs !== 'function') return false;
-        const last = S.log[S.log.length - 1];
-        if (!last || Date.now() - Number(last.at || 0) > 18000) return false;
-        try { const p = S.eventPrefs(last.name); return !!(p && p.repeat && p.sound); } catch (_) { return false; }
+        const sh = root.wmShell;
+        const S = sh && sh.sounds;
+        if (!S || typeof S.eventPrefs !== 'function') return false;
+        const now = Date.now();
+        const repeats = (id) => { try { const p = S.eventPrefs(id); return !!(p && p.repeat && p.sound); } catch (_) { return false; } };
+        const recent = (log) => {
+            const e = Array.isArray(log) ? log[log.length - 1] : null;
+            return e && now - Number(e.at || 0) <= 18000 ? e : null;
+        };
+        const snd = recent(S.log);
+        if (snd && repeats(snd.name)) return true;
+        const buzz = recent(sh.vibration && sh.vibration.log);
+        if (!buzz) return false;
+        if (buzz.kind === 'reminder') return repeats('reminder');
+        if (buzz.kind !== 'notification' || typeof S.events !== 'function') return false;
+        try { return S.events().some((e) => e && e.kind === 'note' && e.id !== 'reminder' && repeats(e.id)); } catch (_) { return false; }
     }
     /** Driving the commute home with no camera watch of the app's own: the page alerts the cameras (wmTraffic.js). */
     function drivingUnwatched() {
@@ -808,6 +841,8 @@
     }
     /** What keeps this page awake now (comma-separated; '' = it may sleep): asked by the app before each pause. */
     api.sleepHolds = () => {
+        // the state holds as they are now (one may have ended without an event)
+        recheckStateHolds();
         const out = new Set([...awakeHolds.keys(), ...stateHolds]);
         const c = root.wsClient;
         // still starting: it boots on (the launch page, a boot or an install in progress)
@@ -821,7 +856,6 @@
                 for (const r of c.pendingRequests.values()) { if (r && r.counted !== false && !r.silentTicker) { out.add('request'); break; } }
             }
         }
-        if (mediaPlaying()) out.add('media');
         if (soundRepeating()) out.add('sound');
         return Array.from(out).join(',');
     };
