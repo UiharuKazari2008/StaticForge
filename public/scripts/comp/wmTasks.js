@@ -924,6 +924,9 @@
         if (d.type !== 'vfs_updated') return;
         const path = String((d.data && d.data.path) || '');
         if (path && !/\/Calendars(\/|$)/i.test(path)) return;
+        // nothing read yet (Tasks and Today's Tasks row not opened since boot or a workspace switch): there is
+        // nothing to refresh, and the first reader reads the calendars as they are then
+        if (!loadedAt) return;
         // the screen off: read once it is on again (nothing shows the tasks meanwhile)
         if (ws && ws.onScreen && !ws.onScreen()) { vfsPending = true; return; }
         clearTimeout(liveTimer);
