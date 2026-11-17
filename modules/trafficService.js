@@ -1061,8 +1061,10 @@ async function check(direction, { force = false, origin = null } = {}) {
         : null;
     const delay = preferred.delaySec || pw.jams.reduce((n, j) => n + (j.delaySec || 0), 0) || 0;
     const major = slowdowns.some((x) => x.major) || pw.jams.some((j) => j.major) || pw.alerts.some((a) => a.major);
-    const level = major || (preferred.staticSec && delay > preferred.staticSec * 0.35) ? 'heavy'
-        : (delay >= 180 || slowdowns.length || pw.jams.length) ? 'moderate' : 'clear';
+    // the light (Traffic's signal, Today, the Car bubble; #902): by the minutes of extra traffic set in Settings >
+    // Traffic light (yellow 25, red 45 by default) - a super commuter expects a few minutes; a major alert alone
+    // is moderate at most (Yukimi, Nov 17)
+    const level = delay >= s.redMin * 60 ? 'heavy' : (delay >= s.yellowMin * 60 || major) ? 'moderate' : 'clear';
     const report = {
         direction,
         label: DIRECTION_LABEL[direction],
