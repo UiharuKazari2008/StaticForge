@@ -1138,12 +1138,14 @@ function ringPartners(globalResources, wsServer, reason) {
  * shows the notice itself); without one the app posts it as an Android notification. Returns how many
  * phones it went to.
  */
-function sendInboxNotice(globalResources, wsServer, notice) {
+function sendInboxNotice(globalResources, wsServer, notice, opts = {}) {
     const server = wsServerOf(globalResources, wsServer);
     if (!server || !notice) return 0;
     let sent = 0;
     const ids = new Set(liveSockets(server, 'device').map((x) => x.info.as.id));
     for (const id of ids) {
+        // one phone only: its link said hello again and catches up (notificationInbox.catchUpPhone, #889)
+        if (opts.deviceId && id !== opts.deviceId) continue;
         const live = liveSockets(server, 'device', id);
         if (!live.some((x) => x.info.as.session === 'partner')) continue;
         const service = live.find((x) => x.info.as.speaker === 'service');

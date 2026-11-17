@@ -40,6 +40,7 @@ function bind(globalResources) {
             pruneTimer = setInterval(() => { prune('admin'); prune('dev_admin'); }, 10 * 60 * 1000);
             if (pruneTimer.unref) pruneTimer.unref();
         }
+        if (!process.env.NOTIFICATION_INBOX_NO_TIMER) setImmediate(tapPhoneHellos);
     }
     return module.exports;
 }
@@ -153,13 +154,23 @@ function publish(notice = {}) {
         actedBy: null,
         updatedAt: now,
     };
+    // does this publish sound on the phones (#889)? A new notice, one already done with (cleared, acted),
+    // or the producer saying it is a new event under the same id (the next message in a conversation).
+    // A notice changing in place (a countdown step, a commute update, the same text again) is silent.
+    let alert = true;
+    try {
+        const cur = database().prepare('SELECT state, title, text FROM notices WHERE user = ? AND id = ?').get(user, id);
+        if (cur && cur.state !== 'acted' && cur.state !== 'cleared' && notice.alert !== true) alert = false;
+    } catch (_e) { /* a new table: new */ }
+    row.fresh = alert ? 1 : 0;
     try {
         database()
             .prepare(
                 `INSERT INTO notices (user, id, app, cls, title, text, actions, data, createdAt, expiresAt, state, actedBy, updatedAt)
                  VALUES (@user, @id, @app, @cls, @title, @text, @actions, @data, @createdAt, @expiresAt, @state, @actedBy, @updatedAt)
                  ON CONFLICT (user, id) DO UPDATE SET app=excluded.app, cls=excluded.cls, title=excluded.title, text=excluded.text,
-                     actions=excluded.actions, data=excluded.data, expiresAt=excluded.expiresAt, state=excluded.state, actedBy=NULL, updatedAt=excluded.updatedAt`
+                     actions=excluded.actions, data=excluded.data, expiresAt=excluded.expiresAt, state=excluded.state, actedBy=NULL, updatedAt=excluded.updatedAt,
+                     createdAt=CASE WHEN @fresh = 1 THEN excluded.createdAt ELSE createdAt END`
             )
             .run(row);
         prune(user);
@@ -167,7 +178,7 @@ function publish(notice = {}) {
         console.warn(`[notify-inbox] publish failed: ${e.message}`);
         return null;
     }
-    const out = rowOut(row);
+    const out = Object.assign(rowOut(row), { alert });
     broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
     // the phones' background links too (#876 D): a phone whose page is not running posts it natively
     if (!quiet) {
@@ -302,6 +313,64 @@ function prune(user) {
     }
 }
 
+// ---- phones that were away: their background link catches up on what it missed (#889) ----
+
+const CATCH_UP_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The notices a phone's background link may have missed: still new (not seen, used or cleared anywhere),
+ * not expired, not a quiet class, from the last 24 h; oldest first.
+ */
+function pendingForPhones(user) {
+    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const now = nowFn();
+    const quiet = quietClasses(u);
+    try {
+        return database()
+            .prepare("SELECT * FROM notices WHERE user = ? AND state = 'new' AND createdAt >= ? AND (expiresAt IS NULL OR expiresAt > ?) ORDER BY createdAt ASC LIMIT 50")
+            .all(u, now - CATCH_UP_MS, now)
+            .filter((r) => !(r.cls && quiet.has(r.cls)))
+            .map(rowOut);
+    } catch (e) {
+        console.warn(`[notify-inbox] pending failed: ${e.message}`);
+        return [];
+    }
+}
+
+/**
+ * A notice is sent to a phone once, the moment it is published; a phone whose background link was down
+ * then (asleep, changing networks, the app restarting) never had it. When that link says hello again,
+ * the notices still new are sent once more, marked catchUp: the app posts the ones it has not posted
+ * and sounds only the newest.
+ */
+function catchUpPhone(deviceId) {
+    if (!gr || !deviceId) return 0;
+    let sent = 0;
+    const as = require('./activeSync');
+    for (const user of ['admin', 'dev_admin']) {
+        for (const n of pendingForPhones(user)) {
+            try { sent += as.sendInboxNotice(gr, null, Object.assign({ user }, n, { alert: true, catchUp: true }), { deviceId }); } catch (_e) { /* the link went again */ }
+        }
+    }
+    if (sent) console.log(`[notify-inbox] ${deviceId}: caught up ${sent} notice(s)`);
+    return sent;
+}
+
+let helloTapped = false;
+function tapPhoneHellos() {
+    if (helloTapped || !gr) return;
+    let as;
+    try { as = require('./activeSync'); } catch (_e) { return; }
+    if (typeof as.onDeviceHello !== 'function') return;
+    helloTapped = true;
+    as.onDeviceHello((d) => {
+        if (!d || d.speaker !== 'service' || d.session !== 'partner') return;
+        // after the hello reply, once the link is settled
+        const t = setTimeout(() => catchUpPhone(d.id), 1500);
+        if (t.unref) t.unref();
+    });
+}
+
 function server() {
     return gr && (gr.getWebSocketServer ? gr.getWebSocketServer() : gr.webSocketServer);
 }
@@ -328,6 +397,8 @@ module.exports = {
     quietClasses,
     prune,
     userOf,
+    pendingForPhones,
+    catchUpPhone,
     _test: {
         setNow: (fn) => {
             nowFn = fn || (() => Date.now());
