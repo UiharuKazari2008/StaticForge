@@ -63,7 +63,9 @@
     function render(el) {
         if (!list) list = read('list');
         box = el;
-        watch();
+        // under 6.5's home screen nothing is placed: no listeners set up for one check to take down again
+        // on every full Today draw (only the boxes taken away, once)
+        if (el.closest('.is-titanium')) { if (watching || sent !== '[]') soon(); } else watch();
         const s = JSON.stringify(list.map((w) => [w.id, w.minH, w.label]));
         if (s === sig && el.dataset.wtwBuilt === 'android-widgets') return true;
         sig = s;
