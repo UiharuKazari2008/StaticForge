@@ -4750,12 +4750,12 @@ class GlobalResources {
                 if (!fs.existsSync(sessionsDir)) {
                     fs.mkdirSync(sessionsDir, { recursive: true });
                 }
-                // concurrentDb (the library's spelling; concurrentDB was ignored): WAL journal (#890)
+                // WAL journal: set by tuneSessionStore (#890), not by the library's concurrentDb option,
+                // whose open callback throws (a busy file at boot would crash the server)
                 this.sessionStore = new SQLiteStore({
                     dir: sessionsDir,
                     db: 'sessions.sqlite',
-                    table: 'sessions',
-                    concurrentDb: true
+                    table: 'sessions'
                 });
                 require('./sessionStoreTouch').tuneSessionStore(this.sessionStore);
                 console.log('✓ SQLite Session Store ready');
