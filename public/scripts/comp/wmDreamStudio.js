@@ -2315,7 +2315,7 @@
         });
         // the caret moved (a tap, the keyboard's arrows, Android's selection handles): the emphasis
         // controls follow the group it is in
-        document.addEventListener('selectionchange', () => { if (shown && top() === 'editor' && document.activeElement === edArea()) edWeight(); });
+        document.addEventListener('selectionchange', () => { if (shown && top() === 'editor' && document.activeElement === edArea()) edWeight(); }, { signal: appScopeSignal });
         if (typeof ResizeObserver === 'function') {
             const ro = new ResizeObserver(() => { if (shown && top() === 'editor') hlDraw(); });
             ro.observe($('.wds-body'));
