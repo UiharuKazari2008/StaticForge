@@ -107,6 +107,8 @@
         idleTimer: null,
         buffers: Object.create(null),
         inflight: Object.create(null),
+        // WAV bytes fetched ahead (prefetch before there is a context): decoded once one is made
+        fetched: Object.create(null),
         bound: false
     };
 
@@ -114,6 +116,8 @@
     // nothing (on a phone the audio output stays awake, #890). It is made on the first sound (or the
     // first input once sounds are on, which lets later sounds start without one), and suspended
     // IDLE_SUSPEND_MS after the last sound ends and when the page is hidden; the next sound resumes it.
+    // The boot's prefetch only fetches the WAVs; they are decoded in the context once it exists (in
+    // that context, so each is resampled once, to the output's rate, as before).
     const IDLE_SUSPEND_MS = 5000;
 
     function suspendIfIdle() {
@@ -203,7 +207,7 @@
         const Ctor = win && (win.AudioContext || win.webkitAudioContext);
         if (!Ctor) return null;
         state.ctx = new Ctor();
-        // made to decode (prefetch) or for a sound: let go of the device if nothing plays
+        // made for a sound (or the first input): let go of the device if nothing plays
         scheduleIdleSuspend();
         return state.ctx;
     }
@@ -236,28 +240,52 @@
         if (ctx && state.playing > 0 && ctx.state === 'suspended' && ctx.resume) ctx.resume().catch(() => {});
     }
 
-    /** Decoded audio by file name (several events share one WAV). */
-    function loadBuffer(file) {
-        if (!file || FILES.indexOf(file) === -1) return Promise.resolve(null);
+    /** A WAV's bytes (one fetch per file until it is decoded or the fetch fails). */
+    function fetchBytes(file) {
         const id = file;
-        const url = BASE + encodeURIComponent(file);
-        if (state.buffers[id]) return Promise.resolve(state.buffers[id]);
-        if (state.inflight[id]) return state.inflight[id];
-        const ctx = getContext();
-        if (!ctx || !win || !win.fetch) return Promise.resolve(null);
-        state.inflight[id] = win.fetch(url, { credentials: 'same-origin' })
+        if (state.fetched[id]) return state.fetched[id];
+        if (!win || !win.fetch) return Promise.resolve(null);
+        state.fetched[id] = win.fetch(BASE + encodeURIComponent(file), { credentials: 'same-origin' })
             .then((res) => {
                 if (!res.ok) throw new Error('sound ' + res.status);
                 return res.arrayBuffer();
             })
-            .then((bytes) => ctx.decodeAudioData(bytes.slice(0)))
+            .catch(() => {
+                delete state.fetched[id];
+                return null;
+            });
+        return state.fetched[id];
+    }
+
+    /**
+     * Decoded audio by file name (several events share one WAV). ahead (the prefetch): with no context
+     * yet, only the bytes are fetched and null comes back; no AudioContext is made for it.
+     */
+    function loadBuffer(file, ahead) {
+        if (!file || FILES.indexOf(file) === -1) return Promise.resolve(null);
+        const id = file;
+        if (state.buffers[id]) return Promise.resolve(state.buffers[id]);
+        if (state.inflight[id]) return state.inflight[id];
+        if (ahead && !state.ctx) {
+            fetchBytes(file);
+            return Promise.resolve(null);
+        }
+        const ctx = getContext();
+        if (!ctx || !win || !win.fetch) return Promise.resolve(null);
+        state.inflight[id] = fetchBytes(file)
+            .then((bytes) => {
+                if (!bytes) throw new Error('sound not loaded');
+                return ctx.decodeAudioData(bytes.slice(0));
+            })
             .then((buffer) => {
                 state.buffers[id] = buffer;
                 delete state.inflight[id];
+                delete state.fetched[id];
                 return buffer;
             })
             .catch(() => {
                 delete state.inflight[id];
+                delete state.fetched[id];
                 return null;
             });
         return state.inflight[id];
@@ -267,7 +295,7 @@
         if (!state.enabled || !isDesktopNow()) return;
         Object.keys(SCHEME).forEach((id) => {
             const file = resolveFile(id);
-            if (file) loadBuffer(file);
+            if (file) loadBuffer(file, true);
         });
     }
 
@@ -353,8 +381,10 @@
         if (!id || !state.enabled || !isDesktopNow()) return Promise.resolve(false);
         const file = resolveFile(id, options && options.startup);
         if (!file) return Promise.resolve(false);
+        // this sound's WAV is decoded first; unlock's prefetch queues the others behind it
+        const loaded = loadBuffer(file);
         unlock();
-        return loadBuffer(file).then((buffer) => playBuffer(buffer));
+        return loaded.then((buffer) => playBuffer(buffer));
     }
 
     /**
@@ -378,8 +408,9 @@
     /** The Sound dialog's Test: one file, even while the scheme or the event is silent. */
     function playFile(file) {
         if (!file || FILES.indexOf(file) === -1) return Promise.resolve(false);
+        const loaded = loadBuffer(file);
         unlock();
-        return loadBuffer(file).then((buffer) => playBuffer(buffer));
+        return loaded.then((buffer) => playBuffer(buffer));
     }
 
     function bootIconEvent(icon) {
