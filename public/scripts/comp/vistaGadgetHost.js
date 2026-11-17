@@ -70,14 +70,28 @@ const vghTimeZone = (function () {
     const formats = new Map(); // zone name -> Intl.DateTimeFormat (en-US, numeric, 24-hour)
     const FORMATS_MAX = 16;
     const biases = new Map(); // zone name -> { minute, bias }
-    const localZone = { name: '', at: -Infinity };
+    const localZone = { name: '', at: -Infinity, offset: NaN };
+    // the window focused or shown again (the computer's zone may have been changed meanwhile): the next
+    // read looks the zone up again
+    const appScopeSignal = (typeof window !== 'undefined' && window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        const forget = () => { localZone.at = -Infinity; };
+        window.addEventListener('focus', forget, { signal: appScopeSignal });
+        if (typeof document !== 'undefined') document.addEventListener('visibilitychange', forget, { signal: appScopeSignal });
+    }
 
-    /** This computer's zone name ('' when the browser does not say), looked up at most once a minute. */
+    /**
+     * This computer's zone name ('' when the browser does not say), looked up at most once a minute, on
+     * focus, and at once when the local offset moved (a new zone, or a DST change).
+     */
     function localZoneName() {
-        const now = Date.now();
-        if (now - localZone.at >= 60000 || now < localZone.at) {
+        const date = new Date();
+        const now = date.getTime();
+        const offset = date.getTimezoneOffset();
+        if (now - localZone.at >= 60000 || now < localZone.at || offset !== localZone.offset) {
             localZone.name = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
             localZone.at = now;
+            localZone.offset = offset;
         }
         return localZone.name;
     }
