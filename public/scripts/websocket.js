@@ -1234,6 +1234,10 @@ class WebSocketClient {
         this.connectionStats = {
             messagesIn: 0,
             messagesOut: 0,
+            // the session's data over the socket (UTF-16 length of each frame, about its bytes): the
+            // Nightshade Network Client's Data used (#895); zeroed when a session starts
+            bytesIn: 0,
+            bytesOut: 0,
             connectedAt: null
         };
         this._wasPingWarning = false;
@@ -2133,25 +2137,16 @@ class WebSocketClient {
             });
         }
 
-        // Nightshade Network tray icon (#895): one click = its status panel, right-click = its menu
-        // (public/scripts/comp/melatonControlPanel.js toggleNightshadeFlyout / attachNightshadeMenu)
+        // Nightshade Network tray icon (#895): one click opens the Nightshade Network Client, right-click
+        // its menu (public/scripts/comp/nightshadeClient.js, loaded with the desktop: works offline)
         const nsTray = document.getElementById('nightshadeTrayIcon');
         if (nsTray) {
-            nsTray.addEventListener('pointerdown', () => {
-                void featureLoader.loadFeature('control_panel').then(() => {
-                    const cp = window.melatonControlPanel;
-                    if (cp && typeof cp.attachNightshadeMenu === 'function' && !nsTray.dataset.cpMenu) {
-                        nsTray.dataset.cpMenu = '1';
-                        cp.attachNightshadeMenu(nsTray);
-                    }
-                });
-            }, { once: true });
+            const nsc = () => window.nightshadeClient || null;
+            if (nsc()) nsc().attachTrayMenu(nsTray);
+            else nsTray.addEventListener('pointerdown', () => { if (nsc()) nsc().attachTrayMenu(nsTray); }, { once: true });
             nsTray.addEventListener('click', () => {
-                void featureLoader.loadFeature('control_panel').then(() => {
-                    const cp = window.melatonControlPanel;
-                    if (cp && typeof cp.toggleNightshadeFlyout === 'function') cp.toggleNightshadeFlyout(nsTray);
-                    else this.openConnectionDialStatus();
-                });
+                if (nsc()) nsc().open();
+                else this.openConnectionDialStatus();
             });
         }
         // the tooltips carry live numbers (the session's duration, ping): fresh on each hover, not on a
@@ -4996,6 +4991,8 @@ class WebSocketClient {
                 }
 
                 this.connectionStats.connectedAt = Date.now();
+                this.connectionStats.bytesIn = 0; // Data used counts this session (#895)
+                this.connectionStats.bytesOut = 0;
                 // Logon screen: the VPN is up, the logon dialog takes over (_shouldShowLogonConnectingDialog)
                 if (this._shouldUsePreStartupDialog()) this._renderConnectionDial();
 
@@ -5060,6 +5057,8 @@ class WebSocketClient {
             };
 
             this.ws.onmessage = (event) => {
+                if (typeof event.data === 'string') this.connectionStats.bytesIn += event.data.length;
+                else if (event.data && event.data.byteLength) this.connectionStats.bytesIn += event.data.byteLength;
                 // Continuity (#798): a raw packet for the DeX window ("\u0001<sub>\u0001<packet>"): over the bus unparsed
                 if (typeof event.data === 'string' && event.data.charCodeAt(0) === 1 && window.melatonContinuity
                     && typeof window.melatonContinuity.fromServerRaw === 'function') {
@@ -5952,7 +5951,9 @@ class WebSocketClient {
         if (socket && socket.readyState === WebSocket.OPEN) {
             this.logGenerationQuipsWs('out', message);
             this._recordWsMessage('out', message);
-            socket.send(JSON.stringify(message));
+            const frame = JSON.stringify(message);
+            this.connectionStats.bytesOut += frame.length;
+            socket.send(frame);
             if (!message || message.type !== 'report_client_perf') this.lastOutgoingAt = Date.now();
             this.flashWebSocketArrow('up');
             return true;

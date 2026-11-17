@@ -1,0 +1,329 @@
+/**
+ * Nightshade Network Client (Yozora #895): the Dreamscape service's own program on the desktop, as a
+ * mobile broadband card's connection manager - what the tray icon opens. It is the user's view, not
+ * an administrator's: the service's status, signal quality, time connected, CaféReady and the data
+ * this session used, with Connect when it is down. Disconnect is in the Connection menu only, behind
+ * a warning (Yukimi: not that easy). The server's own detail is in Server Manager > Diagnostics >
+ * Nightshade Network (mmcServerManager.js).
+ *
+ * Loaded with the desktop (app.html), not on demand: it must open while the server is out of reach.
+ * State: websocket.js nightshadeState() and its 'nightshade:state' event; the time connected ticks
+ * on a local clock while the window shows (no request).
+ *
+ *   window.nightshadeClient.open()              the window (one instance)
+ *   window.nightshadeClient.attachTrayMenu(el)  the tray icon's right-click menu
+ *   window.openNightshadeClient()               Start menu / Run
+ */
+(function (root) {
+    'use strict';
+
+    const doc = root.document;
+    const TITLE = 'Nightshade Network Client';
+    const VI = '/static_images/vista-icons';
+    const ICON16 = `${VI}/nightshade-16.png`;
+    const ICON32 = `${VI}/nightshade-32.png`;
+    const ICON48 = `${VI}/nightshade-48.png`;
+    const CAFE_LOGO = '/static_images/melaton/cafe-ready-dark.png';
+    const SIGNAL = '/static_images/vista-explorer/signal-';
+    const call = (name, ...args) => (typeof root[name] === 'function' ? root[name](...args) : undefined);
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    const STATUS = {
+        connected: 'Connected',
+        connecting: 'Connecting...',
+        restarting: 'Restarting',
+        'signed-out': 'Sign-in required',
+        off: 'Disconnected',
+        'no-internet': 'No internet connection',
+        unavailable: 'Unavailable'
+    };
+    const NOTE = {
+        connecting: 'Connecting to the Nightshade Network. This usually takes a few seconds.',
+        restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
+        unavailable: 'The Nightshade Network is unavailable right now. Some features and services may not be accessible at this time.',
+        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.',
+        off: 'You disconnected from the Nightshade Network. Your mail, messages, prints and most programs are not available until you connect again.'
+    };
+
+    function client() { return root.wsClient || null; }
+
+    function state() {
+        const c = client();
+        try { if (c && typeof c.nightshadeState === 'function') return c.nightshadeState(); } catch (_) { /* below */ }
+        const online = !root.navigator || root.navigator.onLine !== false;
+        return { internet: online ? 'online' : 'offline', service: online ? 'unavailable' : 'no-internet', problem: true, cafeReady: false, connectedAt: null, rtt: null };
+    }
+
+    /** Signal quality from the round trip, as a broadband card shows bars: [bars 0-5, word]. */
+    function signal(s) {
+        if (s.service !== 'connected') return [0, 'No signal'];
+        const rtt = s.rtt;
+        if (rtt == null) return [3, 'Good'];
+        if (rtt < 80) return [5, 'Excellent'];
+        if (rtt < 160) return [4, 'Very good'];
+        if (rtt < 300) return [3, 'Good'];
+        if (rtt < 600) return [2, 'Fair'];
+        return [1, 'Poor'];
+    }
+
+    function clock(ms) {
+        const t = Math.max(0, Math.floor(ms / 1000));
+        return `${Math.floor(t / 3600)}:${String(Math.floor(t / 60) % 60).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+    }
+
+    function size(n) {
+        const v = Math.max(0, Number(n) || 0);
+        if (v < 1024) return `${v} bytes`;
+        if (v < 1048576) return `${(v / 1024).toFixed(v < 10240 ? 1 : 0)} KB`;
+        if (v < 1073741824) return `${(v / 1048576).toFixed(1)} MB`;
+        return `${(v / 1073741824).toFixed(2)} GB`;
+    }
+
+    function cafeText(s) {
+        if (s.cafeReady) return 'Active';
+        const mc = root.melatonContinuity;
+        let mp = null;
+        try { mp = mc && typeof mc.miniport === 'function' ? mc.miniport() : null; } catch (_) { mp = null; }
+        if (!mp || !mp.present) return 'Not in use on this computer';
+        return mp.enabled === false ? 'Off' : 'Standing by';
+    }
+
+    // ---- actions --------------------------------------------------------------------------------
+
+    function connect() {
+        const c = client();
+        if (!c) return;
+        if (c.connectionPhase === 'auth' && root.melatonNetworkDialogs && root.melatonNetworkDialogs.connect) {
+            root.melatonNetworkDialogs.connect.show();
+            return;
+        }
+        if (typeof c.manualReconnect === 'function') c.manualReconnect();
+    }
+
+    /** Disconnect, only after the warning (Cancel is the default button). */
+    async function disconnect() {
+        const s = state();
+        if (s.service !== 'connected' && s.service !== 'connecting') return;
+        const ok = typeof root.showConfirmationDialog === 'function'
+            ? await root.showConfirmationDialog(
+                'Disconnect from the Nightshade Network?\n\nYour mail, messages, prints and most programs stop working until you connect again. Nightshade will not reconnect by itself.',
+                [{ text: 'Disconnect', value: true, className: 'btn-standard' }, { text: 'Cancel', value: false, className: 'btn-standard primary' }],
+                null,
+                { title: TITLE, icon: 'fas fa-exclamation-triangle', sound: true })
+            : false;
+        if (ok !== true) return;
+        const c = client();
+        if (c && typeof c.cancelConnectionFromUser === 'function') c.cancelConnectionFromUser();
+    }
+
+    function about() {
+        if (typeof root.openAboutMelatoninModal === 'function') root.openAboutMelatoninModal({ program: TITLE });
+    }
+
+    function help() {
+        call('openHelpAndSupport', 'nightshade-network');
+    }
+
+    // ---- the window -----------------------------------------------------------------------------
+
+    let win = null;
+
+    function menuItems(menu) {
+        const s = state();
+        const up = s.service === 'connected' || s.service === 'connecting';
+        if (menu === 'connection') {
+            return [
+                { text: s.service === 'signed-out' ? 'Sign In...' : up ? 'Reconnect' : 'Connect', action: 'connect', disabled: s.service === 'connecting' },
+                { text: 'Disconnect...', action: 'disconnect', disabled: !up },
+                { separator: true },
+                { text: 'Close', action: 'close' }
+            ];
+        }
+        return [
+            { text: 'Nightshade Network Help', subtext: 'F1', action: 'help' },
+            { separator: true },
+            { text: `About ${TITLE}`, action: 'about' }
+        ];
+    }
+
+    function onMenu(action) {
+        if (action === 'connect') connect();
+        else if (action === 'disconnect') void disconnect();
+        else if (action === 'close') close();
+        else if (action === 'help') help();
+        else if (action === 'about') about();
+        setTimeout(paint, 50);
+    }
+
+    function build() {
+        // desktopAppCreateWindow: public/scripts/comp/desktop-apps/desktopAppWindow.js (the shared builder)
+        const w = root.desktopAppCreateWindow({
+            id: 'nightshadeClientModal',
+            identifier: 'nightshadeClient',
+            title: TITLE,
+            icon16: ICON16,
+            taskbarIcon: ICON32,
+            className: 'nsc-window',
+            fixed: true,
+            minimize: true
+        });
+        const m = w.modal;
+        w.content.classList.add('nsc-client');
+        w.content.innerHTML = `
+            <div class="naxt-menubar" role="menubar" data-win32-menus>
+                <button type="button" class="naxt-menu-title" role="menuitem" data-nsc-menu="connection">Connection</button>
+                <button type="button" class="naxt-menu-title" role="menuitem" data-nsc-menu="help">Help</button>
+            </div>
+            <div class="nsc-body">
+                <div class="nsc-head">
+                    <img src="${ICON48}" alt="" draggable="false">
+                    <div class="nsc-head-text">
+                        <div class="nsc-name">Nightshade Network</div>
+                        <div class="nsc-status" data-f="status"></div>
+                    </div>
+                    <img class="nsc-signal" data-f="bars" src="/static_images/vista-explorer/signal-0-32.png" alt="" draggable="false">
+                </div>
+                <div class="nsc-rows">
+                    <span>Signal quality:</span><span data-f="signal"></span>
+                    <span>Connected for:</span><span data-f="time"></span>
+                    <span>CaféReady:</span><span data-f="cafe"></span>
+                    <span>Data used:</span><span data-f="data"></span>
+                </div>
+                <div class="nsc-note" data-f="note"></div>
+                <div class="nsc-cafe" data-f="cafe-logo"><span>Powered by</span><span class="nsc-cafe-badge"><img src="${CAFE_LOGO}" alt="CaféReady" draggable="false"></span></div>
+            </div>
+            <div class="vista-dialog-footer nsc-footer">
+                <button type="button" class="btn-standard" data-act="connect"></button>
+                <button type="button" class="btn-standard" data-act="close">Close</button>
+            </div>
+`;
+        w.close.addEventListener('click', close);
+        m.querySelector('.nsc-footer').addEventListener('click', (ev) => {
+            const b = ev.target.closest('[data-act]');
+            if (!b || b.disabled) return;
+            if (b.dataset.act === 'connect') connect();
+            else if (b.dataset.act === 'close') close();
+            setTimeout(paint, 50);
+        });
+        m.querySelectorAll('.naxt-menu-title').forEach((button) => {
+            if (!root.contextMenu || typeof root.contextMenu.attachClickMenuToElement !== 'function') return;
+            root.contextMenu.attachClickMenuToElement(button, {
+                onAction: onMenu,
+                sections: [{ type: 'list', initfn: (section) => { section.items = menuItems(button.dataset.nscMenu); } }]
+            });
+        });
+        m.addEventListener('keydown', (ev) => {
+            if (ev.key === 'F1') { ev.preventDefault(); help(); }
+            else if (ev.key === 'Escape') { ev.preventDefault(); close(); }
+        });
+        return m;
+    }
+
+    function setText(el, text) { if (el && el.textContent !== text) el.textContent = text; }
+
+    function paint() {
+        if (!win || !win.isConnected) return;
+        const s = state();
+        const f = (k) => win.querySelector(`[data-f="${k}"]`);
+        const connected = s.service === 'connected';
+        setText(f('status'), connected && s.cafeReady ? 'Connected (with CaféReady)' : STATUS[s.service] || 'Unavailable');
+        win.dataset.nscState = s.service;
+        win.classList.toggle('nsc-problem', !!s.problem);
+        const [bars, word] = signal(s);
+        // Vista's own signal-strength art (0-5 bars), as Network and Sharing Center shows a wireless link
+        const barsEl = f('bars');
+        const src = `${SIGNAL}${bars}-32.png`;
+        if (barsEl.getAttribute('src') !== src) barsEl.setAttribute('src', src);
+        barsEl.setAttribute('alt', `Signal: ${word}`);
+        setText(f('signal'), word);
+        setText(f('time'), connected && s.connectedAt ? clock(Date.now() - s.connectedAt) : '—');
+        setText(f('cafe'), cafeText(s));
+        const st = (client() && client().connectionStats) || {};
+        setText(f('data'), connected ? `${size(st.bytesOut)} sent, ${size(st.bytesIn)} received` : '—');
+        setText(f('note'), NOTE[s.service] || '');
+        f('note').hidden = !NOTE[s.service];
+        f('cafe-logo').hidden = !s.cafeReady;
+        // the footer's first button: Connect / Sign In while down, none while connected or dialing
+        const btn = win.querySelector('.nsc-footer [data-act="connect"]');
+        const label = s.service === 'signed-out' ? 'Sign In' : 'Connect';
+        setText(btn, label);
+        btn.hidden = connected || s.service === 'connecting';
+        const primary = btn.hidden ? win.querySelector('.nsc-footer [data-act="close"]') : btn;
+        win.querySelectorAll('.nsc-footer [data-dialog-primary]').forEach((b) => { if (b !== primary) b.removeAttribute('data-dialog-primary'); });
+        primary.setAttribute('data-dialog-primary', '1');
+    }
+
+    let tick = null;
+    function startClock() {
+        if (tick) return;
+        tick = setInterval(() => {
+            if (!win || !win.isConnected) { clearInterval(tick); tick = null; return; }
+            if (doc.hidden || win.classList.contains('hidden')) return;
+            paint();
+        }, 1000);
+    }
+
+    function open() {
+        if (win && win.isConnected) {
+            call('bringModalToFront', win);
+            paint();
+            return win;
+        }
+        win = build();
+        paint();
+        call('openModal', win);
+        win.classList.remove('hidden');
+        let placed = false;
+        const place = () => {
+            if (placed || !win) return;
+            placed = true;
+            const r = win.getBoundingClientRect();
+            call('setModalOffsetsFromViewportTopLeft', win, Math.max(0, Math.round((root.innerWidth - r.width) / 2)), Math.max(0, Math.round((root.innerHeight - 35 - r.height) / 3)));
+        };
+        requestAnimationFrame(place);
+        setTimeout(place, 60);
+        startClock();
+        if (root.programFaults && root.programFaults.registerProgram) {
+            root.programFaults.registerProgram(win.id, { name: TITLE, terminate: close, relaunch: open });
+        }
+        return win;
+    }
+
+    function close() {
+        if (!win) return;
+        const m = win;
+        win = null;
+        if (tick) { clearInterval(tick); tick = null; }
+        Promise.resolve(call('closeModal', m)).finally(() => setTimeout(() => m.remove(), 300));
+    }
+
+    root.addEventListener('nightshade:state', paint);
+
+    // ---- the tray icon's menu ---------------------------------------------------------------------
+
+    /** Right-click on the Nightshade tray icon: open the client, Reconnect, Sign Out. No Disconnect. */
+    function attachTrayMenu(anchor) {
+        if (!anchor || anchor.dataset.nightshadeMenu === '1' || !root.contextMenu || typeof root.contextMenu.attachToElement !== 'function') return;
+        anchor.dataset.nightshadeMenu = '1';
+        root.contextMenu.attachToElement(anchor, {
+            sections: [{
+                type: 'list',
+                items: [
+                    { icon: 'fas fa-circle-info', text: `Open ${TITLE}`, action: 'ns-open', bold: true },
+                    { icon: 'fas fa-rotate', text: 'Reconnect', action: 'ns-reconnect', disabled: () => state().service === 'connecting' },
+                    { separator: true },
+                    { icon: 'fas fa-right-from-bracket', text: 'Sign Out', action: 'ns-signout' }
+                ]
+            }],
+            onAction: (action) => {
+                if (action === 'ns-open') open();
+                else if (action === 'ns-reconnect') connect();
+                else if (action === 'ns-signout') call('runLogoutDirect');
+            }
+        });
+    }
+
+    root.nightshadeClient = { open, close, attachTrayMenu, _state: state, _signal: signal };
+    root.openNightshadeClient = open;
+})(typeof window !== 'undefined' ? window : globalThis);

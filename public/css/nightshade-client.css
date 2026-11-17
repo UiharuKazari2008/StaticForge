@@ -1,0 +1,108 @@
+/* Nightshade Network Client (Yozora #895; public/scripts/comp/nightshadeClient.js): the service's
+   connection manager, a light client with the kit's controls. Fixed size; the layout only, colours
+   and type come from the theme and the kit. */
+
+.nsc-window.nsc-window {
+    width: 400px;
+}
+
+.nsc-window .nsc-client {
+    display: flex;
+    flex-direction: column;
+    padding: 0 !important;
+}
+
+.nsc-window .nsc-body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px 10px;
+}
+
+/* the service's icon, name and status, the signal bars at the right */
+.nsc-window .nsc-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nsc-window .nsc-head > img:first-child {
+    width: 48px;
+    height: 48px;
+    flex: none;
+}
+
+.nsc-window .nsc-head-text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.nsc-window .nsc-name {
+    font-size: 15px;
+    color: var(--text-primary);
+}
+
+.nsc-window .nsc-status {
+    font-weight: bold;
+    color: var(--text-primary);
+}
+
+.nsc-window .nsc-signal {
+    width: 32px;
+    height: 32px;
+    flex: none;
+}
+
+/* label | value rows, indented under the name */
+.nsc-window .nsc-rows {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 3px 12px;
+    padding-left: 60px;
+}
+
+.nsc-window .nsc-rows > span:nth-child(odd) {
+    color: var(--text-muted);
+}
+
+.nsc-window .nsc-note {
+    padding-left: 60px;
+    color: var(--text-primary);
+}
+
+.nsc-window .nsc-note[hidden],
+.nsc-window .nsc-cafe[hidden],
+.nsc-window .nsc-footer [hidden] {
+    display: none !important;
+}
+
+/* "Powered by" and the CaféReady logo, its white lettering on the logo's own dark plate */
+.nsc-window .nsc-cafe {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 60px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.nsc-window .nsc-cafe-badge {
+    display: inline-flex;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background: var(--text-primary);
+}
+
+.nsc-window .nsc-cafe-badge img {
+    display: block;
+    height: 20px;
+    width: auto;
+}
+
+/* Close (and Connect) at the right, as a Vista dialog's buttons */
+.nsc-window .nsc-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+    padding: 0 14px 12px;
+}

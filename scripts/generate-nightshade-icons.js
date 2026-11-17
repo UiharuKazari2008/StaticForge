@@ -5,10 +5,11 @@
  * airbrush, no gloss sweep, no rounded crop).
  *
  *   public/static_images/vista-icons/nightshade-{16,32,48,256}.png   desktop tray, status panel, Control Panel
+ *   public/static_images/app_icons/nightshade-client.png             the Nightshade Network Client (512; sizes compiled)
  *   public/static_images/vista-icons/nightshade-alert-{16,32}.png    the red ! laid over the tray icon
  *                                                                     (10 / 20 px: the wallet alert's spot)
  *   public/static_images/wm61/set-nightshade{,@2x,@4x}.png           Settings > Connections applet (32 / 64 / 128)
- *   public/static_images/wm61/status-nightshade{,@2x,@4x}.png        the phone's title-bar glyph: 1-bit white,
+ *   public/static_images/wm61/status-nightshade{,@2x,@4x}.png        the phone's title-bar glyph (N box + "!"): 1-bit white,
  *                                                                     drawn at 2x on the mail glyph's rows (6..29)
  *                                                                     like generate-wm-continuity-status-icon.py
  *
@@ -132,19 +133,22 @@ function drawAlert(size) {
     return out;
 }
 
-// the phone's title-bar glyph: a square outline with a solid N inside, 1-bit white, 2 px strokes at 2x
+// the phone's title-bar glyph (shown only on a problem): a square outline with a solid N inside and
+// an exclamation mark beside it (Yukimi, Nov 17: a "!" icon, not a blinking one), 1-bit white, 2 px
+// strokes at 2x on the mail glyph's rows (6..29), a 2 px clear gap between the square and the mark
 function glyphOn(x, y) {
-    const sq = [4, 6, 28, 30]; // x0, y0, x1, y1 (rows 6..29)
+    const sq = [1, 6, 23, 30]; // x0, y0, x1, y1
+    // the mark: a bar (rows 6..22) and a dot (rows 26..29), 3 px wide
+    if (x >= 26 && x < 29) return (y >= 6 && y < 23) || (y >= 26 && y < 30);
     const inSq = x >= sq[0] && x < sq[2] && y >= sq[1] && y < sq[3];
     if (!inSq) return false;
     if (!(x >= sq[0] + 2 && x < sq[2] - 2 && y >= sq[1] + 2 && y < sq[3] - 2)) return true; // outline
-    // N inside with a 2 px gap from the outline: stems x 10..13 and 19..22, rows 11..25
+    // the N with a 2 px gap from the outline: stems x 6..8 and 15..17, rows 11..25
     if (y < 11 || y >= 25) return false;
-    if (x >= 10 && x < 13) return true;
-    if (x >= 19 && x < 22) return true;
-    // the diagonal from the left stem's top to the right stem's foot, 3 px wide
-    const t = (y - 11) / 14; // 0 at top, 1 at bottom
-    const cx = 11.5 + t * 9;
+    if (x >= 6 && x < 9) return true;
+    if (x >= 15 && x < 18) return true;
+    const t = (y - 11) / 14;
+    const cx = 7.5 + t * 9;
     return Math.abs(x + 0.5 - cx) < 1.6;
 }
 
@@ -152,11 +156,27 @@ function writeGlyph() {
     const W = 32;
     const g2 = [];
     for (let y = 0; y < W; y++) { g2.push([]); for (let x = 0; x < W; x++) g2[y].push(glyphOn(x, y) ? 1 : 0); }
-    const g1 = [];
-    for (let y = 0; y < 16; y++) {
-        g1.push([]);
-        for (let x = 0; x < 16; x++) g1[y].push(g2[2 * y][2 * x] + g2[2 * y][2 * x + 1] + g2[2 * y + 1][2 * x] + g2[2 * y + 1][2 * x + 1] >= 2 ? 1 : 0);
-    }
+    // 1x by hand (a 2x2 downscale blurs the N into an H): square x 0..10, rows 3..14; N stems x 3 and
+    // 7, its diagonal one pixel wide stepping every two rows; the mark at x 13 (bar 3..10, dot 13..14)
+    const G1 = [
+        '................',
+        '................',
+        '................',
+        '###########..#..',
+        '#.........#..#..',
+        '#..##...#.#..#..',
+        '#..##...#.#..#..',
+        '#..#.#..#.#..#..',
+        '#..#.#..#.#..#..',
+        '#..#..#.#.#..#..',
+        '#..#..#.#.#..#..',
+        '#..#...##.#.....',
+        '#..#...##.#.....',
+        '#.........#..#..',
+        '###########..#..',
+        '................'
+    ];
+    const g1 = G1.map((row) => [...row].map((ch) => (ch === '#' ? 1 : 0)));
     const g4 = [];
     for (let y = 0; y < 64; y++) { g4.push([]); for (let x = 0; x < 64; x++) g4[y].push(g2[y >> 1][x >> 1]); }
     const put = (grid, size, file) => {
@@ -179,6 +199,8 @@ function save(dir, file, cv) {
 
 save(VISTA, 'nightshade-16.png', drawSmall());
 for (const s of [32, 48, 256]) save(VISTA, `nightshade-${s}.png`, drawLarge(s));
+// the Nightshade Network Client's program icon: the compile step makes its 16 / 24 / 32 / 48 sizes
+save(path.join(ROOT, 'app_icons'), 'nightshade-client.png', drawLarge(512));
 save(VISTA, 'nightshade-alert-16.png', drawAlert(10));
 save(VISTA, 'nightshade-alert-32.png', drawAlert(20));
 save(WM, 'set-nightshade.png', drawLarge(32));

@@ -6781,6 +6781,10 @@ function buildToolsSubmenuItems(opts) {
         // VisionCaster (was QuickCast): video mixer remote for the cabinet mixers and the satellite encoder, and one-touch YouTube live, admins (Yozora #734; apps/quickcast, a system package)
         { launchId: 'quickcast', icon: 'fas fa-tower-broadcast', imageIcon: 'quickcast.png', text: 'VisionCaster', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'quickcast' }) },
         { launchId: 'xlink', icon: 'fas fa-joystick', imageIcon: 'xlink.png', text: 'XLink Operator Console', desktopOnly: true, appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'xlink' }) },
+        // Nightshade Network Client (#895): the service's connection manager (nightshadeClient.js, loaded with
+        // the desktop so it opens while the server is out of reach); its own program folder, as a broadband
+        // card's utility installs. The phone has Settings > Connections > Nightshade instead.
+        { launchId: 'nightshade', icon: 'fas fa-signal', imageIcon: 'nightshade-client.png', text: 'Nightshade Network Client', desktopOnly: true, appMenuLocation: 'tools', action: () => { if (typeof window.openNightshadeClient === 'function') window.openNightshadeClient(); } },
         // Accessories > WordPad (Yozora #632; apps/wordpad, a system package)
         { launchId: 'wordpad', icon: 'fas fa-file-word', imageIcon: 'vista-wordpad.png', text: 'WordPad', appMenuLocation: 'tools', action: () => melatonApps.launch({ packageId: 'wordpad' }) },
         // Accessories > Sound Recorder (Yozora #632; apps/soundrec, a system package)
@@ -8040,6 +8044,8 @@ const START_MENU_PACKAGE_APPS = [
 // Other publishers' program folders, the same way (Yozora #719: the AmusementVISION suite's XLink)
 const START_MENU_VENDOR_FOLDERS = [
     { folderId: 'amusementvision-2024', text: 'AmusementVISION 2024', apps: [['paypass', 'PayPass Operator'], ['quickcast', 'VisionCaster'], ['xlink', 'XLink Operator Console']] },
+    // the Nightshade Network's own folder (#895), as a mobile broadband utility installs itself
+    { folderId: 'nightshade-network', text: 'Nightshade Network', apps: [['nightshade', 'Nightshade Network Client']] },
     // Exchange 2007's own program folder, as its setup made it (#831)
     { folderId: 'exchange-2007', text: 'Microsoft Exchange Server 2007', apps: [['mmc-exchange', 'Exchange Management Console']] }
 ];

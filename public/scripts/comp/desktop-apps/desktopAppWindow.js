@@ -53,3 +53,62 @@ function desktopAppApplyContentHeight(modal, fixed) {
         modal.dataset.windowMinHeight = String(hug);
     }
 }
+
+/**
+ * A built-in desktop program's window (`app` kind: the light client with the kit's controls), for
+ * programs that are not packages (they must work offline, e.g. the Nightshade Network Client, #895)
+ * until the shared openWindow lands (#851 slice 3). Writes the caption with the image icon, the
+ * caption buttons, the focus overlay and the client; the caller fills the client and opens it.
+ *   desktopAppCreateWindow({ id, identifier, title, icon16, taskbarIcon, className, fixed, minimize })
+ *   -> { modal, content, close } (content: .modal-content.win7, empty; close: the caption's X)
+ */
+function desktopAppCreateWindow(opts) {
+    const o = opts || {};
+    const modal = document.createElement('div');
+    modal.id = o.id;
+    modal.className = `modal hidden${o.className ? ` ${o.className}` : ''}`;
+    modal.dataset.windowIdentifier = o.identifier || o.id;
+    modal.dataset.windowClient = 'light';
+    if (o.fixed) {
+        modal.dataset.windowFixedSize = 'true';
+        modal.dataset.windowRestoreSize = 'false';
+    }
+    if (o.taskbarIcon) modal.dataset.taskbarIcon = o.taskbarIcon;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-label', o.title || '');
+    const title = document.createElement('div');
+    title.className = 'modal-window-title';
+    const main = document.createElement('div');
+    main.className = 'modal-window-title-main';
+    const img = document.createElement('img');
+    img.className = 'icon-image';
+    img.alt = '';
+    img.src = o.icon16 || '/static_images/vista-icons/application-48.png';
+    const text = document.createElement('span');
+    text.textContent = o.title || '';
+    main.append(img, text);
+    title.appendChild(main);
+    const focus = document.createElement('div');
+    focus.className = 'modal-focus-overlay';
+    const controls = document.createElement('div');
+    controls.className = 'modal-window-controls';
+    const button = (cls, label, glyph) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = cls;
+        b.title = label;
+        const i = document.createElement('i');
+        i.className = glyph;
+        b.appendChild(i);
+        return b;
+    };
+    if (o.minimize) controls.appendChild(button('btn-secondary minimize-btn btn-small', 'Minimize', 'fa-regular fa-window-minimize'));
+    const close = button('btn-danger close-btn btn-small', 'Close', 'fa-regular fa-xmark-large');
+    controls.appendChild(close);
+    const content = document.createElement('div');
+    content.className = 'modal-content win7';
+    modal.append(title, focus, controls, content);
+    document.body.appendChild(modal);
+    return { modal, content, close };
+}
+window.desktopAppCreateWindow = desktopAppCreateWindow;
