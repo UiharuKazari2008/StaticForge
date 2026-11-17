@@ -1206,8 +1206,25 @@ function broadcast(message) {
     }
 }
 
+// lapis_updated only when the state changed (#890): every read, weather look and scheduler step
+// pushed it, though often the only field that moved was nextReadAt (when the next read is due, which
+// no page shows). seenAt ("read 10:35" on the phone's status page) is shown, so it still counts.
+let lastPushKey = null;
+
+function pushKey(state) {
+    try {
+        const { nextReadAt: _n, ...rest } = state || {};
+        return JSON.stringify(rest);
+    } catch (_e) {
+        return String(nowFn());
+    }
+}
+
 function pushState() {
     const state = getState();
+    const key = pushKey(state);
+    if (key === lastPushKey) return state;
+    lastPushKey = key;
     broadcast({ type: 'lapis_updated', data: { state } });
     return state;
 }
@@ -1271,6 +1288,7 @@ module.exports = {
             if (db) db.close();
             db = null;
             usageMemo = { key: '', value: null };
+            lastPushKey = null;
         },
     },
 };
