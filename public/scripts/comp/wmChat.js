@@ -499,17 +499,21 @@
 
 
     /**
+     * The phone shows the page now: not hidden, the screen on, not behind an Android program
+     * (wmShell.onScreen), and not under the 6.5 lock screen (wmLock65.js: the page is not [hidden]
+     * there, only covered). A reply that lands while it is not seen stays unread and gets its
+     * notification (document.hidden alone missed "the phone asleep").
+     */
+    const onScreenNow = () => {
+        if (!(sh && typeof sh.onScreen === 'function' ? sh.onScreen() : !document.hidden)) return false;
+        try { return !(window.wmLock && window.wmLock.isLocked); } catch (_) { return true; }
+    };
+
+    /**
      * You did something in the open conversation (scrolled, touched, typed, sent, the phone woke on it):
      * what came while it was away is read now (the list, Today, the notification), and its lines stop
      * reading bold.
      */
-    /**
-     * The phone shows the page now: not hidden, the screen on, not behind an Android program
-     * (wmShell.onScreen). A reply that lands with the screen off is not seen: it stays unread and gets
-     * its notification (document.hidden alone missed "the phone asleep").
-     */
-    const onScreenNow = () => (sh && typeof sh.onScreen === 'function' ? sh.onScreen() : !document.hidden);
-
     function engagedChat() {
         if (!conv || conv.id === 'new' || view() !== 'conv' || !isCurrent() || !onScreenNow()) return;
         const p = previews.get(conv.id);
@@ -1578,13 +1582,16 @@
         hookStream();
         patchDesktop();
         scheduleBgUnread();
-        // the phone woke (or the app came back) with a conversation on screen: what it shows is read
-        const woke = () => {
+        // the phone woke (or the app came back, or the lock screen went) with a conversation on screen:
+        // what it shows is read. After the event's other listeners, so a lock screen that comes up on
+        // this same wake (wmLock65 idle lock) is up before it looks
+        const woke = () => setTimeout(() => {
             if (onScreenNow() && conv && conv.id !== 'new' && view() === 'conv' && isCurrent()) markConvSeen();
-        };
+        }, 0);
         document.addEventListener('visibilitychange', woke);
         window.addEventListener('melatonscreen', woke);
         document.addEventListener('wmBehind', woke);
+        document.addEventListener('wmLockChange', (e) => { if (e.detail && e.detail.locked === false) woke(); });
         // Messaging > Options > Dreamscape Messenger saved (wmSettingsSystem.js chat-options)
         window.addEventListener('wmChatOptionsChange', () => {
             showActions = stored(ACTIONS_KEY) === '1';
