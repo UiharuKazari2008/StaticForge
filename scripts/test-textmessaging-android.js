@@ -160,13 +160,15 @@ const post = (d) => tap('notify.posted', Object.assign({ package: 'com.discord',
     assert.strictEqual(s.length, 1);
 
     // a phone that reconnects: what it shows now is taken (posted while the server was away)
-    phoneShows = [{ package: 'com.discord', app: 'Discord', key: 'k7', title: 'Sora', text: 'missed me?', time: Date.now() + 40,
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    phoneShows = [{ package: 'com.discord', app: 'Discord', key: 'k7', icon: PNG, title: 'Sora', text: 'missed me?', time: Date.now() + 40,
         conv: { title: 'Sora', shortcut: 'dm-sora' }, messages: [{ text: 'missed me?', time: Date.now() + 40, sender: 'Sora', senderKey: 'u7' }],
         actions: [{ i: 0, title: 'Reply', reply: true }] }];
     hello({ id: 'dev-fold', speaker: 'service', session: 'partner', name: 'Galaxy Z Fold7' });
     await wait(5300);
     const sora = (await tm.listChats('app-discord')).chats.find((c) => c.title === 'Sora');
     assert.ok(sora && sora.unread && sora.canReply, 'the catch-up after a reconnect');
+    assert.ok(tm.avatar('app-discord', 'app'), 'the app icon from the catch-up list');
 
     tm.deleteAccount('app-discord');
     tm._reset();
