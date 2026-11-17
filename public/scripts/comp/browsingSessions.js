@@ -19,6 +19,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const DEVICE_KEY = 'dreamscape.deviceId';
     const REPORT_DELAY_MS = 800;
@@ -199,7 +200,15 @@
         // the net looks only while the page is in sight (a phone's screen off counts as out of sight,
         // html[data-screen-off]); nothing on a page out of sight changes its browser windows (#890)
         const asleep = () => root.document.visibilityState !== 'visible' || root.document.documentElement.dataset.screenOff !== undefined;
-        pollTimer = setInterval(() => { if (!asleep()) report(false); }, POLL_MS);
+        // its interval stops while out of sight too (no wake a minute for nothing, #890), and starts again
+        // with the page back
+        const syncPoll = () => {
+            if (!asleep()) { if (!pollTimer) pollTimer = setInterval(() => { if (asleep()) syncPoll(); else report(false); }, POLL_MS); }
+            else if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        };
+        syncPoll();
+        root.document.addEventListener('visibilitychange', syncPoll, { signal: appScopeSignal });
+        root.addEventListener('melatonscreen', () => setTimeout(syncPoll, 0), { signal: appScopeSignal });
     }
 
     // ---- requests ----
