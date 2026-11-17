@@ -991,3 +991,15 @@
 #melatonMessengerModal .mm-row-pic.is-blank[data-business="1"] {
     background: url('/static_images/wm61/app-office-lg.png') no-repeat center / 20px 20px, linear-gradient(#f3f5f8, #dfe5ec) content-box, #fff;
 }
+
+/* an Android app account's conversation title (#885): a link that opens it in the app on the phone */
+#melatonMessengerModal .mm-conv-open {
+    color: #0066cc;
+    cursor: pointer;
+}
+
+#melatonMessengerModal .mm-conv-open:hover,
+#melatonMessengerModal .mm-conv-open:focus-visible {
+    color: #3399ff;
+    text-decoration: underline;
+}

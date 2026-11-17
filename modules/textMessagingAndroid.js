@@ -17,6 +17,10 @@
  *                  { key, action, text } on the phone that posted it, while the phone still shows it.
  *   actions        every other action of the notification (Mark as read, Mute, ...) is listed on the
  *                  chat (chat.actions) and run with action() = device op notify.action { key, action }.
+ *   open           open() fires what a tap on the conversation's newest notification opens (its
+ *                  contentIntent, device op notify.open; the phone keeps it after the notification is
+ *                  gone), else starts the app (apps.manage open). chat.open { key, device } lets the
+ *                  phone that posted it do the same itself (AndroidActiveSync.openNotification).
  *   read           markRead() runs the app's own Mark as read action, else dismisses the notification.
  *                  A notification removed on the phone (read in the app, swiped) marks the chat read.
  *
@@ -310,6 +314,8 @@ class AndroidAppProvider {
             actions,
             reply: replyAction ? replyAction.i : null
         });
+        // what a tap opens: kept after the notification is gone (the phone keeps its intent too)
+        if (d.opens && d.key) { chat.openKey = str(d.key, 300); chat.openDevice = String(deviceId || chat.device || ''); }
         if (deviceId) { this.device = String(deviceId); if (deviceName) this.deviceName = String(deviceName); }
         if (d.avatar) {
             const buf = dataUrlBytes(d.avatar);
@@ -436,7 +442,11 @@ class AndroidAppProvider {
             // what the notification on the phone offers now (gone with the notification)
             canReply: c.reply != null && !!c.key,
             actions: c.key ? (c.actions || []).filter((a) => !a.reply).map((a) => ({ id: a.i, title: a.title })) : [],
-            sub: c.sub || ''
+            sub: c.sub || '',
+            // Open in <app> (#885): the notification's own tap target on the phone that posted it, else the app
+            package: this.pkg,
+            app: c.app || this.label,
+            open: c.openKey ? { key: c.openKey, device: c.openDevice || c.device || '' } : null
         };
     }
 
@@ -511,6 +521,28 @@ class AndroidAppProvider {
             this.emit('read', { chatGuid, read: true });
         }
         return { ok: true };
+    }
+
+    /**
+     * Open in <app>: on the phone that posted it, what a tap on the conversation's newest notification
+     * opens (Discord at that channel); when the phone no longer knows it, the app itself.
+     * { opened: 'notification' | 'app' }.
+     */
+    async open({ chatGuid }) {
+        const c = this.rawChat(chatGuid);
+        if (!c) throw Object.assign(new Error('That conversation is not here any more.'), { code: 'NOT_FOUND' });
+        const device = c.openDevice || this.deviceOf(c);
+        if (c.openKey) {
+            let ok = false;
+            try { ok = (await activeSync().serverCall(resources(), null, device, 'notify.open', { key: c.openKey }, { timeoutMs: CALL_MS })) === true; } catch (error) { this.log(`notify.open: ${error.message}`); }
+            if (ok) return { opened: 'notification' };
+        }
+        try {
+            await activeSync().serverCall(resources(), null, device, 'apps.manage', { package: this.pkg, action: 'open' }, { timeoutMs: CALL_MS });
+        } catch (error) {
+            throw Object.assign(new Error(`${this.label} could not be opened on the phone. ${error.message || ''}`.trim()), { code: error.code || 'OPEN_FAILED' });
+        }
+        return { opened: 'app' };
     }
 
     async markRead({ chatGuid }) {

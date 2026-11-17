@@ -350,6 +350,7 @@
                         { separator: true },
                         c.unread ? { text: 'Mark as Read', action: 'row-read' } : { text: 'Mark as Unread', action: 'row-unread' },
                         ...(this.features().deleteChat ? [{ separator: true }, { text: 'Delete', action: 'row-delete' }] : []),
+                        ...(this.canOpenInApp(c) ? [{ separator: true }, { text: `Open in ${c.app || 'App'}`, action: 'row-open-app' }] : []),
                         ...this.notifyActionItems(c, 'row-act:')
                     ] : [{ text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((x) => x.unread) }] }];
                 },
@@ -720,6 +721,8 @@
                 case 'row-unread': this.markUnread(this.menuGuid); return;
                 case 'delete-chat': await this.deleteChat(this.chatGuid); return;
                 case 'row-delete': await this.deleteChat(this.menuGuid); return;
+                case 'open-app': await this.openInApp(this.chatGuid); return;
+                case 'row-open-app': await this.openInApp(this.menuGuid); return;
                 case 'mark-all-read':
                     for (const c of this.chats.filter((x) => x.unread)) { c.unread = false; if (t && a) void t.markRead(a.id, c.guid).catch(() => {}); }
                     this.renderList();
@@ -758,6 +761,7 @@
 
         keydown(ev) {
             const k = ev.key;
+            if ((k === 'Enter' || k === ' ') && ev.target && ev.target.classList && ev.target.classList.contains('mm-conv-open')) { ev.preventDefault(); void this.command('open-app'); return; }
             const ctrl = ev.ctrlKey || ev.metaKey;
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'n') { ev.preventDefault(); void this.command('new'); return; }
             if (ctrl && !ev.shiftKey && k.toLowerCase() === 'r') { ev.preventDefault(); void this.command('reply'); return; }
@@ -804,6 +808,7 @@
                     { text: 'Mark as Unread', subtext: 'Ctrl+U', action: 'mark-unread', disabled: !inChat || !!(this.chat() && this.chat().unread) },
                     f.deleteChat ? { text: 'Delete Conversation', subtext: 'Ctrl+D', action: 'delete-chat', disabled: !inChat } : null,
                     { text: 'Mark All Read', action: 'mark-all-read', disabled: !this.chats.some((c) => c.unread) },
+                    ...(inChat && this.canOpenInApp(this.chat()) ? [{ separator: true }, { text: `Open in ${this.chat().app || 'App'}`, action: 'open-app' }] : []),
                     ...(inChat ? this.notifyActionItems(this.chat(), 'act:') : [])
                 ].filter(Boolean);
             }
@@ -839,6 +844,31 @@
         notifyActionItems(c, prefix) {
             const list = c && Array.isArray(c.actions) ? c.actions : [];
             return list.length ? [{ separator: true }].concat(list.map((x) => ({ text: x.title, action: `${prefix}${x.id}` }))) : [];
+        }
+
+        canOpenInApp(c) { const a = this.account(); return !!(c && c.package && a && a.kind === 'android'); }
+
+        /**
+         * Open in <app> (#885): what a tap on the conversation's notification opens, on the phone that
+         * posted it (inside the Android app, DeX, when that is this device: itself), else the app.
+         */
+        async openInApp(guid) {
+            const t = tm();
+            const a = this.account();
+            const c = this.chat(guid);
+            if (!t || !a || !this.canOpenInApp(c)) return;
+            const A = root.AndroidActiveSync;
+            const here = !!(A && typeof A.getDeviceId === 'function' && c.open && c.open.device && A.getDeviceId() === c.open.device);
+            if (here) {
+                try { if (typeof A.openNotification === 'function' && A.openNotification(c.open.key) === true) return; } catch (_) { /* the app below */ }
+                try { if (root.AndroidApps && root.AndroidApps.launch(c.package) === true) return; } catch (_) { /* the server below */ }
+            }
+            this.busy(true);
+            try {
+                await t.openInApp(a.id, c.guid);
+            } catch (err) {
+                await this.message_(`${c.app || 'The app'} could not be opened.\n${(err && err.message) || err}`);
+            } finally { this.busy(false); }
         }
 
         async notifyAction(guid, id) {
@@ -1199,7 +1229,9 @@
                 return;
             }
             const people = c ? (c.participants || []).map((p) => (p.name && p.address && p.name !== p.address ? `${p.name} <${p.address}>` : (p.name || p.address))).join('; ') : '';
-            head.innerHTML = `<div class="mm-conv-title">${esc((c && (c.title || c.identifier)) || 'Conversation')}</div>
+            // an Android app account (#885): the title opens the conversation in the app on the phone
+            const title = esc((c && (c.title || c.identifier)) || 'Conversation');
+            head.innerHTML = `<div class="mm-conv-title">${this.canOpenInApp(c) ? `<span class="mm-conv-open" role="link" tabindex="0" data-mm="open-app" title="Open in ${esc(c.app || 'the app')} on the phone">${title}</span>` : title}</div>
                 <div class="mm-conv-people"><span class="mm-hlabel">${c && c.isGroup ? 'Members:' : 'To:'}</span> ${esc(people)}${c && c.service ? ` <span class="mm-conv-service">(${esc(c.service)})</span>` : ''}</div>
                 ${c && c.known === false ? '<div class="mm-infobar">This sender is not in your contacts. Messages from unknown senders are kept in Unknown Senders.</div>' : ''}`;
             this.q('.mm-input').placeholder = f.attachments !== false ? 'Type a message, or drop a file here' : 'Type a message';

@@ -20,6 +20,7 @@ const broadcasts = [];
 let tap = null;
 let hello = null;
 let phoneShows = [];
+let openAnswer = true;
 
 const stub = (name, exports) => { require.cache[require.resolve(`../modules/${name}`)] = { id: name, filename: name, loaded: true, exports }; };
 stub('globalResources', {
@@ -38,7 +39,7 @@ stub('activeSync', {
     serverCall: async (_g, _w, deviceId, op, args) => {
         if (op === 'notify.list') return { notifications: phoneShows };
         calls.push({ deviceId, op, args });
-        return true;
+        return op === 'notify.open' ? openAnswer : true;
     }
 });
 const inbox = [];
@@ -66,7 +67,7 @@ const post = (d) => tap('notify.posted', Object.assign({ package: 'com.discord',
     // a channel with two lines, a quick reply and two buttons
     const base = {
         key: '0|com.discord|1|ch1|10123', title: 'Mio', text: 'see you', time: 2000, sub: 'Night Owls',
-        conv: { title: '#general', group: true, shortcut: 'channel-1' },
+        conv: { title: '#general', group: true, shortcut: 'channel-1' }, opens: true,
         messages: [{ text: 'hello', time: 1000, sender: 'Aki', senderKey: 'u1' }, { text: 'see you', time: 2000, sender: 'Mio', senderKey: 'u2' }],
         actions: [{ i: 0, title: 'Reply', reply: true }, { i: 1, title: 'Mark as Read', semantic: 2 }, { i: 2, title: 'Mute', semantic: 6 }]
     };
@@ -112,6 +113,16 @@ const post = (d) => tap('notify.posted', Object.assign({ package: 'com.discord',
     await wait(10);
     assert.deepStrictEqual(calls.pop(), { deviceId: 'dev-fold', op: 'notify.action', args: { key: base.key, action: 1 } });
     assert.strictEqual((await tm.getChat('app-discord', chat.guid)).unread, false);
+
+    // Open in Discord: the notification's tap target on the phone that posted it, else the app
+    assert.deepStrictEqual((await tm.getChat('app-discord', chat.guid)).open, { key: base.key, device: 'dev-fold' });
+    openAnswer = true;
+    assert.deepStrictEqual(await tm.openInApp('app-discord', { chatGuid: chat.guid }), { opened: 'notification' });
+    assert.deepStrictEqual(calls.pop(), { deviceId: 'dev-fold', op: 'notify.open', args: { key: base.key } });
+    openAnswer = false;
+    assert.deepStrictEqual(await tm.openInApp('app-discord', { chatGuid: chat.guid }), { opened: 'app' });
+    assert.deepStrictEqual(calls.pop(), { deviceId: 'dev-fold', op: 'apps.manage', args: { package: 'com.discord', action: 'open' } });
+    calls.pop();
 
     // the other buttons
     await tm.action('app-discord', { chatGuid: chat.guid, action: 2 });

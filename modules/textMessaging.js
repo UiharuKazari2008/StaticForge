@@ -543,6 +543,13 @@ async function action(accountId, args) {
 
 function androidAppIcon(pkg) { return androidApps.appIcon(pkg); }
 
+/** Open in <app> (#885): what the conversation's notification opens on the phone, else the app. */
+async function openInApp(accountId, args) {
+    const p = provider(accountId);
+    if (typeof p.open !== 'function') throw Object.assign(new Error('This account has no app to open.'), { code: 'UNSUPPORTED' });
+    return p.open(args || {});
+}
+
 function deleteAccount(id) {
     const cfg = readConfig();
     cfg.accounts = cfg.accounts.filter((a) => a.id !== id);
@@ -904,7 +911,7 @@ function _reset() {
 
 module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
-    recentAndroidApps, action, androidAppIcon,
+    recentAndroidApps, action, androidAppIcon, openInApp,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
     downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
 };
