@@ -8373,6 +8373,23 @@
     const todayWidgets = [];
 
     /**
+     * The Today items switched off in Settings > Today > Items (wmTodayItems = [{ id, on }]), as a Set: an
+     * item listed with on: false, and one that ships off (defaultOn: false) until Settings lists it. Worked
+     * out once per stored list and item count (#890).
+     */
+    let itemsOffMemo = null;
+    function todayItemsOff() {
+        const list = lsJsonCached(TODAY_ITEMS_KEY);
+        if (itemsOffMemo && itemsOffMemo.list === list && itemsOffMemo.n === todayWidgets.length) return itemsOffMemo.off;
+        const off = new Set();
+        const saved = new Set(Array.isArray(list) ? list.map((it) => it && it.id) : []);
+        todayWidgets.forEach((w) => { if (w.defaultOn === false && !saved.has(w.id)) off.add(w.id); });
+        if (Array.isArray(list)) list.forEach((it) => { if (it && it.id && it.on === false) off.add(it.id); });
+        itemsOffMemo = { list, n: todayWidgets.length, off };
+        return off;
+    }
+
+    /**
      * Settings > Today > Items > Options... (WM 6.1's Options button): per-row choices, stored per
      * device in wmTodayOptions = { rowId: { key: value } }. The shell's own rows have these; an app's
      * row brings its own (registerTodayItem options: [{ key, label, choices: [[value, label]], value }];
@@ -8462,9 +8479,26 @@
         return (w && Array.isArray(w.options)) ? w.options : [];
     }
 
+    /*
+     * A stored JSON setting, parsed once per stored text (#890): Today's options and items were parsed on
+     * every read, several times per item per draw. Keyed on the stored string itself, so a write from
+     * anywhere (Settings, the workspace's own copy, the other window of the app) is seen at once, with no
+     * event to wait for. The value is shared: callers must not change it.
+     */
+    const lsJsonMemo = new Map(); // key -> { raw, value }
+    function lsJsonCached(key) {
+        let raw = null;
+        try { raw = localStorage.getItem(key); } catch (_) { raw = null; }
+        const m = lsJsonMemo.get(key);
+        if (m && m.raw === raw) return m.value;
+        let value = null;
+        try { value = JSON.parse(raw || 'null'); } catch (_) { value = null; }
+        lsJsonMemo.set(key, { raw, value });
+        return value;
+    }
+
     function todayOption(id, key) {
-        let all = null;
-        try { all = JSON.parse(localStorage.getItem(TODAY_OPTIONS_KEY) || 'null'); } catch (_) { all = null; }
+        const all = lsJsonCached(TODAY_OPTIONS_KEY);
         const v = all && all[id] && all[id][key];
         const def = todayOptionDefs(id).find((o) => o.key === key);
         // type 'checks': a check box per choice, stored as the comma list of the unchecked values
@@ -8530,7 +8564,7 @@
             mailLoading = false;
             if (!ok) { mailFailedAt = Date.now(); return; }
             mailFailedAt = 0;
-            if (current === 'today') today.refresh();
+            if (current === 'today') todayApp().refresh();
         }
 
         /**
@@ -8635,6 +8669,9 @@
             row.querySelectorAll('.wm-today-search-step').forEach((b) => { if (b.hidden === many) b.hidden = !many; });
         }
 
+        // the app as the shell keeps it (registerApp stores a copy: its page, stale flag and queued draw live
+        // there, so a draw asked of this object literal found no page and did nothing, #890)
+        const todayApp = () => apps.get('today') || today;
         const today = {
             id: 'today',
             title: 'Today',
@@ -8739,14 +8776,14 @@
                     // the push carries the person's unread inbox: no second read of the list
                     const pushed = ev.detail && ev.detail.unreadInbox && ev.detail.unreadInbox[owner];
                     mailNewCheck(Array.isArray(pushed) ? pushed : null);
-                    refreshStatus();
+                    statusDirty();
                 });
-                window.addEventListener('meletonaccountschange', () => today.refresh());
+                window.addEventListener('meletonaccountschange', () => todayApp().refresh());
                 // the gallery list came in after boot (appInitSteps.js): Today's prints (stale if off screen)
-                document.addEventListener('galleryUpdated', () => today.refresh());
-                const back = () => { if (today.stale && current === 'today') today.refresh(); };
-                document.addEventListener('visibilitychange', back);
-                window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) back(); });
+                document.addEventListener('galleryUpdated', () => todayApp().refresh());
+                // back on screen (the screen on, the page shown, back from behind an Android program): a stale Today draws
+                const back = () => { const t = todayApp(); if (t.stale && current === 'today') t.refresh(); };
+                document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) back(); });
             },
             show() {
                 if (mailUnread == null) loadMail();
@@ -8760,14 +8797,66 @@
                 this._drawQueued = true;
                 requestAnimationFrame(() => { this._drawQueued = false; this.draw(); });
             },
+            /*
+             * The minute tick (#890): the clock and date, and the items that show a time (wantsMinute, an
+             * item's own flag; an item that does not say is drawn too), not the whole of Today. Kept while
+             * Today shows (the minute is its sign of life); asleep it waits for the full draw at show.
+             */
+            minute() {
+                if (!this.page) return;
+                if (this.stale || current !== 'today' || !awake()) { if (current === 'today' && awake()) this.refresh(); else this.stale = true; return; }
+                // a new day: everything that names a day ("Tomorrow", a print's date, e-mail times) draws again
+                if (this._day && this._day !== new Date().toDateString()) { this.refresh(); return; }
+                const off = todayItemsOff();
+                this.refreshItems(todayWidgets.filter((w) => w.wantsMinute !== false && !off.has(w.id)).map((w) => w.id), true);
+            },
+            /**
+             * Only these items drawn again (an item's own data came in: wmShell.refreshTodayItem), 6.5's
+             * panels for them with them; once per frame for a burst. Not on screen: Today is marked stale
+             * and drawn in full when it shows.
+             */
+            refreshItems(ids, clock) {
+                if (!this.page) return;
+                if (current !== 'today' || !awake()) { this.stale = true; return; }
+                if (this._drawQueued) return; // the full draw takes them
+                if (!this._itemsQueued) {
+                    this._itemsQueued = { ids: new Set(), clock: false };
+                    requestAnimationFrame(() => this.paintItems());
+                }
+                (ids || []).forEach((id) => this._itemsQueued.ids.add(id));
+                if (clock) this._itemsQueued.clock = true;
+            },
+            paintItems() {
+                const q = this._itemsQueued;
+                this._itemsQueued = null;
+                const page = this.page;
+                if (!q || !page || this._drawQueued) return;
+                if (current !== 'today' || !awake()) { this.stale = true; return; }
+                if (q.clock) {
+                    const now = new Date();
+                    setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
+                    setText(page.querySelector('[data-f="date"]'), fmtDate.format(now));
+                    setText(page.querySelector('[data-f="time"]'), fmtTime.format(now));
+                }
+                if (q.ids.size && paintTodayWidgets(page, q.ids)) markTodayLast(page);
+                // 6.5: the home screen's panels of these items (and the clock's); a panel that came or went redraws it all
+                if (todayView) {
+                    const ids = [...q.ids];
+                    if (q.clock) ids.unshift('date');
+                    let done = false;
+                    try { done = typeof todayView.update === 'function' && !!todayView.update(page, ids); } catch (err) { console.warn('[wmShell] today view', err); }
+                    if (!done) { try { todayView.refresh(page); } catch (err) { console.warn('[wmShell] today view', err); } }
+                }
+            },
             draw() {
                 this._drawQueued = false;
+                this._itemsQueued = null;
                 const page = this.page;
                 if (!page) return;
                 // nothing draws Today while it is not on screen (another app in front, the page hidden,
                 // the screen off): it is marked stale and drawn in full when it shows again (Yukimi,
                 // Nov 14: Traffic's minute tick laid it out behind the Pictures app)
-                if (current !== 'today' || document.hidden || root.dataset.screenOff !== undefined) { this.stale = true; return; }
+                if (current !== 'today' || !awake()) { this.stale = true; return; }
                 this.stale = false;
                 // layout reads first, before this draw's writes dirty the styles again
                 const strip = page.querySelector('[data-row="prints"]');
@@ -8775,6 +8864,7 @@
                 const stripWidth = strip.clientWidth || page.clientWidth;
                 applyTodayBackground();
                 const now = new Date();
+                this._day = now.toDateString();
                 setText(page.querySelector('[data-f="day"]'), fmtDay.format(now));
                 setText(page.querySelector('[data-f="date"]'), fmtDate.format(now));
                 setText(page.querySelector('[data-f="time"]'), fmtTime.format(now));
@@ -8877,8 +8967,12 @@
          * art name or '/path'), after (the row id to follow), text() -> string ('' hides the row),
          * onTap() }. Each refresh of Today repaints them; Settings > Today > Items lists them.
          */
-        function paintTodayWidgets(page) {
+        function paintTodayWidgets(page, only) {
+            // only: a Set of the item ids to draw (refreshItems); true back when a row came or went
+            const off = todayItemsOff();
+            let changed = false;
             for (const w of todayWidgets) {
+                if (only && !only.has(w.id)) continue;
                 let row = page.querySelector(`[data-row="${CSS.escape(w.id)}"]`);
                 if (!row) {
                     // a block (render): the widget draws its own content in a Today item box; a row
@@ -8892,19 +8986,24 @@
                     const after = w.after && page.querySelector(`[data-row="${CSS.escape(w.after)}"]`);
                     if (after) after.after(row); else page.querySelector('[data-row="search"]').before(row);
                     itemsKey = null; // the stored order places the new row next time
+                    changed = true;
                 }
+                // switched off in Settings > Today > Items: nothing to draw (applyTodayItems hides the row).
+                // Its render ran on every draw before and read its data, a sync bridge call or two among them (#890)
+                if (off.has(w.id)) continue;
                 if (typeof w.render === 'function') {
                     // render(el, { option }) returns false to hide the block; it repaints only what changed
                     let shown = true;
                     try { shown = w.render(row, { option: (key) => todayOption(w.id, key) }) !== false; } catch (err) { shown = false; console.warn('[wmShell] today block', w.id, err); }
-                    if (row.hidden !== !shown) row.hidden = !shown;
+                    if (row.hidden !== !shown) { row.hidden = !shown; changed = true; }
                     continue;
                 }
                 let text = '';
                 try { text = String(w.text() || ''); } catch (_) { text = ''; }
-                if (row.hidden !== !text) row.hidden = !text;
+                if (row.hidden !== !text) { row.hidden = !text; changed = true; }
                 setText(row.querySelector('.wm-today-text'), text);
             }
+            return changed;
         }
 
         /** The last row on screen draws no rule under it (rows hide and switch off, so CSS cannot tell). */
@@ -8921,15 +9020,10 @@
         // Settings > Today > Items: order and on / off of the rows (wmTodayItems = [{ id, on }])
         let itemsKey = null;
         function applyTodayItems(page) {
-            let list = null;
-            let raw = null;
-            try { raw = localStorage.getItem(TODAY_ITEMS_KEY); list = JSON.parse(raw || 'null'); } catch (_) { list = null; }
-            const off = new Set();
-            // a widget that ships switched off (defaultOn: false) stays off until Settings turns it on
-            const saved = new Set(Array.isArray(list) ? list.map((it) => it && it.id) : []);
-            todayWidgets.forEach((w) => { if (w.defaultOn === false && !saved.has(w.id)) off.add(w.id); });
+            const list = lsJsonCached(TODAY_ITEMS_KEY);
+            const raw = lsJsonMemo.has(TODAY_ITEMS_KEY) ? lsJsonMemo.get(TODAY_ITEMS_KEY).raw : null;
+            const off = todayItemsOff();
             if (Array.isArray(list)) {
-                list.forEach((it) => { if (it && it.id && it.on === false) off.add(it.id); });
                 if (raw !== itemsKey) {
                     // the rows in the stored order; rows not in the list keep their place at the end,
                     // or go after the row they name (an item newer than the list: 6.5's text, #763)
@@ -8953,7 +9047,7 @@
 
         registerApp(today);
         // switching workspace changes Today's rows, theme and prints
-        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; applyTodayBackground(true); today.refresh(); });
+        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; applyTodayBackground(true); todayApp().refresh(); });
         // another window saved this workspace's phone placement (settings_updated carries it)
         document.addEventListener('workspaceUpdated', (ev) => {
             const d = ev && ev.detail;
@@ -11269,11 +11363,24 @@
         /**
          * A Today item from an app: a row registerTodayItem({ id, label, icon, after, text(), onTap(),
          * options }) or a block { id, label, after, render(el, { option }) -> false hides, options }.
-         * Today repaints every 2 s: render must be cheap and repaint only what changed.
+         * render must be cheap and repaint only what changed. Today draws in full when it shows and on real
+         * changes; an item switched off is not drawn. wantsMinute: false keeps an item out of the minute
+         * tick (only items that show a time need it; one that does not say is drawn each minute, #890);
+         * refreshTodayItem(id) draws only that item when its own data came in.
          */
         registerTodayItem: (w) => registerTodayItem(w),
         // an item's data changed after Today drew it (Text Messaging's accounts load late, #779)
         refreshToday: () => { const t = apps.get('today'); if (t && t.page) t.refresh(); },
+        /**
+         * Only these items drawn again (#890): an item's own data came in (a reply, a push, a media change).
+         * Its 6.1 block or row and its 6.5 panel, once per frame; Today not on screen: drawn in full at show.
+         * An item with wantsMinute: false is left out of the minute tick (one that does not say is in it).
+         */
+        refreshTodayItem: (ids) => { const t = apps.get('today'); if (t && t.page && typeof t.refreshItems === 'function') t.refreshItems(Array.isArray(ids) ? ids : [ids]); },
+        /** Whether a Today item is switched off in Settings > Today > Items (its defaultOn counted). */
+        todayItemOff: (id) => todayItemsOff().has(id),
+        /** The stored Today items list ([{ id, on }] or null), parsed once per change; do not modify it. */
+        todayItems: () => { const v = lsJsonCached(TODAY_ITEMS_KEY); return Array.isArray(v) ? v : null; },
         /** Today rows from apps: [{ id, label }] (Settings > Today > Items). */
         listTodayItems: () => todayWidgets.map((w) => ({ id: w.id, label: w.label || w.id, defaultOn: w.defaultOn !== false })),
         /** 6.5 (#739): the registered Today items themselves (their titanium() panels), and the home screen's hook. */

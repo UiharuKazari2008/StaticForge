@@ -118,6 +118,8 @@
     // ---------------------------------------------------------------- settings
 
     function storedItems() {
+        // the shell's copy, parsed once per change (#890: enabled() and buildPanels read it on every draw)
+        if (typeof sh.todayItems === 'function') return sh.todayItems();
         try { const v = JSON.parse(localStorage.getItem(sh.todayItemsKey) || 'null'); return Array.isArray(v) ? v : null; } catch (_) { return null; }
     }
 
@@ -415,8 +417,10 @@
     // with no order chosen in Settings the panels follow 6.5's own (wmShell.todayOrder65): the
     // clock is home, in the middle of the list, the places above it and what arrives below
 
+    let lastSt = {}; // Today's state the panels were last built from (the minute's clock panel reuses it)
     function buildPanels() {
         const st = sh.todayState() || {};
+        lastSt = st;
         const defs = new Map(sh.todayItemDefs().map((w) => [w.id, w]));
         const rows = [...page.querySelectorAll(':scope > [data-row]')];
         let ids = rows.filter((r) => !r.classList.contains('wm-today-off')).map((r) => r.dataset.row);
@@ -1860,6 +1864,8 @@
             skSel = sel;
             sh.refreshSoftKeys();
             if (open) openSelected();
+            // what came in while the list moved (a refresh it skipped) draws now it has landed and grown in
+            else if (missed && page && sh.current === 'today' && !dragging && !settle) { missed = false; view.refresh(page); }
         }, (entering ? ENTER_ZOOM_MS : ZOOM_MS) + KEY_MS);
     }
 
@@ -2068,6 +2074,7 @@
 
     // ---------------------------------------------------------------- the Today view
 
+    let missed = false; // a repaint came while the list moved: it lands, then draws
     const view = {
         refresh(todayPage) {
             page = todayPage;
@@ -2076,7 +2083,9 @@
             if (!on) { if (host) host.hidden = true; return; }
             if (!host) build();
             host.hidden = false;
-            if (dragging || settle) return; // the list is moving: the next repaint (2 s) takes the new data
+            // the list is moving: it draws the new data once it has landed (arrive); there is no timed repaint
+            if (dragging || settle) { missed = true; return; }
+            missed = false;
             const selId = panels[sel] && panels[sel].id;
             panels = buildPanels();
             const key = panels.map((p) => p.id).join('|');
@@ -2093,6 +2102,45 @@
             drawRows();
             place();
             drawExpanded();
+        },
+        /**
+         * Only these panels built again (#890: the minute tick's clock, an item's own data): drawn in place.
+         * false when that is not enough (a panel came or went, the weather that the clock carries): the
+         * shell then runs refresh.
+         */
+        update(todayPage, ids) {
+            page = todayPage;
+            const on = enabled();
+            if (!on) return !host || host.hidden; // off and already put away: nothing to draw
+            if (!host || host.hidden || !page.classList.contains('is-titanium')) return false;
+            if (dragging || settle) { missed = true; return true; }
+            if (ids.includes('weather')) return false; // the clock carries the weather (buildPanels)
+            const defs = new Map(sh.todayItemDefs().map((w) => [w.id, w]));
+            const rows = [...page.querySelectorAll(':scope > [data-row]')];
+            let touched = false;
+            for (const id of new Set(ids)) {
+                const i = panels.findIndex((p) => p.id === id);
+                const rowEl = rows.find((r) => r.dataset.row === id) || null;
+                if (rowEl && rowEl.classList.contains('wm-today-off')) { if (i >= 0) return false; continue; }
+                const w = defs.get(id);
+                let p = null;
+                if (w) p = widgetPanel(w, rowEl);
+                else if (id === 'date') p = builtin('date', lastSt, rowEl);
+                else if (i >= 0) return false; // a shell row on show: the whole list
+                else continue; // not an item here
+                const ok = !!(p && Array.isArray(p.pages) && p.pages.length);
+                if (ok !== (i >= 0)) return false; // a panel came or went
+                if (!ok) continue;
+                // the clock with or without the weather decides whether the weather item shows: the whole list
+                if (id === 'date' && !!(p.pages[0] && p.pages[0].wx) !== !!(panels[i].pages[0] && panels[i].pages[0].wx)) return false;
+                p.id = id;
+                panels[i] = p;
+                touched = true;
+            }
+            if (!touched) return true;
+            drawRows();
+            drawExpanded();
+            return true;
         },
         softKeys(keys) {
             if (!host || host.hidden) return keys;
