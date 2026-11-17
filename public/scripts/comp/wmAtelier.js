@@ -66,6 +66,9 @@
     const applet = () => window.naxtApplet || null;
     const keyOf = (it) => `${it.gallerySlug}\0${it.tag}`;
     const imageUrl = (it) => `/naxCache/${encodeURIComponent(it.gallerySlug)}/${encodeURIComponent(it.filename)}`;
+    // the grid's cells and the bag's icons: the server's 480 px wide WebP of the picture (#890 P13; its
+    // aspect kept, so object-fit: cover crops it as it did the original); the tag screen shows the original
+    const thumbUrl = (it) => `${imageUrl(it)}?w=480`;
     const labelOf = (list, v) => (list.find((x) => x[0] === v) || [v, v])[1];
 
     function galleryLabel(g) {
@@ -150,7 +153,7 @@
         const marks = `${it.favorite ? '<span class="wat-mark is-fav" title="Favorite"></span>' : ''}${it.tryMark ? '<span class="wat-mark is-try" title="Try"></span>' : ''}`;
         const pic = it.missing || !it.filename
             ? '<span class="wat-missing">?</span>'
-            : `<img src="${esc(imageUrl(it))}" alt="" loading="lazy" decoding="async" draggable="false">`;
+            : `<img src="${esc(thumbUrl(it))}" alt="" loading="lazy" decoding="async" draggable="false">`;
         return `<div class="wat-cell${sel ? ' is-selected' : ''}${it.hidden ? ' is-hidden' : ''}" role="option" aria-selected="${sel}" data-n="${n}">`
             + `<span class="wat-pic">${pic}</span><span class="wat-cap">${marks}${esc(it.tag)}</span></div>`;
     }
@@ -366,7 +369,7 @@
             const sel = n === bagSel;
             const g = galleries.find((x) => x.slug === e.gallerySlug);
             return `<div class="wsk-row wat-bag-row${sel ? ' is-selected' : ''}" role="option" aria-selected="${sel}" data-n="${n}">`
-                + `<span class="wsk-ico"><img src="${esc(imageUrl(e))}" alt="" draggable="false"></span>`
+                + `<span class="wsk-ico"><img src="${esc(thumbUrl(e))}" alt="" draggable="false"></span>`
                 + `<span class="wsk-name">${esc(e.tag)}</span><span class="wsk-sub">${esc(g ? galleryLabel(g) : e.gallerySlug)}</span></div>`;
         }).join('');
         const note = box.querySelector('.wsk-note');
