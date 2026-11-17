@@ -4451,7 +4451,9 @@
     function watchDirector() {
         const ws = window.wsClient;
         if (!ws || typeof ws.on !== 'function') return;
-        ws.on('director_computer_status', (d) => { shellDirectorStatus = (d && (d.data || d)) || shellDirectorStatus; statusDirty(); });
+        // the turn's end is heard at the push itself (its sound and note), not after the coalesced pass: a turn that
+        // ends and the next that starts inside one pass would otherwise never have been idle
+        ws.on('director_computer_status', (d) => { shellDirectorStatus = (d && (d.data || d)) || shellDirectorStatus; directorTurnWatch(directorState()); statusDirty(); });
         // the notification classes shown without a message, for the server's own copies (#876)
         ws.on('connected', () => setTimeout(() => sendInboxPrefs(true), 1500));
         setTimeout(() => sendInboxPrefs(true), 1500);
