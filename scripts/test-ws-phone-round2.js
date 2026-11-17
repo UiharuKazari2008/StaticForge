@@ -184,6 +184,23 @@ function socket(name) {
     assert.deepStrictEqual(mp.sent, ['\u0001desktop\u0001{"type":"queue_update","data":{"n":4}}']);
     srv.setDormant(subs.phone, false);
     assert.strictEqual(mp.sent[1], '\u0001phone\u0001{"type":"queue_update","data":{"n":4}}');
+    mp.sent.length = 0; desk.sent.length = 0;
+
+    // Program Icons job pushes (P15) to a sleeping phone page: the newest state per job waits for it
+    srv.setDormant(subs.phone, true);
+    const job = (id, state) => ({ type: 'wm_program_icons_job', data: { success: true, job: { id, state } } });
+    srv.sendToUser('S', job('j1', 'working'));
+    srv.sendToUser('S', job('j2', 'working'));
+    srv.sendToUser('S', job('j1', 'ready'));
+    assert.strictEqual(desk.sent.length, 3, 'an awake desktop gets every push');
+    assert.strictEqual(mp.sent.length, 3);
+    assert.ok(mp.sent.every((m) => m.startsWith('\u0001desktop\u0001')), 'the carrier copy is the awake DeX window\'s only');
+    mp.sent.length = 0;
+    srv.setDormant(subs.phone, false);
+    assert.deepStrictEqual(mp.sent.map((m) => JSON.parse(m.slice(m.indexOf('\u0001', 1) + 1)).data.job), [
+        { id: 'j2', state: 'working' },
+        { id: 'j1', state: 'ready' }
+    ], 'on waking: the newest state of each job, in order');
     console.log = log;
 }
 
