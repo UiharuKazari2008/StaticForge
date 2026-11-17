@@ -2981,9 +2981,45 @@
     const NIGHTSHADE_PROBLEM = {
         unavailable: DC_NOTICE_TEXT,
         restarting: 'The Nightshade Network is restarting. Some features and services may not be accessible for a moment.',
-        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.'
+        'no-internet': 'No internet connection. Nightshade will reconnect when you are back online.',
+        'signed-out': 'Sign in to Nightshade Network to get your mail, messages and programs.'
     };
-    /** The Nightshade Network's state (websocket.js nightshadeState), or null before the client exists. */
+    /**
+     * Sign in to the Nightshade Network (#899): never a box over the phone, this only when asked (the
+     * glyph's bubble, the connectivity bubble, Settings > Connections > Nightshade). The password goes to
+     * the server (cachedLogon.js keeps its verifier for the lock and offline logons); accepted, the link
+     * reconnects with the new session and the start-up steps carry on.
+     */
+    let nsSigningIn = null;
+    function nightshadeSignIn() {
+        if (nsSigningIn) return nsSigningIn;
+        nsSigningIn = (async () => {
+            let note = 'Type your account password to sign in to the Nightshade Network.';
+            for (;;) {
+                const pin = await messageBox({
+                    title: 'Nightshade Network',
+                    text: note,
+                    input: { type: 'password' },
+                    buttons: [{ text: 'Sign In', value: true }, { text: 'Cancel', value: false }],
+                    modal: true
+                });
+                if (pin == null || pin === '') return false;
+                const r = window.cachedLogon ? await busy(() => window.cachedLogon.signIn(pin), { paint: true, timeout: 15000 }) : { ok: false, error: 'Sign-in is not available.' };
+                if (r && r.ok && r.online) {
+                    if (typeof window.syncAuthLocalStorageFromServer === 'function' && r.data) window.syncAuthLocalStorageFromServer(r.data);
+                    const ws = window.wsClient;
+                    if (ws && typeof ws.forceReconnect === 'function') ws.forceReconnect();
+                    return true;
+                }
+                if (r && r.ok) {
+                    await messageBox({ title: 'Nightshade Network', icon: 'info', text: 'The password is correct, but the Nightshade Network cannot be reached right now. Sign in again when it is available.', modal: true });
+                    return false;
+                }
+                note = (r && r.error) || 'The password is incorrect. Type it again.';
+            }
+        })().finally(() => { nsSigningIn = null; });
+        return nsSigningIn;
+    }
     function nightshadeNow(ws) {
         try { return ws && typeof ws.nightshadeState === 'function' ? ws.nightshadeState() : null; } catch (_) { return null; }
     }
@@ -6202,7 +6238,12 @@
             // Nightshade Network (#895, Yukimi Nov 17): no row while the service works (its details are in
             // Settings > Connections > Nightshade); while it does not, one row with Reconnect at its right
             const ns = nightshadeNow(ws);
-            if (!connected && ns) sections.push({ text: `Nightshade: ${NIGHTSHADE_STATUS[ns.service] || 'Unavailable'}`, links: ns.service === 'connecting' ? [] : [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }] });
+            if (!connected && ns) {
+                const link = ns.service === 'connecting' ? [] : ns.service === 'signed-out'
+                    ? [{ label: 'Sign In', action: () => { closeBubble(); void nightshadeSignIn(); } }]
+                    : [{ label: 'Reconnect', action: () => ws && ws.manualReconnect && ws.manualReconnect() }];
+                sections.push({ text: `Nightshade: ${NIGHTSHADE_STATUS[ns.service] || 'Unavailable'}`, links: link });
+            }
             // ActiveSync moving data (#822): what goes each way against this transfer's totals, a bar
             const asx = window.activeSync && typeof window.activeSync.transferProgress === 'function' ? window.activeSync.transferProgress() : null;
             const syncing = !!(asx && (asx.active || (asx.done && Date.now() - asx.at < 8000)));
@@ -6364,7 +6405,8 @@
             const ns = nightshadeNow(ws) || { service: 'unavailable' };
             const text = NIGHTSHADE_PROBLEM[ns.service] || NIGHTSHADE_PROBLEM.unavailable;
             const sections = [text];
-            if (ns.service !== 'connecting' && ns.service !== 'restarting') sections.push({ links: [{ label: 'Reconnect', action: () => { closeBubble(); if (ws && ws.manualReconnect) ws.manualReconnect(); } }] });
+            if (ns.service === 'signed-out') sections.push({ links: [{ label: 'Sign In', action: () => { closeBubble(); void nightshadeSignIn(); } }] });
+            else if (ns.service !== 'connecting' && ns.service !== 'restarting') sections.push({ links: [{ label: 'Reconnect', action: () => { closeBubble(); if (ws && ws.manualReconnect) ws.manualReconnect(); } }] });
             const nsSettings = () => { const st = window.wmSettings; if (st && typeof st.open === 'function') st.open('nightshade'); };
             bubble({ title: STATUS_APP_LABEL[role], role, anchor, sections, footLinks: [{ label: 'Settings', action: nsSettings }], buttons: [{ text: 'Hide' }] });
         } else if (role === 'continuity') {
@@ -8016,7 +8058,8 @@
             if (input) {
                 // an edit box under the text: the result is the trimmed text for a truthy button value
                 field = document.createElement('input');
-                field.type = 'text';
+                // input.type 'password' (#899: the Nightshade Network sign-in) masks the entry and keeps it untrimmed
+                field.type = input.type === 'password' ? 'password' : 'text';
                 field.className = 'wm-msgbox-input';
                 field.value = input.value || '';
                 field.placeholder = input.placeholder || '';
@@ -8027,7 +8070,7 @@
                 });
             }
             const done = (value) => {
-                if (field) value = value ? field.value.trim() : null;
+                if (field) value = value ? (field.type === 'password' ? field.value : field.value.trim()) : null;
                 layer.hidden = true;
                 layer.innerHTML = '';
                 document.removeEventListener('keydown', onKey, true);
@@ -11206,8 +11249,11 @@
         // the connection and the start-up steps follow when the server answers (Yukimi, Nov 13)
         let offlineStart = false;
         try { offlineStart = Date.now() - (Number(sessionStorage.getItem('melatonOfflineStart')) || 0) < 120000; } catch (_) { /* storage off */ }
-        const unreachable = !ready && ws && !(typeof ws.isConnected === 'function' && ws.isConnected())
-            && (offlineStart || ws.connectionPhase === 'failed' || (ws.reconnectAttempts || 0) >= 2);
+        // a failed sign-in (connected, not authenticated) does not hold the phone either (#899): Today, with
+        // the Nightshade glyph saying "Sign-in required"
+        const unreachable = !ready && ws && ((ws.connectionPhase === 'auth')
+            || (!(typeof ws.isConnected === 'function' && ws.isConnected())
+                && (offlineStart || ws.connectionPhase === 'failed' || (ws.reconnectAttempts || 0) >= 2)));
         if (unreachable && elapsed >= BOOT_MIN_SPLASH_MS) {
             try { sessionStorage.removeItem('melatonOfflineStart'); } catch (_) { /* storage off */ }
             finishBoot();
@@ -11639,6 +11685,8 @@
         saveToPhone: (url, name) => saveToPhone(url, name || 'download'),
         /** The Nightshade Network unavailable Retry / Abort box (#895): resolves 'retry' | 'abort'. */
         domainUnreachable: () => domainUnreachable(),
+        /** Sign in to the Nightshade Network (#899): the password box, then a reconnect; resolves true when signed in. */
+        nightshadeSignIn: () => nightshadeSignIn(),
         /** Close an open unreachable box as `value` (websocket.js: 'connected' when the link is back). */
         closeDomainUnreachable: (value) => closeDomainUnreachable(value),
         /** The "Nightshade Network is unavailable" notification (closes itself on reconnect). */

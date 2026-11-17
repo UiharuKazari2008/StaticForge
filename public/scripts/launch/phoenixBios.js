@@ -786,6 +786,22 @@
                     entry,
                     resolve,
                     async submit(pin) {
+                        // the server's answer; accepted, cachedLogon.js keeps the verifier, and with the
+                        // server gone again by now the cached password still boots (#899)
+                        if (root && root.cachedLogon) {
+                            const r = await root.cachedLogon.signIn(pin, { headers: { 'X-Dreamscape-Client': 'melaton-bios' } });
+                            if (r.ok) {
+                                try { localStorage.setItem('userType', r.userType || 'admin'); } catch (_e) { /* ignore */ }
+                                bios.bootPin = null;
+                                bios.bootPinError = '';
+                                resolve(true);
+                                return;
+                            }
+                            bios.bootPinError = r.online ? 'Incorrect password' : 'Login failed';
+                            bios.bootPin.entry = '';
+                            drawBootPinPrompt('');
+                            return;
+                        }
                         try {
                             const res = await fetch('/', {
                                 method: 'POST',

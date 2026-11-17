@@ -232,17 +232,22 @@
         vista = false;
     }
 
+    /**
+     * The password, checked by the server when it can answer, else against the last password the server
+     * accepted here (cachedLogon.js, #899: a domain-joined PC unlocks without its domain controller).
+     */
     async function verifyPassword(password) {
-        const response = await root.fetch('/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'login', data: { pin: password } })
-        });
-        let payload = null;
-        try { payload = await response.json(); } catch (_) { /* treated as a failure */ }
-        if (!response.ok || !payload || payload.success === false) return false;
+        let r = null;
+        if (root.cachedLogon) r = await root.cachedLogon.signIn(password);
+        else {
+            const response = await root.fetch('/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'login', data: { pin: password } }) });
+            let payload = null;
+            try { payload = await response.json(); } catch (_) { /* treated as a failure */ }
+            r = { ok: !!(response.ok && payload && payload.success !== false), userType: payload && payload.userType };
+        }
+        if (!r || !r.ok) return false;
         const expected = (() => { try { return root.localStorage.getItem('userType'); } catch (_) { return null; } })();
-        return !expected || !payload.userType || payload.userType === expected;
+        return !expected || !r.userType || r.userType === expected;
     }
 
     async function submit() {

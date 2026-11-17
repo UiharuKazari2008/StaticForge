@@ -242,6 +242,15 @@ async function ensureSessionValid() {
             return true;
         }
 
+        // An installed client is never covered by a sign-in box (#899): the phone, and the desktop once it
+        // is up, show the Nightshade Network as "Sign-in required" and sign in from its glyph / client.
+        // The request fails quietly; it is the user's to sign in.
+        const wsc = window.wsClient;
+        if (window.uiShell === 'mobile' || (wsc && typeof wsc._nightshadeQuietDesktop === 'function' && wsc._nightshadeQuietDesktop())) {
+            if (wsc && typeof wsc._updateModemTrayIcon === 'function') wsc._updateModemTrayIcon();
+            return false;
+        }
+
         // Show PIN modal for re-authentication
         if (pinModalPromise) return pinModalPromise;
         pinModalPromise = await window.showPinModal();
