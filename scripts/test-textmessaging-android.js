@@ -18,6 +18,8 @@ const secure = {};
 const calls = [];
 const broadcasts = [];
 let tap = null;
+let hello = null;
+let phoneShows = [];
 
 const stub = (name, exports) => { require.cache[require.resolve(`../modules/${name}`)] = { id: name, filename: name, loaded: true, exports }; };
 stub('globalResources', {
@@ -31,8 +33,13 @@ stub('globalResources', {
 });
 stub('activeSync', {
     onDeviceEvent: (fn) => { tap = fn; },
+    onDeviceHello: (fn) => { hello = fn; },
     partnerLinks: () => [],
-    serverCall: async (_g, _w, deviceId, op, args) => { calls.push({ deviceId, op, args }); return true; }
+    serverCall: async (_g, _w, deviceId, op, args) => {
+        if (op === 'notify.list') return { notifications: phoneShows };
+        calls.push({ deviceId, op, args });
+        return true;
+    }
 });
 const inbox = [];
 stub('notificationInboxSources', { onTextEvent: (p) => { if (!p.native) inbox.push(p); } });
@@ -151,6 +158,15 @@ const post = (d) => tap('notify.posted', Object.assign({ package: 'com.discord',
 
     const s = (await tm.search('ping', { accountId: 'app-discord' })).results;
     assert.strictEqual(s.length, 1);
+
+    // a phone that reconnects: what it shows now is taken (posted while the server was away)
+    phoneShows = [{ package: 'com.discord', app: 'Discord', key: 'k7', title: 'Sora', text: 'missed me?', time: Date.now() + 40,
+        conv: { title: 'Sora', shortcut: 'dm-sora' }, messages: [{ text: 'missed me?', time: Date.now() + 40, sender: 'Sora', senderKey: 'u7' }],
+        actions: [{ i: 0, title: 'Reply', reply: true }] }];
+    hello({ id: 'dev-fold', speaker: 'service', session: 'partner', name: 'Galaxy Z Fold7' });
+    await wait(5300);
+    const sora = (await tm.listChats('app-discord')).chats.find((c) => c.title === 'Sora');
+    assert.ok(sora && sora.unread && sora.canReply, 'the catch-up after a reconnect');
 
     tm.deleteAccount('app-discord');
     tm._reset();
