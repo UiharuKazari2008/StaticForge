@@ -281,7 +281,8 @@
         /* global updateImageGenerationIndicator */
         if (typeof updateImageGenerationIndicator === 'function') { try { updateImageGenerationIndicator(); } catch (_) { /* indicator only */ } }
         clearInterval(tick);
-        tick = setInterval(() => { if (current === name && isCurrent()) renderStage(); }, 1000);
+        // the stage's running time each second while it is seen (not with the screen off: drawn on screen on)
+        tick = setInterval(() => { if (current === name && isCurrent() && (typeof sh.onScreen !== 'function' || sh.onScreen())) renderStage(); }, 1000);
         refreshAll();
         let result = null;
         let error = null;
