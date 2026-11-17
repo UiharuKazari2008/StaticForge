@@ -3714,11 +3714,21 @@ class ServiceWorkerManager {
         // reads it), and each ping can start a worker that had gone idle: a phone pings only while an
         // update runs, and never with the screen off.
         const phone = window.uiShell === 'mobile';
+        const due = () => !document.hidden && !(phone && (!this.isUpdating || document.documentElement.dataset.screenOff !== undefined));
         this.healthCheckInterval = setInterval(() => {
-            if (document.hidden) return;
-            if (phone && (!this.isUpdating || document.documentElement.dataset.screenOff !== undefined)) return;
+            if (!due()) return;
             this._runMeasuredHealthCheckPing();
         }, SW_HEALTH_PING_MS);
+        // a window shown again asks at once (#890): a hidden window does not ping, and its last answer may
+        // be minutes old; the tray then reads a fresh one instead of 'Not Responding' (and the worker
+        // need not answer hidden windows for them, sw.js answerPing)
+        if (!this._healthVisibleHandler) {
+            this._healthVisibleHandler = () => {
+                if (!this.healthCheckInterval || !due()) return;
+                this._runMeasuredHealthCheckPing();
+            };
+            document.addEventListener('visibilitychange', this._healthVisibleHandler);
+        }
         
         // Send initial ping immediately
         if (!phone || this.isUpdating) this._runMeasuredHealthCheckPing();
@@ -3728,6 +3738,10 @@ class ServiceWorkerManager {
         if (this.healthCheckInterval) {
             clearInterval(this.healthCheckInterval);
             this.healthCheckInterval = null;
+        }
+        if (this._healthVisibleHandler) {
+            document.removeEventListener('visibilitychange', this._healthVisibleHandler);
+            this._healthVisibleHandler = null;
         }
         this.healthCheckStartTime = null;
     }
