@@ -350,9 +350,19 @@
         return true;
     }
 
+    /**
+     * The Director is patched once she is here, her mascot once it is made. The mascot is made only
+     * when her chat is on screen (and never with Show Mascot off), so once the Director is here it is
+     * looked for each second only while the app is seen (show() and wake start the look again); it
+     * polled every second all day for a mascot that never came.
+     */
+    let directorWait = 0;
     function waitForDirector() {
-        if (patchDirector()) return;
-        const timer = setInterval(() => { if (patchDirector()) clearInterval(timer); }, 1000);
+        if (directorWait || patchDirector()) return;
+        directorWait = setInterval(() => {
+            const seen = shown && isCurrent() && !(ws && typeof ws.onScreen === 'function' && !ws.onScreen());
+            if (patchDirector() || (dir() && !seen)) { clearInterval(directorWait); directorWait = 0; }
+        }, 1000);
     }
 
     function hostWindow(d) {
@@ -2105,6 +2115,7 @@
             show(p) {
                 page = p;
                 shown = true;
+                waitForDirector();
                 const run = pendingRun;
                 pendingRun = null;
                 // her first show after a load lays out the whole window and her layers (~0.7 s at 4x
@@ -2168,6 +2179,9 @@
             }
         });
         waitForDirector();
+        const wake = () => { if (shown && isCurrent()) waitForDirector(); };
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
         patchContextMenu();
         window.addEventListener('wmDirectorPrefsChange', () => { if (page) { paintPrints(); if (isCurrent()) ws.refreshSoftKeys(); } });
         // the soft keys follow the Director (a turn starts or ends, a chat opens)
