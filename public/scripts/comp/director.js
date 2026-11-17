@@ -3611,8 +3611,17 @@ class Director {
         try {
             await this.loadDirectorSessions();
         } catch (_err) { /* list refresh is best effort */ }
-        const openId = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
-        if (openId) this.loadSessionMessages(openId);
+        // The open chat's messages are asked for once, by continueAfterReconnect on the status that
+        // follows (it knows whether a turn is still going, which decides how the rows are drawn); this
+        // asked as well and the whole chat came twice (#890). A status that never comes (6 s) still loads it.
+        const STATUS_WAIT_MS = 6000;
+        const seq = (this._resumeSeq = (this._resumeSeq || 0) + 1);
+        setTimeout(() => {
+            if (seq !== this._resumeSeq || !this._resumeFromStatus) return;
+            this._resumeFromStatus = false;
+            const id = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
+            if (id) this.loadSessionMessages(id, { since: true });
+        }, STATUS_WAIT_MS);
         this.requestDirectorStatus();
         this.requestCursorUsage();
     }
@@ -3626,6 +3635,8 @@ class Director {
         const runningName = useXi ? (xi && xi.sessionName) : (status && status.sessionName);
         const openId = this.currentSession && !this.currentSession.draft ? this.currentSession.id : null;
         const unsentDraft = !!(this._pendingOutgoing && !openId);
+        // what came while the socket was down: only what is newer than the list held (#890)
+        const load = (id) => this.loadSessionMessages(id, { since: true });
         if (runningId) {
             this._creatingChat = false;
             this._running = true;
@@ -3642,8 +3653,11 @@ class Director {
                         tasks: []
                     }, { skipLoad: true });
                 }
-                this.loadSessionMessages(runningId);
+                load(runningId);
                 this.showTypingIndicator();
+            } else if (openId) {
+                // a turn goes on in another chat: the open one is brought up to date all the same
+                load(openId);
             }
             return;
         }
@@ -3654,7 +3668,7 @@ class Director {
             this.restorePendingOutgoing();
             return;
         }
-        if (openId) this.loadSessionMessages(openId);
+        if (openId) load(openId);
     }
 
     // The jail copies the host Cursor login at server startup. When that login
@@ -5194,17 +5208,24 @@ class Director {
         }
     }
     
-    loadSessionMessages(sessionId) {
+    // options.since: only what is newer than the list held for this chat (a turn's end, a reconnect):
+    // the server answers with the messages after sinceId (and echoes it), or with the whole list when it
+    // cannot (an older server, a list that changed under it); director_get_messages_response puts them
+    // together (#890)
+    loadSessionMessages(sessionId, options) {
         this._messagesSessionId = sessionId;
         // Send WebSocket request to load messages
         if (window.wsClient && window.wsClient.isConnected()) {
-            window.wsClient.send({
+            const ask = {
                 type: 'director_get_messages',
                 requestId: Date.now().toString(),
                 sessionId: sessionId,
                 limit: DIRECTOR_MAX_SESSION_MESSAGES,
                 persona: this.persona || 'wren'
-            });
+            };
+            const since = options && options.since ? this.messagesSinceId(sessionId) : '';
+            if (since) ask.sinceId = since;
+            window.wsClient.send(ask);
         } else {
             console.warn('WebSocket not connected, using mock data');
             const session = (this.directorSessions || []).find(s => s.id === sessionId);
@@ -5214,6 +5235,45 @@ class Director {
         }
     }
     
+    // The message a sinceId load builds on: the one before the last ask of the list the server sent
+    // for this chat. Everything a turn changes comes after its ask (its cards, steers, and the reply,
+    // which grows in place while it runs), and so does the review of the report card before it; ''
+    // when there is no such list (a whole load then).
+    messagesSinceId(sessionId) {
+        const held = this._heldMessages;
+        if (!held || held.sessionId !== sessionId || !Array.isArray(held.list)) return '';
+        const list = held.list;
+        for (let i = list.length - 1; i > 0; i--) {
+            const m = list[i];
+            if (m && m.role === 'user' && !m.steer && m.message_type !== 'Attachment') {
+                const base = list[i - 1];
+                return base && base.id ? String(base.id) : '';
+            }
+        }
+        return '';
+    }
+
+    // director_get_messages_response: the chat's whole list again. A sinceId answer is added to the
+    // list held up to that message; null when it does not fit that list (a whole load has been asked
+    // for instead).
+    mergeLoadedMessages(sessionId, body) {
+        let messages = Array.isArray(body.messages) ? body.messages : [];
+        if (body.sinceId) {
+            const held = this._heldMessages;
+            const at = held && held.sessionId === sessionId && Array.isArray(held.list)
+                ? held.list.findIndex((m) => m && String(m.id) === String(body.sinceId))
+                : -1;
+            const count = at + 1 + messages.length;
+            if (at < 0 || (Number.isInteger(body.total) && body.total !== count)) {
+                this.loadSessionMessages(sessionId);
+                return null;
+            }
+            messages = held.list.slice(0, at + 1).concat(messages);
+        }
+        this._heldMessages = { sessionId, list: messages };
+        return messages;
+    }
+
     renderSessionMessages(messages) {
         // Debounce rapid successive calls
         if (this._renderMessagesTimeout) {
@@ -8986,7 +9046,8 @@ class Director {
                 if (director && sessionId && director._messagesSessionId && sessionId !== director._messagesSessionId) {
                     return;
                 }
-                const messages = data.data.messages || [];
+                const messages = director ? director.mergeLoadedMessages(sessionId, data.data) : (data.data.messages || []);
+                if (!messages) return;
                 if (director) {
                     // Only while the first send is still handing off. A later empty
                     // list is a real reload (failed send, or the chat is empty).
@@ -9104,7 +9165,8 @@ class Director {
                 if (window.directorInstance && window.currentSession) {
                     window.directorInstance._expectSettle = true;
                     window.directorInstance.hideTypingIndicator();
-                    window.directorInstance.loadSessionMessages(window.currentSession.id);
+                    // only the turn's messages: the settle path adds their rows (#890)
+                    window.directorInstance.loadSessionMessages(window.currentSession.id, { since: true });
                 }
                 
                 // Same rename path as set_session_title (director_session_renamed)
