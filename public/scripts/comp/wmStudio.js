@@ -175,7 +175,9 @@
         const holder = document.querySelector('#manualModal .model-control .control-holder');
         if (!holder || !page) return;
         const fit = () => {
-            if (!page || shownTab() !== 'prompt' || !holder.offsetWidth) return;
+            // not while the app is away (show() lays the form out again through hostStudio): every
+            // class change on <html> read the form's width (a layout) all day behind other programs (#890)
+            if (!page || !shown || shownTab() !== 'prompt' || !holder.offsetWidth) return;
             const px = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
             const w = holder.offsetWidth / px;
             page.classList.toggle('wms-pairs', w >= 312);
@@ -186,8 +188,16 @@
         if (pairsWatched || typeof ResizeObserver !== 'function') return;
         pairsWatched = true;
         new ResizeObserver(fit).observe(holder);
-        // Settings > Screen changes the scale (--wm-px) without resizing the form
-        new MutationObserver(fit).observe(root, { attributes: true, attributeFilter: ['style', 'class'] });
+        // Settings > Screen changes the scale (--wm-px: <html>'s inline style, or its wm-touch class)
+        // without resizing the form; <html>'s other styles and classes come and go all the time
+        let scale = scaleKey();
+        new MutationObserver(() => { const now = scaleKey(); if (now === scale) return; scale = now; fit(); }).observe(root, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+
+    // what --wm-px and the em breakpoints follow on <html> (wm-shell.css): its inline --wm-px, the
+    // touch class, the text size adjust (#890)
+    function scaleKey() {
+        return `${root.style.getPropertyValue('--wm-px')}|${root.classList.contains('wm-touch')}|${root.classList.contains('ui-mobile')}|${root.style.getPropertyValue('-webkit-text-size-adjust')}|${root.style.getPropertyValue('text-size-adjust')}`;
     }
 
     // ---------------------------------------------------------------- the dice beside Seed
@@ -810,8 +820,12 @@
             pairsLayout();
         };
         new ResizeObserver(check).observe(page);
-        // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize
-        if (typeof MutationObserver === 'function') new MutationObserver(check).observe(root, { attributes: true, attributeFilter: ['style'] });
+        // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize; <html>'s
+        // style also takes theme colours and the like: only a change of the scale reads the layout (#890)
+        if (typeof MutationObserver === 'function') {
+            let scale = scaleKey();
+            new MutationObserver(() => { const now = scaleKey(); if (now === scale) return; scale = now; check(); }).observe(root, { attributes: true, attributeFilter: ['style'] });
+        }
     }
 
     function setTab(id) {
@@ -2062,10 +2076,12 @@
             const ptw = window.promptToolWindows;
             let info = null;
             try { info = ptw && ptw.info ? ptw.info(ta) : null; } catch (_) { info = null; }
+            // written only when they change (this runs on every caret move and keystroke, #890)
             const w = page.querySelector('.wms-ed-weight');
-            w.textContent = info ? (info.share ? `${Math.round(info.value)}%` : Number(info.value).toFixed(2)) : '1.00';
+            const weight = info ? (info.share ? `${Math.round(info.value)}%` : Number(info.value).toFixed(2)) : '1.00';
+            if (w.textContent !== weight) w.textContent = weight;
             const sel = ta.selectionStart !== ta.selectionEnd;
-            const set = (id, on) => { const b = page.querySelector(`.wms-ed-btn[data-ed="${id}"]`); if (b) b.disabled = !on; };
+            const set = (id, on) => { const b = page.querySelector(`.wms-ed-btn[data-ed="${id}"]`); if (b && b.disabled !== !on) b.disabled = !on; };
             // a tag under the caret (or a selection) can be weighted or made a group
             const v = ta.value;
             const p = ta.selectionStart;
@@ -2163,7 +2179,7 @@
             const mo = new MutationObserver(() => syncDock());
             mo.observe(ov, { attributes: true, attributeFilter: ['class'] });
             if (bar) mo.observe(bar, { attributes: true, attributeFilter: ['class'] });
-            document.addEventListener('wmSipChange', () => requestAnimationFrame(syncDock));
+            document.addEventListener('wmSipChange', () => requestAnimationFrame(syncDock), { signal: appScopeSignal });
         }
         const open = !!editTa && shown && ov.classList.contains('wms-ac') && !ov.classList.contains('hidden') && getComputedStyle(ov).display !== 'none';
         const want = open ? 'on' : '';
@@ -2433,7 +2449,7 @@
         page.addEventListener('focusout', typing);
         // the editor's weight / token line follows the caret and the text
         ['input', 'keyup', 'pointerup', 'select'].forEach((t) => page.addEventListener(t, (e) => { if (editTa && e.target === editTa) paintEditor(); }));
-        document.addEventListener('selectionchange', () => { if (editTa && document.activeElement === editTa) paintEditor(); });
+        document.addEventListener('selectionchange', () => { if (editTa && document.activeElement === editTa) paintEditor(); }, { signal: appScopeSignal });
         // the Director button (Studio's docked Director, hidden here) opens the Director app
         page.addEventListener('click', (e) => {
             if (!e.target.closest || !e.target.closest('#directorBtn')) return;
