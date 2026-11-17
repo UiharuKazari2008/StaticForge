@@ -589,12 +589,12 @@
         const apps = so.apps || [];
         const chosen = new Set(apps.map((a) => a.package));
         const offered = apps.concat((so.seenApps || []).filter((a) => !chosen.has(a.package)));
-        const kickRows = kick.map((c) => `<div class="yt-row is-chan is-plain" data-kick="${esc(c.slug)}">
+        const kickRows = kick.map((c) => `<div class="yt-row is-chan is-plain" data-yt-kick="${esc(c.slug)}">
             <img class="yt-av" src="${esc(c.thumb || '')}" alt="" loading="lazy" decoding="async" draggable="false">
             <span class="yt-tx"><span class="yt-t">${c.live ? '<i class="yt-new is-livetag">LIVE</i>' : ''}${esc(c.name)}</span><span class="yt-s">kick.com/${esc(c.slug)}</span></span>
-            <button type="button" class="yt-x" data-kick-remove="${esc(c.slug)}" aria-label="Remove ${esc(c.name)}">&times;</button>
+            <button type="button" class="yt-x" data-yt-kick-remove="${esc(c.slug)}" aria-label="Remove ${esc(c.name)}">&times;</button>
         </div>`).join('');
-        const appRows = offered.map((a) => `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-app="${esc(a.package)}" data-label="${esc(a.label)}">
+        const appRows = offered.map((a) => `<div class="yt-row is-chan is-plain" role="button" tabindex="0" data-yt-app="${esc(a.package)}" data-yt-label="${esc(a.label)}">
             <span class="yt-th is-app is-small">${I.bell}</span>
             <span class="yt-tx"><span class="yt-t">${esc(a.label)}</span><span class="yt-s">${chosen.has(a.package) ? 'Its notifications are in the feed' : 'Tap to bring its notifications into the feed'}</span></span>
             <span class="yt-check${chosen.has(a.package) ? ' is-on' : ''}" aria-hidden="true"></span>
@@ -891,18 +891,21 @@
     // ---------------------------------------------------------------- taps and holds
 
     function onClick(e) {
+        // Every attribute looked for here is the program's own (data-yt-*, data-v, data-ch...): the shell's page
+        // element has a data-app of its own, and a closest() that reached it once took every video tap for an
+        // app toggle (#861: videos would not open, and each tap saved the apps and read the feed again).
         const star = e.target.closest('[data-star]');
         if (star) { e.stopPropagation(); const c = seen.get(star.dataset.star); if (c) toggleFavourite(c); return; }
         const act = e.target.closest('[data-act]');
         if (act && !act.disabled) { doAct(act.dataset.act); return; }
         const rec = e.target.closest('[data-recent]');
         if (rec) { runSearch(rec.dataset.recent); return; }
-        const kx = e.target.closest('[data-kick-remove]');
-        if (kx) { removeKick(kx.dataset.kickRemove); return; }
-        const app = e.target.closest('[data-app]');
-        if (app) { toggleApp(app.dataset.app, app.dataset.label); return; }
-        const kc = e.target.closest('[data-kick]');
-        if (kc) { openUrl(`https://kick.com/${kc.dataset.kick}`, true, KICK_PACKAGE); return; }
+        const kx = e.target.closest('[data-yt-kick-remove]');
+        if (kx) { removeKick(kx.dataset.ytKickRemove); return; }
+        const app = e.target.closest('[data-yt-app]');
+        if (app) { toggleApp(app.dataset.ytApp, app.dataset.ytLabel); return; }
+        const kc = e.target.closest('[data-yt-kick]');
+        if (kc) { openUrl(`https://kick.com/${kc.dataset.ytKick}`, true, KICK_PACKAGE); return; }
         const v = e.target.closest('[data-v]');
         if (v) { openItem(seen.get(v.dataset.v) || { id: v.dataset.v }); return; }
         const ch = e.target.closest('[data-ch]');

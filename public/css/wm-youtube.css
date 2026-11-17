@@ -270,7 +270,7 @@
 .wm-youtube .yt-th.is-app.is-small { width: calc(32 * var(--u)); aspect-ratio: 1; border-radius: calc(4 * var(--u)); }
 
 /* Channels: rows that are settings (a Kick channel, an app), their remove key and check box */
-.wm-youtube .yt-row.is-plain[data-kick] { cursor: default; }
+.wm-youtube .yt-row.is-plain[data-yt-kick] { cursor: default; }
 .wm-youtube .yt-x {
     appearance: none;
     -webkit-appearance: none;
