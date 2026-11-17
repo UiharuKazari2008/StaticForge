@@ -396,17 +396,46 @@ async function syncWorkspaceWallpaperCache(refreshUrls, options) {
         }
     });
     const swm = window.serviceWorkerManager;
+    let fetchUrls = opts.activeOnly ? (active ? [active] : []) : undefined;
+    let refreshList = refresh;
+    // Melaton Mobile (#890, Yukimi Nov 17): the workspaces' desktop photos are big, and the phone shows
+    // at most the active one (behind Today). It is fetched ahead only on Wi-Fi or when Today shows it;
+    // the other workspaces' never (they come when one is active and shown). A changed picture that may
+    // not be fetched now is only dropped from the cache, so a stale copy is never shown later.
+    const phone = window.uiShell === 'mobile' ? (() => {
+        // Wi-Fi from the app's last device status (wmShell.deviceStatus, the androiddevicestatus push:
+        // active 'wifi'), else the browser's connection type; unknown is not Wi-Fi
+        const sh = window.wmShell;
+        let today = null;
+        try { today = sh && sh.wallpaper && typeof sh.wallpaper.picture === 'function' ? sh.wallpaper.picture() : null; } catch (_) { today = null; }
+        const todayShowsActive = !!(active && today && today === active);
+        let wifi = false;
+        try {
+            const st = sh && typeof sh.deviceStatus === 'function' ? sh.deviceStatus() : null;
+            if (st && st.active) wifi = st.active === 'wifi';
+            else wifi = !!(navigator.connection && navigator.connection.type === 'wifi');
+        } catch (_) { wifi = false; }
+        return { fetchActive: wifi || todayShowsActive, todayShowsActive };
+    })() : null;
+    if (phone) {
+        fetchUrls = phone.fetchActive && active ? [active] : [];
+        refreshList = refresh.filter((url) => url === active && phone.fetchActive);
+        refresh.filter((url) => refreshList.indexOf(url) === -1 && keep.has(url)).forEach((url) => {
+            if (swm && typeof swm.deleteFromCache === 'function') Promise.resolve(swm.deleteFromCache(url)).catch(() => {});
+        });
+    }
     if (swm && swm.syncWallpaperUrls) {
         try {
-            const fetchUrls = opts.activeOnly ? (active ? [active] : []) : undefined;
-            await swm.syncWallpaperUrls(urls, refresh, fetchUrls);
+            await swm.syncWallpaperUrls(urls, refreshList, fetchUrls);
         } catch (error) {
             console.warn('Wallpaper cache sync failed:', error);
         }
     }
     // Boot defers decode to the "Loading wallpaper" bar step (assetPreload.js).
     if (opts.skipDecode) return;
-    const decode = new Set(refresh.filter((url) => keep.has(url)));
+    // the phone paints no desktop wallpaper (Today loads its own picture): a decode only when Today shows it
+    if (phone && !phone.todayShowsActive) return;
+    const decode = new Set(refreshList.filter((url) => keep.has(url)));
     if (active) decode.add(active);
     await Promise.all([...decode].map((url) => preloadWallpaperIntoMemory(url)));
 }
