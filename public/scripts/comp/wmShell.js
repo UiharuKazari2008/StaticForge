@@ -5487,6 +5487,16 @@
         return 'notification';
     }
 
+    // the page kept running with the screen off while the shell's own timers must fire (#890): a
+    // notification repeating its sound, a ring buzzing until its stop. One hold per reason, balanced
+    const shellHolds = new Set();
+    function shellHold(reason, on) {
+        if (!!on === shellHolds.has(reason)) return;
+        if (on) shellHolds.add(reason); else shellHolds.delete(reason);
+        const mc = window.melatonContinuity;
+        if (mc && typeof mc.holdAwake === 'function') { try { mc.holdAwake(reason, !!on); } catch (_) { /* older page */ } }
+    }
+
     const noteSounded = new Set();
     let noteRepeat = null;
     function soundNewNotes(live) {
@@ -5510,9 +5520,10 @@
             clearInterval(noteRepeat);
             let left = 4;
             const toastId = fresh.id;
+            shellHold('note-repeat', true);
             noteRepeat = setInterval(() => {
                 const n = noteOf(toastId);
-                if (!n || left-- <= 0 || noteShown !== toastId) { clearInterval(noteRepeat); noteRepeat = null; return; }
+                if (!n || left-- <= 0 || noteShown !== toastId) { clearInterval(noteRepeat); noteRepeat = null; shellHold('note-repeat', false); return; }
                 // a repeat buzzes again where the event vibrates (Reminders: Repeat)
                 playSystemSound(id, { again: true });
             }, 4000);
@@ -7674,6 +7685,7 @@
     function vibrateCancel() {
         clearTimeout(vib.stop);
         vib.stop = null;
+        shellHold('vibrate-ring', false);
         try {
             const b = hapticsBridge();
             if (b && typeof b.cancel === 'function') b.cancel();
@@ -7711,6 +7723,7 @@
             if (vib.log.length > 50) vib.log.shift();
             clearTimeout(vib.stop);
             vib.stop = null;
+            shellHold('vibrate-ring', false);
             const limit = pat.repeat ? Math.max(0, Math.min(pat.maxMs, Number(opts.ms) > 0 ? Number(opts.ms) : pat.maxMs)) : 0;
             let ok;
             if (b) {
@@ -7731,7 +7744,8 @@
                 ok = navigator.vibrate(seq) !== false;
             }
             entry.ok = ok;
-            if (ok && pat.repeat) vib.stop = setTimeout(vibrateCancel, limit);
+            // a repeating buzz (a call's ring) runs until its stop: the page stays up for it with the screen off
+            if (ok && pat.repeat) { vib.stop = setTimeout(vibrateCancel, limit); shellHold('vibrate-ring', true); }
             return ok;
         } catch (_) {
             return false;

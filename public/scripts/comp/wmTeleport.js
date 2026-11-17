@@ -514,18 +514,32 @@
         } catch (_) { return BGM.gain; }
     }
 
+    // a newer fade takes over from the one running: Teleport left and opened again within the stop's
+    // fade had the stop's pause end the new music
+    let fadeGen = 0;
     function fadeAudio(to, ms, then) {
         if (!audio) return;
+        const gen = ++fadeGen;
         const from = audio.volume;
         const t0 = now();
         const step = () => {
-            if (!audio) return;
+            if (!audio || gen !== fadeGen) return;
             const k = Math.min(1, (now() - t0) / ms);
             audio.volume = Math.max(0, Math.min(1, from + (to - from) * k));
             if (k < 1) setTimeout(step, 30);
             else if (then) then();
         };
         step();
+    }
+
+    // the music keeps the page running with the screen off while it plays (#890): a detached Audio
+    // element is not media the page can see playing, and a stop's fade has to reach its pause
+    let musicHeld = false;
+    function musicHold(on) {
+        if (on === musicHeld) return;
+        musicHeld = on;
+        const mc = window.melatonContinuity;
+        if (mc && typeof mc.holdAwake === 'function') { try { mc.holdAwake('teleport-music', on); } catch (_) { /* older page */ } }
     }
 
     function musicStart() {
@@ -538,16 +552,18 @@
                 audio.preload = 'auto';
             }
             audio.volume = 0;
-            const p = audio.play();
-            if (p && typeof p.catch === 'function') p.catch(() => { /* no gesture yet: silent */ });
+            const a = audio;
+            const p = a.play();
+            musicHold(true);
+            if (p && typeof p.catch === 'function') p.catch(() => { if (a.paused) musicHold(false); /* no gesture yet: silent */ });
             fadeAudio(level, BGM.fade);
-        } catch (_) { /* no audio */ }
+        } catch (_) { musicHold(false); /* no audio */ }
     }
 
     function musicStop(ms = BGM.fade) {
         if (!audio) return;
         const a = audio;
-        fadeAudio(0, ms, () => { try { a.pause(); } catch (_) { /* gone */ } });
+        fadeAudio(0, ms, () => { try { a.pause(); } catch (_) { /* gone */ } musicHold(false); });
     }
 
     // ---------------------------------------------------------------- travel
