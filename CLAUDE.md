@@ -4,10 +4,35 @@ The Cursor rules in `.cursor/rules/` (nested clone of `DreamScape/cursor-rules`,
 synced by `sync.sh`) are canonical for this repo. Claude Code follows them too.
 Treat "Cursor agent" in those rules as "any coding agent, including Claude Code".
 
+## Priority (read first)
+
+These are hard requirements for Claude Code and every subagent / workflow agent it starts. They outrank
+speed, convenience, a brief's wording and "too minor to matter" judgments. Work that breaks one is not
+done, whatever else it achieves.
+
+1. **Safety and the shared tree:** `agent-busy-lock`, `no-dreamscape-restart` / `director-idle-before-restart`,
+   `no-stash-to-pretty-commit`, `android-app-builds` (never loop installs).
+2. **Performance and power on every change** (Yukimi, Nov 17 2026, #890: "prevent the need to keep doing
+   massive optimisation passes"): `phone-power-client`, `phone-power-server`, `phone-power-native`,
+   `server-push-not-polling`, `app-scope-ownership`. Write it optimised the first time:
+   - `node scripts/check-perf-rules.js` (and `--dsapp <tree>` for the app) and `node scripts/check-app-scope.js`
+     pass before every commit; the pre-commit hook enforces the first (`git config core.hooksPath .githooks`
+     in a fresh clone; never `--no-verify`).
+   - A file you touch leaves with fewer hits than it came with when the fix is in reach; lower the
+     baseline with `--update`.
+   - Briefs for subagents and workflows name these rules and the check.
+3. **Behaviour and look:** `ui-standard`, `no-native-browser-ui`, `fix-ui-issues-you-find`, notifications
+   and status indicators never silenced to save power.
+
 @.cursor/rules/agent-busy-lock.mdc
 @.cursor/rules/keyboard-characters.mdc
 @.cursor/rules/no-dreamscape-restart.mdc
 @.cursor/rules/director-idle-before-restart.mdc
+@.cursor/rules/phone-power-client.mdc
+@.cursor/rules/phone-power-server.mdc
+@.cursor/rules/phone-power-native.mdc
+@.cursor/rules/server-push-not-polling.mdc
+@.cursor/rules/app-scope-ownership.mdc
 @.cursor/rules/no-retype-on-move.mdc
 @.cursor/rules/no-stash-to-pretty-commit.mdc
 @.cursor/rules/rename-scope.mdc
@@ -21,16 +46,11 @@ Treat "Cursor agent" in those rules as "any coding agent, including Claude Code"
 @.cursor/rules/copyrights-not-1to1.mdc
 @.cursor/rules/fix-ui-issues-you-find.mdc
 @.cursor/rules/sliders-platform.mdc
-@.cursor/rules/server-push-not-polling.mdc
-@.cursor/rules/phone-power-client.mdc
-@.cursor/rules/phone-power-server.mdc
-@.cursor/rules/phone-power-native.mdc
 @.cursor/rules/tray-balloons.mdc
 @.cursor/rules/emulator-instances.mdc
 @.cursor/rules/android-app-builds.mdc
 @.cursor/rules/ui-standard.mdc
 @.cursor/rules/no-native-browser-ui.mdc
-@.cursor/rules/app-scope-ownership.mdc
 @.cursor/rules/melaton-bars-native-layouts.mdc
 @.cursor/rules/cafe-ready-name.mdc
 
