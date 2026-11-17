@@ -4182,7 +4182,8 @@ class GlobalResources {
         // Async listings, and existence checks against the listing: ~193k existsSync
         // calls held the event loop ~1s right after boot.
         const files = (await fs.promises.readdir(imagesDir)).filter(f => f.match(/\.(png|jpg|jpeg|gif)$/i));
-        const previews = (await fs.promises.readdir(previewsDir)).filter(f => f.endsWith('.webp'));
+        const previewEntries = await fs.promises.readdir(previewsDir);
+        const previews = previewEntries.filter(f => f.endsWith('.webp'));
         const previewNames = new Set(previews);
         const baseMap = {};
 
@@ -4287,6 +4288,7 @@ class GlobalResources {
         }
 
         // Remove orphan previews
+        const { previewSweepBase, isStalePreviewTmp } = require('./previewUtils');
         let orphanCount = 0;
         for (const preview of previews) {
             // Handle regular previews (.webp), @2x, @lq. Legacy @blur.webp is always removed (replaced by BlurHash).
@@ -4298,18 +4300,10 @@ class GlobalResources {
                 } catch (_e) { /* ignore */ }
                 continue;
             }
-            if (preview.endsWith('@studio.webp') || preview.endsWith('@fit.webp')) {
-                // Studio (#648) and fit (#788) previews: named after the file, the original or its _upscaled
-                base = preview.replace(/@(studio|fit)\.webp$/, '').replace(/_upscaled$/, '');
-            } else if (preview.endsWith('@lq.webp')) {
-                base = preview.replace(/@lq\.webp$/, '');
-            } else if (preview.endsWith('@2x.webp')) {
-                base = preview.replace(/@2x\.webp$/, '');
-            } else if (preview.endsWith('.webp')) {
-                base = preview.replace(/\.webp$/, '');
-            } else {
-                continue;
-            }
+            // Studio (#648), fit (#788) and lossless (#890 P14) previews are named after the file (the
+            // original or its _upscaled); @lq, @2x and the plain one after the base
+            base = previewSweepBase(preview);
+            if (base === null) continue;
 
             // Check if base image exists
             const originalFile = baseMap[base]?.original || baseMap[base]?.upscaled;
@@ -4322,6 +4316,19 @@ class GlobalResources {
                     // Ignore errors deleting orphan previews
                 }
             }
+        }
+
+        // an encode's temp file left by a process that stopped mid-encode (#890); an hour old at least, so
+        // a script encoding into the folder right now keeps its file
+        for (const name of previewEntries) {
+            if (!isStalePreviewTmp(name)) continue;
+            try {
+                const tmpPath = path.join(previewsDir, name);
+                const st = await fs.promises.stat(tmpPath);
+                if (Date.now() - st.mtimeMs < 60 * 60 * 1000) continue;
+                await fs.promises.unlink(tmpPath);
+                orphanCount++;
+            } catch (_e) { /* ignore */ }
         }
 
         if (orphanCount > 0) {

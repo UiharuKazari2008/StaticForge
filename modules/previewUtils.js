@@ -305,6 +305,17 @@ const LOSSLESS_FAST_PIXELS = 4.2e6;
 const losslessJobs = new Map();
 const losslessWaiting = [];
 let losslessRunning = 0;
+// PNGs found unfit for an exact copy (16-bit, a colour profile, unreadable), by path -> mtimeMs: the
+// screen saver asks for the same picture every time it comes round, answered at once instead of a
+// metadata read each time; a changed file (new mtime) is looked at again
+const losslessRefused = new Map();
+const LOSSLESS_REFUSED_MAX = 5000;
+
+function refuseLossless(sourcePath, mtimeMs) {
+    losslessRefused.delete(sourcePath);
+    losslessRefused.set(sourcePath, mtimeMs);
+    if (losslessRefused.size > LOSSLESS_REFUSED_MAX) losslessRefused.delete(losslessRefused.keys().next().value);
+}
 
 function isLosslessPreviewName(name) {
     return typeof name === 'string' && name.endsWith(LOSSLESS_PREVIEW_SUFFIX);
@@ -346,27 +357,64 @@ async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
     const outPath = path.join(previewsDir, name);
     const outStat = await statOrNullAsync(outPath);
     if (outStat && outStat.isFile() && outStat.size > 0 && outStat.mtimeMs >= sourceStat.mtimeMs) return outPath;
+    if (losslessRefused.get(sourcePath) === sourceStat.mtimeMs) return null;
     let job = losslessJobs.get(outPath);
     if (!job) {
-        job = losslessSlot().then(async (release) => {
+        job = (async () => {
+            // the header read happens before the encode slot: a refused PNG never waits behind an encode
+            let meta;
+            try {
+                meta = await sharp(sourcePath).metadata();
+            } catch (e) {
+                refuseLossless(sourcePath, sourceStat.mtimeMs);
+                console.error('Failed to read', sourcePath, 'for a lossless preview:', e.message);
+                return null;
+            }
+            // 8 bits per channel and no colour profile: the WebP holds exactly the PNG's pixels
+            if (meta.depth !== 'uchar' || meta.icc || !meta.width || !meta.height) {
+                refuseLossless(sourcePath, sourceStat.mtimeMs);
+                return null;
+            }
+            const effort = meta.width * meta.height > LOSSLESS_FAST_PIXELS ? 0 : 4;
+            const release = await losslessSlot();
             const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
             try {
-                const meta = await sharp(sourcePath).metadata();
-                // 8 bits per channel and no colour profile: the WebP holds exactly the PNG's pixels
-                if (meta.depth !== 'uchar' || meta.icc || !meta.width || !meta.height) return null;
-                const effort = meta.width * meta.height > LOSSLESS_FAST_PIXELS ? 0 : 4;
                 await sharp(sourcePath).webp({ lossless: true, effort }).toFile(tmpPath);
                 await fs.promises.rename(tmpPath, outPath);
                 return outPath;
             } catch (e) {
+                // not remembered: a full disk or a file mid-write may succeed next time
                 fs.promises.unlink(tmpPath).catch(() => {});
                 console.error('Failed to generate lossless preview for', sourcePath, ':', e.message);
                 return null;
             } finally { release(); }
-        }).finally(() => losslessJobs.delete(outPath));
+        })().finally(() => losslessJobs.delete(outPath));
         losslessJobs.set(outPath, job);
     }
     return job;
+}
+
+/**
+ * The gallery base name a previews/*.webp file belongs to, for the boot orphan sweep (syncPreviews): the
+ * Studio, fit and lossless previews are named after the file (<stem>[_upscaled]@studio|fit|ll.webp), the
+ * others after the base (<base>.webp, @lq, @2x). null: not a preview name.
+ */
+function previewSweepBase(preview) {
+    const name = String(preview || '');
+    if (/@(studio|fit|ll)\.webp$/.test(name)) return name.replace(/@(studio|fit|ll)\.webp$/, '').replace(/_upscaled$/, '');
+    if (name.endsWith('@lq.webp')) return name.replace(/@lq\.webp$/, '');
+    if (name.endsWith('@2x.webp')) return name.replace(/@2x\.webp$/, '');
+    if (name.endsWith('.webp')) return name.replace(/\.webp$/, '');
+    return null;
+}
+
+/**
+ * A preview encode's temp file (<preview>.webp.<pid>.<ms>.tmp, every generator here) left by a process
+ * that stopped mid-encode. The current process's own are in progress, never stale.
+ */
+function isStalePreviewTmp(name, pid = process.pid) {
+    const m = /\.webp\.(\d+)\.\d+\.tmp$/.exec(String(name || ''));
+    return !!m && Number(m[1]) !== pid;
 }
 
 module.exports = {
@@ -374,6 +422,8 @@ module.exports = {
     isLosslessPreviewName,
     losslessPreviewNameForFile,
     ensureLosslessPreview,
+    isStalePreviewTmp,
+    previewSweepBase,
     FIT_PREVIEW_SUFFIX,
     isFitPreviewName,
     fitPreviewNameForFile,
