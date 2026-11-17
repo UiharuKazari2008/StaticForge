@@ -189,8 +189,15 @@
         page.dataset.wmdLayout = layout;
         recheckLayout = check;
         new ResizeObserver(check).observe(page);
-        // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize
-        if (typeof MutationObserver === 'function') new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+        // Settings > Screen changes the scale (--wm-px, so the em breakpoints) without a resize. <html>'s
+        // style also takes the theme's colours, the camera cut-out and others: only a change of the
+        // scale (or the text size adjust) reads the layout again (each read was a style pass, #890)
+        if (typeof MutationObserver === 'function') {
+            const html = document.documentElement;
+            const scaleKey = () => `${html.style.getPropertyValue('--wm-px')}|${html.style.getPropertyValue('-webkit-text-size-adjust')}|${html.style.getPropertyValue('text-size-adjust')}`;
+            let scale = scaleKey();
+            new MutationObserver(() => { const now = scaleKey(); if (now === scale) return; scale = now; check(); }).observe(html, { attributes: true, attributeFilter: ['style'] });
+        }
     }
 
     // ---------------------------------------------------------------- hosting the desktop Director
