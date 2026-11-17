@@ -738,8 +738,42 @@
         capturing = true;
         try { pushLayoutsNow(sh, roles, partial); } finally { if (notesMO) notesMO.takeRecords(); capturing = false; }
     }
+    /**
+     * The bar's screen in device px ({ w, h }), from the app (AndroidBars.screenSize), or null. A page behind a
+     * program keeps the size it last had on screen: a Fold folded since is still laid out for the inner screen
+     * (1968 px) while the bars draw on the cover (1080), and every popup ran off the right edge with its text
+     * on one line, sitting too high (Yukimi, Nov 17, #891).
+     */
+    function barScreen() {
+        try {
+            const ab = window.AndroidBars;
+            if (!ab || typeof ab.screenSize !== 'function') return null;
+            const s = JSON.parse(ab.screenSize() || 'null');
+            return s && s.w > 0 && s.h > 0 ? s : null;
+        } catch (_) { return null; }
+    }
+
+    /** Lays the shell out at the bar's screen size while fn runs (the popups wrap and anchor as they would there). */
+    function atBarScreen(dpr, fn) {
+        const s = barScreen();
+        const shell = document.getElementById('wmShell');
+        const w = s ? s.w / dpr : window.innerWidth;
+        const h = s ? s.h / dpr : window.innerHeight;
+        if (!shell || !s || (Math.abs(w - window.innerWidth) < 1 && Math.abs(h - window.innerHeight) < 1)) return fn(window.innerWidth, window.innerHeight);
+        const prev = shell.getAttribute('style');
+        shell.style.right = 'auto';
+        shell.style.bottom = 'auto';
+        shell.style.width = `${w}px`;
+        shell.style.height = `${h}px`;
+        try { return fn(w, h); } finally { if (prev == null) shell.removeAttribute('style'); else shell.setAttribute('style', prev); }
+    }
+
     function pushLayoutsNow(sh, roles, partial) {
         const dpr = window.devicePixelRatio || 1;
+        atBarScreen(dpr, (vw, vh) => pushLayoutsAt(sh, roles, partial, dpr, vw, vh));
+    }
+
+    function pushLayoutsAt(sh, roles, partial, dpr, vw, vh) {
         const all = {};
         for (const role of roles) {
             try {
@@ -756,7 +790,8 @@
                 // written down as it ends up, not mid-way through its fade (WM 6.1's notification fades in)
                 settle(layers);
                 // pw: the width it was laid out at (the app moves it on a turned screen)
-                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr), pw: Math.round(window.innerWidth * dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
+                // pw / ph: the size it was laid out at (the app fits it to another one, and asks again)
+                if (layers.length) { all[role] = { role, items: layoutOf(layers, dpr), pw: Math.round(vw * dpr), ph: Math.round(vh * dpr) }; const sk = softLabels(); if (sk) all[role].soft = sk; }
             } catch (err) { console.warn('[melatonBars] layout', role, err); }
         }
         try { sh.barsPopupClose(); } catch (_) { /* none open */ }
@@ -1249,6 +1284,8 @@
     let renderQueued = null;
     let popupQueued = null;
     window.melatonBars = {
+        // the app's screen changed size (a Fold folded or opened) with layouts kept for the other one: again, at the new size
+        relayout: () => { try { const roles = Object.keys(layoutsAll || {}); if (roles.length) pushLayouts(roles, false); } catch (err) { console.warn('[melatonBars] relayout', err); } },
         // bar copies that wait in the queue are one: the newest ask is the one made (a popup asked for
         // meanwhile then waits behind one copy at most, not a pile of them)
         render: (ctx) => {
