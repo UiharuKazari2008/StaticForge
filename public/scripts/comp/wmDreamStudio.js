@@ -182,14 +182,51 @@
 
     // ---------------------------------------------------------------- drawing
 
+    // Unchanged writes are skipped: each one still invalidates the element (a progress packet came ~28
+    // times a print and wrote every text, flag and style of the print view, #890).
+    const setHidden = (el, on) => { if (el && el.hidden !== on) el.hidden = on; };
+    const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+
+    // --wm-px (the page's, inherited from <html>) comes from <html>'s inline style (Settings > Screen)
+    // and classes (wm-shell.css): read again only when one of those changed (as wmShell.js rootPx)
+    let pxKey = null;
+    let pxVal = 1;
+    function wmPx() {
+        const key = `${root.style.getPropertyValue('--wm-px')}|${root.className}`;
+        if (key !== pxKey) {
+            pxKey = key;
+            pxVal = parseFloat(getComputedStyle(page || root).getPropertyValue('--wm-px')) || 1;
+        }
+        return pxVal;
+    }
+
+    // A bar's block count (how many fit) is measured once per size: a new size (a ResizeObserver
+    // entry: the screen turned, the bar shown or hidden) or a new unit measures it again; a step only
+    // sets --wds-blocks, and only when it changed (it was a style read and a layout read a packet)
+    const barFits = new WeakMap();
+    const barsSeen = new WeakSet();
+    let barSizes = null;
+    function barFit(bar) {
+        const unit = 9 * wmPx();
+        let fit = barFits.get(bar);
+        if (fit && fit.unit === unit) return fit;
+        if (!barSizes && typeof ResizeObserver === 'function') barSizes = new ResizeObserver((entries) => entries.forEach((e) => barFits.delete(e.target)));
+        if (barSizes && !barsSeen.has(bar)) { barsSeen.add(bar); barSizes.observe(bar); }
+        fit = { unit, n: Math.max(1, Math.floor((Math.max(0, bar.clientWidth - 2) + 2 * (unit / 9)) / unit)), blocks: '' };
+        barFits.set(bar, fit);
+        return fit;
+    }
+
     function setBar(bar, pct) {
         if (!bar) return;
-        if (pct == null) { bar.hidden = true; return; }
-        bar.hidden = false;
+        if (pct == null) { setHidden(bar, true); return; }
+        setHidden(bar, false);
         // whole 7-unit blocks with 2-unit gaps, as many as the bar holds at this percent (the shell's bar)
-        const unit = 9 * (parseFloat(getComputedStyle(page).getPropertyValue('--wm-px')) || 1);
-        const fit = Math.max(1, Math.floor((Math.max(0, bar.clientWidth - 2) + 2 * (unit / 9)) / unit));
-        bar.style.setProperty('--wds-blocks', String(Math.round(Math.max(0, Math.min(100, pct)) / 100 * fit)));
+        const fit = barFit(bar);
+        const blocks = String(Math.round(Math.max(0, Math.min(100, pct)) / 100 * fit.n));
+        if (fit.blocks === blocks && bar.style.getPropertyValue('--wds-blocks') === blocks) return;
+        fit.blocks = blocks;
+        bar.style.setProperty('--wds-blocks', blocks);
     }
 
     function runText(r) {
@@ -222,11 +259,11 @@
         const f = shownPrint();
         const img = strip.querySelector('img');
         const src = active && r.frame ? r.frame : thumbUrl(f);
-        if (src) { if (img.getAttribute('src') !== src) img.src = src; img.hidden = false; } else { img.hidden = true; img.removeAttribute('src'); }
+        if (src) { if (img.getAttribute('src') !== src) img.src = src; setHidden(img, false); } else { setHidden(img, true); if (img.hasAttribute('src')) img.removeAttribute('src'); }
         const list = M.prints();
         const at = list.indexOf(f);
-        strip.querySelector('b').textContent = active ? 'Generating' : (f ? (at >= 0 ? `Print ${at + 1} of ${list.length}` : 'Print') : 'No print yet');
-        strip.querySelector('span').textContent = active ? runText(r) : (f ? 'Tap to view' : 'Generate makes one');
+        setText(strip.querySelector('b'), active ? 'Generating' : (f ? (at >= 0 ? `Print ${at + 1} of ${list.length}` : 'Print') : 'No print yet'));
+        setText(strip.querySelector('span'), active ? runText(r) : (f ? 'Tap to view' : 'Generate makes one'));
         setBar(strip.querySelector('.wds-bar'), active ? runPct(r) : null);
     }
 
@@ -439,20 +476,36 @@
         const status = $('.wds-status');
         // several prints in one run: the grid fills as they land, and stays until one is opened
         const many = r && r.prints > 1 && (active || (!viewing && r.files.length > 1));
-        grid.hidden = !many;
+        setHidden(grid, !many);
         if (many) {
-            const cells = [];
-            for (let i = 0; i < r.prints; i += 1) {
-                const f = r.files[i];
-                const live = !f && active && i === r.files.length && r.frame;
-                cells.push(`<button type="button" data-file="${esc(f || '')}"${f ? '' : ' disabled'}>${f ? `<img alt="" data-file="${esc(f)}" src="${esc(pictureUrl(f))}">` : (live ? `<img alt="" src="${esc(r.frame)}">` : esc(String(i + 1)))}</button>`);
+            // the grid is built when its cells change (a print lands, the live cell starts, a picture's
+            // address, the stage's shape); a step only puts its picture in the live cell (#890)
+            const liveAt = active && r.frame && r.files.length < r.prints ? r.files.length : -1;
+            const urls = [];
+            for (let i = 0; i < r.files.length && i < r.prints; i += 1) urls.push(pictureUrl(r.files[i]));
+            const cellsKey = `${r.prints}|${liveAt}|${r.files.join('\n')}|${urls.join('\n')}`;
+            if (cellsKey !== gridKey || !grid.firstElementChild) {
+                gridKey = cellsKey;
+                watchStage(stage);
+                const cells = [];
+                for (let i = 0; i < r.prints; i += 1) {
+                    const f = r.files[i];
+                    const live = !f && i === liveAt;
+                    cells.push(`<button type="button" data-file="${esc(f || '')}"${f ? '' : ' disabled'}>${f ? `<img alt="" data-file="${esc(f)}" src="${esc(urls[i])}">` : (live ? `<img alt="" data-live="1" src="${esc(r.frame)}">` : esc(String(i + 1)))}</button>`);
+                }
+                // as many columns as keep the cells near the screen's own shape
+                const tall = stage.clientHeight >= stage.clientWidth;
+                stageTall = tall;
+                const cols = tall ? (r.prints <= 2 ? 1 : 2) : (r.prints <= 2 ? 2 : r.prints <= 6 ? 3 : 4);
+                const tpl = `repeat(${cols}, minmax(0, 1fr))`;
+                if (grid.style.gridTemplateColumns !== tpl) grid.style.gridTemplateColumns = tpl;
+                grid.innerHTML = cells.join('');
+            } else if (liveAt >= 0) {
+                const cell = grid.querySelector('img[data-live]');
+                if (cell && cell.getAttribute('src') !== r.frame) cell.src = r.frame;
             }
-            // as many columns as keep the cells near the screen's own shape
-            const tall = stage.clientHeight >= stage.clientWidth;
-            const cols = tall ? (r.prints <= 2 ? 1 : 2) : (r.prints <= 2 ? 2 : r.prints <= 6 ? 3 : 4);
-            grid.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
-            grid.innerHTML = cells.join('');
-        } else {
+        } else if (gridKey || grid.firstChild) {
+            gridKey = '';
             grid.textContent = '';
         }
         const f = shownPrint();
@@ -461,16 +514,32 @@
         const key = live ? '' : (src ? f : '');
         if (src) {
             if (live ? img.getAttribute('src') !== src : (img.dataset.file !== key || !img.getAttribute('src') || img.getAttribute('src').startsWith('data:'))) img.src = src;
-            img.dataset.file = key;
-            img.hidden = false;
-        } else { img.hidden = true; img.removeAttribute('src'); img.dataset.file = ''; }
-        img.style.opacity = active && !r.frame && !many ? '0.35' : '';
-        empty.hidden = !!src || many;
-        status.hidden = !active;
+            if (img.dataset.file !== key) img.dataset.file = key;
+            setHidden(img, false);
+        } else { setHidden(img, true); if (img.hasAttribute('src')) img.removeAttribute('src'); if (img.dataset.file) img.dataset.file = ''; }
+        const dim = active && !r.frame && !many ? '0.35' : '';
+        if (img.style.opacity !== dim) img.style.opacity = dim;
+        setHidden(empty, !!src || many);
+        setHidden(status, !active);
         if (active) {
-            status.querySelector('span').textContent = `Generating: ${runText(r)}`;
+            setText(status.querySelector('span'), `Generating: ${runText(r)}`);
             setBar(status.querySelector('.wds-bar'), runPct(r));
         }
+    }
+
+    // the many-print grid as last built (drawPrint); a new stage shape builds it again
+    let gridKey = '';
+    let stageSize = null;
+    let stageTall = null;
+    function watchStage(stage) {
+        if (stageSize || typeof ResizeObserver !== 'function') return;
+        // only a turn of the stage's shape (tall / wide) changes the columns
+        stageSize = new ResizeObserver(() => {
+            const tall = stage.clientHeight >= stage.clientWidth;
+            if (stageTall !== null && tall !== stageTall) gridKey = '';
+            stageTall = tall;
+        });
+        stageSize.observe(stage);
     }
 
     /** The home tabs: Directive only while Rentan's creative mode is on (as on the desktop). */
