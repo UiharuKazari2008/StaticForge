@@ -44,6 +44,33 @@
     const reg = (key, name, def) => (R() ? R().get(key, name, def) : def);
     const sh = () => window.wmShell || null;
 
+    /**
+     * A page's live part (a running clock, a sampler, a watch) only while the page is seen: Settings in
+     * front with it, the screen on, not behind an Android program. on() when it becomes seen (at once when
+     * it is), off() when it stops being seen; once el is gone both stop for good, listeners too.
+     * Returns { end, seen }.
+     */
+    function whileSeen(el, on, off) {
+        const seen = () => {
+            const s = sh();
+            return el.isConnected && !el.closest('[hidden]') && !(s && typeof s.onScreen === 'function' && !s.onScreen(el));
+        };
+        let live = false;
+        const evs = [[window, 'melatonscreen'], [document, 'visibilitychange'], [document, 'wmBehind'], [document, 'wmAppChange']];
+        function end() {
+            evs.forEach(([t, e]) => t.removeEventListener(e, sync));
+            if (live) { live = false; off(); }
+        }
+        function sync() {
+            if (!el.isConnected) { end(); return; }
+            const now = seen();
+            if (now && !live) { live = true; on(); } else if (!now && live) { live = false; off(); }
+        }
+        evs.forEach(([t, e]) => t.addEventListener(e, sync));
+        sync();
+        return { end, seen, sync };
+    }
+
     // ---------------------------------------------------------------- desktop helpers on demand
 
     const loading = new Map(); // src -> Promise<boolean>
@@ -262,21 +289,22 @@
         longCombo(c1Btn);
         el.querySelector('input[name="c1on"]').addEventListener('change', (e) => { d.c1on = e.target.checked; api.rerender(); });
         el.querySelector('[data-f="c1name"]').addEventListener('input', (e) => { d.c1name = e.target.value; });
-        // the times run, as on the device
-        clearInterval(d.timer);
-        d.timer = setInterval(() => {
-            if (!el.isConnected) { clearInterval(d.timer); return; }
-            if (el.closest('[hidden]')) return; // Settings is behind another app
+        // the times run, as on the device (while the page is seen: behind another app or with the screen
+        // off nothing ticks, and they are right at once when it shows again)
+        if (d.timer) d.timer.end();
+        const times = () => {
             const set = (f, v) => { const i = el.querySelector(`[data-f="${f}"]`); if (i && i.value !== v) i.value = v; };
             set('time-home', timeOf(d.zone));
             set('date-home', dateOf(d.zone));
             set('time-c1', timeOf(d.c1zone));
             set('date-c1', dateOf(d.c1zone));
-        }, 1000);
+        };
+        let tick = 0;
+        d.timer = whileSeen(el, () => { times(); tick = setInterval(() => { if (d.timer && d.timer.seen()) times(); else if (d.timer) d.timer.sync(); }, 1000); }, () => { clearInterval(tick); tick = 0; });
     }
 
     async function clockCommit(d) {
-        clearInterval(d.timer);
+        if (d.timer) { d.timer.end(); d.timer = null; }
         const r = R();
         if (!r || !d.ready) return [];
         const i = d.initial;
@@ -940,13 +968,14 @@
      * page is gone or shows another tab.
      */
     function sampleBattery(el, d) {
-        clearInterval(d.sampler);
+        if (d.sampler) d.sampler.end();
         d.sampler = null;
         if (!hasLiveBattery()) return;
         const s1 = sh();
         const tick = () => {
-            if (!el.isConnected || d.tab !== 'battery') { clearInterval(d.sampler); d.sampler = null; return; }
-            if (document.hidden || !el.getClientRects().length) return;
+            if (!el.isConnected || d.tab !== 'battery') { if (d.sampler) d.sampler.end(); d.sampler = null; return; }
+            // not seen (behind another app, the screen off): the sampler stops (whileSeen); none taken meanwhile
+            if (d.sampler && !d.sampler.seen()) { d.sampler.sync(); return; }
             const raw = s1 && typeof s1.readBattery === 'function' ? s1.readBattery() : null;
             if (!raw) return;
             d.take();
@@ -967,7 +996,8 @@
         };
         d.batSig = JSON.stringify([batteryStatus(d.battery), d.battery && d.battery.level, batteryRows(d.battery, d).map((r) => r[0])]);
         paintPowerGraph(el, d);
-        d.sampler = setInterval(tick, POWER_MS);
+        let timer = 0;
+        d.sampler = whileSeen(el, () => { timer = setInterval(tick, POWER_MS); }, () => { clearInterval(timer); timer = 0; });
         if (!d.hist.length) tick();
     }
 
@@ -1924,24 +1954,31 @@
             const cu = window.cplUpdate;
             const st = cu && typeof cu.classify === 'function' ? cu.classify(state, info && info.message) : state;
             d.view = { state: st, message: info && info.message, progress: info && info.progress, filesTotal: info && info.filesTotal };
+            // the screen off (or behind an Android program): the page keeps the states, drawn when it is seen
+            if (d.watch && !d.watch.seen()) { d.viewStale = true; return; }
             if (d.rerender) d.rerender();
         };
         m.foregroundUpdateView = view;
-        clearInterval(d.watch);
-        d.watch = setInterval(() => {
-            if (!el.isConnected) {
-                clearInterval(d.watch);
-                if (m.foregroundUpdateView === view) m.foregroundUpdateView = null;
-                return;
-            }
-            if (el.closest('[hidden]')) {
-                // Settings is behind Start, Today or another app: states go to the shell again
-                if (m.foregroundUpdateView === view) m.foregroundUpdateView = null;
-                return;
-            }
+        if (d.watch) d.watch.end();
+        let timer = 0;
+        let first = true;
+        // the manager's own fields every 500 ms while the page is seen; nothing with the screen off. Seen
+        // again: what came or moved meanwhile is drawn at once (the page anew, which watches again)
+        d.watch = whileSeen(el, () => {
             if (!m.foregroundUpdateView) m.foregroundUpdateView = view;
-            if (pollUpdate(d) && d.rerender) d.rerender();
-        }, 500);
+            if (!first && (pollUpdate(d) || d.viewStale) && d.rerender) { d.viewStale = false; d.rerender(); return; }
+            first = false;
+            timer = setInterval(() => {
+                if (d.watch && !d.watch.seen()) { d.watch.sync(); return; }
+                if (!m.foregroundUpdateView) m.foregroundUpdateView = view;
+                if (pollUpdate(d) && d.rerender) d.rerender();
+            }, 500);
+        }, () => {
+            clearInterval(timer);
+            timer = 0;
+            // gone, or Settings behind Start, Today or another app: states go to the shell again
+            if ((!el.isConnected || el.closest('[hidden]')) && m.foregroundUpdateView === view) m.foregroundUpdateView = null;
+        });
     }
 
     function updateAct(d, what) {
@@ -2118,7 +2155,7 @@
         init: updateInit,
         render: updateRender,
         commit(d) {
-            clearInterval(d.watch);
+            if (d.watch) { d.watch.end(); d.watch = null; }
             const m = swm();
             if (m && m.foregroundUpdateView) m.foregroundUpdateView = null;
             return versionCommit(d);
@@ -2591,6 +2628,9 @@
             const hdr = el.closest('.wm-set') && el.closest('.wm-set').querySelector('.wm-form-hdr');
             if (hdr) hdr.textContent = 'GPS Settings';
             const label = (opts, v) => (opts.find(([k]) => k === v) || opts[opts.length - 1])[1];
+            // the GPS is read only while the Hardware tab is seen (behind another app or the screen off it is
+            // let go, and taken again when the page shows)
+            if (d.gpsSeen) { d.gpsSeen.end(); d.gpsSeen = null; }
             if (tab === 'programs') {
                 gpsStop(d);
                 el.innerHTML = `${ui.text('Choose the port that programs will use to obtain GPS data. Any program that uses GPS will need to communicate with this port.')}
@@ -2615,10 +2655,11 @@
                 gpsFacts(d, el);
             });
             ui.bindCombo(el.querySelector('[data-act="baud"]'), GPS_BAUD.map((b) => [b, b]), d.baud, (v) => { d.baud = v; }, 'right');
-            if (d.hardware !== 'none') gpsWatch(d, el);
+            d.gpsSeen = whileSeen(el, () => { if (d.hardware !== 'none') gpsWatch(d, el); }, () => gpsStop(d));
             gpsFacts(d, el);
         },
         commit(d) {
+            if (d.gpsSeen) { d.gpsSeen.end(); d.gpsSeen = null; }
             gpsStop(d);
             lsSet(GPS_KEY, JSON.stringify({ program: d.program, hardware: d.hardware, baud: d.baud, manage: d.manage }));
             return [GPS_KEY];
