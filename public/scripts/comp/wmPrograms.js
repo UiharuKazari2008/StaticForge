@@ -1897,20 +1897,34 @@
             init: () => ({}),
             render(el) {
                 const zone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Unknown';
+                el.innerHTML = `<div class="wm-form-sub">Home</div>
+                    <div class="wm-form-row"><span class="wm-form-label">Time Zone:</span><span class="wm-form-value">${esc(zone)}</span></div>
+                    <div class="wm-form-row"><span class="wm-form-label">Date:</span><span class="wm-form-value" data-f="date"></span></div>
+                    <div class="wm-form-row"><span class="wm-form-label">Time:</span><span class="wm-form-value" data-f="time"></span></div>
+                    <p class="wm-form-note" style="margin-top:calc(8 * var(--wm-px))">The clock follows this phone's own time and time zone.</p>`;
+                const dateEl = el.querySelector('[data-f="date"]');
+                const timeEl = el.querySelector('[data-f="time"]');
+                const put = (n, t) => { if (n.textContent !== t) n.textContent = t; };
                 const draw = () => {
-                    if (!el.isConnected) { clearInterval(timer); return; }
-                    // Settings behind another app or the screen off: the next tick on screen draws it
-                    const sh = window.wmShell;
-                    if (el.innerHTML && sh && sh.onScreen && !sh.onScreen(el)) return;
                     const now = new Date();
-                    el.innerHTML = `<div class="wm-form-sub">Home</div>
-                        <div class="wm-form-row"><span class="wm-form-label">Time Zone:</span><span class="wm-form-value">${esc(zone)}</span></div>
-                        <div class="wm-form-row"><span class="wm-form-label">Date:</span><span class="wm-form-value">${esc(now.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }))}</span></div>
-                        <div class="wm-form-row"><span class="wm-form-label">Time:</span><span class="wm-form-value">${esc(now.toLocaleTimeString())}</span></div>
-                        <p class="wm-form-note" style="margin-top:calc(8 * var(--wm-px))">The clock follows this phone's own time and time zone.</p>`;
+                    put(dateEl, now.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' }));
+                    put(timeEl, now.toLocaleTimeString());
                 };
-                const timer = setInterval(draw, 1000);
+                // the second's tick (text only) runs while the page is seen: Settings behind another app, the
+                // screen off or behind an Android program stop it; seen again, it is right at once and ticks on
+                const sh = window.wmShell;
+                const seenEl = () => el.isConnected && !el.closest('[hidden]') && !(sh && sh.onScreen && !sh.onScreen(el));
+                let timer = 0;
+                const evs = [[window, 'melatonscreen'], [document, 'visibilitychange'], [document, 'wmBehind']];
+                const sync = () => {
+                    if (!el.isConnected) { clearInterval(timer); timer = 0; evs.forEach(([t, e]) => t.removeEventListener(e, sync)); return; }
+                    const on = seenEl();
+                    if (on && !timer) { draw(); timer = setInterval(() => { if (seenEl()) draw(); else sync(); }, 1000); }
+                    else if (!on && timer) { clearInterval(timer); timer = 0; }
+                };
+                evs.forEach(([t, e]) => t.addEventListener(e, sync));
                 draw();
+                sync();
             }
         },
         {
