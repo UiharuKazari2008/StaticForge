@@ -376,10 +376,12 @@
             <ul class="was-log">${logEntries.length ? logEntries.map((e) => `<li class="is-${esc(e.level)}"><time>${esc(when(e.at))}</time>${esc(e.text)}</li>`).join('') : '<li>No activity yet.</li>'}</ul>`;
     }
 
+    let renderStale = false;
     function render() {
         if (!page) return;
-        // ActiveSync behind another app, the page hidden or the screen off: show() draws it anew
-        if (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page)) return;
+        // ActiveSync behind another app, the page hidden or the screen off: show() (or screen on) draws it anew
+        if (window.wmShell && window.wmShell.onScreen && !window.wmShell.onScreen(page)) { renderStale = true; return; }
+        renderStale = false;
         const st = as.state();
         if ((view === 'options' || view === 'optset') && !opts) view = 'main';
         const html = view === 'options' ? optsHtml(st) : view === 'optset' ? optsSettingsHtml() : view === 'status' ? statusHtml() : view === 'received' ? receivedHtml() : mainHtml(st);
@@ -509,6 +511,11 @@
             }
         });
         as.on('state', render);
+        // the screen on (or the page shown) with ActiveSync in front: what changed while it was off
+        const wake = () => { if (renderStale) render(); };
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('wmBehind', wake);
         as.on('received', () => { if (view === 'received' || view === 'main') render(); });
         // the Miniport's settings and figures came (Café Cache shows them; the draft keeps what was ticked)
         try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'options' && opts && opts.cafe && !opts.cafeTouched) optsCafeFromConfig(); if (view === 'options' || view === 'optset') render(); }); } catch (_) { /* no Miniport */ }
