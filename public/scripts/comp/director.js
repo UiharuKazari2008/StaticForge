@@ -8196,7 +8196,8 @@ class Director {
             || modal.classList.contains('minimised'))) {
             return false;
         }
-        if (chat.closest('.hidden, .hidden-alt, .minimised')) return false;
+        // [hidden]: a phone page put away (as syncStreamWatch and the mascot's host check have it)
+        if (chat.closest('.hidden, .hidden-alt, .minimised, [hidden]')) return false;
         // her scene with the log hidden (not peeking): the rows are visibility: hidden, and on a phone
         // in portrait not laid out at all (wm-director.css); the wide phone's log beside her shows
         const host = chat.closest('#directorSessionChat');
