@@ -3285,17 +3285,25 @@
                             else if (p.classList.contains('wm-vpn-time')) {
                                 const ws = window.wsClient;
                                 pair.clock = (ws && ws.connectionStats && ws.connectionStats.connectedAt) || null;
-                                pair.r.push({ s: textOf(p), b: true });
+                                // (the state key leaves the running time out: the app's copy runs that clock itself)
+                                pair.r.push({ s: bubbleKeyMode ? '' : textOf(p), b: true });
                             } else pair.r.push({ s: textOf(p), b: p.tagName === 'B' || p.classList.contains('is-bold') });
                         });
                     });
                     out.sec.push(pair);
                 } else if (n.classList.contains('wm-ds-progress')) {
                     const sp = n.querySelector('span');
-                    out.sec.push({ t: 'progress', blocks: sp ? parseInt(sp.style.getPropertyValue('--wm-ds-blocks'), 10) || 0 : 0 });
+                    // (a part the app fills live, data-live: the state key keeps its place, not its value)
+                    const live = bubbleKeyMode && sp && sp.dataset.live;
+                    out.sec.push({ t: 'progress', blocks: live ? -1 : sp ? parseInt(sp.style.getPropertyValue('--wm-ds-blocks'), 10) || 0 : 0 });
                 } else if (n.classList.contains('wm-bubble-warn')) out.sec.push({ t: 'text', s: textOf(n), warn: true });
                 else if (n.children.length && [...n.children].some((c) => c.matches('div, .wm-bubble-pair, .wm-ds-progress'))) fromEl(n);
-                else { const t = textOf(n); if (t) out.sec.push({ t: 'text', s: t, b: n.tagName === 'B' }); }
+                else {
+                    let t = textOf(n);
+                    // the battery's lines (data-live) change with every reading; their numbers are the app's to fill
+                    if (t && bubbleKeyMode && n.dataset && n.dataset.live) t = t.replace(/[\d.,:]+/g, '#');
+                    if (t) out.sec.push({ t: 'text', s: t, b: n.tagName === 'B' });
+                }
             });
         };
         (a.sections || []).forEach((sec) => {
@@ -3316,19 +3324,76 @@
     }
     let bubblesSent = '';
     let bubblesAt = 0;
+    let bubbleKeyMode = false;
+    let bubblesKey = '';
+    let bubblesKeyAt = 0;
+    let bubblesPending = false;
+    let bubblesTimer = null;
+    /*
+     * What the bar's popups would show, described cheaply (#890): each status bubble as statusBubble builds
+     * it (bubbleCapture: no DOM shown, no layout), the notifications, the message counts, the volume box,
+     * the icons in the bar and the bar's size and look. The parts the app's copy fills live (the battery's
+     * readings, the connection's running time) count by their place, not their value. pushLayouts (every
+     * popup opened in the page, its animations finished, laid out at the bar's screen size and written
+     * down) runs only when this changed.
+     */
+    function bubbleStateKey(roles) {
+        const out = [];
+        bubbleKeyMode = true;
+        try {
+            roles.forEach((role) => {
+                if (role === 'notify' || role === 'mail' || role === 'sms' || role === 'chat' || role === 'volume') return;
+                bubbleCapture = [];
+                try { statusBubble(role, null, true); } catch (_) { /* described as nothing */ }
+                const got = bubbleCapture;
+                bubbleCapture = null;
+                out.push(`${role}=${got.length ? JSON.stringify(bubbleSpecOf(got[got.length - 1])) : ''}`);
+            });
+        } finally { bubbleCapture = null; bubbleKeyMode = false; }
+        out.push(`notes=${notes.map((n) => `${n.id}\u0001${n.type}\u0001${n.title || ''}\u0001${n.running ? 1 : 0}\u0001${n.toast ? n.toast.textContent : ''}`).join('\u0002')}`);
+        out.push(`msg=${[shellMailUnread, shellMailNew ? 1 : 0, imapUnread(), smsUnread(), chatUnread()].join(',')}`);
+        out.push(`vol=${[levelOf('media'), levelOf('notify'), levelOf('ringer'), soundMode()].join(',')}`);
+        out.push(`icons=${[...shell.querySelectorAll('.wm-titlebar .wm-status-icon')].map((i) => `${i.dataset.role}:${i.hidden ? 0 : 1}:${i.classList.contains('wm-shed') ? 0 : 1}:${i.dataset.icon || ''}`).join(',')}`);
+        let screenSize = '';
+        try { screenSize = typeof window.AndroidBars.screenSize === 'function' ? String(window.AndroidBars.screenSize() || '') : ''; } catch (_) { screenSize = ''; }
+        out.push(`bar=${window.melatonBars && typeof window.melatonBars.kitSignature === 'function' ? window.melatonBars.kitSignature() : ''}|${screenSize}|${window.innerWidth}x${window.innerHeight}`);
+        return out.join('\n');
+    }
     function barsBubbleSpecs(force) {
         const ab = window.AndroidBars;
         if (!ab || typeof ab.bubbles !== 'function' || !barsExternal || !shell) return;
         const now = Date.now();
-        // (each push opens every popup and writes it down: at most every 4 s; the live parts the app fills itself)
-        if (!force && now - bubblesAt < 4000) return;
-        bubblesAt = now;
         const roles = new Set();
         shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => { const r = i.dataset.role; if (r && !i.hidden) roles.add(r === 'roaming' || r === 'cell' ? 'signal' : r); });
         ['data', 'signal', 'battery', 'bluetooth', 'volume'].forEach((r) => roles.add(r));
         roles.delete('androidtray');
-        // the standard (cursor rule melaton-bars-native-layouts): each popup as the page draws it, written down
-        if (window.melatonBars && typeof window.melatonBars.pushLayouts === 'function') { window.melatonBars.pushLayouts([...roles]); return; }
+        // the standard (cursor rule melaton-bars-native-layouts): each popup as the page draws it, written down,
+        // again only when what they show changed (bubbleStateKey, worked out at most once a second), and at most
+        // every 4 s (the live parts the app fills itself); a change inside those waits for the timer
+        if (window.melatonBars && typeof window.melatonBars.pushLayouts === 'function') {
+            if (force || now - bubblesKeyAt >= 1000) {
+                bubblesKeyAt = now;
+                const key = bubbleStateKey([...roles]);
+                if (key !== bubblesKey) { bubblesKey = key; bubblesPending = true; } else if (bubblesPending === 'check') bubblesPending = false;
+            } else if (!bubblesPending) bubblesPending = 'check';
+            let wait = 0;
+            if (bubblesPending === true) {
+                wait = force ? 0 : bubblesAt + 4000 - now;
+                if (wait <= 0) {
+                    bubblesPending = false;
+                    bubblesAt = now;
+                    clearTimeout(bubblesTimer);
+                    bubblesTimer = null;
+                    window.melatonBars.pushLayouts([...roles]);
+                    return;
+                }
+            } else if (bubblesPending === 'check') wait = bubblesKeyAt + 1000 - now;
+            if (bubblesPending && !bubblesTimer) bubblesTimer = setTimeout(() => { bubblesTimer = null; barsBubbleSpecs(false); }, Math.max(50, wait));
+            return;
+        }
+        // (an older melatonBars: each push opens every popup and writes it down, at most every 4 s)
+        if (!force && now - bubblesAt < 4000) return;
+        bubblesAt = now;
         ['notify', 'mail', 'sms', 'chat', 'volume'].forEach((r) => roles.delete(r));
         const specs = {};
         roles.forEach((role) => {
@@ -6022,12 +6087,14 @@
 
     function statusBubble(role, anchor, update) {
         if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
-        closeVolume();
+        // (described for the app, bubbleCapture: nothing on screen changes, menus and the volume box stay)
+        const capture = !!bubbleCapture;
+        if (!capture) closeVolume();
         const el = shell.querySelector('.wm-bubble');
         // roaming opens the Phone bubble, so a second tap on it closes that bubble
         const r = role === 'roaming' || role === 'cell' ? 'signal' : role;
         if (!update && !el.hidden && el.dataset.role === r) { closeBubble(); return; }
-        closeMenus(true);
+        if (!capture) closeMenus(true);
         const ws = window.wsClient;
         if (role === 'data') {
             const connected = !!(ws && ws.isConnected && ws.isConnected());
@@ -6177,7 +6244,7 @@
             }
             const powerSettings = () => { const st = window.wmSettings; if (!(st && typeof st.open === 'function' && st.open('power', 'battery')) && apps.has('settings')) open('settings'); };
             bubble({ title: 'Power', role, anchor, sections: lines, footLinks: [{ label: 'Settings', action: powerSettings }], buttons: [{ text: 'Hide' }] });
-            watchBatteryBubble(anchor);
+            if (!capture) watchBatteryBubble(anchor);
         } else if (role === 'director') {
             const d = directorState();
             const text = !d ? 'The Director has not reported yet.'
@@ -6369,7 +6436,7 @@
             }
             // a waiting update notice (stalled, applied, check failed ...) comes up from its icon
             const waiting = notes.find(isUpdateNote);
-            if (waiting) { closeBubble(); showNote(waiting.id); return; }
+            if (waiting) { if (capture) return; closeBubble(); showNote(waiting.id); return; }
             const sw = window.serviceWorkerManager;
             const n = sw && Number(sw.pendingUpdateFilesTotal);
             const text = `Updates are ready to install${Number.isFinite(n) && n > 0 ? ` (${n.toLocaleString()} ${n === 1 ? 'file' : 'files'})` : ''}. Melaton restarts to install them.`;
