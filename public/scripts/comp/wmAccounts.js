@@ -245,6 +245,9 @@
 
     function render() {
         if (!page || page.hidden) return;
+        // the screen off or behind an Android program: drawn when it is seen again (wake)
+        if (sh && typeof sh.onScreen === 'function' && !sh.onScreen(page)) { pageStale = true; return; }
+        pageStale = false;
         const { rows, alerts } = readModel();
         const st = state();
         const keys = new Set([...rows.map((r) => `status:${r.key}`), ...alerts.map((a) => `alerts:${a.id}`)]);
@@ -351,7 +354,7 @@
         clearInterval(tickTimer);
         // renewal countdowns, Claude window resets and run costs move with the clock
         tickTimer = setInterval(() => {
-            if (!page || page.hidden || sh.current !== APP_ID) { clearInterval(tickTimer); return; }
+            if (!page || page.hidden || sh.current !== APP_ID || !awake()) { clearInterval(tickTimer); tickTimer = null; return; }
             render();
         }, TICK_MS);
     }
@@ -893,9 +896,32 @@
             const t = setInterval(() => { if (first()) clearInterval(t); }, 3000);
         }
         // over the Melaton Miniport (#815) it keeps the wallet current for every window: no poll here,
-        // a read when it says the wallet changed (answered from its copy)
-        setInterval(() => { if (!document.hidden && !(window.melatonContinuity && window.melatonContinuity.miniportOwns && window.melatonContinuity.miniportOwns('wallet_status'))) refresh(); }, POLL_MS);
+        // a read when it says the wallet changed (answered from its copy, also with the screen off)
+        syncPoll();
         try { if (window.melatonContinuity && window.melatonContinuity.miniportData) window.melatonContinuity.miniportData.on('wallet_status', () => refresh()); } catch (_) { /* polls instead */ }
+        // the screen off, the page hidden or behind an Android program: the poll and the page's tick stop;
+        // seen again, an overdue read goes at once and the page is drawn as it is now
+        const wake = () => {
+            syncPoll();
+            if (!awake()) { if (tickTimer) { clearInterval(tickTimer); tickTimer = null; } return; }
+            if (Date.now() - lastFetch > POLL_MS && !miniportWallet()) refresh();
+            if (page && !page.hidden && sh.current === APP_ID) { if (pageStale) render(); if (!tickTimer) schedule(); }
+        };
+        window.addEventListener('melatonscreen', wake);
+        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('wmBehind', wake);
+    }
+
+    let pollTimer = null;
+    let pageStale = false;
+    /** Something of the page is seen: the screen on, the page shown, not behind an Android program. */
+    const awake = () => (typeof sh.onScreen === 'function' ? sh.onScreen() : !document.hidden);
+    const miniportWallet = () => !!(window.melatonContinuity && window.melatonContinuity.miniportOwns && window.melatonContinuity.miniportOwns('wallet_status'));
+    /** The 5-minute wallet read (when the Miniport does not keep it) runs only while the phone is seen. */
+    function syncPoll() {
+        const on = awake();
+        if (on && !pollTimer) pollTimer = setInterval(() => { if (!awake()) syncPoll(); else if (!miniportWallet()) refresh(); }, POLL_MS);
+        else if (!on && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
 
     function register() {
@@ -907,8 +933,8 @@
             inStart: 'programs',
             mount,
             show,
-            hide() { clearInterval(tickTimer); },
-            onEnd() { clearInterval(tickTimer); page = null; sel = null; },
+            hide() { clearInterval(tickTimer); tickTimer = null; },
+            onEnd() { clearInterval(tickTimer); tickTimer = null; page = null; sel = null; },
             softKeys() {
                 return {
                     left: { label: 'Refresh', action: userRefresh },
