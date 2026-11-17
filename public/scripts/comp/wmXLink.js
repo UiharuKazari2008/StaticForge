@@ -732,10 +732,14 @@
         const tod = () => { const e = page && page.querySelector('.wxl-tod'); if (e) e.textContent = clock(Date.now()); };
         tod();
         // the band's clock only: the cabinets' status comes pushed from the server (syncHub)
+        // (only while it is seen: the screen off or behind another app stops it, seen again starts it)
         tick = setInterval(() => {
-            if (!shown || !(sh.onScreen ? sh.onScreen(page) : !document.hidden)) return;
+            if (!shown || !(sh.onScreen ? sh.onScreen(page) : !document.hidden)) { clearInterval(tick); tick = null; return; }
             tod();
         }, 1000);
+    }
+    function tickWake() {
+        if (shown && !tick && page && (sh.onScreen ? sh.onScreen(page) : !document.hidden)) startTick();
     }
 
     function register() {
@@ -743,6 +747,9 @@
         if (!sh || typeof sh.registerApp !== 'function') return;
         esc = sh.escapeHtml || esc;
         wireHub();
+        window.addEventListener('melatonscreen', tickWake);
+        document.addEventListener('visibilitychange', tickWake);
+        document.addEventListener('wmBehind', tickWake);
         sh.registerApp({
             id: APP_ID,
             title: TITLE,
