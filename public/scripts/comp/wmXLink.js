@@ -228,13 +228,13 @@
     function wireHub() {
         const ws = window.wsClient;
         if (ws && typeof ws.on === 'function') {
-            ws.on('xlink_status', (msg) => { if (hubOn && msg) applyHub(msg.changed || (msg.data && msg.data.changed)); });
+            ws.on('xlink_status', (msg) => { if (hubOn && msg) applyHub(msg.changed || (msg.data && msg.data.changed)); }, { signal: appScopeSignal });
             // the server forgets a dropped socket's subscriptions: subscribe again
-            ws.on('connected', () => { hubOn = false; void syncHub(); });
+            ws.on('connected', () => { hubOn = false; void syncHub(); }, { signal: appScopeSignal });
         }
-        document.addEventListener('wmAppChange', () => { void syncHub(); });
-        document.addEventListener('visibilitychange', () => { void syncHub(); });
-        window.addEventListener('melatonscreen', () => { void syncHub(); });
+        document.addEventListener('wmAppChange', () => { void syncHub(); }, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', () => { void syncHub(); }, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', () => { void syncHub(); }, { signal: appScopeSignal });
     }
 
     async function poll(key, opts = {}) {
