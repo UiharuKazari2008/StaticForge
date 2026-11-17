@@ -14,6 +14,8 @@ const SCOPE_WS_PACKETS = {
         'gallery_position_hint', 'send_to_sequenzia_bulk', 'update_image_preset_bulk',
         'get_similar_image_groups', 'scrap_similar_images', 'get_nax_vibes_gallery',
         'set_gallery_show_shared',
+        // the gallery's pushes for a light client (#890, 120-galleryHandler.js)
+        'gallery_subscribe',
         // Dreamscape Frame slideshow devices (modules/slideshowDevices.js)
         'client_identify', 'client_device_state', 'client_device_config', 'client_device_preview', 'client_device_screen',
         'device_command_ack', 'device_slideshow_images'
