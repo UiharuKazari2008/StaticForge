@@ -292,7 +292,88 @@ async function ensureFitPreview(imagesDir, previewsDir, previewName, opts) {
     return job;
 }
 
+// Lossless preview (#890 P14): the gallery PNG as a lossless WebP (the same pixels, alpha kept; about a
+// third smaller), for the screen saver, which shows originals. <stem>@ll.webp, made from images/<stem>.png
+// on the first request (the request waits for it) and kept like the other previews; a PNG it cannot
+// copy exactly (16-bit, or one with an embedded colour profile sharp would convert) gets no
+// lossless copy, so the request is a 404 and the page loads the PNG as before.
+const LOSSLESS_PREVIEW_SUFFIX = '@ll.webp';
+// an encode is CPU-bound (~1.2 s per megapixel at effort 4): one at a time, never starving the server
+const LOSSLESS_CONCURRENCY = 1;
+// past this many pixels (an upscale) the fastest effort: ~0.5 s per megapixel, still lossless
+const LOSSLESS_FAST_PIXELS = 4.2e6;
+const losslessJobs = new Map();
+const losslessWaiting = [];
+let losslessRunning = 0;
+
+function isLosslessPreviewName(name) {
+    return typeof name === 'string' && name.endsWith(LOSSLESS_PREVIEW_SUFFIX);
+}
+
+function losslessPreviewNameForFile(filename) {
+    return `${path.basename(filename).replace(/\.png$/i, '')}${LOSSLESS_PREVIEW_SUFFIX}`;
+}
+
+function losslessSlot() {
+    return new Promise((resolve) => {
+        const grant = () => {
+            losslessRunning++;
+            let done = false;
+            resolve(() => {
+                if (done) return;
+                done = true;
+                losslessRunning--;
+                const next = losslessWaiting.shift();
+                if (next) next();
+            });
+        };
+        if (losslessRunning < LOSSLESS_CONCURRENCY) grant(); else losslessWaiting.push(grant);
+    });
+}
+
+/**
+ * Make sure previewsDir/<stem>@ll.webp exists and is not older than images/<stem>.png.
+ * @returns {Promise<string|null>} the WebP path, or null (no PNG, or one that cannot be copied exactly)
+ */
+async function ensureLosslessPreview(imagesDir, previewsDir, previewName) {
+    if (!isLosslessPreviewName(previewName)) return null;
+    const name = path.basename(previewName);
+    const stem = name.slice(0, -LOSSLESS_PREVIEW_SUFFIX.length);
+    if (!stem) return null;
+    const sourcePath = path.join(imagesDir, `${stem}.png`);
+    const sourceStat = await statOrNullAsync(sourcePath);
+    if (!sourceStat || !sourceStat.isFile()) return null;
+    const outPath = path.join(previewsDir, name);
+    const outStat = await statOrNullAsync(outPath);
+    if (outStat && outStat.isFile() && outStat.size > 0 && outStat.mtimeMs >= sourceStat.mtimeMs) return outPath;
+    let job = losslessJobs.get(outPath);
+    if (!job) {
+        job = losslessSlot().then(async (release) => {
+            const tmpPath = `${outPath}.${process.pid}.${Date.now()}.tmp`;
+            try {
+                const meta = await sharp(sourcePath).metadata();
+                // 8 bits per channel and no colour profile: the WebP holds exactly the PNG's pixels
+                if (meta.depth !== 'uchar' || meta.icc || !meta.width || !meta.height) return null;
+                const effort = meta.width * meta.height > LOSSLESS_FAST_PIXELS ? 0 : 4;
+                await sharp(sourcePath).webp({ lossless: true, effort }).toFile(tmpPath);
+                await fs.promises.rename(tmpPath, outPath);
+                return outPath;
+            } catch (e) {
+                fs.promises.unlink(tmpPath).catch(() => {});
+                console.error('Failed to generate lossless preview for', sourcePath, ':', e.message);
+                return null;
+            } finally { release(); }
+        }).finally(() => losslessJobs.delete(outPath));
+        losslessJobs.set(outPath, job);
+    }
+    return job;
+}
+
 module.exports = {
+    LOSSLESS_PREVIEW_SUFFIX,
+    isLosslessPreviewName,
+    losslessPreviewNameForFile,
+    ensureLosslessPreview,
     FIT_PREVIEW_SUFFIX,
     isFitPreviewName,
     fitPreviewNameForFile,
