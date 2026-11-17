@@ -857,6 +857,8 @@ class DirectorMascot {
     // options.isHosted(): true while she should show (the Director window, not Studio's inline panel).
     constructor(options = {}) {
         this.isHosted = typeof options.isHosted === 'function' ? options.isHosted : () => true;
+        // options.onLogShown(): her log came into view (the director paints a live turn it held meanwhile)
+        this.onLogShown = typeof options.onLogShown === 'function' ? options.onLogShown : null;
         this.manifests = new Map();      // persona -> normalized manifest (or null when missing)
         this.persona = null;
         this.manifest = null;
@@ -1144,6 +1146,21 @@ class DirectorMascot {
         this.layout();
         this.paintDialogue();
         this.paintChrome();
+        this.noteLogSight();
+        // her text box can show again: the paced reader catches up on the time it waited (#890)
+        if (this.readerSeen()) this.resumeReader();
+    }
+
+    // The log under her scene went from hidden to shown (the log view, Show Log, peek, or she left):
+    // tell the director, which held the live rows' paint while nobody could see them (#890).
+    // now: paint at once (the peek scrolls to the bottom right after, over the rows just drawn)
+    noteLogSight(now) {
+        const hidden = this.vnBubbles() && !this.peek;
+        const was = this._logHidden === true;
+        this._logHidden = hidden;
+        if (!was || hidden || !this.onLogShown) return;
+        if (now) this.onLogShown();
+        else setTimeout(() => { if (this.onLogShown) this.onLogShown(); }, 0);
     }
 
     // Fit the figure above the input bar: height from the view, width from the camera's aspect.
@@ -1667,6 +1684,8 @@ class DirectorMascot {
 
     tick(now = Date.now()) {
         if (!this.manifest || !this.stageState || (typeof document !== 'undefined' && document.hidden)) return;
+        // back in sight (page shown, screen on): the paced reader catches up
+        if (this._reader && this._reader.pausedAt && this.readerSeen()) this.resumeReader();
         // Her host can be moved after she decided whether she shows (the phone's Director app re-hosts
         // the window once it has opened, #742): the chat then sat in the plain log view until Show
         // Mascot was toggled. She checks again here and puts the reply box back.
@@ -1811,7 +1830,7 @@ class DirectorMascot {
     feedReader(kind, text) {
         const clean = String(text || '').replace(/\s+/g, ' ').trim();
         if (!clean) return;
-        const r = this._reader || (this._reader = { queue: [], current: null, shown: 0, holdUntil: 0 });
+        const r = this._reader || (this._reader = { queue: [], current: null, shown: 0, holdUntil: 0, pausedAt: 0 });
         const last = r.queue.length ? r.queue[r.queue.length - 1] : r.current;
         const plain = clean.replace(/\*+/g, '');
         if (last && last.kind === kind && (plain === last.text || plain.startsWith(last.text) || last.text.startsWith(plain))) {
@@ -1833,14 +1852,58 @@ class DirectorMascot {
         this.startReader();
     }
 
+    // the paced reader's speed: characters a second
+    readCps() { return 20; }
+
+    // Her text box can be seen: the visual novel view with the log hidden, the page shown, the phone's
+    // screen on. Otherwise the reader's 50 ms loop stops (it ran the whole turn behind the Messages
+    // view, with her off, beside the log, behind another phone program) and lines only queue (#890).
+    readerSeen() {
+        if (!this.vnBubbles()) return false;
+        if (typeof document === 'undefined') return true;
+        const root = document.documentElement;
+        return !document.hidden && !(root && root.dataset && root.dataset.screenOff !== undefined);
+    }
+
+    // The box can be seen again: the reader moves on by the time it waited, as if it had read all along
+    // (at its own pace, holds included), then types on from there.
+    resumeReader() {
+        const r = this._reader;
+        if (!r || !r.pausedAt) return;
+        const now = Date.now();
+        let budget = now - r.pausedAt;
+        r.pausedAt = 0;
+        if (!r.current && r.queue.length) { r.current = r.queue.shift(); r.shown = 0; }
+        while (budget > 0 && r.current) {
+            const len = r.current.text.length;
+            if (r.queue.length && len - r.shown > 500) r.shown = len - 300;
+            if (r.shown < len) {
+                const speed = this.readCps() * (r.queue.length ? 1.6 : 1);
+                const need = ((len - r.shown) * 1000) / speed;
+                if (budget < need) { r.shown += (budget * speed) / 1000; budget = 0; break; }
+                budget -= need;
+                r.shown = len;
+                const words = r.current.text.split(' ').length;
+                r.holdUntil = now - budget + Math.min(4000, 1200 + words * 40);
+            }
+            if (!r.queue.length || now < r.holdUntil) break;
+            budget = now - r.holdUntil;
+            r.current = r.queue.shift();
+            r.shown = 0;
+        }
+        this.startReader();
+    }
+
     startReader() {
         if (this._readerTimer) return;
-        const READ_CPS = 20;
+        const READ_CPS = this.readCps();
         const STEP_MS = 50;
         const tick = () => {
             this._readerTimer = null;
             const r = this._reader;
             if (!r || !this.working) return;
+            if (!this.readerSeen()) { if (!r.pausedAt) r.pausedAt = Date.now(); return; }
+            if (r.pausedAt) { this.resumeReader(); return; }
             const now = Date.now();
             if (!r.current || (r.shown >= r.current.text.length && now >= r.holdUntil && r.queue.length)) {
                 if (!r.queue.length) { this.paintBubbles(); return; }
@@ -1868,7 +1931,7 @@ class DirectorMascot {
     resetReader() {
         if (this._readerTimer) clearTimeout(this._readerTimer);
         this._readerTimer = null;
-        this._reader = { queue: [], current: null, shown: 0, holdUntil: 0 };
+        this._reader = { queue: [], current: null, shown: 0, holdUntil: 0, pausedAt: 0 };
     }
 
     // While she works, her lines (say, reply text) type into the same VN text box the summary uses, in
@@ -2178,6 +2241,7 @@ class DirectorMascot {
         // The quick bar's Log button closes it again (the old Back to her button stays hidden).
         if (this.el && this.el.peekClose) this.el.peekClose.classList.add('hidden');
         this.paintChrome();
+        this.noteLogSight(true);
         if (this.peek && this.host) {
             const list = this.host.querySelector('.director-chat-messages');
             const scroller = list && list.closest('.director-chat-messages-container');
