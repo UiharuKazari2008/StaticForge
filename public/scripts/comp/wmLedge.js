@@ -25,6 +25,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -644,7 +645,7 @@
         at = null;
         selected = null;
         void loadHeads().then(changed);
-    });
+    }, { signal: appScopeSignal });
 
     window.wmLedge = {
         present,
