@@ -298,7 +298,7 @@
             ctx.on(5802, 'click', () => openCpl('parental-controls'), 'inetcpl:4454');
             // Connections: Melaton's own VPN connection
             const tree = ctx.holder(1559, 'inetcpl:200');
-            const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo().connectionName : 'VPN Connection';
+            const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo().connectionName : 'Nightshade Network';
             if (tree) tree.innerHTML = `<div class="tbp-tree-row is-node"><img src="/static_images/melaton/net-globe.png" alt="" width="16" height="16"><span>${esc(conn)} (Default)</span></div>`;
             ctx.text(1583, conn, 'inetcpl:200');
             ctx.on(1453, 'click', () => openCpl('network'), 'inetcpl:200');

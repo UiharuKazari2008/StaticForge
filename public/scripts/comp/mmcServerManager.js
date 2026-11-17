@@ -152,7 +152,7 @@
     function netInfo() {
         const n = root.melatonNetworkDialogs;
         try { if (n && typeof n.connectionInfo === 'function') return n.connectionInfo() || {}; } catch (_) { /* below */ }
-        return { domain: 'DREAMSCAPE', connectionName: 'VPN Connection', fqdn: root.location ? root.location.hostname : '' };
+        return { domain: 'DREAMSCAPE', connectionName: 'Nightshade Network', fqdn: root.location ? root.location.hostname : '' };
     }
 
     function linkUp() {
@@ -278,7 +278,7 @@
         const computer = c.props([
             ['Full Computer Name', esc(s && s.host ? s.host : (info.fqdn || '')) || na],
             ['Domain', esc(info.domain || 'DREAMSCAPE')],
-            [info.connectionName || 'VPN Connection', linkUp() ? 'Connected' : c.state(false, 'Disconnected', true)],
+            [info.connectionName || 'Nightshade Network', linkUp() ? 'Connected' : c.state(false, 'Disconnected', true)],
             ['Operating System', s && s.platform ? esc(s.platform) : na],
             ['Dreamscape Version', s && s.version ? esc(s.version) : na],
             ['Server Up Time', s ? esc(upTime(s.processUptimeSec)) : na],

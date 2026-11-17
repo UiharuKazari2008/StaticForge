@@ -476,7 +476,7 @@
             try { const e = root.navigator.storage && await root.navigator.storage.estimate(); quota = (e && e.quota) || 0; } catch (_) { /* none */ }
             let battery = null;
             try { const b = root.AndroidDeviceStatus; const s = b && typeof b.getState === 'function' ? JSON.parse(b.getState()) : null; battery = s && s.battery; } catch (_) { battery = null; }
-            const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : { connectionName: 'VPN Connection', connectionType: 'WAN', device: 'L-PPoP' };
+            const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : { connectionName: 'Nightshade Network', connectionType: 'WAN', device: 'L-PPoP' };
             return deviceCategories(hw, { quota, battery: battery || {}, conn });
         }
         const n = (root.navigator && root.navigator.hardwareConcurrency) || 1;
@@ -488,7 +488,7 @@
         const audioIn = media.filter((d) => d.kind === 'audioinput');
         const video = media.filter((d) => d.kind === 'videoinput');
         const pads = (root.navigator.getGamepads ? Array.from(root.navigator.getGamepads()) : []).filter(Boolean);
-        const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : { connectionName: 'VPN Connection', connectionType: 'WAN', device: 'L-PPoP' };
+        const conn = root.melatonNetworkDialogs ? root.melatonNetworkDialogs.connectionInfo() : { connectionName: 'Nightshade Network', connectionType: 'WAN', device: 'L-PPoP' };
         let quota = 0;
         try { const e = root.navigator.storage && await root.navigator.storage.estimate(); quota = (e && e.quota) || 0; } catch (_) { /* none */ }
         const cats = [

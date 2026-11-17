@@ -14,7 +14,7 @@
  *                                   desktop): banner, User name / Password / Domain, Connect /
  *                                   Cancel / Properties
  *
- * <connection> is the network interface name (desktop.connectionName, default VPN Connection),
+ * <connection> is the network interface name (desktop.connectionName, default Nightshade Network),
  * kept apart from the domain name (desktop.domainName, default DREAMSCAPE), which only appears
  * where Windows shows the domain (the Domain field, DOMAIN\user, the network map). <fqdn> is the
  * host the page talks to (location.hostname); WAN / Ethernet and the device come from the
@@ -27,7 +27,7 @@
     'use strict';
 
     const DEFAULT_DOMAIN = 'DREAMSCAPE';
-    const DEFAULT_CONNECTION_NAME = 'VPN Connection';
+    const DEFAULT_CONNECTION_NAME = 'Nightshade Network';
     const DEFAULT_DEVICE = 'L-PPoP';
 
     /** Vista RAS errors for the failure messages websocket.js sets. */

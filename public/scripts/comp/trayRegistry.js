@@ -19,6 +19,7 @@ const TRAY_ICON_CATALOG = [
     { id: 'serviceWorkerTrayIcon', label: 'Melaton Update' },
     { id: 'pingWarningIndicator', label: 'Network latency' },
     { id: 'volumeTrayIcon', label: 'Volume' },
+    { id: 'nightshadeTrayIcon', label: 'Nightshade Network' },
     { id: 'modemTrayIcon', label: 'Network' },
     { id: 'generationQuipsTrayIcon', label: 'Generation quips' },
     { id: 'desktopSaveTrayIndicator', label: 'Saving' }
@@ -34,6 +35,7 @@ const TRAY_POPUP_CATALOG = [
     { id: 'balance-updated', label: 'Balance Updated' },
     { id: 'remote-access', label: 'Remote Access' },
     { id: 'high-latency', label: 'High Latency Detected' },
+    { id: 'nightshade', label: 'Nightshade Network' },
     { id: 'operation-receipt', label: 'Operation Receipt' },
     { id: 'generation-receipt', label: 'Generation Receipt' },
     { id: 'upscale-receipt', label: 'Upscaling Receipt' },
@@ -150,11 +152,14 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
 
 /** 'show' | 'hide' | 'inactive'. Before the first save: the old "not always shown" list
  *  ('hide' for its icons, 'show' for the rest), or Vista's default, Hide when inactive. */
+// shown unless the user picked otherwise: the Nightshade Network icon is always visible (#895, Yukimi)
+const TRAY_DEFAULT_SHOW = new Set(['nightshadeTrayIcon']);
 function trayIconBehavior(id) {
     const { map, legacy } = trayBehaviorsSaved();
-    if (map) return TRAY_BEHAVIORS.includes(map[id]) ? map[id] : 'inactive';
+    const fallback = TRAY_DEFAULT_SHOW.has(id) ? 'show' : 'inactive';
+    if (map) return TRAY_BEHAVIORS.includes(map[id]) ? map[id] : fallback;
     if (legacy) return legacy.has(id) ? 'hide' : 'show';
-    return 'inactive';
+    return fallback;
 }
 
 /** Save every icon's behaviour at once (Customize Notification Icons OK). */

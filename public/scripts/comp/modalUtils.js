@@ -9790,9 +9790,11 @@ window.melatonDomainName = melatonDomainName;
 
 /** The network interface the client reaches the domain through (desktop.connectionName). */
 function melatonConnectionName() {
-    return desktopSettingsGlobalState.connectionName
+    const name = desktopSettingsGlobalState.connectionName
         || (window.wsClient && window.wsClient.melatonConnection && window.wsClient.melatonConnection.connectionName)
-        || 'VPN Connection';
+        || 'Nightshade Network';
+    // Nightshade Network (#895): the old default, still saved in older settings, is the service's name now
+    return name === 'VPN Connection' ? 'Nightshade Network' : name;
 }
 window.melatonConnectionName = melatonConnectionName;
 
