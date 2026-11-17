@@ -14,8 +14,12 @@
  *
  * `wants` is merged over every subscriber (any true wins) and handed to sample(), e.g. Task Manager's
  * services list, which only the Services tab needs.
+ *
+ * asleep(ws) (optional, #890): a subscriber whose page sleeps (a phone's DeX window with the screen off,
+ * client_dormant) is sent nothing, and while every subscriber sleeps nothing is sampled; it gets a fresh
+ * snapshot on the first tick after it wakes.
  */
-function createSnapshotStream({ name, pushType, sample, sendToClient, minIntervalMs = 250, maxIntervalMs = 60000 }) {
+function createSnapshotStream({ name, pushType, sample, sendToClient, asleep = null, minIntervalMs = 250, maxIntervalMs = 60000 }) {
     const subs = new Map(); // ws -> { intervalMs, wants, lastSent }
     let timer = null;
     let running = false;
@@ -52,16 +56,25 @@ function createSnapshotStream({ name, pushType, sample, sendToClient, minInterva
         return data;
     }
 
+    const sleeping = (ws) => {
+        if (typeof asleep !== 'function') return false;
+        try { return !!asleep(ws); } catch (_) { return false; }
+    };
+
     async function tick() {
         timer = null;
         if (!subs.size || running) return;
         running = true;
         try {
+            const now0 = Date.now();
+            // the subscribers due now that are awake: none, no sample
+            const due = [...subs].filter(([ws, s]) => now0 - s.lastSent >= s.intervalMs - 120 && !sleeping(ws));
+            if (!due.length) return;
             const data = await take();
             const now = Date.now();
-            for (const [ws, s] of subs) {
+            for (const [ws, s] of due) {
                 // a little slack so a 1000 ms subscriber is not skipped by a 990 ms sample gap
-                if (now - s.lastSent >= s.intervalMs - 120) { s.lastSent = now; send(ws, data); }
+                if (subs.get(ws) === s) { s.lastSent = now; send(ws, data); }
             }
         } catch (error) {
             console.warn(`[${name}] sample failed: ${error.message}`);

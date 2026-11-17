@@ -29,7 +29,12 @@ function registerPackets(handlersCtx) {
         name: 'taskmgr',
         pushType: 'taskmgr_snapshot_push',
         sample: (wants) => taskManagerSnapshot.snapshot({ services: !!wants.services }),
-        sendToClient: (ws, msg) => handlersCtx.sendToClient(ws, msg)
+        sendToClient: (ws, msg) => handlersCtx.sendToClient(ws, msg),
+        // a phone's DeX window with the screen off (client_dormant, #890) is sent nothing until it wakes
+        asleep: (ws) => {
+            const server = handlersCtx.globalResources && handlersCtx.globalResources.getWebSocketServer();
+            return require('../../wsSocketHeartbeat').isDormantPage(server && server.clients ? server.clients.get(ws) : null);
+        }
     });
     wsPacketRegistry.registerWsPacket('taskmgr_subscribe', async (ctx) => {
         const { ws, message, clientInfo } = ctx;
