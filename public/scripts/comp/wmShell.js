@@ -7424,7 +7424,7 @@
             : { file: SND_CLICKS[kind === 'buttons' ? 'buttons' : 'taps'][loud], gain: 1 };
     };
     const SND_PREFS_KEY = 'wmSounds';
-    const snd = { ctx: null, buffers: new Map(), last: 0, log: [], preview: null, live: 0, idle: 0 };
+    const snd = { ctx: null, buffers: new Map(), last: 0, log: [], preview: null, live: 0, idle: 0, suspending: false };
     // In the Android app every sound with an output plays natively (AndroidVolume.play: SoundPool): a
     // tap made a Web Audio context and decoded every sound in use (~5 MB of AudioBuffers, the render
     // thread alive for days) for nothing (#890). There only Settings' Play and an alarm's own sound
@@ -7521,6 +7521,8 @@
         snd.live++;
         clearTimeout(snd.idle);
         snd.idle = 0;
+        // started while the idle suspend was still on its way: running again after it
+        if (snd.suspending && snd.ctx) snd.ctx.resume().catch(() => {});
         let done = false;
         // a listener, not onended: an alarm's caller sets onended on the source it gets
         src.addEventListener('ended', () => {
@@ -7535,7 +7537,12 @@
         snd.idle = 0;
         if (!SND_NATIVE || snd.live || !snd.ctx) return;
         snd.buffers.clear();
-        try { if (snd.ctx.state === 'running' && snd.ctx.suspend) snd.ctx.suspend().catch(() => {}); } catch (_) { /* closed */ }
+        try {
+            if (snd.ctx.state === 'running' && snd.ctx.suspend) {
+                snd.suspending = true;
+                snd.ctx.suspend().catch(() => {}).then(() => { snd.suspending = false; });
+            }
+        } catch (_) { snd.suspending = false; /* closed */ }
     }
 
     function sndUnlock() {
