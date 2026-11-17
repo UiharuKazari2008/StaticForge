@@ -11310,6 +11310,12 @@
             sessionStorage.removeItem(INSTALL_DONE_KEY);
             if (window.wsClient && window.wsClient.initializationCompleted) localStorage.setItem(INSTALLED_KEY, String(Date.now()));
         } catch (_) { /* storage off */ }
+        // the Android app: installed here (manifest synced, app page kept), so a start without the server
+        // loads this copy instead of its recovery page (#903; DSApp AndroidDisplay.reportInstalled)
+        try {
+            const D = window.AndroidDisplay;
+            if (D && typeof D.reportInstalled === 'function') D.reportInstalled(!!localStorage.getItem('melatonManifestHash'));
+        } catch (_) { /* an older app */ }
         stack.length = 0;
         stack.push('today');
         activate('today');

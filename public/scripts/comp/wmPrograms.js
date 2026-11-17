@@ -1873,7 +1873,21 @@
                         <span>Memory:</span><span>${esc(f.memory)}</span>
                         <span>Expansion slot:</span><span>${esc(f.slot)}</span>
                     </div>
+                    ${ui.buttons([['reinstall', 'Reinstall...']], false)}
                     <div class="wm-cafe-badge" role="img" aria-label="Powered by CaféReady"><span class="wm-cafe-by">Powered by</span><img src="/static_images/melaton/cafe-ready-dark.png" alt="" draggable="false"><span class="wm-cafe-tm">™</span></div>`;
+                // Reinstall (#903): the program files again from the server (programReinstall.js via /launch);
+                // settings and data stay. Needs the Nightshade Network.
+                const ri = el.querySelector('[data-act="reinstall"]');
+                if (ri) ri.addEventListener('click', async () => {
+                    const yes = await sh.messageBox({ title: 'Reinstall', icon: 'question', text: 'Melaton Mobile will restart and install its program again from the Nightshade Network. Your settings and data stay on this phone. Continue?', buttons: [{ text: 'Yes', value: true }, { text: 'No', value: false }] });
+                    if (!yes) return;
+                    const ws = window.wsClient;
+                    if (!(ws && typeof ws.isConnected === 'function' && ws.isConnected())) {
+                        await sh.messageBox({ title: 'Reinstall', icon: 'warning', text: 'The Nightshade Network is not available. Reinstall when it is back.', modal: true });
+                        return;
+                    }
+                    window.location.replace('/launch?reinstall=1');
+                });
             },
             async commit(d) {
                 const idApi = window.melatonDeviceIdentity;
