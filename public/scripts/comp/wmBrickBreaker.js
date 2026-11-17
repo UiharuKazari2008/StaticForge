@@ -918,8 +918,11 @@
 
     // ---------------------------------------------------------------- loop
 
+    // not seen: the page hidden, the screen off (the page is not hidden then) or behind an Android program
+    const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+
     function blocked() {
-        if (!page || page.hidden || document.hidden || view !== 'main' || (ws && ws.current !== APP_ID)) return true;
+        if (!page || page.hidden || away() || view !== 'main' || (ws && ws.current !== APP_ID)) return true;
         return !!document.querySelector('#wmShell .wm-popup:not([hidden]):not(.wm-popup-ghost), #wmShell .wm-msgbox-layer:not([hidden])');
     }
 
@@ -1602,7 +1605,11 @@
         });
         document.addEventListener('keydown', onKey);
         document.addEventListener('keyup', onKey);
-        document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+        // the game stops where it is when it is not seen, also with the screen off
+        const pauseAway = () => { if (away()) pause(); };
+        document.addEventListener('visibilitychange', pauseAway);
+        window.addEventListener('melatonscreen', pauseAway);
+        document.addEventListener('wmBehind', pauseAway);
     }
 
     // tests: the engine and the game state

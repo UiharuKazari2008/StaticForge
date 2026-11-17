@@ -1254,8 +1254,11 @@
 
     // ---------------------------------------------------------------- loop
 
+    // not seen: the page hidden, the screen off (the page is not hidden then) or behind an Android program
+    const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+
     function hidden() {
-        return !page || page.hidden || document.hidden || view !== 'main' || (ws && ws.current !== APP_ID);
+        return !page || page.hidden || away() || view !== 'main' || (ws && ws.current !== APP_ID);
     }
 
     function menuUp() {
@@ -1984,7 +1987,11 @@
             softKeys
         });
         document.addEventListener('keydown', onKey);
-        document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+        // the game pauses when it is not seen, also with the screen off
+        const pauseAway = () => { if (away()) pause(); };
+        document.addEventListener('visibilitychange', pauseAway);
+        window.addEventListener('melatonscreen', pauseAway);
+        document.addEventListener('wmBehind', pauseAway);
     }
 
     // tests

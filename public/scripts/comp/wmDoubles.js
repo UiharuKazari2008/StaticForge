@@ -943,7 +943,13 @@
             softKeys
         });
         document.addEventListener('keydown', onKey);
-        document.addEventListener('visibilitychange', () => { if (document.hidden) hide(); });
+        // not seen (the page hidden, the screen off - the page is not hidden then -, behind an Android
+        // program): what moves ends and the game is kept
+        const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+        const onAway = () => { if (away()) hide(); };
+        document.addEventListener('visibilitychange', onAway);
+        window.addEventListener('melatonscreen', onAway);
+        document.addEventListener('wmBehind', onAway);
     }
 
     // tests

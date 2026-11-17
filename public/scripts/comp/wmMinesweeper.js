@@ -406,8 +406,11 @@
 
     const clock = { timer: null, last: 0, shown: -1 };
 
+    // not seen: the page hidden, the screen off (the page is not hidden then) or behind an Android program
+    const away = () => document.hidden || document.documentElement.dataset.screenOff !== undefined || document.documentElement.dataset.wmBehind !== undefined;
+
     function clockActive() {
-        if (!ws || ws.current !== APP_ID || view !== 'game' || document.hidden) return false;
+        if (!ws || ws.current !== APP_ID || view !== 'game' || away()) return false;
         if (ws.taskSwitcher && ws.taskSwitcher.isOpen) return false;
         if (document.querySelector('#wmShell .wm-popup:not([hidden]), #wmShell .wm-msgbox-layer:not([hidden])')) return false;
         return true;
@@ -440,10 +443,14 @@
         clockAdd();
     }
 
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden) { if (clock.timer) { clockStop(); save(true); } }
+    // the clock stops while the game is not seen (it counted on with the screen off) and goes on when it is
+    const clockSeen = () => {
+        if (away()) { if (clock.timer) { clockStop(); save(true); } }
         else if (ws && ws.current === APP_ID && view === 'game') clockRun();
-    });
+    };
+    document.addEventListener('visibilitychange', clockSeen);
+    window.addEventListener('melatonscreen', clockSeen);
+    document.addEventListener('wmBehind', clockSeen);
 
     // ---------------------------------------------------------------- drawing
 
