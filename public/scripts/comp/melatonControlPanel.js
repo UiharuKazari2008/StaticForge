@@ -39,6 +39,9 @@
     // uptime counts on locally between answers (no 5 s polling, Yukimi Nov 13)
     const STATUS_POLL_MS = 60000;
     const LIVE_TICK_MS = 1000;
+    // out of sight (a hidden page, a phone's screen off: html[data-screen-off]) the live ticks draw nothing
+    // and the status read waits; the next tick after the page is back draws (#890)
+    const unseen = () => !!root.document && (root.document.hidden || root.document.documentElement.dataset.screenOff !== undefined);
 
     const items = [];
     const pages = {};
@@ -1236,7 +1239,7 @@
         startLiveTimer();
         statusTimer = setInterval(() => {
             snapshot();
-            if (instances.some((i) => isShown(i) && i.current === 'network')) pollStatus();
+            if (!unseen() && instances.some((i) => isShown(i) && i.current === 'network')) pollStatus();
         }, STATUS_POLL_MS);
     }
 
@@ -1250,6 +1253,7 @@
         liveTimer = setInterval(() => {
             if (!instances.some(isShown)) { stopTimers(); return; }
             if (!onNetworkPage()) { clearInterval(liveTimer); liveTimer = null; return; }
+            if (unseen()) return;
             eachOpen(() => {
                 if (current !== 'network') return;
                 // Only the parts that change; keep the selection / focus elsewhere intact
@@ -1388,6 +1392,7 @@
                 statusTimerId = null;
                 return;
             }
+            if (unseen()) return;
             updateStatusDialog();
         }, LIVE_TICK_MS);
     }
@@ -1608,6 +1613,7 @@
         if (flyoutTimer) clearInterval(flyoutTimer);
         flyoutTimer = setInterval(() => {
             if (!flyout || flyout.classList.contains('hidden')) { clearInterval(flyoutTimer); flyoutTimer = null; return; }
+            if (unseen()) return;
             renderFlyout();
         }, LIVE_TICK_MS);
     }
