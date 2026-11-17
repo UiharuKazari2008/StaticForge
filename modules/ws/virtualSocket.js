@@ -77,6 +77,12 @@ const miniports = new Set(); // open Miniport carriers (#890: a new one has its 
  * One message to many sockets (broadcast, sendToUser): a sub-client whose carrier gets the same message
  * is not sent its own copy over the same socket; the carrier's copy names it in _cc and the phone page
  * relays that text to the DeX window (#798). send(ws, payloadString) does the sending.
+ *
+ * The packet is stringified once (#890). A Miniport carrier (it is no recipient itself) gets its subs'
+ * copy as a raw frame when it can read one: "\u0001<sub>[,<sub>...]\u0001<packet>" from a carrier that
+ * said ccraw (sub_open ccraw: 1, P12), and "\u0001<sub>\u0001<packet>" for a single sub from any raw
+ * carrier (the frame every Miniport already takes for a packet to one page). Otherwise the _cc field
+ * is spliced into the one string (the JSON is the same as stringifying the message with _cc last).
  */
 function sendCoalesced(recipients, message, send) {
     const all = new Set(recipients);
@@ -93,11 +99,25 @@ function sendCoalesced(recipients, message, send) {
     }
     let plain = null;
     for (const ws of all) {
-        const subs = cc.get(ws);
-        if (subs) { send(ws, JSON.stringify(Object.assign({}, message, { _cc: subs }))); continue; }
         if (plain === null) plain = JSON.stringify(message);
+        const subs = cc.get(ws);
+        if (subs) { send(ws, ccFrame(ws, subs, plain, message)); continue; }
         send(ws, plain);
     }
+}
+
+/** The carrier's copy of a packet for its subs (sendCoalesced): raw where it reads it, else with _cc. */
+function ccFrame(carrier, subs, plain, message) {
+    // only a Miniport: a phone page that carries the DeX window reads its own copy as JSON
+    if (carrier._dsMiniport && carrier._dsRaw && (carrier._dsCcRaw || subs.length === 1)) return `\u0001${subs.join(',')}\u0001${plain}`;
+    const ccJson = JSON.stringify(subs);
+    // the message's own JSON with ,"_cc":[...] before its closing brace (what Object.assign + stringify
+    // made, as the message never carries _cc itself); anything else is stringified as before
+    if (message && typeof message === 'object' && !Array.isArray(message) && !Object.prototype.hasOwnProperty.call(message, '_cc')
+        && typeof message.toJSON !== 'function' && plain.charCodeAt(plain.length - 1) === 125 && plain.charCodeAt(0) === 123) {
+        return plain.length > 2 ? `${plain.slice(0, -1)},"_cc":${ccJson}}` : `{"_cc":${ccJson}}`;
+    }
+    return JSON.stringify(Object.assign({}, message, { _cc: subs }));
 }
 
 /**
@@ -112,9 +132,11 @@ function handle(carrier, message, connect) {
     let subs = subsOf.get(carrier);
     if (!subs) { subs = new Map(); subsOf.set(carrier, subs); }
     if (type === 'sub_open') {
-        // what the phone page understands: raw relayed packets, and broadcasts sent once with _cc (#798)
+        // what the phone page understands: raw relayed packets, and broadcasts sent once with _cc (#798);
+        // a Miniport that says ccraw takes those as one raw frame naming its subs (sendCoalesced, #890 P12)
         if (message.raw) carrier._dsRaw = true;
         if (message.cc) carrier._dsCc = true;
+        if (message.ccraw) carrier._dsCcRaw = true;
         const old = subs.get(sub);
         if (old) { old._fromCarrier = true; old.close(1001, 'reopened'); subs.delete(sub); }
         if (subs.size >= MAX_SUBS) return true;
