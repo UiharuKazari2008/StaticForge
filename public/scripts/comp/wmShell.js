@@ -2808,7 +2808,7 @@
         const up = !!(ws && typeof ws.isConnected === 'function' && ws.isConnected() && ws.initializationCompleted);
         const installing = swDownloading() != null;
         const as = window.activeSync;
-        if (!transferWired && as && typeof as.on === 'function') { transferWired = true; as.on('transfer', () => refreshStatus()); }
+        if (!transferWired && as && typeof as.on === 'function') { transferWired = true; as.on('transfer', () => statusDirty()); }
         const mode = !up || installing ? 'conn' : as && typeof as.transferring === 'function' && as.transferring() ? 'xfer' : null;
         if (!mode) return null;
         if (dev.airplane || (dev.link && /-off$/.test(dev.link.icon)) || (typeof navigator !== 'undefined' && navigator.onLine === false)) return null;
@@ -2849,9 +2849,16 @@
         const was = Date.now() - dataUsedAt < DATA_RELEASE_MS;
         dataUsedAt = Date.now();
         clearTimeout(dataReleaseTimer);
-        dataReleaseTimer = setTimeout(() => refreshStatus(), DATA_RELEASE_MS + 50);
-        if (!was && shell) refreshStatus();
+        // (through statusDirty: one coalesced pass, not a full one per message that raised the call)
+        dataReleaseTimer = setTimeout(statusDirty, DATA_RELEASE_MS + 50);
+        if (!was && shell) statusDirty();
     }
+    // messages that change nothing the title bar shows: the server's ping and its pong (a full pass for each
+    // before, #890), the Sidebar's once-a-second feed and the client's own perf reports. A pong still counts
+    // while a bubble is open (the connectivity bubble shows the latency it measured)
+    const STATUS_QUIET_WS = new Set(['ping', 'pong', 'sidebar_live', 'sidebar_live_subscribe', 'sidebar_live_subscribe_response', 'report_client_perf', 'report_client_perf_response']);
+    let bubbleEl = null;
+    const bubbleOpen = () => { if (!bubbleEl && shell) bubbleEl = shell.querySelector('.wm-bubble'); return !!(bubbleEl && !bubbleEl.hidden); };
     let dataWatchWs = null;
     let dataWatchFetch = false;
     function watchDataUse() {
@@ -2864,7 +2871,7 @@
                 const before = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : 0;
                 record(direction, message);
                 // a server message (or a request going out: prints in progress) may change an icon
-                statusDirty();
+                if (!(message && STATUS_QUIET_WS.has(message.type)) || (message.type === 'pong' && bubbleOpen())) statusDirty();
                 const after = ws.connectionStats ? ws.connectionStats.messagesIn + ws.connectionStats.messagesOut : before + 1;
                 // CaféReady (the Miniport's cache, #815) answers a flagged request on the phone: neither the
                 // request nor its cached reply reaches the server (Yukimi, Nov 14: the arrows only for that)
@@ -2943,18 +2950,38 @@
      * anything that changed without a signal.
      */
     const STATUS_SAFETY_MS = 120000;
+    const STATUS_COALESCE_MS = 250;
+    const STATUS_ASLEEP_MS = 1000;
     let statusTimer = null;
+    let statusLastAt = 0;
     let statusTodayKey = '';
     let statusTodayBump = 0;
     // a source whose Today item may have changed (not a tap): Today repaints on the next status pass
     const statusDirtyToday = () => { statusTodayBump++; statusDirty(); };
+    function statusPass() { statusTimer = null; refreshStatus(); }
+    /*
+     * Every source of a status change comes through here (#890: the Android device status every few
+     * seconds, the Director's status, the battery, the connection, mail and transfers each ran a full pass
+     * of their own). On screen: one pass 250 ms after the first change. Asleep (screen off, page hidden)
+     * the pass still runs, at most once a second: its notification drivers (battery low / full, the
+     * Director's finished turn) and the icons the app shows on its own bars and the always-on display
+     * follow the change while nothing is drawn (the page's own drawing waits: Today marks itself stale,
+     * the title bar fits after the next frame).
+     */
     function statusDirty() {
-        // behind an Android program (Melaton Bars, #871) the page's timers are paused: the app copies
-        // the bars again when asked (it resumes the page for that), and coalesces the asks
-        if (barsExternal && window.AndroidBars && shell) { refreshStatus(); return; }
-        if (statusTimer || !shell) return;
-        // screen off or page hidden: nothing paints; screen on and visibilitychange repaint at once
-        statusTimer = setTimeout(() => { statusTimer = null; if (onScreen()) refreshStatus(); }, 250);
+        if (!shell) return;
+        if (barsExternal && window.AndroidBars) {
+            // behind an Android program (Melaton Bars, #871) the page's timers are paused: the app copies the
+            // bars again when asked (it resumes the page for that). A change runs the pass at once, at most one
+            // per 250 ms (a burst of messages ran a full pass each); the rest of a burst waits for the timer,
+            // which runs at the latest when the app next resumes the page
+            const wait = statusLastAt + STATUS_COALESCE_MS - Date.now();
+            if (wait <= 0) { clearTimeout(statusTimer); statusTimer = null; refreshStatus(); return; }
+            if (!statusTimer) statusTimer = setTimeout(statusPass, wait);
+            return;
+        }
+        if (statusTimer) return;
+        statusTimer = setTimeout(statusPass, awake() ? STATUS_COALESCE_MS : STATUS_ASLEEP_MS);
     }
     function watchStatusSignals() {
         const ws = window.wsClient;
@@ -2965,31 +2992,51 @@
         document.addEventListener('click', statusDirty, { capture: true, passive: true });
         document.addEventListener('keyup', statusDirty, { capture: true, passive: true });
         document.addEventListener('wmSettingsChange', statusDirtyToday);
-        document.addEventListener('wmWeatherChange', statusDirtyToday);
+        // (the weather's Today item and 6.5's clock draw themselves on it: wmTodayWidgets, only those items, #890)
+        document.addEventListener('wmWeatherChange', statusDirty);
         document.addEventListener('wmTrafficChange', statusDirtyToday);
         document.addEventListener('wmLapisChange', statusDirtyToday);
         document.addEventListener('wmCarKeyChange', statusDirtyToday);
         // the other window of the app (DeX) changed a shared setting
         window.addEventListener('storage', statusDirtyToday);
-        // back on screen: paint now
-        window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on) refreshStatus(); });
-        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshStatus(); });
-        setInterval(() => { if (onScreen()) refreshStatus(); }, STATUS_SAFETY_MS);
-        // Today's clock: on the minute, while Today is up and the screen is on
+        // the slow safety pass and the minute tick run only while the page is awake (wmawake): asleep they
+        // woke the phone for nothing on screen; the wake runs a pass and starts them again
+        let safetyTimer = null;
+        let minuteTimer = null;
+        // Today's clock: on the minute, while the page is awake. Today writes only its time and date and the
+        // items that show a time (todayMinute); 6.5.1's bars clock rides the same tick. 'wmminute' (a
+        // document event) lets other programs ride it too (the 6.5 home screen's resting tilt, #890)
         const minute = () => {
-            setTimeout(() => {
+            clearTimeout(minuteTimer);
+            minuteTimer = setTimeout(() => {
+                minuteTimer = null;
+                if (!awake()) return;
                 const today = apps.get('today');
-                if (current === 'today' && document.documentElement.dataset.screenOff === undefined && today && today.page) today.refresh();
+                if (current === 'today' && today && today.page && typeof today.minute === 'function') today.minute();
                 // 6.5.1 (#850) bars: the title bar's clock rides the same tick
-                if (BARS651 && document.documentElement.dataset.screenOff === undefined) bars651Clock();
+                if (BARS651) bars651Clock();
+                document.dispatchEvent(new CustomEvent('wmminute'));
                 minute();
             }, 60000 - (Date.now() % 60000) + 50);
         };
-        minute();
+        const power = () => {
+            clearInterval(safetyTimer);
+            safetyTimer = null;
+            if (!awake()) { clearTimeout(minuteTimer); minuteTimer = null; return; }
+            safetyTimer = setInterval(() => { if (onScreen()) refreshStatus(); }, STATUS_SAFETY_MS);
+            if (!minuteTimer) minute();
+        };
+        document.addEventListener('wmawake', (e) => {
+            power();
+            // back on screen (the screen on, the page shown, or back from behind an Android program): paint now
+            if (e.detail && e.detail.awake) refreshStatus();
+        });
+        power();
     }
 
     function refreshStatus() {
         if (!shell) return;
+        statusLastAt = Date.now();
         applyStartButton();
         if (BARS651) bars651Clock(); // 6.5.1 (#850) bars: right again after the screen was off
         // on every change (statusDirty): write only what changed (an attribute write, even of the same value,
@@ -3111,7 +3158,8 @@
         // the status dirty too, and redrew every Today block and row each time (#849, A53: 6 full
         // redraws in 30 s untouched)
         const today = apps.get('today');
-        if (today && typeof today.refresh === 'function' && current === 'today') {
+        // (asleep nothing of Today draws: the wake's pass compares, #890)
+        if (today && typeof today.refresh === 'function' && current === 'today' && awake()) {
             let st = null;
             try { st = typeof today.state === 'function' ? today.state() : null; } catch (_) { st = null; }
             const tk = st ? [st.connection && st.connection.text, st.mailUnread, st.smsUnread, st.chatUnread, st.tasks, st.owner, st.workspace, !!(dir && dir.running), printsInProgress(), statusTodayBump].join('|') : String(Math.random());
@@ -3246,8 +3294,11 @@
             list.push(e);
         });
         barsBubbleSpecs(false);
-        // the bars' look changed (theme, version, scale, width): the app asks for a new kit
-        if (typeof ab.kitSig === 'function' && window.melatonBars && window.melatonBars.kitSignature) {
+        // the bars' look changed (theme, version, scale, width): the app asks for a new kit. Its signature reads
+        // computed styles (a forced style pass right after this pass's writes): not while the screen is off or
+        // the page hidden in front of nothing (#890: status passes run asleep now); the look changes only with
+        // the screen on, and the wake's pass reads it
+        if (typeof ab.kitSig === 'function' && window.melatonBars && window.melatonBars.kitSignature && (barsExternal || awake())) {
             const sig = window.melatonBars.kitSignature();
             if (sig !== barsKitSig) { barsKitSig = sig; try { ab.kitSig(sig); } catch (_) { /* older app */ } }
         }
@@ -3992,7 +4043,9 @@
             s.cellular.operator = carrierName(s.cellular.operator);
         }
         deviceStatus = s;
-        refreshStatus();
+        // every few seconds while the signal moves: one coalesced pass (#890; with Melaton Bars behind a
+        // program still at once, at most every 250 ms)
+        statusDirty();
     }
 
     function pollDeviceBridge() {
@@ -4041,14 +4094,14 @@
                     // the browser's own estimates in seconds (Infinity / 0 = unknown or not this state)
                     const secs = (v) => (Number.isFinite(v) && v > 0 ? v : null);
                     webBattery = none ? null : { level: Math.round(b.level * 100), charging: !!b.charging, chargingTime: b.charging ? secs(b.chargingTime) : null, dischargingTime: b.charging ? null : secs(b.dischargingTime) };
-                    refreshStatus();
+                    statusDirty();
                 };
                 upd();
                 ['levelchange', 'chargingchange'].forEach((t) => b.addEventListener(t, upd));
             }).catch(() => { /* no Battery Status API */ });
         }
         const c = navigator.connection;
-        if (c && typeof c.addEventListener === 'function') c.addEventListener('change', () => refreshStatus());
+        if (c && typeof c.addEventListener === 'function') c.addEventListener('change', () => statusDirty());
     }
 
     const objOr = (o) => (o && typeof o === 'object' ? o : null);
@@ -4092,7 +4145,7 @@
         if (!deviceStatus) return b;
         const was = objOr(deviceStatus.battery);
         deviceStatus.battery = b;
-        if (!was || was.level !== b.level || was.charging !== b.charging || was.plugged !== b.plugged || was.status !== b.status) refreshStatus();
+        if (!was || was.level !== b.level || was.charging !== b.charging || was.plugged !== b.plugged || was.status !== b.status) statusDirty();
         return b;
     }
 
@@ -4220,7 +4273,7 @@
             if (!shellDirectorAsked && ws && ws.initializationCompleted && typeof ws.sendMessage === 'function') {
                 shellDirectorAsked = true;
                 ws.sendMessage('director_computer_status', {}, false)
-                    .then((r) => { shellDirectorStatus = (r && (r.data || r)) || null; refreshStatus(); })
+                    .then((r) => { shellDirectorStatus = (r && (r.data || r)) || null; statusDirty(); })
                     .catch(() => { /* no Director on this server */ });
             }
             return null;
@@ -4262,7 +4315,7 @@
     function watchDirector() {
         const ws = window.wsClient;
         if (!ws || typeof ws.on !== 'function') return;
-        ws.on('director_computer_status', (d) => { shellDirectorStatus = (d && (d.data || d)) || shellDirectorStatus; refreshStatus(); });
+        ws.on('director_computer_status', (d) => { shellDirectorStatus = (d && (d.data || d)) || shellDirectorStatus; statusDirty(); });
         // the notification classes shown without a message, for the server's own copies (#876)
         ws.on('connected', () => setTimeout(() => sendInboxPrefs(true), 1500));
         setTimeout(() => sendInboxPrefs(true), 1500);
@@ -11108,7 +11161,7 @@
         // ActiveSync Received Items (#803): the status icon follows the agent's list
         (function wireReceived(tries) {
             const asx = window.activeSync;
-            if (asx && typeof asx.on === 'function') { asx.on('received', () => refreshStatus()); refreshStatus(); return; }
+            if (asx && typeof asx.on === 'function') { asx.on('received', () => statusDirty()); statusDirty(); return; }
             if (tries < 60) setTimeout(() => wireReceived(tries + 1), 1000);
         })(0);
         // programs loaded on demand (#817): their Start menu entries, before anything lists programs
