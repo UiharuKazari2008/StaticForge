@@ -101,8 +101,8 @@
     let readCache = null;
     let readAt = 0;
     const dropRead = () => { readCache = null; };
-    window.addEventListener('androidapps', dropRead);
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') dropRead(); });
+    window.addEventListener('androidapps', dropRead, { signal: appScopeSignal });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') dropRead(); }, { signal: appScopeSignal });
     // While Melaton Mobile boots, the list is the one kept from last time: the bridge call held the
     // boot's main thread 0.75-1.3 s on the A53 (it loads every program's icon to see if it is themed)
     // for a Start menu nobody has opened yet. The phone's own list comes once the boot is over and the
@@ -673,7 +673,7 @@
 
     // ---------------------------------------------------------------- Program Icons
 
-    const job = { id: readJson(JOB_KEY, null), data: null, timer: null, live: null, lastState: null };
+    const job = { id: readJson(JOB_KEY, null), data: null, timer: null, live: null, lastState: null, pushAt: 0 };
 
     // Custom's choices survive the trip to the Open dialog (the page draws a new draft on return)
     let customKept = null;
@@ -743,36 +743,79 @@
         if (id) writeJson(JOB_KEY, id); else { try { localStorage.removeItem(JOB_KEY); } catch (_) { /* gone */ } }
     }
 
-    /** Watch the open batch: the page redraws as icons arrive; closed, a notification says when they are ready. */
+    /**
+     * The batch as the server has it now (a read or a push): the page redraws; closed, a notification says
+     * when its icons are ready. 'working' while the server still makes them, 'end' when it is gone.
+     */
+    function takeJob(jb) {
+        if (!jb || !Array.isArray(jb.items)) { setJob(null); rerenderLive(); return 'end'; }
+        const was = job.lastState;
+        job.data = jb;
+        job.lastState = jb.state;
+        if (jb.state === 'done' || jb.state === 'cancelled') { setJob(null); rerenderLive(); return 'end'; }
+        rerenderLive();
+        if (jb.state === 'working') return 'working';
+        if (was === 'working' && !pageShown()) {
+            const ready = jb.items.filter((it) => it.state === 'ready').length;
+            sh.notify({
+                title: 'Program Icons', icon: 'success', asNote: true,
+                text: `${ready} of ${jb.items.length} program icon${jb.items.length === 1 ? ' is' : 's are'} ready to review.`,
+                buttons: [{ text: 'View', onClick: () => { window.wmSettings.open(PAGE_ID, 'pi-results'); } }, { text: 'Dismiss' }]
+            });
+        }
+        return 'wait';
+    }
+
+    // the server pushes the batch on every change (wm_program_icons_job, #890 P15: the read's own shape).
+    // Once a push has come the poll below is one read (on show, connect, wake), never a chain
+    let jobPushes = false;
+    function onJobPush(msg) {
+        const d = (msg && msg.data) || msg || {};
+        const jb = d.job;
+        if (!jb || !jb.id) return;
+        jobPushes = true;
+        // only the batch this phone watches (one another phone started is picked up when Program Icons opens)
+        if (!job.id || jb.id !== job.id) return;
+        job.pushAt = Date.now();
+        clearTimeout(job.timer);
+        job.timer = null;
+        takeJob(jb);
+    }
+
+    /** Watch the open batch: one read; until the server's pushes come, a read again while it works. */
     function poll(soon) {
         clearTimeout(job.timer);
+        job.timer = null;
         if (!job.id) return;
-        // the server sends no job progress (no push yet): asked every 3 s while Program Icons shows it, 8 s
-        // otherwise, and once a minute with the screen off or the page hidden, so the "ready to review"
-        // notification still comes then; seen again, asked at once (register: jobWake)
+        // no pushes yet (a server without them): asked every 3 s while Program Icons shows it, 8 s otherwise,
+        // and once a minute with the screen off or the page hidden, so the "ready to review" notification
+        // still comes then; seen again, asked at once (register: jobWake)
         job.timer = setTimeout(async () => {
+            job.timer = null;
+            const askedAt = Date.now();
+            const id = job.id;
             let j = null;
-            try { j = await api(`/jobs/${encodeURIComponent(job.id)}`); } catch (err) {
+            try { j = await api(`/jobs/${encodeURIComponent(id)}`); } catch (err) {
+                if (job.id !== id) return;
                 if (err.status === 404 || err.status === 403) { setJob(null); rerenderLive(); return; }
-                poll(false);
+                if (!jobPushes) poll(false);
                 return;
             }
-            if (!j.job || !Array.isArray(j.job.items)) { setJob(null); rerenderLive(); return; }
-            const was = job.lastState;
-            job.data = j.job;
-            job.lastState = j.job.state;
-            if (j.job.state === 'done' || j.job.state === 'cancelled') { setJob(null); rerenderLive(); return; }
-            rerenderLive();
-            if (j.job.state === 'working') { poll(false); return; }
-            if (was === 'working' && !pageShown()) {
-                const ready = j.job.items.filter((it) => it.state === 'ready').length;
-                sh.notify({
-                    title: 'Program Icons', icon: 'success', asNote: true,
-                    text: `${ready} of ${j.job.items.length} program icon${j.job.items.length === 1 ? ' is' : 's are'} ready to review.`,
-                    buttons: [{ text: 'View', onClick: () => { window.wmSettings.open(PAGE_ID, 'pi-results'); } }, { text: 'Dismiss' }]
-                });
-            }
+            // another batch meanwhile, or a push newer than this answer: the answer is old
+            if (job.id !== id || (job.pushAt || 0) > askedAt) return;
+            if (takeJob(j.job) === 'working' && !jobPushes) poll(false);
         }, soon ? 300 : (pageShown() ? 3000 : awake() ? 8000 : 60000));
+    }
+
+    let jobPushWired = false;
+    function wireJobPush() {
+        const c = window.wsClient;
+        if (jobPushWired || !c || typeof c.on !== 'function') return jobPushWired;
+        jobPushWired = true;
+        c.on('wm_program_icons_job', onJobPush, { signal: appScopeSignal });
+        // pushes missed while the socket was down: one read when it is back
+        c.on('connected', () => { if (job.id && (job.lastState === 'working' || job.lastState == null)) poll(true); }, { signal: appScopeSignal });
+        return true;
     }
 
     function registerIconsPage() {
@@ -1496,13 +1539,19 @@
                             if (!window.melatonVCard && window.featureLoader) await window.featureLoader._loadScript('scripts/comp/vcard.js');
                             const VC = window.melatonVCard;
                             if (!VC) continue;
-                            const cards = contactEntries(VC).map((e) => e.c);
+                            const entries = contactEntries(VC);
+                            const cards = entries.map((e) => e.c);
                             const folder = `${wsRoot()}/Contacts`;
                             const file = `${safe(`Phone contacts (${device()})`)}.vcf`;
-                            // the cards and each photo's bytes as last written, and the file still there: no
-                            // photo is encoded and nothing is uploaded
+                            // the cards and each photo as last written, and the file still there: no photo is
+                            // encoded and nothing is uploaded. A photo is told by the app's photoVersion (#890
+                            // P17: it changes with the picture), read by its bytes only from an app without it
                             const photos = [];
-                            for (const c of cards) if (PHOTO_URL.test(c.photo || '')) photos.push(await photoDigest(c.photo));
+                            for (const e of entries) {
+                                if (!PHOTO_URL.test(e.c.photo || '')) continue;
+                                const ver = e.phone && e.phone.orig ? e.phone.orig.photoVersion : null;
+                                photos.push(typeof ver === 'string' && ver ? `v:${ver}` : await photoDigest(e.c.photo));
+                            }
                             const sig = await digest(JSON.stringify([folder, file, cards, photos]));
                             same = sig === sigOf(kind) && (await listOf(folder)).some((i) => i.kind !== 'folder' && i.name === file);
                             if (!same) {
@@ -1529,6 +1578,7 @@
             return String(name || '') === `${safe(`Phone contacts (${d})`)}.vcf`;
         }
 
+        let syncTimer = 0;
         function start() {
             if (!available()) return;
             document.addEventListener('wmPhoneDataChange', async (e) => {
@@ -1536,16 +1586,17 @@
                 for (const kind of ['calendar', 'contacts']) if (d[kind] && d[kind] !== 'off') await access(kind);
                 await syncNow();
                 document.dispatchEvent(new CustomEvent('wmPhoneDataUpdated', { detail: { kinds: ['calendar', 'contacts'] } }));
-            });
+            }, { signal: appScopeSignal });
             // an edit made here reaches the mirror soon after
             let soon = null;
             document.addEventListener('wmPhoneDataLocalChange', (e) => {
                 const kind = e.detail && e.detail.kind;
                 clearTimeout(soon);
                 soon = setTimeout(() => { void syncNow(kind ? [kind] : undefined); }, 4000);
-            });
+            }, { signal: appScopeSignal });
             setTimeout(() => { void syncNow(); }, 20000);
-            setInterval(() => { void syncNow(); }, SYNC_EVERY_MS);
+            clearInterval(syncTimer);
+            syncTimer = setInterval(() => { void syncNow(); }, SYNC_EVERY_MS);
         }
 
         return { available, mode, live, access, granted, canWrite, calendarModels, saveCalendar, contactEntries, saveContact, deleteContact, syncNow, start, device, isOwnMirror, PHOTO_URL };
@@ -1565,6 +1616,10 @@
         setTimeout(applyDefaults, 2500);
         phoneData.start();
         loadStore();
+        if (!wireJobPush()) {
+            let n = 0;
+            const t = setInterval(() => { if (wireJobPush() || ++n > 120) clearInterval(t); }, 1000);
+        }
         if (job.id) poll(true);
         // a batch running: seen again (screen on, the page shown) asks at once instead of on the minute.
         // A batch waiting for review (its poll chain ended) is not asked again on every wake: the page's
@@ -1575,11 +1630,11 @@
             else if (job.stale) rerenderLive();
         };
         window.addEventListener('melatonscreen', jobWake, { signal: appScopeSignal });
-        document.addEventListener('visibilitychange', jobWake);
+        document.addEventListener('visibilitychange', jobWake, { signal: appScopeSignal });
         document.addEventListener('wmBehind', jobWake, { signal: appScopeSignal });
         // a program was installed, removed or changed
         let timer = null;
-        window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(refresh, 800); });
+        window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(refresh, 800); }, { signal: appScopeSignal });
     }
 
     // an app's Windows Mobile icon set from the store by package (Messaging's Android app accounts, #885), or null
