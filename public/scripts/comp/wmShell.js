@@ -1722,10 +1722,36 @@
      */
     function onScreen(el) {
         // behind an Android program (Melaton Bars): nothing of the page is seen, its programs stop drawing
-        if (document.hidden || root.dataset.screenOff !== undefined || root.dataset.wmBehind !== undefined) return false;
+        if (!awake()) return false;
         if (!el) return true;
         return el.isConnected && !el.closest('[hidden]');
     }
+
+    /*
+     * The shell's power hook (#890), for every program: wmShell.awake() is true while the screen is on,
+     * the page is visible and it is not behind an Android program (Melaton Bars); the 'wmawake' document
+     * event ({ detail: { awake } }) fires each time that changes. A timer or listener that only draws,
+     * animates or refreshes something on screen stops while asleep and catches up on the 'wmawake' that
+     * brings the page back (mark stale, redraw on show: nothing redraws unseen). document.hidden alone is
+     * not enough: the Android app keeps the page "visible" with the screen off (html[data-screen-off],
+     * the window event melatonscreen) and behind its own programs (html[data-wm-behind]).
+     * Notification drivers and status sources must NOT gate on it: they run on pushes whatever the
+     * screen (with the screen off the app wakes the page for those, #890 P10).
+     */
+    let awakeNow = null;
+    function awake() {
+        return !(document.hidden || root.dataset.screenOff !== undefined || root.dataset.wmBehind !== undefined);
+    }
+    function syncAwake() {
+        const a = awake();
+        if (a === awakeNow) return;
+        awakeNow = a;
+        document.dispatchEvent(new CustomEvent('wmawake', { detail: { awake: a } }));
+    }
+    awakeNow = awake();
+    document.addEventListener('visibilitychange', syncAwake);
+    window.addEventListener('melatonscreen', syncAwake);
+    document.addEventListener('wmBehind', syncAwake);
 
     function registerApp(app) {
         if (!app || !app.id) return;
@@ -11201,6 +11227,8 @@
         registerApp,
         registerLazyApp,
         onScreen,
+        /** The power hook (#890): the screen on, the page shown and not behind an Android program. 'wmawake' { awake } on change. */
+        awake: () => awake(),
         /** The program in front ('today' for Today). */
         currentApp: () => current,
         loadLazyApp,
