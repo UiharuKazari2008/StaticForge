@@ -146,7 +146,9 @@ function closeAll(carrier) {
  * Melaton Miniport (#815): the Android app's native connection, opened with ?miniport=1 on the
  * signed-in session. It carries the app's pages (sub 'phone', sub 'desktop') and nothing else: no
  * client of its own. connect(vws, req) runs the server's connection handler for each sub-client.
- * The server pings it (it has no client heartbeat entry) and ends it when two pings go unanswered.
+ * Its heartbeat is its own (it has no client entry) but the shared rule (wsSocketHeartbeat.js, #890):
+ * any frame from the app counts as alive, the server pings only after 180 s without one, and a ping
+ * still unanswered at the next tick ends the link.
  */
 function acceptMiniport(ws, req, info, connect) {
     if (!info || !info.authenticated) {
@@ -157,13 +159,16 @@ function acceptMiniport(ws, req, info, connect) {
     ws._dsReq = req;
     ws._dsCc = true;
     ws._dsRaw = true;
-    let alive = true;
-    ws.on('pong', () => { alive = true; });
+    const hb = require('../wsSocketHeartbeat');
+    const entry = hb.createSocketHeartbeatEntry();
+    hb.watchSocketFrames(ws, entry);
     const beat = setInterval(() => {
-        if (!alive) { try { ws.terminate(); } catch (_) { /* gone */ } return; }
-        alive = false;
-        try { ws.ping(); } catch (_) { /* closing */ }
-    }, 30000);
+        // missLimit 1: as before, the pong is due by the next tick
+        const action = hb.tickSocketHeartbeat(entry, 1, { windowMs: hb.quietWindowFor(ws, null) });
+        if (action === 'terminate') { try { ws.terminate(); } catch (_) { /* gone */ } return; }
+        if (action === 'ping') { try { ws.ping(); } catch (_) { /* closing */ } }
+    }, hb.HEARTBEAT_INTERVAL_MS);
+    if (typeof beat.unref === 'function') beat.unref();
     ws.on('message', (data) => {
         let message = null;
         try { message = JSON.parse(data); } catch (_) { return; }
