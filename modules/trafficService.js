@@ -142,9 +142,18 @@ function getSettings() {
         // the phone counts as at Home / at Work inside this radius (the app picks To Work / To Home by it)
         radiusKm: Number.isFinite(Number(t.radiusKm)) ? Math.max(0.2, Math.min(20, Number(t.radiusKm))) : 1.5,
         notify: t.notify !== false,
+        // the Car bubble's traffic light (#902): minutes of extra traffic for yellow and for red (red above yellow)
+        ...lightThresholds(t.yellowMin, t.redMin),
         timeZone: validZone(t.timeZone) ? t.timeZone : '',
         budgets: { google: clampInt(budgets.google, 0, 100000, DEFAULTS.budgets.google), tomtom: clampInt(budgets.tomtom, 0, 100000, DEFAULTS.budgets.tomtom) }
     };
+}
+
+/** Yellow / red minutes of extra traffic: a super commuter's defaults (25 / 45, Yukimi Nov 17), red kept above yellow. */
+function lightThresholds(y, r) {
+    const yellowMin = clampInt(y, 1, 180, 25);
+    const redMin = Math.max(yellowMin + 1, clampInt(r, 2, 240, 45));
+    return { yellowMin, redMin };
 }
 
 function validZone(z) {
@@ -179,6 +188,7 @@ async function saveSettings(next = {}) {
     if ('advisorMax' in next) out.advisorMax = clampInt(next.advisorMax, 15, 120, DEFAULTS.advisorMax);
     if ('radiusKm' in next && Number.isFinite(Number(next.radiusKm))) out.radiusKm = Math.max(0.2, Math.min(20, Number(next.radiusKm)));
     if ('notify' in next) out.notify = next.notify !== false;
+    if ('yellowMin' in next || 'redMin' in next) Object.assign(out, lightThresholds('yellowMin' in next ? next.yellowMin : cur.yellowMin, 'redMin' in next ? next.redMin : cur.redMin));
     if ('timeZone' in next) out.timeZone = validZone(next.timeZone) ? next.timeZone : '';
     if (next.budgets && typeof next.budgets === 'object') {
         out.budgets = Object.assign({}, cur.budgets || {});

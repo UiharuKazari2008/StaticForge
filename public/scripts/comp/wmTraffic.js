@@ -1055,7 +1055,9 @@
             betterMin: s.betterMin || 5,
             waitMin: s.waitMin || 8,
             radiusKm: s.radiusKm || 1.5,
-            notify: s.notify !== false
+            notify: s.notify !== false,
+            yellowMin: s.yellowMin || 25,
+            redMin: s.redMin || 45
         };
         return draft;
     }
@@ -1071,6 +1073,9 @@
     const LEADS = [[0, 'At the leave time'], [5, '5 minutes before'], [10, '10 minutes before'], [15, '15 minutes before'], [20, '20 minutes before'], [30, '30 minutes before'], [45, '45 minutes before'], [60, '1 hour before']];
     const BETTER = [[3, '3 minutes'], [5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes'], [15, '15 minutes']];
     const RADII = [[0.5, '0.5 km'], [1, '1 km'], [1.5, '1.5 km'], [2, '2 km'], [3, '3 km'], [5, '5 km']];
+    // the traffic light's thresholds (#902): minutes of extra traffic
+    const YELLOWS = [5, 10, 15, 20, 25, 30, 40, 45, 60].map((m) => [m, `${m} minutes late`]);
+    const REDS = [15, 20, 30, 45, 60, 75, 90, 120].map((m) => [m, `${m} minutes late`]);
     const WAITS = [[5, '5 minutes'], [8, '8 minutes'], [10, '10 minutes'], [15, '15 minutes'], [20, '20 minutes']];
 
     function renderSettings() {
@@ -1106,6 +1111,11 @@
             ${ui.row('Faster route:', ui.comboHtml('betterMin', `saves ${label(BETTER, f.betterMin)}`), { wide: true })}
             ${ui.row('Wait to leave:', ui.comboHtml('waitMin', `saves ${label(WAITS, f.waitMin)}`), { wide: true })}
             ${ui.gap()}
+            ${ui.sub('Traffic light')}
+            ${ui.note('The light beside the commute in the Car bubble, by how much extra traffic there is.')}
+            ${ui.row('Yellow from:', ui.comboHtml('yellowMin', label(YELLOWS, f.yellowMin)), { wide: true })}
+            ${ui.row('Red from:', ui.comboHtml('redMin', label(REDS, f.redMin)), { wide: true })}
+            ${ui.gap()}
             ${ui.sub('Data')}
             ${ui.note(budgetLine('Google Routes', p.google))}
             ${ui.note(budgetLine('TomTom incidents', p.tomtom))}
@@ -1127,6 +1137,8 @@
         combo('betterMin', BETTER, 'betterMin', (l) => `saves ${l}`);
         combo('waitMin', WAITS, 'waitMin', (l) => `saves ${l}`);
         combo('radiusKm', RADII, 'radiusKm');
+        combo('yellowMin', YELLOWS, 'yellowMin');
+        combo('redMin', REDS, 'redMin');
     }
 
     /** "44.08, -103.23" as coordinates, anything else an address. */
@@ -1152,6 +1164,7 @@
             streets: String(f.streets || '').split('\n').map((s) => s.trim()).filter(Boolean),
             leaveHome: f.leaveHome, leaveWork: f.leaveWork, days: f.days,
             leadMin: Number(f.leadMin), betterMin: Number(f.betterMin), waitMin: Number(f.waitMin), radiusKm: Number(f.radiusKm), notify: !!f.notify,
+            yellowMin: Number(f.yellowMin), redMin: Number(f.redMin),
             timeZone: (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (_) { return ''; } })()
         };
         try {
@@ -1413,7 +1426,7 @@
             const lines = [`${d === 'work' ? 'To Work' : 'To Home'}: ${minText(dv.leftSec)} left, ${miles(dv.toGoM)} to go`, `Arrive ${clock(dv.arriveAt)}.`];
             if (ahead.length) lines.push(`Ahead: ${ahead[0].label}${ahead[0].street ? ` on ${ahead[0].street}` : ''}.`);
             // light: the traffic light beside the commute in the Car bubble (#902): red for a major alert ahead
-            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines, light: ahead.length ? 'red' : 'green' };
+            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines, light: ahead.length ? 'yellow' : 'green' };
         }
         // in the window the car needs a current report: one check (at most every 15 min; the server caches)
         if (win && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r || Date.now() - Date.parse(r.at) > TODAY_CHECK_MS)) {
@@ -1433,8 +1446,12 @@
         if (!fresh) lines.push(`Checked at ${clock(r.at)}.`);
         if (leaveLine) lines.unshift(leaveLine);
         const late = fresh && (r.delaySec || 0) >= DELAY_STATUS_SEC;
-        // light (#902): red when late enough to show or a major alert is on the way, yellow from 5 min late, else green
-        const light = late || majors.length ? 'red' : (r.delaySec || 0) >= 300 ? 'yellow' : 'green';
+        // light (#902): by the minutes of extra traffic set in Settings (Traffic light: yellow 25, red 45 by
+        // default); a major alert alone is yellow at most - the big numbers decide red
+        const yMin = (settings && settings.yellowMin) || 25;
+        const rMin = (settings && settings.redMin) || 45;
+        const delayMin = (r.delaySec || 0) / 60;
+        const light = delayMin >= rMin ? 'red' : (delayMin >= yMin || majors.length) ? 'yellow' : 'green';
         return { delayed: !!win, reason: win ? (late ? 'delay' : 'leave') : '', direction: d, title: 'Traffic', lines, light, leaveLine };
     }
     function todayRender(el) {
