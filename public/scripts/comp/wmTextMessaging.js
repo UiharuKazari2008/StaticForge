@@ -30,6 +30,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -1497,10 +1498,10 @@
             if (listStale && (view() === 'list' || isDual())) renderList();
             if (conv && view() === 'conv') { if (convStale) renderEntries(); if (readable()) markRead(); }
         }, 0);
-        document.addEventListener('visibilitychange', back);
-        window.addEventListener('melatonscreen', back);
-        document.addEventListener('wmBehind', back);
-        document.addEventListener('wmLockChange', (e) => { if (e.detail && e.detail.locked === false) back(); });
+        document.addEventListener('visibilitychange', back, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', back, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', back, { signal: appScopeSignal });
+        document.addEventListener('wmLockChange', (e) => { if (e.detail && e.detail.locked === false) back(); }, { signal: appScopeSignal });
         loadAccounts(false);
         sh.registerApp({
             id: APP_ID,

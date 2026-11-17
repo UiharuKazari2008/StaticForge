@@ -36,6 +36,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const root = document.documentElement;
     if (window.uiShell !== 'mobile' || root.dataset.wmVersion !== '6.5') return;
@@ -1188,10 +1189,10 @@
         tiltListen(true);
         tiltPeekTimer = setTimeout(() => { tiltPeekTimer = 0; if (tiltIdle) tiltListen(false); }, TILT_PEEK_MS);
     }
-    document.addEventListener('pointerdown', tiltTouched, { capture: true, passive: true });
-    document.addEventListener('keydown', tiltTouched, { capture: true, passive: true });
-    document.addEventListener('wmminute', tiltPeek);
-    window.addEventListener('resize', () => { tiltPx = null; });
+    document.addEventListener('pointerdown', tiltTouched, { signal: appScopeSignal, capture: true, passive: true });
+    document.addEventListener('keydown', tiltTouched, { signal: appScopeSignal, capture: true, passive: true });
+    document.addEventListener('wmminute', tiltPeek, { signal: appScopeSignal });
+    window.addEventListener('resize', () => { tiltPx = null; }, { signal: appScopeSignal });
     function tiltMeasure() {
         const el = wallEl && wallEl.isConnected ? wallEl : document.querySelector('#wmShell > .wm-wall65');
         const dpr = window.devicePixelRatio || 1;

@@ -24,6 +24,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const MOBILE = window.uiShell === 'mobile' && document.documentElement.classList.contains('ui-mobile');
     if (!MOBILE) return;
@@ -1511,9 +1512,9 @@
             minuteTick();
             if (renderStale && shown && seenNow(page)) render();
         };
-        window.addEventListener('melatonscreen', back);
-        document.addEventListener('visibilitychange', back);
-        document.addEventListener('wmBehind', back);
+        window.addEventListener('melatonscreen', back, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', back, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', back, { signal: appScopeSignal });
     }
 
     function register() {

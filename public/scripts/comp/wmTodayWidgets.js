@@ -53,6 +53,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -2287,10 +2288,10 @@
             // Today drew (or draws) everything as it came up; the screen coming on draws only what was stale
             if (!drawn) repaintItems(['server'].concat(PERSONAS.some((p) => director.stale[p]) ? DIRECTOR_ITEMS : []));
         };
-        document.addEventListener('wmAppChange', (e) => { if (e.detail && e.detail.id === 'today') shown(true); });
-        document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') shown(false); });
+        document.addEventListener('wmAppChange', (e) => { if (e.detail && e.detail.id === 'today') shown(true); }, { signal: appScopeSignal });
+        document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') shown(false); }, { signal: appScopeSignal });
         // the link back, or the service's own state moved (restarting, connected): the server item reads again
-        window.addEventListener('nightshade:state', () => serverWanted());
+        window.addEventListener('nightshade:state', () => serverWanted(), { signal: appScopeSignal });
         // the Weather app refreshes data older than 15 min only when asked (wmWeather.current(); its own poll
         // runs only while its program shows): Today asks on the shell's minute while it shows the weather, as
         // the minute's full draw did (#890). 6.5's clock asks too (buildPanels); current() asks at most once a
@@ -2299,7 +2300,7 @@
             if (!todayOnScreen() || isOff('weather')) return;
             const W = window.wmWeather;
             if (W && typeof W.current === 'function') { try { W.current(); } catch (_) { /* not loaded */ } }
-        });
+        }, { signal: appScopeSignal });
         // order: Tasks, Calendar, Accounts (wmAccounts.js, after 'calendar'), Director, Studio,
         // Daily usage, Weather, Notes, Remote Desktop, Server status. defaultOn: false = off until
         // switched on in Settings > Today > Items (when the shell honours it)
@@ -2342,14 +2343,14 @@
         });
         // Files: off until switched on, as Notes, Remote Desktop and Server Status are
         registerItem({ id: 'files', label: 'Files', icon: 'app-file-explorer', after: 'server', defaultOn: false, wantsMinute: false, render: renderFiles, titanium: filesTitanium, options: FILES_OPTIONS });
-        document.addEventListener('wmFilesChange', () => { files.stale = true; repaintItems(['files']); });
+        document.addEventListener('wmFilesChange', () => { files.stale = true; repaintItems(['files']); }, { signal: appScopeSignal });
         // a change made elsewhere (the desktop, another phone) arrives as vfs_updated
-        document.addEventListener('wsMessage', (e) => { const d = e.detail || {}; if (d.type === 'vfs_updated') { files.stale = true; repaintItems(['files']); } });
+        document.addEventListener('wsMessage', (e) => { const d = e.detail || {}; if (d.type === 'vfs_updated') { files.stale = true; repaintItems(['files']); } }, { signal: appScopeSignal });
         // Internet Explorer and Favorites: off until switched on, as Files is
         registerItem({ id: 'ie', label: 'Internet Explorer', icon: 'app-ie', after: 'files', defaultOn: false, wantsMinute: false, render: renderIe, titanium: ieTitanium, options: IE_OPTIONS });
         // (programs that register late have no signal: the minute draws it as before; Android's list does say)
         registerItem({ id: 'favorites', label: 'Favorites', icon: 'ie-favorite', after: 'ie', defaultOn: false, wantsMinute: true, render: renderFavorites, titanium: favTitanium, options: FAV_OPTIONS });
-        document.addEventListener('wmAppsChanged', () => { fav.at = 0; repaintItems(['favorites', 'music']); });
+        document.addEventListener('wmAppsChanged', () => { fav.at = 0; repaintItems(['favorites', 'music']); }, { signal: appScopeSignal });
         // Music (#796): 6.5's Windows Media panel, on by default as on the device
         if (v65) {
             registerItem({ id: 'music', label: 'Music', icon: 'app-windows-media', after: 'favorites', wantsMinute: false, text: musicText, titanium: musicTitanium, options: MUSIC_OPTIONS, onTap: () => musicToggle(musicNow()) });

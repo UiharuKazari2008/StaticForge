@@ -24,6 +24,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -747,9 +748,9 @@
         if (!sh || typeof sh.registerApp !== 'function') return;
         esc = sh.escapeHtml || esc;
         wireHub();
-        window.addEventListener('melatonscreen', tickWake);
-        document.addEventListener('visibilitychange', tickWake);
-        document.addEventListener('wmBehind', tickWake);
+        window.addEventListener('melatonscreen', tickWake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', tickWake, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', tickWake, { signal: appScopeSignal });
         sh.registerApp({
             id: APP_ID,
             title: TITLE,

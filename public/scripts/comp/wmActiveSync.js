@@ -25,6 +25,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
     const as = window.activeSync;
@@ -513,9 +514,9 @@
         as.on('state', render);
         // the screen on (or the page shown) with ActiveSync in front: what changed while it was off
         const wake = () => { if (renderStale) render(); };
-        window.addEventListener('melatonscreen', wake);
-        document.addEventListener('visibilitychange', wake);
-        document.addEventListener('wmBehind', wake);
+        window.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', wake, { signal: appScopeSignal });
         as.on('received', () => { if (view === 'received' || view === 'main') render(); });
         // the Miniport's settings and figures came (Café Cache shows them; the draft keeps what was ticked)
         try { if (mc() && typeof mc().on === 'function') mc().on('miniport-config', () => { if (view === 'options' && opts && opts.cafe && !opts.cafeTouched) optsCafeFromConfig(); if (view === 'options' || view === 'optset') render(); }); } catch (_) { /* no Miniport */ }

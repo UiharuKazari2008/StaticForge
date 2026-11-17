@@ -26,6 +26,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const listeners = new Map();
     const handoffs = new Map();
@@ -863,10 +864,10 @@
     if (root.document && typeof root.document.addEventListener === 'function') {
         const mediaCheck = () => stateHold('media', mediaPlaying());
         // wmMediaChange: wmMedia.js (its player may not be in the document); media events do not bubble: captured
-        root.document.addEventListener('wmMediaChange', mediaCheck);
-        ['playing', 'pause', 'ended', 'emptied', 'volumechange'].forEach((t) => root.document.addEventListener(t, mediaCheck, true));
+        root.document.addEventListener('wmMediaChange', mediaCheck, { signal: appScopeSignal });
+        ['playing', 'pause', 'ended', 'emptied', 'volumechange'].forEach((t) => root.document.addEventListener(t, mediaCheck, { capture: true, signal: appScopeSignal }));
         // wmTrafficChange: wmTraffic.js (a position, a report)
-        root.document.addEventListener('wmTrafficChange', () => stateHold('traffic', drivingUnwatched()));
+        root.document.addEventListener('wmTrafficChange', () => stateHold('traffic', drivingUnwatched()), { signal: appScopeSignal });
     }
 
     /** A WebSocket stand-in over the Miniport: what websocket.js uses instead of new WebSocket(). */

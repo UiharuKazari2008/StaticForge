@@ -32,6 +32,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -448,9 +449,9 @@
         if (away()) { if (clock.timer) { clockStop(); save(true); } }
         else if (ws && ws.current === APP_ID && view === 'game') clockRun();
     };
-    document.addEventListener('visibilitychange', clockSeen);
-    window.addEventListener('melatonscreen', clockSeen);
-    document.addEventListener('wmBehind', clockSeen);
+    document.addEventListener('visibilitychange', clockSeen, { signal: appScopeSignal });
+    window.addEventListener('melatonscreen', clockSeen, { signal: appScopeSignal });
+    document.addEventListener('wmBehind', clockSeen, { signal: appScopeSignal });
 
     // ---------------------------------------------------------------- drawing
 

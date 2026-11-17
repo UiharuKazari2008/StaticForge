@@ -29,6 +29,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -1989,9 +1990,9 @@
         document.addEventListener('keydown', onKey);
         // the game pauses when it is not seen, also with the screen off
         const pauseAway = () => { if (away()) pause(); };
-        document.addEventListener('visibilitychange', pauseAway);
-        window.addEventListener('melatonscreen', pauseAway);
-        document.addEventListener('wmBehind', pauseAway);
+        document.addEventListener('visibilitychange', pauseAway, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', pauseAway, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', pauseAway, { signal: appScopeSignal });
     }
 
     // tests

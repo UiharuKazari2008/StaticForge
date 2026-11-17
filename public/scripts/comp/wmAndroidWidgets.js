@@ -20,6 +20,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
     const bridge = window.AndroidWidgets;
@@ -170,10 +171,10 @@
         // (no minute tick: nothing in the block shows a time)
         sh.registerTodayItem({ id: 'androidwidgets', label: 'Android Widgets', after: 'favorites', defaultOn: false, wantsMinute: false, render });
         // a widget added (or the add cancelled) in the app: Today draws the list again
-        window.addEventListener('melatonwidgets', () => { sig = ''; list = null; if (sh.refreshToday) sh.refreshToday(); });
-        document.addEventListener('wmAppChange', changed);
-        document.addEventListener('wmawake', changed);
-        document.addEventListener('visibilitychange', changed);
+        window.addEventListener('melatonwidgets', () => { sig = ''; list = null; if (sh.refreshToday) sh.refreshToday(); }, { signal: appScopeSignal });
+        document.addEventListener('wmAppChange', changed, { signal: appScopeSignal });
+        document.addEventListener('wmawake', changed, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', changed, { signal: appScopeSignal });
     }
 
     if (window.wmShell) register();

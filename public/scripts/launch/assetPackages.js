@@ -307,8 +307,11 @@
             const c = navigator.connection;
             if (c && typeof c.addEventListener === 'function') c.addEventListener('change', () => send(null));
             // the app's status says the link only when the connection type does not
+            // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
             window.addEventListener('androiddevicestatus', (e) => { if (connectionNetwork() === 'unknown') send(e && e.detail != null ? e.detail : null); });
+            // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
             window.addEventListener('online', () => send(null));
+            // app-scope: allow page-lifetime boot hints for the worker (launch code, not an app segment)
             navigator.serviceWorker.addEventListener('controllerchange', () => { last = null; send(null); });
         }, PREFETCH_HINT_DELAY_MS);
     }

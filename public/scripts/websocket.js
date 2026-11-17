@@ -11438,6 +11438,7 @@ window.wsClient = new WebSocketClient();
 // sends them when it wakes, so the radio is not woken for things no one sees (rule
 // server-push-not-polling). Replies, texts, mail and Director events still arrive at once.
 (function reportDormant() {
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
     const c = window.wsClient;
     if (!c || typeof document === 'undefined') return;
     let sent = null;
@@ -11459,7 +11460,7 @@ window.wsClient = new WebSocketClient();
         const on = !!(e && e.detail && e.detail.on);
         tell(on);
         c._onPhoneSleepChange(on);
-    }, 0));
+    }, 0), { signal: appScopeSignal });
     const touched = () => { if (sent === true && !dormant()) tell(true); };
     document.addEventListener('pointerdown', touched, { capture: true, passive: true });
     document.addEventListener('keydown', touched, { capture: true, passive: true });

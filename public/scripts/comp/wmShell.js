@@ -27,6 +27,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const root = document.documentElement;
     // --wm-px on <html> comes only from its inline style (Settings > Screen) and its classes
@@ -1749,9 +1750,9 @@
         document.dispatchEvent(new CustomEvent('wmawake', { detail: { awake: a } }));
     }
     awakeNow = awake();
-    document.addEventListener('visibilitychange', syncAwake);
-    window.addEventListener('melatonscreen', syncAwake);
-    document.addEventListener('wmBehind', syncAwake);
+    document.addEventListener('visibilitychange', syncAwake, { signal: appScopeSignal });
+    window.addEventListener('melatonscreen', syncAwake, { signal: appScopeSignal });
+    document.addEventListener('wmBehind', syncAwake, { signal: appScopeSignal });
 
     function registerApp(app) {
         if (!app || !app.id) return;
@@ -2884,7 +2885,7 @@
         }
         stripTimer = setTimeout(stripTick, Math.max(4, Math.ceil(next) + 1));
     }
-    document.addEventListener('wmawake', () => { clearTimeout(stripTimer); stripTimer = null; stripTick(); });
+    document.addEventListener('wmawake', () => { clearTimeout(stripTimer); stripTimer = null; stripTick(); }, { signal: appScopeSignal });
 
     function paintSync(el, kind) {
         if (kind === syncNow) return;
@@ -3073,7 +3074,7 @@
         document.addEventListener('keyup', statusDirty, { capture: true, passive: true });
         document.addEventListener('wmSettingsChange', statusDirtyToday);
         // (the weather's Today item and 6.5's clock draw themselves on it: wmTodayWidgets, only those items, #890)
-        document.addEventListener('wmWeatherChange', statusDirty);
+        document.addEventListener('wmWeatherChange', statusDirty, { signal: appScopeSignal });
         document.addEventListener('wmTrafficChange', statusDirtyToday);
         document.addEventListener('wmLapisChange', statusDirtyToday);
         document.addEventListener('wmCarKeyChange', statusDirtyToday);
@@ -3110,7 +3111,7 @@
             power();
             // back on screen (the screen on, the page shown, or back from behind an Android program): paint now
             if (e.detail && e.detail.awake) refreshStatus();
-        });
+        }, { signal: appScopeSignal });
         power();
     }
 
@@ -9032,12 +9033,12 @@
                     mailNewCheck(Array.isArray(pushed) ? pushed : null);
                     statusDirty();
                 });
-                window.addEventListener('meletonaccountschange', () => todayApp().refresh());
+                window.addEventListener('meletonaccountschange', () => todayApp().refresh(), { signal: appScopeSignal });
                 // the gallery list came in after boot (appInitSteps.js): Today's prints (stale if off screen)
-                document.addEventListener('galleryUpdated', () => todayApp().refresh());
+                document.addEventListener('galleryUpdated', () => todayApp().refresh(), { signal: appScopeSignal });
                 // back on screen (the screen on, the page shown, back from behind an Android program): a stale Today draws
                 const back = () => { const t = todayApp(); if (t.stale && current === 'today') t.refresh(); };
-                document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) back(); });
+                document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake) back(); }, { signal: appScopeSignal });
             },
             show() {
                 if (mailUnread == null) loadMail();
@@ -9302,7 +9303,7 @@
 
         registerApp(today);
         // switching workspace changes Today's rows, theme and prints
-        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; applyTodayBackground(true); todayApp().refresh(); });
+        document.addEventListener('workspaceSwitchComplete', () => { recentKey = ''; applyTodayBackground(true); todayApp().refresh(); }, { signal: appScopeSignal });
         // another window saved this workspace's phone placement (settings_updated carries it)
         document.addEventListener('workspaceUpdated', (ev) => {
             const d = ev && ev.detail;
@@ -9435,12 +9436,12 @@
             wrapped.__wmGrid = true;
             window[name] = wrapped;
         });
-        document.addEventListener('galleryUpdated', gridDirty);
+        document.addEventListener('galleryUpdated', gridDirty, { signal: appScopeSignal });
         document.addEventListener('wmawake', (e) => {
             if (!(e.detail && e.detail.awake) || !gridStale || current !== 'gallery') return;
             const pg = apps.get('gallery') && apps.get('gallery').page;
             if (pg) { gridStale = false; renderGrid(pg, false); }
-        });
+        }, { signal: appScopeSignal });
 
         function galleryList() {
             if (searchResults) return searchResults;

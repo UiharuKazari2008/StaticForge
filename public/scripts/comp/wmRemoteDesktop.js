@@ -34,6 +34,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -1291,8 +1292,8 @@
             if (!s || s.ended || !s.sizeWatch) return;
             if (sizeSeen()) { if (!s.sizeTimer) startSizeWatch(); } else if (s.sizeTimer) { clearInterval(s.sizeTimer); s.sizeTimer = 0; }
         };
-        window.addEventListener('melatonscreen', sizeWake);
-        document.addEventListener('visibilitychange', sizeWake);
+        window.addEventListener('melatonscreen', sizeWake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', sizeWake, { signal: appScopeSignal });
         // the SIP button: the phone keyboard into the session, or the focused field on the connect screen
         document.addEventListener('click', (e) => {
             if (!isCurrent() || !e.target.closest || !e.target.closest('#wmShell .wm-sip')) return;

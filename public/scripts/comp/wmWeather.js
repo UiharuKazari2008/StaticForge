@@ -36,6 +36,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     // Melaton Mobile registers with the WM shell; the desktop builds the same app into a Vista window
     // (#792 item 7: desktopShell below stands in for the shell's API)
@@ -2822,10 +2823,10 @@
             syncPoll();
             radarRun();
         };
-        document.addEventListener('visibilitychange', wake);
+        document.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
         if (MOBILE) {
-            window.addEventListener('melatonscreen', wake);
-            document.addEventListener('wmBehind', wake);
+            window.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
+            document.addEventListener('wmBehind', wake, { signal: appScopeSignal });
         }
         if (MOBILE) ws.registerApp(APP);
     }

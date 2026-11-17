@@ -32,6 +32,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
     const bridge = window.AndroidApps;
@@ -1573,9 +1574,9 @@
             if (job.id && (job.lastState === 'working' || job.lastState == null)) poll(true);
             else if (job.stale) rerenderLive();
         };
-        window.addEventListener('melatonscreen', jobWake);
+        window.addEventListener('melatonscreen', jobWake, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', jobWake);
-        document.addEventListener('wmBehind', jobWake);
+        document.addEventListener('wmBehind', jobWake, { signal: appScopeSignal });
         // a program was installed, removed or changed
         let timer = null;
         window.addEventListener('androidapps', () => { clearTimeout(timer); timer = setTimeout(refresh, 800); });

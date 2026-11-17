@@ -37,6 +37,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -1588,10 +1589,10 @@
         const woke = () => setTimeout(() => {
             if (onScreenNow() && conv && conv.id !== 'new' && view() === 'conv' && isCurrent()) markConvSeen();
         }, 0);
-        document.addEventListener('visibilitychange', woke);
-        window.addEventListener('melatonscreen', woke);
-        document.addEventListener('wmBehind', woke);
-        document.addEventListener('wmLockChange', (e) => { if (e.detail && e.detail.locked === false) woke(); });
+        document.addEventListener('visibilitychange', woke, { signal: appScopeSignal });
+        window.addEventListener('melatonscreen', woke, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', woke, { signal: appScopeSignal });
+        document.addEventListener('wmLockChange', (e) => { if (e.detail && e.detail.locked === false) woke(); }, { signal: appScopeSignal });
         // Messaging > Options > Dreamscape Messenger saved (wmSettingsSystem.js chat-options)
         window.addEventListener('wmChatOptionsChange', () => {
             showActions = stored(ACTIONS_KEY) === '1';

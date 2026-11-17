@@ -57,6 +57,7 @@
  */
 (function () {
     'use strict';
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
@@ -3501,9 +3502,9 @@
         wireTm();
         // and the IMAP accounts (#789): their rows, and their new mail's notification while Messaging is closed
         wireImap();
-        window.addEventListener('melatonscreen', tmWake);
-        document.addEventListener('visibilitychange', tmWake);
-        document.addEventListener('wmBehind', tmWake);
+        window.addEventListener('melatonscreen', tmWake, { signal: appScopeSignal });
+        document.addEventListener('visibilitychange', tmWake, { signal: appScopeSignal });
+        document.addEventListener('wmBehind', tmWake, { signal: appScopeSignal });
         // the clients may come after this script, or be replaced (a test fake): tried until both are
         // bound, then again on a reconnect or a program change - not every 3 s for the life of the page
         // with Messaging closed (#849 idle profile)
