@@ -1053,7 +1053,7 @@
         const c0 = st.config || {};
         if (!d.barsCfg) {
             d.barsCfg = {
-                enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: !!c0.androidTray,
+                enabled: !!c0.enabled, corner: c0.corner === 'ok' ? 'ok' : 'close', androidTray: false,
                 softkeys: !!c0.softkeys, softRight: BARS_SOFT_RIGHT.some(([k]) => k === c0.softRight) ? c0.softRight : 'home',
                 room: c0.room !== false,
                 hideLandCover: !!c0.hideLandCover,
@@ -1077,7 +1077,7 @@
         el.innerHTML = `${check('wmBarsOn', 'Use the title bar in Android programs', cfg.enabled)}
             ${note ? `<p>${esc(note)}</p>` : ''}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Corner button:</span>${ui.comboHtml('barscorner', label(BARS_CORNERS, cfg.corner))}</div>
-            ${check('wmBarsTray', 'Button for Android\'s notification tray', cfg.androidTray)}
+            ${''/* no button for Android's tray: pulling the title bar down opens it (Yukimi, Nov 17, #902) */}
             <div class="wm-form-gap"></div>
             ${check('wmBarsSoft', 'Use the soft key bar in Android programs', cfg.softkeys)}
             <div class="wm-form-row is-wide"><span class="wm-form-label">Right soft key:</span>${ui.comboHtml('barsright', label(BARS_SOFT_RIGHT, cfg.softRight))}</div>
@@ -1106,7 +1106,6 @@
         };
         const bind = (name, fn) => { const i = q(`input[name="${name}"]`); if (i) i.addEventListener('change', () => { fn(i.checked); sync(); }); };
         bind('wmBarsOn', (v) => { cfg.enabled = v; });
-        bind('wmBarsTray', (v) => { cfg.androidTray = v; });
         bind('wmBarsSoft', (v) => { cfg.softkeys = v; });
         bind('wmBarsRoom', (v) => { cfg.room = v; });
         bind('wmBarsLandCover', (v) => { cfg.hideLandCover = v; });
