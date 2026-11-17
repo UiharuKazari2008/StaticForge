@@ -12,10 +12,13 @@
  * Once it has had to ping, the missed-pong rule is the same as before: the pong is due by the
  * next tick, and MISSED_PONG_LIMIT unanswered pings in a row end the socket.
  *
- *   QUIET_WINDOW_MS       30 s   ordinary sockets (desktop tabs, a phone page that is awake)
+ *   QUIET_WINDOW_MS       30 s   ordinary sockets (desktop tabs, a phone page that is awake, the
+ *                                app's light sockets: widgets and the screen saver run only with
+ *                                the screen on or on the charger, and a Frame's online state in
+ *                                Control Panel follows its socket)
  *   QUIET_WINDOW_LONG_MS  180 s  the app's native links (the Miniport carrier, ActiveSync's
- *                                background link, light sockets) and the page of a phone the
- *                                server knows is asleep: each server ping wakes the phone's radio
+ *                                background link) and the page of a phone the server knows is
+ *                                asleep: each server ping wakes the phone's radio
  *
  * A long window must not leave a silently dropped link standing for minutes once its peer is back:
  * when a phone reconnects (a new Miniport carrier, a new ActiveSync hello), its older links are
@@ -118,7 +121,6 @@ function quietWindowFor(ws, info) {
     if (ws && ws.virtual) return Infinity;
     if (ws && ws._dsMiniport) return QUIET_WINDOW_LONG_MS;
     if (info) {
-        if (info.light) return QUIET_WINDOW_LONG_MS;
         if (info.as && info.as.speaker === 'service') return QUIET_WINDOW_LONG_MS;
         if (info.dormant && info.phone && info.phone.shell === 'mobile') return QUIET_WINDOW_LONG_MS;
     }
