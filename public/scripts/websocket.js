@@ -873,6 +873,7 @@ class WebSocketClient {
     static TIMEOUT_GET_APP_OPTIONS = 3000; // Critical app options timeout (3 seconds)
     static TIMEOUT_GET_APP_OPTIONS_MIN = 10000; // ...never less than this (slow links, Yozora #516)
     static TIMEOUT_INACTIVITY = 2 * 60 * 60 * 1000; // Inactivity timeout before disconnect (2 hours)
+    static WORKSPACE_ACTIVATED_KEY = 'melatonWorkspaceActivated'; // { id, at } of this browser's last workspace_activate
 
     static DELAY_RECONNECT_INITIAL = 1000; // Initial reconnect delay (1 second)
     static DELAY_RECONNECT_MAX = 30000; // Maximum reconnect delay (30 seconds)
@@ -1163,6 +1164,12 @@ class WebSocketClient {
         this.inactivityCheckInterval = null;
         this._inactivityListenersAttached = false;
         this._boundOnUserActivity = this._onUserActivity.bind(this);
+        // when this page last sent anything but its perf samples: clientPerfSampler.js sends a phone's
+        // queued samples along while the radio is up anyway (#890)
+        this.lastOutgoingAt = 0;
+        // workspace_restored for the current socket (noteRestoredWorkspace): the reconnect's
+        // workspace_activate is skipped when the server already has the same workspace (#890)
+        this._restoredWorkspace = null;
 
         // RTT (Round-Trip Time) tracking for dynamic timeout adjustment
         this.rttMeasurements = []; // Array of recent RTT measurements
@@ -5003,10 +5010,15 @@ class WebSocketClient {
                     const workspaceId = (typeof activeWorkspace !== 'undefined' && activeWorkspace)
                         ? activeWorkspace
                         : (window.currentWorkspace || 'default');
-                    try {
-                        await this.setActiveWorkspace(workspaceId);
-                    } catch (error) {
-                        console.warn('⚠️ Failed to sync workspace on reconnect:', error.message);
+                    // the server restored this session's workspace with the welcome (workspace_restored):
+                    // the same one needs no second activation (#890), unless this page has not activated
+                    // it for a day (the activation keeps the session's choice from aging out, 3 days)
+                    if (!this._serverHasWorkspace(workspaceId)) {
+                        try {
+                            await this.setActiveWorkspace(workspaceId);
+                        } catch (error) {
+                            console.warn('⚠️ Failed to sync workspace on reconnect:', error.message);
+                        }
                     }
                 }
 
@@ -5941,6 +5953,7 @@ class WebSocketClient {
             this.logGenerationQuipsWs('out', message);
             this._recordWsMessage('out', message);
             socket.send(JSON.stringify(message));
+            if (!message || message.type !== 'report_client_perf') this.lastOutgoingAt = Date.now();
             this.flashWebSocketArrow('up');
             return true;
         }
@@ -8272,7 +8285,23 @@ class WebSocketClient {
     }
 
     async setActiveWorkspace(id) {
-        return this.sendMessage('workspace_activate', { id });
+        const result = await this.sendMessage('workspace_activate', { id });
+        try { localStorage.setItem(WebSocketClient.WORKSPACE_ACTIVATED_KEY, JSON.stringify({ id: String(id), at: Date.now() })); } catch (_) { /* storage off */ }
+        return result;
+    }
+
+    /** workspace_restored (ws/handlers/30-workspaceInbound.js): the server's workspace for this socket's session. */
+    noteRestoredWorkspace(id) {
+        this._restoredWorkspace = { socket: this.ws, id: id == null ? '' : String(id) };
+    }
+
+    /** True when the server restored workspaceId for the current socket and this page activated it within a day. */
+    _serverHasWorkspace(workspaceId) {
+        const restored = this._restoredWorkspace;
+        if (!restored || restored.socket !== this.ws || !workspaceId || restored.id !== String(workspaceId)) return false;
+        let last = null;
+        try { last = JSON.parse(localStorage.getItem(WebSocketClient.WORKSPACE_ACTIVATED_KEY) || 'null'); } catch (_) { last = null; }
+        return !!(last && last.id === String(workspaceId) && Date.now() - Number(last.at || 0) < 24 * 60 * 60 * 1000);
     }
 
     async dumpWorkspace(sourceId, targetId) {
@@ -8732,6 +8761,11 @@ class WebSocketClient {
         if (!this.isConnected()) {
             return;
         }
+        // Melaton Mobile out of sight or with the screen off (#890): the server's protocol pings keep the
+        // link; the app ping starts again when the page comes back (_onPhoneSleepChange)
+        if (this._phoneAsleep()) {
+            return;
+        }
         // Continuity (#798): the DeX window's shared connection is the phone's; the phone's pings keep it
         // (and the server answers the sub-client's heartbeat itself): no second ping over bus + phone + server
         if (this.ws && this.ws.continuity) {
@@ -8796,9 +8830,41 @@ class WebSocketClient {
             clearInterval(this.inactivityCheckInterval);
             this.inactivityCheckInterval = null;
         }
+        // a phone out of sight or with its screen off does not count idle time (#890): it starts again
+        // when the page comes back (_onPhoneSleepChange)
+        if (this._phoneAsleep()) return;
         this.inactivityCheckInterval = setInterval(() => {
             this._checkInactivity();
         }, 30000); // Check every 30 seconds
+    }
+
+    /** Melaton Mobile out of sight: the page hidden, or the phone's screen off (html[data-screen-off], melatonscreen). */
+    _phoneAsleep() {
+        return window.uiShell === 'mobile'
+            && (document.visibilityState !== 'visible' || document.documentElement.dataset.screenOff !== undefined);
+    }
+
+    /**
+     * Melaton Mobile (#890): asleep (hidden or screen off), the app's 30 s ping and the 2-hour idle check
+     * stop; nobody is there to be idle, and the server's protocol pings keep the link. Back on screen
+     * they start again, the idle clock starts from now, and a page that pings for itself (not on the
+     * Miniport) looks at its link the way a return to the app does (a screen-on is no visibilitychange).
+     * Called by reportDormant's visibilitychange and melatonscreen listeners (bottom of this file).
+     */
+    _onPhoneSleepChange(screenOn) {
+        if (window.uiShell !== 'mobile') return;
+        if (this._phoneAsleep()) {
+            this.stopPeriodicPings();
+            if (this.inactivityCheckInterval) {
+                clearInterval(this.inactivityCheckInterval);
+                this.inactivityCheckInterval = null;
+            }
+            return;
+        }
+        this.lastUserActivity = Date.now();
+        if (this._inactivityListenersAttached && !this.inactivityCheckInterval) this._startInactivityCheck();
+        if (!this.heartbeatInterval && this.isConnected()) this.startPeriodicPings();
+        if (screenOn === true && this.ws && !this.ws.miniport && !this.ws.continuity) this._reconnectOnFocusRegain('screen-on');
     }
 
     /**
@@ -10293,6 +10359,10 @@ class WebSocketClient {
     }
 
     _startWsFlashVisibilityWatcher() {
+        if (window.uiShell === 'mobile') {
+            this._startPhoneWsFlashWatcher();
+            return;
+        }
         if (!this._wsFlashVisibilityObserver) {
             this._wsFlashVisibilityObserver = new MutationObserver((mutations) => {
                 for (let i = 0; i < mutations.length; i++) {
@@ -10315,6 +10385,34 @@ class WebSocketClient {
                 this._refreshWsFlashTargets();
             }, 30000);
         }
+    }
+
+    /**
+     * Melaton Mobile (#890): the traffic arrows are only in the two connection dialogs, so only they
+     * are watched (no class observer over the whole page, no 30 s net): their own class changes, the
+     * Status dialog's arrival (melatonControlPanel.js makes it on first use and appends it to <body>),
+     * and the WM app changing (wmHost.js moves a hosted dialog into its app's page, which shows and
+     * hides with the app while the dialog's class stays).
+     */
+    _startPhoneWsFlashWatcher() {
+        if (this._wsFlashVisibilityObserver || typeof MutationObserver !== 'function') return;
+        const ids = ['connectionDialModal', 'melatonConnectionStatusModal'];
+        const observer = new MutationObserver((mutations) => {
+            let refresh = false;
+            for (let i = 0; i < mutations.length; i++) {
+                const m = mutations[i];
+                if (m.type !== 'childList') { refresh = true; continue; }
+                m.addedNodes.forEach((node) => {
+                    if (node.nodeType === 1 && ids.includes(node.id)) { watch(node); refresh = true; }
+                });
+            }
+            if (refresh) this._scheduleWsFlashVisibilityRefresh();
+        });
+        const watch = (el) => { if (el) observer.observe(el, { attributes: true, attributeFilter: ['class'] }); };
+        this._wsFlashVisibilityObserver = observer;
+        ids.forEach((id) => watch(document.getElementById(id)));
+        if (document.body) observer.observe(document.body, { childList: true });
+        observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-wm-app'] });
     }
 
     _stopWsFlashVisibilityWatcher() {
@@ -11354,8 +11452,13 @@ window.wsClient = new WebSocketClient();
     // coming back on screen always says so, even if the page thinks it already did (a lost report
     // must never leave the server holding its status pushes, Yukimi Nov 15: status icons not updating);
     // a touch or a key on a page that last said asleep says awake as well
-    document.addEventListener('visibilitychange', () => tell(document.visibilityState === 'visible'));
-    window.addEventListener('melatonscreen', (e) => setTimeout(() => tell(!!(e && e.detail && e.detail.on)), 0));
+    // the same two events stop and start the phone's app ping and idle check (_onPhoneSleepChange, #890)
+    document.addEventListener('visibilitychange', () => { tell(document.visibilityState === 'visible'); c._onPhoneSleepChange(false); });
+    window.addEventListener('melatonscreen', (e) => setTimeout(() => {
+        const on = !!(e && e.detail && e.detail.on);
+        tell(on);
+        c._onPhoneSleepChange(on);
+    }, 0));
     const touched = () => { if (sent === true && !dormant()) tell(true); };
     document.addEventListener('pointerdown', touched, { capture: true, passive: true });
     document.addEventListener('keydown', touched, { capture: true, passive: true });
