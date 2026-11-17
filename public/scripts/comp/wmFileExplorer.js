@@ -1340,6 +1340,9 @@
         const bytes = Math.min(t.total, t.done + (e ? rxSent(t) * (Number(e.file.size) || 0) : 0));
         // files without a size (0 bytes in all) count by number
         const part = t.total > 0 ? bytes / t.total : t.at / t.entries.length;
+        // the screen off or the page hidden: measured (above) but not drawn; the next tick on screen draws it
+        // (behind an Android program it is drawn: the app's copy of the notification shows it)
+        if (document.hidden || document.documentElement.dataset.screenOff !== undefined) return;
         t.note.update({ title: rxTitle(t), html: rxName(t), progress: part * 100, detail: rxDetail(t, bytes) });
     }
 
