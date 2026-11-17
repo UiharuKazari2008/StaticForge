@@ -528,11 +528,23 @@ if (window.wsClient) {
         window.addEventListener('melatonscreen', (e) => { if (e.detail && e.detail.on === false) savePhoneGalleryNow(); });
     }
 
+    // The DeX window of a hybrid phone (#890): the phone window keeps its copy of the gallery list in
+    // IndexedDB (melatonGalleryCopy, same origin and the same app), and the DeX window read the whole list
+    // from the server again on every boot (16,915 items, ~15 MB). It starts from that copy too; the
+    // loader's probe decides as on the phone (the same gallery used as it is, a head sync, or the full
+    // read). Only the phone window writes the copy.
+    function dexWindowNow() {
+        const mc = window.melatonContinuity;
+        try { return !!(mc && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
+    }
+
     // public/scripts/comp/galleryView.js loadGallery, shouldAutoLaunchWorkspace
-    function beginStartupGalleryLoad() {
+    // options.restoreCopy: the phone's copy of the list first (restorePhoneGallery), once the window is open
+    function beginStartupGalleryLoad(options) {
         if (window.isEditorStandaloneWindow) {
             return Promise.resolve();
         }
+        const restoreCopy = !!(options && options.restoreCopy);
 
         const autoLaunchWorkspace = typeof shouldAutoLaunchWorkspace === 'function'
             ? shouldAutoLaunchWorkspace()
@@ -555,6 +567,7 @@ if (window.wsClient) {
             if (bootUiDebug) {
                 await bootUiDebug.gate('gallery', { detail: 'Loading Gallery' });
             }
+            if (restoreCopy) await restorePhoneGallery();
             await loadGallery(false, null, {
                 showProgress: true,
                 startupBoot: true
@@ -605,7 +618,7 @@ if (window.wsClient) {
         }
         if (window.isDesktop) {
             // Fire-and-forget: startup splash and init do not wait; galleryView shows its own progress toast
-            beginStartupGalleryLoad();
+            beginStartupGalleryLoad({ restoreCopy: dexWindowNow() });
             return;
         }
         if (phoneShell()) {
