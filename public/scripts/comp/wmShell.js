@@ -3241,7 +3241,8 @@
         hide(shell.querySelector('[data-role="rain"]'), !(wx && wx.rain) || noteWaits('rain-alarm'));
         // Traffic (#795): the commute that matters now (by where the phone is) is more than 15 min late
         const tr = window.wmTraffic && typeof window.wmTraffic.statusState === 'function' ? window.wmTraffic.statusState() : null;
-        hide(shell.querySelector('[data-role="traffic"]'), !(tr && tr.delayed));
+        // the commute is part of the Car icon (#902): its own glyph is not shown any more
+        hide(shell.querySelector('[data-role="traffic"]'), true);
         // Lapis Remote (#835): while a remote start runs (scripts/generate-wm-lapis-status-icon.py)
         const lp = window.wmLapis && typeof window.wmLapis.statusState === 'function' ? window.wmLapis.statusState() : null;
         // one car glyph for both (Yukimi, Nov 16): the key (status-carkey) while a remote start runs (Lapis,
@@ -3249,7 +3250,8 @@
         // start's own glyph is not shown any more.
         hide(shell.querySelector('[data-role="lapis"]'), true);
         const ck = window.wmCarKey ? (window.wmCarKey.quick ? window.wmCarKey.quick() : window.wmCarKey.state()) : null;
-        hide(shell.querySelector('[data-role="carkey"]'), !((ck && ck.inRange) || (lp && lp.running)));
+        // the Car (#902): a car key in range, a remote start running or a commute running late
+        hide(shell.querySelector('[data-role="carkey"]'), !((ck && ck.inRange) || (lp && lp.running) || (tr && tr.delayed)));
         // Continuity (#798): while this phone carries its DeX window
         const mc = window.melatonContinuity;
         // the Continuity PC (#798): from the moment its window opens, half opacity until its desktop is up
@@ -3272,7 +3274,7 @@
         if (noteTrayOpen) renderNotes(); else fitStatus();
         const bubble = shell.querySelector('.wm-bubble');
         // Traffic's bubble goes with its car: the delay is over, so is what the bubble says
-        if (!bubble.hidden && bubble.dataset.role === 'traffic' && shell.querySelector('[data-role="traffic"]').hidden) closeBubble();
+        // (the commute's bubble is the Car's, #902)
         if (!bubble.hidden && bubble.dataset.role === 'lapis' && shell.querySelector('[data-role="lapis"]').hidden) closeBubble();
         if (!bubble.hidden && bubble.dataset.role === 'carkey' && shell.querySelector('[data-role="carkey"]').hidden) closeBubble();
         // (an open bubble draws only while it can be seen: the wake's pass draws it, #890)
@@ -5561,7 +5563,7 @@
         return artImageSet((n && NOTE_KIND_ICON[n.type]) || 'status-notify-many');
     }
 
-    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Traffic', lapis: 'Remote Start', carkey: 'Car Key', continuity: 'Continuity', received: 'ActiveSync', nightshade: 'Nightshade Network' };
+    const STATUS_APP_LABEL = { mail: 'Messages', sms: 'Text Messages', chat: 'Dreamscape Messenger', prints: 'Prints', director: 'Director', update: 'Updates', wxalert: 'Weather Alert', rain: 'Rain Alarm', traffic: 'Car', lapis: 'Car', carkey: 'Car', continuity: 'Continuity', received: 'ActiveSync', nightshade: 'Nightshade Network' };
 
     /** The bubble icon: pending notifications plus any status icons folded into it by fitStatus. */
     function paintNotifyIcon() {
@@ -6202,6 +6204,9 @@
 
     function statusBubble(role, anchor, update) {
         if (role === 'volume') { if (!update) toggleVolume(anchor); return; }
+        // one Car (Yukimi, Nov 17, #902): the car key, the remote start (Lapis) and the commute (Traffic) are one
+        // icon with one bubble; their old roles open it
+        if (role === 'traffic' || role === 'lapis') { role = 'carkey'; anchor = shell.querySelector('[data-role="carkey"]') || anchor; }
         // (described for the app, bubbleCapture: nothing on screen changes, menus and the volume box stay)
         const capture = !!bubbleCapture;
         if (!capture) closeVolume();
@@ -6468,6 +6473,19 @@
                 if (run.canStop) sections.push({ links: [{ label: 'Stop the Engine', action: () => { closeBubble(); window.wmLapis.stop(); } }], align: 'right' });
                 if (st.cars.length) sections.push({ rule: true });
             }
+            // the commute (Traffic, #795; one Car, #902): the report for where the phone is now; Start Car on the
+            // way home only while the car is not already running (the running start is above, with its own Stop)
+            const tf = window.wmTraffic;
+            const trip = tf && typeof tf.statusState === 'function' ? tf.statusState() : null;
+            if (trip && trip.lines && trip.lines.length) {
+                if (sections.length) sections.push({ rule: true });
+                sections.push({ text: trip.title || 'Commute', bold: true, links: [] });
+                sections.push(...trip.lines);
+                const canStart = trip.direction === 'home' && !(run && run.running) && window.wmLapis && typeof window.wmLapis.canStart === 'function' && window.wmLapis.canStart();
+                sections.push({ links: [...(canStart ? [{ label: 'Start Car', action: () => { closeBubble(); window.wmLapis.startPrompt(); } }] : []),
+                    { label: 'Open Traffic', action: () => { closeBubble(); tf.open(trip.direction); } }], align: 'right' });
+                sections.push({ rule: true });
+            }
             // my car out of the key's range: what the server knows (Lapis) and Lock / Unlock over BlueLink
             const keyHasMine = st.cars.some((c) => c.mine);
             const mkKeys = (onLock, onUnlock, lockOn, unlockOn) => {
@@ -6492,7 +6510,7 @@
                 if (window.wmLapis.lock && window.wmLapis.unlock) sections.push({ node: mkKeys(() => window.wmLapis.lock(), () => window.wmLapis.unlock(), true, true) });
                 if (st.cars.length) sections.push({ rule: true });
             }
-            if (!st.cars.length && !(run && run.running) && !lp) sections.push('No car is in range of this phone\'s keys.');
+            if (!st.cars.length && !(run && run.running) && !lp && !(trip && trip.lines && trip.lines.length)) sections.push('No car is in range of this phone\'s keys.');
             st.cars.forEach((car, i) => {
                 if (i) sections.push({ rule: true });
                 const many = st.cars.length > 1;
@@ -6528,7 +6546,14 @@
             const buttons = [];
             if (lp && window.wmLapis.open) buttons.push({ text: 'Open', left: true, action: () => window.wmLapis.open() });
             buttons.push({ text: 'Hide' });
-            const title = st.cars.length > 1 ? 'Car Keys' : (st.cars[0] && st.cars[0].car) || (run && run.running && run.title) || (lp && lp.name) || STATUS_APP_LABEL[role];
+            // one divider between parts, none first or doubled (the parts above each close with one when present)
+            for (let i = sections.length - 1; i >= 0; i--) {
+                const isRule = (x) => !!(x && x.rule);
+                if (isRule(sections[i]) && (i === 0 || isRule(sections[i - 1]))) sections.splice(i, 1);
+            }
+            // my car's name (the key's, the remote's); several cars in range: Car
+            const mine = st.cars.find((c) => c.mine);
+            const title = (mine && mine.car) || (st.cars.length === 1 && st.cars[0].car) || (lp && lp.name) || (run && run.running && run.title) || 'Car';
             bubble({ title, role, anchor, sections, buttons });
         } else if (role === 'traffic') {
             // Traffic (#795): the commute time, the delay and when it gets there, and the way into the app

@@ -4303,3 +4303,22 @@ html.ui-mobile .wm-progress-layer .wm-msgbox-buttons[hidden] {
     max-width: calc(164 * var(--wm-px));
     margin: calc(3 * var(--wm-px)) 0 calc(4 * var(--wm-px));
 }
+
+/* Several notifications waiting (wmShell paintNotifyIcon: data-icon notify-many): a bottom-aligned "..." in the
+ * title bar's own letters and colour, on both versions, instead of a second speech bubble (Yukimi, Nov 17,
+ * #902). The app's bar draws the same (NativeBar.MORE). */
+html.ui-mobile #wmShell .wm-status-icon[data-icon="notify-many"] {
+    background-image: none !important;
+    position: relative;
+}
+html.ui-mobile #wmShell .wm-status-icon[data-icon="notify-many"]::after {
+    content: '...';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(1 * var(--wm-icon-unit, var(--wm-px)));
+    text-align: center;
+    color: inherit;
+    font: bold calc(13 * var(--wm-icon-unit, var(--wm-px))) / 1 var(--wm-font);
+    letter-spacing: calc(-0.5 * var(--wm-icon-unit, var(--wm-px)));
+}
