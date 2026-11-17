@@ -676,6 +676,8 @@
             });
             if (!yes || !editing) return;
             if (vb.src && vb.src.audioId === audioId) { vbHalt(); vb.src = null; }
+            const gone = `${editing.noteId}/${audioId}`;
+            vbFreeUrls((key) => key === gone);
             try {
                 const res = await busyOf(() => wsc().deleteNoteAudio(editing.noteId, audioId));
                 const data = res && (res.note ? res : res.data);
@@ -795,6 +797,8 @@
             let id = null;
             try { id = await busyOf(() => saveEditing()); } catch (_) { return false; }
             editing = null;
+            // the page's pictures (full-size gallery prints) go with it: one Image per picture ever drawn stayed (#890)
+            picArt.clear();
             page.querySelector('.nt-text').blur();
             showView('list');
             ws.syncHistory();
@@ -901,13 +905,21 @@
                 await errorBox('Notes', list.length > 1 ? 'The notes could not be deleted.' : 'The note could not be deleted.', err);
             }
             if (editing && list.some((i) => i.noteId === editing.noteId)) { editing = null; showView('list'); ws.syncHistory(); }
+            const goneIds = new Set(list.map((i) => `${i.noteId}/`));
+            vbFreeUrls((key) => goneIds.has(key.slice(0, key.indexOf('/') + 1)));
             selectedId = null;
             selected = new Set();
             await load({ keep: true });
         }
 
         /** A page's strokes as a picture to send (white, at 2x). */
-        function inkPng(strokes) {
+        async function inkPng(strokes) {
+            // its pictures loaded first (a note not open has none yet: they were sent as grey boxes)
+            const pics = strokes.filter((st) => st.tool === 'picture').map((st) => pictureArt(st.src)).filter((im) => im && !(im.complete && im.naturalWidth));
+            if (pics.length) {
+                const loaded = (im) => new Promise((resolve) => { im.addEventListener('load', resolve, { once: true }); im.addEventListener('error', resolve, { once: true }); });
+                await Promise.race([Promise.all(pics.map(loaded)), new Promise((resolve) => setTimeout(resolve, 5000))]);
+            }
             let w = 240;
             let h = 40;
             strokes.forEach((st) => st.pts.forEach((pt) => { if (pt[0] + 4 > w) w = pt[0] + 4; if (pt[1] + 4 > h) h = pt[1] + 4; }));
@@ -1091,6 +1103,30 @@
 
         const vb = { mode: 'idle', latched: null, rec: null, audio: null, src: null, pos: 0, timer: null };
         const audioUrls = new Map(); // noteId/audioId -> object URL
+
+        /**
+         * The recordings' blobs go, all but the one playing or paused (#890): one object URL per
+         * recording ever played stayed for the life of the page. only(key) narrows it (a deleted clip).
+         */
+        function vbFreeUrls(only) {
+            const keep = vb.audio && vb.src ? `${vb.src.noteId}/${vb.src.audioId}` : '';
+            for (const [key, url] of [...audioUrls]) {
+                if (key === keep || (only && !only(key))) continue;
+                audioUrls.delete(key);
+                try { URL.revokeObjectURL(url); } catch (_) { /* gone */ }
+            }
+        }
+
+        // a recording or a playback keeps the page running with the screen off (#890): the app pauses a page
+        // that holds nothing, and a detached Audio element is not media the page can see playing
+        let vbHeld = false;
+        function vbHold() {
+            const on = vb.mode === 'recording' || (vb.mode === 'playing' && !!vb.audio);
+            if (on === vbHeld) return;
+            vbHeld = on;
+            const mc = window.melatonContinuity;
+            if (mc && typeof mc.holdAwake === 'function') { try { mc.holdAwake('notes-voice', on); } catch (_) { /* older page */ } }
+        }
         const vbShown = () => stored(VOICEBAR_KEY) === '1';
 
         function toggleVoicebar() {
@@ -1127,6 +1163,7 @@
         }
 
         function renderVoicebar() {
+            vbHold();
             if (!page) return;
             const bar = page.querySelector('.nt-voicebar');
             const view = page.dataset.view;
@@ -1140,7 +1177,8 @@
             const canPlay = !recOn && !!target;
             const set = (key, art, { on = false, disabled = false } = {}) => {
                 const b = bar.querySelector(`[data-vb="${key}"]`);
-                b.innerHTML = vbImg(art);
+                // the 100 ms tick redraws the bar: a button's picture is written only when it changes
+                if (b._art !== art) { b.innerHTML = vbImg(art); b._art = art; }
                 b.classList.toggle('is-latched', on);
                 b.disabled = disabled;
             };
@@ -1158,6 +1196,11 @@
         function vbTick(fn) {
             clearInterval(vb.timer);
             vb.timer = fn ? setInterval(fn, 100) : null;
+        }
+
+        /** The bar is drawn by the tick only while it can be seen (a recording or playback held awake goes on with the screen off). */
+        function vbSeen() {
+            return !!page && !document.hidden && (typeof ws.onScreen !== 'function' || ws.onScreen(page));
         }
 
         async function audioUrl(src) {
@@ -1205,7 +1248,7 @@
             vb.mode = 'recording';
             vb.latched = null;
             vb.pos = 0;
-            vbTick(() => { vb.pos = Math.min(1, (Date.now() - vb.rec.t0) / 60000); renderVoicebar(); });
+            vbTick(() => { vb.pos = Math.min(1, (Date.now() - vb.rec.t0) / 60000); if (vbSeen()) renderVoicebar(); });
             renderVoicebar();
         }
 
@@ -1235,12 +1278,14 @@
             }
         }
 
-        /** Leaving the app or the page: a recording is kept, a playback ends. */
+        /** Leaving the app or the page: a recording is kept, a playback ends (and the recordings' blobs go). */
         function vbHalt() {
             if (vb.mode === 'recording') { void vbStop(); return; }
             if (vb.audio) { vb.audio.pause(); vb.audio = null; }
             vb.mode = 'idle';
             vbTick(null);
+            vbHold();
+            vbFreeUrls();
         }
 
         function freeRecordingName(names) {
@@ -1303,7 +1348,7 @@
                 vbTick(null);
                 renderVoicebar();
             };
-            try { await a.play(); } catch (err) { vb.audio = null; await errorBox('Notes', 'Cannot play the recording.', err); return; }
+            try { await a.play(); } catch (err) { vb.audio = null; vbHold(); await errorBox('Notes', 'Cannot play the recording.', err); return; }
             vb.mode = 'playing';
             vb.latched = null;
             vbWatch();
@@ -1313,7 +1358,7 @@
         function vbWatch() {
             const a = vb.audio;
             const len = () => (isFinite(a.duration) && a.duration > 0 ? a.duration : ((vb.src && vb.src.ms) || 1) / 1000);
-            vbTick(() => { if (vb.audio === a) { vb.pos = a.currentTime / len(); renderVoicebar(); } });
+            vbTick(() => { if (vb.audio === a) { vb.pos = a.currentTime / len(); if (vbSeen()) renderVoicebar(); } });
         }
 
         function vbPrev() {
@@ -1501,7 +1546,7 @@
                 if (d.type !== 'vfs_updated') return;
                 const path = String((d.data && d.data.path) || '');
                 if (!path || /\/Notes(\/|$)/i.test(path)) liveChanged();
-            });
+            }, { signal: appScopeSignal });
         }
 
         function mount(p) {
