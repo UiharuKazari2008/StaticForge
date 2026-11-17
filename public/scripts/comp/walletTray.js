@@ -26,6 +26,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root && root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const doc = typeof document !== 'undefined' ? document : null;
     const POLL_MS = 5 * 60 * 1000;
@@ -48,6 +49,7 @@
     let loading = false;
     let pollTimer = null;
     let tickTimer = null;
+    let lastFetch = 0;       // when wallet_status last answered (or failed): a window shown again reads if older than POLL_MS
     let wired = false;
     let icon = null;
     let flyout = null;
@@ -724,8 +726,44 @@
             serverError = (error && error.message) || 'Account status unavailable';
         } finally {
             loading = false;
+            lastFetch = Date.now();
             update();
         }
+    }
+
+    // ---- when it reads and redraws (#890) ------------------------------------------------------
+    //
+    // The 5-minute read and the minute's redraw (renewal countdowns, Claude window resets) run only while
+    // the window is seen; a DeX window whose display sleeps, or a hidden tab, asked and drew for no one.
+    // Shown again: an overdue read goes at once, else the tray is drawn as it is now. Over the Melaton
+    // Miniport (#815) the Miniport keeps wallet_status current for every window: no read of its own here,
+    // a read (answered from its copy) when it says the wallet changed, as Melaton Mobile's Accounts does.
+
+    function seen() {
+        return !doc || (doc.visibilityState === 'visible' && doc.documentElement.dataset.screenOff === undefined);
+    }
+
+    function miniportWallet() {
+        const mc = root.melatonContinuity;
+        try { return !!(mc && typeof mc.miniportOwns === 'function' && mc.miniportOwns('wallet_status')); } catch (_) { return false; }
+    }
+
+    function syncTimers() {
+        if (seen()) {
+            if (!pollTimer) pollTimer = setInterval(() => { if (!seen()) syncTimers(); else if (!miniportWallet()) refresh(); }, POLL_MS);
+            if (!tickTimer) tickTimer = setInterval(() => { if (!seen()) syncTimers(); else update(); }, 60 * 1000);
+            return;
+        }
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
+    }
+
+    function wake() {
+        const wasRunning = !!tickTimer;
+        syncTimers();
+        if (wasRunning || !seen()) return;
+        if (Date.now() - lastFetch > POLL_MS && !miniportWallet()) refresh();
+        else update();
     }
 
     // ---- Cursor login (same flow as Security Center's Login button) ---------------------------
@@ -973,6 +1011,8 @@
         if (flyoutTimer) clearInterval(flyoutTimer);
         flyoutTimer = setInterval(() => {
             if (!flyout || flyout.classList.contains('hidden')) { clearInterval(flyoutTimer); flyoutTimer = null; return; }
+            // not seen: drawn when the window shows again (wake -> update)
+            if (!seen()) return;
             renderFlyout();
         }, LIVE_TICK_MS);
     }
@@ -1139,9 +1179,15 @@
         attachMenu(icon);
         update({ reveal: false });
         refresh();
-        if (!pollTimer) pollTimer = setInterval(() => refresh(), POLL_MS);
-        // Renewal countdowns, Claude window resets and run costs move with the clock
-        if (!tickTimer) tickTimer = setInterval(() => update(), 60 * 1000);
+        // the 5-minute read and the minute's redraw (renewal countdowns, Claude window resets and run
+        // costs move with the clock), while the window is seen (syncTimers)
+        syncTimers();
+        if (doc.addEventListener) doc.addEventListener('visibilitychange', wake, { signal: appScopeSignal });
+        if (root.addEventListener) root.addEventListener('melatonscreen', wake, { signal: appScopeSignal });
+        try {
+            const mc = root.melatonContinuity;
+            if (mc && mc.miniportData && typeof mc.miniportData.on === 'function') mc.miniportData.on('wallet_status', () => refresh());
+        } catch (_) { /* reads on its own */ }
         const client = ws();
         if (client && typeof client.registerRefreshCallback === 'function') {
             client.registerRefreshCallback('wallet-tray', 85, () => refresh());
