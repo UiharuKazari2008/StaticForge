@@ -902,13 +902,20 @@
         renderMain();
     }
 
+    // the minute's quiet read runs only while the app is seen: the screen off (the page is not hidden then)
+    // or behind another app stops it; seen again, it goes on (an overdue read within 5 s)
+    const seenPage = () => !!page && (typeof sh.onScreen === 'function' ? sh.onScreen(page) : !document.hidden);
     function startTimer() {
         clearInterval(timer);
+        timer = null;
+        if (!shown || !seenPage()) return;
         timer = setInterval(() => {
-            if (!shown || document.hidden || working || scan || (sh.isBusy && sh.isBusy())) return;
+            if (!shown || !seenPage()) { clearInterval(timer); timer = null; return; }
+            if (working || scan || (sh.isBusy && sh.isBusy())) return;
             if (Date.now() - loadedAt >= REFRESH_MS) void refresh({ quiet: true });
         }, 5000);
     }
+    const timerWake = () => { if (shown && !timer && data) startTimer(); };
 
     let firstLoading = false;
     async function firstLoad() {
@@ -936,6 +943,9 @@
         sh = window.wmShell;
         if (!sh || typeof sh.registerApp !== 'function') return;
         esc = sh.escapeHtml || esc;
+        window.addEventListener('melatonscreen', timerWake);
+        document.addEventListener('visibilitychange', timerWake);
+        document.addEventListener('wmBehind', timerWake);
         sh.registerApp({
             id: APP_ID,
             title: TITLE,
@@ -956,10 +966,12 @@
             hide() {
                 shown = false;
                 clearInterval(timer);
+                timer = null;
             },
             onEnd() {
                 shown = false;
                 clearInterval(timer);
+                timer = null;
                 if (scan) void scan.cancel();
                 page = null;
             },
