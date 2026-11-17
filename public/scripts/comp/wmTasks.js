@@ -913,19 +913,21 @@
             const opt = t.closest('[data-opt]');
             if (opt) setPref('wmTasksOptions', Object.assign(options(), { [opt.dataset.opt]: opt.checked }));
         });
+    }
 
-        // a change made elsewhere (the desktop's Calendar, another phone) arrives as vfs_updated
-        let liveTimer = null;
-        document.addEventListener('wsMessage', (e) => {
-            const d = e.detail || {};
-            if (d.type !== 'vfs_updated') return;
-            const path = String((d.data && d.data.path) || '');
-            if (path && !/\/Calendars(\/|$)/i.test(path)) return;
-            // the screen off: read once it is on again (nothing shows the tasks meanwhile)
-            if (ws && ws.onScreen && !ws.onScreen()) { vfsPending = true; return; }
-            clearTimeout(liveTimer);
-            liveTimer = setTimeout(() => { if (Date.now() - loadedAt > 1500) reload(true); }, 400);
-        });
+    // a change made elsewhere (the desktop's Calendar, another phone) arrives as vfs_updated, through the
+    // document 'wsMessage' bridge (ws/handlers/90-vfsInbound.js). Once per page, not per mount: each open
+    // after an End Task added another listener (#890)
+    let liveTimer = null;
+    function onVfsMessage(e) {
+        const d = e.detail || {};
+        if (d.type !== 'vfs_updated') return;
+        const path = String((d.data && d.data.path) || '');
+        if (path && !/\/Calendars(\/|$)/i.test(path)) return;
+        // the screen off: read once it is on again (nothing shows the tasks meanwhile)
+        if (ws && ws.onScreen && !ws.onScreen()) { vfsPending = true; return; }
+        clearTimeout(liveTimer);
+        liveTimer = setTimeout(() => { if (Date.now() - loadedAt > 1500) reload(true); }, 400);
     }
 
     function show() {
@@ -1044,7 +1046,8 @@
             onEnd() { view = 'list'; form = null; closePicker(); },
             softKeys
         });
-        document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); });
+        document.addEventListener('workspaceSwitchComplete', () => { loadedAt = 0; cals = []; sel = null; if (page && ws.current === APP_ID) { view = 'list'; reload(true); } else changed(); }, { signal: appScopeSignal });
+        document.addEventListener('wsMessage', onVfsMessage, { signal: appScopeSignal });
         window.addEventListener('melatonscreen', printWake, { signal: appScopeSignal });
         document.addEventListener('visibilitychange', printWake, { signal: appScopeSignal });
         document.addEventListener('wmBehind', printWake, { signal: appScopeSignal });
