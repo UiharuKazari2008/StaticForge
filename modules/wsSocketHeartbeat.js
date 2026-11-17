@@ -124,6 +124,16 @@ function reapSocketHeartbeats(clients, hooks) {
 }
 
 /**
+ * A page on a phone that said it sleeps (client_dormant): a Melaton Mobile page (clientInfo.phone),
+ * or a phone's DeX window (client_dormant dex: 1 marks clientInfo.dexWindow, #890 P18). Its status
+ * pushes are held (websocket.js DORMANT_HOLD), it gets no Director stream, and its own socket (a DeX
+ * window that has one) keeps the long quiet window: a server ping wakes the phone's radio either way.
+ */
+function isDormantPage(info) {
+    return !!(info && info.dormant && ((info.phone && info.phone.shell === 'mobile') || info.dexWindow === true));
+}
+
+/**
  * The quiet window of a server socket (ws) and its clientInfo (null for the Miniport carrier,
  * which is no client). Infinity: never pinged by the server (a Continuity sub-client: it lives on
  * its carrier's socket, whose own heartbeat ends it).
@@ -133,7 +143,7 @@ function quietWindowFor(ws, info) {
     if (ws && ws._dsMiniport) return QUIET_WINDOW_LONG_MS;
     if (info) {
         if (info.as && info.as.speaker === 'service') return QUIET_WINDOW_LONG_MS;
-        if (info.dormant && info.phone && info.phone.shell === 'mobile') return QUIET_WINDOW_LONG_MS;
+        if (isDormantPage(info)) return QUIET_WINDOW_LONG_MS;
     }
     return QUIET_WINDOW_MS;
 }
@@ -227,6 +237,7 @@ module.exports = {
     tickSocketHeartbeat,
     reapSocketHeartbeats,
     quietWindowFor,
+    isDormantPage,
     socketLink,
     socketLinkUnanswered,
     probeSocketLink,
