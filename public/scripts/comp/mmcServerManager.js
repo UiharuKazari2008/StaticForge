@@ -5,6 +5,9 @@
  *
  *   Server Manager (<HOST>)   the summary: Server Summary (Computer Information, Security
  *                             Information), Roles Summary, Features Summary, Resources and Support
+ *     Clients                 every connected client (desktops, phones, light clients, devices) with
+ *                             its state, pushed by the server_clients feed while the page shows;
+ *                             Resync and Disconnect on the selected one (#898)
  *     Roles                   the role consoles, each a hosted snap-in (mmcConsole.compose):
  *                             Autofill Ranking, Dynamic Quips, Enshutsuka, Exchange, Front Gate,
  *                             Key Manager, Print Management
@@ -132,11 +135,7 @@
         loading: false,
         refreshed: 0,       // Last Refresh
         hosted: new Set(),  // the ROLES / PARTS keys hosted in the open console
-        console: null,      // the open console (pushes repaint its page)
-        sensors: new Map(), // Hardware and Sensors: sensor id -> row (hardware_sensors feed)
-        sensorsHost: '',
-        sensorsOn: false,   // subscribed to the feed
-        sensorsError: ''
+        console: null       // the open console (feed pushes repaint its page)
     };
 
     // ---- data -------------------------------------------------------------------------------------
@@ -227,6 +226,7 @@
             children: [
                 { id: 'roles', name: 'Roles', icon: SERVER16, desc: 'The server\'s roles', children: ROLES.map(role) },
                 { id: 'features', name: 'Features', icon: `${ITEMS}/programs-and-features-16.png`, desc: 'Programs and pages that are not consoles' },
+                { id: 'clients', name: 'Clients', icon: CLIENTS16, desc: 'Every client connected to this server, with Resync and Disconnect' },
                 {
                     id: 'diagnostics', name: 'Diagnostics', icon: `${ITEMS}/problem-reports-and-solutions-16.png`, desc: 'Logs, performance, devices and the remote services',
                     children: DIAGNOSTICS.map(toolNode).concat([
@@ -381,54 +381,62 @@
         return SENS16;
     }
 
-    function applySensors(items, removed) {
-        if (items && typeof items === 'object') {
-            for (const [k, v] of Object.entries(items)) {
-                if (k === '#host') state.sensorsHost = String(v || '');
-                else if (v && typeof v === 'object') state.sensors.set(k, v);
-            }
-        }
-        (removed || []).forEach((k) => state.sensors.delete(k));
-    }
-
-    let sensorsWired = false;
-    function wireSensors() {
-        const ws = root.wsClient;
-        if (sensorsWired || !ws || typeof ws.on !== 'function') return;
-        sensorsWired = true;
-        ws.on('hardware_sensors_status', (msg) => {
-            if (!state.sensorsOn || !msg) return;
-            const d = msg.changed ? msg : (msg.data || {});
-            applySensors(d.changed, d.removed);
+    /**
+     * A statusHub feed shown on one page (rule server-push-not-polling): subscribed while its page
+     * shows, its pushes merged into rows, unsubscribed when the page or the console goes. Hardware
+     * and Sensors (#896) and Clients (#898).
+     */
+    function feedWatcher(feed, pushType, nodeId) {
+        const w = { rows: new Map(), on: false, error: '', meta: {} };
+        let wired = false;
+        const repaint = () => {
             const c = state.console;
-            if (c && c.node === 'sensors' && c.modal && c.modal.isConnected) c.refresh();
-        });
-        // the server forgets a dropped socket's subscriptions
-        ws.on('connected', () => { if (state.sensorsOn) { state.sensorsOn = false; void sensorsWant(true); } });
+            if (c && c.node === nodeId && c.modal && c.modal.isConnected) c.refresh();
+        };
+        const apply = (items, removed) => {
+            if (items && typeof items === 'object') {
+                for (const [k, v] of Object.entries(items)) {
+                    if (k.startsWith('#')) w.meta[k.slice(1)] = v;
+                    else if (v && typeof v === 'object') w.rows.set(k, v);
+                }
+            }
+            (removed || []).forEach((k) => w.rows.delete(k));
+        };
+        w.want = async (on) => {
+            const ws = root.wsClient;
+            if (on === w.on || !ws || typeof ws.sendMessage !== 'function') return;
+            w.on = on;
+            if (!on) { try { await ws.sendMessage('status_unsubscribe', { feed }, false); } catch (_) { /* gone */ } return; }
+            if (!wired && typeof ws.on === 'function') {
+                wired = true;
+                ws.on(pushType, (msg) => {
+                    if (!w.on || !msg) return;
+                    const d = msg.changed ? msg : (msg.data || {});
+                    apply(d.changed, d.removed);
+                    repaint();
+                });
+                // the server forgets a dropped socket's subscriptions
+                ws.on('connected', () => { if (w.on) { w.on = false; void w.want(true); } });
+            }
+            try {
+                const r = await ws.sendMessage('status_subscribe', { feed }, false);
+                w.rows.clear();
+                apply(r && (r.items || (r.data && r.data.items)));
+                w.error = '';
+            } catch (err) {
+                w.on = false;
+                w.error = (err && err.message) || 'The server did not answer.';
+            }
+            repaint();
+        };
+        return w;
     }
-
-    async function sensorsWant(on) {
-        const ws = root.wsClient;
-        if (on === state.sensorsOn || !ws || typeof ws.sendMessage !== 'function') return;
-        state.sensorsOn = on;
-        if (!on) { try { await ws.sendMessage('status_unsubscribe', { feed: 'hardware_sensors' }, false); } catch (_) { /* gone */ } return; }
-        wireSensors();
-        try {
-            const r = await ws.sendMessage('status_subscribe', { feed: 'hardware_sensors' }, false);
-            state.sensors.clear();
-            applySensors(r && (r.items || (r.data && r.data.items)));
-            state.sensorsError = '';
-        } catch (err) {
-            state.sensorsOn = false;
-            state.sensorsError = (err && err.message) || 'The server did not answer.';
-        }
-        const c = state.console;
-        if (c && c.node === 'sensors' && c.modal && c.modal.isConnected) c.refresh();
-    }
+    const sensorsFeed = feedWatcher('hardware_sensors', 'hardware_sensors_status', 'sensors');
+    const clientsFeed = feedWatcher('server_clients', 'server_clients_status', 'clients');
 
     function sensorsPage(c) {
-        if (!state.sensorsOn && isAdmin()) void sensorsWant(true);
-        const rows = [...state.sensors.values()]
+        if (!sensorsFeed.on && isAdmin()) void sensorsFeed.want(true);
+        const rows = [...sensorsFeed.rows.values()]
             .sort((a, b) => String(a.device).localeCompare(String(b.device)) || (SENSOR_ORDER[a.type] - SENSOR_ORDER[b.type]) || String(a.label).localeCompare(String(b.label)));
         const val = (v, unit) => (v === null || v === undefined ? '' : `${v} ${unit}`);
         const STATUS = { ok: 'Normal', warning: 'Over maximum', critical: 'Critical', stopped: 'Stopped' };
@@ -442,15 +450,109 @@
         ];
         const list = c.listView(cols, rows.map((r) => ({ key: r.id, icon: sensorIcon(r), data: r })), {
             sortId: 'sm-sensors',
-            empty: state.sensorsError ? `The sensors could not be read. ${state.sensorsError}` : (state.sensorsOn ? 'This computer reports no hardware sensors.' : 'Reading the sensors...')
+            empty: sensorsFeed.error ? `The sensors could not be read. ${sensorsFeed.error}` : (sensorsFeed.on ? 'This computer reports no hardware sensors.' : 'Reading the sensors...')
         });
         const fans = rows.some((r) => r.type === 'fan');
         const hot = rows.filter((r) => r.state === 'warning' || r.state === 'critical').length;
         const summary = rows.length
-            ? `<p><b>${rows.length}</b> sensor${rows.length === 1 ? '' : 's'} on ${esc(state.sensorsHost || hostName())}${hot ? `, ${c.state(false, `${hot} over a limit`, true)}` : ''}.${fans ? '' : ' <span class="mmc-hint">This computer does not report its fans.</span>'}</p>`
+            ? `<p><b>${rows.length}</b> sensor${rows.length === 1 ? '' : 's'} on ${esc(sensorsFeed.meta.host || hostName())}${hot ? `, ${c.state(false, `${hot} over a limit`, true)}` : ''}.${fans ? '' : ' <span class="mmc-hint">This computer does not report its fans.</span>'}</p>`
             : '';
         return withIntro(c.page('Hardware and Sensors', '', [{ id: 'sm-sensors-list', title: 'Sensors', body: summary + list }]), SENS32,
             'Monitor the temperatures, fans, voltages and power of the server\u2019s hardware. The readings update while this page is open.');
+    }
+
+    // ---- Clients (#898): every connected client, pushed while the page shows ------------------------
+
+    const CLIENTS16 = `${DEV}/computer-16.png`;
+    const CLIENTS32 = `${DEV}/computer-32.png`;
+
+    function selfClientId() {
+        try { return sessionStorage.getItem((root.WebSocketClient && root.WebSocketClient.AGENT_CLIENT_ID_KEY) || 'dreamscape.agentClientId') || ''; } catch (_) { return ''; }
+    }
+
+    /** "Windows, Chrome" from a user agent (the 80 characters the server keeps). */
+    function platformOf(ua) {
+        const u = String(ua || '');
+        const os = /Android/.test(u) ? 'Android' : /iPhone|iPad/.test(u) ? 'iOS' : /Windows/.test(u) ? 'Windows' : /Macintosh|Mac OS/.test(u) ? 'Mac' : /CrOS/.test(u) ? 'ChromeOS' : /Linux|X11/.test(u) ? 'Linux' : '';
+        const br = /HeadlessChrome/.test(u) ? 'Headless Chrome' : /Edg\//.test(u) ? 'Edge' : /Firefox\//.test(u) ? 'Firefox' : /Chrome\//.test(u) ? 'Chrome' : /Safari\//.test(u) ? 'Safari' : /DreamscapeFrame|VirtualSideShow/.test(u) ? 'Device app' : '';
+        return [os, br].filter(Boolean).join(', ');
+    }
+
+    function clientName(r) {
+        if (r.kind || r.name) return r.name ? `${r.name}${r.kind ? ` (${r.kind})` : ''}` : String(r.kind);
+        const where = platformOf(r.userAgentFull || r.userAgent);
+        const what = r.light ? 'Light client' : r.continuity ? 'Continuity PC' : r.phone ? 'Phone' : 'Desktop';
+        return `${what}${where ? ` (${where})` : ''}`;
+    }
+
+    function clientStateText(r) {
+        if (!r.authenticated) return 'Not signed in';
+        if (r.dormant) return 'Idle (screen off)';
+        const words = { ready: 'Ready', desktop: 'Desktop', logon: 'At logon', booting: 'Starting', locked: 'Locked' };
+        if (r.phone) return 'Ready';
+        return words[r.desktopState] || (r.light ? 'Connected' : 'Connected');
+    }
+
+    function ago(iso) {
+        const t = iso ? Date.parse(iso) : NaN;
+        if (!Number.isFinite(t)) return '';
+        const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+        if (s < 60) return 'Just now';
+        if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+        if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+        return `${Math.floor(s / 86400)} d ago`;
+    }
+
+    function clientsPage(c) {
+        if (!clientsFeed.on && isAdmin()) void clientsFeed.want(true);
+        const me = selfClientId();
+        const rows = [...clientsFeed.rows.values()].map((r) => ({ ...r, self: r.clientId === me }));
+        const cols = [
+            { t: 'Client', w: 230, key: 'name', text: (d) => `${clientName(d)}${d.self ? ' (this computer)' : ''}` },
+            { t: 'User', w: 90, key: 'userType', text: (d) => (d.userType === 'admin' ? 'Administrator' : d.userType || '') },
+            { t: 'Address', w: 120, key: 'address', text: (d) => d.address || '' },
+            { t: 'Workspace', w: 110, key: 'workspaceId', text: (d) => d.workspaceId || '' },
+            { t: 'Status', w: 120, key: 'status', html: (d) => c.state(d.authenticated, clientStateText(d), true) },
+            { t: 'Connected', w: 100, key: 'connectedAt', text: (d) => ago(d.connectedAt) },
+            { t: 'Last Activity', w: 100, key: 'lastActivity', text: (d) => ago(d.lastActivity) }
+        ];
+        const list = c.listView(cols, rows.map((r) => ({ key: r.clientId, icon: r.phone ? `${DEV}/portable-16.png` : r.kind ? `${DEV}/monitors-16.png` : CLIENTS16, data: { ...r, name: clientName(r), status: clientStateText(r) } })), {
+            sortId: 'sm-clients',
+            sort: { key: 'lastActivity', dir: -1 },
+            empty: clientsFeed.error ? `The clients could not be read. ${clientsFeed.error}` : (clientsFeed.on ? 'No clients are connected.' : 'Reading the clients...')
+        });
+        const n = rows.length;
+        const summary = n ? `<p><b>${n}</b> client${n === 1 ? '' : 's'} connected. Select one to resync it or disconnect it.</p>` : '';
+        return withIntro(c.page('Clients', '', [{ id: 'sm-clients-list', title: 'Connected Clients', body: summary + list }]), CLIENTS32,
+            'View every client connected to this server - desktops, phones, light clients and devices - with their status. Resync a client to reload its data, or disconnect it from the Nightshade Network.');
+    }
+
+    async function clientAction(c, act, id) {
+        const r = clientsFeed.rows.get(id);
+        const name = r ? clientName(r) : 'this client';
+        if (act === 'disconnect') {
+            const self = id === selfClientId();
+            const ok = typeof root.showConfirmationDialog === 'function'
+                ? await root.showConfirmationDialog(
+                    self
+                        ? 'Disconnect this computer from the Nightshade Network?\n\nIt stays disconnected until you connect it again from the Nightshade Network Client.'
+                        : `Disconnect ${name} from the Nightshade Network?\n\nIt stays disconnected until someone connects it again on that device.`,
+                    [{ text: 'Disconnect', value: true, className: 'btn-standard' }, { text: 'Cancel', value: false, className: 'btn-standard primary' }],
+                    null, { title: TITLE, icon: 'fas fa-exclamation-triangle', sound: true })
+                : false;
+            if (ok !== true) return;
+        }
+        try {
+            const res = await root.wsClient.sendMessage('server_client_action', { clientId: id, action: act }, false);
+            const d = (res && res.data && 'success' in res.data) ? res.data : res;
+            if (!d || d.success === false) throw new Error((d && d.error) || 'The server did not answer.');
+            c.note(act === 'resync' ? `${name} is resyncing.` : `${name} was disconnected.`);
+        } catch (err) {
+            if (typeof root.showConfirmationDialog === 'function') {
+                await root.showConfirmationDialog(`The client could not be ${act === 'resync' ? 'resynced' : 'disconnected'}. ${(err && err.message) || ''}`.trim(),
+                    [{ text: 'OK', value: true, className: 'btn-standard primary' }], null, { title: TITLE, icon: 'fas fa-times-circle' });
+            }
+        }
     }
 
     function rootPage(c) {
@@ -549,9 +651,11 @@
 
     function page(node, c) {
         state.console = c;
-        // the sensors feed runs only while its page shows
-        if (node.id !== 'sensors' && state.sensorsOn) void sensorsWant(false);
+        // a feed runs only while its page shows
+        if (node.id !== 'sensors' && sensorsFeed.on) void sensorsFeed.want(false);
+        if (node.id !== 'clients' && clientsFeed.on) void clientsFeed.want(false);
         switch (node.id) {
+            case 'clients': return clientsPage(c);
             case 'nightshade': return nightshadePage(c);
             case 'sensors': return sensorsPage(c);
             case 'root': return rootPage(c);
@@ -569,7 +673,7 @@
         const id = node && node.id;
         if (id === 'root') return [{ text: 'Configure Remote Access', action: 'tool:remote' }, { text: 'View Network Connections', action: 'cpl:network' }, { text: 'Change System Properties', action: 'cpl:system' }];
         if (id === 'nightshade') return [{ text: 'Open Nightshade Network Client', action: 'ns:client' }, { text: 'Reconnect This Computer', action: 'ns:reconnect' }, { text: 'Refresh', action: 'refresh' }];
-        if (id === 'sensors') return [{ text: 'Refresh', action: 'refresh' }];
+        if (id === 'sensors' || id === 'clients') return [{ text: 'Refresh', action: 'refresh' }];
         if (TOOLS.has(id) || ROLES.some((r) => r[0] === id) || PARTS.some((p) => p[0] === id)) {
             const n = TOOLS.get(id);
             return [{ text: `Open ${n ? n[1] : node.name}`, action: `open:${id}` }];
@@ -578,6 +682,14 @@
     }
 
     function selCommands(node, key) {
+        if (node && node.id === 'clients' && key) {
+            const r = clientsFeed.rows.get(String(key));
+            if (!r) return null;
+            return { title: clientName(r), items: [
+                { text: 'Resync', action: `client:resync:${key}` },
+                { text: 'Disconnect...', action: `client:disconnect:${key}` }
+            ] };
+        }
         if (!node || node.id !== 'features' || !key || !String(key).startsWith('tool:')) return null;
         const t = TOOLS.get(String(key).slice(5));
         return t ? { title: t[1], items: [{ text: 'Open', action: key }] } : null;
@@ -597,10 +709,12 @@
     async function action(a, c) {
         if (a === 'refresh') {
             if (c.node === 'root' || c.node === 'nightshade') { await load(c); return true; }
-            if (c.node === 'sensors') { c.refresh(); return true; }
+            if (c.node === 'sensors' || c.node === 'clients') { c.refresh(); return true; }
             return false;
         }
         if (a === 'ns:client') { call('openNightshadeClient'); return true; }
+        const ca = /^client:(resync|disconnect):(.+)$/.exec(a);
+        if (ca) { await clientAction(c, ca[1], ca[2]); return true; }
         if (a === 'ns:reconnect') {
             const ws = root.wsClient;
             if (ws && typeof ws.manualReconnect === 'function') ws.manualReconnect();
@@ -635,7 +749,8 @@
         switch (node && node.id) {
             case 'root': return state.loading ? 'Reading data, please wait...' : (state.sumError && !state.sum ? 'The server summary could not be read.' : '');
             case 'roles': return `${ROLES.length} roles`;
-            case 'sensors': return state.sensorsOn ? `${state.sensors.size} sensors` : 'Reading the sensors...';
+            case 'sensors': return sensorsFeed.on ? `${sensorsFeed.rows.size} sensors` : 'Reading the sensors...';
+            case 'clients': return clientsFeed.on ? `${clientsFeed.rows.size} clients` : 'Reading the clients...';
             case 'features': return `${FEATURES.length} features`;
             case 'diagnostics':
             case 'configuration': return `${(node.children || []).length} items`;
@@ -658,14 +773,19 @@
             page,
             commands,
             selCommands,
-            toolbar: (node) => (node.id === 'root' || node.id === 'nightshade' || node.id === 'sensors' ? [{ id: 'refresh', i: 3, title: 'Refresh' }] : []),
+            toolbar: (node) => (['root', 'nightshade', 'sensors', 'clients'].includes(node.id) ? [{ id: 'refresh', i: 3, title: 'Refresh' }] : []),
             action,
             rowOpen: (key, node, c) => { if (node.id === 'features' && String(key).startsWith('tool:')) void action(key, c); },
             status,
             help: () => call('openHelpAndSupport', 'server-manager'),
             about: { version: '1.0.0', lines: ['Server Manager holds Dreamscape\'s consoles in one tree: its roles, features, diagnostics, configuration and storage.'] },
             onOpen: (c) => { void load(c); },
-            onClose: () => { state.sum = null; state.console = null; if (state.sensorsOn) void sensorsWant(false); }
+            onClose: () => {
+                state.sum = null;
+                state.console = null;
+                if (sensorsFeed.on) void sensorsFeed.want(false);
+                if (clientsFeed.on) void clientsFeed.want(false);
+            }
         };
     }
 
