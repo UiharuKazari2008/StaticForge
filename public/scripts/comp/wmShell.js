@@ -6547,8 +6547,8 @@
             // friends' cars in range of a key this phone holds: each its own name and keys
             friends.forEach((f) => {
                 sections.push({ rule: true });
-                sections.push({ text: f.car, bold: true, links: [{ label: 'Set as My Car', action: () => { ck.setMine(f.car); } }] });
-                sections.push('A friend\'s car, in range of its key.');
+                // one line: whose car it is beside its name (no box of its own)
+                sections.push({ text: `${f.car} \u00b7 friend's car`, bold: true, links: [{ label: 'Set as My Car', action: () => { ck.setMine(f.car); } }] });
                 const lockF = () => { if (!ck.pressCar(f.key, 'lock')) failed(f.car, 'lock'); };
                 const unlockF = async () => {
                     const ok = await messageBox({ title: f.car, icon: 'question', text: `Unlock ${f.car}?`, buttons: [{ text: 'Unlock', value: true }, { text: 'Cancel', value: false }] });
