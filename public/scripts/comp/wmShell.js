@@ -2726,14 +2726,14 @@
             const m = d && d.message;
             if (!m || m.fromMe || m.groupEvent || !d.chatGuid) return;
             smsNewChats.add(key(d));
-            refreshStatus();
+            statusDirty();
         });
         tm.on('read', (d) => {
             if (!d || d.read === false || !d.chatGuid) return;
-            if (smsNewChats.delete(key(d))) refreshStatus();
+            if (smsNewChats.delete(key(d))) statusDirty();
         });
         tm.on('unread', (u) => {
-            if (!(u && Number(u.total) > 0) && smsNewChats.size) { smsNewChats.clear(); refreshStatus(); }
+            if (!(u && Number(u.total) > 0) && smsNewChats.size) { smsNewChats.clear(); statusDirty(); }
         });
         // Google signed the RCS pairing out (or it ended): a note that stays, once per account a session
         const lostTold = new Set();
@@ -2758,11 +2758,11 @@
     async function mailNewCheck(pushedUnread) {
         if (lsFlag(MAIL_ICON_ALL_KEY, false) && mailMark != null) return;
         // nothing unread: nothing new unread either (the mark is still taken once)
-        if (!(shellMailUnread > 0) && mailMark != null) { if (shellMailNew) { shellMailNew = false; refreshStatus(); } return; }
+        if (!(shellMailUnread > 0) && mailMark != null) { if (shellMailNew) { shellMailNew = false; statusDirty(); } return; }
         // the mailbox push's own unread list (dovecote_mailbox_updated): decided without a read
         if (Array.isArray(pushedUnread) && mailMark != null) {
             const now = pushedUnread.some((m) => !m.read && mailTime(m) > mailMark);
-            if (now !== shellMailNew) { shellMailNew = now; refreshStatus(); }
+            if (now !== shellMailNew) { shellMailNew = now; statusDirty(); }
             return;
         }
         if (mailNewBusy) { mailNewAgain = true; return; }
@@ -2777,7 +2777,7 @@
                 mailMark = list.reduce((max, m) => Math.max(max, mailTime(m)), 0);
             } else {
                 const now = list.some((m) => !m.read && mailTime(m) > mailMark);
-                if (now !== shellMailNew) { shellMailNew = now; refreshStatus(); }
+                if (now !== shellMailNew) { shellMailNew = now; statusDirty(); }
             }
         } catch (_) { /* mail unavailable: the icon keeps its state */ }
         mailNewBusy = false;
@@ -3020,7 +3020,6 @@
      */
     const STATUS_SAFETY_MS = 120000;
     const STATUS_COALESCE_MS = 250;
-    const STATUS_ASLEEP_MS = 1000;
     let statusTimer = null;
     let statusLastAt = 0;
     let statusTodayKey = '';
@@ -3031,26 +3030,38 @@
     /*
      * Every source of a status change comes through here (#890: the Android device status every few
      * seconds, the Director's status, the battery, the connection, mail and transfers each ran a full pass
-     * of their own). On screen: one pass 250 ms after the first change. Asleep (screen off, page hidden)
-     * the pass still runs, at most once a second: its notification drivers (battery low / full, the
-     * Director's finished turn) and the icons the app shows on its own bars and the always-on display
-     * follow the change while nothing is drawn (the page's own drawing waits: Today marks itself stale,
-     * the title bar fits after the next frame).
+     * of their own). On screen: one pass 250 ms after the first change. Asleep (the screen off, the page
+     * hidden, behind an Android program) the pass still runs: its notification drivers and the icons the
+     * app shows on its own bars and the always-on display follow the change while nothing is drawn (the
+     * page's own drawing waits: Today marks itself stale, an open bubble draws at the wake). There the
+     * page's timers may be paused (Melaton Bars behind a program, #871; the screen-off pause, P10), so the
+     * first change runs the pass in a microtask, after the handlers of the message that marked it
+     * (websocket.js counts a message before it hands it on), at most one per 250 ms; the rest of a burst
+     * waits for the timer, which runs at the latest when the app next resumes the page.
      */
+    let statusMicro = false;
+    function statusSoon() {
+        if (statusMicro) return;
+        statusMicro = true;
+        queueMicrotask(() => {
+            statusMicro = false;
+            const wait = statusLastAt + STATUS_COALESCE_MS - Date.now();
+            if (wait > 0) { if (!statusTimer) statusTimer = setTimeout(statusPass, wait); return; }
+            clearTimeout(statusTimer);
+            statusTimer = null;
+            refreshStatus();
+        });
+    }
     function statusDirty() {
         if (!shell) return;
-        if (barsExternal && window.AndroidBars) {
-            // behind an Android program (Melaton Bars, #871) the page's timers are paused: the app copies the
-            // bars again when asked (it resumes the page for that). A change runs the pass at once, at most one
-            // per 250 ms (a burst of messages ran a full pass each); the rest of a burst waits for the timer,
-            // which runs at the latest when the app next resumes the page
+        if (!awake()) {
             const wait = statusLastAt + STATUS_COALESCE_MS - Date.now();
-            if (wait <= 0) { clearTimeout(statusTimer); statusTimer = null; refreshStatus(); return; }
+            if (wait <= 0) { statusSoon(); return; }
             if (!statusTimer) statusTimer = setTimeout(statusPass, wait);
             return;
         }
         if (statusTimer) return;
-        statusTimer = setTimeout(statusPass, awake() ? STATUS_COALESCE_MS : STATUS_ASLEEP_MS);
+        statusTimer = setTimeout(statusPass, STATUS_COALESCE_MS);
     }
     function watchStatusSignals() {
         const ws = window.wsClient;
@@ -3163,7 +3174,7 @@
         hide(updEl, !(updateReady || updDl || notes.some(isUpdateNote)));
         paintUpdateIcon(updEl, !!updDl);
         const openBub = shell.querySelector('.wm-bubble');
-        if (updDl && openBub && !openBub.hidden && openBub.dataset.role === 'update') statusBubble('update', updEl, true);
+        if (updDl && openBub && !openBub.hidden && openBub.dataset.role === 'update' && awake()) statusBubble('update', updEl, true);
         hide(shell.querySelector('[data-role="prints"]'), !printsInProgress());
         const mailEl = shell.querySelector('[data-role="mail"]');
         // any unread mail, if the user asked for that (Messaging > Tools > Options); else only mail
@@ -3222,7 +3233,8 @@
         if (!bubble.hidden && bubble.dataset.role === 'traffic' && shell.querySelector('[data-role="traffic"]').hidden) closeBubble();
         if (!bubble.hidden && bubble.dataset.role === 'lapis' && shell.querySelector('[data-role="lapis"]').hidden) closeBubble();
         if (!bubble.hidden && bubble.dataset.role === 'carkey' && shell.querySelector('[data-role="carkey"]').hidden) closeBubble();
-        if (!bubble.hidden && bubble.dataset.role) statusBubble(bubble.dataset.role, shell.querySelector(statusFolded.includes(bubble.dataset.role) ? '[data-role="notify"]' : `.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
+        // (an open bubble draws only while it can be seen: the wake's pass draws it, #890)
+        if (!bubble.hidden && bubble.dataset.role && awake()) statusBubble(bubble.dataset.role, shell.querySelector(statusFolded.includes(bubble.dataset.role) ? '[data-role="notify"]' : `.wm-status-icon[data-role="${bubble.dataset.role}"]`), true);
         // Today repaints from here only when a row it takes from the status changed (the connection,
         // unread counts, tasks) or an item's own source said so (statusTodayBump): a tap or a key marks
         // the status dirty too, and redrew every Today block and row each time (#849, A53: 6 full
@@ -4178,8 +4190,9 @@
             s.cellular.operator = carrierName(s.cellular.operator);
         }
         deviceStatus = s;
-        // every few seconds while the signal moves: one coalesced pass (#890; with Melaton Bars behind a
-        // program still at once, at most every 250 ms)
+        batteryNotesCheck();
+        // every few seconds while the signal moves: one coalesced pass (#890; asleep in a microtask, at most
+        // every 250 ms)
         statusDirty();
     }
 
@@ -4229,6 +4242,7 @@
                     // the browser's own estimates in seconds (Infinity / 0 = unknown or not this state)
                     const secs = (v) => (Number.isFinite(v) && v > 0 ? v : null);
                     webBattery = none ? null : { level: Math.round(b.level * 100), charging: !!b.charging, chargingTime: b.charging ? secs(b.chargingTime) : null, dischargingTime: b.charging ? null : secs(b.dischargingTime) };
+                    batteryNotesCheck();
                     statusDirty();
                 };
                 upd();
@@ -4280,7 +4294,7 @@
         if (!deviceStatus) return b;
         const was = objOr(deviceStatus.battery);
         deviceStatus.battery = b;
-        if (!was || was.level !== b.level || was.charging !== b.charging || was.plugged !== b.plugged || was.status !== b.status) statusDirty();
+        if (!was || was.level !== b.level || was.charging !== b.charging || was.plugged !== b.plugged || was.status !== b.status) { batteryNotesCheck(); statusDirty(); }
         return b;
     }
 
@@ -4309,12 +4323,12 @@
      */
     let batteryBubbleTimer = null;
     function watchBatteryBubble(anchor) {
-        if (batteryBubbleTimer || !(window.AndroidHardware && typeof window.AndroidHardware.getBattery === 'function')) return;
+        // asleep (the screen off too: a bridge read and a redraw every 2 s for nobody, #890) it stops; the
+        // wake's status pass draws the open bubble and starts it again
+        if (batteryBubbleTimer || !awake() || !(window.AndroidHardware && typeof window.AndroidHardware.getBattery === 'function')) return;
         batteryBubbleTimer = setInterval(() => {
             const el = shell && shell.querySelector('.wm-bubble');
-            if (!el || el.hidden || el.dataset.role !== 'battery') { clearInterval(batteryBubbleTimer); batteryBubbleTimer = null; return; }
-            // (the screen off too: a bridge read and a redraw every 2 s for nobody, #890)
-            if (!awake()) return;
+            if (!el || el.hidden || el.dataset.role !== 'battery' || !awake()) { clearInterval(batteryBubbleTimer); batteryBubbleTimer = null; return; }
             readBattery();
             statusBubble('battery', anchor, true);
         }, 2000);
@@ -4364,19 +4378,36 @@
             else if (lvl === 0) signal = { icon: 'signal-none', text: 'No service' };
             else if (lvl != null) signal = { icon: `signal-${lvl}`, text: `Signal: ${bars(lvl)}` };
         }
-        // battery: the app's numbers, else the browser's
+        return { cell, wifi, active, airplane, type, wifiName, link, signal, battery: batteryView(bat) };
+    }
+
+    /** The title bar's battery from the app's numbers (bat), else the browser's; null when neither has one. */
+    function batteryView(bat) {
         let level = null; let charging = null;
         if (bat && Number.isFinite(bat.level)) { level = Math.max(0, Math.min(100, Math.round(bat.level))); charging = typeof bat.charging === 'boolean' ? bat.charging : bat.plugged ? true : null; }
         else if (webBattery) { level = webBattery.level; charging = webBattery.charging; }
-        let battery = null;
-        if (level != null) {
-            // on battery at or under the warning level (Settings > Power): the notification and the LED; the icon has its own stages
-            const low = !charging && level <= batteryLowLevel();
-            // the cell's stages (Yukimi, Nov 13): 4 bars over 80 %, 3 over 60, 2 over 40, 1 over 20, 20 and under the "!"
-            const icon = charging ? 'battery-charging' : level <= 20 ? 'battery-empty' : level > 80 ? 'battery-full' : level > 60 ? 'battery-3' : level > 40 ? 'battery-2' : 'battery-1';
-            battery = { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}`, ...batteryExtras(bat) };
-        }
-        return { cell, wifi, active, airplane, type, wifiName, link, signal, battery };
+        if (level == null) return null;
+        // on battery at or under the warning level (Settings > Power): the notification and the LED; the icon has its own stages
+        const low = !charging && level <= batteryLowLevel();
+        // the cell's stages (Yukimi, Nov 13): 4 bars over 80 %, 3 over 60, 2 over 40, 1 over 20, 20 and under the "!"
+        const icon = charging ? 'battery-charging' : level <= 20 ? 'battery-empty' : level > 80 ? 'battery-full' : level > 60 ? 'battery-3' : level > 40 ? 'battery-2' : 'battery-1';
+        return { icon, level, charging, low, plugged: bat && typeof bat.plugged === 'string' ? bat.plugged : null, saver: !!(bat && bat.saver === true), text: `Main battery: ${level}%${charging ? ', charging' : ''}`, ...batteryExtras(bat) };
+    }
+
+    /*
+     * The battery's notification drivers (low / very low, fully charged) at the battery's own change, not
+     * after the coalesced status pass (#890): with the page's timers paused (the screen off, P10) a pass
+     * left for a timer would tell them only at the next wake. Only when the level or the charger changed.
+     */
+    let batteryNotesKey = '';
+    function batteryNotesCheck() {
+        const bat = objOr(deviceStatus && deviceStatus.battery);
+        const key = bat ? `${bat.level}|${bat.charging}|${bat.plugged}|${bat.status}` : webBattery ? `w${webBattery.level}|${webBattery.charging}` : '';
+        if (key === batteryNotesKey) return;
+        batteryNotesKey = key;
+        const b = batteryView(bat);
+        batteryLowCheck(b);
+        batteryFullCheck(b);
     }
 
     // ---------------------------------------------------------------- status: shared state
