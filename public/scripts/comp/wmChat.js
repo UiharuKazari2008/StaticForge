@@ -1999,17 +1999,18 @@
                 const pages = tmState.accounts.map((a) => {
                     const u = tmUnread(a.id);
                     const last = tmState.last[a.id];
-                    const sub = tmLabel(a).subline;
+                    // an Android app account (#885): the app's name, never the phone it reads (Yukimi, Nov 16)
+                    const app = a.kind === 'android';
+                    const sub = app ? (a.name || 'Android app') : tmLabel(a).subline;
                     const open = () => tmOpenAccount(a.id);
                     const count = u ? `${u} new` : '';
                     // nothing unread: the account itself (Yukimi, Nov 13), not its last conversation
                     // Yukimi (Nov 13): "Apple iMessage - <Apple ID>" / "Text Messages - <number>"
-                    // an Android app account (#885): the app's name ("Discord - <phone>")
-                    const kindName = a.kind === 'bluebubbles' ? 'Apple iMessage' : a.kind === 'android' ? (a.name || 'Android app') : 'Text Messages';
-                    if (!u) return { title: 'No Unread Messages', line2: a.identity ? `${kindName} - ${a.identity}` : kindName, onTap: open };
+                    const kindName = a.kind === 'bluebubbles' ? 'Apple iMessage' : app ? (a.name || 'Android app') : 'Text Messages';
+                    if (!u) return { title: 'No Unread Messages', line2: a.identity && !app ? `${kindName} - ${a.identity}` : kindName, onTap: open };
                     return last
                         ? { title: last.from, line2: last.text, line3: [sub, count].filter(Boolean).join(', '), onTap: open }
-                        : { title: `${u} New ${u === 1 ? 'Message' : 'Messages'}`, line2: sub, line3: a.name || '', onTap: open };
+                        : { title: `${u} New ${u === 1 ? 'Message' : 'Messages'}`, line2: sub, line3: app ? '' : a.name || '', onTap: open };
                 });
                 // Dreamscape Messenger in the same panel: a page per unread conversation, else one page
                 const showList = () => window.wmChatApp.showList();
