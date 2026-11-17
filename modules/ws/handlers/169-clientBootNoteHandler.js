@@ -1,4 +1,5 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
+const { isDormantPage } = require('../../wsSocketHeartbeat');
 
 // client_boot_note (Nov 15 2026): a page that just booted says why (public/scripts/comp/modalUtils.js
 // melatonBootLog: the restart's reason and the code that asked, or none = started outside the page,
@@ -28,11 +29,12 @@ function registerPackets() {
         if (!clientInfo || !clientInfo.authenticated || !wsServer || typeof wsServer.setDormant !== 'function') return;
         if (message && message.dex) clientInfo.dexWindow = true;
         const on = !!(message && message.on);
-        const was = !!clientInfo.dormant;
+        // a page whose Director stream was held back (cursorDirector.js watchesDirectorStream)
+        const wasAsleep = isDormantPage(clientInfo);
         wsServer.setDormant(ws, on);
         // awake again: the Director turn it watches (if one runs) is sent whole, as the updates it
-        // missed asleep never went to it (cursorDirector.js watchesDirectorStream)
-        if (was && !on) {
+        // missed asleep never went to it
+        if (wasAsleep && !on) {
             try { require('../../cursorDirector').resendDirectorStream(handlers || wsServer, ws, clientInfo); } catch (_) { /* the next update reaches it */ }
         }
     }, { owner: 'clientBootNote' });
