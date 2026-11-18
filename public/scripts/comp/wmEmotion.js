@@ -25,6 +25,8 @@
 
     if (window.uiShell !== 'mobile' || !document.documentElement.classList.contains('ui-mobile')) return;
 
+    const appScopeSignal = (window.melatonSegments && typeof window.melatonSegments.callerSignal === 'function' && window.melatonSegments.callerSignal()) || undefined;
+
     const APP_ID = 'emotion';
     const TITLE = 'eMotion LIVE';
     const ICON = 'app-emotion';
@@ -152,6 +154,7 @@
         poll = null;
         const c = follow && follow.client;
         if (c && typeof c.off === 'function') { c.off('emotion_job_update', follow.onPush); c.off('connected', follow.check); }
+        if (follow && follow.ac) follow.ac.abort();
         follow = null;
     }
 
@@ -167,18 +170,35 @@
             if (!st.running || st.requestId !== requestId) { stopFollow(); return; }
             apply(await fetchJob());
         };
+        let pushed = false;
         // a push came: the server follows this job, the minute's safety read stops (#890; a reconnect still reads)
         const onPush = (message) => {
             const job = message && message.data;
-            if (poll && job && (!job.requestId || requestId === 'resumed' || job.requestId === requestId)) { clearInterval(poll); poll = null; }
+            if (job && (!job.requestId || requestId === 'resumed' || job.requestId === requestId)) { pushed = true; clearInterval(poll); poll = null; }
             apply(job);
         };
         const client = window.wsClient;
         if (client && typeof client.on === 'function') { client.on('emotion_job_update', onPush); client.on('connected', check); }
-        follow = { client, onPush, check };
-        // (the safety read only while the page is seen: with the screen off or hidden it waits for the push,
-        // a reconnect, or the next minute on screen, #890)
-        poll = setInterval(() => { if (!document.hidden && document.documentElement.dataset.screenOff === undefined) void check(); }, 60000);
+        // the safety read runs only while the page is seen (the screen on, the page visible): the timer
+        // itself stops with the screen off or hidden and starts again, with one read, when it is seen
+        // again; with the screen off the push or a reconnect still finishes the job (#890)
+        const seenNow = () => !document.hidden && document.documentElement.dataset.screenOff === undefined;
+        const arm = (readNow) => {
+            if (!follow || follow.check !== check || pushed) return;
+            if (!seenNow()) { clearInterval(poll); poll = null; return; }
+            if (poll) return;
+            poll = setInterval(() => { void check(); }, 60000); // perf: allow the job's safety read, only while seen and until the first push; stopped on hide
+            if (readNow) void check();
+        };
+        const ac = new AbortController();
+        const onSeen = () => arm(true);
+        if (appScopeSignal) appScopeSignal.addEventListener('abort', () => ac.abort(), { once: true, signal: ac.signal });
+        const opts = { signal: ac.signal };
+        document.addEventListener('visibilitychange', onSeen, opts);
+        window.addEventListener('melatonscreen', onSeen, opts);
+        document.addEventListener('wmawake', onSeen, opts);
+        follow = { client, onPush, check, ac };
+        arm(false);
     }
 
     function finish(requestId, result, error) {
