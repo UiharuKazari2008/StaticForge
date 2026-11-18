@@ -110,17 +110,27 @@
         if (fitLib && typeof fitLib.fit === 'function' && s.layout && s.layout.geo && s.fields && s.fields.mail) {
             const L = s.layout;
             const g = L.geo;
-            const floor = g.titleX + g.titleMin;
-            const foldless = new Set(['prints', 'director', 'update', 'continuity', 'notify']);
-            const icons = (L.order || []).filter((r) => roles[r]).map((role) => ({ role, w: (L.widths || {})[role] || g.icon, foldable: !foldless.has(role) }))
-                .concat((L.native || []).map((role) => ({ role, w: (L.widths || {})[role] || g.icon, foldable: false, native: true })));
+            const W = L.widths || {};
+            // the program icons (they may fold into the group); Continuity / Nightshade never fold; ongoing work stays out
+            const APPS = new Set(['mail', 'sms', 'chat', 'wxalert', 'rain', 'carkey', 'received', 'prints', 'director']);
+            const ongoing = { prints: true, director: !!(s.fields.director && s.fields.director.running) };
+            const order = (L.order || []).filter((r) => roles[r] && r !== 'notify');
+            const icons = order.map((role) => ({ role, w: W[role] || g.icon, app: APPS.has(role), foldable: role !== 'continuity' && role !== 'nightshade', ongoing: !!ongoing[role] }))
+                .concat((L.native || []).map((role) => ({ role, w: W[role] || g.icon, app: false, foldable: false, charging: role === 'battery' && !!L.charging })));
             try {
-                out.fit = fitLib.fit({
+                const r = fitLib.fit({
                     icons,
-                    roomRight: g.holeR != null ? g.iconsRight - g.holeR : g.iconsRight - floor,
-                    roomLeft: g.holeX != null ? Math.max(0, g.holeX - floor) : 0,
-                    gap: g.gap, notify: !!roles.notify, prefs: L.prefs || {}, screen: g
+                    notify: { w: W.notify || g.icon, notes: !!roles.notify },
+                    bar: { width: L.width || 0, iconsRight: g.iconsRight, gap: g.gap, titleX: g.titleX, titleMin: g.titleMin,
+                        hole: g.holeX != null ? { x: g.holeX, w: g.holeR - g.holeX } : null, xReserve: 0 },
+                    prefs: L.prefs || {},
+                    screen: { unfolded: !!L.unfolded, noCross: !!L.noCross }
                 });
+                if (r && Array.isArray(r.shown)) {
+                    const left = new Set(r.left || []);
+                    const shown = r.shown.concat(r.groupShown ? ['notify'] : []);
+                    out.fit = { right: shown.filter((x) => !left.has(x)), left: [...left], folded: r.folded || [] };
+                }
             } catch (e) { ctx.log(`statusFit: ${e && e.message}`); }
         }
         const sig = JSON.stringify(out);
