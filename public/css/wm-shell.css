@@ -553,6 +553,7 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"] #wmBezelOverlay
     display: block;
     background: #ff2b1c;
     box-shadow: 0 0 calc(var(--wm-bezel-led-d, 6px) * 0.8) #ff2b1c;
+    /* perf: allow status LED: blinks only while the battery is low (data-state="battery"); opacity steps */
     animation: wm-led-blink 1s steps(1, end) infinite;
 }
 
@@ -560,6 +561,7 @@ html.ui-mobile[data-wm-camera="bezel"][data-wm-bezel-edge="top"] #wmBezelOverlay
     display: block;
     background: #2cff5a;
     box-shadow: 0 0 calc(var(--wm-bezel-led-d, 6px) * 0.8) #2cff5a;
+    /* perf: allow notification LED: flashes only while a notification waits (data-state="notify"); opacity steps */
     animation: wm-led-pulse 3s steps(1, end) infinite;
 }
 
@@ -666,6 +668,7 @@ html.ui-mobile[data-wm-app="today"] .wm-titlebar:has(> .wm-title-action[hidden])
     background-image: var(--strip) !important;
     background-size: calc(var(--n) * 100%) 100% !important;
     background-repeat: no-repeat !important;
+    /* perf: allow status / busy indicator: wmShell.js puts .wm-strip on an icon only while its activity lasts (data moving, an update downloading, a Director turn, the wait cursor); the title bar's strips are stepped by JS instead (.is-jstep below) */
     animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
 }
 img.wm-strip {
@@ -674,6 +677,7 @@ img.wm-strip {
     object-position: 0 0;
     animation-name: wm-strip-img;
 }
+/* perf: allow frames of a sprite strip: background-position lands each frame on whole device pixels (the icons sit on the pixel grid, #735); a transform of a wider layer would draw frames between pixels */
 @keyframes wm-strip { from { background-position: 0 0; } to { background-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
 @keyframes wm-strip-img { from { object-position: 0 0; } to { object-position: calc(var(--n) / (var(--n) - 1) * 100%) 0; } }
 /* the title bar's strips are stepped by wmShell.js (syncStrips, #890): frame --wm-strip-k, set once per
@@ -4154,6 +4158,7 @@ html[data-wm-behind] *::after {
     transition: none !important;
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
+    /* perf: allow a reset to auto: it drops every promoted layer while the page is behind an Android program (#871) */
     will-change: auto !important;
 }
 
@@ -4296,9 +4301,11 @@ html.ui-mobile.wm-android-wall[data-wm-version="6.5"][data-wm-app="start"] #wmSh
 .wm-progress-layer .wm-progress-bar.is-marquee > span {
     width: calc(45 * var(--wm-px));
     max-width: none;
+    /* perf: allow busy indicator: only on a progress box whose work has no percentage (.is-marquee) */
     animation: wm-pb-marquee 2s steps(20) infinite;
 }
 
+/* perf: allow left keeps the stepped blocks on whole pixels as the device draws them; a transform would land them between pixels (soft edges) */
 @keyframes wm-pb-marquee {
     from { left: calc(-45 * var(--wm-px)); }
     to { left: 100%; }

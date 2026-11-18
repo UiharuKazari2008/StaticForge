@@ -3385,6 +3385,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-director :is(.wmd-print, .wmd-thumb).i
     height: var(--wmd-wait);
     transform: translate(-50%, -50%);
     background: var(--strip) 0 0 / calc(var(--n) * 100%) 100% no-repeat;
+    /* perf: allow busy indicator: the wait cursor shows only on a print that is still pending (.is-pending) */
     animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
     pointer-events: none;
 }

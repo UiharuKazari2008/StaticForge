@@ -527,6 +527,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::aft
     animation-name: wm65-menu-down;
 }
 
+/* perf: allow scroll-driven (animation-timeline: scroll()): it moves only while the menu scrolls, never on its own; it sets the arrow bar's height and art (dimmed at the top), which a transform cannot */
 @keyframes wm65-menu-up {
     0% {
         height: calc(33.5 * var(--wm-px));
@@ -546,6 +547,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-popup:not([data-side="dropdown"])::aft
     }
 }
 
+/* perf: allow scroll-driven (animation-timeline: scroll()): it moves only while the menu scrolls, never on its own; it sets the arrow bar's height and art (dimmed at the end), which a transform cannot */
 @keyframes wm65-menu-down {
     0%, 99.5% {
         height: calc(33.5 * var(--wm-px));
@@ -1289,7 +1291,6 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-wallfx][data-wm-app="today"]:not([
     position: absolute;
     inset: 0;
     transform: translate3d(var(--wm-ti-tx, 0%), calc(var(--wm-ti-par, 0) * var(--wm-ti-shift, 0%) + var(--wm-ti-ty, 0%)), 0) scale(var(--wm-ti-zoom, 1));
-    will-change: transform;
 }
 
 @keyframes wm-ti-breathe {

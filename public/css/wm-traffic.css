@@ -283,6 +283,7 @@
 
 .wm-traffic .trf-lcd-cell .wm-seg { font-size: calc(13 * var(--u)); line-height: 1; }
 
+/* perf: allow busy indicator: the readout pulses only while a traffic check runs (.is-checking); opacity */
 .wm-traffic .trf-dash.is-checking .trf-lcd { animation: trf-lcd-pulse 1.2s ease-in-out infinite; }
 
 @keyframes trf-lcd-pulse {

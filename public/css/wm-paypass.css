@@ -458,9 +458,11 @@
     bottom: calc(1 * var(--wm-px));
     width: 30%;
     background: repeating-linear-gradient(to right, var(--wm-highlight) 0 calc(6 * var(--wm-px)), transparent 0 calc(8 * var(--wm-px)));
+    /* perf: allow busy indicator: the scan bar shows only while PayPass waits for a card */
     animation: wpp-marquee 1.6s steps(20) infinite;
 }
 
+/* perf: allow left keeps the stepped blocks on whole pixels as the device draws them; a transform would land them between pixels (soft edges) */
 @keyframes wpp-marquee {
     from { left: -30%; }
     to { left: 100%; }

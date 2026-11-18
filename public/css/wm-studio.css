@@ -1165,6 +1165,7 @@
     pointer-events: none;
     /* the shell's wait cursor: its 16-frame strip, 90 ms a frame (wm-shell.css .wm-strip) */
     background: var(--strip) 0 0 / calc(var(--n) * 100%) 100% no-repeat;
+    /* perf: allow busy indicator: the wait cursor shows only while a print generates */
     animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
 }
 
@@ -2565,6 +2566,7 @@ html.ui-mobile body > #characterAutocompleteOverlay.wms-ac .word-lookup-term-inl
         height: calc(var(--wms-wait) * var(--wm-px));
         pointer-events: none;
         background: var(--strip) 0 0 / calc(var(--n) * 100%) 100% no-repeat;
+        /* perf: allow busy indicator: shown only while a print generates (.wms-generating) */
         animation: wm-strip calc(var(--n) * var(--ms) * 1ms) steps(var(--n)) infinite;
     }
 }

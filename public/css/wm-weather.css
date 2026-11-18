@@ -237,6 +237,7 @@
 
 .wm-weather .wxw-stars i + i {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='130'%3E%3Cg fill='%23fff8dc'%3E%3Ccircle cx='40' cy='34' r='1.4'/%3E%3Ccircle cx='120' cy='60' r='1.1'/%3E%3Ccircle cx='160' cy='14' r='1.3'/%3E%3Ccircle cx='76' cy='100' r='1'/%3E%3C/g%3E%3C/svg%3E");
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); opacity only */
     animation: wxw-twinkle 3.6s ease-in-out infinite alternate;
 }
 
@@ -264,6 +265,7 @@
     background: repeating-conic-gradient(from 0deg, rgba(255, 248, 210, 0.3) 0deg 5deg, rgba(255, 248, 210, 0) 5deg 15deg);
     -webkit-mask-image: radial-gradient(circle, #000 14%, transparent 62%);
     mask-image: radial-gradient(circle, #000 14%, transparent 62%);
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-spin 90s linear infinite;
 }
 
@@ -352,7 +354,8 @@
     height: auto;
 }
 
-.wm-weather .wxw-cloud { animation: wxw-sway 28s ease-in-out infinite alternate; will-change: transform; }
+/* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
+.wm-weather .wxw-cloud { animation: wxw-sway 28s ease-in-out infinite alternate; }
 .wm-weather .wxw-cloud.c1 { top: 8%; left: 2%; width: 50%; }
 .wm-weather .wxw-cloud.c2 { top: 28%; left: 50%; width: 36%; animation-duration: 34s; animation-delay: -12s; }
 .wm-weather .wxw-cloud.c3 { top: 0; left: 36%; width: 62%; animation-duration: 42s; animation-delay: -20s; }
@@ -378,6 +381,7 @@
     right: 0;
     height: 46%;
     background: linear-gradient(to bottom, rgba(235, 240, 245, 0) 0%, rgba(235, 240, 245, 0.62) 50%, rgba(235, 240, 245, 0) 100%);
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-sway 18s ease-in-out infinite alternate;
 }
 
@@ -395,8 +399,8 @@
     height: calc(100% + 160px);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='160'%3E%3Cg stroke='%23dbe9ff' stroke-opacity='0.75' stroke-width='1.3' stroke-linecap='round'%3E%3Cpath d='M10 6l-3 15'/%3E%3Cpath d='M46 40l-3 15'/%3E%3Cpath d='M84 12l-3 15'/%3E%3Cpath d='M110 70l-3 15'/%3E%3Cpath d='M28 92l-3 15'/%3E%3Cpath d='M66 118l-3 15'/%3E%3Cpath d='M98 136l-3 15'/%3E%3Cpath d='M16 140l-3 15'/%3E%3Cpath d='M58 74l-3 15'/%3E%3C/g%3E%3C/svg%3E");
     background-size: 120px 160px;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-fall 0.62s linear infinite;
-    will-change: transform;
 }
 
 .wm-weather .wxw-rain i + i {
@@ -422,14 +426,15 @@
     height: calc(100% + 160px);
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cg fill='%23fff' fill-opacity='0.9'%3E%3Ccircle cx='12' cy='14' r='1.6'/%3E%3Ccircle cx='58' cy='40' r='2.2'/%3E%3Ccircle cx='104' cy='18' r='1.4'/%3E%3Ccircle cx='140' cy='66' r='2'/%3E%3Ccircle cx='30' cy='92' r='2.4'/%3E%3Ccircle cx='82' cy='110' r='1.5'/%3E%3Ccircle cx='126' cy='138' r='2.2'/%3E%3Ccircle cx='48' cy='146' r='1.3'/%3E%3C/g%3E%3C/svg%3E");
     background-size: 160px 160px;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-snow-far 11s linear infinite;
-    will-change: transform;
 }
 
 .wm-weather .wxw-snow i + i {
     background-size: 160px 160px;
     background-position: 70px 40px;
     transform: scale(1.4);
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-snow-near 7s linear infinite;
 }
 
@@ -445,6 +450,7 @@
     inset: 0;
     background: rgba(235, 240, 255, 0.85);
     opacity: 0;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); opacity only */
     animation: wxw-flash 7.5s linear infinite;
 }
 
@@ -1329,7 +1335,11 @@
 /* ---------------------------------------------------------------- the map */
 
 .wm-weather .wxw-map { position: relative; overflow: hidden; background: #1d2228; touch-action: none; }
-.wm-weather .wxw-map-pane { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }
+.wm-weather .wxw-map-pane { position: absolute; inset: 0; transform-origin: 50% 50%; }
+/* the radar page's map follows the finger (TileMap pointermove writes the pane's transform); the radar
+   card's mini map never moves, so it has no layer of its own (#890) */
+/* perf: allow only the full map, whose page exists only while the radar view is open (.wxw-layer[hidden] otherwise); its pane is moved on every pointermove of a pan or pinch */
+.wm-weather .wxw-map-full .wxw-map-pane { will-change: transform; }
 .wm-weather .wxw-map-base,
 .wm-weather .wxw-map-radar,
 .wm-weather .wxw-map-frame,
@@ -1722,6 +1732,7 @@
     height: calc(100% + 512px);
     background-image: image-set(url('/static_images/wm61/weather/rain.png') 1x, url('/static_images/wm61/weather/rain@2x.png') 2x);
     background-size: 256px 512px;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-rain-far 0.58s linear infinite;
 }
 .wm-weather .wxw-rain i + i {
@@ -1730,6 +1741,7 @@
     background-size: 384px 768px;
     background-position: 90px 0;
     opacity: 0.6;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-rain-near 0.46s linear infinite;
 }
 @keyframes wxw-rain-far { to { transform: translateY(512px); } }
@@ -1741,6 +1753,7 @@
     height: calc(100% + 256px);
     background-image: image-set(url('/static_images/wm61/weather/snow.png') 1x, url('/static_images/wm61/weather/snow@2x.png') 2x);
     background-size: 256px 256px;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-snow-far2 12s linear infinite;
 }
 .wm-weather .wxw-snow i + i {
@@ -1749,6 +1762,7 @@
     transform: none;
     background-size: 400px 400px;
     background-position: 120px 60px;
+    /* perf: allow design motion: the Weather scene, running only while Weather is shown and seen (wmWeather.js wake / hide toggle .wxw-root.is-paused); transform only */
     animation: wxw-snow-near2 8s linear infinite;
 }
 @keyframes wxw-snow-far2 { to { transform: translateY(256px); } }

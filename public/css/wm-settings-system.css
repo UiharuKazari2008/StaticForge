@@ -96,15 +96,19 @@ html.ui-mobile .wm-sys-meter > div {
     background: var(--wm-highlight);
 }
 
+/* the block runs from just off the left to just off the right of the meter: a translate of its own
+   width (30 % of the meter), so it moves on the compositor without a layout each frame (#890) */
 html.ui-mobile .wm-sys-meter.is-marquee > div {
     position: absolute;
+    left: 0;
     width: 30%;
+    /* perf: allow busy indicator: only while the work has no percentage (.is-marquee, wmSettingsSystem.js); transform only */
     animation: wm-sys-marquee 1.6s linear infinite;
 }
 
 @keyframes wm-sys-marquee {
-    from { left: -30%; }
-    to { left: 100%; }
+    from { transform: translateX(-100%); }
+    to { transform: translateX(calc(100% / 0.3)); }
 }
 
 html.ui-mobile .wm-sys-battery {

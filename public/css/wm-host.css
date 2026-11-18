@@ -151,6 +151,7 @@ html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
     top: calc(var(--wmt-size) / -2);
     width: var(--wmt-size);
     height: var(--wmt-size);
+    /* perf: allow only while Teleport is shown: each planet is moved and faded every frame the ring turns (wmTeleport.js layout) */
     will-change: transform, opacity;
 }
 
@@ -214,9 +215,11 @@ html.ui-mobile[data-wm-viewer] .wm-host .wmh-host > .modal {
 
 /* loading the workspace: the centred orb pulses */
 .wm-teleport .wmt-planet.is-loading .wmt-orb {
+    /* perf: allow busy indicator: pulses only while the chosen workspace loads (.is-loading) */
     animation: wmt-pulse 900ms ease-in-out infinite;
 }
 
+/* perf: allow a brightness filter animates on the compositor with the scale; only while a workspace loads */
 @keyframes wmt-pulse {
     0%, 100% { transform: scale(1); filter: brightness(1); }
     50% { transform: scale(1.08); filter: brightness(1.35); }

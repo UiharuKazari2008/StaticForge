@@ -105,6 +105,7 @@
 .wm-lapis .lps-dot { width: calc(4 * var(--u)); height: calc(4 * var(--u)); border-radius: 50%; background: #57d6a0; flex: 0 0 auto; }
 .wm-lapis .lps-dot[data-s="run"] { background: var(--lps-blue); }
 .wm-lapis .lps-dot[data-s="warn"] { background: var(--lps-amber); }
+/* perf: allow status: the dot pulses only while the device reports busy (data-s="busy"); opacity */
 .wm-lapis .lps-dot[data-s="busy"] { background: #fff; animation: lps-pulse 0.9s linear infinite; }
 @keyframes lps-pulse { 50% { opacity: 0.2; } }
 
@@ -346,7 +347,8 @@
 /* map */
 .wm-lapis .lps-scr.is-map { flex: 1 1 auto; min-height: calc(150 * var(--u)); }
 .wm-lapis .lps-map { position: absolute; inset: 0; overflow: hidden; background: #1a2430; touch-action: none; }
-.wm-lapis .lps-map-pane { position: absolute; inset: 0; will-change: transform; }
+/* a drag moves the pane with translate3d (wmLapis.js), which gives it a layer for the drag; at rest it has none */
+.wm-lapis .lps-map-pane { position: absolute; inset: 0; }
 .wm-lapis .lps-map-pane img { position: absolute; max-width: none; }
 .wm-lapis .lps-pin { position: absolute; width: calc(22 * var(--u)); height: calc(28 * var(--u)); margin: calc(-27 * var(--u)) 0 0 calc(-11 * var(--u)); pointer-events: none; filter: drop-shadow(0 calc(2 * var(--u)) calc(2 * var(--u)) rgba(0, 0, 0, 0.55)); z-index: 2; }
 .wm-lapis .lps-pin.is-place { width: calc(14 * var(--u)); height: calc(14 * var(--u)); margin: calc(-7 * var(--u)) 0 0 calc(-7 * var(--u)); border-radius: 50%; background: #fff; border: calc(2 * var(--u)) solid var(--lps-navy); font-size: calc(7 * var(--u)); font-weight: 700; color: var(--lps-navy); display: flex; align-items: center; justify-content: center; z-index: 1; }

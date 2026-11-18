@@ -6,6 +6,7 @@
 html.ui-mobile .wm-activesync { background: #fff; color: #000; overflow-y: auto; }
 .wm-activesync .was-head { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 3px 4px; border-bottom: 1px solid #000; }
 .wm-activesync .was-pic { flex: none; width: 42px; height: 40px; background: 0 0 / auto 40px no-repeat; }
+/* perf: allow status: the sync picture turns only while a sync runs (.is-syncing), frames of the device's Sync*.bmp strip */
 .wm-activesync .was-pic.is-syncing { animation: was-sync 1.6s steps(16) infinite; }
 @keyframes was-sync { to { background-position-x: -672px; } }
 @media (prefers-reduced-motion: reduce) { .wm-activesync .was-pic.is-syncing { animation: none; } }

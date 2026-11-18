@@ -1086,6 +1086,7 @@
     background-repeat: no-repeat;
     border-radius: 50%;
     pointer-events: none;
+    /* perf: allow busy indicator: the globe shows only while a page loads (.wm-browser.is-loading) */
     animation: wmb-busy 0.9s steps(18) infinite;
 }
 
@@ -1093,6 +1094,7 @@
     display: block;
 }
 
+/* perf: allow frames of a sprite strip: background-position lands each of the 18 frames on whole device pixels; a transform of a wider layer would draw frames between pixels */
 @keyframes wmb-busy {
     from { background-position: 0 0; }
     to { background-position: calc(-396 * var(--wm-px)) 0; }
@@ -1410,7 +1412,10 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr-box::befo
     left: calc(2 * var(--wm-px));
     top: calc(3 * var(--wm-px));
     bottom: calc(3 * var(--wm-px));
-    width: 10%;
+    /* grows from 10 % to 90 % of the box: drawn at its full 90 % and scaled from its left edge on the
+       compositor, the same band each frame without a layout per frame (#890) */
+    width: 90%;
+    transform-origin: 0 50%;
     background: #adcbef;
     animation: wmb65-load 8s cubic-bezier(0.1, 0.7, 0.3, 1) forwards;
 }
@@ -1420,7 +1425,8 @@ html.ui-mobile[data-wm-version="6.5"] .wm-browser.is-loading .wmb-addr:not(:focu
 }
 
 @keyframes wmb65-load {
-    to { width: 90%; }
+    from { transform: scaleX(calc(1 / 9)); }
+    to { transform: none; }
 }
 
 /* bottom bar: 45 px cells of browsres.192.dll bitmap 4599 at x 1.5 + 48 n (of 240) over a 15 px grey band
