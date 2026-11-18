@@ -202,6 +202,12 @@ async function saveSettings(next = {}) {
     anchorCache.clear();
     const settings = getSettings();
     broadcast({ type: 'traffic_settings_changed', data: { settings } });
+    // new yellow / red minutes: the kept reports take them at once (every client is told)
+    loadLatest();
+    if (relevelLatest()) {
+        saveLatest();
+        DIRECTIONS.forEach((direction) => { if (latest[direction]) broadcast({ type: 'traffic_updated', data: { direction, report: latest[direction] } }); });
+    }
     return settings;
 }
 
@@ -846,6 +852,29 @@ const routeCache = new Map(); // key -> { at, value | promise }
 const latest = {};
 let latestLoaded = false;
 
+/** The light for a delay (seconds) by the settings' yellow / red minutes (#902): heavy, moderate or clear. */
+function levelOf(delaySec, s = getSettings()) {
+    const d = Number(delaySec) || 0;
+    return d >= s.redMin * 60 ? 'heavy' : d >= s.yellowMin * 60 ? 'moderate' : 'clear';
+}
+
+/**
+ * The kept reports' level worked out again from the current yellow / red minutes (Yukimi, Nov 17: "9 min of
+ * traffic and it shows yellow" - a report saved before the minutes changed, kept on disk over a restart,
+ * still carried its old level). Returns whether one changed.
+ */
+function relevelLatest() {
+    const s = getSettings();
+    let changed = false;
+    DIRECTIONS.forEach((d) => {
+        const r = latest[d];
+        if (!r || r.delaySec == null) return;
+        const lv = levelOf(r.delaySec, s);
+        if (r.level !== lv) { r.level = lv; changed = true; }
+    });
+    return changed;
+}
+
 function loadLatest() {
     if (latestLoaded) return;
     latestLoaded = true;
@@ -853,6 +882,7 @@ function loadLatest() {
         const saved = JSON.parse(fs.readFileSync(LATEST_FILE, 'utf8'));
         DIRECTIONS.forEach((d) => { if (saved && saved[d]) latest[d] = saved[d]; });
     } catch (_e) { /* none yet */ }
+    if (relevelLatest()) saveLatest();
 }
 
 function saveLatest() {
@@ -1065,7 +1095,7 @@ async function check(direction, { force = false, origin = null } = {}) {
     // Traffic light (yellow 25, red 45 by default) decide - a super commuter expects a few minutes, and a major
     // alert alone does not colour it either (Yukimi, Nov 17: "yellow for 15 min when it's set to over 25"); the
     // alerts still show as lines and in the lists
-    const level = delay >= s.redMin * 60 ? 'heavy' : delay >= s.yellowMin * 60 ? 'moderate' : 'clear';
+    const level = levelOf(delay, s);
     const report = {
         direction,
         label: DIRECTION_LABEL[direction],
