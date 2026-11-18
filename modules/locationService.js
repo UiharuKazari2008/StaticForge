@@ -296,9 +296,31 @@ function cleanPlace(p) {
 function legacyPlace(id) {
     const t = (config('traffic', {}) || {})[id];
     if (t && Number.isFinite(Number(t.lat))) return cleanPlace({ label: t.address || (id === 'home' ? 'Home' : 'Work'), address: t.address || '', lat: t.lat, lon: t.lon, specificity: t.address ? 'exact' : 'approximate' });
+    // Traffic keeps some places as a typed address only: its lookup, from the cache, or looked up once and pushed
+    if (t && t.address) {
+        const q = String(t.address).trim().replace(/\s+/g, ' ').slice(0, 200);
+        const hit = geoCache()[`r:${q.toLowerCase()}|`];
+        const first = hit && Array.isArray(hit.value) && hit.value[0];
+        if (first) return cleanPlace(Object.assign({}, first, { address: t.address, typed: t.address }));
+        legacyLookup(id, q);
+    }
     const w = (((config('weather', {}) || {}).places) || {})[id];
     if (w && Number.isFinite(Number(w.lat))) return cleanPlace({ label: [w.name, w.region].filter(Boolean).join(', '), lat: w.lat, lon: w.lon, specificity: 'city', components: { city: w.name, state: w.region, country: w.country } });
     return null;
+}
+
+const legacyAsked = new Set();
+function legacyLookup(id, q) {
+    if (legacyAsked.has(q) || !gr) return;
+    legacyAsked.add(q);
+    resolve(q, { limit: 1 }).then((list) => {
+        if (!list.length) return;
+        const saved = ((config('location', {}) || {}).places || {})[id];
+        if (cleanPlace(saved)) return;
+        const places = getPlaces();
+        broadcast({ type: 'location_places_changed', data: { places } });
+        listeners.forEach((fn) => { try { fn(places); } catch (_e) { /* a listener's own fault */ } });
+    }).catch(() => {});
 }
 
 /** { home, work }: each a place, or null; `from` says where an unsaved one stands in from. */
