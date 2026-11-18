@@ -4355,3 +4355,83 @@ html.ui-mobile #wmShell .wm-titlebar .wm-status-icon::before {
     left: calc(-2.5 * var(--wm-px));
     right: calc(-2.5 * var(--wm-px));
 }
+
+
+/* the Power bubble (#906): the battery bar and the power graph as Settings > Power draws them (wm-settings-system.css
+ * .wm-sys-meter / .wm-sys-pgraph*, copied: that file is not loaded until Settings opens) */
+#wmShell .wm-bubble .wm-bub-meter {
+    position: relative;
+    height: calc(10 * var(--wm-px));
+    margin: calc(4 * var(--wm-px)) 0;
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+    overflow: hidden;
+}
+#wmShell .wm-bubble .wm-bub-meter > div {
+    height: 100%;
+    background: var(--wm-highlight);
+}
+#wmShell .wm-bubble .wm-bub-pgraph-head {
+    display: flex;
+    justify-content: space-between;
+    gap: calc(6 * var(--wm-px));
+    margin-top: calc(8 * var(--wm-px));
+    font-weight: bold;
+}
+#wmShell .wm-bubble .wm-bub-pgraph-head > span:last-child {
+    font-weight: normal;
+    white-space: nowrap;
+}
+#wmShell .wm-bubble .wm-bub-pgraph-wrap {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    column-gap: calc(3 * var(--wm-px));
+    margin-top: calc(3 * var(--wm-px));
+}
+#wmShell .wm-bubble .wm-bub-pgraph-scale {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: flex-end;
+    font-size: calc(10 * var(--wm-px));
+    line-height: calc(10 * var(--wm-px));
+}
+#wmShell .wm-bubble .wm-bub-pgraph {
+    position: relative;
+    box-sizing: border-box;
+    height: calc(64 * var(--wm-px));
+    padding: calc(1 * var(--wm-px));
+    border: calc(1 * var(--wm-px)) solid #000;
+    background: #fff;
+}
+#wmShell .wm-bubble .wm-bub-pgraph::before {
+    content: '';
+    position: absolute;
+    left: calc(1 * var(--wm-px));
+    right: calc(1 * var(--wm-px));
+    top: calc(50% - 0.5 * var(--wm-px));
+    height: calc(1 * var(--wm-px));
+    background: repeating-linear-gradient(to right, #808080 0 calc(1 * var(--wm-px)), transparent calc(1 * var(--wm-px)) calc(2 * var(--wm-px)));
+}
+#wmShell .wm-bubble .wm-bub-pgraph-bars {
+    display: grid;
+    grid-template-columns: repeat(48, minmax(0, 1fr));
+    column-gap: calc(1 * var(--wm-px));
+    height: 100%;
+}
+#wmShell .wm-bubble .wm-bub-pgraph-bars > i {
+    position: relative;
+    align-self: start;
+    height: var(--h, 0);
+}
+#wmShell .wm-bubble .wm-bub-pgraph-bars > i.is-in {
+    top: calc(50% - var(--h, 0));
+    background: var(--wm-highlight);
+}
+#wmShell .wm-bubble .wm-bub-pgraph-bars > i.is-out {
+    top: 50%;
+    background: var(--wm-highlight);
+}
+
+/* the title bar takes its own pull-down (Android's tray, #906): the browser does not scroll or refresh on it */
+html.ui-mobile #wmShell > .wm-titlebar { touch-action: none; }

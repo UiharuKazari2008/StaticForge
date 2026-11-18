@@ -1428,7 +1428,7 @@
             const lines = [`${d === 'work' ? 'To Work' : 'To Home'}: ${minText(dv.leftSec)} left, ${miles(dv.toGoM)} to go`, `Arrive ${clock(dv.arriveAt)}.`];
             if (ahead.length) lines.push(`Ahead: ${ahead[0].label}${ahead[0].street ? ` on ${ahead[0].street}` : ''}.`);
             // light: the traffic light beside the commute in the Car bubble (#902): red for a major alert ahead
-            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines, light: LEVEL_LIGHT[r.level] || (ahead.length ? 'yellow' : 'green') };
+            return { delayed: true, reason: 'driving', direction: d, title: 'Traffic', lines, light: LEVEL_LIGHT[r.level] || 'green' };
         }
         // in the window the car needs a current report: one check (at most every 15 min; the server caches)
         if (win && !document.hidden && Date.now() - todayCheckAt > TODAY_CHECK_MS && (!r || Date.now() - Date.parse(r.at) > TODAY_CHECK_MS)) {
@@ -1456,7 +1456,7 @@
         const yMin = (settings && settings.yellowMin) || 25;
         const rMin = (settings && settings.redMin) || 45;
         const delayMin = (r.delaySec || 0) / 60;
-        const light = LEVEL_LIGHT[r.level] || (delayMin >= rMin ? 'red' : (delayMin >= yMin || majors.length) ? 'yellow' : 'green');
+        const light = LEVEL_LIGHT[r.level] || (delayMin >= rMin ? 'red' : delayMin >= yMin ? 'yellow' : 'green');
         return { delayed: !!win, reason: win ? (late ? 'delay' : 'leave') : '', direction: d, title: 'Traffic', lines, light, leaveLine };
     }
     function todayRender(el) {

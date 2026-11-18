@@ -1061,10 +1061,11 @@ async function check(direction, { force = false, origin = null } = {}) {
         : null;
     const delay = preferred.delaySec || pw.jams.reduce((n, j) => n + (j.delaySec || 0), 0) || 0;
     const major = slowdowns.some((x) => x.major) || pw.jams.some((j) => j.major) || pw.alerts.some((a) => a.major);
-    // the light (Traffic's signal, Today, the Car bubble; #902): by the minutes of extra traffic set in Settings >
-    // Traffic light (yellow 25, red 45 by default) - a super commuter expects a few minutes; a major alert alone
-    // is moderate at most (Yukimi, Nov 17)
-    const level = delay >= s.redMin * 60 ? 'heavy' : (delay >= s.yellowMin * 60 || major) ? 'moderate' : 'clear';
+    // the light (Traffic's signal, Today, the Car bubble; #902): only the minutes of extra traffic set in Settings >
+    // Traffic light (yellow 25, red 45 by default) decide - a super commuter expects a few minutes, and a major
+    // alert alone does not colour it either (Yukimi, Nov 17: "yellow for 15 min when it's set to over 25"); the
+    // alerts still show as lines and in the lists
+    const level = delay >= s.redMin * 60 ? 'heavy' : delay >= s.yellowMin * 60 ? 'moderate' : 'clear';
     const report = {
         direction,
         label: DIRECTION_LABEL[direction],
