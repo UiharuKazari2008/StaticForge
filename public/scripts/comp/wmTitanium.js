@@ -1065,6 +1065,34 @@
             try { v = localStorage.getItem(k); } catch (_) { v = null; }
             if (WEIGHTS.includes(v)) { if (root.dataset[attr] !== v) root.dataset[attr] = v; } else delete root.dataset[attr];
         });
+        syncClockWidth();
+    }
+    /**
+     * The clock's box (wm-titanium.css --ti-time-w, WM units): "00:00" in the face and weight the time is drawn
+     * in, at its 28 pt (37.333 units); the ROM's 93 when that is Tahoma regular. Worked out when the weight or
+     * the system font changes, once the face is in (measured, never per frame).
+     */
+    let clockFace = '';
+    function syncClockWidth() {
+        const band = root.dataset.wmTiBand || 'bold';
+        const segoe = band === 'semilight' || band === 'light' || (() => { try { return localStorage.getItem('wmSystemFont') === 'segoe'; } catch (_) { return false; } })();
+        const weight = { bold: 700, regular: 400, semilight: 350, light: 300 }[band] || 700;
+        const face = `${weight}|${segoe ? 's' : 't'}`;
+        if (face === clockFace) return;
+        clockFace = face;
+        if (!segoe && weight === 400) { root.style.removeProperty('--ti-time-w'); return; }
+        const font = `${weight} 100px ${segoe ? "'Segoe UI'" : 'Tahoma'}`;
+        const measure = () => {
+            if (clockFace !== face) return;
+            try {
+                const g = document.createElement('canvas').getContext('2d');
+                g.font = font;
+                const w = g.measureText('00:00').width; // at 100 px; the time is 37.333 units
+                if (w > 0) root.style.setProperty('--ti-time-w', String(Math.round(w * 0.37333 * 10) / 10));
+            } catch (_) { /* the ROM's box */ }
+        };
+        if (document.fonts && document.fonts.load) document.fonts.load(font, '0123456789:').then(measure, measure);
+        else measure();
     }
     // ... and Start's (wmStart65.js, wm65-start.css): startopen (icons in from the corner), startfrost
     // (the frosted picture under its dark sheet), startlaunch (a program grows out of its icon),
@@ -1536,7 +1564,7 @@
     readTextWeights();
     document.addEventListener('wmSettingsChange', (e) => {
         const keys = (e && e.detail && e.detail.keys) || [];
-        if (keys.includes(ROW_WEIGHT_KEY) || keys.includes(BAND_WEIGHT_KEY)) readTextWeights();
+        if (keys.includes(ROW_WEIGHT_KEY) || keys.includes(BAND_WEIGHT_KEY) || keys.includes('wmSystemFont')) readTextWeights();
         if (keys.includes(PARALLAX_KEY) || keys.includes(PARALLAX_LEVEL_KEY) || keys.includes(FX_KEY)) { readEffects(); if (host && !host.hidden) place(); }
         if (keys.includes('wmSuperBarNotes') && superOpen) refreshNotes();
     });

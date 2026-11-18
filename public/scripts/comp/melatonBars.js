@@ -476,6 +476,44 @@
         if (v.endsWith('%')) return (parseFloat(v) / 100) * of;
         return parseFloat(v) || 0;
     }
+    /*
+     * An inline <svg> (the Car bubble's 1-bit Lock / Unlock / Climate keys and its traffic light, #902) as a PNG
+     * at the device px it is drawn at, for the app ({ k: 'img', url: 'data:image/png...' }: Android cannot draw
+     * SVG). Made once per drawing, colour and size, kept; the first capture of a new one has none yet and asks
+     * for the layouts again when it is ready.
+     */
+    const svgPngs = new Map();
+    let svgAgain = null;
+    function svgPicture(el, w, h, color) {
+        if (!(w > 0 && h > 0)) return null;
+        const key = `${w}x${h}|${color}|${el.outerHTML}`;
+        if (svgPngs.has(key)) return svgPngs.get(key);
+        svgPngs.set(key, null);
+        if (svgPngs.size > 64) svgPngs.delete(svgPngs.keys().next().value);
+        const c = el.cloneNode(true);
+        c.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        c.setAttribute('width', String(w));
+        c.setAttribute('height', String(h));
+        c.removeAttribute('class');
+        c.style.color = color;
+        const img = new Image();
+        img.onload = () => {
+            try {
+                const cv = document.createElement('canvas');
+                cv.width = w; cv.height = h;
+                const g = cv.getContext('2d');
+                g.imageSmoothingEnabled = false;
+                g.drawImage(img, 0, 0, w, h);
+                svgPngs.set(key, cv.toDataURL('image/png'));
+            } catch (_) { svgPngs.delete(key); return; }
+            // the layouts again with it (once for a batch of new drawings)
+            if (!svgAgain && layoutsRoles) svgAgain = setTimeout(() => { svgAgain = null; if (layoutsRoles) pushLayouts(layoutsRoles); }, 50);
+        };
+        img.onerror = () => { svgPngs.delete(key); };
+        img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(c))}`;
+        return null;
+    }
+
     function layoutOf(roots, dpr) {
         const out = [];
         const R = (v) => Math.round(v * dpr * 100) / 100;
@@ -581,6 +619,12 @@
             const b = el.getBoundingClientRect();
             const r = radii(cs);
             const clip = [R(b.left), R(b.top), R(b.width), R(b.height), r];
+            // a drawing (inline SVG): sent as a picture of itself
+            if (typeof SVGSVGElement !== 'undefined' && el instanceof SVGSVGElement) {
+                const url = svgPicture(el, Math.round(b.width * dpr), Math.round(b.height * dpr), cs.color);
+                if (url) out.push({ k: 'img', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), url, clip, alpha: alpha < 1 ? alpha : undefined });
+                return;
+            }
             const sh = /^(rgba?\([^)]*\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/.exec(cs.boxShadow || '');
             if (sh && !/inset/.test(cs.boxShadow)) out.push({ k: 'shadow', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, blur: R(px(sh[4])), dy: R(px(sh[3])), color: rgba(sh[1], alpha) });
             const fill = rgba(cs.backgroundColor, alpha);
@@ -733,7 +777,10 @@
     // set while this page opens its popups to write them down (the notification box it opens is not a new one)
     let capturing = false;
     let notesMO = null;
+    // the roles of the last full push (a drawing made since asks for them again: svgPicture)
+    let layoutsRoles = null;
     function pushLayouts(roles, partial) {
+        if (!partial) layoutsRoles = roles;
         const sh = window.wmShell;
         const ab = window.AndroidBars;
         if (!sh || !sh.barsPopupOpen || !ab || typeof ab.layouts !== 'function' || document.visibilityState === 'visible') return;
@@ -1359,6 +1406,8 @@
         /** wmShell barsStatusPush: the popups' layouts written down again (the roles on the bar now). */
         pushLayouts: (roles, partial) => pushLayouts(roles || [], !!partial),
         kitSignature: () => kitSignature(),
+        // a popup's drawing list as the app gets it (checks: wmShell.barsPopupOpen(role), then this on its layers)
+        layoutOf: (roots, dpr) => layoutOf(roots, dpr || window.devicePixelRatio || 1),
         renderKit: (ctx) => { serial(() => renderKit(ctx)).catch((err) => console.warn('[melatonBars] renderKit', err)); },
         renderStart: (ctx) => { serial(() => renderStart(ctx)).catch((err) => console.warn('[melatonBars] renderStart', err)); },
         tap: (role) => { if (window.wmShell && window.wmShell.barsTap) window.wmShell.barsTap(role); },
