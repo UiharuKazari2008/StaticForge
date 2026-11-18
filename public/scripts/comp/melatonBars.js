@@ -513,6 +513,35 @@
         img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(c))}`;
         return null;
     }
+    /*
+     * The file the page draws, so the app fetches and keeps one copy of each picture at the page's pixels
+     * (#890: the first url() of an image-set was the @2x file while the page drew @4x, and an <img> read
+     * before it loaded gave its 1x src: two downloads and decoded copies, the native popup softer).
+     * image-set(): the smallest density at or above the screen's, else the largest (Chrome's choice).
+     */
+    function setPick(bg) {
+        const set = /image-set\((.*)\)/.exec(bg);
+        if (!set) return null;
+        const cands = [...set[1].matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)[^,]*?([\d.]+)(x|dppx)\b/g)].map((m) => ({ u: m[1], d: +m[2] })).filter((c) => c.d > 0);
+        if (!cands.length) return null;
+        cands.sort((a, b) => a.d - b.d);
+        const dpr = window.devicePixelRatio || 1;
+        return (cands.find((c) => c.d >= dpr) || cands[cands.length - 1]).u;
+    }
+    /** An <img>'s srcset by density as Blink picks it before it has loaded (a smaller one when the geometric mean allows). */
+    function srcsetPick(el) {
+        const cands = String(el.getAttribute('srcset') || '').split(',').map((part) => {
+            const m = /^\s*(\S+)(?:\s+([\d.]+)x)?\s*$/.exec(part);
+            return m ? { u: m[1], d: m[2] ? +m[2] : 1 } : null;
+        }).filter(Boolean);
+        if (!cands.length) return '';
+        cands.sort((a, b) => a.d - b.d);
+        const dpr = window.devicePixelRatio || 1;
+        let i = cands.findIndex((c) => c.d >= dpr);
+        if (i < 0) i = cands.length - 1;
+        else if (i > 0 && Math.sqrt(cands[i - 1].d * cands[i].d) > dpr) i -= 1;
+        try { return new URL(cands[i].u, location.href).href; } catch (_) { return ''; }
+    }
 
     function layoutOf(roots, dpr) {
         const out = [];
@@ -578,9 +607,9 @@
                     return;
                 }
             }
-            const m = /url\(\s*["']?([^"')]+)/.exec(cs.backgroundImage || '');
-            if (!m) return;
-            const url = new URL(m[1], location.href).href;
+            const first = setPick(cs.backgroundImage || '') || /url\(\s*["']?([^"')]+)/.exec(cs.backgroundImage || '');
+            if (!first) return;
+            const url = new URL(typeof first === 'string' ? first : first[1], location.href).href;
             // the size and place as CSS resolved them (px or %; 'auto' keeps the picture's own ratio: the box)
             // split at the spaces outside brackets: "calc(100% + 18px) 104.545%" is two values, not four
             const parts = (v) => { const out2 = []; let d = 0; let cur = ''; for (const ch of String(v || '')) { if (ch === '(') d++; if (ch === ')') d--; if (ch === ' ' && d === 0) { if (cur) out2.push(cur); cur = ''; } else cur += ch; } if (cur) out2.push(cur); return out2; };
@@ -638,7 +667,7 @@
                 const blur = +(ins[4] || ins[8]);
                 if (!blur && spread > 0) { const sw = R(spread); out.push({ k: 'border', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), r, bw: [sw, sw, sw, sw], color: [0, 1, 2, 3].map(() => rgba(color, alpha)) }); }
             }
-            if (el.tagName === 'IMG' && (el.currentSrc || el.src)) out.push({ k: 'img', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), url: el.currentSrc || el.src, clip });
+            if (el.tagName === 'IMG' && (el.currentSrc || el.src)) out.push({ k: 'img', x: R(b.left), y: R(b.top), w: R(b.width), h: R(b.height), url: el.currentSrc || srcsetPick(el) || el.src, clip });
             const bw = [cs.borderTopWidth, cs.borderRightWidth, cs.borderBottomWidth, cs.borderLeftWidth].map((v) => R(px(v)));
             if (bw.some((v) => v > 0)) {
                 const bc = [cs.borderTopColor, cs.borderRightColor, cs.borderBottomColor, cs.borderLeftColor].map((c) => rgba(c, alpha));
