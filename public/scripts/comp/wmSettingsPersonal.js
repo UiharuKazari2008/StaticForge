@@ -466,7 +466,7 @@
     const WHO = { traffic: 'Traffic', weather: 'Weather', 'dynamic-generation': 'Dynamic Generation', desktop: 'Desktop Background', settings: 'Settings' };
     wmSettings.registerPage({
         id: 'location', tab: 'personal', label: 'Location', icon: 'set-location',
-        tabs: [['places', 'Places'], ['use', 'Use']],
+        tabs: [['places', 'Places'], ['drive', 'Drive'], ['use', 'Use']],
         available: () => !!LOC(),
         init() { return { placesTick: 0 }; },
         render(el, tab, d, api) {
@@ -477,6 +477,7 @@
                 document.addEventListener('wmLocationPlaces', again);
                 void L.placesReady();
             }
+            if (tab === 'drive') { renderDrive(el, d, api); return; }
             if (tab === 'use') {
                 const rows = L.recent();
                 const last = L.last();
@@ -511,6 +512,47 @@
         },
         commit() { return []; }
     });
+
+    // ---- Location > Drive (#890 drive state, DSApp AndroidHome.getDriveState): how the phone knows it is driving
+    // (Activity Recognition, the car's Bluetooth, the car key), which Bluetooth devices are cars. Traffic's camera
+    // and police watch and the location service's urgent positions run only while it says driving.
+    const driveBridge = () => (window.AndroidHome && typeof window.AndroidHome.getDriveState === 'function' ? window.AndroidHome : null);
+    const DRIVE_STATE = { idle: 'Not driving', maybe: 'Maybe driving', driving: 'Driving', parked_in_car: 'Parked, in the car', stopped: 'Stopped' };
+    const DRIVE_SOURCE = { activity: 'motion', car_bt: 'the car\'s Bluetooth', carkey: 'the car key', geofence: 'leaving Home or Work', movement: 'moving' };
+    const DRIVE_ACCESS = { on: 'On', ask: 'Not allowed yet', denied: 'Refused (allow it in Android Settings)', unavailable: 'Not on this phone' };
+    function driveJson(fn) { const H = driveBridge(); try { return H && typeof H[fn] === 'function' ? JSON.parse(H[fn]() || 'null') : null; } catch (_) { return null; } }
+    function renderDrive(el, d, api) {
+        const H = driveBridge();
+        if (!H) { el.innerHTML = ui.text('Drive detection needs the Melaton app with drive detection (an update to the Android app).'); return; }
+        if (!d.driveWired) {
+            d.driveWired = true;
+            const again = () => { if (el.isConnected) api.rerender(); else window.removeEventListener('androiddrive', again); };
+            window.addEventListener('androiddrive', again);
+        }
+        const st = driveJson('getDriveState') || {};
+        const cars = driveJson('getDriveCars') || {};
+        const chosen = new Set(Array.isArray(cars.cars) ? cars.cars : []);
+        let bt = null;
+        try { bt = window.AndroidBluetooth && typeof window.AndroidBluetooth.getState === 'function' ? JSON.parse(window.AndroidBluetooth.getState()) : null; } catch (_) { bt = null; }
+        const devices = bt && Array.isArray(bt.devices) ? bt.devices : [];
+        const since = st.since ? new Date(st.since).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+        el.innerHTML = `${ui.value('Now:', `${DRIVE_STATE[st.state] || 'Unknown'}${st.source && DRIVE_SOURCE[st.source] ? ` (${DRIVE_SOURCE[st.source]})` : ''}${since ? `, since ${since}` : ''}`, { wide: true })}
+            ${ui.value('Motion:', DRIVE_ACCESS[st.activity] || 'Unknown', { wide: true })}
+            ${st.activity === 'on' || st.activity === 'unavailable' ? '' : ui.buttons([['drive-access', 'Allow...']])}
+            ${ui.note('The phone tells driving from walking with Android\'s motion detection. Traffic\'s camera and police warnings and the GPS follow it: parked in the car, the GPS stays off.')}
+            ${ui.gap()}
+            ${ui.sub('My cars')}
+            ${devices.length ? devices.map((dv) => ui.check(`car:${dv.address}`, `${dv.name || dv.address}${dv.connected ? '  (Connected)' : ''}`, chosen.has(dv.address), `data-car="${esc(dv.address)}"`)).join('') : ui.text(bt ? 'No paired Bluetooth devices. Pair the car in Settings > Connections > Bluetooth.' : 'Bluetooth is not available.')}
+            ${ui.note('Connecting to one of these counts as getting in the car.')}`;
+        const allow = el.querySelector('[data-act="drive-access"]');
+        if (allow) allow.addEventListener('click', () => { try { H.requestDriveAccess(); } catch (_) { /* older app */ } });
+        el.querySelectorAll('input[data-car]').forEach((c) => c.addEventListener('change', () => {
+            const next = new Set(chosen);
+            if (c.checked) next.add(c.dataset.car); else next.delete(c.dataset.car);
+            try { H.setDriveCars(JSON.stringify([...next])); } catch (_) { /* older app */ }
+            chosen.clear(); next.forEach((a) => chosen.add(a));
+        }));
+    }
 
     // ======================================================================== Buttons
 
