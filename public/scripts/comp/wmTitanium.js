@@ -1913,6 +1913,8 @@
     // rate, and they hold from 1 to 8 items.
 
     /** Start the move from item a to item b. o.tap: a tap or key; o.nv: the items the flick asked for; o.at: when (ms). */
+    const FRAME_MS = 1000 / 60;
+    const STALL_MS = 50;     // a frame this late counts as a stall (the entrance's own clock waits it out)
     function startTween(a, b, o) {
         cancelAnimationFrame(settle);
         flushZoom();
@@ -1925,6 +1927,11 @@
         // they land) and a spring past the band (bump units at most, in the run's last 40 %; the list is still a few units
         // short of the band then, so it passes it by about half the bump)
         if (o && o.entry && !n) tw.entry = { spread: o.entry.stagger ? 14 : 0, bump: o.entry.overshoot ? 10 : 0 };
+        // the entrance runs on its own frames' clock (Yukimi, Nov 18 recording: "not fluid"): it starts at its first
+        // drawn frame and a late frame (the page busy waking) moves its start on, so a stall pauses the run instead
+        // of skipping it - the list had shown up already halfway up, 250 ms into a 550 ms run. A finger's fling
+        // keeps the real clock (its start is when the finger left the glass)
+        if (tw.entry) tw.frameClock = { last: 0 };
         if (n) {
             const nv = Math.max(n, (o && o.nv) || n);
             tw.D = b > a ? BAND + ROW * (n - 1) : ROW * n;                 // b's row to the band top, from a's rest layout
@@ -1942,6 +1949,12 @@
 
     function tweenStep(now) {
         if (!tw) return;
+        const fc = tw.frameClock;
+        if (fc) {
+            if (!fc.last) tw.t0 = now;
+            else if (now - fc.last > STALL_MS) tw.t0 += now - fc.last - FRAME_MS;
+            fc.last = now;
+        }
         const t = Math.max(0, now - tw.t0);
         let p;
         if (tw.n) p = Math.max(tw.p0, Math.min(1, tw.gain * Math.pow(t / tw.Tv, FLING_POW)));
