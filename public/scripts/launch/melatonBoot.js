@@ -439,6 +439,7 @@
         function startCountdown() {
             stopCountdown();
             ctl.countdown = config.countdownSec;
+            // perf: allow the boot menu's countdown: lives only while the menu shows (any key or its zero clears it), and its zero starts the highlighted choice, which an unattended boot must do
             ctl.countdownTimer = env.setInterval(() => {
                 if (ctl.screen !== 'menu') return stopCountdown();
                 ctl.countdown -= 1;
@@ -1236,6 +1237,7 @@
                     resolve('restart');
                 };
                 s.restartNow = finish;
+                // perf: allow Setup's restart countdown: lives only while that page shows (Restart now or its zero clears it), and its zero restarts into the new install, unattended too
                 s.countdownTimer = env.setInterval(() => {
                     if (run !== ctl.runId || ctl.screen !== 'install') {
                         env.clearInterval(s.countdownTimer);
