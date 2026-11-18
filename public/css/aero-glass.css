@@ -80,14 +80,8 @@ html[data-glass="frosted"] :where(#focus-overlay, .websocket-ticker) {
     backface-visibility: visible;
 }
 
-html[data-glass="frosted"] :where(
-    #manualPanelSection.zoomed div#manualPreviewContainer,
-    #manualPanelSection.initial div#manualPreviewContainer
-) {
-    will-change: background-color;
-}
-
 html[data-glass="frosted"] :where(.manual-loading-overlay, .manual-loading-overlay.return) {
+    /* perf: allow matches no element today (no .manual-loading-overlay in the markup), and opacity is all it hints; kept as the frosted contract test-frosted-static-css asserts */
     will-change: opacity;
 }
 
@@ -103,6 +97,7 @@ html[data-glass="frosted"] :where(
     -webkit-filter: none;
     filter: none;
     transform: none;
+    /* perf: allow a reset to auto (no layer) on backdrops that frosted glass hides (display: none) */
     will-change: auto;
 }
 
