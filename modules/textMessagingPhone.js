@@ -2,12 +2,11 @@
  * Text Messaging on the phone while Dreamscape is not on screen (Yozora #779).
  *
  * A partnered phone's app keeps a background link (ActiveSync speaker "service", modules/activeSync.js)
- * while its WebView sleeps. New text messages that should notify (textMessaging's notify rule) go to
- * that link as as_event 'tm.notify' when no WebView of the phone is in the foreground; the app posts
- * an Android MessagingStyle notification with a quick reply and Mark as read. When the page is on
- * screen the Melaton Mobile shell shows its own notification instead.
+ * while its WebView sleeps. New text messages reach it as their notification inbox notice (sms:<account>:<chat>,
+ * notificationInboxSources, #908: delivered, confirmed by the app and sent again until it is); the app renders
+ * those as an Android MessagingStyle notification with a quick reply and Mark as read. (tm.notify, a second
+ * copy of the same text, is gone.)
  *
- *   tm.notify  { accountId, chatGuid, guid, title, sender, address, text, isGroup, date, service, account }
  *   tm.dismiss { accountId, chatGuid }    read somewhere else, or you answered from another device
  *
  * The app answers over the same socket with the ordinary packets: tm_send { accountId, chatGuid, text }
@@ -44,27 +43,9 @@ function onEvent(ev) {
             for (const l of links()) activeSync.sendServerEvent(gr, null, l.service, 'tm.dismiss', { accountId: ev.accountId, chatGuid: ev.chatGuid });
             return;
         }
-        if (!ev.notify) return;
-        let account = null;
-        try { account = textMessaging.listAccounts().accounts.find((a) => a.id === ev.accountId) || null; } catch (_) { account = null; }
-        const sender = (m.sender && (m.sender.name || m.sender.address)) || 'Unknown';
-        const detail = {
-            accountId: ev.accountId,
-            chatGuid: ev.chatGuid,
-            guid: m.guid,
-            title: ev.chatTitle || sender,
-            sender,
-            address: (m.sender && m.sender.address) || '',
-            text: summaryText(m),
-            isGroup: !!ev.isGroup,
-            date: m.date || Date.now(),
-            service: m.service || (account && account.service) || '',
-            account: account ? (account.identity || account.service || 'Text Messaging') : 'Text Messaging'
-        };
-        for (const l of links()) {
-            if (l.foreground) continue;
-            activeSync.sendServerEvent(gr, null, l.service, 'tm.notify', detail);
-        }
+        // a new text reaches the phone as its inbox notice only (notificationInboxSources sms:, #908): delivered,
+        // confirmed and retried, and rendered by the app as the MessagingStyle conversation with Reply and Mark as
+        // read. tm.notify was a second copy (two notifications per text) and is no longer sent.
     } else if (ev.event === 'read' && ev.read !== false) {
         for (const l of links()) activeSync.sendServerEvent(gr, null, l.service, 'tm.dismiss', { accountId: ev.accountId, chatGuid: ev.chatGuid });
     }

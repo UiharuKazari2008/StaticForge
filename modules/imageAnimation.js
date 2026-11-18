@@ -53,6 +53,11 @@ function pushEmotionJob(jobState) {
     try {
         server.sendToUser(jobState.sessionId, { type: 'emotion_job_update', data, timestamp: new Date().toISOString() });
     } catch (_err) { /* sockets gone: emotion_current_job on reconnect */ }
+    // finished or failed: the phone hears it page or no page, once (notificationInboxSources, #908)
+    if ((jobState.status === 'completed' || jobState.status === 'failed') && !jobState._inboxed) {
+        jobState._inboxed = true;
+        try { require('./notificationInboxSources').onEmotionDone(jobState); } catch (_err) { /* best effort */ }
+    }
 }
 
 async function animateWithLocalWorker(imageBuffer, options, ws, handler, requestId, jobState) {

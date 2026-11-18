@@ -80,6 +80,7 @@ function broadcastForm(globalResources, packet, type = 'request_form') {
 function closeEverywhere(row, id) {
     if (!row || row.closedSent) return;
     row.closedSent = true;
+    try { require('./notificationInboxSources').onQuestionClosed(id); } catch (_) { /* best effort */ }
     try { broadcastForm(row.globalResources, { id }, 'request_form_closed'); } catch (_) { /* nobody to tell */ }
 }
 
@@ -110,6 +111,8 @@ function askRequestForm(globalResources, spec) {
         pending.delete(id);
     }, WAIT_MS);
     pending.set(id, { timer, waiter: null, answer: null, spec: Object.assign({ id }, spec), globalResources });
+    // the phone gets the question page or no page (notificationInboxSources, #908)
+    try { require('./notificationInboxSources').onQuestion(Object.assign({ id }, spec)); } catch (_) { /* best effort */ }
     return id;
 }
 

@@ -165,6 +165,7 @@ function broadcast(gr) {
     try {
         const wsServer = gr && gr.webSocketServer;
         if (!wsServer || typeof wsServer.broadcastToAll !== 'function') return;
+        try { require('./notificationInboxSources').onApiKeyStatus(publicStatuses(gr)); } catch (_) { /* best effort (#908) */ }
         wsServer.broadcastToAll({
             type: 'api_key_status_changed',
             data: { statuses: publicStatuses(gr) },

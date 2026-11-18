@@ -164,6 +164,9 @@
      * This page showed the notice (its own note, or the producing app's): the Android app does not post it too. The app
      * posts any notice a page in front does not confirm within seconds (#908: a frozen page never swallows a notice).
      */
+    // notices only the server raises (no page app shows its own live note for them): the inbox shows them itself
+    const SERVER_ONLY_KINDS = new Set(['dovecote', 'system', 'question', 'emotion', 'api-key']);
+
     function pageShown(id) {
         try { const A = window.AndroidInbox; if (A && typeof A.shown === 'function') A.shown(String(id)); } catch (_) { /* no app */ }
     }
@@ -240,6 +243,9 @@
             if (isReminder(d.notice)) { reminders.set(d.notice.id, d.notice); showReminder(d.notice); return; }
             // live and in the foreground: the producing app shows it; just keep it from reappearing.
             // not in the foreground (a background tick): leave it 'new' so it shows on resume.
+            // a kind no page app raises live (the household mailbox, server notices, #908): shown here
+            const kind = d.notice.data && d.notice.data.kind;
+            if (!document.hidden && SERVER_ONLY_KINDS.has(kind)) { show(d.notice); return; }
             if (!document.hidden) { pageShown(d.notice.id); ack(d.notice.id, 'seen'); }
         }
     }
