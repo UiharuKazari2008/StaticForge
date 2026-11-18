@@ -1412,6 +1412,11 @@
         if (d.report) latest[d.direction] = takeReport(d.report);
         if (d.advice && !d.advice.error) advice[d.direction] = d.advice;
         changed();
+        // the leave-time report and the advisor's go are the server's durable notices (trafficService runScheduled ->
+        // the inbox): shown once, by the inbox here or by the app with no page. A note of this page's own on top made
+        // two notifications for one report (Yukimi, Nov 18: "Traffic: To Home" and "To Home: 99 min, 22 min late").
+        // Only a failed check, which publishes no notice, is told here.
+        if (!d.error) return;
         const label = d.direction === 'work' ? 'To Work' : 'To Home';
         let title;
         let text;
@@ -1432,7 +1437,7 @@
             note = ws.appNote({
                 title,
                 html: esc(text),
-                icon: 'app-traffic',
+                icon: 'status-traffic',
                 event: 'notification',
                 softKeys: () => ({
                     left: { label: 'View', action: view },
