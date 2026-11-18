@@ -13,6 +13,17 @@
     animation-play-state: paused !important;
 }
 
+/* The phone's screen is off (DSApp sets html[data-screen-off] on the page of the phone screen's window,
+   whichever shell it runs; the screen going off does not make the page hidden). Melaton Mobile's own
+   copy (wm-shell.css) also stops transitions; this one covers the desktop shell on that window too, so
+   no looping animation (a mascot's breathing, a status pulse) keeps ticking in the dark (#890). It
+   resumes where it stood when the screen comes on. */
+html[data-screen-off] *,
+html[data-screen-off] *::before,
+html[data-screen-off] *::after {
+    animation-play-state: paused !important;
+}
+
 @media (min-width: 769px) {
     html.scrolled:not(.desktop-mode) body:not(.editor-open) #title-bar {
         animation-play-state: running;
