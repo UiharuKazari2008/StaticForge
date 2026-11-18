@@ -2535,7 +2535,13 @@
         shownAt = Date.now();
         hiddenSpan = hiddenAt ? shownAt - hiddenAt : 0;
         // back from another app (not the blink of a Home press on Today)
-        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) whenFocused(() => requestAnimationFrame(entrance));
+        if (root.dataset.wmApp === 'today' && hiddenSpan > AWAY_MS) {
+            // a frame now, with no visible change: the app keeps its return picture up until the page draws a frame
+            // (its visual-state callback), and sends the focus the entrance waits for after that - a still page
+            // drew nothing and the two waited on each other to the app's 2.5 s cap (A53 trace, #907)
+            if (host) requestAnimationFrame(() => { host.style.opacity = '0.999'; requestAnimationFrame(() => { host.style.opacity = ''; }); });
+            whenFocused(() => requestAnimationFrame(entrance));
+        }
         else if (host) { unprime(); host.classList.remove('is-exiting'); }
     });
     let lastApp = root.dataset.wmApp || '';
