@@ -63,7 +63,7 @@ def big_copies(px2, px4, w, h):
 # restriction"): the battery family enlarged 1.28x (this afternoon's size, inside the bar's padding), as wide as
 # its shape needs, in its own cell; every other icon stays as drawn. From the light clean-up master, cut with a
 # margin so no edge is clipped.
-BIG_FAMILIES = ('battery',)
+BIG_FAMILIES = ()   # none: the battery keeps its drawn size (Yukimi: "they're too big, that's why you can't maintain the rule")
 BIG_SCALE = 1.28   # the art enlarged 1.28x: this afternoon's battery (16 -> 20.5 units wide, 9.5 -> 12.2 tall)
 def alpha_box(px, w, h, cut=20):
     x0 = y0 = 10 ** 9; x1 = y1 = -1
@@ -166,9 +166,8 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
     arts = [a for a in arts if not a[0].startswith('app-')]
     BIG = enlarge(arts)
     arts = [(n, f, BIG[n][0] if n in BIG else w, h, BIG[n][2] if n in BIG else px) for n, f, w, h, px in arts]
-    extra, big_apps = app_cells(ver)
-    arts += extra
-    BIG.update(big_apps)
+    # the programs' icons stay their own pictures at their drawn size (app_cells is kept for reference, unused:
+    # enlarged, they pushed an icon left of the Fold's camera, breaking 5 icons + X / ok to its right)
     # shelves
     W = 512; x = y = 0; shelf = 0; pos = {}
     for name, file, w, h, px in arts:
