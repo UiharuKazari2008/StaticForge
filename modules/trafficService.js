@@ -1232,7 +1232,7 @@ async function check(direction, { force = false, origin = null, requester = null
     let { from, to } = endpoints(direction, s);
     // To Home from where the phone is (away from Home and Work, Yukimi Nov 15): the device's position,
     // rounded to ~110 m so nearby checks share Google's answer; the preferred streets do not apply
-    const here = direction === 'home' && origin && Number.isFinite(Number(origin.lat)) && Number.isFinite(Number(origin.lon)) && Math.abs(Number(origin.lat)) <= 90 && Math.abs(Number(origin.lon)) <= 180
+    let here = direction === 'home' && origin && Number.isFinite(Number(origin.lat)) && Number.isFinite(Number(origin.lon)) && Math.abs(Number(origin.lat)) <= 90 && Math.abs(Number(origin.lon)) <= 180
         ? { lat: Math.round(Number(origin.lat) * 1e3) / 1e3, lon: Math.round(Number(origin.lon) * 1e3) / 1e3, label: 'Your location' }
         : null;
     if (here) from = here;
@@ -1347,6 +1347,9 @@ async function check(direction, { force = false, origin = null, requester = null
         errors
     };
     report.summary = summarise(report);
+    // To Home from where one phone is: that phone's own answer (its traffic_check reply), never the household's report -
+    // a test emulator's made-up Californian position replaced To Home for every phone with a 43-hour route (Nov 18)
+    if (here) return report;
     loadLatest();
     latest[direction] = report;
     saveLatest();

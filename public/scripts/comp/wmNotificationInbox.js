@@ -147,7 +147,7 @@
     }
 
     /** Windows Mobile's reminder notification for a calendar / task reminder. */
-    function showReminder(notice) {
+    function showReminder(notice, opts = {}) {
         if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
         const d = notice.data || {};
         const lines = String(notice.text || '').split('\n');
@@ -160,6 +160,7 @@
             html: `<span class="wm-alarm651-note"><b>${esc(subject)}</b>${more.map((l) => `<br>${esc(l)}`).join('')}<span hidden>${esc(notice.id)}</span></span>`,
             icon: 'status-reminder',
             event: 'reminder',
+            silent: !!opts.quiet,
             softKeys: () => ({
                 left: { label: 'Dismiss', icon: 'dismiss', action: () => { ack(notice.id, 'cleared'); close(notice.id); } },
                 right: { label: 'Menu', icon: 'menu', menu: () => reminderMenu(notice) }
@@ -196,8 +197,8 @@
     }
 
     /** Show one missed notice as a WM notification; View opens its app, Dismiss clears it. */
-    function show(notice) {
-        if (isReminder(notice)) { showReminder(notice); return; }
+    function show(notice, opts = {}) {
+        if (isReminder(notice)) { showReminder(notice, opts); return; }
         if (!ws || typeof ws.appNote !== 'function' || shownNotes.has(notice.id)) return;
         // its app's own grouped notification (it clears the id when dismissed or read)
         const app = adopter(notice);
@@ -216,6 +217,8 @@
             html: esc(notice.text || '').replace(/\n/g, '<br>'),
             icon: iconFor(notice),
             event: notice.cls || 'notification',
+            // asked for (the notification icon's tap): shown without its sound - it is no news
+            silent: !!opts.quiet,
             // 6.5.1's reminder keys on every notice (Yukimi, Nov 18): Dismiss | Menu, the Menu with View, Hide and the
             // reminder's Snooze times (the server brings the notice back then, sounding); the app's own box has the same
             softKeys: () => ({
@@ -248,11 +251,13 @@
      * either (StaticForge #913). Within the app's PAGE_MS (4 s): a page that answers nothing still gets it posted natively.
      */
     const PRODUCER_MS = 1500;
+    // the notices a page app was seen to show itself (producerShows): only those count as shown without this module
+    const producerShown = new Set();
     function producerShows(notice) {
         const before = toastSeq();
         setTimeout(() => {
             if (document.hidden || shownNotes.has(notice.id)) return;
-            if (toastTitled(notice.title) || toastSeq() > before) { pageShown(notice.id); ack(notice.id, 'seen'); return; }
+            if (toastTitled(notice.title) || toastSeq() > before) { producerShown.add(notice.id); pageShown(notice.id); ack(notice.id, 'seen'); return; }
             show(notice);
         }, PRODUCER_MS);
     }
@@ -279,10 +284,11 @@
             if (n.state === 'cleared' || n.state === 'acted') { reminders.delete(n.id); close(n.id); continue; }
             // a reminder stays until it is dismissed: shown again whenever it is not up
             if (isReminder(n)) { reminders.set(n.id, n); showReminder(n); continue; }
-            // arrived while the app was away: show it. Arrived live (while we were here): the producing
-            // app already showed it, so only mark it seen.
+            // arrived while the app was away: show it. Arrived live (while we were here): seen only when its app was seen
+            // to show it - a page asleep in the background showed nothing, and its notices were marked seen unseen (the
+            // Lapis notices never came up, Nov 18)
             if (n.state === 'new' && n.createdAt < connectedAt) show(n);
-            else if (n.state === 'new') ack(n.id, 'seen');
+            else if (n.state === 'new') { if (producerShown.has(n.id) || shownNotes.has(n.id)) ack(n.id, 'seen'); else show(n); }
         }
         // reminders listed before and still not dismissed (a delta leaves them out): up again when not up
         reminders.forEach((n) => showReminder(n));
@@ -347,8 +353,8 @@
                 // asked for: each comes up again, also one shown before and put away (its old handle kept it from showing;
                 // the tap then opened nothing, Nov 18 Fold)
                 close(n.id);
-                if (isReminder(n)) { reminders.set(n.id, n); showReminder(n); continue; }
-                show(n);
+                if (isReminder(n)) { reminders.set(n.id, n); showReminder(n, { quiet: true }); continue; }
+                show(n, { quiet: true });
             }
             return waiting.length;
         },
