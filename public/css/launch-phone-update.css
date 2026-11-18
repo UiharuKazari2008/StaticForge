@@ -134,8 +134,8 @@ html.phone-launch .launch-content::before {
         inset 0 0 0 4px rgba(10, 100, 0, 0.22);
     transform: var(--pu-tilt) scale(0.05);
     opacity: 0;
+    /* perf: allow busy indicator: the update screen shows only while the app updates; transform + opacity (the animation itself keeps it on a layer) */
     animation: pu-ripple 3.6s cubic-bezier(0.2, 0.6, 0.35, 1) infinite;
-    will-change: transform, opacity;
 }
 
 @keyframes pu-ripple {

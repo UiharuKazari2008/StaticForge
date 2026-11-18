@@ -214,8 +214,8 @@ html.melaton-boot #melatonBoot {
     display: flex;
     gap: calc(2 * var(--vpx));
     height: 100%;
+    /* perf: allow busy indicator: the boot bar sweeps only while Melaton boots (launch.html); transform steps (the animation itself keeps it on a layer) */
     animation: melatonBootSweep var(--melaton-sweep) steps(72, jump-none) infinite;
-    will-change: transform;
 }
 
 .melaton-boot-bar-cluster i {
