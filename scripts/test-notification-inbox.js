@@ -82,6 +82,9 @@ inbox.bind(gr);
     inbox.ack('admin', n1.id, 'seen');
     assert.strictEqual(sent.length, 0, 'a seen ack broadcasts nothing');
     assert.strictEqual(inbox.list('admin', { since: mark + 1 }).map((n) => n.id).join(','), n1.id, 'a state change counts as changed');
+    { const row = inbox.list('admin', { since: mark + 1 })[0];
+      assert.ok(row.updatedAt === now && row.updatedAt > row.createdAt, 'rows carry updatedAt (the page\'s next since)'); }
+    assert.strictEqual(inbox.list('admin').find((n) => n.id === n2.id).updatedAt, n2.createdAt, 'unchanged: updatedAt is createdAt');
     const mark2 = now;
     now += 1000;
     inbox.ack('admin', n2.id, 'cleared', 'fold');
