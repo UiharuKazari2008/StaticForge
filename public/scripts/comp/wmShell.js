@@ -4273,7 +4273,17 @@
         const scs = getComputedStyle(status);
         const gap = parseFloat(scs.columnGap) || parseFloat(scs.gap) || 0;
         const padNow = parseFloat(scs.paddingRight) || 0;
-        const iconsRight = status.getBoundingClientRect().right - br.left - padNow;
+        // the row's right end from the bar's right edge (the bar's padding, what follows the icons - the X / ok, 6.5.1's
+        // clock - and the row's own padding): with every icon out the row can run past the bar, so its own box is not
+        // where it ends (the A53 read 437 on a 411 bar and fitted nothing)
+        let after = parseFloat(getComputedStyle(bar).paddingRight) || 0;
+        for (let n = status.nextElementSibling; n; n = n.nextElementSibling) {
+            if (!n.getClientRects().length) continue;
+            const cs = getComputedStyle(n);
+            if (cs.position === 'absolute' || cs.position === 'fixed') continue;
+            after += n.getBoundingClientRect().width + (parseFloat(cs.marginLeft) || 0) + (parseFloat(cs.marginRight) || 0);
+        }
+        const iconsRight = br.width - after - padNow;
         const title = bar.querySelector('.wm-title');
         const titleX = title.getBoundingClientRect().left - br.left;
         const titleMin = parseFloat(getComputedStyle(title).minWidth) || 0;
