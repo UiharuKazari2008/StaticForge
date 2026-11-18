@@ -617,25 +617,6 @@
 .wm-youtube.is-full .yt-stage { flex: 1 1 auto; aspect-ratio: auto; height: 100%; }
 .wm-youtube.is-full .yt-side { display: none; }
 
-.wm-youtube .yt-pl-top {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    display: flex;
-    align-items: center;
-    gap: calc(5 * var(--u));
-    padding: calc(4 * var(--u)) calc(7 * var(--u)) calc(12 * var(--u));
-    background: linear-gradient(color-mix(in srgb, black 78%, transparent), transparent);
-    font-size: calc(9.5 * var(--u));
-    text-shadow: 0 1px black;
-    pointer-events: none;
-}
-.wm-youtube .yt-pl-top .yt-new { margin: 0; flex: 0 0 auto; }
-.wm-youtube .yt-pl-up { flex: 0 0 auto; color: white; }
-.wm-youtube .yt-pl-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; }
-.wm-youtube .yt-pl-mode { flex: 0 0 auto; color: color-mix(in srgb, white 80%, transparent); }
-
 /* the keys over the foot of the picture: pause, sound, stop | Kick's app, full screen */
 .wm-youtube .yt-hud {
     position: absolute;
@@ -648,7 +629,12 @@
     padding: calc(14 * var(--u)) calc(6 * var(--u)) calc(5 * var(--u));
     background: linear-gradient(transparent, color-mix(in srgb, black 82%, transparent));
 }
-.wm-youtube .yt-hud-gap { flex: 1 1 auto; }
+/* between the keys: LIVE, how long the stream has run, the quality */
+.wm-youtube .yt-hud-live { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u)); overflow: hidden; white-space: nowrap; color: white; font-size: calc(9 * var(--u)); text-shadow: 0 1px black; }
+.wm-youtube .yt-hud-live .yt-new { margin: 0; flex: 0 0 auto; }
+.wm-youtube .yt-pl-mode { color: color-mix(in srgb, white 72%, transparent); }
+.wm-youtube .yt-side-live { display: flex; align-items: center; gap: calc(4 * var(--u)); }
+.wm-youtube .yt-side-live .yt-new { margin: 0; flex: 0 0 auto; }
 .wm-youtube .yt-hud-key {
     appearance: none;
     -webkit-appearance: none;
