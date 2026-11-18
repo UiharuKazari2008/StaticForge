@@ -67,6 +67,11 @@
         softkeyExtend: 'wmSoftkeyExtend',
         // ... and status icons never cross the camera in the title bar: they fold into the notification group
         statusNoCross: 'wmStatusNoCross',
+        // ... the sound (volume) icon: 'possible' (only on Vibrate / Off and just after a volume change), '' (steps
+        // aside when space is needed), 'never' (always shown); the power (battery) icon: 'home' (only on the home
+        // screen), '' (charging steps aside when space is needed), 'never' (always shown) (Yukimi, Nov 17)
+        statusSoundIcon: 'wmStatusSoundIcon',
+        statusPowerIcon: 'wmStatusPowerIcon',
         // Settings > Today > Appearance > Rotation: Today turns with the phone (a foldable: per screen)
         homeRotate: 'wmHomeRotate',
         homeRotateCover: 'wmHomeRotateCover',
@@ -97,6 +102,9 @@
     const runningRelease = () => (root.dataset.wmRev === '6.5.1' ? '6.5.1' : runningVersion());
     const SCALES = [1, 1.25, 1.5, 1.75, 2];
     // Settings > Screen > Bezel: logo height and model text size, in % of the band (wmShell syncBezel)
+    // Settings > Screen > Bezel > Status icons (Yukimi, Nov 17)
+    const STATUS_SOUND = [['possible', 'Hide when possible'], ['space', 'Hide when space is needed'], ['never', 'Never hide']];
+    const STATUS_POWER = [['home', 'Hide when not on the home screen'], ['charging', 'Hide when charging and space is needed'], ['never', 'Never hide']];
     const BEZEL_LOGO_SIZES = [40, 50, 60, 70, 80, 90, 100];
     const BEZEL_MODEL_SIZES = [20, 25, 30, 35, 40, 45, 50];
     // The Start mark stands for the title bar flag: 6.1's is the glossy colour flag (shellres icon
@@ -2035,6 +2043,8 @@
                 extend: lsGet(K.cameraExtend) === '1',
                 softExtend: lsGet(K.softkeyExtend) === '1',
                 noCross: lsGet(K.statusNoCross) === '1',
+                soundIcon: lsGet(K.statusSoundIcon) || 'space',
+                powerIcon: lsGet(K.statusPowerIcon) || 'charging',
                 logoOpacity: Math.min(100, Math.max(10, Number(lsGet(K.bezelLogoOpacity)) || 55)),
                 logoSize: BEZEL_LOGO_SIZES.includes(Number(lsGet(K.bezelLogoSize))) ? Number(lsGet(K.bezelLogoSize)) : 70,
                 logoPos: lsGet(K.bezelLogoPos) || 'auto',
@@ -2068,6 +2078,10 @@
                         ${check('wmCameraExtend', 'Extend Status Bar to edge of Camera', d.extend)}
                         ${check('wmStatusNoCross', 'Do not allow status icons to cross over camera hole (collapse into notification group)', d.noCross)}
                         ${check('wmCameraPortraitOnly', 'Only in portrait (a turned phone uses the whole screen)', d.portraitOnly)}
+                        <div class="wm-form-gap"></div>
+                        <div class="wm-form-sub">Status icons</div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Sound icon:</span>${ui.comboHtml('soundicon', (STATUS_SOUND.find(([k]) => k === d.soundIcon) || STATUS_SOUND[1])[1])}</div>
+                        <div class="wm-form-row is-wide"><span class="wm-form-label">Power icon:</span>${ui.comboHtml('powericon', (STATUS_POWER.find(([k]) => k === d.powerIcon) || STATUS_POWER[1])[1])}</div>
                         <div class="wm-form-gap"></div>
                         <div class="wm-form-sub">Logo</div>
                         <p>Opacity:</p>
@@ -2123,6 +2137,8 @@
                     bind('wmCameraExtend', (v) => { d.extend = v; });
                     bind('wmSoftkeyExtend', (v) => { d.softExtend = v; });
                     bind('wmStatusNoCross', (v) => { d.noCross = v; });
+                    ui.bindCombo(q('[data-act="soundicon"]'), STATUS_SOUND, d.soundIcon, (v) => { d.soundIcon = v; });
+                    ui.bindCombo(q('[data-act="powericon"]'), STATUS_POWER, d.powerIcon, (v) => { d.powerIcon = v; });
                     ui.bindCombo(q('[data-act="topmode"]'), MODES, modeNow(), (v) => {
                         if (d.bars) d.bars.hideStatus = v !== 'android';
                         d.camera = v === 'bezel' ? 'bezel' : 'clear';
@@ -2216,6 +2232,10 @@
                 ];
                 for (const [k, v] of bezelSets) {
                     if ((lsGet(k) || null) !== v) { lsSet(k, v); keys.push(k); }
+                }
+                for (const [k, v, def] of [[K.statusSoundIcon, d.soundIcon, 'space'], [K.statusPowerIcon, d.powerIcon, 'charging']]) {
+                    const want = v === def ? null : v;
+                    if ((lsGet(k) || null) !== want) { lsSet(k, want); keys.push(k); }
                 }
                 if (d.noCross !== (lsGet(K.statusNoCross) === '1')) {
                     lsSet(K.statusNoCross, d.noCross ? '1' : null);

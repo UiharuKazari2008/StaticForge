@@ -3249,13 +3249,18 @@
         if (dev.signal) { put(sig, 'icon', dev.signal.icon); tip(sig, dev.signal.text); }
         hide(shell.querySelector('[data-role="roaming"]'), !(dev.cell && dev.cell.roaming === true && dev.signal && dev.signal.icon !== 'signal-off'));
         const bat = shell.querySelector('[data-role="battery"]');
-        hide(bat, !dev.battery);
+        // Settings > Screen > Status icons > Power icon: 'home' = only on the home screen (Today)
+        hide(bat, !dev.battery || (statusIconPref('wmStatusPowerIcon') === 'home' && current !== 'today'));
         if (dev.battery) { put(bat, 'icon', dev.battery.icon); tip(bat, dev.battery.text); }
         batteryLowCheck(dev.battery);
         batteryFullCheck(dev.battery);
         const vol = shell.querySelector('[data-role="volume"]');
         const mode = soundMode();
         put(vol, 'icon', mode === 'off' ? 'volume-off' : mode === 'vibrate' ? 'vibrate' : 'volume');
+        // Settings > Screen > Status icons > Sound icon: 'possible' = only on Vibrate / Off and for a moment after a
+        // volume change; otherwise it shows as before (stepping aside when space is needed unless 'never')
+        if (statusIconPref('wmStatusSoundIcon') === 'possible') hide(vol, mode === 'on' && Date.now() >= soundShownUntil);
+        else hide(vol, false);
         // pending things, as WM shows a notification glyph: the Director (an open clapper that claps
         // while a turn runs; closed while it is idle and its app is open), prints in progress,
         // unread mail, an update downloaded and ready to install
@@ -3756,7 +3761,7 @@
             (window.screen && screen.orientation && screen.orientation.angle) || 0]; // a half turn changes no size
         const st = root.style;
         ['--camera-hole-left', '--camera-hole-top', '--camera-hole-width', '--camera-hole-height', '--wm-safe-top'].forEach((n) => parts.push(st.getPropertyValue(n)));
-        try { parts.push(localStorage.getItem('wmStatusNoCross'), localStorage.getItem('wmStatusSlots'), localStorage.getItem('wmCameraExtendBar')); } catch (_) { /* storage off */ }
+        try { parts.push(localStorage.getItem('wmStatusNoCross'), localStorage.getItem('wmStatusSlots'), localStorage.getItem('wmCameraExtendBar'), localStorage.getItem('wmStatusSoundIcon'), localStorage.getItem('wmStatusPowerIcon')); } catch (_) { /* storage off */ }
         for (const c of bar.children) {
             // the icons' own wm-shed is the fit's output, not its input
             parts.push(c.className, c.hidden ? 1 : 0, c.classList.contains('wm-title') ? c.textContent : '');
@@ -4238,9 +4243,10 @@
         // (Yukimi, Nov 17: the cover fitted 6 icons and the "..." but folded three behind 27 empty units)
         const act = bar.querySelector('.wm-title-action');
         if ((!act || act.hidden) && step(() => bar.classList.add('wm-status-full'))) return;
-        if (!el('volume').hidden && step(() => el('volume').classList.add('wm-shed'))) return;
+        // (Settings > Screen > Status icons: "Never hide" keeps the sound / power icon out of this)
+        if (!el('volume').hidden && statusIconPref('wmStatusSoundIcon') !== 'never' && step(() => el('volume').classList.add('wm-shed'))) return;
         const bat = el('battery');
-        if (!bat.hidden && bat.dataset.icon === 'battery-charging' && step(() => bat.classList.add('wm-shed'))) return;
+        if (!bat.hidden && bat.dataset.icon === 'battery-charging' && !statusIconPref('wmStatusPowerIcon') && step(() => bat.classList.add('wm-shed'))) return;
         // fold from the oldest, one more each time; a group holds two or more (one app icon
         // alone in it takes the same room as the icon itself), and the ongoing or newest one stays
         // out while the bar only passes the 50 % mark
@@ -4255,6 +4261,17 @@
     // #811: app icons that always keep their place (Continuity: the phone carries the DeX window)
     // a Nightshade Network problem is never folded into the notification icon (#895)
     const STATUS_NEVER_FOLD = new Set(['continuity', 'nightshade']);
+    /** Settings > Screen > Status icons (wmPrograms K.statusSoundIcon / statusPowerIcon); '' = the default. */
+    function statusIconPref(key) { try { return localStorage.getItem(key) || ''; } catch (_) { return ''; } }
+    // the sound icon in "hide when possible": shown until this time after a volume change
+    let soundShownUntil = 0;
+    let soundShownTimer = 0;
+    function soundIconMoment() {
+        if (statusIconPref('wmStatusSoundIcon') !== 'possible') return;
+        soundShownUntil = Date.now() + 3000;
+        clearTimeout(soundShownTimer);
+        soundShownTimer = setTimeout(() => { soundShownTimer = 0; refreshStatus(); }, 3100);
+    }
     // when each app icon came up (the newest stays out of the group)
     const statusSeenAt = new Map();
     /** Ongoing work on an icon: the Director's turn, prints, an update downloading. */
@@ -6203,6 +6220,7 @@
         window.addEventListener('androidvolume', (e) => {
             avState = (e && e.detail) || null;
             avAt = Date.now();
+            soundIconMoment();
             if (volumePaint) volumePaint();
             refreshStatus();
             if (barsExternal && window.melatonBars && window.melatonBars.pushLayouts) window.melatonBars.pushLayouts(['volume'], true);
