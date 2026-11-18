@@ -71,6 +71,11 @@
             clearInterval(tickTimer);
             tickTimer = null;
         }
+        if (tickWake) {
+            document.removeEventListener('visibilitychange', tickWake);
+            window.removeEventListener('melatonscreen', tickWake);
+            tickWake = null;
+        }
     }
 
     function resolveOnce(payload) {
@@ -378,21 +383,36 @@
         void applyClientUpdatesAndRestart();
     }
 
+    // not seen: a hidden tab or a screen that is off (the page stays visible, html[data-screen-off])
+    function unseen() {
+        return document.hidden || document.documentElement.hasAttribute('data-screen-off');
+    }
+
+    let tickDeadline = 0;
+    let tickWake = null;
+
     function startTick() {
         clearTick();
-        // perf: allow the mandatory restart countdown: lives only while its dialog counts (at most 300 s, cleared at 0 or Cancel), and its zero applies the update, which a hidden desktop tab must do too (a phone holds it until seen)
-        tickTimer = setInterval(() => {
+        // the count comes from a deadline, so hidden-tab timer throttling cannot stretch it (#890)
+        tickDeadline = Date.now() + Math.max(0, remaining) * 1000;
+        const tick = () => {
             if (phase !== 'counting') {
                 clearTick();
                 return;
             }
-            remaining -= 1;
+            remaining = Math.max(0, Math.ceil((tickDeadline - Date.now()) / 1000));
             if (remaining <= 0) {
                 startApplying();
                 return;
             }
-            renderCounting();
-        }, 1000);
+            // nothing redraws while not seen; the wake below draws the count the moment it is
+            if (!unseen()) renderCounting();
+        };
+        tickWake = () => { if (!unseen()) tick(); };
+        document.addEventListener('visibilitychange', tickWake);
+        window.addEventListener('melatonscreen', tickWake);
+        // perf: allow the mandatory restart countdown: lives only while its dialog counts (at most 300 s, cleared at 0 or Cancel), draws only while seen, and its zero applies the update, which a hidden desktop tab must do too (a phone holds it until seen)
+        tickTimer = setInterval(tick, 1000);
     }
 
     /**
