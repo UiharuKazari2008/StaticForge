@@ -3327,6 +3327,16 @@
         const nsEl = shell.querySelector('[data-role="nightshade"]');
         hide(nsEl, !(ns && ns.problem && bootDoneAt));
         if (!bubble0Hidden() && shell.querySelector('.wm-bubble').dataset.role === 'nightshade' && nsEl && nsEl.hidden) closeBubble();
+        // the app's CaféReady status-bar task (#908): what the server says (mail read elsewhere stays unread here until
+        // this page reads it again; mail that came while it slept) shows here too, so the page's bar and the native bar
+        // agree. Never hides what this page knows is waiting; the link icon stays this page's own
+        if (taskRoles) {
+            for (const [role, on] of Object.entries(taskRoles)) {
+                if (!on || role === 'nightshade' || BARS_NATIVE_ROLES.has(role)) continue;
+                const el = shell.querySelector(`[data-role="${role}"]`);
+                if (el && el.hidden) hide(el, false);
+            }
+        }
         paintBezelLed();
         syncStrips();
         if (noteTrayOpen) renderNotes(); else fitStatus();
@@ -3527,6 +3537,22 @@
     const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
     const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
     let barsCatalogSent = '';
+    // the status-bar task's roles (window.AndroidTasks, #908): read once, then from its cafetasks event
+    let taskRoles = null;
+    (function watchTaskRoles() {
+        try {
+            const T = window.AndroidTasks;
+            if (!T || typeof T.owns !== 'function' || !T.owns('status-bar')) return;
+            const o = JSON.parse(T.output('status-bar') || 'null');
+            taskRoles = (o && o.roles) || null;
+        } catch (_) { taskRoles = null; }
+        window.addEventListener('cafetasks', (e) => {
+            const d = e && e.detail;
+            if (!d || d.name !== 'status-bar') return;
+            taskRoles = (d.output && d.output.roles) || null;
+            statusDirty();
+        }, { signal: appScopeSignal });
+    })();
     function barsStatusPush() {
         const ab = window.AndroidBars;
         if (!ab || typeof ab.status !== 'function' || !shell) return;
