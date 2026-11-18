@@ -38,6 +38,8 @@ function registerPackets(handlersCtx) {
         const queue = gr && typeof gr.getGenerationJobQueue === 'function' ? gr.getGenerationJobQueue() : require('../../generationJobQueue').getSharedGenerationJobQueue();
         require('../../notificationInboxSources').bindPrintQueue(queue);
     } catch (e) { console.warn(`[294-notificationInboxHandler] print queue: ${e.message}`); }
+    // the household mailbox's deliveries raise their own notices (#908)
+    try { require('../../notificationInboxSources').bindDovecote(); } catch (e) { console.warn(`[294-notificationInboxHandler] dovecote: ${e.message}`); }
     // calendar appointment and task reminders fire from the server (#876)
     try { reminders.start(handlersCtx.globalResources); } catch (e) { console.warn(`[294-notificationInboxHandler] reminders: ${e.message}`); }
     const reg = (type, fn, meta = {}) => {

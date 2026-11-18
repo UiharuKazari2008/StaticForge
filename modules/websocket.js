@@ -421,6 +421,7 @@ class WebSocketServer {
             });
 
             plumbing.subscribe('ws:broadcast:agentNotice', (data) => {
+                try { require('./notificationInboxSources').onSystemNotice({ id: data && data.id, title: data && data.title, message: data && data.message, level: data && data.level }); } catch (_) { /* best effort */ }
                 this.broadcast({
                     type: 'agent_notice',
                     data: {
@@ -1392,6 +1393,8 @@ class WebSocketServer {
     }
 
     broadcastSystemMessage(message, level = 'info') {
+        // warnings and errors reach the phone page or no page (notificationInboxSources, #908)
+        try { require('./notificationInboxSources').onSystemNotice({ message, level }); } catch (_) { /* best effort */ }
         this.broadcast({
             type: 'system_message',
             data: { message, level },

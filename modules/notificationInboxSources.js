@@ -12,6 +12,7 @@
  *
  * Ids (shared with the page: public/scripts/comp/wmMessaging.js, wmChat.js, weatherAlerts.js):
  *   mail:<account>:<folder>:<uid>     New E-mail Message (an IMAP account's new mail, notify on)
+ *   dmail:<message id>                New E-mail Message (the household's own Dovecote mailbox)
  *   sms:<account>:<chatGuid>          New Text Message (the conversation's newest line)
  *   tm-signin:<account>               Text messages stopped (RCS pairing ended / signed out)
  *   chat:<chatId>                     Dreamscape Messenger: a persona's reply to the phone
@@ -88,6 +89,145 @@ function onMailEvent(p) {
     }
 }
 
+// ---------------------------------------------------------------- Dovecote mail (the household's own mailbox, #908)
+//
+// The phone's mailbox is the human owner's (dovecoteMail.HUMAN_OWNER, the page's Messaging > Dreamscape). A delivery to
+// its inbox (dovecoteMailboxEvents mailbox_new_mail) is a New E-mail Message on the phone, page or no page; read,
+// archived, deleted or marked spam anywhere clears it. id dmail:<message id>.
+
+const dmailId = (id) => `dmail:${id}`;
+let dovecoteBound = false;
+
+function onDovecoteNewMail(event) {
+    if (!event || !event.id) return;
+    let human = 'yukimi';
+    try { human = require('./dovecoteMail').HUMAN_OWNER || human; } catch (_e) { /* default */ }
+    if (event.mailbox !== human) return;
+    const from = headerName(event.from) || 'Unknown sender';
+    const subject = event.subject || '(no subject)';
+    publish({
+        app: 'messaging',
+        id: dmailId(event.id),
+        cls: 'mail',
+        title: 'New E-mail Message',
+        text: `From: ${from}\n${subject}`,
+        actions: ['view'],
+        data: { app: 'messaging', kind: 'dovecote', id: event.id, from, subject },
+        ttlMs: 7 * DAY,
+    });
+}
+
+function onDovecoteDone(id) {
+    if (id != null) clear('admin', dmailId(id));
+}
+
+/** Listen to the household mailbox's deliveries (once; the inbox handler binds it at start). */
+function bindDovecote() {
+    if (dovecoteBound) return;
+    dovecoteBound = true;
+    try { require('./dovecoteMailboxEvents').subscribe(onDovecoteNewMail); } catch (e) { console.warn(`[notify-inbox] dovecote: ${e.message}`); }
+}
+
+// ---------------------------------------------------------------- server-only notices (#908)
+//
+// Things only the page told of before (its own toast or dialog), raised here so the phone gets them page or no page:
+//   question:<formId>      a Director / agent question (request_form) waiting for an answer; cleared when answered
+//   emotion:<requestId>    an eMotion animation finished or failed
+//   system:<id>            an agent notice or a system message at warning / error level
+//   api-key:<service>      an API key or service lock needs attention (admin)
+
+function onQuestion(spec) {
+    if (!spec || !spec.id) return;
+    const labels = (Array.isArray(spec.fields) ? spec.fields : []).map((f) => f && (f.label || f.name)).filter(Boolean).slice(0, 3);
+    publish({
+        app: 'director',
+        id: `question:${spec.id}`,
+        cls: 'question',
+        title: clip(spec.title || 'A question for you', 80),
+        text: labels.length ? clip(labels.join(', '), 200) : 'Open Dreamscape to answer.',
+        actions: ['view'],
+        data: { app: 'director', kind: 'question', formId: spec.id },
+        ttlMs: 30 * 60 * 1000,
+    });
+}
+function onQuestionClosed(id) {
+    if (id) clear('admin', `question:${id}`);
+}
+
+function onEmotionDone(job) {
+    if (!job || !(job.status === 'completed' || job.status === 'failed')) return;
+    const id = job.requestId || job.sourceFilename;
+    if (!id) return;
+    const ok = job.status === 'completed';
+    publish({
+        app: 'emotion',
+        id: `emotion:${id}`,
+        cls: 'emotion',
+        title: ok ? 'Animation ready' : 'Animation failed',
+        text: clip(ok ? (job.sourceFilename || 'Your eMotion animation is done.') : (job.error || job.message || 'eMotion could not animate the picture.'), 200),
+        actions: ['view'],
+        data: { app: 'emotion', kind: 'emotion', requestId: job.requestId || null, filename: job.sourceFilename || null, ok },
+        ttlMs: DAY,
+    });
+}
+
+function onSystemNotice({ id, title, message, level } = {}) {
+    const lv = String(level || 'info');
+    if (lv !== 'warning' && lv !== 'error') return;
+    const text = clip(message, 300);
+    if (!text) return;
+    const key = id || require('crypto').createHash('sha1').update(`${title}|${text}`).digest('hex').slice(0, 12);
+    publish({
+        app: 'system',
+        id: `system:${key}`,
+        cls: 'system',
+        title: clip(title || (lv === 'error' ? 'Dreamscape error' : 'Dreamscape'), 80),
+        text,
+        data: { app: 'system', kind: 'system', level: lv },
+        ttlMs: DAY,
+    });
+}
+
+/** apiKeyHealth's statuses { service: [{ index, apiKey: { state, message }, <field>: {...} }] }: a failing key notifies. */
+function onApiKeyStatus(statuses) {
+    for (const [service, rows] of Object.entries(statuses || {})) {
+        const checks = (Array.isArray(rows) ? rows : []).flatMap((r) => Object.values(r || {}).filter((v) => v && typeof v === 'object' && v.state));
+        const failing = checks.find((c) => c.state === 'fail');
+        const id = `api-key:${service}`;
+        if (failing) {
+            publish({
+                app: 'accounts',
+                id,
+                cls: 'api-key',
+                title: `${service}: an API key stopped working`,
+                text: clip(failing.message || 'Check the key in Accounts.', 200),
+                data: { app: 'accounts', kind: 'api-key', service },
+                ttlMs: 7 * DAY,
+            });
+        } else if (checks.length && checks.every((c) => c.state === 'ok')) {
+            clear('admin', id);
+        }
+    }
+}
+
+function onApiServiceLock({ service, label, lock } = {}) {
+    if (!service) return;
+    const id = `api-key:${service}`;
+    if (lock) {
+        publish({
+            app: 'accounts',
+            id,
+            cls: 'api-key',
+            title: `${label || service} is locked`,
+            text: clip((lock && (lock.reason || lock.message)) || 'Requests to this service are stopped until it is unlocked.', 200),
+            data: { app: 'accounts', kind: 'api-key', service },
+            ttlMs: 7 * DAY,
+        });
+    } else {
+        clear('admin', id);
+    }
+}
+
 // ---------------------------------------------------------------- text messages (textMessaging tm_event)
 
 /** wmChat tmFrom / tmText. */
@@ -112,6 +252,24 @@ function tmText(m) {
 
 const smsId = (accountId, chatGuid) => `sms:${accountId}:${chatGuid}`;
 
+/** The conversation's details for the app's MessagingStyle notification (textMessagingPhone's old tm.notify detail). */
+function smsThread(p) {
+    const m = p.message || {};
+    const sender = (m.sender && (m.sender.name || m.sender.address)) || 'Unknown';
+    let account = null;
+    try { account = require('./textMessaging').listAccounts().accounts.find((a) => a.id === p.accountId) || null; } catch (_e) { account = null; }
+    return {
+        guid: m.guid || '',
+        title: p.chatTitle || sender,
+        sender,
+        address: (m.sender && m.sender.address) || '',
+        isGroup: !!p.isGroup,
+        date: m.date || Date.now(),
+        service: m.service || (account && account.service) || '',
+        account: account ? (account.identity || account.service || 'Text Messaging') : 'Text Messaging'
+    };
+}
+
 /** textMessaging.broadcast(out): a new text notifies (the conversation's newest line); read clears. */
 function onTextEvent(p) {
     // an Android app account (#885): the app's own notification is already on the phone
@@ -130,7 +288,9 @@ function onTextEvent(p) {
             title: 'New Text Message',
             text: `From: ${from}\n${text}`,
             actions: ['reply'],
-            data: { app: 'messaging', kind: 'sms', accountId: p.accountId, chatGuid: p.chatGuid, from, text },
+            // what the app's conversation notification needs (MessagingStyle, Reply, Mark as read; #908: the one
+            // path for a new text, confirmed and retried, in place of the separate tm.notify)
+            data: Object.assign({ app: 'messaging', kind: 'sms', accountId: p.accountId, chatGuid: p.chatGuid, from, text }, smsThread(p)),
             ttlMs: 7 * DAY,
         });
         return;
@@ -364,6 +524,15 @@ function onRainAlarm(d) {
 
 module.exports = {
     onMailEvent,
+    onDovecoteNewMail,
+    onQuestion,
+    onQuestionClosed,
+    onEmotionDone,
+    onSystemNotice,
+    onApiKeyStatus,
+    onApiServiceLock,
+    onDovecoteDone,
+    bindDovecote,
     onTextEvent,
     onChatReply,
     onDirectorStatus,

@@ -971,6 +971,10 @@ function markMail(owner, { id, read, archived, deleted, archiveSubfolder, spam, 
     const values = Object.values(updates);
     getDb().prepare(`UPDATE dovecote_message SET ${sets} WHERE id = ?`).run(...values, row.id);
     audit(owner, 'mark_mail', id, true, JSON.stringify(updates));
+    // read or moved out of the inbox: the phone's "New E-mail Message" for it goes (notificationInboxSources, #908)
+    if (owner === HUMAN_OWNER && (read === true || deleted === true || archived === true || spam === true)) {
+        try { require('./notificationInboxSources').onDovecoteDone(row.id); } catch (_e) { /* best effort */ }
+    }
     if (!silent) emitMailboxChanged([owner, receiptOwner]);
     else if (receiptOwner && changedOwners instanceof Set) changedOwners.add(receiptOwner);
     const updated = getDb().prepare('SELECT * FROM dovecote_message WHERE id = ?').get(row.id);

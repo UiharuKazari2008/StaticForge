@@ -2749,6 +2749,7 @@ class GlobalResources {
         try {
             const wsServer = this.webSocketServer;
             if (wsServer && typeof wsServer.broadcastToAll === 'function') {
+                try { require('./notificationInboxSources').onApiServiceLock({ service, label, lock }); } catch (_) { /* best effort (#908) */ }
                 wsServer.broadcastToAll({
                     type: 'api_service_lock_changed',
                     data: { service, label, lock },
