@@ -1520,8 +1520,14 @@
         return lruPut(blurCache, u, pr, BLUR_MAX);
     }
     /** Line the band's copy up with the picture layer (on show, resize and a new picture only). */
+    // where the glass was last lined up: the same screen and band need no new measure (each one a forced layout - 43 ms
+    // in the first frame of a return home on the A53, Nov 18, for the same numbers every time)
+    let blurPlacedKey = '';
     function blurPlace() {
         if (!blurClip || blurClip.hidden || !wallEl) return;
+        const key = `${window.innerWidth}x${window.innerHeight}@${window.devicePixelRatio}|${focusTop()}|${wallEl.style.cssText.length}`;
+        if (key === blurPlacedKey && blurInner.style.width) return;
+        blurPlacedKey = key;
         const w = wallEl.getBoundingClientRect();
         const c = blurClip.getBoundingClientRect();
         if (!w.width || !c.width) return;

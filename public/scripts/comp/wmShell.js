@@ -3915,12 +3915,36 @@
     const BEZEL_KEYS = ['wmBezelLogoOpacity', 'wmBezelLogoSize', 'wmBezelLogoPos', 'wmBezelModelShow', 'wmBezelModel', 'wmBezelModelPos', 'wmBezelModelSize', 'wmCameraPortraitOnly'];
     let lastBezelKey = '';
 
+    // the app's display answers, kept: each is a synchronous call into the app (10-25 ms on the A53 while Android brings
+    // the window back, several on every return home, Nov 18 CPU profile); read again when they may have changed - the
+    // window's size (a fold, a turn), the camera's place, a setting
+    let sysBarsKept = null;
+    let screenInfoKept;
+    const forgetDisplayAnswers = () => { sysBarsKept = null; screenInfoKept = undefined; };
+    window.addEventListener('resize', forgetDisplayAnswers, { signal: appScopeSignal });
+    window.addEventListener('dreamscape:cutout', forgetDisplayAnswers, { signal: appScopeSignal });
+    document.addEventListener('wmSettingsChange', forgetDisplayAnswers, { signal: appScopeSignal });
+    function systemBarsRaw() {
+        if (sysBarsKept === null) {
+            const dv = window.AndroidDisplay;
+            try { sysBarsKept = dv && typeof dv.getSystemBars === 'function' ? (dv.getSystemBars() || '') : ''; } catch (_) { sysBarsKept = ''; }
+        }
+        return sysBarsKept;
+    }
+    function screenInfoNow() {
+        if (screenInfoKept === undefined) {
+            const D = window.AndroidDisplay;
+            try { screenInfoKept = D && typeof D.getScreenInfo === 'function' ? JSON.parse(D.getScreenInfo() || 'null') : null; } catch (_) { screenInfoKept = null; }
+        }
+        return screenInfoKept;
+    }
+
     function cameraIgnoredNow() {
         // Settings > Screen > Bezel: the camera is handled only while the app hides the status bar
         // (with the bar showing, the camera sits under it anyway)
-        const dv = window.AndroidDisplay;
-        if (dv && typeof dv.getSystemBars === 'function') {
-            try { if (JSON.parse(dv.getSystemBars()).hideStatus === false) return true; } catch (_) { /* older app */ }
+        const raw = systemBarsRaw();
+        if (raw) {
+            try { if (JSON.parse(raw).hideStatus === false) return true; } catch (_) { /* older app */ }
         }
         let only = false;
         try { only = localStorage.getItem('wmCameraPortraitOnly') === '1'; } catch (_) { /* storage off */ }
@@ -4036,7 +4060,7 @@
         let ls = '';
         try { ls = BEZEL_KEYS.map((k) => localStorage.getItem(k)).join('|'); } catch (_) { /* storage off */ }
         let bars = '';
-        try { bars = window.AndroidDisplay && typeof window.AndroidDisplay.getSystemBars === 'function' ? window.AndroidDisplay.getSystemBars() : ''; } catch (_) { /* older app */ }
+        bars = systemBarsRaw();
         const bezelKey = [viewW(), viewH(), style.getPropertyValue('--camera-hole-left'), style.getPropertyValue('--camera-hole-top'),
             style.getPropertyValue('--camera-hole-width'), style.getPropertyValue('--camera-hole-height'), style.getPropertyValue('--wm-px'),
             style.getPropertyValue('--display-corner-tl'), style.getPropertyValue('--display-corner-tr'), ls, bars,
@@ -4272,8 +4296,7 @@
         const D = window.AndroidDisplay;
         const atTop = bar && bar.getBoundingClientRect().top <= 0.5;
         if (atTop && D && typeof D.getScreenInfo === 'function') {
-            let info = null;
-            try { info = JSON.parse(D.getScreenInfo() || 'null'); } catch (_) { info = null; }
+            const info = screenInfoNow();
             const dpr = window.devicePixelRatio || 1;
             const icon = bar.querySelector('.wm-start img') || bar.querySelector('.wm-status-icon:not([hidden])');
             const rowTop = icon ? Math.max(0, icon.getBoundingClientRect().top) : 0;
@@ -4299,9 +4322,8 @@
 
     /** A foldable phone on its unfolded (main) screen: AndroidDisplay.getScreenInfo. */
     function unfoldedScreen() {
-        const D = window.AndroidDisplay;
-        if (!D || typeof D.getScreenInfo !== 'function') return false;
-        try { const i = JSON.parse(D.getScreenInfo() || 'null'); return !!(i && i.foldable && i.screen === 'main'); } catch (_) { return false; }
+        const i = screenInfoNow();
+        return !!(i && i.foldable && i.screen === 'main');
     }
 
     /**

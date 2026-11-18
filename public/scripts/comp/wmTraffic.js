@@ -393,9 +393,17 @@
      * the last report's route, or null (not in the window, no device position, off the route).
      */
     /** The app's drive state (DSApp AndroidHome.getDriveState, #890 / #907): 'driving', 'maybe', ... or '' without it. */
+    // kept: the app pushes every change ('androiddrive'), and the synchronous read cost 31 ms on the A53 in the first
+    // frames of a return home (Nov 18 CPU profile); read again once a minute at most in case a push was missed
+    let driveKept = null;
+    let driveReadAt = 0;
     function nativeDriveState() {
-        try { const H = window.AndroidHome; const d = H && typeof H.getDriveState === 'function' ? JSON.parse(H.getDriveState() || 'null') : null; return (d && d.state) || ''; } catch (_) { return ''; }
+        if (driveKept !== null && Date.now() - driveReadAt < 60000) return driveKept;
+        driveReadAt = Date.now();
+        try { const H = window.AndroidHome; const d = H && typeof H.getDriveState === 'function' ? JSON.parse(H.getDriveState() || 'null') : null; driveKept = (d && d.state) || ''; } catch (_) { driveKept = ''; }
+        return driveKept;
     }
+    window.addEventListener('androiddrive', (e) => { const st = e && e.detail && e.detail.state; if (typeof st === 'string') { driveKept = st; driveReadAt = Date.now(); } }, { signal: appScopeSignal });
     // when the app last said a drive started: a drive outside the commute windows is keyed by it
     let nativeDriveSince = 0;
     const nativeDriving = () => nativeDriveState() === 'driving';
@@ -451,8 +459,7 @@
         if (!loaded || !canUse() || !configured()) return '';
         const dv = driving();
         if (!dv) return '';
-        let st = '';
-        try { const H = window.AndroidHome; const d = H && typeof H.getDriveState === 'function' ? JSON.parse(H.getDriveState() || 'null') : null; st = (d && d.state) || ''; } catch (_) { st = ''; }
+        const st = nativeDriveState();
         if (/^(idle|stopped|parked_in_car)$/.test(st)) return '';
         return `traffic_police_${dv.direction}`;
     }
