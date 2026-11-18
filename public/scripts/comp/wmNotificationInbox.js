@@ -156,7 +156,16 @@
         });
         if (!note) return;
         shownNotes.set(notice.id, note);
+        pageShown(notice.id);
         ack(notice.id, 'seen');
+    }
+
+    /**
+     * This page showed the notice (its own note, or the producing app's): the Android app does not post it too. The app
+     * posts any notice a page in front does not confirm within seconds (#908: a frozen page never swallows a notice).
+     */
+    function pageShown(id) {
+        try { const A = window.AndroidInbox; if (A && typeof A.shown === 'function') A.shown(String(id)); } catch (_) { /* no app */ }
     }
 
     /** Show one missed notice as a WM notification; View opens its app, Dismiss clears it. */
@@ -170,6 +179,7 @@
             try { taken = app.inboxAdopt(notice) !== false; } catch (_) { taken = false; }
             if (taken) {
                 shownNotes.set(notice.id, { close() { try { if (typeof app.inboxDrop === 'function') app.inboxDrop(notice); } catch (_) { /* gone */ } } });
+                pageShown(notice.id);
                 ack(notice.id, 'seen');
                 return;
             }
@@ -186,6 +196,7 @@
         });
         if (!note) return;
         shownNotes.set(notice.id, note);
+        pageShown(notice.id);
         ack(notice.id, 'seen');
     }
 
@@ -229,7 +240,7 @@
             if (isReminder(d.notice)) { reminders.set(d.notice.id, d.notice); showReminder(d.notice); return; }
             // live and in the foreground: the producing app shows it; just keep it from reappearing.
             // not in the foreground (a background tick): leave it 'new' so it shows on resume.
-            if (!document.hidden) ack(d.notice.id, 'seen');
+            if (!document.hidden) { pageShown(d.notice.id); ack(d.notice.id, 'seen'); }
         }
     }
 
