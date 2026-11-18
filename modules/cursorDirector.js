@@ -1519,6 +1519,15 @@ function sameMessage(a, b) {
     return keys.every((key) => a[key] === b[key]);
 }
 
+// A chat's index fields, messages aside. updated_at only when it counts: a draft save bumps it
+// every 2 s (markChatActive), which alone rewrote the 550 KB index.json each time.
+function sameChatFields(a, b, ignoreUpdatedAt) {
+    const skip = (key) => key === 'messages' || (ignoreUpdatedAt && key === 'updated_at');
+    const keys = Object.keys(a).filter((key) => !skip(key));
+    if (keys.length !== Object.keys(b).filter((key) => !skip(key)).length) return false;
+    return keys.every((key) => a[key] === b[key]);
+}
+
 function sameMessages(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b)) return a === b;
     if (a.length !== b.length) return false;
@@ -1534,10 +1543,13 @@ function writeIndex(indexPath, index, options) {
     const next = copyIndex(index);
     const before = new Map(store.index.chats.map((chat) => [chat.id, chat]));
     const now = Date.now();
+    // false: the index file itself has to change (a chat added, removed, renamed...)
+    let draftOnly = draft && store.index.chats.length === next.chats.length;
     next.chats.forEach((chat) => {
         const prev = before.get(chat.id);
         before.delete(chat.id);
         store.removed.delete(chat.id);
+        if (draftOnly && (!prev || !sameChatFields(prev, chat, true))) draftOnly = false;
         if (prev && sameMessages(prev.messages, chat.messages)) return;
         if (!draft || !prev || store.dirty.has(chat.id)) {
             store.dirty.add(chat.id);
@@ -1566,6 +1578,9 @@ function writeIndex(indexPath, index, options) {
         if (typeof store.draftTimer.unref === 'function') store.draftTimer.unref();
     }
     store.index = next;
+    // A draft save that changed only messages and updated_at waits with the drafts (written by
+    // the draft timer, the next real save or the exit flush, which all promote them).
+    if (draftOnly && store.drafts.size && !store.dirty.size) return;
     store.indexDirty = true;
     scheduleIndexFlush(store);
 }
