@@ -1,11 +1,19 @@
 const wsPacketRegistry = require('../wsPacketRegistry');
 const weatherService = require('../../weatherService');
+const weatherWatch = require('../../weatherWatch');
 const sidebarGadgets = require('../../sidebarGadgets');
 
 // Weather (Yozora #780): every weather read goes through modules/weatherService.js, which caches,
 // rate limits and picks the provider (the Apple Weather service key, else Open-Meteo).
 //
-//   weather_forecast   { lat, lon, lang? } or { here: true }   any signed-in client (Melaton Mobile's Weather)
+//   weather_forecast   { lat, lon, lang?, have? } or { here: true }   any signed-in client (Melaton Mobile's Weather).
+//                      The reply always carries hashes { current, minutely, daily, alerts, hourly: { day: h } }
+//                      (#890 round 5, W1); with have (the hashes the page holds) only the parts that differ,
+//                      hourly as { day: rows }, and same: [part, 'hourly:<day>'] for the rest
+//                      (weatherService.forecastReply). Fields no page reads are left out (WIRE_DROP).
+//   weather_watch      { places: [{ key, lat, lon, have? }] }   while a weather view is on screen: the server
+//                      pushes weather_delta { key, ...the reply shape } when a part changes (weatherWatch.js)
+//   weather_unwatch    {}                                       no weather view on screen
 //   weather_geocode    { name, count? }                       any signed-in client (Add Location)
 //   weather_radar      {}                                     radar frames + tile URL templates
 //   weather_alert      { id, lang? }                          the full text of an Apple Weather alert
@@ -22,6 +30,8 @@ const sidebarGadgets = require('../../sidebarGadgets');
 //   weather_rain_alarm      { place, startsInMin, endsInMin, peakMmh, kind, summary }   once per rain spell
 //   weather_rain_status     weather_rain_status's shape                          rain began / ended / moved
 //   weather_places_changed  { places }                                           Home / Work saved
+// To watchers only (weather_watch): weather_delta { key, available, ...weather_forecast's reply against the
+//   page's have } - held newest-only per place for a sleeping page (websocket.js DORMANT_HOLD)
 //
 // The Apple Weather account is a Service Key (apiKeyManager `appleweather`, Dreamscape CardSpace).
 // { here: true } is the Sidebar gadget's place (client IP, then the configured home): admins only,
@@ -78,7 +88,16 @@ async function handleForecast(handlersCtx, ws, message, clientInfo) {
             place = { name: g.location.city, region: g.location.region, country: g.location.country, lat, lon };
         }
         const forecast = await weatherService.getForecast(lat, lon, { lang: message.lang });
-        reply(handlersCtx, ws, message, Object.assign({ available: true }, forecast, place ? { here: place } : {}));
+        // already compacted and shaped (forecastWire, made once per forecast): sent as it is, not through
+        // reply()'s second compact pass
+        const wire = weatherService.forecastWire(forecast);
+        const body = wire ? weatherService.forecastReply(wire, message.have) : {};
+        handlersCtx.sendToClient(ws, {
+            type: 'weather_forecast_response',
+            requestId: message.requestId,
+            data: Object.assign({ available: true }, body, place ? { here: compact(place) } : {}),
+            timestamp: new Date().toISOString()
+        });
     } catch (error) {
         fail(handlersCtx, ws, message, error, 'Weather could not be loaded');
     }
@@ -153,6 +172,22 @@ async function handlePlace(handlersCtx, ws, message) {
     }
 }
 
+async function handleWatch(handlersCtx, ws, message, clientInfo, wsServer) {
+    try {
+        weatherService.bind(handlersCtx.globalResources);
+        weatherWatch.bind(wsServer || handlersCtx);
+        const keys = weatherWatch.watch(ws, message.places);
+        if (message.requestId) reply(handlersCtx, ws, message, { ok: true, keys });
+    } catch (error) {
+        fail(handlersCtx, ws, message, error, 'Weather could not be watched');
+    }
+}
+
+async function handleUnwatch(handlersCtx, ws, message) {
+    weatherWatch.unwatch(ws);
+    if (message.requestId) reply(handlersCtx, ws, message, { ok: true });
+}
+
 async function handleRainStatus(handlersCtx, ws, message) {
     try {
         weatherService.bind(handlersCtx.globalResources);
@@ -182,6 +217,8 @@ function registerPackets(handlersCtx) {
     reg('weather_places_save', handlePlacesSave, { destructive: true });
     reg('weather_rain_status', handleRainStatus);
     reg('weather_place', handlePlace);
+    reg('weather_watch', handleWatch);
+    reg('weather_unwatch', handleUnwatch);
     // the primary location's alerts, broadcast to every client as they are issued
     weatherService.startAlertMonitor();
 }
