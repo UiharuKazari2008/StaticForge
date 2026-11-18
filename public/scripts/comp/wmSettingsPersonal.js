@@ -458,6 +458,60 @@
         commit: commitSounds
     });
 
+    // ======================================================================== Location (#907)
+
+    // Home and Work for every program (Traffic's commute, Weather's places, the Today items), set once here
+    // through the common lookup (wmLocation.pick), and which programs asked for the phone's position lately
+    const LOC = () => window.wmLocation || null;
+    const WHO = { traffic: 'Traffic', weather: 'Weather', 'dynamic-generation': 'Dynamic Generation', desktop: 'Desktop Background', settings: 'Settings' };
+    wmSettings.registerPage({
+        id: 'location', tab: 'personal', label: 'Location', icon: 'set-location',
+        tabs: [['places', 'Places'], ['use', 'Use']],
+        available: () => !!LOC(),
+        init() { return { placesTick: 0 }; },
+        render(el, tab, d, api) {
+            const L = LOC();
+            if (!d.wired) {
+                d.wired = true;
+                const again = () => { if (el.isConnected) api.rerender(); else document.removeEventListener('wmLocationPlaces', again); };
+                document.addEventListener('wmLocationPlaces', again);
+                void L.placesReady();
+            }
+            if (tab === 'use') {
+                const rows = L.recent();
+                const last = L.last();
+                el.innerHTML = `${ui.sub('Programs that asked for this phone\'s location')}
+                    ${rows.length ? `<div class="wm-facts">${rows.slice(0, 12).map((r) => `<span>${esc(WHO[r.purpose] || r.purpose)}</span><span>${esc(`${L.SPEC_LABEL[r.precision] || r.precision}, ${{ cache: 'from the last fix', shared: 'shared fix', kept: 'last fix (out of sight)', device: 'the phone', ip: 'the network', home: 'Home', watch: 'following', none: 'not found' }[r.served] || r.served} ${new Date(r.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`)}</span>`).join('')}</div>` : ui.text('No program has asked since Melaton started.')}
+                    ${ui.gap()}
+                    ${ui.value('Last fix:', last ? `${new Date(last.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, about ${last.accuracyM >= 1000 ? `${Math.round(last.accuracyM / 1000)} km` : `${Math.round(last.accuracyM)} m`} (${last.source === 'device' ? 'the phone' : last.source === 'ip' ? 'the network' : 'Home'})` : 'None yet')}
+                    ${ui.note('Programs share one position: a program that needs less detail is answered from a recent one instead of asking the phone again.')}`;
+                return;
+            }
+            const p = L.places();
+            const row = (id, label) => {
+                const v = p[id];
+                const text = v ? `${v.label}${v.from === 'legacy' ? ' (from an older setting)' : ''}` : 'Not set';
+                return `<div class="wm-form-row is-wide wsl-place"><span class="wm-form-label">${esc(label)}:</span><span class="wm-form-value">${esc(text)}</span></div>
+                    ${ui.buttons([[`set:${id}`, 'Change...'], ...(v && !v.from ? [[`clear:${id}`, 'Clear']] : [])])}`;
+            };
+            el.innerHTML = `${ui.text('Home and Work are used by every program: Traffic\'s commute, Weather and the Today items.')}
+                ${row('home', 'Home')}${ui.gap()}${row('work', 'Work')}`;
+            el.querySelectorAll('[data-act^="set:"]').forEach((b) => b.addEventListener('click', async () => {
+                const id = b.dataset.act.slice(4);
+                const cur = L.places()[id];
+                const place = await L.pick({ title: id === 'home' ? 'Home' : 'Work', prompt: `Enter your ${id === 'home' ? 'home' : 'work'} address, or a place near it.`, min: 'approximate', max: 'exact', value: cur ? (cur.typed || cur.address || cur.label) : '' });
+                if (!place) return;
+                try { await L.savePlaces({ [id]: place }); } catch (err) { await box({ title: 'Location', icon: 'error', text: `${id === 'home' ? 'Home' : 'Work'} could not be saved. ${(err && err.message) || ''}`.trim() }); }
+                if (el.isConnected) api.rerender();
+            }));
+            el.querySelectorAll('[data-act^="clear:"]').forEach((b) => b.addEventListener('click', async () => {
+                try { await L.savePlaces({ [b.dataset.act.slice(6)]: null }); } catch (_) { /* stays */ }
+                if (el.isConnected) api.rerender();
+            }));
+        },
+        commit() { return []; }
+    });
+
     // ======================================================================== Buttons
 
     /**
