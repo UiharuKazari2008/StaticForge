@@ -14,7 +14,8 @@
  * looping animation resumes from where it paused, which is invisible.
  *
  * One-shot animations (gallery fade-in, Director row arrive, context menus) are ignored so
- * they do not join the observer. Class toggles are flushed on rAF.
+ * they do not join the observer. Class toggles are flushed on rAF; which elements loop is checked
+ * when the page is idle (never inside the animation events: getAnimations() forces a style pass).
  */
 (function () {
     'use strict';
@@ -76,24 +77,41 @@
     }
 
     function unwatchIfDone(el) {
-        if (!el || !watched.has(el) || hasInfiniteAnimation(el)) return;
+        if (!el || !watched.has(el) || (el.isConnected && hasInfiniteAnimation(el))) return;
         watched.delete(el);
         io.unobserve(el);
         if (el.classList.contains(PAUSED_CLASS)) el.classList.remove(PAUSED_CLASS);
     }
 
-    document.addEventListener('animationstart', (event) => {
+    // The checks run later, batched, when the page is idle: el.getAnimations() inside the event made the browser
+    // restyle the page on the spot, in the middle of the frames that started the animation (A53, the return to
+    // Today: 54 ms of forced style through the entrance's rise, Nov 18). A loop off-screen for a moment longer
+    // before it pauses costs nothing anyone sees.
+    const toCheck = new Set();
+    let checkQueued = false;
+    const whenIdle = typeof requestIdleCallback === 'function'
+        ? (fn) => requestIdleCallback(fn, { timeout: 1000 })
+        : (fn) => setTimeout(fn, 250);
+    function runChecks() {
+        checkQueued = false;
+        const list = Array.from(toCheck);
+        toCheck.clear();
+        for (let i = 0; i < list.length; i++) {
+            const el = list[i];
+            if (watched.has(el)) unwatchIfDone(el);
+            else if (el.isConnected) watch(el);
+        }
+    }
+    function checkLater(event) {
         if (SKIP_ANIMATION[event.animationName]) return;
-        watch(event.target);
-    }, true);
-    document.addEventListener('animationend', (event) => {
-        if (SKIP_ANIMATION[event.animationName]) return;
-        unwatchIfDone(event.target);
-    }, true);
-    document.addEventListener('animationcancel', (event) => {
-        if (SKIP_ANIMATION[event.animationName]) return;
-        unwatchIfDone(event.target);
-    }, true);
+        const el = event.target;
+        if (!el || el.nodeType !== 1) return;
+        toCheck.add(el);
+        if (!checkQueued) { checkQueued = true; whenIdle(runChecks); }
+    }
+    document.addEventListener('animationstart', checkLater, true);
+    document.addEventListener('animationend', checkLater, true);
+    document.addEventListener('animationcancel', checkLater, true);
 
     // Animations that started before this script ran. Not while the page is still being parsed:
     // document.getAnimations() makes the browser style the half-built document on the spot
