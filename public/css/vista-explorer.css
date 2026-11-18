@@ -1869,9 +1869,11 @@ body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire
 body.desktop-mode:not(.windows-classic-theme) :is(#tagWikiSearchModal, .grimoire-window) .grimoire-ie-tab.is-loading .grimoire-ie-tab-icon {
     object-position: -9999px 0;
     background: url('/static_images/vista-ie/loading.png') no-repeat 0 0 / 288px 16px;
+    /* perf: allow busy indicator: IE7's ring only on a tab whose page loads (.is-loading) */
     animation: grimoire-ie-ring 0.9s steps(18) infinite;
 }
 
+/* perf: allow frames of a sprite strip: background-position lands each of the 18 frames on whole pixels; a transform of a wider layer would draw frames between pixels */
 @keyframes grimoire-ie-ring {
     to {
         background-position: -288px 0;

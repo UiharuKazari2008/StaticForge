@@ -408,6 +408,7 @@
 
 .rg-hex:focus .rg-hex-caret {
     visibility: visible;
+    /* perf: allow a text caret: only while the hex editor has focus; visibility steps */
     animation: rg-caret 1.06s steps(1) infinite;
 }
 

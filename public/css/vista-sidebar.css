@@ -1995,6 +1995,7 @@ body.desktop-mode:not(.windows-classic-theme) .vsb-notes:is(:hover, :focus-withi
     background-image: url('/static_images/vista-sidebar/timer/timer_large_bg.png');
 }
 
+/* perf: allow alarm: the Timer gadget flashes only while its time is up and ringing (.is-ringing, vistaSidebar.js); opacity steps */
 .vsb-timer.is-ringing { animation: vsb-timer-flash 0.2s steps(2) infinite; }
 
 @keyframes vsb-timer-flash { to { opacity: 0.35; } }

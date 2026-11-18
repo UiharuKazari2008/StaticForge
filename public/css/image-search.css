@@ -369,12 +369,16 @@ body.desktop-mode:not(.windows-classic-theme) #imageSearchModal .modal-window-ti
 
 body.desktop-mode:not(.windows-classic-theme) #imageSearchModal.isx-busy .modal-window-title-toolbar .cpl-address-group.isx-address-group > .isx-progress[class] {
     opacity: 1;
+    /* drawn at its full width and scaled from its left edge on the compositor: the fill's colours run
+       top to bottom, so the scaled bar is the same bar, without a layout per frame (#890) */
+    width: calc(92% - 24px);
+    transform-origin: 0 50%;
     animation: isx-progress 6s cubic-bezier(0.1, 0.6, 0.3, 1) forwards;
 }
 
 @keyframes isx-progress {
-    from { width: 0; }
-    to { width: calc(92% - 24px); }
+    from { transform: scaleX(0); }
+    to { transform: none; }
 }
 
 /* the search box: the magnifier, or the clear X while there is a search */

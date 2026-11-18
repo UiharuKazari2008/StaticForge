@@ -61,6 +61,7 @@
     width: 20px;
     height: 20px;
     background: url('/static_images/vista-logon/wait-20.png') 0 0 / 20px 360px no-repeat;
+    /* perf: allow busy indicator: Vista's ring holds a gadget's place only until its page has drawn (vistaGadgetHost.js .vgh-box.is-loading) */
     animation: vgh-wait 1s steps(18) infinite;
 }
 

@@ -61,6 +61,7 @@
     width: 1px;
     height: 13px;
     background: #000;
+    /* perf: allow the Keyboard Properties cursor-blink sample (what the page is for): it exists only while that page is open; .is-off stops it */
     animation: cpl-blink 1000ms steps(1, end) infinite;
 }
 
