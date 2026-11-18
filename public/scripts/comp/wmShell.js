@@ -3578,6 +3578,9 @@
         };
         shell.querySelectorAll('.wm-titlebar .wm-status-icon').forEach((i) => {
             const role = i.dataset.role;
+            // the volume and the battery stepped aside or hidden by this page's fit / Status icons settings: the app
+            // keeps them out too while this copy stands (it draws them itself, #907)
+            if ((role === 'volume' || role === 'battery') && (i.hidden || i.classList.contains('wm-shed'))) { list.push({ role, hidden: true }); return; }
             if (!role || BARS_NATIVE_ROLES.has(role)) return;
             const e = lookOf(i, role);
             if (e.atlas || e.art || e.strip) catalog.push(Object.assign({}, e, { dim: undefined }));
@@ -3601,7 +3604,7 @@
         }
         // Settings > Screen > Status Icons: when the volume / battery show (#907); the native bar follows them asleep (#908)
         if (typeof ab.statusPrefs === 'function') {
-            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon') });
+            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon'), noCross: statusIconPref('wmStatusNoCross') === '1' });
             if (pj !== barsPrefsSent) { barsPrefsSent = pj; try { ab.statusPrefs(pj); } catch (_) { /* older app */ } }
         }
         const json = JSON.stringify(list);
