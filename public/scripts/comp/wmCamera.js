@@ -50,7 +50,7 @@
         away = false;
         const g = window.wmPhoneGallery;
         // one read with the 'changed' the app replays for the folder on its return (#890: it read twice)
-        if (g && g.available()) { if (typeof g.refreshSoon === 'function') g.refreshSoon(); else void g.refresh(); }
+        if (g && g.available()) { if (typeof g.refreshSoon === 'function') g.refreshSoon(true); else void g.refresh(); }
     });
 
     window.wmCamera = { supported, open };
