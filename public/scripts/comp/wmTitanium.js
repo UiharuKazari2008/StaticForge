@@ -962,12 +962,28 @@
 
     // ---------------------------------------------------------------- drawing
 
+    // the unit and the list's height, kept between frames (#907 wake profile): read on every frame of a move, right
+    // after its --wm-ti-top write, they forced a style recalc and a layout of the whole page per frame (Today's
+    // entrance after a return on the A53). They change only with the screen's size, the UI scale or the version:
+    // read again after a resize, a change on <html>, or the list's own size changing (ResizeObserver, no forced read)
+    let unitKept = 0;
+    let hostHKept = 0;
     function unit() {
-        return parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        if (!unitKept) unitKept = parseFloat(getComputedStyle(root).getPropertyValue('--wm-px')) || 1;
+        return unitKept;
     }
+    function hostHeight() {
+        if (!hostHKept && host) hostHKept = host.clientHeight;
+        return hostHKept;
+    }
+    const forgetSizes = () => { unitKept = 0; hostHKept = 0; };
+    window.addEventListener('resize', forgetSizes, { signal: appScopeSignal });
+    new MutationObserver(() => { unitKept = 0; }).observe(root, { attributes: true, attributeFilter: ['style', 'class', 'data-wm-version', 'data-wm-scale'] });
 
     function build() {
         host = document.createElement('div');
+        hostHKept = 0;
+        if (typeof ResizeObserver === 'function') new ResizeObserver(() => { hostHKept = 0; }).observe(host);
         host.className = 'wm-ti';
         host.innerHTML = `<div class="wm-ti-list"></div>
             <div class="wm-ti-band" aria-hidden="true"></div>
@@ -1006,7 +1022,7 @@
     function focusTop() {
         // centred in the list: (height - 140) / 2 in VGA pixels
         const u = unit();
-        return Math.round(((host.clientHeight / u) - BAND) / 2 * 2) / 2;
+        return Math.round(((hostHeight() / u) - BAND) / 2 * 2) / 2;
     }
 
     function drawRows() {
@@ -2434,7 +2450,7 @@
         // geometry first, before this frame's writes dirty the layout again
         const u = unit();
         const ft = focusTop();
-        const screenUnits = (host.clientHeight || window.innerHeight) / u;
+        const screenUnits = (hostHeight() || window.innerHeight) / u;
         sel = at;
         skSel = at;
         drawExpanded();
