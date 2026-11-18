@@ -101,6 +101,44 @@ def enlarge(arts):
                       im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', '50%'), cell8)
     return out
 
+# ---- the programs' icons at one optical height (Yukimi, Nov 17: "we had optical heights that we wanted to
+# maintain ... system icons are special"): mail, texts, Messenger, prints, the Car, ActiveSync, weather, rain,
+# Lapis, Continuity and Nightshade are atlas cells (app-*), each glyph 15 units tall inside the bar's padding and
+# as wide as its shape; the system icons keep their ROM shapes (the battery enlarged above). The Director and
+# Update stay single pictures (their animations swap them). Light clean-up master, cut with a margin.
+APP_ICONS = [('app-mail', 'status-mail'), ('app-sms', 'status-sms'), ('app-messenger', 'status-messenger'), ('app-prints', 'status-prints'),
+             ('app-weather-alert', 'status-weather-alert'), ('app-rain-alarm', 'status-rain-alarm'), ('app-traffic', 'status-traffic'),
+             ('app-lapis', 'status-lapis'), ('app-continuity', 'status-continuity'), ('app-activesync', 'status-activesync'),
+             ('app-nightshade', 'status-nightshade')]
+APP_H8 = 120   # 15 units at 8x
+def app_cells(ver):
+    """[(name, file, w2, px2)] and {name: (w2, px1, px2, px4, px8)} for the programs' icons (6.5 takes its own art where it has it)."""
+    arts, big = [], {}
+    for name, file in APP_ICONS:
+        src = None
+        for d in (os.path.join(IMG, ver), os.path.join(IMG, 'wm61')):
+            if os.path.exists(os.path.join(d, f'{file}@2x.png')): src = d; break
+        if not src: continue
+        w, h, px = rgba(os.path.join(src, f'{file}@2x.png'))
+        # a transparent border first, so the margin round the glyph exists even where the art fills its cell
+        B = 8
+        m8 = im(clean_up(px, w, h, 4, 0.8), w * 4, h * 4, '-bordercolor', 'none', '-border', str(B))
+        b = alpha_box(m8, w * 4 + 2 * B, h * 4 + 2 * B)
+        if not b: continue
+        m = 4
+        x0, y0, x1, y1 = b[0] - m, b[1] - m, b[2] + m, b[3] + m
+        bw, bh = x1 - x0, y1 - y0
+        k = (APP_H8 + 2 * m) / bh
+        gw8, gh8 = round(bw * k), round(bh * k)
+        w2 = max(32, ((gw8 // 4 + 4 + 1) // 2) * 2)
+        cell8 = im(m8, w * 4 + 2 * B, h * 4 + 2 * B, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw8}x{gh8}!',
+                   '-background', 'none', '-gravity', 'center', '-extent', f'{w2 * 4}x128')
+        c2 = im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', '25%')
+        big[name] = (w2, im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', f'{w2 // 2}x16!'), c2,
+                     im(cell8, w2 * 4, 128, '-filter', 'Lanczos', '-resize', '50%'), cell8)
+        arts.append((name, file, w2, 32, c2))
+    return arts, big
+
 def build(ver, css_path, rule_re, scope, has_1x_rules):
     css = open(css_path).read()
     if BEGIN in css:
@@ -120,8 +158,12 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
             continue
         w, h, px = rgba(os.path.join(d, f'{file}@2x.png'))
         arts.append((name, file, w, h, px))
+    arts = [a for a in arts if not a[0].startswith('app-')]
     BIG = enlarge(arts)
     arts = [(n, f, BIG[n][0] if n in BIG else w, h, BIG[n][2] if n in BIG else px) for n, f, w, h, px in arts]
+    extra, big_apps = app_cells(ver)
+    arts += extra
+    BIG.update(big_apps)
     # shelves
     W = 512; x = y = 0; shelf = 0; pos = {}
     for name, file, w, h, px in arts:

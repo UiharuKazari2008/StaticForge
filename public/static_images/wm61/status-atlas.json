@@ -507,6 +507,83 @@
    "y": 160,
    "w": 40,
    "h": 32
+  },
+  "app-mail": {
+   "file": "status-mail",
+   "x": 40,
+   "y": 160,
+   "w": 46,
+   "h": 32
+  },
+  "app-sms": {
+   "file": "status-sms",
+   "x": 86,
+   "y": 160,
+   "w": 40,
+   "h": 32
+  },
+  "app-messenger": {
+   "file": "status-messenger",
+   "x": 126,
+   "y": 160,
+   "w": 32,
+   "h": 32
+  },
+  "app-prints": {
+   "file": "status-prints",
+   "x": 158,
+   "y": 160,
+   "w": 46,
+   "h": 32
+  },
+  "app-weather-alert": {
+   "file": "status-weather-alert",
+   "x": 204,
+   "y": 160,
+   "w": 46,
+   "h": 32
+  },
+  "app-rain-alarm": {
+   "file": "status-rain-alarm",
+   "x": 250,
+   "y": 160,
+   "w": 36,
+   "h": 32
+  },
+  "app-traffic": {
+   "file": "status-traffic",
+   "x": 286,
+   "y": 160,
+   "w": 40,
+   "h": 32
+  },
+  "app-lapis": {
+   "file": "status-lapis",
+   "x": 326,
+   "y": 160,
+   "w": 34,
+   "h": 32
+  },
+  "app-continuity": {
+   "file": "status-continuity",
+   "x": 360,
+   "y": 160,
+   "w": 42,
+   "h": 32
+  },
+  "app-activesync": {
+   "file": "status-activesync",
+   "x": 402,
+   "y": 160,
+   "w": 42,
+   "h": 32
+  },
+  "app-nightshade": {
+   "file": "status-nightshade",
+   "x": 444,
+   "y": 160,
+   "w": 42,
+   "h": 32
   }
  }
 }
