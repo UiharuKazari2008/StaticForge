@@ -1608,7 +1608,11 @@ class ServiceWorkerManager {
 
                 // Register service worker (sw.js is served early on the server).
                 // Keep the promise so a slow first install can finish wiring after the 8s race.
-                const registerPromise = navigator.serviceWorker.register('/sw.js');
+                // updateViaCache 'imports' (#890 W8): sw.js itself is revalidated at every update
+                // check (a 304 when unchanged); its workbox imports come from the HTTP cache (the
+                // server gives them a day's max-age), not 6 more round trips per check. It also
+                // takes back a forceUpdate's 'none'.
+                const registerPromise = navigator.serviceWorker.register('/sw.js', { updateViaCache: 'imports' });
                 this._attachLateServiceWorkerRegistration(registerPromise);
                 try {
                     this.swRegistration = await Promise.race([

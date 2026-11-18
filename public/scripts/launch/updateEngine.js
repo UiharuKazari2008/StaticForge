@@ -559,7 +559,8 @@
         if (!sw) return false;
         try {
             let reg = await sw.getRegistration();
-            if (!reg) reg = await sw.register('/sw.js');
+            // updateViaCache 'imports' (#890 W8): sw.js revalidated, its workbox imports from the HTTP cache
+            if (!reg) reg = await sw.register('/sw.js', { updateViaCache: 'imports' });
             const ready = await Promise.race([
                 sw.ready.then(() => true),
                 env.sleep(config.readyTimeoutMs).then(() => false)
