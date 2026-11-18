@@ -1093,8 +1093,9 @@
         const budgetLine = (name, b) => (b && b.configured ? `${name}: ${b.used} of ${b.budget} ${b.per === 'day' ? 'today' : 'this month'}` : `${name}: no key (Dreamscape CardSpace > Service keys)`);
         box.innerHTML = `
             ${ui.sub('Places')}
-            ${ui.row('Home:', ui.edit('trfHome', f.home, 'placeholder="Street address" data-k="home" maxlength="200"'), { for: 'trfHome' })}
-            ${ui.row('Work:', ui.edit('trfWork', f.work, 'placeholder="Street address" data-k="work" maxlength="200"'), { for: 'trfWork' })}
+            ${ui.facts([['Home:', placeText('home', f.home)], ['Work:', placeText('work', f.work)]])}
+            ${ui.note('Home and Work are set in Settings > Location, for every program.')}
+            ${ui.buttons([['trf-location', 'Location...']])}
             ${ui.row('Radius:', ui.comboHtml('radiusKm', label(RADII, f.radiusKm)), { wide: true })}
             ${ui.note('Inside this distance of Home the phone shows the way to Work, inside it of Work the way Home.')}
             ${ui.gap()}
@@ -1123,6 +1124,7 @@
             ${ui.note(budgetLine('TomTom incidents', p.tomtom))}
             ${ui.note('Speed cameras: OpenStreetMap (no key needed).')}`;
         box.querySelectorAll('input.wm-edit[data-k], textarea[data-k]').forEach((el) => el.addEventListener('input', () => { f[el.dataset.k] = el.value; }));
+        box.querySelector('[data-act="trf-location"]').addEventListener('click', () => { if (window.wmSettings && typeof window.wmSettings.open === 'function') window.wmSettings.open('location', 'places'); });
         box.querySelectorAll('input[data-day]').forEach((el) => el.addEventListener('change', () => {
             const d = Number(el.dataset.day);
             f.days = el.checked ? [...new Set(f.days.concat(d))].sort() : f.days.filter((x) => x !== d);
@@ -1143,25 +1145,23 @@
         combo('redMin', REDS, 'redMin');
     }
 
-    /** "44.08, -103.23" as coordinates, anything else an address. */
-    function placeFrom(text) {
-        const t = String(text || '').trim();
-        if (!t) return null;
-        const m = /^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/.exec(t);
-        if (m) return { lat: Number(m[1]), lon: Number(m[2]) };
-        return { address: t };
+    /** Home or Work as shown: Settings > Location's place (#907), else what Traffic had. */
+    function placeText(id, fallback) {
+        const L = window.wmLocation;
+        const p = L && typeof L.places === 'function' ? L.places()[id] : null;
+        return (p && p.label) || fallback || 'Not set';
     }
 
     async function saveSettings() {
         const f = draftOf();
-        const home = placeFrom(f.home);
-        const work = placeFrom(f.work);
-        if (!home || !work) {
-            await ws.messageBox({ title: TITLE, icon: 'warning', text: 'Enter both a Home and a Work address.' });
+        const L = window.wmLocation;
+        const pl = L && typeof L.places === 'function' ? L.places() : {};
+        if (!(pl.home || f.home) || !(pl.work || f.work)) {
+            await ws.messageBox({ title: TITLE, icon: 'warning', text: 'Set Home and Work in Settings > Location first.' });
             return;
         }
+        // Home and Work belong to Settings > Location (#907): not sent from here
         const payload = {
-            home, work,
             area: f.area,
             streets: String(f.streets || '').split('\n').map((s) => s.trim()).filter(Boolean),
             leaveHome: f.leaveHome, leaveWork: f.leaveWork, days: f.days,
@@ -1239,6 +1239,8 @@
         c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = d.report; changed(); if (d.direction === 'home') armNativeWatch(); } });
         c.on('traffic_report', onReport);
         c.on('traffic_settings_changed', (pk) => { const d = data(pk); if (d.settings) { settings = d.settings; changed(); } });
+        // Settings > Location changed Home / Work (#907): an open settings page shows the new places
+        document.addEventListener('wmLocationPlaces', () => { if (layers[layers.length - 1] === 'settings' && els.layerBody) renderSettings(); }, { signal: appScopeSignal });
         c.on('connected', () => load());
         load();
         return true;

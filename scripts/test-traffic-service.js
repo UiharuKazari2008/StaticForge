@@ -18,6 +18,7 @@ process.env.TRAFFIC_USAGE_FILE = path.join(tmp, 'usage.json');
 process.env.TRAFFIC_LATEST_FILE = path.join(tmp, 'latest.json');
 process.env.TRAFFIC_CAMERA_FILE = path.join(tmp, 'cameras.json');
 process.env.TRAFFIC_PLACES_FILE = path.join(tmp, 'places.json');
+process.env.LOCATION_GEO_FILE = path.join(tmp, 'location-geo.json');
 
 const svc = require('../modules/trafficService');
 const T = svc._test;

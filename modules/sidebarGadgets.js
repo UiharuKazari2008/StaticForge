@@ -379,6 +379,13 @@ async function reverseGeocode(globalResources, lat, lon) {
     const age = cached ? Date.now() - cached.timestamp : Infinity;
     if (cached && age < (cached.data ? LOCATION_TTL_MS : LOCATION_FAILURE_TTL_MS)) return cached.data;
     let data = null;
+    // the location service's reverse lookup first (#907), cached per city cell
+    try {
+        const p = await require('./locationService').reverse(Number(lat), Number(lon), { specificity: 'city' });
+        const k = (p && p.components) || {};
+        if (k.city || k.county) data = { city: k.city || k.county, region: k.state || '', country: k.country || '' };
+    } catch (_e) { /* the free lookup below */ }
+    if (data) { cache.set(key, { data, timestamp: Date.now() }); return data; }
     try {
         const params = new URLSearchParams({ latitude: lat, longitude: lon, localityLanguage: 'en' });
         const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${params}`, { signal: AbortSignal.timeout(8000) });

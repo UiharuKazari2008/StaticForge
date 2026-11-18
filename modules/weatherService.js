@@ -1437,6 +1437,15 @@ async function geocode(name, count = 8) {
     const q = String(name || '').trim().slice(0, 80);
     if (q.length < 2) return [];
     const c = Math.max(1, Math.min(20, Number(count) || 8));
+    // the location service's lookup first (#907: one lookup and cache for every program), towns and cities
+    try {
+        const list = await require('./locationService').bind(gr).resolve(q, { min: 'county', max: 'city', limit: c });
+        const out = list.map((p) => {
+            const k = p.components || {};
+            return { name: k.city || k.county || String(p.label || '').split(',')[0], region: k.state || '', country: k.country || '', countryCode: k.countryCode || '', lat: Number(p.lat), lon: Number(p.lon) };
+        }).filter((r) => r.name && Number.isFinite(r.lat) && Number.isFinite(r.lon));
+        if (out.length) return out;
+    } catch (_e) { /* Open-Meteo below */ }
     return memo(`om:geo:${q.toLowerCase()}:${c}`, async () => {
         const params = new URLSearchParams({ name: q, count: String(c), language: 'en', format: 'json' });
         const body = await request('openmeteo', `${OPEN_METEO.geocode}?${params}`, { timeout: 8000 });

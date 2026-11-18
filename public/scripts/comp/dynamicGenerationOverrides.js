@@ -613,74 +613,24 @@ function clearWeatherLocation() {
     }
 }
 
-// Set current location using browser geolocation, fallback to server-side IP lookup
+// Set current location: the location service's shared fix (#907; a city is all the weather needs),
+// else the server-side IP lookup
 function setCurrentLocation() {
-    if (!navigator.geolocation) {
-        showGlassToast('error', null, 'Geolocation is not supported by this browser', false, undefined, '<i class="fas fa-location-dot-slash"></i>');
-    }
-
+    const L = window.wmLocation;
+    if (!L || typeof L.get !== 'function') { setIPLocation(); return; }
     showGlassToast('info', null, 'Getting current location...', false, undefined, '<i class="fas fa-location-dot"></i>');
-
-    // Try GPS/network location first, then fallback to server IP lookup
-    function tryGPSLocation(options) {
-        let timeoutId;
-
-        const successCallback = function (position) {
-            clearTimeout(timeoutId);
-            const latitude = position.coords.latitude;
-            const longitude = position.coords.longitude;
-
-            // Set the location on the weather button
-            const weatherBtn = document.getElementById('weatherBtn');
-            if (weatherBtn) {
-                const locationData = `${longitude}_${latitude}`;
-                const displayName = `Current Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-
-                weatherBtn.setAttribute('data-location', locationData);
-                weatherBtn.dataset.locationDisplay = displayName;
-
-                // Also set it as active if not already
-                weatherBtn.dataset.state = 'on';
-                weatherBtn.classList.add('active');
-
-                showGlassToast('success', null, `Location set to current location`, undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
-
-                // Update status icons to reflect the location change
-                updatePromptStatusIcons();
-
-                createDebouncedContextResolution();
-            }
-        };
-
-        const errorCallback = function (error) {
-            clearTimeout(timeoutId);
-
-            switch (error.code) {
-                case error.PERMISSION_DENIED:
-                    showGlassToast('error', null, 'Location access denied. Please allow location access in your browser settings.', false, undefined, '<i class="fas fa-location-dot-slash"></i>');
-                    break;
-                case error.POSITION_UNAVAILABLE:
-                case error.TIMEOUT:
-                    // Browser geolocation failed, use server-side IP lookup
-                    setIPLocation();
-                    break;
-            }
-        };
-
-        // Set a timeout to handle silent failures (some browsers don't call error callback)
-        timeoutId = setTimeout(() => {
-            setIPLocation();
-        }, options.timeout + 1000);
-
-        navigator.geolocation.getCurrentPosition(successCallback, errorCallback, options);
-    }
-
-    // Start with high accuracy GPS/network location
-    tryGPSLocation({
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 300000 // 5 minutes
-    });
+    L.get({ precision: 'city', deviceOnly: true, purpose: 'Studio weather' }).then((fix) => {
+        if (!fix) { setIPLocation(); return; }
+        const weatherBtn = document.getElementById('weatherBtn');
+        if (!weatherBtn) return;
+        weatherBtn.setAttribute('data-location', `${fix.lon}_${fix.lat}`);
+        weatherBtn.dataset.locationDisplay = `Current Location (${fix.lat.toFixed(2)}, ${fix.lon.toFixed(2)})`;
+        weatherBtn.dataset.state = 'on';
+        weatherBtn.classList.add('active');
+        showGlassToast('success', null, 'Location set to current location', undefined, undefined, '<i class="fas fa-map-marker-alt"></i>');
+        updatePromptStatusIcons();
+        createDebouncedContextResolution();
+    }).catch(() => setIPLocation());
 }
 
 // Set location using server-side IP geolocation (skip GPS)

@@ -125,7 +125,7 @@ async function getJson(url, timeout = 10000) {
         throw new LocationError(`Could not reach ${new URL(url).host} (${error.name === 'TimeoutError' ? 'timed out' : error.message})`, 'UNREACHABLE');
     }
     let body = null;
-    try { body = await res.json(); } catch (_e) { body = null; }
+    try { body = JSON.parse(await res.text()); } catch (_e) { body = null; }
     if (!res.ok) throw new LocationError((body && (body.error_message || body.reason)) || `HTTP ${res.status}`, res.status === 403 ? 'AUTH_FAILED' : 'PROVIDER_ERROR');
     return body;
 }
@@ -202,11 +202,12 @@ function googlePlace(r) {
     return { label: labelAt(specificity, components, address.replace(/, (USA|United States)$/, '')), address, lat: loc.lat, lon: loc.lng, specificity, components, source: 'google' };
 }
 
-async function googleResolve(query, bias) {
+async function googleResolve(query, bias, box) {
     const gk = googleKey();
     if (!gk) return null;
     const q = new URLSearchParams({ address: query, key: gk });
-    if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) q.set('bounds', `${bias.lat - 1},${bias.lon - 1}|${bias.lat + 1},${bias.lon + 1}`);
+    if (box) { q.set('bounds', `${box.s},${box.w}|${box.n},${box.e}`); q.set('region', 'us'); }
+    else if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) q.set('bounds', `${bias.lat - 1},${bias.lon - 1}|${bias.lat + 1},${bias.lon + 1}`);
     const body = await getJson(`${GOOGLE_GEOCODE}?${q}`);
     if (body && body.status && !/^(OK|ZERO_RESULTS)$/.test(body.status)) throw new LocationError(body.error_message || `Geocoding ${body.status}`, body.status === 'REQUEST_DENIED' ? 'AUTH_FAILED' : 'PROVIDER_ERROR');
     return ((body && body.results) || []).map(googlePlace).filter(Boolean);
@@ -233,10 +234,14 @@ async function resolve(query, opts = {}) {
     const min = cleanSpec(opts.min, 'country');
     const limit = Math.max(1, Math.min(10, Number(opts.limit) || 5));
     const near = opts.near && Number.isFinite(Number(opts.near.lat)) ? { lat: Number(opts.near.lat), lon: Number(opts.near.lon) } : null;
-    const nearKey = near ? `${near.lat.toFixed(0)},${near.lon.toFixed(0)}` : '';
+    // box { s, w, n, e }: only places inside it (a bias alone sends "I-95 & I-295" to Pennsylvania)
+    const b = opts.box;
+    const box = b && ['s', 'w', 'n', 'e'].every((k) => Number.isFinite(Number(b[k]))) ? { s: Number(b.s), w: Number(b.w), n: Number(b.n), e: Number(b.e) } : null;
+    const nearKey = box ? `box:${[box.s, box.w, box.n, box.e].map((v) => v.toFixed(1)).join(',')}` : near ? `${near.lat.toFixed(0)},${near.lon.toFixed(0)}` : '';
     const found = await cached(`r:${q.toLowerCase()}|${nearKey}`, RESOLVE_TTL, async () => {
         let list = null;
-        try { list = await googleResolve(q, near); } catch (e) { if (e.code === 'AUTH_FAILED') console.warn(`[location] geocoding: ${e.message}`); list = null; }
+        try { list = await googleResolve(q, near, box); } catch (e) { if (e.code === 'AUTH_FAILED') console.warn(`[location] geocoding: ${e.message}`); list = null; }
+        if (box) return (list || []).filter((p) => p.lat >= box.s && p.lat <= box.n && p.lon >= box.w && p.lon <= box.e);
         if (!list || !list.length) {
             try { list = await openMeteoResolve(q); } catch (_e) { list = list || []; }
         }

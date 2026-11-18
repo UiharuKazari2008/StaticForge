@@ -10,6 +10,7 @@
  *       city or coarser ask on a phone that keeps programs off the GPS (Settings > System > External GPS) gets
  *       the place of its IP. The point is rounded to the precision asked (no street from a city ask).
  *       urgent: a fresh fix whatever the cache holds (maxAgeMs still bounds it: a driving app asks every few s).
+ *       deviceOnly: the phone's own fix or null, no IP / Home stand-in (for a caller with its own fallback).
  *   wmLocation.watch({ precision, intervalMs, urgent, purpose }, cb) -> stop()
  *       Fixes as they come while the page is seen, for every watcher from one watch of the device; with
  *       urgent, the GPS radio, and on a phone that reports its driving state (AndroidHome.getDriveState,
@@ -18,6 +19,7 @@
  *   wmLocation.savePlaces({ home?, work? })
  *   wmLocation.resolve(query, { min, max, limit, near }) -> [place]   (the server's lookup)
  *   wmLocation.reverse(lat, lon, specificity) -> place | null
+ *   wmLocation.canPick() -> whether pick() can show its page (the phone shell only; null from pick() elsewhere)
  *   wmLocation.pick({ title, prompt, min, max, value, near }) -> Promise<place | null>   (phones: the WM dialog)
  *   wmLocation.driveState() -> 'idle' | 'maybe' | 'driving' | 'stopped' | 'unknown'
  *   wmLocation.recent() -> the last asks [{ purpose, precision, at, served: 'cache' | 'device' | ... }]
@@ -75,7 +77,9 @@
     const goodFor = (f, precision, maxAgeMs) => !!f && (f.accuracyM || Infinity) <= NEED_M[precision] && Date.now() - f.at <= maxAgeMs;
 
     /** Programs may use the phone's GPS (Settings > System > External GPS, 6.5); a browser: whether it has one. */
-    const deviceAllowed = () => !!navigator.geolocation && !(window.wmGps && typeof window.wmGps.allowed === 'function' && !window.wmGps.allowed());
+    // a refused permission is kept for the page's life (each ask would only be refused again)
+    let denied = false;
+    const deviceAllowed = () => !denied && !!navigator.geolocation && !(window.wmGps && typeof window.wmGps.allowed === 'function' && !window.wmGps.allowed());
 
     let inflight = null; // { precision, promise }
     function deviceFix(precision, timeoutMs) {
@@ -83,7 +87,7 @@
         return new Promise((resolve) => {
             navigator.geolocation.getCurrentPosition(
                 (pos) => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracyM: pos.coords.accuracy || (high ? 50 : 1500), at: Date.now(), source: 'device' }),
-                () => resolve(null),
+                (err) => { if (err && err.code === 1) denied = true; resolve(null); },
                 { enableHighAccuracy: high, maximumAge: high ? 5000 : 60000, timeout: timeoutMs || (high ? 20000 : 15000) }
             );
         });
@@ -99,6 +103,7 @@
 
     /** A position: see the header. */
     async function get(opts = {}) {
+        if (opts.deviceOnly) return getDevice(opts);
         const precision = spec(opts.precision, 'approximate');
         const maxAgeMs = Number(opts.maxAgeMs) > 0 ? Number(opts.maxAgeMs) : (opts.urgent ? 5000 : MAX_AGE[precision]);
         if (goodFor(fix, precision, maxAgeMs)) { note(opts.purpose, precision, 'cache'); return rounded(fix, precision); }
@@ -122,6 +127,28 @@
             const f = await run;
             note(opts.purpose, precision, f ? f.source : 'none');
             return f ? rounded(f, precision) : (fix ? rounded(fix, precision) : null);
+        } finally {
+            if (inflight && inflight.promise === run) inflight = null;
+        }
+    }
+
+    /** deviceOnly: the phone's own fix or null (a caller with its own fallback, e.g. Weather's IP place). */
+    async function getDevice(opts) {
+        const precision = spec(opts.precision, 'approximate');
+        const maxAgeMs = Number(opts.maxAgeMs) > 0 ? Number(opts.maxAgeMs) : (opts.urgent ? 5000 : MAX_AGE[precision]);
+        if (fix && fix.source === 'device' && goodFor(fix, precision, maxAgeMs)) { note(opts.purpose, precision, 'cache'); return rounded(fix, precision); }
+        if (!deviceAllowed()) { note(opts.purpose, precision, 'none'); return null; }
+        if (!seen() && !opts.urgent) { note(opts.purpose, precision, 'kept'); return fix && fix.source === 'device' ? rounded(fix, precision) : null; }
+        if (inflight && rank(inflight.precision) <= rank(precision)) {
+            const f = await inflight.promise;
+            if (f && f.source === 'device') { note(opts.purpose, precision, 'shared'); return rounded(f, precision); }
+        }
+        const run = deviceFix(precision, opts.timeoutMs).then((f) => { if (f) keep(f); return f; });
+        inflight = { precision, promise: run };
+        try {
+            const f = await run;
+            note(opts.purpose, precision, f ? 'device' : 'none');
+            return f ? rounded(f, precision) : null;
         } finally {
             if (inflight && inflight.promise === run) inflight = null;
         }
@@ -293,14 +320,15 @@
     }
 
     /** The common lookup: a WM page with a box to type in and the places it means; resolves with one or null. */
+    /** Whether pick() can show its page (the phone shell); a desktop program uses its own window's box with resolve(). */
+    function canPick() {
+        const s = sh();
+        return !!(s && typeof s.open === 'function' && window.uiShell === 'mobile');
+    }
     function pick(opts = {}) {
         const s = sh();
-        if (!s || typeof s.open !== 'function' || window.uiShell !== 'mobile') {
-            // no phone shell: a plain prompt, the first place that fits
-            const q = window.prompt(opts.prompt || 'Enter a place', opts.value || '');
-            if (!q) return Promise.resolve(null);
-            return resolve(q, { min: opts.min, max: opts.max, limit: 1, near: opts.near }).then((r) => (r[0] ? Object.assign({}, r[0], { typed: q }) : null));
-        }
+        // no phone shell: nothing to show it in (never the browser's own prompt: no-native-browser-ui)
+        if (!canPick()) return Promise.resolve(null);
         if (dlg) finish(null);
         return new Promise((res) => {
             dlg = { opts, query: String(opts.value || ''), results: [], sel: -1, busy: false, error: '', searched: false, resolve: res };
@@ -342,7 +370,7 @@
         savePlaces,
         resolve,
         reverse,
-        pick,
+        canPick, pick,
         driveState,
         recent: () => asks.slice(),
         last: () => (fix ? Object.assign({}, fix) : null)
