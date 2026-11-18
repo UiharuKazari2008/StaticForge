@@ -12,7 +12,9 @@ const {
     isDormantPage
 } = require('./wsSocketHeartbeat');
 
-// held for a dormant phone page: 'last' keeps the newest only, 'path' one per folder, 'all' every one in order
+// held for a dormant phone page: 'last' keeps the newest only, 'path' one per folder, 'all' every one in order;
+// a function returns the hold key (the newest per key waits), null (send now) or false (dropped: a sleeping
+// page has no use for it, and a copy delivered on waking would be stale)
 const DORMANT_HOLD = new Map([
     ['ping', 'last'],
     ['dovecote_mailbox_updated', 'last'],
@@ -41,9 +43,59 @@ const DORMANT_HOLD = new Map([
     // MCP activity (#890): the generating flag (the print indicator) and the log line wait apart, newest only
     ['mcp_activity', (d) => (d.generating === true || d.generating === false ? 'gen' : 'log')],
     // Program Icons jobs (#890 P15): each push is the job's whole state, so the newest per job
-    ['wm_program_icons_job', (d) => `job:${(d && d.job && d.job.id) || ''}`]
+    ['wm_program_icons_job', (d) => `job:${(d && d.job && d.job.id) || ''}`],
+    // Text Messaging (#890 round 5, W5): see tmEventHoldKey
+    ['tm_event', (d) => tmEventHoldKey(d)],
+    // the notification inbox (#890 round 5, W7): a new notice goes at once (reminders and missed notices
+    // wake the page); an ack made elsewhere skips a sleeping page, which lists what changed when it wakes
+    // (inbox_list since)
+    ['inbox_updated', (d) => (d.reason === 'ack' ? false : null)],
+    // weather (#890 round 5): whole-state pushes, the page keeps only the newest of each; the alert and
+    // the rain alarm notifications (weather_alert_issued, weather_rain_alarm) are never held
+    ['weather_rain_status', 'last'],
+    ['weather_alerts_changed', 'last'],
+    ['weather_places_changed', 'last'],
+    // a watched place's forecast change (W1 stage 2): weatherWatch.js computes a held copy against what the
+    // page had before it slept, so the newest per place is all it needs on waking
+    ['weather_delta', (d) => `wx:${d.key || ''}`],
+    // whole-state pushes (#890 round 5 burn-down): only the newest matters to a page that wakes
+    ['traffic_settings_changed', 'last'],
+    ['account_data_health_updated', 'last'],
+    ['account_pictures_changed', 'last'],
+    ['director_rentan_agent_default_changed', 'last'],
+    ['runtime_compile_error', 'last'],
+    ['workspace_css_updated', (d) => `css:${d.webPath || ''}`],
+    ['app_package_updated', (d) => `pkg:${d.packageId || ''}`],
+    // incremental changes (a shortcut added, a note edited): every one, in order
+    ['desktop_shortcut_added', 'all'],
+    ['desktop_shortcut_updated', 'all'],
+    ['desktop_shortcut_removed', 'all'],
+    ['desktop_positions_updated', 'all'],
+    ['note_created', 'all'],
+    ['note_updated', 'all'],
+    ['note_deleted', 'all'],
+    // a note's content changed (the page reads it again): the newest per note
+    ['note_content_updated', (d) => `note:${d.noteId || ''}`]
 ]);
 const DORMANT_HOLD_MAX = 300;
+
+// tm_event subtypes that wait for a sleeping page as the newest per account (W5): the page re-reads its
+// accounts / chats / settings from them, so only the last one counts
+const TM_HELD_EVENTS = new Set(['account', 'resync', 'settings', 'sync', 'syncprogress']);
+
+/**
+ * DORMANT_HOLD for tm_event (#890 round 5, W5). Texts, edits, reactions, reads, new chats, pairing and a
+ * lost sign-in go at once (the page wakes for its notes and badges); 'typing' never reaches a sleeping page
+ * (false: an "is typing..." delivered on waking would be stale); account / resync / settings / sync /
+ * syncprogress wait as the newest per account, 'reload' the newest per conversation.
+ */
+function tmEventHoldKey(d) {
+    const ev = String((d && d.event) || '');
+    if (ev === 'typing') return false;
+    if (ev === 'reload') return `reload:${d.accountId || ''}:${d.chatGuid || ''}`;
+    if (TM_HELD_EVENTS.has(ev)) return `${ev}:${d.accountId || ''}`;
+    return null;
+}
 
 /** The turns a Director status says are running ('' when none): the key that starts or ends a turn. */
 function directorRunKey(d) {
@@ -84,19 +136,52 @@ const DESKTOP_ONLY_TYPES = new Set([
     'workspace_desktop_persisted',
     'devices_updated', 'device_screen_updated',
     'config_checkpoint_restored',
-    'packages_updated'
+    'packages_updated',
+    // #890 round 5: the Novel window (novelManager) and Windows Sidebar (vistaSidebar.js, desktop shell only)
+    'novel_updated',
+    'sidebar_updated'
 ]);
 
 // Broadcasts only Melaton Mobile reads (its programs load in the mobile shell only: app.html
 // data-shell="mobile"), never sent to a page that reported a desktop (a desktop tab, a DeX window).
 // A page that has not said which it is yet still gets them.
-const PHONE_ONLY_TYPES = new Set(['lapis_updated', 'lapis_notice', 'traffic_updated', 'traffic_settings_changed']);
+// #890 round 5: Traffic's settings and leave-time reports (wmTraffic.js), the notification inbox
+// (wmNotificationInbox.js) - all mobile-shell only.
+const PHONE_ONLY_TYPES = new Set([
+    'lapis_updated', 'lapis_notice', 'traffic_updated',
+    'traffic_settings_changed', 'traffic_report',
+    'inbox_updated'
+]);
 // Broadcasts every socket gets on purpose (#890, rule phone-power-server.mdc): a new broadcast type goes in
 // exactly one of DESKTOP_ONLY_TYPES / PHONE_ONLY_TYPES / BROADCAST_ALL (and in DORMANT_HOLD when a sleeping
 // phone or DeX window should get only the newest). scripts/check-perf-rules.js reads these lists and fails a
 // file that broadcasts a type none of them names (unclassified-broadcast).
-// location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
-const BROADCAST_ALL = new Set(['location_places_changed']);
+// Each was checked against both shells' scripts (#890 round 5): the shared inbound handlers
+// (public/scripts/ws/handlers, appWebSocketHandlers.js) or a script loaded in both shells reads it.
+//  - notifications and errors: receipt_notification, agent_notice, system_message, config_refresh_error,
+//    runtime_compile_error, weather_alert_issued, weather_rain_alarm (weatherAlerts.js), cursor_account_login_complete
+//    (walletTray.js, which the phone's Account Manager wmAccounts.js drives too)
+//  - state: account_data_health_updated, account_pictures_changed (meletonAccounts.js), app_package_updated
+//    (melatonApps.js live updates), director_rentan_agent_default_changed (dynamicGenerationManager.js),
+//    workspace_css_updated, weather_rain_status / weather_alerts_changed / weather_places_changed (wmWeather.js,
+//    the phone's Weather and the desktop's Weather window)
+//  - lists both shells show: desktop_shortcut_*, desktop_positions_updated, note_* (wmNotes.js and the
+//    desktop's Notes), gallery_updated (wmTodayWidgets.js reads append_top), workspace_image_added,
+//    dynamic_generation_progress_update
+//  - per-account events filtered by subtype at the source: tm_event (textMessaging.js), ma_event (mailAccounts.js)
+const BROADCAST_ALL = new Set([
+    'receipt_notification', 'agent_notice', 'system_message', 'config_refresh_error', 'runtime_compile_error',
+    'weather_alert_issued', 'weather_rain_alarm', 'cursor_account_login_complete',
+    'account_data_health_updated', 'account_pictures_changed', 'app_package_updated',
+    'director_rentan_agent_default_changed', 'workspace_css_updated',
+    'weather_rain_status', 'weather_alerts_changed', 'weather_places_changed',
+    'desktop_shortcut_added', 'desktop_shortcut_updated', 'desktop_shortcut_removed', 'desktop_positions_updated',
+    'note_created', 'note_updated', 'note_deleted', 'note_content_updated',
+    'gallery_updated', 'workspace_image_added', 'dynamic_generation_progress_update',
+    'tm_event', 'ma_event',
+    // location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
+    'location_places_changed'
+]);
 void BROADCAST_ALL;
 
 /** A Melaton Mobile page (it said so in client_desktop_state). */
@@ -880,6 +965,11 @@ class WebSocketServer {
         return isDormantPage(this.clients.get(ws));
     }
 
+    /** A sleeping phone page or DeX window (client_dormant): what is sent to it now may be held (DORMANT_HOLD). */
+    isDormantSocket(ws) {
+        return this._isDormantPhone(ws);
+    }
+
     /** True when the message was held for a dormant phone page (sent later by setDormant(ws, false)). */
     _dormantHold(ws, message) {
         if (!this._isDormantPhone(ws)) return false;
@@ -902,6 +992,8 @@ class WebSocketServer {
         else if (mode === 'path') key = `${type}|${dataOf().path || ''}`;
         else if (typeof mode === 'function') {
             const k = mode(dataOf(), this.clients.get(ws));
+            // dropped for a sleeping page: nothing is kept, nothing goes on waking
+            if (k === false) return true;
             if (k == null) {
                 // this one goes at once; an older held copy kept as the newest ('last') would land after it
                 const was = this._dormantHeld.get(ws);
@@ -1687,5 +1779,6 @@ class WebSocketServer {
 module.exports = { 
     WebSocketServer,
     // tests (scripts/test-ws-phone-round2.js): who reads which broadcast, what waits for a sleeping page
-    _test: { socketWantsBroadcast, isPhonePage, isDesktopPage, DORMANT_HOLD, DESKTOP_ONLY_TYPES, PHONE_ONLY_TYPES }
+    isPhonePage,
+    _test: { socketWantsBroadcast, isPhonePage, isDesktopPage, DORMANT_HOLD, DESKTOP_ONLY_TYPES, PHONE_ONLY_TYPES, BROADCAST_ALL, tmEventHoldKey }
 }; 
