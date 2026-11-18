@@ -290,7 +290,8 @@
                     const ents = entriesOf(r.messages.slice().reverse());
                     const last = [...ents].reverse().find((e) => e.says || e.actions);
                     previews.set(s.id, { stamp: s.updated_at, text: last ? (last.says || `*${last.actions}*`) : '', mine: !!(last && last.kind === 'me'), unread: unreadIn(s.id, ents), bytes: ents.reduce((n, e) => n + String(e.says || '').length + String(e.actions || '').length, 0) });
-                    if (gen === previewGen && view() === 'list') paintRowPreview(s.id);
+                    // (Chat not showing, e.g. Messaging's count: its show draws the list with these)
+                    if (gen === previewGen && view() === 'list' && shown) paintRowPreview(s.id);
                 } catch (_) { /* the row keeps its placeholder */ }
             }
         };
@@ -321,14 +322,29 @@
         return true;
     }
 
+    /**
+     * The first unread count 8 s after the phone's boot is done (wmBootDone) with the link up and its
+     * start-up steps run; a link that comes later ('connected') arms it then. Not a 3 s poll of the
+     * boot state from page load (#890).
+     */
     function scheduleBgUnread() {
+        let timer = 0;
         let tries = 0;
-        const t = setInterval(() => {
-            const c = wsc();
-            const ready = document.documentElement.dataset.wmBoot === 'done' && c && c.initializationCompleted && connected();
-            if (bgDone || ++tries > 40) { clearInterval(t); return; }
-            if (ready) { clearInterval(t); setTimeout(() => { if (!loaded) bgUnread(); }, 8000); }
-        }, 3000);
+        const arm = () => {
+            if (bgDone || loaded || timer || document.documentElement.dataset.wmBoot !== 'done') return;
+            timer = setTimeout(() => {
+                timer = 0;
+                if (bgDone || loaded) return;
+                const c = wsc();
+                if (c && c.initializationCompleted && connected()) { bgUnread(); return; }
+                // linked but its start-up steps still running: a little later (a link still down: its 'connected')
+                if (connected() && ++tries < 6) arm();
+            }, 8000);
+        };
+        document.addEventListener('wmBootDone', arm, { signal: appScopeSignal });
+        const c = wsc();
+        if (c && typeof c.on === 'function') c.on('connected', arm, { signal: appScopeSignal });
+        arm();
     }
 
     async function loadConversation(more) {
@@ -1602,7 +1618,8 @@
         });
         registerToday();
         startTextShell();
-        if (!wrapLoader()) { let n = 0; const t = setInterval(() => { if (wrapLoader() || ++n > 60) clearInterval(t); }, 500); }
+        // featureLoader.js loads with the page, before this file; should it not have, every script has run by 'load'
+        if (!wrapLoader()) window.addEventListener('load', () => { wrapLoader(); }, { once: true, signal: appScopeSignal });
         sh.registerApp({
             id: APP_ID,
             title: 'Chat',
@@ -2122,9 +2139,12 @@
         openChat: (id) => openChatById(id),
         // Contacts' persona cards (#763, wmNotes.js): that conversation by its chat id
         openWithId: (id) => openChatById(id),
+        // Messaging's Messenger count: the chat list and the changed threads only (getChatSessions /
+        // getChatMessages need no desktop chat feature: that 100 KB of script, style and template loads when
+        // a conversation opens, #890); the Chat list drawn only while it is on screen (its show draws it)
         async refresh() {
-            try { if (await ensureChat()) { await loadSessions(); await loadPreviews(); } } catch (_) { /* keeps the old count */ }
-            if (page && view() === 'list') renderList();
+            try { await loadSessions(); await loadPreviews(); } catch (_) { /* keeps the old count */ }
+            if (page && view() === 'list' && shown && isCurrent() && onScreenNow()) renderList();
         }
     };
 
