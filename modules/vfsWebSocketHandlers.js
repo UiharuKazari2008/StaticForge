@@ -42,11 +42,13 @@ class VfsWebSocketHandlers {
         }
     }
 
-    enrichListResult(result) {
+    enrichListResult(result, clientInfo = null) {
         const uuid = this.globalResources.getVfsPathUuid();
+        // a phone page's list: thumbnails at the tile's size (vfsManager.buildItemPreviewUrl opts.fit, #890 round 5 W9)
+        const fit = !!(clientInfo && clientInfo.phone && clientInfo.phone.shell === 'mobile');
         return {
             ...result,
-            items: this.getVfs().enrichItemsWithPreviewUrls(result.items, uuid)
+            items: this.getVfs().enrichItemsWithPreviewUrls(result.items, uuid, { fit })
         };
     }
 
@@ -86,7 +88,7 @@ class VfsWebSocketHandlers {
             this.handlers.sendToClient(ws, {
                 type: 'vfs_list_directory_response',
                 requestId: message.requestId,
-                data: { success: true, ...this.enrichListResult(result) },
+                data: { success: true, ...this.enrichListResult(result, clientInfo) },
                 timestamp: new Date().toISOString()
             });
         } catch (err) {
