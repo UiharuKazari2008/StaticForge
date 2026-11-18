@@ -1965,8 +1965,11 @@
     // settles its immediately starting to grow out from that items name"), not when the run's clock ends: in the run's
     // last 40 % the logarithmic tail and the spring nearly cancel, and the item stood within a pixel or two of its
     // place for ~200 ms before the panel came (A53 recording). settleX: the point of the run after which the item stays
-    // within GROW_NEAR units of where it lands; the rows finish their last fraction under the growing panel
-    const GROW_NEAR = 2;
+    // within GROW_NEAR units of where it lands; the rows finish their last fraction under the growing panel. 6 units:
+    // the spring carries the item ~5.6 units past its place and slowly back (A53: the list starts ~1040 units down) -
+    // that return reads as settled, so the grow starts as the item first reaches its place (~70 % of the run) and the
+    // spring plays on the rows under the panel; with the spring off, ~80 %
+    const GROW_NEAR = 6;
     let growAt = 0;
     function settleX() {
         const top = focusTop();
