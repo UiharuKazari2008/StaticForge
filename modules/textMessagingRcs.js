@@ -75,6 +75,13 @@ class RcsProvider {
 
     emit(event, payload) { if (this.hooks.emit) this.hooks.emit(event, Object.assign({ accountId: this.id }, payload || {})); }
 
+    /** The account as a phone shows it: its status and its conversations (textMessagingStore.fingerprint). */
+    visibleKey() {
+        let chats = '';
+        try { chats = this.store && typeof this.store.fingerprint === 'function' ? this.store.fingerprint(this.id) : ''; } catch (_) { chats = `err:${Date.now()}`; }
+        return `${this.status || ''}|${this.error || ''}|${chats}`;
+    }
+
     setStatus(status, error) {
         const changed = status !== this.status || (error || '') !== this.error;
         this.status = status;
@@ -532,9 +539,11 @@ class RcsProvider {
     startSync() {
         if (!this.store || this.syncing || this.stopped) return;
         this.syncing = true;
+        // the end reaches the phones only when what they show changed (#890 round 5, W5; see the BlueBubbles provider)
+        const before = this.visibleKey();
         this.syncAll().catch((error) => this.log(`sync failed: ${error.message}`)).finally(() => {
             this.syncing = false;
-            this.emit('account', {});
+            this.emit('account', { phones: this.visibleKey() !== before });
         });
     }
 

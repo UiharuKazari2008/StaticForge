@@ -332,12 +332,25 @@ function provider(accountId) {
 
 // ---- events ----
 
-function broadcast(payload) {
+// subtypes only the desktop reads (#890 round 5, W5): Messaging Bridge's counters (apps/msgbridge, a desktop
+// MMC console); no phone script listens, and each woke a sleeping phone (a reconcile every 15 min per
+// account, progress every 2 s through a catch-up). A DeX window is a desktop page and still gets them.
+const DESKTOP_ONLY_EVENTS = new Set(['sync', 'syncprogress']);
+
+/** A Melaton Mobile page (modules/websocket.js isPhonePage). */
+const isPhonePage = (info) => !!(info && info.phone && info.phone.shell === 'mobile');
+
+/**
+ * tm_event to the admins' pages. opts.phones false: not to phone pages (an account event whose news only
+ * the desktop shows: a catch-up ended with nothing a phone lists changed).
+ */
+function broadcast(payload, opts = {}) {
     let server = null;
     try { server = resources().getWebSocketServer && resources().getWebSocketServer(); } catch (_) { server = null; }
     if (server && typeof server.broadcast === 'function') {
+        const desktopOnly = DESKTOP_ONLY_EVENTS.has(payload && payload.event) || opts.phones === false;
         server.broadcast({ type: 'tm_event', data: payload, timestamp: new Date().toISOString() },
-            (info) => !!(info && info.authenticated && info.userType === 'admin'));
+            (info) => !!(info && info.authenticated && info.userType === 'admin' && !(desktopOnly && isPhonePage(info))));
     }
     // the phone's New Text Message also when its page is not running (#876): the inbox
     try { require('./notificationInboxSources').onTextEvent(payload); } catch (error) { log(`inbox: ${error.message}`); }
@@ -348,6 +361,9 @@ const lastPush = new Map(); // accountId -> ms of the last message the source pu
 
 async function onProviderEvent(accountId, event, payload) {
     const out = Object.assign({ event }, payload);
+    // a provider's audience hint (phones: false) is not part of the event
+    const phones = !(payload && payload.phones === false);
+    delete out.phones;
     // an Android app's own notification is already on the phone (#885): no second one from here
     const kindOf = providers.get(accountId);
     if (kindOf && kindOf.kind === 'android') out.native = true;
@@ -390,7 +406,7 @@ async function onProviderEvent(accountId, event, payload) {
     } catch (error) {
         log(`event ${event} failed: ${error.message}`);
     }
-    broadcast(out);
+    broadcast(out, { phones });
 }
 
 function onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -913,5 +929,7 @@ module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     recentAndroidApps, action, androidAppIcon, openInApp,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
-    downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset
+    downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
+    // tests (scripts/test-ws-phone-round5.js): a provider's event and who gets it
+    _test: { onProviderEvent, setResources: (r) => { gr = r; } }
 };
