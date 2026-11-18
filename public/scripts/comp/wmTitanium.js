@@ -2161,7 +2161,10 @@
             for (let i = 0; i < ys.length; i++) {
                 // the cascade: each row further out by `spread` units than the one above, gone as p reaches 1
                 const ei = en && en.spread ? e + sg * en.spread * i * (1 - p) : e;
-                ys[i] = i <= a ? top - ei - ROW * (a - i) : top - ei + BAND + ROW * (i - a - 1);
+                // the item itself sits in the middle of its band-high slot, where the rest layout has it (place()): it
+                // ended at the band's top and dropped (BAND - ROW) / 2 as the list landed - hidden while its name faded
+                // before the end, and seen once the panel grew out of it (A53 recording, Nov 18)
+                ys[i] = i < a ? top - ei - ROW * (a - i) : i === a ? top - ei + (BAND - ROW) / 2 : top - ei + BAND + ROW * (i - a - 1);
             }
             return ys;
         }
