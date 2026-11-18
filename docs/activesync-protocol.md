@@ -106,13 +106,16 @@ once allowed the capture lives in the foreground service and follows the user in
 
 The server's Text Messaging accounts (iMessage through BlueBubbles, RCS through the Google Messages
 pairing, `modules/textMessaging.js`) notify on the phone even while the app is in the background.
-`modules/textMessagingPhone.js` sends these to a partnered phone's **service** socket, and only
-while none of the phone's WebViews reports `foreground: true` (when the page is on screen, Melaton
-Mobile shows its own notification):
+Since #908, a new text reaches the phone only as its notification inbox notice
+(`inbox.notice` with id `sms:<account>:<chatGuid>`; see "Notices and status" below). That notice is delivered,
+confirmed and sent again until confirmed. Its `data` carries `{ kind: 'sms', accountId, chatGuid, guid,
+title, sender, address, text, isGroup, date, service, account }`, and the app renders it as a MessagingStyle
+notification per `accountId + chatGuid` on the "Text messages" channel. It has quick reply (RemoteInput) and
+Mark as read. Tapping it opens the app at that conversation (`dreamscape://textmessaging/<accountId>/<chatGuid>`;
+the page calls `wmTextMessaging.openChat`). `tm.notify`, a second copy of the same text, is no longer sent.
 
 | event | detail | the app does |
 | --- | --- | --- |
-| `tm.notify` | `{ accountId, chatGuid, guid, title, sender, address, text, isGroup, date, service, account }` | posts (or adds to) a MessagingStyle notification per `accountId + chatGuid` on the "Text messages" channel: quick reply (RemoteInput) and Mark as read; tapping opens the app at that conversation (`dreamscape://textmessaging/<accountId>/<chatGuid>`, the page calls `wmTextMessaging.openChat`) |
 | `tm.dismiss` | `{ accountId, chatGuid }` | cancels that conversation's notification (read elsewhere, or you answered from another device) |
 
 The app answers with ordinary packets on the same socket (it holds the page's session):
@@ -150,3 +153,22 @@ From the desktop: Melaton Mobile Device Center > Programs and Services > Install
 an agent (application key, admin): upload as for any file (`POST /api/activesync/upload/:deviceId/begin`, chunks,
 then `commit` with `{ install: true, queue: true }`; the file lands under its own name, replacing an older copy),
 or `POST /api/activesync/install/:deviceId { root, path }` for an `.apk` already on the phone.
+
+
+## Notices and status (StaticForge #908, rule cafeready-background)
+
+Server -> the partnered phone's **service** socket:
+
+| event | detail | the app does |
+| --- | --- | --- |
+| `inbox.notice` | a notification inbox notice `{ id, app, cls, title, text, actions, data, createdAt, alert, catchUp?, resent?, pageConnected }` | posts it, and always confirms with `inbox.posted`. With Melaton Mobile in front, the page must call `AndroidInbox.shown(id)` within 4 s, or the app posts it itself. `sms:` notices become the text's conversation notification. `rem:` notices get Snooze (5 min) and Dismiss buttons |
+| `inbox.cleared` | `{ id }` | cancels it (and an `sms:` notice's conversation) |
+| `status.snapshot` | `{ full, fields: { mail, sms, chat, director, prints, weather, lapis, traffic, notices, prefs, received } }` | hands it to the CaféReady `status-bar` task, which works out the status icons with the page asleep (`modules/phoneStatus.js`). Only changed fields are sent; the whole snapshot is sent after a hello |
+
+The phone -> the server:
+
+- `as_event inbox.posted { id, how: 'posted' | 'page' | 'dup' | 'cleared' }`: the notice is delivered. Until this
+  arrives, the server sends the notice again after 15 s, 45 s, 2 min and 5 min, and on every hello. The
+  confirmation goes to no computer.
+- `reminder_snooze { id, minutes }` / `reminder_dismiss { id }` as ordinary packets (fields in `data`), from a
+  reminder's notification buttons.
