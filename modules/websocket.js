@@ -75,7 +75,9 @@ const DORMANT_HOLD = new Map([
     ['note_updated', 'all'],
     ['note_deleted', 'all'],
     // a note's content changed (the page reads it again): the newest per note
-    ['note_content_updated', (d) => `note:${d.noteId || ''}`]
+    ['note_content_updated', (d) => `note:${d.noteId || ''}`],
+    // a novel note's new text after a generate or undo (each push carries the whole note): the newest per note
+    ['novel_updated', (d) => `novel:${d.noteId || ''}`]
 ]);
 const DORMANT_HOLD_MAX = 300;
 
@@ -137,8 +139,7 @@ const DESKTOP_ONLY_TYPES = new Set([
     'devices_updated', 'device_screen_updated',
     'config_checkpoint_restored',
     'packages_updated',
-    // #890 round 5: the Novel window (novelManager) and Windows Sidebar (vistaSidebar.js, desktop shell only)
-    'novel_updated',
+    // #890 round 5: Windows Sidebar (vistaSidebar.js, desktop shell only)
     'sidebar_updated'
 ]);
 
@@ -180,7 +181,10 @@ const BROADCAST_ALL = new Set([
     'gallery_updated', 'workspace_image_added', 'dynamic_generation_progress_update',
     'tm_event', 'ma_event',
     // location_places_changed (#907): Home / Work for wmLocation, which desktop pages (Weather, backgrounds) load too
-    'location_places_changed'
+    'location_places_changed',
+    // novelManager.js loads in both shells: the desktop Novel window and the phone's Dream Studio Rentan
+    // novel view (studioModelRentan.js watchNovel) refresh an open note from it
+    'novel_updated'
 ]);
 void BROADCAST_ALL;
 

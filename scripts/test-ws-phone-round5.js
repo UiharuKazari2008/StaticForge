@@ -77,7 +77,9 @@ async function main() {
         const seen = new Map();
         lists.forEach((l, i) => l.forEach((t) => { assert.ok(!seen.has(t), `${t} is in one list only`); seen.set(t, i); }));
         ['inbox_updated', 'traffic_settings_changed', 'traffic_report'].forEach((t) => assert.ok(wst.PHONE_ONLY_TYPES.has(t), t));
-        ['novel_updated', 'sidebar_updated'].forEach((t) => assert.ok(wst.DESKTOP_ONLY_TYPES.has(t), t));
+        ['sidebar_updated'].forEach((t) => assert.ok(wst.DESKTOP_ONLY_TYPES.has(t), t));
+        assert.ok(wst.BROADCAST_ALL.has('novel_updated'), 'novel_updated reaches the phone (Rentan novel view)');
+        assert.ok(typeof wst.DORMANT_HOLD.get('novel_updated') === 'function', 'novel_updated held per note');
         ['tm_event', 'ma_event', 'weather_rain_status', 'weather_alert_issued', 'weather_rain_alarm', 'note_updated', 'gallery_updated', 'system_message'].forEach((t) => assert.ok(wst.BROADCAST_ALL.has(t), t));
         // notification drivers are never held
         ['weather_alert_issued', 'weather_rain_alarm', 'system_message', 'agent_notice', 'receipt_notification'].forEach((t) => assert.ok(!wst.DORMANT_HOLD.has(t), `${t} is never held`));
