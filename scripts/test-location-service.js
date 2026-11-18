@@ -66,6 +66,13 @@ loc._test.setFetch(async () => { calls += 1; return { ok: true, json: async () =
     let p = loc.getPlaces();
     assert.strictEqual(p.home.from, 'legacy');
     assert.strictEqual(p.work, null);
+    // an address-only Traffic place: looked up once, then stands in from the cache
+    cfg.traffic.work = { address: '123 Main St, Waldorf, MD' };
+    assert.strictEqual(loc.getPlaces().work, null, 'not known until looked up');
+    await new Promise((r) => setTimeout(r, 20));
+    p = loc.getPlaces();
+    assert.ok(p.work && p.work.from === 'legacy' && Number.isFinite(p.work.lat), 'address-only work stands in after the lookup');
+    delete cfg.traffic.work;
     p = await loc.savePlaces({ work: { label: 'Office', lat: 38.9, lon: -77.03, specificity: 'exact' } });
     assert.strictEqual(p.work.label, 'Office');
     assert.ok(!p.work.from);
