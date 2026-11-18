@@ -26,6 +26,21 @@ function reply(h, ws, message, data) {
     h.sendToClient(ws, { type: `${message.type}_response`, requestId: message.requestId, data, timestamp: new Date().toISOString() });
 }
 
+// A test device's snooze (modules/testDevices.js): the notice goes now and comes back as itself, sounding, like the
+// household's (reminderScheduler.snooze) but held in memory only - a test lane notice is never worth a scheduler row.
+function testSnooze(id, m) {
+    const held = id && inbox.list('test', { includeCleared: true }).find((n) => n.id === id);
+    if (!held) return { ok: false, error: 'no notice' };
+    const now = Date.now();
+    const at = Number.isFinite(Number(m.at)) && Number(m.at) > now ? Number(m.at) : now + Math.max(1, Math.min(1440, Number(m.minutes) || 5)) * 60000;
+    inbox.clear('test', id, 'snooze');
+    const t = setTimeout(() => {
+        inbox.publish({ user: 'test', id, app: held.app, cls: held.cls, title: held.title, text: held.text, actions: held.actions, data: held.data, alert: true });
+    }, at - now);
+    if (t.unref) t.unref();
+    return { ok: true, at, test: true };
+}
+
 function registerPackets(handlersCtx) {
     if (!handlersCtx) {
         console.warn('[294-notificationInboxHandler] registerPackets: missing handlersCtx');
@@ -90,15 +105,22 @@ function registerPackets(handlersCtx) {
     });
     reg('msg_new_seen', (ctx) => {
         const m = ctx.message;
+        // a test device (modules/testDevices.js) opening its mail says nothing about the household's envelope icons
+        if (inbox.userOf(ctx.clientInfo) === 'test') { reply(handlersCtx, ctx.ws, m, { ok: true, test: true }); return; }
         reply(handlersCtx, ctx.ws, m, { ok: require('../../messageNew').seen(String(m.cls || '')) });
     });
+    // the test lane's snooze and dismiss stay in it: the household's reminder scheduler is never told
     reg('reminder_snooze', (ctx) => {
         const m = ctx.message;
-        reply(handlersCtx, ctx.ws, m, reminders.snooze(inbox.userOf(ctx.clientInfo), String(m.id || ''), { minutes: m.minutes, at: m.at }));
+        const user = inbox.userOf(ctx.clientInfo);
+        if (user === 'test') { reply(handlersCtx, ctx.ws, m, testSnooze(String(m.id || ''), m)); return; }
+        reply(handlersCtx, ctx.ws, m, reminders.snooze(user, String(m.id || ''), { minutes: m.minutes, at: m.at }));
     }, { destructive: true });
     reg('reminder_dismiss', (ctx) => {
         const m = ctx.message;
-        reply(handlersCtx, ctx.ws, m, reminders.dismiss(inbox.userOf(ctx.clientInfo), String(m.id || '')));
+        const user = inbox.userOf(ctx.clientInfo);
+        if (user === 'test') { reply(handlersCtx, ctx.ws, m, { ok: true, cleared: inbox.clear('test', String(m.id || ''), 'test') }); return; }
+        reply(handlersCtx, ctx.ws, m, reminders.dismiss(user, String(m.id || '')));
     }, { destructive: true });
     reg('reminder_status', (ctx) => {
         reply(handlersCtx, ctx.ws, ctx.message, reminders.status());

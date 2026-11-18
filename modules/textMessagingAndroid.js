@@ -174,6 +174,8 @@ function tap() {
     if (typeof as.onDeviceHello === 'function') {
         as.onDeviceHello((d) => {
             if (!d || d.speaker !== 'service' || d.session !== 'partner') return;
+            // a test device's notifications (the emulator's test posts) are not the household's messages
+            if (d.test) return;
             caughtUp.add(d.id);
             const t = setTimeout(() => { for (const p of providers) p.syncDevice(d.id, d.name); }, 5000);
             if (t.unref) t.unref();
@@ -183,6 +185,8 @@ function tap() {
         // the first news from a phone since this server started: it may have connected before the
         // accounts listened (a restart race), so what it shows now is read once
         const id = device && device.id;
+        // a test device (modules/testDevices.js) is never read into the household's accounts
+        if (id && (() => { try { return require('./testDevices').isTestDevice(id); } catch (_) { return false; } })()) return;
         if (id && !caughtUp.has(id)) {
             caughtUp.add(id);
             for (const p of providers) void p.syncDevice(id, device.name);

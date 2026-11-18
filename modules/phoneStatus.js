@@ -90,8 +90,8 @@ function directorStatus(status) {
 
 const safe = (fn, fallback) => { try { return fn(); } catch (_e) { return fallback; } };
 
-function inboxCounts() {
-    const rows = safe(() => require('./notificationInbox').list('admin'), []).filter((n) => WAITING.has(n.state));
+function inboxCounts(user = 'admin') {
+    const rows = safe(() => require('./notificationInbox').list(user), []).filter((n) => WAITING.has(n.state));
     const has = (p) => rows.filter((n) => n.id.startsWith(p)).length;
     const mine = (n) => /^(mail|dmail|sms|chat|director):/.test(n.id);
     return {
@@ -110,8 +110,10 @@ function inboxCounts() {
     };
 }
 
-function prefs() {
-    const read = (k) => safe(() => require('./notificationInbox').getPref('admin', k), '') === '1';
+function prefs(user = 'admin') {
+    const read = (k) => safe(() => require('./notificationInbox').getPref(user, k), '') === '1';
+    // the test lane's Android pop-ups: the shell's own posts (aemu.sh's "android" notices) unless a test sets others
+    if (user === 'test') return { mailAll: read('icon.mailAll'), smsAll: read('icon.smsAll'), popupApps: ['com.android.shell'] };
     // popupApps: the Android apps registered in Messaging - the app pops up only their notifications as WM boxes
     return { mailAll: read('icon.mailAll'), smsAll: read('icon.smsAll'), popupApps: safe(() => require('./textMessaging').androidPopupPackages(), []) };
 }
@@ -187,15 +189,45 @@ async function build() {
     };
 }
 
+/**
+ * A test device's snapshot (modules/testDevices.js): its inbox fields from the test lane, every household field neutral
+ * (nothing of the household's mail, weather or car reaches it, and a test starts from a known state), then the fields
+ * the test set for it (PUT /api/test-devices/:id { status }) over the top, a field at a time.
+ */
+function buildTest(deviceId) {
+    const ib = inboxCounts('test');
+    const base = {
+        mail: { unread: 0, fresh: ib.mailFresh, new: false },
+        sms: { unread: 0, fresh: ib.smsFresh, new: false },
+        chat: { fresh: ib.chatFresh },
+        director: { running: false, unseen: ib.directorUnseen },
+        prints: { phone: 0 },
+        weather: { alerts: 0, rain: false },
+        lapis: { until: 0 },
+        traffic: null,
+        notices: { waiting: ib.notices, list: ib.noticeList },
+        prefs: prefs('test'),
+        received: { unseen: 0 }
+    };
+    const over = safe(() => require('./testDevices').statusOverrides(deviceId), {});
+    for (const [k, v] of Object.entries(over)) {
+        base[k] = v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' ? Object.assign({}, base[k], v) : v;
+    }
+    return base;
+}
+
 async function run() {
     running = true;
     try {
         const as = require('./activeSync');
         const links = safe(() => as.partnerLinks(gr, null).filter((l) => l.service), []);
         if (!links.length) return;
-        const snap = await build();
+        const isTest = (id) => safe(() => require('./testDevices').isTestDevice(id), false);
+        // the household's snapshot only when a real phone is linked (a test device alone builds none of it)
+        const snap = links.some((l) => !isTest(l.deviceId)) ? await build() : null;
         for (const l of links) {
-            const fields = Object.assign({}, snap, { received: { unseen: safe(() => as.receivedUnseen(gr, l.deviceId), 0) } });
+            const fields = isTest(l.deviceId) ? buildTest(l.deviceId)
+                : Object.assign({}, snap, { received: { unseen: safe(() => as.receivedUnseen(gr, l.deviceId), 0) } });
             const was = sent.get(l.deviceId);
             const out = {};
             const now = {};
@@ -215,4 +247,4 @@ async function run() {
     }
 }
 
-module.exports = { bind, touch, directorStatus, _test: { build, run, sent, reset: () => { sent.clear(); gr = null; directorRunning = false; } } };
+module.exports = { bind, touch, directorStatus, buildTest, _test: { build, run, sent, reset: () => { sent.clear(); gr = null; directorRunning = false; } } };

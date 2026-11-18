@@ -103,7 +103,15 @@ function database() {
     return db;
 }
 
+// The queues: admin, dev_admin, and 'test' - the lane of the test devices (modules/testDevices.js: the Android emulator
+// partnered for notification tests; nothing in it reaches a real phone or a page, and nothing a test device does reaches
+// the household's queues).
+const qu = (user) => (user === 'dev_admin' || user === 'test' ? user : 'admin');
+const testDevices = () => require('./testDevices');
+const isTestDevice = (id) => { try { return testDevices().isTestDevice(id); } catch (_e) { return false; } };
+
 function userOf(info) {
+    try { if (testDevices().isTestInfo(info)) return 'test'; } catch (_e) { /* no fence module: household */ }
     const t = info && info.userType ? String(info.userType) : '';
     return t === 'admin' || t === 'dev_admin' ? t : 'admin';
 }
@@ -145,7 +153,7 @@ function publish(notice = {}) {
     const id = String(notice.id || '').trim();
     const title = String(notice.title || '').trim();
     if (!id || !title) return null;
-    const user = notice.user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const user = qu(notice.user);
     const now = nowFn();
     const expiresAt = Number.isFinite(Number(notice.ttlMs)) && Number(notice.ttlMs) > 0 ? now + Number(notice.ttlMs) : (Number.isFinite(Number(notice.expiresAt)) ? Number(notice.expiresAt) : null);
     if (expiresAt && expiresAt <= now) return null;
@@ -196,8 +204,10 @@ function publish(notice = {}) {
     broadcast(user, { type: 'inbox_updated', data: { reason: 'new', notice: out } });
     // the phones' status icons read the waiting notices (phoneStatus, #908)
     try { require('./phoneStatus').touch('inbox'); } catch (_e) { /* best effort */ }
-    // the phones' background links too (#876 D): a phone whose page is not running posts it natively
-    if (!quiet) {
+    // the phones' background links too (#876 D): a phone whose page is not running posts it natively.
+    // push: false (test lane only, /api/test-devices "get" notices): stored for the phones to fetch - their hello
+    // catch-up and the status snapshot's notices list - but not sent live
+    if (!quiet && !(user === 'test' && notice.push === false)) {
         const sentTo = [];
         try { require('./activeSync').sendInboxNotice(gr, null, Object.assign({ user }, out), { sentTo }); } catch (e) { console.warn(`[notify-inbox] phones: ${e.message}`); }
         sentTo.forEach((device) => noteSent(device, user, id, alert, true));
@@ -213,7 +223,7 @@ function publish(notice = {}) {
  * past its expiresAt itself).
  */
 function list(user, { since = 0, includeCleared = false } = {}) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     const now = nowFn();
     const from = Number(since) || 0;
     try {
@@ -235,7 +245,7 @@ function list(user, { since = 0, includeCleared = false } = {}) {
 
 /** How many notices a full list holds (not expired, not cleared): inbox_list's total. */
 function count(user) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     try {
         const r = database()
             .prepare("SELECT COUNT(*) AS n FROM notices WHERE user = ? AND state != 'cleared' AND (expiresAt IS NULL OR expiresAt > ?)")
@@ -248,7 +258,7 @@ function count(user) {
 
 /** Move a notice on: 'seen' (shown somewhere), 'acted' (a button used) or 'cleared' (dismissed/swiped). */
 function ack(user, id, state, device) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     if (!STATES.has(state) || state === 'new') return false;
     try {
         const cur = database().prepare('SELECT state FROM notices WHERE user = ? AND id = ?').get(u, String(id || ''));
@@ -282,7 +292,7 @@ function clear(user, id, device) {
  * @returns how many were cleared
  */
 function clearWhere(user, prefix, device) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     const p = String(prefix || '');
     if (!p) return 0;
     let ids = [];
@@ -312,7 +322,7 @@ const DEFAULT_QUIET = [];
 const quietCache = new Map();
 
 function quietClasses(user) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     if (quietCache.has(u)) return quietCache.get(u);
     let list = DEFAULT_QUIET;
     try {
@@ -329,11 +339,11 @@ function quietClasses(user) {
 /** The phone page reports the classes it shows without a message; they are stored seen and never posted. */
 /** A plain per-user preference (phoneStatus: Messaging's icon choices, #908). */
 function getPref(user, key) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     try { const r = database().prepare('SELECT value FROM prefs WHERE user = ? AND key = ?').get(u, String(key)); return r ? r.value : ''; } catch (_e) { return ''; }
 }
 function setPref(user, key, value) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     try {
         database().prepare('INSERT INTO prefs (user, key, value) VALUES (?, ?, ?) ON CONFLICT (user, key) DO UPDATE SET value = excluded.value').run(u, String(key), String(value));
     } catch (e) { console.warn(`[notify-inbox] pref failed: ${e.message}`); return false; }
@@ -342,7 +352,7 @@ function setPref(user, key, value) {
 }
 
 function setQuiet(user, classes) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     const list = [...new Set((Array.isArray(classes) ? classes : []).map((c) => String(c || '').trim()).filter((c) => /^[a-z0-9-]{1,40}$/.test(c)))].slice(0, 80);
     try {
         database()
@@ -358,7 +368,7 @@ function setQuiet(user, classes) {
 
 /** Drop a user's expired notices, and old or surplus ones (keep the newest MAX_PER_USER). */
 function prune(user) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     const now = nowFn();
     try {
         const d = database();
@@ -385,7 +395,7 @@ const CATCH_UP_MS = 24 * 60 * 60 * 1000;
  * not expired, not a quiet class, from the last 24 h; oldest first.
  */
 function pendingForPhones(user) {
-    const u = user === 'dev_admin' ? 'dev_admin' : 'admin';
+    const u = qu(user);
     const now = nowFn();
     const quiet = quietClasses(u);
     try {
@@ -413,7 +423,8 @@ function catchUpPhone(deviceId) {
     // what this phone already confirmed is not sent again (a hello on every network change would re-send it all)
     let done = new Set();
     try { done = new Set(database().prepare('SELECT user, id FROM deliveries WHERE device = ? AND postedAt IS NOT NULL').all(String(deviceId)).map((r) => `${r.user}\u0000${r.id}`)); } catch (_e) { /* send all */ }
-    for (const user of ['admin', 'dev_admin']) {
+    // a test device catches up on the test lane only; a real phone never on it
+    for (const user of (isTestDevice(deviceId) ? ['test'] : ['admin', 'dev_admin'])) {
         for (const n of pendingForPhones(user)) {
             if (done.has(`${user}\u0000${n.id}`)) continue;
             const sentTo = [];
@@ -465,6 +476,14 @@ function openDeliveries(device) {
             JOIN notices n ON n.user = d.user AND n.id = d.id
             WHERE d.postedAt IS NULL AND n.state = 'new' AND (n.expiresAt IS NULL OR n.expiresAt > ?)${device ? ' AND d.device = ?' : ''}
             ORDER BY d.sentAt ASC LIMIT 200`).all(...(device ? [now, String(device)] : [now]));
+    } catch (_e) { return []; }
+}
+
+/** The delivery rows of a queue (the test devices' harness reads what each phone confirmed, /api/test-devices). */
+function deliveries(user, device) {
+    try {
+        return database().prepare(`SELECT device, id, sentAt, attempts, alert, postedAt, how FROM deliveries WHERE user = ?${device ? ' AND device = ?' : ''} ORDER BY sentAt DESC LIMIT 200`)
+            .all(...(device ? [qu(user), String(device)] : [qu(user)]));
     } catch (_e) { return []; }
 }
 
@@ -560,6 +579,7 @@ module.exports = {
     userOf,
     pendingForPhones,
     catchUpPhone,
+    deliveries,
     confirmed,
     getPref,
     setPref,
