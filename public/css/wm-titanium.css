@@ -192,12 +192,15 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-ti-row="regular"] .wm-ti-row { fon
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-row="semilight"] .wm-ti-row { font-family: 'Segoe UI', var(--wm-font); font-weight: 350; }
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-row="light"] .wm-ti-row { font-family: 'Segoe UI', var(--wm-font); font-weight: 300; }
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="bold"] .wm-ti-exp .wm-ti-line.is-1 { font-weight: 700; }
-html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="regular"] .wm-ti-exp .wm-ti-line.is-1 { font-weight: 400; }
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="regular"] .wm-ti-exp .wm-ti-line.is-1,
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="regular"] .wm-ti-exp .wm-ti-time { font-weight: 400; }
 /* lighter than regular: the whole item (its lines, the clock and date) */
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="semilight"] .wm-ti-exp,
-html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="semilight"] .wm-ti-exp .wm-ti-line.is-1 { font-family: 'Segoe UI', var(--wm-font); font-weight: 350; }
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="semilight"] .wm-ti-exp .wm-ti-line.is-1,
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="semilight"] .wm-ti-exp .wm-ti-time { font-family: 'Segoe UI', var(--wm-font); font-weight: 350; }
 html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="light"] .wm-ti-exp,
-html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="light"] .wm-ti-exp .wm-ti-line.is-1 { font-family: 'Segoe UI', var(--wm-font); font-weight: 300; }
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="light"] .wm-ti-exp .wm-ti-line.is-1,
+html.ui-mobile[data-wm-version="6.5"][data-wm-ti-band="light"] .wm-ti-exp .wm-ti-time { font-family: 'Segoe UI', var(--wm-font); font-weight: 300; }
 
 /* three lines 34 / 68 / 98, two 52 / 86, one 66 */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-lines="3"] .is-1 { top: calc(17 * var(--u)); }
@@ -243,12 +246,16 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-small {
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-text[data-small] .wm-ti-line { left: calc(32 * var(--u)); }
 
 /* ---- the clock panel: time 20,22 (186 wide, right aligned, 28 pt), AM/PM 226,36, date 226,66,
-   network 20,104 ---- */
+   network 20,104. The time is the item's first line: it takes Today > Text's Selected item weight (bold
+   unless set otherwise, Yukimi Nov 17). Its box is "00:00" wide in the face it is drawn in
+   (--ti-time-w, wmTitanium.js syncClockWidth; the ROM's 93 for Tahoma regular), the AM/PM and date
+   column 10 after it - Segoe's narrower digits move the time left instead of leaving a gap ---- */
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-time {
     position: absolute;
     left: calc(10 * var(--u));
     top: calc(11.5 * var(--u));
-    width: calc(93 * var(--u));
+    width: calc(var(--ti-time-w, 93) * var(--u));
+    font-weight: bold;
     text-align: right;
     font-size: calc(37.333 * var(--u));
     line-height: 1.2075;
@@ -259,7 +266,7 @@ html.ui-mobile[data-wm-version="6.5"] .wm-ti-ampm,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-date,
 html.ui-mobile[data-wm-version="6.5"] .wm-ti-network {
     position: absolute;
-    left: calc(113 * var(--u));
+    left: calc((var(--ti-time-w, 93) + 20) * var(--u));
     font-size: calc(10.667 * var(--u));
     line-height: 1.2075;
     white-space: nowrap;
