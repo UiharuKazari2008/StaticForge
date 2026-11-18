@@ -520,6 +520,8 @@
     const DRIVE_STATE = { idle: 'Not driving', maybe: 'Maybe driving', driving: 'Driving', parked_in_car: 'Parked, in the car', stopped: 'Stopped' };
     const DRIVE_SOURCE = { activity: 'motion', car_bt: 'the car\'s Bluetooth', carkey: 'the car key', geofence: 'leaving Home or Work', movement: 'moving' };
     const DRIVE_ACCESS = { on: 'On', ask: 'Not allowed yet', denied: 'Refused', unavailable: 'Not on this phone' };
+    // leaving Home or Work (AndroidHome.setDrivePlaces from the location service, background location): 'none' = allowed, no places yet
+    const DRIVE_FENCE = { on: 'Watching', ask: 'Not allowed yet', denied: 'Refused', none: 'No places yet' };
     function driveJson(fn) { const H = driveBridge(); try { return H && typeof H[fn] === 'function' ? JSON.parse(H[fn]() || 'null') : null; } catch (_) { return null; } }
     function renderDrive(el, d, api) {
         const H = driveBridge();
@@ -538,7 +540,8 @@
         const since = st.since ? new Date(st.since).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
         el.innerHTML = `${ui.value('Now:', `${DRIVE_STATE[st.state] || 'Unknown'}${st.source && DRIVE_SOURCE[st.source] ? ` (${DRIVE_SOURCE[st.source]})` : ''}${since ? `, since ${since}` : ''}`, { wide: true })}
             ${ui.value('Motion:', DRIVE_ACCESS[st.activity] || 'Unknown', { wide: true })}
-            ${st.activity === 'on' || st.activity === 'unavailable' ? '' : ui.buttons([['drive-access', 'Allow...']])}
+            ${st.geofence ? ui.value('Home / Work:', DRIVE_FENCE[st.geofence] || st.geofence, { wide: true }) : ''}
+            ${(st.activity === 'on' || st.activity === 'unavailable') && (!st.geofence || st.geofence === 'on' || st.geofence === 'none') ? '' : ui.buttons([['drive-access', 'Allow...']])}
             ${ui.note('The phone tells driving from walking with Android\'s motion detection. Traffic\'s camera and police warnings and the GPS follow it: parked in the car, the GPS stays off.')}
             ${ui.gap()}
             ${ui.sub('My cars')}
