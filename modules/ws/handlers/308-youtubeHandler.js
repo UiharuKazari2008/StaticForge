@@ -2,6 +2,7 @@ const wsPacketRegistry = require('../wsPacketRegistry');
 const statusHub = require('../statusHub');
 const youtubeService = require('../../youtubeService');
 const activeSync = require('../../activeSync');
+const kickRelay = require('../../videosKickRelay');
 
 // Melaton Videos, first Melaton Mobile YouTube (Yozora #839, #861): the phone's videos program and its Today item.
 // Beside YouTube it shows Kick live streams and the notifications of chosen Android apps (modules/videosSources.js). Everything
@@ -19,6 +20,11 @@ const activeSync = require('../../activeSync');
 //   youtube_mark             { id, watched }           admins; Mark as Watched / Unwatched in the account's own YouTube history -> { id, watched, youtube }
 //   youtube_later            { id, on }                admins; add to / remove from Watch Later -> { id, later, youtube }
 //                                                      youtube: done | failed | browser-signin | browser-offline (the account's own list)
+//   youtube_live_modes       {}                        { modes[{ id, label, note, kbit, heavy }] }: the qualities a Kick stream can be watched in
+//   youtube_live_start       { slug, mode }            admins; starts (or joins) the server's relay of a listed Kick channel's live stream
+//                                                      -> { id, url, mode, state, source, modes } (url: HLS under /api/videos/live/<id>/; modules/videosKickRelay.js)
+//   youtube_live_state       { id }                    admins -> { state: live | restarting | ended | error | gone, error }
+//   youtube_live_stop        { id }                    admins -> { stopped }
 //   youtube_kick_add         { name }                  admins; a Kick channel by its name -> { channel, live, channels[] } (needs Service key `kick`)
 //   youtube_kick_remove      { slug }                  admins -> { channels[] }
 //   youtube_apps_save        { apps[{ package, label }] }  admins; the apps whose phone notifications become feed items -> { apps[] }
@@ -89,6 +95,12 @@ function registerPackets(handlersCtx) {
     reg('youtube_watch_later', packet(false, 'Watch Later could not be read', async (m) => youtubeService.watchLater({ fresh: !!m.fresh })));
     reg('youtube_mark', packet(true, 'The mark could not be saved', async (m) => youtubeService.markWatched(String(m.id || ''), m.watched !== false)));
     reg('youtube_later', packet(true, 'Watch Later could not be changed', async (m) => youtubeService.setLater(String(m.id || ''), m.on !== false)));
+    // Kick live streams played in the program through the server (#918): only channels on the program's list
+    kickRelay.bind({ allowed: (slug) => sources.view().kick.some((c) => c.slug === slug) });
+    reg('youtube_live_modes', packet(false, 'The qualities could not be read', async () => ({ modes: kickRelay.modes() })));
+    reg('youtube_live_start', packet(true, 'The stream could not be started', async (m) => Object.assign(await kickRelay.start(m.slug, m.mode), { modes: kickRelay.modes() })));
+    reg('youtube_live_state', packet(true, 'The stream could not be read', async (m) => kickRelay.state(m.id)));
+    reg('youtube_live_stop', packet(true, 'The stream could not be stopped', async (m) => ({ stopped: await kickRelay.stop(m.id) })));
     reg('youtube_kick_add', packet(true, 'The Kick channel could not be added', async (m) => sources.kickAdd(m.name)));
     reg('youtube_kick_remove', packet(true, 'The Kick channel could not be removed', async (m) => ({ channels: sources.kickRemove(m.slug) })));
     reg('youtube_apps_save', packet(true, 'The apps could not be saved', async (m) => ({ apps: sources.appsSave(m.apps) })));

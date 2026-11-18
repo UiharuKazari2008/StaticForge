@@ -19,6 +19,8 @@
  * the statusHub feed `youtube` while Today's item or this program is on screen; this file never polls.
  * The Subscriptions list is answered at once from what the server holds; when its look for new uploads
  * finishes, the status feed's `feed.at` moves and the list is read again (no call to YouTube).
+ * A Kick stream that is live plays inside the program (#918): the server relays it in the quality chosen under
+ * Quality (Kick's own lower renditions, server re-encodes at 30 fps, or Audio First), see the live player below.
  * Lists (youtube_feed, youtube_watch_later, youtube_search, youtube_subscriptions, youtube_channel)
  * are read when their page is opened, on Refresh, or when they are older than 15 minutes on return.
  *
@@ -171,7 +173,7 @@
     /** A feed item, by where it comes from: YouTube's app, Kick's app (or its site), or the app that posted. */
     function openItem(v) {
         if (!v) return false;
-        if (srcOf(v) === 'kick') return openUrl(v.url || `https://kick.com/${String(v.id).replace(/^kick:/, '')}`, true, KICK_PACKAGE);
+        if (srcOf(v) === 'kick') { watchLive(v); return true; }
         if (srcOf(v) === 'app') {
             // on the phone that posted the notification: what a tap on the notification itself opens (the stream)
             const A = window.AndroidActiveSync;
@@ -726,6 +728,12 @@
                 <div class="yt-panes">
                     ${TABS.map((t) => `<div class="yt-pane" data-pane="${t.id}" hidden>${t.id === 'search' ? `<form class="yt-search" action="#" autocomplete="off"><label class="yt-field">${I.search}<input class="yt-q" type="search" enterkeyhint="search" placeholder="Search YouTube" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="120"><button type="button" class="yt-clear" aria-label="Clear" hidden>&times;</button></label><button type="submit" class="yt-btn is-go">Search</button></form>` : ''}<div class="yt-list${t.id === 'channels' ? '' : ' is-videos'}"></div></div>`).join('')}
                     <div class="yt-layer" hidden><div class="yt-chan"></div><div class="yt-list is-videos"></div></div>
+                    <div class="yt-player" hidden>
+                        <video class="yt-video" playsinline preload="none" disablepictureinpicture disableremoteplayback></video>
+                        <div class="yt-pl-top"><i class="yt-new is-livetag">LIVE</i><span class="yt-pl-title"></span><span class="yt-pl-mode"></span></div>
+                        <div class="yt-pl-status" hidden><i></i><span></span></div>
+                        <button type="button" class="yt-pl-key" data-pl="toggle" aria-label="Pause" hidden></button>
+                    </div>
                     <div class="yt-sign" hidden></div>
                 </div>
                 <div class="yt-tabs" role="tablist"><div class="yt-slider"><i></i></div>${TABS.map((t) => `<button type="button" class="yt-tab" role="tab" data-tab="${t.id}">${t.icon}<span>${t.label}</span></button>`).join('')}</div>
@@ -733,6 +741,7 @@
         const q = (s) => page.querySelector(s);
         els = {
             root: q('.yt-root'), me: q('.yt-me'), title: q('.yt-title'), note: q('.yt-note'), panes: q('.yt-panes'),
+            player: q('.yt-player'), video: q('.yt-video'), plTitle: q('.yt-pl-title'), plMode: q('.yt-pl-mode'), plStatus: q('.yt-pl-status'), plKey: q('.yt-pl-key'),
             tabs: q('.yt-tabs'), slider: q('.yt-slider'), sign: q('.yt-sign'), layer: q('.yt-layer'), chan: q('.yt-chan'), layerList: q('.yt-layer .yt-list'),
             form: q('.yt-search'), q: q('.yt-q'), clear: q('.yt-clear'), lists: {}, paneEls: {}
         };
@@ -762,6 +771,7 @@
         els.q.addEventListener('input', () => { els.clear.hidden = !els.q.value; });
         els.clear.addEventListener('click', () => { clearSearch(); els.q.focus(); });
         wireTabs();
+        wirePlayer();
         // its animations stop while the page is hidden or the screen is off (the page is not hidden then)
         const paused = () => { if (els) els.root.classList.toggle('is-paused', !screenOn()); };
         document.addEventListener('visibilitychange', paused, { signal: appScopeSignal });
@@ -957,7 +967,8 @@
             const v = seen.get(row.dataset.v);
             const kick = srcOf(v) === 'kick';
             items = [
-                { label: kick ? 'Watch on Kick' : `Open ${v.channel || 'the App'}`, action: () => openItem(v) },
+                { label: kick ? 'Watch Here' : `Open ${v.channel || 'the App'}`, action: () => openItem(v) },
+                kick ? { label: 'Watch in Kick\'s App', action: () => openUrl(v.url, true, KICK_PACKAGE) } : null,
                 kick ? { label: 'Open in Browser', action: () => openUrl(v.url, false) } : null,
                 '-',
                 { label: v.watched ? (kick ? 'Show Again' : 'Mark as Unread') : (kick ? 'Hide This Stream' : 'Mark as Read'), disabled: !isAdmin(), action: () => setWatched(v.id, !v.watched) },
@@ -995,6 +1006,247 @@
         row.classList.add('is-held');
         setTimeout(() => row.classList.remove('is-held'), 400);
         ws.menuAt(e.clientX, e.clientY, items.filter(Boolean));
+    }
+
+    // ---------------------------------------------------------------- the live player (Kick, through the server; #918)
+    //
+    // A Kick stream is played here, not in Kick's app: the server pulls it and hands the phone a steady, lighter
+    // stream (HLS pieces under /api/videos/live/<id>/). The picture is a plain <video> with the program's own
+    // keys (no browser controls); hls.js (public/dist/hlsjs, loaded when the player first opens) does the
+    // fetching and rides out a weak connection. Playing stops loading when the program is not in front; with
+    // the screen off only Audio First keeps going.
+
+    const LS_MODE = 'wmVideosLiveMode';
+    const HLS_SRC = '/dist/hlsjs/hls.light.min.js';
+    let player = null; // { slug, title, channel, url, mode, modes, id, hls, state, held, lock, tries, keyTimer }
+    let hlsLoading = null;
+
+    const liveMode = () => { try { return localStorage.getItem(LS_MODE) || '480'; } catch (_) { return '480'; } };
+    const modeLabel = (id) => { const m = ((player && player.modes) || []).find((x) => x.id === id); return m ? m.label : ''; };
+
+    function loadHls() {
+        if (window.Hls) return Promise.resolve(window.Hls);
+        if (!hlsLoading) {
+            hlsLoading = new Promise((resolve, reject) => {
+                const el = document.createElement('script');
+                el.src = HLS_SRC;
+                el.onload = () => resolve(window.Hls);
+                el.onerror = () => { hlsLoading = null; reject(new Error('The player could not be loaded')); };
+                document.head.appendChild(el);
+            });
+        }
+        return hlsLoading;
+    }
+
+    function plStatus(text, busy) {
+        if (!els) return;
+        const want = text || '';
+        els.plStatus.hidden = !want;
+        const span = els.plStatus.lastElementChild;
+        if (span.textContent !== want) span.textContent = want;
+        els.plStatus.classList.toggle('is-busy', !!busy);
+    }
+
+    function plHead() {
+        if (!els || !player) return;
+        if (els.plTitle.textContent !== player.title) els.plTitle.textContent = player.title;
+        const m = modeLabel(player.mode);
+        if (els.plMode.textContent !== m) els.plMode.textContent = m;
+    }
+
+    /** Keeps the page (and for a picture, the screen) awake while a stream plays; off again when it stops. */
+    function plHold(on) {
+        if (!player) return;
+        const mc = window.melatonContinuity;
+        const wantPage = on && player.mode === 'audio';
+        if (mc && typeof mc.holdAwake === 'function' && !!player.held !== wantPage) { player.held = wantPage; mc.holdAwake('videos-live', wantPage); }
+        const wantScreen = on && player.mode !== 'audio';
+        if (wantScreen && !player.lock && navigator.wakeLock && typeof navigator.wakeLock.request === 'function') {
+            navigator.wakeLock.request('screen').then((l) => { if (player && !player.lock) player.lock = l; else l.release().catch(() => {}); }).catch(() => {});
+        } else if (!wantScreen && player.lock) {
+            player.lock.release().catch(() => {});
+            player.lock = null;
+        }
+    }
+
+    function plDetach() {
+        if (!player) return;
+        if (player.hls) { try { player.hls.destroy(); } catch (_) { /* gone */ } player.hls = null; }
+        if (els) { els.video.removeAttribute('src'); try { els.video.load(); } catch (_) { /* nothing loaded */ } }
+    }
+
+    async function plAttach() {
+        const p = player;
+        if (!p || !p.url || !els) return;
+        const video = els.video;
+        let Hls = null;
+        try { Hls = await loadHls(); } catch (_) { Hls = null; }
+        if (player !== p) return;
+        plDetach();
+        if (Hls && Hls.isSupported()) {
+            // a live stream on a connection that drops out: stay five pieces (20 s) behind so there is a reserve
+            // to play from through a gap (nobody chats here, the delay costs nothing), try again patiently, and never climb to a heavier rendition (there is only this one)
+            const hls = new Hls({ lowLatencyMode: false, liveSyncDurationCount: 5, liveMaxLatencyDurationCount: 13, maxBufferLength: 30, maxMaxBufferLength: 48, backBufferLength: 8,
+                manifestLoadingMaxRetry: 8, levelLoadingMaxRetry: 10, fragLoadingMaxRetry: 10, fragLoadingRetryDelay: 800, levelLoadingRetryDelay: 800 });
+            p.hls = hls;
+            hls.on(Hls.Events.MANIFEST_PARSED, () => { video.play().catch(() => { plKey(true); }); });
+            hls.on(Hls.Events.ERROR, (_e, d) => {
+                if (!d || !d.fatal || player !== p) return;
+                if (d.type === Hls.ErrorTypes.MEDIA_ERROR && p.tries < 6) { p.tries++; hls.recoverMediaError(); return; }
+                plLost();
+            });
+            hls.loadSource(p.url);
+            hls.attachMedia(video);
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = p.url;
+            video.play().catch(() => { plKey(true); });
+        } else {
+            plStatus('This phone\'s browser cannot play the stream.', false);
+        }
+    }
+
+    /** The stream stopped arriving: ask the server what became of it, then start again or say it ended. */
+    async function plLost() {
+        const p = player;
+        if (!p || p.state === 'starting') return;
+        plDetach();
+        plStatus('Reconnecting...', true);
+        let st = null;
+        try { st = p.id ? await ask('youtube_live_state', { id: p.id }, 10000) : null; } catch (_) { st = null; }
+        if (player !== p) return;
+        if (st && st.state === 'ended') { p.state = 'ended'; plStatus('The stream has ended.', false); plHold(false); refreshKeys(); return; }
+        if (st && (st.state === 'live' || st.state === 'restarting') && p.tries < 30) {
+            p.tries++;
+            p.retry = setTimeout(() => { if (player === p && p.state === 'live' && shown) plAttach(); }, st.state === 'live' ? 1500 : 5000); // perf: allow one reconnect after a lost stream, not a poll
+            return;
+        }
+        plStart(p.mode);
+    }
+
+    async function plStart(mode) {
+        const p = player;
+        if (!p) return;
+        clearTimeout(p.retry);
+        plDetach();
+        p.mode = mode;
+        p.state = 'starting';
+        p.tries = 0;
+        try { localStorage.setItem(LS_MODE, mode); } catch (_) { /* private mode */ }
+        plHead();
+        plStatus(mode === 'audio' || /^(e|hw)/.test(mode) ? 'Starting the stream (the server is encoding it)...' : 'Starting the stream...', true);
+        refreshKeys();
+        try {
+            const d = await ask('youtube_live_start', { slug: p.slug, mode }, 75000);
+            if (player !== p || p.mode !== mode) return;
+            p.id = d.id;
+            p.url = d.url;
+            p.modes = d.modes || p.modes;
+            p.mode = d.mode || mode;
+            p.state = 'live';
+            plHead();
+            plHold(true);
+            refreshKeys();
+            if (shown) await plAttach(); else p.suspended = true;
+        } catch (e) {
+            if (player !== p) return;
+            p.state = e && e.code === 'KICK_OFFLINE' ? 'ended' : 'error';
+            plStatus(p.state === 'ended' ? 'That channel is not live right now.' : failText(e, 'The stream could not be started'), false);
+            refreshKeys();
+        }
+    }
+
+    function watchLive(v) {
+        if (!isAdmin()) { box('Only the administrator can watch a stream through the server.', 'info'); return; }
+        const slug = String(v.id || '').replace(/^kick:/, '');
+        if (!slug || !els) return;
+        if (ws && ws.currentApp && ws.currentApp() !== APP_ID) ws.open(APP_ID);
+        player = { slug, title: `${v.channel || slug}: ${v.title || ''}`, kickUrl: v.url || `https://kick.com/${slug}`, mode: liveMode(), modes: (player && player.modes) || [], id: '', url: '', hls: null, state: 'starting', tries: 0 };
+        els.player.hidden = false;
+        syncPlayer();
+        plStart(player.mode);
+    }
+
+    /** Leaves the player: the stream stops on the phone and, a moment later with nobody asking, on the server. */
+    function stopPlayer() {
+        const p = player;
+        if (!p) return false;
+        clearTimeout(p.retry);
+        clearTimeout(p.keyTimer);
+        plDetach();
+        plHold(false);
+        if (p.id) ask('youtube_live_stop', { id: p.id }, 8000).catch(() => {});
+        player = null;
+        if (els) { els.player.hidden = true; plStatus('', false); plKey(false); }
+        syncPlayer();
+        return true;
+    }
+
+    /** Not in front (or the screen off on a picture mode): stop fetching; back again: carry on at the live edge. */
+    function plSuspend(off) {
+        const p = player;
+        if (!p || p.state !== 'live') return;
+        if (off && !p.suspended) { p.suspended = true; clearTimeout(p.retry); plDetach(); plHold(false); } else if (!off && p.suspended) { p.suspended = false; plHold(true); plLost(); }
+    }
+
+    function plKey(show) {
+        if (!els) return;
+        const paused = els.video.paused;
+        els.plKey.hidden = !show;
+        els.plKey.classList.toggle('is-play', paused);
+        els.plKey.setAttribute('aria-label', paused ? 'Play' : 'Pause');
+        if (player) { clearTimeout(player.keyTimer); if (show && !paused) player.keyTimer = setTimeout(() => { if (els) els.plKey.hidden = true; }, 2500); }
+    }
+
+    function plToggle() {
+        if (!player || player.state !== 'live' || !els) return;
+        const v = els.video;
+        if (v.paused) {
+            // a live stream carries on without us: back at the newest picture, not where it was paused
+            if (player.hls && player.hls.liveSyncPosition) { try { v.currentTime = player.hls.liveSyncPosition; } catch (_) { /* not seekable yet */ } }
+            v.play().catch(() => {});
+        } else v.pause();
+    }
+
+    function wirePlayer() {
+        const v = els.video;
+        els.player.addEventListener('click', (e) => {
+            if (e.target.closest('[data-pl="toggle"]')) { plToggle(); return; }
+            plKey(els.plKey.hidden);
+        });
+        v.addEventListener('playing', () => { if (player && player.state === 'live') { player.tries = 0; plStatus('', false); } plKey(!els.plKey.hidden); });
+        v.addEventListener('pause', () => plKey(true));
+        v.addEventListener('waiting', () => { if (player && player.state === 'live') plStatus('Buffering...', true); });
+        v.addEventListener('error', () => { if (player && !player.hls && player.state === 'live') plLost(); });
+        // the screen going off stops a picture mode's fetching; Audio First plays on
+        window.addEventListener('melatonscreen', () => { if (player && player.mode !== 'audio') plSuspend(document.documentElement.dataset.screenOff !== undefined); }, { signal: appScopeSignal });
+    }
+
+    const refreshKeys = () => { if (ws) { ws.refreshSoftKeys(); ws.refreshTitleAction(); } };
+    function syncPlayer() {
+        if (ws) { ws.setTitle(player ? 'Live' : TITLE); ws.syncHistory(); refreshKeys(); }
+    }
+
+    function qualityMenu() {
+        const p = player;
+        if (!p) return [];
+        const list = p.modes.length ? p.modes : [{ id: p.mode, label: p.mode, note: '' }];
+        return list.map((m) => ({ label: m.note ? `${m.label} (${m.note})` : m.label, radio: m.id === p.mode, action: () => { if (player === p && m.id !== p.mode) plStart(m.id); } }));
+    }
+
+    function playerKeys() {
+        const p = player;
+        const live = p.state === 'live';
+        return {
+            left: { label: 'Quality', disabled: p.state === 'starting', menu: qualityMenu },
+            right: { label: 'Menu', menu: () => [
+                { label: els.video.paused ? 'Play' : 'Pause', disabled: !live, action: plToggle },
+                { label: 'Sound Off', checked: !!els.video.muted, action: () => { els.video.muted = !els.video.muted; } },
+                { label: 'Try Again', disabled: p.state === 'starting', action: () => plStart(p.mode) },
+                '-',
+                { label: 'Watch in Kick\'s App', action: () => { const u = p.kickUrl; stopPlayer(); openUrl(u, true, KICK_PACKAGE); } },
+                { label: 'Stop', action: stopPlayer }
+            ] }
+        };
     }
 
     // ---------------------------------------------------------------- menus
@@ -1065,13 +1317,14 @@
             // new uploads the server found while the program was away: taken now, quietly, as a push would
             const t = data.subs;
             if (t.feedStale && signedIn() && t.videos && !t.loading) { t.feedStale = false; loadTab('subs', false, true); }
+            if (player) { syncPlayer(); plSuspend(false); }
         },
-        hide() { shown = false; if (els) els.q.blur(); void syncHub(); },
-        historyDepth: () => (layer ? 1 : 0),
-        onBack: () => popLayer(),
-        titleKind: () => (layer ? 'ok' : 'close'),
-        onTitleOk: () => popLayer(),
-        onTitleClose() { layer = null; },
+        hide() { shown = false; if (els) els.q.blur(); plSuspend(true); void syncHub(); },
+        historyDepth: () => (player ? 1 : 0) + (layer ? 1 : 0),
+        onBack: () => (player ? stopPlayer() : popLayer()),
+        titleKind: () => (player || layer ? 'ok' : 'close'),
+        onTitleOk: () => (player ? stopPlayer() : popLayer()),
+        onTitleClose() { stopPlayer(); layer = null; },
         softKeys() {
             if (!signedIn()) {
                 const a = acct();
@@ -1080,6 +1333,7 @@
                     right: { label: 'Menu', menu: mainMenu }
                 };
             }
+            if (player) return playerKeys();
             if (layer) {
                 const on = favIds().has(layer.id);
                 return { left: { label: 'Back', action: popLayer }, right: { label: 'Menu', menu: () => [{ label: 'Show on Today', checked: on, action: () => toggleFavourite(layer.channel) }, { label: 'Refresh', action: refresh }, '-', { label: 'Open in YouTube', action: () => openUrl(channelUrl(layer.id)) }] } };
