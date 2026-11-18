@@ -196,6 +196,13 @@ T.setFetch(async (url, init) => {
         assert.ok(b && b.admin && !b.user, 'updates go to admins only');
     });
 
+    await ok('nearby: a point on no route gets the stored area\'s cameras and police zones', async () => {
+        const r = await svc.nearby(44.0, -102.95);
+        assert.ok(r.box && r.cameras.some((c) => c.id === 'osm:11'), JSON.stringify(r.cameras.map((c) => c.id)));
+        assert.ok(r.police.some((z) => z.id === 'osmz:91' && Array.isArray(z.line) && z.line.length === 2));
+        await assert.rejects(() => svc.nearby('x', 1), /lat and lon/);
+    });
+
     await ok('police feed: OSM zones always, Waze live reports on the route with a key, read once per 25 min', async () => {
         let items = await svc.policeSample('work');
         assert.deepStrictEqual(Object.keys(items), ['osmz:91'], 'no Waze key: the zones only');
