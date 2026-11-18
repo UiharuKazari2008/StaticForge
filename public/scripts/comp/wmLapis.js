@@ -254,7 +254,7 @@
         const cmd = busyCommand();
         if (cmd) return { dot: 'busy', head: { lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind] || 'Sending', tail: 'waiting for the car' };
         const place = state.location && state.location.place;
-        if (s.engine) return { dot: 'run', head: s.climate ? 'Running' : 'Engine on', tail: place ? `at ${place}` : '' };
+        if (s.engine) return { dot: 'run', head: runInfo() ? 'Running' : engineOnHead(s), tail: place ? `at ${place}` : '' };
         if ((state.alerts || []).length) return { dot: 'warn', head: 'Parked', tail: `${state.alerts.length === 1 ? state.alerts[0].title : `${state.alerts.length} alerts`}` };
         return { dot: 'ok', head: 'Parked', tail: place ? `at ${place}` : state.parkedSince ? `for ${sinceText(state.parkedSince)}` : '' };
     }
@@ -318,6 +318,17 @@
     // ---------------------------------------------------------------- a remote start in progress
 
     /** The running remote start: { until, total (ms), detail } or null. */
+    /**
+     * The engine on with no remote start running (the car driven with its key, or a run the server ended because it
+     * moved): "Driving" when the run ended that way, else "Engine on"; null when the engine is off or a remote start runs.
+     * Today showed "Running", "Runs 10 minutes" and a Stop key for a car being driven (Nov 18).
+     */
+    function engineOnHead(s) {
+        if (!s || !s.engine || runInfo()) return null;
+        const c = state && state.command;
+        return c && c.kind === 'start' && c.ended === 'driving' ? 'Driving' : 'Engine on';
+    }
+
     function runInfo() {
         // only a remote start running on its timer: the car simply running (driven) is not one, and the
         // server ends the timer when it sees the car move or the engine go off
@@ -496,7 +507,7 @@
             if (c === 'lock') send('lock');
             else if (c === 'unlock') doUnlock();
             else if (c === 'find') openLayer('map');
-            else if (c === 'start') { const s = st(); if (s && s.engine && s.climate) doStop(); else openLayer('start'); }
+            else if (c === 'start') { if (runInfo()) doStop(); else openLayer('start'); }
         });
         els.body.addEventListener('click', onLayerClick);
         // one listener for the page (the same function each mount: added once), not one more per open (#890)
@@ -698,7 +709,9 @@
         const c = state && state.climate;
         const s = st();
         const lim = (state && state.limits) || { tempMin: 62, tempMax: 82 };
-        const running = !!(s && s.engine && s.climate);
+        // a remote start on its timer can be stopped; the engine on otherwise (driven) cannot be started or stopped here
+        const running = !!runInfo();
+        const onHead = engineOnHead(s);
         const busy = !!busyCommand();
         const tt = tempText(d.temp, lim);
         const why = !c ? 'The weather at the car is not known yet.'
@@ -728,8 +741,8 @@
             </div>
             <div class="lps-pad"><div class="lps-pad-row" data-act="minutes"><span>Run for</span><b>${d.minutes} minutes</b></div></div>
             <div class="lps-launch">
-                <button type="button" class="lps-go${running ? ' is-running' : ''}" data-act="go"${busy || !isAdmin() ? ' disabled' : ''}><i class="lps-go-fill"></i><span>ENGINE<br>START<br>STOP</span></button>
-                <div class="lps-launch-txt">${running ? '<b>The car is running</b>Tap to stop the engine<br>and the climate control.' : busy ? '<b>Waiting for the car</b>The command was sent.' : `<b>Hold to start</b>The doors stay locked.<br>Stops by itself at ${clock(until)}.`}</div>
+                <button type="button" class="lps-go${running ? ' is-running' : ''}" data-act="go"${busy || onHead || !isAdmin() ? ' disabled' : ''}><i class="lps-go-fill"></i><span>ENGINE<br>START<br>STOP</span></button>
+                <div class="lps-launch-txt">${running ? '<b>The car is running</b>Tap to stop the engine<br>and the climate control.' : onHead ? `<b>${esc(onHead)}</b>Remote start works once the car<br>is parked with the engine off.` : busy ? '<b>Waiting for the car</b>The command was sent.' : `<b>Hold to start</b>The doors stay locked.<br>Stops by itself at ${clock(until)}.`}</div>
             </div>`;
         const go = els.body.querySelector('[data-act="go"]');
         if (go && !running) {
@@ -750,7 +763,7 @@
         const d = draftOf();
         const lim = (state && state.limits) || { tempMin: 62, tempMax: 82 };
         const cycle = (list, v) => list[(Math.max(0, list.indexOf(v)) + 1) % list.length];
-        if (act === 'go') { const s = st(); if (s && s.engine && s.climate) doStop(); return; } // starting is the hold
+        if (act === 'go') { if (runInfo()) doStop(); return; } // starting is the hold
         if (act === 'minutes') {
             const opts = [3, 5, 8, 10];
             d.minutes = opts[(opts.indexOf(d.minutes) + 1) % opts.length] || 10;
@@ -1429,9 +1442,9 @@
     function mainMenu() {
         const ok = configured();
         const s = st();
-        const running = !!(s && s.engine && s.climate);
+        const running = !!runInfo();
         return [
-            running ? { label: 'Stop the Engine', disabled: !ok || !isAdmin(), action: doStop } : { label: 'Remote Start...', disabled: !ok, action: () => openLayer('start') },
+            running ? { label: 'Stop the Engine', disabled: !ok || !isAdmin(), action: doStop } : { label: 'Remote Start...', disabled: !ok || !!engineOnHead(s), action: () => openLayer('start') },
             { label: 'Find My Car', disabled: !ok, action: () => openLayer('map') },
             '-',
             { label: 'Vehicle Status', disabled: !ok, action: () => openLayer('status') },
@@ -1481,9 +1494,9 @@
             if (top === 'service') return { left: { label: 'Done', action: popLayer }, right: { label: 'Menu', menu: () => [{ label: 'New Item...', disabled: !isAdmin(), action: () => editItem(null) }, '-', { label: 'Refresh', disabled: !isAdmin(), action: () => userRefresh(false) }] } };
             if (top === 'start') {
                 const s = st();
-                const running = !!(s && s.engine && s.climate);
+                const running = !!runInfo();
                 return {
-                    left: running ? { label: 'Stop', disabled: !!busyCommand(), action: doStop } : { label: 'Start', disabled: !!busyCommand() || !isAdmin(), action: startConfirm },
+                    left: running ? { label: 'Stop', disabled: !!busyCommand(), action: doStop } : { label: 'Start', disabled: !!busyCommand() || !isAdmin() || !!engineOnHead(s), action: startConfirm },
                     right: { label: 'Menu', menu: () => [{ label: 'Automatic Settings', disabled: !(state && state.climate), action: () => { draft = null; renderStart(); } }, '-', { label: 'Cancel', action: popLayer }] }
                 };
             }
@@ -1500,7 +1513,7 @@
         if (!configured()) return { title: 'Lapis Remote', sub: 'Tap to set up your car' };
         if (!s) return { title: (state && state.vehicle && state.vehicle.name) || 'Lapis Remote', sub: 'Waiting for the car\'s report' };
         const cmd = busyCommand();
-        const head = cmd ? `${{ lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind]}...` : s.engine ? (runInfo() && runInfo().until ? `Running, ${leftShort(runInfo().until - Date.now())} left` : s.climate ? 'Running' : 'Engine on') : s.locked === false ? 'Unlocked' : 'Locked';
+        const head = cmd ? `${{ lock: 'Locking', unlock: 'Unlocking', start: 'Starting', stop: 'Stopping' }[cmd.kind]}...` : s.engine ? (runInfo() && runInfo().until ? `Running, ${leftShort(runInfo().until - Date.now())} left` : engineOnHead(s)) : s.locked === false ? 'Unlocked' : 'Locked';
         const rt = refuelText();
         const c = state.climate;
         const sub = [rt && rt !== 'Not for weeks' ? `Gas ${refuelText(true)}` : '', c && num(c.outdoorF) ? `${Math.round(c.outdoorF)}°F` : ''].filter(Boolean).join(' · ');
@@ -1554,7 +1567,7 @@
                 if (!k) { open(); return; }
                 e.stopPropagation();
                 if (k.dataset.today === 'lock') { const s = st(); if (s && s.locked === false) send('lock'); else if (s && s.locked) doUnlock(); else open(); }
-                else if (k.dataset.today === 'start') { const s = st(); if (s && s.engine && s.climate) doStop(); else todayStart(); }
+                else if (k.dataset.today === 'start') { const s = st(); if (runInfo()) doStop(); else if (s && s.engine) open(); else todayStart(); }
             });
         }
         const keys = configured() && isAdmin()
@@ -1575,10 +1588,18 @@
         const sv = nextService();
         const admin = isAdmin();
         const lockKey = !admin ? { label: 'Lapis', action: go } : s.locked === false ? { label: 'Lock', action: () => send('lock') } : { label: 'Unlock', action: doUnlock };
-        const running = !!(s.engine && s.climate);
+        // a remote start on its timer (Stop); the engine on otherwise (driven: no Start, no Stop); or ready to start
+        const run = runInfo();
+        const onHead = engineOnHead(s);
+        const where = state.location && state.location.place;
+        const keyPage = run
+            ? { icon: 'x:lapis-key-lg', title: `Running, ${leftShort(run.until - Date.now())} left`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Stops by itself at ${clock(run.until)}`, softKey: admin ? { label: 'Stop', action: doStop } : { label: 'Lapis', action: go }, onTap: () => open('start') }
+            : onHead
+                ? { icon: 'x:lapis-key-lg', title: onHead, line2: c ? `Outside ${Math.round(c.outdoorF)}°F` : '', line3: 'Remote start when parked', softKey: { label: 'Lapis', action: go }, onTap: go }
+                : { icon: 'x:lapis-key-lg', title: `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: admin ? { label: 'Start', action: todayStart } : { label: 'Lapis', action: go }, onTap: () => open('start') };
         const pages = [
-            { icon: 'x:app-lapis-lg', title: t.title, line2: t.sub, line3: state.location && state.location.place ? `Parked at ${state.location.place}` : '', softKey: lockKey, onTap: go },
-            { icon: 'x:lapis-key-lg', title: running ? `Running${runInfo() && runInfo().until ? `, ${leftShort(runInfo().until - Date.now())} left` : ''}` : `Remote start: ${climateLine() || 'ready'}`, line2: c ? `Outside ${Math.round(c.outdoorF)}°F, cabin about ${Math.round(c.interiorF)}°F` : '', line3: `Runs ${(state.settings && state.settings.runMinutes) || 10} minutes`, softKey: !admin ? { label: 'Lapis', action: go } : running ? { label: 'Stop', action: doStop } : { label: 'Start', action: todayStart }, onTap: () => open('start') }
+            { icon: 'x:app-lapis-lg', title: t.title, line2: t.sub, line3: where && !s.engine ? `Parked at ${where}` : '', softKey: lockKey, onTap: go },
+            keyPage
         ];
         if (sv) pages.push({ icon: 'x:lapis-wrench-lg', title: sv.label, line2: sv.milesLeft <= 0 ? `${Math.abs(sv.milesLeft).toLocaleString()} miles over` : `in ${sv.milesLeft.toLocaleString()} miles`, line3: '', softKey: { label: 'Service', action: () => open('service') }, onTap: () => open('service') });
         return { label: todayName(), count: todaySuper(), icon: 'x:app-lapis-lg', pages, softKey: lockKey, onTap: go };
