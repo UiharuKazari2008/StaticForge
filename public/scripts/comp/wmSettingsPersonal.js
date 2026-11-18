@@ -519,7 +519,7 @@
     const driveBridge = () => (window.AndroidHome && typeof window.AndroidHome.getDriveState === 'function' ? window.AndroidHome : null);
     const DRIVE_STATE = { idle: 'Not driving', maybe: 'Maybe driving', driving: 'Driving', parked_in_car: 'Parked, in the car', stopped: 'Stopped' };
     const DRIVE_SOURCE = { activity: 'motion', car_bt: 'the car\'s Bluetooth', carkey: 'the car key', geofence: 'leaving Home or Work', movement: 'moving' };
-    const DRIVE_ACCESS = { on: 'On', ask: 'Not allowed yet', denied: 'Refused (allow it in Android Settings)', unavailable: 'Not on this phone' };
+    const DRIVE_ACCESS = { on: 'On', ask: 'Not allowed yet', denied: 'Refused', unavailable: 'Not on this phone' };
     function driveJson(fn) { const H = driveBridge(); try { return H && typeof H[fn] === 'function' ? JSON.parse(H[fn]() || 'null') : null; } catch (_) { return null; } }
     function renderDrive(el, d, api) {
         const H = driveBridge();
