@@ -1592,7 +1592,7 @@
         const q = afterQueue.splice(0);
         for (const fn of q) { try { fn(); } catch (err) { console.warn('[wmTitanium] after entrance', err); } }
     }
-    window.wmAfterEntrance = (fn) => {
+    const afterEntrance = (fn) => {
         if (typeof fn !== 'function') return;
         if (!entrancePending()) { fn(); return; }
         afterQueue.push(fn);
@@ -1625,6 +1625,7 @@
 
     /** Place every row for the list position `pos` (rows) around the band. */
     function place() {
+        dropEntryAnims();
         parallax(pos);
         const top = focusTop();
         const e = (pos - sel) * ROW;
@@ -1981,7 +1982,89 @@
         }
         sel = a;
         placeTween(tw.p, 1);
+        if (tw.entry && compositorEntry() && startEntryAnims()) { settle = requestAnimationFrame(entryStep); return; }
         settle = requestAnimationFrame(tweenStep);
+    }
+
+    // ---- the entrance on the browser's compositor (Yukimi, Nov 18: the return home fluid, "the same animation, only
+    // driven differently"). Every frame's row positions came from script on the page's main thread, which is at its
+    // busiest just as the page wakes behind the return (A53: frames every 80-90 ms early in the rise). The same motion -
+    // tweenYs over enterEase with the cascade and the spring, sampled at ENTRY_SAMPLES points - goes to Web Animations
+    // on each row's transform, which the compositor plays at the display's rate whatever the page is doing; the arriving
+    // row's label fade (FADE_MS) too. A light frame loop keeps tw.p, the picture's parallax and the under-the-glass
+    // class in step with the animation's own clock. Anything that writes the rows (place, placeTween: a drag taking
+    // over, a key, another move) cancels it first and carries on from tw.p. localStorage wmTiEntranceJs = '1' plays the
+    // entrance the old way (the A/B).
+    const ENTRY_SAMPLES = 40;
+    const ENTRY_JS_KEY = 'wmTiEntranceJs';
+    let entryAnims = null;
+    function compositorEntry() {
+        try { if (localStorage.getItem(ENTRY_JS_KEY) === '1') return false; } catch (_) { /* storage off */ }
+        return typeof Element.prototype.animate === 'function';
+    }
+    function dropEntryAnims() {
+        if (!entryAnims) return;
+        const list = entryAnims;
+        entryAnims = null;
+        for (const a of list) { try { a.cancel(); } catch (_) { /* gone */ } }
+    }
+    function startEntryAnims() {
+        const top = focusTop();
+        const u = unit();
+        const back = tw.back || BACK_MS;
+        const frames = panels.map(() => []);
+        const ysAt = [];
+        for (let k = 0; k <= ENTRY_SAMPLES; k++) {
+            const x = k / ENTRY_SAMPLES;
+            tw.x = x;
+            const ys = tweenYs(top, tw.ease ? tw.ease(x) : x);
+            ysAt.push(ys);
+            ys.forEach((y, i) => frames[i].push({ offset: x, transform: `translate3d(0, ${(y * u).toFixed(2)}px, 0)` }));
+        }
+        tw.x = 0;
+        const list = [];
+        try {
+            panels.forEach((pn, i) => {
+                const el = rowEl.get(pn.id);
+                if (el) list.push(el.animate(frames[i], { duration: back, easing: 'linear', fill: 'both' }));
+            });
+            // the arriving item's label fades out under the glass over the run's last FADE_MS (as placeTween's fade):
+            // from where it stands then (dimmed under the glass) to nothing, linearly
+            const bEl = panels[tw.b] && rowEl.get(panels[tw.b].id);
+            if (bEl && back > FADE_MS) {
+                const k = Math.max(0, Math.min(ENTRY_SAMPLES, Math.round((1 - FADE_MS / back) * ENTRY_SAMPLES)));
+                const yb = ysAt[k][tw.b];
+                const under = yb + ROW / 2 > top && yb + ROW / 2 < top + BAND;
+                list.push(bEl.animate([{ opacity: under ? 0.55 : 1 }, { opacity: 0 }], { duration: FADE_MS, delay: back - FADE_MS, easing: 'linear', fill: 'forwards' }));
+            }
+        } catch (err) {
+            for (const a of list) { try { a.cancel(); } catch (_) { /* gone */ } }
+            console.warn('[wmTitanium] compositor entrance', err);
+            return false;
+        }
+        entryAnims = list;
+        return true;
+    }
+    /** The compositor's entrance, followed on the page: tw.p, the picture's parallax and the glass's row (no row writes). */
+    function entryStep() {
+        if (!tw || !entryAnims) return;
+        const a = entryAnims[0];
+        const t = a && a.currentTime != null ? Number(a.currentTime) : 0;
+        const x = Math.min(1, Math.max(0, t / (tw.back || BACK_MS)));
+        tw.x = x;
+        const p = tw.ease ? tw.ease(x) : x;
+        tw.p = p;
+        if (x >= 1 || (a && a.playState === 'finished')) { arrive(); return; }
+        const top = focusTop();
+        const ys = tweenYs(top, p);
+        parallax(tw.a + tw.e0 * (1 - p) / ROW);
+        panels.forEach((pn, i) => {
+            const el = rowEl.get(pn.id);
+            if (!el) return;
+            const under = ys[i] + ROW / 2 > top && ys[i] + ROW / 2 < top + BAND;
+            if (el.classList.contains('is-under') !== under) el.classList.toggle('is-under', under);
+        });
+        settle = requestAnimationFrame(entryStep);
     }
 
     function tweenStep(now) {
@@ -2035,6 +2118,7 @@
 
     /** Draw the stack: transforms only. fade: what is left of the arriving label (1 .. 0). */
     function placeTween(p, fade) {
+        dropEntryAnims();
         const top = focusTop();
         const ys = tweenYs(top, p);
         parallax(tw.n ? tw.a + (tw.b - tw.a) * p : tw.a + tw.e0 * (1 - p) / ROW);
@@ -2619,6 +2703,8 @@
         enter: () => entrance(),
         // the Android app readies the return before Melaton goes behind another program (#800)
         prime: () => prime(), unprime: () => unprime(),
+        // the work a wake brings, run once the return's entrance is over (at once when none is coming)
+        afterEntrance: (fn) => afterEntrance(fn),
         panels: () => panels.map((p) => ({ id: p.id, label: p.label, pages: p.pages.length })), selected: () => sel,
         // where the list is (tests): the move under way { a, b, n, p } or null, and the dragged position in rows
         motion: () => ({ sel, pos, dragging, move: tw ? { a: tw.a, b: tw.b, n: tw.n, asked: tw.nv, p: tw.p } : null })

@@ -2290,7 +2290,7 @@
         };
         document.addEventListener('wmAppChange', (e) => { if (e.detail && e.detail.id === 'today') shown(true); }, { signal: appScopeSignal });
         // (after the return's entrance: its repaints restyled the shell in every frame of the rise, wmAfterEntrance)
-        const afterEntrance = (fn) => (typeof window.wmAfterEntrance === 'function' ? window.wmAfterEntrance(fn) : fn());
+        const afterEntrance = (fn) => (window.wmTitanium && typeof window.wmTitanium.afterEntrance === 'function' ? window.wmTitanium.afterEntrance(fn) : fn());
         document.addEventListener('wmawake', (e) => { if (e.detail && e.detail.awake && sh.current === 'today') afterEntrance(() => shown(false)); }, { signal: appScopeSignal });
         // the link back, or the service's own state moved (restarting, connected): the server item reads again
         window.addEventListener('nightshade:state', () => serverWanted(), { signal: appScopeSignal });
