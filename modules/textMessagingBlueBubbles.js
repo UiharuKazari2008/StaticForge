@@ -106,12 +106,19 @@ function normalizeUrl(value) {
     return s.replace(/\/+$/, '');
 }
 
-/** Phone numbers compare by their last 10 digits, e-mail addresses in lower case. */
+/**
+ * The one key every contact match uses (iMessage, SMS, RCS, the Dreamscape and phone vCards): phone numbers
+ * by their last 10 digits ("+1 (301) 555-0100", "13015550100", "301.555.0100" and "tel:+13015550100" alike),
+ * e-mail addresses in lower case; a URI scheme (tel:, sms:, mailto:, imessage:) and a vCard "type:" prefix
+ * are dropped first.
+ */
 function handleKey(address) {
-    const s = String(address || '').trim();
+    let s = String(address || '').trim();
     if (!s) return '';
-    if (s.includes('@')) return s.toLowerCase();
-    const digits = s.replace(/\D/g, '');
+    s = s.replace(/^(?:tel|sms|smsto|mms|mailto|imessage|facetime|im):\/*/i, '').trim();
+    if (s.includes('@')) return s.replace(/^<|>$/g, '').trim().toLowerCase();
+    // an extension or a dial-pause part is not the number
+    const digits = s.replace(/(?:;ext=|\s+(?:ext\.?|x)\s*|[,;pw]).*$/i, '').replace(/\D/g, '');
     return digits.length > 10 ? digits.slice(-10) : digits;
 }
 

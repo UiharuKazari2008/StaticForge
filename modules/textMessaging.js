@@ -37,7 +37,8 @@ const store = require('./textMessagingStore');
 
 const ID_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 const KINDS = ['bluebubbles', 'rcs', 'android'];
-const CONTACT_SCAN_MS = 5 * 60 * 1000;
+// a safety net only: VFS writes mark the list stale (contactsChanged), and a rescan reads changed files alone
+const CONTACT_SCAN_MS = 30 * 60 * 1000;
 const SUMMARY_TTL_MS = 30 * 1000;
 
 let gr = null;
@@ -45,7 +46,7 @@ const providers = new Map(); // id -> provider
 const listeners = new Set();
 const summaries = new Map(); // id -> { at, value }
 let knownChats = null;       // Set of "<accountId>|<chatGuid>" you have written in
-let dsContacts = { at: 0, keys: new Map(), promise: null };
+let dsContacts = { at: 0, keys: new Map(), promise: null, dirty: false };
 let started = false;
 
 function resources() {
@@ -221,9 +222,38 @@ async function countUnread(accountId, chats) {
 }
 
 // ---- Dreamscape Contacts (every workspace's Contacts folder) ----
+// The server's cards and the phone's own contacts (Android Bridge > Phone Data > Synchronize mirrors them to
+// Contacts/Phone contacts (<device>).vcf): one handleKey -> name map for every account. Built once; a file is
+// parsed again only when its content changed (by hash), and a VFS change marks the map stale (contactsChanged).
+
+const vcfCache = new Map(); // content_hash -> [[key, name], ...]
+
+/** Every phone number and e-mail address on each card of a .vcf (all TEL / EMAIL lines, not only the six fields). */
+function vcfHandles(VC, text) {
+    const out = [];
+    const blocks = String(text || '').replace(/\r\n|\r/g, '\n').replace(/\n[ \t]/g, '').split(/^BEGIN:VCARD$/im).slice(1);
+    for (const body of blocks) {
+        const block = `BEGIN:VCARD\n${body}`;
+        let card = null;
+        try { card = VC.parseVcf(block)[0] || null; } catch (_) { card = null; }
+        if (!card) continue;
+        // no stand-in ("New Contact", the e-mail address): a card with no name only marks its handles known
+        const name = String(card.fn || [card.first, card.middle, card.last].filter(Boolean).join(' ') || card.nickname || (card.work && card.work.company) || '').trim();
+        const addrs = new Set([...(card.emails || []), card.home && card.home.mobile, card.home && card.home.phone, card.work && card.work.phone]);
+        const re = /^(?:item\d+\.)?(TEL|EMAIL)(?:;[^:\n]*)?:(.+)$/gim;
+        let m;
+        while ((m = re.exec(block))) {
+            if (/^TEL/i.test(m[1]) && /TYPE=[^:\n]*(?:FAX|PAGER)/i.test(m[0].slice(0, m[0].indexOf(':')))) continue;
+            addrs.add(m[2].trim());
+        }
+        for (const a of addrs) { const k = handleKey(a); if (k && k.length >= 7) out.push([k, name]); }
+    }
+    return out;
+}
 
 async function scanDreamscapeContacts() {
     const keys = new Map();
+    const seen = new Set();
     try {
         const VC = require('../public/scripts/comp/vcard.js');
         const vfsDatabase = require('./vfsDatabase');
@@ -235,16 +265,17 @@ async function scanDreamscapeContacts() {
             if (!folder) continue;
             const files = (await vfsDatabase.getUserFilesByLocation('workspace', workspaceId, folder.id)) || [];
             for (const f of files) {
-                if (!/\.vcf$/i.test(f.original_name || '')) continue;
-                let cards = [];
-                try { cards = VC.parseVcf(await fs.promises.readFile(vfs.getFileBlobPath(f.content_hash), 'utf8')); } catch (_) { continue; }
-                for (const c of cards) {
-                    const name = VC.displayName ? VC.displayName(c) : (c.fn || '');
-                    const addrs = [...(c.emails || []), c.home && c.home.mobile, c.home && c.home.phone, c.work && c.work.phone];
-                    for (const a of addrs) { const k = handleKey(a); if (k && k.length >= 7 && !keys.has(k)) keys.set(k, name || ''); }
+                if (!/\.vcf$/i.test(f.original_name || '') || !f.content_hash) continue;
+                seen.add(f.content_hash);
+                let pairs = vcfCache.get(f.content_hash);
+                if (!pairs) {
+                    try { pairs = vcfHandles(VC, await fs.promises.readFile(vfs.getFileBlobPath(f.content_hash), 'utf8')); } catch (_) { continue; }
+                    vcfCache.set(f.content_hash, pairs);
                 }
+                for (const [k, name] of pairs) if (!keys.has(k) || (name && !keys.get(k))) keys.set(k, name);
             }
         }
+        for (const h of [...vcfCache.keys()]) if (!seen.has(h)) vcfCache.delete(h);
     } catch (error) {
         log(`contacts scan failed: ${error.message}`);
     }
@@ -252,15 +283,24 @@ async function scanDreamscapeContacts() {
 }
 
 async function dreamscapeContacts() {
-    if (Date.now() - dsContacts.at < CONTACT_SCAN_MS) return dsContacts.keys;
+    if (dsContacts.at && !dsContacts.dirty && Date.now() - dsContacts.at < CONTACT_SCAN_MS) return dsContacts.keys;
+    const first = !dsContacts.at;
+    const changed = !!dsContacts.dirty;
     if (!dsContacts.promise) {
+        dsContacts.dirty = false;
         dsContacts.promise = scanDreamscapeContacts().then((keys) => {
-            dsContacts = { at: Date.now(), keys, promise: null };
+            dsContacts = { at: Date.now(), keys, promise: null, dirty: dsContacts.dirty };
             return keys;
         }, () => { dsContacts.promise = null; return dsContacts.keys; });
     }
-    // a stale list answers now; the first scan is waited for
-    return dsContacts.at ? dsContacts.keys : dsContacts.promise;
+    // the first scan and one after a change are waited for (a changed file is the only one read again);
+    // the safety-net rescan of an unchanged list answers with the list it has
+    return first || changed ? dsContacts.promise : dsContacts.keys;
+}
+
+/** Contacts may have changed (a VFS write): the next lookup reads the Contacts folders again. */
+function contactsChanged() {
+    dsContacts.dirty = true;
 }
 
 function decorateParticipants(chat, ds) {
@@ -388,7 +428,14 @@ async function onProviderEvent(accountId, event, payload) {
                 const p = providers.get(accountId);
                 let chat = null;
                 if (payload.chat && p && typeof p.normalizeChat === 'function') chat = p.normalizeChat(payload.chat);
+                // BlueBubbles' live message names its chat without the participants (title = the bare handle,
+                // nobody to match a contact by): the conversation as stored (or from the Mac) has them
+                if (chat && !(chat.participants || []).length) chat = null;
                 if (!chat && p) { try { chat = await p.getChat(payload.chatGuid); } catch (_) { chat = null; } }
+                // still nobody: a one-to-one chat's other side is the sender
+                if (chat && !(chat.participants || []).length && !chat.isGroup && m && m.sender && m.sender.address) {
+                    chat.participants = [{ address: m.sender.address, name: m.sender.name || '', service: m.service || '' }];
+                }
                 if (chat) { decorateParticipants(chat, ds); out.chatTitle = chat.title; out.isGroup = chat.isGroup; }
                 known = chat ? isKnownChat(accountId, chat, ds) : !!(m && m.sender && (m.sender.name));
                 if (!known && chat && p) {
@@ -929,7 +976,8 @@ function _reset() {
     started = false;
     knownChats = null;
     readMarks = null;
-    dsContacts = { at: 0, keys: new Map(), promise: null };
+    dsContacts = { at: 0, keys: new Map(), promise: null, dirty: false };
+    vcfCache.clear();
     listeners.clear();
 }
 
@@ -937,7 +985,7 @@ module.exports = {
     init, onEvent, listAccounts, testAccount, saveAccount, deleteAccount, saveSettings, summary,
     recentAndroidApps, action, androidAppIcon, openInApp, androidPopupPackages,
     listChats, getChat, listMessages, send, sendAttachment, react, edit, unsend, markRead, markUnread, deleteChat, search, typing, syncStatus, syncChats, resync,
-    downloadAttachment, attachmentSeen, resolveName, handleKey, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
+    downloadAttachment, attachmentSeen, resolveName, handleKey, contactsChanged, pair, pairGoogle, refreshQr, unpair, pairingQr, avatar, _reset,
     // tests (scripts/test-ws-phone-round5.js): a provider's event and who gets it
-    _test: { onProviderEvent, setResources: (r) => { gr = r; } }
+    _test: { onProviderEvent, vcfHandles, setResources: (r) => { gr = r; }, setProvider: (id, p) => providers.set(id, p) }
 };

@@ -33,6 +33,10 @@ class VfsWebSocketHandlers {
 
     broadcastVfsUpdated(wsServer, pathHint) {
         invalidateFuseLookupCache();
+        // Text Messaging's contact names (Contacts/*.vcf, the phone's mirror included): read again on next use
+        if (!pathHint || /contacts/i.test(String(pathHint))) {
+            try { require('./textMessaging').contactsChanged(); } catch (_) { /* not loaded */ }
+        }
         if (wsServer && wsServer.broadcast) {
             wsServer.broadcast({
                 type: 'vfs_updated',
