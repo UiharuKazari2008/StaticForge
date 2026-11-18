@@ -24,6 +24,39 @@
     const displace = ['wxalert', 'update', 'prints', 'director', 'sms', 'chat'];
     const system = ['volume', 'battery'];
 
+    /*
+     * The registration (Yukimi, Nov 18 2026, HARD rule status-icons-registered-only): every icon either bar may draw,
+     * as its WM 1-bit white glyph (public/static_images/wm61/<glyph>.png). A role or notice kind missing here draws
+     * nothing; a notice never brings a picture of its own (an app's colour icon in the bar was the Lapis bug).
+     */
+    const glyphs = {
+        notify: 'status-notify-many', reminder: 'status-reminder', error: 'status-error', warning: 'status-warning',
+        carkey: 'status-traffic', traffic: 'status-traffic', lapis: 'status-lapis', caralert: 'status-car-alert',
+        rain: 'status-rain-alarm', wxalert: 'status-weather-alert', chat: 'status-messenger', mail: 'status-mail',
+        sms: 'status-sms', prints: 'status-prints', director: 'status-director', received: 'status-activesync',
+        update: 'status-update', continuity: 'status-continuity', nightshade: 'status-nightshade',
+        batterylow: 'status-battery-low'
+    };
+    const glyphNames = new Set(Object.values(glyphs));
+    const NOTE_CLS = { mail: 'mail', sms: 'sms', chat: 'chat', print: 'prints', 'print-error': 'prints', director: 'director',
+        'weather-alert': 'wxalert', 'weather-severe': 'wxalert', 'rain-alarm': 'rain', reminder: 'reminder' };
+
+    /** A notice's registered kind: its id's source first, then its app, its class, its type; else the plain notice. */
+    function noteKind(n) {
+        const id = String((n && n.id) || '');
+        const d = (n && n.data) || {};
+        if (/^rem:/.test(id)) return 'reminder';
+        if (/^lapis:/.test(id) || d.app === 'lapis') return 'caralert';
+        if (/^traffic:/.test(id) || d.app === 'traffic') return 'traffic';
+        if (/^wx:/.test(id)) return 'wxalert';
+        if (/^rain:/.test(id)) return 'rain';
+        if (/^print/.test(id)) return 'prints';
+        if (/^update/.test(id)) return 'update';
+        if (n && NOTE_CLS[n.cls]) return NOTE_CLS[n.cls];
+        if (n && (n.type === 'error' || n.type === 'warning' || n.type === 'reminder')) return n.type;
+        return 'notify';
+    }
+
     const foldRank = new Map(fold.map((r, i) => [r, i]));
     const displacing = new Set(displace);
 
@@ -41,6 +74,13 @@
         display, fold, displace, system,
         canFold: (r) => foldRank.has(r),
         displaces: (r) => displacing.has(r),
-        foldSequence
+        foldSequence,
+        glyphs,
+        /** The registered glyph for a role or kind, or null (then nothing is drawn). */
+        glyph: (r) => glyphs[r] || null,
+        /** A glyph name the registration carries. */
+        isGlyph: (name) => glyphNames.has(name),
+        noteKind,
+        noteGlyph: (n) => glyphs[noteKind(n)]
     };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
