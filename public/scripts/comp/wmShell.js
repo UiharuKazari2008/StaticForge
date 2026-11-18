@@ -3632,6 +3632,11 @@
         if (root.style.getPropertyValue('--wm-icon-unit') !== unit) {
             if (unit) root.style.setProperty('--wm-icon-unit', unit); else root.style.removeProperty('--wm-icon-unit');
         }
+        // the status atlas for the icons' real device size (2x up to 32 px, 4x up to 64, else 8x): the browser only
+        // ever scales them down, never stretches a small copy (Yukimi, Nov 17: "still blurry"; display size unchanged)
+        const dev = unit ? parseFloat(unit) * 16 * dpr : want;
+        const art = dev <= 34 ? '2' : dev <= 66 ? '4' : '8';
+        if (root.dataset.wmIconArt !== art) root.dataset.wmIconArt = art;
     }
 
     function snapStatusIcons() {

@@ -36,6 +36,29 @@ def halve(px, w, h):
             a = sum(px[i + 3] for i in q)
             if a: out[(y * (w // 2) + x) * 4:(y * (w // 2) + x) * 4 + 4] = bytes([sum(px[i + c] * px[i + 3] for i in q) // a for c in range(3)] + [a // 4])
     return bytes(out)
+# ---- sharper big copies, nothing moved (Yukimi, Nov 17: "still blurry ... nothing to do with changing their
+# literal display size"): cells, positions and sizes stay exactly the art's. Where an icon's 4x is only its 2x
+# doubled, the 4x comes from a light clean-up of its art instead (point-enlarged, a small soften and threshold:
+# corners and straight runs stay sharp, only the diagonals' staircase goes - not the smudged first try); an 8x
+# atlas is made the same way, and the page picks the atlas by the icon's real device size (wmShell
+# syncIconUnit -> data-wm-icon-art), so a phone only ever scales them down. 1x and 2x stay the ROM's pixels.
+def im(px, w, h, *ops):
+    t = os.path.join('/tmp', f'claude-atlas-{os.getpid()}.rgba')
+    open(t, 'wb').write(px)
+    # transparent outside the cell: softening and resampling must not wrap one edge of a glyph round to the other
+    out = subprocess.run(['convert', '-size', f'{w}x{h}', '-depth', '8', f'rgba:{t}', '-virtual-pixel', 'transparent', *ops, '-depth', '8', 'rgba:-'], capture_output=True, check=True).stdout
+    os.remove(t)
+    return out
+def clean_up(px, w, h, factor, radius):
+    """px (w x h) point-enlarged by factor, then a light soften-and-threshold of its alpha."""
+    return im(px, w, h, '-filter', 'point', '-resize', f'{factor * 100}%', '-channel', 'A', '-blur', f'0x{radius}', '-level', '45%,55%', '+channel')
+def big_copies(px2, px4, w, h):
+    """(4x, 8x) for an icon: a real 4x art is kept and its 8x cleaned up from it; a doubled one is redone from the 2x."""
+    doubled = px4 is None or px4 == double(px2, w, h)
+    m8 = clean_up(px2, w, h, 4, 0.8) if doubled else clean_up(px4, w * 2, h * 2, 2, 0.5)
+    c4 = im(m8, w * 4, h * 4, '-filter', 'Lanczos', '-resize', '50%') if doubled else px4
+    return c4, m8
+
 def build(ver, css_path, rule_re, scope, has_1x_rules):
     css = open(css_path).read()
     if BEGIN in css:
@@ -61,7 +84,7 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
         if x + w > W: x = 0; y += shelf; shelf = 0
         pos[name] = (x, y); x += w + (w % 2); shelf = max(shelf, h + (h % 2))
     H = y + shelf
-    a2 = bytearray(W * H * 4); a4 = bytearray(W * 2 * H * 2 * 4); a1 = bytearray((W // 2) * (H // 2) * 4)
+    a2 = bytearray(W * H * 4); a4 = bytearray(W * 2 * H * 2 * 4); a1 = bytearray((W // 2) * (H // 2) * 4); a8 = bytearray(W * 4 * H * 4 * 4)
     for name, file, w, h, px in arts:
         x, y = pos[name]
         blit(a2, W, px, w, h, x, y)
@@ -69,8 +92,10 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
         if os.path.exists(p4):
             w4, h4, px4 = rgba(p4)
             assert (w4, h4) == (w * 2, h * 2), (file, w4, h4)
-        else: px4 = double(px, w, h)
+        else: px4 = None
+        px4, px8 = big_copies(px, px4, w, h)
         blit(a4, W * 2, px4, w * 2, h * 2, x * 2, y * 2)
+        blit(a8, W * 4, px8, w * 4, h * 4, x * 4, y * 4)
         p1 = os.path.join(d, f'{file}.png')
         if os.path.exists(p1):
             w1, h1, px1 = rgba(p1)
@@ -80,12 +105,17 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
     png(os.path.join(d, 'status-atlas@2x.png'), W, H, a2)
     png(os.path.join(d, 'status-atlas@4x.png'), W * 2, H * 2, a4)
     png(os.path.join(d, 'status-atlas.png'), W // 2, H // 2, a1)
+    png(os.path.join(d, 'status-atlas@8x.png'), W * 4, H * 4, a8)
     src = f'/static_images/{ver}/status-atlas'
     lines = [BEGIN,
              f'/* {len(arts)} icons, one image per density ({W} x {H} px at 2x); the per-icon art stays as the source */']
     sets = f"image-set(url('{src}.png') 1x, url('{src}@2x.png') 2x, url('{src}@4x.png') 4x)" if ver == 'wm61' \
         else f"image-set(url('{src}@2x.png') 2x, url('{src}@4x.png') 4x)"
     lines.append(f'{scope}.wm-status-icon[data-icon] {{ background-image: {sets}; background-size: calc({W // 2} * {U}) calc({H // 2} * {U}); background-repeat: no-repeat; }}')
+    # the atlas for the icon's real device size (wmShell syncIconUnit sets data-wm-icon-art): only ever scaled down
+    pick = (scope or 'html ').replace('html', 'html:not(.wm-art-1x)[data-wm-icon-art="{a}"]', 1)
+    for art, f in (('2', '@2x'), ('4', '@4x'), ('8', '@8x')):
+        lines.append(f"{pick.format(a=art)}.wm-status-icon[data-icon] {{ background-image: url('{src}{f}.png'); }}")
     if has_1x_rules:
         lines.append(f"html.wm-art-1x{scope.replace('html', '', 1)}.wm-status-icon[data-icon] {{ background-image: url('{src}.png'); }}")
     for name, file, w, h, px in arts:

@@ -213,6 +213,9 @@ html.ui-mobile[data-wm-version="6.5"][data-wm-app="today"] .wm-titlebar:has(> .w
 /* ---- status atlas (scripts/build-wm-status-atlas.py: generated, do not edit) ---- */
 /* 73 icons, one image per density (512 x 160 px at 2x); the per-icon art stays as the source */
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: image-set(url('/static_images/wm65/status-atlas@2x.png') 2x, url('/static_images/wm65/status-atlas@4x.png') 4x); background-size: calc(256 * var(--wm-icon-unit, var(--wm-px))) calc(80 * var(--wm-icon-unit, var(--wm-px))); background-repeat: no-repeat; }
+html:not(.wm-art-1x)[data-wm-icon-art="2"].ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas@2x.png'); }
+html:not(.wm-art-1x)[data-wm-icon-art="4"].ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas@4x.png'); }
+html:not(.wm-art-1x)[data-wm-icon-art="8"].ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas@8x.png'); }
 html.wm-art-1x.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon] { background-image: url('/static_images/wm65/status-atlas.png'); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="bluetooth"] { background-position: calc(0 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
 html.ui-mobile[data-wm-version="6.5"] .wm-status-icon[data-icon="data-off"] { background-position: calc(-16 * var(--wm-icon-unit, var(--wm-px))) calc(0 * var(--wm-icon-unit, var(--wm-px))); }
