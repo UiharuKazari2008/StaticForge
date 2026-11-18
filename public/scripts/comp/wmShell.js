@@ -3542,6 +3542,7 @@
     const BARS_NATIVE_ROLES = new Set(['data', 'cell', 'roaming', 'signal', 'battery', 'androidtray']);
     const artPath = (css) => { const m = /url\(\s*["']?([^"')]+?)(?:@\dx)?\.png/.exec(css || ''); return m ? m[1].replace(/^https?:\/\/[^/]+/, '') : ''; };
     let barsCatalogSent = '';
+    let barsPrefsSent = '';
     // the status-bar task's roles (window.AndroidTasks, #908): read once, then from its cafetasks event
     let taskRoles = null;
     (function watchTaskRoles() {
@@ -3595,6 +3596,11 @@
         if (typeof ab.kitSig === 'function' && window.melatonBars && window.melatonBars.kitSignature && (barsExternal || awake())) {
             const sig = window.melatonBars.kitSignature();
             if (sig !== barsKitSig) { barsKitSig = sig; try { ab.kitSig(sig); } catch (_) { /* older app */ } }
+        }
+        // Settings > Screen > Status Icons: when the volume / battery show (#907); the native bar follows them asleep (#908)
+        if (typeof ab.statusPrefs === 'function') {
+            const pj = JSON.stringify({ sound: statusIconPref('wmStatusSoundIcon'), power: statusIconPref('wmStatusPowerIcon') });
+            if (pj !== barsPrefsSent) { barsPrefsSent = pj; try { ab.statusPrefs(pj); } catch (_) { /* older app */ } }
         }
         const json = JSON.stringify(list);
         if (json === barsStatusSent) return;
