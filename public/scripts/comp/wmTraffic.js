@@ -123,13 +123,32 @@
         return r && r.data && typeof r.data === 'object' ? r.data : r;
     }
 
+    /*
+     * Reports on the wire (#890 W4): `preferred` is left out when it is routes[0] (it was the same route
+     * twice in every report); preferredIndex says which route it is. Put back here as the one object of
+     * routes, so every reader keeps report.preferred. Each report carries the server's hash of it.
+     */
+    function takeReport(r) {
+        if (r && typeof r === 'object' && !r.preferred && Array.isArray(r.routes)) r.preferred = r.routes[r.preferredIndex || 0] || null;
+        return r || null;
+    }
+
     async function load() {
         if (!canUse() || !client()) return;
         try {
-            const d = await ask('traffic_get', {});
-            settings = d.settings || null;
-            latest = Object.assign({ work: null, home: null }, d.latest || {});
-            provs = d.providers || null;
+            // what is held (each report's hash): the server leaves out the reports that are the same, or
+            // answers { same: true } when nothing changed (a reconnect with no check in between, #890 W4)
+            const have = loaded ? { work: (latest.work && latest.work.hash) || null, home: (latest.home && latest.home.hash) || null } : null;
+            const d = await ask('traffic_get', have && (have.work || have.home) ? { have } : {});
+            if (!(d && d.same === true)) {
+                if (d.settings !== undefined) settings = d.settings || null;
+                // a report left out is the one held; null is a report the server no longer has
+                const got = d.latest || {};
+                const next = { work: latest.work, home: latest.home };
+                ['work', 'home'].forEach((k) => { if (!loaded || k in got) next[k] = takeReport(got[k]); });
+                latest = next;
+                if (d.providers !== undefined) provs = d.providers || null;
+            }
             loaded = true;
             loadFailed = '';
         } catch (err) {
@@ -148,8 +167,10 @@
             const origin = originFor(direction);
             const d = await ask('traffic_check', origin ? { direction, force: !!force, origin } : { direction, force: !!force }, 40000);
             if (origin) lastOrigin = { lat: origin.lat, lon: origin.lon, at: Date.now() };
-            if (d && d.report) latest[direction] = d.report;
+            if (d && d.report) latest[direction] = takeReport(d.report);
             if (d && d.providers) provs = d.providers;
+            // the report comes in the reply only, not again as traffic_updated (#890 W4): what that push did
+            if (d && d.report && direction === 'home') armNativeWatch();
             return latest[direction];
         } finally {
             checking[direction] = false;
@@ -285,6 +306,9 @@
         }, (err) => {
             // refused (no permission, or an app build without the WebView location hand-off): the IP from now on
             if (err && err.code === 1) geoDenied = true;
+            // a timeout or no fix (indoors, a stopped page) keeps the phone's last own position: the IP
+            // answer is the server's configured place for a phone on the home network, not where it is (#890)
+            if (err && err.code !== 1 && here && here.source === 'device') { geoBusy = false; return; }
             byIp();
         }, { enableHighAccuracy: !!driveWindow(), maximumAge: driveWindow() ? 30000 : GEO_EVERY_MS, timeout: 20000 });
     }
@@ -451,6 +475,12 @@
     const camDrive = { key: '', alerted: new Set() };
     let camWatchId = null;
     let camFixAt = 0;
+
+    /** Driving home with no camera watch of the app's own: the page alerts the cameras, also with the screen off. */
+    function drivingHomeUnwatched() {
+        const dv = driving();
+        return !!(dv && dv.direction === 'home' && !(nativeDrive.active && nativeDrive.key === `home:${dv.leaveAt}`));
+    }
 
     function watchCameras() {
         const dv = driving();
@@ -1297,7 +1327,7 @@
         const key = `${d.kind}:${d.direction}:${(d.report && d.report.at) || d.error || ''}`;
         if (noted.has(key)) return;
         noted.add(key);
-        if (d.report) latest[d.direction] = d.report;
+        if (d.report) latest[d.direction] = takeReport(d.report);
         if (d.advice && !d.advice.error) advice[d.direction] = d.advice;
         changed();
         const label = d.direction === 'work' ? 'To Work' : 'To Home';
@@ -1340,16 +1370,16 @@
         if (wired || !c || typeof c.on !== 'function') return !!wired;
         wired = true;
         const data = (pk) => (pk && (pk.data || pk)) || {};
-        c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = d.report; changed(); if (d.direction === 'home') armNativeWatch(); } });
-        c.on('traffic_report', onReport);
-        c.on('traffic_settings_changed', (pk) => { const d = data(pk); if (d.settings) { settings = d.settings; changed(); } });
+        c.on('traffic_updated', (pk) => { const d = data(pk); if (d.direction && d.report) { latest[d.direction] = takeReport(d.report); changed(); if (d.direction === 'home') armNativeWatch(); } }, { signal: appScopeSignal });
+        c.on('traffic_report', onReport, { signal: appScopeSignal });
+        c.on('traffic_settings_changed', (pk) => { const d = data(pk); if (d.settings) { settings = d.settings; changed(); } }, { signal: appScopeSignal });
+        c.on('connected', () => load(), { signal: appScopeSignal });
         // the police feed's changes while driving (#907); a reconnect subscribes again on the next check
         c.on('traffic_police', (pk) => { const d = (pk && (pk.feed ? pk : pk.data)) || {}; if (d.feed && d.feed === policeFeed) mergePolice(d.feed, d.changed, d.removed, false); }, { signal: appScopeSignal });
         c.on('connected', () => { policeFeed = ''; syncPoliceWatch(); }, { signal: appScopeSignal });
         window.addEventListener('androiddrive', syncPoliceWatch, { signal: appScopeSignal });
         // Settings > Location changed Home / Work (#907): an open settings page shows the new places
         document.addEventListener('wmLocationPlaces', () => { if (layers[layers.length - 1] === 'settings' && els.layerBody) renderSettings(); }, { signal: appScopeSignal });
-        c.on('connected', () => load());
         load();
         return true;
     }
@@ -1635,9 +1665,14 @@
             try { tk = `${levelSuffix()}|${JSON.stringify(todayLine(commuteNow() || direction()))}`; } catch (_) { tk = String(Date.now()); }
             if (tk !== todayTickKey) { todayTickKey = tk; todayChanged(); }
         }
-        // driving: the phone's position each minute, then the time left everywhere it shows (the page's own
-        // camera alerts need it with the screen off too, when the app's drive watch does not have the drive)
-        if (driveWindow()) { readPosition(); if (driving()) changed(); }
+        // driving: the phone's position each minute while the page is seen, then the time left everywhere it
+        // shows. With the screen off only while the page alerts the cameras itself (a drive home the app's
+        // own watch does not have: melatonContinuity holds the page awake for it); otherwise Android gives a
+        // stopped page no position (no background location) and each read only timed out (#890)
+        if (driveWindow()) {
+            if (seenNow() || drivingHomeUnwatched()) readPosition();
+            if (driving()) changed();
+        }
         armNativeWatch();
         watchCameras();
     }
@@ -1662,13 +1697,14 @@
         ws = window.wmShell;
         if (!ws) return;
         // the app's drive watch: what it alerted while the page was paused (#810)
-        window.addEventListener('dreamscape:drivewatch', (e) => nativeStatus(e.detail));
+        window.addEventListener('dreamscape:drivewatch', (e) => nativeStatus(e.detail), { signal: appScopeSignal });
         watchLeaveWindow();
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
             ws.registerTodayItem({ id: 'traffic', label: 'Traffic', icon: 'app-traffic', after: 'weather', render: todayRender, titanium: todayTitanium });
         }
-        if (!wire()) { let n = 0; const t = setInterval(() => { if (wire() || ++n > 120) clearInterval(t); }, 1000); }
+        // websocket.js (window.wsClient) loads before this file; should it not have, every script has run by 'load'
+        if (!wire()) window.addEventListener('load', () => { wire(); }, { once: true, signal: appScopeSignal });
     }
 
     window.wmTraffic = {
