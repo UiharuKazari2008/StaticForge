@@ -11698,6 +11698,23 @@
                     </div>
                 </div>
             </div>`;
+        // a CaféReady phone (the app's Melaton Café Miniport): its logo at the splash's foot, as the app's boot cover
+        // showed it before that cover was removed (Yukimi, Nov 18 2026: the cover sat black after an update restart)
+        const cafe = document.createElement('img');
+        cafe.className = 'wm-splash-cafe';
+        cafe.src = '/static_images/melaton/cafe-ready-dark.png';
+        cafe.alt = '';
+        cafe.draggable = false;
+        cafe.hidden = true;
+        splash.appendChild(cafe);
+        const cafeNow = () => {
+            let mp = null;
+            try { const mc = window.melatonContinuity; mp = mc && typeof mc.miniport === 'function' ? mc.miniport() : null; } catch (_) { mp = null; }
+            cafe.hidden = !(mp && mp.present && mp.enabled !== false);
+        };
+        cafeNow();
+        // the Miniport's state can come a moment after the shell is built: looked at once more
+        setTimeout(cafeNow, 600);
         shell.appendChild(splash);
 
         const inst = document.createElement('section');
