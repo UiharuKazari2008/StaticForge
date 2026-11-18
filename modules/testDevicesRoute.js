@@ -68,7 +68,9 @@ function mount(app, authMiddleware, globalResources) {
         const notice = inbox().publish({
             user: 'test', id, push: mode === 'push', alert: b.alert === true ? true : undefined,
             title: String(b.title || 'Test notice'), text: String(b.text || ''), cls: String(b.cls || 'test'), app: String(b.app || 'test'),
-            actions: Array.isArray(b.actions) ? b.actions : [], data: b.data && typeof b.data === 'object' ? b.data : {},
+            // data.kind 'test' = no page producer: a page in front shows it itself (wmNotificationInbox SERVER_ONLY_KINDS);
+            // a test may send another kind (data.kind 'mail') to see what a page does with a producer's notice
+            actions: Array.isArray(b.actions) ? b.actions : [], data: Object.assign({ kind: 'test' }, b.data && typeof b.data === 'object' ? b.data : {}),
             ttlMs: Number(b.ttlMs) || 6 * 60 * 60 * 1000
         });
         if (!notice) { refuse(res, 400, 'NOT_STORED', 'The notice was not stored (no title, or already expired).'); return; }
