@@ -330,9 +330,13 @@
         // no phone shell: nothing to show it in (never the browser's own prompt: no-native-browser-ui)
         if (!canPick()) return Promise.resolve(null);
         if (dlg) finish(null);
+        // the title bar keeps the asking program's name (as the file dialogs do)
+        const prev = s.current && s.current !== APP_ID && typeof s.listApps === 'function' ? s.listApps().find((a) => a.id === s.current) : null;
+        const appTitle = opts.app || (prev && (prev.title || prev.id)) || 'Location';
         return new Promise((res) => {
-            dlg = { opts, query: String(opts.value || ''), results: [], sel: -1, busy: false, error: '', searched: false, resolve: res };
+            dlg = { opts, appTitle, query: String(opts.value || ''), results: [], sel: -1, busy: false, error: '', searched: false, resolve: res };
             s.open(APP_ID);
+            if (typeof s.setTitle === 'function') s.setTitle(appTitle);
             render();
             if (dlg.query.length >= 2) void search();
         });

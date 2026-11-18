@@ -1093,7 +1093,8 @@
         const budgetLine = (name, b) => (b && b.configured ? `${name}: ${b.used} of ${b.budget} ${b.per === 'day' ? 'today' : 'this month'}` : `${name}: no key (Dreamscape CardSpace > Service keys)`);
         box.innerHTML = `
             ${ui.sub('Places')}
-            ${ui.facts([['Home:', placeText('home', f.home)], ['Work:', placeText('work', f.work)]])}
+            ${ui.value('Home:', placeText('home', f.home))}
+            ${ui.value('Work:', placeText('work', f.work))}
             ${ui.note('Home and Work are set in Settings > Location, for every program.')}
             ${ui.buttons([['trf-location', 'Location...']])}
             ${ui.row('Radius:', ui.comboHtml('radiusKm', label(RADII, f.radiusKm)), { wide: true })}
