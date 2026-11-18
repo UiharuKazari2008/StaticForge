@@ -116,5 +116,7 @@
         return JSON.stringify(out);
     }
 
-    root.CafeTasks = { API, define, dispatch, lib: {}, names: () => Object.keys(tasks) };
+    // a lib loaded before the runtime (the page loads status-order.js with wmShell.js, #907) is kept
+    const lib = (root.CafeTasks && root.CafeTasks.lib) || {};
+    root.CafeTasks = { API, define, dispatch, lib, names: () => Object.keys(tasks) };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
