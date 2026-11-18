@@ -513,10 +513,22 @@
         } catch (_) { /* a bad answer: leave the page's own path on */ }
     }
 
+    // the app pushes every change of its watch (start, stop, each alert) as dreamscape:drivewatch, but
+    // skips the push while the page is frozen: the copy held counts until the page comes back (any
+    // lifecycle or screen event), then one synchronous status() read refreshes it (#890: it was read
+    // every minute of a drive home)
+    let nativeKnown = false;
+    function nativeStatusNow() {
+        if (nativeKnown) return;
+        const b = nativeBridge();
+        if (!b || typeof b.status !== 'function') return;
+        nativeStatus(b.status());
+        nativeKnown = true;
+    }
+
     /** Ids the app already alerted for this drive (also after its watch ended), so the page never alerts them again. */
     function nativeAlerted(key) {
-        const b = nativeBridge();
-        if (b && typeof b.status === 'function') nativeStatus(b.status());
+        nativeStatusNow();
         return nativeDrive.key === key ? [...nativeDrive.alerted] : [];
     }
 
@@ -554,8 +566,7 @@
             // Android refuses the location service unless the app is in front: try again now the page is on
             // screen (not with the screen off: it would be refused again; screen on calls this at once)
             if (!seenNow()) return;
-            const b2 = nativeBridge();
-            if (b2 && typeof b2.status === 'function') nativeStatus(b2.status());
+            nativeStatusNow();
             if (nativeDrive.active || !/^(not allowed|no location access)$/.test(nativeDrive.reason)) return;
         }
         nativeDrive.sig = sig;
@@ -1694,7 +1705,10 @@
         ws = window.wmShell;
         if (!ws) return;
         // the app's drive watch: what it alerted while the page was paused (#810)
-        window.addEventListener('dreamscape:drivewatch', (e) => nativeStatus(e.detail), { signal: appScopeSignal });
+        window.addEventListener('dreamscape:drivewatch', (e) => { nativeStatus(e.detail); nativeKnown = true; }, { signal: appScopeSignal });
+        // pushes may have been skipped while the page was frozen or asleep: read once again after it
+        const unknown = () => { nativeKnown = false; };
+        for (const [t, ev] of [[document, 'resume'], [document, 'visibilitychange'], [document, 'wmawake'], [window, 'pageshow'], [window, 'melatonscreen']]) t.addEventListener(ev, unknown, { signal: appScopeSignal });
         watchLeaveWindow();
         ws.registerApp(APP);
         if (typeof ws.registerTodayItem === 'function') {
