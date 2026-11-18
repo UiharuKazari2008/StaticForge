@@ -317,7 +317,7 @@
             // the page asleep): its empty frame per body line count, its soft key band, and the boxes it writes into
             let nk = null;
             try { nk = notifyKit(dpr); } catch (err) { console.warn('[melatonBars] notify kit', err); }
-            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? { notifyFrame: nk.frames, notifySoft: nk.soft } : {}) });
+            out({ kv: 4, font: document.documentElement.dataset.wmFont === 'segoe' ? 'segoe' : 'tahoma', sig: kitSignature(), widthPx: kitTarget ? kitTarget.widthPx : Math.round(window.innerWidth * dpr), pad: Math.round(PAD * dpr), chars, charsRegular, geo: Object.assign(barGeometry(dpr) || {}, nk ? { notify: nk.geo } : {}), bubble: bubbleStyle(dpr), lists: Object.assign(barLists(dpr) || {}, nk ? Object.assign({ notifyFrame: nk.frames, notifySoft: nk.soft }, nk.menu ? { notifyMenu: nk.menu } : {}) : {}) });
         } finally { kitTarget = null; }
     }
 
@@ -339,7 +339,7 @@
         // updated in the native bar" - a change to the icons' size or the bar's height kept the app on its old kit)
         const bar = document.querySelector('#wmShell > .wm-titlebar');
         const barH = bar ? Math.round(bar.getBoundingClientRect().height * (window.devicePixelRatio || 1)) : 0;
-        return ['m20', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
+        return ['m21', root.dataset.wmVersion || '', root.dataset.wmRev || '', root.dataset.wmBars || '', root.dataset.wmFont || '', cs.getPropertyValue('--wm-px').trim(),
             cs.getPropertyValue('--wm-icon-unit').trim(), cs.getPropertyValue('--wm-camera-extend').trim(), root.hasAttribute('data-wm-bar-extend') ? 'x' : '', barH,
             cs.getPropertyValue('--wm-highlight').trim(), cs.getPropertyValue('--wm65-art-msgboxtitle').trim().slice(-80), Math.round(window.innerWidth)].join('|');
     }
@@ -399,6 +399,8 @@
      * (null: WM's notice shows no glyph of its own), softLeft / softRight, colours, and the default labels (Hide /
      * Dismiss; a program's notice may bring its own). Laid out with the bars staged as over a program.
      */
+    // the rows of a notification's Menu (the app maps 'notemenu:<n>' to these, in order, separators left out)
+    const NOTE_MENU = ['View', 'Hide', '-', 'Snooze 5 minutes', 'Snooze 15 minutes', 'Snooze 1 hour', 'Snooze 1 day'];
     function notifyKit(dpr) {
         const sh = window.wmShell;
         const shell = document.getElementById('wmShell');
@@ -447,6 +449,17 @@
                 const was = labels.map((b) => b.style.visibility);
                 labels.forEach((b) => { b.style.visibility = 'hidden'; });
                 try { out.soft = layoutOf([soft], dpr); } finally { labels.forEach((b, i) => { b.style.visibility = was[i]; }); }
+            }
+            // the box's Menu (6.5.1's reminder: Dismiss | Menu, Yukimi Nov 18 "so that you have a reminder option"), laid
+            // out over the right soft key with its fixed rows; each row's tap box is 'notemenu:<n>' for the app to act on
+            if (typeof sh.menuSample === 'function') {
+                const smp = sh.menuSample('right', NOTE_MENU.map((l) => (l === '-' ? '-' : { label: l, action() {} })));
+                try {
+                    settle([smp.el]);
+                    const items = layoutOf([smp.el], dpr).filter((o) => o.k !== 'hit');
+                    [...smp.el.querySelectorAll(':scope > .wm-popup-item')].forEach((b, i) => { const r = R(b.getBoundingClientRect()); items.push({ k: 'hit', x: r.x, y: r.y, w: r.w, h: r.h, act: `notemenu:${i}` }); });
+                    out.menu = { m: { items, box: R(smp.el.getBoundingClientRect()), rows: NOTE_MENU.filter((l) => l !== '-') } };
+                } finally { smp.close(); }
             }
         } finally {
             el.innerHTML = keep.html;

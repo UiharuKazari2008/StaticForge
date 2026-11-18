@@ -15,7 +15,7 @@
  *   mail      Messaging's "any unread" on: unread mail; else new mail notices waiting
  *   sms       "any unread" on: unread texts; else text notices waiting
  *   chat      Messenger replies waiting
- *   director  a turn running, or a finished turn not seen
+ *   director  a turn running (the page also shows it while the Director is open)
  *   prints    prints the phone asked for, queued or running
  *   wxalert   weather alerts at Home / Work; rain: rain due or falling with the rain alarm on
  *   carkey    the car key sees the car, a remote start runs, or a commute's leave window is open (or driving)
@@ -103,7 +103,8 @@
                 mail: !!(mail.fresh > 0 || (prefs.mailAll ? mail.unread > 0 : mail.new)),
                 sms: !!(sms.fresh > 0 || (sms.unread > 0 && (prefs.smsAll || sms.new))),
                 chat: !!(s.chat && s.chat.fresh > 0),
-                director: !!(s.director && (s.director.running || s.director.unseen)),
+                // only while a turn runs (Yukimi, Nov 18: shown when it is open or actively working; open is the page's)
+                director: !!(s.director && s.director.running),
                 prints: !!(s.prints && s.prints.phone > 0),
                 wxalert: !!(s.weather && s.weather.alerts > 0),
                 rain: !!(s.weather && s.weather.rain),
