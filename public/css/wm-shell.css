@@ -3349,6 +3349,10 @@ html.ui-mobile body > .pswp .pswp__preloader {
     position: absolute;
     left: calc(env(safe-area-inset-left) + 9 * var(--wm-px));
     right: calc(env(safe-area-inset-right) + 9 * var(--wm-px));
+    /* a phone's width at most: on a wider screen (the Fold's inner screen, turned) it stays a VGA bubble, right-aligned
+       under the status icons it belongs to, never one stretched across the screen (Yukimi, Nov 18) */
+    max-width: calc(300 * var(--wm-px));
+    margin-left: auto;
     top: calc(var(--wm-safe-top, env(safe-area-inset-top)) + 36 * var(--wm-px));
     z-index: 13;
     background: #fff;
@@ -3367,7 +3371,8 @@ html.ui-mobile body > .pswp .pswp__preloader {
 .wm-bubble-tail {
     display: none;
     position: absolute;
-    left: calc(var(--wm-tail-x) - 9 * var(--wm-px) - env(safe-area-inset-left) - 7 * var(--wm-px));
+    /* --wm-tail-x is measured from the bubble's own left edge (it may sit right-aligned, max-width) */
+    left: calc(var(--wm-tail-x) - 7 * var(--wm-px));
     top: calc(-12 * var(--wm-px));
     width: calc(14 * var(--wm-px));
     height: calc(12 * var(--wm-px));

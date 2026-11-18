@@ -306,6 +306,21 @@
         /** An app's notice was used (View / Reply). */
         acted: (id) => { if (!id) return; shownNotes.delete(id); ack(String(id), 'acted'); },
         shown: () => [...shownNotes.keys()],
+        /**
+         * The notices still waiting on the server (new, or put away with Hide; not mail / texts / Messenger / Director,
+         * which have icons of their own) shown again as notifications: the title bar's notification icon stands for them
+         * (the app's status task), and a tap on it opened nothing while this page held none (Nov 18). Resolves the count.
+         */
+        showWaiting: async () => {
+            let r = null;
+            try { r = await ask('inbox_list', {}); } catch (_) { return 0; }
+            const waiting = ((r && r.notices) || []).filter((n) => (n.state === 'new' || n.state === 'seen') && !/^(mail|dmail|sms|chat|director):/.test(n.id));
+            for (const n of waiting) {
+                if (isReminder(n)) { reminders.set(n.id, n); showReminder(n); continue; }
+                if (!shownNotes.has(n.id)) show(n);
+            }
+            return waiting.length;
+        },
     };
 
     if (window.wmShell) register();

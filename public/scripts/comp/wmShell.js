@@ -3409,7 +3409,11 @@
             for (const [role, on] of Object.entries(taskRoles)) {
                 if (!on || role === 'nightshade' || BARS_NATIVE_ROLES.has(role)) continue;
                 const el = shell.querySelector(`[data-role="${role}"]`);
-                if (el && el.hidden) hide(el, false);
+                if (el && el.hidden) {
+                    hide(el, false);
+                    // the notification icon shown for the server's waiting notices: its own glyph and words, not a gone notice's
+                    if (role === 'notify') { el.dataset.icon = 'notify-many'; el.style.backgroundImage = ''; el.setAttribute('aria-label', 'Notifications waiting'); }
+                }
             }
         }
         paintBezelLed();
@@ -5061,9 +5065,10 @@
         syncScrim();
         // the tail points at the status icon
         if (anchor) {
-            const sr = shell.getBoundingClientRect();
+            // from the bubble's own left edge: with its max-width it may sit right-aligned on a wide screen
+            const br = el.getBoundingClientRect();
             const ar = anchor.getBoundingClientRect();
-            el.style.setProperty('--wm-tail-x', `${Math.round(ar.left + ar.width / 2 - sr.left)}px`);
+            el.style.setProperty('--wm-tail-x', `${Math.round(ar.left + ar.width / 2 - br.left)}px`);
             el.classList.add('has-tail');
         } else {
             el.classList.remove('has-tail');
@@ -6330,6 +6335,12 @@
         if (!mine.length && !statusFolded.length) {
             noteTrayOpen = false;
             renderNotes();
+            // the icon stands for notices waiting on the server (the app's status task) that this page holds none of:
+            // they come up as notifications now (Nov 18: the tap opened nothing and the icon never went)
+            if (taskRoles && taskRoles.notify && window.wmNotificationInbox && typeof window.wmNotificationInbox.showWaiting === 'function') {
+                void window.wmNotificationInbox.showWaiting();
+                return;
+            }
             const up = shell.querySelector('.wm-status-icon[data-role="update"]');
             // nothing at all: nothing happens (Yukimi, Nov 16: the "There are no notifications." box only annoyed)
             if (notes.some(isUpdateNote) && up) statusBubble('update', up);
