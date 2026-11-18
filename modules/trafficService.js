@@ -1202,7 +1202,7 @@ function publicRoute(r, extra) {
 const fmtMin = (sec) => `${Math.max(1, Math.round(sec / 60))} min`;
 
 /** Read the routes, incidents and cameras for one direction and build the report (see the header). */
-async function check(direction, { force = false, origin = null } = {}) {
+async function check(direction, { force = false, origin = null, requester = null } = {}) {
     if (!DIRECTIONS.includes(direction)) throw new TrafficError('direction is work or home', 'BAD_REQUEST');
     const s = getSettings();
     let { from, to } = endpoints(direction, s);
@@ -1326,8 +1326,52 @@ async function check(direction, { force = false, origin = null } = {}) {
     loadLatest();
     latest[direction] = report;
     saveLatest();
-    broadcast({ type: 'traffic_updated', data: { direction, report } });
+    // the page that asked (requester: its clientInfo) has the report in its traffic_check reply; the rest
+    // hear it here (#890 round 5, W4: the asker got it twice)
+    broadcast({ type: 'traffic_updated', data: { direction, report: wireReport(report) } }, requester ? (info) => info !== requester : null);
     return report;
+}
+
+// ------------------------------------------------------------------------------------------ the report on the wire
+
+const wireCache = new WeakMap();
+
+/**
+ * A report as the pages get it (#890 round 5, W4): latest / traffic-latest.json keep the full shape.
+ *  - preferredIndex (always): the preferred route's index in routes; preferred is left out when it is
+ *    routes[0] (the same route twice). Pages read report.preferred || report.routes[report.preferredIndex || 0].
+ *  - routes other than the preferred one carry no line (the map strip and the drive watch use the
+ *    preferred route's alone; wmTraffic reads steps for every route, so those stay)
+ *  - hash: the stored report's sha1, for traffic_get { have }
+ * Made once per report.
+ */
+function wireReport(report) {
+    if (!report || typeof report !== 'object') return report || null;
+    const hit = wireCache.get(report);
+    if (hit) return hit;
+    const routes = Array.isArray(report.routes) ? report.routes : [];
+    let idx = routes.findIndex((r) => r && r.preferred === true);
+    if (idx < 0) idx = 0;
+    const out = Object.assign({}, report);
+    out.routes = routes.map((r, i) => {
+        if (i === idx || !r || typeof r !== 'object' || !('line' in r)) return r;
+        const c = Object.assign({}, r);
+        delete c.line;
+        return c;
+    });
+    out.preferredIndex = idx;
+    if (idx === 0 && routes.length) delete out.preferred;
+    out.hash = require('crypto').createHash('sha1').update(JSON.stringify(report)).digest('hex');
+    wireCache.set(report, out);
+    return out;
+}
+
+/** Both commutes for the pages: { latest: { work, home } (wire shape), hash: '<work hash>|<home hash>' }. */
+function latestWire() {
+    const l = getLatest();
+    const work = wireReport(l.work);
+    const home = wireReport(l.home);
+    return { latest: { work, home }, hash: `${(work && work.hash) || ''}|${(home && home.hash) || ''}` };
 }
 
 function summarise(r) {
@@ -1444,7 +1488,7 @@ async function runScheduled(direction, kind) {
             sched.go.set(direction, goAt);
         }
     }
-    broadcastAdmins({ type: 'traffic_report', data: { kind, direction, report, advice, leave: direction === 'work' ? s.leaveHome : s.leaveWork } });
+    broadcastAdmins({ type: 'traffic_report', data: { kind, direction, report: wireReport(report), advice, leave: direction === 'work' ? s.leaveHome : s.leaveWork } });
     // the durable inbox (#845): the leave-time report, shown on resume and by the native app when the
     // page is not running. One per direction per day; a short life so an old commute is not shown later.
     try {
@@ -1494,10 +1538,10 @@ function server() {
 
 const adminClient = (info) => !!(info && info.authenticated !== false && /^(admin|dev_admin)$/.test(String(info.userType || '')));
 
-function broadcast(message) {
+function broadcast(message, filter = null) {
     try {
         const srv = server();
-        if (srv && typeof srv.broadcast === 'function') srv.broadcast(Object.assign({ timestamp: new Date().toISOString() }, message), adminClient);
+        if (srv && typeof srv.broadcast === 'function') srv.broadcast(Object.assign({ timestamp: new Date().toISOString() }, message), filter ? (info) => adminClient(info) && filter(info) : adminClient);
     } catch (error) {
         console.warn(`[traffic] broadcast skipped: ${error.message}`);
     }
@@ -1515,6 +1559,8 @@ module.exports = {
     check,
     advise,
     getLatest,
+    wireReport,
+    latestWire,
     startScheduler,
     TrafficError,
     DIRECTIONS,

@@ -44,7 +44,7 @@ const gr = {
     getConfig: ({ path: p }) => p.split('.').reduce((o, k) => (o ? o[k] : undefined), cfg),
     modifyConfig: () => ({ assign: (pathArr, value) => { cfg[pathArr[0]] = value; return Promise.resolve(); } }),
     getApiKeyManager: () => ({ getServiceKeys: (s) => keys[s] || [], getSelectedIndex: () => 0 }),
-    getWebSocketServer: () => ({ broadcast: (msg, filter) => sent.push({ msg, admin: filter({ userType: 'admin' }), user: filter({ userType: 'user' }) }) })
+    getWebSocketServer: () => ({ broadcast: (msg, filter) => sent.push({ msg, filter, admin: filter({ userType: 'admin' }), user: filter({ userType: 'user' }) }) })
 };
 svc.bind(gr);
 
@@ -377,6 +377,66 @@ T.setFetch(async (url, init) => {
         assert.strictEqual(T.dueNow(s, { date: '2026-11-16', minutes: 17 * 60 + 6, weekday: 1 }, fired).length, 0);
         assert.strictEqual(T.dueNow(s, { date: '2026-11-15', minutes: 7 * 60 + 35, weekday: 0 }, new Set()).length, 0, 'not on Sunday');
         assert.strictEqual(T.dueNow(Object.assign({}, s, { notify: false }), { date: '2026-11-16', minutes: 7 * 60 + 35, weekday: 1 }, new Set()).length, 0);
+    });
+
+    await ok('wire report (#890 W4): preferredIndex, preferred left out when routes[0], lines on the preferred route only, hash; the asker is left out of traffic_updated', async () => {
+        T.routeCache.clear();
+        const asker = { userType: 'admin', authenticated: true };
+        const other = { userType: 'admin', authenticated: true };
+        sent.length = 0;
+        const r = await svc.check('work', { force: true, requester: asker });
+        const w = svc.wireReport(r);
+        assert.strictEqual(svc.wireReport(r), w, 'made once per report');
+        const idx = r.routes.findIndex((x) => x.preferred);
+        assert.strictEqual(idx, 0, 'the via route leads');
+        assert.strictEqual(w.preferredIndex, 0);
+        assert.ok(!('preferred' in w), 'not sent twice');
+        assert.deepStrictEqual(w.preferred || w.routes[w.preferredIndex || 0], r.preferred, 'the page rule finds the preferred route, line included');
+        w.routes.forEach((x, i) => { if (i !== idx) { assert.ok(!('line' in x), 'no line off the preferred route'); assert.ok(Array.isArray(x.steps), 'steps stay (Directions)'); } });
+        assert.ok(r.preferred && r.routes.every((x) => Array.isArray(x.line)), 'the stored report keeps its full shape');
+        assert.match(w.hash, /^[0-9a-f]{40}$/);
+        const b = sent.find((x) => x.msg.type === 'traffic_updated');
+        assert.ok(b && b.filter(other) && !b.filter(asker), 'the asker gets it in its reply only');
+        assert.ok(!b.filter({ userType: 'user' }), 'still admins only');
+        assert.strictEqual(b.msg.data.report, w, 'the broadcast carries the wire report');
+        // a preferred route that is not first keeps preferred (and its line)
+        const syn = { routes: [{ id: 'r0', preferred: false, line: [[1, 2]], steps: [] }, { id: 'r1', preferred: true, line: [[3, 4]], steps: [] }], preferred: { id: 'r1', preferred: true, line: [[3, 4]], steps: [] } };
+        const ws = svc.wireReport(syn);
+        assert.strictEqual(ws.preferredIndex, 1);
+        assert.deepStrictEqual(ws.preferred, syn.preferred);
+        assert.ok(!('line' in ws.routes[0]) && Array.isArray(ws.routes[1].line));
+        assert.ok(Array.isArray(syn.routes[0].line), 'the source is not changed');
+    });
+
+    await ok('traffic_get (#890 W4): hash of both reports; have unchanged -> same: true without latest; traffic_check replies the wire report', async () => {
+        const registry = require('../modules/ws/wsPacketRegistry');
+        const out = [];
+        const ctx = { globalResources: gr, sendToClient: (ws, m) => out.push(m), sendError: (ws, msg) => out.push({ error: msg }) };
+        require('../modules/ws/handlers/292-trafficHandler').registerPackets(ctx);
+        const get = registry.getWsPacketHandler('traffic_get');
+        const info = { userType: 'admin', authenticated: true };
+        await get({ ws: {}, message: { type: 'traffic_get', requestId: 'g1' }, clientInfo: info });
+        const full = out.pop().data;
+        assert.ok(full.latest && full.latest.work && full.latest.home, 'both reports');
+        assert.strictEqual(full.hash, `${full.latest.work.hash}|${full.latest.home.hash}`);
+        assert.ok(!('preferred' in full.latest.work) && full.latest.work.preferredIndex === 0);
+        await get({ ws: {}, message: { type: 'traffic_get', requestId: 'g2', have: full.hash }, clientInfo: info });
+        const same = out.pop().data;
+        assert.strictEqual(same.same, true);
+        assert.ok(!('latest' in same), 'nothing sent again');
+        assert.ok(same.settings && same.providers && same.hash === full.hash);
+        await get({ ws: {}, message: { type: 'traffic_get', requestId: 'g3', have: { work: full.latest.work.hash, home: full.latest.home.hash } }, clientInfo: info });
+        assert.strictEqual(out.pop().data.same, true, 'have as { work, home }');
+        await get({ ws: {}, message: { type: 'traffic_get', requestId: 'g4', have: `${full.latest.work.hash}|old` }, clientInfo: info });
+        assert.ok(out.pop().data.latest, 'one report differs: the whole reply');
+        sent.length = 0;
+        T.routeCache.clear();
+        await registry.getWsPacketHandler('traffic_check')({ ws: {}, message: { type: 'traffic_check', requestId: 'c1', direction: 'home', force: true }, clientInfo: info });
+        const rep = out.pop().data.report;
+        assert.strictEqual(typeof rep.preferredIndex, 'number');
+        assert.match(rep.hash, /^[0-9a-f]{40}$/);
+        const b = sent.find((x) => x.msg.type === 'traffic_updated');
+        assert.ok(b && !b.filter(info) && b.filter({ userType: 'admin' }), 'the asking socket is left out of the broadcast');
     });
 
     await ok('settings save cleans input', async () => {
