@@ -531,6 +531,16 @@
     // ActiveSync Received Items (#803): something arrived while the phone was locked or away (the
     // the ROM's own sync arrows, shellres.192.dll 4685: scripts/extract-wm-activesync-status-icon.py)
     // Nightshade Network (#895): only while the service is unreachable or restarting (scripts/generate-nightshade-icons.js)
+    // the program icons from the status atlas (scripts/build-wm-status-atlas.py EXTRA, #907): each glyph at the
+    // bar's one height, as wide as its shape needs (Yukimi, Nov 17: "too small and unevenly sized"), so the
+    // app draws them from the atlas too. The Director and Update keep their pictures (their animations swap it).
+    const STATUS_APP_ATLAS = { mail: 'app-mail', sms: 'app-sms', chat: 'app-messenger', prints: 'app-prints', wxalert: 'app-weather-alert', rain: 'app-rain-alarm', traffic: 'app-traffic', lapis: 'app-lapis', carkey: 'app-traffic', continuity: 'app-continuity', received: 'app-activesync', nightshade: 'app-nightshade' };
+    function setStatusAppArt(el, role) {
+        const a = STATUS_APP_ATLAS[role];
+        if (a) { el.style.backgroundImage = ''; el.dataset.icon = a; return; }
+        delete el.dataset.icon;
+        el.style.backgroundImage = artImageSet(STATUS_APP_ICONS[role]);
+    }
     const STATUS_APP_ROLES = ['mail', 'sms', 'chat', 'prints', 'director', 'update', 'wxalert', 'rain', 'traffic', 'lapis', 'carkey', 'continuity', 'received', 'nightshade'];
     // the Director's clapper while a turn runs: the stick claps (open frames, closed, open again);
     // status-director-clap-strip holds them in that order (scripts/build-wm-sprite-strips.sh)
@@ -691,7 +701,7 @@
                 pressSoftKey(btn.dataset.side, btn);
             });
         });
-        shell.querySelectorAll('.wm-status-app').forEach((b) => { b.style.backgroundImage = artImageSet(STATUS_APP_ICONS[b.dataset.role]); });
+        shell.querySelectorAll('.wm-status-app').forEach((b) => setStatusAppArt(b, b.dataset.role));
         shell.querySelectorAll('.wm-status-icon').forEach((b) => {
             b.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -5653,8 +5663,7 @@
             icon.style.backgroundImage = noteIcon(notes[0]);
             icon.setAttribute('aria-label', `Notification: ${noteTitle(notes[0])}`);
         } else if (count) {
-            delete icon.dataset.icon;
-            icon.style.backgroundImage = artImageSet(STATUS_APP_ICONS[statusFolded[0]]);
+            setStatusAppArt(icon, statusFolded[0]);
             icon.setAttribute('aria-label', STATUS_APP_LABEL[statusFolded[0]]);
         }
     }

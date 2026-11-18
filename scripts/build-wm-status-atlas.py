@@ -36,6 +36,107 @@ def halve(px, w, h):
             a = sum(px[i + 3] for i in q)
             if a: out[(y * (w // 2) + x) * 4:(y * (w // 2) + x) * 4 + 4] = bytes([sum(px[i + c] * px[i + 3] for i in q) // a for c in range(3)] + [a // 4])
     return bytes(out)
+# ---- one glyph height (Yukimi, Nov 17 2026, "too small and unevenly sized" -> option 1): every glyph is cut
+# to its bounds and scaled to 15 units tall (the ROM's tallest, inside the emulator bar's 5-unit padding),
+# its cell as wide as its shape needs (at most 24 units) and 16 units high, so the bar keeps its padding and
+# wide icons (mail, prints, the car, the data badges) grow to the antenna's height. A family whose state is
+# how much of the cell it fills (signal bars, battery levels, data, wifi, volume) shares one cut and scale.
+# Scaling keeps the 1-bit art sharp where it can: ROM art already near the height is only cut and centred,
+# Melaton's 16 px pixel art goes up by a whole factor from its 1x copy, anything else is resampled.
+# "..." (notify-many) keeps its cell (bottom-aligned on purpose).
+KEEP = {'notify-many'}
+GROUPS = ('data', 'signal', 'battery', 'wifi', 'volume')
+VARIANT = re.compile(r'-(?:\d+|none|off|on|alert|full|empty|low|charging|active|avail|unknown)$')
+GLYPH4 = 60    # 15 units at 4x
+CAPW4 = 96     # 24 units at 4x
+# the status icons of programs (wmShell STATUS_APP_ICONS), so they size like the rest and the app draws them
+# from the atlas (the Director and Update stay single pictures: their animations replace the picture)
+EXTRA = [('app-mail', 'status-mail'), ('app-sms', 'status-sms'), ('app-messenger', 'status-messenger'), ('app-prints', 'status-prints'),
+         ('app-weather-alert', 'status-weather-alert'), ('app-rain-alarm', 'status-rain-alarm'), ('app-traffic', 'status-traffic'),
+         ('app-lapis', 'status-lapis'), ('app-continuity', 'status-continuity'), ('app-activesync', 'status-activesync'),
+         ('app-nightshade', 'status-nightshade')]
+def family(name):
+    head = name.split('-')[0]
+    if head in GROUPS: return head
+    f = name
+    while VARIANT.search(f): f = VARIANT.sub('', f)
+    return f
+def alpha_box(px, w, h, cut=40):
+    x0 = y0 = 10 ** 9; x1 = y1 = -1
+    for y in range(h):
+        row = px[y * w * 4:(y + 1) * w * 4]
+        for x in range(w):
+            if row[x * 4 + 3] > cut:
+                if x < x0: x0 = x
+                if x > x1: x1 = x
+                if y < y0: y0 = y
+                if y > y1: y1 = y
+    return (x0, y0, x1 + 1, y1 + 1) if x1 >= 0 else None
+def im(px, w, h, *ops):
+    t = os.path.join('/tmp', f'claude-atlas-{os.getpid()}.rgba')
+    open(t, 'wb').write(px)
+    out = subprocess.run(['convert', '-size', f'{w}x{h}', '-depth', '8', f'rgba:{t}', *ops, '-depth', '8', 'rgba:-'], capture_output=True, check=True).stdout
+    os.remove(t)
+    return out
+def sources(dirs, file):
+    for d in dirs:
+        p2 = os.path.join(d, f'{file}@2x.png')
+        if not os.path.exists(p2): continue
+        w, h, px2 = rgba(p2)
+        p4 = os.path.join(d, f'{file}@4x.png')
+        px4 = None
+        if os.path.exists(p4):
+            w4, h4, q = rgba(p4)
+            if (w4, h4) == (w * 2, h * 2): px4 = q
+        if px4 is None: px4 = double(px2, w, h)
+        p1 = os.path.join(d, f'{file}.png')
+        px1 = None
+        if os.path.exists(p1):
+            w1, h1, q = rgba(p1)
+            if (w1, h1) == (w // 2, h // 2): px1 = q
+        return w, h, px1, px2, px4
+    return None
+def fit(entries):
+    """entries: [(name, file, w2, h2, px1, px2, px4)] -> [(name, file, cw2, 32, px1, px2, px4)] fitted."""
+    boxes = {}
+    for e in entries:
+        if e[0] in KEEP: continue
+        b = alpha_box(e[6], e[2] * 2, e[3] * 2)
+        if b: boxes[e[0]] = b
+    fam = {}
+    for n, b in boxes.items(): fam.setdefault(family(n), []).append(b)
+    plan = {}
+    for f, bs in fam.items():
+        bw = max(b[2] - b[0] for b in bs); bh = max(b[3] - b[1] for b in bs)
+        plan[f] = min(GLYPH4 / bh, CAPW4 / bw)
+    out = []
+    for name, file, w, h, px1, px2, px4 in entries:
+        if name not in boxes:
+            out.append((name, file, w, h, px1, px2, px4)); continue
+        f = family(name); k = plan[f]
+        # the family's union, so its members keep their places relative to each other
+        x0 = min(b[0] for n2, b in boxes.items() if family(n2) == f); y0 = min(b[1] for n2, b in boxes.items() if family(n2) == f)
+        x1 = max(b[2] for n2, b in boxes.items() if family(n2) == f); y1 = max(b[3] for n2, b in boxes.items() if family(n2) == f)
+        x0 = max(0, x0); y0 = max(0, y0); x1 = min(w * 2, x1); y1 = min(h * 2, y1)
+        bw, bh = x1 - x0, y1 - y0
+        if abs(k - 1) <= 0.12:
+            g = im(px4, w * 2, h * 2, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage'); gw, gh = bw, bh
+        elif px1 is not None and abs(round(k * 4) - k * 4) <= 0.35 and x0 % 4 == 0 and y0 % 4 == 0 and bw % 4 == 0 and bh % 4 == 0:
+            n = round(k * 4)
+            g = im(px1, w // 2, h // 2, '-crop', f'{bw // 4}x{bh // 4}+{x0 // 4}+{y0 // 4}', '+repage', '-filter', 'point', '-resize', f'{n * 100}%')
+            gw, gh = bw // 4 * n, bh // 4 * n
+        else:
+            gw, gh = max(1, round(bw * k)), max(1, round(bh * k))
+            g = im(px4, w * 2, h * 2, '-crop', f'{bw}x{bh}+{x0}+{y0}', '+repage', '-filter', 'Lanczos', '-resize', f'{gw}x{gh}!')
+        cw2 = max(32 if w == 32 else 0, ((gw + 8 + 3) // 4) * 2)   # 1 unit each side, whole 2x pixels, at least the old square
+        cw2 = min(cw2, CAPW4 // 2 + 4)
+        cw4, ch4 = cw2 * 2, 64
+        cell4 = im(g, gw, gh, '-background', 'none', '-gravity', 'center', '-extent', f'{cw4}x{ch4}')
+        cell2 = halve(cell4, cw4, ch4)
+        cell1 = halve(cell2, cw2, 32)
+        out.append((name, file, cw2, 32, cell1, cell2, cell4))
+    return out
+
 def build(ver, css_path, rule_re, scope, has_1x_rules):
     css = open(css_path).read()
     if BEGIN in css:
@@ -46,15 +147,20 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
     icons = []
     for m in re.finditer(rule_re, body, re.M):
         name, file = m.group(1), m.group(2)
-        if (name, file) not in icons: icons.append((name, file))
+        if (name, file) not in icons and not name.startswith('app-'): icons.append((name, file))
     d = os.path.join(IMG, ver)
-    arts = []
+    entries = []
     for name, file in icons:
-        if not os.path.exists(os.path.join(d, f'{file}@2x.png')):
+        src = sources([d], file)
+        if not src:
             print(ver, 'no art, rule dropped:', name)  # (6.1's data-active never had a file)
             continue
-        w, h, px = rgba(os.path.join(d, f'{file}@2x.png'))
-        arts.append((name, file, w, h, px))
+        entries.append((name, file) + src)
+    for name, file in EXTRA:
+        src = sources([d, os.path.join(IMG, 'wm61')], file)
+        if src: entries.append((name, file) + src)
+    entries = fit(entries)
+    arts = [(n, f, w, h, px2) for n, f, w, h, px1, px2, px4 in entries]
     # shelves
     W = 512; x = y = 0; shelf = 0; pos = {}
     for name, file, w, h, px in arts:
@@ -62,21 +168,11 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
         pos[name] = (x, y); x += w + (w % 2); shelf = max(shelf, h + (h % 2))
     H = y + shelf
     a2 = bytearray(W * H * 4); a4 = bytearray(W * 2 * H * 2 * 4); a1 = bytearray((W // 2) * (H // 2) * 4)
-    for name, file, w, h, px in arts:
+    for name, file, w, h, px1, px2, px4 in entries:
         x, y = pos[name]
-        blit(a2, W, px, w, h, x, y)
-        p4 = os.path.join(d, f'{file}@4x.png')
-        if os.path.exists(p4):
-            w4, h4, px4 = rgba(p4)
-            assert (w4, h4) == (w * 2, h * 2), (file, w4, h4)
-        else: px4 = double(px, w, h)
+        blit(a2, W, px2, w, h, x, y)
         blit(a4, W * 2, px4, w * 2, h * 2, x * 2, y * 2)
-        p1 = os.path.join(d, f'{file}.png')
-        if os.path.exists(p1):
-            w1, h1, px1 = rgba(p1)
-            if (w1, h1) != (w // 2, h // 2): px1 = halve(px, w, h)
-        else: px1 = halve(px, w, h)
-        blit(a1, W // 2, px1, w // 2, h // 2, x // 2, y // 2)
+        blit(a1, W // 2, px1 if px1 is not None else halve(px2, w, h), w // 2, h // 2, x // 2, y // 2)
     png(os.path.join(d, 'status-atlas@2x.png'), W, H, a2)
     png(os.path.join(d, 'status-atlas@4x.png'), W * 2, H * 2, a4)
     png(os.path.join(d, 'status-atlas.png'), W // 2, H // 2, a1)
@@ -90,7 +186,8 @@ def build(ver, css_path, rule_re, scope, has_1x_rules):
         lines.append(f"html.wm-art-1x{scope.replace('html', '', 1)}.wm-status-icon[data-icon] {{ background-image: url('{src}.png'); }}")
     for name, file, w, h, px in arts:
         x, y = pos[name]
-        lines.append(f'{scope}.wm-status-icon[data-icon="{name}"] {{ background-position: calc({-x // 2} * {U}) calc({-y // 2} * {U}); }}')
+        wd = f' width: calc({w // 2} * {U});' if w != 32 else ''
+        lines.append(f'{scope}.wm-status-icon[data-icon="{name}"] {{ background-position: calc({-x // 2} * {U}) calc({-y // 2} * {U});{wd} }}')
     lines.append(END)
     block = '\n'.join(lines)
     if BEGIN in css:
