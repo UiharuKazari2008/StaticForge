@@ -252,7 +252,16 @@
 .wm-traffic .trf-lcd-caps.is-row .trf-ann { font-size: calc(6.5 * var(--u)); }
 .wm-traffic .trf-lcd-anns.is-grid { display: grid; grid-template-columns: auto auto; gap: calc(2 * var(--u)) calc(4 * var(--u)); }
 .wm-traffic .trf-lcd:not(.has-period) .trf-lcd-anns.is-grid { grid-template-columns: auto; }
+.wm-traffic .trf-lcd-sub .trf-lcd-anns.is-row {
+    /* AM over PM, HRS over MIN: two narrow columns, so TO GO keeps its room on a phone */
+    display: grid;
+    grid-template-rows: auto auto;
+    grid-auto-flow: column;
+    gap: calc(1 * var(--u)) calc(3 * var(--u));
+}
 .wm-traffic .trf-lcd-sub .trf-lcd-anns.is-row .trf-ann { font-size: calc(6.5 * var(--u)); }
+.wm-traffic .trf-lcd-togo { flex: 0 0 auto; gap: calc(2.5 * var(--u)); }
+.wm-traffic .trf-lcd.is-driving .trf-lcd-sub { gap: calc(3 * var(--u)); }
 
 /* the side column: the Drive LED over the delay badge */
 .wm-traffic .trf-dash-side {
