@@ -300,6 +300,7 @@
             set('date-c1', dateOf(d.c1zone));
         };
         let tick = 0;
+        // perf: allow a clock while it shows: the clocks' seconds only while the page is on screen (whileSeen stops it otherwise)
         d.timer = whileSeen(el, () => { times(); tick = setInterval(() => { if (d.timer && d.timer.seen()) times(); else if (d.timer) d.timer.sync(); }, 1000); }, () => { clearInterval(tick); tick = 0; });
     }
 
@@ -997,6 +998,7 @@
         d.batSig = JSON.stringify([batteryStatus(d.battery), d.battery && d.battery.level, batteryRows(d.battery, d).map((r) => r[0])]);
         paintPowerGraph(el, d);
         let timer = 0;
+        // perf: allow the Battery tab's live power graph, sampled only while it is on screen (whileSeen stops it otherwise)
         d.sampler = whileSeen(el, () => { timer = setInterval(tick, POWER_MS); }, () => { clearInterval(timer); timer = 0; });
         if (!d.hist.length) tick();
     }
@@ -1968,6 +1970,7 @@
             if (!m.foregroundUpdateView) m.foregroundUpdateView = view;
             if (!first && (pollUpdate(d) || d.viewStale) && d.rerender) { d.viewStale = false; d.rerender(); return; }
             first = false;
+            // perf: allow the update's progress (the page's own update manager, no server ask), only while this page is on screen (whileSeen stops it otherwise)
             timer = setInterval(() => {
                 if (d.watch && !d.watch.seen()) { d.watch.sync(); return; }
                 if (!m.foregroundUpdateView) m.foregroundUpdateView = view;

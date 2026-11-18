@@ -517,6 +517,7 @@
                     stop();
                     stepInput(input, cfg, dir);
                     // held: repeats a little slower than the wheel gate (150 ms) so no step is dropped
+                    // perf: allow the press-and-hold repeat, only while a finger holds the button (stop on pointerup / cancel / leave / blur)
                     hold = setTimeout(() => { rep = setInterval(() => stepInput(input, cfg, dir), 170); }, 400);
                 });
                 ['pointerup', 'pointercancel', 'pointerleave', 'blur'].forEach((t) => b.addEventListener(t, stop));
@@ -959,6 +960,7 @@
     const seenNow = () => !ws || typeof ws.onScreen !== 'function' || ws.onScreen();
     function syncProgressTimer(now) {
         const want = now && seenNow();
+        // perf: allow the print's progress box, only while a print runs and the phone is seen (syncGenerating clears it otherwise)
         if (want && !progressTimer) progressTimer = setInterval(syncGenerating, 500);
         else if (!want && progressTimer) { clearInterval(progressTimer); progressTimer = null; }
     }

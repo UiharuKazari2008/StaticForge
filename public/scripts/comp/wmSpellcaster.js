@@ -204,6 +204,7 @@
      */
     function syncTick() {
         const on = stageSeen();
+        // perf: allow the stage's running time while the cast's spell is on screen (syncTick clears it otherwise)
         if (on && !tick) tick = setInterval(() => { if (stageSeen()) renderStage(); else syncTick(); }, 1000);
         else if (!on && tick) { clearInterval(tick); tick = null; }
     }

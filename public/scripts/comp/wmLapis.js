@@ -371,6 +371,7 @@
         clearTimeout(endTimer);
         endTimer = null;
         if (!live && ticker) { clearInterval(ticker); ticker = null; }
+        // perf: allow the running start's countdown, only while it is on screen (tick() stops it unseen and sets one timer for the end instead)
         if (live) { if (!ticker) ticker = setInterval(onTick, 1000); return; }
         if (timed) endTimer = setTimeout(() => { endTimer = null; changed(); }, Math.max(0, r.until - Date.now()) + 50);
     }
