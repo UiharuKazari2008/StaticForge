@@ -59,12 +59,15 @@ relay.bind({ allowed: (slug) => ['streamer_one', 'other_two', 'third_3', 'fourth
     await ok('modes: pass-through copies; no re-encode goes over 30 fps; Audio First is one picture a second', () => {
         const by = Object.fromEntries(T.MODES.map((m) => [m.id, T.ffmpegArgs(m, 'IN', '/d').join(' ')]));
         assert.ok(/-i IN -c copy -f hls/.test(by['480']) && /-c copy/.test(by['360']) && /-c copy/.test(by['160']));
-        for (const id of ['hw720', 'hw540', 'e480', 'e360']) assert.ok(/fps=30/.test(by[id]), id);
+        for (const id of ['hw1080', 'hw720', 'hw540', 'e480', 'e360']) assert.ok(/fps=30/.test(by[id]), id);
+        assert.ok(/fps=24/.test(by.hw1080f24) && /scale_vaapi=w=-2:h=1080/.test(by.hw1080f24) && /-g 96 /.test(by.hw1080f24));
+        assert.ok(/fps=15/.test(by.hw720f15) && /-g 60 /.test(by.hw720f15));
+        assert.ok(T.MODES.every((m) => m.copy || !/fps=(4[0-9]|[5-9][0-9])/.test(T.ffmpegArgs(m, 'IN', '/d').join(' '))), 'nothing re-encodes above 30 fps');
         assert.ok(/h264_vaapi/.test(by.hw720) && /-vaapi_device \S+ -i IN/.test(by.hw720));
         assert.ok(/libx264 -preset slow/.test(by.e360) && /scale=-2:360/.test(by.e360));
         assert.ok(/fps=1,/.test(by.audio) && /zerolatency/.test(by.audio) && /-b:a 96k/.test(by.audio));
         assert.ok(Object.values(by).every((a) => /-hls_time 4 -hls_list_size 15/.test(a) && /delete_segments/.test(a)));
-        assert.deepStrictEqual(relay.modes().map((m) => m.id), ['480', '360', '160', 'hw720', 'hw540', 'e480', 'e360', 'audio']);
+        assert.deepStrictEqual(relay.modes().map((m) => m.id), ['hw1080', 'hw1080f24', 'hw1080f15', 'hw720', 'hw720f24', 'hw720f15', 'hw540', '480', '360', '160', 'e480', 'e360', 'audio']);
     });
 
     await ok('a session starts once its list has pieces; the same channel and mode joins it', async () => {

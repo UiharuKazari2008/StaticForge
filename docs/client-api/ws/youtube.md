@@ -70,7 +70,7 @@ the program's own player plays (hls.js, `public/dist/hlsjs`): 4 s pieces, the ne
 
 `GET /api/videos/live/<id>/index.m3u8` and `/s<n>.ts` (signed-in session): the stream. A session ends by itself
 45 s after the last request. Modes: `480`, `360`, `160` pass Kick's own renditions through (no encoding);
-`hw720`, `hw540` are hardware re-encodes at 30 fps; `e480`, `e360` are careful software encodes at a low
+`hw1080`, `hw1080f24`, `hw1080f15`, `hw720`, `hw720f24`, `hw720f15`, `hw540` are hardware re-encodes (1080p / 720p at 30, 24 or 15 fps; 540p at 30); `e480`, `e360` are careful software encodes at a low
 bitrate (about two processor threads each); `audio` is one picture a second with full sound.
 
 The stream's address is only on the channel's Kick page: the Alchemy browser reads it in a hidden tab (nothing

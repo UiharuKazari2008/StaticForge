@@ -132,12 +132,13 @@ async function relayTest(mode, seconds) {
     if (bench && variants.length) {
         const by = (h) => variants.find((v) => String(v.res).endsWith(`x${h}`)) || variants[0];
         const x264 = (h, kbit, preset, extra = []) => ['-vf', `fps=30,scale=-2:${h}:flags=lanczos`, '-c:v', 'libx264', '-preset', preset, '-b:v', `${kbit}k`, '-maxrate', `${Math.round(kbit * 1.3)}k`, '-bufsize', `${kbit * 3}k`, '-g', '60', ...extra, '-c:a', 'aac', '-b:a', '96k', '-ac', '2'];
+        const hw = (h, fps, kbit) => ['-vaapi_device', '/dev/dri/renderD128', '-vf', `fps=${fps},format=nv12,hwupload,scale_vaapi=w=-2:h=${h}`, '-c:v', 'h264_vaapi', '-b:v', `${kbit}k`, '-maxrate', `${Math.round(kbit * 1.3)}k`, '-g', String(fps * 4), '-c:a', 'aac', '-b:a', '96k', '-ac', '2'];
         const tests = [
-            ['480p30 x264 medium 800k (from 480p)', by(480), x264(480, 800, 'medium')],
-            ['480p30 x264 slow 800k (from 480p)', by(480), x264(480, 800, 'slow')],
-            ['360p30 x264 slow 400k (from 480p)', by(480), x264(360, 400, 'slow')],
-            ['360p24 x264 slower 350k (from 480p)', by(480), ['-vf', 'fps=24,scale=-2:360:flags=lanczos', '-c:v', 'libx264', '-preset', 'slower', '-b:v', '350k', '-maxrate', '460k', '-bufsize', '1050k', '-g', '48', '-c:a', 'aac', '-b:a', '80k', '-ac', '2']],
-            ['540p30 vaapi (hardware) 1100k', by(720), ['-vaapi_device', '/dev/dri/renderD128', '-vf', 'fps=30,format=nv12,hwupload,scale_vaapi=w=-2:h=540', '-c:v', 'h264_vaapi', '-b:v', '1100k', '-maxrate', '1400k', '-g', '60', '-c:a', 'aac', '-b:a', '96k', '-ac', '2']]
+            ['1080p30 vaapi 3500k', by(1080), hw(1080, 30, 3500)],
+            ['1080p24 vaapi 2800k', by(1080), hw(1080, 24, 2800)],
+            ['1080p15 vaapi 2000k', by(1080), hw(1080, 15, 2000)],
+            ['720p24 vaapi 1500k', by(720), hw(720, 24, 1500)],
+            ['720p15 vaapi 1000k', by(720), hw(720, 15, 1000)]
         ];
         for (const [name, v, args] of tests) {
             const out = path.join(os.tmpdir(), 'kick-probe-bench.ts');

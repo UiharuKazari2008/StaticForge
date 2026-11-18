@@ -13,7 +13,7 @@
  *   stream    ffmpeg pulls one rendition from Kick's video servers and writes HLS (4 s pieces, the newest
  *             fifteen kept: a minute, so the player can sit ~20 s behind with a reserve to ride out gaps) into .cache/videos-live/<id>/, which the phone plays from /api/videos/live/<id>/.
  *   modes     pass-through of Kick's own 480p / 360p / 160p (no encoding: next to no processor time),
- *             hardware re-encodes at 30 fps (720p, 540p), careful software encodes at a low bitrate
+ *             hardware re-encodes of the big pictures at 30, 24 or 15 fps (1080p, 720p; 540p at 30), careful software encodes at a low bitrate
  *             ("Enhanced": about 1.7-1.9 of this server's 8 threads, measured), and Audio First (one picture
  *             a second with full sound). Heavier high-effort encodes belong on a GPU worker, not here.
  *   life      A session lives while its pieces are being fetched: 45 s without a request ends it and
@@ -49,21 +49,29 @@ class RelayError extends Error {
 const audio = (kbit) => ['-c:a', 'aac', '-b:a', `${kbit}k`, '-ac', '2'];
 const x264 = (h, kbit, preset, fps = 30) => ['-vf', `fps=${fps},scale=-2:${h}:flags=lanczos`, '-c:v', 'libx264', '-preset', preset, '-profile:v', 'high', '-pix_fmt', 'yuv420p',
     '-b:v', `${kbit}k`, '-maxrate', `${Math.round(kbit * 1.3)}k`, '-bufsize', `${kbit * 3}k`, '-g', String(fps * SEGMENT_S), '-keyint_min', String(fps * SEGMENT_S), '-sc_threshold', '0', ...audio(96)];
-const vaapi = (h, kbit) => ['-vf', `fps=30,format=nv12,hwupload,scale_vaapi=w=-2:h=${h}`, '-c:v', 'h264_vaapi', '-b:v', `${kbit}k`, '-maxrate', `${Math.round(kbit * 1.3)}k`, '-g', String(30 * SEGMENT_S), ...audio(96)];
+const vaapi = (h, kbit, fps = 30) => ['-vf', `fps=${fps},format=nv12,hwupload,scale_vaapi=w=-2:h=${h}`, '-c:v', 'h264_vaapi', '-b:v', `${kbit}k`, '-maxrate', `${Math.round(kbit * 1.3)}k`, '-g', String(fps * SEGMENT_S), ...audio(96)];
 
 // source: the height of Kick's rendition to pull. copy: no encoding. kbit: what the phone downloads, about.
 const MODES = [
+    // the big pictures at a calmer frame rate (Yukimi: 1080p and 720p at lower fps): hardware re-encodes from
+    // Kick's 60 fps renditions; fewer pictures a second is what brings the data rate down
+    { id: 'hw1080', label: '1080p at 30 fps', note: 'Re-encoded by the server, about 3.7 Mbit/s', source: 1080, kbit: 3700, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 3500, 30) },
+    { id: 'hw1080f24', label: '1080p at 24 fps', note: 'Re-encoded, about 3 Mbit/s', source: 1080, kbit: 3000, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 2800, 24) },
+    { id: 'hw1080f15', label: '1080p at 15 fps', note: 'Re-encoded, about 2.1 Mbit/s', source: 1080, kbit: 2100, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(1080, 2000, 15) },
+    { id: 'hw720', label: '720p at 30 fps', note: 'Re-encoded by the server, about 1.9 Mbit/s', source: 720, kbit: 1900, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1800, 30) },
+    { id: 'hw720f24', label: '720p at 24 fps', note: 'Re-encoded, about 1.6 Mbit/s', source: 720, kbit: 1600, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1500, 24) },
+    { id: 'hw720f15', label: '720p at 15 fps', note: 'Re-encoded, about 1.1 Mbit/s', source: 720, kbit: 1100, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1000, 15) },
+    { id: 'hw540', label: '540p at 30 fps', note: 'Re-encoded by the server, about 1.2 Mbit/s', source: 720, kbit: 1200, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(540, 1100) },
     { id: '480', label: '480p', note: 'Kick\'s own, about 1.4 Mbit/s', source: 480, copy: true, kbit: 1430 },
     { id: '360', label: '360p', note: 'Kick\'s own, about 0.6 Mbit/s', source: 360, copy: true, kbit: 630 },
     { id: '160', label: '160p', note: 'Kick\'s own, about 0.2 Mbit/s', source: 160, copy: true, kbit: 230 },
-    { id: 'hw720', label: '720p at 30 fps', note: 'Re-encoded by the server, about 1.9 Mbit/s', source: 720, kbit: 1900, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(720, 1800) },
-    { id: 'hw540', label: '540p at 30 fps', note: 'Re-encoded by the server, about 1.2 Mbit/s', source: 720, kbit: 1200, pre: ['-vaapi_device', VAAPI_DEVICE], args: vaapi(540, 1100) },
     { id: 'e480', label: '480p Enhanced', note: 'Careful encode, about 0.9 Mbit/s', source: 480, kbit: 900, heavy: true, args: x264(480, 800, 'medium') },
     { id: 'e360', label: '360p Enhanced', note: 'Careful encode, about 0.5 Mbit/s', source: 480, kbit: 500, heavy: true, args: x264(360, 400, 'slow') },
     { id: 'audio', label: 'Audio First', note: 'One picture a second, full sound, about 0.2 Mbit/s', source: 360, kbit: 200,
         // zerolatency: at one picture a second the encoder's look-ahead would hold the stream back ~20 s
         args: ['-vf', 'fps=1,scale=-2:360', '-c:v', 'libx264', '-preset', 'slow', '-tune', 'zerolatency', '-profile:v', 'high', '-pix_fmt', 'yuv420p', '-crf', '30', '-g', String(SEGMENT_S), '-keyint_min', String(SEGMENT_S), '-sc_threshold', '0', ...audio(96)] }
 ];
+const DEFAULT_MODE = '480';
 const modeById = (id) => MODES.find((m) => m.id === id) || null;
 const modesView = () => MODES.map((m) => ({ id: m.id, label: m.label, note: m.note, kbit: m.kbit, heavy: !!m.heavy }));
 
@@ -268,7 +276,7 @@ const view = (s) => ({ id: s.id, slug: s.slug, mode: s.mode.id, state: s.state, 
 /** Start watching a channel in a mode (or take the session already running it): resolves once the phone can play. */
 async function start(slugIn, modeId) {
     const slug = String(slugIn || '').toLowerCase().replace(/^kick:/, '');
-    const mode = modeById(String(modeId || '')) || MODES[0];
+    const mode = modeById(String(modeId || '')) || modeById(DEFAULT_MODE);
     if (!SLUG.test(slug) || !allowed(slug)) throw new RelayError('Add the channel under Channels > Kick first', 'KICK_NOT_LISTED');
     for (const s of sessions.values()) {
         if (s.slug === slug && s.mode.id === mode.id && !s.stopped && s.state !== 'ended' && s.state !== 'error') { s.lastHit = Date.now(); if (s.starting) await s.starting; return view(s); }
