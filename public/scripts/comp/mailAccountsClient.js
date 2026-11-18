@@ -25,11 +25,12 @@
  *   testAccount / saveAccount / deleteAccount (saveAccount { sameSmtpPassword: true } drops a separate SMTP password; account.hasSmtpPassword), syncStatus(), resync(accountId, rebuild)
  *   unread() -> { total, byAccount: { id: n } }   (Inbox unread)
  *   on(event, fn) / off: 'new' (detail: { accountId, folder, uids, message, notify }) | 'flags' | 'removed' | 'folders' | 'progress' (sync progress, every ~2 s)
- *       | 'account' | 'sync' | 'unread'
+ *       | 'account' | 'sync' (a pass that changed something) | 'unread'
  * New mail notifies in the 'mail' class when detail.notify is true.
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const handlers = new Map();
     let cache = null;
@@ -64,6 +65,9 @@
             const d = (msg && msg.data) || {};
             if (d.event === 'account') cache = null;
             fire(d.event, d);
+            // re-read only on a real change (#890 W6): the server sends 'sync' only when the pass changed
+            // something ('folders' carries what); a 'sync' that says changed: false, or 'progress', is not one
+            if (d.event === 'sync' && d.changed === false) return;
             if (['new', 'flags', 'removed', 'folders', 'account', 'sync'].includes(d.event)) scheduleUnread();
         });
         c.on('connected', () => { cache = null; scheduleUnread(); });
@@ -144,8 +148,13 @@
         upload, send, saveDraft, search, testAccount, saveAccount, deleteAccount, syncStatus, resync, unread, on, off
     };
     if (!wire()) {
-        const t = setInterval(() => { if (wire()) { clearInterval(t); scheduleUnread(); } }, 1000);
-        setTimeout(() => clearInterval(t), 120000);
+        // websocket.js loads before this file in app.html; a page that brings wsClient later wires at
+        // its load events (no poll, #890)
+        const late = () => { if (!wired && wire()) scheduleUnread(); };
+        if (root.addEventListener) {
+            root.addEventListener('DOMContentLoaded', late, { once: true, signal: appScopeSignal });
+            root.addEventListener('load', late, { once: true, signal: appScopeSignal });
+        }
     } else {
         scheduleUnread();
     }

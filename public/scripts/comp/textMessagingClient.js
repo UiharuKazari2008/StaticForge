@@ -50,6 +50,7 @@
  */
 (function (root) {
     'use strict';
+    const appScopeSignal = (root.melatonSegments && typeof root.melatonSegments.callerSignal === 'function' && root.melatonSegments.callerSignal()) || undefined; // page listeners end with this file's segment (app-scope, #872/#890)
 
     const REACTIONS = [
         { type: 'love', label: 'Love', glyph: '❤' },
@@ -68,6 +69,9 @@
     let wired = false;
     let lastUnread = { total: 0, byAccount: {} };
     let unreadTimer = null;
+    // counts may have moved since: bumped by every event that schedules an unread read (#890)
+    let changeSeq = 0;
+    let summaryRun = null; // { seq, promise }: the tm_summary in flight
     const typingAt = new Map();
 
     function client() {
@@ -107,9 +111,9 @@
             const d = (msg && msg.data) || {};
             if (d.event === 'account' || d.event === 'settings') { cache = null; }
             fire(d.event, d);
-            if (['message', 'updated', 'reaction', 'read', 'account', 'resync'].includes(d.event)) scheduleUnread();
+            if (['message', 'updated', 'reaction', 'read', 'account', 'resync'].includes(d.event)) { changeSeq += 1; scheduleUnread(); }
         });
-        c.on('connected', () => { cache = null; scheduleUnread(); });
+        c.on('connected', () => { cache = null; changeSeq += 1; scheduleUnread(); });
         return true;
     }
 
@@ -138,19 +142,36 @@
         return { total, byAccount };
     }
 
-    async function summary() {
-        const d = await call('tm_summary');
-        const list = d.accounts || [];
-        if (cache) cache.accounts = list;
-        if (snap) snap.accounts = list;
-        lastUnread = tally(list);
-        fire('unread', lastUnread);
-        return list;
+    /**
+     * One tm_summary for everyone who asks (#890): a caller while one is in flight, with no count event
+     * since it was sent, shares it; a read that starts takes over the debounced one that is due (Messaging's
+     * refresh and this file's own read both went out after every text and every reconnect).
+     */
+    function summary() {
+        if (summaryRun && summaryRun.seq === changeSeq) return summaryRun.promise;
+        const tookDue = !!unreadTimer;
+        if (unreadTimer) { clearTimeout(unreadTimer); unreadTimer = null; }
+        const run = { seq: changeSeq, promise: null };
+        run.promise = (async () => {
+            const d = await call('tm_summary');
+            const list = d.accounts || [];
+            if (cache) cache.accounts = list;
+            if (snap) snap.accounts = list;
+            lastUnread = tally(list);
+            fire('unread', lastUnread);
+            return list;
+        })().catch((error) => {
+            // the read it took over comes back as the second chance, unless something newer was scheduled
+            if (tookDue && !unreadTimer) scheduleUnread();
+            throw error;
+        }).finally(() => { if (summaryRun === run) summaryRun = null; });
+        summaryRun = run;
+        return run.promise;
     }
 
     function scheduleUnread() {
         clearTimeout(unreadTimer);
-        unreadTimer = setTimeout(() => { summary().catch(() => {}); }, UNREAD_DEBOUNCE_MS);
+        unreadTimer = setTimeout(() => { unreadTimer = null; summary().catch(() => {}); }, UNREAD_DEBOUNCE_MS);
     }
 
     function unread() { return lastUnread; }
@@ -341,7 +362,7 @@
         };
         go();
     }
-    if (root.addEventListener) root.addEventListener('dreamscapetextmessage', (e) => openFromNotification(e && e.detail));
+    if (root.addEventListener) root.addEventListener('dreamscapetextmessage', (e) => openFromNotification(e && e.detail), { signal: appScopeSignal });
     try {
         const bridge = root.AndroidActiveSync;
         const raw = bridge && typeof bridge.takePendingTextMessage === 'function' ? bridge.takePendingTextMessage() : '';
@@ -358,9 +379,13 @@
 
     wire();
     if (!wired) {
-        // wsClient may come up after this script
-        const t = setInterval(() => { if (wire()) { clearInterval(t); scheduleUnread(); } }, 1000);
-        setTimeout(() => clearInterval(t), 120000);
+        // websocket.js loads before this file in app.html; a page that brings wsClient later wires at
+        // its load events (no poll, #890)
+        const late = () => { if (!wired && wire()) scheduleUnread(); };
+        if (root.addEventListener) {
+            root.addEventListener('DOMContentLoaded', late, { once: true, signal: appScopeSignal });
+            root.addEventListener('load', late, { once: true, signal: appScopeSignal });
+        }
     } else {
         scheduleUnread();
     }
