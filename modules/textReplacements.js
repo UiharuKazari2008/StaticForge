@@ -88,19 +88,16 @@ class TextReplacements {
 
     // Handle incrementing index for queries ending with #
     getIncrementingIndex(key, presetName, locked = false, allValuesLength = null) {
-        const currentPromptConfig = this.globalResources.getPromptConfig({ clone: true }) || {presets: {} };
+        // Read only (writes go through modifyConfig): a deep clone of the 2.6 MB prompt config
+        // per !KEY# match cost ~22 ms each, 100-700 ms per print of a Director turn.
+        const currentPromptConfig = this.globalResources.getPromptConfig() || {presets: {} };
 
         // For presets, store index in preset data
         if (presetName && currentPromptConfig.presets && currentPromptConfig.presets[presetName]) {
             const preset = currentPromptConfig.presets[presetName];
 
-            // Initialize incrementing indices if not exists
-            if (!preset.incrementing_indices) {
-                preset.incrementing_indices = {};
-            }
-
             // Get current index, default to 0
-            const currentIndex = preset.incrementing_indices[key] || 0;
+            const currentIndex = (preset.incrementing_indices && preset.incrementing_indices[key]) || 0;
 
             // Only increment if not locked
             if (!locked) {
@@ -142,7 +139,8 @@ class TextReplacements {
         if (!matchingKeys.length) throw new Error('ensureStickyTildePickKey: empty matchingKeys');
 
         let chosenKey = null;
-        const cfg = this.globalResources ? this.globalResources.getPromptConfig({ clone: true }) : null;
+        // read only, no clone (see getIncrementingIndex)
+        const cfg = this.globalResources ? this.globalResources.getPromptConfig() : null;
         if (presetName && cfg?.presets?.[presetName]?.incrementing_tilde_pick) {
             chosenKey = cfg.presets[presetName].incrementing_tilde_pick[patternMatch];
         }

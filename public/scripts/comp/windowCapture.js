@@ -492,8 +492,10 @@
         return { open, close, chain };
     }
 
-    function imageDataUrl(img, w, h) {
-        const s = Math.min(2, root.devicePixelRatio || 1);
+    // pictureScale: the scale the window's picture is drawn at (rasterize): a copied image needs
+    // no more pixels than that
+    function imageDataUrl(img, w, h, pictureScale) {
+        const s = Math.min(2, root.devicePixelRatio || 1, pictureScale || 2);
         // an exact snapshot draws the picture at the box's own device pixels, as the page does
         // (naturalWidth is divided by a srcset's density: a 4x flag read as a quarter of its file)
         const es = exact ? exact.scale : s;
@@ -501,20 +503,37 @@
         const ch = Math.max(1, Math.min(2048, Math.round(h * es)));
         const key = `${img.currentSrc || img.src}|${cw}x${ch}`;
         if (dataUrls.has(key)) return dataUrls.get(key);
-        let out = '';
+        // drawn now (the frame the window shows: a mascot's mouth or blink layer changes src),
+        // encoded off the main thread: toDataURL encoded each picture on it, the Director's four
+        // ~2000 px mascot layers alone held one frame 1.3 s at a taskbar hover during a turn
+        let c = null;
         try {
-            const c = doc.createElement('canvas');
+            c = doc.createElement('canvas');
             c.width = cw;
             c.height = ch;
             c.getContext('2d').drawImage(img, 0, 0, cw, ch);
-            out = c.toDataURL(cw * ch > 64 * 64 ? 'image/webp' : 'image/png', 0.92);
-        } catch (_) { out = ''; }
-        return remember(key, Promise.resolve(out));
+        } catch (_) { return Promise.resolve(''); }
+        const type = cw * ch > 64 * 64 ? 'image/webp' : 'image/png';
+        const encoded = new Promise((resolve) => {
+            try { c.toBlob(resolve, type, 0.92); } catch (_) { resolve(null); }
+        }).then((blob) => (blob ? blobToDataUrl(blob) : ''));
+        return remember(key, encoded);
+    }
+
+    /** False when nothing of `el` shows: outside the window or scrolled out of a clipping
+     *  ancestor (clipRect). Such a picture is not copied: its box keeps the layout. */
+    function showsInWindow(el, r, win, winRect) {
+        const x = r.left - winRect.left;
+        const y = r.top - winRect.top;
+        const clip = clipRect(el, win, winRect);
+        return x < clip.x + clip.w && x + r.width > clip.x && y < clip.y + clip.h && y + r.height > clip.y;
     }
 
     /** Copies the live state the clone loses (form values, scroll offsets) and swaps what an SVG
      *  picture cannot hold: images become data: URLs, canvases and videos holes drawn later. */
-    function prepareClone(win, clone, winRect) {
+    function prepareClone(win, clone, winRect, pictureScale) {
+        // a minimised window has no layout: every picture is copied at its own size, as before
+        const laidOut = !win.classList.contains('minimised') && winRect.width > 0 && winRect.height > 0;
         const live = [win].concat(Array.from(win.getElementsByTagName('*')));
         const copy = [clone].concat(Array.from(clone.getElementsByTagName('*')));
         const waits = [];
@@ -539,6 +558,16 @@
                 b.removeAttribute('loading');
                 b.setAttribute('alt', '');
                 const r = a.getBoundingClientRect();
+                if (laidOut && (!r.width || !r.height || !showsInWindow(a, r, win, winRect))) {
+                    // not on screen (hidden, scrolled away): an empty box of the same layout size.
+                    // The Director's chat had 85 of its 108 pictures off screen, each one encoded.
+                    b.removeAttribute('src');
+                    if (r.width && r.height) {
+                        b.style.setProperty('width', `${a.offsetWidth}px`, 'important');
+                        b.style.setProperty('height', `${a.offsetHeight}px`, 'important');
+                    }
+                    continue;
+                }
                 // a minimised window's images have no size: their own, up to 256 px
                 const fit = Math.min(1, 256 / Math.max(a.naturalWidth || 1, a.naturalHeight || 1));
                 const w = r.width || a.naturalWidth * fit;
@@ -550,7 +579,7 @@
                 if (foreign && (a.currentSrc || a.src)) {
                     waits.push(dataUrl(a.currentSrc || a.src).then((d) => { if (d) b.setAttribute('src', d); else b.removeAttribute('src'); }));
                 } else if (a.complete && a.naturalWidth && w && h) {
-                    waits.push(imageDataUrl(a, w, h).then((d) => { if (d) b.setAttribute('src', d); else b.removeAttribute('src'); }));
+                    waits.push(imageDataUrl(a, w, h, pictureScale).then((d) => { if (d) b.setAttribute('src', d); else b.removeAttribute('src'); }));
                 } else b.removeAttribute('src');
             } else if (tag === 'canvas' || tag === 'video' || tag === 'iframe') {
                 const r = a.getBoundingClientRect();
@@ -655,7 +684,9 @@
             opacity: '1', visibility: 'visible'
         };
         Object.keys(fixed).forEach((p) => clone.style.setProperty(p, fixed[p], 'important'));
-        const { waits, overlays } = prepareClone(win, clone, rect);
+        // the scale the picture is drawn at below (exact: the snapshot's own)
+        const pictureScale = exact ? exact.scale : Math.min(Math.min(1.5, root.devicePixelRatio || 1), MAX_TEX / W, MAX_TEX / H);
+        const { waits, overlays } = prepareClone(win, clone, rect, pictureScale);
         lap('clone');
         await Promise.all(waits);
         await yieldTask();

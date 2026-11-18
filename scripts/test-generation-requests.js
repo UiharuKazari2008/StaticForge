@@ -5,6 +5,7 @@ const path = require('path');
 const { createGenerationJobQueue } = require('../modules/generationJobQueue');
 const {
     createGenerationRequestLog,
+    getGenerationRequestLog,
     resetGenerationRequestLogsForTests,
     buildDurableGalleryImageUrl,
     queryGenerationRequests,
@@ -92,6 +93,8 @@ async function main() {
             createdAt: Date.parse('2026-10-09T11:00:00.000Z'),
             imageIds: []
         });
+        assert.ok(!fs.existsSync(logFile), 'remember() writes later, in one batch');
+        unit.flush();
         const rawLog = fs.readFileSync(logFile, 'utf8');
         assert.ok(!rawLog.includes('SECRET_PROMPT_TEXT'));
         const reloaded = createGenerationRequestLog({ filePath: logFile });
@@ -305,6 +308,7 @@ async function main() {
         assert.ok(failed.jobId);
         assert.strictEqual(failed.success, false);
 
+        getGenerationRequestLog(globalResources).flush();
         const historyFile = fs.readFileSync(path.join(cacheDir, LOG_FILENAME), 'utf8');
         assert.ok(!historyFile.includes('SECRET_PROMPT_TEXT'));
         assert.ok(historyFile.includes(synced.jobId));

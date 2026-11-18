@@ -12,6 +12,12 @@ const DEFAULT_PAGE_LIMIT = 50;
 const MAX_PAGE_LIMIT = 200;
 const MAX_RECORDS = 2000;
 const LOG_FILENAME = 'generation_requests.json';
+const PERSIST_DELAY_MS = 2000;
+// stores with an unwritten change: written on the way out
+const exitFlushers = new Set();
+process.once('exit', () => {
+    exitFlushers.forEach((flush) => { try { flush(); } catch (_) { /* best effort */ } });
+});
 
 const stores = new Map();
 
@@ -116,13 +122,35 @@ function createGenerationRequestLog(options) {
     const nowFn = opts.now || Date.now;
     const records = new Map();
 
-    function persist() {
-        if (!filePath) return;
+    // Every status change of every print (queued, started, finished) rewrote the whole log
+    // (2,000 rows, ~1.1 MB) synchronously: 3-4 times a print, 100-700 ms of a Director turn's
+    // prints held the event loop. Changes now land in one write at most every PERSIST_DELAY_MS;
+    // flush() writes at once (exit, tests).
+    let persistTimer = null;
+    function flush() {
+        if (persistTimer) {
+            clearTimeout(persistTimer);
+            persistTimer = null;
+        }
+        if (!filePath || !pendingWrite) return;
+        pendingWrite = false;
         const dir = path.dirname(filePath);
         fs.mkdirSync(dir, { recursive: true });
         const tmp = `${filePath}.${process.pid}.tmp`;
         fs.writeFileSync(tmp, JSON.stringify(Array.from(records.values())));
         fs.renameSync(tmp, filePath);
+    }
+    let pendingWrite = false;
+    function persist() {
+        if (!filePath) return;
+        pendingWrite = true;
+        if (persistTimer) return;
+        persistTimer = setTimeout(() => {
+            persistTimer = null;
+            try { flush(); } catch (err) { console.error(`Generation request log write failed: ${err.message}`); }
+        }, PERSIST_DELAY_MS);
+        if (typeof persistTimer.unref === 'function') persistTimer.unref();
+        exitFlushers.add(flush);
     }
 
     function load() {
@@ -241,7 +269,7 @@ function createGenerationRequestLog(options) {
         };
     }
 
-    return { filePath, remember, list, _records: records };
+    return { filePath, remember, list, flush, _records: records };
 }
 
 function logLocation(globalResources) {
