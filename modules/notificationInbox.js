@@ -106,6 +106,8 @@ function rowOut(r) {
         actions: safeJson(r.actions, []),
         data: safeJson(r.data, {}),
         createdAt: r.createdAt,
+        // when its state last moved (#890 round 5 W2): the page's inbox_list since is the newest it holds
+        updatedAt: r.updatedAt || r.createdAt,
         expiresAt: r.expiresAt || null,
         state: r.state,
         actedBy: r.actedBy || null,
