@@ -1520,13 +1520,16 @@ class WebSocketClient {
         // a /launch hand-over for a server it could not reach: no need to wait as long
         let offlineStart = false;
         try { offlineStart = Date.now() - (Number(sessionStorage.getItem('melatonOfflineStart')) || 0) < 120000; } catch (_) { /* storage off */ }
+        // TOP RULE (Yukimi, Nov 18 2026): the installed app (the Dreamscape app's window) logs on with its cached password at
+        // once - the server's word is not waited for; the session catches up when the server answers
+        const installedApp = !!(window.AndroidDevice || window.AndroidCaption || window.AndroidNotification);
         this._offlineLogonTimer = setTimeout(() => {
             this._offlineLogonTimer = null;
             if (this.socketAuthenticated === true || this.connectionPhase === 'auth' || !this._offlineLogonEligible()) return;
             this._offlineLogonReady = true;
             console.log('🔑 Offline logon: the server has not answered, the cached password is accepted');
             this._setConnectionPhase('auth', { beat: 'establishing', message: 'The Nightshade Network is not available. Log on with your password to use this computer.' });
-        }, offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
+        }, installedApp ? 0 : offlineStart ? 2500 : WebSocketClient.OFFLINE_LOGON_AFTER_MS);
     }
 
     async _completeOfflineLogon() {

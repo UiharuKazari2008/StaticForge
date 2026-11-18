@@ -558,6 +558,18 @@
             try { return !!(mc && mc.available && typeof mc.isDexWindow === 'function' && mc.isDexWindow()); } catch (_) { return false; }
         }
 
+        /**
+         * TOP RULE (Yukimi, Nov 18 2026): the installed app (the Dreamscape app with its copy installed) boots with not one
+         * request to the server - no POST probe, no manifest check, no /status wait, no update pass: the boot screen for its
+         * time, then the desktop. The running app checks the server, the session and updates afterwards.
+         */
+        function installedApp() {
+            try {
+                const inApp = !!(root && (root.AndroidDevice || root.AndroidCaption || root.AndroidNotification));
+                return inApp && !!(root.localStorage && root.localStorage.getItem('melatonManifestHash'));
+            } catch (_) { return false; }
+        }
+
         async function runBios(run) {
             ctl.biosF8 = false;
             show('bios');
@@ -594,6 +606,8 @@
             // DeX window's POST has no work under its bar (it runs on its clock) and links to the phone
             const hybrid = isHybridDw();
             if (hybrid) tasks.length = 0;
+            // the installed app: no task that asks the server (the probe, the manifest check)
+            else if (installedApp()) for (let i = tasks.length - 1; i >= 0; i--) if (tasks[i].id === 'server' || tasks[i].id === 'manifest') tasks.splice(i, 1);
             // over the Melaton Café Miniport (#815) the DeX window fast boots: its one POST check is the
             // Miniport interface (there, and its link's state; an idle link is woken), 1.2 s at least
             const mcCont = root && root.melatonContinuity;
@@ -787,7 +801,7 @@
             show('boot');
             // Continuity (#798): the phone is past its own boot (server up, session good, BIOS checked
             // the session): the boot screen for its time, then the desktop. No /status, no updates
-            if (isHybridDw() && ctl.bootMode !== 'restore') {
+            if ((isHybridDw() || installedApp()) && ctl.bootMode !== 'restore') {
                 const left = startedAt + config.minBootMs - env.now();
                 if (left > 0) await env.sleep(left);
                 if (run !== ctl.runId) return 'cancelled';
@@ -854,7 +868,7 @@
             }
             // Continuity (#798): the DeX window never opens the installer; the phone (ready before this
             // window got past its BIOS) has already installed into the shared cache
-            const updated = isHybridDw() ? 'handoff' : await runUpdates(run);
+            const updated = isHybridDw() || installedApp() ? 'handoff' : await runUpdates(run);
             if (updated !== 'handoff') return updated;
             await handOff();
             if (run !== ctl.runId) return 'cancelled';
