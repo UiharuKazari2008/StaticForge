@@ -154,7 +154,8 @@
                 if (r && Array.isArray(r.shown)) {
                     const left = new Set(r.left || []);
                     const shown = r.shown.concat(r.groupShown ? ['notify'] : []);
-                    out.fit = { right: shown.filter((x) => !left.has(x)), left: [...left], folded: r.folded || [] };
+                    // shed: the volume / battery the fit stepped aside (the app must leave them out, #907)
+                    out.fit = { right: shown.filter((x) => !left.has(x)), left: [...left], folded: r.folded || [], shed: r.shed || [] };
                 }
             } catch (e) { ctx.log(`statusFit: ${e && e.message}`); }
         }
